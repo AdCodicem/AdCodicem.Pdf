@@ -47,8 +47,15 @@ public sealed class PdfDocument : IDisposable
 
     /// <summary>Gets what the reader noticed while opening and reading the document.</summary>
     /// <remarks>
+    /// <para>
+    /// The record grows as the document is read, after opening too, and when a validation starts. An enumeration gives the
+    /// entries recorded when it began, whatever a read or a validation it goes on through records meanwhile, which
+    /// <see cref="PdfDiagnostics.Count"/> counts at once and the next enumeration gives (#167).
+    /// </para>
+    /// <para>
     /// It keeps answering once the document is disposed, as the final record of its reading: nothing adds to it then,
     /// since nothing can be read.
+    /// </para>
     /// </remarks>
     public PdfDiagnostics Diagnostics { get; }
 
@@ -118,6 +125,10 @@ public sealed class PdfDocument : IDisposable
     /// file's sections mark free, object 0 — the head of the free list — among them. A rebuild empties the index,
     /// free entries included, and fills it with the objects its scan finds and those their object streams hold.
     /// </summary>
+    /// <remarks>
+    /// It can therefore change after opening, on a read or at the start of a validation that rebuilds the index
+    /// (<see cref="WasRepaired"/>).
+    /// </remarks>
     /// <exception cref="ObjectDisposedException">The document was disposed.</exception>
     public int ObjectCount
     {
@@ -271,7 +282,15 @@ public sealed class PdfDocument : IDisposable
     /// Gets the object numbers of the entries <see cref="ObjectCount"/> counts, those the file's sections mark free
     /// included — object 0, the head of the free list, among them.
     /// </summary>
-    /// <remarks>An enumeration begun before the document is disposed is refused at its next step after.</remarks>
+    /// <remarks>
+    /// <para>
+    /// An enumeration gives the numbers the index held when it began, at its first step, in the order the index recorded
+    /// them, whatever a read or a validation it goes on through does to the index meanwhile: a rebuild changes what the
+    /// next enumeration gives, not this one, which never throws for it (#167). Nothing is copied; a rebuild during an
+    /// enumeration records the rebuilt index's numbers in a new array, 4 bytes for each entry the index has room for.
+    /// </para>
+    /// <para>An enumeration begun before the document is disposed is refused at its next step after.</para>
+    /// </remarks>
     /// <exception cref="ObjectDisposedException">The document was disposed.</exception>
     public IEnumerable<int> ObjectNumbers
     {

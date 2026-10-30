@@ -592,7 +592,10 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// <summary>Gets the number of indexed objects.</summary>
     public int ObjectCount => _xref.Count;
 
-    /// <summary>Gets the object numbers the index holds an entry for, free ones included.</summary>
+    /// <summary>
+    /// Gets the object numbers the index holds an entry for, free ones included: those it held when the enumeration began,
+    /// whatever a rebuild does meanwhile (#167).
+    /// </summary>
     public IEnumerable<int> ObjectNumbers => _xref.Numbers;
 
     /// <summary>Gets the bytes the file is read from.</summary>

@@ -63,6 +63,13 @@ internal sealed class PdfXRefTable : IEnumerable<KeyValuePair<int, XRefEntry>>
     private int _version;
 
     /// <summary>
+    /// How many enumerations of <see cref="Numbers"/> under way read <see cref="_numbers"/> as it is now: while one is, the
+    /// table cleared records its numbers in a new array rather than over those it reads (#167). Any array that takes its
+    /// place is lent to none.
+    /// </summary>
+    private int _numbersLent;
+
+    /// <summary>
     /// The offsets of the entries in use written directly, sorted the first time <see cref="FirstOffsetAfter"/> is asked
     /// and kept up to date from then on; null until then, so that an index nothing searches costs nothing more.
     /// </summary>
@@ -86,14 +93,38 @@ internal sealed class PdfXRefTable : IEnumerable<KeyValuePair<int, XRefEntry>>
     /// <summary>Gets how many numbers the map holds room for, past the slots.</summary>
     internal int MapCapacity => _beyond?.EnsureCapacity(0) ?? 0;
 
-    /// <summary>Gets the indexed object numbers, in the order the table first recorded them.</summary>
+    /// <summary>
+    /// Gets the indexed object numbers, in the order the table first recorded them: those it held when the enumeration
+    /// began, at its first step, whatever is added or cleared meanwhile (#167).
+    /// </summary>
+    /// <remarks>
+    /// Nothing is copied. A number added meanwhile is written past those the enumeration began with, or into a larger
+    /// array once the room is full; and a table cleared while an enumeration is under way records its numbers from then
+    /// on in an array of its own (<see cref="Clear"/>). An enumeration left before its end and never disposed counts as
+    /// under way until the next clearing.
+    /// </remarks>
     public IEnumerable<int> Numbers
     {
         get
         {
-            foreach (var (number, _) in this)
+            var numbers = _numbers;
+            var count = _count;
+            _numbersLent++;
+
+            try
             {
-                yield return number;
+                for (var at = 0; at < count; at++)
+                {
+                    yield return numbers[at];
+                }
+            }
+            finally
+            {
+                // An array the table has stopped recording into is not one it counts as lent.
+                if (ReferenceEquals(numbers, _numbers))
+                {
+                    _numbersLent--;
+                }
             }
         }
     }
@@ -173,8 +204,19 @@ internal sealed class PdfXRefTable : IEnumerable<KeyValuePair<int, XRefEntry>>
     }
 
     /// <summary>Removes every entry.</summary>
+    /// <remarks>
+    /// The numbers an enumeration of <see cref="Numbers"/> under way reads are left where they are: the table then records
+    /// its numbers from now on in a new array, as long as the one it leaves, 4 bytes an entry of room (#167). Otherwise it
+    /// keeps its arrays, and allocates nothing.
+    /// </remarks>
     public void Clear()
     {
+        if (_numbersLent > 0)
+        {
+            _numbers = new int[_numbers.Length];
+            _numbersLent = 0;
+        }
+
         Array.Clear(_slots);
         _beyond = null;
         _count = 0;
@@ -183,8 +225,13 @@ internal sealed class PdfXRefTable : IEnumerable<KeyValuePair<int, XRefEntry>>
     }
 
     /// <summary>Removes every entry, and lets go of the room they took, for a table nothing will read again.</summary>
+    /// <remarks>
+    /// An enumeration of <see cref="Numbers"/> under way keeps reading the array it began with, which the table lets go of
+    /// rather than clear: none is made for it.
+    /// </remarks>
     public void Release()
     {
+        _numbersLent = 0;
         Clear();
         _numbers = [];
         _entries = [];
@@ -297,10 +344,15 @@ internal sealed class PdfXRefTable : IEnumerable<KeyValuePair<int, XRefEntry>>
     }
 
     /// <summary>Makes room for <paramref name="capacity"/> entries, keeping those held.</summary>
+    /// <remarks>
+    /// The numbers go into a new array: one an enumeration of <see cref="Numbers"/> under way reads is left as it is, and
+    /// the new one is lent to none.
+    /// </remarks>
     private void Resize(int capacity)
     {
         Array.Resize(ref _numbers, capacity);
         Array.Resize(ref _entries, capacity);
+        _numbersLent = 0;
     }
 
     /// <summary>

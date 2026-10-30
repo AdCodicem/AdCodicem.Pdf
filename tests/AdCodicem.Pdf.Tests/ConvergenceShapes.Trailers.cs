@@ -29,7 +29,7 @@ internal static partial class ConvergenceShapes
     /// #237's shape, <c>/Prev</c> last in the newest trailer and object 4 an older string: written from a template, with
     /// line feeds and the header at offset 0.
     /// </summary>
-    private const string TrailerPrevLastTemplate = """
+    internal const string TrailerPrevLastTemplate = """
         %PDF-1.7
         1 0 obj
         << /Type /Catalog /Pages 2 0 R >>

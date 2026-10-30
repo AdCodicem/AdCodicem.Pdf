@@ -6,6 +6,8 @@ using AdCodicem.Pdf.Documents;
 using AdCodicem.Pdf.IO;
 using AdCodicem.Pdf.Objects;
 using AdCodicem.Pdf.Validation;
+using FsCheck;
+using FsCheck.Fluent;
 
 namespace AdCodicem.Pdf.Tests;
 
@@ -688,6 +690,97 @@ public class ReadOrderTests
             .Which.LimitName.Should().Be(nameof(PdfReaderLimits.MaxIndexEntries));
     }
 
+    [Fact]
+    public void An_enumeration_of_the_diagnostics_a_caller_s_source_begins_inside_a_read_ends_with_the_entries_the_read_leaves()
+    {
+        // Object stream 6's /Length is short, which the finish of the rebuild reading 7 sets off reports before the source
+        // fails to give 5 for stream 8: the finish withdraws what it reported. A source that enumerates the document's
+        // diagnostics as it fails began with two entries, of which the read leaves one: the enumeration ends with it, and
+        // reads no entry past those held (#167).
+        var (bytes, five) = AShortObjectStreamThenOneWhoseLengthLeadsNowhere();
+        using var source = new FailingSource(bytes);
+        using var document = PdfDocument.Open(source, options: null, ownsSource: false);
+        var enumerator = default(PdfDiagnostics.Enumerator);
+        var began = new List<string>();
+        source.Fail(five, 2);
+        source.Failing = () =>
+        {
+            enumerator = document.Diagnostics.GetEnumerator();
+            began.AddRange(document.Diagnostics.Select(diagnostic => diagnostic.Code));
+        };
+
+        FluentActions.Invoking(() => document.GetObject(new PdfObjectId(7))).Should().Throw<IOException>();
+
+        began.Should().Equal(PdfDiagnosticCodes.XRefRebuilt, PdfDiagnosticCodes.StreamLengthInvalid);
+        document.Diagnostics.Select(diagnostic => diagnostic.Code).Should().Equal(PdfDiagnosticCodes.XRefRebuilt);
+        enumerator.MoveNext().Should().BeTrue();
+        enumerator.Current.Should().Be(document.Diagnostics[0]);
+        enumerator.MoveNext().Should().BeFalse();
+    }
+
+    [Fact]
+    public void Between_two_calls_a_document_s_diagnostics_only_grow_and_an_enumeration_begun_before_one_gives_what_preceded_it()
+    {
+        // An enumeration of a document's diagnostics reads the entries it began with where they lie (#167), which holds as
+        // long as no call drops an entry an earlier one left: a rebuild a read sets off, whose finish the source may fail
+        // and the next call make again, withdraws what it reported within the call that reported it. Over the shapes whose
+        // rebuild waits on a load in flight, reads of their objects and validations, and the source failing any of the first
+        // reads of object 5.
+        var cases =
+            from shape in Gen.Choose(0, 2)
+            from failing in Gen.SubListOf([1, 2, 3, 4])
+            from count in Gen.Choose(1, 8)
+            from calls in Gen.ArrayOf(Gen.Elements(0, 1, 3, 5, 6, 7, 8), count)
+            select (shape, failing.ToArray(), calls);
+
+        Check.One(PropertySettings, Prop.ForAll(cases.ToArbitrary(), drawn =>
+        {
+            var (shape, failing, calls) = drawn;
+            var (bytes, five) = shape switch
+            {
+                0 => MemberWhoseLengthLeadsNowhere(),
+                1 => TwoObjectStreamsTheSecondOfWhichLeadsNowhere(unindexed: 0),
+                _ => AShortObjectStreamThenOneWhoseLengthLeadsNowhere(),
+            };
+            using var source = new FailingSource(bytes);
+            using var document = PdfDocument.Open(source, options: null, ownsSource: false);
+            source.Fail(five, failing);
+            var before = document.Diagnostics.ToList();
+
+            foreach (var call in calls)
+            {
+                var enumerator = document.Diagnostics.GetEnumerator();
+
+                try
+                {
+                    _ = call == 0 ? new PdfValidator().Validate(document) : (object)document.GetObject(new PdfObjectId(call));
+                }
+                catch (IOException)
+                {
+                    // The source failed this read, or the finish of a rebuild the next one makes.
+                }
+
+                var enumerated = new List<PdfDiagnostic>();
+
+                while (enumerator.MoveNext())
+                {
+                    enumerated.Add(enumerator.Current);
+                }
+
+                var after = document.Diagnostics.ToList();
+
+                if (!enumerated.SequenceEqual(before) || after.Count < before.Count || !after.Take(before.Count).SequenceEqual(before))
+                {
+                    return false;
+                }
+
+                before = after;
+            }
+
+            return true;
+        }));
+    }
+
     [Theory]
     [InlineData(4)]
     [InlineData(5)]
@@ -1153,6 +1246,10 @@ public class ReadOrderTests
         graph.MissingReferences.Concat(graph.NullCharacterNames).Should().ContainSingle().Which.Message.Should().Be(message);
     }
 
+    /// <summary>The cases a property draws, from a fixed seed, so that a failure replays exactly.</summary>
+    private static Config PropertySettings =>
+        Config.QuickThrowOnFailure.WithMaxTest(100).WithReplay(0x5EED_1729UL, 0x9E37_79B9_7F4A_7C15UL).WithQuietOnSuccess(true);
+
     /// <summary>A file read from memory, some of whose reads starting at one offset fail with an I/O error.</summary>
     private sealed class FailingSource(byte[] data) : PdfFileSource
     {
@@ -1163,6 +1260,9 @@ public class ReadOrderTests
 
         /// <inheritdoc/>
         public override long Length => _inner.Length;
+
+        /// <summary>Gets or sets what the source does as a read fails, before it throws: a caller's code inside the read.</summary>
+        public Action? Failing { get; set; }
 
         /// <summary>Makes the reads starting at <paramref name="at"/> whose ordinals <paramref name="reads"/> gives, from 1, fail.</summary>
         public void Fail(long at, params int[] reads)
@@ -1178,6 +1278,7 @@ public class ReadOrderTests
         {
             if (offset == _at && _failing.Contains(++_reads))
             {
+                Failing?.Invoke();
                 throw new IOException("The source failed to give the bytes asked for.");
             }
 
@@ -1248,6 +1349,32 @@ public class ReadOrderTests
             file.Object(number, "null");
         }
 
+        file.CrossReferenceStream(12, 13, rows, "/Root 1 0 R");
+        return (file.Bytes, five);
+    }
+
+    /// <summary>
+    /// <see cref="TwoObjectStreamsTheSecondOfWhichLeadsNowhere"/>, object stream 6's /Length six bytes short of its data, which
+    /// reading 6 reports, and with no object written outside the rows. Gives the file and where 5 is.
+    /// </summary>
+    private static (byte[] Bytes, long Five) AShortObjectStreamThenOneWhoseLengthLeadsNowhere()
+    {
+        var file = new HandWrittenFile(version: "1.5");
+        var rows = new Dictionary<int, (int Type, long Field2, int Field3)>
+        {
+            [1] = (1, file.Object(1, "<< /Type /Catalog /Pages 2 0 R /Test 7 0 R >>"), 0),
+            [2] = (1, file.Object(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>"), 0),
+            [3] = (1, file.Object(3, Page), 0),
+            [6] = (1, file.Object(6, "<< /Type /ObjStm /N 2 /First 10 /Length 20 >>\nstream\n10 0 11 6 (ten) (eleven) \nendstream"), 0),
+            [10] = (2, 6, 0),
+            [11] = (2, 6, 1),
+        };
+        const string Data = "7 0 (member) ";
+        rows[8] = (1, file.Object(8, "<< /Type /ObjStm /N 1 /First 4 /Length 5 0 R >>\nstream\n" + Data + "\nendstream"), 0);
+        rows[7] = (2, 8, 0);
+        rows[5] = (1, 9, 0);
+        rows[9] = (1, file.Padding(9), 0);
+        var five = file.Object(5, Data.Length.ToString(CultureInfo.InvariantCulture));
         file.CrossReferenceStream(12, 13, rows, "/Root 1 0 R");
         return (file.Bytes, five);
     }

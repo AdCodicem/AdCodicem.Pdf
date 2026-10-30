@@ -1666,6 +1666,66 @@ public class HostileInputTests
         (inFlightSource.BytesRead - inFlightOpened).Should().BeLessThan((firstSource.BytesRead - firstOpened) * 5 / 4);
     }
 
+    [Fact]
+    public void Enumerating_the_object_numbers_across_a_rebuild_a_read_sets_off_gives_the_numbers_it_began_with()
+    {
+        // Object 3's row lies 700 bytes before its header, inside object 4's string, so that reading 3 rebuilds the index
+        // while the loop enumerates it. The enumeration threw at its next step; it gives the numbers the index held when it
+        // began, and the next one those of the rebuilt index, which holds no free entry (#167).
+        using var document = PdfDocument.Open(RebuiltOnReadingThree());
+        var visited = new List<int>();
+
+        foreach (var number in document.ObjectNumbers)
+        {
+            visited.Add(number);
+            _ = document.GetObject(new PdfObjectId(number));
+        }
+
+        visited.Should().Equal(0, 1, 2, 3, 4);
+        document.WasRepaired.Should().BeTrue();
+        document.ObjectCount.Should().Be(4);
+        document.ObjectNumbers.Should().Equal(1, 2, 4, 3);
+    }
+
+    [Fact]
+    public void Enumerating_the_object_numbers_across_validations_gives_the_numbers_it_began_with()
+    {
+        // The same file, validated at each step: the first validation rebuilds the index before its first rule (ADR 50),
+        // while the loop enumerates it, which threw after one validation (#167).
+        using var document = PdfDocument.Open(RebuiltOnReadingThree());
+        var visited = new List<int>();
+
+        foreach (var number in document.ObjectNumbers)
+        {
+            visited.Add(number);
+            _ = new PdfValidator().Validate(document);
+        }
+
+        visited.Should().Equal(0, 1, 2, 3, 4);
+        document.WasRepaired.Should().BeTrue();
+        document.ObjectNumbers.Should().Equal(1, 2, 4, 3);
+    }
+
+    [Fact]
+    public void Enumerating_the_diagnostics_across_a_read_that_rebuilds_the_index_gives_the_entries_it_began_with()
+    {
+        // #237's shape opens with one entry, for the section /Prev names, which is missing; reading object 4 rebuilds the
+        // index, which records what it did while the loop enumerates the first entry. The enumeration threw at its next
+        // step; it gives the entry it began with, and the record holds both (#167).
+        using var document = PdfDocument.Open(PdfTemplate.Build(ConvergenceShapes.TrailerPrevLastTemplate));
+        var enumerated = new List<PdfDiagnostic>();
+
+        foreach (var diagnostic in document.Diagnostics)
+        {
+            enumerated.Add(diagnostic);
+            _ = document.GetObject(new PdfObjectId(4));
+        }
+
+        enumerated.Select(diagnostic => diagnostic.Code).Should().Equal(PdfDiagnosticCodes.XRefSectionMissing);
+        document.Diagnostics.Should().HaveCount(2).And.StartWith(enumerated);
+        document.Diagnostics.Contains(PdfDiagnosticCodes.XRefRebuilt).Should().BeTrue();
+    }
+
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
@@ -3529,6 +3589,13 @@ public class HostileInputTests
     /// Writes a file indexed by a cross-reference stream whose catalog names object 6, which object stream 7 holds, with
     /// 2,000 objects written directly in the file, and the row of <paramref name="brokenRow"/> outside the file.
     /// </summary>
+    /// <summary>
+    /// The sound document spread out, object 3's row 700 bytes before its header, inside object 4's string: the document
+    /// opens with five entries, and reading 3 rebuilds its index.
+    /// </summary>
+    private static byte[] RebuiltOnReadingThree() =>
+        PdfTemplate.Build(PdfTemplate.Spread.Replace("{row:3}", "{row:3:0:-700}", StringComparison.Ordinal));
+
     private static byte[] ObjectsAndAMember(int brokenRow)
     {
         var file = new HandWrittenFile(version: "1.5");

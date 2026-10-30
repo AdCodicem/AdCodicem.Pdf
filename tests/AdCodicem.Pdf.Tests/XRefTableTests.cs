@@ -1,10 +1,13 @@
 using AdCodicem.Pdf.IO.XRef;
+using FsCheck;
+using FsCheck.Fluent;
 
 namespace AdCodicem.Pdf.Tests;
 
 /// <summary>
-/// The room the index makes for the rows a section is about to give, before it records them (#164), and how it finds a
-/// number's entry, in a slot or in its seeded map (#155).
+/// The room the index makes for the rows a section is about to give, before it records them (#164), how it finds a
+/// number's entry, in a slot or in its seeded map (#155), and what an enumeration of its numbers keeps through a rebuild
+/// (#167).
 /// </summary>
 public class XRefTableTests
 {
@@ -274,6 +277,246 @@ public class XRefTableTests
     }
 
     [Fact]
+    public void An_enumeration_of_the_numbers_gives_those_the_table_held_at_its_first_step_whatever_is_added_or_cleared_meanwhile()
+    {
+        // A rebuild clears the index and fills it again while a caller may be enumerating its numbers (#167): the
+        // enumeration reads those it began with, where they lie, though the numbers recorded since fill the room past
+        // where it stands; and the next one reads those recorded since.
+        var table = Filled(5);
+        var cleared = new List<int>();
+
+        foreach (var number in table.Numbers)
+        {
+            cleared.Add(number);
+
+            if (number == 1)
+            {
+                table.Clear();
+
+                foreach (var refilled in (int[])[9, 8, 7, 6])
+                {
+                    table.TryAdd(refilled, XRefEntry.Free);
+                }
+            }
+        }
+
+        var added = new List<int>();
+
+        foreach (var number in table.Numbers)
+        {
+            added.Add(number);
+            table.TryAdd(number + 100, XRefEntry.Free);
+        }
+
+        cleared.Should().Equal(0, 1, 2, 3, 4);
+        added.Should().Equal(9, 8, 7, 6);
+        table.Numbers.Should().Equal(9, 8, 7, 6, 109, 108, 107, 106);
+    }
+
+    [Fact]
+    public void An_enumeration_begun_once_the_table_was_cleared_under_another_keeps_its_numbers_through_the_next_clearing()
+    {
+        // The first enumeration reads an array the table stopped recording into when it was cleared: ending it leaves the
+        // second, which reads the table's new array, counted as under way, and the next clearing makes it a new array too
+        // (#167).
+        var table = Filled(4);
+        var first = table.Numbers.GetEnumerator();
+        first.MoveNext().Should().BeTrue();
+        table.Clear();
+
+        foreach (var refilled in (int[])[10, 11, 12, 13])
+        {
+            table.TryAdd(refilled, XRefEntry.Free);
+        }
+
+        first.Dispose();
+        var second = new List<int>();
+
+        foreach (var number in table.Numbers)
+        {
+            second.Add(number);
+
+            if (number == 10)
+            {
+                table.Clear();
+
+                foreach (var refilled in (int[])[20, 21, 22, 23])
+                {
+                    table.TryAdd(refilled, XRefEntry.Free);
+                }
+            }
+        }
+
+        second.Should().Equal(10, 11, 12, 13);
+        table.Numbers.Should().Equal(20, 21, 22, 23);
+    }
+
+    [Fact]
+    public void Every_enumeration_of_the_numbers_gives_those_the_table_held_at_its_first_step_whatever_happens_between_its_steps()
+    {
+        // Numbers added and replaced, the table cleared or released, enumerations begun, stepped and left between each
+        // other's steps: each gives the numbers, in their order, that the table held at its first step, and no other (#167).
+        var operations = Gen.ListOf(Gen.Zip(Gen.Choose(0, 6), Gen.Choose(0, 40))).Select(drawn => drawn.ToArray());
+
+        Check.One(PropertySettings, Prop.ForAll(operations.ToArbitrary(), drawn =>
+        {
+            var table = new PdfXRefTable();
+            var held = new List<int>();
+            var open = new List<(IEnumerator<int> Numbers, List<int> Expected, List<int> Given)>();
+            var finished = new List<(List<int> Expected, List<int> Given)>();
+
+            foreach (var (operation, value) in drawn)
+            {
+                switch (operation)
+                {
+                    case 0:
+                        if (table.TryAdd(value, XRefEntry.Free))
+                        {
+                            held.Add(value);
+                        }
+
+                        break;
+
+                    case 1:
+                        // Replaced in its place, or added last.
+                        if (!held.Contains(value))
+                        {
+                            held.Add(value);
+                        }
+
+                        table.Set(value, XRefEntry.Regular(value, 0));
+                        break;
+
+                    case 2:
+                        table.Clear();
+                        held.Clear();
+                        break;
+
+                    case 3:
+                        table.Release();
+                        held.Clear();
+                        break;
+
+                    case 4:
+                        open.Add((table.Numbers.GetEnumerator(), [.. held], []));
+                        Step(open.Count - 1);
+                        break;
+
+                    case 5 when open.Count > 0:
+                        Step(value % open.Count);
+                        break;
+
+                    case 6 when open.Count > 0:
+                        // Left before its end, and disposed.
+                        var left = open[value % open.Count];
+                        left.Numbers.Dispose();
+                        open.Remove(left);
+                        finished.Add((left.Expected[..left.Given.Count], left.Given));
+                        break;
+                }
+            }
+
+            while (open.Count > 0)
+            {
+                Step(0);
+            }
+
+            return finished.TrueForAll(each => each.Given.SequenceEqual(each.Expected));
+
+            void Step(int at)
+            {
+                var (numbers, expected, given) = open[at];
+
+                if (numbers.MoveNext())
+                {
+                    given.Add(numbers.Current);
+                    return;
+                }
+
+                numbers.Dispose();
+                open.RemoveAt(at);
+                finished.Add((expected, given));
+            }
+        }));
+    }
+
+    [Fact]
+    public void Clearing_the_table_makes_a_new_array_for_its_numbers_only_while_an_enumeration_of_them_is_under_way()
+    {
+        // The array an enumeration reads is left to it, and the table records its numbers in a new one as long (#167): only
+        // while one is under way, so that clearing allocates nothing otherwise.
+        Allocated(() => Filled(1000), Clear).Should().Be(0, "no enumeration began");
+        Allocated(() => Enumerated(Filled(1000)), Clear).Should().Be(0, "the enumeration ended");
+
+        var made = Allocations.Least<PdfXRefTable, int>(() => UnderWay(Filled(1000)), Clear, out var table, out _);
+
+        made.Should().BeInRange(4L * table.Capacity, (4L * table.Capacity) + 32, "an array of the room, for the numbers");
+        Allocated(() => ClearedUnderWay(Filled(1000)), Clear).Should().Be(0, "the array the first clearing made is lent to none");
+        Allocated(() => ResizedUnderWay(Filled(1000)), Clear)
+            .Should().Be(0, "the array the enumeration read was replaced as the room grew, and the new one is lent to none");
+        Allocated(() => UnderWay(Filled(1000)), Release).Should().Be(0, "a table released lets go of its arrays, and makes none");
+
+        static long Allocated(Func<PdfXRefTable> prepare, Func<PdfXRefTable, int> work) =>
+            Allocations.Least(prepare, work, out _, out _);
+
+        static int Clear(PdfXRefTable table)
+        {
+            table.Clear();
+            return table.Count;
+        }
+
+        static int Release(PdfXRefTable table)
+        {
+            table.Release();
+            return table.Count;
+        }
+
+        static PdfXRefTable Enumerated(PdfXRefTable table)
+        {
+            foreach (var _ in table.Numbers)
+            {
+            }
+
+            return table;
+        }
+
+        static PdfXRefTable UnderWay(PdfXRefTable table)
+        {
+            // Left under way, never disposed: it may step again for as long as it is held.
+            table.Numbers.GetEnumerator().MoveNext().Should().BeTrue();
+            return table;
+        }
+
+        static PdfXRefTable ClearedUnderWay(PdfXRefTable table)
+        {
+            using (var numbers = table.Numbers.GetEnumerator())
+            {
+                numbers.MoveNext().Should().BeTrue();
+                table.Clear();
+                table.TryAdd(7, XRefEntry.Free);
+            }
+
+            return table;
+        }
+
+        static PdfXRefTable ResizedUnderWay(PdfXRefTable table)
+        {
+            using (var numbers = table.Numbers.GetEnumerator())
+            {
+                numbers.MoveNext().Should().BeTrue();
+                var room = table.Capacity;
+
+                for (var number = table.Count; number <= room; number++)
+                {
+                    table.TryAdd(number, XRefEntry.Free);
+                }
+            }
+
+            return table;
+        }
+    }
+
+    [Fact]
     public void A_copy_holds_the_entries_and_none_added_after_it()
     {
         var table = Filled(3);
@@ -332,4 +575,7 @@ public class XRefTableTests
     }
 
     private static int Capacity(PdfXRefTable table) => table.Capacity;
+
+    private static Config PropertySettings =>
+        Config.QuickThrowOnFailure.WithMaxTest(500).WithReplay(0x5EED_1729UL, 0x9E37_79B9_7F4A_7C15UL).WithQuietOnSuccess(true);
 }
