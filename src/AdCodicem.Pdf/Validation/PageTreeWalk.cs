@@ -81,7 +81,10 @@ internal sealed class PageTreeWalk
 
     /// <summary>
     /// Whether the pages counted ran past what a <see langword="long"/> holds: a tree listing nodes again lists 2^63 pages
-    /// with 63 levels, each naming the next twice. The count stays at its greatest, and no node left since is judged.
+    /// with 63 levels, each naming the next twice. The count stays at its greatest, and no node left since is judged. An
+    /// internal bound, no guard (ADR 34): a valid tree lists each page once, each an object of its own, and a file holds
+    /// fewer than 2^31 objects, so no valid file counts more pages than an <see langword="int"/> holds, let alone a
+    /// <see langword="long"/>. Only a tree listing nodes again reaches it, and its count saturates rather than wraps (#167).
     /// </summary>
     private bool _overflowed;
 

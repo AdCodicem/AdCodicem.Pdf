@@ -1613,6 +1613,36 @@ public class PageTreeRuleTests
         }
     }
 
+    [Theory]
+    [InlineData("null", "is null")]
+    [InlineData("99 0 R", "names object 99, which the file lacks")]
+    [InlineData("42", "is a number, neither a page nor a node")]
+    public void A_kid_that_is_no_page_listed_past_more_pages_than_a_long_holds_is_located_at_its_node_alone(string kid, string what)
+    {
+        // #167's tree, its last kid no page: node 10 lists 2^62 pages, which the root names twice, 2^63 pages past what a long
+        // holds, and node 100's 2^31 pages follow them. The count wrapped below zero, and the kid, standing for a page at an
+        // index whose low half is int.MinValue, threw out of the validator once located. The count stays at its greatest,
+        // and the kid, past every page index, is located at its node alone.
+        var objects = new List<(int Number, string Body)>
+        {
+            (2, $"<< /Type /Pages /Kids [10 0 R 10 0 R 100 0 R {kid}] /Count 4 /MediaBox [0 0 1 1] /Resources << >> >>"),
+            (4, "<< /Type /Page /Parent 72 0 R >>"),
+        };
+        Doubling(objects, 10, 72, page: 4);
+        Doubling(objects, 100, 131, page: 4);
+
+        using var document = PdfDocument.Open(Objects([.. objects]));
+        var report = new PdfValidator().Validate(document);
+
+        report.Findings.Where(finding => finding.RuleId == PdfValidationRuleIds.PageTreeNodeRepeated).Should().HaveCount(
+            1 + 62 + 31 + 1, "the root's second kid, a node of each tower naming the next again, and node 131 naming page 4 again");
+        var invalid = report.Findings.Where(finding => finding.RuleId != PdfValidationRuleIds.PageTreeNodeRepeated).Should().ContainSingle().Which;
+        invalid.RuleId.Should().Be(PdfValidationRuleIds.PageTreeKidInvalid);
+        invalid.Location.Should().Be(PdfValidationLocation.OfObject(new PdfObjectId(2)));
+        invalid.Message.Should().Be($"The kid at index 3 of page tree node 2 {what}: it counts as a page with nothing on it.");
+        PageTreeWalk.Run(document).PageCount.Should().Be(int.MaxValue);
+    }
+
     [Fact]
     public void The_parent_of_a_page_listed_past_the_last_page_index_is_judged_once()
     {

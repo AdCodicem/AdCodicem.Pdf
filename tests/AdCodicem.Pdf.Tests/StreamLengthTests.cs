@@ -192,6 +192,46 @@ public class StreamLengthTests
     }
 
     [Theory]
+    [InlineData(0)]
+    [InlineData(1)]
+    [InlineData(1000)]
+    public void White_space_from_a_stream_s_data_to_the_file_s_end_is_read_to_its_end_and_no_further(int pastFirstRead)
+    {
+        // The data runs past the window, and white space follows it to the end of the file, as long as the first read after
+        // the data or longer. Read on to the end, it led to no keyword, and the source was asked for the no bytes there,
+        // which a source may refuse as it may any read past its end (#167).
+        var data = Data(3 * Window);
+        var file = Encoding.ASCII.GetBytes(
+            "%PDF-1.7\n1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n2 0 obj\n<< /Type /Pages /Kids [] /Count 0 >>\nendobj\n" +
+            Invariant($"5 0 obj\n<< /Length {data.Length} >>\nstream\n{data}") + new string(' ', PdfObjectParser.EndObjLookahead + pastFirstRead));
+
+        using var document = PdfDocument.Open(new StrictCountingSource(file), options: null, ownsSource: true);
+
+        document.GetObject(new PdfObjectId(StreamNumber)).AsStream().Required().Data.Length.Should().Be(data.Length);
+        document.Diagnostics.Should().ContainSingle(d => d.Code == PdfDiagnosticCodes.StreamLengthInvalid).Which.Message.Should().Be(
+            Invariant($"The stream declared {data.Length} bytes, and no endstream follows them before the end of the file; the declared length is kept."));
+    }
+
+    [Fact]
+    public void Data_of_no_length_is_read_from_no_source()
+    {
+        // A source that does not hold the file in memory was asked to read the no bytes of a stream of /Length 0, which it
+        // may refuse as it may any read past its end (#167). A stream of one byte beside it is read.
+        var file = Document((StreamNumber, Stream(0, string.Empty)), (6, Stream(1, "x")));
+        using var source = new StrictCountingSource(file);
+        using var document = PdfDocument.Open(source, options: null, ownsSource: false);
+        var empty = document.GetObject(new PdfObjectId(StreamNumber)).AsStream().Required();
+        var one = document.GetObject(new PdfObjectId(6)).AsStream().Required();
+        var before = source.BytesRead;
+
+        empty.GetRawBytes().IsEmpty.Should().BeTrue();
+        source.BytesRead.Should().Be(before);
+        one.GetRawBytes().ToArray().Should().Equal((byte)'x');
+        source.BytesRead.Should().Be(before + 1);
+        document.Diagnostics.Should().BeEmpty();
+    }
+
+    [Theory]
     [InlineData("     ", false)]
     [InlineData("     ", true)]
     [InlineData("\r\n% a comment between the data and its keyword\r\n", false)]

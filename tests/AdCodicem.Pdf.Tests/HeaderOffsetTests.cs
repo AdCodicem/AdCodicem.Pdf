@@ -283,34 +283,43 @@ public sealed class HeaderOffsetTests
     }
 
     [Theory]
-    [InlineData("/N 1 /First 999", 0, PdfValidationRuleIds.XRefObjectStreamBroken)]
-    [InlineData("/N 1 /First 999", 9, PdfValidationRuleIds.XRefObjectStreamBroken)]
-    [InlineData("/N 1. /First 4", 0, PdfValidationRuleIds.XRefObjectStreamValueWrong)]
-    [InlineData("/N 1. /First 4", 9, PdfValidationRuleIds.XRefObjectStreamValueWrong)]
-    public void An_object_stream_a_negative_row_places_is_located_at_the_object_alone(string keys, int junk, string rule)
+    [InlineData("/Type /ObjStm /N 1 /First 999 /Length 11", 0, PdfValidationRuleIds.XRefObjectStreamBroken)]
+    [InlineData("/Type /ObjStm /N 1 /First 999 /Length 11", 9, PdfValidationRuleIds.XRefObjectStreamBroken)]
+    [InlineData("/Type /ObjStm /N 1. /First 4 /Length 11", 0, PdfValidationRuleIds.XRefObjectStreamValueWrong)]
+    [InlineData("/Type /ObjStm /N 1. /First 4 /Length 11", 9, PdfValidationRuleIds.XRefObjectStreamValueWrong)]
+    [InlineData("/Type /XObject /Length 11", 0, PdfValidationRuleIds.XRefObjectStreamBroken)]
+    [InlineData("/Type /XObject /Length 11", 9, PdfValidationRuleIds.XRefObjectStreamBroken)]
+    [InlineData("/Type /ObjStm /N 1 /First 4 /Length 5 0 R", 0, PdfValidationRuleIds.XRefObjectStreamCircular)]
+    [InlineData("/Type /ObjStm /N 1 /First 4 /Length 5 0 R", 9, PdfValidationRuleIds.XRefObjectStreamCircular)]
+    public void An_object_stream_a_negative_row_places_is_located_at_the_object_alone(string dictionary, int junk, string rule)
     {
-        // A hybrid file: its table gives object stream 4 at -3, and its cross-reference stream places object 5 in it. The
-        // probe (an unreadable header) and the dependency walk (a real /N) located their finding at -3, and validating threw.
-        var text = new StringBuilder("%PDF-1.5\n");
-        var one = text.Length;
-        text.Append("1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n");
-        var two = text.Length;
-        text.Append("2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n");
-        var three = text.Length;
-        text.Append("3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << >> /Test 5 0 R >>\nendobj\n");
-        text.Append(CultureInfo.InvariantCulture, $"4 0 obj\n<< /Type /ObjStm {keys} /Length 11 >>\nstream\n5 0 (hello)\nendstream\nendobj\n");
-        var six = text.Length;
-        text.Append("6 0 obj\n<< /Type /XRef /Size 7 /W [1 4 2] /Index [5 1] /Length 7 >>\nstream\n\u0002\0\0\0\u0004\0\0\nendstream\nendobj\n");
-        var xref = text.Length;
-        text.Append(CultureInfo.InvariantCulture, $"xref\n0 5\n0000000000 65535 f \n{one:D10} 00000 n \n{two:D10} 00000 n \n{three:D10} 00000 n \n-3 00000 n \n");
-        text.Append(CultureInfo.InvariantCulture, $"trailer\n<< /Size 7 /Root 1 0 R /XRefStm {six} >>\nstartxref\n{xref}\n%%EOF\n");
-        var prefix = junk == 0 ? string.Empty : new string('-', junk - 1) + "\n";
-        using var document = PdfDocument.Open(Encoding.Latin1.GetBytes(prefix + text));
+        // The probe (an unreadable header) and the dependency walk (a real /N) located their finding at -3, and validating
+        // threw. So would the probe for a stream that is no object stream, and the walk for one whose /Length names the
+        // object it holds, which the walk locates on its own (#167).
+        using var document = PdfDocument.Open(ObjectStreamAtNegativeRow(dictionary, junk));
 
         var finding = Single(new PdfValidator().Validate(document), rule);
 
         finding.Location.Object.Should().Be(new PdfObjectId(4));
         finding.Location.Position.Should().BeNull();
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(9)]
+    public void An_object_stream_a_negative_row_places_and_a_guard_cuts_is_said_unchecked_at_the_object_alone(int junk)
+    {
+        // The reader reads no object past 128 bytes, and object stream 4's dictionary runs past them: the probe says what
+        // the stream holds was not checked, at the stream, and at no offset its row gives (#167).
+        var file = ObjectStreamAtNegativeRow("/Type /ObjStm /N 1 /First 4 /Pad (" + new string('x', 200) + ") /Length 11", junk);
+        var options = new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxObjectLength = 128 } };
+        using var document = PdfDocument.Open(file, options);
+
+        var finding = Single(new PdfValidator().Validate(document), PdfValidationRuleIds.XRefCheckedInPart);
+
+        finding.Location.Should().Be(PdfValidationLocation.OfObject(new PdfObjectId(4)));
+        finding.Message.Should().Be(
+            "One of the reader's limits stopped it reading object stream 4 before its header ended: the 1 object the index places in it were not checked. Raising the limit the reader reported lets them be.");
     }
 
     [Fact]
@@ -530,6 +539,30 @@ public sealed class HeaderOffsetTests
     {
         var prefix = junk == 0 ? string.Empty : new string('-', junk - 1) + "\n";
         return Encoding.Latin1.GetBytes(prefix).Concat(PdfTemplate.Build(template)).ToArray();
+    }
+
+    /// <summary>
+    /// A hybrid file, <paramref name="junk"/> bytes before its header: its table gives object stream 4 at -3, which the
+    /// reader finds near it, written with <paramref name="dictionary"/>, and its cross-reference stream places object 5,
+    /// which the page names, in it.
+    /// </summary>
+    private static byte[] ObjectStreamAtNegativeRow(string dictionary, int junk)
+    {
+        var text = new StringBuilder("%PDF-1.5\n");
+        var one = text.Length;
+        text.Append("1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n");
+        var two = text.Length;
+        text.Append("2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n");
+        var three = text.Length;
+        text.Append("3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << >> /Test 5 0 R >>\nendobj\n");
+        text.Append(CultureInfo.InvariantCulture, $"4 0 obj\n<< {dictionary} >>\nstream\n5 0 (hello)\nendstream\nendobj\n");
+        var six = text.Length;
+        text.Append("6 0 obj\n<< /Type /XRef /Size 7 /W [1 4 2] /Index [5 1] /Length 7 >>\nstream\n\u0002\0\0\0\u0004\0\0\nendstream\nendobj\n");
+        var xref = text.Length;
+        text.Append(CultureInfo.InvariantCulture, $"xref\n0 5\n0000000000 65535 f \n{one:D10} 00000 n \n{two:D10} 00000 n \n{three:D10} 00000 n \n-3 00000 n \n");
+        text.Append(CultureInfo.InvariantCulture, $"trailer\n<< /Size 7 /Root 1 0 R /XRefStm {six} >>\nstartxref\n{xref}\n%%EOF\n");
+        var prefix = junk == 0 ? string.Empty : new string('-', junk - 1) + "\n";
+        return Encoding.Latin1.GetBytes(prefix + text);
     }
 
     /// <summary>The objects the reader found near where their entries place them, which share their code with the header's offset.</summary>

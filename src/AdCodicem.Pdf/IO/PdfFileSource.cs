@@ -17,6 +17,11 @@ public abstract class PdfFileSource : IDisposable
     public abstract long Length { get; }
 
     /// <summary>Reads into <paramref name="buffer"/> from <paramref name="offset"/>, returning the count read.</summary>
+    /// <remarks>
+    /// The reader asks a source only for bytes it holds: <paramref name="offset"/> is at least 0, <paramref name="buffer"/>
+    /// is never empty, and the two together end at <see cref="Length"/> at most. A source need not accept any other read,
+    /// and may refuse one: none comes from the reader, however damaged the file it reads (#167).
+    /// </remarks>
     public abstract int Read(long offset, Span<byte> buffer);
 
     /// <summary>Creates a source over bytes already in memory.</summary>

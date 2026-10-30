@@ -1735,9 +1735,11 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
 
         if (first.Kind == StreamEndKind.Undecided)
         {
+            // White space and comments may run to the file's end, where no keyword lies and nothing is left to read: the
+            // source is not asked for an empty read there, as EndStreamAfter does not ask it for one (#167).
             var at = NextSignificant(absoluteOffset);
             Span<byte> keyword = stackalloc byte[StreamEnds.EndStreamKeyword.Length + 1];
-            var read = at < 0 ? 0 : _source.Read(at, keyword[..(int)Math.Min(keyword.Length, _source.Length - at)]);
+            var read = at < 0 || at >= _source.Length ? 0 : _source.Read(at, keyword[..(int)Math.Min(keyword.Length, _source.Length - at)]);
 
             if (!keyword[..read].StartsWith(StreamEnds.EndStreamKeyword))
             {
@@ -7140,8 +7142,9 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// Streams whose data share a stretch of the file — overlapping objects —, or the many streams of a document read once
     /// each, hold none of it: what a caller keeps is its own, and memory follows what is being decoded. A source in
     /// memory lends the bytes where they lie, without a copy, valid for as long as its memory is; any other reads them
-    /// into an array of their length. No more than <see cref="PdfReaderLimits.MaxStreamLength"/> bytes are read: past it,
-    /// the data is cut there, marked cut by a guard, and the guard reported, once for each stream.
+    /// into an array of their length, and is not asked for data of no length. No more than
+    /// <see cref="PdfReaderLimits.MaxStreamLength"/> bytes are read: past it, the data is cut there, marked cut by a guard,
+    /// and the guard reported, once for each stream.
     /// </remarks>
     private sealed class FileStreamData(PdfFileReader reader, long offset, int length, PdfLimitGuard guard) : PdfStreamData
     {
@@ -7179,6 +7182,12 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
                 _cutByGuard = true;
                 count = bound;
                 reader.ReachStreamLength(offset);
+            }
+
+            // Data of no length is read from no source: a source is asked only for bytes it holds, never for none (#167).
+            if (count == 0)
+            {
+                return ReadOnlyMemory<byte>.Empty;
             }
 
             if (reader._source.TryLend(offset, count, out var lent))

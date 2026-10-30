@@ -4,8 +4,8 @@ namespace AdCodicem.Pdf.Tests;
 
 /// <summary>
 /// A source that counts what the reader reads from it, and refuses any read that starts or runs past the
-/// end of its data: the strictest a third-party <see cref="PdfFileSource"/> can be, since the reader only
-/// ever asks for bytes the file has.
+/// end of its data, or that asks for nothing: the strictest a third-party <see cref="PdfFileSource"/> can be,
+/// since the reader only ever asks for bytes the file has (#167).
 /// </summary>
 internal sealed class StrictCountingSource(byte[] data) : PdfFileSource
 {
@@ -18,7 +18,7 @@ internal sealed class StrictCountingSource(byte[] data) : PdfFileSource
     /// <inheritdoc/>
     public override int Read(long offset, Span<byte> buffer)
     {
-        if (offset < 0 || offset + buffer.Length > data.Length)
+        if (offset < 0 || buffer.IsEmpty || offset + buffer.Length > data.Length)
         {
             throw new InvalidOperationException(
                 $"The reader asked for {buffer.Length} bytes at {offset} of a {data.Length}-byte source.");

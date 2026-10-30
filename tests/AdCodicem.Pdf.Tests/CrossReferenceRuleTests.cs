@@ -2024,6 +2024,77 @@ public class CrossReferenceRuleTests
         document.Diagnostics.Should().NotContain(diagnostic => diagnostic.Code == PdfDiagnosticCodes.LimitObject);
     }
 
+    [Fact]
+    public void An_entry_placing_its_object_at_any_of_the_file_s_last_bytes_is_checked_without_asking_the_source_past_its_end()
+    {
+        // Object 3's entry places it at each of the file's last 64 bytes, and at its end. The probe read 64 bytes at an entry
+        // wherever it lay, and a source that refuses a read past its end threw out of the validator (#167): it reads a header
+        // as a load does, through windows the file clamps.
+        var length = PdfTemplate.SoundWith("{row:3}", RowAt(0)).Length;
+
+        ValidatedOverAStrictSourceAsInMemory(Enumerable.Range(0, 65).Select(back =>
+            ($"object 3 placed {back} bytes before the end", PdfTemplate.SoundWith("{row:3}", RowAt(length - back)))));
+
+        static string RowAt(long offset) => string.Create(CultureInfo.InvariantCulture, $"{offset:D10} 00000 n ");
+    }
+
+    [Fact]
+    public void A_startxref_naming_any_of_the_file_s_last_bytes_is_followed_without_asking_the_source_past_its_end()
+    {
+        // startxref names each of the file's last 40 bytes, and its end: the chain finds no table there, the index is rebuilt,
+        // and nothing the reader or the probe reads runs past the end (#167).
+        var length = PdfTemplate.SoundWith("startxref\n{xref:1}", "startxref\n" + Offset(0)).Length;
+
+        ValidatedOverAStrictSourceAsInMemory(Enumerable.Range(0, 41).Select(back =>
+            ($"startxref naming {back} bytes before the end", PdfTemplate.SoundWith("startxref\n{xref:1}", "startxref\n" + Offset(length - back)))));
+
+        static string Offset(long offset) => offset.ToString("D10", CultureInfo.InvariantCulture);
+    }
+
+    [Fact]
+    public void A_file_cut_short_anywhere_in_its_last_bytes_is_read_without_asking_the_source_past_its_end()
+    {
+        // The sound file loses 1 to 40 bytes from its end: its marker, then its startxref, then its trailer (#167).
+        var sound = PdfTemplate.Build(PdfTemplate.Sound);
+
+        ValidatedOverAStrictSourceAsInMemory(Enumerable.Range(1, 40).Select(cut => ($"cut {cut} bytes short", sound[..^cut])));
+    }
+
+    [Fact]
+    public void An_object_ending_the_file_inside_its_stream_is_read_without_a_read_past_the_end_or_an_empty_one()
+    {
+        // Object 4, which the catalog names, ends the file somewhere in its stream. In the last shape, 9,000 bytes of data,
+        // past the window the object is parsed through, are followed by white space to the end of the file, longer than the
+        // first read after the data: the search for endstream read it to the end, and asked the source for the no bytes
+        // there, which a source may refuse as it may any read past its end (#167).
+        const string Head = "4 0 obj\n<< /Length 5 >>\nstream";
+        var blanks = new string(' ', IO.PdfObjectParser.EndObjLookahead + 1);
+
+        ValidatedOverAStrictSourceAsInMemory(
+        [
+            ("the stream keyword", PdfTemplate.Build(PdfTemplate.SoundEndingWith(Head))),
+            ("the data", PdfTemplate.Build(PdfTemplate.SoundEndingWith(Head + "\nhello"))),
+            ("the endstream keyword", PdfTemplate.Build(PdfTemplate.SoundEndingWith(Head + "\nhello\nendstream"))),
+            ("white space after endstream", PdfTemplate.Build(PdfTemplate.SoundEndingWith(Head + "\nhello\nendstream" + blanks))),
+            ("the data, short of its length", PdfTemplate.Build(PdfTemplate.SoundEndingWith("4 0 obj\n<< /Length 50 >>\nstream\nhello\n"))),
+            ("white space after long data", PdfTemplate.Build(PdfTemplate.SoundEndingWith(
+                "4 0 obj\n<< /Length 9000 >>\nstream\n" + new string('a', 9000) + blanks))),
+        ]);
+    }
+
+    [Fact]
+    public void A_cross_reference_stream_with_no_data_is_decoded_without_an_empty_read()
+    {
+        // The only section is a cross-reference stream of /Length 0: a source that does not hold the file in memory was asked
+        // to read its no bytes, which it may refuse as it may any read past its end (#167).
+        var text = new StringBuilder("%PDF-1.7\n1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n2 0 obj\n<< /Type /Pages /Kids [] /Count 0 >>\nendobj\n");
+        var seven = text.Length;
+        text.Append("7 0 obj\n<< /Type /XRef /Size 8 /W [1 4 2] /Root 1 0 R /Length 0 >>\nstream\n\nendstream\nendobj\n");
+        text.Append(CultureInfo.InvariantCulture, $"startxref\n{seven}\n%%EOF\n");
+
+        ValidatedOverAStrictSourceAsInMemory([("a cross-reference stream of /Length 0", Encoding.Latin1.GetBytes(text.ToString()))]);
+    }
+
     [Theory]
     [InlineData("x %", false)]
     [InlineData("x %", true)]
@@ -2504,6 +2575,43 @@ public class CrossReferenceRuleTests
     {
         using var document = PdfDocument.Open(file);
         return new PdfValidator().Validate(document);
+    }
+
+    /// <summary>
+    /// Opens and validates each file over a source that refuses any read it does not hold — one past its end, or one of no
+    /// bytes —, and asserts that the report and the diagnostics are those the same file gives in memory.
+    /// </summary>
+    private static void ValidatedOverAStrictSourceAsInMemory(IEnumerable<(string Shape, byte[] File)> files)
+    {
+        var failures = new List<string>();
+
+        foreach (var (shape, file) in files)
+        {
+            using var inMemory = PdfDocument.Open(file);
+            var expected = Outcome(inMemory);
+
+            try
+            {
+                using var strict = PdfDocument.Open(new StrictCountingSource(file), options: null, ownsSource: true);
+
+                if (Outcome(strict) is var outcome && outcome != expected)
+                {
+                    failures.Add($"{shape}: {outcome}, where memory gives {expected}");
+                }
+            }
+            catch (InvalidOperationException exception)
+            {
+                failures.Add($"{shape}: {exception.Message}");
+            }
+        }
+
+        failures.Should().BeEmpty();
+
+        static string Outcome(PdfDocument document)
+        {
+            var report = new PdfValidator().Validate(document);
+            return string.Join("; ", report.Findings) + " | " + string.Join("; ", document.Diagnostics);
+        }
     }
 
     private static byte[] Replace(byte[] file, string text, string replacement)
