@@ -381,8 +381,9 @@ public class SeededComparerTests
         // would reach what the library reports or writes (invariant 6). The samples hold, one per condition, shapes the
         // source reading sees as well: every number type and every hashing operator among them. What they hold is
         // bounded: dropping, negating or narrowing one condition of the reading, one arm of a helper or one element of
-        // a set it reads, at one place it is read, fails a test, the equivalent mutants aside; a change made along one
-        // call path and not another, or to two conditions at once, is out of that bound.
+        // a set it reads, at one place it is read, fails a test, the equivalent mutants and those that only widen what
+        // is refused aside; a change made along one call path and not another, or to two conditions at once, is out of
+        // that bound.
         var refused = Refused(typeof(Unseeded));
 
         refused.Should().BeEquivalentTo(
@@ -449,6 +450,7 @@ public class SeededComparerTests
             nameof(Unseeded.GenericTupleChildKey),
             nameof(Unseeded.TupleGrandchildKey),
             nameof(Unseeded.HandHashedBaseKey),
+            nameof(Unseeded.AbstractHandHashedKey),
             nameof(Unseeded.OperatorDictionaryAsync),
             nameof(Unseeded.OperatorLookupAsync),
             nameof(Unseeded.VirtualMade),
@@ -645,6 +647,40 @@ public class SeededComparerTests
             nameof(Unseeded.TripleChildKey),
             nameof(Unseeded.HidingTupleChildKey),
             nameof(Unseeded.SeededBeside),
+            nameof(Unseeded.CreatedFlankedTuples),
+            nameof(Unseeded.CreatedFlankedChildren),
+            nameof(Unseeded.NullableFlankedTupleKey),
+            nameof(Unseeded.NestedFlankedTupleKey),
+            nameof(Unseeded.FlankedChildItemKey),
+            nameof(Unseeded.FlankedTupleItemChildKey),
+            nameof(Unseeded.FlankedChildItemChildKey),
+            nameof(Unseeded.MadeFlanked),
+            nameof(Unseeded.CreatedFlanked),
+            "Flanked",
+            nameof(Unseeded.CreatedComparables),
+            nameof(Unseeded.CreatedKeyValuePairs),
+            nameof(Unseeded.CreatedAbstractRecords),
+            nameof(Unseeded.CreatedRecordStructs),
+            nameof(Unseeded.NullableKeyValuePairKey),
+            nameof(Unseeded.ComparableItemKey),
+            nameof(Unseeded.KeyValuePairItemKey),
+            nameof(Unseeded.AbstractRecordItemKey),
+            nameof(Unseeded.RecordStructItemKey),
+            nameof(Unseeded.ComparableItemChildKey),
+            nameof(Unseeded.KeyValuePairItemChildKey),
+            nameof(Unseeded.AbstractRecordItemChildKey),
+            nameof(Unseeded.RecordStructItemChildKey),
+            nameof(Unseeded.PairedNested),
+            nameof(Unseeded.MadeClass),
+            nameof(Unseeded.MakeClass),
+            nameof(Unseeded.CreatedClassWrapped),
+            nameof(Unseeded.CreatedReferenceTuples),
+            nameof(Unseeded.ReferenceTupleItemKey),
+            nameof(Unseeded.ReferenceTupleItemChildKey),
+            "LazyOfOwn",
+            "WeakOfOwn",
+            "BoundOfOwn",
+            "CreatedOfOwn",
             "EntryDictionary",
             nameof(Unseeded.LazyConstrained),
             nameof(Unseeded.ActivatorLazyOpen),
@@ -734,6 +770,17 @@ public class SeededComparerTests
             "Interned.ViewsGiven: Interned.ViewsOf()",
             "Interned.ViewLists: List`1<IReadOnlyDictionary`2[]>.get_Count()",
             "Interned.Stored: Slot`1<IReadOnlyDictionary`2>.Value()",
+            "Interned.Held: Holder.View()",
+            "Interned.HeldTyped: Holder.CountOf()",
+            "Interned.Referenced: Interned.TableRef()",
+            "Interned.Between: Tuple`3<Int32, IReadOnlyDictionary`2, Int32>.get_Item1()",
+            "Interned.Betweens: Interned.Between(Int32, Tuple`3, Int32)",
+            "Interned.Middles: Interned.CountOf()",
+            "Interned.MiddleTyped: Interned.CountOf()",
+            "Interned.Tripled: Interned.Triple()",
+            "Interned.Triples: Interned.CountTriples(Tuple`3[])",
+            "Interned.TripleLists: Interned.CountTripleLists(List`1)",
+            "Interned.CountTripleLists: List`1<Tuple`3>.get_Count()",
             "Interned..cctor: ConcurrentDictionary`2<String, Int32>..ctor(IEqualityComparer`1)",
             "Interned..cctor: ConcurrentDictionary`2<String, Interned>..ctor()",
             "Interned..cctor: ConcurrentDictionary`2<String, Interned>..ctor(IEqualityComparer`1)");
@@ -1016,6 +1063,8 @@ public class SeededComparerTests
         public static HashSet<TupleGrandchild> TupleGrandchildKey() => [];
 
         public static HashSet<HandHashedBase> HandHashedBaseKey() => [new HandHashedDerived("name", 0)];
+
+        public static HashSet<AbstractHandHashed> AbstractHandHashedKey() => [new AbstractHandHashedDerived("name", 0)];
 
         public static int PairsDistinct(IEnumerable<KeyValuePair<long, int>> pairs) => pairs.Distinct().Count();
 
@@ -1414,6 +1463,65 @@ public class SeededComparerTests
 
         public static HashSet<HidingTupleChild> HidingTupleChildKey() => [];
 
+        public static int CreatedFlankedTuples() => Activator.CreateInstance<HashSet<(string, long, string)>>().Count;
+
+        public static int CreatedFlankedChildren() => Activator.CreateInstance<HashSet<FlankedChild>>().Count;
+
+        public static HashSet<(string, long, string)?> NullableFlankedTupleKey() => [];
+
+        public static HashSet<((string, long, string), string)> NestedFlankedTupleKey() => [];
+
+        public static HashSet<(FlankedChild, string)> FlankedChildItemKey() => [];
+
+        public static HashSet<FlankedTupleItemChild> FlankedTupleItemChildKey() => [];
+
+        public static HashSet<FlankedChildItemChild> FlankedChildItemChildKey() => [];
+
+        public static int MadeFlanked() => Flanked<object, HashSet<long>, object>.Make().Count;
+
+        public static int CreatedFlanked() => Activator.CreateInstance<Flanked<object, HashSet<long>, object>>() is null ? 0 : 1;
+
+        public static int CreatedComparables() => Activator.CreateInstance<HashSet<IComparable<long>>>().Count;
+
+        public static int CreatedKeyValuePairs() => Activator.CreateInstance<HashSet<KeyValuePair<long, int>>>().Count;
+
+        public static int CreatedAbstractRecords() => Activator.CreateInstance<HashSet<AbstractHandHashed>>().Count;
+
+        public static int CreatedRecordStructs() => Activator.CreateInstance<HashSet<Pair>>().Count;
+
+        public static HashSet<KeyValuePair<long, int>?> NullableKeyValuePairKey() => [];
+
+        public static HashSet<(IComparable<long>, string)> ComparableItemKey() => [];
+
+        public static HashSet<(KeyValuePair<long, int>, string)> KeyValuePairItemKey() => [];
+
+        public static HashSet<(AbstractHandHashed, string)> AbstractRecordItemKey() => [];
+
+        public static HashSet<(Pair, string)> RecordStructItemKey() => [];
+
+        public static HashSet<ComparableItemChild> ComparableItemChildKey() => [];
+
+        public static HashSet<KeyValuePairItemChild> KeyValuePairItemChildKey() => [];
+
+        public static HashSet<AbstractRecordItemChild> AbstractRecordItemChildKey() => [];
+
+        public static HashSet<RecordStructItemChild> RecordStructItemChildKey() => [];
+
+        public static int PairedNested<T>() => MakeFirst<HashSet<(T, string)>, int>().Count;
+
+        public static int MadeClass() => MakeClass<HashSet<long>>().Count;
+
+        public static T MakeClass<T>()
+            where T : class, new() => new();
+
+        public static int CreatedClassWrapped() => Activator.CreateInstance<ClassWrapper<HashSet<long>>>() is null ? 0 : 1;
+
+        public static int CreatedReferenceTuples() => Activator.CreateInstance<HashSet<Tuple<string, long>>>().Count;
+
+        public static HashSet<(Tuple<string, long>, string)> ReferenceTupleItemKey() => [];
+
+        public static HashSet<ReferenceTupleItemChild> ReferenceTupleItemChildKey() => [];
+
         public static int SeededBeside() => Beside(SeededComparer.Instance, new HashSet<long>());
 
         private static int Beside(IEqualityComparer<long> comparer, HashSet<long> numbers) => comparer.GetHashCode(numbers.Count);
@@ -1504,6 +1612,46 @@ public class SeededComparerTests
         /// <summary>A table over a type parameter, handed the comparer its callers choose, which no reading follows.</summary>
         private sealed class ForwardingDictionary<T>(IEqualityComparer<T>? comparer) : Dictionary<T, string>(comparer)
             where T : notnull;
+
+        /// <summary>A type whose type argument is built through <c>new()</c>, a class.</summary>
+        public sealed class ClassWrapper<TInner>
+            where TInner : class, new();
+
+        /// <summary>A Lazy over a type's own type parameter.</summary>
+        public sealed class LazyOfOwn<T>
+        {
+            public static T Value() => new Lazy<T>().Value;
+        }
+
+        /// <summary>A ConditionalWeakTable's value built for a type's own type parameter.</summary>
+        public sealed class WeakOfOwn<T>
+            where T : class
+        {
+            private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<object, T> Values = new();
+
+            public static T Value(object key) => Values.GetOrCreateValue(key);
+        }
+
+        /// <summary>A BindingList over a type's own type parameter.</summary>
+        public sealed class BoundOfOwn<T>
+        {
+            public static int Count() => new System.ComponentModel.BindingList<T>().Count;
+        }
+
+        /// <summary>A Lazy over a type's own type parameter, which a builder builds.</summary>
+        public sealed class CreatedOfOwn<T>
+        {
+            public static object Value() => Activator.CreateInstance<Lazy<T>>();
+        }
+
+        /// <summary>What its middle type argument is, built through <c>new()</c>, between two others.</summary>
+        public sealed class Flanked<TBefore, T, TAfter>
+            where TBefore : new()
+            where T : new()
+            where TAfter : new()
+        {
+            public static T Make() => new();
+        }
 
         /// <summary>What a virtual generic method builds for its type argument, through <c>new()</c>.</summary>
         public interface IMaker
@@ -1739,6 +1887,30 @@ public class SeededComparerTests
     /// </summary>
     private sealed class TripleChild(string first, string second, long third) : Tuple<string, string, long>(first, second, third);
 
+    /// <summary>A key deriving from a tuple of three items whose only number is in the middle, which hashes as the tuple does.</summary>
+    private sealed class FlankedChild(string first, long second, string third) : Tuple<string, long, string>(first, second, third);
+
+    /// <summary>A key deriving from a tuple whose only item a file steers is a tuple whose only number is in the middle.</summary>
+    private sealed class FlankedTupleItemChild(string first, (string, long, string) second) : Tuple<string, (string, long, string)>(first, second);
+
+    /// <summary>A key deriving from a tuple whose only item a file steers derives from a tuple whose only number is in the middle.</summary>
+    private sealed class FlankedChildItemChild(string first, FlankedChild second) : Tuple<string, FlankedChild>(first, second);
+
+    /// <summary>A key deriving from a tuple whose only item a file steers is a generic interface.</summary>
+    private sealed class ComparableItemChild(string first, IComparable<long> second) : Tuple<string, IComparable<long>>(first, second);
+
+    /// <summary>A key deriving from a tuple whose only item a file steers is a generic struct keeping the default hash.</summary>
+    private sealed class KeyValuePairItemChild(string first, KeyValuePair<long, int> second) : Tuple<string, KeyValuePair<long, int>>(first, second);
+
+    /// <summary>A key deriving from a tuple whose only item a file steers is an abstract record hashed by hand.</summary>
+    private sealed class AbstractRecordItemChild(string first, AbstractHandHashed second) : Tuple<string, AbstractHandHashed>(first, second);
+
+    /// <summary>A key deriving from a tuple whose only item a file steers is a record struct.</summary>
+    private sealed class RecordStructItemChild(string first, Pair second) : Tuple<string, Pair>(first, second);
+
+    /// <summary>A key deriving from a tuple whose only item a file steers is a reference tuple.</summary>
+    private sealed class ReferenceTupleItemChild(string first, Tuple<string, long> second) : Tuple<string, Tuple<string, long>>(first, second);
+
     /// <summary>
     /// A key deriving from a tuple of numbers and hiding its hash with a method of its own, which a table does not
     /// call: it hashes as the tuple does.
@@ -1809,6 +1981,15 @@ public class SeededComparerTests
 
     /// <summary>A record derived from one hashed by hand, whose hash the compiler writes over its offset.</summary>
     private sealed record HandHashedDerived(string Name, long Offset) : HandHashedBase(Name);
+
+    /// <summary>An abstract record hashed by hand: a record derived from it, hashed as the compiler writes, stands behind it.</summary>
+    private abstract record AbstractHandHashed(string Name)
+    {
+        public override int GetHashCode() => Name.Length;
+    }
+
+    /// <summary>A record derived from an abstract one hashed by hand, whose hash the compiler writes over its offset.</summary>
+    private sealed record AbstractHandHashedDerived(string Name, long Offset) : AbstractHandHashed(Name);
 
     /// <summary>A sealed record hashed by hand, which its own tests hold.</summary>
     private sealed record SealedHandHashed(string Name)
@@ -1989,6 +2170,34 @@ public class SeededComparerTests
 
         public static void Stored() => Slot<IReadOnlyDictionary<string, Interned>>.Value = Table;
 
+        public static bool Held() => new Holder("view").View() is not null;
+
+        public static int HeldTyped() => new Holder("pairs").CountOf<KeyValuePair<string, Interned>>();
+
+        public static int Between(int before, Tuple<int, IReadOnlyDictionary<string, Interned>, int> triple, int after) => before + triple.Item1 + after;
+
+        public static int Betweens() => Between(1, null!, 2);
+
+        public static bool Referenced() => TableRef() is not null;
+
+        public static int Middles() => CountOf<int, KeyValuePair<string, Interned>, int>();
+
+        public static int MiddleTyped() => CountOf<Tuple<int, IReadOnlyDictionary<string, Interned>, int>>();
+
+        public static bool Tripled() => Triple() is not null;
+
+        public static int Triples() => CountTriples(null!);
+
+        public static int TripleLists() => CountTripleLists(null!);
+
+        /// <summary>A type whose instance methods give a view of the table, or are instantiated over its pairs.</summary>
+        private sealed class Holder(string name)
+        {
+            public IReadOnlyDictionary<string, Interned> View() => name.Length > 0 ? Table : Second;
+
+            public int CountOf<T>() => typeof(T).Name.Length + name.Length;
+        }
+
         /// <summary>A static field of a generic type, which a view of the table may be stored into.</summary>
         private static class Slot<T>
         {
@@ -2000,6 +2209,16 @@ public class SeededComparerTests
         private static int CountPairs(in ImmutableList<KeyValuePair<string, Interned>> pairs) => pairs.Count;
 
         private static int CountOf<T>() => typeof(T).Name.Length;
+
+        private static int CountOf<TBefore, T, TAfter>() => typeof(TBefore).Name.Length + typeof(T).Name.Length + typeof(TAfter).Name.Length;
+
+        private static Tuple<int, IReadOnlyDictionary<string, Interned>, int> Triple() => null!;
+
+        private static ref readonly ConcurrentDictionary<string, Interned> TableRef() => ref Table;
+
+        private static int CountTriples(Tuple<int, IReadOnlyDictionary<string, Interned>, int>[] triples) => triples.Length;
+
+        private static int CountTripleLists(List<Tuple<int, IReadOnlyDictionary<string, Interned>, int>> triples) => triples.Count;
 
         private static Lazy<IReadOnlyDictionary<string, Interned>>? Later() => null;
 
