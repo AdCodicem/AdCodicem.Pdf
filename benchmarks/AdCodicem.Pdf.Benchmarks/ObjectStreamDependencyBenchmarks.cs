@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.IO.Compression;
 using System.Text;
 using AdCodicem.Pdf.Documents;
 using AdCodicem.Pdf.Validation;
@@ -7,13 +8,14 @@ using BenchmarkDotNet.Attributes;
 namespace AdCodicem.Pdf.Benchmarks;
 
 /// <summary>
-/// Measures the walk of the object streams' dependencies, which validation runs once, on object streams that take their
-/// <c>/DecodeParms</c> from one object written directly in the file.
+/// Measures the walk of the object streams' dependencies, which validation runs once, on Flate object streams that take
+/// their <c>/DecodeParms</c> from one object written directly in the file.
 /// </summary>
 /// <remarks>
-/// The walk reads what each stream's decoding keys lead through where the chain's index places it, outside the reader's
-/// cache (#128): an object many streams lead through is read once a walk, not once a stream, while the walk keeps no more
-/// objects than the reader's cache holds. The document is opened outside the measurement.
+/// The walk reads what decoding each stream reads, where the chain's index places it, outside the reader's cache (#128,
+/// #277): the streams are compressed, so that decoding reads their parameters — of a stream with no filter, it reads none.
+/// An object many streams lead through is read once a walk, not once a stream, while the walk keeps no more objects than
+/// the reader's cache holds (#201). The document is opened outside the measurement.
 /// </remarks>
 [MemoryDiagnoser]
 public class ObjectStreamDependencyBenchmarks
@@ -33,7 +35,7 @@ public class ObjectStreamDependencyBenchmarks
     public int Walk() => ObjectStreamDependencies.Run(_document!).Circular.Count;
 
     /// <summary>
-    /// Writes a file indexed by a cross-reference stream, whose <paramref name="streams"/> object streams each hold one
+    /// Writes a file indexed by a cross-reference stream, whose <paramref name="streams"/> Flate object streams each hold one
     /// dictionary and take their <c>/DecodeParms</c> from object 3, a dictionary of about <paramref name="sharedBytes"/>.
     /// </summary>
     private static byte[] Create(int streams, int sharedBytes)
@@ -57,9 +59,12 @@ public class ObjectStreamDependencyBenchmarks
         for (var stream = 0; stream < streams; stream++)
         {
             var number = First + (2 * stream);
-            var data = string.Create(CultureInfo.InvariantCulture, $"{number + 1} 0 << >>");
+            var data = Compress(string.Create(CultureInfo.InvariantCulture, $"{number + 1} 0 << >>"));
             var header = string.Create(CultureInfo.InvariantCulture, $"{number + 1} 0 ").Length;
-            WriteObject(number, string.Create(CultureInfo.InvariantCulture, $"<< /Type /ObjStm /N 1 /First {header} /DecodeParms 3 0 R /Length {data.Length} >>\nstream\n{data}\nendstream"));
+            offsets[number] = output.Position;
+            Write(string.Create(CultureInfo.InvariantCulture, $"{number} 0 obj\n<< /Type /ObjStm /N 1 /First {header} /Filter /FlateDecode /DecodeParms 3 0 R /Length {data.Length} >>\nstream\n"));
+            output.Write(data);
+            Write("\nendstream\nendobj\n");
         }
 
         var xref = First + (2 * streams);
@@ -94,5 +99,18 @@ public class ObjectStreamDependencyBenchmarks
         output.Write(rows);
         Write(string.Create(CultureInfo.InvariantCulture, $"\nendstream\nendobj\nstartxref\n{xrefOffset}\n%%EOF\n"));
         return output.ToArray();
+    }
+
+    /// <summary>Gives <paramref name="text"/> Flate-compressed.</summary>
+    private static byte[] Compress(string text)
+    {
+        using var compressed = new MemoryStream();
+
+        using (var zlib = new ZLibStream(compressed, CompressionLevel.Optimal, leaveOpen: true))
+        {
+            zlib.Write(Encoding.ASCII.GetBytes(text));
+        }
+
+        return compressed.ToArray();
     }
 }

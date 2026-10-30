@@ -209,6 +209,27 @@ public class ReaderTimingTests
     }
 
     [Fact]
+    public void Object_streams_that_share_chains_eight_times_as_long_have_their_dependencies_walked_in_about_the_same_time()
+    {
+        // Two thousand object streams share 64 filters and 64 parameters, each a chain of references, the parameters' values
+        // chains too, which decoding reads for each stream. The walk follows a chain once a validation, keeping the run of
+        // references it loads by the object it starts at, and a value once a stream: chains of 31 references cost about what
+        // chains of 4 do, where following each chain again for each stream cost about eight times as much, 4.8 s for 8,000
+        // streams (#201, #277). The measure is the ratio, the best walk of each, run in turn.
+        const int Streams = 2000;
+        using var shortChains = PdfDocument.Open(HostileInputTests.SharedChains(Streams, links: 4));
+        using var longChains = PdfDocument.Open(HostileInputTests.SharedChains(Streams, links: 31));
+
+        var (shortTime, longTime) = BestOfEach(() => ObjectStreamDependencies.Run(shortChains), () => ObjectStreamDependencies.Run(longChains));
+
+        longTime.Should().BeLessThan(
+            shortTime * 3,
+            "chains eight times as long must be walked in about the same time ({0} against {1})",
+            longTime,
+            shortTime);
+    }
+
+    [Fact]
     public void An_index_of_numbers_chosen_to_share_a_bucket_validates_as_fast_as_one_numbered_in_order()
     {
         // The same 34,167 numbers, validated once open: the probe of the index's entries and the search for pages the tree

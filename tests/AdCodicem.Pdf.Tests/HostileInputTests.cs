@@ -1797,16 +1797,17 @@ public class HostileInputTests
     [InlineData(true)]
     public void The_walk_of_the_object_streams_dependencies_reads_an_object_many_streams_need_once(bool generations)
     {
-        // Four hundred object streams take their /DecodeParms from object 3, written directly in the file and 100 KB long —
-        // as 3 0 R, or each under a generation of its own, which leads the reader to the same object. The walk reads what
-        // each stream needs where the chain's index places it, outside the reader's cache: it read object 3 again for every
-        // stream, 93 MB in all. It reads it once a validation, and each stream's dictionary through one window (#128).
+        // Four hundred Flate object streams take their /DecodeParms from object 3, written directly in the file and 100 KB
+        // long — as 3 0 R, or each under a generation of its own, which leads the reader to the same object. The walk reads
+        // what each stream needs where the chain's index places it, outside the reader's cache: it read object 3 again for
+        // every stream, 93 MB in all. It reads it once a validation, and each stream's dictionary through one window (#128).
+        // The streams are compressed, so that decoding reads their /DecodeParms, and the walk with it (#277).
         const int Streams = 400;
         var streams = new List<PackedStream>();
         for (var k = 0; k < Streams; k++)
         {
             var parameters = string.Create(CultureInfo.InvariantCulture, $"/DecodeParms 3 {(generations ? k : 0)} R");
-            streams.Add(new PackedStream(10 + (2 * k), parameters, [(11 + (2 * k), "<< >>")], PackedData.Plain));
+            streams.Add(new PackedStream(10 + (2 * k), parameters, [(11 + (2 * k), "<< >>")], PackedData.Flate));
         }
 
         var file = PackedFile(streams, [(3, "<< /Pad [" + new StringBuilder().Insert(0, "0 ", 50_000) + "] >>")]);
@@ -1817,6 +1818,34 @@ public class HostileInputTests
         ObjectStreamDependencies.Run(document).Circular.Should().BeEmpty();
 
         (source.BytesRead - opened).Should().BeLessThan((Streams * (long)PdfFileReader.InitialObjectWindow) + (4L * file.Length));
+    }
+
+    [Theory]
+    [InlineData("a parameters dictionary of 100 KB")]
+    [InlineData("a chain of 20,000 references")]
+    [InlineData("64 filters and parameters, each a chain")]
+    public void The_walk_of_the_object_streams_dependencies_allocates_for_each_stream_no_more_than_its_dictionary_costs(string shared)
+    {
+        // Object streams share what their /Filter and /DecodeParms lead to: a parameters dictionary of 100 KB; a chain of
+        // 20,000 references, longer than the reader's cache; or 64 filters and 64 parameters, each a chain of 31
+        // references, the parameters' values chains as well. The walk read what each led to again for every stream, the
+        // long chain parsed again for each, 5.6 MB a stream (#201). It reads what decoding reads of each object once a
+        // validation, and takes a chain it has followed at once: what one more stream costs is its own dictionary.
+        const int Few = 250;
+        const int Many = 1000;
+        var few = SharedByObjectStreams(shared, Few);
+        var many = SharedByObjectStreams(shared, Many);
+
+        var fewAllocated = Allocations.Least(() => PdfDocument.Open(few), ObjectStreamDependencies.Run, out var fewDocument, out var fewResult);
+        var manyAllocated = Allocations.Least(() => PdfDocument.Open(many), ObjectStreamDependencies.Run, out var manyDocument, out var manyResult);
+
+        using (fewDocument)
+        using (manyDocument)
+        {
+            fewResult.Circular.Should().BeEmpty();
+            manyResult.Circular.Should().BeEmpty();
+            ((manyAllocated - fewAllocated) / (Many - Few)).Should().BeLessThan(1280, "what one more stream costs is its own dictionary");
+        }
     }
 
     [Theory]
@@ -3682,6 +3711,81 @@ public class HostileInputTests
         rows[brokenRow] = (1, 99_999_999, 0);
         file.CrossReferenceStream(2010, 2011, rows, "/Root 1 0 R");
         return file.Bytes;
+    }
+
+    /// <summary>
+    /// A file of <paramref name="streams"/> object streams, each holding one dictionary, that share what their
+    /// <c>/Filter</c> and <c>/DecodeParms</c> lead to, as <paramref name="shared"/> describes it: a parameters dictionary of
+    /// 100 KB, a chain of 20,000 references to one, or <see cref="SharedChains"/>'s 64 filters and parameters.
+    /// </summary>
+    internal static byte[] SharedByObjectStreams(string shared, int streams)
+    {
+        var packed = new List<PackedStream>();
+
+        // Numbered past the chain's objects.
+        for (var k = 0; k < streams; k++)
+        {
+            packed.Add(new PackedStream(30_000 + (2 * k), "/DecodeParms 3 0 R", [(30_001 + (2 * k), "<< >>")], PackedData.Flate));
+        }
+
+        switch (shared)
+        {
+            case "a parameters dictionary of 100 KB":
+                return PackedFile(packed, [(3, "<< /Predictor 1 /Pad [" + new StringBuilder().Insert(0, "0 ", 50_000) + "] >>")]);
+
+            case "a chain of 20,000 references":
+                var chain = new List<(int Number, string Body)>();
+
+                for (var link = 3; link < 20_003; link++)
+                {
+                    chain.Add((link, link + 1 < 20_003 ? string.Create(CultureInfo.InvariantCulture, $"{link + 1} 0 R") : "<< /Predictor 1 >>"));
+                }
+
+                return PackedFile(packed, chain);
+
+            default:
+                return SharedChains(streams, links: 31);
+        }
+    }
+
+    /// <summary>
+    /// A file of <paramref name="streams"/> object streams, each holding one dictionary, that share <c>/Filter 3 0 R</c> and
+    /// <c>/DecodeParms 4 0 R</c>: 64 references each — as many filters as the reader decodes through —, to a chain of
+    /// <paramref name="links"/> references ending at <c>/FlateDecode</c>, and to one ending at parameters whose predictor,
+    /// colors, bits and columns are chains as long. Decoding reads every one of them for each stream. The streams' data is
+    /// written as it is: the walk of their dependencies reads none of it.
+    /// </summary>
+    internal static byte[] SharedChains(int streams, int links)
+    {
+        var direct = new List<(int Number, string Body)>
+        {
+            (3, "[" + string.Join(' ', Enumerable.Repeat("10 0 R", 64)) + "]"),
+            (4, "[" + string.Join(' ', Enumerable.Repeat("100 0 R", 64)) + "]"),
+        };
+
+        Chain(10, "/FlateDecode");
+        Chain(100, "<< /Predictor 200 0 R /Colors 300 0 R /BitsPerComponent 400 0 R /Columns 500 0 R >>");
+        Chain(200, "12");
+        Chain(300, "1");
+        Chain(400, "8");
+        Chain(500, "1");
+
+        var packed = new List<PackedStream>();
+
+        for (var k = 0; k < streams; k++)
+        {
+            packed.Add(new PackedStream(1000 + (2 * k), "/Filter 3 0 R /DecodeParms 4 0 R", [(1001 + (2 * k), "<< >>")], PackedData.Plain));
+        }
+
+        return PackedFile(packed, direct);
+
+        void Chain(int first, string last)
+        {
+            for (var link = first; link < first + links; link++)
+            {
+                direct.Add((link, link + 1 < first + links ? string.Create(CultureInfo.InvariantCulture, $"{link + 1} 0 R") : last));
+            }
+        }
     }
 
     private static byte[] PackedFile(IReadOnlyList<PackedStream> streams, IReadOnlyList<(int Number, string Body)>? direct = null)

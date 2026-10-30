@@ -209,9 +209,11 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// <see cref="ObjectStreamBudget"/> keeps; no stream keeps the raw data it read (#170). A stream an object stream
     /// holds, which ISO 32000-1 (7.5.7) forbids, is no exception: it is no value, and its <c>/Length</c> is not read
     /// (#161). The count alone does not bound the stack, since each load parses as deep as the parser allows: the stack
-    /// is asked as well before each load.
+    /// is asked as well before each load. The validator's walk of the object streams' dependencies nests its loads as these
+    /// do, and reads as null past this same bound (<see cref="Validation.ObjectStreamDependencies"/>, #277): were the bound
+    /// made a guard (#163), the walk would take the guard's.
     /// </summary>
-    private const int MaxNestedLoads = 64;
+    internal const int MaxNestedLoads = 64;
 
     /// <summary>
     /// How many references <see cref="Follow"/> follows from a value, as <see cref="PdfReference.Resolve"/> does — it fetches
@@ -1527,11 +1529,15 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// </summary>
     /// <param name="reference">The reference, as the file wrote it.</param>
     /// <param name="objects">How many objects its chain is followed through (<see cref="PdfReference.Target"/>).</param>
-    internal bool LeftByGuard(PdfReference reference, int objects = PdfReference.MaxChainLength - 1)
-    {
-        var target = reference.Target(objects).Number;
-        return IsCutAtLimit(target) || GetPresence(target) == ObjectPresence.Unindexed;
-    }
+    internal bool LeftByGuard(PdfReference reference, int objects = PdfReference.MaxChainLength - 1) =>
+        IsLeftByGuard(reference.Target(objects).Number);
+
+    /// <summary>
+    /// Determines whether object <paramref name="number"/> is one a guard cut, or left out of the index: what
+    /// <see cref="LeftByGuard"/> asks of the object a chain of references leads to, for one who followed the chain
+    /// already — the validator's walk of the object streams' dependencies, which follows it as decoding does (#277).
+    /// </summary>
+    internal bool IsLeftByGuard(int number) => IsCutAtLimit(number) || GetPresence(number) == ObjectPresence.Unindexed;
 
     /// <summary>
     /// Determines whether object <paramref name="number"/>, as it was read, is a stream whose length the file did not

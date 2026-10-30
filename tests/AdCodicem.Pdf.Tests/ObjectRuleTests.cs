@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Text;
 using AdCodicem.Pdf.Diagnostics;
 using AdCodicem.Pdf.Documents;
+using AdCodicem.Pdf.IO.Filters;
 using AdCodicem.Pdf.Objects;
 using AdCodicem.Pdf.Validation;
 
@@ -513,10 +514,11 @@ public class ObjectRuleTests
     }
 
     [Fact]
-    public void Of_two_objects_an_object_stream_holds_and_needs_the_one_its_walk_meets_first_is_named()
+    public void Of_two_objects_an_object_stream_holds_and_needs_the_one_the_reader_needs_first_is_named()
     {
-        // Object 3, which the stream's /DecodeParms names, is an array of 5 and 6, both in the stream. The walk takes the last
-        // value it met first, so meets 6 before 5, as it did before it kept what each object read holds.
+        // Object 3, which the stream's /DecodeParms names, is an array of 5 and 6, both in the stream. The one Flate step
+        // reads the element at its place, 5, and nothing else of the array: 5 is the object the reader needs, and names
+        // (#277). The walk took the last value it met first, and named 6.
         var file = new TestPdfBuilder()
             .WithObject(1, "<< /Type /Catalog /Pages 2 0 R >>")
             .WithObject(2, "<< /Type /Pages /Kids [] /Count 0 >>")
@@ -526,7 +528,8 @@ public class ObjectRuleTests
             .BuildWithXRefStream(rootNumber: 1, compressedObjects: [5, 6], compressObjectStream: true, objectStreamEntries: "/DecodeParms 3 0 R");
 
         Single(Validate(file), PdfValidationRuleIds.XRefObjectStreamCircular).Message.Should().Be(
-            "Object stream 7 needs object 6, which it holds, to be read: its /DecodeParms names it, and the object cannot be read before the stream is.");
+            "Object stream 7 needs object 5, which it holds, to be read: its /DecodeParms names it, and the object cannot be read before the stream is.");
+        ReaderNeeds(file).Should().Be(5);
     }
 
     [Fact]
@@ -756,6 +759,406 @@ public class ObjectRuleTests
     }
 
     [Theory]
+    [MemberData(nameof(ValuesDecodingDoesNotRead))]
+    public void A_value_decoding_does_not_read_is_needed_by_neither_the_reader_nor_the_walk(string shape)
+    {
+        // #277's table, and the shapes like it the walk took for loops: decoding reads a filter's names up to the first that
+        // ends the chain, of /DecodeParms only what a Flate or LZW step reads — the element at its place, /EarlyChange,
+        // /Predictor, and the rest only past a predictor of 1 —, and nothing else. The walk followed both keys whole, and
+        // found a loop through what the reader never reads.
+        var file = DecodingShapes[shape].Build();
+
+        Validate(file).Contains(PdfValidationRuleIds.XRefObjectStreamCircular).Should().BeFalse();
+        ReaderNeeds(file).Should().BeNull();
+    }
+
+    [Theory]
+    [MemberData(nameof(ValuesDecodingReads))]
+    public void A_value_decoding_reads_that_leads_to_an_object_the_stream_holds_is_circular_as_the_reader_finds(string shape, string key)
+    {
+        // What decoding reads, followed as decoding follows it: through objects written in the file, a parameter written as a
+        // stream — outside Table 5 of ISO 32000-1 —, whose /Length its parse resolves, and an object another object stream
+        // holds, whose value the reader reads on from. The walk stopped at a stream and at a member (#277).
+        var file = DecodingShapes[shape].Build();
+
+        var report = Validate(file);
+
+        Single(report, PdfValidationRuleIds.XRefObjectStreamCircular).Message.Should().Be(HoldsFive(key));
+        report.Contains(PdfValidationRuleIds.XRefObjectStreamBroken).Should().BeFalse("the loop is the fault, reported once");
+        ReaderNeeds(file).Should().Be(5);
+    }
+
+    [Fact]
+    public void The_walk_keeps_as_many_objects_as_the_reader_caches_and_reads_again_one_it_let_go()
+    {
+        // A hundred Flate object streams take their parameters each from an object of its own, written in the file, whose
+        // predictor is object 4, shared; the last stream's predictor is the object it holds. Opened with a cache of 64
+        // objects, the walk keeps 64 of what it read, lets go of object 4 long before the last stream, and reads it again
+        // for the streams after: the last stream alone is circular.
+        const int Streams = 100;
+        var file = new HandWrittenFile(version: "1.5");
+        var rows = new Dictionary<int, (int Type, long Field2, int Field3)>
+        {
+            [1] = (1, file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"), 0),
+            [2] = (1, file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"), 0),
+            [4] = (1, file.Object(4, "1"), 0),
+        };
+
+        for (var k = 0; k < Streams; k++)
+        {
+            var (stream, member) = (2000 + (2 * k), 2001 + (2 * k));
+            var predictor = k + 1 < Streams ? "4 0 R" : string.Create(CultureInfo.InvariantCulture, $"{member} 0 R");
+            rows[1000 + k] = (1, file.Object(1000 + k, $"<< /Predictor {predictor} >>"), 0);
+            rows[stream] = (1, FlateObjectStream(file, stream, [(member, "1")], string.Create(CultureInfo.InvariantCulture, $"/DecodeParms {1000 + k} 0 R")), 0);
+            rows[member] = (2, stream, 0);
+        }
+
+        file.CrossReferenceStream(3000, 3001, rows, "/Root 1 0 R");
+        using var document = PdfDocument.Open(file.Bytes, new PdfReaderOptions { ObjectCacheCapacity = 64 });
+
+        ObjectStreamDependencies.Run(document).Circular.Select(finding => finding.Message).Should().Equal(
+            "Object stream 2198 needs object 2199, which it holds, to be read: its /DecodeParms names it, and the object cannot be read before the stream is.");
+    }
+
+    [Theory]
+    [InlineData("/Length", "/Length 100 0 R, 100 a stream whose /Length names 5")]
+    [InlineData("/N", "/N 100 0 R, 100 a stream whose /Length names 5")]
+    [InlineData("/First", "/First 100 0 R, 100 a stream whose /Length names 5")]
+    [InlineData("/Type", "/Type 100 0 R, 100 a stream whose /Length names 5")]
+    [InlineData("/Length", "/Length 100 0 R, 100 naming 101, a stream whose /Length names 5")]
+    [InlineData("/Length", "/Length 100 0 R, 100 a stream whose /Length names 101, a stream whose /Length names 5")]
+    [InlineData("/Length", "/Length 100 0 R, 100 a member of 9 naming 5")]
+    [InlineData("/N", "/N and /First 100 0 R, 100 a stream whose /Length names 5")]
+    public void A_stream_or_a_member_on_the_chain_of_a_key_the_reader_resolves_is_followed(string key, string shape)
+    {
+        // #277's comment: a link of the chain under /Length, /N, /First or /Type that is a stream is parsed, and its parse
+        // resolves its /Length, which leads to 5; one another object stream holds is read from it, and its value read on.
+        // The reader reports the loop; the walk stopped there, and found the stream broken, or nothing.
+        var file = KeyShapes[shape].Build();
+
+        var report = Validate(file);
+
+        Single(report, PdfValidationRuleIds.XRefObjectStreamCircular).Message.Should().Be(HoldsFive(key));
+        report.Contains(PdfValidationRuleIds.XRefObjectStreamBroken).Should().BeFalse("the loop is the fault, reported once");
+        ReaderNeeds(file).Should().Be(5);
+    }
+
+    [Theory]
+    [InlineData("0", null, false, false)]
+    [InlineData("2.5", null, false, true)]
+    [InlineData("2", "-1", false, true)]
+    [InlineData("2", "0", true, false)]
+    public void An_object_stream_needs_what_its_filters_name_only_when_its_count_and_start_let_it_decode(
+        string count, string? first, bool circular, bool broken)
+    {
+        // The reader reads a stream's /N and /First before its filters, and decodes nothing when they declare no object, or
+        // none it can read — a count that is no integer, a start below 0 —: /DecodeParms 5 0 R is never read. With /N 2.5,
+        // the walk found a loop, which hid the true fault. A start of 0 is one the reader decodes from.
+        var file = new StreamSeven("/Filter /FlateDecode /DecodeParms 5 0 R") { Five = "<< /Predictor 1 >>", Count = count, First = first }.Build();
+
+        var report = Validate(file);
+
+        report.Contains(PdfValidationRuleIds.XRefObjectStreamCircular).Should().Be(circular);
+        report.Contains(PdfValidationRuleIds.XRefObjectStreamBroken).Should().Be(broken);
+        ReaderNeeds(file).Should().Be(circular ? 5 : null);
+    }
+
+    [Theory]
+    [InlineData(31, true)]
+    [InlineData(32, false)]
+    public void A_count_at_the_end_of_a_chain_is_read_only_where_a_reference_takes_its_value(int links, bool circular)
+    {
+        // Stream 7's /N names the first of a chain of objects, each naming the next, the last 2. A reference takes the value
+        // of the 31st object of a chain, and drops that of the 32nd it loads (#173): one link further, the count is null, and
+        // the stream is not decoded.
+        var file = new StreamSeven("/Filter /FlateDecode /DecodeParms 5 0 R")
+        {
+            Five = "<< /Predictor 1 >>",
+            Count = "100 0 R",
+            Written = ReferenceChain(100, links, "2"),
+        }.Build();
+
+        Validate(file).Contains(PdfValidationRuleIds.XRefObjectStreamCircular).Should().Be(circular);
+        ReaderNeeds(file).Should().Be(circular ? 5 : null);
+    }
+
+    [Theory]
+    [InlineData("/N 6 0 R, /Filter [/FlateDecode 5 0 R]", 6, "/N")]
+    [InlineData("/First 6 0 R, a predictor 5 0 R", 6, "/First")]
+    [InlineData("a predictor 5 0 R, of 12, and a /Columns 6 0 R", 5, "/DecodeParms")]
+    [InlineData("two Flate steps, /DecodeParms [5 0 R 6 0 R]", 5, "/DecodeParms")]
+    public void Of_the_objects_an_object_stream_holds_and_needs_the_one_the_reader_needs_first_is_named(string shape, int named, string key)
+    {
+        // The reader reads /N and /First before the filters, and a step's parameters in their order; a predictor the stream
+        // holds reads as null, which is a predictor of 1, past which nothing more is read. The walk followed /Filter and
+        // /DecodeParms before /N and /First, and named another object than the reader does.
+        var file = OrderShapes[shape].Build();
+
+        Single(Validate(file), PdfValidationRuleIds.XRefObjectStreamCircular).Message.Should().Be(
+            $"Object stream 7 needs object {named}, which it holds, to be read: its {key} names it, and the object cannot be read before the stream is.");
+        ReaderNeeds(file).Should().Be(named);
+    }
+
+    [Theory]
+    [InlineData("/Length", 33, true)]
+    [InlineData("/Length", 34, false)]
+    [InlineData("/N", 32, true)]
+    [InlineData("/N", 33, false)]
+    [InlineData("/DecodeParms", 32, true)]
+    [InlineData("/DecodeParms", 33, false)]
+    [InlineData("the /Length of a stream /N names", 33, true)]
+    [InlineData("the /Length of a stream /N names", 34, false)]
+    public void An_object_on_a_chain_is_followed_as_far_as_the_reader_loads_the_chain(string key, int at, bool circular)
+    {
+        // A reference resolves through 32 objects, a /Length through 33; the last is loaded, and its value dropped (#173).
+        // Under /Length and /N, the object at the end is a stream whose /Length names 5, which its parse loads; under
+        // /DecodeParms, or the /Length of a stream met on the way, it is 5, which the stream holds. One object further, the
+        // reader loads nothing of it.
+        const string Stream = "<< /Length 5 0 R >>\nstream\nab\nendstream";
+        var lengthChain = ReferenceChain(110, at - 1, "5 0 R");
+        lengthChain[100] = "<< /Length 110 0 R >>\nstream\nab\nendstream";
+        var shape = key switch
+        {
+            "/Length" => new StreamSeven(string.Empty) { Five = "2", Data = SevenData.Plain, Length = "100 0 R", Written = ReferenceChain(100, at, Stream) },
+            "/N" => new StreamSeven(string.Empty) { Five = "2", Data = SevenData.Plain, Count = "100 0 R", Written = ReferenceChain(100, at, Stream) },
+            "/DecodeParms" => new StreamSeven("/Filter /FlateDecode /DecodeParms 100 0 R") { Five = "<< /Predictor 1 >>", Written = ReferenceChain(100, at - 1, "5 0 R") },
+            _ => new StreamSeven(string.Empty) { Five = "2", Data = SevenData.Plain, Count = "100 0 R", Written = lengthChain },
+        };
+        var file = shape.Build();
+
+        Validate(file).Contains(PdfValidationRuleIds.XRefObjectStreamCircular).Should().Be(circular);
+        ReaderNeeds(file).Should().Be(circular ? 5 : null);
+    }
+
+    [Theory]
+    [InlineData("/Length", 61, "5", true)]
+    [InlineData("/Length", 62, "5", true)]
+    [InlineData("/Length", 63, "5", false)]
+    [InlineData("/N", 62, "5", true)]
+    [InlineData("/N", 63, "5", true)]
+    [InlineData("/N", 64, "5", false)]
+    [InlineData("/N", 61, "a member of 9", true)]
+    [InlineData("/N", 62, "a member of 9", false)]
+    [InlineData("/N", 62, "an object", true)]
+    [InlineData("/N", 63, "an object", false)]
+    [InlineData("/Length and /N", 61, "a member of 9", false)]
+    public void Streams_nested_on_a_chain_are_followed_as_deep_as_the_reader_nests_its_loads(string key, int streams, string last, bool circular)
+    {
+        // The key names the first of a chain of streams, each taking its /Length from the next, the last from 5 — or from
+        // object 170, a member of object stream 9 or an object written in the file, whose value is 5 0 R. A read of 6 loads
+        // the stream a level below it, its /Length a level further, its /N where the stream was; each nested stream a level
+        // deeper; and nothing past 64 levels, so that 170 reads as null at the 65th, a member at the 64th already, its stream
+        // loaded a level deeper. 5 itself is reported at any depth, as the stream holds it. A chain of streams /Length met
+        // first, a level deeper than /N meets it, is parsed there, and kept: /N reads it again, and loads nothing more.
+        var chain = StreamChain(100, streams, last == "5" ? "5 0 R" : "170 0 R");
+        Dictionary<int, string> nine = [];
+
+        if (last == "a member of 9")
+        {
+            nine[170] = "5 0 R";
+        }
+        else if (last == "an object")
+        {
+            chain[170] = "5 0 R";
+        }
+
+        var file = new StreamSeven(string.Empty)
+        {
+            Five = "2",
+            Data = SevenData.Plain,
+            Length = key.StartsWith("/Length", StringComparison.Ordinal) ? "100 0 R" : null,
+            Count = key.EndsWith("/N", StringComparison.Ordinal) ? "100 0 R" : "2",
+            Written = chain,
+            InNine = nine,
+        }.Build();
+
+        Validate(file).Contains(PdfValidationRuleIds.XRefObjectStreamCircular).Should().Be(circular);
+        ReaderNeeds(file).Should().Be(circular ? 5 : null);
+    }
+
+    [Theory]
+    [InlineData(1, true)]
+    [InlineData(1, false)]
+    [InlineData(31, true)]
+    [InlineData(31, false)]
+    public void A_value_a_guard_cut_ends_what_the_walk_follows_as_it_ends_decoding(int at, bool guarded)
+    {
+        // Two Flate steps take their parameters from [100 0 R 5 0 R]; 100 is the first of a chain of references to
+        // parameters that run past MaxObjectLength when it is lowered to 128 bytes, the chain's 1st object or its 31st, the
+        // last whose value a reference takes, which decoding asks whether a guard cut. Decoding ends at the first step's
+        // parameters, which are the guard's, and never reads 5 (#263): the walk found a loop through 5 all the same.
+        // Unguarded, the second step reads 5, which the stream holds.
+        var file = new StreamSeven("/Filter [/FlateDecode /FlateDecode] /DecodeParms [100 0 R 5 0 R]")
+        {
+            Five = "<< /Predictor 1 >>",
+            Data = SevenData.FlateTwice,
+            Written = ReferenceChain(100, at, "<< /Predictor 1 /Pad (" + new string('x', 200) + ") >>"),
+        }.Build();
+        var options = guarded ? new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxObjectLength = 128 } } : null;
+
+        using var document = PdfDocument.Open(file, options);
+        new PdfValidator().Validate(document).Contains(PdfValidationRuleIds.XRefObjectStreamCircular).Should().Be(!guarded);
+        ReaderNeeds(file, options).Should().Be(guarded ? null : 5);
+    }
+
+    [Theory]
+    [InlineData("/Filter 3 0 R, 3 = [5 0 R]", "/Filter")]
+    [InlineData("Flate, /DecodeParms 3 0 R, 3 = [5 0 R]", "/DecodeParms")]
+    public void An_array_written_in_the_file_is_followed_whole_when_no_guard_bounds_the_chain_of_filters(string shape, string key)
+    {
+        // What the walk keeps of an array is as many elements as a chain of filters reads, and one more. With no bound on
+        // the chain, that bound plus one overflowed, and every such array was kept empty: the loop through its element went
+        // unseen, while the reader reported it.
+        var file = shape.StartsWith("/Filter", StringComparison.Ordinal)
+            ? new StreamSeven("/Filter 3 0 R") { Five = "/FlateDecode", Written = new Dictionary<int, string> { [3] = "[5 0 R]" } }.Build()
+            : new StreamSeven("/Filter /FlateDecode /DecodeParms 3 0 R") { Five = "<< /Predictor 1 >>", Written = new Dictionary<int, string> { [3] = "[5 0 R]" } }.Build();
+        var unbounded = new PdfReaderOptions { Limits = PdfReaderLimits.Unbounded };
+
+        using var document = PdfDocument.Open(file, unbounded);
+        Single(new PdfValidator().Validate(document), PdfValidationRuleIds.XRefObjectStreamCircular).Message.Should().Be(HoldsFive(key));
+        ReaderNeeds(file, unbounded).Should().Be(5);
+    }
+
+    [Fact]
+    public void An_array_written_in_the_file_is_kept_as_far_as_the_guard_on_filters_lets_decoding_read_it()
+    {
+        // Stream 7's /Filter is object 3, [/FlateDecode 5 0 R /ASCIIHexDecode], and the reader decodes through two filters
+        // at most: it reads the second, 5, which the stream holds, and stops at the third. The walk keeps of the array the
+        // two elements decoding reads.
+        var file = new StreamSeven("/Filter 3 0 R")
+        {
+            Five = "/FlateDecode",
+            Data = SevenData.FlateTwice,
+            Written = new() { [3] = "[/FlateDecode 5 0 R /ASCIIHexDecode]" },
+        }.Build();
+        var options = new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxFilterChainLength = 2 } };
+
+        using var document = PdfDocument.Open(file, options);
+        Single(new PdfValidator().Validate(document), PdfValidationRuleIds.XRefObjectStreamCircular).Message.Should().Be(HoldsFive("/Filter"));
+        ReaderNeeds(file, options).Should().Be(5);
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void Two_object_streams_are_circular_through_their_parameters_only_where_decoding_reads_them(bool nineFiltered)
+    {
+        // Stream 7 takes its parameters from object 100, which object stream 9 holds; 9 names object 6, which 7 holds, as its
+        // /DecodeParms. Compressed, 9 reads them: each stream needs the other, and each names its own first need. With no
+        // filter, 9 never reads them, and neither stream needs the other — the walk found both circular.
+        var file = new StreamSeven("/Filter /FlateDecode /DecodeParms 100 0 R")
+        {
+            InNine = new Dictionary<int, string> { [100] = "<< /Predictor 1 >>" },
+            NineEntries = nineFiltered ? "/Filter /FlateDecode /DecodeParms 6 0 R" : "/DecodeParms 6 0 R",
+        }.Build();
+
+        var circular = Validate(file).Findings.Where(finding => finding.RuleId == PdfValidationRuleIds.XRefObjectStreamCircular).Select(finding => finding.Message);
+
+        circular.Should().Equal(
+            nineFiltered
+                ?
+                [
+                    "Object stream 7 needs object 100, which object stream 9 holds, to be read: its /DecodeParms names it, and reading object stream 9 needs object stream 7 in turn.",
+                    "Object stream 9 needs object 6, which object stream 7 holds, to be read: its /DecodeParms names it, and reading object stream 7 needs object stream 9 in turn.",
+                ]
+                : []);
+    }
+
+    [Theory]
+    [InlineData("the object stream")]
+    [InlineData("a stream its /N names")]
+    public void A_stream_whose_length_names_the_stream_itself_reads_as_null_there_and_needs_nothing(string stream)
+    {
+        // The reader refuses to load again an object it is loading: a stream whose /Length names it reads as null there,
+        // and its data is found by its endstream. Nothing the stream holds is needed on the way.
+        var shape = stream == "the object stream"
+            ? new StreamSeven(string.Empty) { Data = SevenData.Plain, Length = "7 0 R" }
+            : new StreamSeven(string.Empty) { Data = SevenData.Plain, Count = "100 0 R", Written = StreamChain(100, 1, "100 0 R") };
+        var file = shape.Build();
+
+        Validate(file).Contains(PdfValidationRuleIds.XRefObjectStreamCircular).Should().BeFalse();
+        ReaderNeeds(file).Should().BeNull();
+    }
+
+    [Fact]
+    public void An_object_of_a_stream_met_on_a_chain_while_its_length_is_resolved_is_not_needed_by_the_stream_walked()
+    {
+        // Stream 7's /N names object stream 9, whose /Length names object 170, which 9 holds; 9's /DecodeParms names 6,
+        // which 7 holds. Reading 6 parses 9 for 7's /N: 170 cannot be read while 9 is, and reads as null before 9 is decoded
+        // — the reader reports 9, not 7, which needs nothing of 9. Only 9 is circular: taking 170 for a need of 7 made 7
+        // circular through 9.
+        var file = new StreamSeven(string.Empty)
+        {
+            Data = SevenData.Plain,
+            Count = "9 0 R",
+            InNine = new() { [170] = "<< /Predictor 1 >>" },
+            NineEntries = "/Filter /FlateDecode /DecodeParms 6 0 R",
+            NineLength = "170 0 R",
+        }.Build();
+
+        Validate(file).Findings.Where(finding => finding.RuleId == PdfValidationRuleIds.XRefObjectStreamCircular)
+            .Select(finding => finding.Message).Should().Equal(
+                "Object stream 9 needs object 170, which it holds, to be read: its /Length names it, and the object cannot be read before the stream is.");
+        ReaderNeeds(file).Should().BeNull();
+    }
+
+    [Fact]
+    public void Decoding_reads_no_entry_of_a_step_s_parameters_the_walk_does_not_keep()
+    {
+        // The walk keeps of a parameters dictionary written in the file the entries FilterChain.ParameterKeys lists, and
+        // reads nothing else of it: an entry decoding came to read besides would be a need the walk could not see. An LZW
+        // step and a Flate step, a predictor past 1, and every entry ISO 32000-1 gives a filter's parameters besides.
+        string[] names =
+        [
+            "EarlyChange", "Predictor", "Colors", "BitsPerComponent", "Columns", "K", "EndOfLine", "EncodedByteAlign", "Rows",
+            "EndOfBlock", "BlackIs1", "DamagedRowsBeforeError", "JBIG2Globals", "ColorTransform", "Type", "Name",
+        ];
+        var parameters = new PdfDictionary();
+        var keys = new Dictionary<PdfObject, PdfName>(ReferenceEqualityComparer.Instance);
+
+        // Each value an instance of its own, by which the entry read is known: a predictor of 12, the rest past the
+        // integers the library shares instances of.
+        for (var index = 0; index < names.Length; index++)
+        {
+            var value = PdfInteger.Create(names[index] == "Predictor" ? 12 : 1_000_000 + index);
+            parameters.Set(PdfName.Get(names[index]), value);
+            keys[value] = PdfName.Get(names[index]);
+        }
+
+        var dictionary = new PdfDictionary();
+        dictionary.Set(PdfName.Filter, new PdfArray([PdfName.LZWDecode, PdfName.FlateDecode]));
+        dictionary.Set(PdfName.DecodeParms, parameters);
+        var reads = new ParameterReads(keys, []);
+
+        FilterChain.TryFollow(dictionary, maxFilters: 64, ref reads).Should().BeTrue();
+
+        reads.Read.Distinct().Should().BeEquivalentTo(FilterChain.ParameterKeys.ToArray(), "decoding reads every entry the walk keeps, and nothing else");
+    }
+
+    [Fact]
+    public void A_stream_whose_parameters_lead_back_to_it_through_a_stream_is_circular_and_not_also_broken()
+    {
+        // #277's sixth shape with a predictor of 12: the stream's parameters are object 3, a stream whose /Predictor is 5,
+        // which the stream holds. The reader decodes it with no predictor, 5 reading as null, and reads its objects; the probe
+        // decoded it with 5's own value and found its header broken. Once the loop is found, the broken finding, which the
+        // loop explains, is not made as well.
+        var file = new StreamSeven("/Filter /FlateDecode /DecodeParms 3 0 R")
+        {
+            Five = "12",
+            Written = new Dictionary<int, string> { [3] = "<< /Predictor 5 0 R /Length 2 >>\nstream\nab\nendstream" },
+        }.Build();
+
+        var report = Validate(file);
+
+        Single(report, PdfValidationRuleIds.XRefObjectStreamCircular).Message.Should().Be(HoldsFive("/DecodeParms"));
+        report.Contains(PdfValidationRuleIds.XRefObjectStreamBroken).Should().BeFalse("the loop is the fault, reported once");
+        ReaderNeeds(file).Should().Be(5);
+
+        using var document = PdfDocument.Open(file);
+        document.GetObject(new PdfObjectId(6)).Should().BeOfType<PdfDictionary>("the reader decodes the stream without the predictor");
+    }
+
+    [Theory]
     [InlineData("nothing", 30, false)]
     [InlineData("the broken stream", 30, false)]
     [InlineData("a validation", 30, false)]
@@ -807,7 +1210,7 @@ public class ObjectRuleTests
         {
             [1] = (1, file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"), 0),
             [2] = (1, file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"), 0),
-            [7] = (1, file.ObjectStream(7, [(5, "<< /Predictor 1 >>")], "/DecodeParms 5 0 R ") + 3, 0),
+            [7] = (1, FlateObjectStream(file, 7, [(5, "<< /Predictor 1 >>")], "/DecodeParms 5 0 R") + 3, 0),
             [5] = (2, 7, 0),
             [30] = (1, 9, 0),
             [31] = (2, 30, 0),
@@ -963,6 +1366,51 @@ public class ObjectRuleTests
         return Encoding.Latin1.GetString(compressed.ToArray());
     }
 
+    /// <summary>
+    /// Writes object stream <paramref name="number"/> into <paramref name="file"/>, holding <paramref name="members"/>
+    /// Flate-compressed, its dictionary holding <paramref name="entries"/> besides its own, and gives where its header starts.
+    /// </summary>
+    private static long FlateObjectStream(HandWrittenFile file, int number, (int Number, string Body)[] members, string entries)
+    {
+        var header = new StringBuilder();
+        var contents = new StringBuilder();
+
+        foreach (var (member, body) in members)
+        {
+            header.Append(CultureInfo.InvariantCulture, $"{member} {contents.Length} ");
+            contents.Append(body).Append(' ');
+        }
+
+        var data = Deflate(header.ToString() + contents);
+        return file.Object(
+            number,
+            string.Create(
+                CultureInfo.InvariantCulture,
+                $"<< /Type /ObjStm /N {members.Length} /First {header.Length} /Filter /FlateDecode {entries} /Length {data.Length} >>\nstream\n{data}\nendstream"));
+    }
+
+    /// <summary>
+    /// Gives the object the reader says object stream 7 needs, which it holds, as a document of its own first reads object 6;
+    /// null when it says none.
+    /// </summary>
+    private static int? ReaderNeeds(byte[] file, PdfReaderOptions? options = null)
+    {
+        const string Needs = "Object stream 7 needs object ";
+        using var document = PdfDocument.Open(file, options);
+        document.GetObject(new PdfObjectId(6));
+
+        foreach (var diagnostic in document.Diagnostics)
+        {
+            if (diagnostic.Code == PdfDiagnosticCodes.StreamSelfReference && diagnostic.Message.StartsWith(Needs, StringComparison.Ordinal))
+            {
+                var end = diagnostic.Message.IndexOf(',', Needs.Length);
+                return int.Parse(diagnostic.Message.AsSpan(Needs.Length, end - Needs.Length), CultureInfo.InvariantCulture);
+            }
+        }
+
+        return null;
+    }
+
     /// <summary>Objects 5 and 6 in object stream 7, whose dictionary gets <paramref name="entries"/>; object 5 is <paramref name="parameter"/>.</summary>
     private static byte[] ObjectStream(string entries, string parameter, bool compress = true) =>
         new TestPdfBuilder()
@@ -1038,7 +1486,7 @@ public class ObjectRuleTests
     }
 
     /// <summary>
-    /// Object streams 7 and 8, each needing the first object it holds, their headers written <c>7 0 %x</c> then
+    /// Object streams 7 and 8, Flate-compressed, each needing the first object it holds, their headers written <c>7 0 %x</c> then
     /// <c>obj</c> on the next line — which the reader reads where the index places them, and a rebuild does not find —;
     /// object stream 20, which no entry names and which lists object 8; and object stream <paramref name="broken"/>, whose
     /// entry leads nowhere, holding the object numbered after it. The index is a cross-reference stream, object 32.
@@ -1057,8 +1505,8 @@ public class ObjectRuleTests
         void WriteObjectStream(int number, string header, string objects, string entries)
         {
             offsets[number] = file.Position;
-            var data = header + objects;
-            Write($"{number} 0 %x\nobj\n<< /Type /ObjStm /N 2 /First {header.Length} {entries} /Length {data.Length} >>\nstream\n{data}\nendstream\nendobj\n");
+            var data = Deflate(header + objects);
+            Write($"{number} 0 %x\nobj\n<< /Type /ObjStm /N 2 /First {header.Length} /Filter /FlateDecode {entries} /Length {data.Length} >>\nstream\n{data}\nendstream\nendobj\n");
         }
 
         Write("%PDF-1.5\n");
@@ -1098,6 +1546,176 @@ public class ObjectRuleTests
         return file.ToArray();
     }
 
+    /// <summary>Gives the finding of object stream 7 needing object 5, which it holds, through <paramref name="key"/>.</summary>
+    private static string HoldsFive(string key) =>
+        $"Object stream 7 needs object 5, which it holds, to be read: its {key} names it, and the object cannot be read before the stream is.";
+
+    /// <summary>
+    /// Objects <paramref name="first"/> onward, <paramref name="count"/> of them, each a reference to the next, the last
+    /// <paramref name="last"/>.
+    /// </summary>
+    private static Dictionary<int, string> ReferenceChain(int first, int count, string last)
+    {
+        var objects = new Dictionary<int, string>();
+
+        for (var index = 0; index < count; index++)
+        {
+            objects[first + index] = index + 1 < count ? string.Create(CultureInfo.InvariantCulture, $"{first + index + 1} 0 R") : last;
+        }
+
+        return objects;
+    }
+
+    /// <summary>Gives the objects of <paramref name="first"/> and <paramref name="second"/> together.</summary>
+    private static Dictionary<int, string> Merged(Dictionary<int, string> first, Dictionary<int, string> second)
+    {
+        foreach (var (number, body) in second)
+        {
+            first[number] = body;
+        }
+
+        return first;
+    }
+
+    /// <summary>
+    /// Streams <paramref name="first"/> onward, <paramref name="count"/> of them, each taking its <c>/Length</c> from the
+    /// next, the last from <paramref name="last"/>.
+    /// </summary>
+    private static Dictionary<int, string> StreamChain(int first, int count, string last)
+    {
+        var objects = new Dictionary<int, string>();
+
+        for (var index = 0; index < count; index++)
+        {
+            var length = index + 1 < count ? string.Create(CultureInfo.InvariantCulture, $"{first + index + 1} 0 R") : last;
+            objects[first + index] = $"<< /Length {length} >>\nstream\nab\nendstream";
+        }
+
+        return objects;
+    }
+
+    /// <summary>
+    /// The shapes whose filters and parameters decoding reads or does not, by name: #277's table and comment, and those the
+    /// measurement of the walk added.
+    /// </summary>
+    private static readonly Dictionary<string, StreamSeven> DecodingShapes = new()
+    {
+        // #277's table, and values decoding does not read that the walk took for needs.
+        ["row 1: Flate, /DecodeParms << /Foo 5 0 R >>"] = new("/Filter /FlateDecode /DecodeParms << /Foo 5 0 R >>"),
+        ["row 2: Flate, a /Columns 5 0 R past a predictor of 1"] = new("/Filter /FlateDecode /DecodeParms << /Predictor 1 /Columns 5 0 R >>"),
+        ["row 3: Flate, /DecodeParms [null 5 0 R]"] = new("/Filter /FlateDecode /DecodeParms [null 5 0 R]") { Five = "<< /Predictor 1 >>" },
+        ["row 4: no filter, a /Predictor 5 0 R"] = new("/DecodeParms << /Predictor 5 0 R >>") { Data = SevenData.Plain },
+        ["row 5: /Filter [/FlateDecode [5 0 R]]"] = new("/Filter [/FlateDecode [5 0 R]]"),
+        ["/Filter [/FlateDecode /Foo 5 0 R]"] = new("/Filter [/FlateDecode /Foo 5 0 R]") { Five = "/FlateDecode" },
+        ["/Filter 3 0 R, 3 = [/FlateDecode /Foo 5 0 R]"] = new("/Filter 3 0 R") { Five = "/FlateDecode", Written = new() { [3] = "[/FlateDecode /Foo 5 0 R]" } },
+        ["Flate, /DecodeParms 3 0 R, 3 = [null 5 0 R]"] = new("/Filter /FlateDecode /DecodeParms 3 0 R") { Five = "<< /Predictor 1 >>", Written = new() { [3] = "[null 5 0 R]" } },
+        ["Flate, /DecodeParms 3 0 R, 3 = [4 0 R], 4 = << /Foo 5 0 R >>"] = new("/Filter /FlateDecode /DecodeParms 3 0 R") { Written = new() { [3] = "[4 0 R]", [4] = "<< /Foo 5 0 R >>" } },
+        ["ASCIIHex, which reads no parameters, /DecodeParms 5 0 R"] = new("/Filter /ASCIIHexDecode /DecodeParms 5 0 R") { Five = "<< /Predictor 1 >>", Data = SevenData.Hex },
+        ["[/FlateDecode /Foo], /DecodeParms [null 5 0 R]"] = new("/Filter [/FlateDecode /Foo] /DecodeParms [null 5 0 R]") { Five = "<< /Predictor 1 >>" },
+        ["[/FlateDecode /JBIG2Decode], /DecodeParms [null << /JBIG2Globals 5 0 R >>]"] = new("/Filter [/FlateDecode /JBIG2Decode] /DecodeParms [null << /JBIG2Globals 5 0 R >>]"),
+        ["[/Crypt /FlateDecode], /DecodeParms [<< /Name 5 0 R >> null]"] = new("/Filter [/Crypt /FlateDecode] /DecodeParms [<< /Name 5 0 R >> null]") { Five = "/Identity" },
+        ["Flate, a /Columns 5 0 R past a predictor 4 0 R of 1"] = new("/Filter /FlateDecode /DecodeParms << /Predictor 4 0 R /Columns 5 0 R >>") { Written = new() { [4] = "1" } },
+        ["Flate, a /Columns 5 0 R past a predictor of 1 object stream 9 holds"] = new("/Filter /FlateDecode /DecodeParms << /Predictor 100 0 R /Columns 5 0 R >>") { InNine = new() { [100] = "1" } },
+        ["Flate, parameters object stream 9 holds, << /Foo 5 0 R >>"] = new("/Filter /FlateDecode /DecodeParms 100 0 R") { InNine = new() { [100] = "<< /Foo 5 0 R >>" } },
+        ["Flate, a /DecodeParms chain whose 31st object, which 9 holds, names a 32nd"] = new("/Filter /FlateDecode /DecodeParms 100 0 R")
+        {
+            Written = Merged(ReferenceChain(100, 30, "130 0 R"), ReferenceChain(140, 2, "<< /Predictor 5 0 R >>")),
+            InNine = new() { [130] = "140 0 R" },
+        },
+
+        // Values decoding reads: the needs the walk had, and those it missed — a stream, a member on the way (#277).
+        ["Flate, a /Columns 5 0 R past a predictor of 12"] = new("/Filter /FlateDecode /DecodeParms << /Predictor 12 /Columns 5 0 R >>"),
+        ["LZW, an /EarlyChange 5 0 R"] = new("/Filter /LZWDecode /DecodeParms << /EarlyChange 5 0 R >>") { Data = SevenData.Plain },
+        ["/Filter 3 0 R, 3 = [5 0 R]"] = new("/Filter 3 0 R") { Five = "/FlateDecode", Written = new() { [3] = "[5 0 R]" } },
+        ["Flate, /DecodeParms 3 0 R, 3 = [4 0 R], 4 = << /Predictor 5 0 R >>"] = new("/Filter /FlateDecode /DecodeParms 3 0 R") { Written = new() { [3] = "[4 0 R]", [4] = "<< /Predictor 5 0 R >>" } },
+        ["Flate, a /Predictor 4 0 R, 4 = 3 0 R, 3 = 5 0 R"] = new("/Filter /FlateDecode /DecodeParms << /Predictor 4 0 R >>") { Written = new() { [3] = "5 0 R", [4] = "3 0 R" } },
+        ["row 6: Flate, parameters a stream whose /Predictor is 5 0 R"] = new("/Filter /FlateDecode /DecodeParms 3 0 R") { Written = new() { [3] = "<< /Predictor 5 0 R /Length 2 >>\nstream\nab\nendstream" } },
+        ["row 7: Flate, parameters a stream whose /Length is 5 0 R"] = new("/Filter /FlateDecode /DecodeParms 3 0 R") { Five = "2", Written = new() { [3] = "<< /Length 5 0 R >>\nstream\nab\nendstream" } },
+        ["Flate, a /Predictor that is a stream whose /Length is 5 0 R"] = new("/Filter /FlateDecode /DecodeParms << /Predictor 3 0 R >>") { Five = "2", Written = new() { [3] = "<< /Length 5 0 R >>\nstream\nab\nendstream" } },
+        ["/Filter 3 0 R, 3 a stream whose /Length is 5 0 R"] = new("/Filter 3 0 R") { Five = "2", Data = SevenData.Plain, Written = new() { [3] = "<< /Length 5 0 R >>\nstream\nab\nendstream" } },
+        ["Flate, parameters object stream 9 holds, << /Predictor 5 0 R >>"] = new("/Filter /FlateDecode /DecodeParms 100 0 R") { InNine = new() { [100] = "<< /Predictor 5 0 R >>" } },
+        ["Flate, a /Columns 5 0 R past a predictor of 12 object stream 9 holds"] = new("/Filter /FlateDecode /DecodeParms << /Predictor 100 0 R /Columns 5 0 R >>") { InNine = new() { [100] = "12" } },
+        ["two Flate steps, the second's parameters a chain to the first's, << /Predictor 5 0 R >>"] = new("/Filter [/FlateDecode /FlateDecode] /DecodeParms [101 0 R 100 0 R]")
+        {
+            Data = SevenData.FlateTwice,
+            Written = new() { [100] = "101 0 R", [101] = "<< /Predictor 5 0 R >>" },
+        },
+    };
+
+    /// <summary>The names of <see cref="DecodingShapes"/> whose values decoding does not read.</summary>
+    public static TheoryData<string> ValuesDecodingDoesNotRead =>
+    [
+        "row 1: Flate, /DecodeParms << /Foo 5 0 R >>",
+        "row 2: Flate, a /Columns 5 0 R past a predictor of 1",
+        "row 3: Flate, /DecodeParms [null 5 0 R]",
+        "row 4: no filter, a /Predictor 5 0 R",
+        "row 5: /Filter [/FlateDecode [5 0 R]]",
+        "/Filter [/FlateDecode /Foo 5 0 R]",
+        "/Filter 3 0 R, 3 = [/FlateDecode /Foo 5 0 R]",
+        "Flate, /DecodeParms 3 0 R, 3 = [null 5 0 R]",
+        "Flate, /DecodeParms 3 0 R, 3 = [4 0 R], 4 = << /Foo 5 0 R >>",
+        "ASCIIHex, which reads no parameters, /DecodeParms 5 0 R",
+        "[/FlateDecode /Foo], /DecodeParms [null 5 0 R]",
+        "[/FlateDecode /JBIG2Decode], /DecodeParms [null << /JBIG2Globals 5 0 R >>]",
+        "[/Crypt /FlateDecode], /DecodeParms [<< /Name 5 0 R >> null]",
+        "Flate, a /Columns 5 0 R past a predictor 4 0 R of 1",
+        "Flate, a /Columns 5 0 R past a predictor of 1 object stream 9 holds",
+        "Flate, parameters object stream 9 holds, << /Foo 5 0 R >>",
+        "Flate, a /DecodeParms chain whose 31st object, which 9 holds, names a 32nd",
+    ];
+
+    /// <summary>The names of <see cref="DecodingShapes"/> whose values decoding reads, with the key that leads to 5.</summary>
+    public static TheoryData<string, string> ValuesDecodingReads => new()
+    {
+        { "Flate, a /Columns 5 0 R past a predictor of 12", "/DecodeParms" },
+        { "LZW, an /EarlyChange 5 0 R", "/DecodeParms" },
+        { "/Filter 3 0 R, 3 = [5 0 R]", "/Filter" },
+        { "Flate, /DecodeParms 3 0 R, 3 = [4 0 R], 4 = << /Predictor 5 0 R >>", "/DecodeParms" },
+        { "Flate, a /Predictor 4 0 R, 4 = 3 0 R, 3 = 5 0 R", "/DecodeParms" },
+        { "row 6: Flate, parameters a stream whose /Predictor is 5 0 R", "/DecodeParms" },
+        { "row 7: Flate, parameters a stream whose /Length is 5 0 R", "/DecodeParms" },
+        { "Flate, a /Predictor that is a stream whose /Length is 5 0 R", "/DecodeParms" },
+        { "/Filter 3 0 R, 3 a stream whose /Length is 5 0 R", "/Filter" },
+        { "Flate, parameters object stream 9 holds, << /Predictor 5 0 R >>", "/DecodeParms" },
+        { "Flate, a /Columns 5 0 R past a predictor of 12 object stream 9 holds", "/DecodeParms" },
+        { "two Flate steps, the second's parameters a chain to the first's, << /Predictor 5 0 R >>", "/DecodeParms" },
+    };
+
+    /// <summary>#277's comment: a stream or a member on the chain of a key the reader resolves, by name.</summary>
+    private static readonly Dictionary<string, StreamSeven> KeyShapes = new()
+    {
+        ["/Length 100 0 R, 100 a stream whose /Length names 5"] = new(string.Empty) { Five = "2", Data = SevenData.Plain, Length = "100 0 R", Written = StreamChain(100, 1, "5 0 R") },
+        ["/N 100 0 R, 100 a stream whose /Length names 5"] = new(string.Empty) { Five = "2", Data = SevenData.Plain, Count = "100 0 R", Written = StreamChain(100, 1, "5 0 R") },
+        ["/First 100 0 R, 100 a stream whose /Length names 5"] = new(string.Empty) { Five = "2", Data = SevenData.Plain, First = "100 0 R", Written = StreamChain(100, 1, "5 0 R") },
+        ["/Type 100 0 R, 100 a stream whose /Length names 5"] = new(string.Empty) { Five = "2", Data = SevenData.Plain, Type = "100 0 R", Written = StreamChain(100, 1, "5 0 R") },
+        ["/Length 100 0 R, 100 naming 101, a stream whose /Length names 5"] = new(string.Empty)
+        {
+            Five = "2",
+            Data = SevenData.Plain,
+            Length = "100 0 R",
+            Written = new() { [100] = "101 0 R", [101] = "<< /Length 5 0 R >>\nstream\nab\nendstream" },
+        },
+        ["/Length 100 0 R, 100 a stream whose /Length names 101, a stream whose /Length names 5"] = new(string.Empty) { Five = "2", Data = SevenData.Plain, Length = "100 0 R", Written = StreamChain(100, 2, "5 0 R") },
+        ["/Length 100 0 R, 100 a member of 9 naming 5"] = new(string.Empty) { Data = SevenData.Plain, Length = "100 0 R", InNine = new() { [100] = "5 0 R" } },
+        ["/N and /First 100 0 R, 100 a stream whose /Length names 5"] = new(string.Empty)
+        {
+            Five = "2",
+            Data = SevenData.Plain,
+            Count = "100 0 R",
+            First = "100 0 R",
+            Written = StreamChain(100, 1, "5 0 R"),
+        },
+    };
+
+    /// <summary>Shapes where the stream needs two objects it holds, by name.</summary>
+    private static readonly Dictionary<string, StreamSeven> OrderShapes = new()
+    {
+        ["/N 6 0 R, /Filter [/FlateDecode 5 0 R]"] = new("/Filter [/FlateDecode 5 0 R]") { Five = "/FlateDecode", Count = "6 0 R" },
+        ["/First 6 0 R, a predictor 5 0 R"] = new("/Filter /FlateDecode /DecodeParms << /Predictor 5 0 R >>") { First = "6 0 R" },
+        ["a predictor 5 0 R, of 12, and a /Columns 6 0 R"] = new("/Filter /FlateDecode /DecodeParms << /Predictor 5 0 R /Columns 6 0 R >>") { Five = "12" },
+        ["two Flate steps, /DecodeParms [5 0 R 6 0 R]"] = new("/Filter [/FlateDecode /FlateDecode] /DecodeParms [5 0 R 6 0 R]") { Five = "<< /Predictor 1 >>", Data = SevenData.FlateTwice },
+    };
+
     private static PdfValidationFinding Single(PdfValidationReport report, string ruleId)
     {
         report.Findings.Where(finding => finding.RuleId == ruleId).Should().ContainSingle(
@@ -1109,5 +1727,136 @@ public class ObjectRuleTests
     {
         using var document = PdfDocument.Open(file);
         return new PdfValidator().Validate(document);
+    }
+
+    /// <summary>Notes which entries of a step's parameters decoding reads, by the value each holds.</summary>
+    /// <param name="keys">The entry each value is written under.</param>
+    /// <param name="read">The entries read, in the order decoding reads them.</param>
+    private readonly struct ParameterReads(Dictionary<PdfObject, PdfName> keys, List<PdfName> read) : IFilterValueReader
+    {
+        /// <summary>Gets the entries read, in the order decoding reads them.</summary>
+        public List<PdfName> Read { get; } = read;
+
+        /// <inheritdoc/>
+        public bool TryRead(PdfName key, PdfObject? written, bool entry, out PdfObject? value)
+        {
+            if (written is not null && keys.TryGetValue(written, out var name))
+            {
+                Read.Add(name);
+            }
+
+            value = written;
+            return true;
+        }
+    }
+
+    /// <summary>How <see cref="StreamSeven"/> writes its stream's data.</summary>
+    private enum SevenData
+    {
+        /// <summary>As it is.</summary>
+        Plain,
+
+        /// <summary>Flate-compressed once.</summary>
+        Flate,
+
+        /// <summary>Flate-compressed twice, for two Flate steps.</summary>
+        FlateTwice,
+
+        /// <summary>In hexadecimal, ended by <c>&gt;</c>.</summary>
+        Hex,
+    }
+
+    /// <summary>
+    /// A file, indexed by a cross-reference stream, object 200, whose object stream 7 holds objects 5 and 6 — 5 being
+    /// <see cref="Five"/> —, its dictionary giving <see cref="Entries"/> besides its own; objects written directly in the
+    /// file, and members of a second object stream, 9, whose dictionary gives <see cref="NineEntries"/> besides its own.
+    /// </summary>
+    /// <param name="Entries">What stream 7's dictionary holds besides its <c>/Type</c>, <c>/N</c>, <c>/First</c> and <c>/Length</c>.</param>
+    private sealed record StreamSeven(string Entries)
+    {
+        /// <summary>Gets object 5's value.</summary>
+        public string Five { get; init; } = "1";
+
+        /// <summary>Gets how stream 7's data is written.</summary>
+        public SevenData Data { get; init; } = SevenData.Flate;
+
+        /// <summary>Gets stream 7's <c>/Type</c>.</summary>
+        public string Type { get; init; } = "/ObjStm";
+
+        /// <summary>Gets stream 7's <c>/N</c>.</summary>
+        public string Count { get; init; } = "2";
+
+        /// <summary>Gets stream 7's <c>/First</c>, where its objects start when null.</summary>
+        public string? First { get; init; }
+
+        /// <summary>Gets stream 7's <c>/Length</c>, the length of its data when null.</summary>
+        public string? Length { get; init; }
+
+        /// <summary>Gets the objects written directly in the file besides the catalog and the page tree.</summary>
+        public Dictionary<int, string> Written { get; init; } = [];
+
+        /// <summary>Gets the objects object stream 9 holds; there is no object 9 when there are none.</summary>
+        public Dictionary<int, string> InNine { get; init; } = [];
+
+        /// <summary>Gets what stream 9's dictionary holds besides its own entries; its data is Flate-compressed when they name the filter.</summary>
+        public string NineEntries { get; init; } = string.Empty;
+
+        /// <summary>Gets stream 9's <c>/Length</c>, the length of its data when null.</summary>
+        public string? NineLength { get; init; }
+
+        /// <summary>Writes the file.</summary>
+        public byte[] Build()
+        {
+            const string Six = "<< /Title (six) >>";
+            var header = string.Create(CultureInfo.InvariantCulture, $"5 0 6 {Five.Length + 1} ");
+            var plain = header + Five + " " + Six + " ";
+            var data = Data switch
+            {
+                SevenData.Flate => Deflate(plain),
+                SevenData.FlateTwice => Deflate(Deflate(plain)),
+                SevenData.Hex => Convert.ToHexString(Encoding.Latin1.GetBytes(plain)) + ">",
+                _ => plain,
+            };
+
+            var file = new HandWrittenFile(version: "1.5");
+            var rows = new Dictionary<int, (int Type, long Field2, int Field3)>
+            {
+                [1] = (1, file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"), 0),
+                [2] = (1, file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"), 0),
+            };
+
+            foreach (var (number, body) in Written)
+            {
+                rows[number] = (1, file.Object(number, body), 0);
+            }
+
+            var first = First ?? header.Length.ToString(CultureInfo.InvariantCulture);
+            var length = Length ?? data.Length.ToString(CultureInfo.InvariantCulture);
+            rows[7] = (1, file.Object(7, $"<< /Type {Type} /N {Count} /First {first} {Entries} /Length {length} >>\nstream\n{data}\nendstream"), 0);
+            rows[5] = (2, 7, 0);
+            rows[6] = (2, 7, 1);
+
+            if (InNine.Count > 0)
+            {
+                var nineHeader = new StringBuilder();
+                var nineBody = new StringBuilder();
+                var index = 0;
+
+                foreach (var (number, body) in InNine)
+                {
+                    nineHeader.Append(CultureInfo.InvariantCulture, $"{number} {nineBody.Length} ");
+                    nineBody.Append(body).Append(' ');
+                    rows[number] = (2, 9, index++);
+                }
+
+                var nineData = nineHeader.ToString() + nineBody;
+                nineData = NineEntries.Contains("/FlateDecode", StringComparison.Ordinal) ? Deflate(nineData) : nineData;
+                var nineLength = NineLength ?? nineData.Length.ToString(CultureInfo.InvariantCulture);
+                rows[9] = (1, file.Object(9, $"<< /Type /ObjStm /N {InNine.Count} /First {nineHeader.Length} {NineEntries} /Length {nineLength} >>\nstream\n{nineData}\nendstream"), 0);
+            }
+
+            file.CrossReferenceStream(200, 201, rows, "/Root 1 0 R");
+            return file.Bytes;
+        }
     }
 }

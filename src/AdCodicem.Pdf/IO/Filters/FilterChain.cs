@@ -52,6 +52,10 @@ internal sealed class FilterChain
 {
     private static readonly FilterChain NoFilter = new(new Reading());
 
+    /// <summary>The entries of a step's parameters dictionary decoding may read, every one it reads.</summary>
+    private static readonly PdfName[] ParametersRead =
+        [PdfName.EarlyChange, PdfName.Predictor, PdfName.Colors, PdfName.BitsPerComponent, PdfName.Columns];
+
     /// <summary>What <c>/Filter</c> leads to: a name, an array, or anything else when it names no filter at all.</summary>
     private readonly PdfObject? _filters;
 
@@ -86,6 +90,14 @@ internal sealed class FilterChain
         EndIndex = reading.EndIndex;
         EndValue = reading.EndValue;
     }
+
+    /// <summary>
+    /// Gets the entries of a step's parameters dictionary decoding may read: LZW's <c>/EarlyChange</c>, and a Flate or LZW
+    /// step's <c>/Predictor</c>, <c>/Colors</c>, <c>/BitsPerComponent</c> and <c>/Columns</c>. What keeps a parameters
+    /// dictionary for what decoding reads of it — the validator's walk of the object streams' dependencies (#277) — needs
+    /// nothing else of it; a filter that reads another entry adds it here.
+    /// </summary>
+    internal static ReadOnlySpan<PdfName> ParameterKeys => ParametersRead;
 
     /// <summary>Gets where in the <c>/Filter</c> array the last step decoding runs stands, or -1 when it runs none.</summary>
     public int LastIndex { get; }

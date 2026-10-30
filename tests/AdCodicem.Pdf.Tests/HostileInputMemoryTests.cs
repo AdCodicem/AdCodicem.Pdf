@@ -246,16 +246,20 @@ public class HostileInputMemoryTests
     [Fact]
     public void The_walk_of_the_object_streams_dependencies_holds_what_the_reader_keeps_whatever_it_reaches()
     {
-        // An object stream takes its /DecodeParms from object 3, an array of references to 2,000 arrays, each of a thousand
-        // references, opened with a cache of 64 objects. The walk kept the references of every object it read, to read each
-        // once: 16 MB, growing with what the decoding keys reach. It keeps as many objects as the reader keeps in its cache.
+        // A Flate object stream takes its /DecodeParms from object 3, an array of references to 2,000 arrays, each of a
+        // thousand references, opened with a cache of 64 objects. The walk kept the references of every object it read, to
+        // read each once: 16 MB, growing with what the decoding keys reach. It keeps as many objects as the reader keeps in
+        // its cache; and it now reads what decoding reads (#277): the one Flate step's element of 3, an array that gives no
+        // parameters, and of each array as many elements as a chain of filters reads.
         const int Arrays = 2000;
+        const string Members = "6 0 << >>";
+        var data = Encoding.Latin1.GetString(Compress(Encoding.Latin1.GetBytes(Members)));
         var file = new HandWrittenFile(version: "1.5");
         var rows = new Dictionary<int, (int Type, long Field2, int Field3)>
         {
             [1] = (1, file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"), 0),
             [2] = (1, file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"), 0),
-            [5] = (1, file.ObjectStream(5, [(6, "<< >>")], "/DecodeParms 3 0 R "), 0),
+            [5] = (1, file.Object(5, string.Create(CultureInfo.InvariantCulture, $"<< /Type /ObjStm /N 1 /First 4 /Filter /FlateDecode /DecodeParms 3 0 R /Length {data.Length} >>\nstream\n{data}\nendstream")), 0),
             [6] = (2, 5, 0),
         };
         var all = new StringBuilder("[");
