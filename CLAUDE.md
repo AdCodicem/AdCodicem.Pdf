@@ -162,12 +162,15 @@ over 2 MB, described in `tests/corpus/manifest.json` with origin `remote`, fetch
   input can reach it — conditions that contradict each other, a dead branch, a member nothing calls —, never
   because no file of the corpus does. A defensive branch stays, covered or not. A public member nothing
   calls is a question for the maintainer, not a removal.
-- **Mutation testing is a finite step, apart from the review** (ADR 53). A fixed, first-order catalog is run once
-  over the lines of `src/` a pull request changes, and over the conditions it adds to or changes in a test that
-  reads the library's code. Each mutant changes one thing, at one place the code writes it: no helper specialized at
-  each caller, no mutant of two changes at once. A survivor is a gap in the tests, not a review finding: a test is
-  written that kills it, or it is classed equivalent with its reason, and it is never reopened. Only the survivors
-  are run again, and the tests written to kill them are not mutated in their turn.
+- **Mutation testing is a finite step of every pull request that changes `src/`, apart from its own review** (ADR 53). A
+  fixed, first-order catalog — negate or drop a condition, shift a bound by one, remove a call, return the default,
+  remove one element of a set or one arm of a switch — is run over the lines of `src/` the pull request changes and, in
+  a test that reads the library's code, over the conditions it adds to or changes in that test. Each mutant makes one
+  change at one place the code writes it: no helper specialized at a caller or along a path, no condition narrowed, no
+  mutant of two changes. A survivor is a gap in the tests, not a review finding: a test kills it, or it is classed
+  equivalent, or, in a test that reads the code, widening, each with a one-line reason and never reopened; one only an
+  input no test can build tells apart is filed as `debt`. The survivors are run again until each is settled, and the
+  tests written to kill them are never mutated in their turn.
 - The documentation site is `docs/website` (Docusaurus). It publishes the user-facing documentation *and*
   `docs/` as they are, so a project document that does not build breaks CI. The user documentation is
   versioned (ADR 31): `docs/website/docs` is the preview; a released line is frozen in
