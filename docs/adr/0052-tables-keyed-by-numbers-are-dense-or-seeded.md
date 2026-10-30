@@ -71,33 +71,35 @@ opening a file records each of its rows. Most files number their objects from 0 
   that goes through a seed, now or after a later change, would order what it gives, and no key is argued one by one: the
   one named and let be is `PdfName`'s interning table, keyed by strings, which its static constructor builds once, ahead
   of every branch target and straight into a static field, and which the library reaches, through its type or a generic
-  interface of it, only to find or add one name, a call to, or a method group of, a member that takes it, gives it,
-  views it or names its pairs, in an array, a reference or a type argument included, at any depth, or a static field
-  declared on a type built over its pairs or a view of it, refused, the table not followed through `object`, a
-  non-generic interface or an expression tree, which names its members by token; and a table over such a key, a key
-  holding a type parameter, or one that enumerates by hash, built for a type argument by a `new()` constraint, or for it
-  or any type parameter, whatever its constraints, by the library's own `new()`, which compiles to `Activator`, or by
-  `Activator`, `Lazy`, `LazyInitializer`, a `ConditionalWeakTable`'s `GetOrCreateValue`, a `BindingList`, which builds
-  one for `AddNew`, or `Marshal.PtrToStructure` — the builders a sweep of .NET 10's shared framework found that may
-  build a table, none handing it a comparer, a `Lazy` or a `BindingList` one of them builds counting as the table it
-  builds in turn —; and a generic JSON deserializer of `System.Text.Json` or `System.Net.Http.Json`, whatever its type
-  argument, which builds every table that type holds with .NET's default comparer unless its options or the type say
-  otherwise, out of the reading's sight: the library reads no JSON. The library builds no type parameter it is given,
-  generic code taking a factory instead: what its callers give it, through a dispatch, a constrained call or a default
-  implementation as well as a call, is not all read. The rule covers every such key, whatever it numbers and wherever it
-  comes from, so that none needs arguing. The library builds no hash collection over a key holding a type parameter, at
-  any depth, whatever its comparer: its callers choose its key and the comparer they hand it, and no reading follows
-  them. How the hash of a type the library hashes by hand spreads is held by its own tests, as `PdfObjectId`'s and
-  `PdfDiagnostic`'s are; an enumeration's values are the library's own; a collection built through reflection otherwise,
-  an `UnsafeAccessor`'s among them, whose body the runtime writes, or one a framework method returns under another type,
-  is not read. The reading takes out the probes code coverage puts, by their shape alone, so that a probe written
-  otherwise refuses the table it stands before. The other reads the sources, their comments and literals blanked, and
-  names the file and line of the shapes it recognizes over a numeric key or a pair: a declaration given `[]` or `new()`,
-  a `new` without the comparer among its own arguments or in its initializer, a name declared with no table and given
-  one later, the tables an array's initializer builds, and a concurrent, frozen or immutable one whose type it writes
-  and that it sees built with `[]` or `new`, there or later, seeded or not; and, whatever the key, which it cannot see
-  where an operator is called, a LINQ operator that hashes without naming a comparer, asynchronous ones included; one an
-  operator or a factory builds is the compiled reading's.
+  interface of it, only to find or add one name — through `GetOrAdd`, `TryAdd`, `TryGetValue`, `ContainsKey` or the
+  indexer's getter, let be whatever they are handed, a `GetOrAdd` factory's argument included, which reaches the factory
+  as an `object` only, a factory typed over the table or a view of it being refused where it is built —, a call to, or a
+  method group of, a member that takes it, gives it, views it or names its pairs, in an array, a reference or a type
+  argument included, at any depth, or a static field declared on a type built over its pairs or a view of it, refused,
+  the table not followed through `object`, a non-generic interface or an expression tree, which names its members by
+  token; and a table over such a key, a key holding a type parameter, or one that enumerates by hash, built for a type
+  argument by a `new()` constraint, or for it or any type parameter, whatever its constraints, by the library's own
+  `new()`, which compiles to `Activator`, or by `Activator`, `Lazy`, `LazyInitializer`, a `ConditionalWeakTable`'s
+  `GetOrCreateValue`, a `BindingList`, which builds one for `AddNew`, or `Marshal.PtrToStructure` — the builders a sweep
+  of .NET 10's shared framework found that may build a table, none handing it a comparer, a `Lazy` or a `BindingList`
+  one of them builds counting as the table it builds in turn —; and a generic JSON deserializer of `System.Text.Json` or
+  `System.Net.Http.Json`, whatever its type argument, which builds every table that type holds with .NET's default
+  comparer unless its options or the type say otherwise, out of the reading's sight: the library reads no JSON. The
+  library builds no type parameter it is given, generic code taking a factory instead: what its callers give it, through
+  a dispatch, a constrained call or a default implementation as well as a call, is not all read. The rule covers every
+  such key, whatever it numbers and wherever it comes from, so that none needs arguing. The library builds no hash
+  collection over a key holding a type parameter, at any depth, whatever its comparer: its callers choose its key and
+  the comparer they hand it, and no reading follows them. How the hash of a type the library hashes by hand spreads is
+  held by its own tests, as `PdfObjectId`'s and `PdfDiagnostic`'s are; an enumeration's values are the library's own; a
+  collection built through reflection otherwise, an `UnsafeAccessor`'s among them, whose body the runtime writes, or one
+  a framework method returns under another type, is not read. The reading takes out the probes code coverage puts, by
+  their shape alone, so that a probe written otherwise refuses the table it stands before. The other reads the sources,
+  their comments and literals blanked, and names the file and line of the shapes it recognizes over a numeric key or a
+  pair: a declaration given `[]` or `new()`, a `new` without the comparer among its own arguments or in its initializer,
+  a name declared with no table and given one later, the tables an array's initializer builds, and a concurrent, frozen
+  or immutable one whose type it writes and that it sees built with `[]` or `new`, there or later, seeded or not; and,
+  whatever the key, which it cannot see where an operator is called, a LINQ operator that hashes without naming a
+  comparer, asynchronous ones included; one an operator or a factory builds is the compiled reading's.
 - **No bound is added**, and nothing is classified under ADR 34: the slots' slack is a property of the representation,
   not a limit on what a file may hold.
 
