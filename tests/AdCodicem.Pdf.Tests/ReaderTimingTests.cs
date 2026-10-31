@@ -299,9 +299,13 @@ public class ReaderTimingTests
         // Object streams need one another's objects through their /DecodeParms, in HostileInputTests' shapes. The walk
         // looked for a way back to each stream with a search from each of its needs, which cost the square of their number:
         // 17 s for a chain of 20,000 streams, 44 s for a ring (#168). It works out the streams that lead to one another once:
-        // four times the streams take about four times as long, where the search took sixteen. The measure is the ratio, the
-        // best of five walks of each, each walked once first; each walk starts from a collected heap, so that what a walk
-        // before it left, the needs and findings of each stream, is not collected inside the next.
+        // four times the streams take about four times as long, where the search took seventeen to twenty times as long. The
+        // measure is the ratio, the best of five walks of each, each walked once first; each walk starts from a collected
+        // heap, so that what a walk before it left, the needs and findings of each stream, is not collected inside the next.
+        // Walks this short, tens of milliseconds, are all slowed now and then on a busy machine: a bound of 8 failed once in
+        // 15 runs under load, and 8 times in 300 under four busy loops, where alternating the walks until neither improves,
+        // as BestOfEach does, failed about as often. A bound of 12 still tells a walk that grows with the streams from one
+        // that grows with their square.
         const int Small = 2000;
         const int Large = 4 * Small;
         var options = new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxFilterChainLength = Large } };
@@ -320,7 +324,7 @@ public class ReaderTimingTests
         }
 
         largeTime.Should().BeLessThan(
-            smallTime * 8,
+            smallTime * 12,
             "four times the streams must cost about four times the time ({0} for {1:N0}, {2} for {3:N0})",
             smallTime,
             Small,
