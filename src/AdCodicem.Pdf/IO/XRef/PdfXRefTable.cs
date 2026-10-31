@@ -78,8 +78,10 @@ internal sealed class PdfXRefTable : IEnumerable<KeyValuePair<int, XRefEntry>>
     /// <summary>Gets the trailer, merged across every section of the chain.</summary>
     /// <remarks>
     /// What the reader merges into it or sets in it once the document is open, it does in a copy made first
-    /// (<see cref="RenewTrailer"/>), which then takes its place: a trailer handed out is never changed by the reader
-    /// (#167).
+    /// (<see cref="RenewTrailer"/>), which takes its place as a rebuild, or an attempt to finish one, begins, and takes in
+    /// what the rebuild merges and sets while it still reads the file. A trailer taken before a rebuild, or after it, is
+    /// therefore never changed by the reader (#167); one a caller's own <see cref="PdfFileSource"/> takes from inside the
+    /// rebuilding read is that copy, and may still gain the trailers and the <c>/Root</c> the rebuild merges and sets after.
     /// </remarks>
     public PdfDictionary Trailer { get; private set; } = new();
 

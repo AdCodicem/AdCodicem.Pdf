@@ -715,6 +715,79 @@ public class ReadOrderTests
         document.Catalog.Should().BeSameAs(document.GetObject(new PdfObjectId(1)) as PdfDictionary);
     }
 
+    [Theory]
+    [InlineData("a read")]
+    [InlineData("a validation")]
+    public void While_a_rebuild_waits_to_be_finished_the_object_count_and_numbers_are_the_unfinished_rebuild_s(string next)
+    {
+        // As above: the file's trailer names no /Root, reading 7 rebuilds the index while object stream 6 is being loaded,
+        // and the source fails twice to give 5, 6's /Length. The rebuild waits to be finished, 6 not expanded: until the
+        // next read or validation finishes it, ObjectCount and ObjectNumbers count the scan's entries, without 7, which 6
+        // holds, and Catalog reads a trailer no search for the catalog has set /Root in. Asking them finishes nothing.
+        var (bytes, five) = MemberWhoseLengthLeadsNowhere(trailer: string.Empty);
+        using var source = new FailingSource(bytes);
+        using var document = PdfDocument.Open(source, options: null, ownsSource: false);
+        source.Fail(five, 1, 2);
+
+        FluentActions.Invoking(() => document.GetObject(new PdfObjectId(7))).Should().Throw<IOException>();
+        var count = document.ObjectCount;
+        var numbers = document.ObjectNumbers.ToList();
+        var catalog = document.Catalog;
+        var countAgain = document.ObjectCount;
+
+        if (next == "a read")
+        {
+            document.GetObject(new PdfObjectId(1)).Should().BeOfType<PdfDictionary>();
+        }
+        else
+        {
+            _ = new PdfValidator().Validate(document);
+        }
+
+        document.WasRepaired.Should().BeTrue();
+        count.Should().Be(7);
+        countAgain.Should().Be(7);
+        numbers.Should().BeEquivalentTo([1, 2, 3, 5, 6, 8, 9]);
+        catalog.Should().BeNull();
+        document.ObjectCount.Should().Be(8);
+        document.ObjectNumbers.Should().BeEquivalentTo([1, 2, 3, 5, 6, 7, 8, 9]);
+        document.Catalog.Should().BeSameAs(document.GetObject(new PdfObjectId(1)) as PdfDictionary);
+    }
+
+    [Fact]
+    public void A_trailer_a_caller_s_source_takes_inside_a_rebuilding_read_may_change_and_one_taken_before_or_after_does_not()
+    {
+        // #237's shape: reading object 4 rebuilds the index, which renews the trailer as it begins and then merges the older
+        // trailer's /Foo and /Info into the renewed one while it still reads the file. A trailer taken before the read, or
+        // after it, is never changed by the reader; one the caller's own source takes from inside the read may be: the one
+        // taken before the merges gains them (#167).
+        using var source = new FailingSource(PdfTemplate.Build(ConvergenceShapes.TrailerPrevLastTemplate));
+        using var document = PdfDocument.Open(source, options: null, ownsSource: false);
+        var before = document.Trailer;
+        var inside = new List<(PdfDictionary Trailer, List<string> Keys)>();
+        source.Reading = () => inside.Add((document.Trailer, Keys(document.Trailer)));
+
+        _ = document.GetObject(new PdfObjectId(4));
+        source.Reading = null;
+        var after = document.Trailer;
+        _ = new PdfValidator().Validate(document);
+
+        document.WasRepaired.Should().BeTrue();
+        Keys(before).Should().Equal("Size", "Root", "Bar", "Prev");
+        Keys(after).Should().Equal("Size", "Root", "Bar", "Prev", "Foo", "Info");
+        document.Trailer.Should().BeSameAs(after);
+        var changed = inside.Where(taken => !taken.Keys.SequenceEqual(Keys(taken.Trailer))).ToList();
+        changed.Should().NotBeEmpty("the reader merged the older trailer into one the source took inside the read");
+        changed.Should().AllSatisfy(taken =>
+        {
+            taken.Trailer.Should().NotBeSameAs(before);
+            taken.Keys.Should().Equal("Size", "Root", "Bar", "Prev");
+            Keys(taken.Trailer).Should().Equal("Size", "Root", "Bar", "Prev", "Foo", "Info");
+        });
+
+        static List<string> Keys(PdfDictionary trailer) => [.. trailer.Keys.Select(key => key.Value)];
+    }
+
     [Fact]
     public void An_enumeration_of_the_diagnostics_a_caller_s_source_begins_inside_a_read_ends_with_the_entries_the_read_leaves()
     {
@@ -1289,6 +1362,9 @@ public class ReadOrderTests
         /// <summary>Gets or sets what the source does as a read fails, before it throws: a caller's code inside the read.</summary>
         public Action? Failing { get; set; }
 
+        /// <summary>Gets or sets what the source does as any read begins, failed or not: a caller's code inside the read.</summary>
+        public Action? Reading { get; set; }
+
         /// <summary>Makes the reads starting at <paramref name="at"/> whose ordinals <paramref name="reads"/> gives, from 1, fail.</summary>
         public void Fail(long at, params int[] reads)
         {
@@ -1301,6 +1377,8 @@ public class ReadOrderTests
         /// <inheritdoc/>
         public override int Read(long offset, Span<byte> buffer)
         {
+            Reading?.Invoke();
+
             if (offset == _at && _failing.Contains(++_reads))
             {
                 Failing?.Invoke();

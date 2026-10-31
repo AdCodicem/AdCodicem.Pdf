@@ -26,7 +26,18 @@ namespace AdCodicem.Pdf.Documents;
 /// <see cref="ObjectNumbers"/> gives the rebuilt index's numbers, and the next <see cref="Trailer"/> the rebuilt trailer,
 /// which <see cref="Catalog"/> and <see cref="IsEncrypted"/> read. An enumeration under way, of the object numbers or of
 /// the diagnostics, goes on over what it began with, and never throws for the rebuild; a trailer taken before, and every
-/// object read before, is left as it was.
+/// object read before, is left as it was, and a trailer taken after is never changed. Only a caller's own
+/// <see cref="PdfFileSource"/>, reading the document from inside the read that rebuilds, can take a trailer the rebuild
+/// still changes, or step an enumeration of the diagnostics across what the rebuild withdraws and records again.
+/// </para>
+/// <para>
+/// A rebuild a read sets off while that read is still under way is finished before the read returns or its exception
+/// leaves. When the source fails while it is being finished, <see cref="Trailer"/>, <see cref="Catalog"/>,
+/// <see cref="IsEncrypted"/>, <see cref="ObjectCount"/> and <see cref="ObjectNumbers"/> describe the unfinished rebuild
+/// until the next read or validation finishes it: the index lacks the members of the object streams the finish had not
+/// taken in, and the trailer a <c>/Root</c> the finish would search for. Asking them finishes nothing, but for a
+/// <c>/Root</c> the trailer names, which <see cref="Catalog"/> reads, finishing the rebuild first: on a file whose own
+/// trailer names none, <see cref="Catalog"/> is null then.
 /// </para>
 /// <para>
 /// Once disposed, a document answers nothing but its <see cref="Diagnostics"/>, the record of its reading, and
@@ -69,10 +80,19 @@ public sealed class PdfDocument : IDisposable
 
     /// <summary>Gets the document trailer: the trailers of the file's cross-reference sections, merged.</summary>
     /// <remarks>
+    /// <para>
     /// A rebuild of the index after opening — which a read, or the start of a validation, can set off
     /// (<see cref="WasRepaired"/>) — merges the trailers it finds into a new dictionary, and may set its <c>/Root</c> to a
-    /// catalog it finds: the next call gives that one, and a trailer taken before is left as it was, without them (#167).
-    /// Read it again after reading the document rather than keep it.
+    /// catalog it finds: the next call gives that one. A trailer taken before the rebuild is left as it was, without them,
+    /// and one taken after it is never changed (#167); one a caller's own <see cref="PdfFileSource"/> takes from inside the
+    /// rebuilding read is the new dictionary, and may still gain the trailers and the <c>/Root</c> the rebuild merges and
+    /// sets after. Read it again after reading the document rather than keep it.
+    /// </para>
+    /// <para>
+    /// When the source fails while the rebuild is being finished, it gives the unfinished rebuild's trailer until the next
+    /// read or validation finishes it: the trailers its scan found are merged, but a <c>/Root</c> the finish would search
+    /// for is not set.
+    /// </para>
     /// </remarks>
     /// <exception cref="ObjectDisposedException">The document was disposed.</exception>
     public PdfDictionary Trailer
@@ -87,7 +107,10 @@ public sealed class PdfDocument : IDisposable
     /// <summary>Gets the document catalog, the root of the object graph.</summary>
     /// <remarks>
     /// It is read through the <c>/Root</c> of the trailer <see cref="Trailer"/> gives now, which a rebuild of the index
-    /// after opening — set off by a read, or by the start of a validation — replaces (#167).
+    /// after opening — set off by a read, or by the start of a validation — replaces (#167). When the source fails while
+    /// the rebuild is being finished, that trailer is the unfinished rebuild's until the next read or validation finishes
+    /// it: on a file whose own trailer names no <c>/Root</c>, the catalog is null then, though opening found one; a
+    /// <c>/Root</c> the file's trailer names is read, which finishes the rebuild first.
     /// </remarks>
     /// <exception cref="ObjectDisposedException">The document was disposed.</exception>
     public PdfDictionary? Catalog => Trailer.GetDictionary(PdfName.Root);
@@ -145,7 +168,9 @@ public sealed class PdfDocument : IDisposable
     /// </summary>
     /// <remarks>
     /// It can therefore change after opening, on a read or at the start of a validation that rebuilds the index
-    /// (<see cref="WasRepaired"/>).
+    /// (<see cref="WasRepaired"/>). When the source fails while the rebuild is being finished, it counts the unfinished
+    /// rebuild's entries, without the members of the object streams the finish had not taken in, until the next read or
+    /// validation finishes it.
     /// </remarks>
     /// <exception cref="ObjectDisposedException">The document was disposed.</exception>
     public int ObjectCount
@@ -161,7 +186,9 @@ public sealed class PdfDocument : IDisposable
     /// <remarks>
     /// It says whether the trailer <see cref="Trailer"/> gives now holds <c>/Encrypt</c>. A rebuild of the index after
     /// opening — set off by a read, or by the start of a validation — can merge an older trailer's <c>/Encrypt</c> into the
-    /// trailer it makes, so that it can turn true after opening, on a document opened as unencrypted (#154).
+    /// trailer it makes, so that it can turn true after opening, on a document opened as unencrypted (#154). When the
+    /// source fails while the rebuild is being finished, it reads the unfinished rebuild's trailer, into which the scan
+    /// has already merged every trailer it found.
     /// </remarks>
     /// <exception cref="ObjectDisposedException">The document was disposed.</exception>
     public bool IsEncrypted => Trailer.ContainsKey(PdfName.Encrypt);
@@ -311,6 +338,9 @@ public sealed class PdfDocument : IDisposable
     /// them, whatever a read or a validation it goes on through does to the index meanwhile: a rebuild changes what the
     /// next enumeration gives, not this one, which never throws for it (#167). Nothing is copied; a rebuild during an
     /// enumeration records the rebuilt index's numbers in a new array, 4 bytes for each entry the index has room for.
+    /// When the source fails while the rebuild is being finished, an enumeration whose first step comes before the next
+    /// read or validation finishes it gives the unfinished rebuild's numbers, without the members of the object streams
+    /// the finish had not taken in.
     /// </para>
     /// <para>An enumeration begun before the document is disposed is refused at its next step after.</para>
     /// </remarks>
