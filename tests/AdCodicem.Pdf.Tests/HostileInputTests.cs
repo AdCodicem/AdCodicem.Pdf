@@ -1825,13 +1825,17 @@ public class HostileInputTests
     [InlineData("a parameters dictionary of 100 KB")]
     [InlineData("a chain of 20,000 references")]
     [InlineData("64 filters and parameters, each a chain")]
+    [InlineData("64 parameters and their values, each a stream heading a nest of 62")]
     public void The_walk_of_the_object_streams_dependencies_allocates_for_each_stream_no_more_than_its_dictionary_costs(string shared)
     {
         // Object streams share what their /Filter and /DecodeParms lead to: a parameters dictionary of 100 KB; a chain of
-        // 20,000 references, longer than the reader's cache; or 64 filters and 64 parameters, each a chain of 31
-        // references, the parameters' values chains as well. The walk read what each led to again for every stream, the
-        // long chain parsed again for each, 5.6 MB a stream (#201). It reads what decoding reads of each object once a
-        // validation, and takes a chain it has followed at once: what one more stream costs is its own dictionary.
+        // 20,000 references, longer than the reader's cache; 64 filters and 64 parameters, each a chain of 31 references,
+        // the parameters' values chains as well; or 64 parameters and the values their predictor asks for, each a stream
+        // heading a nest of 62 streams by /Length, which the parse of each takes to the reader's deepest load: 16,128
+        // streams, more than the walk keeps. The walk read what each led to again for every stream, the long chain parsed
+        // again for each, 5.6 MB a stream (#201), and each nest of streams, 14 MB (walk:1 of #277's review). It reads what
+        // decoding reads of each object once a validation, takes a chain it has followed at once, and a nest of streams a
+        // parse went through: what one more stream costs is its own dictionary.
         const int Few = 250;
         const int Many = 1000;
         var few = SharedByObjectStreams(shared, Few);
@@ -3936,7 +3940,8 @@ public class HostileInputTests
     /// <summary>
     /// A file of <paramref name="streams"/> object streams, each holding one dictionary, that share what their
     /// <c>/Filter</c> and <c>/DecodeParms</c> lead to, as <paramref name="shared"/> describes it: a parameters dictionary of
-    /// 100 KB, a chain of 20,000 references to one, or <see cref="SharedChains"/>'s 64 filters and parameters.
+    /// 100 KB, a chain of 20,000 references to one, <see cref="SharedChains"/>'s 64 filters and parameters, or
+    /// <see cref="LengthNests"/>'.
     /// </summary>
     internal static byte[] SharedByObjectStreams(string shared, int streams)
     {
@@ -3963,8 +3968,11 @@ public class HostileInputTests
 
                 return PackedFile(packed, chain);
 
-            default:
+            case "64 filters and parameters, each a chain":
                 return SharedChains(streams, links: 31);
+
+            default:
+                return LengthNests(streams);
         }
     }
 
@@ -4119,6 +4127,60 @@ public class HostileInputTests
         return PackedFile(packed, direct);
 
         static int ChainMember(int k) => 100_001 + (2 * k);
+    }
+
+    /// <summary>
+    /// A file of <paramref name="streams"/> object streams, numbered 20,000, 20,002 and so on, each holding one dictionary,
+    /// that share <c>/Filter 5 0 R</c>, 64 Flate steps, and <c>/DecodeParms 6 0 R</c>, 64 references to streams of
+    /// parameters whose predictor asks for their <c>/Colors</c>, <c>/BitsPerComponent</c> and <c>/Columns</c>, each a stream
+    /// as well (walk:1 of #277's review). Each of the 256 heads a nest of <paramref name="depth"/> streams by
+    /// <c>/Length</c>, each taking it from the next, the last from a direct 0: a stream met on a chain has its
+    /// <c>/Length</c> followed a level deeper, which the parse of 62 such streams below one met at the second level takes to
+    /// the reader's deepest load, 16,128 streams a walk — ending where the chains do, or, of a deeper nest, cut there. The
+    /// streams' data is written as it is: the walk of their dependencies reads none of it.
+    /// </summary>
+    internal static byte[] LengthNests(int streams, int depth = 62)
+    {
+        const int Steps = 64;
+        var direct = new List<(int Number, string Body)>
+        {
+            (5, "[" + string.Join(' ', Enumerable.Repeat("/FlateDecode", Steps)) + "]"),
+        };
+        var parameters = new StringBuilder("[");
+        var next = 10;
+
+        for (var step = 0; step < Steps; step++)
+        {
+            var (colors, bits, columns) = (Nest(string.Empty), Nest(string.Empty), Nest(string.Empty));
+            var head = Nest(string.Create(CultureInfo.InvariantCulture, $"/Predictor 10 /Colors {colors} 0 R /BitsPerComponent {bits} 0 R /Columns {columns} 0 R "));
+            parameters.Append(CultureInfo.InvariantCulture, $"{head} 0 R ");
+        }
+
+        direct.Add((6, parameters.Append(']').ToString()));
+        var packed = new List<PackedStream>();
+
+        for (var k = 0; k < streams; k++)
+        {
+            packed.Add(new PackedStream(20_000 + (2 * k), "/Filter 5 0 R /DecodeParms 6 0 R", [(20_001 + (2 * k), "<< >>")], PackedData.Plain));
+        }
+
+        return PackedFile(packed, direct);
+
+        // Writes a stream whose dictionary adds `entries`, heading a nest of `depth` streams, each taking its /Length from
+        // the next.
+        int Nest(string entries)
+        {
+            var head = next;
+            next += depth + 1;
+
+            for (var level = 0; level <= depth; level++)
+            {
+                var length = level < depth ? string.Create(CultureInfo.InvariantCulture, $"{head + level + 1} 0 R") : "0";
+                direct.Add((head + level, $"<< {(level == 0 ? entries : string.Empty)}/Length {length} >>\nstream\n\nendstream"));
+            }
+
+            return head;
+        }
     }
 
     private static byte[] PackedFile(IReadOnlyList<PackedStream> streams, IReadOnlyList<(int Number, string Body)>? direct = null)

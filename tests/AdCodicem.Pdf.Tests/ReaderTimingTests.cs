@@ -231,6 +231,32 @@ public class ReaderTimingTests
             shortTime);
     }
 
+    [Fact]
+    public void Sixteen_times_as_many_object_streams_whose_parameters_head_nests_of_streams_have_their_dependencies_walked_in_less_than_four_times_the_time()
+    {
+        // walk:1 of #277's review: object streams share 64 parameters and the values their predictor asks for, each a stream
+        // heading a nest of 63 streams by /Length, which the parse of each follows to the reader's deepest load, where it is
+        // cut: 16,128 streams, more than the walk keeps of what it reads. The walk followed every nest again for each object
+        // stream, reading again all it had let go, 50 ms a stream: sixteen times the streams took seventeen times as long,
+        // 0.78 s for 16 and 13.1 s for 256. It takes at once the nest of streams a parse went through, from the depth it went
+        // through it, and what one more object stream costs, 0.2 ms, is small next to what parsing the nests once costs, 45 ms:
+        // 256 streams take about twice as long as 16. The measure is the ratio, the best walk of each, run in turn.
+        const int Few = 16;
+        const int Many = 256;
+        using var few = PdfDocument.Open(HostileInputTests.LengthNests(Few, depth: 63));
+        using var many = PdfDocument.Open(HostileInputTests.LengthNests(Many, depth: 63));
+
+        var (fewTime, manyTime) = BestOfEach(() => ObjectStreamDependencies.Run(few), () => ObjectStreamDependencies.Run(many));
+
+        manyTime.Should().BeLessThan(
+            fewTime * 4,
+            "sixteen times the object streams must be walked in less than four times the time ({0} for {1:N0}, {2} for {3:N0})",
+            fewTime,
+            Few,
+            manyTime,
+            Many);
+    }
+
     [Theory]
     [InlineData("four times the streams", 8)]
     [InlineData("chains eight times as long", 3)]

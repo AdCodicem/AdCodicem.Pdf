@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Runtime.InteropServices;
 using AdCodicem.Pdf.Documents;
 using AdCodicem.Pdf.IO;
 using AdCodicem.Pdf.IO.Filters;
@@ -94,6 +95,18 @@ namespace AdCodicem.Pdf.Validation;
 /// reader keeps in its cache, an object let go read again when met again. A value a stream reads again — the parameters
 /// each step of a chain of filters reads — is followed once a stream, as the reader keeps what it loaded. As it holds each
 /// dictionary, it also notes the integers of its header written as reals.
+/// </para>
+/// <para>
+/// The parse of a stream met on a chain parses in turn the stream its <c>/Length</c> loads, a level deeper, and so on to the
+/// reader's deepest load: a nest of 62 streams below one met at the second level, which streams of parameters, each heading
+/// one, took past what the walk keeps — 16,128 streams a walk, read again for each object stream (walk:1 of #277's review).
+/// A parse that met nothing the walk's own state answers — no object of an object stream, which reads as the stream walked
+/// and those in flight make it, no stream parsed before, the stream walked among them — parsed what the file alone says
+/// from that depth down, the same for every walk. The streams it went through, its nest, are kept by the number of the
+/// stream heading them, as many nests as the reader keeps objects, and taken at once where that stream is met again at that
+/// depth or below it, or at any depth when the parse ended where its chains do, short of the reader's nesting: its streams
+/// are parsed, as far as the nesting lets a parse from there reach, up to one parsed already, where the parse would end. A
+/// validation keeps one nest for the outermost parse, or for the outermost one inside it that met nothing.
 /// </para>
 /// </remarks>
 internal sealed class ObjectStreamDependencies
@@ -478,10 +491,40 @@ internal sealed class ObjectStreamDependencies
         private readonly Dictionary<int, Followed> _values = new(SeededComparer.Instance);
 
         /// <summary>
+        /// The streams parsed since the outermost parse in flight began — a stream met on a chain while no other's
+        /// <c>/Length</c> is being resolved —, in order, that stream first: what a parse parsed in turn, which lies past it
+        /// here, is its nest. Each parse parses one stream in turn at most, a level below it, its <c>/Length</c> ending at the
+        /// first stream it loads: the list holds no more than the reader nests loads.
+        /// </summary>
+        private readonly List<int> _nested = [];
+
+        /// <summary>
         /// The walk that works out whether an object stream is self-contained, which follows no member; made the first time
         /// the walk that judges the streams meets a member of one whose status is not known yet.
         /// </summary>
         private Walk? _containment;
+
+        /// <summary>
+        /// How many times the walk met what its own state answers, rather than the file alone: an object of an object stream,
+        /// which reads as the stream walked, the streams in flight and its holder's standing make it — or a run through such
+        /// objects —, and a stream the walk parsed already, which is not parsed again. A parse that met none of them gives the
+        /// memo its nest, the same for every walk (walk:1 of #277's review).
+        /// </summary>
+        private int _stateful;
+
+        /// <summary>
+        /// How many loads the reader's nesting cut: a parse that met none ended where its chains do, and its nest is the same
+        /// from any depth; one cut there may reach further from higher up.
+        /// </summary>
+        private int _cuts;
+
+        /// <summary>
+        /// Of the parses ended inside the outermost one in flight, the outermost that met nothing the walk's state answers,
+        /// whose nest the outermost parse gives the memo as it ends — its own when it met nothing either: a parse that met
+        /// nothing takes over the one inside it, whose nest its own holds; one that met something leaves it. Null between
+        /// outermost parses.
+        /// </summary>
+        private Settled? _settled;
 
         /// <summary>The object stream walked, whose objects read as null while it is decoded.</summary>
         private int _stream;
@@ -644,6 +687,12 @@ internal sealed class ObjectStreamDependencies
                 if (depth <= PdfFileReader.MaxNestedLoads && memo.RunFrom(number, links - loaded, throughMembers) is { } run &&
                     (throughMembers || !run.PassesMembers))
                 {
+                    // A run through objects of object streams is taken by the walk that follows them alone: its state answers it.
+                    if (run.PassesMembers)
+                    {
+                        _stateful++;
+                    }
+
                     var taken = Math.Min(run.Numbers.Length, links - loaded);
 
                     if (loaded < TargetLink)
@@ -712,14 +761,22 @@ internal sealed class ObjectStreamDependencies
                 return PdfNull.Instance;
             }
 
+            // What an object of an object stream reads as, the walk's state answers.
             if (entry.Kind == XRefEntryKind.Compressed)
             {
+                _stateful++;
                 return Member(number, entry, key, depth);
             }
 
-            // Past the reader's nesting, a load reads as null.
-            if (entry.Kind != XRefEntryKind.Regular || depth > PdfFileReader.MaxNestedLoads)
+            if (entry.Kind != XRefEntryKind.Regular)
             {
+                return PdfNull.Instance;
+            }
+
+            // Past the reader's nesting, a load reads as null.
+            if (depth > PdfFileReader.MaxNestedLoads)
+            {
+                _cuts++;
                 return PdfNull.Instance;
             }
 
@@ -727,15 +784,98 @@ internal sealed class ObjectStreamDependencies
 
             // A stream's parse resolves its /Length a level deeper, while it is in flight; once, as the reader keeps it. One met
             // again while in flight, which the reader reads as null, is met on the chain of a /Length, whose value the walk
-            // drops: what it gives there changes nothing.
-            if (held.IsStream && _parsed.Add(number))
+            // drops: what it gives there changes nothing. That it is not parsed again, what the walk parsed before decides.
+            if (held.IsStream)
             {
-                _inFlight.Add(number);
-                Follow(held.Length, key, LengthLinks, depth + 1, out _);
-                _inFlight.Remove(number);
+                if (_parsed.Add(number))
+                {
+                    Parse(number, held, key, depth);
+                }
+                else
+                {
+                    _stateful++;
+                }
             }
 
             return held.Value;
+        }
+
+        /// <summary>
+        /// Follows the <c>/Length</c> of stream <paramref name="number"/>, which <paramref name="held"/> gives, as its parse
+        /// resolves it, under <paramref name="key"/>: met on a chain at <paramref name="depth"/> and parsed for the first time
+        /// this walk, the stream is in flight meanwhile, and the <c>/Length</c> loaded a level deeper. A nest the memo knows of
+        /// it, from that depth or above, is taken at once, as a run of links is (walk:1 of #277's review).
+        /// </summary>
+        /// <remarks>
+        /// The parse parses in turn the first stream its <c>/Length</c> loads, which ends that chain, a level deeper. Streams
+        /// of parameters each heading a nest of 62 such streams were 16,128 a walk, more than the memo keeps objects: the walk
+        /// of each object stream read them all again, about 60 ms and 15 MB a stream. A parse that met nothing the walk's
+        /// state answers gives its nest; the outermost parse gives the memo its own, or that of the outermost inside it that
+        /// met nothing, so that a validation keeps a nest for each stream met at the head of one, not one for each stream of
+        /// it — which would let go of the heads' as the objects' let go of them.
+        /// </remarks>
+        private void Parse(int number, Held held, string key, int depth)
+        {
+            // The streams a parse parses in turn are noted, in order, for the nest it may give the memo; the outermost parse
+            // starts the list anew.
+            if (_inFlight.Count == 0)
+            {
+                _nested.Clear();
+            }
+
+            _nested.Add(number);
+
+            if (memo.NestOf(number) is { } known && (known.EndsChain || depth >= known.Depth))
+            {
+                Take(known, depth);
+                return;
+            }
+
+            var (stateful, cuts, start) = (_stateful, _cuts, _nested.Count);
+            _inFlight.Add(number);
+            Follow(held.Length, key, LengthLinks, depth + 1, out _);
+            _inFlight.Remove(number);
+
+            // A parse that met nothing the walk's state answers takes over the nest inside it, which its own holds.
+            if (_stateful == stateful)
+            {
+                _settled = new Settled(number, depth, _cuts == cuts, start, _nested.Count);
+            }
+
+            if (_inFlight.Count == 0 && _settled is { } settled)
+            {
+                memo.NoteNest(settled.Stream, new Nest(settled.Depth, settled.EndsChain, CollectionsMarshal.AsSpan(_nested)[settled.Start..settled.End].ToArray()));
+                _settled = null;
+            }
+        }
+
+        /// <summary>
+        /// Takes at once the nest <paramref name="nest"/> of a stream met at <paramref name="depth"/>: parses its streams, as
+        /// far as the reader's nesting lets the stream's parse reach from there — the first a level below the stream, each
+        /// next a level further —, and up to one the walk parsed already, where that parse ends, the stream met again; and
+        /// counts what the parse would have met.
+        /// </summary>
+        private void Take(Nest nest, int depth)
+        {
+            var streams = nest.Streams;
+            var reach = Math.Min(streams.Length, PdfFileReader.MaxNestedLoads - depth);
+
+            for (var index = 0; index < reach; index++)
+            {
+                if (!_parsed.Add(streams[index]))
+                {
+                    _stateful++;
+                    return;
+                }
+
+                _nested.Add(streams[index]);
+            }
+
+            // Short of the nest's end, or at an end the reader's nesting made, the parse is cut there.
+            if (reach < streams.Length || !nest.EndsChain)
+            {
+                _cuts++;
+            }
         }
 
         /// <summary>
@@ -791,6 +931,16 @@ internal sealed class ObjectStreamDependencies
         }
     }
 
+    /// <summary>
+    /// A parse that met nothing the walk's state answers, whose nest the outermost parse gives the memo as it ends.
+    /// </summary>
+    /// <param name="Stream">The stream parsed.</param>
+    /// <param name="Depth">The depth it was met at.</param>
+    /// <param name="EndsChain">Whether the parse ended where its chains do, with no load the reader's nesting cut.</param>
+    /// <param name="Start">Where the streams it parsed in turn start in the walk's list of the streams parsed.</param>
+    /// <param name="End">Where they end there.</param>
+    private readonly record struct Settled(int Stream, int Depth, bool EndsChain, int Start, int End);
+
     /// <summary>What a value read once a stream is parsed leads to.</summary>
     /// <param name="Value">The value the reader reads.</param>
     /// <param name="LeftByGuard">
@@ -828,15 +978,27 @@ internal sealed class ObjectStreamDependencies
     /// a reference's generation leads the reader to no other object —: what decoding may read of it, and the run a chain
     /// loads from it. As many objects as <paramref name="capacity"/> says, the oldest let go first, and read again when met
     /// again, so that what the walks keep follows the reader's cache rather than the file (#201). It also keeps whether each
-    /// object stream the walks asked about is self-contained.
+    /// object stream the walks asked about is self-contained, and the nest of each stream whose parse a walk followed
+    /// without meeting anything its state answers.
     /// </summary>
     /// <param name="document">The document whose objects are read.</param>
-    /// <param name="capacity">How many objects are kept, at most: as many as the reader caches.</param>
+    /// <param name="capacity">How many objects are kept, at most: as many as the reader caches; and as many nests.</param>
     /// <param name="maxFilters">The most filters a stream's data passes through, which bounds what is kept of an array.</param>
     private sealed class Memo(PdfDocument document, int capacity, int maxFilters)
     {
         private readonly Dictionary<int, Held> _held = new(SeededComparer.Instance);
         private readonly Queue<int> _order = new();
+
+        /// <summary>
+        /// The nests the walks found, by the number of the stream heading each: as many as <c>capacity</c> says, the oldest
+        /// let go first, and found again when met again. They are kept apart from the objects, which the parse of one nest
+        /// fills in turn, and which would let go of every nest a walk meets as it takes in their streams. Each holds 62
+        /// numbers at most, as many streams as a parse reaches below a stream met at the second level, the shallowest any is
+        /// met, within the reader's nesting (<see cref="PdfFileReader.MaxNestedLoads"/>), which no value the file gives
+        /// changes: what they keep follows the reader's cache, not the file (walk:1 of #277's review).
+        /// </summary>
+        private readonly Dictionary<int, Nest> _nests = new(SeededComparer.Instance);
+        private readonly Queue<int> _nestOrder = new();
 
         /// <summary>
         /// Whether each object stream the walks met an object of is self-contained, by its number: worked out once a
@@ -856,6 +1018,28 @@ internal sealed class ObjectStreamDependencies
         /// <summary>Notes whether object stream <paramref name="stream"/> is self-contained.</summary>
         public void NoteSelfContained(int stream, bool selfContained) =>
             (_selfContained ??= new(SeededComparer.Instance))[stream] = selfContained;
+
+        /// <summary>Gives the nest a walk found of stream <paramref name="stream"/>; null when none is kept.</summary>
+        public Nest? NestOf(int stream) => _nests.TryGetValue(stream, out var nest) ? nest : null;
+
+        /// <summary>
+        /// Keeps <paramref name="nest"/>, the nest of stream <paramref name="stream"/>: in place of the one kept, which was
+        /// found from deeper down, since a walk follows a parse only where none kept can be taken.
+        /// </summary>
+        public void NoteNest(int stream, Nest nest)
+        {
+            if (!_nests.ContainsKey(stream))
+            {
+                if (_nests.Count >= capacity && _nestOrder.TryDequeue(out var oldest))
+                {
+                    _nests.Remove(oldest);
+                }
+
+                _nestOrder.Enqueue(stream);
+            }
+
+            _nests[stream] = nest;
+        }
 
         /// <summary>
         /// Gives what object <paramref name="number"/>, which <paramref name="entry"/> places, gives the walks: kept already,
@@ -1036,6 +1220,30 @@ internal sealed class ObjectStreamDependencies
 
         /// <summary>Gets or sets the run a chain loads from the object, once worked out, when its value is a reference.</summary>
         public LinkRun? Run { get; set; }
+    }
+
+    /// <summary>
+    /// What the parse of a stream met on a chain parses in turn as it resolves its <c>/Length</c>, when it met nothing a
+    /// walk's state answers — no object of an object stream, no stream parsed before, the stream walked included —: the
+    /// streams its chains lead through, each the first stream the <c>/Length</c> of the one before loads, a level below it,
+    /// which the file alone gives from that depth down (walk:1 of #277's review).
+    /// </summary>
+    /// <param name="depth">The depth the stream was met at when its parse gave the nest: the nest is the same from below.</param>
+    /// <param name="endsChain">
+    /// Whether the parse ended where its chains do, with no load the reader's nesting cut: the nest is then the same from any
+    /// depth, as far as the nesting lets a parse reach.
+    /// </param>
+    /// <param name="streams">The streams it parsed in turn, in order, the first a level below the stream.</param>
+    private sealed class Nest(int depth, bool endsChain, int[] streams)
+    {
+        /// <summary>Gets the depth the stream was met at when its parse gave the nest.</summary>
+        public int Depth { get; } = depth;
+
+        /// <summary>Gets a value indicating whether the parse ended where its chains do, rather than where the nesting cut it.</summary>
+        public bool EndsChain { get; } = endsChain;
+
+        /// <summary>Gets the streams the parse parsed in turn, in order, the first a level below the stream.</summary>
+        public int[] Streams { get; } = streams;
     }
 
     /// <summary>
