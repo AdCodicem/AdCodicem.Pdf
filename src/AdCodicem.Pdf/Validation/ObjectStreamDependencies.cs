@@ -29,14 +29,34 @@ namespace AdCodicem.Pdf.Validation;
 /// </para>
 /// <para>
 /// An object a chain loads reads as the reader serves it while the stream is decoded. One the stream holds reads as null,
-/// and is a need. One another object stream holds is a need too, and is read through the reader, which decodes that
-/// stream within its own guards and budget; its value is followed. A stream met on the way — a parameter, or a link of a
-/// chain, which ISO 32000-1 allows neither — gives its dictionary, and its parse resolves its <c>/Length</c>, a level
-/// deeper, once a walk, as the reader keeps a stream it parsed; an object it holds reads as null meanwhile, before it is
-/// decoded, and is its need, not the walked stream's. Of a stream that is not of <c>/Type /ObjStm</c>, only what its
-/// <c>/Type</c> needs is kept (#274): a loop through its <c>/Type</c> is why it is not taken for an object stream, and is
-/// the fault; a loop through its <c>/Length</c> alone leaves its objects lost to its type all the same, which
-/// <see cref="PdfValidationRuleIds.XRefObjectStreamBroken"/> says.
+/// and is a need. One another object stream holds is served as that stream's decoding gives it, which the walk follows only
+/// when the holder is self-contained: its own walk, as the reader decodes it — its <c>/Length</c>, <c>/Type</c>,
+/// <c>/N</c>, <c>/First</c> and filters, and the streams met on their chains —, meets no object of an object stream, its
+/// own included. Its decoding is then the same whatever stream is in flight and whatever was read before, and the value
+/// the reader serves is the one the walked stream's decoding reads: it is followed, and needs nothing, a stream that needs
+/// none lying on no loop. Of any other holder, the walk cannot vouch for the value: what its decoding gives may depend on
+/// which stream of a loop the reader decoded first, and on what a caller read before (#277's review). The object is then
+/// a need, and reads as null, as an object of a stream in flight does: a stream keeps at most one need for each value its
+/// decoding reads. Whether a stream is self-contained is worked out once a validation, the first time an object of it is
+/// met, by a walk of that stream that follows no object of an object stream — one it meets is enough —, and so never asks
+/// it of another stream: what it answers is the same whatever was walked or read before. A
+/// stream met on the way — a parameter, or a link of a chain, which ISO 32000-1 allows neither — gives its dictionary, and
+/// its parse resolves its <c>/Length</c>, a level deeper, once a walk, as the reader keeps a stream it parsed; an object
+/// it holds reads as null meanwhile, before it is decoded, and is its need, not the walked stream's.
+/// </para>
+/// <para>
+/// A loop that closes only through the value of an object whose holder is not self-contained is left unseen, as the review
+/// of #277 decided: a stream needs an object of a second, whose decoding meets an object of a third, and that value names
+/// an object the first holds. The reader reports it as it decodes the first; the walk, which does not follow the value,
+/// does not find the first circular.
+/// </para>
+/// <para>
+/// Of a stream that is not of <c>/Type /ObjStm</c>, only what its <c>/Type</c> needs judges it (#274): a loop through its
+/// <c>/Type</c> is why it is not taken for an object stream, and is the fault; a loop through its <c>/Length</c> alone
+/// leaves its objects lost to its type all the same, which <see cref="PdfValidationRuleIds.XRefObjectStreamBroken"/>
+/// says. What its <c>/Length</c> needs still links it to the streams it needs: the reader parses it as it serves one of
+/// its objects, and a stream whose decoding reads that object goes through the parse, and is circular when the parse
+/// leads back to it.
 /// </para>
 /// <para>
 /// Loads nest as they do when one of the stream's objects is the first read: the object is the first load in flight, the
@@ -44,10 +64,11 @@ namespace AdCodicem.Pdf.Validation;
 /// stream met on a chain resolves its <c>/Length</c> a level below the chain. A load past
 /// <see cref="PdfFileReader.MaxNestedLoads"/> reads as null; so does an object another stream holds at that depth, that
 /// stream being loaded a level deeper; one the walked stream holds is a need at any depth, the reader reporting it before
-/// it counts. No recursion goes deeper than that bound. What the reader has read and kept is not modeled, so that the
-/// verdict does not depend on what was read before: a read that reaches the stream through another stream's decoding
-/// nests deeper, and cuts earlier; nor is the thread's stack, which the reader asks as well. An object another stream
-/// holds is the exception: what the reader serves of it may depend on which stream of a loop it decoded first.
+/// it counts. No recursion goes deeper than twice that bound: the walk that works out whether a stream is self-contained
+/// runs within the walk that met one of its objects, and follows no object of an object stream itself. What the reader has
+/// read and kept is not modeled, so that the verdict does not depend on what was read before: a read that reaches the
+/// stream through another stream's decoding nests deeper, and cuts earlier; nor is the thread's stack, which the reader
+/// asks as well.
 /// </para>
 /// <para>
 /// The streams so needed are linked, each to each stream it needs, and a stream its links lead back to is circular: one
@@ -56,7 +77,7 @@ namespace AdCodicem.Pdf.Validation;
 /// and memory linear in the streams and their needs: a search from each need of each stream, which they replace, cost the
 /// square of a chain's length. Each stream keeps, of the objects of each stream it needs, the first it needs: another of
 /// the same stream says nothing more of a loop. Its finding names the first of them, in the order the reader needs them,
-/// whose stream is itself or lies in its component — the first that leads back to it.
+/// whose stream is itself or lies in its component — the first that leads back to it —, among those that judge it.
 /// </para>
 /// <para>
 /// It reads each stream's dictionary, and the objects written directly in the file its values lead through, where the
@@ -67,10 +88,12 @@ namespace AdCodicem.Pdf.Validation;
 /// dictionary the parameters a filter reads, of an array as many elements as a chain of filters reads, of a stream its
 /// parameters and its <c>/Length</c> —, and, of one whose value is a reference, the run of such objects a chain loads from
 /// it, each a reference to the next and none a stream, which needs nothing and is taken at once, however many streams
-/// share the chain. An object a run passes over is not kept for itself: a run keeps where it leads. As many objects are
-/// kept as the reader keeps in its cache, an object let go read again when met again. A value a stream reads again — the
-/// parameters each step of a chain of filters reads — is followed once a stream, as the reader keeps what it loaded. As it
-/// holds each dictionary, it also notes the integers of its header written as reals.
+/// share the chain. An object a self-contained object stream holds is kept as well, as the reader serves it, and a run
+/// goes on through it once the walk knows its holder to be self-contained: what it gives is the same whatever stream is
+/// walked. An object a run passes over is not kept for itself: a run keeps where it leads. As many objects are kept as the
+/// reader keeps in its cache, an object let go read again when met again. A value a stream reads again — the parameters
+/// each step of a chain of filters reads — is followed once a stream, as the reader keeps what it loaded. As it holds each
+/// dictionary, it also notes the integers of its header written as reals.
 /// </para>
 /// </remarks>
 internal sealed class ObjectStreamDependencies
@@ -153,7 +176,7 @@ internal sealed class ObjectStreamDependencies
         // The streams that need an object stream, in the order of their numbers, each with where the chain's row places it
         // and the first object of each stream it needs, another or itself.
         var needing = new List<Needing>();
-        var walk = new Walk(document, new Memo(document, reader.CacheCapacity, reader.FilterChainBound));
+        var walk = new Walk(document, new Memo(document, reader.CacheCapacity, reader.FilterChainBound), followsMembers: true);
 
         foreach (var stream in streams)
         {
@@ -165,9 +188,9 @@ internal sealed class ObjectStreamDependencies
 
             var isObjectStream = walk.Run(stream, objectStream.Dictionary);
 
-            if (walk.TakeNeeds() is { } found)
+            if (walk.TakeNeeds(out var judging) is { } found)
             {
-                needing.Add(new Needing(stream, Location(reader, stream, entry), found));
+                needing.Add(new Needing(stream, Location(reader, stream, entry), found, judging));
             }
 
             // A stream that is not of /Type /ObjStm serves no object, to the reader, the probe or the rebuild alike (#274):
@@ -206,9 +229,9 @@ internal sealed class ObjectStreamDependencies
 
         for (var place = 0; place < needing.Count; place++)
         {
-            var (stream, location, own) = needing[place];
+            var (stream, location, own, judging) = needing[place];
 
-            if (WayBack(components[place], own, places, components) is not { } need)
+            if (WayBack(components[place], own, judging, places, components) is not { } need)
             {
                 continue;
             }
@@ -231,9 +254,10 @@ internal sealed class ObjectStreamDependencies
     }
 
     /// <summary>
-    /// Gives the first of <paramref name="own"/>, a stream's needs in the order the reader needs them, whose stream lies in
-    /// <paramref name="component"/>, the stream's own — the stream itself among them —: the first that leads back to it,
-    /// directly or through other streams; null when none does, and the stream is not circular.
+    /// Gives the first of <paramref name="own"/>, a stream's needs in the order the reader needs them, from
+    /// <paramref name="judging"/> on, whose stream lies in <paramref name="component"/>, the stream's own — the stream itself
+    /// among them —: the first that leads back to it, directly or through other streams; null when none does, and the
+    /// stream is not circular.
     /// </summary>
     /// <remarks>
     /// A need leads back when the stream it names is the stream itself, or leads to it in turn: the two then lead to each
@@ -241,15 +265,19 @@ internal sealed class ObjectStreamDependencies
     /// </remarks>
     /// <param name="component">The component of the stream whose needs <paramref name="own"/> are.</param>
     /// <param name="own">The stream's needs, the first of each stream it needs, in the order the reader needs them.</param>
+    /// <param name="judging">
+    /// Where the needs that judge the stream start in <paramref name="own"/>: past those of its <c>/Length</c>, of a stream
+    /// that is not of <c>/Type /ObjStm</c> (#274); 0 otherwise.
+    /// </param>
     /// <param name="places">The place of each stream that needs one, by which <paramref name="components"/> is indexed.</param>
     /// <param name="components">The component of each stream that needs one, by its place.</param>
-    private static Need? WayBack(int component, List<Need> own, Dictionary<int, int> places, int[] components)
+    private static Need? WayBack(int component, List<Need> own, int judging, Dictionary<int, int> places, int[] components)
     {
-        foreach (var need in own)
+        for (var index = judging; index < own.Count; index++)
         {
-            if (places.TryGetValue(need.Stream, out var place) && components[place] == component)
+            if (places.TryGetValue(own[index].Stream, out var place) && components[place] == component)
             {
-                return need;
+                return own[index];
             }
         }
 
@@ -400,7 +428,19 @@ internal sealed class ObjectStreamDependencies
     /// An object stream that needs an object stream to be read, another or itself: where the chain's row places it, and the
     /// first object of each stream it needs, in the order the reader needs them.
     /// </summary>
-    private readonly record struct Needing(int Stream, PdfValidationLocation Location, List<Need> Needs);
+    /// <param name="Stream">The stream's number.</param>
+    /// <param name="Location">Where the chain's row places it.</param>
+    /// <param name="Needs">
+    /// The first object of each stream it needs, in the order the reader needs them: every one links it to that stream in the
+    /// graph the needs make.
+    /// </param>
+    /// <param name="Judging">
+    /// Where the needs that judge the stream itself start in <see cref="Needs"/>: 0 for an object stream; past those of its
+    /// <c>/Length</c> for a stream that is not of <c>/Type /ObjStm</c>, which link it to the streams they name but judge
+    /// nothing, a loop through them leaving it broken rather than circular (#274). Each part keeps the first need of each
+    /// stream on its own.
+    /// </param>
+    private readonly record struct Needing(int Stream, PdfValidationLocation Location, List<Need> Needs, int Judging);
 
     /// <summary>
     /// The walk of one object stream at a time, as the reader decodes it to read one of its objects: what that read loads,
@@ -408,8 +448,13 @@ internal sealed class ObjectStreamDependencies
     /// validation, what it holds for one let go before the next.
     /// </summary>
     /// <param name="document">The document whose object streams are walked.</param>
-    /// <param name="memo">What each object written in the file gives the walks.</param>
-    private sealed class Walk(PdfDocument document, Memo memo)
+    /// <param name="memo">What each object written in the file, or a self-contained object stream holds, gives the walks.</param>
+    /// <param name="followsMembers">
+    /// Whether the walk follows the value of an object a self-contained object stream holds: the walk that judges the
+    /// streams does; the one that works out whether a stream is self-contained does not, any object of an object stream it
+    /// meets being a need, and enough to tell.
+    /// </param>
+    private sealed class Walk(PdfDocument document, Memo memo, bool followsMembers)
     {
         /// <summary>The needs met, in the order they were met, each stream's first kept when the walk ends.</summary>
         private readonly List<Need> _found = [];
@@ -432,8 +477,26 @@ internal sealed class ObjectStreamDependencies
         /// <summary>What the values read once the stream is parsed led to, by the number of the object each names.</summary>
         private readonly Dictionary<int, Followed> _values = new(SeededComparer.Instance);
 
+        /// <summary>
+        /// The walk that works out whether an object stream is self-contained, which follows no member; made the first time
+        /// the walk that judges the streams meets a member of one whose status is not known yet.
+        /// </summary>
+        private Walk? _containment;
+
         /// <summary>The object stream walked, whose objects read as null while it is decoded.</summary>
         private int _stream;
+
+        /// <summary>
+        /// Where the needs met past the stream's <c>/Length</c> start in <see cref="_found"/>, of a stream that is not of
+        /// <c>/Type /ObjStm</c>, whose <c>/Length</c> needs judge nothing (#274); 0 for an object stream.
+        /// </summary>
+        private int _judging;
+
+        /// <summary>
+        /// Gets a value indicating whether the walk is done: one that follows no member has met an object of an object stream,
+        /// which is all it asks.
+        /// </summary>
+        public bool IsDone => !followsMembers && _found.Count > 0;
 
         /// <summary>
         /// Follows what the reader reads of object stream <paramref name="stream"/>, whose dictionary is
@@ -449,6 +512,7 @@ internal sealed class ObjectStreamDependencies
             _inFlight.Clear();
             _parsed.Clear();
             _values.Clear();
+            _judging = 0;
 
             // The stream is parsed as one of its objects is read, a level below it; the parse resolves its /Length a level
             // deeper, and the reader keeps the stream, so that it is not parsed again. An object it holds is read as null
@@ -457,10 +521,12 @@ internal sealed class ObjectStreamDependencies
             Follow(dictionary.GetRaw(PdfName.Length), LengthKey, LengthLinks, LengthDepth, out _);
             var ofLength = _found.Count;
 
-            // The reader then reads its /Type, and of a stream of another type nothing more (#274).
+            // The reader then reads its /Type, and of a stream of another type nothing more (#274). What its /Length needs
+            // judges nothing of it, its objects being lost to its type whatever the parse reads; but a read of one of them
+            // parses it, and leads through it to what the parse needs.
             if (FollowValue(dictionary.GetRaw(PdfName.Type), TypeKey).Value is not PdfName type || type != PdfName.ObjStm)
             {
-                _found.RemoveRange(0, ofLength);
+                _judging = ofLength;
                 return false;
             }
 
@@ -481,20 +547,34 @@ internal sealed class ObjectStreamDependencies
         /// Gives the needs of the stream walked last, the first of each stream it needs, in the order the reader needs them;
         /// null when it needs none.
         /// </summary>
-        public List<Need>? TakeNeeds()
+        /// <param name="judging">
+        /// Where those that judge the stream itself start: 0 for an object stream; past the needs of its <c>/Length</c> for a
+        /// stream that is not of <c>/Type /ObjStm</c>, which link it to the streams they name but judge nothing (#274). Each
+        /// part keeps the first need of each stream on its own.
+        /// </param>
+        public List<Need>? TakeNeeds(out int judging)
         {
-            List<Need>? kept = null;
-            _needed.Clear();
+            var kept = Distinct(0, _judging, null);
+            judging = kept?.Count ?? 0;
+            return Distinct(_judging, _found.Count, kept);
+        }
 
-            foreach (var need in _found)
+        /// <summary>
+        /// Works out whether object stream <paramref name="stream"/> is self-contained, read where the chain's row places it,
+        /// as <see cref="ObjectStreamDependencies.Run"/> reads each stream: its walk meets no object of an object stream, its
+        /// own included, so that its decoding is the same whatever stream is in flight and whatever was read before. One that
+        /// is no stream there is not: whatever the reader comes to serve of it is no decoding the walk followed.
+        /// </summary>
+        public bool MeetsNoMember(int stream)
+        {
+            if (!IndexOf(document.Reader).TryGet(stream, out var entry) || entry.Kind != XRefEntryKind.Regular ||
+                Read(document, new PdfObjectId(stream, entry.Generation), entry) is not PdfStream objectStream)
             {
-                if (_needed.Add(need.Stream))
-                {
-                    (kept ??= []).Add(need);
-                }
+                return false;
             }
 
-            return kept;
+            Run(stream, objectStream.Dictionary);
+            return _found.Count == 0;
         }
 
         /// <summary>
@@ -549,11 +629,20 @@ internal sealed class ObjectStreamDependencies
 
             var number = reference.Id.Number;
 
+            // A run through objects self-contained object streams hold is taken where such an object is read as its holder
+            // serves it: by the walk that follows them, within the reader's nesting, its holder loaded a level deeper. No
+            // such run passes an object the walked stream holds, nor one of a stream whose /Length is being resolved: the
+            // holder's own walk would meet it — the walk of the stream walked, or that /Length, which the holder's walk
+            // resolves too, a level higher —, and the holder would not be self-contained.
+            var throughMembers = followsMembers && depth < PdfFileReader.MaxNestedLoads;
+
             for (var loaded = 0; loaded < links;)
             {
-                // Object `number` is the next the chain loads. A run of objects written in the file, each a reference to the
-                // next and none a stream, needs nothing: it is taken at once, as far as the chain loads it.
-                if (depth <= PdfFileReader.MaxNestedLoads && memo.RunFrom(number, links - loaded) is { } run)
+                // Object `number` is the next the chain loads. A run of links, each a reference to the next and none a stream,
+                // needs nothing: it is taken at once, as far as the chain loads it; elsewhere the chain goes on an object at
+                // a time.
+                if (depth <= PdfFileReader.MaxNestedLoads && memo.RunFrom(number, links - loaded, throughMembers) is { } run &&
+                    (throughMembers || !run.PassesMembers))
                 {
                     var taken = Math.Min(run.Numbers.Length, links - loaded);
 
@@ -592,6 +681,25 @@ internal sealed class ObjectStreamDependencies
         }
 
         /// <summary>
+        /// Keeps, of the needs in <see cref="_found"/> from <paramref name="start"/> to <paramref name="end"/>, the first of
+        /// each stream, in order, adding them to <paramref name="kept"/>; gives what it holds, null when it is none.
+        /// </summary>
+        private List<Need>? Distinct(int start, int end, List<Need>? kept)
+        {
+            _needed.Clear();
+
+            for (var index = start; index < end; index++)
+            {
+                if (_needed.Add(_found[index].Stream))
+                {
+                    (kept ??= []).Add(_found[index]);
+                }
+            }
+
+            return kept;
+        }
+
+        /// <summary>
         /// Loads object <paramref name="number"/> as the reader loads it at <paramref name="depth"/> while the stream is
         /// decoded, recording, under <paramref name="key"/>, what it needs.
         /// </summary>
@@ -606,7 +714,7 @@ internal sealed class ObjectStreamDependencies
 
             if (entry.Kind == XRefEntryKind.Compressed)
             {
-                return Member(number, entry.ObjectStreamNumber, key, depth);
+                return Member(number, entry, key, depth);
             }
 
             // Past the reader's nesting, a load reads as null.
@@ -631,11 +739,13 @@ internal sealed class ObjectStreamDependencies
         }
 
         /// <summary>
-        /// Loads object <paramref name="number"/>, which object stream <paramref name="holder"/> holds, as the reader loads
-        /// it at <paramref name="depth"/> while the stream walked is decoded.
+        /// Loads object <paramref name="number"/>, which object stream <paramref name="entry"/> names holds, as the reader
+        /// loads it at <paramref name="depth"/> while the stream walked is decoded.
         /// </summary>
-        private PdfObject Member(int number, int holder, string key, int depth)
+        private PdfObject Member(int number, XRefEntry entry, string key, int depth)
         {
+            var holder = entry.ObjectStreamNumber;
+
             // One the walked stream holds reads as null while it is decoded, and is reported before the reader counts the
             // depth (#51).
             if (holder == _stream)
@@ -651,9 +761,33 @@ internal sealed class ObjectStreamDependencies
                 return PdfNull.Instance;
             }
 
-            // Otherwise the reader decodes that stream, within its own guards and budget, and serves the object.
-            _found.Add(new Need(holder, number, key));
-            return document.GetObject(new PdfObjectId(number));
+            // Otherwise the reader decodes that stream, within its own guards and budget, and serves the object. A
+            // self-contained stream decodes alike whoever reads it, and needs no stream: the object is read as the reader
+            // serves it, and followed. Of another, what the reader serves may depend on what it decoded first (#277's
+            // review): the object is a need, and reads as null, as one of a stream in flight does.
+            if (!followsMembers || !IsSelfContained(holder))
+            {
+                _found.Add(new Need(holder, number, key));
+                return PdfNull.Instance;
+            }
+
+            return memo.Get(number, entry).Value;
+        }
+
+        /// <summary>
+        /// Gives whether object stream <paramref name="holder"/> is self-contained: known already, or worked out once a
+        /// validation by a walk of its own that follows no member, and so asks no other stream.
+        /// </summary>
+        private bool IsSelfContained(int holder)
+        {
+            if (memo.IsSelfContained(holder) is { } known)
+            {
+                return known;
+            }
+
+            var selfContained = (_containment ??= new Walk(document, memo, followsMembers: false)).MeetsNoMember(holder);
+            memo.NoteSelfContained(holder, selfContained);
+            return selfContained;
         }
     }
 
@@ -668,7 +802,8 @@ internal sealed class ObjectStreamDependencies
     /// <summary>
     /// Records what decoding reads of a stream's filters and their parameters, in the order <see cref="FilterChain"/> reads
     /// it, each value followed by the walk; and ends the reading where decoding ends it, at a value whose chain reached an
-    /// object a guard cut, or left out of the index (#263): nothing past it is needed.
+    /// object a guard cut, or left out of the index (#263): nothing past it is needed. The walk that works out whether a
+    /// stream is self-contained ends it at the first object of an object stream it meets, which tells it all it asks.
     /// </summary>
     /// <param name="walk">The walk of the stream.</param>
     private readonly struct Recorder(Walk walk) : IFilterValueReader
@@ -676,6 +811,12 @@ internal sealed class ObjectStreamDependencies
         /// <inheritdoc/>
         public bool TryRead(PdfName key, PdfObject? written, bool entry, out PdfObject? value)
         {
+            if (walk.IsDone)
+            {
+                value = null;
+                return false;
+            }
+
             var followed = walk.FollowValue(written, key == PdfName.Filter ? FilterKey : ParametersKey);
             value = followed.LeftByGuard ? null : followed.Value;
             return !followed.LeftByGuard;
@@ -683,10 +824,11 @@ internal sealed class ObjectStreamDependencies
     }
 
     /// <summary>
-    /// What each object written in the file gives the walks, by object number — a reference's generation leads the reader
-    /// to no other object —: what decoding may read of it, and the run a chain loads from it. As many objects as
-    /// <paramref name="capacity"/> says, the oldest let go first, and read again when met again, so that what the walks keep
-    /// follows the reader's cache rather than the file (#201).
+    /// What each object written in the file, or held by a self-contained object stream, gives the walks, by object number —
+    /// a reference's generation leads the reader to no other object —: what decoding may read of it, and the run a chain
+    /// loads from it. As many objects as <paramref name="capacity"/> says, the oldest let go first, and read again when met
+    /// again, so that what the walks keep follows the reader's cache rather than the file (#201). It also keeps whether each
+    /// object stream the walks asked about is self-contained.
     /// </summary>
     /// <param name="document">The document whose objects are read.</param>
     /// <param name="capacity">How many objects are kept, at most: as many as the reader caches.</param>
@@ -696,18 +838,35 @@ internal sealed class ObjectStreamDependencies
         private readonly Dictionary<int, Held> _held = new(SeededComparer.Instance);
         private readonly Queue<int> _order = new();
 
+        /// <summary>
+        /// Whether each object stream the walks met an object of is self-contained, by its number: worked out once a
+        /// validation, and kept for good, the answer being the same each time; made the first time one is, so that a walk
+        /// that meets none pays nothing for it. It holds no more entries than the index names object streams, which the walk
+        /// takes one by one as well: no value the file gives chooses its size.
+        /// </summary>
+        private Dictionary<int, bool>? _selfContained;
+
         /// <summary>The numbers of the run being worked out, the longest a chain loads.</summary>
         private readonly int[] _run = new int[LengthLinks];
 
+        /// <summary>Gives whether object stream <paramref name="stream"/> is self-contained; null when that is not known yet.</summary>
+        public bool? IsSelfContained(int stream) =>
+            _selfContained is not null && _selfContained.TryGetValue(stream, out var selfContained) ? selfContained : null;
+
+        /// <summary>Notes whether object stream <paramref name="stream"/> is self-contained.</summary>
+        public void NoteSelfContained(int stream, bool selfContained) =>
+            (_selfContained ??= new(SeededComparer.Instance))[stream] = selfContained;
+
         /// <summary>
         /// Gives what object <paramref name="number"/>, which <paramref name="entry"/> places, gives the walks: kept already,
-        /// or read where the chain places it, and kept.
+        /// or read where the chain places it — or, of one a self-contained object stream holds, as the reader serves it —,
+        /// and kept.
         /// </summary>
         public Held Get(int number, XRefEntry entry)
         {
             if (!_held.TryGetValue(number, out var held))
             {
-                held = Project(Read(document, new PdfObjectId(number, entry.Generation), entry));
+                held = Project(Fetch(number, entry));
                 Keep(number, held);
             }
 
@@ -716,14 +875,18 @@ internal sealed class ObjectStreamDependencies
 
         /// <summary>
         /// Gives the run a chain loads from object <paramref name="number"/>, worked out the first time as far as
-        /// <paramref name="loads"/> objects, or to the first that is no link: null when the object is not written in the
-        /// file, is a stream, or holds no reference, so that loading it says more than where the chain goes on. A run kept
-        /// from a chain that loaded fewer objects ends where that chain did; the chain that goes on past it goes on from
-        /// there, as from any object it loads.
+        /// <paramref name="loads"/> objects, or to the first that is no link: null when the object is neither written in the
+        /// file nor, when <paramref name="throughMembers"/> says so, held by an object stream known to be self-contained;
+        /// is a stream; or holds no reference, so that loading it says more than where the chain goes on. A run kept from a
+        /// chain that loaded fewer objects, or took none such streams hold, ends where that chain did; the chain that goes on
+        /// past it goes on from there, as from any object it loads.
         /// </summary>
-        public LinkRun? RunFrom(int number, int loads)
+        /// <param name="number">The object the chain loads next.</param>
+        /// <param name="loads">How many objects the chain loads at most from it.</param>
+        /// <param name="throughMembers">Whether the chain may take at once objects self-contained object streams hold.</param>
+        public LinkRun? RunFrom(int number, int loads, bool throughMembers)
         {
-            if (number <= 0 || !IndexOf(document.Reader).TryGet(number, out var entry) || entry.Kind != XRefEntryKind.Regular)
+            if (number <= 0 || !IndexOf(document.Reader).TryGet(number, out var entry) || !IsAlikeForEveryStream(entry, throughMembers))
             {
                 return null;
             }
@@ -735,26 +898,28 @@ internal sealed class ObjectStreamDependencies
                 return null;
             }
 
-            return held.Run ??= Build(number, held, loads);
+            return held.Run ??= Build(number, entry, held, loads, throughMembers);
         }
 
         /// <summary>
-        /// Works out the run a chain loads from object <paramref name="number"/>, whose value <paramref name="held"/> is a
-        /// reference: as far as <paramref name="loads"/> objects — no object the chain does not load is read —, or to the
-        /// first object that is not such a link. A loop of links runs on to <paramref name="loads"/>, as the chain does.
+        /// Works out the run a chain loads from object <paramref name="number"/>, which <paramref name="entry"/> places and
+        /// whose value <paramref name="held"/> is a reference: as far as <paramref name="loads"/> objects — no object the
+        /// chain does not load is read —, or to the first object that is not such a link. A loop of links runs on to
+        /// <paramref name="loads"/>, as the chain does.
         /// </summary>
-        private LinkRun Build(int number, Held held, int loads)
+        private LinkRun Build(int number, XRefEntry entry, Held held, int loads, bool throughMembers)
         {
             var count = 0;
+            var passesMembers = entry.Kind == XRefEntryKind.Compressed;
             _run[count++] = number;
             var next = ((PdfReference)held.Value).Id.Number;
 
             while (count < loads &&
-                next > 0 && IndexOf(document.Reader).TryGet(next, out var entry) && entry.Kind == XRefEntryKind.Regular)
+                next > 0 && IndexOf(document.Reader).TryGet(next, out var nextEntry) && IsAlikeForEveryStream(nextEntry, throughMembers))
             {
                 // An object the run passes over is not kept for itself, so that the run's start, which is, outlives it. One
                 // that ends the run is kept: the chain loads it next.
-                var nextHeld = _held.TryGetValue(next, out var kept) ? kept : Project(Read(document, new PdfObjectId(next, entry.Generation), entry));
+                var nextHeld = _held.TryGetValue(next, out var kept) ? kept : Project(Fetch(next, nextEntry));
 
                 if (nextHeld.IsStream || nextHeld.Value is not PdfReference link)
                 {
@@ -766,12 +931,34 @@ internal sealed class ObjectStreamDependencies
                     break;
                 }
 
+                passesMembers |= nextEntry.Kind == XRefEntryKind.Compressed;
                 _run[count++] = next;
                 next = link.Id.Number;
             }
 
-            return new LinkRun(_run.AsSpan(0, count).ToArray(), next);
+            return new LinkRun(_run.AsSpan(0, count).ToArray(), next, passesMembers);
         }
+
+        /// <summary>
+        /// Gives whether what the object <paramref name="entry"/> places gives the walks is the same whatever stream is walked,
+        /// and may be kept for all of them: an object written in the file; or, when <paramref name="throughMembers"/> says so,
+        /// one an object stream known to be self-contained holds.
+        /// </summary>
+        private bool IsAlikeForEveryStream(XRefEntry entry, bool throughMembers) => entry.Kind switch
+        {
+            XRefEntryKind.Regular => true,
+            XRefEntryKind.Compressed => throughMembers && IsSelfContained(entry.ObjectStreamNumber) == true,
+            _ => false,
+        };
+
+        /// <summary>
+        /// Reads object <paramref name="number"/>, which <paramref name="entry"/> places: where the chain places it; or, one
+        /// a self-contained object stream holds, as the reader serves it, which is the same whoever reads it.
+        /// </summary>
+        private PdfObject Fetch(int number, XRefEntry entry) =>
+            entry.Kind == XRefEntryKind.Compressed
+                ? document.GetObject(new PdfObjectId(number))
+                : Read(document, new PdfObjectId(number, entry.Generation), entry);
 
         /// <summary>Keeps what object <paramref name="number"/>, which is not kept yet, gives the walks.</summary>
         private void Keep(int number, Held held)
@@ -832,7 +1019,7 @@ internal sealed class ObjectStreamDependencies
         }
     }
 
-    /// <summary>What the walks keep of an object written in the file.</summary>
+    /// <summary>What the walks keep of an object written in the file, or held by a self-contained object stream.</summary>
     /// <param name="value">What decoding may read of its value.</param>
     /// <param name="length">The <c>/Length</c> of a stream, as written; null for anything else.</param>
     /// <param name="isStream">Whether the object is a stream.</param>
@@ -852,17 +1039,25 @@ internal sealed class ObjectStreamDependencies
     }
 
     /// <summary>
-    /// The objects a chain loads one after the other from an object written in the file, each a reference to the next and
-    /// none a stream — 33 at most, as many as the longest chain loads —, and the object it loads after them.
+    /// The objects a chain loads one after the other from an object written in the file, or held by a self-contained object
+    /// stream, each a reference to the next and none a stream — 33 at most, as many as the longest chain loads —, and the
+    /// object it loads after them.
     /// </summary>
     /// <param name="numbers">The objects, in the order the chain loads them.</param>
     /// <param name="next">The object the last of them names.</param>
-    private sealed class LinkRun(int[] numbers, int next)
+    /// <param name="passesMembers">Whether an object stream holds one of the objects.</param>
+    private sealed class LinkRun(int[] numbers, int next, bool passesMembers)
     {
         /// <summary>Gets the objects, in the order the chain loads them.</summary>
         public int[] Numbers { get; } = numbers;
 
         /// <summary>Gets the object the last of them names, which the chain loads next.</summary>
         public int Next { get; } = next;
+
+        /// <summary>
+        /// Gets a value indicating whether an object stream holds one of the objects: the run is then taken only where a
+        /// chain reads such an object as its holder serves it, that holder loaded a level deeper within the reader's nesting.
+        /// </summary>
+        public bool PassesMembers { get; } = passesMembers;
     }
 }

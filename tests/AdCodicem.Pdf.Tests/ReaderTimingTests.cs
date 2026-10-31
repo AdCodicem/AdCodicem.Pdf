@@ -230,6 +230,38 @@ public class ReaderTimingTests
     }
 
     [Theory]
+    [InlineData("four times the streams", 8)]
+    [InlineData("chains eight times as long", 3)]
+    [InlineData("chains eight times as long, written in the file", 3)]
+    public void Object_streams_that_share_chains_through_self_contained_streams_objects_have_their_dependencies_walked_in_time_their_number_alone_sets(string larger, int ratio)
+    {
+        // Object streams share 64 parameters, each the head of a chain of objects held by self-contained object streams, one
+        // each (#277's review), or written in the file. The walk follows a chain once a validation, keeping the run of
+        // objects it loads by the one it starts at — once it knows their holders self-contained —: four times the streams
+        // take about four times as long, and chains of 31 objects about what chains of 4 do, where following each chain for
+        // each stream, an object at a time or through the reader, cost about eight times as much. The measure is the ratio,
+        // the best walk of each, run in turn.
+        var (small, large) = larger switch
+        {
+            "four times the streams" => (HostileInputTests.MemberChains(1000, holdersShare: false, links: 31), HostileInputTests.MemberChains(4000, holdersShare: false, links: 31)),
+            "chains eight times as long" => (HostileInputTests.MemberChains(2000, holdersShare: false, links: 4), HostileInputTests.MemberChains(2000, holdersShare: false, links: 31)),
+            _ => (HostileInputTests.MemberChains(2000, holdersShare: false, links: 4, inFile: true), HostileInputTests.MemberChains(2000, holdersShare: false, links: 31, inFile: true)),
+        };
+        using var smallDocument = PdfDocument.Open(small);
+        using var largeDocument = PdfDocument.Open(large);
+
+        var (smallTime, largeTime) = BestOfEach(() => ObjectStreamDependencies.Run(smallDocument), () => ObjectStreamDependencies.Run(largeDocument));
+
+        largeTime.Should().BeLessThan(
+            smallTime * ratio,
+            "{0} must cost at most {1} times the time ({2} against {3})",
+            larger,
+            ratio,
+            largeTime,
+            smallTime);
+    }
+
+    [Theory]
     [InlineData("chain")]
     [InlineData("ring")]
     [InlineData("rho")]

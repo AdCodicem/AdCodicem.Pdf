@@ -1850,6 +1850,35 @@ public class HostileInputTests
     }
 
     [Theory]
+    [InlineData(true, 64)]
+    [InlineData(false, 0)]
+    public void Object_streams_whose_parameters_run_through_chains_of_other_streams_objects_are_walked_at_a_cost_for_each_that_does_not_grow_with_their_number(bool holdersShare, int circular)
+    {
+        // #277's review: object streams share 64 parameters, each the head of a chain of 32 objects, every one held by an
+        // object stream of its own. The walk followed every chain through the reader, each stream keeping a need of every
+        // holder, 2,048 a stream: 67 KB a stream, a gigabyte for 32,768 streams in a 4.6 MB file, held until the components
+        // were worked out. When the holders share the parameters, none is self-contained: the walk follows no chain, and a
+        // stream keeps a need of each of the 64 heads' holders, which need themselves; when the holders need nothing, each is
+        // self-contained, and the chains are followed, once a validation, without a need. Either way what one more stream
+        // costs is its own walk, and a need at most for each value its decoding reads.
+        const int Few = 2500;
+        const int Many = 4000;
+        var few = MemberChains(Few, holdersShare);
+        var many = MemberChains(Many, holdersShare);
+
+        var fewAllocated = Allocations.Least(() => PdfDocument.Open(few), document => ObjectStreamDependencies.Run(document), out var fewDocument, out var fewResult);
+        var manyAllocated = Allocations.Least(() => PdfDocument.Open(many), document => ObjectStreamDependencies.Run(document), out var manyDocument, out var manyResult);
+
+        using (fewDocument)
+        using (manyDocument)
+        {
+            fewResult.CircularStreams.Should().HaveCount(circular);
+            manyResult.CircularStreams.Should().HaveCount(circular);
+            ((manyAllocated - fewAllocated) / (Many - Few)).Should().BeLessThan(4096, "what one more stream costs is its own walk, and a need for each value its decoding reads at most");
+        }
+    }
+
+    [Theory]
     [InlineData("chain")]
     [InlineData("ring")]
     [InlineData("rho")]
@@ -4037,6 +4066,57 @@ public class HostileInputTests
         "rho" => streams - (streams / 2),
         _ => streams,
     };
+
+    /// <summary>
+    /// A file of object streams numbered 100,000, 100,002 and so on, each holding one object, numbered after it, that share
+    /// <c>/Filter 5 0 R</c>, 64 Flate steps, and <c>/DecodeParms 6 0 R</c>, 64 references to the heads of chains of
+    /// <paramref name="links"/> members: the first 64 times <paramref name="links"/> streams hold the members, one each,
+    /// every member naming the next and the last of each chain an empty dictionary (#277's review). When
+    /// <paramref name="holdersShare"/> says so, the holders are the first of the <paramref name="streams"/> and take the
+    /// filters and parameters themselves; otherwise they need nothing, and the <paramref name="streams"/> after them, each
+    /// holding an empty dictionary, take them. When <paramref name="inFile"/> says so, the chains' objects are written
+    /// directly in the file instead, and no stream holds them. The streams' data is written as it is: the walk of their
+    /// dependencies reads none of it.
+    /// </summary>
+    internal static byte[] MemberChains(int streams, bool holdersShare, int links = 32, bool inFile = false)
+    {
+        const int Heads = 64;
+        var holders = Heads * links;
+        var heads = new StringBuilder("[");
+
+        for (var head = 0; head < Heads; head++)
+        {
+            heads.Append(CultureInfo.InvariantCulture, $"{ChainMember(head * links)} 0 R ");
+        }
+
+        var direct = new List<(int Number, string Body)>
+        {
+            (5, "[" + string.Join(' ', Enumerable.Repeat("/FlateDecode", Heads)) + "]"),
+            (6, heads.Append(']').ToString()),
+        };
+        var packed = new List<PackedStream>();
+        var total = holdersShare ? Math.Max(streams, holders) : holders + streams;
+
+        for (var k = 0; k < total; k++)
+        {
+            var member = k >= holders ? "<< >>"
+                : (k % links) + 1 < links ? string.Create(CultureInfo.InvariantCulture, $"{ChainMember(k + 1)} 0 R")
+                : "<< >>";
+
+            if (inFile && k < holders)
+            {
+                direct.Add((ChainMember(k), member));
+                continue;
+            }
+
+            var shares = holdersShare || k >= holders;
+            packed.Add(new PackedStream(ChainMember(k) - 1, shares ? "/Filter 5 0 R /DecodeParms 6 0 R" : string.Empty, [(ChainMember(k), member)], PackedData.Plain));
+        }
+
+        return PackedFile(packed, direct);
+
+        static int ChainMember(int k) => 100_001 + (2 * k);
+    }
 
     private static byte[] PackedFile(IReadOnlyList<PackedStream> streams, IReadOnlyList<(int Number, string Body)>? direct = null)
     {

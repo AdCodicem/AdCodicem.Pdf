@@ -105,6 +105,56 @@ internal static partial class ConvergenceShapes
             ObjectStreamPairListedAgain((7, 5, 6), (8, 15, 16), 20, 30, 32, firstNeeds: "[9 0 R 5 0 R]", alsoBroken: 9),
             PdfReaderLimits.Default,
             ObjectStreamReads([.. Enumerable.Range(0, 33)], [30, 7, 8]));
+
+        // #277's review: object streams 10 and 11 take their parameters from each other's objects, and 12 from 10's; what the
+        // reader serves of 6 depends on which of 10 and 11 it decoded first. The walk read 6 through the reader and followed
+        // it to 7, which 12 holds: 12 was found circular after nothing was read, or 6 alone, or 6 then 5 and 7, and not after
+        // 5, 7 or 8.
+        yield return new(
+            "object streams taking their parameters from one another's objects, a third leading into their loop",
+            ObjectStreamsTakingParametersFromOneAnother(),
+            PdfReaderLimits.Default,
+            [[new(5)], [new(6)], [new(7)], [new(8)], [new(5), new(6), new(7)], [new(7), new(6), new(5)], [new(6), new(5), new(7)]]);
+    }
+
+    /// <summary>
+    /// Object streams 10, 11 and 12, Flate-compressed, which take their parameters from one another's members (#277's
+    /// review): 10 holds 5, <c>&lt;&lt; /Predictor 10 /Columns 11 &gt;&gt;</c>, and 8, <c>&lt;&lt; /Predictor 1 &gt;&gt;</c>,
+    /// and takes its parameters from 6; 11 holds 6, its data reading <c>7 0 R</c> through a PNG predictor of 11 columns and
+    /// <c>77 0 R</c> without one, and takes its parameters from 5; 12 holds 7, <c>&lt;&lt; /Predictor 1 &gt;&gt;</c>, and
+    /// takes its parameters from 8. The index is a cross-reference stream, object 13.
+    /// </summary>
+    internal static byte[] ObjectStreamsTakingParametersFromOneAnother()
+    {
+        var file = new HandWrittenFile(version: "1.5");
+        var rows = new Dictionary<int, (int Type, long Field2, int Field3)>
+        {
+            [1] = (1, file.Object(1, Catalog), 0),
+            [2] = (1, file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"), 0),
+            [5] = (2, 10, 0),
+            [8] = (2, 10, 1),
+            [6] = (2, 11, 0),
+            [7] = (2, 12, 0),
+        };
+
+        const string Five = "<< /Predictor 10 /Columns 11 >> ";
+        rows[10] = (1, Flate(10, string.Create(CultureInfo.InvariantCulture, $"5 0 8 {Five.Length} "), Five + "<< /Predictor 1 >> ", "/N 2", "/DecodeParms 6 0 R"), 0);
+
+        // One row of a PNG predictor: its tag, 0, then the 11 bytes as they are. Without the predictor, the tag is a blank
+        // before the header, and /First lands a byte earlier.
+        rows[11] = (1, Flate(11, "\0", "6 0 77 0 R ", "/N 1 /First 5", "/DecodeParms 5 0 R"), 0);
+        rows[12] = (1, Flate(12, "7 0 ", "<< /Predictor 1 >> ", "/N 1", "/DecodeParms 8 0 R"), 0);
+        file.CrossReferenceStream(13, 14, rows, "/Root 1 0 R");
+        return file.Bytes;
+
+        long Flate(int number, string header, string members, string count, string entries)
+        {
+            var data = Encoding.Latin1.GetString(HostileInputTests.Compress(Encoding.Latin1.GetBytes(header + members)));
+            var first = count.Contains("/First", StringComparison.Ordinal) ? string.Empty : string.Create(CultureInfo.InvariantCulture, $" /First {header.Length}");
+            return file.Object(
+                number,
+                string.Create(CultureInfo.InvariantCulture, $"<< /Type /ObjStm {count}{first} /Filter /FlateDecode {entries} /Length {data.Length} >>\nstream\n{data}\nendstream"));
+        }
     }
 
     /// <summary>
