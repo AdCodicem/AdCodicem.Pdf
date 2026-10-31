@@ -1,3 +1,4 @@
+using System.Buffers.Binary;
 using System.Globalization;
 using System.IO.Compression;
 using System.Text;
@@ -136,23 +137,39 @@ public class ReadOrderTests
     [InlineData("a stream shorter than its length")]
     [InlineData("an index full past an object stream")]
     [InlineData("a number defined twice")]
+    [InlineData("an index the scan fills")]
+    [InlineData("an object the scan for trailers parses")]
     public void A_rebuild_a_read_sets_off_reports_what_a_rebuild_run_first_reports(string shape)
     {
         // The rebuild is set off by a load in flight — 5's row leads to the catalog's header — or run first, by settling.
         // Expanded while the load was in flight, the object streams read 5 as null: they reported a sound stream's /Length
         // as unreadable, which kept that stream's true fault from being reported, and filled the index at another object
-        // stream. The rebuild expands them once, when no load is in flight.
-        var options = shape == "an index full past an object stream"
-            ? PdfReaderOptions.Default with { Limits = PdfReaderLimits.Default with { MaxIndexEntries = 10 } }
-            : PdfReaderOptions.Default;
+        // stream. The rebuild expands them once, when no load is in flight. What its scan reports — the index it fills, the
+        // faults of an object it parses as a trailer — stays as it is finished, which withdraws only what the loads in flight
+        // reported, and the scan's faults are not reported again as the object is read.
+        var options = shape switch
+        {
+            "an index full past an object stream" => PdfReaderOptions.Default with { Limits = PdfReaderLimits.Default with { MaxIndexEntries = 10 } },
+            "an index the scan fills" => PdfReaderOptions.Default with { Limits = PdfReaderLimits.Default with { MaxIndexEntries = 13 } },
+            "an object the scan for trailers parses" => PdfReaderOptions.Default with { Limits = PdfReaderLimits.Default with { MaxObjectLength = 64 } },
+            _ => PdfReaderOptions.Default,
+        };
         var file = shape switch
         {
             "a stream its length names soundly" => TwoStreamsOfOneLength("abcdefghij"),
             "a stream shorter than its length" => TwoStreamsOfOneLength("abcdefgh"),
             "a number defined twice" => TwoStreamsOfOneLength("abcdefghij", redefined: true),
+            "an index the scan fills" => TwoObjectStreamsTheSecondOfWhichLeadsNowhere(unindexed: 6).Bytes,
+            "an object the scan for trailers parses" => AnObjectTheScanForTrailersParses(),
             _ => TwoObjectStreamsPastAFullIndex(),
         };
-        var read = shape == "an index full past an object stream" ? new[] { 6 } : [4, 6];
+        var read = shape switch
+        {
+            "an index full past an object stream" => new[] { 6 },
+            "an index the scan fills" => [7],
+            "an object the scan for trailers parses" => [6, 4, 5, 8, 9],
+            _ => [4, 6],
+        };
         using var first = PdfDocument.Open(file, options);
         using var inFlight = PdfDocument.Open(file, options);
 
@@ -167,6 +184,12 @@ public class ReadOrderTests
         inFlight.WasRepaired.Should().BeTrue();
         inFlight.Diagnostics.Select(diagnostic => diagnostic.ToString())
             .Should().Equal(first.Diagnostics.Select(diagnostic => diagnostic.ToString()));
+
+        if (shape == "an object the scan for trailers parses")
+        {
+            first.Diagnostics.Select(diagnostic => diagnostic.Code).Should().Contain(
+                [PdfDiagnosticCodes.SyntaxKeyRepeated, PdfDiagnosticCodes.StreamLengthInvalid, PdfDiagnosticCodes.LimitObject]);
+        }
     }
 
     [Fact]
@@ -954,6 +977,256 @@ public class ReadOrderTests
     }
 
     [Fact]
+    public void A_rebuild_whose_scan_the_source_fails_keeps_when_run_again_the_entries_a_chain_a_guard_cut_gave()
+    {
+        // The cross-reference stream decodes no further than its first ten rows, a guard's cut; object 6, which holds 7, has
+        // a comment inside its header, which the scan does not find (#261); object 4's row leads into padding, and reading 4
+        // rebuilds the index. The source fails the scan's read of the file: the next read runs the rebuild again, which
+        // keeps, as the first would have, the chain's entries for 6 and 7, so that 7 is read from 6 (#167).
+        var file = new HandWrittenFile(version: "1.5");
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"),
+            [6] = file.Position,
+        };
+        file.Raw("6 0 % object stream\nobj\n<< /Type /ObjStm /N 1 /First 4 /Length 18 >>\nstream\n7 0 (packed seven)\nendstream\nendobj\n");
+        rows[8] = file.Padding(8);
+        rows[4] = rows[8] + 600;
+        file.Object(4, "(four)");
+
+        for (var number = 10; number < 30; number++)
+        {
+            rows[number] = file.Object(number, "null");
+        }
+
+        var data = new byte[31 * 7];
+        BinaryPrimitives.WriteUInt16BigEndian(data.AsSpan(5), 65535);
+
+        foreach (var (number, offset) in rows)
+        {
+            data[number * 7] = 1;
+            BinaryPrimitives.WriteUInt32BigEndian(data.AsSpan((number * 7) + 1), (uint)offset);
+        }
+
+        data[7 * 7] = 2;
+        BinaryPrimitives.WriteUInt32BigEndian(data.AsSpan((7 * 7) + 1), 6);
+        var xref = file.Position;
+        data[30 * 7] = 1;
+        BinaryPrimitives.WriteUInt32BigEndian(data.AsSpan((30 * 7) + 1), (uint)xref);
+        using var compressed = new MemoryStream();
+
+        using (var zlib = new ZLibStream(compressed, CompressionLevel.SmallestSize, leaveOpen: true))
+        {
+            zlib.Write(data);
+        }
+
+        var stream = Encoding.Latin1.GetString(compressed.ToArray());
+        file.Object(30, string.Create(CultureInfo.InvariantCulture, $"<< /Type /XRef /Size 31 /W [1 4 2] /Root 1 0 R /Filter /FlateDecode /Length {stream.Length} >>\nstream\n{stream}\nendstream"));
+        file.Raw(string.Create(CultureInfo.InvariantCulture, $"startxref\n{xref}\n%%EOF\n"));
+        var options = new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxDecodedStreamLength = 70 } };
+        using var source = new FailingSource(file.Bytes);
+        using var document = PdfDocument.Open(source, options, ownsSource: false);
+        source.Fail(0, 1);
+
+        FluentActions.Invoking(() => document.GetObject(new PdfObjectId(4))).Should().Throw<IOException>();
+        var reached = document.ObjectCount;
+
+        document.GetObject(new PdfObjectId(4)).AsText().Should().Be("four");
+        reached.Should().Be(0);
+        document.GetObject(new PdfObjectId(7)).AsText().Should().Be("packed seven");
+    }
+
+    [Fact]
+    public void A_rebuild_with_room_for_every_number_its_scan_finds_leaves_the_index_full_no_more()
+    {
+        // The table gives twenty rows, the index room for ten: the chain fills it, and a number it lacks is unindexed, whether
+        // the file holds it unknown. Object 4's row leads into the catalog, and reading 4 rebuilds the index, whose scan
+        // finds three objects: the rebuilt index has room for each, and a number it lacks is missing.
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>"),
+            [3] = file.Object(3, Page),
+        };
+
+        for (var number = 4; number < 21; number++)
+        {
+            rows[number] = rows[1];
+        }
+
+        file.Table(21, rows, "/Size 21 /Root 1 0 R");
+        var options = PdfReaderOptions.Default with { Limits = PdfReaderLimits.Default with { MaxIndexEntries = 10 } };
+        using var document = PdfDocument.Open(file.Bytes, options);
+        var before = document.Reader.GetPresence(15);
+
+        document.GetObject(new PdfObjectId(4)).Should().BeSameAs(PdfNull.Instance);
+
+        document.WasRepaired.Should().BeTrue();
+        before.Should().Be(ObjectPresence.Unindexed);
+        document.ObjectCount.Should().Be(3);
+        document.Reader.GetPresence(15).Should().Be(ObjectPresence.Missing);
+    }
+
+    [Fact]
+    public void A_rebuild_forgets_that_the_reader_could_not_produce_an_object_the_rebuilt_index_serves_before_it_is_read()
+    {
+        // Object 5's row places it in object 4, a stream that is no object stream: the reader cannot produce it, and notes so.
+        // Object 6's row leads into the catalog, and reading 6 rebuilds the index, which takes 5 in from object stream 9. The
+        // note is forgotten as the rebuild begins: what the reader says of 5 is true before 5 is read again.
+        var file = new HandWrittenFile(version: "1.5");
+        var rows = new Dictionary<int, (int Type, long Field2, int Field3)>
+        {
+            [1] = (1, file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"), 0),
+            [2] = (1, file.Object(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>"), 0),
+            [3] = (1, file.Object(3, Page), 0),
+            [4] = (1, file.Object(4, "<< /Length 3 >>\nstream\nabc\nendstream"), 0),
+            [5] = (2, 4, 0),
+            [9] = (1, file.ObjectStream(9, [(5, "(five)")]), 0),
+        };
+        rows[6] = (1, rows[1].Field2, 0);
+        file.CrossReferenceStream(10, 11, rows, "/Root 1 0 R");
+        using var document = PdfDocument.Open(file.Bytes);
+        document.GetObject(new PdfObjectId(5)).Should().BeSameAs(PdfNull.Instance);
+        var before = document.Reader.GetPresence(5);
+
+        document.GetObject(new PdfObjectId(6)).Should().BeSameAs(PdfNull.Instance);
+
+        document.WasRepaired.Should().BeTrue();
+        before.Should().Be(ObjectPresence.Unproduced);
+        document.Reader.GetPresence(5).Should().Be(ObjectPresence.Defined);
+        document.GetObject(new PdfObjectId(5)).AsText().Should().Be("five");
+    }
+
+    [Fact]
+    public void A_rebuild_lets_go_of_the_order_of_what_the_cache_held_so_that_it_holds_no_more_than_it_has_room_for()
+    {
+        // Objects 4 to 223 are written directly, and the cache has room for 64. Reading 100 to 163 fills it; reading 3, whose
+        // row leads into the catalog, rebuilds the index, whose finish reads every object written directly, the cache keeping
+        // the last it read, 200 among them. Reading 64 objects the cache does not hold then lets go of 200, read again as a
+        // new object: had the rebuild kept the order of what the cache held, the cache would have let go of numbers it no
+        // longer held first, and held some more objects than it has room for.
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"),
+        };
+
+        for (var number = 4; number < 224; number++)
+        {
+            rows[number] = file.Object(number, string.Create(CultureInfo.InvariantCulture, $"({number})"));
+        }
+
+        rows[3] = rows[1];
+        file.Table(224, rows, "/Size 224 /Root 1 0 R");
+        using var document = PdfDocument.Open(file.Bytes, PdfReaderOptions.Default with { ObjectCacheCapacity = 64 });
+
+        for (var number = 100; number < 164; number++)
+        {
+            document.GetObject(new PdfObjectId(number));
+        }
+
+        document.GetObject(new PdfObjectId(3)).Should().BeSameAs(PdfNull.Instance);
+        var held = document.GetObject(new PdfObjectId(200));
+
+        for (var number = 4; number < 68; number++)
+        {
+            document.GetObject(new PdfObjectId(number));
+        }
+
+        document.WasRepaired.Should().BeTrue();
+        held.AsText().Should().Be("200");
+        document.GetObject(new PdfObjectId(200)).Should().NotBeSameAs(held);
+    }
+
+    [Fact]
+    public void A_rebuild_lets_go_of_the_order_the_object_streams_were_kept_in()
+    {
+        // Object streams 10, 11 and 12 each decode to 12 MB, two members far apart, and the reader keeps 32 MB of them: two
+        // at most. Reading 11's member, then 10's, keeps 11 and 10. Object 5's row leads into the catalog, and reading 5
+        // rebuilds the index, whose finish decodes 10, 11 and 12 in that order: keeping 12 lets go of 10, the oldest kept
+        // since the rebuild. Had the rebuild kept the order of before, the reader would have let go of 11 first, kept first
+        // then, though it was kept again since.
+        var file = new HandWrittenFile(version: "1.5");
+        var rows = new Dictionary<int, (int Type, long Field2, int Field3)>
+        {
+            [1] = (1, file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"), 0),
+            [2] = (1, file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"), 0),
+        };
+
+        for (var stream = 10; stream < 13; stream++)
+        {
+            var first = 20 + ((stream - 10) * 2);
+            var far = 12 * 1024 * 1024;
+            var header = string.Create(CultureInfo.InvariantCulture, $"{first} 0 {first + 1} {far} ");
+            var data = new byte[header.Length + far + 3];
+            data.AsSpan().Fill((byte)' ');
+            Encoding.Latin1.GetBytes(header, data);
+            "(a)"u8.CopyTo(data.AsSpan(header.Length));
+            "(b)"u8.CopyTo(data.AsSpan(header.Length + far));
+            using var compressed = new MemoryStream();
+
+            using (var zlib = new ZLibStream(compressed, CompressionLevel.SmallestSize, leaveOpen: true))
+            {
+                zlib.Write(data);
+            }
+
+            var bytes = Encoding.Latin1.GetString(compressed.ToArray());
+            rows[stream] = (1, file.Object(stream, string.Create(CultureInfo.InvariantCulture, $"<< /Type /ObjStm /N 2 /First {header.Length} /Filter /FlateDecode /Length {bytes.Length} >>\nstream\n{bytes}\nendstream")), 0);
+            rows[first] = (2, stream, 0);
+            rows[first + 1] = (2, stream, 1);
+        }
+
+        rows[5] = (1, rows[1].Field2, 0);
+        file.CrossReferenceStream(30, 31, rows, "/Root 1 0 R");
+        using var document = PdfDocument.Open(file.Bytes);
+        document.GetObject(new PdfObjectId(22)).AsText().Should().Be("a");
+        document.GetObject(new PdfObjectId(21)).AsText().Should().Be("b");
+        var keptBefore = (Ten: !document.Reader.KeptObjectStreamData(10).IsEmpty, Eleven: !document.Reader.KeptObjectStreamData(11).IsEmpty);
+
+        document.GetObject(new PdfObjectId(5)).Should().BeSameAs(PdfNull.Instance);
+
+        document.WasRepaired.Should().BeTrue();
+        keptBefore.Should().Be((true, true));
+        document.Reader.KeptObjectStreamData(10).IsEmpty.Should().BeTrue();
+        document.Reader.KeptObjectStreamData(11).IsEmpty.Should().BeFalse();
+        document.Reader.KeptObjectStreamData(12).IsEmpty.Should().BeFalse();
+    }
+
+    [Fact]
+    public void A_rebuild_forgets_that_a_guard_hid_an_object_stream_whose_rebuilt_definition_it_reads_whole()
+    {
+        // Object stream 6, as the chain places it, holds 7 and 8, and its dictionary runs past an object guard of 128 bytes:
+        // reading 7 finds 6 hidden by the guard. A later definition of 6 holds 7 alone; object 5's row leads into the
+        // catalog, and reading 5 rebuilds the index, which serves the later 6, read whole. The guard hid the earlier one
+        // only: the rebuild keeps none of the members the chain placed in 6 for it, and 8 is no number of the index.
+        var file = new HandWrittenFile(version: "1.5");
+        var rows = new Dictionary<int, (int Type, long Field2, int Field3)>
+        {
+            [1] = (1, file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"), 0),
+            [2] = (1, file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"), 0),
+            [6] = (1, file.ObjectStream(6, [(7, "(seven)"), (8, "(eight)")], "/Pad (" + new string('x', 200) + ") "), 0),
+            [7] = (2, 6, 0),
+            [8] = (2, 6, 1),
+        };
+        file.ObjectStream(6, [(7, "(seven again)")]);
+        rows[5] = (1, rows[1].Field2, 0);
+        file.CrossReferenceStream(9, 10, rows, "/Root 1 0 R");
+        var options = PdfReaderOptions.Default with { Limits = PdfReaderLimits.Default with { MaxObjectLength = 128 } };
+        using var document = PdfDocument.Open(file.Bytes, options);
+        var seven = document.GetObject(new PdfObjectId(7));
+
+        document.GetObject(new PdfObjectId(5)).Should().BeSameAs(PdfNull.Instance);
+
+        seven.Should().BeSameAs(PdfNull.Instance);
+        document.WasRepaired.Should().BeTrue();
+        document.GetObject(new PdfObjectId(7)).AsText().Should().Be("seven again");
+        document.ObjectNumbers.Should().Contain(7).And.NotContain(8);
+    }
+
+    [Fact]
     public void A_trailer_a_caller_s_source_takes_inside_a_rebuilding_read_may_change_and_one_taken_before_or_after_does_not()
     {
         // #237's shape: reading object 4 rebuilds the index, which renews the trailer as it begins and then merges the older
@@ -1641,6 +1914,30 @@ public class ReadOrderTests
     }
 
     /// <summary>
+    /// A file whose objects 4 and 8 say <c>trailer</c> in a comment before their dictionary, from which a rebuild's scan for
+    /// trailers parses them, loading what their /Length names. Object 4's dictionary names /Dup twice, and its stream's
+    /// /Length is object 5, a stream whose own /Length its data does not end at; object 8's stream's /Length is object 9,
+    /// whose comment runs past an object guard of 64 bytes. The table lacks 5, 8 and 9; object 6's row leads into the
+    /// catalog.
+    /// </summary>
+    private static byte[] AnObjectTheScanForTrailersParses()
+    {
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"),
+            [4] = file.Object(4, "% trailer\n<< /Dup 1 /Dup 2 /Length 5 0 R >>\nstream\nabcdef\nendstream"),
+        };
+        file.Object(5, "<< /Length 2 >>\nstream\nabcdef\nendstream");
+        file.Object(8, "% trailer\n<< /Length 9 0 R >>\nstream\nabc\nendstream");
+        file.Object(9, "3 % " + new string('x', 100));
+        rows[6] = rows[1];
+        file.Table(7, rows, "/Size 7 /Root 1 0 R");
+        return file.Bytes;
+    }
+
+    /// <summary>
     /// A file whose object 4 is defined twice, eighty fillers apart, after the catalog, written first: an object cache of 64
     /// lets the catalog go before a rebuild's finish reads it. Object stream 8 holds 7, and its /Length is object 5, whose
     /// row leads into object 9's string. Gives the file and where the catalog is.
@@ -2083,6 +2380,39 @@ public class ReadOrderTests
 
         document.Diagnostics.Select(diagnostic => diagnostic.ToString())
             .Should().Equal(settled.Diagnostics.Select(diagnostic => diagnostic.ToString()));
+    }
+
+    [Fact]
+    public void A_rebuild_whose_scan_for_trailers_loads_past_the_depth_the_reader_follows_reports_it_once()
+    {
+        // Streams 100 to 249 each take their /Length from the next, and 101's row leads nowhere: reading 100 rebuilds the
+        // index with 100 and 101 in flight. Stream 150 says trailer in a comment before its dictionary: the scan for trailers
+        // parses it, and its /Length's chain reaches past the depth the reader follows, which the scan reports. The finish
+        // keeps that report, taken as made, so that reading 100 again from the finished index, which nests as deep, reports
+        // nothing more (#167).
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"),
+        };
+
+        for (var number = 100; number < 250; number++)
+        {
+            var comment = number == 150 ? "% trailer\n" : string.Empty;
+            rows[number] = file.Object(number, string.Create(CultureInfo.InvariantCulture, $"{comment}<< /Length {number + 1} 0 R >>\nstream\nx\nendstream"));
+        }
+
+        rows[250] = file.Object(250, "1");
+        rows[9] = file.Padding(9);
+        rows[101] = rows[9] + 600;
+        file.Table(251, rows, "/Size 251 /Root 1 0 R");
+        using var document = PdfDocument.Open(file.Bytes);
+
+        document.GetObject(new PdfObjectId(100)).Should().BeOfType<PdfStream>();
+
+        document.WasRepaired.Should().BeTrue();
+        document.Diagnostics.Should().ContainSingle(diagnostic => diagnostic.Code == PdfDiagnosticCodes.SyntaxDepthExceeded);
     }
 
     [Fact]

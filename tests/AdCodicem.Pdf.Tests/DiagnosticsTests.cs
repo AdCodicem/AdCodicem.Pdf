@@ -414,7 +414,7 @@ public class DiagnosticsTests
     }
 
     [Fact]
-    public void An_enumeration_gives_the_default_entry_before_its_first_step_once_it_ended_and_once_reset()
+    public void An_enumeration_gives_the_default_entry_before_its_first_step_once_reset_and_once_it_ended()
     {
         var diagnostics = new PdfDiagnostics();
         diagnostics.Warn("only", "The only entry.");
@@ -423,13 +423,14 @@ public class DiagnosticsTests
         var before = enumerator.Current;
         enumerator.MoveNext().Should().BeTrue();
         var on = enumerator.Current;
-        enumerator.MoveNext().Should().BeFalse();
-        var ended = enumerator.Current;
         enumerator.Reset();
+        var reset = enumerator.Current;
+        enumerator.MoveNext().Should().BeTrue();
+        enumerator.MoveNext().Should().BeFalse();
 
         before.Should().Be(default(PdfDiagnostic));
         on.Code.Should().Be("only");
-        ended.Should().Be(default(PdfDiagnostic));
+        reset.Should().Be(default(PdfDiagnostic));
         enumerator.Current.Should().Be(default(PdfDiagnostic));
     }
 
