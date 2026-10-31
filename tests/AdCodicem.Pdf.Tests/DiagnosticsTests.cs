@@ -358,9 +358,9 @@ public class DiagnosticsTests
     [Fact]
     public void An_enumeration_ends_with_the_entries_a_roll_back_left_when_fewer_than_it_began_with()
     {
-        // Within one call, a reading may withdraw what it recorded (a rebuild finished again from its scan does), which only
-        // a caller's own source, enumerating from inside a read, can see: the enumeration ends with the entries left, and
-        // reads none past them.
+        // Within one call, a reading may withdraw what it recorded and record again (a rebuild finished again from its scan
+        // does), which only a caller's own source, enumerating from inside a read, can see: the enumeration ends with the
+        // entries left, reads none past them, and stays ended once the record grows back to the count it began with.
         var diagnostics = new PdfDiagnostics();
         diagnostics.Warn("kept", "Recorded before the mark.");
         var mark = diagnostics.GetMark();
@@ -374,7 +374,33 @@ public class DiagnosticsTests
         enumerator.Current.Code.Should().Be("kept");
         enumerator.MoveNext().Should().BeFalse();
         diagnostics.Warn("recorded again", "Recorded after the roll back.");
+        diagnostics.Warn("recorded again too", "Recorded after the roll back.");
         enumerator.MoveNext().Should().BeFalse();
+        enumerator.MoveNext().Should().BeFalse();
+    }
+
+    [Fact]
+    public void An_enumeration_stepped_across_a_roll_back_reads_up_to_its_count_the_entries_recorded_again_in_their_places()
+    {
+        // An enumeration not yet past the entries a roll back withdraws reads, up to the count it began with, what is held at
+        // those places once the record grows again: entries recorded after it began, as the remark of MoveNext says (#167).
+        var diagnostics = new PdfDiagnostics();
+        diagnostics.Warn("kept", "Recorded before the mark.");
+        var mark = diagnostics.GetMark();
+        diagnostics.Warn("withdrawn", "Recorded after the mark.");
+        var enumerator = diagnostics.GetEnumerator();
+
+        enumerator.MoveNext().Should().BeTrue();
+        diagnostics.RollBack(mark);
+        diagnostics.Warn("recorded again", "Recorded after the roll back.");
+        diagnostics.Warn("recorded again too", "Recorded after the roll back.");
+
+        enumerator.MoveNext().Should().BeTrue();
+        enumerator.Current.Code.Should().Be("recorded again");
+        enumerator.MoveNext().Should().BeFalse();
+        enumerator.Reset();
+        enumerator.MoveNext().Should().BeTrue();
+        enumerator.Current.Code.Should().Be("kept");
     }
 
     [Fact]

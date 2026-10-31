@@ -329,13 +329,29 @@ public sealed class PdfDiagnostics : IReadOnlyList<PdfDiagnostic>
 
         readonly object IEnumerator.Current => Current;
 
-        /// <inheritdoc/>
+        /// <summary>Advances to the next of the entries the enumeration began with.</summary>
+        /// <returns>
+        /// <see langword="true"/> if it advanced to an entry; <see langword="false"/> if the enumeration has ended, as it
+        /// stays until <see cref="Reset"/>.
+        /// </returns>
         /// <remarks>
-        /// It ends with the entries the enumeration began with, or with those still held when fewer are: a read may
-        /// withdraw what it recorded before it returns — a rebuild finished again from its scan does —, which only a
-        /// caller's own <see cref="IO.PdfFileSource"/>, enumerating the record from inside the read, can see.
+        /// A read may withdraw what it recorded and record again before it returns — a rebuild finished again from its scan
+        /// does —, which only a caller's own <see cref="IO.PdfFileSource"/>, stepping an enumeration of the record from
+        /// inside the read, can see: such an enumeration reads, up to the count it began with, the entries held at those
+        /// places, which may be those recorded again. Once it has ended, it stays ended, whatever is recorded after (#167).
         /// </remarks>
-        public bool MoveNext() => ++_at < Math.Min(_count, _entries.Count);
+        public bool MoveNext()
+        {
+            if (_at + 1 < Math.Min(_count, _entries.Count))
+            {
+                _at++;
+                return true;
+            }
+
+            // Past every place it can read: a record that a withdrawal shrank and that grows again does not bring it back.
+            _at = _count;
+            return false;
+        }
 
         /// <summary>Starts the enumeration again, over the entries it began with.</summary>
         public void Reset() => _at = -1;
