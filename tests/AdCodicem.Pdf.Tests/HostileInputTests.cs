@@ -3974,21 +3974,16 @@ public class HostileInputTests
         value is PdfDictionary dictionary && dictionary.GetRaw(PdfName.Get("Title")) is PdfString title ? title.ToText() : null;
 
     /// <summary>
-    /// Writes a file whose index is a cross-reference stream, with the object streams <paramref name="streams"/>
-    /// describes and the objects <paramref name="direct"/> gives written directly; objects 1 and 2 are a catalog and
-    /// an empty page tree.
-    /// </summary>
-    /// <summary>
-    /// Writes a file indexed by a cross-reference stream whose catalog names object 6, which object stream 7 holds, with
-    /// 2,000 objects written directly in the file, and the row of <paramref name="brokenRow"/> outside the file.
-    /// </summary>
-    /// <summary>
     /// The sound document spread out, object 3's row 700 bytes before its header, inside object 4's string: the document
     /// opens with five entries, and reading 3 rebuilds its index.
     /// </summary>
     private static byte[] RebuiltOnReadingThree() =>
         PdfTemplate.Build(PdfTemplate.Spread.Replace("{row:3}", "{row:3:0:-700}", StringComparison.Ordinal));
 
+    /// <summary>
+    /// Writes a file indexed by a cross-reference stream whose catalog names object 6, which object stream 7 holds, with
+    /// 2,000 objects written directly in the file, and the row of <paramref name="brokenRow"/> outside the file.
+    /// </summary>
     private static byte[] ObjectsAndAMember(int brokenRow)
     {
         var file = new HandWrittenFile(version: "1.5");
@@ -4257,6 +4252,11 @@ public class HostileInputTests
         }
     }
 
+    /// <summary>
+    /// Writes a file whose index is a cross-reference stream, with the object streams <paramref name="streams"/>
+    /// describes and the objects <paramref name="direct"/> gives written directly; objects 1 and 2 are a catalog and
+    /// an empty page tree.
+    /// </summary>
     private static byte[] PackedFile(IReadOnlyList<PackedStream> streams, IReadOnlyList<(int Number, string Body)>? direct = null)
     {
         using var output = new MemoryStream();
