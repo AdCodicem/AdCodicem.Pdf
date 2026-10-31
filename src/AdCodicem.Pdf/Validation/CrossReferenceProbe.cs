@@ -282,13 +282,17 @@ internal sealed class CrossReferenceProbe
                 objects += list.Count;
             }
 
+            // The verb follows the count of objects, and the stream and its pronoun the count of object streams that hold
+            // them: a single stream can hold them all.
             if (NotChecked.Take())
             {
                 NotChecked.Keep(new ProbeFinding(
                     default,
                     objects == 1
                         ? "The document is encrypted: the 1 object its index places in an object stream was not checked, that stream being readable only once decrypted."
-                        : Invariant($"The document is encrypted: the {objects} objects its index places in object streams were not checked, those streams being readable only once decrypted.")));
+                        : packed.Count == 1
+                            ? Invariant($"The document is encrypted: the {objects} objects its index places in an object stream were not checked, that stream being readable only once decrypted.")
+                            : Invariant($"The document is encrypted: the {objects} objects its index places in object streams were not checked, those streams being readable only once decrypted.")));
             }
 
             return;

@@ -2417,13 +2417,14 @@ public class CrossReferenceRuleTests
     }
 
     [Theory]
-    [InlineData(2, "the 2 objects its index places in object streams were not checked, those streams being readable only once decrypted.")]
+    [InlineData(2, "the 2 objects its index places in an object stream were not checked, that stream being readable only once decrypted.")]
     [InlineData(1, "the 1 object its index places in an object stream was not checked, that stream being readable only once decrypted.")]
     public void An_encrypted_document_s_object_streams_are_said_to_be_unchecked(int packed, string said)
     {
+        // The builder packs the objects in one object stream, 4: the verb follows the objects, the stream that one.
         var file = Replace(
             XRefStreamBuilder()
-                .WithObject(5, "<< /Filter /Standard /V 1 /R 2 /O <00> /U <00> /P -4 >>")
+                .WithObject(5, Encryption)
                 .BuildWithXRefStream(rootNumber: 1, compressedObjects: packed == 2 ? [2, 3] : [3]),
             "/Type /XRef",
             "/Type /XRef /Encrypt 5 0 R");
@@ -2434,6 +2435,31 @@ public class CrossReferenceRuleTests
         finding.RuleId.Should().Be(PdfValidationRuleIds.XRefCheckedInPart);
         finding.Location.IsDocument.Should().BeTrue();
         finding.Message.Should().Be("The document is encrypted: " + said);
+    }
+
+    [Fact]
+    public void Objects_an_encrypted_document_packs_in_several_object_streams_are_said_to_be_unchecked_in_those_streams()
+    {
+        // The page tree in object stream 4, the page in object stream 6: the streams are counted as well as the objects.
+        var file = new HandWrittenFile(version: "1.5");
+        var rows = new Dictionary<int, (int Type, long Field2, int Field3)>
+        {
+            [1] = (1, file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"), 0),
+            [2] = (2, 4, 0),
+            [3] = (2, 6, 0),
+            [4] = (1, file.ObjectStream(4, [(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>")]), 0),
+            [5] = (1, file.Object(5, Encryption), 0),
+            [6] = (1, file.ObjectStream(6, [(3, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << >> >>")]), 0),
+        };
+        file.CrossReferenceStream(7, 8, rows, "/Root 1 0 R /Encrypt 5 0 R");
+        using var document = PdfDocument.Open(file.Bytes, new PdfReaderOptions { ThrowOnEncrypted = false });
+
+        var finding = new PdfValidator().Validate(document).Findings.Should().ContainSingle().Which;
+
+        finding.RuleId.Should().Be(PdfValidationRuleIds.XRefCheckedInPart);
+        finding.Location.IsDocument.Should().BeTrue();
+        finding.Message.Should().Be(
+            "The document is encrypted: the 2 objects its index places in object streams were not checked, those streams being readable only once decrypted.");
     }
 
     [Fact]
@@ -2469,6 +2495,9 @@ public class CrossReferenceRuleTests
         after.Findings.Should().Equal(before.Findings);
         after.Contains(PdfValidationRuleIds.XRefEntryBroken).Should().BeTrue();
     }
+
+    /// <summary>An encryption dictionary of the standard handler: the reader decrypts nothing until M16.</summary>
+    private const string Encryption = "<< /Filter /Standard /V 1 /R 2 /O <00> /U <00> /P -4 >>";
 
     /// <summary>A document whose index is a cross-reference stream, objects 2 and 3 packed in object stream 4.</summary>
     private static byte[] XRefStreamFile() => XRefStreamBuilder().BuildWithXRefStream(rootNumber: 1, compressedObjects: [2, 3]);
