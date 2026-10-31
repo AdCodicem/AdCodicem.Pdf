@@ -1160,11 +1160,43 @@ internal sealed class PageTreeWalk
         /// kids of its own, else the node's own path and <c>/Kids[1]</c>.
         /// </summary>
         /// <remarks>
-        /// The node's own path is its node's in turn when it is a kid written in an array too, as deep as values nest in one
-        /// object, which the parser bounds: an object of its own, or an array of kids of its own, starts a path.
+        /// <para>
+        /// The node's own path is its node's in turn when it is a kid written in an array too: an object of its own, a node
+        /// written at a path of its own, as the catalog's <c>/Pages</c>, or an array of kids of its own starts a path.
+        /// </para>
+        /// <para>
+        /// The parser bounds how deep nodes so written nest in an object read from a file; a value a caller built nests as
+        /// deep as it was built, and the path is written in a loop whatever its depth: the indexes of the kids on the way are
+        /// taken up the nodes, then written outermost first into one builder. Written node by node, each node's path copied
+        /// into its kid's, it took a call for each node above — a stack of 1 MB overflowed under some 6,500 nodes a caller
+        /// nested — and copied steps in a number that grew with the square of its depth (#168).
+        /// </para>
         /// </remarks>
-        public string KidPath(int index) =>
-            KidsArray.Number > 0 ? Invariant($"[{index}]") : Place.Path + Invariant($"/Kids[{index}]");
+        public string KidPath(int index)
+        {
+            var kids = new Stack<int>();
+            kids.Push(index);
+            var node = this;
+
+            // Up the nodes that are kids written in their node's array of kids, to the one whose kids start the path.
+            while (node.KidsArray.Number == 0 && node.Place.ListedIn is { } listing)
+            {
+                kids.Push(node.Place.Kid);
+                node = listing;
+            }
+
+            var path = node.KidsArray.Number == 0
+                ? new StringBuilder(node.Place.Written)
+                : new StringBuilder().Append(CultureInfo.InvariantCulture, $"[{kids.Pop()}]");
+
+            // The stack gives the kids outermost first.
+            foreach (var kid in kids)
+            {
+                path.Append(CultureInfo.InvariantCulture, $"/Kids[{kid}]");
+            }
+
+            return path.ToString();
+        }
 
         /// <summary>Gets or sets the index of the next kid to visit.</summary>
         public int Next { get; set; }

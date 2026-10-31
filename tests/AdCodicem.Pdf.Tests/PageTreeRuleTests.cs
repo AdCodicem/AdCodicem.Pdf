@@ -6,6 +6,7 @@ using AdCodicem.Pdf.Documents;
 using AdCodicem.Pdf.IO;
 using AdCodicem.Pdf.Objects;
 using AdCodicem.Pdf.Validation;
+using AdCodicem.Pdf.Validation.Rules;
 
 namespace AdCodicem.Pdf.Tests;
 
@@ -586,6 +587,22 @@ public class PageTreeRuleTests
             finding.Location == PdfValidationLocation.OnPage(2, array));
         Single(report, PdfValidationRuleIds.PageTreeKidInvalid).Location.Should().Be(
             PdfValidationLocation.OfObject(new PdfObjectId(4)), "the kid is node 4's, whichever object its array is");
+    }
+
+    [Fact]
+    public void The_path_of_a_kid_starts_at_the_array_of_kids_of_its_own_it_is_written_in_whatever_lists_that_array_s_node()
+    {
+        // Node 4 lists, written in its /Kids, a node whose kids are object 7, an array of its own, which holds a node written
+        // in it over a page: the page's path runs from object 7, where it is written, not from node 4, which lists the node
+        // the array is the kids of.
+        var file = TreeWith(
+            "/Kids [5 0 R 6 0 R] /Count 2",
+            "/Kids [5 0 R << /Type /Pages /Kids 7 0 R /Count 1 >>] /Count 2",
+            "[<< /Type /Pages /Kids [<< /Type /Page /MediaBox 5 >>] /Count 1 >>]");
+
+        Single(Validate(file), PdfValidationRuleIds.PageTreeMediaBoxInvalid).Should().Match<PdfValidationFinding>(finding =>
+            finding.Message == "The /MediaBox of the page object at [0]/Kids[0] in object 7 is a number, not a rectangle." &&
+            finding.Location == PdfValidationLocation.OnPage(2, new PdfObjectId(7)));
     }
 
     [Fact]
@@ -1377,6 +1394,61 @@ public class PageTreeRuleTests
 
         report.Findings.Should().BeEmpty();
         PageTreeWalk.Run(document).PageCount.Should().Be(1);
+    }
+
+    [Fact]
+    public void A_tree_a_caller_nested_deeper_than_the_stack_names_its_deepest_page_by_its_path()
+    {
+        // A caller sets the catalog's /Pages to 50,000 nodes, each written in the /Kids of the one above, over a page without
+        // a media box. No file nests values so deep in one object, which the parser bounds; a value a caller built nests as
+        // deep as it was built. The page's path, written for its finding, took a call for each node above it, and a stack of
+        // 1 MB overflowed past some 6,500 nodes, which nothing catches (retention:0 of #168's review). It is written in a
+        // loop, whatever its depth. The kids written in the array fill the report before the page's finding: the media box
+        // rule alone keeps it.
+        const int Depth = 50_000;
+        const int Stack = 1024 * 1024;
+        using var document = PdfDocument.Open(PdfTemplate.Build(PdfTemplate.Sound));
+        document.Catalog!.Set(PdfName.Pages, NestedNodes(Depth));
+        var mediaBox = new PdfValidatorOptions
+        {
+            Profile = new ValidationProfile("media box", 1, [new PageTreeMediaBoxInvalidRule()]),
+        };
+
+        var report = OnAStackOf(Stack, () => new PdfValidator().Validate(document));
+        var mediaBoxReport = OnAStackOf(Stack, () => new PdfValidator(mediaBox).Validate(document));
+
+        report.WarningCount.Should().Be(
+            Depth + 3,
+            "each node's kid is written in the array, the nodes lack /Parent, and the page lacks a media box and resources");
+        Single(mediaBoxReport, PdfValidationRuleIds.PageTreeMediaBoxInvalid).Should().Match<PdfValidationFinding>(finding =>
+            finding.Message ==
+                "The page object under /Pages/Kids[0]/Kids (99993 steps) /Kids[0]/Kids[0] of object 1 has no /MediaBox, and no page tree node above it gives one: the page's size is unknown." &&
+            finding.Location == PdfValidationLocation.OnPage(0, new PdfObjectId(1)));
+    }
+
+    [Fact]
+    public void Writing_the_path_of_a_page_a_caller_nested_deep_allocates_in_proportion_to_its_depth()
+    {
+        // Each node's path was its own node's, copied, with its step added: a path of n nodes copied n²/2 steps, 8 MB for
+        // the path of a page under 1,000 nodes and 128 MB under 4,000 (retention:0 of #168's review). The indexes of the kids
+        // on the way are taken up the nodes, then written into one builder: what one more node costs the walk is its frame,
+        // and its step in the paths its findings write.
+        const int Few = 1_000;
+        const int Many = 4_000;
+        using var few = PdfDocument.Open(PdfTemplate.Build(PdfTemplate.Sound));
+        using var many = PdfDocument.Open(PdfTemplate.Build(PdfTemplate.Sound));
+        few.Catalog!.Set(PdfName.Pages, NestedNodes(Few));
+        many.Catalog!.Set(PdfName.Pages, NestedNodes(Many));
+
+        var fewAllocated = Allocations.Least(() => PageTreeWalk.Run(few, room: 1), out var fewWalk);
+        var manyAllocated = Allocations.Least(() => PageTreeWalk.Run(many, room: 1), out var manyWalk);
+
+        fewWalk.MediaBoxFaults.Should().ContainSingle().Which.Message.Should().StartWith(
+            "The page object under /Pages/Kids[0]/Kids (1993 steps) /Kids[0]/Kids[0] of object 1 has no /MediaBox");
+        manyWalk.MediaBoxFaults.Should().ContainSingle().Which.Message.Should().StartWith(
+            "The page object under /Pages/Kids[0]/Kids (7993 steps) /Kids[0]/Kids[0] of object 1 has no /MediaBox");
+        ((manyAllocated - fewAllocated) / (Many - Few)).Should().BeLessThan(
+            512, "what one more node costs is its frame, and its step in each path written");
     }
 
     [Fact]
@@ -2307,6 +2379,56 @@ public class PageTreeRuleTests
 
         file.Table(size, rows, string.Create(CultureInfo.InvariantCulture, $"/Size {size} /Root 1 0 R"));
         return file.Bytes;
+    }
+
+    /// <summary>
+    /// Builds <paramref name="depth"/> nodes, each written in the <c>/Kids</c> of the one above and counting one page, over a
+    /// page without a media box or resources: a tree only a caller can nest so deep in one object.
+    /// </summary>
+    private static PdfDictionary NestedNodes(int depth)
+    {
+        var tree = new PdfDictionary();
+        tree.Set(PdfName.Type, PdfName.Page);
+
+        for (var level = 0; level < depth; level++)
+        {
+            var node = new PdfDictionary();
+            node.Set(PdfName.Type, PdfName.Pages);
+            node.Set(PdfName.Kids, new PdfArray([tree]));
+            node.Set(PdfName.Count, PdfInteger.Create(1));
+            tree = node;
+        }
+
+        return tree;
+    }
+
+    /// <summary>
+    /// Runs <paramref name="work"/> on a thread whose stack is <paramref name="size"/> bytes, and gives what it gave; what it
+    /// threw is thrown here.
+    /// </summary>
+    private static T OnAStackOf<T>(int size, Func<T> work)
+    {
+        T result = default!;
+        Exception? failure = null;
+        var thread = new Thread(
+            () =>
+            {
+                try
+                {
+                    result = work();
+                }
+                catch (Exception exception) when (exception is not OutOfMemoryException)
+                {
+                    failure = exception;
+                }
+            },
+            maxStackSize: size);
+
+        thread.Start();
+        thread.Join();
+
+        failure.Should().BeNull();
+        return result;
     }
 
     private static byte[] TreeWith(string text, string replacement)
