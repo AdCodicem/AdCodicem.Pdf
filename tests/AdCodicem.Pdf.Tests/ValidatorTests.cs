@@ -187,7 +187,18 @@ public class ValidatorTests
         findings.Kept.Should().Be(2);
         findings.Unkept.Should().Be(3);
         findings.Select(finding => finding.Message).Should().Equal("Finding 1.", "Finding 2.");
-        ((System.Collections.IEnumerable)findings).Cast<ProbeFinding>().Should().HaveCount(2);
+
+        // The non-generic enumerator, drained by hand: Enumerable.Cast would hand back the findings themselves, and run the
+        // generic one.
+        var messages = new List<string>();
+        var enumerator = ((System.Collections.IEnumerable)findings).GetEnumerator();
+
+        while (enumerator.MoveNext())
+        {
+            messages.Add(((ProbeFinding)enumerator.Current).Message);
+        }
+
+        messages.Should().Equal("Finding 1.", "Finding 2.");
     }
 
     [Fact]
@@ -266,6 +277,23 @@ public class ValidatorTests
         report.ErrorCount.Should().Be(int.MaxValue);
         report.WarningCount.Should().Be(int.MaxValue);
         report.InformationCount.Should().Be(int.MaxValue);
+        report.SuppressedCount.Should().Be(int.MaxValue);
+    }
+
+    [Fact]
+    public void The_findings_not_kept_stay_at_their_greatest_though_the_findings_kept_are_counted_with_them()
+    {
+        // A thousand errors kept, one dropped, and as many counted as an int holds: the errors stop at int.MaxValue, and so do
+        // the findings not kept, 2^31 of them. Worked out from the errors, less those kept, they fell short by the thousand.
+        var profile = Profile(
+            new ReportingRule("test.reported", PdfValidationSeverity.Error, 1001),
+            new CountingRule("test.counted", PdfValidationSeverity.Error, int.MaxValue));
+        using var document = PdfDocument.Open(SoundFile());
+
+        var report = new PdfValidator(new PdfValidatorOptions { Profile = profile, FindingCapacity = 1000 }).Validate(document);
+
+        report.Findings.Should().HaveCount(1000);
+        report.ErrorCount.Should().Be(int.MaxValue);
         report.SuppressedCount.Should().Be(int.MaxValue);
     }
 

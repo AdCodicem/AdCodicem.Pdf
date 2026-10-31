@@ -31,7 +31,9 @@ namespace AdCodicem.Pdf.Validation;
 /// </para>
 /// <para>
 /// A rule that writes its findings itself asks <see cref="HasRoomFor"/> before writing each, so that a finding the report
-/// cannot keep is counted without being written. A count past what an <see langword="int"/> holds stays at its greatest.
+/// cannot keep is counted without being written. A count past what an <see langword="int"/> holds stays at its greatest,
+/// the count of findings not kept included, which is kept apart rather than worked out from the counts by severity: one of
+/// those stopped at its greatest would make it fall short.
 /// </para>
 /// </remarks>
 internal sealed class ValidationContext
@@ -47,6 +49,7 @@ internal sealed class ValidationContext
     private int _errors;
     private int _warnings;
     private int _information;
+    private int _suppressed;
 
     public ValidationContext(PdfDocument document, int capacity)
     {
@@ -89,14 +92,21 @@ internal sealed class ValidationContext
     /// </summary>
     public int Room => _capacity - _findings.Count;
 
-    /// <summary>Records a finding of <paramref name="rule"/>, under its identifier and at its severity.</summary>
+    /// <summary>
+    /// Records a finding of <paramref name="rule"/>, under its identifier and at its severity: kept while the report has
+    /// room for it, and counted as not kept past it.
+    /// </summary>
     public void Report(IValidationRule rule, PdfValidationLocation location, string message, string? remedy)
     {
-        Count(rule, 1);
+        Tally(rule, 1);
 
         if (_findings.Count < _capacity)
         {
             _findings.Add(new PdfValidationFinding(rule.Id, rule.Severity, location, message, remedy));
+        }
+        else
+        {
+            _suppressed = Add(_suppressed, 1);
         }
     }
 
@@ -112,20 +122,8 @@ internal sealed class ValidationContext
             return;
         }
 
-        switch (rule.Severity)
-        {
-            case PdfValidationSeverity.Error:
-                _errors = Add(_errors, findings);
-                break;
-            case PdfValidationSeverity.Warning:
-                _warnings = Add(_warnings, findings);
-                break;
-            default:
-                _information = Add(_information, findings);
-                break;
-        }
-
-        _ruleIds.Add(rule.Id);
+        Tally(rule, findings);
+        _suppressed = Add(_suppressed, findings);
     }
 
     /// <summary>
@@ -146,7 +144,29 @@ internal sealed class ValidationContext
 
     /// <summary>Closes the validation, handing what was found to a report.</summary>
     public PdfValidationReport ToReport(ValidationProfile profile) =>
-        new(profile, _findings, _ruleIds, _errors, _warnings, _information);
+        new(profile, _findings, _ruleIds, _errors, _warnings, _information, _suppressed);
+
+    /// <summary>
+    /// Counts <paramref name="findings"/> findings of <paramref name="rule"/>, kept or not, under its identifier and at its
+    /// severity.
+    /// </summary>
+    private void Tally(IValidationRule rule, int findings)
+    {
+        switch (rule.Severity)
+        {
+            case PdfValidationSeverity.Error:
+                _errors = Add(_errors, findings);
+                break;
+            case PdfValidationSeverity.Warning:
+                _warnings = Add(_warnings, findings);
+                break;
+            default:
+                _information = Add(_information, findings);
+                break;
+        }
+
+        _ruleIds.Add(rule.Id);
+    }
 
     /// <summary>Adds <paramref name="findings"/> to <paramref name="count"/>, a sum past what an <see langword="int"/> holds staying at its greatest.</summary>
     private static int Add(int count, int findings) => (int)Math.Min((long)count + findings, int.MaxValue);
