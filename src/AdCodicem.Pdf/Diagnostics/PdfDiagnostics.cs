@@ -317,6 +317,12 @@ public sealed class PdfDiagnostics : IReadOnlyList<PdfDiagnostic>
         private readonly int _count;
         private int _at;
 
+        /// <summary>
+        /// The entry the last step advanced to, read as it advanced: the place it was read at may be withdrawn, or hold
+        /// another entry, by the time <see cref="Current"/> is asked.
+        /// </summary>
+        private PdfDiagnostic _current;
+
         internal Enumerator(List<PdfDiagnostic> entries)
         {
             _entries = entries;
@@ -324,8 +330,13 @@ public sealed class PdfDiagnostics : IReadOnlyList<PdfDiagnostic>
             _at = -1;
         }
 
-        /// <inheritdoc/>
-        public readonly PdfDiagnostic Current => _entries[_at];
+        /// <summary>Gets the entry the last call to <see cref="MoveNext"/> advanced to.</summary>
+        /// <remarks>
+        /// It is read as the enumeration advances, as a list's enumerator reads it: what a read withdraws or records at that
+        /// place afterward does not change it (#167). Before the first step, and once the enumeration has ended, it is the
+        /// default entry.
+        /// </remarks>
+        public readonly PdfDiagnostic Current => _current;
 
         readonly object IEnumerator.Current => Current;
 
@@ -345,16 +356,25 @@ public sealed class PdfDiagnostics : IReadOnlyList<PdfDiagnostic>
             if (_at + 1 < Math.Min(_count, _entries.Count))
             {
                 _at++;
+                _current = _entries[_at];
                 return true;
             }
 
             // Past every place it can read: a record that a withdrawal shrank and that grows again does not bring it back.
             _at = _count;
+            _current = default;
             return false;
         }
 
-        /// <summary>Starts the enumeration again, over the entries it began with.</summary>
-        public void Reset() => _at = -1;
+        /// <summary>
+        /// Starts the enumeration again from its first place, up to the count it began with: it reads the entries held at
+        /// those places, as <see cref="MoveNext"/> says.
+        /// </summary>
+        public void Reset()
+        {
+            _at = -1;
+            _current = default;
+        }
 
         /// <inheritdoc/>
         public readonly void Dispose()

@@ -690,6 +690,161 @@ public class ReadOrderTests
             .Which.LimitName.Should().Be(nameof(PdfReaderLimits.MaxIndexEntries));
     }
 
+    [Theory]
+    [InlineData("/Root 1 0 R", "a read", "a read")]
+    [InlineData("/Root 1 0 R", "a read", "a validation")]
+    [InlineData("/Root 1 0 R", "a validation", "a read")]
+    [InlineData("/Root 1 0 R", "a validation", "a validation")]
+    [InlineData("", "a read", "a read")]
+    [InlineData("", "a read", "a validation")]
+    [InlineData("", "a validation", "a read")]
+    [InlineData("", "a validation", "a validation")]
+    public void A_rebuild_the_source_fails_at_any_of_its_reads_is_run_again_by_what_comes_next(string trailer, string setOff, string next)
+    {
+        // Object stream 6 holds object 7, and its /Length is object 5, whose row leads nowhere: reading 7 rebuilds the index,
+        // and so does the start of a validation, whose checks find the row. A rebuild scans the file for its objects, then for
+        // its trailers, and is finished by expanding 6 — and by searching for the catalog, where the file's trailer names no
+        // /Root. The source fails each read of the operation in turn, once — a check's, a load's, the scan's, the finish's,
+        // a rule's —: whatever it failed, what comes next, a read or a validation, runs the rebuild again or finishes it, so
+        // that the document serves 7 and its catalog, counts 8 entries, and validates as one read soundly does (#167).
+        var (bytes, _) = MemberWhoseLengthLeadsNowhere(trailer);
+        var sound = Findings(PdfDocument.Open(bytes), validations: 1);
+        int reads;
+
+        using (var counting = new FailingSource(bytes))
+        using (var document = PdfDocument.Open(counting, options: null, ownsSource: false))
+        {
+            var opened = counting.Reads;
+            SetOff(document);
+            reads = counting.Reads - opened;
+        }
+
+        reads.Should().BeGreaterThan(10, "the operation reads the file in a scan and a finish besides its loads");
+
+        for (var failing = 1; failing <= reads; failing++)
+        {
+            using var source = new FailingSource(bytes);
+            using var document = PdfDocument.Open(source, options: null, ownsSource: false);
+            source.FailRead(failing);
+
+            FluentActions.Invoking(() => SetOff(document)).Should().Throw<IOException>("read {0} of {1} fails", failing, reads);
+
+            if (next == "a validation")
+            {
+                Validated(document).Should().Equal(sound, "read {0} of {1} failed", failing, reads);
+            }
+
+            document.GetObject(new PdfObjectId(7)).AsText().Should().Be("member", "read {0} of {1} failed", failing, reads);
+            document.ObjectCount.Should().Be(8, "read {0} of {1} failed", failing, reads);
+            document.Catalog.Should().BeSameAs(document.GetObject(new PdfObjectId(1)) as PdfDictionary);
+            Validated(document).Should().Equal(sound, "read {0} of {1} failed", failing, reads);
+        }
+
+        void SetOff(PdfDocument document)
+        {
+            if (setOff == "a read")
+            {
+                _ = document.GetObject(new PdfObjectId(7));
+            }
+            else
+            {
+                _ = new PdfValidator().Validate(document);
+            }
+        }
+
+        static List<string> Validated(PdfDocument document) =>
+            [.. new PdfValidator().Validate(document).Findings.Select(finding => finding.ToString())];
+    }
+
+    [Theory]
+    [InlineData("/Root 1 0 R", 2, 0)]
+    [InlineData("/Root 1 0 R", 3, 7)]
+    [InlineData("", 2, 0)]
+    [InlineData("", 3, 7)]
+    public void A_rebuild_whose_scan_the_source_fails_holds_what_the_scan_reached_until_the_next_read_runs_it_again(
+        string trailer, int read, int reached)
+    {
+        // Reading 7 rebuilds the index while object stream 6 is being loaded. Of the reads from the file's start, the first
+        // is a load's, the second the scan's for objects, the third its scan for trailers. The source failing the scan, the
+        // read throws at once, leaving the index the scan had reached — none of the objects, or those written directly, 6's
+        // member not taken in — and the trailer it had merged, holding the file's own /Root. The next read runs the rebuild
+        // again from its scan, into a new trailer, so that the one taken meanwhile is left as it was; it reports what a
+        // rebuild run whole reports, and serves 7 as it does (#167).
+        var (bytes, _) = MemberWhoseLengthLeadsNowhere(trailer);
+        using var whole = PdfDocument.Open(bytes);
+        whole.GetObject(new PdfObjectId(7));
+        using var source = new FailingSource(bytes);
+        using var document = PdfDocument.Open(source, options: null, ownsSource: false);
+        source.Fail(0, read);
+
+        FluentActions.Invoking(() => document.GetObject(new PdfObjectId(7))).Should().Throw<IOException>();
+        var waiting = document.Trailer;
+        var keys = Keys(waiting);
+        var count = document.ObjectCount;
+        var numbers = document.ObjectNumbers.ToList();
+        var seven = document.GetObject(new PdfObjectId(7));
+
+        count.Should().Be(reached);
+        numbers.Should().HaveCount(reached).And.NotContain(7);
+        document.WasRepaired.Should().BeTrue();
+        seven.AsText().Should().Be("member");
+        document.ObjectCount.Should().Be(8);
+        document.Trailer.Should().NotBeSameAs(waiting);
+        Keys(waiting).Should().Equal(keys);
+        waiting.ContainsKey(PdfName.Root).Should().Be(trailer.Length > 0);
+        document.Catalog.Should().BeSameAs(document.GetObject(new PdfObjectId(1)) as PdfDictionary);
+        document.Diagnostics.Select(diagnostic => diagnostic.ToString())
+            .Should().Equal(whole.Diagnostics.Select(diagnostic => diagnostic.ToString()));
+
+        static List<string> Keys(PdfDictionary trailer) => [.. trailer.Keys.Select(key => key.Value)];
+    }
+
+    [Theory]
+    [InlineData("an object defined twice, the catalog let go by the cache")]
+    [InlineData("an index the scan fills")]
+    public void A_rebuild_settling_runs_reports_once_run_again_after_any_read_the_source_fails_what_it_reports_run_whole(string shape)
+    {
+        // The start of a validation settles the index, which rebuilds it: object 5's row leads nowhere. The source fails
+        // each read of settling in turn — a check's, the scan's, the finish's —: settling throws, and settling again runs
+        // the rebuild again from its scan, or checks again, so that what the document reports is what settling soundly
+        // reports. Object 4 is defined twice, which the finish reports before it reads the catalog the cache let go; or the
+        // scan meets one number more than the index has room for, which it reports (#167).
+        var (bytes, options) = shape == "an index the scan fills"
+            ? (TwoObjectStreamsTheSecondOfWhichLeadsNowhere(unindexed: 6).Bytes,
+                PdfReaderOptions.Default with { Limits = PdfReaderLimits.Default with { MaxIndexEntries = 13 } })
+            : (AnObjectDefinedTwiceTheCatalogLetGoByTheCache().Bytes, PdfReaderOptions.Default with { ObjectCacheCapacity = 64 });
+        using var whole = PdfDocument.Open(bytes, options);
+        whole.Reader.SettleIndex();
+        int reads;
+
+        using (var counting = new FailingSource(bytes))
+        using (var document = PdfDocument.Open(counting, options, ownsSource: false))
+        {
+            var opened = counting.Reads;
+            document.Reader.SettleIndex();
+            reads = counting.Reads - opened;
+        }
+
+        whole.WasRepaired.Should().BeTrue();
+        whole.Diagnostics.Should().Contain(diagnostic => diagnostic.Code == (shape == "an index the scan fills"
+            ? PdfDiagnosticCodes.LimitIndexEntries
+            : PdfDiagnosticCodes.ObjectRedefined));
+
+        for (var failing = 1; failing <= reads; failing++)
+        {
+            using var source = new FailingSource(bytes);
+            using var document = PdfDocument.Open(source, options, ownsSource: false);
+            source.FailRead(failing);
+
+            FluentActions.Invoking(document.Reader.SettleIndex).Should().Throw<IOException>("read {0} of {1} fails", failing, reads);
+            document.Reader.SettleIndex();
+
+            document.ObjectNumbers.Should().Equal(whole.ObjectNumbers, "read {0} of {1} failed", failing, reads);
+            document.Diagnostics.Select(diagnostic => diagnostic.ToString())
+                .Should().Equal(whole.Diagnostics.Select(diagnostic => diagnostic.ToString()), "read {0} of {1} failed", failing, reads);
+        }
+    }
+
     [Fact]
     public void A_trailer_taken_while_a_rebuild_waits_to_be_finished_is_left_as_it_was_by_the_read_that_finishes_it()
     {
@@ -716,15 +871,24 @@ public class ReadOrderTests
     }
 
     [Theory]
-    [InlineData("a read")]
-    [InlineData("a validation")]
-    public void While_a_rebuild_waits_to_be_finished_the_object_count_and_numbers_are_the_unfinished_rebuild_s(string next)
+    [InlineData(0, "a read")]
+    [InlineData(0, "a validation")]
+    [InlineData(1, "a read")]
+    [InlineData(1, "a validation")]
+    [InlineData(3, "a read")]
+    [InlineData(3, "a validation")]
+    [InlineData(4, "a read")]
+    [InlineData(4, "a validation")]
+    public void While_a_rebuild_waits_to_be_finished_the_document_answers_from_it_until_a_read_finishes_it(int root, string next)
     {
-        // As above: the file's trailer names no /Root, reading 7 rebuilds the index while object stream 6 is being loaded,
-        // and the source fails twice to give 5, 6's /Length. The rebuild waits to be finished, 6 not expanded: until the
-        // next read or validation finishes it, ObjectCount and ObjectNumbers count the scan's entries, without 7, which 6
-        // holds, and Catalog reads a trailer no search for the catalog has set /Root in. Asking them finishes nothing.
-        var (bytes, five) = MemberWhoseLengthLeadsNowhere(trailer: string.Empty);
+        // Reading 7 rebuilds the index while object stream 6 is being loaded, and the source fails twice to give 5, 6's
+        // /Length: the rebuild waits to be finished, 6 not expanded. ObjectCount, ObjectNumbers and IsEncrypted answer from
+        // the unfinished rebuild, and asking them finishes nothing: the scan's entries, without 7, which 6 holds. Catalog
+        // reads the /Root the file's own trailer names, the catalog opening found set aside: none, and it is null; object 1,
+        // the catalog; object 3, a page; or 4, a free number, and it is null. Reading that object finishes the rebuild
+        // first, and the next Catalog is the finished rebuild's, object 1; what comes next, a read or a validation, finishes
+        // it otherwise (#167).
+        var (bytes, five) = MemberWhoseLengthLeadsNowhere(root == 0 ? string.Empty : $"/Root {root} 0 R");
         using var source = new FailingSource(bytes);
         using var document = PdfDocument.Open(source, options: null, ownsSource: false);
         source.Fail(five, 1, 2);
@@ -732,8 +896,11 @@ public class ReadOrderTests
         FluentActions.Invoking(() => document.GetObject(new PdfObjectId(7))).Should().Throw<IOException>();
         var count = document.ObjectCount;
         var numbers = document.ObjectNumbers.ToList();
-        var catalog = document.Catalog;
+        var encrypted = document.IsEncrypted;
         var countAgain = document.ObjectCount;
+        var catalog = document.Catalog;
+        var countAfterCatalog = document.ObjectCount;
+        var named = root == 0 ? null : document.GetObject(new PdfObjectId(root)) as PdfDictionary;
 
         if (next == "a read")
         {
@@ -748,10 +915,42 @@ public class ReadOrderTests
         count.Should().Be(7);
         countAgain.Should().Be(7);
         numbers.Should().BeEquivalentTo([1, 2, 3, 5, 6, 8, 9]);
-        catalog.Should().BeNull();
+        encrypted.Should().BeFalse();
+        countAfterCatalog.Should().Be(root == 0 ? 7 : 8);
+        catalog.Should().BeSameAs(named);
+        catalog?.IsOfType(root == 1 ? PdfName.Catalog : PdfName.Page).Should().BeTrue();
         document.ObjectCount.Should().Be(8);
         document.ObjectNumbers.Should().BeEquivalentTo([1, 2, 3, 5, 6, 7, 8, 9]);
         document.Catalog.Should().BeSameAs(document.GetObject(new PdfObjectId(1)) as PdfDictionary);
+    }
+
+    [Fact]
+    public void A_rebuild_whose_scan_for_trailers_the_source_fails_waits_without_those_it_had_not_reached()
+    {
+        // #237's shape, the older trailer naming /Encrypt: reading object 4 rebuilds the index, whose scan merges the trailers
+        // it finds, the newest first. The source fails to give the older one: until the next read runs the rebuild again,
+        // Trailer lacks its /Encrypt and /Info, and IsEncrypted is false; the rebuild run again merges them into a new
+        // trailer, leaving the one taken meanwhile as it was, and IsEncrypted turns true (#154, #167).
+        var bytes = PdfTemplate.Build(UpdateWithoutItsPrevious.Replace("/Foo 99 0 R", "/Encrypt 99 0 R", StringComparison.Ordinal));
+        var older = Encoding.Latin1.GetString(bytes).IndexOf("trailer", StringComparison.Ordinal) + "trailer".Length;
+        using var source = new FailingSource(bytes);
+        using var document = PdfDocument.Open(source, options: null, ownsSource: false);
+        source.Fail(older, 1);
+
+        FluentActions.Invoking(() => document.GetObject(new PdfObjectId(4))).Should().Throw<IOException>();
+        var waiting = document.Trailer;
+        var keys = Keys(waiting);
+        var encrypted = document.IsEncrypted;
+        var four = document.GetObject(new PdfObjectId(4));
+
+        keys.Should().Equal("Size", "Root", "Prev", "Bar");
+        encrypted.Should().BeFalse();
+        four.AsText().Should().Be("four");
+        Keys(waiting).Should().Equal(keys);
+        Keys(document.Trailer).Should().Equal("Size", "Root", "Prev", "Bar", "Encrypt", "Info");
+        document.IsEncrypted.Should().BeTrue();
+
+        static List<string> Keys(PdfDictionary trailer) => [.. trailer.Keys.Select(key => key.Value)];
     }
 
     [Fact]
@@ -794,26 +993,32 @@ public class ReadOrderTests
         // Object stream 6's /Length is short, which the finish of the rebuild reading 7 sets off reports before the source
         // fails to give 5 for stream 8: the finish withdraws what it reported. A source that enumerates the document's
         // diagnostics as it fails began with two entries, of which the read leaves one: the enumeration ends with it, and
-        // reads no entry past those held (#167).
+        // reads no entry past those held. One the source stepped to the second still gives it, withdrawn (#167).
         var (bytes, five) = AShortObjectStreamThenOneWhoseLengthLeadsNowhere();
         using var source = new FailingSource(bytes);
         using var document = PdfDocument.Open(source, options: null, ownsSource: false);
         var enumerator = default(PdfDiagnostics.Enumerator);
-        var began = new List<string>();
+        var stepped = default(PdfDiagnostics.Enumerator);
+        var began = new List<PdfDiagnostic>();
         source.Fail(five, 2);
         source.Failing = () =>
         {
             enumerator = document.Diagnostics.GetEnumerator();
-            began.AddRange(document.Diagnostics.Select(diagnostic => diagnostic.Code));
+            stepped = document.Diagnostics.GetEnumerator();
+            stepped.MoveNext();
+            stepped.MoveNext();
+            began.AddRange(document.Diagnostics);
         };
 
         FluentActions.Invoking(() => document.GetObject(new PdfObjectId(7))).Should().Throw<IOException>();
 
-        began.Should().Equal(PdfDiagnosticCodes.XRefRebuilt, PdfDiagnosticCodes.StreamLengthInvalid);
+        began.Select(diagnostic => diagnostic.Code).Should().Equal(PdfDiagnosticCodes.XRefRebuilt, PdfDiagnosticCodes.StreamLengthInvalid);
         document.Diagnostics.Select(diagnostic => diagnostic.Code).Should().Equal(PdfDiagnosticCodes.XRefRebuilt);
         enumerator.MoveNext().Should().BeTrue();
         enumerator.Current.Should().Be(document.Diagnostics[0]);
         enumerator.MoveNext().Should().BeFalse();
+        stepped.Current.Should().Be(began[1]);
+        stepped.MoveNext().Should().BeFalse();
     }
 
     [Fact]
@@ -1348,16 +1553,23 @@ public class ReadOrderTests
     private static Config PropertySettings =>
         Config.QuickThrowOnFailure.WithMaxTest(100).WithReplay(0x5EED_1729UL, 0x9E37_79B9_7F4A_7C15UL).WithQuietOnSuccess(true);
 
-    /// <summary>A file read from memory, some of whose reads starting at one offset fail with an I/O error.</summary>
+    /// <summary>
+    /// A file read from memory, some of whose reads starting at one offset fail with an I/O error, or one of whose reads,
+    /// wherever it starts, does.
+    /// </summary>
     private sealed class FailingSource(byte[] data) : PdfFileSource
     {
         private readonly PdfFileSource _inner = FromMemory(data);
         private readonly HashSet<int> _failing = [];
         private long _at = -1;
         private int _reads;
+        private int _failingRead;
 
         /// <inheritdoc/>
         public override long Length => _inner.Length;
+
+        /// <summary>Gets how many reads were asked of the source, failed or not.</summary>
+        public int Reads { get; private set; }
 
         /// <summary>Gets or sets what the source does as a read fails, before it throws: a caller's code inside the read.</summary>
         public Action? Failing { get; set; }
@@ -1374,12 +1586,16 @@ public class ReadOrderTests
             _failing.UnionWith(reads);
         }
 
+        /// <summary>Makes the read that comes <paramref name="read"/>th from now, counted from 1, fail, wherever it starts.</summary>
+        public void FailRead(int read) => _failingRead = Reads + read;
+
         /// <inheritdoc/>
         public override int Read(long offset, Span<byte> buffer)
         {
             Reading?.Invoke();
+            var read = ++Reads;
 
-            if (offset == _at && _failing.Contains(++_reads))
+            if ((offset == _at && _failing.Contains(++_reads)) || read == _failingRead)
             {
                 Failing?.Invoke();
                 throw new IOException("The source failed to give the bytes asked for.");
@@ -1422,6 +1638,37 @@ public class ReadOrderTests
         var five = file.Object(5, Data.Length.ToString(CultureInfo.InvariantCulture));
         file.CrossReferenceStream(9, 10, rows, trailer);
         return (file.Bytes, five);
+    }
+
+    /// <summary>
+    /// A file whose object 4 is defined twice, eighty fillers apart, after the catalog, written first: an object cache of 64
+    /// lets the catalog go before a rebuild's finish reads it. Object stream 8 holds 7, and its /Length is object 5, whose
+    /// row leads into object 9's string. Gives the file and where the catalog is.
+    /// </summary>
+    private static (byte[] Bytes, long Catalog) AnObjectDefinedTwiceTheCatalogLetGoByTheCache()
+    {
+        var file = new HandWrittenFile(version: "1.5");
+        var rows = new Dictionary<int, (int Type, long Field2, int Field3)>();
+        var catalog = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>");
+        rows[1] = (1, catalog, 0);
+        file.Object(4, "(first)");
+
+        for (var number = 100; number < 180; number++)
+        {
+            rows[number] = (1, file.Object(number, "(filler)"), 0);
+        }
+
+        rows[2] = (1, file.Object(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>"), 0);
+        rows[3] = (1, file.Object(3, Page), 0);
+        rows[4] = (1, file.Object(4, "(second)"), 0);
+        const string Data = "7 0 (member) ";
+        rows[8] = (1, file.Object(8, "<< /Type /ObjStm /N 1 /First 4 /Length 5 0 R >>\nstream\n" + Data + "\nendstream"), 0);
+        rows[7] = (2, 8, 0);
+        rows[9] = (1, file.Padding(9), 0);
+        rows[5] = (1, rows[9].Field2 + 600, 0);
+        file.Object(5, Data.Length.ToString(CultureInfo.InvariantCulture));
+        file.CrossReferenceStream(200, 201, rows, "/Root 1 0 R");
+        return (file.Bytes, catalog);
     }
 
     /// <summary>
@@ -1822,32 +2069,12 @@ public class ReadOrderTests
         // it. Reading 7 rebuilds the index while object stream 8 is loaded, its /Length 5 leading nowhere. The finish
         // reports 4's redefinition, then fails to read the catalog: what it reported is withdrawn, and the finish that
         // completes reports it once, as a rebuild run first does.
-        var file = new HandWrittenFile(version: "1.5");
-        var rows = new Dictionary<int, (int Type, long Field2, int Field3)>();
-        var catalog = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>");
-        rows[1] = (1, catalog, 0);
-        file.Object(4, "(first)");
-
-        for (var number = 100; number < 180; number++)
-        {
-            rows[number] = (1, file.Object(number, "(filler)"), 0);
-        }
-
-        rows[2] = (1, file.Object(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>"), 0);
-        rows[3] = (1, file.Object(3, Page), 0);
-        rows[4] = (1, file.Object(4, "(second)"), 0);
-        const string Data = "7 0 (member) ";
-        rows[8] = (1, file.Object(8, "<< /Type /ObjStm /N 1 /First 4 /Length 5 0 R >>\nstream\n" + Data + "\nendstream"), 0);
-        rows[7] = (2, 8, 0);
-        rows[9] = (1, file.Padding(9), 0);
-        rows[5] = (1, rows[9].Field2 + 600, 0);
-        file.Object(5, Data.Length.ToString(CultureInfo.InvariantCulture));
-        file.CrossReferenceStream(200, 201, rows, "/Root 1 0 R");
+        var (bytes, catalog) = AnObjectDefinedTwiceTheCatalogLetGoByTheCache();
         var options = PdfReaderOptions.Default with { ObjectCacheCapacity = 64 };
-        using var settled = PdfDocument.Open(file.Bytes, options);
+        using var settled = PdfDocument.Open(bytes, options);
         settled.Reader.SettleIndex();
         settled.GetObject(new PdfObjectId(7));
-        using var source = new FailingSource(file.Bytes);
+        using var source = new FailingSource(bytes);
         using var document = PdfDocument.Open(source, options, ownsSource: false);
         source.Fail(catalog, 2);
 

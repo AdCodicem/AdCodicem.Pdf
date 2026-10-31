@@ -1,3 +1,4 @@
+using System.Collections;
 using System.Text;
 using AdCodicem.Pdf.Diagnostics;
 using AdCodicem.Pdf.Documents;
@@ -380,27 +381,56 @@ public class DiagnosticsTests
     }
 
     [Fact]
-    public void An_enumeration_stepped_across_a_roll_back_reads_up_to_its_count_the_entries_recorded_again_in_their_places()
+    public void An_enumeration_stepped_across_a_roll_back_keeps_the_entry_it_stands_on_and_reads_up_to_its_count_those_recorded_again()
     {
         // An enumeration not yet past the entries a roll back withdraws reads, up to the count it began with, what is held at
-        // those places once the record grows again: entries recorded after it began, as the remark of MoveNext says (#167).
+        // those places once the record grows again: entries recorded after it began, as the remark of MoveNext says. One
+        // standing on an entry the roll back withdraws still gives it, whatever is recorded at its place after (#167).
         var diagnostics = new PdfDiagnostics();
         diagnostics.Warn("kept", "Recorded before the mark.");
         var mark = diagnostics.GetMark();
         diagnostics.Warn("withdrawn", "Recorded after the mark.");
         var enumerator = diagnostics.GetEnumerator();
+        var standing = diagnostics.GetEnumerator();
 
         enumerator.MoveNext().Should().BeTrue();
+        standing.MoveNext().Should().BeTrue();
+        standing.MoveNext().Should().BeTrue();
         diagnostics.RollBack(mark);
+        var withdrawn = standing.Current;
         diagnostics.Warn("recorded again", "Recorded after the roll back.");
         diagnostics.Warn("recorded again too", "Recorded after the roll back.");
 
+        withdrawn.Code.Should().Be("withdrawn");
+        standing.Current.Code.Should().Be("withdrawn");
+        ((IEnumerator)standing).Current.Should().Be(withdrawn);
+        enumerator.Current.Code.Should().Be("kept");
         enumerator.MoveNext().Should().BeTrue();
         enumerator.Current.Code.Should().Be("recorded again");
         enumerator.MoveNext().Should().BeFalse();
         enumerator.Reset();
         enumerator.MoveNext().Should().BeTrue();
         enumerator.Current.Code.Should().Be("kept");
+    }
+
+    [Fact]
+    public void An_enumeration_gives_the_default_entry_before_its_first_step_once_it_ended_and_once_reset()
+    {
+        var diagnostics = new PdfDiagnostics();
+        diagnostics.Warn("only", "The only entry.");
+        var enumerator = diagnostics.GetEnumerator();
+
+        var before = enumerator.Current;
+        enumerator.MoveNext().Should().BeTrue();
+        var on = enumerator.Current;
+        enumerator.MoveNext().Should().BeFalse();
+        var ended = enumerator.Current;
+        enumerator.Reset();
+
+        before.Should().Be(default(PdfDiagnostic));
+        on.Code.Should().Be("only");
+        ended.Should().Be(default(PdfDiagnostic));
+        enumerator.Current.Should().Be(default(PdfDiagnostic));
     }
 
     [Fact]
