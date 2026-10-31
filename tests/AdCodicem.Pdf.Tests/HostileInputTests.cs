@@ -9,6 +9,7 @@ using AdCodicem.Pdf.IO;
 using AdCodicem.Pdf.IO.XRef;
 using AdCodicem.Pdf.Objects;
 using AdCodicem.Pdf.Validation;
+using AdCodicem.Pdf.Validation.Rules;
 
 namespace AdCodicem.Pdf.Tests;
 
@@ -3459,6 +3460,79 @@ public class HostileInputTests
     }
 
     [Fact]
+    public void Judging_the_size_of_sections_past_the_report_s_room_formats_no_message()
+    {
+        // #168: a chain of sections, each giving /Size 99 where 3 is right. The rule formatted each section's message, some
+        // 470 bytes, then reported it to a report that had no room for it. It asks for room first, and counts a finding the
+        // report cannot keep without writing it: what one more section costs is the highest number it and the older ones use.
+        var (fewAllocated, few) = Judging(250);
+        var (manyAllocated, many) = Judging(1000);
+
+        few.WarningCount.Should().Be(250);
+        many.WarningCount.Should().Be(1000);
+        many.Findings.Should().BeEmpty();
+        many.SuppressedCount.Should().Be(1000);
+        manyAllocated.Should().BeLessThan(16 * 1024, "the highest number of each section, and no message");
+        ((manyAllocated - fewAllocated) / 750.0).Should().BeLessThan(8, "one more section costs an int, not a message");
+
+        static (long Allocated, PdfValidationReport Report) Judging(int sections)
+        {
+            using var document = PdfDocument.Open(SectionsGivingAWrongSize(sections).File);
+            var rule = new SizeWrongRule();
+
+            // A context of no room each measure, the probe the rule reads made outside it.
+            var allocated = Allocations.Least(
+                () =>
+                {
+                    var context = new ValidationContext(document, capacity: 0);
+                    _ = context.Probe;
+                    return context;
+                },
+                context =>
+                {
+                    rule.Check(context);
+                    return 0;
+                },
+                out var context,
+                out _);
+            return (allocated, context.ToReport(ValidationProfile.Structural));
+        }
+    }
+
+    [Theory]
+    [InlineData("0", 0)]
+    [InlineData("0.", 2)]
+    public void Judging_the_values_of_a_trailer_names_one_only_for_a_finding_the_report_has_room_for(string element, int findings)
+    {
+        // #168: a cross-reference stream whose /Index gives thousands of subsections of no rows, each element sound, or a real
+        // with no fractional part, a finding each, which a report of no room counts. The rule named each element, "element 9
+        // of its /Index", some 80 bytes, before judging it: it names one for a finding the report has room for alone.
+        var (fewAllocated, few) = Judging(1000);
+        var (manyAllocated, many) = Judging(4000);
+
+        few.WarningCount.Should().Be(findings * 1000);
+        many.WarningCount.Should().Be(findings * 4000);
+        many.Findings.Should().BeEmpty();
+        ((manyAllocated - fewAllocated) / 6000.0).Should().BeLessThan(1, "one more element costs no name");
+
+        (long Allocated, PdfValidationReport Report) Judging(int pairs)
+        {
+            using var document = PdfDocument.Open(EmptySubsections(pairs, element));
+            var rule = new TrailerValueWrongRule();
+            var allocated = Allocations.Least(
+                () => new ValidationContext(document, capacity: 0),
+                context =>
+                {
+                    rule.Check(context);
+                    return 0;
+                },
+                out var context,
+                out _);
+            return (allocated, context.ToReport(ValidationProfile.Structural));
+        }
+    }
+
+    [Fact]
     public void Probing_rows_whose_header_runs_through_a_run_of_blanks_already_crossed_reads_on_from_its_end()
     {
         // Object 4's header holds 1 MB of blanks between its generation and obj. Row 3 places its object inside them, and
@@ -4605,6 +4679,51 @@ public class HostileInputTests
         }
 
         file.Table(entries + 3, rows, string.Create(CultureInfo.InvariantCulture, $"/Size {entries + 3} /Root 1 0 R"));
+        return file.Bytes;
+    }
+
+    /// <summary>
+    /// The catalog and an empty page tree, indexed by a chain of <paramref name="sections"/> classic tables, each placing both
+    /// again under a trailer that gives <c>/Size 99</c> where 3 is right, and names the table before it through
+    /// <c>/Prev</c>. Gives where each table starts, the oldest first.
+    /// </summary>
+    internal static (byte[] File, long[] Tables) SectionsGivingAWrongSize(int sections)
+    {
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long> { [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>") };
+        rows[2] = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>");
+        var tables = new long[sections];
+
+        for (var section = 0; section < sections; section++)
+        {
+            tables[section] = file.Table(
+                3,
+                rows,
+                section == 0
+                    ? "/Size 99 /Root 1 0 R"
+                    : string.Create(CultureInfo.InvariantCulture, $"/Size 99 /Root 1 0 R /Prev {tables[section - 1]}"));
+        }
+
+        return (file.Bytes, tables);
+    }
+
+    /// <summary>
+    /// The catalog and an empty page tree, indexed by cross-reference stream 3, whose <c>/Index</c> gives its one subsection,
+    /// then <paramref name="pairs"/> subsections of no rows, each a pair of <paramref name="element"/>.
+    /// </summary>
+    private static byte[] EmptySubsections(int pairs, string element)
+    {
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, (int, long, int)> { [1] = (1, file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"), 0) };
+        rows[2] = (1, file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"), 0);
+        var index = new StringBuilder("/Root 1 0 R /Index [0 4");
+
+        for (var pair = 0; pair < pairs; pair++)
+        {
+            index.Append(' ').Append(element).Append(' ').Append(element);
+        }
+
+        file.CrossReferenceStream(3, 4, rows, index.Append(']').ToString());
         return file.Bytes;
     }
 

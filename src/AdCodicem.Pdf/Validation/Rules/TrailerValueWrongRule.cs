@@ -76,7 +76,7 @@ internal sealed class TrailerValueWrongRule : IValidationRule
 
             if (section.Kind == XRefSectionKind.Stream)
             {
-                judge.Value("its /Type", trailer.GetRaw(PdfName.Type), Iso1, integer: null);
+                judge.Value(new What(PdfName.Type), trailer.GetRaw(PdfName.Type), Iso1, integer: null);
                 judge.Integers(trailer, PdfName.W);
                 judge.Integers(trailer, PdfName.Index);
 
@@ -84,10 +84,10 @@ internal sealed class TrailerValueWrongRule : IValidationRule
                 // the table's (7.5.8.4): judged as the file wrote it, a reference it holds not followed (#263).
                 if (IsFollowed(sections, section, PdfName.Prev))
                 {
-                    judge.Value("its /Prev", trailer.GetRaw(PdfName.Prev), Iso1, "Table 17", resolve: section.NamedBy != "/XRefStm");
+                    judge.Value(new What(PdfName.Prev), trailer.GetRaw(PdfName.Prev), Iso1, "Table 17", resolve: section.NamedBy != "/XRefStm");
                 }
 
-                judge.Value("its /Length", trailer.GetRaw(PdfName.Length), pdf20 ? Iso2 : null, "Table 5");
+                judge.Value(new What(PdfName.Length), trailer.GetRaw(PdfName.Length), pdf20 ? Iso2 : null, "Table 5");
 
                 // What decoding reads, followed as decoding follows it, through the bound on filters the reader read under.
                 var reads = new DecodingReads();
@@ -101,12 +101,12 @@ internal sealed class TrailerValueWrongRule : IValidationRule
 
                 if (IsFollowed(sections, section, PdfName.Prev))
                 {
-                    judge.Value("its /Prev", trailer.GetRaw(PdfName.Prev), "ISO 32000-1 makes it direct (Table 15)", "Table 15", followed);
+                    judge.Value(new What(PdfName.Prev), trailer.GetRaw(PdfName.Prev), "ISO 32000-1 makes it direct (Table 15)", "Table 15", followed);
                 }
 
                 if (IsFollowed(sections, section, PdfName.XRefStm))
                 {
-                    judge.Value("its /XRefStm", trailer.GetRaw(PdfName.XRefStm), direct: null, "Table 19", followed);
+                    judge.Value(new What(PdfName.XRefStm), trailer.GetRaw(PdfName.XRefStm), direct: null, "Table 19", followed);
                 }
             }
         }
@@ -151,7 +151,7 @@ internal sealed class TrailerValueWrongRule : IValidationRule
         /// Whether a reference the value is written as is followed to judge what it leads to, which a value the reader does
         /// not read is not: following it would read what the reading never did.
         /// </param>
-        public void Value(string what, PdfObject? value, string? direct, string? integer, bool resolve = true)
+        public void Value(What what, PdfObject? value, string? direct, string? integer, bool resolve = true)
         {
             var reference = direct is not null ? value as PdfReference : null;
             var real = integer is not null && (resolve ? value?.Resolve() : value) is PdfReal written && written.AsInteger() is not null;
@@ -185,9 +185,8 @@ internal sealed class TrailerValueWrongRule : IValidationRule
         /// </summary>
         public void Integers(PdfDictionary trailer, PdfName key)
         {
-            var name = FileQuote.Name(key);
             var value = trailer.GetRaw(key);
-            Value("its " + name, value, Iso1, integer: null);
+            Value(new What(key), value, Iso1, integer: null);
 
             if (value?.Resolve() is not PdfArray array)
             {
@@ -197,8 +196,7 @@ internal sealed class TrailerValueWrongRule : IValidationRule
             // The reader reads three elements of a /W, the widths of three fields, and every element of an /Index.
             for (var i = 0; i < array.Count; i++)
             {
-                Value(
-                    string.Create(CultureInfo.InvariantCulture, $"element {i} of its {name}"), array[i], Iso1, "Table 17", key != PdfName.W || i < 3);
+                Value(new What(key, i), array[i], Iso1, "Table 17", key != PdfName.W || i < 3);
             }
         }
 
@@ -215,17 +213,16 @@ internal sealed class TrailerValueWrongRule : IValidationRule
 
             foreach (var key in (ReadOnlySpan<PdfName>)[PdfName.Filter, PdfName.DecodeParms])
             {
-                var name = FileQuote.Name(key);
                 var value = trailer.GetRaw(key);
                 var decodeParms = key == PdfName.DecodeParms;
-                Value("its " + name, value, Iso1, integer: null);
+                Value(new What(key), value, Iso1, integer: null);
 
                 switch (reads.Resolve(value))
                 {
                     case PdfArray array:
                         for (var i = 0; i < array.Count; i++)
                         {
-                            var what = string.Create(CultureInfo.InvariantCulture, $"element {i} of its {name}");
+                            var what = new What(key, i);
                             Value(what, array[i], inside, integer: null);
 
                             if (reads.Resolve(array[i]) is PdfDictionary parameters)
@@ -237,19 +234,41 @@ internal sealed class TrailerValueWrongRule : IValidationRule
                         break;
 
                     case PdfDictionary parameters:
-                        Parameters(parameters, "its " + name, inside, reads, decodeParms);
+                        Parameters(parameters, new What(key), inside, reads, decodeParms);
                         break;
                 }
             }
         }
 
-        private void Parameters(PdfDictionary parameters, string where, string? inside, DecodingReads reads, bool decodeParms)
+        private void Parameters(PdfDictionary parameters, What where, string? inside, DecodingReads reads, bool decodeParms)
         {
             foreach (var (key, value) in parameters)
             {
                 var integer = decodeParms && Array.IndexOf(IntegerParameters, key) >= 0 ? "Table 8" : null;
-                Value(FileQuote.Name(key) + " of " + where, value, inside, integer, reads.Follows(value));
+                Value(where.Entry(key), value, inside, integer, reads.Follows(value));
             }
+        }
+    }
+
+    /// <summary>
+    /// A value of a section's trailer, as a finding's message names it: <c>its /W</c>, <c>element 1 of its /W</c>,
+    /// <c>/Columns of element 0 of its /DecodeParms</c>. It is written only for a finding the report has room for, not for
+    /// each value judged: an <c>/Index</c> may hold as many elements as its trailer has room for (#168).
+    /// </summary>
+    /// <param name="key">The trailer's key that holds the value.</param>
+    /// <param name="element">The element of the array <paramref name="key"/> holds that the value is, or -1 for none.</param>
+    /// <param name="entry">The key the value has in the dictionary named so far, or null for none.</param>
+    private readonly struct What(PdfName key, int element = -1, PdfName? entry = null)
+    {
+        /// <summary>Names the value <paramref name="name"/> gives in the dictionary this names.</summary>
+        public What Entry(PdfName name) => new(key, element, name);
+
+        /// <inheritdoc/>
+        public override string ToString()
+        {
+            var its = "its " + FileQuote.Name(key);
+            var where = element < 0 ? its : string.Create(CultureInfo.InvariantCulture, $"element {element} of {its}");
+            return entry is null ? where : FileQuote.Name(entry) + " of " + where;
         }
     }
 

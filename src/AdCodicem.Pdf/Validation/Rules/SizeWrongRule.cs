@@ -69,53 +69,54 @@ internal sealed class SizeWrongRule : IValidationRule
             }
 
             var expected = highest[index] + 1L;
-            var subject = section.Kind == XRefSectionKind.Stream
-                ? string.Create(CultureInfo.InvariantCulture, $"The cross-reference stream at offset {section.Offset}")
-                : string.Create(CultureInfo.InvariantCulture, $"The trailer of the cross-reference table at offset {section.Offset}");
-            string message;
+            var size = trailer.GetRaw(PdfName.Size);
 
-            switch (trailer.GetRaw(PdfName.Size))
+            // A count that is right, or Table 17's other reading of it; or one that leaves objects numbered above it, which
+            // the error rule says.
+            if (size is PdfInteger { Value: >= 0 } count &&
+                (count.Value == expected || count.Value == NamingTableSize(section) || (count.Value < expected && count.Value == pastSize)))
             {
-                case null:
-                    message = $"{subject} has no /Size.";
-                    break;
+                continue;
+            }
 
-                case PdfInteger { Value: >= 0 } size when size.Value == expected || size.Value == NamingTableSize(section):
-                    continue;
-
-                case PdfInteger { Value: >= 0 } size:
-                    if (size.Value < expected && size.Value == pastSize)
-                    {
-                        // Objects numbered above it: the error rule says so.
-                        continue;
-                    }
-
-                    message = string.Create(
-                        CultureInfo.InvariantCulture,
-                        $"{subject} gives /Size {size.Value}, where the highest object number it and the sections it updates use, {expected - 1}, makes it {expected}.");
-                    break;
-
-                case PdfReference reference:
-                    message = string.Create(
-                        CultureInfo.InvariantCulture,
-                        $"{subject} writes its /Size as the reference {reference.Id.Number} {reference.Id.Generation} R, where the count of objects is written directly.");
-                    break;
-
-                case PdfReal real when real.AsInteger() is not null:
-                    message = $"{subject} gives its /Size as a real number, where the count of objects is an integer.";
-                    break;
-
-                default:
-                    message = $"{subject} gives a /Size that is not a count of objects.";
-                    break;
+            // Past the report's room, the section is counted, its finding not written (#168): there are as many as the chain
+            // has sections.
+            if (!context.HasRoomFor(this))
+            {
+                continue;
             }
 
             context.Report(
                 this,
                 PdfValidationLocation.AtPosition(section.TrailerLocation),
-                message,
+                Describe(section, size, expected),
                 "Set /Size to one more than the highest object number the section and those it updates use.");
         }
+    }
+
+    /// <summary>
+    /// Says what is wrong with the <c>/Size</c> <paramref name="section"/> gives, <paramref name="size"/> as the file wrote
+    /// it, where <paramref name="expected"/> is one more than the highest number it and the sections it updates use.
+    /// </summary>
+    private static string Describe(XRefSectionRecord section, PdfObject? size, long expected)
+    {
+        var subject = section.Kind == XRefSectionKind.Stream
+            ? string.Create(CultureInfo.InvariantCulture, $"The cross-reference stream at offset {section.Offset}")
+            : string.Create(CultureInfo.InvariantCulture, $"The trailer of the cross-reference table at offset {section.Offset}");
+
+        return size switch
+        {
+            null => $"{subject} has no /Size.",
+            PdfInteger { Value: >= 0 } count => string.Create(
+                CultureInfo.InvariantCulture,
+                $"{subject} gives /Size {count.Value}, where the highest object number it and the sections it updates use, {expected - 1}, makes it {expected}."),
+            PdfReference reference => string.Create(
+                CultureInfo.InvariantCulture,
+                $"{subject} writes its /Size as the reference {reference.Id.Number} {reference.Id.Generation} R, where the count of objects is written directly."),
+            PdfReal real when real.AsInteger() is not null =>
+                $"{subject} gives its /Size as a real number, where the count of objects is an integer.",
+            _ => $"{subject} gives a /Size that is not a count of objects.",
+        };
     }
 
     /// <summary>

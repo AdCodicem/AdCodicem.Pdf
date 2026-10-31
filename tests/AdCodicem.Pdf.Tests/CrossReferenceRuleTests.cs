@@ -1689,6 +1689,20 @@ public class CrossReferenceRuleTests
         Single(Validate(file), PdfValidationRuleIds.FileTrailerValueWrong).Message.Should().EndWith(message);
     }
 
+    [Theory]
+    [InlineData("/W [1 4 5 0 R]", "2.0", "element 2 of its /W")]
+    [InlineData("/W [1 4 2] /Index [0 7 7 5 0 R]", "1.0", "element 3 of its /Index")]
+    public void An_element_the_reader_reads_through_a_reference_is_judged_through_it(string entries, string five, string what)
+    {
+        // The reader reads the first three elements of a /W, and every element of an /Index: a reference among them leads to
+        // the real it reads as an integer, one finding that says both.
+        var file = ChainFiles.UnderAnUpdate(
+            "/Type /XRef /Size 8 " + entries + " /Length {length}", five, compressed: false, predicted: false, placed: true);
+
+        Single(Validate(file), PdfValidationRuleIds.FileTrailerValueWrong).Message.Should().EndWith(
+            $"writes {what} as the reference 5 0 R, to a real number: ISO 32000-1 makes it direct (7.5.8.2), and Table 17 of ISO 32000-1 an integer.");
+    }
+
     [Fact]
     public void A_predictor_written_as_a_real_in_an_array_of_parameters_is_reported()
     {
