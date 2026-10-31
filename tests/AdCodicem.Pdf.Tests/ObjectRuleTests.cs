@@ -992,7 +992,8 @@ public class ObjectRuleTests
         // A hundred Flate object streams take their parameters each from an object of its own, written in the file, whose
         // predictor is object 4, shared; the last stream's predictor is the object it holds. Opened with a cache of 64
         // objects, the walk keeps 64 of what it read, lets go of object 4 long before the last stream, and reads it again
-        // for the streams after: the last stream alone is circular.
+        // for the streams after: the last stream alone is circular, and the walk reads more of the file than under a cache
+        // of a thousand objects, which keeps all it read. A walk that let nothing go read the same under both (#201).
         const int Streams = 100;
         var file = new HandWrittenFile(version: "1.5");
         var rows = new Dictionary<int, (int Type, long Field2, int Field3)>
@@ -1012,10 +1013,23 @@ public class ObjectRuleTests
         }
 
         file.CrossReferenceStream(3000, 3001, rows, "/Root 1 0 R");
-        using var document = PdfDocument.Open(file.Bytes, new PdfReaderOptions { ObjectCacheCapacity = 64 });
 
-        ObjectStreamDependencies.Run(document).Circular.Select(finding => finding.Message).Should().Equal(
+        var (letGo, found) = Walk(64);
+        var (keptAll, _) = Walk(1000);
+
+        found.Circular.Select(finding => finding.Message).Should().Equal(
             "Object stream 2198 needs object 2199, which it holds, to be read: its /DecodeParms names it, and the object cannot be read before the stream is.");
+        letGo.Should().BeGreaterThan(keptAll, "the walk reads object 4 again once it let go of it");
+
+        (long Read, ObjectStreamDependencies Found) Walk(int cache)
+        {
+            using var source = new StrictCountingSource(file.Bytes);
+            using var document = PdfDocument.Open(source, new PdfReaderOptions { ObjectCacheCapacity = cache }, ownsSource: false);
+            document.Reader.SettleIndex();
+            var before = source.BytesRead;
+            var dependencies = ObjectStreamDependencies.Run(document);
+            return (source.BytesRead - before, dependencies);
+        }
     }
 
     [Theory]

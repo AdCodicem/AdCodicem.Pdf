@@ -3972,16 +3972,19 @@ public class HostileInputTests
     /// A file of <paramref name="streams"/> object streams, each holding one dictionary, that share <c>/Filter 3 0 R</c> and
     /// <c>/DecodeParms 4 0 R</c>: 64 references each — as many filters as the reader decodes through —, to a chain of
     /// <paramref name="links"/> references ending at <c>/FlateDecode</c>, and to one ending at parameters whose predictor,
-    /// colors, bits and columns are chains as long. Decoding reads every one of them for each stream. The streams' data is
-    /// written as it is: the walk of their dependencies reads none of it.
+    /// colors, bits and columns are chains as long. Decoding reads every one of them for each stream. When
+    /// <paramref name="oneStep"/> says so, the streams take <c>/Filter 10 0 R</c> and <c>/DecodeParms 100 0 R</c>, the
+    /// chains' first objects, themselves: one step, which reads each of the six chains once. The streams' data is written
+    /// as it is: the walk of their dependencies reads none of it.
     /// </summary>
-    internal static byte[] SharedChains(int streams, int links)
+    internal static byte[] SharedChains(int streams, int links, bool oneStep = false)
     {
         var direct = new List<(int Number, string Body)>
         {
             (3, "[" + string.Join(' ', Enumerable.Repeat("10 0 R", 64)) + "]"),
             (4, "[" + string.Join(' ', Enumerable.Repeat("100 0 R", 64)) + "]"),
         };
+        var dictionary = oneStep ? "/Filter 10 0 R /DecodeParms 100 0 R" : "/Filter 3 0 R /DecodeParms 4 0 R";
 
         Chain(10, "/FlateDecode");
         Chain(100, "<< /Predictor 200 0 R /Colors 300 0 R /BitsPerComponent 400 0 R /Columns 500 0 R >>");
@@ -3994,7 +3997,7 @@ public class HostileInputTests
 
         for (var k = 0; k < streams; k++)
         {
-            packed.Add(new PackedStream(1000 + (2 * k), "/Filter 3 0 R /DecodeParms 4 0 R", [(1001 + (2 * k), "<< >>")], PackedData.Plain));
+            packed.Add(new PackedStream(1000 + (2 * k), dictionary, [(1001 + (2 * k), "<< >>")], PackedData.Plain));
         }
 
         return PackedFile(packed, direct);

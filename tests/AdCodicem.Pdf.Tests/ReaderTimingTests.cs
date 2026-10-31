@@ -211,19 +211,21 @@ public class ReaderTimingTests
     [Fact]
     public void Object_streams_that_share_chains_eight_times_as_long_have_their_dependencies_walked_in_about_the_same_time()
     {
-        // Two thousand object streams share 64 filters and 64 parameters, each a chain of references, the parameters' values
-        // chains too, which decoding reads for each stream. The walk follows a chain once a validation, keeping the run of
-        // references it loads by the object it starts at, and a value once a stream: chains of 31 references cost about what
-        // chains of 4 do, where following each chain again for each stream cost about eight times as much, 4.8 s for 8,000
-        // streams (#201, #277). The measure is the ratio, the best walk of each, run in turn.
+        // Two thousand object streams take /Filter 10 0 R and /DecodeParms 100 0 R, each the first of a chain of references,
+        // the parameters' values chains too, which decoding reads for each stream. The walk follows a chain once a
+        // validation, keeping the run of references it loads by the object it starts at: chains of 31 references cost what
+        // chains of 4 do, 4.3 ms against 4.2 ms, where reading each object of a chain again for each stream cost about four
+        // times as much, 107 ms against 28 ms (#201, #277). Each stream once read 64 filters and 64 parameters, which drowned
+        // the chains: the walk without the memo then cost 1.9 times as much, within the bound. The measure is the ratio, the
+        // best walk of each, run in turn.
         const int Streams = 2000;
-        using var shortChains = PdfDocument.Open(HostileInputTests.SharedChains(Streams, links: 4));
-        using var longChains = PdfDocument.Open(HostileInputTests.SharedChains(Streams, links: 31));
+        using var shortChains = PdfDocument.Open(HostileInputTests.SharedChains(Streams, links: 4, oneStep: true));
+        using var longChains = PdfDocument.Open(HostileInputTests.SharedChains(Streams, links: 31, oneStep: true));
 
         var (shortTime, longTime) = BestOfEach(() => ObjectStreamDependencies.Run(shortChains), () => ObjectStreamDependencies.Run(longChains));
 
         longTime.Should().BeLessThan(
-            shortTime * 3,
+            shortTime * 2,
             "chains eight times as long must be walked in about the same time ({0} against {1})",
             longTime,
             shortTime);

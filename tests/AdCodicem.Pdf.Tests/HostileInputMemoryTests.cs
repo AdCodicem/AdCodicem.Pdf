@@ -330,6 +330,45 @@ public class HostileInputMemoryTests
         held.Should().BeLessThan(6L * 1024 * 1024, $"memory was sampled {source.Samples} times");
     }
 
+    [Fact]
+    public void The_walk_of_the_object_streams_dependencies_keeps_no_more_objects_than_the_reader_caches()
+    {
+        // Five hundred Flate object streams each take their /DecodeParms from an object of their own, written in the file:
+        // << /Predictor 1 /Columns [...] >>, of 20,000 zeros, opened with a cache of 64 objects. The walk reads each once a
+        // validation and keeps what decoding may read of it, as it keeps every object it reads, about 260 KB each: of all
+        // five hundred, 130 MB. It keeps as many as the reader keeps in its cache, the oldest let go first (#201): 17 MB.
+        const int Streams = 500;
+        var columns = "[" + new StringBuilder().Insert(0, "0 ", 20_000) + "]";
+        var file = new HandWrittenFile(version: "1.5");
+        var rows = new Dictionary<int, (int Type, long Field2, int Field3)>
+        {
+            [1] = (1, file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"), 0),
+            [2] = (1, file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"), 0),
+        };
+
+        for (var k = 0; k < Streams; k++)
+        {
+            var (parameters, stream, member) = (1000 + k, 2000 + (2 * k), 2001 + (2 * k));
+            var header = string.Create(CultureInfo.InvariantCulture, $"{member} 0 ");
+            var data = Encoding.Latin1.GetString(Compress(Encoding.Latin1.GetBytes(header + "<< >>")));
+            rows[parameters] = (1, file.Object(parameters, $"<< /Predictor 1 /Columns {columns} >>"), 0);
+            rows[stream] = (1, file.Object(stream, string.Create(CultureInfo.InvariantCulture, $"<< /Type /ObjStm /N 1 /First {header.Length} /Filter /FlateDecode /DecodeParms {parameters} 0 R /Length {data.Length} >>\nstream\n{data}\nendstream")), 0);
+            rows[member] = (2, stream, 0);
+        }
+
+        file.CrossReferenceStream(3000, 3001, rows, "/Root 1 0 R");
+        var source = new SamplingSource(file.Bytes) { Every = 16 };
+        using var document = PdfDocument.Open(source, PdfReaderOptions.Default with { ObjectCacheCapacity = 64 }, ownsSource: true);
+        var before = GC.GetTotalMemory(forceFullCollection: true);
+        source.Sampling = true;
+
+        Validation.ObjectStreamDependencies.Run(document).Circular.Should().BeEmpty();
+
+        source.Sampling = false;
+        var held = source.MostLive - before;
+        held.Should().BeLessThan(32L * 1024 * 1024, $"memory was sampled {source.Samples} times");
+    }
+
     private static byte[] Compress(byte[] data)
     {
         using var compressed = new MemoryStream();
