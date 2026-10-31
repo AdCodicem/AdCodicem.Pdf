@@ -319,7 +319,7 @@ public sealed class HeaderOffsetTests
 
         finding.Location.Should().Be(PdfValidationLocation.OfObject(new PdfObjectId(4)));
         finding.Message.Should().Be(
-            "One of the reader's limits stopped it reading object stream 4 before its header ended: the 1 object the index places in it were not checked. Raising the limit the reader reported lets them be.");
+            "One of the reader's limits stopped it reading object stream 4 before its header ended: the 1 object the index places in it was not checked. Raising the limit the reader reported lets it be.");
     }
 
     [Fact]

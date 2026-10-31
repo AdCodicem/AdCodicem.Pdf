@@ -2416,11 +2416,15 @@ public class CrossReferenceRuleTests
             .Should().Be(new PdfObjectId(4, 2));
     }
 
-    [Fact]
-    public void An_encrypted_document_s_object_streams_are_said_to_be_unchecked()
+    [Theory]
+    [InlineData(2, "the 2 objects its index places in object streams were not checked, those streams being readable only once decrypted.")]
+    [InlineData(1, "the 1 object its index places in an object stream was not checked, that stream being readable only once decrypted.")]
+    public void An_encrypted_document_s_object_streams_are_said_to_be_unchecked(int packed, string said)
     {
         var file = Replace(
-            XRefStreamBuilder().WithObject(5, "<< /Filter /Standard /V 1 /R 2 /O <00> /U <00> /P -4 >>").BuildWithXRefStream(rootNumber: 1, compressedObjects: [2, 3]),
+            XRefStreamBuilder()
+                .WithObject(5, "<< /Filter /Standard /V 1 /R 2 /O <00> /U <00> /P -4 >>")
+                .BuildWithXRefStream(rootNumber: 1, compressedObjects: packed == 2 ? [2, 3] : [3]),
             "/Type /XRef",
             "/Type /XRef /Encrypt 5 0 R");
         using var document = PdfDocument.Open(file, new PdfReaderOptions { ThrowOnEncrypted = false });
@@ -2429,8 +2433,7 @@ public class CrossReferenceRuleTests
 
         finding.RuleId.Should().Be(PdfValidationRuleIds.XRefCheckedInPart);
         finding.Location.IsDocument.Should().BeTrue();
-        finding.Message.Should().Be(
-            "The document is encrypted: the 2 objects its index places in object streams were not checked, those streams being readable only once decrypted.");
+        finding.Message.Should().Be("The document is encrypted: " + said);
     }
 
     [Fact]

@@ -286,7 +286,9 @@ internal sealed class CrossReferenceProbe
             {
                 NotChecked.Keep(new ProbeFinding(
                     default,
-                    Invariant($"The document is encrypted: the {RuleText.Objects(objects)} its index places in object streams were not checked, those streams being readable only once decrypted.")));
+                    objects == 1
+                        ? "The document is encrypted: the 1 object its index places in an object stream was not checked, that stream being readable only once decrypted."
+                        : Invariant($"The document is encrypted: the {objects} objects its index places in object streams were not checked, those streams being readable only once decrypted.")));
             }
 
             return;
@@ -343,7 +345,7 @@ internal sealed class CrossReferenceProbe
                 {
                     NotChecked.Keep(new ProbeFinding(
                         at,
-                        Invariant($"One of the reader's limits stopped it reading object stream {stream} before its header ended: the {RuleText.Objects(objects.Count)} the index places in it were not checked. Raising the limit the reader reported lets them be.")));
+                        Invariant($"One of the reader's limits stopped it reading object stream {stream} before its header ended: the {RuleText.Objects(objects.Count)} the index places in it {(objects.Count == 1 ? "was" : "were")} not checked. Raising the limit the reader reported lets {(objects.Count == 1 ? "it" : "them")} be.")));
                 }
 
                 return;
