@@ -300,16 +300,30 @@ public class ValidatorTests
     [Fact]
     public void An_analysis_counting_past_what_an_int_holds_stays_at_its_greatest()
     {
-        // One finding more than an int counts, a few seconds of counting: a file of some 4 GB of invalid kids holds as many.
-        var findings = new ProbeFindings(room: 1);
-
-        for (var counted = 0L; counted <= int.MaxValue; counted++)
-        {
-            findings.Take();
-        }
+        // A thousand findings written, and one more than an int counts past them, a second or two of counting: a file of some
+        // 4 GB of invalid kids holds as many. The findings not written stay at their greatest too: worked out from a total
+        // already stopped, they fell short by the thousand written.
+        var findings = Analysis(room: 1000, (long)int.MaxValue + 1001);
 
         findings.Total.Should().Be(int.MaxValue);
+        findings.Kept.Should().Be(1000);
         findings.Unkept.Should().Be(int.MaxValue);
+    }
+
+    [Fact]
+    public void The_findings_not_kept_stay_at_their_greatest_though_the_analysis_that_counted_them_wrote_the_first()
+    {
+        // The analysis made with the report's room writes a thousand findings, its rule reports them and counts the rest,
+        // one more than an int counts: the findings not kept stay at their greatest, not short by those the rule reported.
+        var profile = Profile(new AnalyzingRule("test.analyzed", PdfValidationSeverity.Error, (long)int.MaxValue + 1001));
+        using var document = PdfDocument.Open(SoundFile());
+
+        var report = new PdfValidator(new PdfValidatorOptions { Profile = profile, FindingCapacity = 1000 }).Validate(document);
+
+        report.Findings.Should().HaveCount(1000);
+        report.Findings[^1].Message.Should().Be("Finding 1000 of test.analyzed.");
+        report.ErrorCount.Should().Be(int.MaxValue);
+        report.SuppressedCount.Should().Be(int.MaxValue);
     }
 
     [Theory]
@@ -572,6 +586,25 @@ public class ValidatorTests
             .BuildClassic(rootNumber: 1);
 
     private static ValidationProfile Profile(params IValidationRule[] rules) => new("test", 1, rules);
+
+    /// <summary>
+    /// Makes an analysis with a room of <paramref name="room"/> that counts <paramref name="count"/> findings, writing those
+    /// it has room for, numbered for <paramref name="id"/>, as an analysis does.
+    /// </summary>
+    private static ProbeFindings Analysis(int room, long count, string id = "test.analysis")
+    {
+        var findings = new ProbeFindings(room);
+
+        for (var number = 1L; number <= count; number++)
+        {
+            if (findings.Take())
+            {
+                findings.Keep(new ProbeFinding(PdfValidationLocation.AtPosition(0), $"Finding {number} of {id}."));
+            }
+        }
+
+        return findings;
+    }
 
     public static TheoryData<string> FaultyFiles => [.. Faulty.Value.Keys];
 
@@ -879,6 +912,29 @@ public class ValidatorTests
                     context.Report(this, PdfValidationLocation.AtPosition(0), $"Finding {number} of {id}.", remedy: null);
                 }
             }
+        }
+    }
+
+    /// <summary>
+    /// Does what a rule taking its findings from an analysis does: makes the analysis with the report's room, reports what
+    /// it wrote, in order, and counts the rest.
+    /// </summary>
+    private sealed class AnalyzingRule(string id, PdfValidationSeverity severity, long count) : IValidationRule
+    {
+        public string Id => id;
+
+        public PdfValidationSeverity Severity => severity;
+
+        public void Check(ValidationContext context)
+        {
+            var findings = Analysis(context.Room, count, id);
+
+            foreach (var finding in findings)
+            {
+                context.Report(this, finding.Location, finding.Message, remedy: null);
+            }
+
+            context.Count(this, findings.Unkept);
         }
     }
 

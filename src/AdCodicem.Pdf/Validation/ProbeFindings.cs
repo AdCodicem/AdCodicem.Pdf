@@ -20,8 +20,12 @@ namespace AdCodicem.Pdf.Validation;
 /// that does.
 /// </para>
 /// <para>
-/// A count past what an <see langword="int"/> holds stays at its greatest: billions of faulty values reach it, now that
-/// they are counted rather than kept, which a file of tens of kilobytes whose object streams decode to gigabytes can give.
+/// A count past what an <see langword="int"/> holds stays at its greatest, <see cref="Unkept"/> as well as
+/// <see cref="Total"/>: billions of faulty values reach it, now that they are counted rather than kept, which a file of
+/// tens of kilobytes whose object streams decode to gigabytes can give. The findings are counted in a
+/// <see langword="long"/>, stopped at <see cref="int.MaxValue"/> only as a count is read, so that those not written stay
+/// at their greatest whatever was written: worked out from a total already stopped, they fell short by the findings
+/// written, a thousand at the default capacity (#168).
 /// </para>
 /// </remarks>
 /// <param name="room">How many findings are written: the room the report had when the analysis was made.</param>
@@ -29,14 +33,21 @@ internal sealed class ProbeFindings(int room) : IEnumerable<ProbeFinding>
 {
     private readonly List<ProbeFinding> _kept = [];
 
+    // Every finding counted, written or not. No file brings a long near its greatest: each finding is a value a walk read,
+    // and 2^63 of them would take centuries to read.
+    private long _total;
+
     /// <summary>Gets how many findings were counted, written or not, at most <see cref="int.MaxValue"/>.</summary>
-    public int Total { get; private set; }
+    public int Total => (int)Math.Min(_total, int.MaxValue);
 
     /// <summary>Gets how many findings were written, the first of those counted.</summary>
     public int Kept => _kept.Count;
 
-    /// <summary>Gets how many findings were counted past those written: what the rule counts without reporting.</summary>
-    public int Unkept => Total - _kept.Count;
+    /// <summary>
+    /// Gets how many findings were counted past those written, at most <see cref="int.MaxValue"/> whatever was written: what
+    /// the rule counts without reporting.
+    /// </summary>
+    public int Unkept => (int)Math.Min(_total - _kept.Count, int.MaxValue);
 
     /// <summary>
     /// Counts a finding, and says whether it is to be written: the caller writes it, and hands it to <see cref="Keep"/>, only
@@ -44,11 +55,7 @@ internal sealed class ProbeFindings(int room) : IEnumerable<ProbeFinding>
     /// </summary>
     public bool Take()
     {
-        if (Total < int.MaxValue)
-        {
-            Total++;
-        }
-
+        _total++;
         return _kept.Count < room;
     }
 
