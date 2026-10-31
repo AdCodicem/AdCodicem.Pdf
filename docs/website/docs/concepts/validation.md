@@ -137,9 +137,14 @@ object streams need one another, they follow what the reader reads to decode eac
 its length, type, count and start, then what its filters read of their parameters
 ([#277](https://github.com/AdCodicem/AdCodicem.Pdf/issues/277)) —, reading there too each object written directly in
 the file such a value leads through, once a validation for as many of them as the document's cache holds, however many
-streams share it ([#201](https://github.com/AdCodicem/AdCodicem.Pdf/issues/201)), and a member of another object
-stream through the reader. Which streams lead back to themselves through what they need is worked out once, in time
-in proportion to the streams and what they need ([#168](https://github.com/AdCodicem/AdCodicem.Pdf/issues/168)). Of an
+streams share it ([#201](https://github.com/AdCodicem/AdCodicem.Pdf/issues/201)). A member of another object stream
+they read through the reader, and follow, only when that stream is self-contained — decoding it reads no member of any
+object stream —, since its decoding then gives the same whatever was read before; a member of any other stream they
+take as a need, read as null, as the reader reads a member of a stream it is still decoding, so that the verdict does
+not depend on what you read before validating. A loop that closes only through the value of such a member is left to the reader to report
+([#312](https://github.com/AdCodicem/AdCodicem.Pdf/issues/312)). Which streams lead back to themselves through what
+they need is worked out once, in time in proportion to the streams and what they need
+([#168](https://github.com/AdCodicem/AdCodicem.Pdf/issues/168)). Of an
 index the reader rebuilt, they judge, besides, an object it places in an object stream, written there as a stream — which the reader reads
 as null —, where the file's own index places nothing under its number, or, where one of the reader's limits stopped the
 chain short, where the part of it the reader read places nothing; the object stream is read where the rebuilt index

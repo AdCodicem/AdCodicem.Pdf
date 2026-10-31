@@ -20,8 +20,8 @@ namespace AdCodicem.Pdf.Validation;
 /// that does.
 /// </para>
 /// <para>
-/// A count past what an <see langword="int"/> holds stays at its greatest: a file of several gigabytes can hold that many
-/// faults, now that they are counted rather than kept.
+/// A count past what an <see langword="int"/> holds stays at its greatest: billions of faulty values reach it, now that
+/// they are counted rather than kept, which a file of tens of kilobytes whose object streams decode to gigabytes can give.
 /// </para>
 /// </remarks>
 /// <param name="room">How many findings are written: the room the report had when the analysis was made.</param>

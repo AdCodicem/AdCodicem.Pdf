@@ -49,7 +49,8 @@ namespace AdCodicem.Pdf.Validation;
 /// A loop that closes only through the value of an object whose holder is not self-contained is left unseen, as the review
 /// of #277 decided: a stream needs an object of a second, whose decoding meets an object of a third, and that value names
 /// an object the first holds. The reader reports it as it decodes the first; the walk, which does not follow the value,
-/// does not find the first circular.
+/// does not find the first circular. A model of the reader's nested decoding that gives that value alike whatever was read
+/// before would find it: filed as debt (#312).
 /// </para>
 /// <para>
 /// Of a stream that is not of <c>/Type /ObjStm</c>, only what its <c>/Type</c> needs judges it (#274): a loop through its

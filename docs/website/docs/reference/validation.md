@@ -53,7 +53,7 @@ An immutable record.
 | Property | Default | What it is |
 |---|---|---|
 | `Profile` | `ValidationProfile.Structural` | The profile documents are validated against; null is refused with an `ArgumentNullException` |
-| `FindingCapacity` | 1,000 | The most findings a report keeps; beyond it, findings are counted, neither kept nor written, so that what validation holds of a file's faults follows the capacity rather than the file. Zero keeps none and still counts them; a negative value is refused with an `ArgumentOutOfRangeException` |
+| `FindingCapacity` | 1,000 | The most findings a report keeps; beyond it, findings are counted, not kept, and the walks that find them do not write them, so that the findings validation holds follow the capacity rather than the file; what the walks count of a file's faults, they count by object. Zero keeps none and still counts them; a negative value is refused with an `ArgumentOutOfRangeException` |
 
 The report is the same whatever the capacity, but for how many findings it keeps: the first ones, in the order a
 report of every finding would give them, with every finding counted
@@ -80,8 +80,8 @@ your own.
 |---|---|
 | `ProfileName`, `ProfileVersion` | The profile the document was validated against |
 | `Findings` | The findings kept, in the order they were found — rules run in the profile's order —, so two validations of the same document give the same report |
-| `ErrorCount`, `WarningCount`, `InformationCount` | Every finding, by severity, kept or not; a count stays at 2,147,483,647, the greatest an `int` holds, past it, which only a file of gigabytes reaches |
-| `SuppressedCount` | How many findings were counted but not kept, past `FindingCapacity`, at most 2,147,483,647 |
+| `ErrorCount`, `WarningCount`, `InformationCount` | Every finding, by severity, kept or not; a count stays at 2,147,483,647, the greatest an `int` holds, past it, which billions of faulty values reach: a file of tens of kilobytes whose object streams decode to gigabytes can give them |
+| `SuppressedCount` | How many findings were counted but not kept, past `FindingCapacity`; it is counted apart, and it too stays at 2,147,483,647 past it |
 | `HasErrors`, `HasWarnings` | Whether any finding is an error, or a warning |
 | `Contains(ruleId)` | Whether a rule reported anything |
 | `ToString()` | `profile version: errors n, warnings n, information n` |

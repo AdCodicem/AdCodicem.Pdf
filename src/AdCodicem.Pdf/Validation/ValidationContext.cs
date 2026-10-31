@@ -23,17 +23,22 @@ namespace AdCodicem.Pdf.Validation;
 /// Each analysis is made with the <see cref="Room"/> the report has when a rule first asks for it, and writes, of each kind
 /// of fault it finds, the first that many, counting the rest (<see cref="ProbeFindings"/>): the report could keep no more of
 /// them, its room only shrinking as the rules run. Each rule reports what was written for it and adds what was counted
-/// (<see cref="Count"/>), so that the report is the one every finding written would have made, and what an analysis holds
-/// of a hostile file's faults is bounded by <see cref="PdfValidatorOptions.FindingCapacity"/> rather than by the file
-/// (#168). Two analyses keep more than the room: the probe, a record of each object stream it found broken, which their
-/// rule filters by what a later analysis finds, as many as the index names object streams; and the Arlington walk, a
-/// tally per rule and row of the model, which the model bounds, whose messages it writes once its walk is over.
+/// (<see cref="Count"/>), so that the report is the one every finding written would have made, and the findings an
+/// analysis writes of a hostile file's faults are bounded by <see cref="PdfValidatorOptions.FindingCapacity"/> rather than
+/// by the file (#168). Four analyses keep more than the room. Three keep an entry for each fault, as many as the index
+/// names objects or object streams: the probe, a record of each object stream it found broken, which their rule filters by
+/// what a later analysis finds; the object graph, a count for each object that holds a fault of each kind — a reference to
+/// nothing, a name with a null character —, about 48 bytes an object and kind, by which it counts one finding an object;
+/// and the walk of the object streams' dependencies, the set of the circular streams, which that filter reads. The fourth
+/// is the Arlington walk, a tally per rule and row of the model, which the model bounds, whose messages it writes once its
+/// walk is over.
 /// </para>
 /// <para>
-/// A rule that writes its findings itself asks <see cref="HasRoomFor"/> before writing each, so that a finding the report
-/// cannot keep is counted without being written. A count past what an <see langword="int"/> holds stays at its greatest,
-/// the count of findings not kept included, which is kept apart rather than worked out from the counts by severity: one of
-/// those stopped at its greatest would make it fall short.
+/// A rule that writes its findings itself, one for each section, value or object it judges, asks
+/// <see cref="HasRoomFor"/> before writing each, so that a finding the report cannot keep is counted without being
+/// written; a rule that writes one finding for the file, or two, writes it whatever the room. A count past what an
+/// <see langword="int"/> holds stays at its greatest, the count of findings not kept included, which is kept apart rather
+/// than worked out from the counts by severity: one of those stopped at its greatest would make it fall short.
 /// </para>
 /// </remarks>
 internal sealed class ValidationContext

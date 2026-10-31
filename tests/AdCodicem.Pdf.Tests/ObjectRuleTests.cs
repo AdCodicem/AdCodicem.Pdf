@@ -1576,9 +1576,10 @@ public class ObjectRuleTests
         // nothing; 100 is 5 0 R, which 7 holds. The reader decodes 9 within 7's decoding, 100 leads it to 5, and it reports
         // that 7 needs 5. 9 is not self-contained, meeting 170: the walk cannot vouch for what 9's decoding gives, and does
         // not follow 100, so it does not find 7 circular. That is the loop the walk leaves unseen, as #277's review decided:
-        // filed as debt. It stays unseen when 7 reaches 100 through 99, written in the file, which a run of links would pass;
-        // and when an object stream the walk takes first, 3, has read 170, so that the walk knows 11 to be self-contained and
-        // holds the run from 170 to 171: the walk of 9, which follows no object of an object stream, still meets 170 there.
+        // filed as debt (#312). It stays unseen when 7 reaches 100 through 99, written in the file, which a run of links
+        // would pass; and when an object stream the walk takes first, 3, has read 170, so that the walk knows 11 to be
+        // self-contained and holds the run from 170 to 171: the walk of 9, which follows no object of an object stream, still
+        // meets 170 there.
         var file = new HandWrittenFile(version: "1.5");
         var throughNinetyNine = parameters.Contains("99", StringComparison.Ordinal);
         var rows = new Dictionary<int, (int Type, long Field2, int Field3)>

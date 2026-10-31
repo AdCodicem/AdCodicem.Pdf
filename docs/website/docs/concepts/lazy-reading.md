@@ -135,12 +135,25 @@ not what it handed out before, so that a loop over what the document gives goes 
   new array, 4 bytes for each entry the map has room for — 1.2 MB at 300,000 objects, beside the 25.7 MB the rebuild
   allocates there.
 - An enumeration of `Diagnostics` under way gives the entries recorded when it began, and the next one the rebuild's
-  too: between two calls you make, entries are only added after those the record held.
+  too: between two calls you make, entries are only added after those the record held. Once it has ended, it stays
+  ended.
 - The next `Trailer` gives the trailer the rebuild merged, and `Catalog` and `IsEncrypted` read that one. A trailer
-  taken before is left as it was, without an older trailer's `/Info` or `/Encrypt`, or a `/Root` the rebuild set: read
-  `Trailer` again after reading the document rather than keep it. The new trailer costs a copy of the old, a few hundred
-  bytes.
+  taken before is left as it was, without an older trailer's `/Info` or `/Encrypt`, or a `/Root` the rebuild set, and
+  one taken after is never changed: read `Trailer` again after reading the document rather than keep it. The new
+  trailer costs a copy of the old, a few hundred bytes.
 - An object read before is left as it was; the next read of its number reads it through the rebuilt map.
+
+Only a `PdfFileSource` of your own, reading the document from inside the read that rebuilds, sees the rebuild under
+way. A trailer it takes is the new dictionary, which may still gain the trailers and the `/Root` the rebuild merges and
+sets after. An enumeration of `Diagnostics` it steps may meet a finish that withdraws what the rebuild reported and
+reports again: it reads, up to the count it began with, the entries held at those places, which may be those reported
+again.
+
+If the source fails while a rebuild is being finished, `Trailer`, `Catalog`, `IsEncrypted`, `ObjectCount` and
+`ObjectNumbers` describe the unfinished rebuild until the next read or validation finishes it: the map lacks the
+members of the object streams the finish had not taken in, and the trailer a `/Root` the finish would search for, so
+that `Catalog` is null on a file whose own trailer names none. Asking them finishes nothing, but `Catalog` reading a
+`/Root` the trailer names, which finishes the rebuild first.
 
 ## What it deliberately does not do
 

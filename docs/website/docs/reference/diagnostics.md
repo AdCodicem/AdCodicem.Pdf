@@ -62,7 +62,7 @@ between two calls you make, entries are only added, after those it held.
 
 | Member | What it is |
 |---|---|
-| `Count`, the indexer, enumeration | The entries kept. An enumeration gives those recorded when it began: what a read or a validation records meanwhile, one the loop makes included, `Count` counts at once and the next enumeration gives, and the enumeration never throws for it |
+| `Count`, the indexer, enumeration | The entries kept. An enumeration gives those recorded when it began: what a read or a validation records meanwhile, one the loop makes included, `Count` counts at once and the next enumeration gives, and the enumeration never throws for it. Once it has ended, it stays ended. A `PdfFileSource` of your own, stepping an enumeration from inside a read whose rebuild withdraws what it reported and reports again, reads, up to the count the enumeration began with, the entries held at those places, which may be those reported again |
 | `Capacity` | The most entries kept: `PdfReaderOptions.DiagnosticCapacity` for a document, 1,000 by default |
 | `SuppressedCount` | How many entries were dropped because `Capacity` was reached; they are counted, not kept |
 | `HasRepairs` | Whether any entry is a `Repair` |
