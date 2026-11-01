@@ -2340,6 +2340,55 @@ public class ObjectRuleTests
     }
 
     [Theory]
+    [InlineData(8192)]
+    [InlineData(ConvergenceShapes.SmallestCache)]
+    public void A_chain_meeting_a_run_whose_holder_s_decoding_reaches_exactly_the_reader_s_deepest_load_takes_it_whole_whatever_the_cache(int capacity)
+    {
+        // Object stream 10 takes its predictor from 5000, written in the file, which names 3001, the first of 30 objects
+        // object stream 2002 holds, each naming the next, the last naming 3100, an integer written in the file. 2002 heads a
+        // ladder of 61 or 62 object streams, each taking its predictor from an object the next holds. 10's chain loads 3001
+        // at the second level, and meets the run of 3002 to 3030 the walk keeps: with 62 holders, the decoding of 2002 from
+        // there reaches the reader's 64th load, its deepest, and the run is taken whole, as each of its objects would be
+        // followed. Gone round an object at a time, each object the run passes over would be read again, and a run built
+        // from it: about 30 KB more for the one stream, where the 62nd holder costs its own walk, about 6 KB (#312).
+        var options = new PdfReaderOptions { ObjectCacheCapacity = capacity };
+        var shorter = ChainThroughALadder(61);
+        var longer = ChainThroughALadder(62);
+
+        var shorterAllocated = Allocations.Least(() => PdfDocument.Open(shorter, options), document => ObjectStreamDependencies.Run(document), out var shorterDocument, out var shorterResult);
+        var longerAllocated = Allocations.Least(() => PdfDocument.Open(longer, options), document => ObjectStreamDependencies.Run(document), out var longerDocument, out var longerResult);
+
+        using (shorterDocument)
+        using (longerDocument)
+        {
+            shorterResult.CircularStreams.Should().BeEmpty();
+            longerResult.CircularStreams.Should().BeEmpty();
+            (longerAllocated - shorterAllocated).Should().BeLessThan(16 * 1024, "a run whose holder reaches the reader's deepest load from where it is met is taken whole ({0} B for the 62nd holder)", longerAllocated - shorterAllocated);
+        }
+
+        // Gives the file of object stream 10, and a ladder of `ladder` holders whose first holds the chain from 3001.
+        static byte[] ChainThroughALadder(int ladder)
+        {
+            var objects = new SortedDictionary<int, (string Entries, byte[]? Data)>
+            {
+                [10] = ConvergenceShapes.FlateObjectStream("/DecodeParms << /Predictor 5000 0 R >>", (11, "<< >>")),
+                [3100] = ("1", null),
+                [5000] = ("3001 0 R", null),
+            };
+            var members = new Dictionary<int, (int Stream, int Index)> { [11] = (10, 0) };
+            var chain = new (int Number, string Body)[30];
+
+            for (var link = 0; link < chain.Length; link++)
+            {
+                chain[link] = (3001 + link, string.Create(CultureInfo.InvariantCulture, $"{(link + 1 < chain.Length ? 3002 + link : 3100)} 0 R"));
+            }
+
+            ConvergenceShapes.Ladder(objects, members, ladder, chain);
+            return ConvergenceShapes.StreamsAndMembers(objects, members);
+        }
+    }
+
+    [Theory]
     [InlineData("nothing", 30, false)]
     [InlineData("the broken stream", 30, false)]
     [InlineData("a validation", 30, false)]

@@ -697,7 +697,7 @@ internal static partial class ConvergenceShapes
             objects[1200 + link] = (string.Create(CultureInfo.InvariantCulture, $"{(link < 30 ? 1201 + link : 1300)} 0 R"), null);
         }
 
-        Ladder(objects, members, ladder);
+        Ladder(objects, members, ladder, (1003, "1004 0 R"));
         return StreamsAndMembers(objects, members);
     }
 
@@ -733,26 +733,29 @@ internal static partial class ConvergenceShapes
             objects[1100 + link] = (string.Create(CultureInfo.InvariantCulture, $"{(link < 32 ? 1101 + link : 1003)} 0 R"), null);
         }
 
-        Ladder(objects, members, ladder);
+        Ladder(objects, members, ladder, (1003, "1004 0 R"));
         return StreamsAndMembers(objects, members);
     }
 
     /// <summary>
     /// Adds <paramref name="ladder"/> object streams from 2002 on, the kth, 2000 + 2k, holding 2001 + 2k, an integer, and
     /// taking its predictor from the object the next holds, so that the first one's decoding reaches as many levels deeper;
-    /// the first also holds 1003, <c>1004 0 R</c>.
+    /// the first also holds <paramref name="first"/>, after its integer.
     /// </summary>
-    private static void Ladder(SortedDictionary<int, (string Entries, byte[]? Data)> objects, Dictionary<int, (int Stream, int Index)> members, int ladder)
+    internal static void Ladder(SortedDictionary<int, (string Entries, byte[]? Data)> objects, Dictionary<int, (int Stream, int Index)> members, int ladder, params (int Number, string Body)[] first)
     {
         for (var holder = 1; holder <= ladder; holder++)
         {
             var number = 2000 + (2 * holder);
             var entries = holder < ladder ? string.Create(CultureInfo.InvariantCulture, $"/DecodeParms << /Predictor {number + 3} 0 R >>") : string.Empty;
-            objects[number] = holder == 1 ? FlateObjectStream(entries, (number + 1, "1"), (1003, "1004 0 R")) : FlateObjectStream(entries, (number + 1, "1"));
+            objects[number] = holder == 1 ? FlateObjectStream(entries, [(number + 1, "1"), .. first]) : FlateObjectStream(entries, (number + 1, "1"));
             members[number + 1] = (number, 0);
         }
 
-        members[1003] = (2002, 1);
+        for (var index = 0; index < first.Length; index++)
+        {
+            members[first[index].Number] = (2002, index + 1);
+        }
     }
 
     /// <summary>
