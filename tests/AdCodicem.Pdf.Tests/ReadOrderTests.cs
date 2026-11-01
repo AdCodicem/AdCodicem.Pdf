@@ -2150,9 +2150,9 @@ public class ReadOrderTests
     /// <summary>
     /// A file whose catalog names object 7, which object stream 8 holds, after object stream 6, which holds 10 and 11; 8's
     /// /Length is object 5, whose row leads to the catalog's header; <paramref name="unindexed"/> objects are written with no
-    /// row. Gives the file and where 5 is.
+    /// row, and so is object 10, after 5, when <paramref name="tenWrittenDirectly"/> says so. Gives the file and where 5 is.
     /// </summary>
-    private static (byte[] Bytes, long Five) TwoObjectStreamsTheSecondOfWhichLeadsNowhere(int unindexed)
+    private static (byte[] Bytes, long Five) TwoObjectStreamsTheSecondOfWhichLeadsNowhere(int unindexed, bool tenWrittenDirectly = false)
     {
         var file = new HandWrittenFile(version: "1.5");
         var rows = new Dictionary<int, (int Type, long Field2, int Field3)>
@@ -2170,6 +2170,11 @@ public class ReadOrderTests
         rows[5] = (1, 9, 0);
         rows[9] = (1, file.Padding(9), 0);
         var five = file.Object(5, Data.Length.ToString(CultureInfo.InvariantCulture));
+
+        if (tenWrittenDirectly)
+        {
+            file.Object(10, "(direct ten)");
+        }
 
         for (var number = 20; number < 20 + unindexed; number++)
         {
@@ -2569,12 +2574,13 @@ public class ReadOrderTests
         // The index has room for thirteen numbers, which the scan fills with six objects written outside it, and reports so.
         // Object stream 8 takes its /Length from 5, whose row leads into the catalog's header: reading 7, which 8 holds, sets
         // the rebuild off while 8 is loaded, and the loads in flight wait for its finish; the start of a validation sets it off
-        // with no load in flight, and finishes it at once. The source fails the finish's read of 5. A finish the read's
-        // loads waited for withdraws what was reported since the scan ended, and is run again from the copy of the scan's
-        // index they kept: the scan's report stands, and is not made again. A finish run at once withdraws what was reported
-        // since the scan began, and the rebuild is run again from its scan. What the rebuild reported as it began stays
-        // either way; and what comes next reports what a rebuild run whole reports (#167).
-        var (bytes, five) = TwoObjectStreamsTheSecondOfWhichLeadsNowhere(unindexed: 6);
+        // with no load in flight, and finishes it at once. Object 10 is written directly and in object stream 6, which the
+        // finish reports once it has expanded the object streams. The source fails the finish's read of 5, before that. A
+        // finish the read's loads waited for withdraws what was reported since the scan ended, and is run again from the
+        // copy of the scan's index they kept: the scan's report stands, and is not made again. A finish run at once
+        // withdraws what was reported since the scan began, and the rebuild is run again from its scan. What the rebuild
+        // reported as it began stays either way; and what comes next reports what a rebuild run whole reports (#167).
+        var (bytes, five) = TwoObjectStreamsTheSecondOfWhichLeadsNowhere(unindexed: 6, tenWrittenDirectly: true);
         var options = PdfReaderOptions.Default with { Limits = PdfReaderLimits.Default with { MaxIndexEntries = 13 } };
         using var whole = PdfDocument.Open(bytes, options);
         SetOff(whole);
@@ -2586,6 +2592,8 @@ public class ReadOrderTests
         var waiting = document.Diagnostics.Select(diagnostic => diagnostic.Code).ToList();
         SetOff(document);
 
+        whole.Diagnostics.Select(diagnostic => diagnostic.Code).Should().StartWith(
+            [PdfDiagnosticCodes.XRefRebuilt, PdfDiagnosticCodes.LimitIndexEntries, PdfDiagnosticCodes.ObjectRedefined]);
         waiting.Should().Equal(setOff == "a read"
             ? [PdfDiagnosticCodes.XRefRebuilt, PdfDiagnosticCodes.LimitIndexEntries]
             : [PdfDiagnosticCodes.XRefRebuilt]);
