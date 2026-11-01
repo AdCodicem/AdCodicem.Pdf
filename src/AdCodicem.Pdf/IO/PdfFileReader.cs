@@ -1928,9 +1928,9 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// on to the next one the index as written places. That index places in turn what the bytes no longer show: the objects
     /// a damaged stretch of the file erased, as a block of zeros does. What a search keeps depends on the file's bytes and on
     /// the index as written, then. It can still depend on the number a stream is first read under — its own entry, stepped
-    /// over, is that number's —, on the rebuild's scan for trailers, which reads a stream under none, and, once the
-    /// document's searches have read as much as they may (<see cref="EndStreamSearchPasses"/>), on which streams were
-    /// searched first: crafted files make it do so, no document of the corpus does (#138).
+    /// over, is that number's —, and, once the document's searches have read as much as they may
+    /// (<see cref="EndStreamSearchPasses"/>), on which streams were searched first: crafted files make it do so, no document
+    /// of the corpus does (#138). The rebuild's scan for trailers reads no stream (#171).
     /// </para>
     /// <para>
     /// This bound is no guard (ADR 34): a valid file's <c>endstream</c> follows its declared length (ISO 32000-1,
@@ -6221,7 +6221,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
                 parser.Position = window.Start;
                 _ = parser.ParseObject();
 
-                if (parser.IsMemberStream)
+                if (parser.StoppedAtStream)
                 {
                     (found ??= []).Add(index);
                 }
@@ -6587,13 +6587,12 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
 
         try
         {
-            // Indexing and loading objects can reach a guard, and so can parsing a trailer, which loads what its /Length
-            // names. A document opened to throw on one throws once the index is whole, not half-way through rebuilding it:
-            // one abandoned mid-way would leave the document unable to find the objects it had not reached. The first guard
-            // reached is the one thrown.
+            // Indexing and loading objects can reach a guard; the scan for trailers, which loads nothing, cannot. A document
+            // opened to throw on one throws once the index is whole, not half-way through rebuilding it: one abandoned mid-way
+            // would leave the document unable to find the objects it had not reached. The first guard reached is the one
+            // thrown.
             var reached = ScanForObjects(redefinitions);
-            var merging = ScanForTrailers();
-            reached ??= merging;
+            ScanForTrailers();
 
             // A rebuild a load sets off runs with that load, and those it is part of, still in flight: the objects they are
             // loading read as null meanwhile, and so would the values an object stream among them needs, so that expanding
@@ -7005,19 +7004,20 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     }
 
     /// <summary>
-    /// Merges into the trailer what follows each <c>trailer</c> keyword the file holds, the newest first, so that its keys
-    /// win.
+    /// Merges into the trailer the dictionary that follows each <c>trailer</c> keyword the file holds, the newest first, so
+    /// that its keys win.
     /// </summary>
     /// <remarks>
-    /// Parsing what follows a keyword loads what a stream's indirect <c>/Length</c> names there, which can reach a guard. A
-    /// document opened to throw on one has the trailer whose parse it ends left out, and the scan goes on to the older
-    /// ones: the guard is held until the index is whole, as each other step of a rebuild holds one, rather than leaving the
-    /// rebuild abandoned there, its object streams not expanded and its catalog not searched for.
+    /// What follows a keyword is parsed as the dictionary alone, and nothing is loaded (#171): a stream it introduces gives
+    /// its dictionary as it was read, neither its data nor what its <c>/Length</c> names being read; a reference in the
+    /// dictionary's place is none, and is not followed; and the references the dictionary holds are read only as the
+    /// trailer's keys that hold them are. The scan so reaches no guard, and merges the same trailers whatever reads are in
+    /// flight as it runs — the object one is loading reads as null meanwhile — and whether the document was opened to throw
+    /// on a guard or not. A keyword in a comment, a string or a stream's data is still taken for a trailer's, and every key
+    /// of the dictionary after it merged (#171).
     /// </remarks>
-    /// <returns>The exception a document opened to throw asked for, held until the index is whole; or null.</returns>
-    private ExceptionDispatchInfo? ScanForTrailers()
+    private void ScanForTrailers()
     {
-        ExceptionDispatchInfo? reached = null;
         var positions = new List<long>();
         var position = 0L;
 
@@ -7060,9 +7060,11 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
 
             try
             {
-                var parser = new PdfObjectParser(window.Memory, positions[i], this, _pending, this, endsData: !cut);
+                // No stream data is read: the file says where a token the window's edge reaches ends, as it does to a load.
+                var parser = new PdfObjectParser(
+                    window.Memory, positions[i], this, _pending, endsData: !cut, fileEdge: this, readsStreams: false);
 
-                if (parser.ParseObject().AsDictionary() is { } trailer)
+                if (parser.ParseObject() is PdfDictionary trailer)
                 {
                     _xref.MergeTrailer(trailer);
 
@@ -7074,18 +7076,11 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
 
                 KeepPending(mark);
             }
-            catch (PdfLimitExceededException exception)
-            {
-                // The first guard reached is the one thrown; what the parse had noted is dropped with the trailer.
-                reached ??= ExceptionDispatchInfo.Capture(exception);
-            }
             finally
             {
                 _pending.RollBack(mark);
             }
         }
-
-        return reached;
     }
 
     private ExceptionDispatchInfo? ExpandObjectStreams(Redefinitions redefinitions)
@@ -7768,7 +7763,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
             var value = parser.ParseObject();
 
             // A member written as a stream is no value (#161).
-            if (parser.IsMemberStream)
+            if (parser.StoppedAtStream)
             {
                 streamAt = window.Start;
                 return null;

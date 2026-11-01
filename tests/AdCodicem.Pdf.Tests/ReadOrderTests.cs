@@ -145,8 +145,8 @@ public class ReadOrderTests
         // Expanded while the load was in flight, the object streams read 5 as null: they reported a sound stream's /Length
         // as unreadable, which kept that stream's true fault from being reported, and filled the index at another object
         // stream. The rebuild expands them once, when no load is in flight. What its scan reports — the index it fills, the
-        // faults of an object it parses as a trailer — stays as it is finished, which withdraws only what the loads in flight
-        // reported, and the scan's faults are not reported again as the object is read.
+        // faults of a dictionary it parses as a trailer — stays as it is finished, which withdraws only what the loads in
+        // flight reported, and the scan's faults are not reported again as the object is read.
         var options = shape switch
         {
             "an index full past an object stream" => PdfReaderOptions.Default with { Limits = PdfReaderLimits.Default with { MaxIndexEntries = 10 } },
@@ -1775,20 +1775,23 @@ public class ReadOrderTests
     [InlineData("a validation", "between objects", "/Root 1 0 R")]
     [InlineData("a validation", "in a comment", "")]
     [InlineData("a validation", "between objects", "")]
-    public void A_guard_the_scan_for_trailers_reaches_is_thrown_once_the_rebuild_is_finished(string setOff, string keyword, string trailer)
+    public void Each_trailer_whose_stream_length_runs_past_a_guard_is_merged_by_a_rebuild_that_throws_on_one(
+        string setOff, string keyword, string trailer)
     {
-        // A rebuild's scan for trailers parses what follows each trailer keyword, the newest first, and loads what a
-        // stream's /Length names there: objects 23, then 21, each past an object guard of 200 bytes. Reading 7, which
-        // object stream 6 holds, sets the rebuild off while 6 is being loaded, its /Length leading nowhere; or the start of a
-        // validation does, the table lacking 6 and 7 and naming its previous section as a reference. A document opened to
-        // throw on a guard throws the first reached, 23's, once the rebuild is finished, as each other step of a rebuild
-        // holds one: 6 is expanded, so that 7 is read; a catalog the trailer does not name is searched for and found; and a
-        // validation finds what it finds in the document read without throwing, the guard thrown no more.
-        var (bytes, newest) = TwoTrailersPastTheObjectGuard(crossReferenceStream: setOff == "a read", keyword, trailer);
+        // A rebuild's scan for trailers parses the dictionary that follows each trailer keyword alone, the newest first, and
+        // loads nothing (#171): the streams two keywords introduce give their dictionaries, each with a key of its own,
+        // whatever their /Length names — objects 21 and 23, each past an object guard of 200 bytes. Reading 7, which object
+        // stream 6 holds, sets the rebuild off while 6 is being loaded, its /Length leading nowhere; or the start of a
+        // validation does, the table lacking 6 and 7 and naming its previous section as a reference. Loading the /Length,
+        // the scan reached 23's guard, and a document opened to throw on one left both trailers out. The scan now reaches
+        // no guard, and such a document merges every trailer it finds, the oldest included, as one read without throwing
+        // does. The first guard the rebuild reaches is the expansion's, which loads each object the scan indexed, 21 first,
+        // and it is thrown once the rebuild is finished: 6 is expanded, so that 7 is read, and a catalog the trailer does not
+        // name is searched for and found.
+        var (bytes, older) = TwoTrailersPastTheObjectGuard(crossReferenceStream: setOff == "a read", keyword, trailer);
         var limits = PdfReaderLimits.Default with { MaxObjectLength = 200 };
         using var tolerant = PdfDocument.Open(bytes, PdfReaderOptions.Default with { Limits = limits });
         SetOff(tolerant);
-        var sound = Validated(tolerant);
         using var document = PdfDocument.Open(bytes, PdfReaderOptions.Default with { Limits = limits, ThrowOnLimit = true });
 
         var thrown = FluentActions.Invoking(() => SetOff(document)).Should().Throw<PdfLimitExceededException>().Which;
@@ -1796,11 +1799,11 @@ public class ReadOrderTests
         var catalog = document.Catalog;
 
         thrown.LimitName.Should().Be(nameof(PdfReaderLimits.MaxObjectLength));
-        thrown.Position.Should().Be(newest);
+        thrown.Position.Should().Be(older);
         document.WasRepaired.Should().BeTrue();
+        Keys(document).Should().Equal(Keys(tolerant)).And.Contain(["Older", "Newer"]);
         seven.AsText().Should().Be("member");
         catalog.Should().NotBeNull().And.BeSameAs(document.GetObject(new PdfObjectId(1)) as PdfDictionary);
-        Validated(document).Should().Equal(sound);
 
         void SetOff(PdfDocument opened)
         {
@@ -1814,8 +1817,84 @@ public class ReadOrderTests
             }
         }
 
-        static List<string> Validated(PdfDocument opened) =>
-            [.. new PdfValidator().Validate(opened).Findings.Select(finding => finding.ToString())];
+        static List<string> Keys(PdfDocument opened) => [.. opened.Trailer.Keys.Select(key => key.Value).Order(StringComparer.Ordinal)];
+    }
+
+    [Theory]
+    [InlineData("between objects", "/Info 12 0 R")]
+    [InlineData("between objects", "/Encrypt 12 0 R")]
+    [InlineData("in a comment", "/Info 12 0 R")]
+    [InlineData("in a comment", "/Encrypt 12 0 R")]
+    public void A_rebuild_merges_the_same_trailers_whatever_was_read_before_it(string keyword, string entry)
+    {
+        // A rebuild's scan for trailers parses the dictionary that follows each trailer keyword alone, and loads nothing
+        // (#171): the stream a keyword introduces gives its dictionary — the entry, and a /Length naming 21, past an object
+        // guard of 200 bytes — whatever is in flight. Loading what the /Length named, the scan read 21 as null when the read
+        // that set the rebuild off was loading 21, and merged the trailer; set off by a validation, or by the validation
+        // after a read of the catalog, it reached the guard, and a document opened to throw on one left the trailer out. What
+        // the trailer held, whether the document was encrypted, and what a later validation found, which throws only where
+        // its walk reads what a guard cut, then depended on what was read first. Now, the rebuild run by the end of the first
+        // validation whatever it threw, the trailer holds the entry, and the document is encrypted as a read without
+        // throwing finds it, in every order; and a second validation finds the same in every order.
+        var bytes = AStreamTrailerWhoseLengthRunsPastTheObjectGuard(keyword, entry);
+        var limits = PdfReaderLimits.Default with { MaxObjectLength = 200 };
+        var key = entry[1..entry.IndexOf(' ', StringComparison.Ordinal)];
+        var states = new Dictionary<string, string>();
+        var seconds = new Dictionary<string, string>();
+
+        foreach (var throwOnLimit in (bool[])[false, true])
+        {
+            foreach (var first in (string[])["the /Length object", "a validation", "the catalog"])
+            {
+                var options = PdfReaderOptions.Default with { Limits = limits, ThrowOnLimit = throwOnLimit, ThrowOnEncrypted = false };
+                using var document = PdfDocument.Open(bytes, options);
+                var order = string.Create(CultureInfo.InvariantCulture, $"{first} first, ThrowOnLimit {throwOnLimit}");
+
+                Attempt(() => _ = first switch
+                {
+                    "the /Length object" => document.GetObject(new PdfObjectId(21)),
+                    "the catalog" => document.GetObject(new PdfObjectId(1)),
+                    _ => (object)new PdfValidator().Validate(document),
+                });
+                Attempt(() => _ = new PdfValidator().Validate(document));
+
+                document.WasRepaired.Should().BeTrue(order);
+                document.Trailer.ContainsKey(PdfName.Get(key)).Should().BeTrue(order);
+                var keys = string.Join(' ', document.Trailer.Keys.Select(name => name.Value).Order(StringComparer.Ordinal));
+                states[order] = $"{keys}; encrypted {document.IsEncrypted}";
+                seconds[order] = Validated(document);
+            }
+        }
+
+        states.Should().AllSatisfy(state => state.Value.Should().Be(states.First().Value, state.Key));
+        seconds.Where(second => second.Key.EndsWith("False", StringComparison.Ordinal))
+            .Should().AllSatisfy(second => second.Value.Should().Be(seconds["a validation first, ThrowOnLimit False"], second.Key));
+        seconds.Where(second => second.Key.EndsWith("True", StringComparison.Ordinal))
+            .Should().AllSatisfy(second => second.Value.Should().Be(seconds["a validation first, ThrowOnLimit True"], second.Key));
+
+        static void Attempt(Action read)
+        {
+            try
+            {
+                read();
+            }
+            catch (PdfLimitExceededException)
+            {
+                // A guard the read or the rebuild reached; the document is read on.
+            }
+        }
+
+        static string Validated(PdfDocument opened)
+        {
+            try
+            {
+                return string.Join(" | ", new PdfValidator().Validate(opened).Findings.Select(finding => finding.ToString()));
+            }
+            catch (PdfLimitExceededException exception)
+            {
+                return string.Create(CultureInfo.InvariantCulture, $"{exception.LimitName} at {exception.Position}");
+            }
+        }
     }
 
     [Fact]
@@ -2041,11 +2120,13 @@ public class ReadOrderTests
     /// A file whose catalog names object 7, which object stream 6 holds, and in which a rebuild's scan for trailers meets
     /// two <c>trailer</c> keywords, <paramref name="keyword"/> — in a comment inside the header of objects 20 and 22, or
     /// between objects —, each before a stream whose /Length is an object running past an object guard of 200 bytes: 21,
-    /// then 23. A cross-reference stream indexes it as <see cref="MemberWhoseLengthLeadsNowhere"/> does, 6's /Length object
-    /// 5, whose row leads to the catalog's header; or a classic table that lacks 6 and 7 and names its previous section as a
-    /// reference. Either holds <paramref name="trailer"/>. Gives the file and where 23 is.
+    /// then 23. The older stream's dictionary holds <c>/Older</c>, the newer's <c>/Newer</c>, which neither the table's
+    /// trailer nor the cross-reference stream's dictionary holds. A cross-reference stream indexes it as
+    /// <see cref="MemberWhoseLengthLeadsNowhere"/> does, 6's /Length object 5, whose row leads to the catalog's header; or a
+    /// classic table that lacks 6 and 7 and names its previous section as a reference. Either holds
+    /// <paramref name="trailer"/>. Gives the file and where 21 is.
     /// </summary>
-    private static (byte[] Bytes, long Newest) TwoTrailersPastTheObjectGuard(bool crossReferenceStream, string keyword, string trailer)
+    private static (byte[] Bytes, long Older) TwoTrailersPastTheObjectGuard(bool crossReferenceStream, string keyword, string trailer)
     {
         var file = new HandWrittenFile(version: "1.5");
         var catalog = file.Object(1, "<< /Type /Catalog /Pages 2 0 R /Test 7 0 R >>");
@@ -2054,11 +2135,12 @@ public class ReadOrderTests
         const string Data = "7 0 (member) ";
         var length = crossReferenceStream ? "5 0 R" : Data.Length.ToString(CultureInfo.InvariantCulture);
         var six = file.Object(6, $"<< /Type /ObjStm /N 1 /First 4 /Length {length} >>\nstream\n{Data}\nendstream");
-        var newest = 0L;
+        var older = 0L;
 
         foreach (var number in (int[])[20, 22])
         {
-            var dictionary = string.Create(CultureInfo.InvariantCulture, $"<< /Length {number + 1} 0 R >>\nstream\nabc\nendstream");
+            var own = number == 20 ? "/Older" : "/Newer";
+            var dictionary = string.Create(CultureInfo.InvariantCulture, $"<< {own} true /Length {number + 1} 0 R >>\nstream\nabc\nendstream");
 
             if (keyword == "in a comment")
             {
@@ -2069,13 +2151,14 @@ public class ReadOrderTests
                 file.Raw("trailer\n" + dictionary + "\n");
             }
 
-            newest = file.Object(number + 1, "3 % " + new string('x', 400));
+            var past = file.Object(number + 1, "3 % " + new string('x', 400));
+            older = older == 0 ? past : older;
         }
 
         if (!crossReferenceStream)
         {
             file.Table(8, new Dictionary<int, long> { [1] = catalog, [2] = pages, [3] = page }, $"/Size 8 {trailer} /Prev 1 0 R");
-            return (file.Bytes, newest);
+            return (file.Bytes, older);
         }
 
         file.Object(5, Data.Length.ToString(CultureInfo.InvariantCulture));
@@ -2089,15 +2172,43 @@ public class ReadOrderTests
             [7] = (2, 6, 0),
         };
         file.CrossReferenceStream(9, 10, rows, trailer);
-        return (file.Bytes, newest);
+        return (file.Bytes, older);
     }
 
     /// <summary>
-    /// A file whose objects 4 and 8 say <c>trailer</c> in a comment before their dictionary, from which a rebuild's scan for
-    /// trailers parses them, loading what their /Length names. Object 4's dictionary names /Dup twice, and its stream's
-    /// /Length is object 5, a stream whose own /Length its data does not end at; object 8's stream's /Length is object 9,
-    /// whose comment runs past an object guard of 64 bytes. The table lacks 5, 8 and 9; object 6's row leads into the
-    /// catalog.
+    /// A file in which a rebuild's scan for trailers meets a <c>trailer</c> keyword, <paramref name="keyword"/> — between
+    /// objects, or in a comment —, older than the table's own trailer and before a stream whose /Length is object 21, which
+    /// runs past an object guard of 200 bytes. The stream's dictionary holds <paramref name="entry"/> too, which names
+    /// object 12 and which the table's trailer lacks. The table places 21 at the pages' header, so that reading 21 sets the
+    /// rebuild off while 21 is being loaded, and names the catalog. Comments pad the file, so that 21 is the only object
+    /// past the guard.
+    /// </summary>
+    private static byte[] AStreamTrailerWhoseLengthRunsPastTheObjectGuard(string keyword, string entry)
+    {
+        var file = new HandWrittenFile();
+        var padding = "%" + new string('z', 1500) + "\n";
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>"),
+            [3] = file.Object(3, Page),
+        };
+        file.Raw(padding);
+        rows[12] = file.Object(12, "<< /Producer (p) >>");
+        file.Raw(padding);
+        file.Object(21, "7 % " + new string('y', 500));
+        rows[21] = rows[2];
+        file.Raw(padding);
+        file.Raw((keyword == "in a comment" ? "% trailer\n" : "trailer\n") + $"<< {entry} /Length 21 0 R >>\nstream\nxyz\nendstream\n");
+        file.Table(22, rows, "/Size 22 /Root 1 0 R");
+        return file.Bytes;
+    }
+
+    /// <summary>
+    /// A file whose objects 4 and 8 say <c>trailer</c> in a comment before their dictionary, which a rebuild's scan for
+    /// trailers parses alone, loading nothing (#171). Object 4's dictionary names /Dup twice, and its stream's /Length is
+    /// object 5, a stream whose own /Length its data does not end at; object 8's stream's /Length is object 9, whose
+    /// comment runs past an object guard of 64 bytes. The table lacks 5, 8 and 9; object 6's row leads into the catalog.
     /// </summary>
     private static byte[] AnObjectTheScanForTrailersParses()
     {
@@ -2614,13 +2725,13 @@ public class ReadOrderTests
     }
 
     [Fact]
-    public void A_rebuild_whose_scan_for_trailers_loads_past_the_depth_the_reader_follows_reports_it_once()
+    public void A_rebuild_whose_scan_for_trailers_meets_a_length_chain_past_the_depth_the_reader_follows_reports_the_depth_once()
     {
         // Streams 100 to 249 each take their /Length from the next, and 101's row leads nowhere: reading 100 rebuilds the
         // index with 100 and 101 in flight. Stream 150 says trailer in a comment before its dictionary: the scan for trailers
-        // parses it, and its /Length's chain reaches past the depth the reader follows, which the scan reports. The finish
-        // keeps that report, taken as made, so that reading 100 again from the finished index, which nests as deep, reports
-        // nothing more (#167).
+        // parses that dictionary alone, and loads nothing of its /Length's chain, which reaches past the depth the reader
+        // follows (#171). The finish reads each object again from the finished index, 100 among them, which nests that deep:
+        // the depth is reported once (#167).
         var file = new HandWrittenFile();
         var rows = new Dictionary<int, long>
         {

@@ -47,6 +47,13 @@ internal ref struct PdfObjectParser
     private readonly long _baseOffset;
 
     /// <summary>
+    /// Whether the parse reads the stream a dictionary introduces, or stops at its <c>stream</c> keyword: an object stream
+    /// member's parse stops there, a member written as a stream being no value (#161), and so does the parse of what follows
+    /// a <c>trailer</c> keyword in a rebuild's scan for trailers, which takes the dictionary alone and loads nothing (#171).
+    /// </summary>
+    private readonly bool _readsStreams;
+
+    /// <summary>
     /// Whether the buffer ends where the data does — the file, or an object stream's decoded data —, rather than at the
     /// edge of a window the reader may grow: only then is what the end of the buffer cuts short the data's fault.
     /// </summary>
@@ -118,8 +125,10 @@ internal ref struct PdfObjectParser
     /// </summary>
     private ObjectStreamMember? _member;
 
-    /// <summary>Where the <c>stream</c> keyword a member is written with starts, or -1 when none was met.</summary>
-    private int _memberStream = -1;
+    /// <summary>
+    /// Where the <c>stream</c> keyword a parse that reads no stream stopped at starts, or -1 when it met none.
+    /// </summary>
+    private int _streamStop = -1;
 
     /// <summary>Where the header of the last indirect object <see cref="TryReadIndirectObject"/> read starts, in the buffer.</summary>
     private int _headerStart;
@@ -138,6 +147,11 @@ internal ref struct PdfObjectParser
     /// Says what the file holds right past the bytes given, for a parser no <paramref name="streamData"/> backs; one that
     /// serves stream data says it too.
     /// </param>
+    /// <param name="readsStreams">
+    /// Whether a stream a dictionary introduces is read — its data, and what its <c>/Length</c> names —; when it is not, the
+    /// parse stops at its <c>stream</c> keyword, the dictionary given as it was read, and <see cref="StoppedAtStream"/> says
+    /// so.
+    /// </param>
     public PdfObjectParser(
         ReadOnlyMemory<byte> memory,
         long baseOffset = 0,
@@ -145,7 +159,8 @@ internal ref struct PdfObjectParser
         PdfDiagnostics? diagnostics = null,
         IPdfStreamDataProvider? streamData = null,
         bool endsData = true,
-        IPdfFileEdge? fileEdge = null)
+        IPdfFileEdge? fileEdge = null,
+        bool readsStreams = true)
     {
         _memory = memory;
         _lexer = new PdfLexer(memory.Span);
@@ -155,6 +170,7 @@ internal ref struct PdfObjectParser
         _streamData = streamData;
         _fileEdge = fileEdge ?? streamData;
         _endsData = endsData;
+        _readsStreams = readsStreams;
     }
 
     /// <summary>
@@ -188,7 +204,7 @@ internal ref struct PdfObjectParser
         bool endsAtNextMember = false,
         IPdfFileEdge? dataEdge = null)
     {
-        var parser = new PdfObjectParser(data, 0, source, diagnostics, endsData: endsData, fileEdge: dataEdge);
+        var parser = new PdfObjectParser(data, 0, source, diagnostics, endsData: endsData, fileEdge: dataEdge, readsStreams: false);
         parser._member = new ObjectStreamMember(streamNumber, dataStart, objectNumber, diagnostics, endsAtNextMember);
         return parser;
     }
@@ -201,11 +217,12 @@ internal ref struct PdfObjectParser
     public readonly bool IsTruncated => _truncated;
 
     /// <summary>
-    /// Gets a value indicating whether the object stream member being read is written as a stream, or holds one: a
-    /// dictionary followed by <c>stream</c>, which an object stream cannot hold (ISO 32000-1 7.5.7). The parse stops at the
-    /// keyword, and what it read of the member is no value (#161).
+    /// Gets a value indicating whether a parse that reads no stream stopped at a <c>stream</c> keyword after a dictionary,
+    /// every container it had open ending there. An object stream member's parse does when the member is written as a
+    /// stream, or holds one: a dictionary followed by <c>stream</c>, which an object stream cannot hold (ISO 32000-1 7.5.7),
+    /// and what it read of the member is no value (#161).
     /// </summary>
-    public readonly bool IsMemberStream => _memberStream >= 0;
+    public readonly bool StoppedAtStream => _streamStop >= 0;
 
     /// <summary>Gets where the header of the last indirect object <see cref="TryReadIndirectObject"/> read starts, in the buffer.</summary>
     public readonly int HeaderStart => _headerStart;
@@ -559,7 +576,7 @@ internal ref struct PdfObjectParser
 
                     array.Add(element);
 
-                    if (IsMemberStream)
+                    if (StoppedAtStream)
                     {
                         return array;
                     }
@@ -672,7 +689,7 @@ internal ref struct PdfObjectParser
 
             var value = ParseValue(valueToken, depth + 1);
 
-            if (IsMemberStream)
+            if (StoppedAtStream)
             {
                 return dictionary;
             }
@@ -723,10 +740,12 @@ internal ref struct PdfObjectParser
 
         if (next.IsKeyword("stream"u8))
         {
-            // A member's stream is not read: the member is no value, and the parse stops here (#161).
-            if (_member is not null)
+            // A parse that reads no stream stops here, the containers it had open with it: a member's stream is no value
+            // (#161), and a trailer's is its dictionary alone, as it was read, its data and what its /Length names unread
+            // (#171).
+            if (!_readsStreams)
             {
-                _memberStream = next.Start;
+                _streamStop = next.Start;
                 return dictionary;
             }
 
