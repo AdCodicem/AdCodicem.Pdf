@@ -1972,25 +1972,137 @@ public class HostileInputTests
         }
     }
 
+    [Fact]
+    public void An_object_stream_whose_standing_waits_on_others_keeps_what_it_reads_of_its_dictionary_once_however_often_it_is_walked_again()
+    {
+        // Object stream 3 takes its parameters from 6, which 5 holds; 5's /Filter names 64 elements, each a chain of 30
+        // objects held by object streams of their own, and its /DecodeParms, a dictionary, gives each of the five entries a
+        // step's parameters are read from. 5 is walked 1,921 times, once more for each holder its walks met before it was
+        // known. Once 5 waits, the walk keeps what it read of its dictionary, its parameters' five entries among them, and
+        // walks it again from what it kept: what 5's parameters cost is reading and keeping them once, 1.9 KB more than a 5
+        // that writes no /DecodeParms. Kept again at each walk, they cost 1,921 dictionaries, 938 KB more (#312).
+        const string Parameters = "<< /Predictor 1 /Colors 1 /BitsPerComponent 8 /Columns 1 /EarlyChange 1 >>";
+
+        var without = Allocations.Least(() => PdfDocument.Open(HiddenHolders(64, 30, 0)), document => ObjectStreamDependencies.Run(document), out var withoutDocument, out var withoutResult);
+        var with = Allocations.Least(() => PdfDocument.Open(HiddenHolders(64, 30, 0, Parameters)), document => ObjectStreamDependencies.Run(document), out var withDocument, out var withResult);
+
+        using (withoutDocument)
+        using (withDocument)
+        {
+            withoutResult.CircularStreams.Should().BeEmpty();
+            withResult.CircularStreams.Should().BeEmpty();
+            (with - without).Should().BeLessThan(64 * 1024, "what a walk reads of a dictionary that waits is kept once, not once a walk");
+        }
+    }
+
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
-    public void Object_streams_whose_standings_wait_on_one_another_wait_once_each_whatever_the_walks_that_met_them(bool larger)
+    public void Object_streams_whose_standings_wait_on_one_another_wait_on_a_stack_within_twice_their_number_whatever_the_walks_that_met_them(bool larger)
     {
         // Object stream X1, which 3 takes its parameters from, takes its /Length from an object X2 holds, and so on, 2,000 or
         // 8,000 of them; each takes its /Filter and /DecodeParms from two objects written in the file, 64 Flate steps whose
         // predictor reads three values, each an object of a holder of its own, 192 holders shared by every X. Each X's first
         // walk meets the next X and the 192 holders, none known yet, and pushes them all on the stack of the streams waiting:
-        // 193 entries an X, 1,544,000 for 8,000. A stream pushed again by a later walk leaves its entry below stale, which
-        // the stack, rid of them whenever it doubles, no longer holds: at most twice the streams waiting, and one walk's
-        // 193 (#312). Each X waits on the next before any is known: the stack holds every X at once.
+        // 193 entries an X, 1,544,000 for 8,000. A stream pushed again by a later walk leaves its entry below stale; the
+        // stack is rid of such entries once it holds more than 1,024 and each time it has doubled since, so that it holds at
+        // most twice the streams waiting, and one walk's 193 (#312): 4,488 entries for 2,000, 16,423 for 8,000. Each X waits
+        // on the next before any is known: the stack holds every X at once.
         var count = larger ? 8000 : 2000;
         using var document = PdfDocument.Open(PendingFanout(count));
 
         var result = ObjectStreamDependencies.Run(document);
 
         result.CircularStreams.Should().BeEmpty();
-        result.MostWaiting.Should().BeInRange(count, (2 * (count + 193)) + 260, "each stream waits once, whatever walks met it");
+        result.MostWaiting.Should().BeInRange(count, (2 * (count + 193)) + 260, "the stack holds at most twice the streams waiting, and one walk's unknown streams, whatever walks met them");
+    }
+
+    [Fact]
+    public void A_walk_of_a_standing_meets_every_object_stream_not_known_yet_that_its_decoding_reads_before_it_waits()
+    {
+        // Object stream 3 takes its parameters from the object X1 holds; X1's 64 Flate steps each take a predictor of 12
+        // whose /Colors, /BitsPerComponent and /Columns are each the object of a holder of its own, 192 holders, none known
+        // when X1's standing is first worked out. Its walk reads each as null and goes on, as decoding goes on past a value
+        // read as null, and waits on every holder it met at once: the stack holds X1 and the 192 holders, each holder is
+        // walked, and X1 once more. A walk ended at the first holder not known would wait on one holder at a time, walking X1
+        // again for each, 193 walks where two do: the stack would never hold more than X1 and one holder (#312).
+        using var document = PdfDocument.Open(PendingFanout(1));
+
+        var result = ObjectStreamDependencies.Run(document);
+
+        result.CircularStreams.Should().BeEmpty();
+        result.MostWaiting.Should().Be(1 + (3 * 64), "one walk of X1 meets every holder its decoding reads");
+    }
+
+    [Theory]
+    [InlineData(34, 1054)]
+    [InlineData(35, 1055)]
+    public void Object_streams_whose_standings_wait_on_one_another_keep_every_entry_of_their_stack_until_it_holds_more_than_1024(int count, int most)
+    {
+        // Object stream 3 takes its parameters from the object X1 holds, and X1, X2 and on, 34 or 35 of them, each take their
+        // /Length from the object the next holds and 10 Flate steps, each step's predictor reading three values, each the
+        // object of a holder of its own, 30 holders shared by every X. Each X's first walk pushes the next X and the 30
+        // holders, none known yet: 31 entries an X, the last pushing the holders alone. After X33's walk the stack holds
+        // 1 + 33 x 31 = 1,024 entries, and keeps them all, stale ones included; X34's walk takes it to 1,054 or 1,055, past
+        // 1,024, where it is rid of the stale ones, keeping one entry of each stream: X35's walk then pushes 30 more onto the
+        // 65 left (#312).
+        using var document = PdfDocument.Open(PendingFanout(count, steps: 10));
+
+        var result = ObjectStreamDependencies.Run(document);
+
+        result.CircularStreams.Should().BeEmpty();
+        result.MostWaiting.Should().Be(most, "the stack is rid of its stale entries once it holds more than 1,024, not before");
+    }
+
+    [Fact]
+    public void Object_streams_whose_standings_wait_on_one_another_drop_the_entries_later_walks_left_stale_rather_than_walking_them_again()
+    {
+        // Object stream 3 takes its parameters from the object X1 holds, and X1, X2 and on, one or five of them, each take
+        // their /Length from the object the next holds and 64 Flate steps whose predictor reads three values, each the object
+        // of a holder of its own, 192 holders shared by every X. Each X's first walk pushes the 192 holders again, none known
+        // yet; below 1,024 entries the stack keeps every entry, so that the holders' entries an earlier X pushed are stale
+        // when they are reached, the holders known by then: 768 for five X's. A stale entry is dropped, and what one more X
+        // costs is its own walks, 17.7 KB; walked again, each stale entry's holder read its dictionary from the file once
+        // more, 176 KB an X (#312).
+        const int Few = 1;
+        const int Many = 5;
+
+        var fewAllocated = Allocations.Least(() => PdfDocument.Open(PendingFanout(Few)), document => ObjectStreamDependencies.Run(document), out var fewDocument, out var fewResult);
+        var manyAllocated = Allocations.Least(() => PdfDocument.Open(PendingFanout(Many)), document => ObjectStreamDependencies.Run(document), out var manyDocument, out var manyResult);
+
+        using (fewDocument)
+        using (manyDocument)
+        {
+            fewResult.CircularStreams.Should().BeEmpty();
+            manyResult.CircularStreams.Should().BeEmpty();
+            ((manyAllocated - fewAllocated) / (Many - Few)).Should().BeLessThan(32 * 1024, "what one more stream that waits costs is its own walks, not walks of the holders it waits on again");
+        }
+    }
+
+    [Fact]
+    public void A_walk_of_a_standing_ends_at_the_first_thing_that_tells_its_object_stream_does_not_decode_alike()
+    {
+        // Object streams each take their parameters from the object a holder of their own holds, whose /Length is that
+        // object: decoding the holder reads its own object while the reader holds it in its loads, and its standing is unlike
+        // at its first load. Each holder takes 64 Flate steps, whose parameters are objects written in the file, 1 KB each,
+        // under a cache of 64 objects, fewer than the holders' parameters. A walk of a standing asks only whether the stream
+        // decodes alike, and ends there, reading none of the parameters, which the walk that judges the holder reads once:
+        // 237 KB a holder. One that went on read each holder's 64 parameters as well, let go before the walk that judges
+        // read them again: 347 KB a holder (#312).
+        const int Few = 10;
+        const int Many = 40;
+        var options = new PdfReaderOptions { ObjectCacheCapacity = 64 };
+
+        var fewAllocated = Allocations.Least(() => PdfDocument.Open(HoldersUnlikeAtTheirLength(Few, 1024), options), document => ObjectStreamDependencies.Run(document), out var fewDocument, out var fewResult);
+        var manyAllocated = Allocations.Least(() => PdfDocument.Open(HoldersUnlikeAtTheirLength(Many, 1024), options), document => ObjectStreamDependencies.Run(document), out var manyDocument, out var manyResult);
+
+        using (fewDocument)
+        using (manyDocument)
+        {
+            fewResult.CircularStreams.Should().HaveCount(Few);
+            manyResult.CircularStreams.Should().HaveCount(Many);
+            ((manyAllocated - fewAllocated) / (Many - Few)).Should().BeLessThan(288 * 1024, "a walk of a standing reads nothing past what tells it the stream does not decode alike");
+        }
     }
 
     [Fact]
@@ -4432,10 +4544,11 @@ public class HostileInputTests
     /// A file where object stream 3 takes its parameters from 6, which object stream 5 holds; 5's <c>/Filter</c> names
     /// <paramref name="elements"/> elements, each the first of a chain of <paramref name="links"/> objects, each held by an
     /// object stream of its own, which needs nothing, and naming the next, the last <c>/FlateDecode</c>; 5's dictionary
-    /// carries <paramref name="padding"/> bytes besides, in a string no reader reads. A walk of 5 is made again for each link,
-    /// which ends its chain of filters as long as its holder is not known.
+    /// carries <paramref name="padding"/> bytes besides, in a string no reader reads, and <paramref name="parameters"/>, when
+    /// given, as its <c>/DecodeParms</c>. A walk of 5 is made again for each link, which ends its chain of filters as long as
+    /// its holder is not known.
     /// </summary>
-    internal static byte[] HiddenHolders(int elements, int links, int padding)
+    internal static byte[] HiddenHolders(int elements, int links, int padding, string? parameters = null)
     {
         var packed = new List<PackedStream>();
         var filters = new StringBuilder("[");
@@ -4453,7 +4566,8 @@ public class HostileInputTests
             }
         }
 
-        packed.Add(new PackedStream(5, $"/Filter {filters.Append(']')} /Pad <{new string('a', padding)}>", [(6, "<< /Predictor 1 >>")], PackedData.Plain));
+        var decodeParms = parameters is null ? string.Empty : " /DecodeParms " + parameters;
+        packed.Add(new PackedStream(5, $"/Filter {filters.Append(']')} /Pad <{new string('a', padding)}>{decodeParms}", [(6, "<< /Predictor 1 >>")], PackedData.Plain));
         packed.Add(new PackedStream(3, "/DecodeParms 6 0 R", [(4, "<< >>")], PackedData.Flate));
         return PackedFile(packed);
     }
@@ -4461,18 +4575,17 @@ public class HostileInputTests
     /// <summary>
     /// A file where object stream 3 takes its parameters from the object X1 holds, and <paramref name="count"/> object
     /// streams X1, X2 and on each take their <c>/Length</c> from the object the next holds, and their <c>/Filter</c> and
-    /// <c>/DecodeParms</c> from objects 900 and 901, written in the file: 64 Flate steps, each step's parameters a
-    /// predictor of 12 whose <c>/Colors</c>, <c>/BitsPerComponent</c> and <c>/Columns</c> are each the object of a holder
-    /// of its own, 192 holders, which need nothing.
+    /// <c>/DecodeParms</c> from objects 900 and 901, written in the file: <paramref name="steps"/> Flate steps, each
+    /// step's parameters a predictor of 12 whose <c>/Colors</c>, <c>/BitsPerComponent</c> and <c>/Columns</c> are each the
+    /// object of a holder of its own, three holders a step, 192 for 64 steps, which need nothing.
     /// </summary>
-    internal static byte[] PendingFanout(int count)
+    internal static byte[] PendingFanout(int count, int steps = 64)
     {
-        const int Steps = 64;
         var packed = new List<PackedStream>();
         var parameters = new StringBuilder("[");
         var next = 1000;
 
-        for (var step = 0; step < Steps; step++)
+        for (var step = 0; step < steps; step++)
         {
             parameters.Append(CultureInfo.InvariantCulture, $"<< /Predictor 12 /Colors {next + 1} 0 R /BitsPerComponent {next + 3} 0 R /Columns {next + 5} 0 R >> ");
 
@@ -4493,7 +4606,41 @@ public class HostileInputTests
         }
 
         packed.Add(new PackedStream(3, string.Create(CultureInfo.InvariantCulture, $"/DecodeParms {first + 1} 0 R"), [(4, "<< >>")], PackedData.Flate));
-        return PackedFile(packed, [(900, "[" + string.Join(' ', Enumerable.Repeat("/FlateDecode", Steps)) + "]"), (901, parameters.Append(']').ToString())]);
+        return PackedFile(packed, [(900, "[" + string.Join(' ', Enumerable.Repeat("/FlateDecode", steps)) + "]"), (901, parameters.Append(']').ToString())]);
+    }
+
+    /// <summary>
+    /// A file where <paramref name="count"/> object streams, numbered 10, 12 and so on, each take their parameters from the
+    /// object a holder of their own holds, numbered after them, whose <c>/Length</c> is that object: the holder's standing
+    /// is unlike at its first load. Each holder takes 64 Flate steps, whose parameters are 64 objects written in the file,
+    /// numbered after the holders, each carrying <paramref name="padding"/> bytes in a string no reader reads.
+    /// </summary>
+    internal static byte[] HoldersUnlikeAtTheirLength(int count, int padding)
+    {
+        const int Steps = 64;
+        var packed = new List<PackedStream>();
+        var direct = new List<(int Number, string Body)>();
+        var filters = "[" + string.Join(' ', Enumerable.Repeat("/FlateDecode", Steps)) + "]";
+        var pad = new string('a', padding);
+
+        for (var k = 0; k < count; k++)
+        {
+            var holder = 10 + (2 * (count + k));
+            var parameters = new StringBuilder("[");
+
+            for (var step = 0; step < Steps; step++)
+            {
+                var number = 10 + (4 * count) + (Steps * k) + step;
+                direct.Add((number, $"<< /Predictor 1 /Pad <{pad}> >>"));
+                parameters.Append(CultureInfo.InvariantCulture, $"{number} 0 R ");
+            }
+
+            var length = string.Create(CultureInfo.InvariantCulture, $"{holder + 1} 0 R");
+            packed.Add(new PackedStream(holder, $"/Filter {filters} /DecodeParms {parameters.Append(']')}", [(holder + 1, "<< /Predictor 1 >>")], PackedData.Plain, Length: length));
+            packed.Add(new PackedStream(10 + (2 * k), string.Create(CultureInfo.InvariantCulture, $"/DecodeParms {holder + 1} 0 R"), [(11 + (2 * k), "<< >>")], PackedData.Flate));
+        }
+
+        return PackedFile(packed, direct);
     }
 
     /// <summary>
