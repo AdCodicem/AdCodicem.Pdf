@@ -11,7 +11,9 @@ namespace AdCodicem.Pdf.Benchmarks;
 /// Measures the walk of the object streams' dependencies, which validation runs once, on Flate object streams that take
 /// their <c>/DecodeParms</c> from one object written directly in the file, from an object the next stream holds, from
 /// streams that each head a nest of streams by <c>/Length</c>, from the first of chains of objects other object streams
-/// hold, or from the object of a stream whose standing waits on the next, and on the streams its parameters' values lie in.
+/// hold, from the object of a stream whose standing waits on the next, and on the streams its parameters' values lie in,
+/// or from the first of a chain of objects written in the file whose runs other streams' <c>/Length</c> kept longer than
+/// a value's chain loads.
 /// </summary>
 /// <remarks>
 /// The walk reads what decoding each stream reads, where the chain's index places it, outside the reader's cache (#128,
@@ -28,7 +30,10 @@ namespace AdCodicem.Pdf.Benchmarks;
 /// once they are, from what the walk kept of its dictionary: streams that each wait on the next, and on 192 holders their
 /// parameters' values lie in, are pushed on the stack of waiting standings again by each walk that meets them, leaving
 /// stale entries the stack is rid of whenever it holds more than 1,024 and twice as many as it kept the last time (#312).
-/// The document is opened outside the measurement.
+/// A run kept from a chain that loaded more objects than a later chain has left is not taken by it, which goes on an object
+/// at a time there, each object it loads kept already: streams whose predictor's chain meets such a run at each of its 32
+/// objects go through them one by one, where working out a shorter run again built one for each stream (#312). The
+/// document is opened outside the measurement.
 /// </remarks>
 [MemoryDiagnoser]
 public class ObjectStreamDependencyBenchmarks
@@ -51,9 +56,12 @@ public class ObjectStreamDependencyBenchmarks
     /// streams, each taking its <c>/Length</c> from the next; <c>holders</c>, 64 objects, each the first of a chain of 8
     /// objects held by object streams of their own, which need nothing; <c>waits</c>, for one stream, the object the first
     /// of the others holds, each of the others taking its <c>/Length</c> from the object the next holds, and as parameters
-    /// 64 predictors whose values are the objects of 192 holders.
+    /// 64 predictors whose values are the objects of 192 holders; <c>runs</c>, for each stream but the first 32, which take
+    /// their <c>/Length</c> from the first 32 objects of a chain of 40 written in the file, one each, a predictor naming the
+    /// first of that chain, which its <c>/Length</c> names as well: the predictor's chain meets at each of its objects a run
+    /// kept longer than it has loads left.
     /// </summary>
-    [Params("shared", "ring", "nests", "holders", "waits")]
+    [Params("shared", "ring", "nests", "holders", "waits", "runs")]
     public string Parameters { get; set; } = "shared";
 
     [GlobalSetup]
@@ -62,6 +70,7 @@ public class ObjectStreamDependencyBenchmarks
         "nests" => CreateNests(StreamCount),
         "holders" => CreateHolders(StreamCount),
         "waits" => CreateWaits(StreamCount),
+        "runs" => CreateRuns(StreamCount),
         _ => Create(StreamCount, sharedBytes: 16 * 1024, ring: Parameters == "ring"),
     });
 
@@ -298,6 +307,58 @@ public class ObjectStreamDependencyBenchmarks
         }
 
         Finish(output, offsets, First, x + (2 * streams));
+        return output.ToArray();
+    }
+
+    /// <summary>
+    /// Writes a file indexed by a cross-reference stream, whose objects 1,001 to 1,040, written in the file, each name the
+    /// next, the last 7, and whose <paramref name="streams"/> object streams, numbered from 2,000, each hold one dictionary.
+    /// The first 32 take their <c>/Length</c> from 1,001, 1,002 and on, one each, so that the walk keeps a run of the chain
+    /// from each of them, of 33 objects from the first seven; every later one, a Flate stream, takes its <c>/Length</c> from
+    /// 1,001, and its predictor as well: that value's chain, which loads 32 objects, one fewer than a <c>/Length</c>, meets
+    /// at each of them a run kept from a chain that loaded more, and goes on an object at a time. The object streams' data
+    /// is written as it is.
+    /// </summary>
+    private static byte[] CreateRuns(int streams)
+    {
+        const int Links = 40;
+        const int Kept = 32;
+        const int First = 2000;
+        using var output = new MemoryStream();
+        var offsets = new Dictionary<int, long>();
+        void Write(string text) => output.Write(Encoding.ASCII.GetBytes(text));
+
+        void WriteObject(int number, string body)
+        {
+            offsets[number] = output.Position;
+            Write(string.Create(CultureInfo.InvariantCulture, $"{number} 0 obj\n{body}\nendobj\n"));
+        }
+
+        Write("%PDF-1.5\n");
+        WriteObject(1, "<< /Type /Catalog /Pages 2 0 R >>");
+        WriteObject(2, "<< /Type /Pages /Kids [] /Count 0 >>");
+
+        for (var link = 1; link <= Links; link++)
+        {
+            WriteObject(1000 + link, link < Links ? string.Create(CultureInfo.InvariantCulture, $"{1001 + link} 0 R") : "7");
+        }
+
+        for (var stream = 0; stream < streams; stream++)
+        {
+            var number = First + (2 * stream);
+            var text = string.Create(CultureInfo.InvariantCulture, $"{number + 1} 0 << >>");
+            var header = string.Create(CultureInfo.InvariantCulture, $"{number + 1} 0 ").Length;
+            var data = stream < Kept ? Encoding.ASCII.GetBytes(text) : Compress(text);
+            var entries = stream < Kept
+                ? string.Create(CultureInfo.InvariantCulture, $"/Length {1001 + stream} 0 R")
+                : "/Length 1001 0 R /Filter /FlateDecode /DecodeParms << /Predictor 1001 0 R >>";
+            offsets[number] = output.Position;
+            Write(string.Create(CultureInfo.InvariantCulture, $"{number} 0 obj\n<< /Type /ObjStm /N 1 /First {header} {entries} >>\nstream\n"));
+            output.Write(data);
+            Write("\nendstream\nendobj\n");
+        }
+
+        Finish(output, offsets, First, First + (2 * streams));
         return output.ToArray();
     }
 
