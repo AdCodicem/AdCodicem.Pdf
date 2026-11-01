@@ -55,6 +55,10 @@ internal static partial class ConvergenceShapes
             // Object stream 3, walked first, parses 140, whose nest of 61 streams the reader's nesting cuts at 20; 5's decoding
             // reads 20, whose /Length is 140: taken there, the nest's cut re-enters 20.
             yield return new($"a holder taking a nest whose cut re-enters a stream in flight{cache}", NestCut(), PdfReaderLimits.Default, [.. reads, [new(20), new(7)]], capacity);
+
+            // 9 parses stream 300, whose nest of 64 streams by /Length the reader's nesting cuts however deep 9 is decoded: the
+            // cut places a stream's data, the stream's own, and 9 decodes alike.
+            yield return new($"a holder parsing a nest the reader's nesting cuts below it{cache}", NestBelow(64), PdfReaderLimits.Default, [[new(50)], [new(5)], [new(7)], [new(330)], [new(360), new(7)], [new(300), new(50)]], capacity);
         }
 
         // #312: 7 takes its parameters from 100, which 9 holds; 9 from 170, which 11 holds; 100 is 5 0 R, which 7 holds.
@@ -312,6 +316,28 @@ internal static partial class ConvergenceShapes
 
         objects[6] = ("/Type /ObjStm /N 1 /First 4 /Length @L /Filter /FlateDecode /DecodeParms 50 0 R", HostileInputTests.Compress("7 0\n<< /Predictor 1 >>\n"u8.ToArray()));
         return StreamsAndMembers(objects, new() { [50] = (5, 0), [7] = (6, 0), [8] = (3, 0) });
+    }
+
+    /// <summary>
+    /// Object stream 7 holds 5 and 6, and takes its parameters from 50, which 9 holds, <c>5 0 R</c>; 9 takes its own from
+    /// stream 300, <c>/Predictor 1</c>, which heads <paramref name="nest"/> streams by <c>/Length</c>, the last written
+    /// directly.
+    /// </summary>
+    internal static byte[] NestBelow(int nest)
+    {
+        var objects = new SortedDictionary<int, (string Entries, byte[]? Data)>
+        {
+            [7] = FlateObjectStream("/DecodeParms 50 0 R", (5, "<< /Predictor 1 >>"), (6, "<< /Title (six) >>")),
+            [9] = FlateObjectStream("/DecodeParms 300 0 R", (50, "5 0 R")),
+        };
+
+        for (var stream = 0; stream < nest; stream++)
+        {
+            var length = stream + 1 < nest ? string.Create(CultureInfo.InvariantCulture, $"{301 + stream} 0 R") : "2";
+            objects[300 + stream] = ("/Predictor 1 /Length " + length, "ab"u8.ToArray());
+        }
+
+        return StreamsAndMembers(objects, new() { [5] = (7, 0), [6] = (7, 1), [50] = (9, 0) });
     }
 
     /// <summary>

@@ -261,22 +261,32 @@ public class ReaderTimingTests
     [InlineData("four times the streams", 8)]
     [InlineData("chains eight times as long", 3)]
     [InlineData("chains eight times as long, written in the file", 3)]
+    [InlineData("chains eight times as long, written in the file twice, the index rebuilt", 3)]
     public void Object_streams_that_share_chains_of_objects_written_in_the_file_or_held_by_streams_that_decode_alike_have_their_dependencies_walked_in_time_their_number_alone_sets(string larger, int ratio)
     {
         // Object streams share 64 parameters, each the head of a chain of objects held by object streams that decode alike in
         // every read order, one each (#312), or written in the file. The walk follows a chain once a validation, keeping the
         // run of objects it loads by the one it starts at — once it knows their holders decode alike (#277) —: four times the
         // streams take about four times as long, and chains of 31 objects about what chains of 4 do, where following each
-        // chain for each stream, an object at a time or through the reader, cost about eight times as much. The measure is
-        // the ratio, the best walk of each, run in turn.
+        // chain for each stream, an object at a time or through the reader, cost about eight times as much. A rebuild that
+        // places the chains' objects at copies written after them leaves the walk that judges the chain's index taking the
+        // runs it kept. The measure is the ratio, the best walk of each, run in turn.
+        var twice = larger.Contains("twice", StringComparison.Ordinal);
         var (small, large) = larger switch
         {
             "four times the streams" => (HostileInputTests.MemberChains(1000, holdersShare: false, links: 31), HostileInputTests.MemberChains(4000, holdersShare: false, links: 31)),
             "chains eight times as long" => (HostileInputTests.MemberChains(2000, holdersShare: false, links: 4), HostileInputTests.MemberChains(2000, holdersShare: false, links: 31)),
-            _ => (HostileInputTests.MemberChains(2000, holdersShare: false, links: 4, inFile: true), HostileInputTests.MemberChains(2000, holdersShare: false, links: 31, inFile: true)),
+            _ => (HostileInputTests.MemberChains(2000, holdersShare: false, links: 4, inFile: true, twice), HostileInputTests.MemberChains(2000, holdersShare: false, links: 31, inFile: true, twice)),
         };
         using var smallDocument = PdfDocument.Open(small);
         using var largeDocument = PdfDocument.Open(large);
+
+        if (twice)
+        {
+            smallDocument.Reader.SettleIndex();
+            largeDocument.Reader.SettleIndex();
+            largeDocument.WasRepaired.Should().BeTrue();
+        }
 
         var (smallTime, largeTime) = BestOfEach(() => ObjectStreamDependencies.Run(smallDocument), () => ObjectStreamDependencies.Run(largeDocument));
 

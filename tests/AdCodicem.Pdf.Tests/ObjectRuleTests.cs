@@ -1907,6 +1907,19 @@ public class ObjectRuleTests
     }
 
     [Theory]
+    [InlineData(30)]
+    [InlineData(64)]
+    public void An_object_of_a_stream_whose_decoding_parses_a_nest_the_reader_s_nesting_cuts_below_it_is_followed(int streams)
+    {
+        // Stream 7 takes its parameters from 50, which 9 holds, 5 0 R; 7 holds 5. 9 takes its own from stream 300, which heads
+        // streams by /Length. With 64 of them, the nesting cuts the parse of the last but one, whose /Length the reader then
+        // finds by searching for endstream, however deep the read that decodes 9: a cut that places a stream's data, the
+        // stream's own, and that no stream in flight is met again at, reads the same values. 9 decodes alike, and 50 leads 7
+        // to 5, as with 30 streams, which no load cuts.
+        Single(Validate(ConvergenceShapes.NestBelow(streams)), PdfValidationRuleIds.XRefObjectStreamCircular).Message.Should().Be(HoldsFive("/DecodeParms"));
+    }
+
+    [Theory]
     [InlineData(new int[0], true)]
     [InlineData(new[] { 6 }, true)]
     [InlineData(new[] { 100 }, false)]

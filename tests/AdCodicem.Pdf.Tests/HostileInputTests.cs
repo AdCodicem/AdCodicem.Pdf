@@ -4330,10 +4330,11 @@ public class HostileInputTests
     /// <paramref name="holdersShare"/> says so, the holders are the first of the <paramref name="streams"/> and take the
     /// filters and parameters themselves; otherwise they need nothing, and the <paramref name="streams"/> after them, each
     /// holding an empty dictionary, take them. When <paramref name="inFile"/> says so, the chains' objects are written
-    /// directly in the file instead, and no stream holds them. The streams' data is written as it is: the walk of their
-    /// dependencies reads none of it.
+    /// directly in the file instead, and no stream holds them; when <paramref name="twice"/> says so as well, each is written
+    /// again right after itself, which a rebuild places it at, and the row of 7 leads nowhere. The streams' data is written
+    /// as it is: the walk of their dependencies reads none of it.
     /// </summary>
-    internal static byte[] MemberChains(int streams, bool holdersShare, int links = 32, bool inFile = false)
+    internal static byte[] MemberChains(int streams, bool holdersShare, int links = 32, bool inFile = false, bool twice = false)
     {
         const int Heads = 64;
         var holders = Heads * links;
@@ -4368,7 +4369,7 @@ public class HostileInputTests
             packed.Add(new PackedStream(ChainMember(k) - 1, shares ? "/Filter 5 0 R /DecodeParms 6 0 R" : string.Empty, [(ChainMember(k), member)], PackedData.Plain));
         }
 
-        return PackedFile(packed, direct);
+        return PackedFile(packed, direct, twice ? 7 : 0, twice);
 
         static int ChainMember(int k) => 100_001 + (2 * k);
     }
@@ -4544,9 +4545,10 @@ public class HostileInputTests
     /// Writes a file whose index is a cross-reference stream, with the object streams <paramref name="streams"/>
     /// describes and the objects <paramref name="direct"/> gives written directly; objects 1 and 2 are a catalog and
     /// an empty page tree. The row of <paramref name="brokenRow"/>, when there is one, places it at offset 1, where no
-    /// object is, so that loading it rebuilds the index.
+    /// object is, so that loading it rebuilds the index. When <paramref name="twice"/> says so, each object
+    /// <paramref name="direct"/> gives is written again right after itself, its row placing the first.
     /// </summary>
-    private static byte[] PackedFile(IReadOnlyList<PackedStream> streams, IReadOnlyList<(int Number, string Body)>? direct = null, int brokenRow = 0)
+    private static byte[] PackedFile(IReadOnlyList<PackedStream> streams, IReadOnlyList<(int Number, string Body)>? direct = null, int brokenRow = 0, bool twice = false)
     {
         using var output = new MemoryStream();
         void Write(string text) => output.Write(Encoding.ASCII.GetBytes(text));
@@ -4557,10 +4559,16 @@ public class HostileInputTests
         var objects = new List<(int Number, string Body)> { (1, "<< /Type /Catalog /Pages 2 0 R >>"), (2, "<< /Type /Pages /Kids [] /Count 0 >>") };
         objects.AddRange(direct ?? []);
 
-        foreach (var (number, body) in objects)
+        for (var i = 0; i < objects.Count; i++)
         {
+            var (number, body) = objects[i];
             offsets[number] = output.Position;
             Write(string.Create(CultureInfo.InvariantCulture, $"{number} 0 obj\n{body}\nendobj\n"));
+
+            if (twice && i >= 2)
+            {
+                Write(string.Create(CultureInfo.InvariantCulture, $"{number} 0 obj\n{body}\nendobj\n"));
+            }
         }
 
         foreach (var stream in streams)
