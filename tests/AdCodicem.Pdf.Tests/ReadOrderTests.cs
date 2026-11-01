@@ -1733,6 +1733,58 @@ public class ReadOrderTests
         validator.Validate(document).Contains(PdfValidationRuleIds.XRefCheckedInPart).Should().BeTrue();
     }
 
+    [Theory]
+    [InlineData("a read", "in a comment", "/Root 1 0 R")]
+    [InlineData("a read", "between objects", "/Root 1 0 R")]
+    [InlineData("a read", "in a comment", "")]
+    [InlineData("a read", "between objects", "")]
+    [InlineData("a validation", "in a comment", "/Root 1 0 R")]
+    [InlineData("a validation", "between objects", "/Root 1 0 R")]
+    [InlineData("a validation", "in a comment", "")]
+    [InlineData("a validation", "between objects", "")]
+    public void A_guard_the_scan_for_trailers_reaches_is_thrown_once_the_rebuild_is_finished(string setOff, string keyword, string trailer)
+    {
+        // A rebuild's scan for trailers parses what follows each trailer keyword, the newest first, and loads what a
+        // stream's /Length names there: objects 23, then 21, each past an object guard of 200 bytes. Reading 7, which
+        // object stream 6 holds, sets the rebuild off while 6 is being loaded, its /Length leading nowhere; or the start of a
+        // validation does, the table lacking 6 and 7 and naming its previous section as a reference. A document opened to
+        // throw on a guard throws the first reached, 23's, once the rebuild is finished, as each other step of a rebuild
+        // holds one: 6 is expanded, so that 7 is read; a catalog the trailer does not name is searched for and found; and a
+        // validation finds what it finds in the document read without throwing, the guard thrown no more.
+        var (bytes, newest) = TwoTrailersPastTheObjectGuard(crossReferenceStream: setOff == "a read", keyword, trailer);
+        var limits = PdfReaderLimits.Default with { MaxObjectLength = 200 };
+        using var tolerant = PdfDocument.Open(bytes, PdfReaderOptions.Default with { Limits = limits });
+        SetOff(tolerant);
+        var sound = Validated(tolerant);
+        using var document = PdfDocument.Open(bytes, PdfReaderOptions.Default with { Limits = limits, ThrowOnLimit = true });
+
+        var thrown = FluentActions.Invoking(() => SetOff(document)).Should().Throw<PdfLimitExceededException>().Which;
+        var seven = document.GetObject(new PdfObjectId(7));
+        var catalog = document.Catalog;
+
+        thrown.LimitName.Should().Be(nameof(PdfReaderLimits.MaxObjectLength));
+        thrown.Position.Should().Be(newest);
+        document.WasRepaired.Should().BeTrue();
+        seven.AsText().Should().Be("member");
+        catalog.Should().NotBeNull().And.BeSameAs(document.GetObject(new PdfObjectId(1)) as PdfDictionary);
+        Validated(document).Should().Equal(sound);
+
+        void SetOff(PdfDocument opened)
+        {
+            if (setOff == "a read")
+            {
+                _ = opened.GetObject(new PdfObjectId(7));
+            }
+            else
+            {
+                _ = new PdfValidator().Validate(opened);
+            }
+        }
+
+        static List<string> Validated(PdfDocument opened) =>
+            [.. new PdfValidator().Validate(opened).Findings.Select(finding => finding.ToString())];
+    }
+
     [Fact]
     public void Settling_a_sound_index_allocates_nothing_an_entry()
     {
@@ -1941,6 +1993,61 @@ public class ReadOrderTests
         var five = file.Object(5, Data.Length.ToString(CultureInfo.InvariantCulture));
         file.CrossReferenceStream(9, 10, rows, trailer);
         return (file.Bytes, five);
+    }
+
+    /// <summary>
+    /// A file whose catalog names object 7, which object stream 6 holds, and in which a rebuild's scan for trailers meets
+    /// two <c>trailer</c> keywords, <paramref name="keyword"/> — in a comment inside the header of objects 20 and 22, or
+    /// between objects —, each before a stream whose /Length is an object running past an object guard of 200 bytes: 21,
+    /// then 23. A cross-reference stream indexes it as <see cref="MemberWhoseLengthLeadsNowhere"/> does, 6's /Length object
+    /// 5, whose row leads to the catalog's header; or a classic table that lacks 6 and 7 and names its previous section as a
+    /// reference. Either holds <paramref name="trailer"/>. Gives the file and where 23 is.
+    /// </summary>
+    private static (byte[] Bytes, long Newest) TwoTrailersPastTheObjectGuard(bool crossReferenceStream, string keyword, string trailer)
+    {
+        var file = new HandWrittenFile(version: "1.5");
+        var catalog = file.Object(1, "<< /Type /Catalog /Pages 2 0 R /Test 7 0 R >>");
+        var pages = file.Object(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>");
+        var page = file.Object(3, Page);
+        const string Data = "7 0 (member) ";
+        var length = crossReferenceStream ? "5 0 R" : Data.Length.ToString(CultureInfo.InvariantCulture);
+        var six = file.Object(6, $"<< /Type /ObjStm /N 1 /First 4 /Length {length} >>\nstream\n{Data}\nendstream");
+        var newest = 0L;
+
+        foreach (var number in (int[])[20, 22])
+        {
+            var dictionary = string.Create(CultureInfo.InvariantCulture, $"<< /Length {number + 1} 0 R >>\nstream\nabc\nendstream");
+
+            if (keyword == "in a comment")
+            {
+                file.Object(number, "% trailer\n" + dictionary);
+            }
+            else
+            {
+                file.Raw("trailer\n" + dictionary + "\n");
+            }
+
+            newest = file.Object(number + 1, "3 % " + new string('x', 400));
+        }
+
+        if (!crossReferenceStream)
+        {
+            file.Table(8, new Dictionary<int, long> { [1] = catalog, [2] = pages, [3] = page }, $"/Size 8 {trailer} /Prev 1 0 R");
+            return (file.Bytes, newest);
+        }
+
+        file.Object(5, Data.Length.ToString(CultureInfo.InvariantCulture));
+        var rows = new Dictionary<int, (int Type, long Field2, int Field3)>
+        {
+            [1] = (1, catalog, 0),
+            [2] = (1, pages, 0),
+            [3] = (1, page, 0),
+            [5] = (1, catalog, 0),
+            [6] = (1, six, 0),
+            [7] = (2, 6, 0),
+        };
+        file.CrossReferenceStream(9, 10, rows, trailer);
+        return (file.Bytes, newest);
     }
 
     /// <summary>

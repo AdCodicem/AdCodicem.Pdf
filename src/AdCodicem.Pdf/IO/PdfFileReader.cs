@@ -6587,11 +6587,13 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
 
         try
         {
-            // Indexing and loading objects can reach a guard. A document opened to throw on one throws once the index is
-            // whole, not half-way through rebuilding it: one abandoned mid-way would leave the document unable to find the
-            // objects it had not reached. The first guard reached is the one thrown.
+            // Indexing and loading objects can reach a guard, and so can parsing a trailer, which loads what its /Length
+            // names. A document opened to throw on one throws once the index is whole, not half-way through rebuilding it:
+            // one abandoned mid-way would leave the document unable to find the objects it had not reached. The first guard
+            // reached is the one thrown.
             var reached = ScanForObjects(redefinitions);
-            ScanForTrailers();
+            var merging = ScanForTrailers();
+            reached ??= merging;
 
             // A rebuild a load sets off runs with that load, and those it is part of, still in flight: the objects they are
             // loading read as null meanwhile, and so would the values an object stream among them needs, so that expanding
@@ -7000,8 +7002,20 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
         return false;
     }
 
-    private void ScanForTrailers()
+    /// <summary>
+    /// Merges into the trailer what follows each <c>trailer</c> keyword the file holds, the newest first, so that its keys
+    /// win.
+    /// </summary>
+    /// <remarks>
+    /// Parsing what follows a keyword loads what a stream's indirect <c>/Length</c> names there, which can reach a guard. A
+    /// document opened to throw on one has the trailer whose parse it ends left out, and the scan goes on to the older
+    /// ones: the guard is held until the index is whole, as each other step of a rebuild holds one, rather than leaving the
+    /// rebuild abandoned there, its object streams not expanded and its catalog not searched for.
+    /// </remarks>
+    /// <returns>The exception a document opened to throw asked for, held until the index is whole; or null.</returns>
+    private ExceptionDispatchInfo? ScanForTrailers()
     {
+        ExceptionDispatchInfo? reached = null;
         var positions = new List<long>();
         var position = 0L;
 
@@ -7058,11 +7072,18 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
 
                 KeepPending(mark);
             }
+            catch (PdfLimitExceededException exception)
+            {
+                // The first guard reached is the one thrown; what the parse had noted is dropped with the trailer.
+                reached ??= ExceptionDispatchInfo.Capture(exception);
+            }
             finally
             {
                 _pending.RollBack(mark);
             }
         }
+
+        return reached;
     }
 
     private ExceptionDispatchInfo? ExpandObjectStreams(Redefinitions redefinitions)
