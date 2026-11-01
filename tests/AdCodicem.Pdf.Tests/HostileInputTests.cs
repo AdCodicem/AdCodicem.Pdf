@@ -1983,14 +1983,14 @@ public class HostileInputTests
         // walk meets the next X and the 192 holders, none known yet, and pushes them all on the stack of the streams waiting:
         // 193 entries an X, 1,544,000 for 8,000. A stream pushed again by a later walk leaves its entry below stale, which
         // the stack, rid of them whenever it doubles, no longer holds: at most twice the streams waiting, and one walk's
-        // 193 (#312).
+        // 193 (#312). Each X waits on the next before any is known: the stack holds every X at once.
         var count = larger ? 8000 : 2000;
         using var document = PdfDocument.Open(PendingFanout(count));
 
         var result = ObjectStreamDependencies.Run(document);
 
         result.CircularStreams.Should().BeEmpty();
-        result.MostWaiting.Should().BeLessThanOrEqualTo((2 * (count + 193)) + 260, "each stream waits once, whatever walks met it");
+        result.MostWaiting.Should().BeInRange(count, (2 * (count + 193)) + 260, "each stream waits once, whatever walks met it");
     }
 
     [Fact]

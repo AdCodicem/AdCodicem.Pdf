@@ -1799,6 +1799,10 @@ public class ObjectRuleTests
     [InlineData("a nest through a stream written again in the file", false)]
     [InlineData("a nest holding such a nest", false)]
     [InlineData("a nest whose parse takes such a run", false)]
+    [InlineData("a parameter neither index holds", true)]
+    [InlineData("the object itself, held at its index by a stream written before", false)]
+    [InlineData("the object itself, at another index of its stream", false)]
+    [InlineData("a parameter a stream holds, which the chain writes at the file's first byte", false)]
     public void An_object_is_followed_only_where_the_reader_s_rebuilt_index_places_what_its_stream_s_decoding_reads_as_the_chain_s(string redefined, bool circular)
     {
         // Stream 7 takes its parameters from 50, which object stream 9 holds, 5 0 R; 7 holds 5. The row of 30 leads nowhere,
@@ -1849,6 +1853,38 @@ public class ObjectRuleTests
                 ? ["Object stream 7 needs object 100, which object stream 9 holds, to be read: its /DecodeParms names it, and reading object stream 9 needs object stream 7 in turn.",
                    "Object stream 9 needs object 5, which object stream 7 holds, to be read: its /DecodeParms names it, and reading object stream 7 needs object stream 9 in turn."]
                 : []);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void An_object_whose_stream_the_reader_found_a_few_bytes_off_its_row_is_followed_as_the_chain_places_it(bool foundFirst)
+    {
+        // #312's file, object stream 9, which holds 100, 5 0 R, starting three bytes before where its row says: a load finds
+        // it there, near the row, and corrects the reader's own index, rebuilding nothing. Until a rebuild, the reader's index
+        // differs from the chain's only by such a correction, which places the object the chain's row places: 9 decodes
+        // alike, whether a read found it first or not, and 100 leads 7 to 5, which it holds.
+        var file = new HandWrittenFile(version: "1.5");
+        var rows = new Dictionary<int, (int Type, long Field2, int Field3)>
+        {
+            [1] = (1, file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"), 0),
+            [2] = (1, file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"), 0),
+            [7] = (1, FlateObjectStream(file, 7, [(5, "<< /Predictor 1 >>"), (6, "<< /Title (six) >>")], "/DecodeParms 100 0 R"), 0),
+            [5] = (2, 7, 0),
+            [6] = (2, 7, 1),
+            [9] = (1, FlateObjectStream(file, 9, [(100, "5 0 R")], string.Empty) + 3, 0),
+            [100] = (2, 9, 0),
+        };
+        file.CrossReferenceStream(200, 201, rows, "/Root 1 0 R");
+        using var document = PdfDocument.Open(file.Bytes);
+
+        if (foundFirst)
+        {
+            document.GetObject(new PdfObjectId(9)).Should().BeOfType<PdfStream>();
+        }
+
+        Single(new PdfValidator().Validate(document), PdfValidationRuleIds.XRefObjectStreamCircular).Message.Should().Be(HoldsFive("/DecodeParms"));
+        document.WasRepaired.Should().BeFalse();
     }
 
     [Theory]
@@ -2504,6 +2540,20 @@ public class ObjectRuleTests
             case "a parameter only the rebuilt index holds":
                 parameters = "/DecodeParms 80 0 R";
                 later.Add((80, "<< /Predictor 1 >>"));
+                break;
+            case "a parameter neither index holds":
+                parameters = "/DecodeParms 80 0 R";
+                break;
+            case "the object itself, held at its index by a stream written before":
+                file.Object(8, ObjectStreamBody(string.Empty, (50, "5 0 R")));
+                break;
+            case "the object itself, at another index of its stream":
+                rows[50] = (2, 9, 1);
+                break;
+            case "a parameter a stream holds, which the chain writes at the file's first byte":
+                parameters = "/DecodeParms 80 0 R";
+                rows[80] = (1, 0, 0);
+                file.Object(8, ObjectStreamBody(string.Empty, (80, "<< /Predictor 1 >>")));
                 break;
             case "a parameter written again in the file":
                 parameters = "/DecodeParms 80 0 R";
