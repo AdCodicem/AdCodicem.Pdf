@@ -1953,6 +1953,21 @@ public class ObjectRuleTests
     }
 
     [Theory]
+    [InlineData(61, true)]
+    [InlineData(62, false)]
+    [InlineData(63, false)]
+    public void An_object_of_a_stream_whose_decoding_reads_through_holders_past_the_reader_s_nesting_is_not_followed(int holders, bool circular)
+    {
+        // Stream 7 takes its parameters from 50, which 9 holds, 5 0 R; 7 holds 5. 9 takes its own from 101, which object
+        // stream 100 holds; 100 from 103, which 102 holds; and so on, each decoding loading the next holder a level below it.
+        // Decoded at a first read of 5, 7 has 9 decoded at the 3rd load, and the last of 61 holders at the 64th: 50 leads 7 to
+        // 5. The last of 62 is loaded at the 65th, which the reader's nesting cuts, and 50 is a need of 7, read as null; of
+        // 63, at the 65th as well when 9 is read first: 9 does not decode alike, wherever it is met.
+        Validate(ConvergenceShapes.HolderChain(holders)).Findings.Where(finding => finding.RuleId == PdfValidationRuleIds.XRefObjectStreamCircular)
+            .Select(finding => finding.Location.Object?.Number).Should().Equal(circular ? [7] : []);
+    }
+
+    [Theory]
     [InlineData(61, new[] { 7, 9 })]
     [InlineData(62, new[] { 11 })]
     public void An_object_another_stream_holds_met_at_the_reader_s_deepest_load_is_no_need(int streams, int[] circular)

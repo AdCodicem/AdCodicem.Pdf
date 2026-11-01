@@ -371,6 +371,31 @@ internal static partial class ConvergenceShapes
     }
 
     /// <summary>
+    /// Object stream 7 holds 5 and 6, and takes its parameters from 50, which 9 holds, <c>5 0 R</c>; 9 takes its own from
+    /// 101, which object stream 100 holds; <paramref name="holders"/> object streams, 100, 102 and so on, each hold one
+    /// object, <c>&lt;&lt; /Predictor 1 &gt;&gt;</c>, and take their parameters from the next one's, the last none.
+    /// </summary>
+    internal static byte[] HolderChain(int holders)
+    {
+        var objects = new SortedDictionary<int, (string Entries, byte[]? Data)>
+        {
+            [7] = FlateObjectStream("/DecodeParms 50 0 R", (5, "<< /Predictor 1 >>"), (6, "<< /Title (six) >>")),
+            [9] = FlateObjectStream("/DecodeParms 101 0 R", (50, "5 0 R")),
+        };
+        var members = new Dictionary<int, (int Stream, int Index)> { [5] = (7, 0), [6] = (7, 1), [50] = (9, 0) };
+
+        for (var holder = 0; holder < holders; holder++)
+        {
+            var number = 100 + (2 * holder);
+            var parameters = holder + 1 < holders ? string.Create(CultureInfo.InvariantCulture, $"/DecodeParms {number + 3} 0 R") : string.Empty;
+            objects[number] = FlateObjectStream(parameters, (number + 1, "<< /Predictor 1 >>"));
+            members[number + 1] = (number, 0);
+        }
+
+        return StreamsAndMembers(objects, members);
+    }
+
+    /// <summary>
     /// Object stream 3, written as it is, holds 4, and takes its <c>/Length</c> from stream 100, which heads streams 101 to
     /// 160 by <c>/Length</c>, the last naming object stream 9, whose <c>/Length</c> is 180, written in the file,
     /// <c>100 0 R</c>; 9 holds 50, <c>5 0 R</c>; 7 holds 5 and 6, and takes its parameters from 50. When
