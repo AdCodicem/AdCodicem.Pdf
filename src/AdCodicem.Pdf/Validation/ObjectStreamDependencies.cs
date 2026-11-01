@@ -51,20 +51,24 @@ namespace AdCodicem.Pdf.Validation;
 /// way — a parameter, or a link of a chain, which ISO 32000-1 allows neither — gives its dictionary, and its parse
 /// resolves its <c>/Length</c>, a level deeper; an object it holds reads as null meanwhile, before it is decoded, and is
 /// its need, not the walked stream's. What that parse loads places that stream's data, and nothing a decoding reads: cut
-/// there or not, a stream decodes the same.
+/// there or not, a stream decodes the same, but where the reader serves past the cut what its cache kept (#163).
 /// </para>
 /// <para>
 /// Each object stream's standing is worked out once a validation, the first time an object of it is met, as a first read
 /// decodes it: whether it decodes alike, and the deepest load whose value reaches its decoding. The walks that work them
 /// out run one after the other, never one inside another: a walk that meets an object of a stream whose standing is not
 /// known yet reads it as null, notes the stream, and is made again once the streams it noted are known, each worked out
-/// first, on a stack of their own that holds each stream once at most. A value read as null makes a decoding read less,
-/// never more — a null link ends a chain, a null element a chain of filters, a null <c>/Type</c>, <c>/N</c>, <c>/First</c>,
-/// <c>/Filter</c> or predictor what decoding would read after it —, so that what such a walk meets, the decoding meets: a
-/// stream met while its own standing is being worked out lies on a loop with the one that met it. A stream is walked once
-/// more for each value read as null that hid a stream not known yet from it, which, value after value and level after level
-/// of a nest, comes to a few thousand walks of one stream under the default limits, as many more as
-/// <see cref="PdfReaderLimits.MaxFilterChainLength"/> allows; what it reads of its own dictionary is read once.
+/// first, on a stack of their own. A stream a later walk meets again is pushed again, its entry lower left stale; the stack
+/// is rid of such entries whenever it holds more than 1,024 and twice as many as it kept the last time, so that it holds no
+/// more than twice the most streams waiting at once, or 1,024 entries, whichever is more, besides one walk's unknown
+/// streams. A value read as null makes a decoding read less, never more — a null link ends a chain, a null element a chain
+/// of filters, a null <c>/Type</c>, <c>/N</c>, <c>/First</c>, <c>/Filter</c> or predictor what decoding would read after
+/// it —, so that what such a walk meets, the decoding meets: a stream met while its own standing is being worked out lies
+/// on a loop with the one that met it. A stream is walked once more for each value read as null that hid a stream not known
+/// yet from it, which, value after value and level after level of a nest, comes to a few thousand walks of one stream under
+/// the default limits, as many more as <see cref="PdfReaderLimits.MaxFilterChainLength"/> allows; what it reads of its own
+/// dictionary is read once while the walk keeps it, for as many streams as the reader caches objects, the oldest let go
+/// first and read again when walked again.
 /// </para>
 /// <para>
 /// A loop that closes only through the value of an object whose stream does not decode alike where it is met stays unseen
@@ -93,8 +97,10 @@ namespace AdCodicem.Pdf.Validation;
 /// it counts. No recursion goes deeper than twice that bound: the walk that works out a standing runs within the walk that
 /// met one of its objects, one at a time. The two take about 0.8 KB of the thread's stack a level, some 110 KB at their
 /// deepest, under the 128 KB the reader's stack probe keeps free; with the reader's own 64 loads under a value they read
-/// through it, about 6 KB each, the deepest validation needs some 610 KB of stack, which a thread of 1 MB has. What the
-/// reader has read and kept is not modeled, so that the verdict does not depend on what was read before: a read that
+/// through it, about 6 KB each, the deepest validation goes some 500 KB deep (420 KB on the deepest shape measured), and
+/// with the 128 KB the reader's probe keeps free above its deepest load, it needs a thread of some 610 KB for the probe to
+/// cut none of its loads (on that shape, none is cut from 560 KB), which a thread of 1 MB has. What the reader has read and
+/// kept is not modeled, so that the verdict does not depend on what was read before, but for #163, above: a read that
 /// reaches the stream through another stream's decoding nests deeper, and cuts earlier; nor is the thread's stack, which
 /// the walks do not ask: on a thread with less room, the reader's probe cuts loads they make, and the report may depend
 /// on the thread.
@@ -200,13 +206,14 @@ internal sealed class ObjectStreamDependencies
     public ProbeFindings IntegersWrittenAsReals { get; }
 
     /// <summary>
-    /// Gets the most object streams whose standing waited at once to be worked out, each stream counted once however many
-    /// walks met it (#312).
+    /// Gets the most entries the stack of object streams whose standing waits to be worked out held at once, stale entries
+    /// included: a stream a later walk met again is counted again, until the stack is rid of its entry lower down (#312).
     /// </summary>
     /// <remarks>
-    /// Nothing in the library reads it. A test reads it to see that the stack of streams waiting on one another holds each
-    /// once, rather than once for each walk that met it before its standing was known: the allocation of a validation, which
-    /// the walks' own objects outweigh, cannot tell the two apart.
+    /// Nothing in the library reads it. A test reads it to see that the stack of streams waiting on one another stays within
+    /// twice the most streams waiting at once, or 1,024 entries, besides one walk's unknown streams, rather than growing by
+    /// an entry for each walk that met a stream before its standing was known: the allocation of a validation, which the
+    /// walks' own objects outweigh, cannot tell the two apart.
     /// </remarks>
     internal int MostWaiting { get; private set; }
 
@@ -570,9 +577,9 @@ internal sealed class ObjectStreamDependencies
     private sealed class Walk(PdfDocument document, Memo memo, bool judges)
     {
         /// <summary>
-        /// How many standings wait at once before the stack of them is first rid of the entries walks made since left stale:
-        /// a size chosen for the stack's own sake, which is rid of them again each time it has doubled since, and never cut.
-        /// It bounds nothing a file gives, and is no bound ADR 34 classifies.
+        /// How many entries the stack of waiting standings holds before it is first rid of the entries walks left stale: a
+        /// size chosen for the stack's own sake, which is rid of them again whenever it holds more than this and twice as many
+        /// as it kept the last time, and never cut. It bounds nothing a file gives, and is no bound ADR 34 classifies.
         /// </summary>
         private const int CompactionFloor = 1024;
 
@@ -625,8 +632,9 @@ internal sealed class ObjectStreamDependencies
         /// those after it, whose objects its last walk met before their standing was known (#312). A walk pushes each stream
         /// it met that is not known yet, one already waiting included, so that the one walked next is the one met last; the
         /// entry that waits lower is stale by the time it is reached, its stream known, and is dropped then. Rid of such
-        /// entries whenever it has doubled since it last was, it holds each stream once at most, and no more than twice the
-        /// streams waiting and one walk's unknown streams at once.
+        /// entries whenever it holds more than <see cref="CompactionFloor"/> and twice as many as it kept the last time
+        /// (<see cref="Compact"/>), it holds no more than twice the most streams waiting at once, or 1,024 entries, whichever
+        /// is more, besides one walk's unknown streams.
         /// </summary>
         private List<int>? _waiting;
 
@@ -711,7 +719,7 @@ internal sealed class ObjectStreamDependencies
         /// </summary>
         public bool IsDone => !judges && _unlike;
 
-        /// <summary>Gets the most object streams whose standing waited at once, stale entries included (#312).</summary>
+        /// <summary>Gets the most entries the stack of waiting standings held at once, stale entries included (#312).</summary>
         public int MostWaiting { get; private set; }
 
         /// <summary>
@@ -798,8 +806,9 @@ internal sealed class ObjectStreamDependencies
         /// walk followed.
         /// </summary>
         /// <remarks>
-        /// What the walk reads of the dictionary of a stream that waits is kept in the memo, not read from the file again for
-        /// each walk made once the streams it waits on are known.
+        /// What the walk reads of the dictionary of a stream that waits is kept in the memo, for as many streams as the reader
+        /// caches objects, the oldest let go first: one kept is not read from the file again for each walk made once the
+        /// streams it waits on are known.
         /// </remarks>
         /// <returns>
         /// The standing; or, when the walk met objects of streams whose standing is not known yet, which it read as null, null,
@@ -1353,8 +1362,10 @@ internal sealed class ObjectStreamDependencies
         /// chain of filters, and a value gates the next — <c>/Type</c> then <c>/N</c> and <c>/First</c>, then <c>/Filter</c>,
         /// <c>/DecodeParms</c>, a predictor and what it reads —, as the levels of a nest each gate the one below. Under the
         /// default limits that is a few thousand walks of one stream, 1,921 for 64 filters each read through 30 such streams,
-        /// and as many more as <see cref="PdfReaderLimits.MaxFilterChainLength"/> allows; each walks what the ones before it
-        /// found, so that one stream may cost a few times what its holders cost together. No recursion goes deeper than one
+        /// and as many more as <see cref="PdfReaderLimits.MaxFilterChainLength"/> allows. Each walk repeats the stream's whole
+        /// walk, so that one stream costs its walk once for each holder that hid from it, and nests the walk cannot keep are
+        /// followed again on each of those walks (#181); the walks of a validation stay within about three per object stream,
+        /// a walk being made again only once a stream not walked before has been (#315). No recursion goes deeper than one
         /// walk inside the walk that judges.
         /// </remarks>
         private Standing Settle(int holder)
