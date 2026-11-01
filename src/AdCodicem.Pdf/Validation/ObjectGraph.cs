@@ -27,9 +27,9 @@ namespace AdCodicem.Pdf.Validation;
 /// wherever they write it. The objects claimed are read last claimed first, so that a tree of objects is read as a
 /// depth-first walk of what it holds would read it, the last value first. Walking one object keeps a place for each level
 /// of nesting it is in, which the parser bounds in an object read from a file; a value a caller built nests as deep as it
-/// was built, and one that holds itself is walked without end (#310). The places are kept in an array, not on the stack,
-/// by the walk and by the searches that place a fault once it is done alike, so that no depth a caller built overflows
-/// the stack (#168).
+/// was built, and one that holds itself is walked without end, its array of containers growing a level at a time until
+/// memory runs out (#310). The places are kept in an array, not on the stack, by the walk and by the searches that place a
+/// fault once it is done alike, so that no depth a caller built overflows the stack (#168).
 /// </para>
 /// <para>
 /// The walk runs on a settled index (<see cref="PdfFileReader.SettleIndex"/>), as validation makes it before its first
