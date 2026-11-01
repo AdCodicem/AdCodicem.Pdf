@@ -2057,6 +2057,29 @@ public class HostileInputTests
         result.MostWaiting.Should().Be(most, "the stack is rid of its stale entries once it holds more than 1,024, not before");
     }
 
+    [Theory]
+    [InlineData(20)]
+    [InlineData(80)]
+    public void Object_streams_whose_standings_wait_level_after_level_wait_on_a_stack_within_1024_entries_and_one_walk_s_unknown_streams_however_many_levels(int levels)
+    {
+        // Object stream 3 takes its parameters from the object X1 holds; X1, X2 and on, 20 or 80 levels, each take their
+        // /Length from an object of a stream of their own, naming the next X's object, and 64 Flate steps, each step's
+        // predictor the object of a holder of the level before, its /BitsPerComponent that of a holder of its own level.
+        // Xi's first walk meets the holders of the level before, which Xi-1's second walk pushed below Xi, and pushes them
+        // again above it, where they are worked out; its second walk pushes Xi+1 and the 64 holders of its level. Each level
+        // leaves 64 entries of streams known below the X's that wait, the only entry each of those streams has left. At most
+        // 144 streams wait at once, the X's and one level's holders, so that the stack holds no more than 1,024 entries,
+        // besides one walk's 65: it is rid of every entry of a known stream, rather than keeping one of each stream it ever
+        // held, 1,236 entries for 20 levels and 5,008 for 80 (#312).
+        const int Steps = 64;
+        using var document = PdfDocument.Open(LayeredWaits(levels, Steps));
+
+        var result = ObjectStreamDependencies.Run(document);
+
+        result.CircularStreams.Should().BeEmpty();
+        result.MostWaiting.Should().BeInRange(1025, 1024 + Steps + 1, "the stack, once past 1,024 entries, keeps an entry of each stream waiting alone, whatever the levels before");
+    }
+
     [Fact]
     public void Object_streams_whose_standings_wait_on_one_another_drop_the_entries_later_walks_left_stale_rather_than_walking_them_again()
     {
@@ -4610,6 +4633,52 @@ public class HostileInputTests
 
         packed.Add(new PackedStream(3, string.Create(CultureInfo.InvariantCulture, $"/DecodeParms {first + 1} 0 R"), [(4, "<< >>")], PackedData.Flate));
         return PackedFile(packed, [(900, "[" + string.Join(' ', Enumerable.Repeat("/FlateDecode", steps)) + "]"), (901, parameters.Append(']').ToString())]);
+    }
+
+    /// <summary>
+    /// A file where object stream 3 takes its parameters from the object X1 holds, and <paramref name="levels"/> object
+    /// streams X1, X2 and on each take their <c>/Length</c> from the object an object stream of their own holds, naming the
+    /// object the next X holds, the last X its own length; and <paramref name="steps"/> Flate steps, the step j of Xi taking
+    /// its predictor from the object B(i - 1, j) holds, 2, and its <c>/BitsPerComponent</c> from the one B(i, j) holds: one
+    /// holder for each step of each level, and of one level before the first, each needing nothing.
+    /// </summary>
+    internal static byte[] LayeredWaits(int levels, int steps)
+    {
+        var packed = new List<PackedStream>();
+        var filters = "[" + string.Join(' ', Enumerable.Repeat("/FlateDecode", steps)) + "]";
+        var lengths = 1000 + (2 * (levels + 1) * steps);
+        var first = lengths + (2 * levels);
+
+        for (var holder = 0; holder < (levels + 1) * steps; holder++)
+        {
+            packed.Add(new PackedStream(1000 + (2 * holder), string.Empty, [(1001 + (2 * holder), "2")], PackedData.Flate));
+        }
+
+        for (var level = 1; level <= levels; level++)
+        {
+            var number = first + (2 * level);
+            var parameters = new StringBuilder("[");
+
+            for (var step = 0; step < steps; step++)
+            {
+                parameters.Append(CultureInfo.InvariantCulture, $"<< /Predictor {Holder(level - 1, step)} 0 R /BitsPerComponent {Holder(level, step)} 0 R >> ");
+            }
+
+            string? length = null;
+
+            if (level < levels)
+            {
+                packed.Add(new PackedStream(lengths + (2 * level), string.Empty, [(lengths + (2 * level) + 1, string.Create(CultureInfo.InvariantCulture, $"{number + 3} 0 R"))], PackedData.Flate));
+                length = string.Create(CultureInfo.InvariantCulture, $"{lengths + (2 * level) + 1} 0 R");
+            }
+
+            packed.Add(new PackedStream(number, $"/Filter {filters} /DecodeParms {parameters.Append(']')}", [(number + 1, "7")], PackedData.Plain, Length: length));
+        }
+
+        packed.Add(new PackedStream(3, string.Create(CultureInfo.InvariantCulture, $"/DecodeParms {first + 3} 0 R"), [(4, "<< >>")], PackedData.Flate));
+        return PackedFile(packed);
+
+        int Holder(int level, int step) => 1001 + (2 * ((level * steps) + step));
     }
 
     /// <summary>

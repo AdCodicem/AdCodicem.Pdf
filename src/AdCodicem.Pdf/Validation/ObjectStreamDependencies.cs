@@ -58,9 +58,10 @@ namespace AdCodicem.Pdf.Validation;
 /// decodes it: whether it decodes alike, and the deepest load whose value reaches its decoding. The walks that work them
 /// out run one after the other, never one inside another: a walk that meets an object of a stream whose standing is not
 /// known yet reads it as null, notes the stream, and is made again once the streams it noted are known, each worked out
-/// first, on a stack of their own. A stream a later walk meets again is pushed again, its entry lower left stale; the stack
-/// is rid of such entries whenever it holds more than 1,024 and twice as many as it kept the last time, so that it holds no
-/// more than twice the most streams waiting at once, or 1,024 entries, whichever is more, besides one walk's unknown
+/// first, on a stack of their own. A stream a later walk meets again is pushed again, its entry lower left stale, its stream
+/// known by the time it is reached; the stack is rid of such entries, keeping the topmost entry of each stream not known
+/// yet, whenever it holds more than 1,024 and twice as many as it kept the last time, so that it holds no more than twice
+/// the most streams waiting at once, or 1,024 entries, whichever is more, besides one walk's unknown
 /// streams. A value read as null makes a decoding read less, never more — a null link ends a chain, a null element a chain
 /// of filters, a null <c>/Type</c>, <c>/N</c>, <c>/First</c>, <c>/Filter</c> or predictor what decoding would read after
 /// it —, so that what such a walk meets, the decoding meets: a stream met while its own standing is being worked out lies
@@ -212,8 +213,8 @@ internal sealed class ObjectStreamDependencies
     /// <remarks>
     /// Nothing in the library reads it. Tests read it to see that the stack of streams waiting on one another stays within
     /// twice the most streams waiting at once, or 1,024 entries, besides one walk's unknown streams, rather than growing by
-    /// an entry for each walk that met a stream before its standing was known: the allocation of a validation, which the
-    /// walks' own objects outweigh, cannot tell the two apart.
+    /// an entry for each walk that met a stream before its standing was known, or for each stream it ever held: the
+    /// allocation of a validation, which the walks' own objects outweigh, cannot tell them apart.
     /// </remarks>
     internal int MostWaiting { get; private set; }
 
@@ -632,13 +633,14 @@ internal sealed class ObjectStreamDependencies
         /// those after it, whose objects its last walk met before their standing was known (#312). A walk pushes each stream
         /// it met that is not known yet, one already waiting included, so that the one walked next is the one met last; the
         /// entry that waits lower is stale by the time it is reached, its stream known, and is dropped then. Rid of such
-        /// entries whenever it holds more than <see cref="CompactionFloor"/> and twice as many as it kept the last time
-        /// (<see cref="Compact"/>), it holds no more than twice the most streams waiting at once, or 1,024 entries, whichever
-        /// is more, besides one walk's unknown streams.
+        /// entries, keeping the topmost entry of each stream not known yet, whenever it holds more than
+        /// <see cref="CompactionFloor"/> and twice as many as it kept the last time (<see cref="Compact"/>), it holds no more
+        /// than twice the most streams waiting at once, or 1,024 entries, whichever is more, besides one walk's unknown
+        /// streams.
         /// </summary>
         private List<int>? _waiting;
 
-        /// <summary>The streams <see cref="Compact"/> kept an entry of, the topmost of each.</summary>
+        /// <summary>The streams not known yet <see cref="Compact"/> kept an entry of, the topmost of each.</summary>
         private HashSet<int>? _kept;
 
         /// <summary>How many standings may wait before <see cref="_waiting"/> is rid of its stale entries.</summary>
@@ -1412,10 +1414,17 @@ internal sealed class ObjectStreamDependencies
         }
 
         /// <summary>
-        /// Rids <paramref name="waiting"/> of its stale entries, in place: of each stream, the topmost entry is kept, the
-        /// order of the others unchanged. Exact: the topmost entry of a stream is the one taken up, and one lower is reached
-        /// only once that stream is known, and dropped then.
+        /// Rids <paramref name="waiting"/> of its stale entries, in place: of each stream not known yet — not reached yet, or
+        /// being worked out —, the topmost entry is kept, the order of those kept unchanged; every entry of a stream known
+        /// already is dropped. Exact: the topmost entry of a stream is the one taken up, one lower is reached only once that
+        /// stream is known, and an entry of a known stream is dropped when it is reached.
         /// </summary>
+        /// <remarks>
+        /// An entry of a known stream is not always another's duplicate: a stream pushed below one that waits, pushed again
+        /// above it by a later walk and worked out from there, leaves its lower entry its only one. Kept, such entries piled
+        /// up a block for each level of streams that wait on one another, as many as the streams the stack ever held: 5,008
+        /// entries for 80 levels of 64, where 144 streams waited at once (#312).
+        /// </remarks>
         private void Compact(List<int> waiting)
         {
             var kept = _kept ??= new(SeededComparer.Instance);
@@ -1424,7 +1433,7 @@ internal sealed class ObjectStreamDependencies
 
             for (var index = waiting.Count - 1; index >= 0; index--)
             {
-                if (kept.Add(waiting[index]))
+                if (memo.StandingOf(waiting[index]) is null or { Kind: StandingKind.Working } && kept.Add(waiting[index]))
                 {
                     waiting[--at] = waiting[index];
                 }
