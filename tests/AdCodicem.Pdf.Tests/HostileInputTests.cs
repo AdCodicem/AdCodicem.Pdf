@@ -2001,23 +2001,24 @@ public class HostileInputTests
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
-    public void Object_streams_whose_standings_wait_on_one_another_wait_on_a_stack_within_twice_their_number_whatever_the_walks_that_met_them(bool larger)
+    public void Object_streams_whose_standings_wait_on_one_another_wait_on_a_stack_within_twice_their_number_and_one_walk_s_unknown_streams_whatever_the_walks_that_met_them(bool larger)
     {
         // Object stream X1, which 3 takes its parameters from, takes its /Length from an object X2 holds, and so on, 2,000 or
         // 8,000 of them; each takes its /Filter and /DecodeParms from two objects written in the file, 64 Flate steps whose
         // predictor reads three values, each an object of a holder of its own, 192 holders shared by every X. Each X's first
         // walk meets the next X and the 192 holders, none known yet, and pushes them all on the stack of the streams waiting:
-        // 193 entries an X, 1,544,000 for 8,000. A stream pushed again by a later walk leaves its entry below stale; the
-        // stack is rid of such entries once it holds more than 1,024 and each time it has doubled since, so that it holds at
-        // most twice the streams waiting, and one walk's 193 (#312): 4,488 entries for 2,000, 16,423 for 8,000. Each X waits
-        // on the next before any is known: the stack holds every X at once.
+        // 193 entries an X, 1,544,000 for 8,000. Each X waits on the next before any is known: the stack holds every X at
+        // once, and the 192 holders, 2,192 or 8,192 streams waiting. A stream pushed again by a later walk leaves its entry
+        // below stale; the stack is rid of such entries whenever it holds more than 1,024 and twice as many as it kept the
+        // last time, so that it holds no more than twice the most streams waiting at once, or 1,024 entries, whichever is
+        // more, besides one walk's 193 (#312): 4,488 entries for 2,000, 16,423 for 8,000.
         var count = larger ? 8000 : 2000;
         using var document = PdfDocument.Open(PendingFanout(count));
 
         var result = ObjectStreamDependencies.Run(document);
 
         result.CircularStreams.Should().BeEmpty();
-        result.MostWaiting.Should().BeInRange(count, (2 * (count + 193)) + 260, "the stack holds at most twice the streams waiting, and one walk's unknown streams, whatever walks met them");
+        result.MostWaiting.Should().BeInRange(count, (2 * (count + 192)) + 193, "the stack holds no more than twice the most streams waiting at once, every X and the 192 holders, besides one walk's 193, whatever walks met them");
     }
 
     [Fact]
