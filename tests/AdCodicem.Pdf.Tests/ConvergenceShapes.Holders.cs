@@ -104,6 +104,17 @@ internal static partial class ConvergenceShapes
         // 7's /N leads through 61 streams, or 60, to 170, which 9 holds, met at the 63rd load, or the 62nd: 9's decoding reads
         // its parameters through 70, which 11 holds, loading 11 two levels below 170, which the reader's nesting cuts at 61.
         // Where 11's decoding reads its own parameters from 72, which 13 holds, 13 is loaded a level further, cut at 60.
+        // 7's parameters lead through 61 streams, or 62, to 50, which 9 holds, met at the 63rd load, or at the 64th, where
+        // the reader reads it as null before it decodes 9.
+        foreach (var streams in (int[])[61, 62])
+        {
+            yield return new(
+                $"a holder's object a parse meets {(streams == 62 ? "at" : "a level above")} the reader's deepest load",
+                NeedAtTheCut(streams),
+                PdfReaderLimits.Default,
+                [[new(5)], [new(6)], [new(8)], [new(50)], [new(100)], [new(50), new(6)], [new(8), new(5)]]);
+        }
+
         foreach (var (streams, third) in ((int, bool)[])[(61, false), (60, false), (60, true), (59, true)])
         {
             yield return new(
@@ -357,6 +368,28 @@ internal static partial class ConvergenceShapes
 
         objects[6] = ("/Type /ObjStm /N 1 /First 4 /Length @L /Filter /FlateDecode /DecodeParms 50 0 R", HostileInputTests.Compress("7 0\n<< /Predictor 1 >>\n"u8.ToArray()));
         return StreamsAndMembers(objects, new() { [50] = (5, 0), [7] = (6, 0), [8] = (3, 0) });
+    }
+
+    /// <summary>
+    /// Object stream 7 holds 5, <c>&lt;&lt; /Predictor 1 &gt;&gt;</c>, and 6, <c>8 0 R</c>, and takes its parameters from
+    /// stream 100, <c>/Predictor 1</c>, which heads <paramref name="nest"/> streams by <c>/Length</c>, the last naming 50,
+    /// which 9 holds; 9 takes its parameters from 5; 11 holds 8, and takes its parameters from 6.
+    /// </summary>
+    internal static byte[] NeedAtTheCut(int nest)
+    {
+        var objects = new SortedDictionary<int, (string Entries, byte[]? Data)>
+        {
+            [7] = FlateObjectStream("/DecodeParms 100 0 R", (5, "<< /Predictor 1 >>"), (6, "8 0 R")),
+            [9] = FlateObjectStream("/DecodeParms 5 0 R", (50, "2")),
+            [11] = FlateObjectStream("/DecodeParms 6 0 R", (8, "<< /Predictor 1 >>")),
+        };
+
+        for (var stream = 0; stream < nest; stream++)
+        {
+            objects[100 + stream] = (string.Create(CultureInfo.InvariantCulture, $"/Predictor 1 /Length {(stream + 1 < nest ? 101 + stream : 50)} 0 R"), "ab"u8.ToArray());
+        }
+
+        return StreamsAndMembers(objects, new() { [5] = (7, 0), [6] = (7, 1), [50] = (9, 0), [8] = (11, 0) });
     }
 
     /// <summary>
