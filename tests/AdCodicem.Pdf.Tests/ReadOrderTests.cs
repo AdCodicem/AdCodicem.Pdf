@@ -2560,6 +2560,50 @@ public class ReadOrderTests
             .Should().Equal(settled.Diagnostics.Select(diagnostic => diagnostic.ToString()));
     }
 
+    [Theory]
+    [InlineData("a read", 2)]
+    [InlineData("a validation", 1)]
+    public void A_finish_the_source_fails_withdraws_the_scan_s_reports_unless_a_read_s_loads_waited_for_it(string setOff, int failing)
+    {
+        // The index has room for thirteen numbers, which the scan fills with six objects written outside it, and reports so.
+        // Object stream 8 takes its /Length from 5, whose row leads into the catalog's header: reading 7, which 8 holds, sets
+        // the rebuild off while 8 is loaded, and the loads in flight wait for its finish; the start of a validation sets it off
+        // with no load in flight, and finishes it at once. The source fails the finish's read of 5. A finish the read's
+        // loads waited for withdraws what was reported since the scan ended, and is run again from the copy of the scan's
+        // index they kept: the scan's report stands, and is not made again. A finish run at once withdraws what was reported
+        // since the scan began, and the rebuild is run again from its scan. What the rebuild reported as it began stays
+        // either way; and what comes next reports what a rebuild run whole reports (#167).
+        var (bytes, five) = TwoObjectStreamsTheSecondOfWhichLeadsNowhere(unindexed: 6);
+        var options = PdfReaderOptions.Default with { Limits = PdfReaderLimits.Default with { MaxIndexEntries = 13 } };
+        using var whole = PdfDocument.Open(bytes, options);
+        SetOff(whole);
+        using var source = new FailingSource(bytes);
+        using var document = PdfDocument.Open(source, options, ownsSource: false);
+        source.Fail(five, failing);
+
+        FluentActions.Invoking(() => SetOff(document)).Should().Throw<IOException>();
+        var waiting = document.Diagnostics.Select(diagnostic => diagnostic.Code).ToList();
+        SetOff(document);
+
+        waiting.Should().Equal(setOff == "a read"
+            ? [PdfDiagnosticCodes.XRefRebuilt, PdfDiagnosticCodes.LimitIndexEntries]
+            : [PdfDiagnosticCodes.XRefRebuilt]);
+        document.Diagnostics.Select(diagnostic => diagnostic.ToString())
+            .Should().Equal(whole.Diagnostics.Select(diagnostic => diagnostic.ToString()));
+
+        void SetOff(PdfDocument opened)
+        {
+            if (setOff == "a read")
+            {
+                _ = opened.GetObject(new PdfObjectId(7));
+            }
+            else
+            {
+                _ = new PdfValidator().Validate(opened);
+            }
+        }
+    }
+
     [Fact]
     public void A_rebuild_whose_scan_for_trailers_loads_past_the_depth_the_reader_follows_reports_it_once()
     {
