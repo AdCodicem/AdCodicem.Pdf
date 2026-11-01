@@ -935,7 +935,7 @@ public class ReadOrderTests
     [InlineData(3, "a validation")]
     [InlineData(4, "a read")]
     [InlineData(4, "a validation")]
-    public void While_a_rebuild_waits_to_be_finished_the_document_answers_from_it_until_a_read_finishes_it(int root, string next)
+    public void While_a_rebuild_waits_to_be_finished_the_document_answers_from_it_until_a_read_or_a_validation_finishes_it(int root, string next)
     {
         // Reading 7 rebuilds the index while object stream 6 is being loaded, and the source fails twice to give 5, 6's
         // /Length: the rebuild waits to be finished, 6 not expanded. ObjectCount, ObjectNumbers and IsEncrypted answer from
