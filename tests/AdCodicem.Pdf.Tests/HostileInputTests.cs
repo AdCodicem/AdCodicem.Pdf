@@ -2037,6 +2037,23 @@ public class HostileInputTests
         result.MostWaiting.Should().Be(1 + (3 * 64), "one walk of X1 meets every holder its decoding reads");
     }
 
+    [Fact(Timeout = 60_000)]
+    public async Task A_walk_of_a_standing_that_meets_more_object_streams_not_known_yet_than_the_stack_keeps_before_it_is_compacted_leaves_them_all_waiting()
+    {
+        // As above, with 400 Flate steps, which a raised MaxFilterChainLength lets the reader take: X1's first walk meets
+        // 1,200 holders, none known yet, and pushes them all, 1,201 entries, past the 1,024 the stack holds before it is rid
+        // of its stale entries. None is stale: each holder waits to be walked, and the stack keeps them all. Dropped as if
+        // known, the holders would be met again by X1's next walk, pushed again past 1,024 and dropped again, and the walks
+        // would never end (#312).
+        var options = new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxFilterChainLength = 400 } };
+        using var document = PdfDocument.Open(PendingFanout(1, steps: 400), options);
+
+        var result = await Task.Run(() => ObjectStreamDependencies.Run(document), TestContext.Current.CancellationToken);
+
+        result.CircularStreams.Should().BeEmpty();
+        result.MostWaiting.Should().Be(1 + (3 * 400), "one walk of X1 meets every holder, and the stack keeps each, which waits to be walked");
+    }
+
     [Theory]
     [InlineData(34, 1054)]
     [InlineData(35, 1055)]
