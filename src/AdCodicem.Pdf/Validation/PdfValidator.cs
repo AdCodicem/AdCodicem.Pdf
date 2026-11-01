@@ -30,8 +30,9 @@ namespace AdCodicem.Pdf.Validation;
 /// rebuilt whole — a later validation throws only where its rules read what the guard cut or left out, as any read
 /// does —; and three files crafted for it. In one, where a damaged stream's data ends depends on which stream was read
 /// first (#138). In another, a load lies past the reader's deepest nesting, which the reader cuts there, or serves from
-/// its cache when a read before kept the object: what was read before — or, on a thread with little stack, the reader's
-/// stack probe — decides what that load gives (#163). In the last, an object stream's decoding reads a value — its
+/// its cache when a read before kept the object, so that what was read before decides what that load gives (#163); on a
+/// thread with little stack, the reader's stack probe cuts sooner, even with nothing read first, so the report can also
+/// depend on the thread. In the last, an object stream's decoding reads a value — its
 /// <c>/Type</c>, <c>/N</c>, <c>/First</c>, <c>/Filter</c> or <c>/DecodeParms</c> — held by a stream that lies on a loop,
 /// or the stream lies on a loop itself, and what the reader serves of that value depends on which stream of the loop it
 /// decoded first (#313).
