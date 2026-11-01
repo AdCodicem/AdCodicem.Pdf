@@ -2246,13 +2246,13 @@ public class ObjectRuleTests
     [InlineData("a longer chain", 60, 8192)]
     [InlineData("a longer chain", 61, 8192)]
     [InlineData("a longer chain", 62, 8192)]
-    [InlineData("a longer chain", 62, 64)]
+    [InlineData("a longer chain", 62, ConvergenceShapes.SmallestCache)]
     [InlineData("a longer chain", 62, 8)]
     [InlineData("a longer chain", 62, 1)]
     [InlineData("a longer chain", 63, 8192)]
     [InlineData("a stream's /Length", 61, 8192)]
     [InlineData("a stream's /Length", 62, 8192)]
-    [InlineData("a stream's /Length", 62, 64)]
+    [InlineData("a stream's /Length", 62, ConvergenceShapes.SmallestCache)]
     [InlineData("a stream's /Length", 63, 8192)]
     public void A_chain_that_ends_inside_a_run_the_walk_kept_reaches_only_as_deep_as_the_objects_it_loads_whatever_the_cache(string keptFrom, int ladder, int capacity)
     {
@@ -2263,7 +2263,8 @@ public class ObjectRuleTests
         // the 2nd load, decodes alike wherever 16 meets 40, and 40 leads 16 to 41, as the reader finds. With 62 holders, the
         // ladder's decoding reaches 64 levels deeper: the run taken whole gave 14 that reach, and 16 read 40 as a need of 14,
         // unless a cache too small to keep the run let it go. A run longer than what a chain loads is not taken: the chain
-        // reaches no deeper than what it loads (#312).
+        // reaches no deeper than what it loads (#312). Caches of 8 and 1 objects, which a caller may ask for, run the
+        // smallest cache again: the reader keeps 64 objects at least.
         var file = keptFrom == "a longer chain" ? ConvergenceShapes.RunPastTheLoadsLeft(ladder) : ConvergenceShapes.LengthRunPastTheLoadsLeft(ladder);
         using var document = PdfDocument.Open(file, new PdfReaderOptions { ObjectCacheCapacity = capacity });
 
