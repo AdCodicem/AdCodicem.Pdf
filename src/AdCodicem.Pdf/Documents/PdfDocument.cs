@@ -37,11 +37,11 @@ namespace AdCodicem.Pdf.Documents;
 /// validation runs it again (#167). Until then, <see cref="Trailer"/>, <see cref="Catalog"/>, <see cref="IsEncrypted"/>,
 /// <see cref="ObjectCount"/> and <see cref="ObjectNumbers"/> describe the unfinished rebuild: the index lacks the entries
 /// the scan or the finish had not taken in, and the trailer lacks what the scan had not merged and a <c>/Root</c> the
-/// finish would search for. Asking them finishes nothing, but for the <c>/Root</c> that trailer names — the file's own, a
-/// catalog a search found as the document opened set aside —, which <see cref="Catalog"/> reads, finishing the rebuild
-/// first. <see cref="Catalog"/> so gives the object that <c>/Root</c> names, which need not be a catalog, and null when it
-/// names a free number or the trailer names none, though opening found a catalog; the next call gives the finished
-/// rebuild's.
+/// finish would search for. Asking them finishes nothing, but for the <c>/Root</c> that trailer names — the file's own
+/// <c>/Root</c>, not the catalog a search found as the document opened —, which <see cref="Catalog"/> reads, finishing the
+/// rebuild first. <see cref="Catalog"/> so gives the object that <c>/Root</c> names, which need not be a catalog, and null
+/// when it names a free number or the trailer names none, though opening found a catalog; the next call gives the
+/// finished rebuild's.
 /// </para>
 /// <para>
 /// Once disposed, a document answers nothing but its <see cref="Diagnostics"/>, the record of its reading, and
@@ -113,9 +113,9 @@ public sealed class PdfDocument : IDisposable
     /// It is read through the <c>/Root</c> of the trailer <see cref="Trailer"/> gives now, which a rebuild of the index
     /// after opening — set off by a read, or by the start of a validation — replaces (#167). When the source fails the
     /// rebuild, that trailer is the unfinished rebuild's until the next read or validation runs the rebuild again, and its
-    /// <c>/Root</c> the file's own, a catalog a search found as the document opened set aside: the catalog is null then
-    /// when that trailer names no <c>/Root</c>, though opening found one. A <c>/Root</c> it names is read, which finishes
-    /// the rebuild first: the catalog is then the object named, which need not be a catalog, or null for a free number;
+    /// <c>/Root</c> the file's own, not the catalog a search found as the document opened: the catalog is null then when
+    /// that trailer names no <c>/Root</c>, though opening found one. A <c>/Root</c> it names is read, which finishes the
+    /// rebuild first: the catalog is then the object named, which need not be a catalog, or null for a free number;
     /// the next call gives the finished rebuild's.
     /// </remarks>
     /// <exception cref="ObjectDisposedException">The document was disposed.</exception>

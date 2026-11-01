@@ -6568,9 +6568,9 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// The source may fail to give its bytes in the scan, or in the finish run here — the one the start of a validation
     /// runs, or the document's opening —: what the rebuild reported since its scan began is withdrawn, the rebuild is left
     /// for the next read or validation to run again from the scan's start, and the failure leaves (#167). Run again from the
-    /// scan rather than from a copy of the scan's index, a finish the source fails costs a sound rebuild no copy, which took
-    /// 40 bytes an entry; a finish the outermost load runs starts from the copy its loads in flight keep. A guard reached is
-    /// no failure: a document opened to throw on one throws once the index is whole.
+    /// scan rather than from a copy of the scan's index, a finish the source fails costs a sound rebuild no copy, which would
+    /// take 40 bytes an entry; a finish the outermost load runs starts from the copy its loads in flight keep. A guard
+    /// reached is no failure: a document opened to throw on one throws once the index is whole.
     /// </remarks>
     /// <param name="kept">The entries a chain a guard cut gave, kept through the rebuild; null when no guard cut it.</param>
     private void Rebuild(PdfXRefTable? kept)
