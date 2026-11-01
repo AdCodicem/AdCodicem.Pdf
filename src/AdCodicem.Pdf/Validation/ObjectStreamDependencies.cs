@@ -1037,21 +1037,21 @@ internal sealed class ObjectStreamDependencies
                 return PdfNull.Instance;
             }
 
-            // A load whose value reaches the stream's decoding counts for how deep it decodes; past the reader's nesting, it
-            // reads as null, and the decoding depends on how deep it is made (#312). A load inside the parse of a stream met on
-            // a chain resolves that stream's /Length, which places its data and nothing else: cut there or not, the decoding
-            // reads the same values.
-            var reaching = _inFlight.Count == 0;
-
-            if (reaching)
+            // A load whose value reaches the stream's decoding, one outside every parse, counts for how deep it decodes: the
+            // walk makes it at the second or third level, within the reader's nesting, but a read that decodes the stream
+            // deeper makes it deeper, where the nesting cuts it, and the decoding depends on how deep it is made — which the
+            // walk that meets the stream's object asks of its standing (#312). A load inside the parse of a stream met on a
+            // chain resolves that stream's /Length, which places its data and nothing else: cut there or not, the decoding
+            // reads the same values, but where the reader serves past the cut what its cache kept (#163).
+            if (_inFlight.Count == 0)
             {
                 _deepest = Math.Max(_deepest, depth);
             }
 
-            // Past the reader's nesting, a load reads as null. The reader asks first whether it holds the object in its loads:
-            // a stream it is parsing, met again, is read again, and read as null for the rest of every decoding in flight
-            // (#51) — a cut to a parse, but not to the decoding of a stream whose standing is worked out, which reads it so
-            // at a first read and not a level deeper.
+            // Past the reader's nesting, a load reads as null, and is made inside a parse. The reader asks first whether it
+            // holds the object in its loads: a stream it is parsing, met again, is read again, and read as null for the rest
+            // of every decoding in flight (#51) — a cut to a parse, but not to the decoding of a stream whose standing is
+            // worked out, which reads it so at a first read and not a level deeper.
             if (depth > PdfFileReader.MaxNestedLoads)
             {
                 _cuts++;
@@ -1060,10 +1060,6 @@ internal sealed class ObjectStreamDependencies
                 {
                     _stateful++;
                     _unlike |= !judges;
-                }
-                else
-                {
-                    _unlike |= !judges && reaching;
                 }
 
                 return PdfNull.Instance;
@@ -1266,7 +1262,9 @@ internal sealed class ObjectStreamDependencies
             // Another's stream is loaded a level deeper: past the reader's nesting, or while it is in flight — a stream met on
             // the way, its /Length being resolved —, the object reads as null before that stream is decoded. Not a re-entry a
             // walk of a standing need tell apart: the holder's own walk resolves that /Length too, meets its own object, and
-            // does not decode alike, so that a later read of the object here tells the stream unlike.
+            // does not decode alike, so that a later read of the object here tells the stream unlike. An object met at the
+            // reader's deepest load is met inside a parse, on the chain of a /Length that places a stream's data alone: one
+            // outside every parse is met at the second or third level.
             var reaching = _inFlight.Count == 0;
 
             if (reaching)
@@ -1276,7 +1274,6 @@ internal sealed class ObjectStreamDependencies
 
             if (depth >= PdfFileReader.MaxNestedLoads)
             {
-                _unlike |= !judges && reaching;
                 return PdfNull.Instance;
             }
 
