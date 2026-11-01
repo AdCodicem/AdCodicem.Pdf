@@ -2276,6 +2276,55 @@ public class ObjectRuleTests
             diagnostic.Code == PdfDiagnosticCodes.StreamSelfReference && diagnostic.Message.StartsWith("Object stream 16 needs object 41,", StringComparison.Ordinal));
     }
 
+    [Fact]
+    public void Object_streams_whose_chains_end_inside_a_run_the_walk_kept_cost_each_no_more_than_their_own_walk()
+    {
+        // Object streams each take their /Length, and their predictor, from 1001, the first of 40 objects written in the file,
+        // each naming the next. A /Length loads 33 of them, one more than a value's chain: the walk keeps the run of 33 from
+        // 1001, and each stream's predictor meets it with a load too few. Working out again the 32 that chain loads read
+        // again, for each stream, the 31 objects the run passes over, which the walk does not keep: 5.2 KB a stream. Going
+        // on an object at a time from 1001 takes the run kept from 1002, and reads nothing again: 2.5 KB a stream, its own
+        // walk and the reader's read of its dictionary (#312).
+        const int Few = 500;
+        const int Many = 1500;
+        var few = StreamsSharingALengthChain(Few);
+        var many = StreamsSharingALengthChain(Many);
+
+        var fewAllocated = Allocations.Least(() => PdfDocument.Open(few), document => ObjectStreamDependencies.Run(document), out var fewDocument, out var fewResult);
+        var manyAllocated = Allocations.Least(() => PdfDocument.Open(many), document => ObjectStreamDependencies.Run(document), out var manyDocument, out var manyResult);
+
+        using (fewDocument)
+        using (manyDocument)
+        {
+            fewResult.CircularStreams.Should().BeEmpty();
+            manyResult.CircularStreams.Should().BeEmpty();
+            ((manyAllocated - fewAllocated) / (Many - Few)).Should().BeLessThan(3584, "what one more stream costs is its own walk");
+        }
+
+        // Gives a file of `streams` object streams, numbered from 10,000, each holding one dictionary.
+        static byte[] StreamsSharingALengthChain(int streams)
+        {
+            var objects = new SortedDictionary<int, (string Entries, byte[]? Data)>();
+            var members = new Dictionary<int, (int Stream, int Index)>();
+
+            for (var link = 1001; link <= 1040; link++)
+            {
+                objects[link] = (link < 1040 ? string.Create(CultureInfo.InvariantCulture, $"{link + 1} 0 R") : "7", null);
+            }
+
+            for (var stream = 10_000; stream < 10_000 + (2 * streams); stream += 2)
+            {
+                var (data, first) = ConvergenceShapes.ObjectStreamData((stream + 1, "<< >>"));
+                objects[stream] = (
+                    string.Create(CultureInfo.InvariantCulture, $"/Type /ObjStm /N 1 /First {first} /Length 1001 0 R /Filter /FlateDecode /DecodeParms << /Predictor 1001 0 R >>"),
+                    HostileInputTests.Compress(Encoding.Latin1.GetBytes(data)));
+                members[stream + 1] = (stream, 0);
+            }
+
+            return ConvergenceShapes.StreamsAndMembers(objects, members);
+        }
+    }
+
     [Theory]
     [InlineData("nothing", 30, false)]
     [InlineData("the broken stream", 30, false)]

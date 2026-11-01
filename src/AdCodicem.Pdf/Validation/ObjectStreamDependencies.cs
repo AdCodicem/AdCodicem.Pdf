@@ -126,8 +126,8 @@ namespace AdCodicem.Pdf.Validation;
 /// share the chain. An object held by an object stream that decodes alike is kept as well, as the reader serves it, and a
 /// run goes on through it once its holder's standing is known, where its holder's decoding reaches no deeper than the
 /// reader's nesting lets it; a run that ends at an object of a stream whose standing is not known yet is not kept. A chain
-/// with fewer loads left than a run kept takes what it loads of it alone, worked out again, so that what a run passes, and
-/// how deep its holders' decodings reach, is never that of an object the chain does not load (#312). After a rebuild, a
+/// with fewer loads left than a run kept goes on an object at a time there, so that what a run it takes passes, and how
+/// deep its holders' decodings reach, is never that of an object the chain does not load (#312). After a rebuild, a
 /// walk of a standing takes a run, or a nest, only where the reader's index places every object it went through as the
 /// chain's does. An object a run passes over is not kept for itself: a run keeps where it leads. As many objects are kept
 /// as the reader keeps in its cache, an object let go read again when met again. A value a stream reads again — the
@@ -1661,11 +1661,12 @@ internal sealed class ObjectStreamDependencies
         /// <summary>
         /// Gives the run a chain loads from object <paramref name="number"/>, worked out the first time as far as
         /// <paramref name="loads"/> objects, or to the first that is no link: null when the object is neither written in the
-        /// file nor held by an object stream known to decode alike; is a stream; or holds no reference, so that loading it
-        /// says more than where the chain goes on. A run kept from a chain that loaded fewer objects, or before the standing of
-        /// a holder was known, ends where that chain did; the chain that goes on past it goes on from there, as from any object
-        /// it loads. One kept from a chain that loaded more is given as far as <paramref name="loads"/> only: no run given is
-        /// longer than the loads the chain has left, so that it passes, and reaches as deep as, what the chain loads alone.
+        /// file nor held by an object stream known to decode alike; is a stream; holds no reference, so that loading it says
+        /// more than where the chain goes on; or starts a run kept from a chain that loaded more than
+        /// <paramref name="loads"/> objects, which the chain goes on from an object at a time. A run kept from a chain that
+        /// loaded fewer objects, or before the standing of a holder was known, ends where that chain did; the chain that goes
+        /// on past it goes on from there, as from any object it loads. No run given is longer than the loads the chain has
+        /// left: it passes, and reaches as deep as, what the chain loads alone.
         /// </summary>
         /// <param name="number">The object the chain loads next.</param>
         /// <param name="loads">How many objects the chain loads at most from it.</param>
@@ -1683,13 +1684,15 @@ internal sealed class ObjectStreamDependencies
                 return null;
             }
 
-            // A run kept from a chain that loaded more objects than this one has left is not taken whole: what it passes past
-            // them, and how deep their holders' decodings reach, this chain never loads. Its first objects are worked out
-            // again, as far as this chain loads — those it passes over, which are not kept, read again —, and not kept, the
-            // longer run kept in their place (#312).
+            // A run kept from a chain that loaded more objects than this one has left is not given: what it passes past them,
+            // and how deep their holders' decodings reach, this chain never loads (#312). The chain goes on an object at a
+            // time from there, as from an object no run starts at: each object it loads is kept, and the runs kept from the
+            // objects after it are taken where they fit. Working out the shorter run again read again, for each chain, the
+            // objects it passes over, which are not kept: 5.2 KB a stream, where its own walk takes 2.5 KB, for streams whose
+            // /Length and predictor share a chain.
             if (held.Run is { } kept)
             {
-                return kept.Numbers.Length <= loads ? kept : Build(number, entry, held, loads, out _);
+                return kept.Numbers.Length <= loads ? kept : null;
             }
 
             // A run that ends at an object of a stream whose standing is not known yet is not kept: once it is known, the run
