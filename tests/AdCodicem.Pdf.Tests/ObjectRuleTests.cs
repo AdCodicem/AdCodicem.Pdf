@@ -2052,9 +2052,9 @@ public class ObjectRuleTests
         // Stream 3's /Length heads a nest of 60 streams ending at 6, which 5 holds; 5's /Length heads a nest of 60 ending at
         // 12, which 11 holds; 11 takes its parameters from stream 300, which heads a nest of 61. Judging 3, the walk works out
         // 5's standing from its 63rd level, and 5's walk 11's from its own deepest, each followed through the reader: the two
-        // walks and the reader's loads nest about as deep as a validation goes, some 610 KB of stack on a thread of 1 MB. The
-        // walks ask the thread nothing; the reader's stack probe, which keeps 128 KB free, cuts first on a smaller stack, and
-        // nothing overflows. On 256 KB the report is the same.
+        // walks and the reader's loads nest about as deep as a validation goes, some 420 KB of stack, which the reader's probe,
+        // keeping 128 KB free, leaves uncut on a thread of 560 KB or more, and on 1 MB. The walks ask the thread nothing; the
+        // probe cuts first on a smaller stack, and nothing overflows. On 256 KB the report is the same.
         var file = DeepStack(60, 60, 61);
         var options = new PdfReaderOptions { ObjectCacheCapacity = 1 };
 

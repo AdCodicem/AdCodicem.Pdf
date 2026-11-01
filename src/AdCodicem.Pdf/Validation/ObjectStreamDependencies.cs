@@ -36,22 +36,23 @@ namespace AdCodicem.Pdf.Validation;
 /// and the decodings of the streams holding the objects they lead through —, then meets no object it holds; no object of
 /// a stream that does not decode alike, nor of one whose standing is being worked out, which lies on a loop with it; no
 /// stream met again while the reader holds it in its loads — its own while its <c>/Length</c> is resolved, one met on a
-/// chain while its parse is, at the reader's deepest load as above it, the reader asking that first —, which the reader
-/// reads as null for the rest of every decoding in flight (#51); no stream so met when parsed again, as a reader whose
-/// cache let it go between two meetings parses it; after a rebuild, no object the reader's index places otherwise than
-/// the chain's; and no load the reader's nesting cuts whose value reaches the decoding. Where its object is met, its
-/// deepest such load also stays within the reader's nesting. It then decodes the same whatever stream is in flight and
-/// whatever was read before — but at the reader's deepest load, which its nesting or its stack probe cuts, and where it
-/// serves what its cache kept, so that what was read before decides what that load gives (#163) —, and lies on no loop:
-/// the object is read through the reader, and followed. Of any other stream, the object is a need, and reads as null, as
-/// one of a stream in flight does: a stream keeps at most one need for each value its decoding reads. A need on a stream
-/// that decodes alike closes no loop: a walk of a standing that meets an object of a stream that does not decode alike
-/// tells its own stream unlike wherever it meets it, so that the needs of a stream that decodes alike name only streams
-/// that decode alike, and the first of them to be worked out met none of the others while theirs was. A stream met on the
-/// way — a parameter, or a link of a chain, which ISO 32000-1 allows neither — gives its dictionary, and its parse
-/// resolves its <c>/Length</c>, a level deeper; an object it holds reads as null meanwhile, before it is decoded, and is
-/// its need, not the walked stream's. What that parse loads places that stream's data, and nothing a decoding reads: cut
-/// there or not, a stream decodes the same, but where the reader serves past the cut what its cache kept (#163).
+/// chain while its parse is, at the reader's deepest load as well as above it, the reader asking that first —, which the
+/// reader reads as null for the rest of every decoding in flight (#51); no stream so met inside the parse of a stream met
+/// again, which the walk parses again as a reader whose cache let it go between two meetings does; after a rebuild, no
+/// object the reader's index places otherwise than the chain's; and no load the reader's nesting cuts whose value reaches
+/// the decoding. Where its object is met, its deepest such load also stays within the reader's nesting. It then decodes
+/// the same whatever stream is in flight and whatever was read before — but at the reader's deepest load, which its
+/// nesting or its stack probe cuts, and where it serves what its cache kept, so that what was read before decides what
+/// that load gives (#163) —, and lies on no loop: the object is read through the reader, and followed. Of any other
+/// stream, the object is a need, and reads as null, as one of a stream in flight does: a stream keeps at most one need
+/// for each value its decoding reads. A need on a stream that decodes alike closes no loop: a walk of a standing that
+/// meets an object of a stream that does not decode alike tells its own stream unlike wherever it meets it, so that the
+/// needs of a stream that decodes alike name only streams that decode alike, and the first of them to be worked out met
+/// none of the others while theirs was. A stream met on the way — a parameter, or a link of a chain, which ISO 32000-1
+/// allows neither — gives its dictionary, and its parse resolves its <c>/Length</c>, a level deeper; an object it holds
+/// reads as null meanwhile, before it is decoded, and is its need, not the walked stream's. What that parse loads
+/// places that stream's data, and nothing a decoding reads: cut there or not, a stream decodes the same, but where the
+/// reader serves past the cut what its cache kept (#163).
 /// </para>
 /// <para>
 /// Each object stream's standing is worked out once a validation, the first time an object of it is met, as a first read
@@ -61,25 +62,25 @@ namespace AdCodicem.Pdf.Validation;
 /// first, on a stack of their own. A stream a later walk meets again is pushed again, its entry lower left stale, its stream
 /// known by the time it is reached; the stack is rid of such entries, keeping the topmost entry of each stream not known
 /// yet, whenever it holds more than 1,024 and twice as many as it kept the last time, so that it holds no more than twice
-/// the most streams waiting at once, or 1,024 entries, whichever is more, besides one walk's unknown
-/// streams. A value read as null makes a decoding read less, never more — a null link ends a chain, a null element a chain
-/// of filters, a null <c>/Type</c>, <c>/N</c>, <c>/First</c>, <c>/Filter</c> or predictor what decoding would read after
-/// it —, so that what such a walk meets, the decoding meets: a stream met while its own standing is being worked out lies
-/// on a loop with the one that met it. A stream is walked once more for each value read as null that hid a stream not known
-/// yet from it, which, value after value and level after level of a nest, comes to a few thousand walks of one stream under
-/// the default limits, as many more as <see cref="PdfReaderLimits.MaxFilterChainLength"/> allows; what it reads of its own
-/// dictionary is read once while the walk keeps it, for as many streams as the reader caches objects, the oldest let go
-/// first and read again when walked again.
+/// the most streams waiting at once, or 1,024 entries, whichever is more, besides one walk's unknown streams. A value
+/// read as null makes a decoding read less, never more — a null link ends a chain, a null element a chain of filters, a
+/// null <c>/Type</c>, <c>/N</c>, <c>/First</c>, <c>/Filter</c> or predictor what decoding would read after it —, so
+/// that what such a walk meets, the decoding meets: a stream met while its own standing is being worked out lies on a
+/// loop with the one that met it. A stream is walked once more for each value read as null that hid a stream not known
+/// yet from it, which, value after value and level after level of a nest, comes to a few thousand walks of one stream
+/// under the default limits, as many more as <see cref="PdfReaderLimits.MaxFilterChainLength"/> allows; what it reads
+/// of its own dictionary is read once while the walk keeps it, for as many streams as the reader caches objects, the
+/// oldest let go first and read again when walked again.
 /// </para>
 /// <para>
 /// A loop that closes only through the value of an object whose stream does not decode alike where it is met stays unseen
 /// — a stream that lies on a loop itself, and is circular in its own right; one whose decoding meets a stream again while
 /// the reader holds it in its loads; one the reader's nesting cuts there; one a rebuilt index places otherwise —, and so
-/// does what decoding would read after that value. The reader reports such a loop as it decodes. The walk that judges
-/// parses each stream once a walk, as a reader that keeps it does: it does not read as null, as the reader does for the
-/// rest of the judged stream's decoding, a stream that decoding met again while it held it, nor parse again a stream the
-/// reader's cache let go; deterministic, the verdict may then name a loop the reader meets in no read order, or miss one
-/// it meets.
+/// does what decoding would read after that value. The reader reports such a loop as it decodes (#314). The walk that
+/// judges parses each stream once a walk, as a reader that keeps it does: it does not read as null, as the reader does for
+/// the rest of the judged stream's decoding, a stream that decoding met again while it held it, nor parse again a stream
+/// the reader's cache let go; deterministic, the verdict may then name a loop the reader meets in no read order, or miss
+/// one it meets.
 /// </para>
 /// <para>
 /// Of a stream that is not of <c>/Type /ObjStm</c>, only what its <c>/Type</c> needs judges it (#274): a loop through its
@@ -98,7 +99,7 @@ namespace AdCodicem.Pdf.Validation;
 /// it counts. No recursion goes deeper than twice that bound: the walk that works out a standing runs within the walk that
 /// met one of its objects, one at a time. The two take about 0.8 KB of the thread's stack a level, some 110 KB at their
 /// deepest, under the 128 KB the reader's stack probe keeps free; with the reader's own 64 loads under a value they read
-/// through it, about 6 KB each, the deepest validation goes some 500 KB deep (420 KB on the deepest shape measured), and
+/// through it, about 5.8 KB each, the deepest validation goes some 480 KB deep (420 KB on the deepest shape measured), and
 /// with the 128 KB the reader's probe keeps free above its deepest load, it needs a thread of some 610 KB for the probe to
 /// cut none of its loads (on that shape, none is cut from 560 KB), which a thread of 1 MB has. What the reader has read and
 /// kept is not modeled, so that the verdict does not depend on what was read before, but for #163, above: a read that
@@ -141,12 +142,12 @@ namespace AdCodicem.Pdf.Validation;
 /// one, took past what the walk keeps — 16,128 streams a walk, read again for each object stream (#201). A parse that met
 /// nothing the walk's own state answers — no object of an object stream, which reads as the stream walked and those in
 /// flight make it, no stream parsed before, the stream walked among them, no stream the reader holds in its loads read
-/// again, at its deepest load as above it — parsed what the file alone says from that depth down, the same for every walk.
-/// The streams it went through, its nest, are kept by the number of the stream heading them, as many nests as the reader
-/// keeps objects, and taken at once where that stream is met again at that depth or below it, or at any depth when the
-/// parse ended where its chains do, short of the reader's nesting: its streams are parsed, as far as the nesting lets a
-/// parse from there reach, up to one parsed already, where the parse would end; and the load the nesting cuts at its end,
-/// the first a <c>/Length</c> names, is a stream read again or not, as there. A validation keeps one nest for the
+/// again, at its deepest load as well as above it — parsed what the file alone says from that depth down, the same for
+/// every walk. The streams it went through, its nest, are kept by the number of the stream heading them, as many nests as
+/// the reader keeps objects, and taken at once where that stream is met again at that depth or below it, or at any depth
+/// when the parse ended where its chains do, short of the reader's nesting: its streams are parsed, as far as the nesting
+/// lets a parse from there reach, up to one parsed already, where the parse would end; and the load the nesting cuts at
+/// its end, the first a <c>/Length</c> names, is a stream read again or not, as there. A validation keeps one nest for the
 /// outermost parse, or for the outermost one inside it that met nothing.
 /// </para>
 /// </remarks>
@@ -1673,9 +1674,9 @@ internal sealed class ObjectStreamDependencies
         /// file nor held by an object stream known to decode alike; is a stream; holds no reference, so that loading it says
         /// more than where the chain goes on; or starts a run kept from a chain that loaded more than
         /// <paramref name="loads"/> objects, which the chain goes on from an object at a time. A run kept from a chain that
-        /// loaded fewer objects, or before the standing of a holder was known, ends where that chain did; the chain that goes
-        /// on past it goes on from there, as from any object it loads. No run given is longer than the loads the chain has
-        /// left: it passes, and reaches as deep as, what the chain loads alone.
+        /// loaded fewer objects ends where that chain did; the chain that goes on past it goes on from there, as from any
+        /// object it loads. No run given is longer than the loads the chain has left: it passes, and reaches as deep as, what
+        /// the chain loads alone.
         /// </summary>
         /// <param name="number">The object the chain loads next.</param>
         /// <param name="loads">How many objects the chain loads at most from it.</param>
