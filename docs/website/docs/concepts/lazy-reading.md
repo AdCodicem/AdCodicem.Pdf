@@ -115,12 +115,16 @@ stream's `/Length` was wrong — is forgotten by a rebuild, and noted again as t
 A rebuild a read sets off while that read is still under way — an object's `/Length` or filter names an object the
 map misplaces — scans the file, and is finished once no read is under way, or once the read throws, before its exception
 leaves: the object is then read again from the rebuilt map, and what was read meanwhile, with the read unfinished, is
-let go, so that it reads, and reports, as it would had the map been rebuilt first, at the same cost. If the source fails
-one of the rebuild's own reads — in its scan of the file or in its finish, whether a read or the start of a validation
-set it off —, what the rebuild reported since its scan began is withdrawn, the failure leaves, and the next read or
-validation runs the rebuild again: a finish the read's loads waited for from the copy of the scan's map they keep, any
-other from the scan. Running a failed finish again from the scan costs a sound rebuild no copy of the map, which took
-40 bytes an entry. A validation whose first checks of the map the source fails checks again at the next one.
+let go, so that it reads, and reports, as it would had the map been rebuilt first, at the same cost.
+
+If the source fails one of the rebuild's own reads, whether a read or the start of a validation set the rebuild off,
+the failure leaves, and the next read or validation runs the rebuild again. A rebuild the source fails in its scan of
+the file, or in a finish run with no read under way, withdraws what it reported since its scan began, and runs again
+from the scan. A rebuild whose finish waited for the read under way withdraws only what that read and the finish
+reported since the scan ended: the scan's reports stand, and are not made again, as the finish runs again from the
+copy of the scan's map kept for it. `xref.rebuilt`, reported as the rebuild begins, stays either way. Running a
+failed finish again from the scan costs a sound rebuild no copy of the map, which would take 40 bytes an entry. A
+validation whose first checks of the map the source fails checks again at the next one.
 
 A rebuild reads the file to its end, and holds no more numbers than the map may: a header for a number it holds already
 takes no room, so that a million copies of one object hide nothing behind them, and the first number past
@@ -157,7 +161,7 @@ If the source fails a rebuild, `Trailer`, `Catalog`, `IsEncrypted`, `ObjectCount
 unfinished rebuild until the next read or validation runs it again: the map lacks the entries the scan or the finish
 had not taken in — every one when the source failed the scan's first read —, and the trailer lacks the trailers the scan
 had not merged and a `/Root` the finish would search for. Asking them finishes nothing, except that `Catalog` reads the
-`/Root` that trailer names — the file's own, a catalog a search found as the document opened set aside —, and that read
+`/Root` that trailer names — the file's own `/Root`, not the catalog a search found as the document opened —, and that read
 finishes the rebuild first. `Catalog` so gives the object that `/Root` names, which need not be a catalog, and null when
 it names a free number or the trailer names none, though opening found a catalog; the next `Catalog` gives the finished
 rebuild's.

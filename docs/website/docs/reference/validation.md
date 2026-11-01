@@ -41,13 +41,24 @@ Before its first rule, `Validate` has the reader rebuild the document's index wh
 index is incomplete through damage, or an entry places its object neither at its offset nor near it —, so that a
 document gives the same report whatever was read before validating it. A limit that rebuild reaches throws once, in the
 first validation, the index rebuilt whole; a later validation reads that index, and throws only where its rules read
-what the limit cut or left out. A document you changed between two validations is validated as changed, and a file
-crafted for it can still make where a damaged stream's data ends depend on which stream was read first
-([#138](https://github.com/AdCodicem/AdCodicem.Pdf/issues/138)), a value read through a stream the reader first
-decoded at its deepest load be what that load's cut left
-([#163](https://github.com/AdCodicem/AdCodicem.Pdf/issues/163)), or an object stream's `/Type`, `/N` or `/First`,
-read through a stream that lies on a loop, depend on which stream of the loop was decoded first
-([#313](https://github.com/AdCodicem/AdCodicem.Pdf/issues/313)).
+what the limit cut or left out. A document you changed between two validations is validated as changed. A file
+crafted for it can still make the report depend on what was read before, in three ways:
+
+- Where a damaged stream's data ends can depend on which stream was read first
+  ([#138](https://github.com/AdCodicem/AdCodicem.Pdf/issues/138)).
+- A load past the reader's deepest nesting is cut, or served from the reader's cache when a read before kept the
+  object, so that what was read before decides what it gives
+  ([#163](https://github.com/AdCodicem/AdCodicem.Pdf/issues/163)): a stream first decoded there keeps what the cut
+  gave, and a `/Length` chain a cached link carries past the cut can go on into a stream the reader still holds. The
+  read that first decoded the stream that deep may be one of the validation's own, so that validating a document you
+  have not read can read what the cut left, and reading it first can spare it, or the reverse. On a thread with little
+  stack, the reader's stack probe cuts sooner, even with nothing read first, so the report can also depend on the
+  thread.
+- A value an object stream's decoding reads — its `/Type`, `/N`, `/First`, `/Filter` or `/DecodeParms` — held by a
+  stream that lies on a loop, or any such value of a stream on a loop itself, depends on which stream of the loop was
+  decoded first, and so do the verdicts of `xref.object-stream-broken`, `xref.entry-broken` and `xref.entry-shifted`
+  ([#313](https://github.com/AdCodicem/AdCodicem.Pdf/issues/313)).
+
 [Validation](../concepts/validation.md#reading-limits-and-exceptions) explains why.
 
 ## `PdfValidatorOptions`
