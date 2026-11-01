@@ -1423,8 +1423,8 @@ internal sealed class ObjectStreamDependencies
         /// <remarks>
         /// An entry of a known stream is not always another's duplicate: a stream pushed below one that waits, pushed again
         /// above it by a later walk and worked out from there, leaves its lower entry its only one. Kept, such entries piled
-        /// up a block for each level of streams that wait on one another, as many as the streams the stack ever held: 5,008
-        /// entries for 80 levels of 64, where 144 streams waited at once (#312).
+        /// up a block for each level of streams that wait on one another, growing with every stream the stack ever held:
+        /// 5,008 entries for 80 levels of 64, of 5,343 streams it held, where 144 streams waited at once (#312).
         /// </remarks>
         private void Compact(List<int> waiting)
         {

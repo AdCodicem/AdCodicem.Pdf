@@ -2090,8 +2090,8 @@ public class HostileInputTests
         // again above it, where they are worked out; its second walk pushes Xi+1 and the 64 holders of its level. Each level
         // leaves 64 entries of streams known below the X's that wait, the only entry each of those streams has left. At most
         // 144 streams wait at once, the X's and one level's holders, so that the stack holds no more than 1,024 entries,
-        // besides one walk's 65: it is rid of every entry of a known stream, rather than keeping one of each stream it ever
-        // held, 1,236 entries for 20 levels and 5,008 for 80 (#312).
+        // besides one walk's 65: it is rid of every entry of a known stream, rather than keeping entries that grow with every
+        // stream it ever held, 1,236 for 20 levels, of 1,383 streams it held, and 5,008 for 80, of 5,343 (#312).
         const int Steps = 64;
         using var document = PdfDocument.Open(LayeredWaits(levels, Steps));
 
