@@ -210,7 +210,7 @@ internal sealed class ObjectStreamDependencies
     /// included: a stream a later walk met again is counted again, until the stack is rid of its entry lower down (#312).
     /// </summary>
     /// <remarks>
-    /// Nothing in the library reads it. A test reads it to see that the stack of streams waiting on one another stays within
+    /// Nothing in the library reads it. Tests read it to see that the stack of streams waiting on one another stays within
     /// twice the most streams waiting at once, or 1,024 entries, besides one walk's unknown streams, rather than growing by
     /// an entry for each walk that met a stream before its standing was known: the allocation of a validation, which the
     /// walks' own objects outweigh, cannot tell the two apart.

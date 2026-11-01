@@ -27,8 +27,8 @@ namespace AdCodicem.Pdf.Benchmarks;
 /// the file is (#312). A stream whose standing needs those of streams not known yet waits for them, and is walked again
 /// once they are, from what the walk kept of its dictionary: streams that each wait on the next, and on 192 holders their
 /// parameters' values lie in, are pushed on the stack of waiting standings again by each walk that meets them, leaving
-/// stale entries the stack is rid of once it holds more than 1,024 and each time it has doubled since (#312). The document
-/// is opened outside the measurement.
+/// stale entries the stack is rid of whenever it holds more than 1,024 and twice as many as it kept the last time (#312).
+/// The document is opened outside the measurement.
 /// </remarks>
 [MemoryDiagnoser]
 public class ObjectStreamDependencyBenchmarks
@@ -239,8 +239,8 @@ public class ObjectStreamDependencyBenchmarks
     /// predictors of 12 whose <c>/Colors</c>, <c>/BitsPerComponent</c> and <c>/Columns</c> are each the object of a holder.
     /// Each X's first walk meets the next X and the 192 holders before any is known, and pushes them all on the stack of
     /// waiting standings: each holder waits once for each X, its entries but the last left stale, so that the stack holds
-    /// as many as 1,214 entries for 100 streams and 2,532 for 1,000, rid of the stale ones each time it passes 1,024 or has
-    /// doubled since. The X's data is written as it is: the walk reads none of it.
+    /// as many as 1,214 entries for 100 streams and 2,532 for 1,000, rid of the stale ones whenever it holds more than 1,024
+    /// and twice as many as it kept the last time. The X's data is written as it is: the walk reads none of it.
     /// </summary>
     private static byte[] CreateWaits(int streams)
     {

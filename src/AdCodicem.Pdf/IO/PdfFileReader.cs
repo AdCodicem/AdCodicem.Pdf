@@ -6784,7 +6784,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
         {
             // Reached after the read's own exception, which is the one thrown.
         }
-        catch (Exception exception) when (exception is not PdfLimitExceededException)
+        catch (Exception)
         {
             // The source failed the finish, whatever it threw — an I/O error, or what a caller's own source throws —, as the
             // rebuild's other steps take it: the rebuild is left unfinished, and finished by the next read; the read's own
