@@ -40,6 +40,12 @@ internal static partial class ConvergenceShapes
             yield return new($"a holder whose /Length names a stream naming it{cache}", OwnLength("30 0 R"), PdfReaderLimits.Default, [.. reads, [new(30), new(7)]], capacity);
             yield return new($"a holder whose /Length is written directly{cache}", OwnLength(string.Empty), PdfReaderLimits.Default, reads, capacity);
 
+            // 5's /Length names 60, which names stream 100, heading 61 streams by /Length, the last naming 5: the reader meets 5
+            // again at its deepest load when 5 is decoded first, and asks whether it holds 5 before it counts the depth when 5
+            // decodes inside 6, deeper: a stream read as null for the rest of every decoding in flight, 6's included.
+            yield return new($"a holder whose /Length leads back to it through a link and 61 streams{cache}", OwnLengthThrough(61, ownParameters: true), PdfReaderLimits.Default, [.. reads, [new(100), new(7)], [new(60), new(7)]], capacity);
+            yield return new($"a holder whose /Length leads back to it through a link and 61 streams, its parameters direct{cache}", OwnLengthThrough(61, ownParameters: false), PdfReaderLimits.Default, [.. reads, [new(100), new(7)], [new(60), new(7)]], capacity);
+
             // 5 reads stream 20 twice, whose /Length leads through a chain of streams back to 20: at 62 streams, the reader
             // re-enters 20 at its 65th load when 5 is decoded first, and is cut a load earlier when it decodes inside 6.
             foreach (var links in (int[])[61, 62, 63])
@@ -235,6 +241,29 @@ internal static partial class ConvergenceShapes
         if (length == "30 0 R")
         {
             objects[30] = ("/Length 5 0 R", "x"u8.ToArray());
+        }
+
+        return ReadingFifty(objects);
+    }
+
+    /// <summary>
+    /// Object stream 5 takes <c>/Predictor 12 /Columns 12</c> as its parameters, from its own dictionary when
+    /// <paramref name="ownParameters"/> says so, written directly otherwise, and its <c>/Length</c> from 60, written in the
+    /// file, <c>100 0 R</c>; streams 100 onward, <paramref name="streams"/> of them, each take their <c>/Length</c> from the
+    /// next, the last from 5.
+    /// </summary>
+    internal static byte[] OwnLengthThrough(int streams, bool ownParameters)
+    {
+        var parameters = ownParameters ? "5 0 R /Predictor 12 /Columns 12" : "<< /Predictor 12 /Columns 12 >>";
+        var objects = new SortedDictionary<int, (string Entries, byte[]? Data)>
+        {
+            [5] = ("/Type /ObjStm /N 1 /First 6 /Length 60 0 R /Filter /FlateDecode /DecodeParms " + parameters, HolderWithPredictedMember(1, predicted: false)),
+            [60] = ("100 0 R", null),
+        };
+
+        for (var stream = 0; stream < streams; stream++)
+        {
+            objects[100 + stream] = (string.Create(CultureInfo.InvariantCulture, $"/Length {(stream + 1 < streams ? 101 + stream : 5)} 0 R"), "x"u8.ToArray());
         }
 
         return ReadingFifty(objects);

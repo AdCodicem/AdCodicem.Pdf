@@ -1753,6 +1753,8 @@ public class ObjectRuleTests
     [InlineData("a holder whose /Length names itself", false)]
     [InlineData("a holder whose /Length names a stream naming it", false)]
     [InlineData("a holder whose /Length is written directly", true)]
+    [InlineData("a holder whose /Length leads back to it through a link and 61 streams", false)]
+    [InlineData("a holder whose /Length leads back to it through a link and 61 streams, its parameters direct", false)]
     [InlineData("a holder reading a stream twice whose /Length leads back to it through 61 streams", false)]
     [InlineData("a holder reading a stream twice whose /Length leads back to it through 62 streams", false)]
     [InlineData("a holder reading a stream twice whose /Length leads back to it through 63 streams", true)]
@@ -1767,7 +1769,10 @@ public class ObjectRuleTests
         // reads it as null for the rest of every decoding in flight (#51): 5 decoded inside 6, or after a read that left
         // something in its cache, reads its predictor otherwise than decoded first, and the reader meets 6's loop in some read
         // orders and not in others. 5 does not decode alike, and the walk does not follow 50: 6 is not circular, whatever was
-        // read. Where 5 reads nothing again — a /Length written directly, a chain cut short of the stream it leads back to —, it
+        // read. So too where 5 meets itself again only while its own /Length is resolved, at the reader's deepest load, its
+        // parameters written directly: nothing here reads 5 again, but the reader reads it as null for the rest of every
+        // decoding in flight, which one enclosing 5's may read, and the walk does not follow 50 — on the safe side, leaving to
+        // the reader a loop it meets in every read order. Where 5 reads nothing again — a /Length written directly, a chain cut short of the stream it leads back to —, it
         // decodes alike, and 50 leads 6 to 7. Parsing again a stream that a reader keeping it would not parse again, the walk
         // misses the loop the reader meets at the default cache in the shape with nothing between: deterministic, and on the
         // safe side of the read orders.
