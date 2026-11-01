@@ -9,8 +9,9 @@ namespace AdCodicem.Pdf.Benchmarks;
 
 /// <summary>
 /// Measures the walk of the object streams' dependencies, which validation runs once, on Flate object streams that take
-/// their <c>/DecodeParms</c> from one object written directly in the file, from an object the next stream holds, or from
-/// streams that each head a nest of streams by <c>/Length</c>.
+/// their <c>/DecodeParms</c> from one object written directly in the file, from an object the next stream holds, from
+/// streams that each head a nest of streams by <c>/Length</c>, or from the first of chains of objects other object streams
+/// hold.
 /// </summary>
 /// <remarks>
 /// The walk reads what decoding each stream reads, where the chain's index places it, outside the reader's cache (#128,
@@ -20,8 +21,10 @@ namespace AdCodicem.Pdf.Benchmarks;
 /// that lead to one another are worked out once, in time linear in the streams, where a search from each stream's need
 /// took time in the square of their number (#168). Streams whose 64 parameters, and the values their predictor asks for,
 /// are streams each heading a nest of 62 streams by <c>/Length</c> lead the walk through 16,128 streams, more than it keeps
-/// objects: the nest of each is taken at once once a parse went through it, where each stream parsed them all again (walk:1
-/// of #277's review). The document is opened outside the measurement.
+/// objects: the nest of each is taken at once once a parse went through it, where each stream parsed them all again (#201).
+/// An object another object stream holds is followed where that stream decodes alike in every read order, which is worked
+/// out once a validation for each such stream, and a chain through such objects is then taken at once, as one written in
+/// the file is (#312). The document is opened outside the measurement.
 /// </remarks>
 [MemoryDiagnoser]
 public class ObjectStreamDependencyBenchmarks
@@ -41,13 +44,19 @@ public class ObjectStreamDependencyBenchmarks
     /// Gets or sets what each stream's <c>/DecodeParms</c> names: <c>shared</c>, one dictionary of 16 KB written in the
     /// file; <c>ring</c>, the object the next stream holds, the last naming the first's; <c>nests</c>, 64 streams whose
     /// predictor asks for their colors, bits and columns, each a stream as well, each of the 256 heading a nest of 62
-    /// streams, each taking its <c>/Length</c> from the next.
+    /// streams, each taking its <c>/Length</c> from the next; <c>holders</c>, 64 objects, each the first of a chain of 8
+    /// objects held by object streams of their own, which need nothing.
     /// </summary>
-    [Params("shared", "ring", "nests")]
+    [Params("shared", "ring", "nests", "holders")]
     public string Parameters { get; set; } = "shared";
 
     [GlobalSetup]
-    public void Setup() => _document = PdfDocument.Open(Parameters == "nests" ? CreateNests(StreamCount) : Create(StreamCount, sharedBytes: 16 * 1024, ring: Parameters == "ring"));
+    public void Setup() => _document = PdfDocument.Open(Parameters switch
+    {
+        "nests" => CreateNests(StreamCount),
+        "holders" => CreateHolders(StreamCount),
+        _ => Create(StreamCount, sharedBytes: 16 * 1024, ring: Parameters == "ring"),
+    });
 
     [GlobalCleanup]
     public void Cleanup() => _document?.Dispose();
@@ -155,6 +164,63 @@ public class ObjectStreamDependencyBenchmarks
         }
 
         Finish(output, offsets, First, First + (2 * streams));
+        return output.ToArray();
+    }
+
+    /// <summary>
+    /// Writes a file indexed by a cross-reference stream, whose object streams, numbered from 10, each hold one object: 512
+    /// of them hold the objects of 64 chains of 8, each naming the next, the last an empty dictionary; the
+    /// <paramref name="streams"/> after them each hold one dictionary and take <c>/Filter 5 0 R</c>, 64 Flate steps, and
+    /// <c>/DecodeParms 6 0 R</c>, the first object of each chain. The object streams' data is written as it is.
+    /// </summary>
+    private static byte[] CreateHolders(int streams)
+    {
+        const int Links = 8;
+        const int First = 10;
+        using var output = new MemoryStream();
+        var offsets = new Dictionary<int, long>();
+        void Write(string text) => output.Write(Encoding.ASCII.GetBytes(text));
+
+        void WriteObject(int number, string body)
+        {
+            offsets[number] = output.Position;
+            Write(string.Create(CultureInfo.InvariantCulture, $"{number} 0 obj\n{body}\nendobj\n"));
+        }
+
+        void WriteObjectStream(int number, string member, string entries)
+        {
+            var data = string.Create(CultureInfo.InvariantCulture, $"{number + 1} 0 {member}");
+            var header = string.Create(CultureInfo.InvariantCulture, $"{number + 1} 0 ").Length;
+            WriteObject(number, string.Create(CultureInfo.InvariantCulture, $"<< /Type /ObjStm /N 1 /First {header} {entries}/Length {data.Length} >>\nstream\n{data}\nendstream"));
+        }
+
+        Write("%PDF-1.5\n");
+        WriteObject(1, "<< /Type /Catalog /Pages 2 0 R >>");
+        WriteObject(2, "<< /Type /Pages /Kids [] /Count 0 >>");
+        WriteObject(5, "[" + string.Join(' ', Enumerable.Repeat("/FlateDecode", Steps)) + "]");
+        var heads = new StringBuilder("[");
+
+        for (var holder = 0; holder < Steps * Links; holder++)
+        {
+            var number = First + (2 * holder);
+
+            if (holder % Links == 0)
+            {
+                heads.Append(CultureInfo.InvariantCulture, $"{number + 1} 0 R ");
+            }
+
+            WriteObjectStream(number, (holder % Links) + 1 < Links ? string.Create(CultureInfo.InvariantCulture, $"{number + 3} 0 R") : "<< >>", string.Empty);
+        }
+
+        WriteObject(6, heads.Append(']').ToString());
+        var judged = First + (2 * Steps * Links);
+
+        for (var stream = 0; stream < streams; stream++)
+        {
+            WriteObjectStream(judged + (2 * stream), "<< >>", "/Filter 5 0 R /DecodeParms 6 0 R ");
+        }
+
+        Finish(output, offsets, First, judged + (2 * streams));
         return output.ToArray();
     }
 
