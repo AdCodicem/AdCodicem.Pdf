@@ -1874,13 +1874,13 @@ public class ReadOrderTests
         // the trailer held, whether the document was encrypted, and what a later validation found, which throws only where
         // its walk reads what a guard cut, then depended on what was read first. Now, the rebuild run by the end of the first
         // validation whatever it threw, the trailer holds the entry, and the document is encrypted as a read without
-        // throwing finds it, in every order, the stream after the dictionary noted nowhere; and a second validation finds
-        // the same in every order.
+        // throwing finds it, in every order, the stream after the dictionary noted nowhere; and a validation after the first
+        // finds the same in every order.
         var bytes = AStreamTrailerWhoseLengthRunsPastTheObjectGuard(keyword, entry);
         var limits = PdfReaderLimits.Default with { MaxObjectLength = 200 };
         var key = entry[1..entry.IndexOf(' ', StringComparison.Ordinal)];
         var states = new Dictionary<string, string>();
-        var seconds = new Dictionary<string, string>();
+        var laters = new Dictionary<string, string>();
 
         foreach (var throwOnLimit in (bool[])[false, true])
         {
@@ -1903,15 +1903,15 @@ public class ReadOrderTests
                 document.Diagnostics.Contains(PdfDiagnosticCodes.SyntaxUnexpectedToken).Should().BeFalse(order);
                 var keys = string.Join(' ', document.Trailer.Keys.Select(name => name.Value).Order(StringComparer.Ordinal));
                 states[order] = $"{keys}; encrypted {document.IsEncrypted}";
-                seconds[order] = Validated(document);
+                laters[order] = Validated(document);
             }
         }
 
         states.Should().AllSatisfy(state => state.Value.Should().Be(states.First().Value, state.Key));
-        seconds.Where(second => second.Key.EndsWith("False", StringComparison.Ordinal))
-            .Should().AllSatisfy(second => second.Value.Should().Be(seconds["a validation first, ThrowOnLimit False"], second.Key));
-        seconds.Where(second => second.Key.EndsWith("True", StringComparison.Ordinal))
-            .Should().AllSatisfy(second => second.Value.Should().Be(seconds["a validation first, ThrowOnLimit True"], second.Key));
+        laters.Where(later => later.Key.EndsWith("False", StringComparison.Ordinal))
+            .Should().AllSatisfy(later => later.Value.Should().Be(laters["a validation first, ThrowOnLimit False"], later.Key));
+        laters.Where(later => later.Key.EndsWith("True", StringComparison.Ordinal))
+            .Should().AllSatisfy(later => later.Value.Should().Be(laters["a validation first, ThrowOnLimit True"], later.Key));
 
         static void Attempt(Action read)
         {
@@ -1934,6 +1934,103 @@ public class ReadOrderTests
             catch (PdfLimitExceededException exception)
             {
                 return string.Create(CultureInfo.InvariantCulture, $"{exception.LimitName} at {exception.Position}");
+            }
+        }
+    }
+
+    [Theory]
+    [InlineData("between objects")]
+    [InlineData("in a comment")]
+    public void A_rebuild_follows_no_reference_after_a_trailer_keyword_whatever_was_read_before_it(string keyword)
+    {
+        // A rebuild's scan for trailers parses what follows each trailer keyword as the dictionary alone, and loads nothing
+        // (#171): a reference written in the dictionary's place — to object 10, a dictionary naming /Encrypt, whose row
+        // leads to the pages' header, so that reading 10 sets the rebuild off while 10 is being loaded — is not followed,
+        // and is noted once, where it starts. Followed, it read 10 as null when the read that set the rebuild off was
+        // loading 10, and merged nothing; set off by a validation, or by the validation after a read of the catalog, it
+        // merged 10's /Encrypt. What the trailer held, whether the document was encrypted, and what a later validation
+        // found then depended on what was read first, whether the document was opened to throw on a guard or not. Now the
+        // trailer lacks /Encrypt, and the document is not encrypted, in every order; and a validation after the first finds
+        // the same in every order.
+        var (bytes, reference) = AReferenceAfterATrailerKeyword(keyword);
+        var states = new Dictionary<string, string>();
+        var laters = new Dictionary<string, string>();
+
+        foreach (var throwOnLimit in (bool[])[false, true])
+        {
+            foreach (var first in (string[])["object 10", "a validation", "the catalog"])
+            {
+                var options = PdfReaderOptions.Default with { ThrowOnLimit = throwOnLimit, ThrowOnEncrypted = false };
+                using var document = PdfDocument.Open(bytes, options);
+                var order = string.Create(CultureInfo.InvariantCulture, $"{first} first, ThrowOnLimit {throwOnLimit}");
+
+                _ = first switch
+                {
+                    "object 10" => document.GetObject(new PdfObjectId(10)),
+                    "the catalog" => document.GetObject(new PdfObjectId(1)),
+                    _ => (object)new PdfValidator().Validate(document),
+                };
+                _ = new PdfValidator().Validate(document);
+
+                document.WasRepaired.Should().BeTrue(order);
+                document.Trailer.ContainsKey(PdfName.Encrypt).Should().BeFalse(order);
+                document.IsEncrypted.Should().BeFalse(order);
+                document.Diagnostics.Should().ContainSingle(diagnostic => diagnostic.Code == PdfDiagnosticCodes.SyntaxUnexpectedToken, order)
+                    .Which.Position.Should().Be(reference, order);
+                states[order] = string.Join(' ', document.Trailer.Keys.Select(name => name.Value).Order(StringComparer.Ordinal));
+                laters[order] = string.Join(" | ", new PdfValidator().Validate(document).Findings.Select(finding => finding.ToString()));
+            }
+        }
+
+        states.Should().AllSatisfy(state => state.Value.Should().Be(states.First().Value, state.Key));
+        laters.Should().AllSatisfy(later => later.Value.Should().Be(laters.First().Value, later.Key));
+    }
+
+    [Theory]
+    [InlineData("a read", "between objects")]
+    [InlineData("a read", "in a comment")]
+    [InlineData("a validation", "between objects")]
+    [InlineData("a validation", "in a comment")]
+    public void A_rebuild_that_throws_on_a_guard_follows_no_reference_after_a_trailer_keyword_and_throws_once_it_is_finished(
+        string setOff, string keyword)
+    {
+        // A rebuild's scan for trailers parses what follows each trailer keyword as the dictionary alone, and loads nothing
+        // (#171): a reference written in the dictionary's place — to object 21, a dictionary holding /Info whose comment runs
+        // past an object guard of 200 bytes — is not followed. Reading 4, whose row points past the end of the file, sets
+        // the rebuild off, and so does the start of a validation. Followed, the reference reached 21's guard in the scan, and
+        // a document opened to throw on one let the exception leave the rebuild before the object streams were expanded,
+        // never to finish it: object stream 10's member 13 read as null, and the index lacked it. The first guard the rebuild
+        // reaches is the expansion's, which loads 21 as it loads each object the scan indexed, and it is thrown once the
+        // rebuild is finished: 13 is read, the catalog is found, and the index counts what a read without throwing counts.
+        // Neither merges /Info.
+        var (bytes, referenced) = AReferenceAfterATrailerKeywordPastTheObjectGuard(keyword);
+        var limits = PdfReaderLimits.Default with { MaxObjectLength = 200 };
+        using var tolerant = PdfDocument.Open(bytes, PdfReaderOptions.Default with { Limits = limits });
+        SetOff(tolerant);
+        using var document = PdfDocument.Open(bytes, PdfReaderOptions.Default with { Limits = limits, ThrowOnLimit = true });
+
+        var thrown = FluentActions.Invoking(() => SetOff(document)).Should().Throw<PdfLimitExceededException>().Which;
+        var thirteen = document.GetObject(new PdfObjectId(13));
+        var catalog = document.Catalog;
+
+        thrown.LimitName.Should().Be(nameof(PdfReaderLimits.MaxObjectLength));
+        thrown.Position.Should().Be(referenced);
+        document.WasRepaired.Should().BeTrue();
+        thirteen.AsText().Should().Be("member");
+        catalog.Should().NotBeNull().And.BeSameAs(document.GetObject(new PdfObjectId(1)) as PdfDictionary);
+        document.ObjectCount.Should().Be(tolerant.ObjectCount);
+        tolerant.Trailer.ContainsKey(PdfName.Info).Should().BeFalse();
+        document.Trailer.ContainsKey(PdfName.Info).Should().BeFalse();
+
+        void SetOff(PdfDocument opened)
+        {
+            if (setOff == "a read")
+            {
+                _ = opened.GetObject(new PdfObjectId(4));
+            }
+            else
+            {
+                _ = new PdfValidator().Validate(opened);
             }
         }
     }
@@ -2243,6 +2340,64 @@ public class ReadOrderTests
         file.Raw((keyword == "in a comment" ? "% trailer\n" : "trailer\n") + $"<< {entry} /Length 21 0 R >>\nstream\nxyz\nendstream\n");
         file.Table(22, rows, "/Size 22 /Root 1 0 R");
         return file.Bytes;
+    }
+
+    /// <summary>
+    /// A file in which a rebuild's scan for trailers meets a <c>trailer</c> keyword, <paramref name="keyword"/> — between
+    /// objects, or in a comment —, older than the table's own trailer and followed by a reference to object 10, a dictionary
+    /// naming object 12 as /Encrypt, which the table's trailer lacks. The table places 10 at the pages' header, so that
+    /// reading 10 sets the rebuild off while 10 is being loaded, and names the catalog. Comments pad the file, so that 10 is
+    /// not found near the row that misplaces it. Gives the file and where the reference starts.
+    /// </summary>
+    private static (byte[] Bytes, long Reference) AReferenceAfterATrailerKeyword(string keyword)
+    {
+        var file = new HandWrittenFile();
+        var padding = "%" + new string('z', 1500) + "\n";
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>"),
+            [3] = file.Object(3, Page),
+        };
+        file.Raw(padding);
+        rows[12] = file.Object(12, "<< /Producer (p) >>");
+        file.Raw(padding);
+        file.Object(10, "<< /Encrypt 12 0 R >>");
+        rows[10] = rows[2];
+        file.Raw(padding);
+        file.Raw(keyword == "in a comment" ? "% trailer\n" : "trailer\n");
+        var reference = file.Position;
+        file.Raw("10 0 R\n");
+        file.Table(13, rows, "/Size 13 /Root 1 0 R");
+        return (file.Bytes, reference);
+    }
+
+    /// <summary>
+    /// A file whose table lacks object stream 10, which holds 13, and places object 4 past the end of the file, so that
+    /// reading 4, or the start of a validation, rebuilds the index; in which a rebuild's scan for trailers meets a
+    /// <c>trailer</c> keyword, <paramref name="keyword"/> — between objects, or in a comment —, followed by a reference to
+    /// object 21, a dictionary holding /Info whose comment runs past an object guard of 200 bytes. Comments pad the file,
+    /// so that 21 is the only object past the guard. Gives the file and where 21 is.
+    /// </summary>
+    private static (byte[] Bytes, long Referenced) AReferenceAfterATrailerKeywordPastTheObjectGuard(string keyword)
+    {
+        var file = new HandWrittenFile();
+        var padding = "%" + new string('z', 600) + "\n";
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>"),
+            [3] = file.Object(3, Page),
+            [4] = 99_999,
+        };
+        file.Object(4, "(four)");
+        file.ObjectStream(10, [(13, "(member)")]);
+        file.Raw(padding);
+        var referenced = file.Object(21, "<< /Info 6 0 R % " + new string('y', 400) + "\n>>");
+        file.Raw(padding);
+        file.Raw((keyword == "in a comment" ? "% trailer\n" : "trailer\n") + "21 0 R\n");
+        file.Table(7, rows, "/Size 7 /Root 1 0 R");
+        return (file.Bytes, referenced);
     }
 
     /// <summary>
