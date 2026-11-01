@@ -1433,12 +1433,12 @@ public class ObjectRuleTests
     [InlineData("/DecodeParms", "through 49, written in the file", true)]
     [InlineData("/Length", "directly", true)]
     [InlineData("/Length", "through 49, written in the file", true)]
-    public void A_chain_the_walk_follows_to_an_object_the_index_lists_free_reads_as_null_though_the_file_writes_it(string key, string through, bool written)
+    public void A_chain_the_walk_follows_to_an_object_the_index_lists_free_reads_as_null_whether_or_not_the_file_writes_it(string key, string through, bool written)
     {
         // Stream 7 takes its /DecodeParms, or its /Length, from 50, directly or through 49, written in the file; the index lists
-        // 50 free, and the file writes an object 50 near its header, 5 0 R, which no row places. The reader reads a free
-        // object as null, whatever the file writes: 7 needs nothing. The walk reads it so, and does not take it for a link of a
-        // run either, which would read 50 where the file writes it and lead 7 to 5, which it holds.
+        // 50 free, and the file writes, in all but two cases, an object 50 near its header, 5 0 R, which no row places. The
+        // reader reads a free object as null, whatever the file writes: 7 needs nothing. The walk reads it so, and does not
+        // take it for a link of a run either, which would read 50 where the file writes it and lead 7 to 5, which it holds.
         var file = new HandWrittenFile(version: "1.5");
 
         if (written)
@@ -1691,7 +1691,7 @@ public class ObjectRuleTests
         // own from 101, which 9 holds. The reader decodes 9 within 7's decoding, and 11 within 9's, which reads 101 as null,
         // 9 being decoded: 100 leads to 5, and it reports that 7 needs 5. What 9's decoding gives depends on which of 9 and
         // 11 the reader decoded first: 9 does not decode alike, and 100 is a need of 7, which reads as null. 9 and 11 are
-        // circular; 7, whose loop closes only through 100's value, is left to the reader (#312).
+        // circular; 7, whose loop closes only through 100's value, is left to the reader (#314).
         var objects = new SortedDictionary<int, (string Entries, byte[]? Data)>
         {
             [7] = ConvergenceShapes.FlateObjectStream("/DecodeParms 100 0 R", (5, "<< /Predictor 1 >>"), (6, "<< /Title (six) >>")),
@@ -1805,6 +1805,8 @@ public class ObjectRuleTests
     [InlineData("a nest holding such a nest", false)]
     [InlineData("a nest whose parse takes such a run", false)]
     [InlineData("a parameter neither index holds", true)]
+    [InlineData("a parameter only the rebuilt index holds, past the chain's /Size", false)]
+    [InlineData("a parameter neither index holds, past the chain's /Size", true)]
     [InlineData("the object itself, held at its index by a stream written before", false)]
     [InlineData("the object itself, held at its index by a stream written before, its own known to decode alike", false)]
     [InlineData("the object itself, at another index of its stream", false)]
@@ -1816,7 +1818,8 @@ public class ObjectRuleTests
         // walk judges the chain's index (#128); the reader decodes 9 through its rebuilt one. Where the two place differently
         // what 9's decoding reads — 9 itself, 50, a parameter, an object a run of links passes or a stream a nest goes through
         // —, what the reader serves of 50 is no decoding the walk followed: 50 is a need of 7, which reads as null, and 7 is
-        // not circular. Where they place it alike, 50 is followed to 5.
+        // not circular. Where they place it alike, 50 is followed to 5. A number past the chain's /Size, of which its index has
+        // no row, is no more held there than one it lists free.
         var file = RedefinedByARebuild(redefined);
         using var document = PdfDocument.Open(file);
 
@@ -2018,6 +2021,31 @@ public class ObjectRuleTests
         new PdfValidator().Validate(document).Contains(PdfValidationRuleIds.XRefObjectStreamCircular).Should().Be(circular);
     }
 
+    [Theory]
+    [InlineData(new int[0], true)]
+    [InlineData(new[] { 30 }, true)]
+    [InlineData(new[] { 50 }, true)]
+    [InlineData(new[] { 30, 50 }, false)]
+    public void A_stream_whose_decoding_meets_a_link_the_reader_s_cache_serves_past_its_deepest_load_is_read_as_that_link_leads(int[] before, bool circular)
+    {
+        // #163's residual, which closing it flips, closing it with no cut kept alone leaving it as it is. Stream 6 holds 7 and
+        // takes its parameters from 50, which 5 holds: 7 0 R where 5's second Flate step reads stream 20's predictor, 77 0 R
+        // otherwise. 20's /Length leads through 62 streams to 30, written in the file, 20 0 R. The walk follows 50 through the
+        // reader: 5 decodes alike, its walk reading 30 as null at the 65th load, inside 20's parse, where it places 20's data
+        // alone. Read first, 50 has the reader cut 30 there, and gives 7 0 R: 6 is circular. Read after 30, which the reader's
+        // cache keeps, 50 has the cache serve 30 past the reader's nesting, which it asks after its cache: the chain goes on
+        // to 20, which the reader holds in its loads and reads as null for the rest of 5's decoding, and 50 gives 77 0 R, with
+        // no load cut. What was read before decides (#163).
+        using var document = PdfDocument.Open(ConvergenceShapes.CachedPastTheCut(62));
+
+        foreach (var number in before)
+        {
+            document.GetObject(new PdfObjectId(number));
+        }
+
+        new PdfValidator().Validate(document).Contains(PdfValidationRuleIds.XRefObjectStreamCircular).Should().Be(circular);
+    }
+
     [Fact]
     public void The_deepest_walk_gives_the_same_report_on_a_stack_of_256_KB_as_on_a_thread_of_its_own()
     {
@@ -2075,6 +2103,30 @@ public class ObjectRuleTests
         new PdfValidator().Validate(document).Contains(PdfValidationRuleIds.XRefObjectStreamCircular).Should().BeFalse();
         document.WasRepaired.Should().BeTrue();
         document.GetObject(new PdfObjectId(100)).Should().BeOfType<PdfReference>("the rebuilt index places 100 in 9, which the reader decodes");
+    }
+
+    [Theory(Timeout = 60_000)]
+    [InlineData("<< /Type /ObjStm /N 1 /First 6 >>")]
+    [InlineData("<< /N 1 /First 6 >>")]
+    [InlineData("42")]
+    public async Task An_object_of_a_stream_the_chain_places_as_no_stream_reads_as_null_and_the_stream_is_broken(string nine)
+    {
+        // Stream 7 takes its parameters from 100, which the index places in object stream 9; 7 holds 5. 9 is a regular object
+        // written with no stream: a dictionary, of /Type /ObjStm or not, or an integer. The reader decodes nothing of it, and
+        // serves 100 as nothing: 9 does not decode alike, 100 is a need of 7, read as null, and 7 needs nothing that leads
+        // back to it. The validation ends, its walk taking 9 for a stream that does not decode alike rather than one that
+        // waits, and 9 is the broken rule's.
+        var objects = new SortedDictionary<int, (string Entries, byte[]? Data)>
+        {
+            [7] = ConvergenceShapes.FlateObjectStream("/DecodeParms 100 0 R", (5, "<< /Predictor 1 >>"), (6, "<< /Title (six) >>")),
+            [9] = (nine, null),
+        };
+        var file = ConvergenceShapes.StreamsAndMembers(objects, new() { [5] = (7, 0), [6] = (7, 1), [100] = (9, 0) });
+
+        var report = await Task.Run(() => Validate(file), TestContext.Current.CancellationToken);
+
+        report.Contains(PdfValidationRuleIds.XRefObjectStreamCircular).Should().BeFalse();
+        Single(report, PdfValidationRuleIds.XRefObjectStreamBroken).Message.Should().Be("Object 9, where the index places 1 object, is not a stream.");
     }
 
     [Fact]
@@ -2662,6 +2714,14 @@ public class ObjectRuleTests
                 break;
             case "a parameter neither index holds":
                 parameters = "/DecodeParms 80 0 R";
+                break;
+            case "a parameter only the rebuilt index holds, past the chain's /Size":
+                // The chain's /Size is 401: its index holds no row for 900, free or in use.
+                parameters = "/DecodeParms 900 0 R";
+                later.Add((900, "<< /Predictor 1 >>"));
+                break;
+            case "a parameter neither index holds, past the chain's /Size":
+                parameters = "/DecodeParms 900 0 R";
                 break;
             case "the object itself, held at its index by a stream written before":
                 file.Object(8, ObjectStreamBody(string.Empty, (50, "5 0 R")));

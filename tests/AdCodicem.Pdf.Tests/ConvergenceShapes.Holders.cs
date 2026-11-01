@@ -553,6 +553,31 @@ internal static partial class ConvergenceShapes
     }
 
     /// <summary>
+    /// A file of #163's residual, which is not among the shapes: object stream 5 takes both its Flate steps' parameters from
+    /// stream 20, <c>/Predictor 12 /Columns 12</c>, whose <c>/Length</c> leads through streams 100 onward,
+    /// <paramref name="nest"/> of them, each naming the next, the last naming 30, written in the file, <c>20 0 R</c>. With 62,
+    /// a first read of 50 loads 30 at the 65th load, which the reader's nesting cuts, unless its cache kept 30 from a read
+    /// before, and serves it there: the chain then goes on to 20, which the reader holds in its loads, and reads it as null
+    /// for the rest of 5's decoding.
+    /// </summary>
+    internal static byte[] CachedPastTheCut(int nest)
+    {
+        var objects = new SortedDictionary<int, (string Entries, byte[]? Data)>
+        {
+            [20] = ("/Predictor 12 /Columns 12 /Length 100 0 R", "rr"u8.ToArray()),
+            [5] = ("/Type /ObjStm /N 1 /First 6 /Length @L /Filter [/FlateDecode /FlateDecode] /DecodeParms [20 0 R 20 0 R]", HolderWithPredictedMember(2, predicted: true)),
+            [30] = ("20 0 R", null),
+        };
+
+        for (var stream = 0; stream < nest; stream++)
+        {
+            objects[100 + stream] = (string.Create(CultureInfo.InvariantCulture, $"/Length {(stream + 1 < nest ? 101 + stream : 30)} 0 R"), "x"u8.ToArray());
+        }
+
+        return ReadingFifty(objects);
+    }
+
+    /// <summary>
     /// Object stream 7, written as it is, holds 5, 2, and 6, and takes its <c>/N</c> from stream 100, which heads
     /// <paramref name="streams"/> streams by <c>/Length</c>, the last naming 180, written in the file, <c>170 0 R</c>; 9 holds
     /// 171, a string holding <c>endstream</c> when <paramref name="endstreamInside"/> says so, and 170, <c>5 0 R</c>, its
