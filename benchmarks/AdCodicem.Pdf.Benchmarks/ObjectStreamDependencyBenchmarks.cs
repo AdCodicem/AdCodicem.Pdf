@@ -10,8 +10,8 @@ namespace AdCodicem.Pdf.Benchmarks;
 /// <summary>
 /// Measures the walk of the object streams' dependencies, which validation runs once, on Flate object streams that take
 /// their <c>/DecodeParms</c> from one object written directly in the file, from an object the next stream holds, from
-/// streams that each head a nest of streams by <c>/Length</c>, or from the first of chains of objects other object streams
-/// hold.
+/// streams that each head a nest of streams by <c>/Length</c>, from the first of chains of objects other object streams
+/// hold, or from the object of a stream whose standing waits on the next, and on the streams its parameters' values lie in.
 /// </summary>
 /// <remarks>
 /// The walk reads what decoding each stream reads, where the chain's index places it, outside the reader's cache (#128,
@@ -24,7 +24,11 @@ namespace AdCodicem.Pdf.Benchmarks;
 /// objects: the nest of each is taken at once once a parse went through it, where each stream parsed them all again (#201).
 /// An object another object stream holds is followed where that stream decodes alike in every read order, which is worked
 /// out once a validation for each such stream, and a chain through such objects is then taken at once, as one written in
-/// the file is (#312). The document is opened outside the measurement.
+/// the file is (#312). A stream whose standing needs those of streams not known yet waits for them, and is walked again
+/// once they are, from what the walk kept of its dictionary: streams that each wait on the next, and on 192 holders their
+/// parameters' values lie in, are pushed on the stack of waiting standings again by each walk that meets them, leaving
+/// stale entries the stack is rid of once it holds more than 1,024 and each time it has doubled since (#312). The document
+/// is opened outside the measurement.
 /// </remarks>
 [MemoryDiagnoser]
 public class ObjectStreamDependencyBenchmarks
@@ -45,9 +49,11 @@ public class ObjectStreamDependencyBenchmarks
     /// file; <c>ring</c>, the object the next stream holds, the last naming the first's; <c>nests</c>, 64 streams whose
     /// predictor asks for their colors, bits and columns, each a stream as well, each of the 256 heading a nest of 62
     /// streams, each taking its <c>/Length</c> from the next; <c>holders</c>, 64 objects, each the first of a chain of 8
-    /// objects held by object streams of their own, which need nothing.
+    /// objects held by object streams of their own, which need nothing; <c>waits</c>, for one stream, the object the first
+    /// of the others holds, each of the others taking its <c>/Length</c> from the object the next holds, and as parameters
+    /// 64 predictors whose values are the objects of 192 holders.
     /// </summary>
-    [Params("shared", "ring", "nests", "holders")]
+    [Params("shared", "ring", "nests", "holders", "waits")]
     public string Parameters { get; set; } = "shared";
 
     [GlobalSetup]
@@ -55,6 +61,7 @@ public class ObjectStreamDependencyBenchmarks
     {
         "nests" => CreateNests(StreamCount),
         "holders" => CreateHolders(StreamCount),
+        "waits" => CreateWaits(StreamCount),
         _ => Create(StreamCount, sharedBytes: 16 * 1024, ring: Parameters == "ring"),
     });
 
@@ -221,6 +228,76 @@ public class ObjectStreamDependencyBenchmarks
         }
 
         Finish(output, offsets, First, judged + (2 * streams));
+        return output.ToArray();
+    }
+
+    /// <summary>
+    /// Writes a file indexed by a cross-reference stream, whose object streams, numbered from 10, each hold one object: 10, a
+    /// Flate stream, takes its <c>/DecodeParms</c> from the object X1 holds; 192 holders after it each hold <c>1</c> and need
+    /// nothing; the <paramref name="streams"/> after them, X1, X2 and on, each take their <c>/Length</c> from the object the
+    /// next holds, the last its own length, <c>/Filter 5 0 R</c>, 64 Flate steps, and <c>/DecodeParms 6 0 R</c>, 64
+    /// predictors of 12 whose <c>/Colors</c>, <c>/BitsPerComponent</c> and <c>/Columns</c> are each the object of a holder.
+    /// Each X's first walk meets the next X and the 192 holders before any is known, and pushes them all on the stack of
+    /// waiting standings: each holder waits once for each X, its entries but the last left stale, so that the stack holds
+    /// as many as 1,214 entries for 100 streams and 2,532 for 1,000, rid of the stale ones each time it passes 1,024 or has
+    /// doubled since. The X's data is written as it is: the walk reads none of it.
+    /// </summary>
+    private static byte[] CreateWaits(int streams)
+    {
+        const int First = 10;
+        const int Holders = 3 * Steps;
+        using var output = new MemoryStream();
+        var offsets = new Dictionary<int, long>();
+        void Write(string text) => output.Write(Encoding.ASCII.GetBytes(text));
+
+        void WriteObject(int number, string body)
+        {
+            offsets[number] = output.Position;
+            Write(string.Create(CultureInfo.InvariantCulture, $"{number} 0 obj\n{body}\nendobj\n"));
+        }
+
+        void WriteCompressed(int number, string member, string entries)
+        {
+            var data = Compress(string.Create(CultureInfo.InvariantCulture, $"{number + 1} 0 {member}"));
+            var header = string.Create(CultureInfo.InvariantCulture, $"{number + 1} 0 ").Length;
+            offsets[number] = output.Position;
+            Write(string.Create(CultureInfo.InvariantCulture, $"{number} 0 obj\n<< /Type /ObjStm /N 1 /First {header} /Filter /FlateDecode {entries}/Length {data.Length} >>\nstream\n"));
+            output.Write(data);
+            Write("\nendstream\nendobj\n");
+        }
+
+        Write("%PDF-1.5\n");
+        WriteObject(1, "<< /Type /Catalog /Pages 2 0 R >>");
+        WriteObject(2, "<< /Type /Pages /Kids [] /Count 0 >>");
+        WriteObject(5, "[" + string.Join(' ', Enumerable.Repeat("/FlateDecode", Steps)) + "]");
+        var parameters = new StringBuilder("[");
+
+        for (var step = 0; step < Steps; step++)
+        {
+            var holder = First + 2 + (6 * step);
+            parameters.Append(CultureInfo.InvariantCulture, $"<< /Predictor 12 /Colors {holder + 1} 0 R /BitsPerComponent {holder + 3} 0 R /Columns {holder + 5} 0 R >> ");
+        }
+
+        WriteObject(6, parameters.Append(']').ToString());
+
+        for (var holder = 0; holder < Holders; holder++)
+        {
+            WriteCompressed(First + 2 + (2 * holder), "1", string.Empty);
+        }
+
+        var x = First + 2 + (2 * Holders);
+        WriteCompressed(First, "<< >>", string.Create(CultureInfo.InvariantCulture, $"/DecodeParms {x + 1} 0 R "));
+
+        for (var stream = 0; stream < streams; stream++)
+        {
+            var number = x + (2 * stream);
+            var data = string.Create(CultureInfo.InvariantCulture, $"{number + 1} 0 5");
+            var header = string.Create(CultureInfo.InvariantCulture, $"{number + 1} 0 ").Length;
+            var length = stream + 1 < streams ? string.Create(CultureInfo.InvariantCulture, $"{number + 3} 0 R") : data.Length.ToString(CultureInfo.InvariantCulture);
+            WriteObject(number, string.Create(CultureInfo.InvariantCulture, $"<< /Type /ObjStm /N 1 /First {header} /Filter 5 0 R /DecodeParms 6 0 R /Length {length} >>\nstream\n{data}\nendstream"));
+        }
+
+        Finish(output, offsets, First, x + (2 * streams));
         return output.ToArray();
     }
 
