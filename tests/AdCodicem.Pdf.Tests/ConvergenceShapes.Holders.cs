@@ -65,6 +65,11 @@ internal static partial class ConvergenceShapes
             // 9 parses stream 300, whose nest of 64 streams by /Length the reader's nesting cuts however deep 9 is decoded: the
             // cut places a stream's data, the stream's own, and 9 decodes alike.
             yield return new($"a holder parsing a nest the reader's nesting cuts below it{cache}", NestBelow(64), PdfReaderLimits.Default, [[new(50)], [new(5)], [new(7)], [new(330)], [new(360), new(7)], [new(300), new(50)]], capacity);
+
+            // 14's decoding loads 32 objects of a chain, the last two the first of a run the walk kept, which goes on to an
+            // object of the first of 62 holders, each reading the next's: taken whole, the run lent 14 the reach of holders
+            // its decoding never loads, where the cache kept the run.
+            yield return new($"a holder whose chain ends inside a run kept from a longer chain{cache}", RunPastTheLoadsLeft(62), PdfReaderLimits.Default, [[new(40)], [new(41)], [new(14)], [new(16)], [new(1001)], [new(1003), new(40)]], capacity);
         }
 
         // #312: 7 takes its parameters from 100, which 9 holds; 9 from 170, which 11 holds; 100 is 5 0 R, which 7 holds.
@@ -610,6 +615,72 @@ internal static partial class ConvergenceShapes
             objects[100 + stream] = (string.Create(CultureInfo.InvariantCulture, $"/Length {(stream + 1 < streams ? 101 + stream : 180)} 0 R"), "ab"u8.ToArray());
         }
 
+        return StreamsAndMembers(objects, members);
+    }
+
+    /// <summary>
+    /// Object stream 16 holds 41 and takes its predictor from 40, which 14 holds, <c>41 0 R</c>. 14 takes its own from 1101,
+    /// the first of 29 objects written in the file, each naming the next, the last naming 1010, which names 1001; 1001 names
+    /// 1002, 1002 names 1003, which object stream 2002 holds, and 1003 names 1004, an integer. 14's decoding loads 32 objects
+    /// of that chain, the last 1002, and never 1003. 2002 heads <paramref name="ladder"/> object streams, each taking its
+    /// predictor from an object the next holds, so that its decoding reaches as many levels deeper. Streams 10 to 13, walked
+    /// first, have the walk keep runs of the chain: 10, whose predictor leads through 30 objects to one 30 holds, naming 1010,
+    /// the run of 1010 alone, the last its chain loads; 11, whose predictor leads through two objects to one 31 holds, naming
+    /// 1101, the run of 1101 to 1129, as many as its chain has left; 12 and 13, whose predictor is 1001, the run of 1001 to
+    /// 1003, once 12 has worked out 2002's standing.
+    /// </summary>
+    internal static byte[] RunPastTheLoadsLeft(int ladder)
+    {
+        var objects = new SortedDictionary<int, (string Entries, byte[]? Data)>
+        {
+            [1001] = ("1002 0 R", null),
+            [1002] = ("1003 0 R", null),
+            [1004] = ("1", null),
+            [1010] = ("1001 0 R", null),
+            [1401] = ("1402 0 R", null),
+            [1402] = ("1403 0 R", null),
+            [10] = FlateObjectStream("/DecodeParms << /Predictor 1201 0 R >>", (50, "<< >>")),
+            [11] = FlateObjectStream("/DecodeParms << /Predictor 1401 0 R >>", (51, "<< >>")),
+            [12] = FlateObjectStream("/DecodeParms << /Predictor 1001 0 R >>", (52, "<< >>")),
+            [13] = FlateObjectStream("/DecodeParms << /Predictor 1001 0 R >>", (53, "<< >>")),
+            [14] = FlateObjectStream("/DecodeParms << /Predictor 1101 0 R >>", (40, "41 0 R")),
+            [16] = FlateObjectStream("/DecodeParms << /Predictor 40 0 R >>", (41, "<< >>")),
+            [30] = FlateObjectStream(string.Empty, (1300, "1010 0 R")),
+            [31] = FlateObjectStream(string.Empty, (1403, "1101 0 R")),
+        };
+        var members = new Dictionary<int, (int Stream, int Index)>
+        {
+            [50] = (10, 0),
+            [51] = (11, 0),
+            [52] = (12, 0),
+            [53] = (13, 0),
+            [40] = (14, 0),
+            [41] = (16, 0),
+            [1300] = (30, 0),
+            [1403] = (31, 0),
+        };
+
+        for (var link = 1; link <= 29; link++)
+        {
+            objects[1100 + link] = (string.Create(CultureInfo.InvariantCulture, $"{(link < 29 ? 1101 + link : 1010)} 0 R"), null);
+        }
+
+        for (var link = 1; link <= 30; link++)
+        {
+            objects[1200 + link] = (string.Create(CultureInfo.InvariantCulture, $"{(link < 30 ? 1201 + link : 1300)} 0 R"), null);
+        }
+
+        // The kth holder, 2000 + 2k, holds 2001 + 2k, an integer, and takes its predictor from the object the next holds;
+        // the first also holds 1003.
+        for (var holder = 1; holder <= ladder; holder++)
+        {
+            var number = 2000 + (2 * holder);
+            var entries = holder < ladder ? string.Create(CultureInfo.InvariantCulture, $"/DecodeParms << /Predictor {number + 3} 0 R >>") : string.Empty;
+            objects[number] = holder == 1 ? FlateObjectStream(entries, (number + 1, "1"), (1003, "1004 0 R")) : FlateObjectStream(entries, (number + 1, "1"));
+            members[number + 1] = (number, 0);
+        }
+
+        members[1003] = (2002, 1);
         return StreamsAndMembers(objects, members);
     }
 

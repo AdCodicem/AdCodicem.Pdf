@@ -2191,6 +2191,35 @@ public class ObjectRuleTests
     }
 
     [Theory]
+    [InlineData(60, 8192)]
+    [InlineData(61, 8192)]
+    [InlineData(62, 8192)]
+    [InlineData(62, 64)]
+    [InlineData(62, 8)]
+    [InlineData(62, 1)]
+    [InlineData(63, 8192)]
+    public void A_chain_that_ends_inside_a_run_the_walk_kept_reaches_only_as_deep_as_the_objects_it_loads_whatever_the_cache(int ladder, int capacity)
+    {
+        // Stream 16 takes its predictor from 40, which 14 holds, 41 0 R; 16 holds 41. 14's decoding loads 32 objects of the
+        // chain its predictor heads, ending at 1002 with two loads left for the run of 1001 to 1003 the walk kept, 1003 held
+        // by the first of a ladder of holders: 14 reaches the 2nd load, decodes alike wherever 16 meets 40, and 40 leads 16
+        // to 41, as the reader finds. The run is longer than the loads 14's chain has left, and its holder's decoding,
+        // with 62 holders, reaches 64 levels deeper: taken whole, it gave 14 that reach, and 16 read 40 as a need of 14,
+        // unless a cache too small to keep the run let it go. A run longer than what a chain loads is not taken: the chain
+        // takes what it loads of it, and reaches no deeper than that (#312).
+        var file = ConvergenceShapes.RunPastTheLoadsLeft(ladder);
+        using var document = PdfDocument.Open(file, new PdfReaderOptions { ObjectCacheCapacity = capacity });
+
+        Single(new PdfValidator().Validate(document), PdfValidationRuleIds.XRefObjectStreamCircular).Message.Should().Be(
+            "Object stream 16 needs object 41, which it holds, to be read: its /DecodeParms names it, and the object cannot be read before the stream is.");
+
+        using var reading = PdfDocument.Open(file, new PdfReaderOptions { ObjectCacheCapacity = capacity });
+        reading.GetObject(new PdfObjectId(41));
+        reading.Diagnostics.Should().Contain(diagnostic =>
+            diagnostic.Code == PdfDiagnosticCodes.StreamSelfReference && diagnostic.Message.StartsWith("Object stream 16 needs object 41,", StringComparison.Ordinal));
+    }
+
+    [Theory]
     [InlineData("nothing", 30, false)]
     [InlineData("the broken stream", 30, false)]
     [InlineData("a validation", 30, false)]

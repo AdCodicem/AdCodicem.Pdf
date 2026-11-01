@@ -5,8 +5,9 @@ using AdCodicem.Pdf.Validation;
 namespace AdCodicem.Pdf.Tests;
 
 /// <summary>
-/// Holds every file crafted while measuring #128, #237 and #312 to one report, whatever was read before validating it:
-/// nothing, a validation, the objects whose reading once changed the report, or every object.
+/// Holds every file crafted while measuring #128, #237 and #312 to one report, whatever was read before validating it —
+/// nothing, a validation, the objects whose reading once changed the report, or every object —, and whatever the reader's
+/// cache.
 /// </summary>
 public class ReadOrderConvergenceTests
 {
@@ -42,6 +43,22 @@ public class ReadOrderConvergenceTests
         }
 
         Findings(crafted, ReadEverything).Should().Equal(fresh, "reading every object first leaves nothing to find otherwise");
+    }
+
+    [Theory]
+    [MemberData(nameof(Shapes))]
+    public void A_crafted_file_validates_the_same_whatever_the_cache(string shape)
+    {
+        // The walk keeps what it follows for as many objects as the reader caches, and takes what it kept only where
+        // following it again would find the same (#201, #312): the default cache, which keeps a run or a nest a smaller one
+        // lets go of, finds what the smallest does.
+        var crafted = ConvergenceShapes.All[shape];
+        var fresh = Findings(crafted, _ => { });
+
+        foreach (var capacity in (int[])[8192, ConvergenceShapes.SmallestCache])
+        {
+            Findings(crafted with { CacheCapacity = capacity }, _ => { }).Should().Equal(fresh, "a cache of {0} objects finds the same", capacity);
+        }
     }
 
     /// <summary>Gets the seeds the files of <see cref="ConvergenceShapes.GeneratedHolders"/> are drawn from.</summary>
