@@ -714,6 +714,39 @@ public class ReadOrderTests
     }
 
     [Theory]
+    [InlineData("an I/O error")]
+    [InlineData("a refused access")]
+    [InlineData("an error of the caller's own")]
+    public void A_read_the_source_fails_leaves_with_its_own_exception_whatever_the_source_throws_in_the_finish_after_it(string failure)
+    {
+        // Reading 7 rebuilds the index while object stream 6 is being loaded, and the source fails to give 5, 6's /Length,
+        // where the rebuild found it: the read finishes the rebuild before its exception leaves. The source fails that finish
+        // too, with an I/O error or with what a caller's own source throws: the rebuild's other steps take either as the
+        // source failing, and so does this one. The read's own exception is the one that leaves, and the next read finishes
+        // the rebuild.
+        Exception finishing = failure switch
+        {
+            "an I/O error" => new IOException("The source failed the finish."),
+            "a refused access" => new UnauthorizedAccessException("The source refused the finish."),
+            _ => new InvalidOperationException("The caller's source failed the finish."),
+        };
+        var (bytes, five) = MemberWhoseLengthLeadsNowhere();
+        using var source = new FailingSource(bytes);
+        using var document = PdfDocument.Open(source, options: null, ownsSource: false);
+        var failed = 0;
+        source.Failing = () => failed++;
+        source.Fail(five, 1);
+        source.FailRead(8, finishing);
+
+        FluentActions.Invoking(() => document.GetObject(new PdfObjectId(7))).Should().Throw<IOException>()
+            .Which.Should().NotBeSameAs(finishing);
+
+        failed.Should().Be(2, "the source failed the load, then the finish");
+        document.GetObject(new PdfObjectId(7)).AsText().Should().Be("member");
+        document.ObjectCount.Should().Be(8);
+    }
+
+    [Theory]
     [InlineData("/Root 1 0 R", "a read", "a read")]
     [InlineData("/Root 1 0 R", "a read", "a validation")]
     [InlineData("/Root 1 0 R", "a validation", "a read")]
@@ -1919,6 +1952,7 @@ public class ReadOrderTests
         private long _at = -1;
         private int _reads;
         private int _failingRead;
+        private Exception? _failure;
 
         /// <inheritdoc/>
         public override long Length => _inner.Length;
@@ -1941,8 +1975,15 @@ public class ReadOrderTests
             _failing.UnionWith(reads);
         }
 
-        /// <summary>Makes the read that comes <paramref name="read"/>th from now, counted from 1, fail, wherever it starts.</summary>
-        public void FailRead(int read) => _failingRead = Reads + read;
+        /// <summary>
+        /// Makes the read that comes <paramref name="read"/>th from now, counted from 1, fail, wherever it starts: with
+        /// <paramref name="failure"/>, or with an I/O error when none is given.
+        /// </summary>
+        public void FailRead(int read, Exception? failure = null)
+        {
+            _failingRead = Reads + read;
+            _failure = failure;
+        }
 
         /// <inheritdoc/>
         public override int Read(long offset, Span<byte> buffer)
@@ -1953,7 +1994,7 @@ public class ReadOrderTests
             if ((offset == _at && _failing.Contains(++_reads)) || read == _failingRead)
             {
                 Failing?.Invoke();
-                throw new IOException("The source failed to give the bytes asked for.");
+                throw read == _failingRead && _failure is not null ? _failure : new IOException("The source failed to give the bytes asked for.");
             }
 
             return _inner.Read(offset, buffer);
