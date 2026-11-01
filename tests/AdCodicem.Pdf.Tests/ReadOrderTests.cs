@@ -1010,6 +1010,45 @@ public class ReadOrderTests
     }
 
     [Fact]
+    public void What_a_rebuild_s_scan_for_trailers_noted_before_the_source_failed_it_is_noted_once_by_the_rebuild_run_again()
+    {
+        // Object 4's row leads into padding, and reading 4 rebuilds the index. The scan for trailers parses the dictionary
+        // after each trailer keyword, the newest first: the table's, then one a stream nested in it cuts short, which is
+        // noted, then an older one, which the source fails to give. The read throws, what the rebuild reported withdrawn;
+        // the next read runs the rebuild again from its scan, which notes the stream again: the document reports what a
+        // rebuild run whole reports, the note once (#167, #171).
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"),
+        };
+        var older = file.Position + "trailer".Length;
+        file.Raw("trailer\n<< /Older true >>\n");
+        file.Raw("trailer\n<< /Newer true /Nested << /K 1 >>\nstream\nabc\nendstream /After 2 >>\n");
+        rows[8] = file.Padding(8);
+        rows[4] = rows[8] + 600;
+        file.Object(4, "(four)");
+        file.Table(9, rows, "/Size 9 /Root 1 0 R");
+        var bytes = file.Bytes;
+        using var whole = PdfDocument.Open(bytes);
+        whole.GetObject(new PdfObjectId(4));
+        using var source = new FailingSource(bytes);
+        using var document = PdfDocument.Open(source, options: null, ownsSource: false);
+        source.Fail(older, 1);
+
+        FluentActions.Invoking(() => document.GetObject(new PdfObjectId(4))).Should().Throw<IOException>();
+        var four = document.GetObject(new PdfObjectId(4));
+
+        four.AsText().Should().Be("four");
+        document.Trailer.Keys.Select(key => key.Value).Should().Equal(whole.Trailer.Keys.Select(key => key.Value));
+        document.Diagnostics.Select(diagnostic => diagnostic.ToString())
+            .Should().Equal(whole.Diagnostics.Select(diagnostic => diagnostic.ToString()));
+        document.Diagnostics.Should().ContainSingle(diagnostic => diagnostic.Code == PdfDiagnosticCodes.SyntaxUnexpectedToken)
+            .Which.Position.Should().Be(bytes.AsSpan().IndexOf("stream\nabc"u8));
+    }
+
+    [Fact]
     public void A_rebuild_whose_scan_the_source_fails_keeps_when_run_again_the_entries_a_chain_a_guard_cut_gave()
     {
         // The cross-reference stream decodes no further than its first ten rows, a guard's cut; object 6, which holds 7, has
@@ -1835,7 +1874,8 @@ public class ReadOrderTests
         // the trailer held, whether the document was encrypted, and what a later validation found, which throws only where
         // its walk reads what a guard cut, then depended on what was read first. Now, the rebuild run by the end of the first
         // validation whatever it threw, the trailer holds the entry, and the document is encrypted as a read without
-        // throwing finds it, in every order; and a second validation finds the same in every order.
+        // throwing finds it, in every order, the stream after the dictionary noted nowhere; and a second validation finds
+        // the same in every order.
         var bytes = AStreamTrailerWhoseLengthRunsPastTheObjectGuard(keyword, entry);
         var limits = PdfReaderLimits.Default with { MaxObjectLength = 200 };
         var key = entry[1..entry.IndexOf(' ', StringComparison.Ordinal)];
@@ -1860,6 +1900,7 @@ public class ReadOrderTests
 
                 document.WasRepaired.Should().BeTrue(order);
                 document.Trailer.ContainsKey(PdfName.Get(key)).Should().BeTrue(order);
+                document.Diagnostics.Contains(PdfDiagnosticCodes.SyntaxUnexpectedToken).Should().BeFalse(order);
                 var keys = string.Join(' ', document.Trailer.Keys.Select(name => name.Value).Order(StringComparer.Ordinal));
                 states[order] = $"{keys}; encrypted {document.IsEncrypted}";
                 seconds[order] = Validated(document);

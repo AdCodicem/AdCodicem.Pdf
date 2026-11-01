@@ -7063,15 +7063,41 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
                 // No stream data is read: the file says where a token the window's edge reaches ends, as it does to a load.
                 var parser = new PdfObjectParser(
                     window.Memory, positions[i], this, _pending, endsData: !cut, fileEdge: this, readsStreams: false);
+                var keyword = positions[i] - TrailerKeyword.Length;
+                var value = parser.ParseObject();
 
-                if (parser.ParseObject() is PdfDictionary trailer)
+                if (value is PdfDictionary trailer)
                 {
+                    // A stream inside the dictionary ended the parse at its keyword, the dictionary with it; one after the
+                    // dictionary ends nothing of it. Noted with the parse's own faults, the note is kept once, as they are.
+                    if (parser.StreamStopDepth > 0)
+                    {
+                        _pending.Warn(
+                            PdfDiagnosticCodes.SyntaxUnexpectedToken,
+                            string.Create(
+                                CultureInfo.InvariantCulture,
+                                $"A stream inside the dictionary after the trailer keyword at offset {keyword} ends what the rebuild merges of it: the key that holds it and the keys after it are not read."),
+                            positions[i] + parser.StreamStop);
+                    }
+
                     _xref.MergeTrailer(trailer);
 
                     if (_rebuiltTrailerPosition < 0)
                     {
-                        _rebuiltTrailerPosition = positions[i] - TrailerKeyword.Length;
+                        _rebuiltTrailerPosition = keyword;
                     }
+                }
+                else if (value is PdfReference reference)
+                {
+                    // The reference starts past the white space and comments after the keyword.
+                    var lexer = new PdfLexer(window.Memory.Span);
+                    lexer.SkipWhitespaceAndComments();
+                    _pending.Warn(
+                        PdfDiagnosticCodes.SyntaxUnexpectedToken,
+                        string.Create(
+                            CultureInfo.InvariantCulture,
+                            $"The trailer keyword at offset {keyword} is followed by a reference to object {reference.Id.Number}, not by a dictionary; the rebuild does not follow it."),
+                        positions[i] + lexer.Position);
                 }
 
                 KeepPending(mark);

@@ -130,6 +130,12 @@ internal ref struct PdfObjectParser
     /// </summary>
     private int _streamStop = -1;
 
+    /// <summary>
+    /// How many containers were open around the dictionary whose <c>stream</c> keyword a parse that reads no stream stopped
+    /// at, or -1 when it met none.
+    /// </summary>
+    private int _streamStopDepth = -1;
+
     /// <summary>Where the header of the last indirect object <see cref="TryReadIndirectObject"/> read starts, in the buffer.</summary>
     private int _headerStart;
 
@@ -150,7 +156,7 @@ internal ref struct PdfObjectParser
     /// <param name="readsStreams">
     /// Whether a stream a dictionary introduces is read — its data, and what its <c>/Length</c> names —; when it is not, the
     /// parse stops at its <c>stream</c> keyword, the dictionary given as it was read, and <see cref="StoppedAtStream"/> says
-    /// so.
+    /// so, <see cref="StreamStop"/> where, and <see cref="StreamStopDepth"/> inside how many containers.
     /// </param>
     public PdfObjectParser(
         ReadOnlyMemory<byte> memory,
@@ -223,6 +229,24 @@ internal ref struct PdfObjectParser
     /// and what it read of the member is no value (#161).
     /// </summary>
     public readonly bool StoppedAtStream => _streamStop >= 0;
+
+    /// <summary>
+    /// Gets where the <c>stream</c> keyword a parse that reads no stream stopped at starts, in the buffer; -1 when it met
+    /// none.
+    /// </summary>
+    public readonly int StreamStop => _streamStop;
+
+    /// <summary>
+    /// Gets how many containers were open around the dictionary whose <c>stream</c> keyword a parse that reads no stream
+    /// stopped at; -1 when it met none.
+    /// </summary>
+    /// <remarks>
+    /// At 0, the dictionary is the value the parse began with, which it gives whole: only the stream after it is unread, as
+    /// a trailer's is (#171). Past 0, the dictionary stood inside that value — an element of an array, the value of a key —,
+    /// and every container open around it ended at the keyword with what it held before it: the element or the key that
+    /// holds the stream, and what follows them, are unread.
+    /// </remarks>
+    public readonly int StreamStopDepth => _streamStopDepth;
 
     /// <summary>Gets where the header of the last indirect object <see cref="TryReadIndirectObject"/> read starts, in the buffer.</summary>
     public readonly int HeaderStart => _headerStart;
@@ -742,10 +766,11 @@ internal ref struct PdfObjectParser
         {
             // A parse that reads no stream stops here, the containers it had open with it: a member's stream is no value
             // (#161), and a trailer's is its dictionary alone, as it was read, its data and what its /Length names unread
-            // (#171).
+            // (#171). How deep the stop is tells a stream after the value from one inside it, which cut it short.
             if (!_readsStreams)
             {
                 _streamStop = next.Start;
+                _streamStopDepth = depth;
                 return dictionary;
             }
 

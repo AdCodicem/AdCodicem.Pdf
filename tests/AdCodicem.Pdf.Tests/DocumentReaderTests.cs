@@ -252,22 +252,106 @@ public class DocumentReaderTests
     [Theory]
     [InlineData("<< /K 1 >>\nstream\n) /Data (\nendstream")]
     [InlineData("[1 << /K 1 >>\nstream\n) /Data (\nendstream 2]")]
-    public void A_trailer_a_rebuild_merges_ends_at_a_stream_nested_in_it_its_data_unread(string nested)
+    public void A_trailer_a_rebuild_merges_ends_at_a_stream_nested_in_it_noted_its_data_unread(string nested)
     {
         // A rebuild's scan for trailers parses the dictionary after each trailer keyword alone, and reads no stream (#171):
         // a stream nested in it — in a value, or in an array —, which no file may write there, ends the parse at its
         // keyword, with every container open around it. The keys before the one whose value holds it are merged; that
-        // key, the stream's data, which spells a key, and the key after it are not, and nothing is noted of them.
+        // key, the stream's data, which spells a key, and the key after it are not. What the rebuild so leaves out is noted
+        // once, at the stream's keyword; the data, unread, gives no fault.
         var file = new HandWrittenFile();
         file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>");
         file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>");
+        var keyword = file.Position;
         file.Raw($"trailer\n<< /Root 1 0 R /Nested {nested} /After 2 >>\n");
+        var bytes = file.Bytes;
+
+        using var document = PdfDocument.Open(bytes);
+
+        document.WasRepaired.Should().BeTrue();
+        document.Trailer.Keys.Select(key => key.Value).Should().Equal("Root");
+        var noted = document.Diagnostics.Should()
+            .ContainSingle(diagnostic => diagnostic.Code.StartsWith("syntax.", StringComparison.Ordinal)).Which;
+        noted.Code.Should().Be(PdfDiagnosticCodes.SyntaxUnexpectedToken);
+        noted.Severity.Should().Be(PdfDiagnosticSeverity.Warning);
+        noted.Position.Should().Be(bytes.AsSpan().IndexOf("stream\n) /Data ("u8));
+        noted.Message.Should().Be(string.Create(
+            CultureInfo.InvariantCulture,
+            $"A stream inside the dictionary after the trailer keyword at offset {keyword} ends what the rebuild merges of it: the key that holds it and the keys after it are not read."));
+    }
+
+    [Fact]
+    public void A_trailer_a_rebuild_merges_gives_every_key_of_a_stream_s_dictionary_unnoted_its_data_unread()
+    {
+        // A stream after the dictionary a trailer keyword introduces, which a cross-reference stream's dictionary after a
+        // keyword in a comment is, ends nothing of it: every key is merged, the stream's data, which spells a key, unread,
+        // and nothing is noted (#171).
+        var file = new HandWrittenFile();
+        file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>");
+        file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>");
+        file.Raw("trailer\n<< /Root 1 0 R /Nested << /K 1 >> /After 2 >>\nstream\n) /Data (\nendstream\n");
 
         using var document = PdfDocument.Open(file.Bytes);
 
         document.WasRepaired.Should().BeTrue();
-        document.Trailer.Keys.Select(key => key.Value).Should().Equal("Root");
+        document.Trailer.Keys.Select(key => key.Value).Should().Equal("Root", "Nested", "After");
         document.Diagnostics.Should().NotContain(diagnostic => diagnostic.Code.StartsWith("syntax.", StringComparison.Ordinal));
+    }
+
+    [Theory]
+    [InlineData("trailer\n5 0 R\n")]
+    [InlineData("trailer % the dictionary follows\n5 0 R\n")]
+    public void A_trailer_a_rebuild_merges_is_a_dictionary_not_what_a_reference_after_the_keyword_names_which_is_noted(string tail)
+    {
+        // A rebuild's scan for trailers parses what follows each trailer keyword as the dictionary alone, and loads nothing
+        // (#171): a reference written in the dictionary's place, white space and a comment before it or not, is none, and
+        // is not followed, so that what object 5 holds is not merged. The rebuild notes it once, where the reference
+        // starts; the catalog, which the trailer then lacks, is searched for and found.
+        var file = new HandWrittenFile();
+        file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>");
+        file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>");
+        file.Object(5, "<< /Root 1 0 R /Marker true >>");
+        var keyword = file.Position;
+        file.Raw(tail);
+        var bytes = file.Bytes;
+
+        using var document = PdfDocument.Open(bytes);
+
+        document.WasRepaired.Should().BeTrue();
+        document.Trailer.Keys.Select(key => key.Value).Should().Equal("Root");
+        document.Diagnostics.Contains(PdfDiagnosticCodes.TrailerRootRecovered).Should().BeTrue();
+        var noted = document.Diagnostics.Should()
+            .ContainSingle(diagnostic => diagnostic.Code.StartsWith("syntax.", StringComparison.Ordinal)).Which;
+        noted.Code.Should().Be(PdfDiagnosticCodes.SyntaxUnexpectedToken);
+        noted.Severity.Should().Be(PdfDiagnosticSeverity.Warning);
+        noted.Position.Should().Be(bytes.AsSpan().LastIndexOf("5 0 R"u8));
+        noted.Message.Should().Be(string.Create(
+            CultureInfo.InvariantCulture,
+            $"The trailer keyword at offset {keyword} is followed by a reference to object 5, not by a dictionary; the rebuild does not follow it."));
+    }
+
+    [Fact]
+    public void A_stream_nested_in_a_trailer_the_scan_finds_in_the_overlap_of_two_windows_is_noted_once()
+    {
+        // The scan for trailers reads a megabyte at a time, each window overlapping the last by 64 bytes: the trailer keyword
+        // lies 40 bytes before the first megabyte ends, so both windows find it, and its dictionary, which a stream nested in
+        // it cuts short, is parsed twice. What the parse notes goes with its faults, which are kept once (#171).
+        var file = new HandWrittenFile();
+        file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>");
+        file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>");
+        file.Raw("%" + new string('x', (int)((1024 * 1024) - 40 - file.Position - 2)) + "\n");
+        var keyword = file.Position;
+        file.Raw("trailer\n<< /Root 1 0 R /Nested << /K 1 >>\nstream\nabc\nendstream /After 2 >>\n");
+        file.Padding(3, 200);
+        var bytes = file.Bytes;
+
+        using var document = PdfDocument.Open(bytes);
+
+        keyword.Should().Be((1024 * 1024) - 40);
+        document.WasRepaired.Should().BeTrue();
+        document.Trailer.Keys.Select(key => key.Value).Should().Equal("Root");
+        document.Diagnostics.Should().ContainSingle(diagnostic => diagnostic.Code.StartsWith("syntax.", StringComparison.Ordinal))
+            .Which.Position.Should().Be(bytes.AsSpan().IndexOf("stream\nabc"u8));
     }
 
     [Fact]
