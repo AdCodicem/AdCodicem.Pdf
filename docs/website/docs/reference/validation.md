@@ -43,7 +43,11 @@ document gives the same report whatever was read before validating it. A limit t
 first validation, the index rebuilt whole; a later validation reads that index, and throws only where its rules read
 what the limit cut or left out. A document you changed between two validations is validated as changed, and a file
 crafted for it can still make where a damaged stream's data ends depend on which stream was read first
-([#138](https://github.com/AdCodicem/AdCodicem.Pdf/issues/138)).
+([#138](https://github.com/AdCodicem/AdCodicem.Pdf/issues/138)), a value read through a stream the reader first
+decoded at its deepest load be what that load's cut left
+([#163](https://github.com/AdCodicem/AdCodicem.Pdf/issues/163)), or an object stream's `/Type`, `/N` or `/First`,
+read through a stream that lies on a loop, depend on which stream of the loop was decoded first
+([#313](https://github.com/AdCodicem/AdCodicem.Pdf/issues/313)).
 [Validation](../concepts/validation.md#reading-limits-and-exceptions) explains why.
 
 ## `PdfValidatorOptions`
@@ -53,7 +57,7 @@ An immutable record.
 | Property | Default | What it is |
 |---|---|---|
 | `Profile` | `ValidationProfile.Structural` | The profile documents are validated against; null is refused with an `ArgumentNullException` |
-| `FindingCapacity` | 1,000 | The most findings a report keeps; beyond it, findings are counted, not kept, and the walks that find them do not write them, so that the findings validation holds follow the capacity rather than the file; what the walks count of a file's faults, they count by object. Zero keeps none and still counts them; a negative value is refused with an `ArgumentOutOfRangeException` |
+| `FindingCapacity` | 1,000 | The most findings a report keeps; beyond it, findings are counted, not kept, and the walks that find them do not write them, so that the findings validation holds follow the capacity rather than the file. Zero keeps none and still counts them; a negative value is refused with an `ArgumentOutOfRangeException` |
 
 The report is the same whatever the capacity, but for how many findings it keeps: the first ones, in the order a
 report of every finding would give them, with every finding counted
@@ -81,7 +85,7 @@ your own.
 | `ProfileName`, `ProfileVersion` | The profile the document was validated against |
 | `Findings` | The findings kept, in the order they were found — rules run in the profile's order —, so two validations of the same document give the same report |
 | `ErrorCount`, `WarningCount`, `InformationCount` | Every finding, by severity, kept or not; a count stays at 2,147,483,647, the greatest an `int` holds, past it, which billions of faulty values reach: a file of tens of kilobytes whose object streams decode to gigabytes can give them |
-| `SuppressedCount` | How many findings were counted but not kept, past `FindingCapacity`; it is counted apart, and it too stays at 2,147,483,647 past it |
+| `SuppressedCount` | How many findings were counted but not kept, past `FindingCapacity`; it is counted apart, and it too stays at 2,147,483,647 past it, however many findings were kept |
 | `HasErrors`, `HasWarnings` | Whether any finding is an error, or a warning |
 | `Contains(ruleId)` | Whether a rule reported anything |
 | `ToString()` | `profile version: errors n, warnings n, information n` |

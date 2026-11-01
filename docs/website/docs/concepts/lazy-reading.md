@@ -116,7 +116,11 @@ A rebuild a read sets off while that read is still under way — an object's `/L
 map misplaces — scans the file, and is finished once no read is under way, or once the read throws, before its exception
 leaves: the object is then read again from the rebuilt map, and what was read meanwhile, with the read unfinished, is
 let go, so that it reads, and reports, as it would had the map been rebuilt first, at the same cost. If the source fails
-while the rebuild is being finished, the next read finishes it.
+one of the rebuild's own reads — in its scan of the file or in its finish, whether a read or the start of a validation
+set it off —, what the rebuild reported since its scan began is withdrawn, the failure leaves, and the next read or
+validation runs the rebuild again: a finish the read's loads waited for from the copy of the scan's map they keep, any
+other from the scan. Running a failed finish again from the scan costs a sound rebuild no copy of the map, which took
+40 bytes an entry. A validation whose first checks of the map the source fails checks again at the next one.
 
 A rebuild reads the file to its end, and holds no more numbers than the map may: a header for a number it holds already
 takes no room, so that a million copies of one object hide nothing behind them, and the first number past
@@ -136,7 +140,7 @@ not what it handed out before, so that a loop over what the document gives goes 
   allocates there.
 - An enumeration of `Diagnostics` under way gives the entries recorded when it began, and the next one the rebuild's
   too: between two calls you make, entries are only added after those the record held. Once it has ended, it stays
-  ended.
+  ended, whatever is recorded after.
 - The next `Trailer` gives the trailer the rebuild merged, and `Catalog` and `IsEncrypted` read that one. A trailer
   taken before is left as it was, without an older trailer's `/Info` or `/Encrypt`, or a `/Root` the rebuild set, and
   one taken after is never changed: read `Trailer` again after reading the document rather than keep it. The new
@@ -147,13 +151,16 @@ Only a `PdfFileSource` of your own, reading the document from inside the read th
 way. A trailer it takes is the new dictionary, which may still gain the trailers and the `/Root` the rebuild merges and
 sets after. An enumeration of `Diagnostics` it steps may meet a finish that withdraws what the rebuild reported and
 reports again: it reads, up to the count it began with, the entries held at those places, which may be those reported
-again.
+again. Its `Current` stays the entry it advanced to, whatever is withdrawn or reported at that place after.
 
-If the source fails while a rebuild is being finished, `Trailer`, `Catalog`, `IsEncrypted`, `ObjectCount` and
-`ObjectNumbers` describe the unfinished rebuild until the next read or validation finishes it: the map lacks the
-members of the object streams the finish had not taken in, and the trailer a `/Root` the finish would search for, so
-that `Catalog` is null on a file whose own trailer names none. Asking them finishes nothing, but `Catalog` reading a
-`/Root` the trailer names, which finishes the rebuild first.
+If the source fails a rebuild, `Trailer`, `Catalog`, `IsEncrypted`, `ObjectCount` and `ObjectNumbers` describe the
+unfinished rebuild until the next read or validation runs it again: the map lacks the entries the scan or the finish
+had not taken in — every one when the source failed the scan's first read —, and the trailer lacks the trailers the scan
+had not merged and a `/Root` the finish would search for. Asking them finishes nothing, except that `Catalog` reads the
+`/Root` that trailer names — the file's own, a catalog a search found as the document opened set aside —, and that read
+finishes the rebuild first. `Catalog` so gives the object that `/Root` names, which need not be a catalog, and null when
+it names a free number or the trailer names none, though opening found a catalog; the next `Catalog` gives the finished
+rebuild's.
 
 ## What it deliberately does not do
 
