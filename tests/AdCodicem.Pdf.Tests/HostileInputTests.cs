@@ -4497,6 +4497,28 @@ public class HostileInputTests
     }
 
     /// <summary>
+    /// A file of <paramref name="count"/> object streams X1, X2 and on, numbered 1,000, 1,002 and so on, each holding one
+    /// object and taking its <c>/Length</c> from the object the next holds, the last from its own, and its
+    /// <c>/DecodeParms</c> from an array of <paramref name="elements"/> zeros written in its dictionary, or, when
+    /// <paramref name="inParameters"/> says so, from a dictionary of parameters holding that array under <c>/Pad</c>.
+    /// </summary>
+    internal static byte[] WaitingArrays(int count, int elements, bool inParameters = false)
+    {
+        var zeros = "[" + new StringBuilder().Insert(0, "0 ", elements) + "]";
+        zeros = inParameters ? "<< /Predictor 1 /Pad " + zeros + " >>" : zeros;
+        var packed = new List<PackedStream>();
+
+        for (var x = 0; x < count; x++)
+        {
+            var number = 1000 + (2 * x);
+            var length = string.Create(CultureInfo.InvariantCulture, $"{(x + 1 < count ? number + 3 : number + 1)} 0 R");
+            packed.Add(new PackedStream(number, "/DecodeParms " + zeros, [(number + 1, "5")], PackedData.Plain, Length: length));
+        }
+
+        return PackedFile(packed);
+    }
+
+    /// <summary>
     /// A file where object stream 3 takes its parameters from 6, which object stream 5 holds; 5's <c>/DecodeParms</c> names
     /// <paramref name="nests"/> streams, each heading a nest of <paramref name="levels"/> streams, each taking its
     /// <c>/Length</c> from a chain of <paramref name="links"/> objects, each held by an object stream of its own, which needs
