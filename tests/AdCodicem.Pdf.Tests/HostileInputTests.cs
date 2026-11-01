@@ -1823,9 +1823,9 @@ public class HostileInputTests
     }
 
     [Theory]
-    [InlineData("nest heads past the cache, met in turn, sharing their tails")]
-    [InlineData("nests ending at a stream another nest parsed")]
-    public void Nests_the_walk_cannot_keep_cost_each_object_stream_alike_whatever_their_number(string shape)
+    [InlineData("nest heads past the cache, met in turn, sharing their tails", 48)]
+    [InlineData("nests ending at a stream another nest parsed", 112)]
+    public void Nests_the_walk_cannot_keep_cost_each_object_stream_alike_whatever_their_number(string shape, int leastKilobytes)
     {
         // #181's residual, under the smallest cache, 64 objects, so that the files stay small. The walk keeps a nest of streams
         // by the stream heading it, as many as the reader caches objects, and only from a parse that met no stream parsed
@@ -1833,8 +1833,10 @@ public class HostileInputTests
         // sharing 4 tails of 20 streams, find no nest kept: each parses its heads' 84 streams again. Object streams sharing 8
         // parameters, each heading a nest of 20 whose last /Length names one stream, 9, parse it with the first nest: every
         // other nest meets 9, parsed before, and is not kept, so that each walk parses the 160 streams again. Either costs
-        // each object stream what its nests cost, 80 to 170 KB, about 14 MB under the default cache for nests of 62 and 256
-        // heads: in proportion to the streams, which closing #181 brings down to what each stream's own dictionary costs.
+        // each object stream what its nests cost, about 64 and 141 KB, about 14 MB under the default cache for nests of 62
+        // and 256 heads: in proportion to the streams, which closing #181 brings down to what each stream's own dictionary
+        // costs, about 1 KB, as a cache the heads fit in does now. The least each stream costs pins the residual, which
+        // closing #181 flips; that it costs no more as the streams grow holds whether #181 is open or closed.
         const int Few = 40;
         const int Many = 160;
         var options = new PdfReaderOptions { ObjectCacheCapacity = 64 };
@@ -1851,6 +1853,7 @@ public class HostileInputTests
             manyResult.CircularStreams.Should().BeEmpty();
             var first = (fewAllocated - none) / (Few / 2);
             var then = (manyAllocated - fewAllocated) / (Many - Few);
+            then.Should().BeGreaterThan(leastKilobytes * 1024L, "#181 leaves each object stream to parse again the nests the walk cannot keep ({0} B a stream)", then);
             then.Should().BeLessThan(first * 5 / 4, "each object stream costs what its own nests cost, whatever their number ({0} B, then {1} B a stream)", first, then);
         }
     }
