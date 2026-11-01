@@ -1912,6 +1912,21 @@ public class ObjectRuleTests
     }
 
     [Theory]
+    [InlineData(61, PdfValidationRuleIds.XRefObjectStreamBroken)]
+    [InlineData(60, PdfValidationRuleIds.XRefObjectStreamCircular)]
+    public void An_object_of_a_stream_whose_decoding_reads_another_s_object_is_followed_only_where_both_decodings_stay_within_the_reader_s_nesting(int streams, string rule)
+    {
+        // Stream 7 takes its /N from 100, which heads streams by /Length, the last naming 180, 170 0 R; 9 holds 170, 5 0 R
+        // read through the predictor 9 takes from 70, 55 0 R without it; 11 holds 70, 71 0 R; 7 holds 5. Met at the 63rd load
+        // with 61 streams, 170 has 9 decoded at the 64th, whose decoding reads 70 there, which has 11 decoded at the 65th,
+        // which the reader's nesting cuts: 9 decodes without its predictor there, and with it read first. 9 does not decode
+        // alike there, and 170 reads as null: 7's /N is not one the reader can read. A stream shorter, 11 is decoded at the
+        // 64th, and 170 leads 7 to 5.
+        Validate(ConvergenceShapes.ThroughARun(streams)).Findings.Where(finding => finding.RuleId.StartsWith("xref.object-stream-", StringComparison.Ordinal))
+            .Select(finding => finding.RuleId).Should().Equal(rule);
+    }
+
+    [Theory]
     [InlineData(30)]
     [InlineData(64)]
     public void An_object_of_a_stream_whose_decoding_parses_a_nest_the_reader_s_nesting_cuts_below_it_is_followed(int streams)

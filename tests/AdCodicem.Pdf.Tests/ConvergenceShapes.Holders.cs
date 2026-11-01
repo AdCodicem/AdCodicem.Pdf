@@ -100,6 +100,17 @@ internal static partial class ConvergenceShapes
             Edge(61, indirectLength: true, endstreamInside: true),
             PdfReaderLimits.Default,
             [[new(6)], [new(170)], [new(9)], [new(7)], [new(170), new(6)], [new(9), new(6)], [new(6), new(170)]]);
+
+        // 7's /N leads through 61 streams, or 60, to 170, which 9 holds, met at the 63rd load, or the 62nd: 9's decoding reads
+        // its parameters through 70, which 11 holds, loading 11 two levels below 170, which the reader's nesting cuts at 61.
+        foreach (var streams in (int[])[61, 60])
+        {
+            yield return new(
+                $"a holder whose decoding reads another's object, met {64 - streams} levels above the reader's deepest load",
+                ThroughARun(streams),
+                PdfReaderLimits.Default,
+                [[new(6)], [new(170)], [new(9)], [new(70)], [new(7)], [new(170), new(6)], [new(70), new(6)], [new(6), new(170)]]);
+        }
     }
 
     /// <summary>
@@ -457,6 +468,32 @@ internal static partial class ConvergenceShapes
         }
 
         return StreamsAndMembers(objects, new() { [5] = (7, 0), [6] = (7, 1), [171] = (9, 0), [170] = (9, 1) });
+    }
+
+    /// <summary>
+    /// Object stream 7, written as it is, holds 5, 2, and 6, and takes its <c>/N</c> from stream 100, which heads
+    /// <paramref name="streams"/> streams by <c>/Length</c>, the last naming 180, written in the file, <c>170 0 R</c>; 9 holds
+    /// 170, <c>5 0 R</c> read through a PNG predictor of 12 columns, <c>55 0 R</c> without one, and takes its parameters from
+    /// 70, which 11 holds, <c>71 0 R</c>; 71, written in the file, is <c>&lt;&lt; /Predictor 12 /Columns 12 &gt;&gt;</c>.
+    /// </summary>
+    internal static byte[] ThroughARun(int streams)
+    {
+        var (seven, sevenFirst) = ObjectStreamData((5, "2"), (6, "<< /Title (six) >>"));
+        var objects = new SortedDictionary<int, (string Entries, byte[]? Data)>
+        {
+            [7] = (string.Create(CultureInfo.InvariantCulture, $"/Type /ObjStm /N 100 0 R /First {sevenFirst} /Length @L"), Encoding.Latin1.GetBytes(seven)),
+            [9] = ("/Type /ObjStm /N 1 /First 7 /Length @L /Filter /FlateDecode /DecodeParms 70 0 R", HostileInputTests.Compress([0, .. "170 0 55 0 R"u8.ToArray()])),
+            [11] = FlateObjectStream(string.Empty, (70, "71 0 R")),
+            [71] = ("<< /Predictor 12 /Columns 12 >>", null),
+            [180] = ("170 0 R", null),
+        };
+
+        for (var stream = 0; stream < streams; stream++)
+        {
+            objects[100 + stream] = (string.Create(CultureInfo.InvariantCulture, $"/Length {(stream + 1 < streams ? 101 + stream : 180)} 0 R"), "ab"u8.ToArray());
+        }
+
+        return StreamsAndMembers(objects, new() { [5] = (7, 0), [6] = (7, 1), [170] = (9, 0), [70] = (11, 0) });
     }
 
     /// <summary>
