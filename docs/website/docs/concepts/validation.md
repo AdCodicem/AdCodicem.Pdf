@@ -131,8 +131,8 @@ through such a stream depends on which read first decoded it that deep: one of y
 So validating a document you have not read can read what the cut left, and reading it first can spare it, or the
 reverse. On a thread with little stack, the reader's stack probe cuts sooner, even with nothing read first, so the
 report can also depend on the thread. In the last, an object stream's decoding reads a value — its `/Type`, `/N`,
-`/First`, `/Filter` or `/DecodeParms` — held by a stream that lies on a loop with another, or the stream lies on such a
-loop itself. What the reader serves of that value depends on which stream of the loop it decoded first, and so do the
+`/First`, `/Filter` or `/DecodeParms` — held by a stream that lies on a loop, or the stream lies on a loop itself.
+What the reader serves of that value depends on which stream of the loop it decoded first, and so do the
 verdicts of `xref.object-stream-broken`, `xref.entry-broken` and `xref.entry-shifted`
 ([#313](https://github.com/AdCodicem/AdCodicem.Pdf/issues/313)).
 
