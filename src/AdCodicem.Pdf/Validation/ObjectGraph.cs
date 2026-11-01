@@ -27,7 +27,9 @@ namespace AdCodicem.Pdf.Validation;
 /// wherever they write it. The objects claimed are read last claimed first, so that a tree of objects is read as a
 /// depth-first walk of what it holds would read it, the last value first. Walking one object keeps a place for each level
 /// of nesting it is in, which the parser bounds in an object read from a file; a value a caller built nests as deep as it
-/// was built, and one that holds itself is walked without end (#310).
+/// was built, and one that holds itself is walked without end (#310). The places are kept in an array, not on the stack,
+/// by the walk and by the searches that place a fault once it is done alike, so that no depth a caller built overflows
+/// the stack (#168).
 /// </para>
 /// <para>
 /// The walk runs on a settled index (<see cref="PdfFileReader.SettleIndex"/>), as validation makes it before its first
@@ -64,8 +66,9 @@ internal sealed class ObjectGraph
     private readonly SortedDictionary<int, int> _nullCharacterNames = [];
 
     /// <summary>
-    /// The containers of the value being walked, the first <see cref="_depth"/>, from the outermost to the one being read:
-    /// one a level of nesting, each let go of when it is left, so that none outlives the walk of the object it is in.
+    /// The containers of the value being walked or searched, the first <see cref="_depth"/>, from the outermost to the one
+    /// being read: one a level of nesting, each let go of when it is left, so that none outlives the walk of the object it
+    /// is in, nor the search.
     /// </summary>
     private Scope[] _scopes = new Scope[8];
     private int _depth;
@@ -191,20 +194,37 @@ internal sealed class ObjectGraph
                 Claim(reference, owner, role);
                 break;
 
+            case PdfName name when HasNullCharacter(name):
+                Tally(_nullCharacterNames, owner);
+                break;
+
+            default:
+                Open(value, role, length: 0);
+                break;
+        }
+    }
+
+    /// <summary>
+    /// Enters <paramref name="value"/> when it is a container, for its values to be met in their turn: a dictionary, or a
+    /// stream's, keeps <paramref name="role"/> to give its entries theirs, an array the role its elements take.
+    /// </summary>
+    /// <param name="value">The value met.</param>
+    /// <param name="role">What the page tree walk and the other rules make of it.</param>
+    /// <param name="length">The length of the path that leads to it, which a search writes; 0 for the walk, which writes none.</param>
+    private void Open(PdfObject value, Role role, int length)
+    {
+        switch (value)
+        {
             case PdfStream stream:
-                Enter(new Scope { Entries = stream.Dictionary.GetEnumerator(), Role = role });
+                Enter(new Scope { Entries = stream.Dictionary.GetEnumerator(), Role = role, Length = length });
                 break;
 
             case PdfDictionary dictionary:
-                Enter(new Scope { Entries = dictionary.GetEnumerator(), Role = role });
+                Enter(new Scope { Entries = dictionary.GetEnumerator(), Role = role, Length = length });
                 break;
 
             case PdfArray array:
-                Enter(new Scope { Array = array, Role = ElementRole(role) });
-                break;
-
-            case PdfName name when HasNullCharacter(name):
-                Tally(_nullCharacterNames, owner);
+                Enter(new Scope { Array = array, Role = ElementRole(role), Length = length });
                 break;
         }
     }
@@ -224,6 +244,13 @@ internal sealed class ObjectGraph
     {
         scope = default;
         _depth--;
+    }
+
+    /// <summary>Leaves every container a search is in, once it has found what it sought, and lets go of them.</summary>
+    private void LeaveAll()
+    {
+        Array.Clear(_scopes, 0, _depth);
+        _depth = 0;
     }
 
     /// <summary>
@@ -306,7 +333,7 @@ internal sealed class ObjectGraph
 
             var value = ValueOf(owner);
             var first = new StringBuilder();
-            var found = TryFindMissing(value, owner, owner == 0 ? Role.Trailer : RoleOf(owner), first, out var target);
+            var found = TryFindMissing(value, owner == 0 ? Role.Trailer : RoleOf(owner), first, out var target);
             var holder = Holder(owner);
 
             MissingReferences.Keep(new ProbeFinding(
@@ -328,7 +355,7 @@ internal sealed class ObjectGraph
             }
 
             var first = new StringBuilder();
-            var name = FindNullCharacter(ValueOf(owner), owner == 0, first, out var isKey);
+            var name = FindNullCharacter(ValueOf(owner), owner == 0 ? Role.Trailer : Role.None, first, out var isKey);
             var holder = Holder(owner);
             var where = (isKey, first.Length) switch
             {
@@ -378,56 +405,82 @@ internal sealed class ObjectGraph
     /// Whether one was found is said apart from what it names: a reference to object 0, which heads the free list and
     /// is never in use, is one to an object the file lacks like any other.
     /// </para>
+    /// <para>
+    /// It reads <paramref name="value"/> as the walk does, in a loop over the containers it is in, each with the length of
+    /// the path that leads to it: a call a level overflowed a stack of 1 MB some 1,600 nodes down a page tree a caller
+    /// nested, which nothing catches (#168).
+    /// </para>
     /// </remarks>
-    private bool TryFindMissing(PdfObject value, int owner, Role role, StringBuilder path, out PdfObjectId target)
+    private bool TryFindMissing(PdfObject value, Role role, StringBuilder path, out PdfObjectId target)
     {
-        switch (value)
+        if (IsMissing(value, role, out target))
         {
-            case PdfReference reference when (role & Role.Uncounted) == 0 && _missing.Contains(reference.Id.Number):
-                target = reference.Id;
+            return true;
+        }
+
+        Open(value, role, path.Length);
+
+        while (_depth > 0)
+        {
+            ref var scope = ref _scopes[_depth - 1];
+            path.Length = scope.Length;
+            PdfObject next;
+            Role nextRole;
+
+            if (scope.Array is { } array)
+            {
+                if (scope.Next >= array.Count)
+                {
+                    Leave(ref scope);
+                    continue;
+                }
+
+                path.Append(CultureInfo.InvariantCulture, $"[{scope.Next}]");
+                next = array[scope.Next++];
+                nextRole = scope.Role;
+            }
+            else if (scope.Entries.MoveNext())
+            {
+                var (key, entry) = scope.Entries.Current;
+
+                if (IsSectionKey(key, scope.Role))
+                {
+                    continue;
+                }
+
+                FileQuote.AppendName(path, key);
+                next = entry;
+                nextRole = EntryRole(key, entry, scope.Role);
+            }
+            else
+            {
+                Leave(ref scope);
+                continue;
+            }
+
+            if (IsMissing(next, nextRole, out target))
+            {
+                LeaveAll();
                 return true;
+            }
 
-            case PdfStream stream:
-                return TryFindMissing(stream.Dictionary, owner, role, path, out target);
+            // Last: entering a container may move the scopes.
+            Open(next, nextRole, path.Length);
+        }
 
-            case PdfDictionary dictionary:
-                foreach (var (key, entry) in dictionary)
-                {
-                    if (IsSectionKey(key, role))
-                    {
-                        continue;
-                    }
+        return false;
+    }
 
-                    var length = path.Length;
-                    FileQuote.AppendName(path, key);
-
-                    if (TryFindMissing(entry, owner, EntryRole(key, entry, role), path, out target))
-                    {
-                        return true;
-                    }
-
-                    path.Length = length;
-                }
-
-                break;
-
-            case PdfArray array:
-                var elements = ElementRole(role);
-
-                for (var index = 0; index < array.Count; index++)
-                {
-                    var length = path.Length;
-                    path.Append(CultureInfo.InvariantCulture, $"[{index}]");
-
-                    if (TryFindMissing(array[index], owner, elements, path, out target))
-                    {
-                        return true;
-                    }
-
-                    path.Length = length;
-                }
-
-                break;
+    /// <summary>
+    /// Determines whether <paramref name="value"/>, with <paramref name="role"/>, is a reference to an object the file
+    /// lacks that the walk counted, and gives the object it names.
+    /// </summary>
+    private bool IsMissing(PdfObject value, Role role, out PdfObjectId target)
+    {
+        if (value is PdfReference reference && (role & Role.Uncounted) == 0 && _missing.Contains(reference.Id.Number))
+        {
+            target = reference.Id;
+            return true;
         }
 
         target = default;
@@ -438,64 +491,76 @@ internal sealed class ObjectGraph
     /// Finds, in file order, the first name with a null character inside <paramref name="value"/>, where it lies, and
     /// whether it is a key of the dictionary <paramref name="path"/> leads to.
     /// </summary>
-    private static PdfName? FindNullCharacter(PdfObject value, bool trailer, StringBuilder path, out bool isKey)
+    /// <param name="value">The value of an object, or the trailer.</param>
+    /// <param name="role"><see cref="Role.Trailer"/> for the trailer, whose <c>/Prev</c> and <c>/XRefStm</c> name sections.</param>
+    /// <param name="path">Where the path to the name is written.</param>
+    /// <param name="isKey">Whether the name is a key.</param>
+    /// <remarks>It reads <paramref name="value"/> in a loop, as <see cref="TryFindMissing"/> does, and for the same reason.</remarks>
+    private PdfName? FindNullCharacter(PdfObject value, Role role, StringBuilder path, out bool isKey)
     {
         isKey = false;
 
-        switch (value)
+        if (value is PdfName name && HasNullCharacter(name))
         {
-            case PdfName name when HasNullCharacter(name):
-                return name;
-
-            case PdfStream stream:
-                return FindNullCharacter(stream.Dictionary, trailer, path, out isKey);
-
-            case PdfDictionary dictionary:
-                foreach (var (key, entry) in dictionary)
-                {
-                    if (HasNullCharacter(key))
-                    {
-                        isKey = true;
-                        return key;
-                    }
-
-                    if (trailer && IsSectionKey(key))
-                    {
-                        continue;
-                    }
-
-                    var length = path.Length;
-                    FileQuote.AppendName(path, key);
-
-                    if (FindNullCharacter(entry, trailer: false, path, out isKey) is { } found)
-                    {
-                        return found;
-                    }
-
-                    path.Length = length;
-                }
-
-                return null;
-
-            case PdfArray array:
-                for (var index = 0; index < array.Count; index++)
-                {
-                    var length = path.Length;
-                    path.Append(CultureInfo.InvariantCulture, $"[{index}]");
-
-                    if (FindNullCharacter(array[index], trailer: false, path, out isKey) is { } found)
-                    {
-                        return found;
-                    }
-
-                    path.Length = length;
-                }
-
-                return null;
-
-            default:
-                return null;
+            return name;
         }
+
+        Open(value, role, path.Length);
+
+        while (_depth > 0)
+        {
+            ref var scope = ref _scopes[_depth - 1];
+            path.Length = scope.Length;
+            PdfObject next;
+
+            if (scope.Array is { } array)
+            {
+                if (scope.Next >= array.Count)
+                {
+                    Leave(ref scope);
+                    continue;
+                }
+
+                path.Append(CultureInfo.InvariantCulture, $"[{scope.Next}]");
+                next = array[scope.Next++];
+            }
+            else if (scope.Entries.MoveNext())
+            {
+                var (key, entry) = scope.Entries.Current;
+
+                if (HasNullCharacter(key))
+                {
+                    isKey = true;
+                    LeaveAll();
+                    return key;
+                }
+
+                if (IsSectionKey(key, scope.Role))
+                {
+                    continue;
+                }
+
+                FileQuote.AppendName(path, key);
+                next = entry;
+            }
+            else
+            {
+                Leave(ref scope);
+                continue;
+            }
+
+            if (next is PdfName found && HasNullCharacter(found))
+            {
+                LeaveAll();
+                return found;
+            }
+
+            // Last: entering a container may move the scopes. The trailer's own keys alone name sections, not those of a
+            // dictionary written in it.
+            Open(next, Role.None, path.Length);
+        }
+
+        return null;
     }
 
     private PdfObject ValueOf(int owner) =>
@@ -562,6 +627,12 @@ internal sealed class ObjectGraph
 
         /// <summary>The dictionary's role, or the role of the array's elements.</summary>
         public Role Role;
+
+        /// <summary>
+        /// The length of the path that leads to the container, which a search cuts back to before it writes the step to each
+        /// of its values; 0 for the walk, which writes no path.
+        /// </summary>
+        public int Length;
     }
 
     /// <summary>

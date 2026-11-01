@@ -1402,9 +1402,8 @@ public class PageTreeRuleTests
         // A caller sets the catalog's /Pages to 50,000 nodes, each written in the /Kids of the one above, over a page without
         // a media box. No file nests values so deep in one object, which the parser bounds; a value a caller built nests as
         // deep as it was built. The page's path, written for its finding, took a call for each node above it, and a stack of
-        // 1 MB overflowed past some 6,500 nodes, which nothing catches (retention:0 of #168's review). It is written in a
-        // loop, whatever its depth. The kids written in the array fill the report before the page's finding: the media box
-        // rule alone keeps it.
+        // 1 MB overflowed past some 6,500 nodes, which nothing catches (#168). It is written in a loop, whatever its depth.
+        // The kids written in the array fill the report before the page's finding: the media box rule alone keeps it.
         const int Depth = 50_000;
         const int Stack = 1024 * 1024;
         using var document = PdfDocument.Open(PdfTemplate.Build(PdfTemplate.Sound));
@@ -1427,12 +1426,66 @@ public class PageTreeRuleTests
     }
 
     [Fact]
+    public void A_reference_to_nothing_at_the_bottom_of_a_tree_a_caller_nested_deeper_than_the_stack_is_placed_by_its_path()
+    {
+        // The page under 50,000 nodes a caller nested, each written in the /Kids of the one above, gives for its /Resources
+        // an object the file lacks. The object graph reads the catalog again to place that reference for its finding, and
+        // the search took a call for each level it went down: a stack of 1 MB overflowed some 1,600 nodes down, which
+        // nothing catches (#168). It searches in a loop, whatever the depth. The kids written in the array fill the report
+        // before the object rules: the rule is run alone.
+        const int Depth = 50_000;
+        const int Stack = 1024 * 1024;
+        using var document = PdfDocument.Open(PdfTemplate.Build(PdfTemplate.Sound));
+        var page = new PdfDictionary();
+        page.Set(PdfName.Resources, new PdfReference(new PdfObjectId(9999), document.Reader));
+        document.Catalog!.Set(PdfName.Pages, NestedNodes(Depth, page));
+        var references = new PdfValidatorOptions
+        {
+            Profile = new ValidationProfile("references", 1, [new ReferenceMissingRule()]),
+        };
+
+        var report = OnAStackOf(Stack, () => new PdfValidator(references).Validate(document));
+
+        Single(report, PdfValidationRuleIds.ObjectReferenceMissing).Should().Match<PdfValidationFinding>(finding =>
+            finding.Message ==
+                "Object 1 refers to object 9999 0 under /Pages/Kids[0]/Kids (99994 steps) [0]/Kids[0]/Resources, which the file lacks: the reference reads as null." &&
+            finding.Location == PdfValidationLocation.OfObject(new PdfObjectId(1)));
+    }
+
+    [Fact]
+    public void A_name_with_a_null_character_at_the_bottom_of_a_tree_a_caller_nested_deeper_than_the_stack_is_placed_by_its_path()
+    {
+        // The page under 50,000 nodes a caller nested lists among its procedure sets a name holding a null character. The
+        // search that places it for its finding took a call for each level it went down, as the one that places a reference
+        // to nothing did, and overflowed a stack of 1 MB as soon (#168). It searches in a loop, whatever the depth.
+        const int Depth = 50_000;
+        const int Stack = 1024 * 1024;
+        using var document = PdfDocument.Open(PdfTemplate.Build(PdfTemplate.Sound));
+        var resources = new PdfDictionary();
+        resources.Set(PdfName.Get("ProcSet"), new PdfArray([PdfName.Get("PDF"), PdfName.Get("Text\0")]));
+        var page = new PdfDictionary();
+        page.Set(PdfName.Resources, resources);
+        document.Catalog!.Set(PdfName.Pages, NestedNodes(Depth, page));
+        var names = new PdfValidatorOptions
+        {
+            Profile = new ValidationProfile("names", 1, [new NameNullCharacterRule()]),
+        };
+
+        var report = OnAStackOf(Stack, () => new PdfValidator(names).Validate(document));
+
+        Single(report, PdfValidationRuleIds.ObjectNameNullCharacter).Should().Match<PdfValidationFinding>(finding =>
+            finding.Message ==
+                "Object 1 holds the name /Text#00, under /Pages/Kids[0]/Kids (99996 steps) [0]/Resources/ProcSet[1], and a name cannot contain a null character." &&
+            finding.Location == PdfValidationLocation.OfObject(new PdfObjectId(1)));
+    }
+
+    [Fact]
     public void Writing_the_path_of_a_page_a_caller_nested_deep_allocates_in_proportion_to_its_depth()
     {
         // Each node's path was its own node's, copied, with its step added: a path of n nodes copied n²/2 steps, 8 MB for
-        // the path of a page under 1,000 nodes and 128 MB under 4,000 (retention:0 of #168's review). The indexes of the kids
-        // on the way are taken up the nodes, then written into one builder: what one more node costs the walk is its frame,
-        // and its step in the paths its findings write.
+        // the path of a page under 1,000 nodes and 128 MB under 4,000 (#168). The indexes of the kids on the way are taken up
+        // the nodes, then written into one builder: what one more node costs the walk is its frame, and its step in the paths
+        // its findings write.
         const int Few = 1_000;
         const int Many = 4_000;
         using var few = PdfDocument.Open(PdfTemplate.Build(PdfTemplate.Sound));
@@ -2382,12 +2435,13 @@ public class PageTreeRuleTests
     }
 
     /// <summary>
-    /// Builds <paramref name="depth"/> nodes, each written in the <c>/Kids</c> of the one above and counting one page, over a
-    /// page without a media box or resources: a tree only a caller can nest so deep in one object.
+    /// Builds <paramref name="depth"/> nodes, each written in the <c>/Kids</c> of the one above and counting one page, over
+    /// <paramref name="page"/> made a page, or a page without a media box or resources: a tree only a caller can nest so
+    /// deep in one object.
     /// </summary>
-    private static PdfDictionary NestedNodes(int depth)
+    private static PdfDictionary NestedNodes(int depth, PdfDictionary? page = null)
     {
-        var tree = new PdfDictionary();
+        var tree = page ?? new PdfDictionary();
         tree.Set(PdfName.Type, PdfName.Page);
 
         for (var level = 0; level < depth; level++)
