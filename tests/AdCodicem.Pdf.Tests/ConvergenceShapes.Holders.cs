@@ -103,11 +103,12 @@ internal static partial class ConvergenceShapes
 
         // 7's /N leads through 61 streams, or 60, to 170, which 9 holds, met at the 63rd load, or the 62nd: 9's decoding reads
         // its parameters through 70, which 11 holds, loading 11 two levels below 170, which the reader's nesting cuts at 61.
-        foreach (var streams in (int[])[61, 60])
+        // Where 11's decoding reads its own parameters from 72, which 13 holds, 13 is loaded a level further, cut at 60.
+        foreach (var (streams, third) in ((int, bool)[])[(61, false), (60, false), (60, true), (59, true)])
         {
             yield return new(
-                $"a holder whose decoding reads another's object, met {64 - streams} levels above the reader's deepest load",
-                ThroughARun(streams),
+                $"a holder whose decoding reads another's object{(third ? ", whose stream reads a third's," : string.Empty)} met {64 - streams} levels above the reader's deepest load",
+                ThroughARun(streams, third),
                 PdfReaderLimits.Default,
                 [[new(6)], [new(170)], [new(9)], [new(70)], [new(7)], [new(170), new(6)], [new(70), new(6)], [new(6), new(170)]]);
         }
@@ -474,26 +475,40 @@ internal static partial class ConvergenceShapes
     /// Object stream 7, written as it is, holds 5, 2, and 6, and takes its <c>/N</c> from stream 100, which heads
     /// <paramref name="streams"/> streams by <c>/Length</c>, the last naming 180, written in the file, <c>170 0 R</c>; 9 holds
     /// 170, <c>5 0 R</c> read through a PNG predictor of 12 columns, <c>55 0 R</c> without one, and takes its parameters from
-    /// 70, which 11 holds, <c>71 0 R</c>; 71, written in the file, is <c>&lt;&lt; /Predictor 12 /Columns 12 &gt;&gt;</c>.
+    /// 70, which 11 holds. When <paramref name="third"/> says so, 70 is <c>&lt;&lt; /Predictor 12 /Columns 12 &gt;&gt;</c>
+    /// read through the same predictor, which 11 takes from 72, which 13 holds, and broken without it; otherwise 70 is
+    /// <c>71 0 R</c>, and 71, written in the file, the predictor.
     /// </summary>
-    internal static byte[] ThroughARun(int streams)
+    internal static byte[] ThroughARun(int streams, bool third = false)
     {
+        const string Predictor = "<< /Predictor 12 /Columns 12 >>";
         var (seven, sevenFirst) = ObjectStreamData((5, "2"), (6, "<< /Title (six) >>"));
         var objects = new SortedDictionary<int, (string Entries, byte[]? Data)>
         {
             [7] = (string.Create(CultureInfo.InvariantCulture, $"/Type /ObjStm /N 100 0 R /First {sevenFirst} /Length @L"), Encoding.Latin1.GetBytes(seven)),
             [9] = ("/Type /ObjStm /N 1 /First 7 /Length @L /Filter /FlateDecode /DecodeParms 70 0 R", HostileInputTests.Compress([0, .. "170 0 55 0 R"u8.ToArray()])),
-            [11] = FlateObjectStream(string.Empty, (70, "71 0 R")),
-            [71] = ("<< /Predictor 12 /Columns 12 >>", null),
             [180] = ("170 0 R", null),
         };
+        var members = new Dictionary<int, (int Stream, int Index)> { [5] = (7, 0), [6] = (7, 1), [170] = (9, 0), [70] = (11, 0) };
+
+        if (third)
+        {
+            objects[11] = ("/Type /ObjStm /N 1 /First 5 /Length @L /Filter /FlateDecode /DecodeParms 72 0 R", HostileInputTests.Compress(PngRows(Encoding.Latin1.GetBytes("70 0 " + Predictor), 12)));
+            objects[13] = FlateObjectStream(string.Empty, (72, Predictor));
+            members[72] = (13, 0);
+        }
+        else
+        {
+            objects[11] = FlateObjectStream(string.Empty, (70, "71 0 R"));
+            objects[71] = (Predictor, null);
+        }
 
         for (var stream = 0; stream < streams; stream++)
         {
             objects[100 + stream] = (string.Create(CultureInfo.InvariantCulture, $"/Length {(stream + 1 < streams ? 101 + stream : 180)} 0 R"), "ab"u8.ToArray());
         }
 
-        return StreamsAndMembers(objects, new() { [5] = (7, 0), [6] = (7, 1), [170] = (9, 0), [70] = (11, 0) });
+        return StreamsAndMembers(objects, members);
     }
 
     /// <summary>
