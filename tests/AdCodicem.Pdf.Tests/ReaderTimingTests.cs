@@ -234,13 +234,13 @@ public class ReaderTimingTests
     [Fact]
     public void Sixteen_times_as_many_object_streams_whose_parameters_head_nests_of_streams_have_their_dependencies_walked_in_less_than_four_times_the_time()
     {
-        // walk:1 of #277's review: object streams share 64 parameters and the values their predictor asks for, each a stream
+        // Object streams share 64 parameters and the values their predictor asks for, each a stream
         // heading a nest of 63 streams by /Length, which the parse of each follows to the reader's deepest load, where it is
         // cut: 16,128 streams, more than the walk keeps of what it reads. The walk followed every nest again for each object
         // stream, reading again all it had let go, 50 ms a stream: sixteen times the streams took seventeen times as long,
         // 0.78 s for 16 and 13.1 s for 256. It takes at once the nest of streams a parse went through, from the depth it went
         // through it, and what one more object stream costs, 0.2 ms, is small next to what parsing the nests once costs, 45 ms:
-        // 256 streams take about twice as long as 16. The measure is the ratio, the best walk of each, run in turn.
+        // 256 streams take about twice as long as 16 (#201). The measure is the ratio, the best walk of each, run in turn.
         const int Few = 16;
         const int Many = 256;
         using var few = PdfDocument.Open(HostileInputTests.LengthNests(Few, depth: 63));
@@ -261,14 +261,14 @@ public class ReaderTimingTests
     [InlineData("four times the streams", 8)]
     [InlineData("chains eight times as long", 3)]
     [InlineData("chains eight times as long, written in the file", 3)]
-    public void Object_streams_that_share_chains_through_self_contained_streams_objects_have_their_dependencies_walked_in_time_their_number_alone_sets(string larger, int ratio)
+    public void Object_streams_that_share_chains_of_objects_written_in_the_file_or_held_by_streams_that_decode_alike_have_their_dependencies_walked_in_time_their_number_alone_sets(string larger, int ratio)
     {
-        // Object streams share 64 parameters, each the head of a chain of objects held by self-contained object streams, one
-        // each (#277's review), or written in the file. The walk follows a chain once a validation, keeping the run of
-        // objects it loads by the one it starts at — once it knows their holders self-contained —: four times the streams
-        // take about four times as long, and chains of 31 objects about what chains of 4 do, where following each chain for
-        // each stream, an object at a time or through the reader, cost about eight times as much. The measure is the ratio,
-        // the best walk of each, run in turn.
+        // Object streams share 64 parameters, each the head of a chain of objects held by object streams that decode alike in
+        // every read order, one each (#312), or written in the file. The walk follows a chain once a validation, keeping the
+        // run of objects it loads by the one it starts at — once it knows their holders decode alike (#277) —: four times the
+        // streams take about four times as long, and chains of 31 objects about what chains of 4 do, where following each
+        // chain for each stream, an object at a time or through the reader, cost about eight times as much. The measure is
+        // the ratio, the best walk of each, run in turn.
         var (small, large) = larger switch
         {
             "four times the streams" => (HostileInputTests.MemberChains(1000, holdersShare: false, links: 31), HostileInputTests.MemberChains(4000, holdersShare: false, links: 31)),
@@ -299,7 +299,7 @@ public class ReaderTimingTests
         // Object streams need one another's objects through their /DecodeParms, in HostileInputTests' shapes. The walk
         // looked for a way back to each stream with a search from each of its needs, which cost the square of their number:
         // 17 s for a chain of 20,000 streams, 44 s for a ring (#168). It works out the streams that lead to one another once:
-        // four times the streams take about four times as long, where the search took seventeen to twenty times as long. The
+        // four times the streams take about four times as long, where the search took more than sixteen times as long. The
         // measure is the ratio, the best of five walks of each, each walked once first; each walk starts from a collected
         // heap, so that what a walk before it left, the needs and findings of each stream, is not collected inside the next.
         // Walks this short, tens of milliseconds, are all slowed now and then on a busy machine: a bound of 8 failed once in

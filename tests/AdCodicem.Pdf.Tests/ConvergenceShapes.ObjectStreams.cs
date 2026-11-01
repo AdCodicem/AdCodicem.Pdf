@@ -106,10 +106,10 @@ internal static partial class ConvergenceShapes
             PdfReaderLimits.Default,
             ObjectStreamReads([.. Enumerable.Range(0, 33)], [30, 7, 8]));
 
-        // #277's review: object streams 10 and 11 take their parameters from each other's objects, and 12 from 10's; what the
-        // reader serves of 6 depends on which of 10 and 11 it decoded first. The walk read 6 through the reader and followed
-        // it to 7, which 12 holds: 12 was found circular after nothing was read, or 6 alone, or 6 then 5 and 7, and not after
-        // 5, 7 or 8.
+        // Object streams 10 and 11 take their parameters from each other's objects, and 12 from 10's; what the reader serves
+        // of 6 depends on which of 10 and 11 it decoded first. The walk read 6 through the reader and followed it to 7, which
+        // 12 holds: 12 was found circular after nothing was read, or 6 alone, or 6 then 5 and 7, and not after 5, 7 or 8
+        // (#277).
         yield return new(
             "object streams taking their parameters from one another's objects, a third leading into their loop",
             ObjectStreamsTakingParametersFromOneAnother(),
@@ -118,8 +118,8 @@ internal static partial class ConvergenceShapes
     }
 
     /// <summary>
-    /// Object streams 10, 11 and 12, Flate-compressed, which take their parameters from one another's members (#277's
-    /// review): 10 holds 5, <c>&lt;&lt; /Predictor 10 /Columns 11 &gt;&gt;</c>, and 8, <c>&lt;&lt; /Predictor 1 &gt;&gt;</c>,
+    /// Object streams 10, 11 and 12, Flate-compressed, which take their parameters from one another's members (#277): 10
+    /// holds 5, <c>&lt;&lt; /Predictor 10 /Columns 11 &gt;&gt;</c>, and 8, <c>&lt;&lt; /Predictor 1 &gt;&gt;</c>,
     /// and takes its parameters from 6; 11 holds 6, its data reading <c>7 0 R</c> through a PNG predictor of 11 columns and
     /// <c>77 0 R</c> without one, and takes its parameters from 5; 12 holds 7, <c>&lt;&lt; /Predictor 1 &gt;&gt;</c>, and
     /// takes its parameters from 8. The index is a cross-reference stream, object 13.

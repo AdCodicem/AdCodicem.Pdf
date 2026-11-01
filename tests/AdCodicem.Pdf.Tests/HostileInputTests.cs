@@ -1823,6 +1823,39 @@ public class HostileInputTests
     }
 
     [Theory]
+    [InlineData("nest heads past the cache, met in turn, sharing their tails")]
+    [InlineData("nests ending at a stream another nest parsed")]
+    public void Nests_the_walk_cannot_keep_cost_each_object_stream_alike_whatever_their_number(string shape)
+    {
+        // #181's residual, under the smallest cache, 64 objects, so that the files stay small. The walk keeps a nest of streams
+        // by the stream heading it, as many as the reader caches objects, and only from a parse that met no stream parsed
+        // before. Object streams that each meet 4 heads of their own set, 20 sets, more heads than the cache, met in turn and
+        // sharing 4 tails of 20 streams, find no nest kept: each parses its heads' 84 streams again. Object streams sharing 8
+        // parameters, each heading a nest of 20 whose last /Length names one stream, 9, parse it with the first nest: every
+        // other nest meets 9, parsed before, and is not kept, so that each walk parses the 160 streams again. Either costs
+        // each object stream what its nests cost, 80 to 170 KB, about 14 MB under the default cache for nests of 62 and 256
+        // heads: in proportion to the streams, which closing #181 brings down to what each stream's own dictionary costs.
+        const int Few = 40;
+        const int Many = 160;
+        var options = new PdfReaderOptions { ObjectCacheCapacity = 64 };
+
+        var none = Allocations.Least(() => PdfDocument.Open(UncachedNests(shape, Few / 2), options), document => ObjectStreamDependencies.Run(document), out var noneDocument, out _);
+        var fewAllocated = Allocations.Least(() => PdfDocument.Open(UncachedNests(shape, Few), options), document => ObjectStreamDependencies.Run(document), out var fewDocument, out var fewResult);
+        var manyAllocated = Allocations.Least(() => PdfDocument.Open(UncachedNests(shape, Many), options), document => ObjectStreamDependencies.Run(document), out var manyDocument, out var manyResult);
+
+        using (noneDocument)
+        using (fewDocument)
+        using (manyDocument)
+        {
+            fewResult.CircularStreams.Should().BeEmpty();
+            manyResult.CircularStreams.Should().BeEmpty();
+            var first = (fewAllocated - none) / (Few / 2);
+            var then = (manyAllocated - fewAllocated) / (Many - Few);
+            then.Should().BeLessThan(first * 5 / 4, "each object stream costs what its own nests cost, whatever their number ({0} B, then {1} B a stream)", first, then);
+        }
+    }
+
+    [Theory]
     [InlineData("a parameters dictionary of 100 KB")]
     [InlineData("a chain of 20,000 references")]
     [InlineData("64 filters and parameters, each a chain")]
@@ -1834,7 +1867,7 @@ public class HostileInputTests
         // the parameters' values chains as well; or 64 parameters and the values their predictor asks for, each a stream
         // heading a nest of 62 streams by /Length, which the parse of each takes to the reader's deepest load: 16,128
         // streams, more than the walk keeps. The walk read what each led to again for every stream, the long chain parsed
-        // again for each, 5.6 MB a stream (#201), and each nest of streams, 14 MB (walk:1 of #277's review). It reads what
+        // again for each, 5.6 MB a stream, and each nest of streams, 14 MB (#201). It reads what
         // decoding reads of each object once a validation, takes a chain it has followed at once, and a nest of streams a
         // parse went through: what one more stream costs is its own dictionary.
         const int Few = 250;
@@ -4228,10 +4261,72 @@ public class HostileInputTests
     };
 
     /// <summary>
+    /// A file of <paramref name="streams"/> object streams, numbered 20,000, 20,002 and so on, each holding one dictionary,
+    /// whose nests the walk cannot keep: of <paramref name="shape"/>, nest heads past the cache, met in turn, sharing their
+    /// tails — each stream takes four Flate steps' parameters from the four heads of one of 20 sets, its own set its number
+    /// in turn, each head taking its <c>/Length</c> from the first of four tails of 20 streams —; or nests ending at a
+    /// stream another nest parsed — every stream takes eight Flate steps' parameters from eight streams, each heading a nest
+    /// of 20, the last of each taking its <c>/Length</c> from stream 9.
+    /// </summary>
+    internal static byte[] UncachedNests(string shape, int streams)
+    {
+        var direct = new List<(int Number, string Body)>();
+        var packed = new List<PackedStream>();
+        var shared = shape.StartsWith("nests ending", StringComparison.Ordinal);
+
+        if (shared)
+        {
+            var heads = new StringBuilder("[");
+            direct.Add((9, "<< /Length 0 >>\nstream\n\nendstream"));
+
+            for (var head = 0; head < 8; head++)
+            {
+                Nest(1000 + (100 * head), 20, "9 0 R", "/Predictor 1 ");
+                heads.Append(CultureInfo.InvariantCulture, $"{1000 + (100 * head)} 0 R ");
+            }
+
+            direct.Add((5, "[" + string.Join(' ', Enumerable.Repeat("/FlateDecode", 8)) + "]"));
+            direct.Add((6, heads.Append(']').ToString()));
+        }
+        else
+        {
+            for (var tail = 0; tail < 4; tail++)
+            {
+                Nest(1000 + (100 * tail), 20, "0", string.Empty);
+            }
+
+            for (var head = 0; head < 80; head++)
+            {
+                direct.Add((5000 + head, string.Create(CultureInfo.InvariantCulture, $"<< /Predictor 1 /Length {1000 + (100 * (head % 4))} 0 R >>\nstream\n\nendstream")));
+            }
+        }
+
+        for (var k = 0; k < streams; k++)
+        {
+            var set = 5000 + (4 * (k % 20));
+            var entries = shared
+                ? "/Filter 5 0 R /DecodeParms 6 0 R"
+                : string.Create(CultureInfo.InvariantCulture, $"/Filter [/FlateDecode /FlateDecode /FlateDecode /FlateDecode] /DecodeParms [{set} 0 R {set + 1} 0 R {set + 2} 0 R {set + 3} 0 R]");
+            packed.Add(new PackedStream(20_000 + (2 * k), entries, [(20_001 + (2 * k), "<< >>")], PackedData.Plain));
+        }
+
+        return PackedFile(packed, direct);
+
+        void Nest(int head, int count, string last, string entries)
+        {
+            for (var level = 0; level < count; level++)
+            {
+                var length = level + 1 < count ? string.Create(CultureInfo.InvariantCulture, $"{head + level + 1} 0 R") : last;
+                direct.Add((head + level, $"<< {(level == 0 ? entries : string.Empty)}/Length {length} >>\nstream\n\nendstream"));
+            }
+        }
+    }
+
+    /// <summary>
     /// A file of object streams numbered 100,000, 100,002 and so on, each holding one object, numbered after it, that share
     /// <c>/Filter 5 0 R</c>, 64 Flate steps, and <c>/DecodeParms 6 0 R</c>, 64 references to the heads of chains of
     /// <paramref name="links"/> members: the first 64 times <paramref name="links"/> streams hold the members, one each,
-    /// every member naming the next and the last of each chain an empty dictionary (#277's review). When
+    /// every member naming the next and the last of each chain an empty dictionary (#277). When
     /// <paramref name="holdersShare"/> says so, the holders are the first of the <paramref name="streams"/> and take the
     /// filters and parameters themselves; otherwise they need nothing, and the <paramref name="streams"/> after them, each
     /// holding an empty dictionary, take them. When <paramref name="inFile"/> says so, the chains' objects are written
@@ -4282,7 +4377,7 @@ public class HostileInputTests
     /// A file of <paramref name="streams"/> object streams, numbered 20,000, 20,002 and so on, each holding one dictionary,
     /// that share <c>/Filter 5 0 R</c>, 64 Flate steps, and <c>/DecodeParms 6 0 R</c>, 64 references to streams of
     /// parameters whose predictor asks for their <c>/Colors</c>, <c>/BitsPerComponent</c> and <c>/Columns</c>, each a stream
-    /// as well (walk:1 of #277's review). Each of the 256 heads a nest of <paramref name="depth"/> streams by
+    /// as well (#201). Each of the 256 heads a nest of <paramref name="depth"/> streams by
     /// <c>/Length</c>, each taking it from the next, the last from a direct 0: a stream met on a chain has its
     /// <c>/Length</c> followed a level deeper, which the parse of 62 such streams below one met at the second level takes to
     /// the reader's deepest load, 16,128 streams a walk — ending where the chains do, or, of a deeper nest, cut there. The
