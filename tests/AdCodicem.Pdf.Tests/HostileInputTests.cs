@@ -1831,12 +1831,15 @@ public class HostileInputTests
         // by the stream heading it, as many as the reader caches objects, and only from a parse that met no stream parsed
         // before. Object streams that each meet 4 heads of their own set, 20 sets, more heads than the cache, met in turn and
         // sharing 4 tails of 20 streams, find no nest kept: each parses its heads' 84 streams again. Object streams sharing 8
-        // parameters, each heading a nest of 20 whose last /Length names one stream, 9, parse it with the first nest: every
-        // other nest meets 9, parsed before, and is not kept, so that each walk parses the 160 streams again. Either costs
-        // each object stream what its nests cost, about 64 and 141 KB, about 14 MB under the default cache for nests of 62
-        // and 256 heads: in proportion to the streams, which closing #181 brings down to what each stream's own dictionary
-        // costs, about 1 KB, as a cache the heads fit in does now. The least each stream costs pins the residual, which
-        // closing #181 flips; that it costs no more as the streams grow holds whether #181 is open or closed.
+        // parameters, each heading a nest of 20 whose last /Length names one stream, 9, parse it with the first nest, which is
+        // kept: every other nest meets 9, parsed before, and is not kept, so that each walk parses the other 140 streams
+        // again. Either costs each object stream what its nests cost, about 64 and 141 KB, about 14 MB under the default
+        // cache for nests of 62 and 256 heads: in proportion to the streams, which closing #181 brings down to what each
+        // stream's own dictionary costs, about 1 KB. A cache brings the first shape there once its 80 heads fit in it; the
+        // second shape's 8 heads fit already, and it allocates about 1 KB only once the reader's cache holds every stream of
+        // the nests, while the walk still parses them again, which closing #181 removes. The least each stream costs pins
+        // the residual, which closing #181 flips; that it costs no more as the streams grow holds whether #181 is open or
+        // closed.
         const int Few = 40;
         const int Many = 160;
         var options = new PdfReaderOptions { ObjectCacheCapacity = 64 };
