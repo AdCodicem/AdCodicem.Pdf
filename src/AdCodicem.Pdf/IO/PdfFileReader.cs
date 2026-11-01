@@ -6771,7 +6771,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// <summary>
     /// Finishes the rebuild a load set off while that load's exception leaves it, which stands for the read: a guard the
     /// finish reaches afterward is left, the first guard reached being the one thrown, and a finish the source fails,
-    /// whatever it throws, leaves the rebuild to the next read.
+    /// whatever it throws, leaves the rebuild to the next read or validation.
     /// </summary>
     private void FinishUnfinishedRebuildAfterFailure()
     {
@@ -6786,8 +6786,8 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
         catch (Exception)
         {
             // The source failed the finish, whatever it threw — an I/O error, or what a caller's own source throws —, as the
-            // rebuild's other steps take it: the rebuild is left unfinished, and finished by the next read; the read's own
-            // exception is the one thrown.
+            // rebuild's other steps take it: the rebuild is left unfinished, and finished by the next read or validation; the
+            // read's own exception is the one thrown.
         }
     }
 

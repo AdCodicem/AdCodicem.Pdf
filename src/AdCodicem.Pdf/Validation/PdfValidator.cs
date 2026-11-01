@@ -25,10 +25,16 @@ namespace AdCodicem.Pdf.Validation;
 /// incomplete through damage, or an entry places its object where neither its offset nor the 512 bytes either side of it
 /// hold its header —, as reading that object would. No rule then reads part of the document before a rebuild and part
 /// after it, and two validations of the same document give the same report, whatever the caller read before them (#237).
-/// Three things change that: the caller changing the document between them; a rebuild that reaches a guard of a
-/// document opened with <see cref="PdfReaderOptions.ThrowOnLimit"/>, which throws once, in the first validation, the
-/// index rebuilt whole — a later validation throws only where its rules read what the guard cut or left out, as any read
-/// does —; and a file crafted so that where a damaged stream's data ends depends on which stream was read first (#138).
+/// Five things change that: the caller changing the document between them; a rebuild that reaches a guard of a document
+/// opened with <see cref="PdfReaderOptions.ThrowOnLimit"/>, which throws once, in the first validation, the index
+/// rebuilt whole — a later validation throws only where its rules read what the guard cut or left out, as any read
+/// does —; and three files crafted for it. In one, where a damaged stream's data ends depends on which stream was read
+/// first (#138). In another, a load lies past the reader's deepest nesting, which the reader cuts there, or serves from
+/// its cache when a read before kept the object: what was read before — or, on a thread with little stack, the reader's
+/// stack probe — decides what that load gives (#163). In the last, an object stream's decoding reads a value — its
+/// <c>/Type</c>, <c>/N</c>, <c>/First</c>, <c>/Filter</c> or <c>/DecodeParms</c> — held by a stream that lies on a loop,
+/// or the stream lies on a loop itself, and what the reader serves of that value depends on which stream of the loop it
+/// decoded first (#313).
 /// </para>
 /// </remarks>
 public sealed class PdfValidator
