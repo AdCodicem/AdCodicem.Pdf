@@ -371,6 +371,50 @@ internal static partial class ConvergenceShapes
     }
 
     /// <summary>
+    /// Object stream 3, written as it is, holds 4, and takes its <c>/Length</c> from stream 100, which heads streams 101 to
+    /// 160 by <c>/Length</c>, the last naming object stream 9, whose <c>/Length</c> is 180, written in the file,
+    /// <c>100 0 R</c>; 9 holds 50, <c>5 0 R</c>; 7 holds 5 and 6, and takes its parameters from 50. When
+    /// <paramref name="deeper"/> says so, 160 names 9 through 181, written in the file, and 9's <c>/Length</c> is stream 190,
+    /// whose own is 180. When <paramref name="entering"/> says so as well, object stream 11 holds 12, <c>14 0 R</c>, and takes
+    /// its parameters from stream 102; 13 holds 14, and takes its parameters from 12.
+    /// </summary>
+    internal static byte[] NestBackToAHolder(bool deeper = false, bool entering = false)
+    {
+        var (three, threeFirst) = ObjectStreamData((4, "<< >>"));
+        var nine = HostileInputTests.Compress(Encoding.Latin1.GetBytes(ObjectStreamData((50, "5 0 R")).Data));
+        var objects = new SortedDictionary<int, (string Entries, byte[]? Data)>
+        {
+            [3] = (string.Create(CultureInfo.InvariantCulture, $"/Type /ObjStm /N 1 /First {threeFirst} /Length 100 0 R"), Encoding.Latin1.GetBytes(three)),
+            [7] = FlateObjectStream("/DecodeParms 50 0 R", (5, "<< /Predictor 1 >>"), (6, "<< /Title (six) >>")),
+            [9] = (string.Create(CultureInfo.InvariantCulture, $"/Type /ObjStm /N 1 /First {ObjectStreamData((50, "5 0 R")).First} /Length {(deeper ? 190 : 180)} 0 R /Filter /FlateDecode"), nine),
+            [180] = ("100 0 R", null),
+        };
+
+        for (var stream = 100; stream <= 160; stream++)
+        {
+            objects[stream] = (string.Create(CultureInfo.InvariantCulture, $"/Length {(stream < 160 ? stream + 1 : deeper ? 181 : 9)} 0 R"), "ab"u8.ToArray());
+        }
+
+        if (deeper)
+        {
+            objects[181] = ("9 0 R", null);
+            objects[190] = ("/Length 180 0 R", "ab"u8.ToArray());
+        }
+
+        var members = new Dictionary<int, (int Stream, int Index)> { [4] = (3, 0), [5] = (7, 0), [6] = (7, 1), [50] = (9, 0) };
+
+        if (entering)
+        {
+            objects[11] = FlateObjectStream("/DecodeParms 102 0 R", (12, "14 0 R"));
+            objects[13] = FlateObjectStream("/DecodeParms 12 0 R", (14, "<< /Predictor 1 >>"));
+            members[12] = (11, 0);
+            members[14] = (13, 0);
+        }
+
+        return StreamsAndMembers(objects, members);
+    }
+
+    /// <summary>
     /// Object stream 7 holds 5, <c>&lt;&lt; /Predictor 1 &gt;&gt;</c>, and 6, <c>8 0 R</c>, and takes its parameters from
     /// stream 100, <c>/Predictor 1</c>, which heads <paramref name="nest"/> streams by <c>/Length</c>, the last naming 50,
     /// which 9 holds; 9 takes its parameters from 5; 11 holds 8, and takes its parameters from 6.

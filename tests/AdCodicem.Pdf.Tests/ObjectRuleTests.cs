@@ -1931,6 +1931,28 @@ public class ObjectRuleTests
     }
 
     [Theory]
+    [InlineData(false, false, new int[0])]
+    [InlineData(true, false, new[] { 7 })]
+    [InlineData(true, true, new[] { 7 })]
+    public void An_object_of_a_stream_whose_decoding_takes_a_nest_leading_back_to_it_is_followed_only_where_the_reader_meets_it_short_of_the_cut(bool deeper, bool entering, int[] circular)
+    {
+        // Stream 3, walked first, takes its /Length from stream 100, which heads 60 streams by /Length, the last naming object
+        // stream 9: the walk keeps the nest of 100, 61 streams, 9 the last, cut where 9's /Length names 180, at the 65th load.
+        // 7 takes its parameters from 50, which 9 holds, 5 0 R; 7 holds 5. 9's /Length is 180, 100 0 R: its decoding takes
+        // 100's nest from where 3's walk met it, which reaches 9 at the reader's deepest load, while the reader resolves 9's
+        // /Length. The reader meets 9 again there, and reads it as null for the rest of every decoding in flight: 9 does not
+        // decode alike, and 50 is a need of 7, read as null. 7 is not circular. Where 9's /Length is stream 190, whose own is
+        // 180, the nest is taken a level deeper, and cut a stream short, where 160's /Length names 181, 9 0 R: the reader
+        // reads 181 as null there, and never meets 9 again. 9 decodes alike, and 50 leads 7 to 5; the walk keeps the nest of
+        // 190, 100 and the 60 streams it took, cut where 160's /Length names 181. Stream 13 takes its parameters from 12, which
+        // 11 holds, 14 0 R; 13 holds 14. 11's decoding enters the loop at 102, and takes the nest of 190 at the 62nd load: its
+        // second stream, 101, names 102 at the 65th, while 102's parse is in flight. The reader meets 102 again there: 11 does
+        // not decode alike, and 12 is a need of 13.
+        Validate(ConvergenceShapes.NestBackToAHolder(deeper, entering)).Findings.Where(finding => finding.RuleId == PdfValidationRuleIds.XRefObjectStreamCircular)
+            .Select(finding => finding.Location.Object?.Number).Should().Equal([.. circular.Select(number => (int?)number)]);
+    }
+
+    [Theory]
     [InlineData(61, new[] { 7, 9 })]
     [InlineData(62, new[] { 11 })]
     public void An_object_another_stream_holds_met_at_the_reader_s_deepest_load_is_no_need(int streams, int[] circular)
