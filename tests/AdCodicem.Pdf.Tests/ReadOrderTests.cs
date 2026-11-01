@@ -1908,14 +1908,15 @@ public class ReadOrderTests
     }
 
     [Theory]
-    [InlineData("/Ref 99 0 R", "/Ref 3 0 R", "/Zz [99 0 R]", "Object 1 refers to object 99 0 under /Zz[0], which the file lacks: the reference reads as null.", "Object 5 refers to an object the file lacks: the reference reads as null.")]
-    [InlineData("/Bad /A#00B", "/Good 1", "/Zz [/C#00D]", "Object 1 holds the name /C#00D, under /Zz[0], and a name cannot contain a null character.", "Object 5 holds a name with a null character, which a name cannot contain.")]
+    [InlineData("/Ref 99 0 R", "/Ref 3 0 R", "/Zz [99 0 R] /Zy [98 0 R]", "Object 1 holds 2 references to objects the file lacks, which read as null; the first refers to object 99 0 under /Zz[0].", "Object 5 refers to an object the file lacks: the reference reads as null.")]
+    [InlineData("/Bad /A#00B", "/Good 1", "/Zz [/C#00D] /Zy [/E#00F]", "Object 1 holds 2 names with a null character, which a name cannot contain; the first is /C#00D, under /Zz[0].", "Object 5 holds a name with a null character, which a name cannot contain.")]
     public void The_object_graph_says_what_it_counted_of_a_redefined_object_after_placing_another_s_fault_in_a_container(
         string fault, string later, string catalog, string placed, string counted)
     {
-        // The catalog holds a fault in an array, and object 5 one a rebuild then redefines away, as above. The catalog's is
-        // placed first, inside its array, and the search lets go of the containers it went through: the search of the later
-        // object 5, which finds nothing, starts from none and ends with its own, rather than going on into the catalog's.
+        // The catalog holds a fault in an array, and a second of the same kind in another array after it; object 5 holds one
+        // a rebuild then redefines away, as above. The catalog's first is placed, inside its array, and the search lets go of
+        // the containers it went through: the search of the later object 5, which finds nothing, starts from none and ends
+        // with its own, rather than going on into the catalog's, where it would find the second and place it in object 5.
         var file = new HandWrittenFile();
         var rows = new Dictionary<int, long>
         {
