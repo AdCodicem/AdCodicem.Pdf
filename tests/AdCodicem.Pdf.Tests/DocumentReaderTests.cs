@@ -249,6 +249,49 @@ public class DocumentReaderTests
             .Which.Position.Should().Be(truncated.Length, "the trailer the keyword announces would start where the file ends");
     }
 
+    [Theory]
+    [InlineData("<< /K 1 >>\nstream\n) /Data (\nendstream")]
+    [InlineData("[1 << /K 1 >>\nstream\n) /Data (\nendstream 2]")]
+    public void A_trailer_a_rebuild_merges_ends_at_a_stream_nested_in_it_its_data_unread(string nested)
+    {
+        // A rebuild's scan for trailers parses the dictionary after each trailer keyword alone, and reads no stream (#171):
+        // a stream nested in it — in a value, or in an array —, which no file may write there, ends the parse at its
+        // keyword, with every container open around it. The keys before the one whose value holds it are merged; that
+        // key, the stream's data, which spells a key, and the key after it are not, and nothing is noted of them.
+        var file = new HandWrittenFile();
+        file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>");
+        file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>");
+        file.Raw($"trailer\n<< /Root 1 0 R /Nested {nested} /After 2 >>\n");
+
+        using var document = PdfDocument.Open(file.Bytes);
+
+        document.WasRepaired.Should().BeTrue();
+        document.Trailer.Keys.Select(key => key.Value).Should().Equal("Root");
+        document.Diagnostics.Should().NotContain(diagnostic => diagnostic.Code.StartsWith("syntax.", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void A_trailer_a_rebuild_merges_keeps_whole_a_reference_its_window_ends_on()
+    {
+        // A rebuild's scan for trailers parses the dictionary after each trailer keyword through a window of 64 KB, which a
+        // longer trailer runs past, what lies past it unread (#49). Here the window ends on the R of the reference /Root
+        // holds: the file says what follows it, white space, as it does to a load (#224), so the reference is read whole
+        // and the catalog it names is the document's, rather than a number the window's edge made of it and a catalog
+        // searched for.
+        const string Before = "\n<< /Pad (";
+        const string After = ") /Root 1 0 R";
+        var file = new HandWrittenFile();
+        file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>");
+        file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>");
+        file.Raw("trailer" + Before + new string('x', PdfFileReader.XRefWindow - Before.Length - After.Length) + After + " >>\n");
+
+        using var document = PdfDocument.Open(file.Bytes);
+
+        document.WasRepaired.Should().BeTrue();
+        document.Trailer.GetRaw(PdfName.Root).Should().BeOfType<PdfReference>().Which.Id.Should().Be(new PdfObjectId(1));
+        document.Diagnostics.Should().NotContain(diagnostic => diagnostic.Code == PdfDiagnosticCodes.TrailerRootRecovered);
+    }
+
     [Fact]
     public void Prefers_the_newest_definition_after_an_incremental_update()
     {
