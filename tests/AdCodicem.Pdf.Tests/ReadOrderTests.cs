@@ -1822,6 +1822,36 @@ public class ReadOrderTests
         graph.MissingReferences.Concat(graph.NullCharacterNames).Should().ContainSingle().Which.Message.Should().Be(message);
     }
 
+    [Theory]
+    [InlineData("/Ref 99 0 R", "/Ref 3 0 R", "/Zz [99 0 R]", "Object 1 refers to object 99 0 under /Zz[0], which the file lacks: the reference reads as null.", "Object 5 refers to an object the file lacks: the reference reads as null.")]
+    [InlineData("/Bad /A#00B", "/Good 1", "/Zz [/C#00D]", "Object 1 holds the name /C#00D, under /Zz[0], and a name cannot contain a null character.", "Object 5 holds a name with a null character, which a name cannot contain.")]
+    public void The_object_graph_says_what_it_counted_of_a_redefined_object_after_placing_another_s_fault_in_a_container(
+        string fault, string later, string catalog, string placed, string counted)
+    {
+        // The catalog holds a fault in an array, and object 5 one a rebuild then redefines away, as above. The catalog's is
+        // placed first, inside its array, and the search lets go of the containers it went through: the search of the later
+        // object 5, which finds nothing, starts from none and ends with its own, rather than going on into the catalog's.
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R /Test 5 0 R " + catalog + " >>"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>"),
+            [3] = file.Object(3, Page),
+            [5] = file.Object(5, "<< " + fault + " /Info 7 0 R >>"),
+        };
+        rows[6] = file.Padding(6);
+        rows[7] = rows[6] + 600;
+        file.Object(7, "<< /Title (info) >>");
+        file.Object(5, "<< " + later + " >>");
+        file.Table(8, rows, "/Size 8 /Root 1 0 R");
+        using var document = PdfDocument.Open(file.Bytes);
+
+        var graph = ObjectGraph.Run(document, PageTreeWalk.Run(document));
+
+        document.WasRepaired.Should().BeTrue();
+        graph.MissingReferences.Concat(graph.NullCharacterNames).Select(finding => finding.Message).Should().Equal(placed, counted);
+    }
+
     /// <summary>The cases a property draws, from a fixed seed, so that a failure replays exactly.</summary>
     private static Config PropertySettings =>
         Config.QuickThrowOnFailure.WithMaxTest(100).WithReplay(0x5EED_1729UL, 0x9E37_79B9_7F4A_7C15UL).WithQuietOnSuccess(true);

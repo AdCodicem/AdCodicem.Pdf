@@ -144,6 +144,55 @@ public class HostileInputMemoryTests
         after.Should().BeLessThan(before + (8L * 1024 * 1024), "a file in memory lends each object stream its data, and no copy is kept");
     }
 
+    [Theory]
+    [InlineData("reference")]
+    [InlineData("name")]
+    [InlineData("key")]
+    public void Placing_a_fault_lets_go_of_the_containers_the_search_went_through(string fault)
+    {
+        // The catalog holds, under /Zz, an array a caller wrote, which holds a reference to nothing, a name with a null
+        // character, or a dictionary keyed by one. The object graph places the fault for its finding by searching the
+        // catalog again, keeping the containers it goes through in the array the walk keeps its own in, which lives as long
+        // as the graph: once the fault is found, the search lets go of them, as the walk does of each container it leaves
+        // (#168). The array is watched through a weak reference once the catalog no longer holds it.
+        using var document = PdfDocument.Open(PdfTemplate.Build(PdfTemplate.Sound));
+        var (graph, array) = PlaceFaultUnderTheCatalog(document, fault);
+
+        document.Catalog!.Remove(PdfName.Get("Zz"));
+        Collect();
+
+        array.IsAlive.Should().BeFalse("the search let go of the containers it went through");
+        GC.KeepAlive(graph);
+    }
+
+    /// <summary>
+    /// Sets the catalog's <c>/Zz</c> to an array holding <paramref name="fault"/>, walks the objects of
+    /// <paramref name="document"/> and places the fault, giving the graph and a weak reference to the array; out of line, so
+    /// that no strong reference to the array outlives the call.
+    /// </summary>
+    [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
+    private static (ObjectGraph Graph, WeakReference Array) PlaceFaultUnderTheCatalog(PdfDocument document, string fault)
+    {
+        var keyed = new PdfDictionary();
+        keyed.Set(PdfName.Get("A\0"), PdfInteger.Create(1));
+        var array = new PdfArray(
+        [
+            fault switch
+            {
+                "reference" => new PdfReference(new PdfObjectId(9999), document.Reader),
+                "name" => PdfName.Get("A\0"),
+                _ => keyed,
+            },
+        ]);
+        document.Catalog!.Set(PdfName.Get("Zz"), array);
+        document.Reader.SettleIndex();
+
+        var graph = ObjectGraph.Run(document, PageTreeWalk.Run(document));
+
+        graph.MissingReferences.Concat(graph.NullCharacterNames).Should().ContainSingle().Which.Message.Should().Contain("under /Zz[0]");
+        return (graph, new WeakReference(array));
+    }
+
     /// <summary>
     /// Opens <paramref name="file"/>, reads the member of its object stream, takes a reference from the document and
     /// disposes of it, giving the reference and a weak reference to the array that held the stream's decoded data; out of
