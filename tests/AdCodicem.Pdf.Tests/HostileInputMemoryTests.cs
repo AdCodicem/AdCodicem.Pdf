@@ -524,9 +524,9 @@ public class HostileInputMemoryTests
 
     /// <summary>A file in memory that samples the memory live at once, every object collected first, at each read.</summary>
     [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public void The_walk_keeps_of_the_dictionaries_of_object_streams_whose_standing_waits_what_their_decoding_reads(bool inParameters)
+    [InlineData(null)]
+    [InlineData("/Pad")]
+    public void The_walk_keeps_of_the_dictionaries_of_object_streams_whose_standing_waits_what_their_decoding_reads(string? key)
     {
         // Two hundred object streams, each taking its /Length from the object the next holds, the last from its own, and its
         // /DecodeParms from an array of 5,000 zeros written in its dictionary, or from parameters holding it. The walk of the
@@ -536,7 +536,7 @@ public class HostileInputMemoryTests
         // read for the walk, some 75 KB, 15 MB for all; of an array, decoding reads as many elements as a chain of filters has
         // steps, and of parameters what a step reads, and the walk keeps no more: kept whole, the 199 arrays held another 13 MB
         // at once.
-        var source = new SamplingSource(HostileInputTests.WaitingArrays(200, 5000, inParameters)) { Every = 16 };
+        var source = new SamplingSource(HostileInputTests.WaitingArrays(200, 5000, key)) { Every = 16 };
         using var document = PdfDocument.Open(source, PdfReaderOptions.Default, ownsSource: true);
         var before = GC.GetTotalMemory(forceFullCollection: true);
         source.Sampling = true;
@@ -546,6 +546,27 @@ public class HostileInputMemoryTests
         source.Sampling = false;
         var held = source.MostLive - before;
         held.Should().BeLessThan(20L * 1024 * 1024, $"memory was sampled {source.Samples} times");
+    }
+
+    [Fact]
+    public void The_walk_keeps_the_dictionaries_of_as_many_object_streams_whose_standing_waits_as_the_reader_caches_objects()
+    {
+        // Four hundred object streams, each taking its /Length from the object the next holds, the last from its own, and its
+        // /DecodeParms from << /Predictor 1 /Columns [...] >>, of 5,000 zeros, opened with a cache of 64 objects: 399
+        // standings wait at once, and the walk keeps what decoding reads of each one's dictionary, its /Columns whole, some
+        // 75 KB, as the reader keeps each stream it read for the walk: some 9 MB in all. It keeps as many as the reader
+        // caches, the oldest let go first, and read again when walked again (#312): kept for every stream that waits, they
+        // held 31 MB at once.
+        var source = new SamplingSource(HostileInputTests.WaitingArrays(400, 5000, "/Columns")) { Every = 16 };
+        using var document = PdfDocument.Open(source, PdfReaderOptions.Default with { ObjectCacheCapacity = 64 }, ownsSource: true);
+        var before = GC.GetTotalMemory(forceFullCollection: true);
+        source.Sampling = true;
+
+        Validation.ObjectStreamDependencies.Run(document).CircularStreams.Should().Equal(1798);
+
+        source.Sampling = false;
+        var held = source.MostLive - before;
+        held.Should().BeLessThan(16L * 1024 * 1024, $"memory was sampled {source.Samples} times");
     }
 
     private sealed class SamplingSource(byte[] data) : PdfFileSource

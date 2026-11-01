@@ -4499,13 +4499,13 @@ public class HostileInputTests
     /// <summary>
     /// A file of <paramref name="count"/> object streams X1, X2 and on, numbered 1,000, 1,002 and so on, each holding one
     /// object and taking its <c>/Length</c> from the object the next holds, the last from its own, and its
-    /// <c>/DecodeParms</c> from an array of <paramref name="elements"/> zeros written in its dictionary, or, when
-    /// <paramref name="inParameters"/> says so, from a dictionary of parameters holding that array under <c>/Pad</c>.
+    /// <c>/DecodeParms</c> from an array of <paramref name="elements"/> zeros written in its dictionary, or from parameters
+    /// holding that array under the key <paramref name="key"/>.
     /// </summary>
-    internal static byte[] WaitingArrays(int count, int elements, bool inParameters = false)
+    internal static byte[] WaitingArrays(int count, int elements, string? key = null)
     {
         var zeros = "[" + new StringBuilder().Insert(0, "0 ", elements) + "]";
-        zeros = inParameters ? "<< /Predictor 1 /Pad " + zeros + " >>" : zeros;
+        zeros = key is null ? zeros : "<< /Predictor 1 " + key + " " + zeros + " >>";
         var packed = new List<PackedStream>();
 
         for (var x = 0; x < count; x++)

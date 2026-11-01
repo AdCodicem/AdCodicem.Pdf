@@ -1806,6 +1806,7 @@ public class ObjectRuleTests
     [InlineData("a nest whose parse takes such a run", false)]
     [InlineData("a parameter neither index holds", true)]
     [InlineData("the object itself, held at its index by a stream written before", false)]
+    [InlineData("the object itself, held at its index by a stream written before, its own known to decode alike", false)]
     [InlineData("the object itself, at another index of its stream", false)]
     [InlineData("a parameter a stream holds, which the chain writes at the file's first byte", false)]
     public void An_object_is_followed_only_where_the_reader_s_rebuilt_index_places_what_its_stream_s_decoding_reads_as_the_chain_s(string redefined, bool circular)
@@ -2579,6 +2580,7 @@ public class ObjectRuleTests
         };
         var later = new List<(int Number, string Body)>();
         var parameters = string.Empty;
+        var fiftyOne = false;
 
         switch (redefined)
         {
@@ -2597,6 +2599,15 @@ public class ObjectRuleTests
                 break;
             case "the object itself, held at its index by a stream written before":
                 file.Object(8, ObjectStreamBody(string.Empty, (50, "5 0 R")));
+                break;
+            case "the object itself, held at its index by a stream written before, its own known to decode alike":
+                // Stream 3, walked first, takes its parameters from 51, which 9 holds as well, and which both indexes place
+                // alike: 9's standing is known before 7 is walked.
+                file.Object(8, ObjectStreamBody(string.Empty, (50, "5 0 R")));
+                rows[3] = (1, file.Object(3, ObjectStreamBody("/DecodeParms 51 0 R", (60, "<< >>"))), 0);
+                rows[60] = (2, 3, 0);
+                rows[51] = (2, 9, 1);
+                fiftyOne = true;
                 break;
             case "the object itself, at another index of its stream":
                 rows[50] = (2, 9, 1);
@@ -2650,7 +2661,7 @@ public class ObjectRuleTests
         }
 
         rows[7] = (1, file.Object(7, ObjectStreamBody("/DecodeParms 50 0 R", (5, "<< /Predictor 1 >>"), (6, "<< /Title (six) >>"))), 0);
-        rows[9] = (1, file.Object(9, ObjectStreamBody(parameters, (50, "5 0 R"))), 0);
+        rows[9] = (1, file.Object(9, fiftyOne ? ObjectStreamBody(parameters, (50, "5 0 R"), (51, "<< /Predictor 1 >>")) : ObjectStreamBody(parameters, (50, "5 0 R"))), 0);
 
         foreach (var (number, body) in later)
         {
