@@ -145,6 +145,12 @@ once they are full, each reading counts it among the suppressed. A fault inside 
 that object and the byte of the stream's decoded data: each object is read in its own window, up to the next one's
 start, so no fault is two objects'.
 
+A rebuild's scan for trailers parses the dictionary after each `trailer` keyword alone, and reads no stream. A stream
+nested in that dictionary, which no file may write there, ends what the rebuild merges of it: the key that holds it and
+the keys after it are not merged. A reference written in the dictionary's place is not followed, and nothing is merged
+for it. Each is noted once, as a warning under `syntax.unexpected-token`, at the stream's keyword or where the
+reference starts; a stream after the dictionary itself loses no key, and is not noted.
+
 ```text
 Warning syntax.truncated-object at 328: The file ended inside a literal string, which takes the 6,575 bytes from where it opens to that end; the 2 arrays or dictionaries around it were never closed either.
 Warning syntax.truncated-object at 381: An endobj ended the object inside an array, which was never closed.
@@ -152,6 +158,8 @@ Warning syntax.truncated-object at 507: An object header ended the object inside
 Warning syntax.hex-string-invalid at 1204: A hexadecimal string holds 5 bytes that are neither hexadecimal digits nor white space, the first here; they were skipped.
 Warning syntax.name-escape-invalid at 96: A name holds a number sign that two hexadecimal digits do not follow, kept as the byte it is: the name reads as /A#23zz.
 Warning syntax.key-repeated at 412: The dictionary gives the key /Filter more than once, written here with #xx escapes; the last value given is kept.
+Warning syntax.unexpected-token at 152: A stream inside the dictionary after the trailer keyword at offset 110 ends what the rebuild merges of it: the key that holds it and the keys after it are not read.
+Warning syntax.unexpected-token at 164: The trailer keyword at offset 156 is followed by a reference to object 5, not by a dictionary; the rebuild does not follow it.
 ```
 
 ### Streams whose length is wrong
