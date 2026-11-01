@@ -2283,21 +2283,35 @@ public class ObjectRuleTests
         // each naming the next. A /Length loads 33 of them, one more than a value's chain: the walk keeps the run of 33 from
         // 1001, and each stream's predictor meets it with a load too few. Working out again the 32 that chain loads read
         // again, for each stream, the 31 objects the run passes over, which the walk does not keep: 5.2 KB a stream. Going
-        // on an object at a time from 1001 takes the run kept from 1002, and reads nothing again: 2.5 KB a stream, its own
-        // walk and the reader's read of its dictionary (#312).
+        // on an object at a time from 1001, the first stream's predictor reads them again, and keeps the run of 31 from
+        // 1002, which fits the loads its chain has left there exactly; every stream after it takes that run whole and reads
+        // nothing again: 2.5 KB a stream, its own walk and the reader's read of its dictionary, the first 17 as the 1,500th.
+        // Refused where it fits exactly, the run would be gone round an object at a time as well, each object read again and
+        // a run built from it, over the first 32 streams or so: 4.6 KB a stream for the first 17 (#312).
+        const int One = 1;
+        const int First = 17;
         const int Few = 500;
         const int Many = 1500;
+        var one = StreamsSharingALengthChain(One);
+        var first = StreamsSharingALengthChain(First);
         var few = StreamsSharingALengthChain(Few);
         var many = StreamsSharingALengthChain(Many);
 
+        var oneAllocated = Allocations.Least(() => PdfDocument.Open(one), document => ObjectStreamDependencies.Run(document), out var oneDocument, out var oneResult);
+        var firstAllocated = Allocations.Least(() => PdfDocument.Open(first), document => ObjectStreamDependencies.Run(document), out var firstDocument, out var firstResult);
         var fewAllocated = Allocations.Least(() => PdfDocument.Open(few), document => ObjectStreamDependencies.Run(document), out var fewDocument, out var fewResult);
         var manyAllocated = Allocations.Least(() => PdfDocument.Open(many), document => ObjectStreamDependencies.Run(document), out var manyDocument, out var manyResult);
 
+        using (oneDocument)
+        using (firstDocument)
         using (fewDocument)
         using (manyDocument)
         {
+            oneResult.CircularStreams.Should().BeEmpty();
+            firstResult.CircularStreams.Should().BeEmpty();
             fewResult.CircularStreams.Should().BeEmpty();
             manyResult.CircularStreams.Should().BeEmpty();
+            ((firstAllocated - oneAllocated) / (First - One)).Should().BeLessThan(3584, "the first streams that share the chain cost no more than their own walk either");
             ((manyAllocated - fewAllocated) / (Many - Few)).Should().BeLessThan(3584, "what one more stream costs is its own walk");
         }
 
