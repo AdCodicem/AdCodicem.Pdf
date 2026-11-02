@@ -5597,8 +5597,9 @@ public class HostileInputTests
     /// </summary>
     /// <remarks>
     /// The thread asks for 256 KB, and the C library could give it a stack another thread left, of up to four times that:
-    /// a chain these tests nest to run short of 256 KB would then be read uncut. No thread of the suite asks for such a
-    /// stack (<see cref="Stacks"/>).
+    /// a chain these tests nest to run short of 256 KB, but not of four times that, could then be read uncut, as the
+    /// streams nested in 32 arrays were in the full suite under coverage. No thread of the suite asks for such a stack
+    /// (<see cref="Stacks"/>).
     /// </remarks>
     private static (PdfObject First, PdfDiagnostics Diagnostics) ReadObject3OnASmallStack(byte[] file) =>
         Stacks.Run(
