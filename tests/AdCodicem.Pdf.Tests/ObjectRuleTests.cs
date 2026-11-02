@@ -1,3 +1,4 @@
+using System.Buffers.Binary;
 using System.Globalization;
 using System.Runtime.CompilerServices;
 using System.Text;
@@ -1093,6 +1094,213 @@ public class ObjectRuleTests
         }
     }
 
+    [Fact]
+    public void The_walk_lets_go_of_the_oldest_object_it_kept_when_it_keeps_one_past_as_many_as_the_reader_caches()
+    {
+        // As above, 65 streams, none circular. The walk keeps, in order, the first stream's parameters, object 4, then each
+        // next stream's parameters. Under a cache of 64 objects, keeping the 65th stream's parameters lets go of object 4,
+        // which that stream reads again next; under a cache of 65, it lets go of the first stream's parameters alone, and
+        // reads no object twice, as under a cache that keeps all.
+        const int Streams = 65;
+        var file = new HandWrittenFile(version: "1.5");
+        var rows = new Dictionary<int, (int Type, long Field2, int Field3)>
+        {
+            [1] = (1, file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"), 0),
+            [2] = (1, file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"), 0),
+            [4] = (1, file.Object(4, "1"), 0),
+        };
+
+        for (var k = 0; k < Streams; k++)
+        {
+            var (stream, member) = (2000 + (2 * k), 2001 + (2 * k));
+            rows[1000 + k] = (1, file.Object(1000 + k, "<< /Predictor 4 0 R >>"), 0);
+            rows[stream] = (1, FlateObjectStream(file, stream, [(member, "1")], string.Create(CultureInfo.InvariantCulture, $"/DecodeParms {1000 + k} 0 R")), 0);
+            rows[member] = (2, stream, 0);
+        }
+
+        file.CrossReferenceStream(3000, 3001, rows, "/Root 1 0 R");
+
+        var keptAll = Walk(1000);
+
+        Walk(65).Should().Be(keptAll, "a cache of 65 keeps every object the walk reads again");
+        Walk(64).Should().BeGreaterThan(keptAll, "a cache of 64 lets go of object 4 before the last stream reads it");
+
+        long Walk(int cache)
+        {
+            using var source = new StrictCountingSource(file.Bytes);
+            using var document = PdfDocument.Open(source, new PdfReaderOptions { ObjectCacheCapacity = cache }, ownsSource: false);
+            document.Reader.SettleIndex();
+            var before = source.BytesRead;
+            ObjectStreamDependencies.Run(document).CircularStreams.Should().BeEmpty();
+            return source.BytesRead - before;
+        }
+    }
+
+    [Fact]
+    public void An_object_a_run_of_links_ends_at_that_the_walk_keeps_already_is_not_kept_again()
+    {
+        // As above, 70 streams under a cache of 64, each taking its predictor from object 4 but the second, whose predictor
+        // is 3, which names 8, which names 4: the run of 3 and 8 ends at 4, which the first stream's walk kept. Kept once, 4
+        // is let go when the 64th stream's parameters are kept, read again by that stream, and kept to the end: the walk
+        // reads it twice. Kept again where the run ends, it would be let go a second time, and read a third.
+        const int Streams = 70;
+        var file = new HandWrittenFile(version: "1.5");
+        var rows = new Dictionary<int, (int Type, long Field2, int Field3)>
+        {
+            [1] = (1, file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"), 0),
+            [2] = (1, file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"), 0),
+            [3] = (1, file.Object(3, "8 0 R"), 0),
+            [4] = (1, file.Object(4, "1"), 0),
+            [8] = (1, file.Object(8, "4 0 R"), 0),
+        };
+
+        for (var k = 0; k < Streams; k++)
+        {
+            var (stream, member) = (2000 + (2 * k), 2001 + (2 * k));
+            rows[1000 + k] = (1, file.Object(1000 + k, k == 1 ? "<< /Predictor 3 0 R >>" : "<< /Predictor 4 0 R >>"), 0);
+            rows[stream] = (1, FlateObjectStream(file, stream, [(member, "1")], string.Create(CultureInfo.InvariantCulture, $"/DecodeParms {1000 + k} 0 R")), 0);
+            rows[member] = (2, stream, 0);
+        }
+
+        file.CrossReferenceStream(3000, 3001, rows, "/Root 1 0 R");
+
+        using var source = new OffsetCountingSource(file.Bytes);
+        using var document = PdfDocument.Open(source, new PdfReaderOptions { ObjectCacheCapacity = 64 }, ownsSource: false);
+        document.Reader.SettleIndex();
+        source.Reads.Clear();
+
+        ObjectStreamDependencies.Run(document).CircularStreams.Should().BeEmpty();
+
+        source.Reads.GetValueOrDefault(rows[4].Field2).Should().Be(2, "the walk keeps object 4 once, lets go of it once, and reads it again once");
+    }
+
+    [Theory]
+    [InlineData("50, which the index lists free")]
+    [InlineData("70, which object stream 9, known not to decode alike, holds")]
+    public void A_run_of_links_ending_where_every_walk_reads_alike_is_worked_out_once_for_the_streams_whose_chains_share_it(string end)
+    {
+        // Streams 20 and 22 take their parameters from 12, << /Predictor 3 0 R >>, written in the file, as 3 names 8 and 8
+        // names the chain's end: 50, or 70, which object stream 9 holds, its /Length being 70 itself, so that 9 does not
+        // decode alike — stream 10, which takes its parameters from 70, has the walk find it out before 20 is walked. Either
+        // end reads alike for every walk: the run of 3 and 8 is kept once 20's walk worked it out, and 22's takes it, so that
+        // the walk reads 8, which the run passes over, once.
+        var file = new HandWrittenFile(version: "1.5");
+        var member = end.StartsWith("70", StringComparison.Ordinal);
+        var rows = new Dictionary<int, (int Type, long Field2, int Field3)>
+        {
+            [1] = (1, file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"), 0),
+            [2] = (1, file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"), 0),
+            [3] = (1, file.Object(3, "8 0 R"), 0),
+            [8] = (1, file.Object(8, member ? "70 0 R" : "50 0 R"), 0),
+            [12] = (1, file.Object(12, "<< /Predictor 3 0 R >>"), 0),
+        };
+
+        if (member)
+        {
+            rows[9] = (1, file.Object(9, "<< /Type /ObjStm /N 1 /First 5 /Length 70 0 R >>\nstream\n70 0 << /Predictor 1 >> \nendstream"), 0);
+            rows[70] = (2, 9, 0);
+            rows[10] = (1, FlateObjectStream(file, 10, [(11, "1")], "/DecodeParms 70 0 R"), 0);
+            rows[11] = (2, 10, 0);
+        }
+
+        rows[20] = (1, FlateObjectStream(file, 20, [(21, "1")], "/DecodeParms 12 0 R"), 0);
+        rows[21] = (2, 20, 0);
+        rows[22] = (1, FlateObjectStream(file, 22, [(23, "1")], "/DecodeParms 12 0 R"), 0);
+        rows[23] = (2, 22, 0);
+        file.CrossReferenceStream(200, 201, rows, "/Root 1 0 R");
+
+        using var source = new OffsetCountingSource(file.Bytes);
+        using var document = PdfDocument.Open(source, PdfReaderOptions.Default, ownsSource: false);
+        document.Reader.SettleIndex();
+        source.Reads.Clear();
+
+        ObjectStreamDependencies.Run(document).CircularStreams.Should().Equal(member ? [9] : []);
+
+        source.Reads.GetValueOrDefault(rows[3].Field2).Should().Be(1, "the walk reads the run's first object once");
+        source.Reads.GetValueOrDefault(rows[8].Field2).Should().Be(1, "the walk works the run out once, and keeps it");
+    }
+
+    [Theory]
+    [InlineData("3 0 R", "3 = 8 0 R, 8 = 12 0 R", new[] { 3, 8, 12 }, new[] { 3, 12 })]
+    [InlineData("1 0 R", "1 = 8 0 R, 8 = 12 0 R", new[] { 1, 8, 12 }, new[] { 1, 12 })]
+    [InlineData("3 0 R", "3 = 1 0 R, 1 = 12 0 R", new[] { 3, 1, 12 }, new[] { 3, 12 })]
+    [InlineData("3 0 R", "3 = 0 0 R, which the index places in the file", new[] { 3 }, new[] { 3 })]
+    public void The_walk_reads_each_object_of_a_chain_of_links_once_and_keeps_only_the_one_it_starts_from_and_the_one_it_ends_at(string predictor, string chain, int[] read, int[] kept)
+    {
+        // As above, the second stream's predictor names a chain of links, which ends at object 12, the integer 1, or at
+        // object 0, which the reader never reads though the index places it in the file, written there as 12 0 R; the
+        // catalog is object 10. The walk reads each object of the chain once, none at all of object 0, and keeps the
+        // chain's first object and the one it ends at besides the stream's parameters — none it passes over, nor object 0
+        // — so that the smallest cache that lets go of nothing the last stream reads keeps as many objects as there are
+        // streams and those kept of the chain: one fewer lets go of object 4.
+        const int Streams = 64;
+        var file = new HandWrittenFile(version: "1.5");
+        var zero = chain.Contains("0 0 R", StringComparison.Ordinal) ? file.Object(0, "12 0 R") : -1;
+        var rows = new Dictionary<int, (int Type, long Field2, int Field3)>
+        {
+            [10] = (1, file.Object(10, "<< /Type /Catalog /Pages 11 0 R >>"), 0),
+            [11] = (1, file.Object(11, "<< /Type /Pages /Kids [] /Count 0 >>"), 0),
+            [4] = (1, file.Object(4, "1"), 0),
+            [12] = (1, file.Object(12, "1"), 0),
+        };
+
+        foreach (var link in chain.Split(", ", StringSplitOptions.None))
+        {
+            if (link.Contains(" = ", StringComparison.Ordinal))
+            {
+                var number = int.Parse(link.AsSpan(0, link.IndexOf(' ', StringComparison.Ordinal)), CultureInfo.InvariantCulture);
+                rows[number] = (1, file.Object(number, link[(link.IndexOf('=', StringComparison.Ordinal) + 2)..]), 0);
+            }
+        }
+
+        for (var k = 0; k < Streams; k++)
+        {
+            var (stream, member) = (2000 + (2 * k), 2001 + (2 * k));
+            rows[1000 + k] = (1, file.Object(1000 + k, $"<< /Predictor {(k == 1 ? predictor : "4 0 R")} >>"), 0);
+            rows[stream] = (1, FlateObjectStream(file, stream, [(member, "1")], string.Create(CultureInfo.InvariantCulture, $"/DecodeParms {1000 + k} 0 R")), 0);
+            rows[member] = (2, stream, 0);
+        }
+
+        file.CrossReferenceStream(3000, 3001, rows, "/Root 10 0 R");
+        var bytes = file.Bytes;
+
+        if (zero >= 0)
+        {
+            var text = Encoding.Latin1.GetString(bytes);
+            var row = text.IndexOf("stream\n", text.IndexOf("/Type /XRef", StringComparison.Ordinal), StringComparison.Ordinal) + "stream\n".Length;
+            bytes[row] = 1;
+            BinaryPrimitives.WriteInt32BigEndian(bytes.AsSpan(row + 1, 4), (int)zero);
+            BinaryPrimitives.WriteInt16BigEndian(bytes.AsSpan(row + 5, 2), 0);
+        }
+
+        var (keptAll, reads) = Walk(1000);
+        var cache = Streams + kept.Length;
+
+        foreach (var number in read)
+        {
+            reads.GetValueOrDefault(rows[number].Field2).Should().Be(1, $"the walk reads object {number} of the chain once");
+        }
+
+        if (zero >= 0)
+        {
+            reads.GetValueOrDefault(zero).Should().Be(0, "the walk never reads object 0");
+        }
+
+        Walk(cache).Read.Should().Be(keptAll, $"a cache of {cache} keeps every object the walk reads again");
+        Walk(cache - 1).Read.Should().BeGreaterThan(keptAll, $"a cache of {cache - 1} lets go of object 4 before the last stream reads it");
+
+        (long Read, Dictionary<long, int> Reads) Walk(int capacity)
+        {
+            using var source = new OffsetCountingSource(bytes);
+            using var document = PdfDocument.Open(source, new PdfReaderOptions { ObjectCacheCapacity = capacity }, ownsSource: false);
+            document.Reader.SettleIndex();
+            source.Reads.Clear();
+            var before = source.BytesRead;
+            ObjectStreamDependencies.Run(document).CircularStreams.Should().BeEmpty();
+            return (source.BytesRead - before, new Dictionary<long, int>(source.Reads));
+        }
+    }
+
     [Theory]
     [InlineData("met a level lower first, then higher up")]
     [InlineData("taken a level lower, as far as the reader's nesting reaches")]
@@ -1587,6 +1795,56 @@ public class ObjectRuleTests
         using var document = PdfDocument.Open(file, unbounded);
         Single(new PdfValidator().Validate(document), PdfValidationRuleIds.XRefObjectStreamCircular).Message.Should().Be(HoldsFive(key));
         ReaderNeeds(file, unbounded).Should().Be(5);
+    }
+
+    [Theory]
+    [InlineData("written in the file")]
+    [InlineData("in the dictionary of a stream whose standing waits")]
+    public void An_array_as_long_as_the_guard_on_filters_lets_decoding_read_is_kept_as_it_was_read(string where)
+    {
+        // A /Filter array of two Flate steps, under a guard of two filters, which decoding reads whole: object 3, which
+        // stream 7 names as its /Filter, or the /Filter of object stream 5, which stream 3 takes its parameters from, whose
+        // /DecodeParms names 11, which object stream 10 holds, so that 5's standing waits on 10's, and the walk keeps what
+        // it read of 5's dictionary. Only an array longer than the guard is cut to what decoding reads: this one is kept as
+        // it was read, and the walk allocates the same as under a guard of three filters.
+        byte[] file;
+
+        if (where == "written in the file")
+        {
+            file = new StreamSeven("/Filter 3 0 R")
+            {
+                Five = "<< /Predictor 1 >>",
+                Data = SevenData.FlateTwice,
+                Written = new() { [3] = "[/FlateDecode /FlateDecode]" },
+            }.Build();
+        }
+        else
+        {
+            var (data, first) = ConvergenceShapes.ObjectStreamData((6, "<< /Predictor 1 >>"));
+            var objects = new SortedDictionary<int, (string Entries, byte[]? Data)>
+            {
+                [3] = ConvergenceShapes.FlateObjectStream("/DecodeParms 6 0 R", (4, "<< >>")),
+                [5] = (
+                    string.Create(CultureInfo.InvariantCulture, $"/Type /ObjStm /N 1 /First {first} /Length @L /Filter [/FlateDecode /FlateDecode] /DecodeParms [11 0 R null]"),
+                    HostileInputTests.Compress(HostileInputTests.Compress(Encoding.Latin1.GetBytes(data)))),
+                [10] = ConvergenceShapes.FlateObjectStream(string.Empty, (11, "<< /Predictor 1 >>")),
+            };
+            file = ConvergenceShapes.StreamsAndMembers(objects, new() { [4] = (3, 0), [6] = (5, 0), [11] = (10, 0) });
+        }
+
+        var two = Allocations.Least(() => Open(2), document => ObjectStreamDependencies.Run(document), out var twoDocument, out var twoResult);
+        var three = Allocations.Least(() => Open(3), document => ObjectStreamDependencies.Run(document), out var threeDocument, out var threeResult);
+
+        using (twoDocument)
+        using (threeDocument)
+        {
+            twoResult.CircularStreams.Should().BeEmpty();
+            threeResult.CircularStreams.Should().BeEmpty();
+            two.Should().Be(three, "an array no longer than the guard is kept as it was read, not copied");
+        }
+
+        PdfDocument Open(int filters) =>
+            PdfDocument.Open(file, new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxFilterChainLength = filters } });
     }
 
     [Theory]
@@ -4005,6 +4263,29 @@ public class ObjectRuleTests
             }
 
             return false;
+        }
+    }
+
+    /// <summary>A file in memory that counts what is read of it, and how many reads start at each offset.</summary>
+    private sealed class OffsetCountingSource(byte[] data) : PdfFileSource
+    {
+        /// <summary>Gets how many reads started at each offset.</summary>
+        public Dictionary<long, int> Reads { get; } = [];
+
+        /// <summary>Gets the number of bytes read so far.</summary>
+        public long BytesRead { get; private set; }
+
+        /// <inheritdoc/>
+        public override long Length => data.Length;
+
+        /// <inheritdoc/>
+        public override int Read(long offset, Span<byte> buffer)
+        {
+            var count = (int)Math.Min(buffer.Length, data.Length - offset);
+            data.AsSpan((int)offset, count).CopyTo(buffer);
+            Reads[offset] = Reads.GetValueOrDefault(offset) + 1;
+            BytesRead += count;
+            return count;
         }
     }
 

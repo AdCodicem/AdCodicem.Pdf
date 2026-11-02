@@ -418,6 +418,48 @@ public class HostileInputMemoryTests
         held.Should().BeLessThan(32L * 1024 * 1024, $"memory was sampled {source.Samples} times");
     }
 
+    [Theory]
+    [InlineData("<< /Predictor 1 /Pad [{0}] >>")]
+    [InlineData("[<< /Predictor 1 >> {0}]")]
+    public void The_walk_keeps_of_each_object_it_reads_what_decoding_may_read_of_it(string parameters)
+    {
+        // As above, a hundred streams, each taking its /DecodeParms from an object of its own: parameters that hold 50,000
+        // zeros under a key no step reads, or an array of parameters whose 50,000 elements past the first lie past the
+        // guard on filters. The walk keeps of each what decoding may read — the entries a step reads, the elements a chain
+        // of filters reads —, and holds no more than the reader keeps: kept whole, the 64 objects it keeps at once held
+        // 25 MB (#201).
+        const int Streams = 100;
+        var value = string.Format(CultureInfo.InvariantCulture, parameters, new StringBuilder().Insert(0, "0 ", 50_000));
+        var file = new HandWrittenFile(version: "1.5");
+        var rows = new Dictionary<int, (int Type, long Field2, int Field3)>
+        {
+            [1] = (1, file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"), 0),
+            [2] = (1, file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"), 0),
+        };
+
+        for (var k = 0; k < Streams; k++)
+        {
+            var (decodeParms, stream, member) = (1000 + k, 2000 + (2 * k), 2001 + (2 * k));
+            var header = string.Create(CultureInfo.InvariantCulture, $"{member} 0 ");
+            var data = Encoding.Latin1.GetString(Compress(Encoding.Latin1.GetBytes(header + "<< >>")));
+            rows[decodeParms] = (1, file.Object(decodeParms, value), 0);
+            rows[stream] = (1, file.Object(stream, string.Create(CultureInfo.InvariantCulture, $"<< /Type /ObjStm /N 1 /First {header.Length} /Filter /FlateDecode /DecodeParms {decodeParms} 0 R /Length {data.Length} >>\nstream\n{data}\nendstream")), 0);
+            rows[member] = (2, stream, 0);
+        }
+
+        file.CrossReferenceStream(3000, 3001, rows, "/Root 1 0 R");
+        var source = new SamplingSource(file.Bytes) { Every = 16 };
+        using var document = PdfDocument.Open(source, PdfReaderOptions.Default with { ObjectCacheCapacity = 64 }, ownsSource: true);
+        var before = GC.GetTotalMemory(forceFullCollection: true);
+        source.Sampling = true;
+
+        Validation.ObjectStreamDependencies.Run(document).Circular.Should().BeEmpty();
+
+        source.Sampling = false;
+        var held = source.MostLive - before;
+        held.Should().BeLessThan(8L * 1024 * 1024, $"memory was sampled {source.Samples} times");
+    }
+
     private static byte[] Compress(byte[] data)
     {
         using var compressed = new MemoryStream();
