@@ -1009,23 +1009,29 @@ public class ReadOrderTests
         static List<string> Keys(PdfDictionary trailer) => [.. trailer.Keys.Select(key => key.Value)];
     }
 
-    [Fact]
-    public void What_a_rebuild_s_scan_for_trailers_noted_before_the_source_failed_it_is_noted_once_by_the_rebuild_run_again()
+    [Theory]
+    [InlineData("trailer\n<< /Newer true /Nested << /K 1 >>\nstream\nabc\nendstream /After 2 >>\n", "stream\nabc")]
+    [InlineData("trailer\n5 0 R\n", "5 0 R")]
+    public void What_a_rebuild_s_scan_for_trailers_noted_before_the_source_failed_it_is_noted_once_by_the_rebuild_run_again(
+        string tail, string noted)
     {
-        // Object 4's row leads into padding, and reading 4 rebuilds the index. The scan for trailers parses the dictionary
-        // after each trailer keyword, the newest first: the table's, then one a stream nested in it cuts short, which is
-        // noted, then an older one, which the source fails to give. The read throws, what the rebuild reported withdrawn;
-        // the next read runs the rebuild again from its scan, which notes the stream again: the document reports what a
-        // rebuild run whole reports, the note once (#167, #171).
+        // Object 4's row leads into padding, and reading 4 rebuilds the index. The scan for trailers parses what follows each
+        // trailer keyword, the newest first: the table's dictionary, then a dictionary a stream nested in it cuts short, or a
+        // reference to object 5 in the dictionary's place, which is noted, then an older dictionary, which the source fails
+        // to give. The read throws, what the rebuild reported withdrawn; the next read runs the rebuild again from its scan,
+        // which notes the stream or the reference again: the document reports what a rebuild run whole reports, the note
+        // once (#167, #171).
         var file = new HandWrittenFile();
         var rows = new Dictionary<int, long>
         {
             [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),
             [2] = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"),
+            [5] = file.Object(5, "<< /Marker true >>"),
         };
         var older = file.Position + "trailer".Length;
         file.Raw("trailer\n<< /Older true >>\n");
-        file.Raw("trailer\n<< /Newer true /Nested << /K 1 >>\nstream\nabc\nendstream /After 2 >>\n");
+        var at = file.Position + tail.IndexOf(noted, StringComparison.Ordinal);
+        file.Raw(tail);
         rows[8] = file.Padding(8);
         rows[4] = rows[8] + 600;
         file.Object(4, "(four)");
@@ -1045,7 +1051,7 @@ public class ReadOrderTests
         document.Diagnostics.Select(diagnostic => diagnostic.ToString())
             .Should().Equal(whole.Diagnostics.Select(diagnostic => diagnostic.ToString()));
         document.Diagnostics.Should().ContainSingle(diagnostic => diagnostic.Code == PdfDiagnosticCodes.SyntaxUnexpectedToken)
-            .Which.Position.Should().Be(bytes.AsSpan().IndexOf("stream\nabc"u8));
+            .Which.Position.Should().Be(at);
     }
 
     [Fact]

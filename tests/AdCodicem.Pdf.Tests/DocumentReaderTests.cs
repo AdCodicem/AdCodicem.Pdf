@@ -330,28 +330,32 @@ public class DocumentReaderTests
             $"The trailer keyword at offset {keyword} is followed by a reference to object 5, not by a dictionary; the rebuild does not follow it."));
     }
 
-    [Fact]
-    public void A_stream_nested_in_a_trailer_the_scan_finds_in_the_overlap_of_two_windows_is_noted_once()
+    [Theory]
+    [InlineData("trailer\n<< /Root 1 0 R /Nested << /K 1 >>\nstream\nabc\nendstream /After 2 >>\n", "stream\nabc")]
+    [InlineData("trailer\n5 0 R\n", "5 0 R")]
+    public void A_note_the_scan_for_trailers_makes_of_a_trailer_found_in_the_overlap_of_two_windows_is_made_once(
+        string tail, string noted)
     {
         // The scan for trailers reads a megabyte at a time, each window overlapping the last by 64 bytes: the trailer keyword
-        // lies 40 bytes before the first megabyte ends, so both windows find it, and its dictionary, which a stream nested in
-        // it cuts short, is parsed twice. What the parse notes goes with its faults, which are kept once (#171).
+        // lies 40 bytes before the first megabyte ends, so both windows find it, and what follows it, a dictionary a stream
+        // nested in it cuts short or a reference in the dictionary's place, is parsed twice. What the parse notes goes with
+        // its faults, which are kept once: one note, where the stream's keyword or the reference starts (#171).
         var file = new HandWrittenFile();
         file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>");
         file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>");
+        file.Object(5, "<< /Root 1 0 R /Marker true >>");
         file.Raw("%" + new string('x', (int)((1024 * 1024) - 40 - file.Position - 2)) + "\n");
         var keyword = file.Position;
-        file.Raw("trailer\n<< /Root 1 0 R /Nested << /K 1 >>\nstream\nabc\nendstream /After 2 >>\n");
+        file.Raw(tail);
         file.Padding(3, 200);
-        var bytes = file.Bytes;
 
-        using var document = PdfDocument.Open(bytes);
+        using var document = PdfDocument.Open(file.Bytes);
 
         keyword.Should().Be((1024 * 1024) - 40);
         document.WasRepaired.Should().BeTrue();
         document.Trailer.Keys.Select(key => key.Value).Should().Equal("Root");
         document.Diagnostics.Should().ContainSingle(diagnostic => diagnostic.Code.StartsWith("syntax.", StringComparison.Ordinal))
-            .Which.Position.Should().Be(bytes.AsSpan().IndexOf("stream\nabc"u8));
+            .Which.Position.Should().Be(keyword + tail.IndexOf(noted, StringComparison.Ordinal));
     }
 
     [Fact]

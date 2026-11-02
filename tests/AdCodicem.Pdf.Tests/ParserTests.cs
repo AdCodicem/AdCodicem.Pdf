@@ -1044,6 +1044,35 @@ public class ParserTests
         diagnostics.SuppressedCount.Should().Be(2);
     }
 
+    [Theory]
+    [InlineData("<< /A 1 >>", -1, "<</A 1>>")]
+    [InlineData("<< /A 1 >>\nstream\nabc\nendstream", 0, "<</A 1>>")]
+    [InlineData("<< /A << /B 1 >>\nstream\nabc\nendstream /C 2 >>", 1, "<<>>")]
+    [InlineData("<< /P 1 /K << /A 1 >>\nstream\nabc\nendstream /L 2 >>", 1, "<</P 1>>")]
+    [InlineData("<< /A [ << >>\nstream\nabc\nendstream ] /C 2 >>", 2, "<<>>")]
+    [InlineData("[ << >>\nstream\nabc\nendstream ]", 1, "[<<>>]")]
+    [InlineData("[ 0 << /A 1 >>\nstream\nabc\nendstream 5 ]", 1, "[0 <</A 1>>]")]
+    [InlineData("[ 0 [ 1 << /A 1 >>\nstream\nabc\nendstream 5 ] 7 ]", 2, "[0 [1 <</A 1>>]]")]
+    [InlineData("[ 0 << /P 1 /K << /A 1 >>\nstream\nabc\nendstream /L 2 >> 9 ]", 2, "[0 <</P 1>>]")]
+    public void Says_where_and_how_deep_a_parse_that_reads_no_stream_stopped_at_a_stream_keyword_if_it_did_a_dictionary_without_the_key_holding_it_an_array_with_its_element(
+        string text, int depth, string read)
+    {
+        // A parse that reads no stream stops at the keyword of the first stream it meets, its data unread, every container
+        // open around the stream's dictionary ending there: a dictionary without the key whose value holds the stream, an
+        // array with the element that holds it as far as it was read (#161, #171). The keyword's place and how many
+        // containers stood around the dictionary are -1 when no stream stopped it.
+        var diagnostics = new PdfDiagnostics();
+        var parser = new PdfObjectParser(Encoding.ASCII.GetBytes(text), diagnostics: diagnostics, readsStreams: false);
+
+        var value = parser.ParseObject();
+
+        parser.StoppedAtStream.Should().Be(depth >= 0);
+        parser.StreamStop.Should().Be(text.IndexOf("stream", StringComparison.Ordinal));
+        parser.StreamStopDepth.Should().Be(depth);
+        Written(value).Should().Be(read);
+        diagnostics.Should().BeEmpty("the stream's data, unread, gives no fault");
+    }
+
     [Fact]
     public void Says_in_which_member_a_malformed_name_and_hexadecimal_string_lie()
     {
@@ -1071,6 +1100,42 @@ public class ParserTests
     {
         var parser = new PdfObjectParser(Encoding.ASCII.GetBytes(text), diagnostics: diagnostics);
         return parser.ParseObject().Should().BeOfType<PdfStream>().Subject;
+    }
+
+    /// <summary>
+    /// Writes <paramref name="value"/>, made of integers and of the arrays and dictionaries that hold them, as a file would
+    /// with a single space between tokens, and a dictionary's keys in the order they were read.
+    /// </summary>
+    private static string Written(PdfObject value)
+    {
+        switch (value)
+        {
+            case PdfInteger integer:
+                return integer.ToString();
+
+            case PdfArray array:
+                var elements = new List<string>();
+
+                foreach (var element in array)
+                {
+                    elements.Add(Written(element));
+                }
+
+                return "[" + string.Join(' ', elements) + "]";
+
+            case PdfDictionary dictionary:
+                var entries = new List<string>();
+
+                foreach (var (key, entry) in dictionary)
+                {
+                    entries.Add("/" + key.Value + " " + Written(entry));
+                }
+
+                return "<<" + string.Join(' ', entries) + ">>";
+
+            default:
+                throw new ArgumentException("Only integers, arrays and dictionaries are written.", nameof(value));
+        }
     }
 
     /// <summary>
