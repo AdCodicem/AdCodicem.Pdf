@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Runtime.CompilerServices;
 using System.Text;
 using AdCodicem.Pdf.Diagnostics;
 using AdCodicem.Pdf.Documents;
@@ -2053,14 +2054,15 @@ public class ObjectRuleTests
         // 12, which 11 holds; 11 takes its parameters from stream 300, which heads a nest of 61. Judging 3, the walk works out
         // 5's standing from its 63rd level, and 5's walk 11's from its own deepest, each followed through the reader: the two
         // walks and the reader's loads nest about as deep as a validation goes: some 420 KB of stack on first run, which the
-        // reader's probe, keeping 128 KB free, leaves uncut on a thread of 560 KB or more, and some 550 to 580 KB once the
-        // reader and the walks are compiled in full, uncut from 720 KB. The suite's large stack, 1.5 MB, leaves the probe some
-        // 1,400 KB, more than twice what the read takes in either state. The walks ask the thread nothing; the probe cuts
-        // first on a smaller stack, and nothing overflows. On 256 KB the report is the
-        // same. The reads differ in where the reader cuts them, and there alone: on the large stack, at its bound on nested
-        // loads, which it reaches at stream 1002, three streams into 5's nest; on 256 KB, short of that bound, where the stack
-        // runs short. A small read given a larger stack another thread left would read as the large one does, and fail here
-        // (#312).
+        // reader's probe, keeping 128 KB free, leaves uncut on a thread of 560 KB or more, and about 535 to 580 KB once tiered
+        // PGO has recompiled the reader and the walks, as the profile it gathered makes them, uncut from 720 KB. The suite's
+        // large stack, 1.5 MB, leaves the probe some 1,400 KB, more than twice what the read takes in either state. On 256 KB
+        // the report is the same. The reader and the walks each ask the thread for room before going down a level, and
+        // nothing overflows; read fresh, each value the walks read through the reader nests the reader's own loads below it,
+        // whose probe cuts first. The reads differ in where the reader cuts them, and there alone: on the large stack, at its
+        // bound on nested loads, which it reaches at stream 1002, three streams into 5's nest; on 256 KB, short of that bound,
+        // where the stack runs short. A small read given a larger stack another thread left would read as the large one does,
+        // and fail here (#312).
         const string Bound = "Object 1002 is reached through more nested objects than the reader will follow, and reads as null.";
         var file = DeepStack(60, 60, 61);
         var options = new PdfReaderOptions { ObjectCacheCapacity = 1 };
@@ -2084,6 +2086,115 @@ public class ObjectRuleTests
             ];
             return (findings, cuts);
         }
+    }
+
+    [Fact]
+    public void The_walks_of_a_document_the_reader_holds_whole_are_cut_rather_than_run_past_the_end_of_the_stack()
+    {
+        // The deepest shape, its startxref naming the header: the reader rebuilds the index, and the walks read each object
+        // through it, with no chain to read the object where it places it. Validated once at the thread's start, the document
+        // is held whole in the reader's cache, which then serves the walks with no load, and none of the stack probes a load
+        // makes. From a caller 40 frames of 1 KB below the first the probe fails at, the walks went as deep as their recursion
+        // goes, some 110 KB on first run, with no probe on the way, past the end of the stack: the process ended. They ask the
+        // thread for room before each level: the first load of each walk reads as null, object 100 the first, which stream
+        // 3's /Length names; the document reports it once, however many walks and validations are cut there (#312).
+        var file = StartxrefAtTheHeader(DeepStack(60, 60, 61));
+
+        var (first, second, cuts) = Stacks.Run(Stacks.Large, () =>
+        {
+            using var document = PdfDocument.Open(file);
+            new PdfValidator().Validate(document);
+            var first = NearTheProbe(-40, () => new PdfValidator().Validate(document));
+            var second = NearTheProbe(-40, () => new PdfValidator().Validate(document));
+            return (first, second, WalkCuts(document));
+        });
+
+        second.Findings.Should().Equal(first.Findings);
+        cuts.Should().Equal(new PdfDiagnostic(PdfDiagnosticSeverity.Warning, PdfDiagnosticCodes.SyntaxDepthExceeded, ReadAsNull(100), ObjectAt(file, 100)));
+    }
+
+    [Fact]
+    public void A_value_the_walk_that_judges_has_no_room_on_the_stack_to_load_reads_as_null()
+    {
+        // Stream 7 takes its parameters from 50, which 9 holds, 5 0 R; 7 holds 5, and is circular; 9 takes its own from stream
+        // 300, which heads 30 streams by /Length. From a caller below the first frame the stack probe fails at, the walk
+        // judging 7 cannot load 50, which reads as null: 7 needs nothing. 50, held by an object stream, has no place of its
+        // own in the file, nor has the report (#312).
+        var file = StartxrefAtTheHeader(ConvergenceShapes.NestBelow(30));
+
+        var (room, cut, cuts) = Stacks.Run(Stacks.Large, () =>
+        {
+            using var document = PdfDocument.Open(file);
+            var room = new PdfValidator().Validate(document);
+            var cut = NearTheProbe(-40, () => new PdfValidator().Validate(document));
+            return (room, cut, WalkCuts(document));
+        });
+
+        Single(room, PdfValidationRuleIds.XRefObjectStreamCircular).Message.Should().Be(HoldsFive("/DecodeParms"));
+        cut.Contains(PdfValidationRuleIds.XRefObjectStreamCircular).Should().BeFalse();
+        cuts.Should().Equal(new PdfDiagnostic(PdfDiagnosticSeverity.Warning, PdfDiagnosticCodes.SyntaxDepthExceeded, ReadAsNull(50)));
+    }
+
+    [Fact]
+    public void A_stream_whose_standing_the_stack_leaves_no_room_to_work_out_does_not_decode_alike()
+    {
+        // Stream 7 takes its parameters from 50, which 9 holds, 5 0 R; 7 holds 5; 9 takes its own from stream 300, which heads
+        // 60 streams by /Length. From a caller 20 frames of 1 KB above the first the stack probe fails at, the walk judging 7
+        // loads 50, and the walk of 9's standing, made inside it, runs short of room in 300's nest: 9 is taken for a stream
+        // that does not decode alike, and 50 for a need of 7's, which reads as null; on a thread with room, 9 decodes alike,
+        // and 50 leads 7 to 5. Which of 300's streams the walk is cut at depends on the frames the runtime compiled, not on
+        // the file (#312).
+        var file = StartxrefAtTheHeader(ConvergenceShapes.NestBelow(60));
+
+        var (room, cut, cuts) = Stacks.Run(Stacks.Large, () =>
+        {
+            using var document = PdfDocument.Open(file);
+            var room = new PdfValidator().Validate(document);
+            var cut = NearTheProbe(20, () => new PdfValidator().Validate(document));
+            return (room, cut, WalkCuts(document));
+        });
+
+        Single(room, PdfValidationRuleIds.XRefObjectStreamCircular).Message.Should().Be(HoldsFive("/DecodeParms"));
+        cut.Contains(PdfValidationRuleIds.XRefObjectStreamCircular).Should().BeFalse();
+        Enumerable.Range(300, 60)
+            .Select(stream => new PdfDiagnostic(PdfDiagnosticSeverity.Warning, PdfDiagnosticCodes.SyntaxDepthExceeded, ReadAsNull(stream, unlike: 9), ObjectAt(file, stream)))
+            .Should().Contain(cuts.Should().ContainSingle().Subject);
+    }
+
+    [Fact]
+    public void A_walk_with_room_for_a_nest_follows_it_whole_wherever_the_stack_cut_an_earlier_walk_inside_it()
+    {
+        // Stream 3 takes its /Length from stream 100, which heads 40 streams by /Length, the last naming 8, which 7 holds,
+        // 200 0 R; 200 heads 20 streams, the last naming 6, which 5 holds; 5 takes its /Length from 200, and is circular.
+        // Judging 3, the walk meets 200 forty levels deeper than the walk judging 5 does, which then has room to reach 6
+        // wherever the stack cut 3's inside 200's nest. A parse the stack cut gives no nest, how far it reached being the
+        // thread's to say, not the file's: 5's walk parses 200 again. A nest given there, taken as the parse's whole, would end
+        // 5's walk where 3's was cut. Where the stack cuts 3's walk depends on the frames the runtime compiled, not on the
+        // file: the caller is moved 4 KB at a time, up to 100 KB above the first frame the probe fails at, and from some of
+        // those places 3's walk is cut inside 200's nest (#312).
+        var file = StartxrefAtTheHeader(NestBehindAHolder());
+        var met = 0;
+
+        for (var frames = 0; frames <= 100; frames += 4)
+        {
+            var (cut, cuts) = Stacks.Run(Stacks.Large, () =>
+            {
+                using var document = PdfDocument.Open(file);
+                new PdfValidator().Validate(document);
+                var cut = NearTheProbe(frames, () => new PdfValidator().Validate(document));
+                return (cut, WalkCuts(document));
+            });
+
+            if (cuts is [var only] && Enumerable.Range(201, 19).Any(stream => only.Message == ReadAsNull(stream)))
+            {
+                met++;
+                Single(cut, PdfValidationRuleIds.XRefObjectStreamCircular).Message.Should().Be(
+                    "Object stream 5 needs object 6, which it holds, to be read: its /Length names it, and the object cannot be read before the stream is.",
+                    $"5's walk has room for 200's nest wherever the stack cut 3's inside it: {only.Message}");
+            }
+        }
+
+        met.Should().BePositive("the stack cut 3's walk inside 200's nest from some of the callers");
     }
 
     [Theory]
@@ -2972,6 +3083,132 @@ public class ObjectRuleTests
             var (data, first) = ConvergenceShapes.ObjectStreamData((member, body));
             objects[number] = (string.Create(CultureInfo.InvariantCulture, $"/Type /ObjStm /N 1 /First {first} /Filter /FlateDecode {entries}"), HostileInputTests.Compress(Encoding.Latin1.GetBytes(data)));
         }
+    }
+
+    /// <summary>
+    /// Object stream 3, holding 4, takes its <c>/Length</c> from stream 100, which heads 40 streams by <c>/Length</c>, the
+    /// last naming 8, which 7 holds, <c>200 0 R</c>; 200 heads 20 streams, the last naming 6, which 5 holds; 5 takes its
+    /// <c>/Length</c> from 200.
+    /// </summary>
+    private static byte[] NestBehindAHolder()
+    {
+        var objects = new SortedDictionary<int, (string Entries, byte[]? Data)>();
+        Nest(100, 40, "8 0 R");
+        Nest(200, 20, "6 0 R");
+        Holding(3, 4, "<< >>", "/Length 100 0 R");
+        Holding(5, 6, "0", "/Length 200 0 R");
+        Holding(7, 8, "200 0 R", "/Length @L");
+        return ConvergenceShapes.StreamsAndMembers(objects, new() { [4] = (3, 0), [6] = (5, 0), [8] = (7, 0) });
+
+        void Nest(int head, int count, string last)
+        {
+            for (var stream = 0; stream < count; stream++)
+            {
+                var length = stream + 1 < count ? string.Create(CultureInfo.InvariantCulture, $"{head + stream + 1} 0 R") : last;
+                objects[head + stream] = ($"/Length {length}", []);
+            }
+        }
+
+        void Holding(int number, int member, string body, string entries)
+        {
+            var (data, first) = ConvergenceShapes.ObjectStreamData((member, body));
+            objects[number] = (string.Create(CultureInfo.InvariantCulture, $"/Type /ObjStm /N 1 /First {first} /Filter /FlateDecode {entries}"), HostileInputTests.Compress(Encoding.Latin1.GetBytes(data)));
+        }
+    }
+
+    /// <summary>
+    /// Gives <paramref name="file"/> with its <c>startxref</c> naming the header: the reader finds no chain there, and
+    /// rebuilds the index, through which it, and the walks, read every object.
+    /// </summary>
+    private static byte[] StartxrefAtTheHeader(byte[] file)
+    {
+        var text = Encoding.Latin1.GetString(file);
+        var startxref = text.LastIndexOf("startxref\n", StringComparison.Ordinal) + "startxref\n".Length;
+        return Encoding.Latin1.GetBytes(string.Concat(text.AsSpan(0, startxref), "0", text.AsSpan(text.IndexOf('\n', startxref))));
+    }
+
+    /// <summary>Gives where object <paramref name="number"/> of <paramref name="file"/> starts.</summary>
+    private static long ObjectAt(byte[] file, int number) =>
+        Encoding.Latin1.GetString(file).IndexOf(string.Create(CultureInfo.InvariantCulture, $"\n{number} 0 obj"), StringComparison.Ordinal) + 1;
+
+    /// <summary>
+    /// Gives the report of object <paramref name="number"/>, which the walks had no room on the stack to load; and, of the
+    /// walk working out the standing of object stream <paramref name="unlike"/>, that it takes that stream as decoding
+    /// unlike.
+    /// </summary>
+    private static string ReadAsNull(int number, int? unlike = null) =>
+        string.Create(CultureInfo.InvariantCulture, $"Object {number} is reached through more nested objects than the thread's stack lets the validator follow: the validator reads it as null") +
+        (unlike is { } stream ? string.Create(CultureInfo.InvariantCulture, $", and takes object stream {stream} for one that does not decode alike in every read order.") : ".");
+
+    /// <summary>Gives what <paramref name="document"/> reported of the loads the walks had no room on the stack to make.</summary>
+    private static List<PdfDiagnostic> WalkCuts(PdfDocument document) =>
+    [
+        .. document.Diagnostics.Where(diagnostic =>
+            diagnostic.Code == PdfDiagnosticCodes.SyntaxDepthExceeded && diagnostic.Message.Contains("lets the validator follow", StringComparison.Ordinal)),
+    ];
+
+    /// <summary>
+    /// Runs <paramref name="work"/> from a caller <paramref name="frames"/> frames of 1 KB above the first frame the thread's
+    /// stack probe fails at, where the probe finds about that many KB more than it keeps free; or, for a count of 0 or less,
+    /// that many frames below it, where it fails at once. Gives what <paramref name="work"/> gave.
+    /// </summary>
+    /// <remarks>
+    /// The frames go down from the caller one at a time, each asking the probe, and <paramref name="work"/> runs on the way
+    /// back up, or further down: the caller is placed by where the probe fails rather than by a count from the thread's start,
+    /// which frames the runtime compiles anew would move.
+    /// </remarks>
+    private static T NearTheProbe<T>(int frames, Func<T> work)
+    {
+        T result = default!;
+        Probed(frames, () => result = work());
+        return result;
+    }
+
+    /// <summary>
+    /// Goes down a frame of 1 KB, to the first the stack probe fails at, and runs <paramref name="work"/> from the frame
+    /// <paramref name="frames"/> above it, or that many below it for a count of 0 or less.
+    /// </summary>
+    /// <returns>How many frames this one lies above the first the probe fails at.</returns>
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static int Probed(int frames, Action work)
+    {
+        Span<byte> frame = stackalloc byte[1024];
+
+        if (!RuntimeHelpers.TryEnsureSufficientExecutionStack())
+        {
+            return frames <= 0 ? Below(-frames, work) : 0;
+        }
+
+        // Written before the call and read after it, the frame stays whole through the call, which is no tail call.
+        frame[frames & 1023] = 1;
+        var above = Probed(frames, work) + 1;
+
+        if (above == frames)
+        {
+            work();
+        }
+
+        return above + frame[frames & 1023] - 1;
+    }
+
+    /// <summary>Goes down <paramref name="frames"/> frames of 1 KB more, asking nothing, and runs <paramref name="work"/> there.</summary>
+    /// <returns>0.</returns>
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static int Below(int frames, Action work)
+    {
+        Span<byte> frame = stackalloc byte[1024];
+        frame[frames & 1023] = 1;
+
+        if (frames == 0)
+        {
+            work();
+        }
+        else
+        {
+            Below(frames - 1, work);
+        }
+
+        return frame[frames & 1023] - 1;
     }
 
     /// <summary>Gives the finding of object stream 7 needing object 5, which it holds, through <paramref name="key"/>.</summary>

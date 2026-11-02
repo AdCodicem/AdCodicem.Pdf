@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using AdCodicem.Pdf.Documents;
 using AdCodicem.Pdf.IO;
@@ -97,18 +98,22 @@ namespace AdCodicem.Pdf.Validation;
 /// <see cref="PdfFileReader.MaxNestedLoads"/> reads as null; so does an object another stream holds at that depth, that
 /// stream being loaded a level deeper; one the walked stream holds is a need at any depth, the reader reporting it before
 /// it counts. No recursion goes deeper than twice that bound: the walk that works out a standing runs within the walk that
-/// met one of its objects, one at a time. On first run, the two take about 0.8 KB of the thread's stack a level, some
-/// 110 KB at their deepest, under the 128 KB the reader's stack probe keeps free; with the reader's own 64 loads under
-/// a value they read through it, about 5.8 KB each, the deepest validation goes some 480 KB deep (420 KB on the deepest
-/// shape measured), and with the 128 KB the reader's probe keeps free above its deepest load, it needs a thread of some
-/// 610 KB for the probe to cut none of its loads (on that shape, none is cut from 560 KB). Compiled in full, as tiered
-/// PGO leaves them once a process has run them a while, the walks take about 1.1 KB a level, some 140 KB, more than
-/// those 128 KB, and a load about 8.3 KB: the deepest validation goes some 670 KB deep (550 to 580 KB on that shape)
-/// and needs a thread of some 800 KB (on that shape, none is cut from 720 KB). A thread of 1 MB has either. What the
-/// reader has read and kept is not modeled, so that the verdict does not depend on what was read before, but for #163,
-/// above: a read that reaches the stream through another stream's decoding nests deeper, and cuts earlier; nor is the
-/// thread's stack, which the walks do not ask: on a thread with less room, the reader's probe cuts loads they make, and
-/// the report may depend on the thread.
+/// met one of its objects, one at a time. Each level asks the thread for room before it goes down, as the reader asks
+/// before each load: what the reader serves from its cache, and what the walks keep, is read with no load, and no probe of
+/// the reader's, so that the walks of a document read before went their whole depth with none on the way (#312). On first
+/// run, the two take about 0.8 KB of the thread's stack a level, some 110 KB at their deepest; with the reader's own 64
+/// loads under a value they read through it, about 5.8 KB each, the deepest validation goes some 480 KB deep (420 KB on
+/// the deepest shape measured), and with the 128 KB the reader's probe keeps free above its deepest load, it needs a
+/// thread of some 610 KB for the probe to cut none of its loads (on that shape, none is cut from 560 KB). Recompiled by
+/// tiered PGO, as a process leaves them once it has run them a while, the walks take 0.8 to 1.0 KB a level, as the
+/// profile it gathered makes them, up to some 130 KB at their deepest, and a load about 8.3 KB: the deepest validation
+/// goes some 670 KB deep (535 to 580 KB on that shape) and needs a thread of some 800 KB (on that shape, none is cut from
+/// 720 KB). A thread of 1 MB has room for either. What the reader has read and kept is not modeled, so that the verdict
+/// does not depend on what was read before, but for #163, above: a read that reaches the stream through another stream's
+/// decoding nests deeper, and cuts earlier; nor is the thread's stack. On a thread with less room, a probe cuts — the
+/// reader's, of a load the walks make through it, or theirs, of a level they would go down, which reads as null, a walk of
+/// a standing then taking its stream, for the rest of the validation, for one that does not decode alike, and which the
+/// document reports once —, and the report may depend on the thread.
 /// </para>
 /// <para>
 /// The streams so needed are linked, each to each stream it needs, and a stream its links lead back to is circular: one
@@ -676,8 +681,9 @@ internal sealed class ObjectStreamDependencies
         /// <summary>
         /// How many times the walk met what its own state answers, rather than the file alone: an object of an object stream,
         /// which reads as the stream walked, the streams in flight and its holder's standing make it — or a run through such
-        /// objects —, a stream the walk parsed already, which is not parsed again, and a load that re-enters a stream the
-        /// reader holds in its loads. A parse that met none of them gives the memo its nest, the same for every walk (#201).
+        /// objects —, a stream the walk parsed already, which is not parsed again, a load that re-enters a stream the reader
+        /// holds in its loads, and a load the thread's stack had no room for, where the thread decides how far a parse
+        /// reaches. A parse that met none of them gives the memo its nest, the same for every walk (#201, #312).
         /// </summary>
         private int _stateful;
 
@@ -720,8 +726,8 @@ internal sealed class ObjectStreamDependencies
 
         /// <summary>
         /// Gets a value indicating whether the walk is done: one that works out a standing has met what makes the stream
-        /// decode unlike — an object the stream holds, a loop, a stream read again, a load the nesting cuts —, which is all
-        /// it asks.
+        /// decode unlike — an object the stream holds, a loop, a stream read again, a load the nesting or the thread's stack
+        /// cuts —, which is all it asks.
         /// </summary>
         public bool IsDone => !judges && _unlike;
 
@@ -807,9 +813,9 @@ internal sealed class ObjectStreamDependencies
         /// does not decode alike there, or whose standing is being worked out — a loop —; no stream met again while the reader
         /// holds it in its loads, which the reader reads as null for the rest of every decoding in flight (#51), a stream met
         /// again being parsed again, as a reader whose cache let it go does; no object the reader's index places otherwise
-        /// than the chain's; and no load the reader's nesting cuts whose value reaches the decoding. One that is no stream
-        /// there, or that the reader's index places elsewhere, does not: whatever the reader serves of it is no decoding the
-        /// walk followed.
+        /// than the chain's; no load the reader's nesting cuts whose value reaches the decoding; and no load the thread's
+        /// stack leaves the walk no room for. One that is no stream there, or that the reader's index places elsewhere, does
+        /// not: whatever the reader serves of it is no decoding the walk followed.
         /// </summary>
         /// <remarks>
         /// What the walk reads of the dictionary of a stream that waits is kept in the memo, for as many streams as the reader
@@ -1015,6 +1021,26 @@ internal sealed class ObjectStreamDependencies
         private PdfObject Load(int number, string key, int depth)
         {
             var reader = document.Reader;
+
+            // Each load the walks follow is a level of their recursion — a stream met on a chain parses its /Length a level
+            // deeper, and the walk of a standing runs inside the load that met an object of its stream —, and every way down
+            // to the next level, a standing's walk included, goes through a load: a level asks the thread for room here, once,
+            // before anything else, which allocates nothing. The reader's probe does not stand in for it: what the walks
+            // keep, and what the reader serves from its cache, is read with no load, so that the walks of a document read
+            // before went their whole depth with no probe on the way, and past the end of a short stack (#312). Short of
+            // room, the object reads as null, as past the reader's nesting, and the cut counts as the nesting's cut of an
+            // object the reader holds in its loads does, whatever the object, among what the walk's state answers: where it
+            // falls is the thread's to say, not the file's. So no parse in flight gives a nest that a walk with more room
+            // would take — the nesting's count of its cuts, which marks a nest given as ended there, has none to mark —, and
+            // a walk of a standing takes its stream, for the rest of the validation, for one that does not decode alike: a
+            // value read as null there makes the decoding read less than the reader's. It is reported, once a document.
+            if (!RuntimeHelpers.TryEnsureSufficientExecutionStack())
+            {
+                _stateful++;
+                _unlike |= !judges;
+                reader.ReportWalkTooDeep(number, judges ? null : _stream);
+                return PdfNull.Instance;
+            }
 
             // A walk of a standing follows the decoding the reader makes, through its own index (#312): an object it places
             // otherwise than the chain's, or holds in use where the chain's holds nothing, may decode the stream otherwise

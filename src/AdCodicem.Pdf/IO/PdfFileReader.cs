@@ -488,6 +488,11 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     private bool _nestingReported;
 
     /// <summary>
+    /// Whether an object the validator's walks of the object streams did not load for want of stack was reported.
+    /// </summary>
+    private bool _walkCutReported;
+
+    /// <summary>
     /// Whether the document finished opening: <see cref="Structure"/> holds what the file showed then, and what the reader
     /// finds afterward — a rebuild run later — is kept apart from it.
     /// </summary>
@@ -1657,6 +1662,47 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
             string.Create(
                 CultureInfo.InvariantCulture,
                 $"Object {id.Number} is reached through more nested objects than the reader will follow, and reads as null."),
+            position);
+    }
+
+    /// <summary>
+    /// Reports object <paramref name="number"/>, which the validator's walks of the object streams did not load for want of
+    /// stack and read as null (#312), placed as <see cref="ReportNestingTooDeep"/> places an object; and, of a walk working
+    /// out the standing of object stream <paramref name="unlike"/>, that it takes that stream for one that does not decode
+    /// alike in every read order.
+    /// </summary>
+    /// <remarks>
+    /// Once a document, as the reader's own cut is. A validation run from a thread short of stack cuts the walk of each
+    /// object stream about as deep: reported for each, as many as the index names object streams, the cuts would fill the
+    /// diagnostics' capacity, 1,000 by default, with one fact about the thread, crowding out what the reader found. The
+    /// first cut names the object and the reason; what the cuts change is in the validator's report, which takes nothing
+    /// from the diagnostics, so that a second validation from the same place gives the same report and adds nothing here.
+    /// No rebuild withdraws it: the walks report between the reader's loads, and a rebuild withdraws only what was reported
+    /// while it, or the loads it ran with, were in flight.
+    /// </remarks>
+    /// <param name="number">The object the walk did not load.</param>
+    /// <param name="unlike">The object stream whose standing the walk was working out; null for the walk that judges.</param>
+    internal void ReportWalkTooDeep(int number, int? unlike)
+    {
+        if (_walkCutReported)
+        {
+            return;
+        }
+
+        _walkCutReported = true;
+        var position = _xref.TryGet(number, out var entry) && entry.Kind == XRefEntryKind.Regular
+            ? EntryPosition(entry)
+            : -1;
+
+        _diagnostics.Warn(
+            PdfDiagnosticCodes.SyntaxDepthExceeded,
+            unlike is { } stream
+                ? string.Create(
+                    CultureInfo.InvariantCulture,
+                    $"Object {number} is reached through more nested objects than the thread's stack lets the validator follow: the validator reads it as null, and takes object stream {stream} for one that does not decode alike in every read order.")
+                : string.Create(
+                    CultureInfo.InvariantCulture,
+                    $"Object {number} is reached through more nested objects than the thread's stack lets the validator follow: the validator reads it as null."),
             position);
     }
 
