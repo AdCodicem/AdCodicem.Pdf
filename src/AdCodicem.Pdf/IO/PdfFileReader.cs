@@ -7129,9 +7129,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
                 var parser = new PdfObjectParser(
                     window.Memory, positions[i], this, _pending, endsData: !cut, fileEdge: this, readsStreams: false);
                 var keyword = positions[i] - TrailerKeyword.Length;
-                var lexer = new PdfLexer(window.Memory.Span);
-                lexer.SkipWhitespaceAndComments();
-                var valueStart = lexer.Position;
+                var valueStart = ValueStart(window.Memory.Span);
                 parser.Position = valueStart;
                 var value = parser.ParseObject();
 
@@ -7180,6 +7178,24 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
                 _pending.RollBack(mark);
             }
         }
+    }
+
+    /// <summary>
+    /// Gets where the value after a trailer keyword starts in <paramref name="data"/>, the bytes that follow the keyword:
+    /// past the white space and comments there.
+    /// </summary>
+    /// <remarks>
+    /// Kept out of <see cref="ScanForTrailers"/>, which calls it once a keyword: inlined there, the lexer's loop over a
+    /// comment was compiled with the whole scan once tiered PGO recompiled it, and ran about a third slower —
+    /// <c>TrailerScanBenchmarks</c>, under a medium job, opened past 12,000 keywords sharing long comments in 344 to 355 ms
+    /// over a reference or a null, against 211 to 220 ms with the loop in a frame of its own, and alike with PGO off.
+    /// </remarks>
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static int ValueStart(ReadOnlySpan<byte> data)
+    {
+        var lexer = new PdfLexer(data);
+        lexer.SkipWhitespaceAndComments();
+        return lexer.Position;
     }
 
     private ExceptionDispatchInfo? ExpandObjectStreams(Redefinitions redefinitions)
