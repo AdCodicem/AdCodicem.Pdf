@@ -2023,6 +2023,34 @@ public class HostileInputTests
         }
     }
 
+    [Fact]
+    public void The_walk_keeps_the_dictionaries_of_as_many_waiting_object_streams_as_the_reader_caches_and_reads_again_those_it_let_go()
+    {
+        // Seventy Flate object streams X1 to X70, numbered 1,000, 1,002 and on, each taking its parameters from the object
+        // the next holds, the last from its own: X1's walk meets X2 not known yet, and X2 to X69 each wait on the next, in
+        // that order. X70 does not decode alike, nor, walked again in turn, do X69, X68 and on. Under a cache of 64 objects,
+        // the walk keeps the dictionaries of the last 64 that waited, X6 to X69, and reads again those of X2 to X5 when it
+        // walks them again: each is read three times — by its first walk, its second and the walk that judges it —, X1's
+        // once, the others' twice (#312).
+        const int Count = 70;
+        var file = PackedFile([.. Enumerable.Range(0, Count).Select(x => new PackedStream(
+            1000 + (2 * x),
+            string.Create(CultureInfo.InvariantCulture, $"/DecodeParms {(x + 1 < Count ? 1003 + (2 * x) : 1001 + (2 * x))} 0 R"),
+            [(1001 + (2 * x), "<< /Predictor 1 >>")],
+            PackedData.Flate))]);
+        var text = Encoding.Latin1.GetString(file);
+        using var source = new WindowLoggingSource(file);
+        using var document = PdfDocument.Open(source, PdfReaderOptions.Default with { ObjectCacheCapacity = 64 }, ownsSource: false);
+        document.Reader.SettleIndex();
+        source.Windows.Clear();
+
+        ObjectStreamDependencies.Run(document).CircularStreams.Should().Equal(1138);
+
+        Enumerable.Range(0, Count).Select(x => 1000 + (2 * x))
+            .Where(stream => source.Windows.Count(window => window.Offset == text.IndexOf(string.Create(CultureInfo.InvariantCulture, $"\n{stream} 0 obj"), StringComparison.Ordinal) + 1) == 3)
+            .Should().Equal([1002, 1004, 1006, 1008], "the dictionaries of the 64 streams that waited last are kept, and no more");
+    }
+
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
