@@ -217,6 +217,22 @@ public class PageTreeRuleTests
     }
 
     [Fact]
+    public void A_page_the_tree_leaves_out_is_not_judged_beside_an_object_stream_that_cannot_serve_its_objects()
+    {
+        // Objects 3 and 4 are placed in object streams the index lacks: no entry is broken, but the streams cannot serve what
+        // the index places in them, and the index is not sound enough to say that object 5, a page the tree does not list,
+        // is left out.
+        var file = HostileInputTests.CompressedRows(3, number => (2, 4_000_000 + number, 0), (5, "<< /Type /Page /Parent 2 0 R >>"));
+        using var document = PdfDocument.Open(file);
+
+        var report = new PdfValidator().Validate(document);
+
+        report.Contains(PdfValidationRuleIds.XRefObjectStreamBroken).Should().BeTrue();
+        report.Contains(PdfValidationRuleIds.XRefEntryBroken).Should().BeFalse();
+        report.Contains(PdfValidationRuleIds.PageTreePageOrphaned).Should().BeFalse("the index is not sound enough to say a page is left out");
+    }
+
+    [Fact]
     public void A_page_a_destination_names_again_is_not_repeated()
     {
         var file = TreeWith("/Type /Catalog /Pages 2 0 R", "/Type /Catalog /Pages 2 0 R /OpenAction [5 0 R /Fit]");
@@ -587,6 +603,24 @@ public class PageTreeRuleTests
             finding.Location == PdfValidationLocation.OnPage(2, array));
         Single(report, PdfValidationRuleIds.PageTreeKidInvalid).Location.Should().Be(
             PdfValidationLocation.OfObject(new PdfObjectId(4)), "the kid is node 4's, whichever object its array is");
+    }
+
+    [Fact]
+    public void A_kid_written_in_an_array_of_kids_that_is_object_1_is_located_at_that_array()
+    {
+        // The catalog is object 5, and node 2's array of kids is object 1, the lowest number an array can have.
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "[<< /Type /Page /MediaBox 5 /Resources << >> >>]"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids 1 0 R /Count 1 >>"),
+            [5] = file.Object(5, "<< /Type /Catalog /Pages 2 0 R >>"),
+        };
+        file.Table(6, rows, "/Size 6 /Root 5 0 R");
+
+        Single(Validate(file.Bytes), PdfValidationRuleIds.PageTreeMediaBoxInvalid).Should().Match<PdfValidationFinding>(finding =>
+            finding.Message == "The /MediaBox of the page object at [0] in object 1 is a number, not a rectangle." &&
+            finding.Location == PdfValidationLocation.OnPage(0, new PdfObjectId(1)));
     }
 
     [Fact]
@@ -1038,6 +1072,39 @@ public class PageTreeRuleTests
 
         new PdfValidator().Validate(document).Findings.Should().BeEmpty();
         PageTreeWalk.Run(document).PageCount.Should().Be(2, "a dictionary is no fragment of a reference");
+    }
+
+    [Fact]
+    public void A_stream_written_in_a_node_a_limit_cut_is_judged_on_nothing_and_still_counted()
+    {
+        var file = PdfTemplate.SoundWith(
+            "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+            "<< /Type /Pages /Count 1 /Kids [3 0 R << /Type /Page /Length 0 >>\nstream\n\nendstream]" + new string(' ', 200) + ">>");
+
+        using var document = PdfDocument.Open(file, CutAt(128));
+
+        new PdfValidator().Validate(document).Findings.Should().BeEmpty("what the cut array holds is not judged");
+        PageTreeWalk.Run(document).PageCount.Should().Be(2, "a stream is no fragment of a reference");
+    }
+
+    [Fact]
+    public void A_kid_a_node_a_limit_cut_names_is_judged_on_itself()
+    {
+        // Object 3 is a page given a stream body, which the node lists before the cut: what the kid is, a stream, is the
+        // kid's own fault, located at it, whatever the cut left of the array.
+        var file = PdfTemplate.Build(PdfTemplate.Sound
+            .Replace("<< /Type /Pages /Kids [3 0 R] /Count 1 >>", "<< /Type /Pages /Count 1 /Kids [3 0 R]" + new string(' ', 200) + ">>", StringComparison.Ordinal)
+            .Replace(
+                "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << >> >>",
+                "<< /Type /Page /Parent 2 0 R /Length 0 >>\nstream\n\nendstream",
+                StringComparison.Ordinal));
+
+        using var document = PdfDocument.Open(file, CutAt(128));
+
+        var finding = Single(new PdfValidator().Validate(document), PdfValidationRuleIds.PageTreeKidInvalid);
+        finding.Location.Object.Should().Be(new PdfObjectId(3));
+        finding.Message.Should().Be(
+            "The kid at index 0 of page tree node 2 names object 3, a stream rather than a dictionary: the reader reads the stream's dictionary in its place.");
     }
 
     [Fact]
@@ -1637,6 +1704,35 @@ public class PageTreeRuleTests
     }
 
     [Theory]
+    [InlineData("above it", PdfValidationRuleIds.PageTreeCycle)]
+    [InlineData("walked already", PdfValidationRuleIds.PageTreeNodeRepeated)]
+    public void A_node_a_limit_cut_is_not_judged_for_the_array_of_kids_it_gives(string array, string rule)
+    {
+        // Node 3's array of kids, 7, is above it, or walked already under node 4: a limit cuts node 3 after its /Kids, and
+        // what it gives may not be all it is.
+        var padded = "<< /Type /Pages /Parent 2 0 R /Kids 7 0 R /Count 0" + new string(' ', 200) + ">>";
+        var file = array == "above it"
+            ? Objects(
+                (2, "<< /Type /Pages /Kids 7 0 R /Count 0 /MediaBox [0 0 1 1] /Resources << >> >>"),
+                (3, padded),
+                (7, "[3 0 R]"))
+            : Objects(
+                (2, "<< /Type /Pages /Kids [4 0 R 3 0 R] /Count 2 /MediaBox [0 0 1 1] /Resources << >> >>"),
+                (3, padded),
+                (4, "<< /Type /Pages /Parent 2 0 R /Kids 7 0 R /Count 1 >>"),
+                (5, "<< /Type /Page /Parent 4 0 R >>"),
+                (7, "[5 0 R]"));
+
+        using var whole = PdfDocument.Open(file);
+        new PdfValidator().Validate(whole).Contains(rule).Should().BeTrue("read whole, the node gives the array again");
+
+        using var document = PdfDocument.Open(file, CutAt(128));
+
+        var report = new PdfValidator().Validate(document);
+        report.Contains(rule).Should().BeFalse(string.Join("; ", report.Findings));
+    }
+
+    [Theory]
     [InlineData("walked already", "Page tree node 6 has no /Count; 1 page lies below it.")]
     [InlineData("above it", "Page tree node 6 has no /Count, and how many pages lie below it is unknown.")]
     public void A_node_whose_array_of_kids_is_not_walked_again_still_has_its_missing_count_reported(string array, string message)
@@ -2118,6 +2214,8 @@ public class PageTreeRuleTests
     [InlineData("[9 0 R 0 /Wide 1]", "The /MediaBox of object 3 holds a name among its corners, not a rectangle of four numbers.")]
     [InlineData("[0 9 0 R 0 1]", "The /MediaBox of object 3, [0 9 0 R 0 1], encloses no area.")]
     [InlineData("[0 0 9 0 R 1]", null)]
+    [InlineData("[9 0 R 0 0 1]", null)]
+    [InlineData("[0 9 0 R 1 0]", null)]
     public void The_corners_of_a_media_box_no_cut_touches_are_judged(string box, string? message)
     {
         // T3-04: a corner of the page's /MediaBox names object 9, which runs past the limit: it is unknown, and the corners
