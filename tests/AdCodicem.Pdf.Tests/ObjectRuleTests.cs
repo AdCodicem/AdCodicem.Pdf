@@ -822,6 +822,45 @@ public class ObjectRuleTests
         diagnostic.Position.Should().Be(-1);
     }
 
+    [Theory]
+    [InlineData("free")]
+    [InlineData("in object stream 9")]
+    public void An_object_stream_the_index_does_not_place_in_the_file_needs_nothing_though_the_file_writes_a_stream_of_its_number(string row)
+    {
+        // The index places objects 5 and 6 in object stream 7, and lists 7 itself free, or places it in object stream 9:
+        // the reader reads 7 from nowhere in the file, decodes nothing of it, and serves 5 and 6 as null. The file writes a
+        // stream 7 all the same, first, where a search for its header from the start of the file finds it, and its
+        // /DecodeParms names 5. Nothing needs what the reader never decodes: the walk takes a stream only where its row
+        // places it in the file.
+        var file = new HandWrittenFile(version: "1.5");
+        FlateObjectStream(file, 7, [(5, "<< /Predictor 1 >>"), (6, "<< /Title (six) >>")], "/DecodeParms 5 0 R");
+        var rows = new Dictionary<int, (int Type, long Field2, int Field3)>
+        {
+            [1] = (1, file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"), 0),
+            [2] = (1, file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"), 0),
+            [5] = (2, 7, 0),
+            [6] = (2, 7, 1),
+        };
+
+        if (row == "in object stream 9")
+        {
+            rows[7] = (2, 9, 0);
+            rows[9] = (1, file.ObjectStream(9, [(7, "<< /Title (seven) >>")]), 0);
+        }
+
+        file.CrossReferenceStream(200, 201, rows, "/Root 1 0 R");
+
+        using (var read = PdfDocument.Open(file.Bytes))
+        {
+            read.GetObject(new PdfObjectId(5)).Should().BeSameAs(PdfNull.Instance, "the reader decodes nothing of stream 7");
+        }
+
+        using var document = PdfDocument.Open(file.Bytes);
+        ObjectStreamDependencies.Run(document).CircularStreams.Should().BeEmpty();
+        Validate(file.Bytes).Contains(PdfValidationRuleIds.XRefObjectStreamCircular).Should().BeFalse();
+        ReaderNeeds(file.Bytes).Should().BeNull();
+    }
+
     [Fact]
     public void A_parameter_array_naming_an_object_the_stream_holds_is_circular()
     {
@@ -1550,17 +1589,19 @@ public class ObjectRuleTests
         ReaderNeeds(file, unbounded).Should().Be(5);
     }
 
-    [Fact]
-    public void An_array_written_in_the_file_is_kept_as_far_as_the_guard_on_filters_lets_decoding_read_it()
+    [Theory]
+    [InlineData("[/FlateDecode 5 0 R /ASCIIHexDecode]")]
+    [InlineData("[5 0 R /FlateDecode /ASCIIHexDecode]")]
+    public void An_array_written_in_the_file_is_kept_as_far_as_the_guard_on_filters_lets_decoding_read_it(string three)
     {
-        // Stream 7's /Filter is object 3, [/FlateDecode 5 0 R /ASCIIHexDecode], and the reader decodes through two filters
-        // at most: it reads the second, 5, which the stream holds, and stops at the third. The walk keeps of the array the
-        // two elements decoding reads.
+        // Stream 7's /Filter is object 3, an array of three filters whose first or second is 5, which the stream holds, and
+        // the reader decodes through two filters at most: it reads 5, and stops at the third. The walk keeps of the array
+        // the two elements decoding reads, from the first.
         var file = new StreamSeven("/Filter 3 0 R")
         {
             Five = "/FlateDecode",
             Data = SevenData.FlateTwice,
-            Written = new() { [3] = "[/FlateDecode 5 0 R /ASCIIHexDecode]" },
+            Written = new() { [3] = three },
         }.Build();
         var options = new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxFilterChainLength = 2 } };
 
@@ -2762,6 +2803,31 @@ public class ObjectRuleTests
             ConvergenceShapes.Ladder(objects, members, ladder, chain);
             return ConvergenceShapes.StreamsAndMembers(objects, members);
         }
+    }
+
+    [Fact]
+    public void A_run_through_objects_of_two_holders_reaches_as_deep_as_the_deeper_holder_s_decoding_wherever_it_lies_in_the_run()
+    {
+        // Object stream 10 takes its predictor from 5000, written in the file, which names 3001, which object stream 2002
+        // holds; 3001 names 4001, which object stream 4000 holds, and 4001 names 11, which 10 holds itself. 2002 heads a
+        // ladder of 63 holders, each taking its predictor from an object the next holds, so that its decoding reaches 64
+        // levels deeper. 4000 needs nothing, and reaches two. Object stream 8, walked before 10, reads 3002 and
+        // 4002, which 2002 and 4000 hold, so that both are known when 10's chain meets them. From the second level, where
+        // 10's chain loads 3001, 2002's decoding runs past the reader's deepest load, which cuts it: 3001 is a need of 10,
+        // read as null, and the chain ends there. The run through 3001 and 4001 reaches as deep as 2002's decoding, though
+        // 4000's comes after it, and is not taken: 10 needs 2002, not itself.
+        var objects = new SortedDictionary<int, (string Entries, byte[]? Data)>
+        {
+            [8] = ConvergenceShapes.FlateObjectStream("/DecodeParms << /Predictor 12 /Colors 3002 0 R /BitsPerComponent 4002 0 R >>", (9, "<< >>")),
+            [10] = ConvergenceShapes.FlateObjectStream("/DecodeParms << /Predictor 5000 0 R >>", (11, "<< >>")),
+            [4000] = ConvergenceShapes.FlateObjectStream(string.Empty, (4001, "11 0 R"), (4002, "1")),
+            [5000] = ("3001 0 R", null),
+        };
+        var members = new Dictionary<int, (int Stream, int Index)> { [9] = (8, 0), [11] = (10, 0), [4001] = (4000, 0), [4002] = (4000, 1) };
+        ConvergenceShapes.Ladder(objects, members, 63, (3001, "4001 0 R"), (3002, "1"));
+
+        using var document = PdfDocument.Open(ConvergenceShapes.StreamsAndMembers(objects, members));
+        ObjectStreamDependencies.Run(document).CircularStreams.Should().BeEmpty();
     }
 
     [Theory]

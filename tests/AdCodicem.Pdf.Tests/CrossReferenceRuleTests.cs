@@ -1861,6 +1861,29 @@ public class CrossReferenceRuleTests
     }
 
     [Theory]
+    [InlineData("/N")]
+    [InlineData("/First")]
+    [InlineData("/Length")]
+    public void An_object_stream_value_written_as_a_real_with_a_fraction_is_not_said_to_be_read_as_an_integer(string key)
+    {
+        // As above, but the integer and the space after it become a real of as many bytes with a fractional part, which
+        // equals no integer: the reader reads no integer from it, and the finding that says it did is not made.
+        var content = Encoding.Latin1.GetString(XRefStreamFile());
+        var start = content.IndexOf(key + " ", content.IndexOf("/ObjStm", StringComparison.Ordinal), StringComparison.Ordinal) + key.Length + 1;
+        var end = start;
+
+        while (char.IsAsciiDigit(content[end]))
+        {
+            end++;
+        }
+
+        var real = end - start == 1 ? ".5" : content[start..(end - 1)] + ".5";
+
+        Validate(Encoding.Latin1.GetBytes(content[..start] + real + content[(end + 1)..])).Findings
+            .Should().NotContain(finding => finding.RuleId == PdfValidationRuleIds.XRefObjectStreamValueWrong);
+    }
+
+    [Theory]
     [InlineData("3 1 obj")]
     [InlineData("3 0000000000000000000000000000000000000000000000000000000000000000000001 obj")]
     public void A_relocated_entry_whose_generation_its_header_contradicts_is_reported_however_long_the_header(string header)
