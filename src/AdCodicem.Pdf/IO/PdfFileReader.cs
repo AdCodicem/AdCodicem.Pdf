@@ -7012,17 +7012,23 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// What follows a keyword is parsed as the dictionary alone, and nothing is loaded (#171): a stream it introduces gives
     /// its dictionary as it was read, neither its data nor what its <c>/Length</c> names being read; a stream nested in the
     /// dictionary, which no file may write there, ends the parse at its <c>stream</c> keyword, the key that holds it and the
-    /// keys after it unread, and this is noted; a reference in the dictionary's place is none, is not followed, and is
+    /// keys after it not merged, and this is noted; a reference in the dictionary's place is none, is not followed, and is
     /// noted; any other value there is none too, and what the parse met of it is all that is noted; and the references the
     /// dictionary holds are read only as the trailer's keys that hold them are. The scan so reaches no guard, and merges
     /// the same trailers whatever reads are in flight as it runs — the object one is loading reads as null meanwhile — and
     /// whether the document was opened to throw on a guard or not.
     /// </para>
     /// <para>
+    /// A nested stream ends the parse only within the nesting the parser follows: past its 128 levels, or where the stack
+    /// probe cuts sooner, the container the stream lies in or follows is skipped as any other is, which is noted as too
+    /// deep (#163), a <c>stream</c> keyword left after it is read as a key, and what follows it merged (#171).
+    /// </para>
+    /// <para>
     /// What the scan notes goes with the faults the parse meets: kept once, though two windows of the scan meet a keyword
     /// that lies where they overlap, and withdrawn with what the rebuild reported when the source fails it, for the rebuild
-    /// run again to note it again. A keyword in a comment, a string or a stream's data is still taken for a trailer's, and
-    /// every key the parse gives of the dictionary after it merged, not only the keys a trailer defines (#171).
+    /// run again to note it again. The bytes <c>trailer</c> anywhere — a comment, a string, a stream's data, the end of a
+    /// name — are still taken for a trailer's keyword, and every key the parse gives of the dictionary after them merged,
+    /// not only the keys a trailer defines (#171).
     /// </para>
     /// </remarks>
     private void ScanForTrailers()
@@ -7091,10 +7097,10 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
                         _pending.Warn(
                             PdfDiagnosticCodes.SyntaxUnexpectedToken,
                             _pending.IsFull
-                                ? "A stream inside the dictionary after a trailer keyword ends what the rebuild merges of it: the key that holds it and the keys after it are not read."
+                                ? "A stream inside the dictionary after a trailer keyword ends what the rebuild merges of it: the key that holds it and the keys after it are not merged."
                                 : string.Create(
                                     CultureInfo.InvariantCulture,
-                                    $"A stream inside the dictionary after the trailer keyword at offset {keyword} ends what the rebuild merges of it: the key that holds it and the keys after it are not read."),
+                                    $"A stream inside the dictionary after the trailer keyword at offset {keyword} ends what the rebuild merges of it: the key that holds it and the keys after it are not merged."),
                             positions[i] + parser.StreamStop);
                     }
 

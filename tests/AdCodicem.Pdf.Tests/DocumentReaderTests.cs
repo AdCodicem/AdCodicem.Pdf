@@ -277,7 +277,7 @@ public class DocumentReaderTests
         noted.Position.Should().Be(bytes.AsSpan().IndexOf("stream\n) /Data ("u8));
         noted.Message.Should().Be(string.Create(
             CultureInfo.InvariantCulture,
-            $"A stream inside the dictionary after the trailer keyword at offset {keyword} ends what the rebuild merges of it: the key that holds it and the keys after it are not read."));
+            $"A stream inside the dictionary after the trailer keyword at offset {keyword} ends what the rebuild merges of it: the key that holds it and the keys after it are not merged."));
     }
 
     [Fact]

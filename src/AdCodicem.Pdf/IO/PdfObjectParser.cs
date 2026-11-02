@@ -243,8 +243,9 @@ internal ref struct PdfObjectParser
     /// <remarks>
     /// At 0, the dictionary is the value the parse began with, which it gives whole: only the stream after it is unread, as
     /// a trailer's is (#171). Past 0, the dictionary stood inside that value — an element of an array, the value of a key —,
-    /// and every container open around it ended at the keyword with what it held before it: the element or the key that
-    /// holds the stream, and what follows them, are unread.
+    /// and every container open around it ended at the keyword: a dictionary without the key whose value holds the stream,
+    /// an array with the element that holds it as far as it was read, the stream's dictionary or the container around it;
+    /// what follows either is unread.
     /// </remarks>
     public readonly int StreamStopDepth => _streamStopDepth;
 
