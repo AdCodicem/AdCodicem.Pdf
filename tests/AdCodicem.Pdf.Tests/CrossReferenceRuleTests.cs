@@ -572,6 +572,22 @@ public class CrossReferenceRuleTests
     }
 
     [Fact]
+    public void An_entry_naming_the_object_before_its_own_is_shifted_from_that_object_s_header()
+    {
+        // Object 2's row gives where object 1 starts, and object 2 follows it within reach: the finding names the header the
+        // row lands on, however low its number.
+        var file = PdfTemplate.SoundWith("{row:2}", "{row:1}");
+
+        var finding = Single(Validate(file), PdfValidationRuleIds.XRefEntryShifted);
+
+        var one = PdfTemplate.OffsetOf(file, "1 0 obj");
+        var two = PdfTemplate.OffsetOf(file, "2 0 obj");
+        finding.Location.Should().Be(PdfValidationLocation.OfObject(new PdfObjectId(2), one));
+        finding.Message.Should().Be(
+            $"The entry of object 2 gives offset {one}, where there is the header of object 1; the object starts {two - one} bytes after it, at offset {two}.");
+    }
+
+    [Fact]
     public void An_entry_whose_generation_its_object_is_not_written_with_is_a_warning()
     {
         var file = PdfTemplate.SoundWith("{row:3}", "{row:3:7}");
@@ -934,6 +950,33 @@ public class CrossReferenceRuleTests
         finding.RuleId.Should().Be(PdfValidationRuleIds.XRefEntryBroken);
         finding.Message.Should().Be($"The index the reader rebuilt places object 4 at index 0 of object stream 3, where it is written as a stream, which an object stream cannot hold; {clause}.");
         finding.Remedy.Should().Be("Write the object outside the object stream, and index it there.");
+    }
+
+    [Fact]
+    public void An_object_a_rebuild_placed_where_the_stream_s_header_now_lists_another_is_not_judged_as_written_there()
+    {
+        // Object stream 3 takes its filter from object 9, which object stream 8 holds. The rebuild expands 3 before 8, its
+        // filter unknown yet: its data read as written, "37 20 30 20 ...", list object 37 at index 0. Read once 9 is known,
+        // the data decode to a header that lists object 7 there, written as a stream: object 37 is not written there at all,
+        // as a stream or otherwise.
+        const string Decoded = "7 0 << /Length 3 >> stream\nabc\nendstream";
+        var hex = string.Join(' ', Encoding.Latin1.GetBytes(Decoded).Select(each => each.ToString("X2", CultureInfo.InvariantCulture))) + ">";
+        var file = new HandWrittenFile(version: "1.5");
+        file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>");
+        file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>");
+        file.Object(3, string.Create(
+            CultureInfo.InvariantCulture,
+            $"<< /Type /ObjStm /N 1 /First 4 /Filter 9 0 R /Length {hex.Length} >>\nstream\n{hex}\nendstream"));
+        file.ObjectStream(8, [(9, "/ASCIIHexDecode")]);
+        file.Raw("trailer\n<< /Root 1 0 R /Size 10 >>\n%%EOF\n");
+
+        using var document = PdfDocument.Open(file.Bytes);
+        var report = new PdfValidator().Validate(document);
+
+        document.WasRepaired.Should().BeTrue();
+        document.Reader.Index.TryGet(37, out var placed).Should().BeTrue("the rebuild placed 37 as the data read as written list it");
+        placed.ObjectStreamNumber.Should().Be(3);
+        report.Findings.Should().NotContain(each => each.Location.Object == new PdfObjectId(37));
     }
 
     [Fact]

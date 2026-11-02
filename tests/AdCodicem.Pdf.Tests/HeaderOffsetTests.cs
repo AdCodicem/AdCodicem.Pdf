@@ -322,6 +322,24 @@ public sealed class HeaderOffsetTests
             "One of the reader's limits stopped it reading object stream 4 before its header ended: the 1 object the index places in it was not checked. Raising the limit the reader reported lets it be.");
     }
 
+    [Theory]
+    [InlineData("/Type /ObjStm /N 1 /First 999 /Length 11", PdfValidationRuleIds.XRefObjectStreamBroken)]
+    [InlineData("/Type /XObject /Length 11", PdfValidationRuleIds.XRefObjectStreamBroken)]
+    [InlineData("/Type /ObjStm /N 1 /First 4 /Pad ({pad}) /Length 11", PdfValidationRuleIds.XRefCheckedInPart)]
+    public void An_object_stream_at_the_file_s_first_byte_is_located_there(string dictionary, string rule)
+    {
+        // A file without a header counts its offsets from its first byte, where object stream 4 is written: an offset of 0
+        // is in the file, and the finding on the stream is located there, as at any other offset in it. The reader reads no
+        // object past 128 bytes, which the padded dictionary runs past.
+        var file = ObjectStreamAtTheFirstByte(dictionary.Replace("{pad}", new string('x', 200), StringComparison.Ordinal));
+        var options = new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxObjectLength = 128 } };
+        using var document = PdfDocument.Open(file, options);
+
+        var finding = Single(new PdfValidator().Validate(document), rule);
+
+        finding.Location.Should().Be(PdfValidationLocation.OfObject(new PdfObjectId(4), 0));
+    }
+
     [Fact]
     public void An_entry_far_before_the_file_s_start_is_not_looked_for_at_it()
     {
@@ -563,6 +581,29 @@ public sealed class HeaderOffsetTests
         text.Append(CultureInfo.InvariantCulture, $"trailer\n<< /Size 7 /Root 1 0 R /XRefStm {six} >>\nstartxref\n{xref}\n%%EOF\n");
         var prefix = junk == 0 ? string.Empty : new string('-', junk - 1) + "\n";
         return Encoding.Latin1.GetBytes(prefix + text);
+    }
+
+    /// <summary>
+    /// A hybrid file without a header, written with object stream 4 first, at its first byte, its dictionary
+    /// <paramref name="dictionary"/>: its table places the stream at offset 0, and its cross-reference stream places object 5,
+    /// which the page names, in it.
+    /// </summary>
+    private static byte[] ObjectStreamAtTheFirstByte(string dictionary)
+    {
+        var text = new StringBuilder();
+        text.Append(CultureInfo.InvariantCulture, $"4 0 obj\n<< {dictionary} >>\nstream\n5 0 (hello)\nendstream\nendobj\n");
+        var one = text.Length;
+        text.Append("1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n");
+        var two = text.Length;
+        text.Append("2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n");
+        var three = text.Length;
+        text.Append("3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << >> /Test 5 0 R >>\nendobj\n");
+        var six = text.Length;
+        text.Append("6 0 obj\n<< /Type /XRef /Size 7 /W [1 4 2] /Index [5 1] /Length 7 >>\nstream\n\u0002\0\0\0\u0004\0\0\nendstream\nendobj\n");
+        var xref = text.Length;
+        text.Append(CultureInfo.InvariantCulture, $"xref\n0 5\n0000000000 65535 f \n{one:D10} 00000 n \n{two:D10} 00000 n \n{three:D10} 00000 n \n0000000000 00000 n \n");
+        text.Append(CultureInfo.InvariantCulture, $"trailer\n<< /Size 7 /Root 1 0 R /XRefStm {six} >>\nstartxref\n{xref}\n%%EOF\n");
+        return Encoding.Latin1.GetBytes(text.ToString());
     }
 
     /// <summary>The objects the reader found near where their entries place them, which share their code with the header's offset.</summary>
