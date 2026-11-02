@@ -803,6 +803,30 @@ public class HostileInputTests
     }
 
     [Theory]
+    [InlineData("trailer 5 0 R\n", "trailer 5 0\n")]
+    [InlineData("trailer << /A << >>\nstream\nx\nendstream >>\n", "trailer << /A 1 >>\n")]
+    public void Quotes_nothing_in_what_a_rebuild_s_scan_for_trailers_notes_once_the_diagnostics_are_full_however_many_keywords_make_a_note(string noted, string control)
+    {
+        // Twenty thousand trailer keywords and no table: opening rebuilds the index, whose scan for trailers parses what
+        // follows each keyword, here a reference in the dictionary's place, or a dictionary a stream nested in it cuts
+        // short, and notes it. Past the ten entries the document keeps, each note is counted and dropped, and neither the
+        // keyword's offset nor the object's number is quoted for it: quoted for every keyword, the notes allocated some 310
+        // and 330 bytes a keyword more than as many keywords followed by what makes no note, an integer or a sound
+        // dictionary, where they now allocate some 30 bytes more and 30 fewer (#171).
+        const int Keywords = 20_000;
+        var options = PdfReaderOptions.Default with { DiagnosticCapacity = 10 };
+
+        var allocated = AllocatedOpening(Keywords, noted, options, out var report);
+        var extra = allocated - AllocatedOpening(Keywords, control, options, out var sound);
+
+        sound.Should().NotContain(diagnostic => diagnostic.Code.StartsWith("syntax.", StringComparison.Ordinal));
+        report.SuppressedCount.Should().BeGreaterThanOrEqualTo(Keywords - 10);
+        report.Where(diagnostic => diagnostic.Code.StartsWith("syntax.", StringComparison.Ordinal)).Should().NotBeEmpty()
+            .And.OnlyContain(diagnostic => diagnostic.Message.Contains("trailer keyword at offset ", StringComparison.Ordinal));
+        extra.Should().BeLessThan(128L * Keywords, "a note the document's diagnostics drop is formatted for no keyword");
+    }
+
+    [Theory]
     [InlineData("/W [99 99 99]", "is malformed: it holds 0 rows where its /Index and /Size declare 5.")]
     [InlineData("/W [1 2147483647 2147483647]", "is malformed: it holds 0 rows where its /Index and /Size declare 5.")]
     [InlineData("/W [1 4294967300 2]", "is malformed: it holds 0 rows where its /Index and /Size declare 5.")]
@@ -5515,6 +5539,29 @@ public class HostileInputTests
         }
 
         return GC.GetAllocatedBytesForCurrentThread() - allocated;
+    }
+
+    /// <summary>
+    /// Opens the catalog and an empty page tree followed by <paramref name="keywords"/> copies of <paramref name="tail"/>,
+    /// and no table, so that opening rebuilds the index, and gives what opening allocated, and the document's diagnostics.
+    /// </summary>
+    private static long AllocatedOpening(int keywords, string tail, PdfReaderOptions options, out PdfDiagnostics diagnostics)
+    {
+        var file = new HandWrittenFile();
+        file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>");
+        file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>");
+        file.Raw(string.Concat(Enumerable.Repeat(tail, keywords)));
+        var bytes = file.Bytes;
+
+        var allocated = Allocations.Least(
+            () =>
+            {
+                using var document = Measure(() => PdfDocument.Open(bytes, options));
+                return document.Diagnostics;
+            },
+            out diagnostics);
+
+        return allocated;
     }
 
     /// <summary>Compresses <paramref name="data"/> with zlib, as a <c>/FlateDecode</c> stream holds it.</summary>

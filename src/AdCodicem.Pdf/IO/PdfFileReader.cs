@@ -7079,13 +7079,16 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
                 {
                     // A stream inside the dictionary ended the parse at its keyword, the dictionary with it; one after the
                     // dictionary ends nothing of it. Noted with the parse's own faults, the note is kept once, as they are.
+                    // Hostile data can hold a keyword every few bytes: the offset is quoted only for a note that is kept.
                     if (parser.StreamStopDepth > 0)
                     {
                         _pending.Warn(
                             PdfDiagnosticCodes.SyntaxUnexpectedToken,
-                            string.Create(
-                                CultureInfo.InvariantCulture,
-                                $"A stream inside the dictionary after the trailer keyword at offset {keyword} ends what the rebuild merges of it: the key that holds it and the keys after it are not read."),
+                            _pending.IsFull
+                                ? "A stream inside the dictionary after a trailer keyword ends what the rebuild merges of it: the key that holds it and the keys after it are not read."
+                                : string.Create(
+                                    CultureInfo.InvariantCulture,
+                                    $"A stream inside the dictionary after the trailer keyword at offset {keyword} ends what the rebuild merges of it: the key that holds it and the keys after it are not read."),
                             positions[i] + parser.StreamStop);
                     }
 
@@ -7098,14 +7101,17 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
                 }
                 else if (value is PdfReference reference)
                 {
-                    // The reference starts past the white space and comments after the keyword.
+                    // The reference starts past the white space and comments after the keyword. The offset and the number
+                    // are quoted only for a note that is kept, as the stream's are.
                     var lexer = new PdfLexer(window.Memory.Span);
                     lexer.SkipWhitespaceAndComments();
                     _pending.Warn(
                         PdfDiagnosticCodes.SyntaxUnexpectedToken,
-                        string.Create(
-                            CultureInfo.InvariantCulture,
-                            $"The trailer keyword at offset {keyword} is followed by a reference to object {reference.Id.Number}, not by a dictionary; the rebuild does not follow it."),
+                        _pending.IsFull
+                            ? "A trailer keyword is followed by a reference, not by a dictionary; the rebuild does not follow it."
+                            : string.Create(
+                                CultureInfo.InvariantCulture,
+                                $"The trailer keyword at offset {keyword} is followed by a reference to object {reference.Id.Number}, not by a dictionary; the rebuild does not follow it."),
                         positions[i] + lexer.Position);
                 }
 
