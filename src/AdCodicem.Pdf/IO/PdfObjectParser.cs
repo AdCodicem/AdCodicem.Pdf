@@ -766,9 +766,18 @@ internal ref struct PdfObjectParser
         {
             // A parse that reads no stream stops here, the containers it had open with it: a member's stream is no value
             // (#161), and a trailer's is its dictionary alone, as it was read, its data and what its /Length names unread
-            // (#171). How deep the stop is tells a stream after the value from one inside it, which cut it short.
+            // (#171). How deep the stop is tells a stream after the value from one inside it, which cut it short. Only a
+            // whole keyword stops it, as only a whole endobj or R is taken: one a window's edge reaches is the stream's where
+            // the file says it ends there, and may otherwise be "streamline" cut short, which the container around the
+            // dictionary reads as what the edge left, unreported (#49). A member's window that reaches one was cut above.
             if (!_readsStreams)
             {
+                if (!IsWholeKeyword(next, "stream"u8))
+                {
+                    _lexer.Position = afterDictionary;
+                    return dictionary;
+                }
+
                 _streamStop = next.Start;
                 _streamStopDepth = depth;
                 return dictionary;

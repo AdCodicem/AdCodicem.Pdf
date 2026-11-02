@@ -376,6 +376,63 @@ public class DocumentReaderTests
         document.Diagnostics.Should().NotContain(diagnostic => diagnostic.Code == PdfDiagnosticCodes.TrailerRootRecovered);
     }
 
+    [Theory]
+    [InlineData("<< /K 1 >> ", "streamline", "")]
+    [InlineData("<< /K 1 >> ", "streamX", "")]
+    [InlineData("[<< /K 1 >> ", "streamline", "]")]
+    [InlineData("[<< /K 1 >> ", "streamX", "]")]
+    public void A_keyword_longer_than_stream_a_rebuilt_trailer_s_window_cuts_after_a_nested_dictionary_ends_nothing_wherever_the_edge_falls_and_is_not_noted(
+        string opening, string word, string closing)
+    {
+        // A rebuild's scan for trailers parses the dictionary after each trailer keyword through a window of 64 KB, which a
+        // longer trailer runs past, what lies past it unread (#49). Here the window's edge falls 5, 6 or 7 bytes into a
+        // keyword the file spells longer than stream, after a dictionary /S holds, or an array /S holds starts with. The
+        // file says the keyword goes on past the edge: even cut to "stream", it is no stream nested in the trailer, and ends
+        // nothing of it. The trailer is the same wherever the edge falls, /S as far as it was read, and what the edge cut
+        // short is not noted (#171).
+        var held = new List<string>();
+
+        foreach (var inside in (int[])[5, 6, 7])
+        {
+            var (document, _, _) = OpenTrailerWhoseWindowEndsInside(opening, word, closing, inside);
+
+            using (document)
+            {
+                document.WasRepaired.Should().BeTrue();
+                document.Trailer.Keys.Select(key => key.Value).Should().BeEquivalentTo("Root", "Pad", "S");
+                document.Diagnostics.Should().NotContain(diagnostic => diagnostic.Code.StartsWith("syntax.", StringComparison.Ordinal));
+                held.Add(string.Create(CultureInfo.InvariantCulture, $"{document.Trailer.GetRaw(PdfName.Get("S"))}"));
+            }
+        }
+
+        held.Should().AllBe(held[0], "the edge cuts the keyword 6 bytes in as it does 5 or 7 bytes in");
+    }
+
+    [Theory]
+    [InlineData("<< /K 1 >> ", "stream\nabc\nendstream", "")]
+    [InlineData("[<< /K 1 >> ", "stream abc endstream", "]")]
+    public void A_stream_keyword_a_rebuilt_trailer_s_window_ends_on_after_a_nested_dictionary_ends_the_trailer_there_and_is_noted_once(
+        string opening, string word, string closing)
+    {
+        // As above, the window's edge falls 6 bytes into what follows a dictionary /S holds, here the stream keyword itself:
+        // the file says the keyword ends there, so that it is the keyword of a stream nested in the trailer, which ends the
+        // parse, /S and the keys after it not merged, and is noted once, where the keyword starts (#171).
+        var (document, keyword, at) = OpenTrailerWhoseWindowEndsInside(opening, word, closing, 6);
+
+        using (document)
+        {
+            document.WasRepaired.Should().BeTrue();
+            document.Trailer.Keys.Select(key => key.Value).Should().BeEquivalentTo("Root", "Pad");
+            var noted = document.Diagnostics.Should()
+                .ContainSingle(diagnostic => diagnostic.Code.StartsWith("syntax.", StringComparison.Ordinal)).Which;
+            noted.Code.Should().Be(PdfDiagnosticCodes.SyntaxUnexpectedToken);
+            noted.Position.Should().Be(at);
+            noted.Message.Should().StartWith(string.Create(
+                CultureInfo.InvariantCulture,
+                $"A stream inside the dictionary after the trailer keyword at offset {keyword} ends what the rebuild merges of it"));
+        }
+    }
+
     [Fact]
     public void Prefers_the_newest_definition_after_an_incremental_update()
     {
@@ -3468,6 +3525,30 @@ public class DocumentReaderTests
         }
 
         return bytes;
+    }
+
+    /// <summary>
+    /// Opens a file of the catalog and an empty page tree, with no table, whose trailer is <c>&lt;&lt; /Root 1 0 R /Pad (…)
+    /// /S</c>, then <paramref name="opening"/>, <paramref name="word"/> and <paramref name="closing"/>, then
+    /// <c>/Info 2 0 R &gt;&gt;</c>, the string as long as it takes for the window the scan for trailers parses it through to
+    /// end <paramref name="inside"/> bytes into <paramref name="word"/>: the document, where the trailer keyword starts, and
+    /// where <paramref name="word"/> does.
+    /// </summary>
+    private static (PdfDocument Document, long Keyword, long Word) OpenTrailerWhoseWindowEndsInside(
+        string opening, string word, string closing, int inside)
+    {
+        const string Before = "\n<< /Root 1 0 R /Pad (";
+        var after = ") /S " + opening;
+        var file = new HandWrittenFile();
+        file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>");
+        file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>");
+        var keyword = file.Position;
+        file.Raw("trailer" + Before + new string('x', PdfFileReader.XRefWindow - inside - Before.Length - after.Length) + after);
+        var at = file.Position;
+        file.Raw(word + closing + " /Info 2 0 R >>\n");
+
+        at.Should().Be(keyword + "trailer".Length + PdfFileReader.XRefWindow - inside);
+        return (PdfDocument.Open(file.Bytes), keyword, at);
     }
 
     /// <summary>Where the data of the file's object stream starts.</summary>
