@@ -129,11 +129,13 @@ decoded there keeps what the cut gave. A `/Length` chain that a cached link carr
 stream the reader still holds, which then reads as null for the rest of the decoding. A value the validator reads
 through such a stream depends on which read first decoded it that deep: one of yours, or one of the validation's own.
 So validating a document you have not read can read what the cut left, and reading it first can spare it, or the
-reverse. On a thread with little stack, the reader's stack probe cuts sooner, even with nothing read first, so the
-report can also depend on the thread. In the last, an object stream's decoding reads a value — its `/Type`, `/N`,
-`/First`, `/Filter` or `/DecodeParms` — held by a stream that lies on a loop, or the stream lies on a loop itself.
-What the reader serves of that value depends on which stream of the loop it decoded first, and so do the
-verdicts of `xref.object-stream-broken`, `xref.entry-broken` and `xref.entry-shifted`
+reverse. On a thread with little stack, the reader's stack probe cuts sooner, even with nothing read first. So does
+the validator's own, which it asks before each level of its walk of what an object stream's decoding reads: what it has
+no room to load reads as null, which `syntax.depth-exceeded` reports, and the report can also depend on the thread
+([#312](https://github.com/AdCodicem/AdCodicem.Pdf/issues/312)). In the last, an object stream's decoding reads a
+value — its `/Type`, `/N`, `/First`, `/Filter` or `/DecodeParms` — held by a stream that lies on a loop, or the stream
+lies on a loop itself. What the reader serves of that value depends on which stream of the loop it decoded first, and
+so do the verdicts of `xref.object-stream-broken`, `xref.entry-broken` and `xref.entry-shifted`
 ([#313](https://github.com/AdCodicem/AdCodicem.Pdf/issues/313)).
 
 The cross-reference rules read where each entry of the file's index places its object as a load reads it, and decide

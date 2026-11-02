@@ -52,8 +52,10 @@ crafted for it can still make the report depend on what was read before, in thre
   gave, and a `/Length` chain a cached link carries past the cut can go on into a stream the reader still holds. The
   read that first decoded the stream that deep may be one of the validation's own, so that validating a document you
   have not read can read what the cut left, and reading it first can spare it, or the reverse. On a thread with little
-  stack, the reader's stack probe cuts sooner, even with nothing read first, so the report can also depend on the
-  thread.
+  stack, the reader's stack probe cuts sooner, even with nothing read first, and so does the probe the validator makes
+  before each level of its walk of the object streams, which reads as null what it has no room to load and is reported
+  as `syntax.depth-exceeded` ([#312](https://github.com/AdCodicem/AdCodicem.Pdf/issues/312)): the report can also depend
+  on the thread.
 - A value an object stream's decoding reads — its `/Type`, `/N`, `/First`, `/Filter` or `/DecodeParms` — held by a
   stream that lies on a loop, or any such value of a stream on a loop itself, depends on which stream of the loop was
   decoded first, and so do the verdicts of `xref.object-stream-broken`, `xref.entry-broken` and `xref.entry-shifted`
