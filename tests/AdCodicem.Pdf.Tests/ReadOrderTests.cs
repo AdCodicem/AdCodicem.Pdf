@@ -2995,6 +2995,69 @@ public class ReadOrderTests
             .Should().Equal(settled.Diagnostics.Select(diagnostic => diagnostic.ToString()));
     }
 
+    [Fact]
+    public void What_a_caller_s_source_loads_while_a_rebuild_scans_the_file_is_reported_once_however_often_it_is_read_again()
+    {
+        // Stream 100 takes its /Length from 101, whose row leads nowhere: reading 100 rebuilds the index with both in flight.
+        // At the first read once the scan has indexed the file's headers, the caller's own source loads stream 5, whose
+        // /Length is wrong, string 6, longer than MaxObjectLength, and stream 200, which a chain of /Length loads leads
+        // deeper than the reader follows: each load reads through the index the scan made, as the loads in flight do, and
+        // reports what it finds. What is reported while the scan runs is kept through the rebuild's finish, as what the scan
+        // itself reports is, and taken as reported (#167): read again by the finish and after it, none of the three is
+        // reported again.
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"),
+            [5] = file.Object(5, "<< /Length 3 >>\nstream\nx\nendstream"),
+            [6] = file.Object(6, "(" + new string('x', 2000) + ")"),
+            [100] = file.Object(100, "<< /Length 101 0 R >>\nstream\nx\nendstream"),
+        };
+
+        file.Object(101, "1");
+
+        for (var number = 200; number < 270; number++)
+        {
+            rows[number] = file.Object(number, string.Create(CultureInfo.InvariantCulture, $"<< /Length {number + 1} 0 R >>\nstream\nx\nendstream"));
+        }
+
+        rows[270] = file.Object(270, "1");
+        rows[9] = file.Padding(9, 600);
+        rows[101] = rows[9] + 300;
+        file.Table(271, rows, "/Size 271 /Root 1 0 R");
+        using var source = new FailingSource(file.Bytes);
+        var options = new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxObjectLength = 1024 } };
+        using var document = PdfDocument.Open(source, options, ownsSource: false);
+        var loaded = false;
+        source.Reading = () =>
+        {
+            if (!loaded && document.WasRepaired && document.Reader.Index.TryGet(200, out _))
+            {
+                loaded = true;
+                _ = document.GetObject(new PdfObjectId(5));
+                _ = document.GetObject(new PdfObjectId(6));
+                _ = document.GetObject(new PdfObjectId(200));
+            }
+        };
+
+        document.GetObject(new PdfObjectId(100)).Should().BeOfType<PdfStream>();
+        source.Reading = null;
+        var afterRead = document.Diagnostics.Select(diagnostic => diagnostic.ToString()).ToList();
+        _ = document.GetObject(new PdfObjectId(5));
+        _ = document.GetObject(new PdfObjectId(6));
+        _ = document.GetObject(new PdfObjectId(200));
+
+        loaded.Should().BeTrue();
+        document.WasRepaired.Should().BeTrue();
+        afterRead.Should().OnlyHaveUniqueItems();
+        afterRead.Should().ContainSingle(entry => entry.Contains("The stream declared 3 bytes", StringComparison.Ordinal));
+        document.Diagnostics.Should().ContainSingle(diagnostic => diagnostic.Code == PdfDiagnosticCodes.LimitObject)
+            .Which.Position.Should().Be(rows[6]);
+        document.Diagnostics.Should().ContainSingle(diagnostic => diagnostic.Code == PdfDiagnosticCodes.SyntaxDepthExceeded);
+        document.Diagnostics.Select(diagnostic => diagnostic.ToString()).Should().Equal(afterRead);
+    }
+
     [Theory]
     [InlineData(false, 8192)]
     [InlineData(false, 64)]
