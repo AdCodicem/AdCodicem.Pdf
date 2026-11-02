@@ -110,10 +110,12 @@ namespace AdCodicem.Pdf.Validation;
 /// goes some 670 KB deep (535 to 580 KB on that shape) and needs a thread of some 800 KB (on that shape, none is cut from
 /// 720 KB). A thread of 1 MB has room for either. What the reader has read and kept is not modeled, so that the verdict
 /// does not depend on what was read before, but for #163, above: a read that reaches the stream through another stream's
-/// decoding nests deeper, and cuts earlier; nor is the thread's stack. On a thread with less room, a probe cuts — the
-/// reader's, of a load the walks make through it, or theirs, of a level they would go down, which reads as null, a walk of
-/// a standing then taking its stream, for the rest of the validation, for one that does not decode alike, and which the
-/// document reports once —, and the report may depend on the thread.
+/// decoding nests deeper, and cuts earlier; nor is the thread's stack. On a thread with less room, a probe cuts. The
+/// reader's, or its parser's, cuts a load the walks make through the reader, and the walks keep what that read gave,
+/// for the rest of the validation, as it gave it (#163). The walks' own cuts a level they would go down, which reads as
+/// null — a walk of a standing then taking its stream, for the rest of the validation, for one that does not decode
+/// alike, and no parse the cut leaves short giving a nest a later walk would take —, and which the document reports
+/// once. Either way, the report may depend on the thread.
 /// </para>
 /// <para>
 /// The streams so needed are linked, each to each stream it needs, and a stream its links lead back to is circular: one
@@ -150,13 +152,14 @@ namespace AdCodicem.Pdf.Validation;
 /// one, took past what the walk keeps — 16,128 streams a walk, read again for each object stream (#201). A parse that met
 /// nothing the walk's own state answers — no object of an object stream, which reads as the stream walked and those in
 /// flight make it, no stream parsed before, the stream walked among them, no stream the reader holds in its loads read
-/// again, at its deepest load as well as above it — parsed what the file alone says from that depth down, the same for
-/// every walk. The streams it went through, its nest, are kept by the number of the stream heading them, as many nests as
-/// the reader keeps objects, and taken at once where that stream is met again at that depth or below it, or at any depth
-/// when the parse ended where its chains do, short of the reader's nesting: its streams are parsed, as far as the nesting
-/// lets a parse from there reach, up to one parsed already, where the parse would end; and the load the nesting cuts at
-/// its end, the first a <c>/Length</c> names, is a stream read again or not, as there. A validation keeps one nest for the
-/// outermost parse, or for the outermost one inside it that met nothing.
+/// again, at its deepest load as well as above it, no load the thread's stack had no room for — parsed what the file
+/// alone says from that depth down, the same for every walk. The streams it went through, its nest, are kept by the
+/// number of the stream heading them, as many nests as the reader keeps objects, and taken at once where that stream is
+/// met again at that depth or below it, or at any depth when the parse ended where its chains do, short of the reader's
+/// nesting: its streams are parsed, as far as the nesting lets a parse from there reach, up to one parsed already,
+/// where the parse would end; and the load the nesting cuts at its end, the first a <c>/Length</c> names, is a stream
+/// read again or not, as there. A validation keeps one nest for the outermost parse, or for the outermost one inside it
+/// that met nothing.
 /// </para>
 /// </remarks>
 internal sealed class ObjectStreamDependencies
