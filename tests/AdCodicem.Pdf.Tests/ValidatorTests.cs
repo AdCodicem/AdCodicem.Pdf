@@ -363,6 +363,49 @@ public class ValidatorTests
         }
     }
 
+    [Theory]
+    [InlineData("section faults", PdfValidationRuleIds.XRefSectionShifted, 256)]
+    [InlineData("section faults", PdfValidationRuleIds.FileTrailerMalformed, 256)]
+    [InlineData("a trailer keyword followed by no dictionary", PdfValidationRuleIds.FileTrailerMalformed, 256)]
+    [InlineData("a trailer without its keyword", PdfValidationRuleIds.FileTrailerMissing, 256)]
+    [InlineData("sections refusing a row", PdfValidationRuleIds.XRefSectionMalformed, 256)]
+    [InlineData("sections naming streams that are not there", PdfValidationRuleIds.XRefSectionNotFound, 256)]
+    [InlineData("a table the section guard cuts", PdfValidationRuleIds.XRefCheckedInPart, 256)]
+    [InlineData("older sections the object guard hides", PdfValidationRuleIds.XRefCheckedInPart, 256)]
+    [InlineData("object streams the index lacks", PdfValidationRuleIds.XRefObjectStreamBroken, 256)]
+    [InlineData("page tree faults", PdfValidationRuleIds.PageTreePageOrphaned, 384)]
+    public void A_rule_that_writes_its_own_findings_writes_none_once_the_report_is_full(string file, string ruleId, int budget)
+    {
+        // #168: a rule that writes its findings itself asks the report for room before it writes each, and counts one the
+        // report has no room for without writing its message: once the report is full, judging the file costs no message.
+        var (bytes, limits) = Faulty.Value[file];
+        using var document = PdfDocument.Open(bytes, new PdfReaderOptions { Limits = limits });
+        var rule = ValidationProfile.Structural.Rules.Single(each => each.Id == ruleId);
+
+        var allocated = Allocations.Least(
+            () =>
+            {
+                // The analyses the rule reads, made outside the measure.
+                var context = new ValidationContext(document, capacity: 0);
+                _ = context.Probe;
+                _ = context.ObjectStreams;
+                _ = context.Graph;
+                return context;
+            },
+            context =>
+            {
+                rule.Check(context);
+                return 0;
+            },
+            out var full,
+            out _);
+        var report = full.ToReport(ValidationProfile.Structural);
+
+        report.Findings.Should().BeEmpty();
+        report.SuppressedCount.Should().BeGreaterThan(0, "the file holds findings of the rule");
+        allocated.Should().BeLessThan(budget, "the rule's own walk of what the analyses found, and no message: one is a hundred bytes and more");
+    }
+
     [Fact]
     public void Two_validations_of_a_document_give_the_same_findings_in_the_same_order()
     {
@@ -619,12 +662,27 @@ public class ValidatorTests
         var files = new Dictionary<string, (byte[] File, PdfReaderLimits Limits)>(StringComparer.Ordinal)
         {
             ["page tree faults"] = (PageTreeFaults(), PdfReaderLimits.Default),
+            ["arrays of kids that loop back"] = (
+                Objects(
+                    (1, "<< /Type /Catalog /Pages 2 0 R >>"),
+                    (2, "<< /Type /Pages /Kids 7 0 R /Count 0 >>"),
+                    (3, "<< /Type /Pages /Parent 2 0 R /Kids 7 0 R /Count 0 >>"),
+                    (4, "<< /Type /Pages /Parent 2 0 R /Kids 7 0 R /Count 0 >>"),
+                    (7, "[3 0 R 4 0 R]")),
+                PdfReaderLimits.Default),
             ["object faults"] = (ObjectFaults(), PdfReaderLimits.Default),
             ["index faults"] = (IndexFaults(), PdfReaderLimits.Default),
             ["headers past the object guard"] = (HeadersPastTheGuard(), PdfReaderLimits.Default with { MaxObjectLength = 16 * 1024 }),
+            ["entries left undecided"] = (UndecidedEntries(), PdfReaderLimits.Default),
+            ["object streams the object guard cuts"] = (ObjectStreamsPastTheGuard(), PdfReaderLimits.Default with { MaxObjectLength = 1024 }),
+            ["streams in an object stream only a rebuild places"] = (StreamsOnlyARebuildPlaces(), PdfReaderLimits.Default),
             ["object stream faults"] = (ObjectStreamFaults(), PdfReaderLimits.Default),
             ["section faults"] = (SectionFaults(), PdfReaderLimits.Default),
             ["a trailer without its keyword"] = (SectionFaults(keyword: false), PdfReaderLimits.Default),
+            ["a trailer keyword followed by no dictionary"] = (
+                PdfTemplate.SoundWith("<< /Size 4 /Root 1 0 R >>", "/Size 4 /Root 1 0 R >>"), PdfReaderLimits.Default),
+            ["sections refusing a row"] = (SectionsRefusingARow(), PdfReaderLimits.Default),
+            ["sections naming streams that are not there"] = (SectionsNamingNoStream(), PdfReaderLimits.Default),
             ["a table the section guard cuts"] = (LongTable(), PdfReaderLimits.Default with { MaxXRefSectionLength = 2048 }),
             ["older sections the object guard hides"] = (OlderSectionsBehindAnObject(), PdfReaderLimits.Default with { MaxObjectLength = 1024 }),
             ["invalid kids"] = (HostileInputTests.Kids(12), PdfReaderLimits.Default),
@@ -748,6 +806,74 @@ public class ValidatorTests
     }
 
     /// <summary>
+    /// Four entries whose objects lie in one comment of 100 KB, which each reads to its end: the probe reads twice the file's
+    /// length of them on the first two, and leaves the others undecided, one finding.
+    /// </summary>
+    private static byte[] UndecidedEntries()
+    {
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"),
+        };
+        var comment = file.Position;
+        file.Raw("%" + new string('c', 100 * 1024) + "\n");
+
+        for (var number = 3; number <= 6; number++)
+        {
+            rows[number] = comment;
+        }
+
+        file.Table(7, rows, "/Size 7 /Root 1 0 R");
+        return file.Bytes;
+    }
+
+    /// <summary>
+    /// Three object streams the index places an object in each, whose dictionaries run past the object guard of 1 KB they
+    /// are opened under: what each holds is not checked.
+    /// </summary>
+    private static byte[] ObjectStreamsPastTheGuard()
+    {
+        var file = new HandWrittenFile(version: "1.5");
+        var rows = new Dictionary<int, (int Type, long Field2, int Field3)>
+        {
+            [1] = (1, file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"), 0),
+            [2] = (1, file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"), 0),
+        };
+
+        foreach (var stream in (int[])[10, 20, 30])
+        {
+            rows[stream] = (1, file.ObjectStream(stream, [(stream + 1, "(held)")], "/Pad (" + new string('x', 2048) + ") "), 0);
+            rows[stream + 1] = (2, stream, 0);
+        }
+
+        file.CrossReferenceStream(80, 81, rows, "/Root 1 0 R");
+        return file.Bytes;
+    }
+
+    /// <summary>
+    /// An object stream holding three objects written as streams and a dictionary, in a file without an index: the
+    /// rebuilt index alone places them.
+    /// </summary>
+    private static byte[] StreamsOnlyARebuildPlaces()
+    {
+        var file = new HandWrittenFile(version: "1.5");
+        file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>");
+        file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>");
+        file.ObjectStream(
+            3,
+            [
+                (4, "<< /Length 3 >> stream\nabc\nendstream"),
+                (5, "<< /B 2 >>"),
+                (6, "<< /Length 3 >> stream\ndef\nendstream"),
+                (7, "<< /Length 3 >> stream\nghi\nendstream"),
+            ]);
+        file.Raw("trailer\n<< /Root 1 0 R /Size 8 >>\n%%EOF\n");
+        return file.Bytes;
+    }
+
+    /// <summary>
     /// Object streams wrong three ways: three whose <c>/N</c> names the object each holds, circular and unreadable alike; two
     /// whose <c>/N</c> and <c>/First</c> are written as reals; and three the index places objects in and lacks.
     /// </summary>
@@ -814,6 +940,58 @@ public class ValidatorTests
 
         text.Append(CultureInfo.InvariantCulture, $"startxref\n{previous}\n%%EOF\n");
         return Encoding.Latin1.GetBytes(text.ToString());
+    }
+
+    /// <summary>
+    /// A chain of three cross-reference streams, each refusing a row that places object 9 in an object stream numbered
+    /// past what a number can be.
+    /// </summary>
+    private static byte[] SectionsRefusingARow()
+    {
+        var file = new HandWrittenFile(version: "1.5");
+        var rows = new Dictionary<int, (int Type, long Field2, int Field3)>
+        {
+            [1] = (1, file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"), 0),
+            [2] = (1, file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"), 0),
+            [9] = (2, 0xFFFF_FFFFL, 0),
+        };
+        var previous = -1L;
+
+        for (var number = 3; number <= 5; number++)
+        {
+            var at = file.Position;
+            var prev = previous < 0 ? string.Empty : string.Create(CultureInfo.InvariantCulture, $" /Prev {previous}");
+            file.CrossReferenceStream(number, 10, rows, "/Root 1 0 R" + prev);
+            rows[number] = (1, at, 0);
+            previous = at;
+        }
+
+        return file.Bytes;
+    }
+
+    /// <summary>
+    /// A chain of three classic sections, each naming in <c>/XRefStm</c> an offset inside a long comment, where no section
+    /// lies, nor any within reach of it.
+    /// </summary>
+    private static byte[] SectionsNamingNoStream()
+    {
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"),
+        };
+        var comment = file.Position;
+        file.Raw("%" + new string('c', 4096) + "\n");
+        var previous = -1L;
+
+        for (var section = 0; section < 3; section++)
+        {
+            var prev = previous < 0 ? string.Empty : string.Create(CultureInfo.InvariantCulture, $" /Prev {previous}");
+            previous = file.Table(3, rows, string.Create(CultureInfo.InvariantCulture, $"/Size 3 /Root 1 0 R /XRefStm {comment + 2048}{prev}"));
+        }
+
+        return file.Bytes;
     }
 
     /// <summary>A table of three hundred rows, some 6 KB, which a section guard of 2 KB cuts before its trailer.</summary>
