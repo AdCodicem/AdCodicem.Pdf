@@ -1228,11 +1228,10 @@ public class HostileInputTests
                 new string('[', nesting) + $"<< /Length {length} >>\nstream\nx\nendstream" + new string(']', nesting));
         }
 
-        var (first, diagnostics, failure) = ReadObject3OnASmallStack(builder.BuildClassic(rootNumber: 1));
+        var (first, diagnostics) = ReadObject3OnASmallStack(builder.BuildClassic(rootNumber: 1));
 
-        failure.Should().BeNull();
         first.Should().BeOfType<PdfArray>();
-        diagnostics.Required().Contains(PdfDiagnosticCodes.SyntaxDepthExceeded).Should().BeTrue();
+        diagnostics.Contains(PdfDiagnosticCodes.SyntaxDepthExceeded).Should().BeTrue();
     }
 
     [Theory]
@@ -1251,11 +1250,10 @@ public class HostileInputTests
             builder.WithObject(number, NestedDictionaries(nesting, $"<< /Length {length} >>\nstream\nx\nendstream"));
         }
 
-        var (first, diagnostics, failure) = ReadObject3OnASmallStack(builder.BuildClassic(rootNumber: 1));
+        var (first, diagnostics) = ReadObject3OnASmallStack(builder.BuildClassic(rootNumber: 1));
 
-        failure.Should().BeNull();
         first.Should().BeOfType<PdfDictionary>();
-        diagnostics.Required().Contains(PdfDiagnosticCodes.SyntaxDepthExceeded).Should().BeTrue();
+        diagnostics.Contains(PdfDiagnosticCodes.SyntaxDepthExceeded).Should().BeTrue();
     }
 
     [Fact]
@@ -5594,37 +5592,22 @@ public class HostileInputTests
         string.Concat(Enumerable.Repeat("<< /A ", depth)) + innermost + string.Concat(Enumerable.Repeat(" >>", depth));
 
     /// <summary>
-    /// Opens <paramref name="file"/> and reads its object 3 on a small thread, whose stack is 256 KB: what was read,
-    /// the document's diagnostics, and what was thrown instead, if anything.
+    /// Opens <paramref name="file"/> and reads its object 3 on the suite's small stack: what was read, and the document's
+    /// diagnostics.
     /// </summary>
-    private static (PdfObject? First, PdfDiagnostics? Diagnostics, Exception? Failure) ReadObject3OnASmallStack(
-        byte[] file)
-    {
-        PdfObject? first = null;
-        PdfDiagnostics? diagnostics = null;
-        Exception? failure = null;
-
-        var thread = new Thread(
+    /// <remarks>
+    /// The thread asks for 256 KB, and the C library could give it a stack another thread left, of up to four times that:
+    /// a chain these tests nest to run short of 256 KB would then be read uncut. No thread of the suite asks for such a
+    /// stack (<see cref="Stacks"/>).
+    /// </remarks>
+    private static (PdfObject First, PdfDiagnostics Diagnostics) ReadObject3OnASmallStack(byte[] file) =>
+        Stacks.Run(
+            Stacks.Small,
             () =>
             {
-                try
-                {
-                    using var document = PdfDocument.Open(file);
-                    first = document.GetObject(new PdfObjectId(3));
-                    diagnostics = document.Diagnostics;
-                }
-                catch (Exception exception) when (exception is not OutOfMemoryException)
-                {
-                    failure = exception;
-                }
-            },
-            maxStackSize: 256 * 1024);
-
-        thread.Start();
-        thread.Join();
-
-        return (first, diagnostics, failure);
-    }
+                using var document = PdfDocument.Open(file);
+                return (document.GetObject(new PdfObjectId(3)), document.Diagnostics);
+            });
 
     /// <summary>A file in memory that records each window read from it: where it starts, and how many bytes it holds.</summary>
     private sealed class WindowLoggingSource(byte[] data) : PdfFileSource

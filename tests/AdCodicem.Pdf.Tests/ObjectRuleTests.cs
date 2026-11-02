@@ -2053,20 +2053,34 @@ public class ObjectRuleTests
         // 12, which 11 holds; 11 takes its parameters from stream 300, which heads a nest of 61. Judging 3, the walk works out
         // 5's standing from its 63rd level, and 5's walk 11's from its own deepest, each followed through the reader: the two
         // walks and the reader's loads nest about as deep as a validation goes, some 420 KB of stack, which the reader's probe,
-        // keeping 128 KB free, leaves uncut on a thread of 560 KB or more, and on 1 MB. The walks ask the thread nothing; the
-        // probe cuts first on a smaller stack, and nothing overflows. On 256 KB the report is the same.
+        // keeping 128 KB free, leaves uncut on a thread of 560 KB or more, and on the suite's large stack, 1.5 MB. The walks
+        // ask the thread nothing; the probe cuts first on a smaller stack, and nothing overflows. On 256 KB the report is the
+        // same. The reads differ in where the reader cuts them, and there alone: on the large stack, at its bound on nested
+        // loads, which it reaches at stream 1002, three streams into 5's nest; on 256 KB, short of that bound, where the stack
+        // runs short. A small read given a larger stack another thread left would read as the large one does, and fail here
+        // (#312).
+        const string Bound = "Object 1002 is reached through more nested objects than the reader will follow, and reads as null.";
         var file = DeepStack(60, 60, 61);
         var options = new PdfReaderOptions { ObjectCacheCapacity = 1 };
 
-        var large = OnAStackOf(1024 * 1024, () => Findings(file, options));
-        var small = OnAStackOf(256 * 1024, () => Findings(file, options));
+        var large = Stacks.Run(Stacks.Large, () => Read(file, options));
+        var small = Stacks.Run(Stacks.Small, () => Read(file, options));
 
-        small.Should().Equal(large);
+        small.Findings.Should().Equal(large.Findings);
+        large.Cuts.Should().Equal(Bound);
+        small.Cuts.Should().NotBeEmpty().And.NotContain(Bound, "a read that reaches the bound ran on more than 256 KB");
 
-        static List<string> Findings(byte[] file, PdfReaderOptions options)
+        static (List<string> Findings, List<string> Cuts) Read(byte[] file, PdfReaderOptions options)
         {
             using var document = PdfDocument.Open(file, options);
-            return [.. new PdfValidator().Validate(document).Findings.Select(finding => finding.ToString())];
+            List<string> findings = [.. new PdfValidator().Validate(document).Findings.Select(finding => finding.ToString())];
+            List<string> cuts =
+            [
+                .. document.Diagnostics
+                    .Where(diagnostic => diagnostic.Code == PdfDiagnosticCodes.SyntaxDepthExceeded)
+                    .Select(diagnostic => diagnostic.Message),
+            ];
+            return (findings, cuts);
         }
     }
 
@@ -2956,35 +2970,6 @@ public class ObjectRuleTests
             var (data, first) = ConvergenceShapes.ObjectStreamData((member, body));
             objects[number] = (string.Create(CultureInfo.InvariantCulture, $"/Type /ObjStm /N 1 /First {first} /Filter /FlateDecode {entries}"), HostileInputTests.Compress(Encoding.Latin1.GetBytes(data)));
         }
-    }
-
-    /// <summary>
-    /// Runs <paramref name="work"/> on a thread whose stack is <paramref name="size"/> bytes, and gives what it gave; what it
-    /// threw is thrown here.
-    /// </summary>
-    private static T OnAStackOf<T>(int size, Func<T> work)
-    {
-        T result = default!;
-        Exception? failure = null;
-        var thread = new Thread(
-            () =>
-            {
-                try
-                {
-                    result = work();
-                }
-                catch (Exception exception) when (exception is not OutOfMemoryException)
-                {
-                    failure = exception;
-                }
-            },
-            maxStackSize: size);
-
-        thread.Start();
-        thread.Join();
-
-        failure.Should().BeNull();
-        return result;
     }
 
     /// <summary>Gives the finding of object stream 7 needing object 5, which it holds, through <paramref name="key"/>.</summary>

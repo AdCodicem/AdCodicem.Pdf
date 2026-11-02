@@ -1403,9 +1403,10 @@ public class PageTreeRuleTests
         // a media box. No file nests values so deep in one object, which the parser bounds; a value a caller built nests as
         // deep as it was built. The page's path, written for its finding, took a call for each node above it, and a stack of
         // 1 MB overflowed past some 6,500 nodes, which nothing catches (#168). It is written in a loop, whatever its depth.
-        // The kids written in the array fill the report before the page's finding: the media box rule alone keeps it.
+        // The test runs on the suite's large stack, 1.5 MB, which a path written a call a node overflowed at 10,000 nodes,
+        // and at 30,000 once its code was compiled in full. The kids written in the array fill the report before the page's
+        // finding: the media box rule alone keeps it.
         const int Depth = 50_000;
-        const int Stack = 1024 * 1024;
         using var document = PdfDocument.Open(PdfTemplate.Build(PdfTemplate.Sound));
         document.Catalog!.Set(PdfName.Pages, NestedNodes(Depth));
         var mediaBox = new PdfValidatorOptions
@@ -1413,8 +1414,8 @@ public class PageTreeRuleTests
             Profile = new ValidationProfile("media box", 1, [new PageTreeMediaBoxInvalidRule()]),
         };
 
-        var report = OnAStackOf(Stack, () => new PdfValidator().Validate(document));
-        var mediaBoxReport = OnAStackOf(Stack, () => new PdfValidator(mediaBox).Validate(document));
+        var report = Stacks.Run(Stacks.Large, () => new PdfValidator().Validate(document));
+        var mediaBoxReport = Stacks.Run(Stacks.Large, () => new PdfValidator(mediaBox).Validate(document));
 
         report.WarningCount.Should().Be(
             Depth + 3,
@@ -1436,9 +1437,9 @@ public class PageTreeRuleTests
         // search took a call for each level it went down: a stack of 1 MB overflowed some 1,600 nodes down, which nothing
         // catches (#168). It searches in a loop, keeping the containers it goes through in an array that starts with room for
         // eight and doubles: under three nodes the reference lies eight containers down, under seven sixteen, as many as the
-        // array then holds, and under 50,000 far deeper than any stack. The kids written in the array fill the report before
-        // the object rules: the rule is run alone.
-        const int Stack = 1024 * 1024;
+        // array then holds, and under 50,000 far deeper than any stack: at that rate, some 2,400 nodes overflow the suite's
+        // large stack, 1.5 MB, which the test runs on. The kids written in the array fill the report before the object rules:
+        // the rule is run alone.
         using var document = PdfDocument.Open(PdfTemplate.Build(PdfTemplate.Sound));
         var page = new PdfDictionary();
         page.Set(PdfName.Resources, new PdfReference(new PdfObjectId(9999), document.Reader));
@@ -1448,7 +1449,7 @@ public class PageTreeRuleTests
             Profile = new ValidationProfile("references", 1, [new ReferenceMissingRule()]),
         };
 
-        var report = OnAStackOf(Stack, () => new PdfValidator(references).Validate(document));
+        var report = Stacks.Run(Stacks.Large, () => new PdfValidator(references).Validate(document));
 
         Single(report, PdfValidationRuleIds.ObjectReferenceMissing).Should().Match<PdfValidationFinding>(finding =>
             finding.Message == $"Object 1 refers to object 9999 0 under {path}, which the file lacks: the reference reads as null." &&
@@ -1476,9 +1477,9 @@ public class PageTreeRuleTests
     {
         // The page under 50,000 nodes a caller nested lists among its procedure sets a name holding a null character. The
         // search that places it for its finding took a call for each level it went down, as the one that places a reference
-        // to nothing did, and overflowed a stack of 1 MB as soon (#168). It searches in a loop, whatever the depth.
+        // to nothing did, and overflowed a stack of 1 MB as soon (#168). It searches in a loop, whatever the depth: the test
+        // runs on the suite's large stack, 1.5 MB.
         const int Depth = 50_000;
-        const int Stack = 1024 * 1024;
         using var document = PdfDocument.Open(PdfTemplate.Build(PdfTemplate.Sound));
         var resources = new PdfDictionary();
         resources.Set(PdfName.Get("ProcSet"), new PdfArray([PdfName.Get("PDF"), PdfName.Get("Text\0")]));
@@ -1490,7 +1491,7 @@ public class PageTreeRuleTests
             Profile = new ValidationProfile("names", 1, [new NameNullCharacterRule()]),
         };
 
-        var report = OnAStackOf(Stack, () => new PdfValidator(names).Validate(document));
+        var report = Stacks.Run(Stacks.Large, () => new PdfValidator(names).Validate(document));
 
         Single(report, PdfValidationRuleIds.ObjectNameNullCharacter).Should().Match<PdfValidationFinding>(finding =>
             finding.Message ==
@@ -2501,35 +2502,6 @@ public class PageTreeRuleTests
         }
 
         return tree;
-    }
-
-    /// <summary>
-    /// Runs <paramref name="work"/> on a thread whose stack is <paramref name="size"/> bytes, and gives what it gave; what it
-    /// threw is thrown here.
-    /// </summary>
-    private static T OnAStackOf<T>(int size, Func<T> work)
-    {
-        T result = default!;
-        Exception? failure = null;
-        var thread = new Thread(
-            () =>
-            {
-                try
-                {
-                    result = work();
-                }
-                catch (Exception exception) when (exception is not OutOfMemoryException)
-                {
-                    failure = exception;
-                }
-            },
-            maxStackSize: size);
-
-        thread.Start();
-        thread.Join();
-
-        failure.Should().BeNull();
-        return result;
     }
 
     private static byte[] TreeWith(string text, string replacement)
