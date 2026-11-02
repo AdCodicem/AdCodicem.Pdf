@@ -7070,9 +7070,15 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
             try
             {
                 // No stream data is read: the file says where a token the window's edge reaches ends, as it does to a load.
+                // The white space and comments after the keyword are skipped once, for the parse to start past them and for
+                // a note to name where its value starts.
                 var parser = new PdfObjectParser(
                     window.Memory, positions[i], this, _pending, endsData: !cut, fileEdge: this, readsStreams: false);
                 var keyword = positions[i] - TrailerKeyword.Length;
+                var lexer = new PdfLexer(window.Memory.Span);
+                lexer.SkipWhitespaceAndComments();
+                var valueStart = lexer.Position;
+                parser.Position = valueStart;
                 var value = parser.ParseObject();
 
                 if (value is PdfDictionary trailer)
@@ -7101,10 +7107,8 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
                 }
                 else if (value is PdfReference reference)
                 {
-                    // The reference starts past the white space and comments after the keyword. The offset and the number
-                    // are quoted only for a note that is kept, as the stream's are.
-                    var lexer = new PdfLexer(window.Memory.Span);
-                    lexer.SkipWhitespaceAndComments();
+                    // The reference is the value the parse began with, past the white space and comments after the keyword.
+                    // The offset and the number are quoted only for a note that is kept, as the stream's are.
                     _pending.Warn(
                         PdfDiagnosticCodes.SyntaxUnexpectedToken,
                         _pending.IsFull
@@ -7112,7 +7116,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
                             : string.Create(
                                 CultureInfo.InvariantCulture,
                                 $"The trailer keyword at offset {keyword} is followed by a reference to object {reference.Id.Number}, not by a dictionary; the rebuild does not follow it."),
-                        positions[i] + lexer.Position);
+                        positions[i] + valueStart);
                 }
 
                 KeepPending(mark);
