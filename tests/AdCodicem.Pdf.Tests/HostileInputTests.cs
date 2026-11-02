@@ -3737,14 +3737,17 @@ public class HostileInputTests
         // of which the index holds the 8,388,605 its guard allows, every one past object 3 placing its object nowhere. The
         // probe wrote and kept each entry's finding: 5.5 GB allocated, 3.3 GB held, for a report of 1,000. Once the index is
         // settled — what opening and settling hold, 640 MB, is the index's, which the guard bounds —, validating costs the
-        // probe's copy of the entries' numbers and little else.
+        // probe's copy of the entries' numbers and little else. Its time is not held here: the probe places the header of
+        // each of the 8,388,605 entries, some 2.5 to 3 s alone and 5 to 6 s under coverage, the thread's own work, which
+        // grows several times over when the suite's heavier classes run beside it. What the test holds — the findings the
+        // report keeps and counts, and what the thread allocates — does not change with what runs beside it.
         var file = OneByteRows(256 * 1024 * 1024, out _);
         file.Length.Should().BeLessThan(1024);
         using var document = PdfDocument.Open(file);
         document.Reader.SettleIndex();
 
         var allocated = GC.GetAllocatedBytesForCurrentThread();
-        var report = Measure(() => new PdfValidator().Validate(document));
+        var report = new PdfValidator().Validate(document);
         allocated = GC.GetAllocatedBytesForCurrentThread() - allocated;
 
         report.Findings.Should().HaveCount(PdfValidatorOptions.Default.FindingCapacity);
