@@ -461,13 +461,20 @@ public class ReaderTimingTests
     }
 
     [Fact]
-    public void A_page_tree_node_of_four_times_the_kids_is_walked_in_about_four_times_the_time_once_the_cache_lets_go_of_it()
+    public void A_page_tree_node_of_four_times_the_kids_is_walked_at_about_four_times_the_cost_once_the_cache_lets_go_of_it()
     {
         // A page tree node lists 20,000 pages, another 80,000, each opened with a cache of 64 objects, which lets go of the
         // node long before its last kid. The walk's frame keeps the node's array of kids, as the parse made it, rather than
-        // the node (#201): four times the kids take about four times as long. Reading the node again for each kid once the
-        // cache let go of it would read it again every 63 kids, sixteen times as long: 11 s for 50,000 kids, 57 s for
-        // 100,000. The measure is the ratio, the best walk of each, run in turn.
+        // the node (#201): four times the kids cost about four times as much. Reading the node again for each kid once the
+        // cache let go of it would read it again every 63 kids: the large walk then took 18.5 times as long as the small
+        // one, 21 s against 1.1 s, and allocated 19 times as much, 9.8 GB against 506 MB. What each walk allocates on the
+        // test's thread holds the cost whatever else the process does: once each was walked first, the large walk allocates
+        // 4.2 times what the small one does, 46.5 MB against 11.1 MB, on every run, under coverage or not. The time is held
+        // as well, as the ratio of the best walk of each, run in turn, each from a collected heap: without a collection
+        // before it, one large walk in three met one, which took it to 5 to 14 times the small walk's best. Where the
+        // collector lets new objects take less than the large walk allocates before it collects — 16 MB, say —, every large
+        // walk meets two collections or three, collected heap or not, and the ratio comes near 6: a bound of 12 holds that,
+        // and still tells a walk that grows with the kids from one that grows with their square.
         const int Small = 20_000;
         const int Large = 4 * Small;
         var options = new PdfReaderOptions { ObjectCacheCapacity = 64 };
@@ -476,15 +483,38 @@ public class ReaderTimingTests
         small.Reader.SettleIndex();
         large.Reader.SettleIndex();
 
-        var (smallTime, largeTime) = BestOfEach(() => Walk(small, Small), () => Walk(large, Large));
+        Walk(small, Small);
+        Walk(large, Large);
+        var smallAllocated = Allocated(() => Walk(small, Small));
+        var largeAllocated = Allocated(() => Walk(large, Large));
+
+        largeAllocated.Should().BeLessThan(
+            smallAllocated * 6,
+            "four times the kids must allocate about four times as much ({0:N0} bytes for {1:N0}, {2:N0} for {3:N0})",
+            smallAllocated,
+            Small,
+            largeAllocated,
+            Large);
+
+        var (smallTime, largeTime) = BestOfEach(() => Walk(small, Small), () => Walk(large, Large), collect: true);
 
         largeTime.Should().BeLessThan(
-            smallTime * 8,
+            smallTime * 12,
             "four times the kids must cost about four times the time ({0} for {1:N0}, {2} for {3:N0})",
             smallTime,
             Small,
             largeTime,
             Large);
+
+        // One measure: a collection that falls in it adds some kilobytes, nothing beside these megabytes. The least of the
+        // measures no collection paused, as Allocations.Least takes it, would walk a node read again for each kid thirty
+        // times, a collection pausing every such walk, some ten minutes before it failed.
+        static long Allocated(Action action)
+        {
+            var allocated = GC.GetAllocatedBytesForCurrentThread();
+            action();
+            return GC.GetAllocatedBytesForCurrentThread() - allocated;
+        }
 
         static void Walk(PdfDocument document, int kids) => PageTreeWalk.Run(document).PageCount.Should().Be(kids);
 
@@ -508,8 +538,10 @@ public class ReaderTimingTests
     /// <summary>
     /// Gets the shortest run of each action, the two run in turn: five times each at least, and on until neither has run
     /// faster for three turns — at most forty turns, or twenty seconds —, so that both are timed warm whatever ran before.
+    /// With <paramref name="collect"/>, each run starts from a collected heap, collected outside the time, so that a run that
+    /// allocates less than the collector lets the youngest generation take before it collects is not paused inside.
     /// </summary>
-    private static (TimeSpan First, TimeSpan Second) BestOfEach(Action first, Action second)
+    private static (TimeSpan First, TimeSpan Second) BestOfEach(Action first, Action second, bool collect = false)
     {
         var bestFirst = TimeSpan.MaxValue;
         var bestSecond = TimeSpan.MaxValue;
@@ -518,8 +550,8 @@ public class ReaderTimingTests
 
         for (var turn = 0; turn < 5 || (steady < 3 && turn < 40 && spent.Elapsed < TimeSpan.FromSeconds(20)); turn++)
         {
-            var timeFirst = Time(first);
-            var timeSecond = Time(second);
+            var timeFirst = Time(first, collect);
+            var timeSecond = Time(second, collect);
             steady = timeFirst < bestFirst || timeSecond < bestSecond ? 0 : steady + 1;
             bestFirst = timeFirst < bestFirst ? timeFirst : bestFirst;
             bestSecond = timeSecond < bestSecond ? timeSecond : bestSecond;
@@ -527,8 +559,15 @@ public class ReaderTimingTests
 
         return (bestFirst, bestSecond);
 
-        static TimeSpan Time(Action action)
+        static TimeSpan Time(Action action, bool collect)
         {
+            if (collect)
+            {
+                GC.Collect();
+                GC.WaitForPendingFinalizers();
+                GC.Collect();
+            }
+
             var stopwatch = Stopwatch.StartNew();
             action();
             return stopwatch.Elapsed;
