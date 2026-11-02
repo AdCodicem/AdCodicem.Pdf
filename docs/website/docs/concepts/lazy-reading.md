@@ -145,10 +145,11 @@ not what it handed out before, so that a loop over what the document gives goes 
 - An enumeration of `Diagnostics` under way gives the entries recorded when it began, and the next one the rebuild's
   too: between two calls you make, entries are only added after those the record held. Once it has ended, it stays
   ended, whatever is recorded after.
-- The next `Trailer` gives the trailer the rebuild merged, and `Catalog` and `IsEncrypted` read that one. A trailer
-  taken before is left as it was, without an older trailer's `/Info` or `/Encrypt`, or a `/Root` the rebuild set, and
-  one taken after is never changed: read `Trailer` again after reading the document rather than keep it. The new
-  trailer costs a copy of the old, a few hundred bytes.
+- The next `Trailer` gives the trailer the rebuild merged, and `Catalog` and `IsEncrypted` read that one: the trailer
+  the document held, with the keys it lacks taken from the trailers the rebuild finds, and a `/Root` the rebuild set.
+  A trailer taken before is left as it was, without an older trailer's `/Info` or `/Encrypt`, or a `/Root` the
+  rebuild set, and one taken after is never changed: read `Trailer` again after reading the document rather than keep
+  it. The new trailer costs a copy of the old, a few hundred bytes.
 - An object read before is left as it was; the next read of its number reads it through the rebuilt map.
 
 Only a `PdfFileSource` of your own, reading the document from inside the read that rebuilds, sees the rebuild under
