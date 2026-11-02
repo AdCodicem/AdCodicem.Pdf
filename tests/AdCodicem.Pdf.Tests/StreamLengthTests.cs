@@ -213,6 +213,35 @@ public class StreamLengthTests
     }
 
     [Fact]
+    public void White_space_past_the_first_read_after_a_stream_s_data_once_the_searches_may_read_no_more_is_read_from_within_the_file()
+    {
+        // Ten streams whose data share a megabyte read as much of the file as the searches may. Stream 13's data runs past
+        // the window, and white space longer than the first read after it leads to its endstream: the read on past the first
+        // finds the searches spent and reads nothing, the declared length is kept unconfirmed, and the source, which refuses
+        // any read outside the file, is asked for no byte before its start (#167).
+        const int Streams = 10;
+        var data = Data(3 * Window);
+        var (file, _) = NestedStreams(
+            Streams,
+            100_000,
+            Invariant($"{Streams + 3} 0 obj\n<< /Length {data.Length} >>\nstream\n{data}{new string(' ', PdfObjectParser.EndObjLookahead + 10)}\nendstream\nendobj\n"));
+        using var source = new StrictCountingSource(file);
+        using var document = PdfDocument.Open(source, options: null, ownsSource: false);
+
+        for (var number = 3; number <= Streams + 2; number++)
+        {
+            document.GetObject(new PdfObjectId(number));
+        }
+
+        document.Reader.EndStreamSearchBytes.Should().BeGreaterThanOrEqualTo(PdfFileReader.EndStreamSearchPasses * file.Length);
+        var reports = document.Diagnostics.Count;
+        var stream = document.GetObject(new PdfObjectId(Streams + 3)).AsStream().Required();
+
+        stream.Data.Length.Should().Be(data.Length);
+        document.Diagnostics.Skip(reports).Select(entry => entry.Code).Should().Equal(PdfDiagnosticCodes.StreamLengthInvalid);
+    }
+
+    [Fact]
     public void Data_of_no_length_is_read_from_no_source()
     {
         // A source that does not hold the file in memory was asked to read the no bytes of a stream of /Length 0, which it
