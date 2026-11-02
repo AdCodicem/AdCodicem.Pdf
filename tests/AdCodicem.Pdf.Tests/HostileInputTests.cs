@@ -2047,6 +2047,40 @@ public class HostileInputTests
     }
 
     [Fact]
+    public void A_walk_that_meets_an_object_stream_whose_standing_waits_on_none_holds_that_stream_alone_on_the_stack()
+    {
+        // Object stream 3 takes its parameters from the object X1 holds; X1 takes an empty chain of filters, and its walk
+        // meets no object stream: its standing is worked out at its first walk, the stack holding X1 alone (#312).
+        using var document = PdfDocument.Open(PendingFanout(1, steps: 0));
+
+        var result = ObjectStreamDependencies.Run(document);
+
+        result.CircularStreams.Should().BeEmpty();
+        result.MostWaiting.Should().Be(1, "the stack holds the stream whose standing is worked out, and nothing it waits on");
+    }
+
+    [Fact]
+    public void A_walk_of_a_standing_that_meets_several_objects_of_one_object_stream_not_known_yet_waits_on_it_once()
+    {
+        // Object stream 3 takes its parameters from the object X, 10, holds; X's predictor of 12 reads its /Colors,
+        // /BitsPerComponent and /Columns from three objects holder 20 holds, whose standing is not known when X's is first
+        // worked out. X's walk meets 20 three times, and waits on it once: the stack holds X and 20. Pushed once for each of
+        // its objects met, 20 would stand on the stack three times (#312).
+        var file = PackedFile(
+        [
+            new PackedStream(20, string.Empty, [(21, "1"), (22, "8"), (23, "1")], PackedData.Flate),
+            new PackedStream(10, "/Filter /FlateDecode /DecodeParms << /Predictor 12 /Colors 21 0 R /BitsPerComponent 22 0 R /Columns 23 0 R >>", [(11, "5")], PackedData.Plain),
+            new PackedStream(3, "/DecodeParms 11 0 R", [(4, "<< >>")], PackedData.Flate),
+        ]);
+        using var document = PdfDocument.Open(file);
+
+        var result = ObjectStreamDependencies.Run(document);
+
+        result.CircularStreams.Should().BeEmpty();
+        result.MostWaiting.Should().Be(2, "X waits on its holder once, however many of the holder's objects its decoding reads");
+    }
+
+    [Fact]
     public void A_walk_of_a_standing_meets_every_object_stream_not_known_yet_that_its_decoding_reads_before_it_waits()
     {
         // Object stream 3 takes its parameters from the object X1 holds; X1's 64 Flate steps each take a predictor of 12
@@ -2100,6 +2134,38 @@ public class HostileInputTests
         result.MostWaiting.Should().Be(most, "the stack is rid of its stale entries once it holds more than 1,024, not before");
     }
 
+    [Fact]
+    public void Object_streams_whose_standings_wait_on_one_another_are_rid_of_their_stack_s_stale_entries_as_soon_as_it_holds_1025()
+    {
+        // As above, with 65 X's and 5 Flate steps, 15 holders: each X's first walk pushes the next X and the 15 holders, 16
+        // entries, the last X the holders alone. After X64's walk the stack holds 1 + 64 x 16 = 1,025 entries, one past
+        // 1,024, and is rid of its stale ones there, keeping one entry of each stream, 80: X65's walk then pushes its 15 onto
+        // them. Kept until it held more than 1,025, the stack would have taken those 15 as well, 1,040 entries (#312).
+        using var document = PdfDocument.Open(PendingFanout(65, steps: 5));
+
+        var result = ObjectStreamDependencies.Run(document);
+
+        result.CircularStreams.Should().BeEmpty();
+        result.MostWaiting.Should().Be(1025, "the stack is rid of its stale entries as soon as it holds more than 1,024");
+    }
+
+    [Fact]
+    public void The_object_stream_whose_standing_the_stack_of_waiting_standings_was_started_for_stays_on_it_when_its_stale_entries_go()
+    {
+        // Object stream 3 takes its parameters from the object X1 holds, which names object 4, held by 3; X1 and 19 more X's
+        // take their /Length from the next X's object and 17 Flate steps whose predictors read the objects of 51 holders.
+        // X1, met first, waits at the bottom of the stack while the others are worked out; the stack passes 1,024 entries,
+        // 1 + 19 x 52 + 51 = 1,040, and is rid of its stale ones. X1, not known yet, keeps its entry: once the others are
+        // known it is walked again, decodes alike, and 3's decoding reads its object, which leads back to 3. Left out, X1
+        // would stay a stream being worked out, its object read as null by 3, which would need nothing it holds (#312).
+        using var document = PdfDocument.Open(PendingFanout(20, steps: 17, first: "4 0 R"));
+
+        var result = ObjectStreamDependencies.Run(document);
+
+        result.MostWaiting.Should().Be(1040);
+        result.CircularStreams.Should().Equal([3], "3 reads the object of X1, which decodes alike, and is led back to its own object 4");
+    }
+
     [Theory]
     [InlineData(20)]
     [InlineData(80)]
@@ -2145,6 +2211,76 @@ public class HostileInputTests
             fewResult.CircularStreams.Should().BeEmpty();
             manyResult.CircularStreams.Should().BeEmpty();
             ((manyAllocated - fewAllocated) / (Many - Few)).Should().BeLessThan(32 * 1024, "what one more stream that waits costs is its own walks, not walks of the holders it waits on again");
+        }
+    }
+
+    [Fact]
+    public void Object_streams_whose_standings_wait_on_one_another_drop_the_stale_entries_of_streams_that_do_not_decode_alike_rather_than_walking_them_again()
+    {
+        // As above, each of the 192 holders taking its /Length from the object it holds: its walk meets that object while
+        // the reader holds the holder in its loads, and its standing is unlike. The holders' entries an earlier X pushed are
+        // stale when they are reached, the holders known by then, 768 for five X's, and are dropped as those of streams that
+        // decode alike are: what one more X costs stays its own walks and the needs they find, 41.5 KB. Taken for streams
+        // still being worked out, each would be walked again, its dictionary read from the file once more, 202 KB an X
+        // (#312).
+        const int Few = 1;
+        const int Many = 5;
+
+        var fewAllocated = Allocations.Least(() => PdfDocument.Open(PendingFanout(Few, selfLengthHolders: true)), document => ObjectStreamDependencies.Run(document), out var fewDocument, out var fewResult);
+        var manyAllocated = Allocations.Least(() => PdfDocument.Open(PendingFanout(Many, selfLengthHolders: true)), document => ObjectStreamDependencies.Run(document), out var manyDocument, out var manyResult);
+
+        using (fewDocument)
+        using (manyDocument)
+        {
+            fewResult.CircularStreams.Should().HaveCount(192, "each holder needs the object it holds");
+            manyResult.CircularStreams.Should().HaveCount(192, "each holder needs the object it holds");
+            ((manyAllocated - fewAllocated) / (Many - Few)).Should().BeLessThan(96 * 1024, "what one more stream that waits costs is its own walks, not walks of the holders it waits on again");
+        }
+    }
+
+    [Fact]
+    public void A_value_decoding_reads_again_is_followed_once_however_many_objects_the_walk_let_go_of_meanwhile()
+    {
+        // An object stream takes 64 Flate steps, each its parameters from an object written in the file, 16 KB each, whose
+        // predictor is another object written in the file, under a cache of 64 objects: the last step names again the first
+        // step's parameters, after 124 other objects the walk let go of them for, or those of the step just before it. The
+        // reader keeps what it loaded, and a value read again loads nothing more: the walk follows each value once, and the
+        // two cost the same. Followed again, the first step's parameters were read from the file once more (#277).
+        const int Padding = 16 * 1024;
+        var options = new PdfReaderOptions { ObjectCacheCapacity = 64 };
+
+        var nearAllocated = Allocations.Least(() => PdfDocument.Open(NamingAgain(162), options), document => ObjectStreamDependencies.Run(document), out var nearDocument, out var nearResult);
+        var farAllocated = Allocations.Least(() => PdfDocument.Open(NamingAgain(100), options), document => ObjectStreamDependencies.Run(document), out var farDocument, out var farResult);
+
+        using (nearDocument)
+        using (farDocument)
+        {
+            nearResult.CircularStreams.Should().BeEmpty();
+            farResult.CircularStreams.Should().BeEmpty();
+            (farAllocated - nearAllocated).Should().BeLessThan(Padding / 2, "a value read again is followed once, however long ago it was read");
+        }
+
+        // Objects 100 to 162 hold the first 63 steps' parameters, 200 to 262 their predictors, and the last step names
+        // `again`'s once more.
+        static byte[] NamingAgain(int again)
+        {
+            var builder = new TestPdfBuilder()
+                .WithObject(1, "<< /Type /Catalog /Pages 2 0 R >>")
+                .WithObject(2, "<< /Type /Pages /Kids [] /Count 0 >>")
+                .WithObject(5, "<< /Title (five) >>")
+                .WithObject(6, "<< /Title (six) >>");
+            var parameters = new StringBuilder("[");
+
+            for (var number = 100; number <= 162; number++)
+            {
+                builder.WithObject(number, string.Create(CultureInfo.InvariantCulture, $"<< /Predictor {number + 100} 0 R /Pad ({new string('a', Padding)}) >>"));
+                builder.WithObject(number + 100, "1");
+                parameters.Append(CultureInfo.InvariantCulture, $"{number} 0 R ");
+            }
+
+            parameters.Append(CultureInfo.InvariantCulture, $"{again} 0 R]");
+            var filters = "[" + string.Join(' ', Enumerable.Repeat("/FlateDecode", 64)) + "]";
+            return builder.BuildWithXRefStream(rootNumber: 1, compressedObjects: [5, 6], objectStreamEntries: $"/Filter {filters} /DecodeParms {parameters}");
         }
     }
 
@@ -4651,7 +4787,14 @@ public class HostileInputTests
     /// step's parameters a predictor of 12 whose <c>/Colors</c>, <c>/BitsPerComponent</c> and <c>/Columns</c> are each the
     /// object of a holder of its own, three holders a step, 192 for 64 steps, which need nothing.
     /// </summary>
-    internal static byte[] PendingFanout(int count, int steps = 64)
+    /// <param name="count">How many object streams X there are.</param>
+    /// <param name="steps">How many Flate steps each X takes.</param>
+    /// <param name="first">What X1 holds, which 3 takes its parameters from: 5, or a value that leads elsewhere.</param>
+    /// <param name="selfLengthHolders">
+    /// Whether each holder takes its <c>/Length</c> from the object it holds, which its decoding then reads while the reader
+    /// holds it in its loads: its standing is unlike at its first load.
+    /// </param>
+    internal static byte[] PendingFanout(int count, int steps = 64, string first = "5", bool selfLengthHolders = false)
     {
         var packed = new List<PackedStream>();
         var parameters = new StringBuilder("[");
@@ -4663,21 +4806,22 @@ public class HostileInputTests
 
             for (var value = 0; value < 3; value++)
             {
-                packed.Add(new PackedStream(next, string.Empty, [(next + 1, "1")], PackedData.Flate));
+                var length = selfLengthHolders ? string.Create(CultureInfo.InvariantCulture, $"{next + 1} 0 R") : null;
+                packed.Add(new PackedStream(next, string.Empty, [(next + 1, "1")], PackedData.Flate, Length: length));
                 next += 2;
             }
         }
 
-        var first = next;
+        var firstX = next;
 
         for (var x = 0; x < count; x++)
         {
-            var number = first + (2 * x);
+            var number = firstX + (2 * x);
             var length = x + 1 < count ? string.Create(CultureInfo.InvariantCulture, $"{number + 3} 0 R") : null;
-            packed.Add(new PackedStream(number, "/Filter 900 0 R /DecodeParms 901 0 R", [(number + 1, "5")], PackedData.Plain, Length: length));
+            packed.Add(new PackedStream(number, "/Filter 900 0 R /DecodeParms 901 0 R", [(number + 1, x == 0 ? first : "5")], PackedData.Plain, Length: length));
         }
 
-        packed.Add(new PackedStream(3, string.Create(CultureInfo.InvariantCulture, $"/DecodeParms {first + 1} 0 R"), [(4, "<< >>")], PackedData.Flate));
+        packed.Add(new PackedStream(3, string.Create(CultureInfo.InvariantCulture, $"/DecodeParms {firstX + 1} 0 R"), [(4, "<< >>")], PackedData.Flate));
         return PackedFile(packed, [(900, "[" + string.Join(' ', Enumerable.Repeat("/FlateDecode", steps)) + "]"), (901, parameters.Append(']').ToString())]);
     }
 

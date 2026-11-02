@@ -1707,6 +1707,43 @@ public class ObjectRuleTests
     }
 
     [Theory]
+    [InlineData("free")]
+    [InlineData("stored in object stream 20")]
+    public void A_loop_through_the_value_of_an_object_whose_stream_reads_one_of_a_stream_the_chain_places_as_no_stream_is_left_to_the_reader(string nine)
+    {
+        // Stream 7 takes its parameters from 21, which 20 holds, 5 0 R; 20 takes its own from 100, which the chain places in
+        // 9. The file writes 9 at its start, a stream holding 100, but the chain lists 9 free, or places it in 20: 9 is no
+        // stream where the chain places it, whatever lies near where its row points, and the reader serves 100 as null. 20,
+        // which reads 100, does not decode alike, and 21 is a need of 7, which reads as null: 7, whose loop closes only
+        // through 21's value, is left to the reader, which decodes 20 without 100 and reports that 7 needs 5 (#314).
+        var file = new HandWrittenFile(version: "1.5");
+        FlateObjectStream(file, 9, [(100, "<< /Predictor 1 >>")], string.Empty);
+        var rows = new Dictionary<int, (int Type, long Field2, int Field3)>
+        {
+            [1] = (1, file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"), 0),
+            [2] = (1, file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"), 0),
+            [7] = (1, FlateObjectStream(file, 7, [(5, "<< /Predictor 1 >>"), (6, "<< /Title (six) >>")], "/DecodeParms 21 0 R"), 0),
+            [5] = (2, 7, 0),
+            [6] = (2, 7, 1),
+            [20] = (1, FlateObjectStream(file, 20, [(21, "5 0 R")], "/DecodeParms 100 0 R"), 0),
+            [21] = (2, 20, 0),
+            [100] = (2, 9, 0),
+        };
+
+        if (nine != "free")
+        {
+            rows[9] = (2, 20, 1);
+        }
+
+        file.CrossReferenceStream(200, 201, rows, "/Root 1 0 R");
+        using var document = PdfDocument.Open(file.Bytes);
+
+        ObjectStreamDependencies.Run(document).CircularStreams.Should().BeEmpty();
+        document.WasRepaired.Should().BeFalse();
+        ReaderNeeds(file.Bytes).Should().Be(5);
+    }
+
+    [Theory]
     [InlineData("its /Type, then its /N")]
     [InlineData("its /Type, then its /Length")]
     [InlineData("its /Filter, then its /DecodeParms")]
@@ -2000,6 +2037,46 @@ public class ObjectRuleTests
     }
 
     [Theory]
+    [InlineData(57)]
+    [InlineData(60)]
+    public void An_object_of_another_stream_a_parse_meets_counts_neither_for_how_deep_the_decoding_reaches_nor_against_its_standing(int streams)
+    {
+        // Stream 7 takes its parameters from 50, which 9 holds, 5 0 R; 7 holds 5. 9 takes its own from stream 300, which heads
+        // 57 or 60 streams by /Length, the last naming 61, which object stream 60 holds; 60 takes its parameters from 63, which
+        // 62 holds, and so on through five holders, 60's decoding reaching 6 levels below where 61 is read. 9's walk meets 61
+        // inside the parse of the nest, at the 59th load or the 62nd: 60's decoding reaches the 64th, the reader's deepest, or
+        // past it, where the nesting cuts it. Either way 61's value places the last stream's data alone, and changes no value
+        // 9's decoding reads: 9 decodes alike, reaching the 2nd level, and 50 leads 7 to 5. Counted for 9's reach, 61 would
+        // take 9 to the 64th level, past what a read of 50 a level below allows; counted against 9's standing, 60 cut there
+        // would make 9 one that does not decode alike (#312).
+        var objects = new SortedDictionary<int, (string Entries, byte[]? Data)>
+        {
+            [7] = ConvergenceShapes.FlateObjectStream("/DecodeParms 50 0 R", (5, "<< /Predictor 1 >>"), (6, "<< /Title (six) >>")),
+            [9] = ConvergenceShapes.FlateObjectStream("/DecodeParms 300 0 R", (50, "5 0 R")),
+        };
+        var members = new Dictionary<int, (int Stream, int Index)> { [5] = (7, 0), [6] = (7, 1), [50] = (9, 0) };
+
+        for (var stream = 0; stream < streams; stream++)
+        {
+            var length = stream + 1 < streams ? string.Create(CultureInfo.InvariantCulture, $"{301 + stream} 0 R") : "61 0 R";
+            objects[300 + stream] = ("/Predictor 1 /Length " + length, "ab"u8.ToArray());
+        }
+
+        for (var holder = 0; holder < 5; holder++)
+        {
+            var number = 60 + (2 * holder);
+            var parameters = holder + 1 < 5 ? string.Create(CultureInfo.InvariantCulture, $"/DecodeParms {number + 3} 0 R") : string.Empty;
+            objects[number] = ConvergenceShapes.FlateObjectStream(parameters, (number + 1, holder == 0 ? "2" : "<< /Predictor 1 >>"));
+            members[number + 1] = (number, 0);
+        }
+
+        var file = ConvergenceShapes.StreamsAndMembers(objects, members);
+
+        Single(Validate(file), PdfValidationRuleIds.XRefObjectStreamCircular).Message.Should().Be(HoldsFive("/DecodeParms"));
+        ReaderNeeds(file).Should().Be(5);
+    }
+
+    [Theory]
     [InlineData(new int[0], true)]
     [InlineData(new[] { 6 }, true)]
     [InlineData(new[] { 100 }, false)]
@@ -2198,6 +2275,44 @@ public class ObjectRuleTests
         }
 
         met.Should().BePositive("the stack cut 3's walk inside 200's nest from some of the callers");
+    }
+
+    [Fact]
+    public void A_run_of_links_the_walk_takes_at_the_reader_s_deepest_load_is_never_where_the_stack_cuts_it()
+    {
+        // Stream 3 takes its /Length from stream 100, which heads 61 streams by /Length, the last, 160, naming 170, which
+        // names 171, which names 170 again: the walk parses 160 at the 63rd load, and follows its /Length at the 64th, the
+        // reader's deepest, a run of 33 links it takes at once, as anywhere within the reader's nesting: the run loads nothing
+        // the walk goes down from, and the walk asks the thread for no room there. The caller is moved half a frame of 1 KB
+        // at a time, up to 160 frames above the first the probe fails at: from some places the stack cuts the walk at 160's
+        // load, from others nowhere, and from none at the run. Loaded an object at a time there, 170 was cut where 160 was
+        // not (#312).
+        var file = StartxrefAtTheHeader(PlainObjectStreams(
+            Merged(StreamChain(100, 61, "170 0 R"), new() { [170] = "171 0 R", [171] = "170 0 R" }),
+            new PlainObjectStream(3, string.Empty, [(4, "<< >>")], Length: "100 0 R")));
+        var cuts = new List<string>();
+        var uncut = 0;
+
+        for (var frames = 0; frames <= 160; frames++)
+        {
+            foreach (var half in (bool[])[false, true])
+            {
+                var cut = Stacks.Run(Stacks.Large, () =>
+                {
+                    using var document = PdfDocument.Open(file);
+                    new PdfValidator().Validate(document);
+                    NearTheProbe(frames, () => half ? HalfAFrameBelow(() => new PdfValidator().Validate(document)) : new PdfValidator().Validate(document));
+                    return WalkCuts(document);
+                });
+
+                uncut += cut.Count == 0 ? 1 : 0;
+                cuts.AddRange(cut.Select(diagnostic => diagnostic.Message));
+            }
+        }
+
+        cuts.Should().Contain(ReadAsNull(160), "the stack cuts the walk at 160's load from some of the callers")
+            .And.NotContain(ReadAsNull(170)).And.NotContain(ReadAsNull(171));
+        uncut.Should().BePositive("the walk has room for the whole nest from some of the callers");
     }
 
     [Theory]
@@ -3193,6 +3308,18 @@ public class ObjectRuleTests
         }
 
         return above + frame[frames & 1023] - 1;
+    }
+
+    /// <summary>Runs <paramref name="work"/> from a frame holding half a KB, below the caller's, and gives what it gave.</summary>
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static T HalfAFrameBelow<T>(Func<T> work)
+    {
+        Span<byte> frame = stackalloc byte[512];
+
+        // Written before the call and read after it, the frame stays whole through the call, which is no tail call.
+        frame[511] = 1;
+        var result = work();
+        return frame[511] == 1 ? result : default!;
     }
 
     /// <summary>Goes down <paramref name="frames"/> frames holding 1 KB more, asking nothing, and runs <paramref name="work"/> there.</summary>
