@@ -2105,7 +2105,7 @@ public class HostileInputTests
     [Theory]
     [InlineData(20)]
     [InlineData(80)]
-    public void Object_streams_whose_standings_wait_level_after_level_keep_no_entry_of_a_stream_known_already_on_their_stack(int levels)
+    public void Object_streams_whose_standings_wait_level_after_level_are_rid_of_every_entry_of_a_known_stream_once_their_stack_holds_more_than_1024(int levels)
     {
         // Object stream 3 takes its parameters from the object X1 holds; X1, X2 and on, 20 or 80 levels, each take their
         // /Length from an object of a stream of their own, naming the next X's object, and 64 Flate steps, each step's
