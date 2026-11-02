@@ -97,15 +97,18 @@ namespace AdCodicem.Pdf.Validation;
 /// <see cref="PdfFileReader.MaxNestedLoads"/> reads as null; so does an object another stream holds at that depth, that
 /// stream being loaded a level deeper; one the walked stream holds is a need at any depth, the reader reporting it before
 /// it counts. No recursion goes deeper than twice that bound: the walk that works out a standing runs within the walk that
-/// met one of its objects, one at a time. The two take about 0.8 KB of the thread's stack a level, some 110 KB at their
-/// deepest, under the 128 KB the reader's stack probe keeps free; with the reader's own 64 loads under a value they read
-/// through it, about 5.8 KB each, the deepest validation goes some 480 KB deep (420 KB on the deepest shape measured), and
-/// with the 128 KB the reader's probe keeps free above its deepest load, it needs a thread of some 610 KB for the probe to
-/// cut none of its loads (on that shape, none is cut from 560 KB), which a thread of 1 MB has. What the reader has read and
-/// kept is not modeled, so that the verdict does not depend on what was read before, but for #163, above: a read that
-/// reaches the stream through another stream's decoding nests deeper, and cuts earlier; nor is the thread's stack, which
-/// the walks do not ask: on a thread with less room, the reader's probe cuts loads they make, and the report may depend
-/// on the thread.
+/// met one of its objects, one at a time. On first run, the two take about 0.8 KB of the thread's stack a level, some
+/// 110 KB at their deepest, under the 128 KB the reader's stack probe keeps free; with the reader's own 64 loads under
+/// a value they read through it, about 5.8 KB each, the deepest validation goes some 480 KB deep (420 KB on the deepest
+/// shape measured), and with the 128 KB the reader's probe keeps free above its deepest load, it needs a thread of some
+/// 610 KB for the probe to cut none of its loads (on that shape, none is cut from 560 KB). Compiled in full, as tiered
+/// PGO leaves them once a process has run them a while, the walks take about 1.1 KB a level, some 140 KB, more than
+/// those 128 KB, and a load about 8.3 KB: the deepest validation goes some 670 KB deep (550 to 580 KB on that shape)
+/// and needs a thread of some 800 KB (on that shape, none is cut from 720 KB). A thread of 1 MB has either. What the
+/// reader has read and kept is not modeled, so that the verdict does not depend on what was read before, but for #163,
+/// above: a read that reaches the stream through another stream's decoding nests deeper, and cuts earlier; nor is the
+/// thread's stack, which the walks do not ask: on a thread with less room, the reader's probe cuts loads they make, and
+/// the report may depend on the thread.
 /// </para>
 /// <para>
 /// The streams so needed are linked, each to each stream it needs, and a stream its links lead back to is circular: one

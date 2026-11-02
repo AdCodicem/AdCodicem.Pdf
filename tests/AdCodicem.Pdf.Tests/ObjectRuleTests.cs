@@ -2052,9 +2052,11 @@ public class ObjectRuleTests
         // Stream 3's /Length heads a nest of 60 streams ending at 6, which 5 holds; 5's /Length heads a nest of 60 ending at
         // 12, which 11 holds; 11 takes its parameters from stream 300, which heads a nest of 61. Judging 3, the walk works out
         // 5's standing from its 63rd level, and 5's walk 11's from its own deepest, each followed through the reader: the two
-        // walks and the reader's loads nest about as deep as a validation goes, some 420 KB of stack, which the reader's probe,
-        // keeping 128 KB free, leaves uncut on a thread of 560 KB or more, and on the suite's large stack, 1.5 MB. The walks
-        // ask the thread nothing; the probe cuts first on a smaller stack, and nothing overflows. On 256 KB the report is the
+        // walks and the reader's loads nest about as deep as a validation goes: some 420 KB of stack on first run, which the
+        // reader's probe, keeping 128 KB free, leaves uncut on a thread of 560 KB or more, and some 550 to 580 KB once the
+        // reader and the walks are compiled in full, uncut from 720 KB. The suite's large stack, 1.5 MB, leaves the probe some
+        // 1,400 KB, more than twice what the read takes in either state. The walks ask the thread nothing; the probe cuts
+        // first on a smaller stack, and nothing overflows. On 256 KB the report is the
         // same. The reads differ in where the reader cuts them, and there alone: on the large stack, at its bound on nested
         // loads, which it reaches at stream 1002, three streams into 5's nest; on 256 KB, short of that bound, where the stack
         // runs short. A small read given a larger stack another thread left would read as the large one does, and fail here

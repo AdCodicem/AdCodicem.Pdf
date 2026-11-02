@@ -152,12 +152,15 @@ mutation campaign opens with the defaults and never with `ThrowOnLimit`.
   `A_walk_of_a_standing_that_meets_more_object_streams_not_known_yet_than_the_stack_keeps_before_it_is_compacted_leaves_them_all_waiting`).
   Kept, the entries of streams known already grew with every stream the stack ever held: 5,008 entries for 80 levels
   of 64 streams, of the 5,343 it held, where 144 waited at once ([#312]).
-  Both walks together take some 110 KB at the reader's nesting, about 0.8 KB a level, under the 128 KB the reader's
-  stack probe keeps free. With the reader's own 64 loads under a value they read through it, about 5.8 KB each, the
-  deepest validation goes some 480 KB deep, 420 KB on the deepest shape measured. With the 128 KB the probe keeps free
-  above its deepest load, it needs a thread of some 610 KB for the probe to cut none of its loads — on that shape, none
-  is cut from 560 KB —, which a thread of 1 MB has. They ask for no stack probe of their own: on a smaller stack, the
-  reader's probe cuts loads they make, and the report can depend on the thread
+  On first run, both walks together take some 110 KB at the reader's nesting, about 0.8 KB a level, under the 128 KB the
+  reader's stack probe keeps free. With the reader's own 64 loads under a value they read through it, about 5.8 KB each,
+  the deepest validation goes some 480 KB deep, 420 KB on the deepest shape measured. With the 128 KB the probe keeps
+  free above its deepest load, it needs a thread of some 610 KB for the probe to cut none of its loads — on that shape,
+  none is cut from 560 KB. Compiled in full, as tiered PGO leaves them once a process has run them a while, the walks
+  take about 1.1 KB a level, some 140 KB, more than those 128 KB, and a load about 8.3 KB: the deepest validation goes
+  some 670 KB deep, 550 to 580 KB on that shape, and needs a thread of some 800 KB — on that shape, none is cut from
+  720 KB. A thread of 1 MB has either, with some 220 KB to spare once compiled in full. They ask for no stack probe of
+  their own: on a smaller stack, the reader's probe cuts loads they make, and the report can depend on the thread
   (`ObjectRuleTests.The_deepest_walk_gives_the_same_report_on_a_stack_of_256_KB_as_on_a_thread_of_its_own`
   holds the deepest shape on 256 KB, where the probe cuts its loads, to its report on 1.5 MB, where it cuts none).
   Its loops are found by Tarjan's algorithm on a stack of its own ([#277],
