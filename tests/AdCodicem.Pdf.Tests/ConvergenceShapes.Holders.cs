@@ -583,19 +583,27 @@ internal static partial class ConvergenceShapes
     /// Object stream 7, written as it is, holds 5, 2, and 6, and takes its <c>/N</c> from stream 100, which heads
     /// <paramref name="streams"/> streams by <c>/Length</c>, the last naming 180, written in the file, <c>170 0 R</c>; 9 holds
     /// 171, a string holding <c>endstream</c> when <paramref name="endstreamInside"/> says so, and 170, <c>5 0 R</c>, its
-    /// <c>/Length</c> taken from 50, the true length, when <paramref name="indirectLength"/> says so.
+    /// <c>/Length</c> taken from 50, the true length, when <paramref name="indirectLength"/> says so, or, when
+    /// <paramref name="loopingLength"/> says so, from 60, written in the file, <c>61 0 R</c>, 61 naming 60 in turn.
     /// </summary>
-    internal static byte[] Edge(int streams, bool indirectLength, bool endstreamInside)
+    internal static byte[] Edge(int streams, bool indirectLength, bool endstreamInside, bool loopingLength = false)
     {
         var (nine, first) = ObjectStreamData((171, endstreamInside ? "(\nendstream\nendobj\n)" : "(...................)"), (170, "5 0 R"));
         var (seven, sevenFirst) = ObjectStreamData((5, "2"), (6, "<< /Title (six) >>"));
+        var length = loopingLength ? "60 0 R" : indirectLength ? "50 0 R" : "@L";
         var objects = new SortedDictionary<int, (string Entries, byte[]? Data)>
         {
             [7] = (string.Create(CultureInfo.InvariantCulture, $"/Type /ObjStm /N 100 0 R /First {sevenFirst} /Length @L"), Encoding.Latin1.GetBytes(seven)),
-            [9] = (string.Create(CultureInfo.InvariantCulture, $"/Type /ObjStm /N 2 /First {first} /Length {(indirectLength ? "50 0 R" : "@L")}"), Encoding.Latin1.GetBytes(nine)),
+            [9] = (string.Create(CultureInfo.InvariantCulture, $"/Type /ObjStm /N 2 /First {first} /Length {length}"), Encoding.Latin1.GetBytes(nine)),
             [50] = (nine.Length.ToString(CultureInfo.InvariantCulture), null),
             [180] = ("170 0 R", null),
         };
+
+        if (loopingLength)
+        {
+            objects[60] = ("61 0 R", null);
+            objects[61] = ("60 0 R", null);
+        }
 
         for (var stream = 0; stream < streams; stream++)
         {

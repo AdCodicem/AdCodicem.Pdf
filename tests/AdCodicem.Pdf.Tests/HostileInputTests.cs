@@ -2150,6 +2150,22 @@ public class HostileInputTests
     }
 
     [Fact]
+    public void Object_streams_whose_standings_wait_on_one_another_let_their_stack_grow_to_twice_what_it_kept_before_it_is_rid_of_its_stale_entries_again()
+    {
+        // As above, with 800 X's and 2 Flate steps, 6 holders: each X's first walk pushes the next X and the 6 holders, 7
+        // entries. Past 1,024 entries the stack is rid of its stale ones, keeping one entry of each X met and of each
+        // holder, all waiting; once it kept more than 512, it is rid of them again only once it holds more than twice as
+        // many: it holds 1,281 entries at most. Rid of them whenever it held more than 1,024, it would never have held more
+        // than 1,031, and been swept the more often the more it kept, for each X's walk once it kept more than 1,017 (#312).
+        using var document = PdfDocument.Open(PendingFanout(800, steps: 2));
+
+        var result = ObjectStreamDependencies.Run(document);
+
+        result.CircularStreams.Should().BeEmpty();
+        result.MostWaiting.Should().Be(1281, "the stack is rid of its stale entries once it holds more than 1,024 and twice what it kept the last time");
+    }
+
+    [Fact]
     public void The_object_stream_whose_standing_the_stack_of_waiting_standings_was_started_for_stays_on_it_when_its_stale_entries_go()
     {
         // Object stream 3 takes its parameters from the object X1 holds, which names object 4, held by 3; X1 and 19 more X's
@@ -2239,6 +2255,61 @@ public class HostileInputTests
     }
 
     [Fact]
+    public void A_walk_of_a_standing_takes_at_once_a_nest_whose_parse_took_runs_and_nests_the_reader_s_index_places_as_the_chain_s()
+    {
+        // Object stream 3, walked first, takes its parameters from stream 200, whose /Length names stream 201: the walk keeps
+        // the nest of 200. Stream 100 heads 40 streams by /Length, each naming the next through a link written between them,
+        // a run the walk takes at once, the last naming 200, whose nest the walk takes at once as well: the walk keeps the
+        // nest of 100, which 11 takes its parameters from. 100's parameters name 51, which 9 holds, so that 9's standing is
+        // worked out there; 9 takes its parameters from 100 as well, or from a dictionary written in place, and does not
+        // decode alike. Under a cache of 64 objects, fewer than the nest's 81, 9's walk of a standing takes the nest at once,
+        // the reader's index placing every link of it as the chain's does: reading 100 costs 9's walk 5.4 KB, 100's
+        // dictionary read again. Taken for a nest the index does not agree with, it was parsed again, its streams, 1 KB each,
+        // read from the file once more: 100 KB (#312).
+        var options = new PdfReaderOptions { ObjectCacheCapacity = 64 };
+
+        var inPlaceAllocated = Allocations.Least(() => PdfDocument.Open(NestReadAgain(false), options), document => ObjectStreamDependencies.Run(document), out var inPlaceDocument, out var inPlaceResult);
+        var nestAllocated = Allocations.Least(() => PdfDocument.Open(NestReadAgain(true), options), document => ObjectStreamDependencies.Run(document), out var nestDocument, out var nestResult);
+
+        using (inPlaceDocument)
+        using (nestDocument)
+        {
+            inPlaceResult.CircularStreams.Should().Equal([9]);
+            nestResult.CircularStreams.Should().Equal([9]);
+            (nestAllocated - inPlaceAllocated).Should().BeLessThan(16 * 1024, "a walk of a standing takes at once a nest whose links and nests the reader's index places as the chain's");
+        }
+
+        // Stream 100, padded, and the 39 after it by /Length, each through a link, the last naming 200; 9 reads 100 when
+        // `nest` says so.
+        static byte[] NestReadAgain(bool nest)
+        {
+            var parameters = "/Predictor 12 /Colors 51 0 R";
+            var objects = new SortedDictionary<int, (string Entries, byte[]? Data)>
+            {
+                [3] = ConvergenceShapes.FlateObjectStream("/DecodeParms 200 0 R", (4, "<< >>")),
+                [9] = ConvergenceShapes.FlateObjectStream(nest ? "/DecodeParms 100 0 R" : $"/DecodeParms << {parameters} >>", (51, "1")),
+                [11] = ConvergenceShapes.FlateObjectStream("/DecodeParms 100 0 R", (12, "<< >>")),
+                [200] = ("/Length 201 0 R", "ab"u8.ToArray()),
+                [201] = ("/Length 2", "ab"u8.ToArray()),
+            };
+
+            for (var stream = 0; stream < 40; stream++)
+            {
+                var number = 100 + (2 * stream);
+                var length = stream + 1 < 40 ? number + 1 : 200;
+                objects[number] = (string.Create(CultureInfo.InvariantCulture, $"{(stream == 0 ? parameters : string.Empty)} /Pad ({new string('a', 1024)}) /Length {length} 0 R"), "ab"u8.ToArray());
+
+                if (stream + 1 < 40)
+                {
+                    objects[number + 1] = (string.Create(CultureInfo.InvariantCulture, $"{number + 2} 0 R"), null);
+                }
+            }
+
+            return ConvergenceShapes.StreamsAndMembers(objects, new() { [4] = (3, 0), [12] = (11, 0), [51] = (9, 0) });
+        }
+    }
+
+    [Fact]
     public void A_value_decoding_reads_again_is_followed_once_however_many_objects_the_walk_let_go_of_meanwhile()
     {
         // An object stream takes 64 Flate steps, each its parameters from an object written in the file, 16 KB each, whose
@@ -2307,6 +2378,159 @@ public class HostileInputTests
             fewResult.CircularStreams.Should().HaveCount(Few);
             manyResult.CircularStreams.Should().HaveCount(Many);
             ((manyAllocated - fewAllocated) / (Many - Few)).Should().BeLessThan(288 * 1024, "a walk of a standing reads nothing past what tells it the stream does not decode alike");
+        }
+    }
+
+    [Fact]
+    public void Values_that_are_no_streams_take_no_place_among_the_nests_the_walk_keeps()
+    {
+        // Object stream 3, walked first, takes its parameters from stream 100, which heads 40 streams by /Length, 1 KB each,
+        // each naming the next through a link: the walk keeps the nest of 100. 5 takes 64 Flate steps, each step's
+        // parameters a dictionary written in the file; 9 takes its parameters from 100 as well, or from a dictionary written
+        // in place. Under a cache of 64 objects and as many nests, the 64 dictionaries 5's decoding reads, none a stream,
+        // give no nest, and 9's walk takes 100's at once: reading 100 costs it 100's dictionary alone. Parsed as streams are,
+        // each would have given a nest of its own, the last 64 of them let go of 100's, and 9's walk parsed 100's nest again,
+        // its streams read from the file once more (#201).
+        var options = new PdfReaderOptions { ObjectCacheCapacity = 64 };
+
+        var inPlaceAllocated = Allocations.Least(() => PdfDocument.Open(AfterValues(false), options), document => ObjectStreamDependencies.Run(document), out var inPlaceDocument, out var inPlaceResult);
+        var nestAllocated = Allocations.Least(() => PdfDocument.Open(AfterValues(true), options), document => ObjectStreamDependencies.Run(document), out var nestDocument, out var nestResult);
+
+        using (inPlaceDocument)
+        using (nestDocument)
+        {
+            inPlaceResult.CircularStreams.Should().BeEmpty();
+            nestResult.CircularStreams.Should().BeEmpty();
+            (nestAllocated - inPlaceAllocated).Should().BeLessThan(16 * 1024, "values that are no streams leave the nest of 100 kept");
+        }
+
+        // Stream 100, padded, and the 39 after it by /Length, each through a link; 9 reads 100 when `nest` says so.
+        static byte[] AfterValues(bool nest)
+        {
+            var (five, first) = ConvergenceShapes.ObjectStreamData((6, "<< >>"));
+            var filters = "[" + string.Join(' ', Enumerable.Repeat("/FlateDecode", 64)) + "]";
+            var parameters = "[" + string.Join(' ', Enumerable.Range(300, 64).Select(number => string.Create(CultureInfo.InvariantCulture, $"{number} 0 R"))) + "]";
+            var objects = new SortedDictionary<int, (string Entries, byte[]? Data)>
+            {
+                [3] = ConvergenceShapes.FlateObjectStream("/DecodeParms 100 0 R", (4, "<< >>")),
+                [5] = (string.Create(CultureInfo.InvariantCulture, $"/Type /ObjStm /N 1 /First {first} /Length @L /Filter {filters} /DecodeParms {parameters}"), Encoding.Latin1.GetBytes(five)),
+                [9] = ConvergenceShapes.FlateObjectStream(nest ? "/DecodeParms 100 0 R" : "/DecodeParms << /Predictor 1 >>", (10, "<< >>")),
+            };
+
+            for (var stream = 0; stream < 40; stream++)
+            {
+                var number = 100 + (2 * stream);
+                var length = stream + 1 < 40 ? string.Create(CultureInfo.InvariantCulture, $"{number + 1} 0 R") : "2";
+                objects[number] = ($"/Pad ({new string('a', 1024)}) /Length {length}", "ab"u8.ToArray());
+
+                if (stream + 1 < 40)
+                {
+                    objects[number + 1] = (string.Create(CultureInfo.InvariantCulture, $"{number + 2} 0 R"), null);
+                }
+            }
+
+            for (var value = 0; value < 64; value++)
+            {
+                objects[300 + value] = ("<< /Predictor 1 >>", null);
+            }
+
+            return ConvergenceShapes.StreamsAndMembers(objects, new() { [4] = (3, 0), [6] = (5, 0), [10] = (9, 0) });
+        }
+    }
+
+    [Fact]
+    public void An_object_stream_keeps_one_need_of_each_stream_however_many_of_that_stream_s_objects_its_decoding_reads()
+    {
+        // Sixteen object streams take 64 Flate steps, each step's parameters an object holder 20 holds, 64 distinct ones or
+        // the same one each time; 20 takes its /Length from the first of them, and does not decode alike. Each stream needs
+        // 20 once, and keeps the first of its needs of 20: the distinct objects cost the walk 7.6 KB more, what it notes of
+        // the values it read. Kept whole, each stream's 64 needs of 20 cost 2 KB more a stream (#277).
+        var distinctAllocated = Allocations.Least(() => PdfDocument.Open(Holding(distinct: true)), document => ObjectStreamDependencies.Run(document), out var distinctDocument, out var distinctResult);
+        var sameAllocated = Allocations.Least(() => PdfDocument.Open(Holding(distinct: false)), document => ObjectStreamDependencies.Run(document), out var sameDocument, out var sameResult);
+
+        using (distinctDocument)
+        using (sameDocument)
+        {
+            distinctResult.CircularStreams.Should().Equal([20]);
+            sameResult.CircularStreams.Should().Equal([20]);
+            (distinctAllocated - sameAllocated).Should().BeLessThan(16 * 1024, "each stream keeps one need of 20, however many of its objects it reads");
+        }
+
+        // Holder 20, holding 21 to 84, and the sixteen streams taking their parameters from them, or from 21 alone.
+        static byte[] Holding(bool distinct)
+        {
+            var filters = "[" + string.Join(' ', Enumerable.Repeat("/FlateDecode", 64)) + "]";
+            var parameters = "[" + string.Join(' ', Enumerable.Range(21, 64).Select(number => string.Create(CultureInfo.InvariantCulture, $"{(distinct ? number : 21)} 0 R"))) + "]";
+            var packed = new List<PackedStream>
+            {
+                new(20, string.Empty, [.. Enumerable.Range(21, 64).Select(number => (number, "<< /Predictor 1 >>"))], PackedData.Flate, Length: "21 0 R"),
+            };
+
+            for (var stream = 0; stream < 16; stream++)
+            {
+                packed.Add(new PackedStream(100 + (2 * stream), $"/Filter {filters} /DecodeParms {parameters}", [(101 + (2 * stream), "<< >>")], PackedData.Plain));
+            }
+
+            return PackedFile(packed);
+        }
+    }
+
+    [Fact]
+    public void Object_streams_whose_parameters_head_a_nest_a_rebuild_places_otherwise_take_it_at_once_after_the_first_walk()
+    {
+        // Object streams 10, 12 and on, 4 or 16 of them, each take their parameters from stream 300, which heads 60 streams
+        // by /Length, each naming the next through a link, every one of them written twice; a row leading nowhere makes the
+        // validation rebuild the index, which places each at its second copy, where the chain's row places its first. The
+        // walk that judges the first object stream parses the nest through the chain's index, and keeps it; each walk that
+        // judges after it takes the nest at once, however the rebuilt index places it. Under a cache of 64 objects, fewer
+        // than the nest's 119, one more object stream costs its own walk, 1.4 KB; parsing the nest again, each read its
+        // streams, 1 KB each, from the file once more, 206 KB (#312).
+        const int Few = 4;
+        const int Many = 16;
+
+        var fewAllocated = Allocations.Least(() => Settled(Rewritten(Few)), document => ObjectStreamDependencies.Run(document), out var fewDocument, out var fewResult);
+        var manyAllocated = Allocations.Least(() => Settled(Rewritten(Many)), document => ObjectStreamDependencies.Run(document), out var manyDocument, out var manyResult);
+
+        using (fewDocument)
+        using (manyDocument)
+        {
+            fewDocument.WasRepaired.Should().BeTrue();
+            fewResult.CircularStreams.Should().BeEmpty();
+            manyResult.CircularStreams.Should().BeEmpty();
+            ((manyAllocated - fewAllocated) / (Many - Few)).Should().BeLessThan(32 * 1024, "the walk that judges takes a nest it kept at once, however a rebuilt index places it");
+        }
+
+        static PdfDocument Settled(byte[] file)
+        {
+            var document = PdfDocument.Open(file, new PdfReaderOptions { ObjectCacheCapacity = 64 });
+            document.Reader.SettleIndex();
+            return document;
+        }
+
+        // The nest of 300, written twice, and `count` object streams taking their parameters from it.
+        static byte[] Rewritten(int count)
+        {
+            var packed = new List<PackedStream>();
+            var direct = new List<(int Number, string Body)>();
+
+            for (var stream = 0; stream < 60; stream++)
+            {
+                var number = 300 + (2 * stream);
+                var length = stream + 1 < 60 ? number + 1 : 2;
+                direct.Add((number, string.Create(CultureInfo.InvariantCulture, $"<< /Pad ({new string('a', 1024)}) /Length {length}{(stream + 1 < 60 ? " 0 R" : string.Empty)} >>\nstream\nab\nendstream")));
+
+                if (stream + 1 < 60)
+                {
+                    direct.Add((number + 1, string.Create(CultureInfo.InvariantCulture, $"{number + 2} 0 R")));
+                }
+            }
+
+            for (var stream = 0; stream < count; stream++)
+            {
+                packed.Add(new PackedStream(10 + (2 * stream), "/DecodeParms 300 0 R", [(11 + (2 * stream), "<< >>")], PackedData.Flate));
+            }
+
+            return PackedFile(packed, direct, brokenRow: 7, twice: true);
         }
     }
 
