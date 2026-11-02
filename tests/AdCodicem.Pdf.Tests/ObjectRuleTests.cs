@@ -2094,10 +2094,11 @@ public class ObjectRuleTests
         // The deepest shape, its startxref naming the header: the reader rebuilds the index, and the walks read each object
         // through it, with no chain to read the object where it places it. Validated once at the thread's start, the document
         // is held whole in the reader's cache, which then serves the walks with no load, and none of the stack probes a load
-        // makes. From a caller 40 frames of 1 KB below the first the probe fails at, the walks went as deep as their recursion
-        // goes, some 110 KB on first run, with no probe on the way, past the end of the stack: the process ended. They ask the
-        // thread for room before each level: the first load of each walk reads as null, object 100 the first, which stream
-        // 3's /Length names; the document reports it once, however many walks and validations are cut there (#312).
+        // makes. From a caller 41 frames holding 1 KB below the first the probe fails at, the walks went as deep as their
+        // recursion goes, some 110 KB on first run, with no probe on the way, past the end of the stack: the process ended.
+        // They ask the thread for room before each level: the first load of each walk reads as null, object 100 the first,
+        // which stream 3's /Length names; the document reports it once, however many walks and validations are cut there
+        // (#312).
         var file = StartxrefAtTheHeader(DeepStack(60, 60, 61));
 
         var (first, second, cuts) = Stacks.Run(Stacks.Large, () =>
@@ -2138,12 +2139,12 @@ public class ObjectRuleTests
     [Fact]
     public void A_stream_whose_standing_the_stack_leaves_no_room_to_work_out_does_not_decode_alike()
     {
-        // Stream 7 takes its parameters from 50, which 9 holds, 5 0 R; 7 holds 5; 9 takes its own from stream 300, which heads
-        // 60 streams by /Length. From a caller 20 frames of 1 KB above the first the stack probe fails at, the walk judging 7
-        // loads 50, and the walk of 9's standing, made inside it, runs short of room in 300's nest: 9 is taken for a stream
-        // that does not decode alike, and 50 for a need of 7's, which reads as null; on a thread with room, 9 decodes alike,
-        // and 50 leads 7 to 5. Which of 300's streams the walk is cut at depends on the frames the runtime compiled, not on
-        // the file (#312).
+        // Stream 7 takes its parameters from 50, which 9 holds, 5 0 R; 7 holds 5; 9 takes its own from stream 300, which
+        // heads 60 streams by /Length. From a caller 20 frames holding 1 KB above the first the stack probe fails at, the
+        // walk judging 7 loads 50, and the walk of 9's standing, made inside it, runs short of room in 300's nest: 9 is taken
+        // for a stream that does not decode alike, and 50 for a need of 7's, which reads as null; on a thread with room, 9
+        // decodes alike, and 50 leads 7 to 5. Which of 300's streams the walk is cut at depends on the frames the runtime
+        // compiled, not on the file (#312).
         var file = StartxrefAtTheHeader(ConvergenceShapes.NestBelow(60));
 
         var (room, cut, cuts) = Stacks.Run(Stacks.Large, () =>
@@ -2168,10 +2169,12 @@ public class ObjectRuleTests
         // 200 0 R; 200 heads 20 streams, the last naming 6, which 5 holds; 5 takes its /Length from 200, and is circular.
         // Judging 3, the walk meets 200 forty levels deeper than the walk judging 5 does, which then has room to reach 6
         // wherever the stack cut 3's inside 200's nest. A parse the stack cut gives no nest, how far it reached being the
-        // thread's to say, not the file's: 5's walk parses 200 again. A nest given there, taken as the parse's whole, would end
-        // 5's walk where 3's was cut. Where the stack cuts 3's walk depends on the frames the runtime compiled, not on the
-        // file: the caller is moved 4 KB at a time, up to 100 KB above the first frame the probe fails at, and from some of
-        // those places 3's walk is cut inside 200's nest (#312).
+        // thread's to say, not the file's: 5's walk parses 200 again. A nest given there, taken as the parse's whole, would
+        // end 5's walk where 3's was cut. Where the stack cuts 3's walk depends on the frames the runtime compiled, not on
+        // the file: the caller is moved 4 frames at a time, up to 100 frames, some 110 KB, above the first frame the probe
+        // fails at, and from some of those places 3's walk is cut inside 200's nest (#312). The cut it holds is the walks'
+        // own, which their probe reports; one the reader's probe or its parser's makes under a load the walks make is kept as
+        // the read gave it (#163).
         var file = StartxrefAtTheHeader(NestBehindAHolder());
         var met = 0;
 
@@ -3148,9 +3151,10 @@ public class ObjectRuleTests
     ];
 
     /// <summary>
-    /// Runs <paramref name="work"/> from a caller <paramref name="frames"/> frames of 1 KB above the first frame the thread's
-    /// stack probe fails at, where the probe finds about that many KB more than it keeps free; or, for a count of 0 or less,
-    /// that many frames below it, where it fails at once. Gives what <paramref name="work"/> gave.
+    /// Runs <paramref name="work"/> from a caller <paramref name="frames"/> frames holding 1 KB above the first frame the
+    /// thread's stack probe fails at, where the probe finds room for about that many such frames more than it keeps free; or,
+    /// for a count of 0 or less, that many frames and one more below it, where it fails at once. Gives what
+    /// <paramref name="work"/> gave.
     /// </summary>
     /// <remarks>
     /// The frames go down from the caller one at a time, each asking the probe, and <paramref name="work"/> runs on the way
@@ -3165,8 +3169,8 @@ public class ObjectRuleTests
     }
 
     /// <summary>
-    /// Goes down a frame of 1 KB, to the first the stack probe fails at, and runs <paramref name="work"/> from the frame
-    /// <paramref name="frames"/> above it, or that many below it for a count of 0 or less.
+    /// Goes down a frame holding 1 KB, to the first the stack probe fails at, and runs <paramref name="work"/> from the frame
+    /// <paramref name="frames"/> above it, or that many frames and one more below it for a count of 0 or less.
     /// </summary>
     /// <returns>How many frames this one lies above the first the probe fails at.</returns>
     [MethodImpl(MethodImplOptions.NoInlining)]
@@ -3191,7 +3195,7 @@ public class ObjectRuleTests
         return above + frame[frames & 1023] - 1;
     }
 
-    /// <summary>Goes down <paramref name="frames"/> frames of 1 KB more, asking nothing, and runs <paramref name="work"/> there.</summary>
+    /// <summary>Goes down <paramref name="frames"/> frames holding 1 KB more, asking nothing, and runs <paramref name="work"/> there.</summary>
     /// <returns>0.</returns>
     [MethodImpl(MethodImplOptions.NoInlining)]
     private static int Below(int frames, Action work)
