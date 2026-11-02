@@ -2130,6 +2130,33 @@ public class ReadOrderTests
         graph.MissingReferences.Concat(graph.NullCharacterNames).Should().ContainSingle().Which.Message.Should().Be(message);
     }
 
+    [Fact]
+    public void The_object_graph_names_no_name_of_an_object_a_rebuild_redefined_since_as_a_sound_name()
+    {
+        // As above, the later definition of 5 being a name with no null character: the name it now is is not the one the walk
+        // counted, and the finding says what the walk counted, without naming it.
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R /Test 5 0 R >>"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>"),
+            [3] = file.Object(3, Page),
+            [5] = file.Object(5, "<< /Bad /A#00B /Info 7 0 R >>"),
+        };
+        rows[6] = file.Padding(6);
+        rows[7] = rows[6] + 600;
+        file.Object(7, "<< /Title (info) >>");
+        file.Object(5, "/Good");
+        file.Table(8, rows, "/Size 8 /Root 1 0 R");
+        using var document = PdfDocument.Open(file.Bytes);
+
+        var graph = ObjectGraph.Run(document, PageTreeWalk.Run(document));
+
+        document.WasRepaired.Should().BeTrue();
+        graph.NullCharacterNames.Should().ContainSingle().Which.Message.Should().Be(
+            "Object 5 holds a name with a null character, which a name cannot contain.");
+    }
+
     [Theory]
     [InlineData("/Ref 99 0 R", "/Ref 3 0 R", "/Zz [99 0 R] /Zy [98 0 R]", "Object 1 holds 2 references to objects the file lacks, which read as null; the first refers to object 99 0 under /Zz[0].", "Object 5 refers to an object the file lacks: the reference reads as null.")]
     [InlineData("/Bad /A#00B", "/Good 1", "/Zz [/C#00D] /Zy [/E#00F]", "Object 1 holds 2 names with a null character, which a name cannot contain; the first is /C#00D, under /Zz[0].", "Object 5 holds a name with a null character, which a name cannot contain.")]
