@@ -1582,7 +1582,10 @@ internal ref struct PdfObjectParser
     /// <summary>
     /// Determines whether <paramref name="token"/> is the keyword <paramref name="keyword"/>, and whole: one that reaches the
     /// end of a buffer that is a window's edge may be the start of a longer keyword — <c>endobjX</c>, <c>RG</c> —, which the
-    /// file says when it backs the parser; a parser no file backs asks for a larger buffer.
+    /// file says when it backs the parser. A parser no file backs asks for a larger buffer where the token belongs to what
+    /// it parses; a <c>stream</c> keyword after the dictionary a parse that reads no stream began with is left, as any token
+    /// after the value is, and the dictionary given whole, no larger buffer asked for: the one such parse given a window, an
+    /// object stream member's, is cut before it reads that keyword.
     /// </summary>
     private readonly bool IsWholeKeyword(PdfToken token, ReadOnlySpan<byte> keyword) =>
         token.IsKeyword(keyword) &&

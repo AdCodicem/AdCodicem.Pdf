@@ -148,13 +148,15 @@ start, so no fault is two objects'.
 A rebuild's scan for trailers parses the dictionary after each `trailer` keyword alone, and reads no stream. A stream
 nested in that dictionary, which no file may write there, ends what the rebuild merges of it: the key that holds it and
 the keys after it are not merged. This is said of the rebuild's merge alone: a trailer the chain read keeps those keys,
-whether the rebuild runs as the document opens or after, since a rebuild adds to the trailer only the keys it lacks
-([Lazy reading](../concepts/lazy-reading.md#what-a-rebuild-after-opening-changes)). A stream nested deeper than the
-reader follows — 128 levels, or fewer on a thread with little stack, where the reader's stack probe cuts sooner — ends
-nothing: the container too deep is skipped, under `syntax.depth-exceeded`, and what follows it is read on as the
-dictionary's keys. A reference written in the dictionary's place is not followed, and nothing is merged for it. Each is
-noted once, as a warning under `syntax.unexpected-token`, at the stream's keyword or where the reference starts; a
-stream after the dictionary itself loses no key, and is not noted.
+whether the rebuild runs as the document opens or after, since the rebuild's merge adds to the trailer only the keys it
+lacks, and the rebuild replaces only a `/Root` that leads to no catalog (`trailer.root-recovered`), wherever that key
+is written ([Lazy reading](../concepts/lazy-reading.md)). A stream nested deeper than the reader follows — 128 levels,
+or fewer on a thread with little stack, where the reader's stack probe cuts sooner — ends nothing: the container too
+deep is skipped, under `syntax.depth-exceeded`, a `stream` keyword left after it is a stray token to the container
+around it, and what follows it is read on as the keys or elements of that container. A reference written in the
+dictionary's place is not followed, and nothing is merged for it. Each is noted once, as a warning under
+`syntax.unexpected-token`, at the stream's keyword or where the reference starts; a stream after the dictionary itself
+loses no key, and is not noted.
 
 ```text
 Warning syntax.truncated-object at 328: The file ended inside a literal string, which takes the 6,575 bytes from where it opens to that end; the 2 arrays or dictionaries around it were never closed either.

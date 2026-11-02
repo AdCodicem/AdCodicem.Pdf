@@ -7021,7 +7021,9 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// <para>
     /// A nested stream ends the parse only within the nesting the parser follows: past its 128 levels, or where the stack
     /// probe cuts sooner, the container the stream lies in or follows is skipped as any other is, which is noted as too
-    /// deep (#163), a <c>stream</c> keyword left after it is read as a key, and what follows it merged (#171).
+    /// deep (#163). A <c>stream</c> keyword left after it is a stray token to the container around it — a key a
+    /// dictionary refuses, an element an array reads as null —, and what follows it is read on as that container's keys
+    /// or elements, and merged (#171).
     /// </para>
     /// <para>
     /// What the scan notes goes with the faults the parse meets: kept once, though two windows of the scan meet a keyword

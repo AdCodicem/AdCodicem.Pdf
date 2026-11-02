@@ -129,7 +129,9 @@ validation whose first checks of the map the source fails checks again at the ne
 A rebuild reads the file to its end, and holds no more numbers than the map may: a header for a number it holds already
 takes no room, so that a million copies of one object hide nothing behind them, and the first number past
 `MaxIndexEntries` is reported once (`limit.index-entries`). A rebuild of a chain a limit had cut keeps the entries the
-chain read for the numbers the scan did not find, rather than losing them.
+chain read for the numbers the scan did not find, rather than losing them. Whether it runs as the document opens or
+after, a rebuild keeps the trailer the chain read too: it adds to it only the keys it lacks, from the trailers the scan
+finds, and replaces only a `/Root` that leads to no catalog, by the catalog its search finds (`trailer.root-recovered`).
 
 ## What a rebuild after opening changes
 
