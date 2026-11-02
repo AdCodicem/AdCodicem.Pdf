@@ -469,12 +469,12 @@ public class ReaderTimingTests
         // cache let go of it would read it again every 63 kids: the large walk then took 18.5 times as long as the small
         // one, 21 s against 1.1 s, and allocated 19 times as much, 9.8 GB against 506 MB. What each walk allocates on the
         // test's thread holds the cost whatever else the process does: once each was walked first, the large walk allocates
-        // 4.2 times what the small one does, 46.5 MB against 11.1 MB, on every run, under coverage or not. The time is held
+        // 4.2 times what the small one does, 48.8 MB against 11.6 MB, on every run, under coverage or not. The time is held
         // as well, as the ratio of the best walk of each, run in turn, each from a collected heap: without a collection
         // before it, one large walk in three met one, which took it to 5 to 14 times the small walk's best. Where the
-        // collector lets new objects take less than the large walk allocates before it collects — 16 MB, say —, every large
-        // walk meets two collections or three, collected heap or not, and the ratio comes near 6: a bound of 12 holds that,
-        // and still tells a walk that grows with the kids from one that grows with their square.
+        // collector lets new objects take less than the large walk allocates before it collects — 16.8 MB, say —, every
+        // large walk meets two collections or three, collected heap or not, and the ratio comes near 6: a bound of 12 holds
+        // that, and still tells a walk that grows with the kids from one that grows with their square.
         const int Small = 20_000;
         const int Large = 4 * Small;
         var options = new PdfReaderOptions { ObjectCacheCapacity = 64 };

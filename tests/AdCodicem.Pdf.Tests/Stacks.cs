@@ -14,13 +14,13 @@ namespace AdCodicem.Pdf.Tests;
 /// tests before it had left (#168, #312).
 /// </para>
 /// <para>
-/// So no thread of the suite asks for a stack larger than the small one and no more than four times it with its guard
-/// page, and the large one is larger than that: no stack a large thread leaves is given to a small one. And the large
-/// one is less than a quarter of the 8 MB a thread that asks for no size is given under Linux's default limit, which the
-/// thread pool's threads leave as they retire: a thread that asks for a quarter of that or more can be given such a
-/// stack, on which a large thread would hold what a test nests to overflow a walk that takes a call a level, as 8 MB held
-/// a page tree path of 55,000 nodes written a call a node. A size of stack is asked for here, one of these two, and
-/// nowhere else in the suite.
+/// So no thread of the suite asks for a stack larger than the small one and no more than four times it, guard pages
+/// counted, and the large one is larger than that: no stack a large thread leaves is given to a small one. And the large
+/// one, guard pages counted, is less than a quarter of the 8 MB a thread that asks for no size is given under Linux's
+/// default limit, which the thread pool's threads leave as they retire: a thread that asks for a quarter of it or more,
+/// from 2,045 KB with pages of 4 KB, can be given such a stack, on which a large thread would hold what a test nests to
+/// overflow a walk that takes a call a level, as 8 MB held a page tree path of 55,000 nodes written a call a node. A size
+/// of stack is asked for here, one of these two, and nowhere else in the suite.
 /// </para>
 /// </remarks>
 internal static class Stacks
@@ -29,8 +29,8 @@ internal static class Stacks
     public const int Small = 256 * 1024;
 
     /// <summary>
-    /// The large stack, 1.5 MB: more than four times <see cref="Small"/> with its guard page, and less than a quarter of
-    /// the 8 MB a thread that asks for no size is given.
+    /// The large stack, 1.5 MB: guard pages counted, more than four times <see cref="Small"/> and less than a quarter
+    /// of the 8 MB a thread that asks for no size is given.
     /// </summary>
     public const int Large = 1536 * 1024;
 
