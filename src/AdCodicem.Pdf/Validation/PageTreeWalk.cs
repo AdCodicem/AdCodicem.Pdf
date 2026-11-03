@@ -510,7 +510,7 @@ internal sealed class PageTreeWalk
     {
         -1 => "what lies below it is counted again, how many pages that is being unknown",
         1 => "its page is counted again",
-        _ => Invariant($"its {RuleText.Pages(counted)} are counted again"),
+        _ => Invariant($"its {CountText.Pages(counted)} are counted again"),
     };
 
     /// <summary>
@@ -771,7 +771,7 @@ internal sealed class PageTreeWalk
         {
             CountMismatches.Keep(new ProbeFinding(
                 Location(frame.Place),
-                Invariant($"{Subject(frame.Place, NodeKind)} gives /Count {declared}, and {RuleText.Pages(below)} {Lie(below)} below it.")));
+                Invariant($"{Subject(frame.Place, NodeKind)} gives /Count {declared}, and {CountText.Pages(below)} {Lie(below)} below it.")));
         }
     }
 
@@ -783,7 +783,7 @@ internal sealed class PageTreeWalk
             CountMismatches.Keep(new ProbeFinding(
                 Location(place),
                 countable
-                    ? Invariant($"{Subject(place, NodeKind)} has no /Count; {RuleText.Pages(below)} {Lie(below)} below it.")
+                    ? Invariant($"{Subject(place, NodeKind)} has no /Count; {CountText.Pages(below)} {Lie(below)} below it.")
                     : $"{Subject(place, NodeKind)} has no /Count, and how many pages lie below it is unknown."));
         }
     }
@@ -926,7 +926,7 @@ internal sealed class PageTreeWalk
                 MediaBoxFaults.Keep(new ProbeFinding(
                     location,
                     resolved is PdfArray other
-                        ? Invariant($"{MediaBoxOf(place, what)} is an array of {other.Count} values, not a rectangle.")
+                        ? Invariant($"{MediaBoxOf(place, what)} is an array of {CountText.Of(other.Count, "value", "values")}, not a rectangle.")
                         : $"{MediaBoxOf(place, what)} is {RuleText.Kind(resolved)}, not a rectangle."));
             }
 

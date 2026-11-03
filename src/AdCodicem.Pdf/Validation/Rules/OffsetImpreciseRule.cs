@@ -1,4 +1,5 @@
 using System.Globalization;
+using AdCodicem.Pdf.IO;
 using AdCodicem.Pdf.IO.XRef;
 
 namespace AdCodicem.Pdf.Validation.Rules;
@@ -46,7 +47,7 @@ internal sealed class OffsetImpreciseRule : IValidationRule
                     PdfValidationLocation.AtPosition(section.Offset),
                     string.Create(
                         CultureInfo.InvariantCulture,
-                        $"{section.NamedBy} gives offset {section.Offset}, {RuleText.Bytes(section.Padding)} before {target}"));
+                        $"{section.NamedBy} gives offset {section.Offset}, {CountText.Bytes(section.Padding)} before {target}"));
             }
         }
 

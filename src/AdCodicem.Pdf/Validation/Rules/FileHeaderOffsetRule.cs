@@ -1,4 +1,5 @@
 using System.Globalization;
+using AdCodicem.Pdf.IO;
 
 namespace AdCodicem.Pdf.Validation.Rules;
 
@@ -31,7 +32,7 @@ internal sealed class FileHeaderOffsetRule : IValidationRule
                 PdfValidationLocation.AtPosition(0),
                 string.Create(
                     CultureInfo.InvariantCulture,
-                    $"The PDF header starts {header} bytes into the file instead of at its first byte."),
+                    $"The PDF header starts {CountText.Bytes(header)} into the file instead of at its first byte."),
                 "Remove the bytes before the header; a rewrite of the file puts every offset right.");
         }
     }

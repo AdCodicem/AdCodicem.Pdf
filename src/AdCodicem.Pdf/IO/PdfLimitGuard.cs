@@ -75,12 +75,14 @@ internal sealed class PdfLimitGuard(PdfReaderLimits limits, bool throwOnLimit, P
     public string DescribeStreamLengthCut() =>
         $"A stream's data runs past {FormatLength(Bound(PdfLimit.StreamLength))}; only what lies within it was read.";
 
-    /// <summary>Writes a length the way a message states a bound: <c>256 MB</c>, <c>64 KB</c>, <c>1,000 bytes</c>.</summary>
+    /// <summary>
+    /// Writes a length the way a message states a bound: <c>256 MB</c>, <c>64 KB</c>, <c>1,000 bytes</c>, <c>1 byte</c>.
+    /// </summary>
     public static string FormatLength(int length) => length switch
     {
         > 0 when length % (1024 * 1024) == 0 => string.Create(CultureInfo.InvariantCulture, $"{length / (1024 * 1024):N0} MB"),
         > 0 when length % 1024 == 0 => string.Create(CultureInfo.InvariantCulture, $"{length / 1024:N0} KB"),
-        _ => string.Create(CultureInfo.InvariantCulture, $"{length:N0} bytes"),
+        _ => CountText.Grouped(length, "byte", "bytes"),
     };
 
     private static string Code(PdfLimit limit) => limit switch

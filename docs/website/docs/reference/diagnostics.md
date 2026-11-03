@@ -33,8 +33,14 @@ A message, of a diagnostic or of a [validation finding](validation.md#pdfvalidat
 read where a host prints it — a console, a log, a web page. What the file wrote reaches it under these rules:
 
 - **Printable ASCII, on one line.** Every character of a message lies between U+0020 and U+007E, and numbers are written
-  in the invariant culture, whatever `CultureInfo.CurrentCulture` is: `-7 bytes`, `1,048,576 bytes`, never a culture's
+  in the invariant culture, whatever `CultureInfo.CurrentCulture` is: `object -5`, `1,048,576 bytes`, never a culture's
   own minus sign or separators. The same holds for `ToString()`.
+- **A count agrees with its noun, and a distance says which way it runs**
+  ([#241](https://github.com/AdCodicem/AdCodicem.Pdf/issues/241)). A count is written in digits, and its noun is
+  singular for one alone: `1 byte`, `2 bytes`, `the 1 object its /N declares`. A verb or a pronoun that follows it
+  agrees with it too: `the 1 byte decoded before the fault was found was kept`. A distance is never negative: an
+  object found near where the index placed it `was found 3 bytes before where the index said`, and a section found
+  near where a `/Prev` named it `was found 12 bytes before it`.
 - **A name or a keyword is quoted as a PDF writer writes a name** (ISO 32000-1, 7.3.5): a byte of printable ASCII as
   itself, except the number sign and the delimiters `( ) < > [ ] { } / %`; every other byte, white space and control
   characters included, as `#` and two uppercase hexadecimal digits. A name keeps its solidus: `/Pa#0Age#1B` is the name

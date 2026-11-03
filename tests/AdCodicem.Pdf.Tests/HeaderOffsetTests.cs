@@ -143,7 +143,7 @@ public sealed class HeaderOffsetTests
         var limit = document.Diagnostics.Should().ContainSingle(d => d.Code == PdfDiagnosticCodes.LimitXRefSectionCount).Which;
         limit.Position.Should().Be(update);
         limit.Message.Should().StartWith(
-            $"The cross-reference chain has more than 1 sections; the older ones were not read: the chain goes on at offset {LargestShifted}, outside the file.");
+            $"The cross-reference chain has more than 1 section; the older ones were not read: the chain goes on at offset {LargestShifted}, outside the file.");
 
         var report = new PdfValidator().Validate(document);
         var finding = Single(report, PdfValidationRuleIds.XRefCheckedInPart);

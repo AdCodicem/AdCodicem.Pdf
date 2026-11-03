@@ -833,6 +833,7 @@ public class PageTreeRuleTests
 
     [Theory]
     [InlineData("[0 0 612]", "The /MediaBox of object 6 is an array of 3 values, not a rectangle.")]
+    [InlineData("[612]", "The /MediaBox of object 6 is an array of 1 value, not a rectangle.")]
     [InlineData("/Letter", "The /MediaBox of object 6 is a name, not a rectangle.")]
     [InlineData("[0 0 (612) 792]", "The /MediaBox of object 6 holds a string among its corners, not a rectangle of four numbers.")]
     [InlineData("[0 0 612 0]", "The /MediaBox of object 6, [0 0 612 0], encloses no area.")]

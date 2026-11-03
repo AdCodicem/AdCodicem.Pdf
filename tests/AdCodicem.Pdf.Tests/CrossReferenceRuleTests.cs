@@ -817,6 +817,46 @@ public class CrossReferenceRuleTests
         finding.Message.Should().Be("Object stream 4, where the index places 1 object, can be read only in part: its header lists 1 of the 2 objects its /N declares, then something else; it is not listed before that, and lost.");
     }
 
+    [Theory]
+    [InlineData("", "its header lists 0 of the 1 object its /N declares, then ends", "has a header that ends after 0 of the 1 object its /N declares")]
+    [InlineData("x ", "its header lists 0 of the 1 object its /N declares, then something else", "has a header that holds something other than an object number and an offset after 0 of the 1 object its /N declares")]
+    [InlineData("0 0 ", "its header lists 0 of the 1 object its /N declares, then object 0 at offset 0, which no member can be", "has a header that lists object 0 at offset 0, which no member can be, after 0 of the 1 object its /N declares")]
+    public void An_object_stream_whose_n_declares_one_object_says_so_in_the_singular(string header, string fault, string unreadable)
+    {
+        // The index places object 3 alone in object stream 4, whose /N declares it alone, and whose header ends before it,
+        // lists something else, or an object no member can be: the finding quotes the reader's fault, and the reader's own
+        // report words it its way, each with one object in the singular (#241).
+        var file = XRefStreamBuilder().BuildWithXRefStream(rootNumber: 1, compressedObjects: [3], objectStreamHeader: _ => header);
+        using var document = PdfDocument.Open(file);
+
+        var finding = Single(new PdfValidator().Validate(document), PdfValidationRuleIds.XRefObjectStreamBroken);
+
+        finding.Message.Should().Be("Object stream 4, where the index places 1 object, cannot be read: " + fault + ".");
+        document.Diagnostics.Should().ContainSingle(entry => entry.Code == PdfDiagnosticCodes.ObjectStreamUnreadable).Which.Message.Should().Be(
+            "Object stream 4 " + unreadable + "; none of its objects can be read from it.");
+    }
+
+    [Fact]
+    public void An_object_stream_whose_data_is_one_byte_says_so_in_the_singular()
+    {
+        // Object 3, empty, is packed alone with no header: the stream's data is the line feed after it, one byte, and its
+        // /First, moved from 0 to 5, lies past it (#241).
+        var written = new TestPdfBuilder()
+            .WithObject(1, "<< /Type /Catalog /Pages 2 0 R >>")
+            .WithObject(2, "<< /Type /Pages /Kids [] /Count 0 >>")
+            .WithObject(3, string.Empty)
+            .BuildWithXRefStream(rootNumber: 1, compressedObjects: [3], objectStreamHeader: _ => string.Empty);
+        var file = Replace(written, "/N 1 /First 0", "/N 1 /First 5");
+        using var document = PdfDocument.Open(file);
+
+        var finding = Single(new PdfValidator().Validate(document), PdfValidationRuleIds.XRefObjectStreamBroken);
+        document.GetObject(new PdfObjectId(3)).Should().BeSameAs(PdfNull.Instance);
+
+        finding.Message.Should().Be("Object stream 4, where the index places 1 object, cannot be read: it decodes to 1 byte, fewer than its /First of 5.");
+        document.Diagnostics.Should().ContainSingle(entry => entry.Code == PdfDiagnosticCodes.ObjectStreamUnreadable).Which.Message.Should().Be(
+            "Object stream 4 gives in /First an offset, 5, past the end of its decoded data, which is 1 byte long; none of its objects can be read from it.");
+    }
+
     [Fact]
     public void An_object_stream_broken_after_an_object_the_index_misplaces_shifts_that_object_and_loses_the_other()
     {
@@ -1277,6 +1317,21 @@ public class CrossReferenceRuleTests
         finding.Location.Object.Should().Be(new PdfObjectId(4));
         finding.Message.Should().Be(
             "One of the reader's limits stopped it reading object stream 4 before its header ended: the 2 objects the index places in it were not checked. Raising the limit the reader reported lets them be.");
+    }
+
+    [Fact]
+    public void An_object_stream_a_limit_cut_before_its_header_ended_says_its_one_object_was_not_checked()
+    {
+        // The index places the page alone in the stream, whose header, "3 0 ", the reader stops reading at 2 bytes: one
+        // object, in the singular, as are the verb and the pronoun that follow it (#241).
+        var file = XRefStreamBuilder().BuildWithXRefStream(rootNumber: 1, compressedObjects: [3], compressObjectStream: true);
+        using var document = PdfDocument.Open(file, new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxDecodedStreamLength = 2 } });
+
+        var finding = Single(new PdfValidator().Validate(document), PdfValidationRuleIds.XRefCheckedInPart);
+
+        finding.Location.Object.Should().Be(new PdfObjectId(4));
+        finding.Message.Should().Be(
+            "One of the reader's limits stopped it reading object stream 4 before its header ended: the 1 object the index places in it was not checked. Raising the limit the reader reported lets it be.");
     }
 
     [Fact]

@@ -189,7 +189,8 @@ public class DocumentReaderTests
     [InlineData("fa-IR")]
     public void Writes_the_distance_to_an_object_found_before_its_entry_the_same_whatever_the_culture(string name)
     {
-        // Every entry points 3 bytes past its object. Swedish writes a minus sign as U+2212, Persian as U+200E U+2212.
+        // Every entry points 3 bytes past its object: the report says the object lies before it in words, where it once
+        // wrote a minus sign, which Swedish writes as U+2212 and Persian as U+200E U+2212 (#241).
         var bytes = SampleDocument().BuildClassic(rootNumber: 1, offsetError: 3);
         var culture = CultureInfo.CurrentCulture;
 
@@ -200,12 +201,28 @@ public class DocumentReaderTests
             _ = PageContent(document);
 
             document.Diagnostics.Where(entry => entry.Code == PdfDiagnosticCodes.XRefOffsetAdjusted).Should().NotBeEmpty()
-                .And.OnlyContain(entry => entry.Message.EndsWith(" was found -3 bytes from where the index said.", StringComparison.Ordinal));
+                .And.OnlyContain(entry => entry.Message.EndsWith(" was found 3 bytes before where the index said.", StringComparison.Ordinal));
         }
         finally
         {
             CultureInfo.CurrentCulture = culture;
         }
+    }
+
+    [Theory]
+    [InlineData(1, "1 byte before")]
+    [InlineData(3, "3 bytes before")]
+    [InlineData(-2, "2 bytes after")]
+    [InlineData(-3, "3 bytes after")]
+    public void Says_which_way_and_how_far_from_its_entry_each_object_was_found(int offsetError, string found)
+    {
+        // Every entry points past its object, or before it — one byte before is the end-of-line its header follows,
+        // which is read as it stands —: each report says the way in words, and a count of one in the singular (#241).
+        using var document = PdfDocument.Open(SampleDocument().BuildClassic(rootNumber: 1, offsetError: offsetError));
+        _ = PageContent(document);
+
+        document.Diagnostics.Where(entry => entry.Code == PdfDiagnosticCodes.XRefOffsetAdjusted).Select(entry => entry.Message)
+            .Should().BeEquivalentTo(Enumerable.Range(1, 4).Select(number => $"Object {number} was found {found} where the index said."));
     }
 
     [Fact]
@@ -1494,6 +1511,7 @@ public class DocumentReaderTests
     [InlineData("/N 9 /First 4", "has a header that ends after 1 of the 9 objects its /N declares; only the first 1 of its 9 objects can be read from it.")]
     [InlineData("/N 1 /First 40", "gives in /First an offset, 40, past the end of its decoded data, which is 8 bytes long; none of its objects can be read from it.")]
     [InlineData("/N 2 /First 4", "has a header that ends after 1 of the 2 objects its /N declares; only the first 1 of its 2 objects can be read from it.")]
+    [InlineData("/N 1 /First 0", "has a header that ends after 0 of the 1 object its /N declares; none of its objects can be read from it.")]
     public void Reports_an_object_stream_whose_dictionary_or_header_cannot_be_believed_where_its_data_starts(string entries, string fault)
     {
         // The index is rebuilt, which reads every object stream the file holds: object stream 5 holds object 6.
@@ -1560,7 +1578,7 @@ public class DocumentReaderTests
 
         document.GetObject(new PdfObjectId(6)).Should().BeSameAs(PdfNull.Instance);
         document.Diagnostics.Should().ContainSingle(entry => entry.Code == PdfDiagnosticCodes.ObjectStreamUnreadable).Which.Message.Should().Be(
-            "Object stream 5 has a header that holds something other than an object number and an offset after 0 of the 1 objects its /N declares; none of its objects can be read from it.");
+            "Object stream 5 has a header that holds something other than an object number and an offset after 0 of the 1 object its /N declares; none of its objects can be read from it.");
     }
 
     [Theory]
@@ -1844,8 +1862,8 @@ public class DocumentReaderTests
         document.Diagnostics.Should().NotContain(entry => entry.Code == PdfDiagnosticCodes.ObjectRedefined);
         document.Diagnostics.Where(entry => entry.Code == PdfDiagnosticCodes.ObjectStreamUnreadable).Select(entry => entry.Message)
             .Should().Equal(
-                "Object stream 5 has a header that lists object -5 at offset 0, which no member can be, after 0 of the 1 objects its /N declares; none of its objects can be read from it.",
-                "Object stream 7 has a header that lists object -5 at offset 0, which no member can be, after 0 of the 1 objects its /N declares; none of its objects can be read from it.");
+                "Object stream 5 has a header that lists object -5 at offset 0, which no member can be, after 0 of the 1 object its /N declares; none of its objects can be read from it.",
+                "Object stream 7 has a header that lists object -5 at offset 0, which no member can be, after 0 of the 1 object its /N declares; none of its objects can be read from it.");
     }
 
     [Fact]
@@ -1967,13 +1985,14 @@ public class DocumentReaderTests
     [Theory]
     [InlineData(4, "The stream declared 46 bytes but ended after 42.")]
     [InlineData(-4, "The stream declared 38 bytes but ended after 42.")]
+    [InlineData(-41, "The stream declared 1 byte but ended after 42.")]
     [InlineData(1, null)]
     public void Checks_a_deferred_length_against_the_data_once_the_chain_is_read(int lengthOff, string? message)
     {
-        // Object 4 gives 46 or 38 bytes where the data holds 42: the length is reported once the chain is read, as any
-        // stream's is. One that counts the end-of-line before endstream is confirmed by it, as the parser takes any
-        // stream's, and says nothing. (The data's last bytes are zeros, which PDF counts as white space: a length that
-        // leaves them out is confirmed as well.)
+        // Object 4 gives a length of 46, 38 or 1 where the data holds 42 bytes: the length is reported once the chain is
+        // read, as any stream's is, one byte in the singular (#241). One that counts the end-of-line before endstream is
+        // confirmed by it, as the parser takes any stream's, and says nothing. (The data's last bytes are zeros, which PDF
+        // counts as white space: a length that leaves them out is confirmed as well.)
         using var document = PdfDocument.Open(ChainFiles.AloneWithIndirectLength(lengthOff));
 
         document.WasRepaired.Should().BeFalse();
@@ -2387,6 +2406,20 @@ public class DocumentReaderTests
 
         document.Diagnostics.Should().BeEmpty();
         document.Reader.Structure.Sections.Should().OnlyContain(section => section.State == IO.XRef.XRefSectionState.Read);
+    }
+
+    [Theory]
+    [InlineData("9 0 R", "The /Length of cross-reference stream 5 names object 9 0, which the file lacks; the chain took its data up to its endstream, after 1 byte.")]
+    [InlineData("4 0 R", "The /Length of cross-reference stream 5 gives 13 bytes, which an endstream confirms; the chain, which could not read it, took the data up to an endstream 1 byte in, and read no row past it.")]
+    public void A_deferred_length_the_chain_read_one_byte_of_data_without_says_so_in_the_singular(string length, string message)
+    {
+        // The stream's one row is one byte, after which its data spells an endstream: the chain takes that byte. The length,
+        // read once the chain is, names an object the file lacks, or gives the whole data, which the stream's own endstream
+        // confirms (#241).
+        using var document = PdfDocument.Open(ChainFiles.OneByteRowBeforeASpelledEndStream(length));
+
+        document.Diagnostics.Should().ContainSingle(entry => entry.Code == PdfDiagnosticCodes.StreamLengthInvalid).Which.Message.Should().Be(message);
+        document.Catalog.Required().IsOfType(PdfName.Catalog).Should().BeTrue();
     }
 
     [Fact]
@@ -2817,7 +2850,7 @@ public class DocumentReaderTests
 
         document.WasRepaired.Should().BeFalse();
         document.Diagnostics.Select(diagnostic => diagnostic.Code).Should().Equal(PdfDiagnosticCodes.LimitTrailer, PdfDiagnosticCodes.XRefOffsetAdjusted);
-        document.Diagnostics[1].Message.Should().EndWith(string.Create(CultureInfo.InvariantCulture, $"was found {stream - named} bytes from there."));
+        document.Diagnostics[1].Message.Should().EndWith(string.Create(CultureInfo.InvariantCulture, $"was found {stream - named} bytes after it."));
         document.GetObject(new PdfObjectId(6)).AsDictionary().IsOfType(PdfName.Font).Should().BeTrue();
     }
 

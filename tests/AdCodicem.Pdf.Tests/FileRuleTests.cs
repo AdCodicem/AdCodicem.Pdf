@@ -64,6 +64,21 @@ public class FileRuleTests
     }
 
     [Theory]
+    [InlineData(" ", "1 byte")]
+    [InlineData("\n\n", "2 bytes")]
+    public void The_bytes_before_the_header_are_counted_alike_by_the_reader_and_the_rule(string before, string count)
+    {
+        // A count of one in the singular, in the reader's report and in the rule's finding (#241).
+        var file = Encoding.Latin1.GetBytes(before).Concat(PdfTemplate.Build(PdfTemplate.Sound)).ToArray();
+        using var document = PdfDocument.Open(file);
+
+        document.Diagnostics.Should().ContainSingle(entry => entry.Code == PdfDiagnosticCodes.XRefOffsetAdjusted).Which.Message.Should().Be(
+            $"The PDF header starts {count} into the file; offsets were shifted accordingly.");
+        Single(new PdfValidator().Validate(document), PdfValidationRuleIds.FileHeaderOffset).Message.Should().Be(
+            $"The PDF header starts {count} into the file instead of at its first byte.");
+    }
+
+    [Theory]
     [InlineData("%PDF-1.8", "The header names version 1.8, which is not a version of PDF: 1.0 to 1.7, or 2.0.")]
     [InlineData("%PDF-2.1", "The header names version 2.1, which is not a version of PDF: 1.0 to 1.7, or 2.0.")]
     [InlineData("%PDF-2.2", "The header names version 2.2, which is not a version of PDF: 1.0 to 1.7, or 2.0.")]

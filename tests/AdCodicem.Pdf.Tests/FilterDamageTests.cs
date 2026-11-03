@@ -333,6 +333,28 @@ public class FilterDamageTests
     }
 
     [Fact]
+    public void A_flate_stream_that_keeps_one_byte_says_so_in_the_singular()
+    {
+        // One byte decodes, then a checksum disagrees with it, or the data turns corrupt: each report says what it kept in
+        // the singular (#241).
+        byte[] plain = [(byte)'A'];
+        var data = CorruptAfter(plain, out var faultAt);
+        var mismatched = new PdfDiagnostics();
+        var corrupt = new PdfDiagnostics();
+
+        Decode(WithWrongChecksum(Compress(plain, CompressionLevel.Optimal)), PdfName.FlateDecode, mismatched).ToArray().Should().Equal(plain);
+        Decode(data, PdfName.FlateDecode, corrupt).ToArray().Should().Equal(plain);
+
+        Describe(mismatched).Should().Be(Report(
+            PdfDiagnosticSeverity.Warning,
+            "A Flate stream's checksum disagrees with the 1 byte its data decoded to; it was kept, and may be wrong.",
+            PdfDiagnosticCodes.FilterChecksumMismatch));
+        Describe(corrupt).Should().Be(Report(
+            PdfDiagnosticSeverity.Warning,
+            $"A Flate stream is corrupt at byte {faultAt} of its {data.Length}; the 1 byte decoded before the fault was found was kept."));
+    }
+
+    [Fact]
     public void Leaves_encoded_a_stream_that_turns_corrupt_before_anything_decodes()
     {
         // A header, then a first block deflate does not define: nothing decoded before the fault, read any way.
@@ -1158,6 +1180,7 @@ public class FilterDamageTests
     [InlineData("ASCIIHexDecode", "48656C6C6", "48656C6C60", PdfDiagnosticSeverity.Warning, "An ASCIIHex stream ends without its > end marker, after a digit without its pair; it was completed with a 0 as a last one is, and data may have been lost.")]
     [InlineData("RunLengthDecode", "hex:014849", "4849", PdfDiagnosticSeverity.Repair, "A RunLength stream ends without its end-of-data byte; it decoded to the end of its data.")]
     [InlineData("RunLengthDecode", "hex:044849", "4849", PdfDiagnosticSeverity.Warning, "A RunLength stream ends inside a run of 5 bytes, of which it holds 2; they were kept, and data may have been lost.")]
+    [InlineData("RunLengthDecode", "hex:0248", "48", PdfDiagnosticSeverity.Warning, "A RunLength stream ends inside a run of 3 bytes, of which it holds 1; it was kept, and data may have been lost.")]
     [InlineData("RunLengthDecode", "hex:01484902", "4849", PdfDiagnosticSeverity.Warning, "A RunLength stream ends after the length of a run of 3 bytes, without any of them; data may have been lost.")]
     [InlineData("RunLengthDecode", "hex:014849FE", "4849", PdfDiagnosticSeverity.Warning, "A RunLength stream ends after the length of a run, without the byte the run repeats; data may have been lost.")]
     [InlineData("RunLengthDecode", "hex:01484900", "4849", PdfDiagnosticSeverity.Warning, "A RunLength stream ends after the length of a run of 1 byte, without that byte; data may have been lost.")]

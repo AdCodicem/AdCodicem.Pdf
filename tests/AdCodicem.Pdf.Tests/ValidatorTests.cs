@@ -574,8 +574,6 @@ public class ValidatorTests
         RuleText.Kind(PdfBoolean.True).Should().Be("a boolean");
         RuleText.Kind(new PdfReference(new PdfObjectId(1))).Should().Be("a reference");
         RuleText.Kind(PdfNull.Instance).Should().Be("null");
-        RuleText.Pages(1).Should().Be("1 page");
-        RuleText.Pages(2).Should().Be("2 pages");
         FileQuote.Name(PdfName.Get("A\0B")).Should().Be("/A#00B");
     }
 

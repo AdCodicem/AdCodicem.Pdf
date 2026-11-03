@@ -1,4 +1,5 @@
 using System.Globalization;
+using AdCodicem.Pdf.IO;
 using AdCodicem.Pdf.Objects;
 
 namespace AdCodicem.Pdf.Validation;
@@ -40,17 +41,17 @@ internal readonly record struct BrokenObjectStream(
     public string Describe() => Kind switch
     {
         BrokenObjectStreamKind.NotHeld =>
-            Invariant($"The index places {RuleText.Objects(Objects)} in object stream {Stream}, which it does not hold as an object."),
+            Invariant($"The index places {CountText.Objects(Objects)} in object stream {Stream}, which it does not hold as an object."),
         BrokenObjectStreamKind.InAnotherStream =>
-            Invariant($"The index places {RuleText.Objects(Objects)} in object stream {Stream}, which it places in object stream {Detail} in turn: an object stream cannot be stored in another."),
+            Invariant($"The index places {CountText.Objects(Objects)} in object stream {Stream}, which it places in object stream {Detail} in turn: an object stream cannot be stored in another."),
         BrokenObjectStreamKind.NotAnObjectStream =>
-            Invariant($"Object {Stream}, where the index places {RuleText.Objects(Objects)}, {Fault}."),
+            Invariant($"Object {Stream}, where the index places {CountText.Objects(Objects)}, {Fault}."),
         BrokenObjectStreamKind.Unreadable =>
-            Invariant($"Object stream {Stream}, where the index places {RuleText.Objects(Objects)}, cannot be read: {Fault}."),
+            Invariant($"Object stream {Stream}, where the index places {CountText.Objects(Objects)}, cannot be read: {Fault}."),
         _ when Objects == 1 =>
             Invariant($"Object stream {Stream}, where the index places 1 object, can be read only in part: {Fault}; it is not listed before that, and lost."),
         _ =>
-            Invariant($"Object stream {Stream}, where the index places {RuleText.Objects(Objects)}, can be read only in part: {Fault}; {Detail} of them {(Detail == 1 ? "is" : "are")} not listed before that, and lost."),
+            Invariant($"Object stream {Stream}, where the index places {CountText.Objects(Objects)}, can be read only in part: {Fault}; {Detail} of them {(Detail == 1 ? "is" : "are")} not listed before that, and lost."),
     };
 
     private static string Invariant(FormattableString text) => text.ToString(CultureInfo.InvariantCulture);

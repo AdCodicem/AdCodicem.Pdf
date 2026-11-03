@@ -948,10 +948,10 @@ internal ref struct PdfObjectParser
                     fits
                         ? string.Create(
                             CultureInfo.InvariantCulture,
-                            $"The stream declared {length} bytes, and no endstream follows them; the declared length is kept without a search, the document's searches for endstream having read as much of the file as they may.")
+                            $"The stream declared {CountText.Bytes(length)}, and no endstream follows {(length == 1 ? "it" : "them")}; the declared length is kept without a search, the document's searches for endstream having read as much of the file as they may.")
                         : string.Create(
                             CultureInfo.InvariantCulture,
-                            $"{Describe(declared)}, and no endstream follows its data in the bytes read with its object; the {kept} bytes {(search.NextObject is null ? "to the end of the file" : "up to the next object")} are taken as its data without a search, the document's searches for endstream having read as much of the file as they may."),
+                            $"{Describe(declared)}, and no endstream follows its data in the bytes read with its object; the {CountText.Bytes(kept)} {(search.NextObject is null ? "to the end of the file" : "up to the next object")} {(kept == 1 ? "is" : "are")} taken as its data without a search, the document's searches for endstream having read as much of the file as they may."),
                     dataStart);
             }
 
@@ -967,7 +967,7 @@ internal ref struct PdfObjectParser
                     PdfDiagnosticCodes.StreamTruncated,
                     string.Create(
                         CultureInfo.InvariantCulture,
-                        $"The stream has no endstream: its object's endobj follows the {length} bytes it declared, which are taken as its data."),
+                        $"The stream has no endstream: its object's endobj follows the {CountText.Bytes(length)} it declared, which {(length == 1 ? "is" : "are")} taken as its data."),
                     dataStart);
             }
 
@@ -985,7 +985,7 @@ internal ref struct PdfObjectParser
                     PdfDiagnosticCodes.StreamTruncated,
                     string.Create(
                         CultureInfo.InvariantCulture,
-                        $"{Describe(declared)}, and no endstream follows its data {Where(search.NextObject)}: its object's endobj ends it, after {taken} bytes."),
+                        $"{Describe(declared)}, and no endstream follows its data {Where(search.NextObject)}: its object's endobj ends it, after {CountText.Bytes(taken)}."),
                     dataStart);
             }
 
@@ -1001,7 +1001,7 @@ internal ref struct PdfObjectParser
                     PdfDiagnosticCodes.StreamLengthInvalid,
                     string.Create(
                         CultureInfo.InvariantCulture,
-                        $"The stream declared {length} bytes, and no endstream follows them {Where(search.NextObject)}; the declared length is kept."),
+                        $"The stream declared {CountText.Bytes(length)}, and no endstream follows {(length == 1 ? "it" : "them")} {Where(search.NextObject)}; the declared length is kept."),
                     dataStart);
             }
 
@@ -1027,7 +1027,7 @@ internal ref struct PdfObjectParser
                 search.NextObject is null ? PdfDiagnosticCodes.StreamTruncated : PdfDiagnosticCodes.StreamLengthInvalid,
                 string.Create(
                     CultureInfo.InvariantCulture,
-                    $"{Describe(declared)}, and no endstream follows its data {Where(search.NextObject)}; the {upToStop} bytes {(search.NextObject is null ? "to the end of the file" : "up to that object")} are taken as its data."),
+                    $"{Describe(declared)}, and no endstream follows its data {Where(search.NextObject)}; the {CountText.Bytes(upToStop)} {(search.NextObject is null ? "to the end of the file" : "up to that object")} {(upToStop == 1 ? "is" : "are")} taken as its data."),
                 dataStart);
         }
 
@@ -1224,8 +1224,8 @@ internal ref struct PdfObjectParser
 
     /// <summary>Says what was wrong with a stream's <c>/Length</c>, its <c>endstream</c> found after <paramref name="recovered"/> bytes.</summary>
     private static string DescribeRecovered(DeclaredLength declared, int recovered) => declared.Form == StreamLengthForm.Integer
-        ? string.Create(CultureInfo.InvariantCulture, $"The stream declared {declared.Value} bytes but ended after {recovered}.")
-        : string.Create(CultureInfo.InvariantCulture, $"{Describe(declared)}; its data ends after {recovered} bytes.");
+        ? string.Create(CultureInfo.InvariantCulture, $"The stream declared {CountText.Bytes(declared.Value.GetValueOrDefault())} but ended after {recovered}.")
+        : string.Create(CultureInfo.InvariantCulture, $"{Describe(declared)}; its data ends after {CountText.Bytes(recovered)}.");
 
     /// <summary>
     /// Says how a stream's <c>/Length</c> was written, as a report starts: the length it declared, or why it gives none.
@@ -1234,7 +1234,7 @@ internal ref struct PdfObjectParser
     {
         if (declared.Form == StreamLengthForm.Integer)
         {
-            return string.Create(CultureInfo.InvariantCulture, $"The stream declared {declared.Value} bytes");
+            return "The stream declared " + CountText.Bytes(declared.Value.GetValueOrDefault());
         }
 
         if (declared.Form == StreamLengthForm.Absent)

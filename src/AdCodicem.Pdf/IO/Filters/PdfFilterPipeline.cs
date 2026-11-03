@@ -602,7 +602,7 @@ internal static class PdfFilterPipeline
             DataEnding.UnmarkedInsideRun when faults.UnitHeld == 0 =>
                 Invariant($"{subject} ends after the length of a run of {faults.UnitLength} bytes, without any of them; data may have been lost."),
             DataEnding.UnmarkedInsideRun =>
-                Invariant($"{subject} ends inside a run of {faults.UnitLength} bytes, of which it holds {faults.UnitHeld}; they were kept, and data may have been lost."),
+                Invariant($"{subject} ends inside a run of {faults.UnitLength} bytes, of which it holds {faults.UnitHeld}; {(faults.UnitHeld == 1 ? "it was" : "they were")} kept, and data may have been lost."),
             _ => $"{subject} ends after the length of a run, without the byte the run repeats; data may have been lost.",
         };
 
@@ -622,9 +622,11 @@ internal static class PdfFilterPipeline
             guard.Reach(
                 PdfLimit.FilterChain,
                 diagnostics,
-                string.Create(
-                    CultureInfo.InvariantCulture,
-                    $"The /Filter entry names more than {chain.EndIndex:N0} filters; decoding stopped after the first {chain.EndIndex:N0}."),
+                chain.EndIndex == 1
+                    ? "The /Filter entry names more than 1 filter; decoding stopped after the first."
+                    : string.Create(
+                        CultureInfo.InvariantCulture,
+                        $"The /Filter entry names more than {chain.EndIndex:N0} filters; decoding stopped after the first {chain.EndIndex:N0}."),
                 position);
             return;
         }
@@ -673,7 +675,7 @@ internal static class PdfFilterPipeline
                     PdfDiagnosticCodes.FilterChecksumMismatch,
                     string.Create(
                         CultureInfo.InvariantCulture,
-                        $"A Flate stream's checksum disagrees with the {decoded} bytes its data decoded to; all were kept, and some may be wrong."),
+                        $"A Flate stream's checksum disagrees with the {CountText.Bytes(decoded)} its data decoded to; {(decoded == 1 ? "it was kept, and may be wrong" : "all were kept, and some may be wrong")}."),
                     position);
                 break;
 
@@ -689,7 +691,7 @@ internal static class PdfFilterPipeline
                     PdfDiagnosticCodes.FilterFailed,
                     string.Create(
                         CultureInfo.InvariantCulture,
-                        $"A Flate stream is corrupt at byte {faultAt} of its {encoded}; the {decoded} bytes decoded before the fault was found were kept."),
+                        $"A Flate stream is corrupt at byte {faultAt} of its {encoded}; the {CountText.Bytes(decoded)} decoded before the fault was found {(decoded == 1 ? "was" : "were")} kept."),
                     position);
                 break;
         }

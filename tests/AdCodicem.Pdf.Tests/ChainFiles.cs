@@ -262,6 +262,40 @@ internal static class ChainFiles
     }
 
     /// <summary>
+    /// A file of two sections: a classic table that indexes the catalog, the page tree, the page and object 4, then
+    /// cross-reference stream 5, whose <c>/Prev</c> names the table and whose <c>/Length</c> is <paramref name="length"/>.
+    /// The stream's one row, one byte wide under <c>/W [0 1 0]</c>, places the catalog where it is, at offset 65, the
+    /// letter <c>A</c>; its data then spells <c>endstream</c> after an end-of-line, before its own: the chain, which reads
+    /// it before object 4, takes one byte of data. Object 4 holds the whole data's length, 13.
+    /// </summary>
+    public static byte[] OneByteRowBeforeASpelledEndStream(string length)
+    {
+        using var file = new Writer("1.5");
+        file.Text("%" + new string('-', 54) + "\n");
+        file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>");
+        file.Object(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>");
+        file.Object(3, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << >> >>");
+        byte[] data = [(byte)file.OffsetOf(1), .. "\nendstream\0\0"u8];
+        file.Object(4, data.Length.ToString(CultureInfo.InvariantCulture));
+        var table = file.Position;
+        var rows = new StringBuilder("xref\n0 5\n0000000000 65535 f\r\n");
+
+        for (var number = 1; number <= 4; number++)
+        {
+            rows.Append(CultureInfo.InvariantCulture, $"{file.OffsetOf(number):D10} 00000 n\r\n");
+        }
+
+        file.Text(rows + "trailer\n<< /Size 5 /Root 1 0 R >>\n");
+        var stream = file.Position;
+        file.Stream(
+            5,
+            string.Create(CultureInfo.InvariantCulture, $"/Type /XRef /Size 6 /W [0 1 0] /Index [1 1] /Prev {table} /Root 1 0 R /Length {length}"),
+            data);
+        file.StartXRef(stream);
+        return file.ToArray();
+    }
+
+    /// <summary>
     /// A file of two revisions. The first writes object 8 as <c>(old)</c> and indexes it in cross-reference stream 7. The
     /// second writes it again as <c>(new)</c>, and indexes it in cross-reference stream 10, whose <c>/Length</c> names
     /// object 4, which only that stream indexes, and whose rows of objects 5 and 6, of reserved types, spell

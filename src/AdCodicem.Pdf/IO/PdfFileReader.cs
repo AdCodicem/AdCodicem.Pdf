@@ -2575,7 +2575,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
                 };
                 message = string.Create(
                     CultureInfo.InvariantCulture,
-                    $"The /Length of cross-reference stream {deferred.Stream} names object {number} {generation}, {held}; the chain took its data up to its endstream, after {deferred.Taken} bytes.");
+                    $"The /Length of cross-reference stream {deferred.Stream} names object {number} {generation}, {held}; the chain took its data up to its endstream, after {CountText.Bytes(deferred.Taken)}.");
             }
             else if (length != deferred.Taken)
             {
@@ -2583,13 +2583,13 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
 
                 if (((IPdfStreamDataProvider)this).CheckEndStream(dataStart + length) is null)
                 {
-                    message = string.Create(CultureInfo.InvariantCulture, $"The stream declared {length} bytes but ended after {deferred.Taken}.");
+                    message = string.Create(CultureInfo.InvariantCulture, $"The stream declared {CountText.Bytes(length)} but ended after {deferred.Taken}.");
                 }
                 else if (dataStart + length > stopped)
                 {
                     message = string.Create(
                         CultureInfo.InvariantCulture,
-                        $"The /Length of cross-reference stream {deferred.Stream} gives {length} bytes, which an endstream confirms; the chain, which could not read it, took the data up to an endstream {deferred.Taken} bytes in, and read no row past it.");
+                        $"The /Length of cross-reference stream {deferred.Stream} gives {CountText.Bytes(length)}, which an endstream confirms; the chain, which could not read it, took the data up to an endstream {CountText.Bytes(deferred.Taken)} in, and read no row past it.");
                 }
             }
 
@@ -2842,7 +2842,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
             _headerOffset = index;
             _diagnostics.Repair(
                 PdfDiagnosticCodes.XRefOffsetAdjusted,
-                string.Create(CultureInfo.InvariantCulture, $"The PDF header starts {index} bytes into the file; offsets were shifted accordingly."),
+                string.Create(CultureInfo.InvariantCulture, $"The PDF header starts {CountText.Bytes(index)} into the file; offsets were shifted accordingly."),
                 index);
         }
 
@@ -2991,10 +2991,10 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
                     inFile
                         ? string.Create(
                             CultureInfo.InvariantCulture,
-                            $"The cross-reference chain has more than {_guard.Bound(PdfLimit.XRefSectionCount):N0} sections; the older ones were not read.")
+                            $"The cross-reference chain has more than {CountText.Grouped(_guard.Bound(PdfLimit.XRefSectionCount), "section", "sections")}; the older ones were not read.")
                         : string.Create(
                             CultureInfo.InvariantCulture,
-                            $"The cross-reference chain has more than {_guard.Bound(PdfLimit.XRefSectionCount):N0} sections; the older ones were not read: the chain goes on at offset {DescribeOffset(offset)}, outside the file."),
+                            $"The cross-reference chain has more than {CountText.Grouped(_guard.Bound(PdfLimit.XRefSectionCount), "section", "sections")}; the older ones were not read: the chain goes on at offset {DescribeOffset(offset)}, outside the file."),
                     inFile ? cut : namedFrom);
                 break;
             }
@@ -3290,7 +3290,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
                     PdfDiagnosticCodes.XRefOffsetAdjusted,
                     string.Create(
                         CultureInfo.InvariantCulture,
-                        $"The cross-reference section {section.NamedBy} names at offset {absolute} was found {candidate - absolute} bytes from there."),
+                        $"The cross-reference section {section.NamedBy} names at offset {absolute} was found {CountText.Distance(candidate - absolute, "it")}."),
                     candidate);
 
                 if (state == XRefSectionState.Read)
@@ -5637,7 +5637,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
         {
             _diagnostics.Repair(
                 PdfDiagnosticCodes.XRefOffsetAdjusted,
-                string.Create(CultureInfo.InvariantCulture, $"Object {id.Number} was found {nearby - offset} bytes from where the index said."),
+                string.Create(CultureInfo.InvariantCulture, $"Object {id.Number} was found {CountText.Distance(nearby - offset, "where the index said")}."),
                 nearby);
 
             // The entry records the header found, as a rebuilt one does: not the generation of the reference that asked
@@ -6207,7 +6207,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
         if (first > data.Length)
         {
             fault = string.Create(
-                CultureInfo.InvariantCulture, $"it decodes to {data.Length} bytes, fewer than its /First of {first}");
+                CultureInfo.InvariantCulture, $"it decodes to {CountText.Bytes(data.Length)}, fewer than its /First of {first}");
             return cut ? ObjectStreamHeaderResult.CutByLimit : ObjectStreamHeaderResult.Unreadable;
         }
 
@@ -6224,12 +6224,12 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
         fault = header.Fault switch
         {
             ObjectStreamHeaderFault.Ended => string.Create(
-                CultureInfo.InvariantCulture, $"its header lists {header.Count} of the {count} objects its /N declares, then ends"),
+                CultureInfo.InvariantCulture, $"its header lists {header.Count} of the {CountText.Objects(count)} its /N declares, then ends"),
             ObjectStreamHeaderFault.Stray => string.Create(
-                CultureInfo.InvariantCulture, $"its header lists {header.Count} of the {count} objects its /N declares, then something else"),
+                CultureInfo.InvariantCulture, $"its header lists {header.Count} of the {CountText.Objects(count)} its /N declares, then something else"),
             _ => string.Create(
                 CultureInfo.InvariantCulture,
-                $"its header lists {header.Count} of the {count} objects its /N declares, then object {header.FaultNumber} at offset {header.FaultOffset}, {header.Why(data.Length)}"),
+                $"its header lists {header.Count} of the {CountText.Objects(count)} its /N declares, then object {header.FaultNumber} at offset {header.FaultOffset}, {header.Why(data.Length)}"),
         };
         return ObjectStreamHeaderResult.Unreadable;
     }
@@ -7768,7 +7768,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
                         position,
                         string.Create(
                             CultureInfo.InvariantCulture,
-                            $"gives in /First an offset, {first:N0}, past the end of its decoded data, which is {data.Length:N0} bytes long"),
+                            $"gives in /First an offset, {first:N0}, past the end of its decoded data, which is {CountText.Grouped(data.Length, "byte", "bytes")} long"),
                         0,
                         count);
                 }
@@ -7788,13 +7788,13 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
                     header.Fault switch
                     {
                         ObjectStreamHeaderFault.Ended => string.Create(
-                            CultureInfo.InvariantCulture, $"has a header that ends after {header.Count:N0} of the {count:N0} objects its /N declares"),
+                            CultureInfo.InvariantCulture, $"has a header that ends after {header.Count:N0} of the {CountText.Grouped(count, "object", "objects")} its /N declares"),
                         ObjectStreamHeaderFault.Stray => string.Create(
                             CultureInfo.InvariantCulture,
-                            $"has a header that holds something other than an object number and an offset after {header.Count:N0} of the {count:N0} objects its /N declares"),
+                            $"has a header that holds something other than an object number and an offset after {header.Count:N0} of the {CountText.Grouped(count, "object", "objects")} its /N declares"),
                         _ => string.Create(
                             CultureInfo.InvariantCulture,
-                            $"has a header that lists object {header.FaultNumber} at offset {header.FaultOffset}, {header.Why(data.Length)}, after {header.Count:N0} of the {count:N0} objects its /N declares"),
+                            $"has a header that lists object {header.FaultNumber} at offset {header.FaultOffset}, {header.Why(data.Length)}, after {header.Count:N0} of the {CountText.Grouped(count, "object", "objects")} its /N declares"),
                     },
                     header.Count,
                     count);

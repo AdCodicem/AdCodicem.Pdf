@@ -192,6 +192,41 @@ public class StreamLengthTests
     }
 
     [Theory]
+    [InlineData("<< /Length 1 >>\nstream\nABC\nendstream", "The stream declared 1 byte but ended after 3.")]
+    [InlineData("<< >>\nstream\nX\nendstream", "The stream has no /Length; its data ends after 1 byte.")]
+    [InlineData("<< /Length 1 >>\nstream\nX", "The stream has no endstream: its object's endobj follows the 1 byte it declared, which is taken as its data.")]
+    [InlineData("<< /Length 99 >>\nstream\nX", "The stream declared 99 bytes, and no endstream follows its data before the next object, at {0}: its object's endobj ends it, after 1 byte.")]
+    [InlineData("<< /Length 1 >>\nstream\nXYZ", "The stream declared 1 byte, and no endstream follows its data before the next object, at {0}: its object's endobj ends it, after 3 bytes.")]
+    public void A_length_or_data_of_one_byte_is_said_in_the_singular(string stream, string message)
+    {
+        // Each report a stream's length earns, with one byte declared, or taken as its data, before object 6 (#241).
+        var file = Document((StreamNumber, stream), (6, "(next)"));
+
+        using var document = PdfDocument.Open(file);
+        _ = document.GetObject(new PdfObjectId(StreamNumber));
+
+        document.Diagnostics.Should().ContainSingle().Which.Message.Should().Be(
+            string.Format(CultureInfo.InvariantCulture, message, HeaderOf(file, 6)));
+    }
+
+    [Theory]
+    [InlineData("<< /Length 1 >>\nstream\nXYZ", "The stream declared 1 byte, and no endstream follows it before the end of the file; the declared length is kept.")]
+    [InlineData("<< /Length 99 >>\nstream\nX", "The stream declared 99 bytes, and no endstream follows its data before the end of the file; the 1 byte to the end of the file is taken as its data.")]
+    public void A_length_or_data_of_one_byte_the_file_ends_in_is_said_in_the_singular(string stream, string message)
+    {
+        // The stream ends the file, its object without endobj, and the index is rebuilt: one byte declared and kept, or
+        // taken up to the end of the file (#241).
+        var file = Encoding.ASCII.GetBytes(
+            "%PDF-1.7\n1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n2 0 obj\n<< /Type /Pages /Kids [] /Count 0 >>\nendobj\n" +
+            "5 0 obj\n" + stream);
+
+        using var document = PdfDocument.Open(file);
+        _ = document.GetObject(new PdfObjectId(StreamNumber));
+
+        document.Diagnostics.Should().ContainSingle(d => d.Position == DataStartOf(file, StreamNumber)).Which.Message.Should().Be(message);
+    }
+
+    [Theory]
     [InlineData(0)]
     [InlineData(1)]
     [InlineData(1000)]
@@ -2356,6 +2391,51 @@ public class StreamLengthTests
         last.Taken.Should().Be((int)(file.Length - last.DataStart));
         document.Diagnostics.Should().ContainSingle(d => d.Position == last.DataStart).Which.Message.Should().Be(
             Invariant($"The stream declared {Declared} bytes, and no endstream follows its data in the bytes read with its object; the {last.Taken} bytes to the end of the file are taken as its data without a search, the document's searches for endstream having read as much of the file as they may."));
+    }
+
+    [Fact]
+    public void A_stream_left_unsearched_that_declares_one_byte_says_so_in_the_singular()
+    {
+        // As streams whose data share a stretch exhaust what the searches may read, stream 33 is left unsearched: it declares
+        // one byte, which no endstream follows within the bytes read with its object, and keeps it (#241).
+        const int Streams = 30;
+        var (file, _) = NestedStreams(Streams, 100_000, Invariant($"{Streams + 3} 0 obj\n<< /Length 1 >>\nstream\nX{Data(3 * Window)}\nendobj\n"));
+        using var document = PdfDocument.Open(file);
+
+        for (var number = 3; number <= Streams + 2; number++)
+        {
+            document.GetObject(new PdfObjectId(number));
+        }
+
+        var reports = document.Diagnostics.Count;
+        document.GetObject(new PdfObjectId(Streams + 3)).AsStream().Required().Data.Length.Should().Be(1);
+
+        document.Diagnostics.Skip(reports).Should().ContainSingle().Which.Message.Should().Be(
+            "The stream declared 1 byte, and no endstream follows it; the declared length is kept without a search, the document's searches for endstream having read as much of the file as they may.");
+    }
+
+    [Fact]
+    public void A_stream_left_unsearched_that_takes_one_byte_up_to_the_next_object_says_so_in_the_singular()
+    {
+        // As above, stream 33 is left unsearched, its dictionary ending where the window its object is read in does: of
+        // its data, its object's bytes hold none, and the one byte up to object 34 is taken (#241).
+        const int Streams = 30;
+        var head = Invariant($"{Streams + 3} 0 obj\n<< /Length 99 /Pad (");
+        var tail = ") >>\nstream\n";
+        var stream = head + new string('p', Window - head.Length - tail.Length) + tail + "X";
+        var (file, _) = NestedStreams(Streams, 100_000, stream, Invariant($"{Streams + 4} 0 obj\n(next)\nendobj\n"));
+        using var document = PdfDocument.Open(file);
+
+        for (var number = 3; number <= Streams + 2; number++)
+        {
+            document.GetObject(new PdfObjectId(number));
+        }
+
+        var reports = document.Diagnostics.Count;
+        document.GetObject(new PdfObjectId(Streams + 3)).AsStream().Required().Data.Length.Should().Be(1);
+
+        document.Diagnostics.Skip(reports).Should().ContainSingle().Which.Message.Should().Be(
+            "The stream declared 99 bytes, and no endstream follows its data in the bytes read with its object; the 1 byte up to the next object is taken as its data without a search, the document's searches for endstream having read as much of the file as they may.");
     }
 
     [Fact]

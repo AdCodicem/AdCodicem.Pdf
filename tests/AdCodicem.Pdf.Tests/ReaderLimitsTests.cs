@@ -173,6 +173,30 @@ public class ReaderLimitsTests
     }
 
     [Theory]
+    [InlineData("decoded stream", "The /ASCIIHexDecode data decodes to more than 1 byte; decoding stopped there.")]
+    [InlineData("stream length", "A stream's data runs past 1 byte; only what lies within it was read.")]
+    [InlineData("object", "Object 1 runs past 1 byte, its stream data aside; only what lies within it was read.")]
+    [InlineData("section length", "The cross-reference table runs past 1 byte; only the entries within it were read.")]
+    [InlineData("section count", "The cross-reference chain has more than 1 section; the older ones were not read.")]
+    [InlineData("cross-reference stream", "The dictionary of the object read as a cross-reference stream runs past 1 byte; only what lies within it was read.")]
+    [InlineData("filter chain", "The /Filter entry names more than 1 filter; decoding stopped after the first.")]
+    public void A_guard_set_to_one_says_its_bound_in_the_singular(string guard, string reported)
+    {
+        // Each guard at one, the least it takes, reached on the file of its own case: the bound it names is said in the
+        // singular (#241). Object 3, a stream in the cases of the guards on streams, is decoded.
+        var @case = Case.For(guard);
+        using var document = PdfDocument.Open(@case.File, new PdfReaderOptions { Limits = With(@case.Reached, @case.LimitName, 1) });
+
+        if (document.GetObject(new PdfObjectId(3)) is PdfStream stream)
+        {
+            _ = stream.Decode(document.Diagnostics);
+        }
+
+        document.Diagnostics.Where(entry => entry.Code == @case.Code).Select(entry => entry.Message)
+            .Should().Contain($"{reported} Raise PdfReaderLimits.{@case.LimitName} to read past it.");
+    }
+
+    [Theory]
     [MemberData(nameof(Guards))]
     public void Raising_a_guard_reads_the_document_whole(string guard)
     {

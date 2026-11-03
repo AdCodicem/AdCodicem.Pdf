@@ -23,15 +23,16 @@ namespace AdCodicem.Pdf.Tests;
 public class CrossReferenceChainTests
 {
     [Theory]
-    [InlineData(-7)]
-    [InlineData(-2)]
-    [InlineData(1)]
-    [InlineData(3)]
-    [InlineData(12)]
-    public void Reads_a_section_that_prev_names_a_few_bytes_off(int error)
+    [InlineData(-7, "7 bytes after")]
+    [InlineData(-2, "2 bytes after")]
+    [InlineData(1, "1 byte before")]
+    [InlineData(3, "3 bytes before")]
+    [InlineData(12, "12 bytes before")]
+    public void Reads_a_section_that_prev_names_a_few_bytes_off(int error, string found)
     {
         // Twelve bytes past the keyword is where IBM's QMF manual points, inside the first row of the table. One
-        // byte before it is the end-of-line the keyword follows, where the table is read as it stands.
+        // byte before it is the end-of-line the keyword follows, where the table is read as it stands. The report says
+        // which way the section was found, a count of one in the singular (#241).
         var (file, original) = Updated(prevError: error);
 
         using var document = PdfDocument.Open(file);
@@ -44,7 +45,7 @@ public class CrossReferenceChainTests
         report.Position.Should().Be(original);
         report.Message.Should().Be(string.Create(
             CultureInfo.InvariantCulture,
-            $"The cross-reference section /Prev names at offset {original + error} was found {-error} bytes from there."));
+            $"The cross-reference section /Prev names at offset {original + error} was found {found} it."));
     }
 
     [Fact]
