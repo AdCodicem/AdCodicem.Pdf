@@ -367,6 +367,21 @@ NUGET_PACKAGES="$(mktemp -d)" dotnet publish -c Release -p:AdCodicemVersion=0.1.
   && out/AdCodicem.Pdf.Compat ../corpus
 ```
 
+The next SDK need not be installed: its `linux-x64` tarball, from the release metadata on `builds.dotnet.microsoft.com`,
+unpacked into a folder of its own, will do — the `dotnet` in that folder takes the SDK and the runtimes beside it. Called
+by its path from `tests/Compat`, it runs the publish above when it holds the SDK version `tests/Compat/global.json`
+names. It also runs the unit suite on the next runtime as the job does: built for `net10.0` by the current SDK, rolled
+forward, and the runtime checked rather than assumed:
+
+```bash
+dotnet build tests/AdCodicem.Pdf.Tests/AdCodicem.Pdf.Tests.csproj -c Release
+next=~/dotnet11   # the unpacked tarball
+suite=tests/AdCodicem.Pdf.Tests/bin/Release/net10.0/AdCodicem.Pdf.Tests.dll
+export DOTNET_ROLL_FORWARD=LatestMajor DOTNET_ROLL_FORWARD_TO_PRERELEASE=1
+"$next/dotnet" "$suite" --info | grep 'Runtime information:'   # linux-x64 - .NET 11.0.0-rc…
+"$next/dotnet" "$suite"   # the whole suite; --filter-class '*HostileInputMemoryTests' runs one class
+```
+
 Nothing bumps it but a person:
 
 - **At each release candidate of .NET 11**, one pull request moves `tests/Compat/global.json` to the new SDK version.

@@ -647,6 +647,8 @@ public class FileRuleTests
     [InlineData("/Size 3", "gives /Size 3, where the highest object number it and the sections it updates use, 3, makes it 4.")]
     [InlineData("/Size /Four", "gives a /Size that is not a count of objects.")]
     [InlineData("/Size -4", "gives a /Size that is not a count of objects.")]
+    [InlineData("/Size -1", "gives a /Size that is not a count of objects.")]
+    [InlineData("/Size 4.5", "gives a /Size that is not a count of objects.")]
     [InlineData("", "has no /Size.")]
     public void A_size_that_is_not_one_more_than_the_highest_number_is_a_warning(string size, string message)
     {
@@ -684,6 +686,27 @@ public class FileRuleTests
         }
     }
 
+    [Theory]
+    [InlineData(0)]
+    [InlineData(7)]
+    public void Sections_whose_size_is_wrong_past_the_report_s_room_are_counted_and_not_written(int capacity)
+    {
+        // #168: one finding a section, as many as the chain has; those past the room are counted, the newest written first.
+        const int Sections = 100;
+        var (file, tables) = HostileInputTests.SectionsGivingAWrongSize(Sections);
+        using var document = PdfDocument.Open(file);
+        var profile = new ValidationProfile("size", 1, [new SizeWrongRule()]);
+
+        var report = new PdfValidator(new PdfValidatorOptions { Profile = profile, FindingCapacity = capacity }).Validate(document);
+
+        report.WarningCount.Should().Be(Sections);
+        report.SuppressedCount.Should().Be(Sections - capacity);
+        report.Findings.Select(finding => finding.Message).Should().Equal(
+            tables.Reverse().Take(capacity).Select(table => string.Create(
+                CultureInfo.InvariantCulture,
+                $"The trailer of the cross-reference table at offset {table} gives /Size 99, where the highest object number it and the sections it updates use, 2, makes it 3.")));
+    }
+
     [Fact]
     public void Free_entries_after_the_last_object_count_in_the_size()
     {
@@ -702,6 +725,43 @@ public class FileRuleTests
             PdfTemplate.Build(PdfTemplate.Sound), rootNumber: 1, [(4, "(an update)")]);
 
         Validate(updated).Findings.Should().BeEmpty();
+    }
+
+    [Theory]
+    [InlineData("/Size 0", 1, null, "gives /Size 0, where the highest object number it and the sections it updates use, 3, makes it 4.")]
+    [InlineData("/Size 5", 3, "/Size 5", "gives /Size 5, where the highest object number it and the sections it updates use, 3, makes it 4.")]
+    public void An_older_section_s_size_is_judged_by_the_objects_it_and_the_older_ones_use(
+        string older, int added, string? newest, string message)
+    {
+        // A count of none is a count, and a wrong one. And the newest trailer's /Size, which leaves object 6 above it, is
+        // the error rule's to report there alone: the older section that gives it as well, where its own objects make it 4,
+        // is still judged.
+        var updates = new (int, string)[added];
+
+        for (var i = 0; i < added; i++)
+        {
+            updates[i] = (4 + i, "(an update)");
+        }
+
+        var original = PdfTemplate.SoundWith("/Size 4", older);
+        var file = TestPdfBuilder.AppendIncrementalUpdate(original, rootNumber: 1, updates);
+        file = newest is null ? file : Replace(file, "/Size 7", newest);
+
+        var report = Validate(file);
+
+        var finding = Single(report, PdfValidationRuleIds.FileSizeWrong);
+        finding.Location.Position.Should().Be(PdfTemplate.OffsetOf(file, "trailer"));
+        finding.Message.Should().Be($"The trailer of the cross-reference table at offset {PdfTemplate.OffsetOf(file, "xref\n")} {message}");
+        report.Contains(PdfValidationRuleIds.XRefObjectPastSize).Should().Be(newest is not null);
+    }
+
+    [Fact]
+    public void A_size_of_none_that_leaves_every_object_above_it_is_the_error_rule_s_alone()
+    {
+        var report = Validate(PdfTemplate.SoundWith("/Size 4", "/Size 0"));
+
+        report.Contains(PdfValidationRuleIds.XRefObjectPastSize).Should().BeTrue();
+        report.Contains(PdfValidationRuleIds.FileSizeWrong).Should().BeFalse();
     }
 
     [Fact]

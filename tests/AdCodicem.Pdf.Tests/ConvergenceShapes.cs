@@ -25,7 +25,7 @@ internal static partial class ConvergenceShapes
     {
         var shapes = new Dictionary<string, ConvergenceShape>(StringComparer.Ordinal);
 
-        foreach (var shape in (IEnumerable<ConvergenceShape>)[.. ObjectStreamShapes(), .. TrailerShapes(), .. RecordShapes(), .. LiveReadShapes()])
+        foreach (var shape in (IEnumerable<ConvergenceShape>)[.. ObjectStreamShapes(), .. HolderShapes(), .. TrailerShapes(), .. RecordShapes(), .. LiveReadShapes()])
         {
             shapes.Add(shape.Name, shape);
         }

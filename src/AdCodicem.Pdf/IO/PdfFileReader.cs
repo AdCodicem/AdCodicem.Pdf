@@ -209,9 +209,11 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// <see cref="ObjectStreamBudget"/> keeps; no stream keeps the raw data it read (#170). A stream an object stream
     /// holds, which ISO 32000-1 (7.5.7) forbids, is no exception: it is no value, and its <c>/Length</c> is not read
     /// (#161). The count alone does not bound the stack, since each load parses as deep as the parser allows: the stack
-    /// is asked as well before each load.
+    /// is asked as well before each load. The validator's walk of the object streams' dependencies nests its loads as these
+    /// do, and reads as null past this same bound (<see cref="Validation.ObjectStreamDependencies"/>, #277): were the bound
+    /// made a guard (#163), the walk would take the guard's.
     /// </summary>
-    private const int MaxNestedLoads = 64;
+    internal const int MaxNestedLoads = 64;
 
     /// <summary>
     /// How many references <see cref="Follow"/> follows from a value, as <see cref="PdfReference.Resolve"/> does — it fetches
@@ -478,10 +480,17 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
 
     /// <summary>
     /// A rebuild a load set off, which runs with that load and those it is part of still in flight, and is finished once the
-    /// outermost returns; null when no rebuild waits to be finished.
+    /// outermost returns; or one the source failed, which the next read or validation finishes again from the index its
+    /// scan made when the source failed the finish the outermost load ran, and runs again from its scan otherwise; null
+    /// when no rebuild waits to be finished.
     /// </summary>
     private UnfinishedRebuild? _unfinishedRebuild;
     private bool _nestingReported;
+
+    /// <summary>
+    /// Whether an object the validator's walks of the object streams did not load for want of stack was reported.
+    /// </summary>
+    private bool _walkCutReported;
 
     /// <summary>
     /// Whether the document finished opening: <see cref="Structure"/> holds what the file showed then, and what the reader
@@ -578,6 +587,10 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     }
 
     /// <summary>Gets the trailer of the document, merged across the whole cross-reference chain.</summary>
+    /// <remarks>
+    /// Read it again rather than keep it: a rebuild merges into a new trailer, leaving the one taken before as it was
+    /// (#167).
+    /// </remarks>
     public PdfDictionary Trailer => _xref.Trailer;
 
     /// <summary>
@@ -592,7 +605,10 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// <summary>Gets the number of indexed objects.</summary>
     public int ObjectCount => _xref.Count;
 
-    /// <summary>Gets the object numbers the index holds an entry for, free ones included.</summary>
+    /// <summary>
+    /// Gets the object numbers the index holds an entry for, free ones included: those it held when the enumeration began,
+    /// whatever a rebuild does meanwhile (#167).
+    /// </summary>
     public IEnumerable<int> ObjectNumbers => _xref.Numbers;
 
     /// <summary>Gets the bytes the file is read from.</summary>
@@ -647,6 +663,19 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// <summary>Gets what the object streams the reader keeps weigh, in bytes — their decoded data and their headers —, which it bounds.</summary>
     internal long ObjectStreamBytes => _objectStreamBytes;
 
+    /// <summary>
+    /// Gets the decoded data the reader keeps of object stream <paramref name="number"/>, or no data when it keeps none: the
+    /// stream not decoded yet, let go by the budget or by closing, or one that serves no object.
+    /// </summary>
+    /// <remarks>
+    /// Nothing in the library reads it. A test watches the array behind it through a weak reference to see that disposing a
+    /// document lets go of it: the memory of the whole process, which a shared pool's trim moves by tens of megabytes between
+    /// two measures, cannot say so (#307). It looks the stream up, and never enumerates the streams kept, whose order the
+    /// seeded hash sets (#155).
+    /// </remarks>
+    internal ReadOnlyMemory<byte> KeptObjectStreamData(int number) =>
+        _objectStreams.TryGetValue(number, out var contents) && contents is not null ? contents.Data : default;
+
     /// <inheritdoc/>
     /// <exception cref="ObjectDisposedException">The document was disposed.</exception>
     public PdfObject GetObject(PdfObjectId id)
@@ -667,7 +696,8 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
             return ReadWithoutLoading(id) ?? PdfNull.Instance;
         }
 
-        // A rebuild a load set off and could not finish, the load having thrown, is finished before anything is read.
+        // A rebuild a load set off and could not finish, the load having thrown, is finished before anything is read; and so
+        // is one the source failed, which is run again.
         if (_unfinishedRebuild is not null && _loading.Count == 0 && _objectStreamsLoading.Count == 0)
         {
             FinishUnfinishedRebuild();
@@ -734,11 +764,12 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
                 Cache(id.Number, value);
             }
         }
-        catch (Exception) when (_unfinishedRebuild is not null)
+        catch (Exception) when (_unfinishedRebuild is RebuildAwaitingFinish)
         {
             // A load threw while a rebuild a load set off is unfinished: the outermost finishes it before the exception
             // leaves, so that the index stays the one a rebuild run first gives. Decided here, not in the filter, which runs
-            // before the loads this one is part of have let go of their numbers.
+            // before the loads this one is part of have let go of their numbers. A rebuild whose scan the source failed is
+            // the exception itself, and is left to the next read, as a finish the source fails is.
             if (_loading.Count == 1 && _objectStreamsLoading.Count == 0)
             {
                 _loading.Remove(id.Number);
@@ -953,7 +984,9 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// Once settled, the index changes only where a load relocates an object found near its entry, which changes neither
     /// the entry's kind nor any other entry. A rebuild that reaches a guard, the document opened to throw on one, throws
     /// here once, with the index whole: the next call finds it settled. A rebuild a load set off and left unfinished, the
-    /// load having failed, is finished first.
+    /// load having failed, is finished first, and so is one the source failed, which is run again (#167). The
+    /// source failing the checks leaves the index unsettled, for the next call to check again; failing the rebuild they set
+    /// off, it leaves that rebuild for the next call to run again.
     /// </para>
     /// </remarks>
     /// <exception cref="ObjectDisposedException">The document was disposed.</exception>
@@ -964,7 +997,8 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     {
         ObjectDisposedException.ThrowIf(_closed, typeof(PdfDocument));
 
-        // A rebuild a load set off and could not finish, the load having thrown, is finished first.
+        // A rebuild a load set off and could not finish, the load having thrown, is finished first; and so is one the source
+        // failed, which is run again.
         if (_unfinishedRebuild is not null)
         {
             FinishUnfinishedRebuild();
@@ -977,8 +1011,21 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
 
         _settled = true;
         _settlingReading = new HeaderReading(HeaderReadingAllowance);
+        bool rebuilds;
 
-        if (!_repaired && (_indexIncomplete || AnyLoadWouldRebuild()))
+        try
+        {
+            rebuilds = !_repaired && (_indexIncomplete || AnyLoadWouldRebuild());
+        }
+        catch
+        {
+            // The source failed a check — the checks reach no guard that throws —: what the others would have found is
+            // unknown, and the next call checks again.
+            _settled = false;
+            throw;
+        }
+
+        if (rebuilds)
         {
             Repair();
         }
@@ -1507,11 +1554,15 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// </summary>
     /// <param name="reference">The reference, as the file wrote it.</param>
     /// <param name="objects">How many objects its chain is followed through (<see cref="PdfReference.Target"/>).</param>
-    internal bool LeftByGuard(PdfReference reference, int objects = PdfReference.MaxChainLength - 1)
-    {
-        var target = reference.Target(objects).Number;
-        return IsCutAtLimit(target) || GetPresence(target) == ObjectPresence.Unindexed;
-    }
+    internal bool LeftByGuard(PdfReference reference, int objects = PdfReference.MaxChainLength - 1) =>
+        IsLeftByGuard(reference.Target(objects).Number);
+
+    /// <summary>
+    /// Determines whether object <paramref name="number"/> is one a guard cut, or left out of the index: what
+    /// <see cref="LeftByGuard"/> asks of the object a chain of references leads to, for one who followed the chain
+    /// already — the validator's walk of the object streams' dependencies, which follows it as decoding does (#277).
+    /// </summary>
+    internal bool IsLeftByGuard(int number) => IsCutAtLimit(number) || GetPresence(number) == ObjectPresence.Unindexed;
 
     /// <summary>
     /// Determines whether object <paramref name="number"/>, as it was read, is a stream whose length the file did not
@@ -1611,6 +1662,47 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
             string.Create(
                 CultureInfo.InvariantCulture,
                 $"Object {id.Number} is reached through more nested objects than the reader will follow, and reads as null."),
+            position);
+    }
+
+    /// <summary>
+    /// Reports object <paramref name="number"/>, which the validator's walks of the object streams did not load for want of
+    /// stack and read as null (#312), placed as <see cref="ReportNestingTooDeep"/> places an object; and, of a walk working
+    /// out the standing of object stream <paramref name="unlike"/>, that it takes that stream for one that does not decode
+    /// alike in every read order.
+    /// </summary>
+    /// <remarks>
+    /// Once a document, as the reader's own cut is. A validation run from a thread short of stack cuts the walk of each
+    /// object stream about as deep: reported for each, as many as the index names object streams, the cuts would fill the
+    /// diagnostics' capacity, 1,000 by default, with one fact about the thread, crowding out what the reader found. The
+    /// first cut names the object and the reason; what the cuts change is in the validator's report, which takes nothing
+    /// from the diagnostics, so that a second validation from the same place gives the same report and adds nothing here.
+    /// No rebuild withdraws it: the walks report between the reader's loads, and a rebuild withdraws only what was reported
+    /// while it, or the loads it ran with, were in flight.
+    /// </remarks>
+    /// <param name="number">The object the walk did not load.</param>
+    /// <param name="unlike">The object stream whose standing the walk was working out; null for the walk that judges.</param>
+    internal void ReportWalkTooDeep(int number, int? unlike)
+    {
+        if (_walkCutReported)
+        {
+            return;
+        }
+
+        _walkCutReported = true;
+        var position = _xref.TryGet(number, out var entry) && entry.Kind == XRefEntryKind.Regular
+            ? EntryPosition(entry)
+            : -1;
+
+        _diagnostics.Warn(
+            PdfDiagnosticCodes.SyntaxDepthExceeded,
+            unlike is { } stream
+                ? string.Create(
+                    CultureInfo.InvariantCulture,
+                    $"Object {number} is reached through more nested objects than the thread's stack lets the validator follow: the validator reads it as null, and takes object stream {stream} for one that does not decode alike in every read order.")
+                : string.Create(
+                    CultureInfo.InvariantCulture,
+                    $"Object {number} is reached through more nested objects than the thread's stack lets the validator follow: the validator reads it as null."),
             position);
     }
 
@@ -1722,9 +1814,11 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
 
         if (first.Kind == StreamEndKind.Undecided)
         {
+            // White space and comments may run to the file's end, where no keyword lies and nothing is left to read: the
+            // source is not asked for an empty read there, as EndStreamAfter does not ask it for one (#167).
             var at = NextSignificant(absoluteOffset);
             Span<byte> keyword = stackalloc byte[StreamEnds.EndStreamKeyword.Length + 1];
-            var read = at < 0 ? 0 : _source.Read(at, keyword[..(int)Math.Min(keyword.Length, _source.Length - at)]);
+            var read = at < 0 || at >= _source.Length ? 0 : _source.Read(at, keyword[..(int)Math.Min(keyword.Length, _source.Length - at)]);
 
             if (!keyword[..read].StartsWith(StreamEnds.EndStreamKeyword))
             {
@@ -1880,9 +1974,9 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// on to the next one the index as written places. That index places in turn what the bytes no longer show: the objects
     /// a damaged stretch of the file erased, as a block of zeros does. What a search keeps depends on the file's bytes and on
     /// the index as written, then. It can still depend on the number a stream is first read under — its own entry, stepped
-    /// over, is that number's —, on the rebuild's scan for trailers, which reads a stream under none, and, once the
-    /// document's searches have read as much as they may (<see cref="EndStreamSearchPasses"/>), on which streams were
-    /// searched first: crafted files make it do so, no document of the corpus does (#138).
+    /// over, is that number's —, and, once the document's searches have read as much as they may
+    /// (<see cref="EndStreamSearchPasses"/>), on which streams were searched first: crafted files make it do so, no document
+    /// of the corpus does (#138). The rebuild's scan for trailers reads no stream (#171).
     /// </para>
     /// <para>
     /// This bound is no guard (ADR 34): a valid file's <c>endstream</c> follows its declared length (ISO 32000-1,
@@ -6173,7 +6267,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
                 parser.Position = window.Start;
                 _ = parser.ParseObject();
 
-                if (parser.IsMemberStream)
+                if (parser.StoppedAtStream)
                 {
                     (found ??= []).Add(index);
                 }
@@ -6484,28 +6578,10 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
 
         PreserveChainIndex();
 
-        // What a chain a guard cut kept is kept through a rebuild that damage set off: the scan finds every header the file
-        // holds, the objects the guard hid included, but not every entry the chain gave — an object stream's members it has
-        // not expanded, a header it cannot read.
-        var kept = _cutByGuard ? _chainIndex : null;
-        _indexFull = false;
-        _xref.Clear();
-        _cache.Clear();
-        _cacheOrder.Clear();
-        _objectStreams.Clear();
-        _objectStreamsHiddenByGuard.Clear();
-        _objectStreamOrder.Clear();
-        _objectStreamBytes = 0;
-        _nullWhileDecoding.Clear();
-
-        // What was noted of each object as it was read is noted again as each is read from the rebuilt index — every object
-        // written directly in the file is, below —: kept, a note of a definition the rebuilt index no longer serves, or of a
-        // number it no longer holds, would be read as the note of the one it serves. What could not be produced is noted again
-        // as each number is resolved, which every caller of GetPresence does first: cleared, the note is true before that too.
-        _unproduced.Clear();
-        _cutAtLimit.Clear();
-        _endObjMissing.Clear();
-        _streamLengthFaults.Clear();
+        // What the rebuild sets in the trailer and merges into it — the file's /Root again for a search's guess, the
+        // trailers the scan finds, a catalog it searches for — goes into a copy: a trailer a caller took before is left as
+        // it was, and the next one taken is the rebuilt one (#167).
+        _xref.RenewTrailer();
 
         // A catalog a search took is the reader's guess, which the trailer's /Root holds in place of the file's own: the
         // rebuilt index is read with the file's, which it may now serve as a catalog — whole, or cut by a guard and taken
@@ -6524,30 +6600,99 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
             _catalogFoundAs = 0;
         }
 
+        // What a chain a guard cut kept is kept through a rebuild that damage set off: the scan finds every header the file
+        // holds, the objects the guard hid included, but not every entry the chain gave — an object stream's members it has
+        // not expanded, a header it cannot read.
+        Rebuild(_cutByGuard ? _chainIndex : null);
+    }
+
+    /// <summary>
+    /// Runs a rebuild from its scan: empties the index, indexes the object headers and the trailers the whole file holds,
+    /// and finishes the rebuild from what the scan indexed — at once, or, loads being in flight, once the outermost returns.
+    /// </summary>
+    /// <remarks>
+    /// The source may fail to give its bytes in the scan, or in the finish run here — the one the start of a validation
+    /// runs, or the document's opening —: what the rebuild reported since its scan began is withdrawn, the rebuild is left
+    /// for the next read or validation to run again from the scan's start, and the failure leaves (#167). Run again from the
+    /// scan rather than from a copy of the scan's index, a finish the source fails costs a sound rebuild no copy, which would
+    /// take 40 bytes an entry; a finish the outermost load runs starts from the copy its loads in flight keep. A guard
+    /// reached is no failure: a document opened to throw on one throws once the index is whole.
+    /// </remarks>
+    /// <param name="kept">The entries a chain a guard cut gave, kept through the rebuild; null when no guard cut it.</param>
+    private void Rebuild(PdfXRefTable? kept)
+    {
+        // Taken before the scan reports anything, the mark withdraws what a rebuild the source fails reported, for the rebuild
+        // run again to report it again; brought past the scan, it marks what the loads in flight report. What was reported
+        // is so copied once a rebuild (#273).
+        var reports = MarkReports();
+        var indexFullAt = _indexFullAt;
+        _indexFull = false;
+        _xref.Clear();
+        ForgetWhatWasRead();
         var redefinitions = new Redefinitions();
 
-        // Indexing and loading objects can reach a guard. A document opened to throw on one throws once the index is
-        // whole, not half-way through rebuilding it: a rebuild is never run twice, and one abandoned mid-way would leave
-        // the document unable to find the objects it had not reached. The first guard reached is the one thrown.
-        var reached = ScanForObjects(redefinitions);
-        ScanForTrailers();
-
-        // A rebuild a load sets off runs with that load, and those it is part of, still in flight: the objects they are
-        // loading read as null meanwhile, and so would the values an object stream among them needs, so that expanding the
-        // object streams now would expand such a stream without them, or not at all. The loads in flight read through the
-        // scan's index, and the rebuild is finished from it once the outermost returns, or throws, as a rebuild run before
-        // them would have been: a member is not lost to the load that set the rebuild off, nor read otherwise than had the
-        // rebuild run first, and the object streams are expanded once. A guard the scan reached is the first this read
-        // reaches: it is thrown now, and the outermost load finishes the index before it lets the exception go.
-        if (_loading.Count > 0 || _objectStreamsLoading.Count > 0)
+        try
         {
-            _unfinishedRebuild = new UnfinishedRebuild(
-                _xref.CopyEntries(), redefinitions, kept, _indexFull, _indexFullAt, MarkReports());
-            reached?.Throw();
-            return;
-        }
+            // Indexing and loading objects can reach a guard; the scan for trailers, which loads nothing, cannot. A document
+            // opened to throw on one throws once the index is whole, not half-way through rebuilding it: one abandoned mid-way
+            // would leave the document unable to find the objects it had not reached. The first guard reached is the one
+            // thrown.
+            var reached = ScanForObjects(redefinitions);
+            ScanForTrailers();
 
-        FinishRebuild(redefinitions, kept, reached);
+            // A rebuild a load sets off runs with that load, and those it is part of, still in flight: the objects they are
+            // loading read as null meanwhile, and so would the values an object stream among them needs, so that expanding
+            // the object streams now would expand such a stream without them, or not at all. The loads in flight read
+            // through the scan's index, and the rebuild is finished from it once the outermost returns, or throws, as a
+            // rebuild run before them would have been: a member is not lost to the load that set the rebuild off, nor read
+            // otherwise than had the rebuild run first, and the object streams are expanded once. A guard the scan reached is
+            // the first this read reaches: it is thrown now, and the outermost load finishes the index before it lets the
+            // exception go.
+            if (_loading.Count > 0 || _objectStreamsLoading.Count > 0)
+            {
+                _unfinishedRebuild = new RebuildAwaitingFinish(
+                    _xref.CopyEntries(), redefinitions, kept, _indexFull, _indexFullAt, BringForward(reports));
+                reached?.Throw();
+                return;
+            }
+
+            FinishRebuild(redefinitions, kept, reached);
+        }
+        catch (Exception exception) when (exception is not PdfLimitExceededException)
+        {
+            // The rebuild stops where the source failed it: the index holds what it had reached, and the trailer what the scan
+            // had merged, until the rebuild is run again from its scan, into a copy of that trailer. Where the index filled is
+            // forgotten, for the scan run again to reach it and report it.
+            WithdrawReportsSince(reports);
+            _indexFullAt = indexFullAt;
+            _unfinishedRebuild = new RebuildAwaitingScan(kept);
+            throw;
+        }
+    }
+
+    /// <summary>
+    /// Lets go of what the reader kept of the objects it read, and of what it noted of them, for an index a rebuild changes:
+    /// each is read again, and noted again, from the rebuilt index.
+    /// </summary>
+    private void ForgetWhatWasRead()
+    {
+        _cache.Clear();
+        _cacheOrder.Clear();
+        _objectStreams.Clear();
+        _objectStreamsHiddenByGuard.Clear();
+        _objectStreamOrder.Clear();
+        _objectStreamBytes = 0;
+
+        // What read as null while loads were in flight was theirs, not the file's. What was noted of each object as it was
+        // read is noted again as each is read from the rebuilt index — every object written directly in the file is, as the
+        // rebuild is finished —: kept, a note of a definition the rebuilt index no longer serves, or of a number it no longer
+        // holds, would be read as the note of the one it serves. What could not be produced is noted again as each number is
+        // resolved, which every caller of GetPresence does first: cleared, the note is true before that too.
+        _nullWhileDecoding.Clear();
+        _unproduced.Clear();
+        _cutAtLimit.Clear();
+        _endObjMissing.Clear();
+        _streamLengthFaults.Clear();
     }
 
     /// <summary>
@@ -6605,10 +6750,11 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     }
 
     /// <summary>
-    /// Finishes the rebuild a load set off, now that no load is in flight: the index is brought back to what the scan
-    /// made, what was read meanwhile let go, and the rebuild finished as one run before the load would have been. A finish
-    /// that fails — the source failing to give its bytes — leaves the rebuild to be finished again, from the scan, by the
-    /// next read.
+    /// Finishes the rebuild a load set off, now that no load is in flight, or one the source failed: the index is brought
+    /// back to what the scan made, what was read meanwhile let go, and the rebuild finished as one run before the load
+    /// would have been; or, the source having failed the scan, or a finish run with no load in flight, the rebuild is run
+    /// again from its scan. A finish that fails — the source failing to give its bytes — leaves the rebuild to be finished
+    /// again, from the scan's index, by the next read or validation; a rebuild run again from its scan, to be run so again.
     /// </summary>
     /// <exception cref="PdfLimitExceededException">
     /// A guard was reached in finishing, and the document was opened to throw on one; the index is finished.
@@ -6618,58 +6764,60 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
         var unfinished = _unfinishedRebuild!;
         _unfinishedRebuild = null;
 
+        // A rebuild the source failed, but in a finish the outermost load ran, is run again from its scan's start, into a
+        // copy of the trailer the scan merged into: a caller may have taken that one meanwhile (#167). The trailers it merged
+        // are merged again, each key from the newest trailer that holds it, as they were: what it merged stands as the scan
+        // run whole merges it.
+        if (unfinished is not RebuildAwaitingFinish finish)
+        {
+            _xref.RenewTrailer();
+            Rebuild(unfinished.Kept);
+            return;
+        }
+
         // What the loads in flight reported, they read through the scan's index and with each other's objects reading as
         // null: it is withdrawn, and reported again as far as the finished index's own reading reports it, as a rebuild run
         // first does (#273). Once: what is reported after a finish the source failed, before the next, stays.
-        if (unfinished.Reports is { } reports)
+        if (finish.Reports is { } reports)
         {
             WithdrawReportsSince(reports);
         }
 
         // A finish the source fails withdraws what it reported, which the finish run again reports. Withdrawn, the reports
         // are what the in-flight mark holds, which the withdrawal leaves as it was: it marks the finish too.
-        var attempt = unfinished.Reports ?? MarkReports();
+        var attempt = finish.Reports ?? MarkReports();
 
         _xref.Clear();
 
-        foreach (var (number, entry) in unfinished.Scanned)
+        // A catalog the finish searches for goes into a copy of the trailer too: a caller may have taken it between the
+        // read that left the rebuild unfinished, its finish failed by the source, and this one (#167).
+        _xref.RenewTrailer();
+
+        foreach (var (number, entry) in finish.Scanned)
         {
             _xref.Set(number, entry);
         }
 
-        _indexFull = unfinished.IndexFull;
-        _indexFullAt = unfinished.IndexFullAt;
-        _cache.Clear();
-        _cacheOrder.Clear();
-        _objectStreams.Clear();
-        _objectStreamsHiddenByGuard.Clear();
-        _objectStreamOrder.Clear();
-        _objectStreamBytes = 0;
-
-        // What read as null while the loads were in flight was theirs, not the file's; and what was noted of each object is
-        // noted again as each is read from the finished index.
-        _nullWhileDecoding.Clear();
-        _unproduced.Clear();
-        _cutAtLimit.Clear();
-        _endObjMissing.Clear();
-        _streamLengthFaults.Clear();
+        _indexFull = finish.IndexFull;
+        _indexFullAt = finish.IndexFullAt;
+        ForgetWhatWasRead();
 
         try
         {
-            FinishRebuild(unfinished.Redefinitions.Copy(), unfinished.Kept, reached: null);
+            FinishRebuild(finish.Redefinitions.Copy(), finish.Kept, reached: null);
         }
         catch (Exception exception) when (exception is not PdfLimitExceededException)
         {
             WithdrawReportsSince(attempt);
-            _unfinishedRebuild = unfinished with { Reports = null };
+            _unfinishedRebuild = finish with { Reports = null };
             throw;
         }
     }
 
     /// <summary>
     /// Finishes the rebuild a load set off while that load's exception leaves it, which stands for the read: a guard the
-    /// finish reaches afterward is left, the first guard reached being the one thrown, and a finish the source fails leaves
-    /// the rebuild to the next read.
+    /// finish reaches afterward is left, the first guard reached being the one thrown, and a finish the source fails,
+    /// whatever it throws, leaves the rebuild to the next read or validation.
     /// </summary>
     private void FinishUnfinishedRebuildAfterFailure()
     {
@@ -6681,17 +6829,19 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
         {
             // Reached after the read's own exception, which is the one thrown.
         }
-        catch (IOException)
+        catch (Exception)
         {
-            // The rebuild is left unfinished, and finished by the next read.
+            // The source failed the finish, whatever it threw — an I/O error, or what a caller's own source throws —, as the
+            // rebuild's other steps take it: the rebuild is left unfinished, and finished by the next read or validation; the
+            // read's own exception is the one thrown.
         }
     }
 
     /// <summary>
     /// Records where the document's reports stand, and what it holds as reported once, for
-    /// <see cref="WithdrawReportsSince"/>. It copies what it records: it is taken when a rebuild is left unfinished, whose
-    /// finish it marks too, and as each finish after one the source failed begins: once a document, and once more for each
-    /// finish the source fails.
+    /// <see cref="WithdrawReportsSince"/>. It copies what it records: it is taken as a rebuild's scan begins — brought past
+    /// the scan to mark the loads in flight and their finish (<see cref="BringForward"/>) —, and as each finish after one the
+    /// source failed begins: once a document, and once more for each rebuild or finish the source fails.
     /// </summary>
     private ReportsMark MarkReports() => new(
         _diagnostics.GetMarkWithDecodingReports(),
@@ -6702,6 +6852,23 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
         new HashSet<int>(_objectStreamsNeedingThemselves, SeededComparer.Instance),
         _nestingReported,
         _objectStreamReports.Copy());
+
+    /// <summary>
+    /// Brings <paramref name="mark"/> to where the document's reports stand now, for a mark nothing was withdrawn past
+    /// since, so that what was reported since was only added: the copies it holds take in what was added, rather than
+    /// being taken whole again — a scan reports little, while what the document had reported may be much (#273). The
+    /// mark's copies are changed, and the mark given back with where the diagnostics stand now.
+    /// </summary>
+    private ReportsMark BringForward(ReportsMark mark)
+    {
+        mark.LengthFaults.UnionWith(_lengthFaultsReported);
+        mark.Syntax.UnionWith(_syntaxReported);
+        mark.Limits.UnionWith(_limitsReached);
+        mark.MemberLimits.UnionWith(_memberLimitsReached);
+        mark.NeedingThemselves.UnionWith(_objectStreamsNeedingThemselves);
+        mark.ObjectStreams.TakeIn(_objectStreamReports);
+        return mark with { Diagnostics = _diagnostics.GetMarkWithDecodingReports(), NestingReported = _nestingReported };
+    }
 
     /// <summary>
     /// Withdraws what the document reported since <paramref name="mark"/>, and forgets that it was reported: what is read
@@ -6882,6 +7049,36 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
         return false;
     }
 
+    /// <summary>
+    /// Merges into the trailer the dictionary that follows each <c>trailer</c> keyword the file holds, the newest first, so
+    /// that its keys win.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// What follows a keyword is parsed as the dictionary alone, and nothing is loaded (#171): a stream it introduces gives
+    /// its dictionary as it was read, neither its data nor what its <c>/Length</c> names being read; a stream nested in the
+    /// dictionary, which no file may write there, ends the parse at its <c>stream</c> keyword, the key that holds it and the
+    /// keys after it not merged, and this is noted; a reference in the dictionary's place is none, is not followed, and is
+    /// noted; any other value there is none too, and what the parse met of it is all that is noted; and the references the
+    /// dictionary holds are read only as the trailer's keys that hold them are. The scan so reaches no guard, and merges
+    /// the same trailers whatever reads are in flight as it runs — the object one is loading reads as null meanwhile — and
+    /// whether the document was opened to throw on a guard or not.
+    /// </para>
+    /// <para>
+    /// A nested stream ends the parse only within the nesting the parser follows: past its 128 levels, or where the stack
+    /// probe cuts sooner, the container the stream lies in or follows is skipped as any other is, which is noted as too
+    /// deep (#163). A <c>stream</c> keyword left after it is a stray token to the container around it — a key a
+    /// dictionary refuses, an element an array reads as null —, and what follows it is read on as that container's keys
+    /// or elements, and merged (#171).
+    /// </para>
+    /// <para>
+    /// What the scan notes goes with the faults the parse meets: kept once, though two windows of the scan meet a keyword
+    /// that lies where they overlap, and withdrawn with what the rebuild reported when the source fails it, for the rebuild
+    /// run again to note it again. The bytes <c>trailer</c> anywhere — a comment, a string, a stream's data, the end of a
+    /// name — are still taken for a trailer's keyword, and every key the parse gives of the dictionary after them merged,
+    /// not only the keys a trailer defines (#171).
+    /// </para>
+    /// </remarks>
     private void ScanForTrailers()
     {
         var positions = new List<long>();
@@ -6926,16 +7123,52 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
 
             try
             {
-                var parser = new PdfObjectParser(window.Memory, positions[i], this, _pending, this, endsData: !cut);
+                // No stream data is read: the file says where a token the window's edge reaches ends, as it does to a load.
+                // The white space and comments after the keyword are skipped once, for the parse to start past them and for
+                // a note to name where its value starts.
+                var parser = new PdfObjectParser(
+                    window.Memory, positions[i], this, _pending, endsData: !cut, fileEdge: this, readsStreams: false);
+                var keyword = positions[i] - TrailerKeyword.Length;
+                var valueStart = ValueStart(window.Memory.Span);
+                parser.Position = valueStart;
+                var value = parser.ParseObject();
 
-                if (parser.ParseObject().AsDictionary() is { } trailer)
+                if (value is PdfDictionary trailer)
                 {
+                    // A stream inside the dictionary ended the parse at its keyword, the dictionary with it; one after the
+                    // dictionary ends nothing of it. Noted with the parse's own faults, the note is kept once, as they are.
+                    // Hostile data can hold a keyword every few bytes: the offset is quoted only for a note that is kept.
+                    if (parser.StreamStopDepth > 0)
+                    {
+                        _pending.Warn(
+                            PdfDiagnosticCodes.SyntaxUnexpectedToken,
+                            _pending.IsFull
+                                ? "A stream inside the dictionary after a trailer keyword ends what the rebuild merges of it: the key that holds it and the keys after it are not merged."
+                                : string.Create(
+                                    CultureInfo.InvariantCulture,
+                                    $"A stream inside the dictionary after the trailer keyword at offset {keyword} ends what the rebuild merges of it: the key that holds it and the keys after it are not merged."),
+                            positions[i] + parser.StreamStop);
+                    }
+
                     _xref.MergeTrailer(trailer);
 
                     if (_rebuiltTrailerPosition < 0)
                     {
-                        _rebuiltTrailerPosition = positions[i] - TrailerKeyword.Length;
+                        _rebuiltTrailerPosition = keyword;
                     }
+                }
+                else if (value is PdfReference reference)
+                {
+                    // The reference is the value the parse began with, past the white space and comments after the keyword.
+                    // The offset and the number are quoted only for a note that is kept, as the stream's are.
+                    _pending.Warn(
+                        PdfDiagnosticCodes.SyntaxUnexpectedToken,
+                        _pending.IsFull
+                            ? "A trailer keyword is followed by a reference, not by a dictionary; the rebuild does not follow it."
+                            : string.Create(
+                                CultureInfo.InvariantCulture,
+                                $"The trailer keyword at offset {keyword} is followed by a reference to object {reference.Id.Number}, not by a dictionary; the rebuild does not follow it."),
+                        positions[i] + valueStart);
                 }
 
                 KeepPending(mark);
@@ -6945,6 +7178,24 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
                 _pending.RollBack(mark);
             }
         }
+    }
+
+    /// <summary>
+    /// Gets where the value after a trailer keyword starts in <paramref name="data"/>, the bytes that follow the keyword:
+    /// past the white space and comments there.
+    /// </summary>
+    /// <remarks>
+    /// Kept out of <see cref="ScanForTrailers"/>, which calls it once a keyword: inlined there, the lexer's loop over a
+    /// comment was compiled with the whole scan once tiered PGO recompiled it, and ran about a third slower —
+    /// <c>TrailerScanBenchmarks</c>, under a medium job, opened past 12,000 keywords sharing long comments in 344 to 355 ms
+    /// over a reference or a null, against 211 to 220 ms with the loop in a frame of its own, and alike with PGO off.
+    /// </remarks>
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static int ValueStart(ReadOnlySpan<byte> data)
+    {
+        var lexer = new PdfLexer(data);
+        lexer.SkipWhitespaceAndComments();
+        return lexer.Position;
     }
 
     private ExceptionDispatchInfo? ExpandObjectStreams(Redefinitions redefinitions)
@@ -7127,8 +7378,9 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// Streams whose data share a stretch of the file — overlapping objects —, or the many streams of a document read once
     /// each, hold none of it: what a caller keeps is its own, and memory follows what is being decoded. A source in
     /// memory lends the bytes where they lie, without a copy, valid for as long as its memory is; any other reads them
-    /// into an array of their length. No more than <see cref="PdfReaderLimits.MaxStreamLength"/> bytes are read: past it,
-    /// the data is cut there, marked cut by a guard, and the guard reported, once for each stream.
+    /// into an array of their length, and is not asked for data of no length. No more than
+    /// <see cref="PdfReaderLimits.MaxStreamLength"/> bytes are read: past it, the data is cut there, marked cut by a guard,
+    /// and the guard reported, once for each stream.
     /// </remarks>
     private sealed class FileStreamData(PdfFileReader reader, long offset, int length, PdfLimitGuard guard) : PdfStreamData
     {
@@ -7168,6 +7420,12 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
                 reader.ReachStreamLength(offset);
             }
 
+            // Data of no length is read from no source: a source is asked only for bytes it holds, never for none (#167).
+            if (count == 0)
+            {
+                return ReadOnlyMemory<byte>.Empty;
+            }
+
             if (reader._source.TryLend(offset, count, out var lent))
             {
                 return lent;
@@ -7181,7 +7439,14 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
         }
     }
 
-    /// <summary>What a rebuild a load set off needs to be finished once no load is in flight.</summary>
+    /// <summary>A rebuild left unfinished, which the next read or validation finishes (#167).</summary>
+    /// <param name="Kept">The entries a chain a guard cut gave, kept through the rebuild; null when no guard cut it.</param>
+    private abstract record UnfinishedRebuild(PdfXRefTable? Kept);
+
+    /// <summary>
+    /// What a rebuild a load set off needs to be finished from the index its scan made, once no load is in flight, and
+    /// finished again when the source fails that finish.
+    /// </summary>
     /// <param name="Scanned">The entries the scan made, before the object streams were expanded.</param>
     /// <param name="Redefinitions">The definitions the scan met again.</param>
     /// <param name="Kept">The entries a chain a guard cut gave, kept through the rebuild; null when no guard cut it.</param>
@@ -7191,13 +7456,20 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// What the document had reported once the scan was done, which the finish brings its reports back to; null once a
     /// finish has.
     /// </param>
-    private sealed record UnfinishedRebuild(
+    private sealed record RebuildAwaitingFinish(
         PdfXRefTable Scanned,
         Redefinitions Redefinitions,
         PdfXRefTable? Kept,
         bool IndexFull,
         long IndexFullAt,
-        ReportsMark? Reports);
+        ReportsMark? Reports) : UnfinishedRebuild(Kept);
+
+    /// <summary>
+    /// A rebuild the source failed in its scan, or in a finish run with no load in flight, which is run again from the
+    /// scan's start.
+    /// </summary>
+    /// <param name="Kept">The entries a chain a guard cut gave, kept through the rebuild; null when no guard cut it.</param>
+    private sealed record RebuildAwaitingScan(PdfXRefTable? Kept) : UnfinishedRebuild(Kept);
 
     /// <summary>
     /// Where the document's reports stood, and what it held as reported once — a guard, a fault of the syntax, a stream's
@@ -7325,6 +7597,14 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
             return copy;
         }
 
+        /// <summary>Adds to this copy what <paramref name="reports"/> holds as reported, which only grew since it was copied.</summary>
+        public void TakeIn(ObjectStreamReports reports)
+        {
+            _faults.UnionWith(reports._faults);
+            _moves.UnionWith(reports._moves);
+            _streamMembers.UnionWith(reports._streamMembers);
+        }
+
         /// <summary>Brings back what <paramref name="copy"/> held as reported, and forgets what was reported since.</summary>
         public void RestoreFrom(ObjectStreamReports copy)
         {
@@ -7393,6 +7673,9 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
         }
 
         public int Count => _numbers.Length;
+
+        /// <summary>Gets the stream's decoded data, which the contents keep for as long as they are kept.</summary>
+        public ReadOnlyMemory<byte> Data => _data;
 
         /// <summary>
         /// Determines whether a token that reaches a member window's edge at byte <paramref name="absoluteOffset"/> of the
@@ -7595,7 +7878,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
             var value = parser.ParseObject();
 
             // A member written as a stream is no value (#161).
-            if (parser.IsMemberStream)
+            if (parser.StoppedAtStream)
             {
                 streamAt = window.Start;
                 return null;

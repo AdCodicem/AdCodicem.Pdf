@@ -102,7 +102,10 @@ as any read reads it, through the index the reader settled on.
   references of as many objects as that cache holds; past that, it reads an object again for each stream it meets it
   from.
 - `WasRepaired`, `ObjectCount`, `ObjectNumbers`, the merged `Trailer` and `IsEncrypted` can change when a validation
-  starts, on a damaged file, as they could on any read.
+  starts, on a damaged file, as they could on any read: what the next call gives changes, not what a call gave before.
+  An enumeration of `ObjectNumbers` or `Diagnostics` under way goes on over what it began with, and a trailer taken
+  before is left as it was, the rebuild merging into a new one
+  ([#167](https://github.com/AdCodicem/AdCodicem.Pdf/issues/167)).
 - Two exceptions remain, named in the documentation besides the one below: a document opened with `ThrowOnLimit` whose
   settling rebuild reaches a guard throws once, in its first validation, the index rebuilt whole before — a later
   validation throws only where its rules read what the guard cut or left out, as any read does —; and a document the

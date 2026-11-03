@@ -6,9 +6,17 @@ namespace AdCodicem.Pdf.Diagnostics;
 /// Collects what the library noticed while working on a document.
 /// </summary>
 /// <remarks>
+/// <para>
 /// Diagnostics are returned, not logged: they are part of the result, so they can be inspected,
 /// serialized and asserted on in tests. A malformed file that the reader repaired is a normal outcome,
 /// not an exception — but it is never a silent one.
+/// </para>
+/// <para>
+/// A document's record grows as the document is read, after opening too: an enumeration gives the entries recorded when
+/// it began, and the next one those recorded since, while <see cref="Count"/>, the indexer, <see cref="SuppressedCount"/>,
+/// <see cref="HasRepairs"/>, <see cref="HasWarnings"/>, <see cref="HasConformanceLoss"/> and <see cref="Contains(string)"/>
+/// answer for every entry recorded so far (#167).
+/// </para>
 /// </remarks>
 public sealed class PdfDiagnostics : IReadOnlyList<PdfDiagnostic>
 {
@@ -284,10 +292,93 @@ public sealed class PdfDiagnostics : IReadOnlyList<PdfDiagnostic>
         return false;
     }
 
-    /// <summary>Returns a non-allocating enumerator over the entries.</summary>
-    public List<PdfDiagnostic>.Enumerator GetEnumerator() => _entries.GetEnumerator();
+    /// <summary>
+    /// Returns a non-allocating enumerator over the entries recorded when it is made, in the order they were recorded.
+    /// </summary>
+    /// <remarks>
+    /// What is recorded meanwhile — by a read of the document whose record this is, or by a validation of it, which the
+    /// enumeration goes on through — is counted by <see cref="Count"/> at once, and given by the next enumeration, not this
+    /// one: the enumeration never throws for it (#167).
+    /// </remarks>
+    public Enumerator GetEnumerator() => new(_entries);
 
-    IEnumerator<PdfDiagnostic> IEnumerable<PdfDiagnostic>.GetEnumerator() => _entries.GetEnumerator();
+    IEnumerator<PdfDiagnostic> IEnumerable<PdfDiagnostic>.GetEnumerator() => GetEnumerator();
 
-    IEnumerator IEnumerable.GetEnumerator() => _entries.GetEnumerator();
+    IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
+
+    /// <summary>Enumerates the entries a <see cref="PdfDiagnostics"/> held when the enumeration was made.</summary>
+    /// <remarks>
+    /// It reads them where they are, without a copy: between two calls a caller makes, a document's record only grows, so
+    /// that the entries an enumeration began with stay where it reads them, whatever is recorded after them.
+    /// </remarks>
+    public struct Enumerator : IEnumerator<PdfDiagnostic>
+    {
+        private readonly List<PdfDiagnostic> _entries;
+        private readonly int _count;
+        private int _at;
+
+        /// <summary>
+        /// The entry the last step advanced to, read as it advanced: the place it was read at may be withdrawn, or hold
+        /// another entry, by the time <see cref="Current"/> is asked.
+        /// </summary>
+        private PdfDiagnostic _current;
+
+        internal Enumerator(List<PdfDiagnostic> entries)
+        {
+            _entries = entries;
+            _count = entries.Count;
+            _at = -1;
+        }
+
+        /// <summary>Gets the entry the last call to <see cref="MoveNext"/> advanced to.</summary>
+        /// <remarks>
+        /// It is read as the enumeration advances, as a list's enumerator reads it: what a read withdraws or records at that
+        /// place afterward does not change it (#167). Before the first step, and once the enumeration has ended, it is the
+        /// default entry.
+        /// </remarks>
+        public readonly PdfDiagnostic Current => _current;
+
+        readonly object IEnumerator.Current => Current;
+
+        /// <summary>Advances to the next of the entries the enumeration began with.</summary>
+        /// <returns>
+        /// <see langword="true"/> if it advanced to an entry; <see langword="false"/> if the enumeration has ended, as it
+        /// stays until <see cref="Reset"/>.
+        /// </returns>
+        /// <remarks>
+        /// A read may withdraw what it recorded and record again before it returns — a rebuild finished again from its scan
+        /// does —, which only a caller's own <see cref="IO.PdfFileSource"/>, stepping an enumeration of the record from
+        /// inside the read, can see: such an enumeration reads, up to the count it began with, the entries held at those
+        /// places, which may be those recorded again. Once it has ended, it stays ended, whatever is recorded after (#167).
+        /// </remarks>
+        public bool MoveNext()
+        {
+            if (_at + 1 < Math.Min(_count, _entries.Count))
+            {
+                _at++;
+                _current = _entries[_at];
+                return true;
+            }
+
+            // Past every place it can read: a record that a withdrawal shrank and that grows again does not bring it back.
+            _at = _count;
+            _current = default;
+            return false;
+        }
+
+        /// <summary>
+        /// Starts the enumeration again from its first place, up to the count it began with: it reads the entries held at
+        /// those places, as <see cref="MoveNext"/> says.
+        /// </summary>
+        public void Reset()
+        {
+            _at = -1;
+            _current = default;
+        }
+
+        /// <inheritdoc/>
+        public readonly void Dispose()
+        {
+        }
+    }
 }

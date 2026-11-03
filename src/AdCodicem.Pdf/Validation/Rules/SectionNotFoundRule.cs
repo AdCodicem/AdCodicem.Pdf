@@ -30,7 +30,8 @@ internal sealed class SectionNotFoundRule : IValidationRule
 
         foreach (var section in context.Structure.Sections)
         {
-            if (section.State != XRefSectionState.NotFound || section.NamedBy == "startxref")
+            // Past the report's room, the section is counted, its finding not written (#168).
+            if (section.State != XRefSectionState.NotFound || section.NamedBy == "startxref" || !context.HasRoomFor(this))
             {
                 continue;
             }

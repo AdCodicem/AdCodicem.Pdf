@@ -23,17 +23,19 @@ internal sealed class ObjectStreamBrokenRule : IValidationRule
     /// <inheritdoc/>
     public void Check(ValidationContext context)
     {
-        foreach (var finding in context.Probe.BrokenObjectStreams)
+        foreach (var broken in context.Probe.BrokenObjectStreams)
         {
-            if (finding.Location.Object is { } stream && context.ObjectStreams.CircularStreams.Contains(stream.Number))
+            // The probe keeps a record of every broken stream, for this rule to pass over the circular ones; the others'
+            // findings are written while the report has room for them, and counted past it (#168).
+            if (context.ObjectStreams.CircularStreams.Contains(broken.Stream) || !context.HasRoomFor(this))
             {
                 continue;
             }
 
             context.Report(
                 this,
-                finding.Location,
-                finding.Message,
+                broken.Location,
+                broken.Describe(),
                 "Rewrite the object stream, or store the objects it should hold outside it.");
         }
     }

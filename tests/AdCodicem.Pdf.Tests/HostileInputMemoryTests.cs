@@ -10,11 +10,15 @@ using AdCodicem.Pdf.Validation;
 namespace AdCodicem.Pdf.Tests;
 
 /// <summary>
-/// Hostile inputs held to a budget on memory live at once: a measure of the whole process, taken alone.
+/// Hostile inputs held to a budget on memory live at once: a measure of the whole process, taken alone, which bounds what is
+/// held from above; what is let go is watched through a weak reference (#307).
 /// </summary>
 [Collection(TimingCollection.Name)]
 public class HostileInputMemoryTests
 {
+    /// <summary>What the object stream a disposed document decoded holds, decoded: sixteen megabytes.</summary>
+    private const int DecodedLength = 16 * 1024 * 1024;
+
     [Fact]
     public void Object_streams_each_holding_a_stream_keep_no_more_than_their_budget_once_their_members_are_read()
     {
@@ -58,16 +62,15 @@ public class HostileInputMemoryTests
     public void Disposing_a_document_lets_go_of_the_object_streams_it_decoded_though_a_reference_it_gave_is_held()
     {
         // Sixteen megabytes of an object stream's decoded data, which the reader keeps, and a reference handed out, which
-        // reaches the reader: disposing lets go of the data all the same. The measure is the whole process's, whatever else
-        // runs in it, the test platform included: half the data parts what is kept from what is let go.
-        const long Decoded = 16L * 1024 * 1024;
-        var file = HostileInputTests.ObjectStreams(streams: 1, decodedLength: (int)Decoded, objectsPerStream: 1, everyIndexWrong: false);
-        var before = Retained();
-        var (held, kept) = OpenDecodeAndDispose(file);
-        var after = Retained();
+        // reaches the reader: disposing lets go of the data all the same. The data is watched through a weak reference, not
+        // through the memory of the whole process: a shared pool lets go, at a full collection, of arrays a test before
+        // parked in it half a minute earlier, which made that memory fall by 92 MB between two of its measures (#307).
+        var file = HostileInputTests.ObjectStreams(streams: 1, decodedLength: DecodedLength, objectsPerStream: 1, everyIndexWrong: false);
+        var (held, data) = OpenDecodeAndDispose(file);
 
-        kept.Should().BeGreaterThan(before + (Decoded / 2), "the reader kept the decoded data while the document was open");
-        after.Should().BeLessThan(before + (Decoded / 2), "the object streams the document decoded are let go");
+        Collect();
+
+        data.IsAlive.Should().BeFalse("the object streams the document decoded are let go");
         GC.KeepAlive(held);
     }
 
@@ -141,23 +144,95 @@ public class HostileInputMemoryTests
         after.Should().BeLessThan(before + (8L * 1024 * 1024), "a file in memory lends each object stream its data, and no copy is kept");
     }
 
-    [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
-    private static (PdfObject Held, long Kept) OpenDecodeAndDispose(byte[] file)
+    [Theory]
+    [InlineData("reference")]
+    [InlineData("name")]
+    [InlineData("key")]
+    public void Placing_a_fault_lets_go_of_the_containers_the_search_went_through(string fault)
     {
-        var document = PdfDocument.Open(file);
-        document.GetObject(new PdfObjectId(HostileInputTests.PackedNumber(0, 0))).AsDictionary().Required();
-        var held = document.Trailer.GetRaw(PdfName.Root)!;
-        var kept = Retained();
+        // The catalog holds, under /Zz, an array a caller wrote, which holds a reference to nothing, a name with a null
+        // character, or a dictionary keyed by one. The object graph places the fault for its finding by searching the
+        // catalog again, keeping the containers it goes through in the array the walk keeps its own in, which lives as long
+        // as the graph: once the fault is found, the search lets go of them, as the walk does of each container it leaves
+        // (#168). The array is watched through a weak reference once the catalog no longer holds it.
+        using var document = PdfDocument.Open(PdfTemplate.Build(PdfTemplate.Sound));
+        var (graph, array) = PlaceFaultUnderTheCatalog(document, fault);
 
-        document.Dispose();
-        return (held, kept);
+        document.Catalog!.Remove(PdfName.Get("Zz"));
+        Collect();
+
+        array.IsAlive.Should().BeFalse("the search let go of the containers it went through");
+        GC.KeepAlive(graph);
     }
 
-    private static long Retained()
+    /// <summary>
+    /// Sets the catalog's <c>/Zz</c> to an array holding <paramref name="fault"/>, walks the objects of
+    /// <paramref name="document"/> and places the fault, giving the graph and a weak reference to the array; out of line, so
+    /// that no strong reference to the array outlives the call.
+    /// </summary>
+    [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
+    private static (ObjectGraph Graph, WeakReference Array) PlaceFaultUnderTheCatalog(PdfDocument document, string fault)
+    {
+        var keyed = new PdfDictionary();
+        keyed.Set(PdfName.Get("A\0"), PdfInteger.Create(1));
+        var array = new PdfArray(
+        [
+            fault switch
+            {
+                "reference" => new PdfReference(new PdfObjectId(9999), document.Reader),
+                "name" => PdfName.Get("A\0"),
+                _ => keyed,
+            },
+        ]);
+        document.Catalog!.Set(PdfName.Get("Zz"), array);
+        document.Reader.SettleIndex();
+
+        var graph = ObjectGraph.Run(document, PageTreeWalk.Run(document));
+
+        graph.MissingReferences.Concat(graph.NullCharacterNames).Should().ContainSingle().Which.Message.Should().Contain("under /Zz[0]");
+        return (graph, new WeakReference(array));
+    }
+
+    /// <summary>
+    /// Opens <paramref name="file"/>, reads the member of its object stream, takes a reference from the document and
+    /// disposes of it, giving the reference and a weak reference to the array that held the stream's decoded data; out of
+    /// line, so that no strong reference to the document or to the array outlives the call.
+    /// </summary>
+    [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
+    private static (PdfObject Held, WeakReference Data) OpenDecodeAndDispose(byte[] file)
+    {
+        var document = PdfDocument.Open(file);
+        var stream = HostileInputTests.StreamNumber(0);
+        document.Reader.KeptObjectStreamData(stream).IsEmpty.Should().BeTrue("nothing is decoded before an object is read");
+        document.GetObject(new PdfObjectId(HostileInputTests.PackedNumber(0, 0))).AsDictionary().Required();
+        var held = document.Trailer.GetRaw(PdfName.Root)!;
+        var data = Watch(document.Reader.KeptObjectStreamData(stream));
+
+        Collect();
+
+        data.IsAlive.Should().BeTrue("the reader keeps the decoded data while the document is open");
+        document.Dispose();
+        return (held, data);
+    }
+
+    /// <summary>Gives a weak reference to the array behind <paramref name="kept"/>, the whole of an object stream's decoded data.</summary>
+    private static WeakReference Watch(ReadOnlyMemory<byte> kept)
+    {
+        System.Runtime.InteropServices.MemoryMarshal.TryGetArray(kept, out var data).Should().BeTrue("decoded data is held in an array");
+        data.Count.Should().Be(DecodedLength, "the reader keeps the whole of the decoded data");
+        return new WeakReference(data.Array);
+    }
+
+    private static void Collect()
     {
         GC.Collect();
         GC.WaitForPendingFinalizers();
         GC.Collect();
+    }
+
+    private static long Retained()
+    {
+        Collect();
         return GC.GetTotalMemory(forceFullCollection: true);
     }
 
@@ -184,14 +259,18 @@ public class HostileInputMemoryTests
         held.Should().BeLessThan((32L * 1024 * 1024) + (3L * Bound), $"memory was sampled {source.Samples} times");
     }
 
-    [Fact]
-    public void Walking_a_chain_of_references_holds_what_the_reader_keeps_whatever_its_length()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Walking_a_chain_of_references_holds_what_the_reader_keeps_whatever_its_length(bool referenceLast)
     {
-        // Two hundred objects, each naming the next under /Next, its first key, and holding a string of 200,000 bytes, opened
-        // with a cache of eight objects. The object graph described each object from the value it walked, which held every
-        // link of the chain at once until the chain's end: 41 MB, growing with the chain. It reads an object again to
-        // describe it, so that what stays live is what the reader keeps — its cache, the windows it reads through —: 14 MB,
-        // the same for a chain of a hundred.
+        // Two hundred objects, each naming the next under /Next and holding a string of 200,000 bytes, opened with a cache
+        // of eight objects. With /Next first, the object graph described each object from the value it walked, which held
+        // every link of the chain at once until the chain's end: 41 MB, growing with the chain; it reads an object again to
+        // describe it. With /Next last, its stack held each object's /Pad, met before /Next and walked only once the chain
+        // had ended: 40 MB, and 80 MB for a chain of four hundred (#168); it walks an object whole when it reads it, and
+        // keeps of the next only its number. What stays live either way is what the reader keeps — its cache, the windows it
+        // reads through —: 13 MB, the same for a chain of a hundred or of four hundred.
         const int Links = 200;
         var pad = new string('x', 200_000);
         var builder = new TestPdfBuilder()
@@ -200,36 +279,81 @@ public class HostileInputMemoryTests
 
         for (var link = 3; link < Links + 3; link++)
         {
-            builder.WithObject(link, string.Create(CultureInfo.InvariantCulture, $"<< /Next {link + 1} 0 R /Pad ({pad}) >>"));
+            builder.WithObject(
+                link,
+                referenceLast
+                    ? string.Create(CultureInfo.InvariantCulture, $"<< /Pad ({pad}) /Next {link + 1} 0 R >>")
+                    : string.Create(CultureInfo.InvariantCulture, $"<< /Next {link + 1} 0 R /Pad ({pad}) >>"));
         }
 
         builder.WithObject(Links + 3, "null");
         var source = new SamplingSource(builder.BuildClassic(rootNumber: 1));
         using var document = PdfDocument.Open(source, PdfReaderOptions.Default with { ObjectCacheCapacity = 8 }, ownsSource: true);
+        document.Reader.SettleIndex();
         var pages = Validation.PageTreeWalk.Run(document);
         var before = GC.GetTotalMemory(forceFullCollection: true);
         source.Sampling = true;
 
-        Validation.ObjectGraph.Run(document, pages);
+        var graph = Validation.ObjectGraph.Run(document, pages);
 
         source.Sampling = false;
+        graph.MissingReferences.Total.Should().Be(0, "the chain ends at a literal null");
         var held = source.MostLive - before;
         held.Should().BeLessThan(20L * 1024 * 1024, $"memory was sampled {source.Samples} times");
     }
 
     [Fact]
+    public void Walking_a_deep_page_tree_whose_nodes_carry_large_values_holds_what_the_reader_keeps_whatever_its_depth()
+    {
+        // Four hundred page tree nodes, each the one kid of the node above it and carrying a string of 100,000 bytes after
+        // its /Kids, the last listing a page, opened with a cache of 64 objects. The walk kept each node on its path in its
+        // frame, past the reader's cache, until it left the node: 40 MB, and 80 MB for eight hundred nodes (#201). A frame
+        // keeps the node's /Count and its array of kids, not the node, and what stays live is what the reader keeps, its
+        // cache: 7 MB, the same for two hundred nodes or eight hundred.
+        const int Depth = 400;
+        var big = new string('x', 100_000);
+        var builder = new TestPdfBuilder().WithObject(1, "<< /Type /Catalog /Pages 3 0 R >>");
+        var last = Depth + 2;
+
+        for (var node = 3; node <= last; node++)
+        {
+            var parent = node == 3 ? string.Empty : string.Create(CultureInfo.InvariantCulture, $"/Parent {node - 1} 0 R ");
+            builder.WithObject(node, string.Create(CultureInfo.InvariantCulture, $"<< /Type /Pages {parent}/Kids [{node + 1} 0 R] /Count 1 /Big ({big}) >>"));
+        }
+
+        builder.WithObject(last + 1, string.Create(CultureInfo.InvariantCulture, $"<< /Type /Page /Parent {last} 0 R /MediaBox [0 0 612 792] /Resources << >> >>"));
+        var source = new SamplingSource(builder.BuildClassic(rootNumber: 1)) { Every = 4 };
+        using var document = PdfDocument.Open(source, PdfReaderOptions.Default with { ObjectCacheCapacity = 64 }, ownsSource: true);
+        document.Reader.SettleIndex();
+        var before = GC.GetTotalMemory(forceFullCollection: true);
+        source.Sampling = true;
+
+        var walk = Validation.PageTreeWalk.Run(document);
+
+        source.Sampling = false;
+        walk.PageCount.Should().Be(1);
+        walk.CountMismatches.Total.Should().Be(0, "each node gives the one page below it");
+        var held = source.MostLive - before;
+        held.Should().BeLessThan(16L * 1024 * 1024, $"memory was sampled {source.Samples} times");
+    }
+
+    [Fact]
     public void The_walk_of_the_object_streams_dependencies_holds_what_the_reader_keeps_whatever_it_reaches()
     {
-        // An object stream takes its /DecodeParms from object 3, an array of references to 2,000 arrays, each of a thousand
-        // references, opened with a cache of 64 objects. The walk kept the references of every object it read, to read each
-        // once: 16 MB, growing with what the decoding keys reach. It keeps as many objects as the reader keeps in its cache.
+        // A Flate object stream takes its /DecodeParms from object 3, an array of references to 2,000 arrays, each of a
+        // thousand references, opened with a cache of 64 objects. The walk kept the references of every object it read, to
+        // read each once: 16 MB, growing with what the decoding keys reach. It keeps as many objects as the reader keeps in
+        // its cache; and it now reads what decoding reads (#277): the one Flate step's element of 3, an array that gives no
+        // parameters, and of each array as many elements as a chain of filters reads.
         const int Arrays = 2000;
+        const string Members = "6 0 << >>";
+        var data = Encoding.Latin1.GetString(Compress(Encoding.Latin1.GetBytes(Members)));
         var file = new HandWrittenFile(version: "1.5");
         var rows = new Dictionary<int, (int Type, long Field2, int Field3)>
         {
             [1] = (1, file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"), 0),
             [2] = (1, file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"), 0),
-            [5] = (1, file.ObjectStream(5, [(6, "<< >>")], "/DecodeParms 3 0 R "), 0),
+            [5] = (1, file.Object(5, string.Create(CultureInfo.InvariantCulture, $"<< /Type /ObjStm /N 1 /First 4 /Filter /FlateDecode /DecodeParms 3 0 R /Length {data.Length} >>\nstream\n{data}\nendstream")), 0),
             [6] = (2, 5, 0),
         };
         var all = new StringBuilder("[");
@@ -253,6 +377,87 @@ public class HostileInputMemoryTests
         source.Sampling = false;
         var held = source.MostLive - before;
         held.Should().BeLessThan(6L * 1024 * 1024, $"memory was sampled {source.Samples} times");
+    }
+
+    [Fact]
+    public void The_walk_of_the_object_streams_dependencies_keeps_no_more_objects_than_the_reader_caches()
+    {
+        // Five hundred Flate object streams each take their /DecodeParms from an object of their own, written in the file:
+        // << /Predictor 1 /Columns [...] >>, of 20,000 zeros, opened with a cache of 64 objects. The walk reads each once a
+        // validation and keeps what decoding may read of it, as it keeps every object it reads, about 260 KB each: of all
+        // five hundred, 130 MB. It keeps as many as the reader keeps in its cache, the oldest let go first (#201): 17 MB.
+        const int Streams = 500;
+        var columns = "[" + new StringBuilder().Insert(0, "0 ", 20_000) + "]";
+        var file = new HandWrittenFile(version: "1.5");
+        var rows = new Dictionary<int, (int Type, long Field2, int Field3)>
+        {
+            [1] = (1, file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"), 0),
+            [2] = (1, file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"), 0),
+        };
+
+        for (var k = 0; k < Streams; k++)
+        {
+            var (parameters, stream, member) = (1000 + k, 2000 + (2 * k), 2001 + (2 * k));
+            var header = string.Create(CultureInfo.InvariantCulture, $"{member} 0 ");
+            var data = Encoding.Latin1.GetString(Compress(Encoding.Latin1.GetBytes(header + "<< >>")));
+            rows[parameters] = (1, file.Object(parameters, $"<< /Predictor 1 /Columns {columns} >>"), 0);
+            rows[stream] = (1, file.Object(stream, string.Create(CultureInfo.InvariantCulture, $"<< /Type /ObjStm /N 1 /First {header.Length} /Filter /FlateDecode /DecodeParms {parameters} 0 R /Length {data.Length} >>\nstream\n{data}\nendstream")), 0);
+            rows[member] = (2, stream, 0);
+        }
+
+        file.CrossReferenceStream(3000, 3001, rows, "/Root 1 0 R");
+        var source = new SamplingSource(file.Bytes) { Every = 16 };
+        using var document = PdfDocument.Open(source, PdfReaderOptions.Default with { ObjectCacheCapacity = 64 }, ownsSource: true);
+        var before = GC.GetTotalMemory(forceFullCollection: true);
+        source.Sampling = true;
+
+        Validation.ObjectStreamDependencies.Run(document).Circular.Should().BeEmpty();
+
+        source.Sampling = false;
+        var held = source.MostLive - before;
+        held.Should().BeLessThan(32L * 1024 * 1024, $"memory was sampled {source.Samples} times");
+    }
+
+    [Theory]
+    [InlineData("<< /Predictor 1 /Pad [{0}] >>")]
+    [InlineData("[<< /Predictor 1 >> {0}]")]
+    public void The_walk_keeps_of_each_object_it_reads_what_decoding_may_read_of_it(string parameters)
+    {
+        // As above, a hundred streams, each taking its /DecodeParms from an object of its own: parameters that hold 50,000
+        // zeros under a key no step reads, or an array of parameters whose 50,000 elements past the first lie past the
+        // guard on filters. The walk keeps of each what decoding may read — the entries a step reads, the elements a chain
+        // of filters reads —, and holds no more than the reader keeps: kept whole, the 64 objects it keeps at once held
+        // 25 MB (#201).
+        const int Streams = 100;
+        var value = string.Format(CultureInfo.InvariantCulture, parameters, new StringBuilder().Insert(0, "0 ", 50_000));
+        var file = new HandWrittenFile(version: "1.5");
+        var rows = new Dictionary<int, (int Type, long Field2, int Field3)>
+        {
+            [1] = (1, file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"), 0),
+            [2] = (1, file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"), 0),
+        };
+
+        for (var k = 0; k < Streams; k++)
+        {
+            var (decodeParms, stream, member) = (1000 + k, 2000 + (2 * k), 2001 + (2 * k));
+            var header = string.Create(CultureInfo.InvariantCulture, $"{member} 0 ");
+            var data = Encoding.Latin1.GetString(Compress(Encoding.Latin1.GetBytes(header + "<< >>")));
+            rows[decodeParms] = (1, file.Object(decodeParms, value), 0);
+            rows[stream] = (1, file.Object(stream, string.Create(CultureInfo.InvariantCulture, $"<< /Type /ObjStm /N 1 /First {header.Length} /Filter /FlateDecode /DecodeParms {decodeParms} 0 R /Length {data.Length} >>\nstream\n{data}\nendstream")), 0);
+            rows[member] = (2, stream, 0);
+        }
+
+        file.CrossReferenceStream(3000, 3001, rows, "/Root 1 0 R");
+        var source = new SamplingSource(file.Bytes) { Every = 16 };
+        using var document = PdfDocument.Open(source, PdfReaderOptions.Default with { ObjectCacheCapacity = 64 }, ownsSource: true);
+        var before = GC.GetTotalMemory(forceFullCollection: true);
+        source.Sampling = true;
+
+        Validation.ObjectStreamDependencies.Run(document).Circular.Should().BeEmpty();
+
+        source.Sampling = false;
+        var held = source.MostLive - before;
+        held.Should().BeLessThan(8L * 1024 * 1024, $"memory was sampled {source.Samples} times");
     }
 
     private static byte[] Compress(byte[] data)
@@ -357,6 +562,51 @@ public class HostileInputMemoryTests
         output.Write(rows);
         Write(string.Create(CultureInfo.InvariantCulture, $"\nendstream\nendobj\nstartxref\n{xref}\n%%EOF\n"));
         return output.ToArray();
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("/Pad")]
+    public void The_walk_keeps_of_the_dictionaries_of_object_streams_whose_standing_waits_what_their_decoding_reads(string? key)
+    {
+        // Two hundred object streams, each taking its /Length from the object the next holds, the last from its own, and its
+        // /DecodeParms from an array of 5,000 zeros written in its dictionary, or from parameters holding it. The walk of the
+        // first meets the second's object, whose standing waits on the third's, and so on: 199 standings wait at once, and
+        // the walk keeps what it read of each one's dictionary, to walk it again once the one it waits on is known (#312).
+        // The reader keeps each stream it read for the walk, some 75 KB, 15 MB for all; of an array, decoding reads as many
+        // elements as a chain of filters has steps, and of parameters what a step reads, and the walk keeps no more: kept
+        // whole, the 199 arrays held another 13 MB at once.
+        var source = new SamplingSource(HostileInputTests.WaitingArrays(200, 5000, key)) { Every = 16 };
+        using var document = PdfDocument.Open(source, PdfReaderOptions.Default, ownsSource: true);
+        var before = GC.GetTotalMemory(forceFullCollection: true);
+        source.Sampling = true;
+
+        Validation.ObjectStreamDependencies.Run(document).CircularStreams.Should().Equal(1398);
+
+        source.Sampling = false;
+        var held = source.MostLive - before;
+        held.Should().BeLessThan(20L * 1024 * 1024, $"memory was sampled {source.Samples} times");
+    }
+
+    [Fact]
+    public void The_walk_keeps_the_dictionaries_of_as_many_object_streams_whose_standing_waits_as_the_reader_caches_objects()
+    {
+        // Four hundred object streams, each taking its /Length from the object the next holds, the last from its own, and its
+        // /DecodeParms from << /Predictor 1 /Columns [...] >>, of 5,000 zeros, opened with a cache of 64 objects: 399
+        // standings wait at once, and the walk keeps what decoding reads of each one's dictionary, its /Columns whole, some
+        // 75 KB, as the reader keeps each stream it read for the walk: some 9 MB in all. It keeps as many as the reader
+        // caches, the oldest let go first, and read again when walked again (#312): kept for every stream that waits, they
+        // held 31 MB at once.
+        var source = new SamplingSource(HostileInputTests.WaitingArrays(400, 5000, "/Columns")) { Every = 16 };
+        using var document = PdfDocument.Open(source, PdfReaderOptions.Default with { ObjectCacheCapacity = 64 }, ownsSource: true);
+        var before = GC.GetTotalMemory(forceFullCollection: true);
+        source.Sampling = true;
+
+        Validation.ObjectStreamDependencies.Run(document).CircularStreams.Should().Equal(1798);
+
+        source.Sampling = false;
+        var held = source.MostLive - before;
+        held.Should().BeLessThan(16L * 1024 * 1024, $"memory was sampled {source.Samples} times");
     }
 
     /// <summary>A file in memory that samples the memory live at once, every object collected first, at each read.</summary>

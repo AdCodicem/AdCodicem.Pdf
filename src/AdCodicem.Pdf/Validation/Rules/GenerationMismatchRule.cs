@@ -21,7 +21,9 @@ internal sealed class GenerationMismatchRule : IValidationRule
     /// <inheritdoc/>
     public void Check(ValidationContext context)
     {
-        foreach (var finding in context.Probe.GenerationMismatches)
+        var findings = context.Probe.GenerationMismatches;
+
+        foreach (var finding in findings)
         {
             context.Report(
                 this,
@@ -29,5 +31,8 @@ internal sealed class GenerationMismatchRule : IValidationRule
                 finding.Message,
                 "Give the entry the generation the object is written with, or write the object with the entry's.");
         }
+
+        // What the analysis counted past the room the report had when it was made, which it did not write (#168).
+        context.Count(this, findings.Unkept);
     }
 }

@@ -4,7 +4,9 @@ namespace AdCodicem.Pdf.IO.Filters;
 
 /// <summary>
 /// Follows the values a stream's filters are decoded with as the one who reads them needs: decoding resolves them; the
-/// reader, checking a cross-reference stream before its rows are read, follows them only through what it has read.
+/// reader, checking a cross-reference stream before its rows are read, follows them only through what it has read; the
+/// validator's walk of the object streams' dependencies follows them as decoding does, recording which objects of object
+/// streams each leads to (#277); and its rule on a trailer's values notes which of them decoding follows (#263).
 /// </summary>
 internal interface IFilterValueReader
 {

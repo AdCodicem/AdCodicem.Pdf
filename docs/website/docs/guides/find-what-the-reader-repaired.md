@@ -52,6 +52,9 @@ foreach (var entry in document.Diagnostics)
 }
 ```
 
+A loop lists the entries recorded when it began. One whose body reads the document — `GetObject`, a validation — goes on
+over those, and what its reads record is listed by the next loop, and counted by `Count` at once.
+
 ## Filter on what matters to you
 
 Filter on the code, never on the message: codes are stable from one release to the next, messages are not.
@@ -119,6 +122,25 @@ Apply it once you have read what you need from the document, or once you have va
 index may have lost entries, or for one that is neither where the index says nor near it
 ([Lazy reading](../concepts/lazy-reading.md) lists when): `WasRepaired` turns true then, and a policy applied
 before that read accepts a file it would have refused after it.
+
+## Read the trailer after reading the document
+
+A rebuild merges the trailers it finds — an older revision's `/Info`, or `/Encrypt` — and the catalog it finds into a new
+trailer, which `Trailer`, `Catalog` and `IsEncrypted` give from then on; a trailer you took before keeps none of it. Take
+the trailer once you have read what you need, rather than keep the one you took at opening:
+
+```csharp
+using AdCodicem.Pdf.Objects;
+
+foreach (var number in document.ObjectNumbers)
+{
+    _ = document.GetObject(new PdfObjectId(number));   // may rebuild the index
+}
+
+var info = document.Trailer.GetDictionary(PdfName.Info);   // the rebuilt trailer's, if a rebuild ran
+```
+
+The loop itself is safe: it goes on over the numbers the index held when it began, whatever a read in it rebuilds.
 
 ## Keep the account
 

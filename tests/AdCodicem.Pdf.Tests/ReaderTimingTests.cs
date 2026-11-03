@@ -174,7 +174,7 @@ public class ReaderTimingTests
         static void Probe(PdfDocument document)
         {
             var probe = CrossReferenceProbe.Run(document);
-            (probe.Broken.Count + probe.Shifted.Count + probe.BrokenObjectStreams.Count).Should().BePositive();
+            (probe.Broken.Total + probe.Shifted.Total + probe.BrokenObjectStreams.Count).Should().BePositive();
         }
     }
 
@@ -205,6 +205,152 @@ public class ReaderTimingTests
         {
             using var document = PdfDocument.Open(file);
             document.ObjectCount.Should().Be(Count + 3);
+        }
+    }
+
+    [Fact]
+    public void Object_streams_that_share_chains_eight_times_as_long_have_their_dependencies_walked_in_about_the_same_time()
+    {
+        // Two thousand object streams take /Filter 10 0 R and /DecodeParms 100 0 R, each the first of a chain of references,
+        // the parameters' values chains too, which decoding reads for each stream. The walk follows a chain once a
+        // validation, keeping the run of references it loads by the object it starts at: chains of 31 references cost what
+        // chains of 4 do, 4.3 ms against 4.2 ms, where reading each object of a chain again for each stream cost about four
+        // times as much, 107 ms against 28 ms (#201, #277). Each stream once read 64 filters and 64 parameters, which drowned
+        // the chains: the walk without the memo then cost 1.9 times as much, within the bound. The measure is the ratio, the
+        // best walk of each, run in turn.
+        const int Streams = 2000;
+        using var shortChains = PdfDocument.Open(HostileInputTests.SharedChains(Streams, links: 4, oneStep: true));
+        using var longChains = PdfDocument.Open(HostileInputTests.SharedChains(Streams, links: 31, oneStep: true));
+
+        var (shortTime, longTime) = BestOfEach(() => ObjectStreamDependencies.Run(shortChains), () => ObjectStreamDependencies.Run(longChains));
+
+        longTime.Should().BeLessThan(
+            shortTime * 2,
+            "chains eight times as long must be walked in about the same time ({0} against {1})",
+            longTime,
+            shortTime);
+    }
+
+    [Fact]
+    public void Sixteen_times_as_many_object_streams_whose_parameters_head_nests_of_streams_have_their_dependencies_walked_in_less_than_four_times_the_time()
+    {
+        // Object streams share 64 parameters and the values their predictor asks for, each a stream heading a nest of 63
+        // streams by /Length, which the parse of each follows to the reader's deepest load, where it is cut: 16,128 streams,
+        // more than the walk keeps of what it reads. The walk followed every nest again for each object stream, reading again
+        // all it had let go, 50 ms a stream: sixteen times the streams took seventeen times as long, 0.78 s for 16 and 13.1 s
+        // for 256. It takes at once the nest of streams a parse went through, from the depth it went through it, and what one
+        // more object stream costs, about 0.25 ms, is small next to what parsing the nests once costs, about 45 ms: 256
+        // streams take two to three times as long as 16 (#201). The measure is the ratio, the best walk of each, run in turn.
+        const int Few = 16;
+        const int Many = 256;
+        using var few = PdfDocument.Open(HostileInputTests.LengthNests(Few, depth: 63));
+        using var many = PdfDocument.Open(HostileInputTests.LengthNests(Many, depth: 63));
+
+        var (fewTime, manyTime) = BestOfEach(() => ObjectStreamDependencies.Run(few), () => ObjectStreamDependencies.Run(many));
+
+        manyTime.Should().BeLessThan(
+            fewTime * 4,
+            "sixteen times the object streams must be walked in less than four times the time ({0} for {1:N0}, {2} for {3:N0})",
+            fewTime,
+            Few,
+            manyTime,
+            Many);
+    }
+
+    [Theory]
+    [InlineData("four times the streams", 8)]
+    [InlineData("chains eight times as long", 3)]
+    [InlineData("chains eight times as long, written in the file", 3)]
+    [InlineData("chains eight times as long, written in the file twice, the index rebuilt", 3)]
+    public void Object_streams_that_share_chains_of_objects_written_in_the_file_or_held_by_streams_that_decode_alike_have_their_dependencies_walked_in_time_their_number_alone_sets(string larger, int ratio)
+    {
+        // Object streams share 64 parameters, each the head of a chain of objects held by object streams that decode alike in
+        // every read order, one each (#312), or written in the file. The walk follows a chain once a validation, keeping the
+        // run of objects it loads by the one it starts at — once it knows their holders decode alike (#277) —: four times the
+        // streams take about four times as long, and chains of 31 objects about what chains of 4 do, where following each
+        // chain for each stream, an object at a time or through the reader, cost about eight times as much. A rebuild that
+        // places the chains' objects at copies written after them leaves the walk that judges the chain's index taking the
+        // runs it kept. The measure is the ratio, the best walk of each, run in turn.
+        var twice = larger.Contains("twice", StringComparison.Ordinal);
+        var (small, large) = larger switch
+        {
+            "four times the streams" => (HostileInputTests.MemberChains(1000, holdersShare: false, links: 31), HostileInputTests.MemberChains(4000, holdersShare: false, links: 31)),
+            "chains eight times as long" => (HostileInputTests.MemberChains(2000, holdersShare: false, links: 4), HostileInputTests.MemberChains(2000, holdersShare: false, links: 31)),
+            _ => (HostileInputTests.MemberChains(2000, holdersShare: false, links: 4, inFile: true, twice), HostileInputTests.MemberChains(2000, holdersShare: false, links: 31, inFile: true, twice)),
+        };
+        using var smallDocument = PdfDocument.Open(small);
+        using var largeDocument = PdfDocument.Open(large);
+
+        if (twice)
+        {
+            smallDocument.Reader.SettleIndex();
+            largeDocument.Reader.SettleIndex();
+            largeDocument.WasRepaired.Should().BeTrue();
+        }
+
+        var (smallTime, largeTime) = BestOfEach(() => ObjectStreamDependencies.Run(smallDocument), () => ObjectStreamDependencies.Run(largeDocument));
+
+        largeTime.Should().BeLessThan(
+            smallTime * ratio,
+            "{0} must cost at most {1} times the time ({2} against {3})",
+            larger,
+            ratio,
+            largeTime,
+            smallTime);
+    }
+
+    [Theory]
+    [InlineData("chain")]
+    [InlineData("ring")]
+    [InlineData("rho")]
+    [InlineData("star")]
+    public void Four_times_as_many_object_streams_that_need_one_another_are_judged_circular_in_about_four_times_the_time(string shape)
+    {
+        // Object streams need one another's objects through their /DecodeParms, in HostileInputTests' shapes. The walk
+        // looked for a way back to each stream with a search from each of its needs, which cost the square of their number:
+        // 17 s for a chain of 20,000 streams, 44 s for a ring (#168). It works out the streams that lead to one another once:
+        // four times the streams take about four times as long, where the search took more than sixteen times as long. The
+        // measure is the ratio, the best of five walks of each, each walked once first; each walk starts from a collected
+        // heap, so that what a walk before it left, the needs and findings of each stream, is not collected inside the next.
+        // Walks this short, tens of milliseconds, are all slowed now and then on a busy machine: a bound of 8 failed once in
+        // 15 runs under load, and 8 times in 300 under four busy loops, where alternating the walks until neither improves,
+        // as BestOfEach does, failed about as often. A bound of 12 still tells a walk that grows with the streams from one
+        // that grows with their square.
+        const int Small = 2000;
+        const int Large = 4 * Small;
+        var options = new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxFilterChainLength = Large } };
+        using var small = PdfDocument.Open(HostileInputTests.ChainedObjectStreams(shape, Small), options);
+        using var large = PdfDocument.Open(HostileInputTests.ChainedObjectStreams(shape, Large), options);
+
+        ObjectStreamDependencies.Run(small).CircularStreams.Should().HaveCount(HostileInputTests.CircularAmongChainedObjectStreams(shape, Small));
+        ObjectStreamDependencies.Run(large).CircularStreams.Should().HaveCount(HostileInputTests.CircularAmongChainedObjectStreams(shape, Large));
+        var smallTime = TimeSpan.MaxValue;
+        var largeTime = TimeSpan.MaxValue;
+
+        for (var run = 0; run < 5; run++)
+        {
+            smallTime = Min(smallTime, Time(() => ObjectStreamDependencies.Run(small)));
+            largeTime = Min(largeTime, Time(() => ObjectStreamDependencies.Run(large)));
+        }
+
+        largeTime.Should().BeLessThan(
+            smallTime * 12,
+            "four times the streams must cost about four times the time ({0} for {1:N0}, {2} for {3:N0})",
+            smallTime,
+            Small,
+            largeTime,
+            Large);
+
+        static TimeSpan Min(TimeSpan a, TimeSpan b) => a < b ? a : b;
+
+        static TimeSpan Time(Action action)
+        {
+            GC.Collect();
+            GC.WaitForPendingFinalizers();
+            GC.Collect();
+            var stopwatch = Stopwatch.StartNew();
+            action();
+            return stopwatch.Elapsed;
         }
     }
 
@@ -314,11 +460,88 @@ public class ReaderTimingTests
             orderedTime);
     }
 
+    [Fact]
+    public void A_page_tree_node_of_four_times_the_kids_is_walked_at_about_four_times_the_cost_once_the_cache_lets_go_of_it()
+    {
+        // A page tree node lists 20,000 pages, another 80,000, each opened with a cache of 64 objects, which lets go of the
+        // node long before its last kid. The walk's frame keeps the node's array of kids, as the parse made it, rather than
+        // the node (#201): four times the kids cost about four times as much. Reading the node again for each kid once the
+        // cache let go of it would read it again every 63 kids: the large walk then took 18.5 times as long as the small
+        // one, 21 s against 1.1 s, and allocated 19 times as much, 9.8 GB against 506 MB. What each walk allocates on the
+        // test's thread holds the cost whatever else the process does: once each was walked first, the large walk allocates
+        // 4.2 times what the small one does, 48.8 MB against 11.6 MB, on every run, under coverage or not. The time is held
+        // as well, as the ratio of the best walk of each, run in turn, each from a collected heap: without a collection
+        // before it, one large walk in three met one, which took it to 5 to 14 times the small walk's best. Where the
+        // collector lets new objects take less than the large walk allocates before it collects — 16.8 MB, say —, every
+        // large walk meets two collections or three, collected heap or not, and the ratio comes near 6: a bound of 12 holds
+        // that, and still tells a walk that grows with the kids from one that grows with their square.
+        const int Small = 20_000;
+        const int Large = 4 * Small;
+        var options = new PdfReaderOptions { ObjectCacheCapacity = 64 };
+        using var small = PdfDocument.Open(Node(Small), options);
+        using var large = PdfDocument.Open(Node(Large), options);
+        small.Reader.SettleIndex();
+        large.Reader.SettleIndex();
+
+        Walk(small, Small);
+        Walk(large, Large);
+        var smallAllocated = Allocated(() => Walk(small, Small));
+        var largeAllocated = Allocated(() => Walk(large, Large));
+
+        largeAllocated.Should().BeLessThan(
+            smallAllocated * 6,
+            "four times the kids must allocate about four times as much ({0:N0} bytes for {1:N0}, {2:N0} for {3:N0})",
+            smallAllocated,
+            Small,
+            largeAllocated,
+            Large);
+
+        var (smallTime, largeTime) = BestOfEach(() => Walk(small, Small), () => Walk(large, Large), collect: true);
+
+        largeTime.Should().BeLessThan(
+            smallTime * 12,
+            "four times the kids must cost about four times the time ({0} for {1:N0}, {2} for {3:N0})",
+            smallTime,
+            Small,
+            largeTime,
+            Large);
+
+        // One measure: a collection that falls in it adds some kilobytes, nothing beside these megabytes. The least of the
+        // measures no collection paused, as Allocations.Least takes it, would walk a node read again for each kid thirty
+        // times, a collection pausing every such walk, some ten minutes before it failed.
+        static long Allocated(Action action)
+        {
+            var allocated = GC.GetAllocatedBytesForCurrentThread();
+            action();
+            return GC.GetAllocatedBytesForCurrentThread() - allocated;
+        }
+
+        static void Walk(PdfDocument document, int kids) => PageTreeWalk.Run(document).PageCount.Should().Be(kids);
+
+        static byte[] Node(int kids)
+        {
+            var builder = new TestPdfBuilder().WithObject(1, "<< /Type /Catalog /Pages 2 0 R >>");
+            var listed = new StringBuilder(kids * 8);
+
+            for (var kid = 3; kid < kids + 3; kid++)
+            {
+                listed.Append(CultureInfo.InvariantCulture, $"{kid} 0 R ");
+                builder.WithObject(kid, "<< /Type /Page /Parent 2 0 R >>");
+            }
+
+            return builder
+                .WithObject(2, string.Create(CultureInfo.InvariantCulture, $"<< /Type /Pages /Count {kids} /MediaBox [0 0 612 792] /Resources << >> /Kids [{listed}] >>"))
+                .BuildClassic(rootNumber: 1);
+        }
+    }
+
     /// <summary>
     /// Gets the shortest run of each action, the two run in turn: five times each at least, and on until neither has run
     /// faster for three turns — at most forty turns, or twenty seconds —, so that both are timed warm whatever ran before.
+    /// With <paramref name="collect"/>, each run starts from a collected heap, collected outside the time, so that a run that
+    /// allocates less than the collector lets the youngest generation take before it collects is not paused inside.
     /// </summary>
-    private static (TimeSpan First, TimeSpan Second) BestOfEach(Action first, Action second)
+    private static (TimeSpan First, TimeSpan Second) BestOfEach(Action first, Action second, bool collect = false)
     {
         var bestFirst = TimeSpan.MaxValue;
         var bestSecond = TimeSpan.MaxValue;
@@ -327,8 +550,8 @@ public class ReaderTimingTests
 
         for (var turn = 0; turn < 5 || (steady < 3 && turn < 40 && spent.Elapsed < TimeSpan.FromSeconds(20)); turn++)
         {
-            var timeFirst = Time(first);
-            var timeSecond = Time(second);
+            var timeFirst = Time(first, collect);
+            var timeSecond = Time(second, collect);
             steady = timeFirst < bestFirst || timeSecond < bestSecond ? 0 : steady + 1;
             bestFirst = timeFirst < bestFirst ? timeFirst : bestFirst;
             bestSecond = timeSecond < bestSecond ? timeSecond : bestSecond;
@@ -336,8 +559,15 @@ public class ReaderTimingTests
 
         return (bestFirst, bestSecond);
 
-        static TimeSpan Time(Action action)
+        static TimeSpan Time(Action action, bool collect)
         {
+            if (collect)
+            {
+                GC.Collect();
+                GC.WaitForPendingFinalizers();
+                GC.Collect();
+            }
+
             var stopwatch = Stopwatch.StartNew();
             action();
             return stopwatch.Elapsed;

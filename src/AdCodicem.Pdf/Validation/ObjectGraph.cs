@@ -20,11 +20,36 @@ namespace AdCodicem.Pdf.Validation;
 /// of numbers already met stops them.
 /// </para>
 /// <para>
+/// Each object is walked whole when it is read, in the order it is written, and claims the objects its references name
+/// that no reference named before: what the walk keeps of an object still to read is its number, with the object that
+/// named it first and the role of that reference — 16 bytes —, never a value written in the object that named it (#168).
+/// A chain of references so holds what the reader keeps, whatever the objects along it hold beside the reference and
+/// wherever they write it. The objects claimed are read last claimed first, so that a tree of objects is read as a
+/// depth-first walk of what it holds would read it, the last value first. Walking one object keeps a place for each level
+/// of nesting it is in, which the parser bounds in an object read from a file; a value a caller built nests as deep as it
+/// was built, and one that holds itself is walked without end, its array of containers growing a level at a time until
+/// memory runs out (#310). The places are kept in an array, not on the stack, by the walk and by the searches that place a
+/// fault once it is done alike, so that no depth a caller built overflows the stack (#168).
+/// </para>
+/// <para>
+/// The walk runs on a settled index (<see cref="PdfFileReader.SettleIndex"/>), as validation makes it before its first
+/// rule: the objects the file lacks are then the ones the index lacked when it was settled, so that a reference to one is
+/// told when it is met, without a load — the object is asked for all the same, as resolving the reference asks for it —,
+/// and counted at each place it is written. On an index a load could still rebuild, an object claimed when the index did not
+/// lack it — held it, or a guard left it unknown — may be lacked once it is read: it is counted then for the reference that
+/// claimed it, and for each one met after, not for those met in between.
+/// </para>
+/// <para>
 /// It keeps what it found wrong, counted by the object that holds it, and works out where in that object the first
 /// fault lies only for the objects that have one, once the walk is done, by reading each of them again: what is held
 /// meanwhile is the reader's cache and the counts. Validation settles the index before its first rule, so that no read in
 /// the walk rebuilds it, and the object read again is the one the walk read (#237); were it another, read through an index
 /// rebuilt since, the finding would say what the walk counted without saying where.
+/// </para>
+/// <para>
+/// It is made with the room the report has, and describes, of each kind of fault, the objects that hold one up to that
+/// room, in the order of their numbers: those past it are counted, neither read again nor described, the report having no
+/// room for their findings (#168). What it holds of them is a count per object.
 /// </para>
 /// </remarks>
 internal sealed class ObjectGraph
@@ -32,32 +57,49 @@ internal sealed class ObjectGraph
     private readonly PdfDocument _document;
     private readonly PdfFileReader _reader;
     private readonly PageTreeWalk _pages;
-    private readonly Stack<Item> _work = new();
+
+    /// <summary>The objects claimed and not read yet, by number: never their values, nor those of the objects that named them.</summary>
+    private readonly Stack<Pending> _work = new();
     private readonly HashSet<int> _visited = new(SeededComparer.Instance);
     private readonly HashSet<int> _missing = new(SeededComparer.Instance);
     private readonly SortedDictionary<int, int> _missingReferences = [];
     private readonly SortedDictionary<int, int> _nullCharacterNames = [];
 
-    private ObjectGraph(PdfDocument document, PageTreeWalk pages)
+    /// <summary>
+    /// The containers of the value being walked or searched, the first <see cref="_depth"/>, from the outermost to the one
+    /// being read: one a level of nesting, each let go of when it is left, so that none outlives the walk of the object it
+    /// is in, nor the search.
+    /// </summary>
+    private Scope[] _scopes = new Scope[8];
+    private int _depth;
+
+    private ObjectGraph(PdfDocument document, PageTreeWalk pages, int room)
     {
         _document = document;
         _reader = document.Reader;
         _pages = pages;
+        MissingReferences = new(room);
+        NullCharacterNames = new(room);
+        MissingEndObj = new(room);
     }
 
     /// <summary>Gets the objects, one finding each, that refer to objects the file lacks.</summary>
-    public List<ProbeFinding> MissingReferences { get; } = [];
+    public ProbeFindings MissingReferences { get; }
 
     /// <summary>Gets the objects, one finding each, that hold a name with a null character.</summary>
-    public List<ProbeFinding> NullCharacterNames { get; } = [];
+    public ProbeFindings NullCharacterNames { get; }
 
     /// <summary>Gets the objects whose value <c>endobj</c> does not follow.</summary>
-    public List<ProbeFinding> MissingEndObj { get; } = [];
+    public ProbeFindings MissingEndObj { get; }
 
-    /// <summary>Walks the objects of <paramref name="document"/> reachable from its trailer.</summary>
-    public static ObjectGraph Run(PdfDocument document, PageTreeWalk pages)
+    /// <summary>
+    /// Walks the objects of <paramref name="document"/> reachable from its trailer, describing of each kind of fault the
+    /// first <paramref name="room"/> objects that hold one and counting the rest: the room the report has when the walk is
+    /// made, or every object outside a validation.
+    /// </summary>
+    public static ObjectGraph Run(PdfDocument document, PageTreeWalk pages, int room = int.MaxValue)
     {
-        var graph = new ObjectGraph(document, pages);
+        var graph = new ObjectGraph(document, pages, room);
         graph.Walk();
         graph.Describe();
         return graph;
@@ -65,48 +107,164 @@ internal sealed class ObjectGraph
 
     private void Walk()
     {
-        PushDictionary(_document.Trailer, owner: 0, Role.Trailer);
+        Scan(_document.Trailer, owner: 0, Role.Trailer);
 
-        while (_work.TryPop(out var item))
+        while (_work.TryPop(out var pending))
         {
-            switch (item.Value)
+            var number = pending.Id.Number;
+            var value = _reader.GetObject(pending.Id);
+
+            // Null for an object the index holds in use is a literal null, or one the reader could not produce, which the
+            // cross-reference rules report: there is nothing in it to walk. One the file lacks was told when it was met,
+            // the index being settled; one lacked only now is lacked by an index a load rebuilt since it was claimed, which
+            // a settled index never is, and is counted for the reference that claimed it.
+            if (value is PdfNull && _reader.GetPresence(number) == ObjectPresence.Missing)
             {
-                case PdfReference reference:
-                    Follow(reference, item);
-                    break;
-
-                case PdfStream stream:
-                    PushDictionary(stream.Dictionary, item.Owner, item.Role);
-                    break;
-
-                case PdfDictionary dictionary:
-                    PushDictionary(dictionary, item.Owner, item.Role);
-                    break;
-
-                case PdfArray array:
-                    var role = ElementRole(item.Role);
-
-                    foreach (var element in array)
-                    {
-                        _work.Push(new Item(element, item.Owner, role));
-                    }
-
-                    break;
-
-                case PdfName name when HasNullCharacter(name):
-                    Tally(_nullCharacterNames, item.Owner);
-                    break;
+                _missing.Add(number);
+                CountMissing(pending.Role, pending.Owner);
+                continue;
             }
+
+            Scan(value, number, RoleOf(number));
         }
     }
 
-    private void Follow(PdfReference reference, Item item)
+    /// <summary>
+    /// Walks <paramref name="value"/>, written in object <paramref name="owner"/> or, 0, in the trailer, whole and in the
+    /// order it is written: the names and references it holds are met, and the containers it holds walked in their turn.
+    /// </summary>
+    private void Scan(PdfObject value, int owner, Role role)
+    {
+        Meet(value, owner, role);
+
+        while (_depth > 0)
+        {
+            ref var scope = ref _scopes[_depth - 1];
+            PdfObject next;
+            Role nextRole;
+
+            if (scope.Array is { } array)
+            {
+                if (scope.Next >= array.Count)
+                {
+                    Leave(ref scope);
+                    continue;
+                }
+
+                next = array[scope.Next++];
+                nextRole = scope.Role;
+            }
+            else if (scope.Entries.MoveNext())
+            {
+                var (key, entry) = scope.Entries.Current;
+
+                if (HasNullCharacter(key))
+                {
+                    Tally(_nullCharacterNames, owner);
+                }
+
+                if (IsSectionKey(key, scope.Role))
+                {
+                    continue;
+                }
+
+                next = entry;
+                nextRole = EntryRole(key, entry, scope.Role);
+            }
+            else
+            {
+                Leave(ref scope);
+                continue;
+            }
+
+            // Last: meeting a container enters it, which may move the scopes.
+            Meet(next, owner, nextRole);
+        }
+    }
+
+    /// <summary>
+    /// Meets <paramref name="value"/>, written in object <paramref name="owner"/> with <paramref name="role"/>: a reference
+    /// is claimed, a container entered, and a name with a null character counted.
+    /// </summary>
+    private void Meet(PdfObject value, int owner, Role role)
+    {
+        switch (value)
+        {
+            case PdfReference reference:
+                Claim(reference, owner, role);
+                break;
+
+            case PdfName name when HasNullCharacter(name):
+                Tally(_nullCharacterNames, owner);
+                break;
+
+            default:
+                Open(value, role, length: 0);
+                break;
+        }
+    }
+
+    /// <summary>
+    /// Enters <paramref name="value"/> when it is a container, for its values to be met in their turn: a dictionary, or a
+    /// stream's, keeps <paramref name="role"/> to give its entries theirs, an array the role its elements take.
+    /// </summary>
+    /// <param name="value">The value met.</param>
+    /// <param name="role">What the page tree walk and the other rules make of it.</param>
+    /// <param name="length">The length of the path that leads to it, which a search writes; 0 for the walk, which writes none.</param>
+    private void Open(PdfObject value, Role role, int length)
+    {
+        switch (value)
+        {
+            case PdfStream stream:
+                Enter(new Scope { Entries = stream.Dictionary.GetEnumerator(), Role = role, Length = length });
+                break;
+
+            case PdfDictionary dictionary:
+                Enter(new Scope { Entries = dictionary.GetEnumerator(), Role = role, Length = length });
+                break;
+
+            case PdfArray array:
+                Enter(new Scope { Array = array, Role = ElementRole(role), Length = length });
+                break;
+        }
+    }
+
+    private void Enter(Scope scope)
+    {
+        if (_depth == _scopes.Length)
+        {
+            Array.Resize(ref _scopes, _depth * 2);
+        }
+
+        _scopes[_depth++] = scope;
+    }
+
+    /// <summary>Leaves the innermost container, <paramref name="scope"/>, and lets go of it.</summary>
+    private void Leave(ref Scope scope)
+    {
+        scope = default;
+        _depth--;
+    }
+
+    /// <summary>Leaves every container a search is in, once it has found what it sought, and lets go of them.</summary>
+    private void LeaveAll()
+    {
+        Array.Clear(_scopes, 0, _depth);
+        _depth = 0;
+    }
+
+    /// <summary>
+    /// Claims the object <paramref name="reference"/> names, written in object <paramref name="owner"/> with
+    /// <paramref name="role"/>, for the walk to read later, unless a reference named it before; or counts the reference
+    /// when it names an object the file lacks, each time it is met.
+    /// </summary>
+    private void Claim(PdfReference reference, int owner, Role role)
     {
         var number = reference.Id.Number;
 
         if (_missing.Contains(number))
         {
-            CountMissing(item);
+            CountMissing(role, owner);
             return;
         }
 
@@ -115,47 +273,24 @@ internal sealed class ObjectGraph
             return;
         }
 
-        var value = _reader.GetObject(reference.Id);
-
-        if (value is PdfNull)
+        // A settled index lacks an object as it did when it was settled, which a load does not change: the reference is
+        // null, and the object is asked for all the same, as resolving the reference asks for it — without a load. On an
+        // index a load could still rebuild, one that finds the object leaves it claimed, to be read.
+        if (_reader.GetPresence(number) == ObjectPresence.Missing && _reader.GetObject(reference.Id) is PdfNull)
         {
-            // Null for an object the index holds in use is a literal null, or one the reader could not produce, which
-            // the cross-reference rules report; only an object the file lacks is this walk's.
-            if (_reader.GetPresence(number) == ObjectPresence.Missing)
-            {
-                _missing.Add(number);
-                CountMissing(item);
-            }
-
+            _missing.Add(number);
+            CountMissing(role, owner);
             return;
         }
 
-        _work.Push(new Item(value, number, RoleOf(number)));
+        _work.Push(new Pending(reference.Id, owner, role));
     }
 
-    private void CountMissing(Item item)
+    private void CountMissing(Role role, int owner)
     {
-        if ((item.Role & Role.Uncounted) == 0)
+        if ((role & Role.Uncounted) == 0)
         {
-            Tally(_missingReferences, item.Owner);
-        }
-    }
-
-    private void PushDictionary(PdfDictionary dictionary, int owner, Role role)
-    {
-        foreach (var (key, value) in dictionary)
-        {
-            if (HasNullCharacter(key))
-            {
-                Tally(_nullCharacterNames, owner);
-            }
-
-            if (IsSectionKey(key, role))
-            {
-                continue;
-            }
-
-            _work.Push(new Item(value, owner, EntryRole(key, value, role)));
+            Tally(_missingReferences, owner);
         }
     }
 
@@ -190,12 +325,18 @@ internal sealed class ObjectGraph
     {
         foreach (var (owner, count) in _missingReferences)
         {
+            // Past the room the report had, an object is counted, neither read again nor described.
+            if (!MissingReferences.Take())
+            {
+                continue;
+            }
+
             var value = ValueOf(owner);
             var first = new StringBuilder();
-            var found = TryFindMissing(value, owner, owner == 0 ? Role.Trailer : RoleOf(owner), first, out var target);
+            var found = TryFindMissing(value, owner == 0 ? Role.Trailer : RoleOf(owner), first, out var target);
             var holder = Holder(owner);
 
-            MissingReferences.Add(new ProbeFinding(
+            MissingReferences.Keep(new ProbeFinding(
                 LocationOf(owner),
                 (count, found) switch
                 {
@@ -208,8 +349,13 @@ internal sealed class ObjectGraph
 
         foreach (var (owner, count) in _nullCharacterNames)
         {
+            if (!NullCharacterNames.Take())
+            {
+                continue;
+            }
+
             var first = new StringBuilder();
-            var name = FindNullCharacter(ValueOf(owner), owner == 0, first, out var isKey);
+            var name = FindNullCharacter(ValueOf(owner), owner == 0 ? Role.Trailer : Role.None, first, out var isKey);
             var holder = Holder(owner);
             var where = (isKey, first.Length) switch
             {
@@ -219,7 +365,7 @@ internal sealed class ObjectGraph
                 _ => $"under {RuleText.Path(first)}",
             };
 
-            NullCharacterNames.Add(new ProbeFinding(
+            NullCharacterNames.Keep(new ProbeFinding(
                 LocationOf(owner),
                 (count, name) switch
                 {
@@ -236,10 +382,10 @@ internal sealed class ObjectGraph
 
         foreach (var number in visited)
         {
-            if (_reader.IsEndObjMissing(number, out var position))
+            if (_reader.IsEndObjMissing(number, out var position) && MissingEndObj.Take())
             {
                 var id = IdOf(number);
-                MissingEndObj.Add(new ProbeFinding(
+                MissingEndObj.Keep(new ProbeFinding(
                     _pages.Locate(id, position),
                     Invariant($"Object {number} does not end with endobj: what follows its value is something else, or the end of the file.")));
             }
@@ -259,56 +405,82 @@ internal sealed class ObjectGraph
     /// Whether one was found is said apart from what it names: a reference to object 0, which heads the free list and
     /// is never in use, is one to an object the file lacks like any other.
     /// </para>
+    /// <para>
+    /// It reads <paramref name="value"/> as the walk does, in a loop over the containers it is in, each with the length of
+    /// the path that leads to it: a call a level overflowed a stack of 1 MB some 1,600 nodes down a page tree a caller
+    /// nested, which nothing catches (#168).
+    /// </para>
     /// </remarks>
-    private bool TryFindMissing(PdfObject value, int owner, Role role, StringBuilder path, out PdfObjectId target)
+    private bool TryFindMissing(PdfObject value, Role role, StringBuilder path, out PdfObjectId target)
     {
-        switch (value)
+        if (IsMissing(value, role, out target))
         {
-            case PdfReference reference when (role & Role.Uncounted) == 0 && _missing.Contains(reference.Id.Number):
-                target = reference.Id;
+            return true;
+        }
+
+        Open(value, role, path.Length);
+
+        while (_depth > 0)
+        {
+            ref var scope = ref _scopes[_depth - 1];
+            path.Length = scope.Length;
+            PdfObject next;
+            Role nextRole;
+
+            if (scope.Array is { } array)
+            {
+                if (scope.Next >= array.Count)
+                {
+                    Leave(ref scope);
+                    continue;
+                }
+
+                path.Append(CultureInfo.InvariantCulture, $"[{scope.Next}]");
+                next = array[scope.Next++];
+                nextRole = scope.Role;
+            }
+            else if (scope.Entries.MoveNext())
+            {
+                var (key, entry) = scope.Entries.Current;
+
+                if (IsSectionKey(key, scope.Role))
+                {
+                    continue;
+                }
+
+                FileQuote.AppendName(path, key);
+                next = entry;
+                nextRole = EntryRole(key, entry, scope.Role);
+            }
+            else
+            {
+                Leave(ref scope);
+                continue;
+            }
+
+            if (IsMissing(next, nextRole, out target))
+            {
+                LeaveAll();
                 return true;
+            }
 
-            case PdfStream stream:
-                return TryFindMissing(stream.Dictionary, owner, role, path, out target);
+            // Last: entering a container may move the scopes.
+            Open(next, nextRole, path.Length);
+        }
 
-            case PdfDictionary dictionary:
-                foreach (var (key, entry) in dictionary)
-                {
-                    if (IsSectionKey(key, role))
-                    {
-                        continue;
-                    }
+        return false;
+    }
 
-                    var length = path.Length;
-                    FileQuote.AppendName(path, key);
-
-                    if (TryFindMissing(entry, owner, EntryRole(key, entry, role), path, out target))
-                    {
-                        return true;
-                    }
-
-                    path.Length = length;
-                }
-
-                break;
-
-            case PdfArray array:
-                var elements = ElementRole(role);
-
-                for (var index = 0; index < array.Count; index++)
-                {
-                    var length = path.Length;
-                    path.Append(CultureInfo.InvariantCulture, $"[{index}]");
-
-                    if (TryFindMissing(array[index], owner, elements, path, out target))
-                    {
-                        return true;
-                    }
-
-                    path.Length = length;
-                }
-
-                break;
+    /// <summary>
+    /// Determines whether <paramref name="value"/>, with <paramref name="role"/>, is a reference to an object the file
+    /// lacks that the walk counted, and gives the object it names.
+    /// </summary>
+    private bool IsMissing(PdfObject value, Role role, out PdfObjectId target)
+    {
+        if (value is PdfReference reference && (role & Role.Uncounted) == 0 && _missing.Contains(reference.Id.Number))
+        {
+            target = reference.Id;
+            return true;
         }
 
         target = default;
@@ -319,64 +491,76 @@ internal sealed class ObjectGraph
     /// Finds, in file order, the first name with a null character inside <paramref name="value"/>, where it lies, and
     /// whether it is a key of the dictionary <paramref name="path"/> leads to.
     /// </summary>
-    private static PdfName? FindNullCharacter(PdfObject value, bool trailer, StringBuilder path, out bool isKey)
+    /// <param name="value">The value of an object, or the trailer.</param>
+    /// <param name="role"><see cref="Role.Trailer"/> for the trailer, whose <c>/Prev</c> and <c>/XRefStm</c> name sections.</param>
+    /// <param name="path">Where the path to the name is written.</param>
+    /// <param name="isKey">Whether the name is a key.</param>
+    /// <remarks>It reads <paramref name="value"/> in a loop, as <see cref="TryFindMissing"/> does, and for the same reason.</remarks>
+    private PdfName? FindNullCharacter(PdfObject value, Role role, StringBuilder path, out bool isKey)
     {
         isKey = false;
 
-        switch (value)
+        if (value is PdfName name && HasNullCharacter(name))
         {
-            case PdfName name when HasNullCharacter(name):
-                return name;
-
-            case PdfStream stream:
-                return FindNullCharacter(stream.Dictionary, trailer, path, out isKey);
-
-            case PdfDictionary dictionary:
-                foreach (var (key, entry) in dictionary)
-                {
-                    if (HasNullCharacter(key))
-                    {
-                        isKey = true;
-                        return key;
-                    }
-
-                    if (trailer && IsSectionKey(key))
-                    {
-                        continue;
-                    }
-
-                    var length = path.Length;
-                    FileQuote.AppendName(path, key);
-
-                    if (FindNullCharacter(entry, trailer: false, path, out isKey) is { } found)
-                    {
-                        return found;
-                    }
-
-                    path.Length = length;
-                }
-
-                return null;
-
-            case PdfArray array:
-                for (var index = 0; index < array.Count; index++)
-                {
-                    var length = path.Length;
-                    path.Append(CultureInfo.InvariantCulture, $"[{index}]");
-
-                    if (FindNullCharacter(array[index], trailer: false, path, out isKey) is { } found)
-                    {
-                        return found;
-                    }
-
-                    path.Length = length;
-                }
-
-                return null;
-
-            default:
-                return null;
+            return name;
         }
+
+        Open(value, role, path.Length);
+
+        while (_depth > 0)
+        {
+            ref var scope = ref _scopes[_depth - 1];
+            path.Length = scope.Length;
+            PdfObject next;
+
+            if (scope.Array is { } array)
+            {
+                if (scope.Next >= array.Count)
+                {
+                    Leave(ref scope);
+                    continue;
+                }
+
+                path.Append(CultureInfo.InvariantCulture, $"[{scope.Next}]");
+                next = array[scope.Next++];
+            }
+            else if (scope.Entries.MoveNext())
+            {
+                var (key, entry) = scope.Entries.Current;
+
+                if (HasNullCharacter(key))
+                {
+                    isKey = true;
+                    LeaveAll();
+                    return key;
+                }
+
+                if (IsSectionKey(key, scope.Role))
+                {
+                    continue;
+                }
+
+                FileQuote.AppendName(path, key);
+                next = entry;
+            }
+            else
+            {
+                Leave(ref scope);
+                continue;
+            }
+
+            if (next is PdfName found && HasNullCharacter(found))
+            {
+                LeaveAll();
+                return found;
+            }
+
+            // Last: entering a container may move the scopes. The trailer's own keys alone name sections, not those of a
+            // dictionary written in it.
+            Open(next, Role.None, path.Length);
+        }
+
+        return null;
     }
 
     private PdfObject ValueOf(int owner) =>
@@ -423,11 +607,33 @@ internal sealed class ObjectGraph
 
     private static string Invariant(FormattableString text) => text.ToString(CultureInfo.InvariantCulture);
 
-    /// <summary>A value still to visit, the object that holds it, and what the other rules make of it.</summary>
-    /// <param name="Value">The value.</param>
-    /// <param name="Owner">The number of the indirect object that holds it, or 0 for the trailer.</param>
-    /// <param name="Role">What the page tree walk and the other rules make of the value.</param>
-    private readonly record struct Item(PdfObject Value, int Owner, Role Role);
+    /// <summary>An object claimed and not read yet, and the reference that claimed it.</summary>
+    /// <param name="Id">The object, as the reference names it.</param>
+    /// <param name="Owner">The number of the indirect object the reference is written in, or 0 for the trailer.</param>
+    /// <param name="Role">What the page tree walk and the other rules make of the reference.</param>
+    private readonly record struct Pending(PdfObjectId Id, int Owner, Role Role);
+
+    /// <summary>A container of the value being walked, and how far the walk has read it.</summary>
+    private struct Scope
+    {
+        /// <summary>The array, or null for a dictionary or a stream's dictionary.</summary>
+        public PdfArray? Array;
+
+        /// <summary>The dictionary's entries, past the last one met.</summary>
+        public Dictionary<PdfName, PdfObject>.Enumerator Entries;
+
+        /// <summary>The index of the array's next element.</summary>
+        public int Next;
+
+        /// <summary>The dictionary's role, or the role of the array's elements.</summary>
+        public Role Role;
+
+        /// <summary>
+        /// The length of the path that leads to the container, which a search cuts back to before it writes the step to each
+        /// of its values; 0 for the walk, which writes no path.
+        /// </summary>
+        public int Length;
+    }
 
     /// <summary>
     /// What the page tree walk and the other rules make of a value, which decides whose a reference to nothing in it is:

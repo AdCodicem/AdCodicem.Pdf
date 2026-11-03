@@ -43,7 +43,8 @@ internal sealed class SectionMalformedRule : IValidationRule
             var readFault = section.Fault ?? section.RefusedRow;
             var faulty = section.State is XRefSectionState.Read or XRefSectionState.Relocated && readFault is not null;
 
-            if (!unreadable && !faulty)
+            // Past the report's room, the section is counted, its finding not written (#168).
+            if ((!unreadable && !faulty) || !context.HasRoomFor(this))
             {
                 continue;
             }

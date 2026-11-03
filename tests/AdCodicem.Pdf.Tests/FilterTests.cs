@@ -341,43 +341,16 @@ public class FilterTests
         failures.Should().BeEmpty($"/{filter} must keep the first bytes up to its bound");
     }
 
-    /// <summary>A megabyte or more of input in each expanding filter, each decoding to more than a kilobyte.</summary>
-    public static TheoryData<string, byte[]> LargeInputs
-    {
-        get
-        {
-            var runs = new byte[(1 << 20) + 1];
-            for (var i = 0; i + 1 < runs.Length; i += 2)
-            {
-                runs[i] = 0x81;
-                runs[i + 1] = (byte)'A';
-            }
-
-            runs[^1] = 0x80;
-            var stored = new byte[2 << 20];
-            new Random(17).NextBytes(stored);
-            using var compressed = new MemoryStream();
-            using (var zlib = new System.IO.Compression.ZLibStream(compressed, System.IO.Compression.CompressionLevel.NoCompression, leaveOpen: true))
-            {
-                zlib.Write(stored);
-            }
-
-            return new()
-            {
-                { "RunLengthDecode", runs },
-                { "LZWDecode", new byte[1 << 20] },
-                { "ASCII85Decode", Encoding.ASCII.GetBytes(new string('z', 1 << 20)) },
-                { "FlateDecode", compressed.ToArray() },
-            };
-        }
-    }
-
     [Theory]
-    [MemberData(nameof(LargeInputs))]
-    public void A_filter_s_first_buffer_is_sized_by_its_bound_not_by_its_input(string filter, byte[] encoded)
+    [InlineData("RunLengthDecode")]
+    [InlineData("LZWDecode")]
+    [InlineData("ASCII85Decode")]
+    [InlineData("FlateDecode")]
+    public void A_filter_s_first_buffer_is_sized_by_its_bound_not_by_its_input(string filter)
     {
         // Each decoder guesses its output from its input, a length the file chose: two to four times
         // several megabytes here. The guess is capped by the bound, a kilobyte.
+        var encoded = LargeInput(filter);
         var diagnostics = new PdfDiagnostics();
         var before = GC.GetAllocatedBytesForCurrentThread();
 
@@ -1347,6 +1320,44 @@ public class FilterTests
         var padded = new byte[length];
         compressed.CopyTo(padded, 0);
         return padded;
+    }
+
+    /// <summary>
+    /// A megabyte or more of input in <paramref name="filter"/>, an expanding filter, decoding to more than a kilobyte.
+    /// </summary>
+    /// <remarks>
+    /// Built by the test that reads it, not handed to it as a theory's data: xUnit serializes a theory's data at every
+    /// discovery, filtered runs included, which took some nine seconds for these four and left 252 MiB of character arrays
+    /// in the shared pool, whose trim later moved the memory a test of <see cref="TimingCollection"/> measures (#307).
+    /// </remarks>
+    private static byte[] LargeInput(string filter)
+    {
+        switch (filter)
+        {
+            case "RunLengthDecode":
+                var runs = RunsOf((1 << 20) + 1);
+                runs[^1] = 0x80;
+                return runs;
+            case "LZWDecode":
+                return new byte[1 << 20];
+            case "ASCII85Decode":
+                return Encoding.ASCII.GetBytes(new string('z', 1 << 20));
+            case "FlateDecode":
+                var stored = new byte[2 << 20];
+                new Random(17).NextBytes(stored);
+                using (var compressed = new MemoryStream())
+                {
+                    using (var zlib = new System.IO.Compression.ZLibStream(compressed, System.IO.Compression.CompressionLevel.NoCompression, leaveOpen: true))
+                    {
+                        zlib.Write(stored);
+                    }
+
+                    return compressed.ToArray();
+                }
+
+            default:
+                throw new ArgumentOutOfRangeException(nameof(filter), filter, "Not an expanding filter this suite builds a large input for.");
+        }
     }
 
     /// <summary>RunLength data of <paramref name="length"/> bytes: runs of 128 'A', and the end marker if there is room.</summary>

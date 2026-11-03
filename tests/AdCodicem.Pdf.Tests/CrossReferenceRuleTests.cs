@@ -572,6 +572,22 @@ public class CrossReferenceRuleTests
     }
 
     [Fact]
+    public void An_entry_naming_the_object_before_its_own_is_shifted_from_that_object_s_header()
+    {
+        // Object 2's row gives where object 1 starts, and object 2 follows it within reach: the finding names the header the
+        // row lands on, however low its number.
+        var file = PdfTemplate.SoundWith("{row:2}", "{row:1}");
+
+        var finding = Single(Validate(file), PdfValidationRuleIds.XRefEntryShifted);
+
+        var one = PdfTemplate.OffsetOf(file, "1 0 obj");
+        var two = PdfTemplate.OffsetOf(file, "2 0 obj");
+        finding.Location.Should().Be(PdfValidationLocation.OfObject(new PdfObjectId(2), one));
+        finding.Message.Should().Be(
+            $"The entry of object 2 gives offset {one}, where there is the header of object 1; the object starts {two - one} bytes after it, at offset {two}.");
+    }
+
+    [Fact]
     public void An_entry_whose_generation_its_object_is_not_written_with_is_a_warning()
     {
         var file = PdfTemplate.SoundWith("{row:3}", "{row:3:7}");
@@ -934,6 +950,33 @@ public class CrossReferenceRuleTests
         finding.RuleId.Should().Be(PdfValidationRuleIds.XRefEntryBroken);
         finding.Message.Should().Be($"The index the reader rebuilt places object 4 at index 0 of object stream 3, where it is written as a stream, which an object stream cannot hold; {clause}.");
         finding.Remedy.Should().Be("Write the object outside the object stream, and index it there.");
+    }
+
+    [Fact]
+    public void An_object_a_rebuild_placed_where_the_stream_s_header_now_lists_another_is_not_judged_as_written_there()
+    {
+        // Object stream 3 takes its filter from object 9, which object stream 8 holds. The rebuild expands 3 before 8, its
+        // filter unknown yet: its data read as written, "37 20 30 20 ...", list object 37 at index 0. Read once 9 is known,
+        // the data decode to a header that lists object 7 there, written as a stream: object 37 is not written there at all,
+        // as a stream or otherwise.
+        const string Decoded = "7 0 << /Length 3 >> stream\nabc\nendstream";
+        var hex = string.Join(' ', Encoding.Latin1.GetBytes(Decoded).Select(each => each.ToString("X2", CultureInfo.InvariantCulture))) + ">";
+        var file = new HandWrittenFile(version: "1.5");
+        file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>");
+        file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>");
+        file.Object(3, string.Create(
+            CultureInfo.InvariantCulture,
+            $"<< /Type /ObjStm /N 1 /First 4 /Filter 9 0 R /Length {hex.Length} >>\nstream\n{hex}\nendstream"));
+        file.ObjectStream(8, [(9, "/ASCIIHexDecode")]);
+        file.Raw("trailer\n<< /Root 1 0 R /Size 10 >>\n%%EOF\n");
+
+        using var document = PdfDocument.Open(file.Bytes);
+        var report = new PdfValidator().Validate(document);
+
+        document.WasRepaired.Should().BeTrue();
+        document.Reader.Index.TryGet(37, out var placed).Should().BeTrue("the rebuild placed 37 as the data read as written list it");
+        placed.ObjectStreamNumber.Should().Be(3);
+        report.Findings.Should().NotContain(each => each.Location.Object == new PdfObjectId(37));
     }
 
     [Fact]
@@ -1689,6 +1732,20 @@ public class CrossReferenceRuleTests
         Single(Validate(file), PdfValidationRuleIds.FileTrailerValueWrong).Message.Should().EndWith(message);
     }
 
+    [Theory]
+    [InlineData("/W [1 4 5 0 R]", "2.0", "element 2 of its /W")]
+    [InlineData("/W [1 4 2] /Index [0 7 7 5 0 R]", "1.0", "element 3 of its /Index")]
+    public void An_element_the_reader_reads_through_a_reference_is_judged_through_it(string entries, string five, string what)
+    {
+        // The reader reads the first three elements of a /W, and every element of an /Index: a reference among them leads to
+        // the real it reads as an integer, one finding that says both.
+        var file = ChainFiles.UnderAnUpdate(
+            "/Type /XRef /Size 8 " + entries + " /Length {length}", five, compressed: false, predicted: false, placed: true);
+
+        Single(Validate(file), PdfValidationRuleIds.FileTrailerValueWrong).Message.Should().EndWith(
+            $"writes {what} as the reference 5 0 R, to a real number: ISO 32000-1 makes it direct (7.5.8.2), and Table 17 of ISO 32000-1 an integer.");
+    }
+
     [Fact]
     public void A_predictor_written_as_a_real_in_an_array_of_parameters_is_reported()
     {
@@ -1844,6 +1901,29 @@ public class CrossReferenceRuleTests
         finding.Message.Should().Be(string.Create(
             CultureInfo.InvariantCulture,
             $"Object stream 4 gives its {key} as a real number, where Table {table} of ISO 32000-1 asks for an integer; the reader read it as the integer it equals."));
+    }
+
+    [Theory]
+    [InlineData("/N")]
+    [InlineData("/First")]
+    [InlineData("/Length")]
+    public void An_object_stream_value_written_as_a_real_with_a_fraction_is_not_said_to_be_read_as_an_integer(string key)
+    {
+        // As above, but the integer and the space after it become a real of as many bytes with a fractional part, which
+        // equals no integer: the reader reads no integer from it, and the finding that says it did is not made.
+        var content = Encoding.Latin1.GetString(XRefStreamFile());
+        var start = content.IndexOf(key + " ", content.IndexOf("/ObjStm", StringComparison.Ordinal), StringComparison.Ordinal) + key.Length + 1;
+        var end = start;
+
+        while (char.IsAsciiDigit(content[end]))
+        {
+            end++;
+        }
+
+        var real = end - start == 1 ? ".5" : content[start..(end - 1)] + ".5";
+
+        Validate(Encoding.Latin1.GetBytes(content[..start] + real + content[(end + 1)..])).Findings
+            .Should().NotContain(finding => finding.RuleId == PdfValidationRuleIds.XRefObjectStreamValueWrong);
     }
 
     [Theory]
@@ -2022,6 +2102,77 @@ public class CrossReferenceRuleTests
             $"The entry of object 4 gives offset {row}, where there is no object header, and the object is not within 512 bytes of it."));
         report.Contains(PdfValidationRuleIds.XRefCheckedInPart).Should().BeFalse();
         document.Diagnostics.Should().NotContain(diagnostic => diagnostic.Code == PdfDiagnosticCodes.LimitObject);
+    }
+
+    [Fact]
+    public void An_entry_placing_its_object_at_any_of_the_file_s_last_bytes_is_checked_without_asking_the_source_past_its_end()
+    {
+        // Object 3's entry places it at each of the file's last 64 bytes, and at its end. The probe read 64 bytes at an entry
+        // wherever it lay, and a source that refuses a read past its end threw out of the validator (#167): it reads a header
+        // as a load does, through windows the file clamps.
+        var length = PdfTemplate.SoundWith("{row:3}", RowAt(0)).Length;
+
+        ValidatedOverAStrictSourceAsInMemory(Enumerable.Range(0, 65).Select(back =>
+            ($"object 3 placed {back} bytes before the end", PdfTemplate.SoundWith("{row:3}", RowAt(length - back)))));
+
+        static string RowAt(long offset) => string.Create(CultureInfo.InvariantCulture, $"{offset:D10} 00000 n ");
+    }
+
+    [Fact]
+    public void A_startxref_naming_any_of_the_file_s_last_bytes_is_followed_without_asking_the_source_past_its_end()
+    {
+        // startxref names each of the file's last 40 bytes, and its end: the chain finds no table there, the index is rebuilt,
+        // and nothing the reader or the probe reads runs past the end (#167).
+        var length = PdfTemplate.SoundWith("startxref\n{xref:1}", "startxref\n" + Offset(0)).Length;
+
+        ValidatedOverAStrictSourceAsInMemory(Enumerable.Range(0, 41).Select(back =>
+            ($"startxref naming {back} bytes before the end", PdfTemplate.SoundWith("startxref\n{xref:1}", "startxref\n" + Offset(length - back)))));
+
+        static string Offset(long offset) => offset.ToString("D10", CultureInfo.InvariantCulture);
+    }
+
+    [Fact]
+    public void A_file_cut_short_anywhere_in_its_last_bytes_is_read_without_asking_the_source_past_its_end()
+    {
+        // The sound file loses 1 to 40 bytes from its end: its marker, then its startxref, then its trailer (#167).
+        var sound = PdfTemplate.Build(PdfTemplate.Sound);
+
+        ValidatedOverAStrictSourceAsInMemory(Enumerable.Range(1, 40).Select(cut => ($"cut {cut} bytes short", sound[..^cut])));
+    }
+
+    [Fact]
+    public void An_object_ending_the_file_inside_its_stream_is_read_without_a_read_past_the_end_or_an_empty_one()
+    {
+        // Object 4, which the catalog names, ends the file somewhere in its stream. In the last shape, 9,000 bytes of data,
+        // past the window the object is parsed through, are followed by white space to the end of the file, longer than the
+        // first read after the data: the search for endstream read it to the end, and asked the source for the no bytes
+        // there, which a source may refuse as it may any read past its end (#167).
+        const string Head = "4 0 obj\n<< /Length 5 >>\nstream";
+        var blanks = new string(' ', IO.PdfObjectParser.EndObjLookahead + 1);
+
+        ValidatedOverAStrictSourceAsInMemory(
+        [
+            ("the stream keyword", PdfTemplate.Build(PdfTemplate.SoundEndingWith(Head))),
+            ("the data", PdfTemplate.Build(PdfTemplate.SoundEndingWith(Head + "\nhello"))),
+            ("the endstream keyword", PdfTemplate.Build(PdfTemplate.SoundEndingWith(Head + "\nhello\nendstream"))),
+            ("white space after endstream", PdfTemplate.Build(PdfTemplate.SoundEndingWith(Head + "\nhello\nendstream" + blanks))),
+            ("the data, short of its length", PdfTemplate.Build(PdfTemplate.SoundEndingWith("4 0 obj\n<< /Length 50 >>\nstream\nhello\n"))),
+            ("white space after long data", PdfTemplate.Build(PdfTemplate.SoundEndingWith(
+                "4 0 obj\n<< /Length 9000 >>\nstream\n" + new string('a', 9000) + blanks))),
+        ]);
+    }
+
+    [Fact]
+    public void A_cross_reference_stream_with_no_data_is_decoded_without_an_empty_read()
+    {
+        // The only section is a cross-reference stream of /Length 0: a source that does not hold the file in memory was asked
+        // to read its no bytes, which it may refuse as it may any read past its end (#167).
+        var text = new StringBuilder("%PDF-1.7\n1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n2 0 obj\n<< /Type /Pages /Kids [] /Count 0 >>\nendobj\n");
+        var seven = text.Length;
+        text.Append("7 0 obj\n<< /Type /XRef /Size 8 /W [1 4 2] /Root 1 0 R /Length 0 >>\nstream\n\nendstream\nendobj\n");
+        text.Append(CultureInfo.InvariantCulture, $"startxref\n{seven}\n%%EOF\n");
+
+        ValidatedOverAStrictSourceAsInMemory([("a cross-reference stream of /Length 0", Encoding.Latin1.GetBytes(text.ToString()))]);
     }
 
     [Theory]
@@ -2331,14 +2482,43 @@ public class CrossReferenceRuleTests
             .Should().Be(new PdfObjectId(4, 2));
     }
 
-    [Fact]
-    public void An_encrypted_document_s_object_streams_are_said_to_be_unchecked()
+    [Theory]
+    [InlineData(2, "the 2 objects its index places in an object stream were not checked, that stream being readable only once decrypted.")]
+    [InlineData(1, "the 1 object its index places in an object stream was not checked, that stream being readable only once decrypted.")]
+    public void An_encrypted_document_s_object_streams_are_said_to_be_unchecked(int packed, string said)
     {
+        // The builder packs the objects in one object stream, 4: the verb follows the objects, the stream that one.
         var file = Replace(
-            XRefStreamBuilder().WithObject(5, "<< /Filter /Standard /V 1 /R 2 /O <00> /U <00> /P -4 >>").BuildWithXRefStream(rootNumber: 1, compressedObjects: [2, 3]),
+            XRefStreamBuilder()
+                .WithObject(5, Encryption)
+                .BuildWithXRefStream(rootNumber: 1, compressedObjects: packed == 2 ? [2, 3] : [3]),
             "/Type /XRef",
             "/Type /XRef /Encrypt 5 0 R");
         using var document = PdfDocument.Open(file, new PdfReaderOptions { ThrowOnEncrypted = false });
+
+        var finding = new PdfValidator().Validate(document).Findings.Should().ContainSingle().Which;
+
+        finding.RuleId.Should().Be(PdfValidationRuleIds.XRefCheckedInPart);
+        finding.Location.IsDocument.Should().BeTrue();
+        finding.Message.Should().Be("The document is encrypted: " + said);
+    }
+
+    [Fact]
+    public void Objects_an_encrypted_document_packs_in_several_object_streams_are_said_to_be_unchecked_in_those_streams()
+    {
+        // The page tree in object stream 4, the page in object stream 6: the streams are counted as well as the objects.
+        var file = new HandWrittenFile(version: "1.5");
+        var rows = new Dictionary<int, (int Type, long Field2, int Field3)>
+        {
+            [1] = (1, file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"), 0),
+            [2] = (2, 4, 0),
+            [3] = (2, 6, 0),
+            [4] = (1, file.ObjectStream(4, [(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>")]), 0),
+            [5] = (1, file.Object(5, Encryption), 0),
+            [6] = (1, file.ObjectStream(6, [(3, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << >> >>")]), 0),
+        };
+        file.CrossReferenceStream(7, 8, rows, "/Root 1 0 R /Encrypt 5 0 R");
+        using var document = PdfDocument.Open(file.Bytes, new PdfReaderOptions { ThrowOnEncrypted = false });
 
         var finding = new PdfValidator().Validate(document).Findings.Should().ContainSingle().Which;
 
@@ -2381,6 +2561,9 @@ public class CrossReferenceRuleTests
         after.Findings.Should().Equal(before.Findings);
         after.Contains(PdfValidationRuleIds.XRefEntryBroken).Should().BeTrue();
     }
+
+    /// <summary>An encryption dictionary of the standard handler: the reader decrypts nothing until M16.</summary>
+    private const string Encryption = "<< /Filter /Standard /V 1 /R 2 /O <00> /U <00> /P -4 >>";
 
     /// <summary>A document whose index is a cross-reference stream, objects 2 and 3 packed in object stream 4.</summary>
     private static byte[] XRefStreamFile() => XRefStreamBuilder().BuildWithXRefStream(rootNumber: 1, compressedObjects: [2, 3]);
@@ -2504,6 +2687,43 @@ public class CrossReferenceRuleTests
     {
         using var document = PdfDocument.Open(file);
         return new PdfValidator().Validate(document);
+    }
+
+    /// <summary>
+    /// Opens and validates each file over a source that refuses any read it does not hold — one past its end, or one of no
+    /// bytes —, and asserts that the report and the diagnostics are those the same file gives in memory.
+    /// </summary>
+    private static void ValidatedOverAStrictSourceAsInMemory(IEnumerable<(string Shape, byte[] File)> files)
+    {
+        var failures = new List<string>();
+
+        foreach (var (shape, file) in files)
+        {
+            using var inMemory = PdfDocument.Open(file);
+            var expected = Outcome(inMemory);
+
+            try
+            {
+                using var strict = PdfDocument.Open(new StrictCountingSource(file), options: null, ownsSource: true);
+
+                if (Outcome(strict) is var outcome && outcome != expected)
+                {
+                    failures.Add($"{shape}: {outcome}, where memory gives {expected}");
+                }
+            }
+            catch (InvalidOperationException exception)
+            {
+                failures.Add($"{shape}: {exception.Message}");
+            }
+        }
+
+        failures.Should().BeEmpty();
+
+        static string Outcome(PdfDocument document)
+        {
+            var report = new PdfValidator().Validate(document);
+            return string.Join("; ", report.Findings) + " | " + string.Join("; ", document.Diagnostics);
+        }
     }
 
     private static byte[] Replace(byte[] file, string text, string replacement)

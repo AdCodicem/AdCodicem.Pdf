@@ -25,9 +25,14 @@ internal sealed class EntryBrokenRule : IValidationRule
     /// <inheritdoc/>
     public void Check(ValidationContext context)
     {
-        foreach (var finding in context.Probe.Broken)
+        var findings = context.Probe.Broken;
+
+        foreach (var finding in findings)
         {
             context.Report(this, finding.Location, finding.Message, finding.Remedy ?? "Correct the entry, or rewrite the file's cross-reference index.");
         }
+
+        // What the analysis counted past the room the report had when it was made, which it did not write (#168).
+        context.Count(this, findings.Unkept);
     }
 }

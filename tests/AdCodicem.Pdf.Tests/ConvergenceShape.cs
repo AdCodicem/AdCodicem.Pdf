@@ -11,4 +11,5 @@ namespace AdCodicem.Pdf.Tests;
 /// <param name="File">The file.</param>
 /// <param name="Limits">The reader limits it is opened under.</param>
 /// <param name="Reads">Each way of reading it before validating, as the objects read, in order.</param>
-internal sealed record ConvergenceShape(string Name, byte[] File, PdfReaderLimits Limits, PdfObjectId[][] Reads);
+/// <param name="CacheCapacity">The objects the reader caches: one that lets go of an object a decoding met makes a difference.</param>
+internal sealed record ConvergenceShape(string Name, byte[] File, PdfReaderLimits Limits, PdfObjectId[][] Reads, int CacheCapacity = 8192);

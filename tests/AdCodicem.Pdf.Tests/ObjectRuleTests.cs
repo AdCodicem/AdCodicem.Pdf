@@ -1,9 +1,15 @@
+using System.Buffers.Binary;
 using System.Globalization;
+using System.Runtime.CompilerServices;
 using System.Text;
 using AdCodicem.Pdf.Diagnostics;
 using AdCodicem.Pdf.Documents;
+using AdCodicem.Pdf.IO;
+using AdCodicem.Pdf.IO.Filters;
 using AdCodicem.Pdf.Objects;
 using AdCodicem.Pdf.Validation;
+using FsCheck;
+using FsCheck.Fluent;
 
 namespace AdCodicem.Pdf.Tests;
 
@@ -173,16 +179,90 @@ public class ObjectRuleTests
         finding.Message.Should().Be("Object 2 refers to object 9 0 under /Kids[1]/A, which the file lacks: the reference reads as null.");
     }
 
-    [Fact]
-    public void A_reference_to_nothing_after_a_kid_to_nothing_is_the_one_described()
+    [Theory]
+    [InlineData(8)]
+    [InlineData(9)]
+    public void A_reference_to_nothing_after_a_kid_to_nothing_is_the_one_described(int foo)
     {
         // A kid naming nothing is page-tree.kid-invalid's, and the walk does not count it: describing the node's one counted
-        // reference passes over it, to /Foo.
+        // reference passes over it, to /Foo. One that names the object the kid names, which the walk met first, through the
+        // kid, is counted where it is written all the same.
         var finding = Single(
-            Validate(PdfTemplate.SoundWith("/Kids [3 0 R]", "/Kids [9 0 R 3 0 R] /Foo 8 0 R")),
+            Validate(PdfTemplate.SoundWith("/Kids [3 0 R]", $"/Kids [9 0 R 3 0 R] /Foo {foo} 0 R")),
             PdfValidationRuleIds.ObjectReferenceMissing);
 
-        finding.Message.Should().Be("Object 2 refers to object 8 0 under /Foo, which the file lacks: the reference reads as null.");
+        finding.Message.Should().Be($"Object 2 refers to object {foo} 0 under /Foo, which the file lacks: the reference reads as null.");
+    }
+
+    [Fact]
+    public void References_to_one_object_the_file_lacks_are_counted_wherever_they_are_written_whichever_was_met_first()
+    {
+        // The catalog names object 9 first; the page names it three times after. Each reference is counted where it is
+        // written, in the object that holds it, whatever reference the walk met it through first.
+        var report = Validate(PdfTemplate.Build(PdfTemplate.Sound
+            .Replace("/Type /Catalog /Pages 2 0 R", "/Type /Catalog /Pages 2 0 R /Outlines 9 0 R", StringComparison.Ordinal)
+            .Replace("/Resources << >> >>", "/Resources << >> /Annots [9 0 R 9 0 R] /Thumb 9 0 R >>", StringComparison.Ordinal)));
+
+        report.Findings.Where(finding => finding.RuleId == PdfValidationRuleIds.ObjectReferenceMissing).Select(finding => finding.Message).Should().Equal(
+            "Object 1 refers to object 9 0 under /Outlines, which the file lacks: the reference reads as null.",
+            "Object 3 holds 3 references to objects the file lacks, which read as null; the first refers to object 9 0 under /Annots[0].");
+    }
+
+    [Fact]
+    public void An_object_the_index_lacks_until_a_load_rebuilds_it_is_walked_where_the_walk_runs_on_an_unsettled_index()
+    {
+        // Validation settles the index first, and the graph tells an object the file lacks by the index alone. Run on an index
+        // a load can still rebuild — object 4 written in the file, its row lost with the section /Prev names —, the graph
+        // asks for the object all the same, as resolving the reference does: the load rebuilds the index and finds it, and
+        // the graph walks it, to the reference to nothing it holds.
+        var file = PdfTemplate.Build(PdfTemplate.Sound
+            .Replace("/Type /Catalog /Pages 2 0 R", "/Type /Catalog /Pages 2 0 R /Foo 4 0 R", StringComparison.Ordinal)
+            .Replace("xref\n0 4\n", "4 0 obj\n<< /A 9 0 R >>\nendobj\nxref\n0 4\n", StringComparison.Ordinal)
+            .Replace("/Size 4", "/Size 4 /Prev 9999999", StringComparison.Ordinal));
+        using var document = PdfDocument.Open(file);
+        var pages = PageTreeWalk.Run(document);
+        document.Reader.GetPresence(4).Should().Be(ObjectPresence.Missing, "the index the chain gave lacks it");
+
+        var graph = ObjectGraph.Run(document, pages);
+
+        document.WasRepaired.Should().BeTrue();
+        graph.MissingReferences.Select(finding => finding.Message).Should().Equal(
+            "Object 4 refers to object 9 0 under /A, which the file lacks: the reference reads as null.");
+    }
+
+    [Fact]
+    public void An_object_a_rebuild_finds_lacking_after_the_walk_claimed_it_is_counted_for_the_reference_that_claimed_it()
+    {
+        // The update's trailer runs past MaxTrailerLength before its /Prev, so that an object only the original section could
+        // index — the page tree, 2, and object 9, which no section indexes — is unknown rather than missing, and claimed
+        // when the catalog names it. The catalog names object 5 last, which the update's table places where it is not:
+        // reading it first rebuilds the index, which finds 2 and not 9, missing now. Run on an index a load can still
+        // rebuild, the walk counts 9 when it reads it, for the catalog that claimed it, and each reference met after, as
+        // the page tree's.
+        var original = new TestPdfBuilder()
+            .WithObject(1, "<< /Type /Catalog /Pages 2 0 R >>")
+            .WithObject(2, "<< /Type /Pages /Kids [] /Count 0 /Foo 9 0 R >>")
+            .BuildClassic(rootNumber: 1);
+        var text = Encoding.Latin1.GetString(TestPdfBuilder.AppendIncrementalUpdate(
+            original,
+            rootNumber: 1,
+            [(1, $"<< /Type /Catalog /Pages 2 0 R /Foo 9 0 R /Bar 5 0 R /Note ({new string('x', 2000)}) >>"), (5, "<< /Five 5 >>")]));
+        var five = string.Create(CultureInfo.InvariantCulture, $"{text.LastIndexOf("5 0 obj", StringComparison.Ordinal):D10} 00000 n");
+        var trailer = text.LastIndexOf("/Root 1 0 R /Prev", StringComparison.Ordinal);
+        var file = Encoding.Latin1.GetBytes(text
+            .Insert(trailer + "/Root 1 0 R".Length, $" /Pad ({new string('x', 70 * 1024)})")
+            .Replace(five, "0000000010 00000 n", StringComparison.Ordinal));
+        using var document = PdfDocument.Open(file);
+        var pages = PageTreeWalk.Run(document);
+        document.Reader.GetPresence(9).Should().Be(ObjectPresence.Unindexed, "a guard left part of the chain unread");
+
+        var graph = ObjectGraph.Run(document, pages);
+
+        document.WasRepaired.Should().BeTrue();
+        document.Reader.GetPresence(9).Should().Be(ObjectPresence.Missing, "the rebuild read the whole file");
+        graph.MissingReferences.Select(finding => finding.Message).Should().Equal(
+            "Object 1 refers to object 9 0 under /Foo, which the file lacks: the reference reads as null.",
+            "Object 2 refers to object 9 0 under /Foo, which the file lacks: the reference reads as null.");
     }
 
     [Fact]
@@ -433,6 +513,27 @@ public class ObjectRuleTests
     }
 
     [Fact]
+    public void An_object_stream_that_needs_object_1_which_it_holds_is_circular()
+    {
+        // Object 0 heads the free list, and no stream needs it; object 1 is in use as any other. Stream 7 takes its
+        // parameters from object 1, which it holds, the catalog being object 3.
+        var file = new HandWrittenFile(version: "1.5");
+        var rows = new Dictionary<int, (int Type, long Field2, int Field3)>
+        {
+            [3] = (1, file.Object(3, "<< /Type /Catalog /Pages 4 0 R >>"), 0),
+            [4] = (1, file.Object(4, "<< /Type /Pages /Kids [] /Count 0 >>"), 0),
+            [7] = (1, FlateObjectStream(file, 7, [(1, "<< /Predictor 1 >>"), (6, "<< /Title (six) >>")], "/DecodeParms 1 0 R"), 0),
+            [1] = (2, 7, 0),
+            [6] = (2, 7, 1),
+        };
+        file.CrossReferenceStream(200, 201, rows, "/Root 3 0 R");
+
+        Single(Validate(file.Bytes), PdfValidationRuleIds.XRefObjectStreamCircular).Message.Should().Be(
+            "Object stream 7 needs object 1, which it holds, to be read: its /DecodeParms names it, and the object cannot be read before the stream is.");
+        ReaderNeeds(file.Bytes).Should().Be(1);
+    }
+
+    [Fact]
     public void An_object_stream_that_needs_itself_through_an_object_written_in_the_file_is_circular()
     {
         var file = new TestPdfBuilder()
@@ -513,10 +614,11 @@ public class ObjectRuleTests
     }
 
     [Fact]
-    public void Of_two_objects_an_object_stream_holds_and_needs_the_one_its_walk_meets_first_is_named()
+    public void Of_two_objects_an_object_stream_holds_and_needs_the_one_the_reader_needs_first_is_named()
     {
-        // Object 3, which the stream's /DecodeParms names, is an array of 5 and 6, both in the stream. The walk takes the last
-        // value it met first, so meets 6 before 5, as it did before it kept what each object read holds.
+        // Object 3, which the stream's /DecodeParms names, is an array of 5 and 6, both in the stream. The one Flate step
+        // reads the element at its place, 5, and nothing else of the array: 5 is the object the reader needs, and names
+        // (#277). The walk took the last value it met first, and named 6.
         var file = new TestPdfBuilder()
             .WithObject(1, "<< /Type /Catalog /Pages 2 0 R >>")
             .WithObject(2, "<< /Type /Pages /Kids [] /Count 0 >>")
@@ -526,7 +628,8 @@ public class ObjectRuleTests
             .BuildWithXRefStream(rootNumber: 1, compressedObjects: [5, 6], compressObjectStream: true, objectStreamEntries: "/DecodeParms 3 0 R");
 
         Single(Validate(file), PdfValidationRuleIds.XRefObjectStreamCircular).Message.Should().Be(
-            "Object stream 7 needs object 6, which it holds, to be read: its /DecodeParms names it, and the object cannot be read before the stream is.");
+            "Object stream 7 needs object 5, which it holds, to be read: its /DecodeParms names it, and the object cannot be read before the stream is.");
+        ReaderNeeds(file).Should().Be(5);
     }
 
     [Fact]
@@ -720,6 +823,45 @@ public class ObjectRuleTests
         diagnostic.Position.Should().Be(-1);
     }
 
+    [Theory]
+    [InlineData("free")]
+    [InlineData("in object stream 9")]
+    public void An_object_stream_the_index_does_not_place_in_the_file_needs_nothing_though_the_file_writes_a_stream_of_its_number(string row)
+    {
+        // The index places objects 5 and 6 in object stream 7, and lists 7 itself free, or places it in object stream 9:
+        // the reader reads 7 from nowhere in the file, decodes nothing of it, and serves 5 and 6 as null. The file writes a
+        // stream 7 all the same, first, where a search for its header from the start of the file finds it, and its
+        // /DecodeParms names 5. Nothing needs what the reader never decodes: the walk takes a stream only where its row
+        // places it in the file.
+        var file = new HandWrittenFile(version: "1.5");
+        FlateObjectStream(file, 7, [(5, "<< /Predictor 1 >>"), (6, "<< /Title (six) >>")], "/DecodeParms 5 0 R");
+        var rows = new Dictionary<int, (int Type, long Field2, int Field3)>
+        {
+            [1] = (1, file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"), 0),
+            [2] = (1, file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"), 0),
+            [5] = (2, 7, 0),
+            [6] = (2, 7, 1),
+        };
+
+        if (row == "in object stream 9")
+        {
+            rows[7] = (2, 9, 0);
+            rows[9] = (1, file.ObjectStream(9, [(7, "<< /Title (seven) >>")]), 0);
+        }
+
+        file.CrossReferenceStream(200, 201, rows, "/Root 1 0 R");
+
+        using (var read = PdfDocument.Open(file.Bytes))
+        {
+            read.GetObject(new PdfObjectId(5)).Should().BeSameAs(PdfNull.Instance, "the reader decodes nothing of stream 7");
+        }
+
+        using var document = PdfDocument.Open(file.Bytes);
+        ObjectStreamDependencies.Run(document).CircularStreams.Should().BeEmpty();
+        Validate(file.Bytes).Contains(PdfValidationRuleIds.XRefObjectStreamCircular).Should().BeFalse();
+        ReaderNeeds(file.Bytes).Should().BeNull();
+    }
+
     [Fact]
     public void A_parameter_array_naming_an_object_the_stream_holds_is_circular()
     {
@@ -753,6 +895,2197 @@ public class ObjectRuleTests
 
         report.Contains(PdfValidationRuleIds.XRefObjectStreamCircular).Should().BeFalse();
         report.Contains(PdfValidationRuleIds.XRefObjectStreamBroken).Should().BeTrue("object 7's stream is not in the file");
+    }
+
+    [Fact]
+    public void Object_streams_on_a_loop_are_circular_each_naming_its_first_need_that_leads_back_and_the_tail_into_the_loop_is_not()
+    {
+        // Stream 10 needs 20, which needs 50 and then 30; 30 needs 40, which needs 20; 50 needs nothing. 20, 30 and 40 lead
+        // to one another, and each names its need on the next: 20 not its first, on 50, which leads nowhere. 10 leads into
+        // the loop, which does not lead back to it.
+        var circular = Validate(NeedingStreams([1, 1, 1, 1, 1], [[21], [51, 31], [41], [21], []]))
+            .Findings.Where(finding => finding.RuleId == PdfValidationRuleIds.XRefObjectStreamCircular)
+            .Select(finding => (finding.Location.Object, finding.Message));
+
+        circular.Should().Equal(
+            (new PdfObjectId(20), "Object stream 20 needs object 31, which object stream 30 holds, to be read: its /DecodeParms names it, and reading object stream 30 needs object stream 20 in turn."),
+            (new PdfObjectId(30), "Object stream 30 needs object 41, which object stream 40 holds, to be read: its /DecodeParms names it, and reading object stream 40 needs object stream 30 in turn."),
+            (new PdfObjectId(40), "Object stream 40 needs object 21, which object stream 20 holds, to be read: its /DecodeParms names it, and reading object stream 20 needs object stream 40 in turn."));
+    }
+
+    [Fact]
+    public void Whatever_graph_object_streams_make_by_needing_one_another_the_circular_ones_and_what_each_names_are_those_a_search_from_each_need_finds()
+    {
+        // The walk looked for a way back to each stream with a search from each of its needs, in the order the reader needs
+        // them, which cost the square of a chain's length (#168). It finds the streams that lead to one another at once, and
+        // a stream is circular, naming the first of its needs that leads back, exactly as the search found. Over graphs of
+        // up to eight object streams, each holding up to three objects and needing up to four, any of them its own.
+        var graphs =
+            from count in Gen.Choose(1, 8)
+            from holds in Gen.ArrayOf(Gen.Choose(1, 3), count)
+            from lengths in Gen.ArrayOf(Gen.Choose(0, 4), count)
+            from picks in Gen.ArrayOf(Gen.Choose(0, holds.Sum() - 1), 4 * count)
+            select (holds, lengths, picks);
+
+        Check.One(PropertySettings, Prop.ForAll(graphs.ToArbitrary(), drawn =>
+        {
+            var (holds, lengths, picks) = drawn;
+            var members = new List<(int Stream, int Object)>();
+
+            for (var k = 0; k < holds.Length; k++)
+            {
+                for (var member = 1; member <= holds[k]; member++)
+                {
+                    members.Add((k, (10 * (k + 1)) + member));
+                }
+            }
+
+            var needs = new int[holds.Length][];
+
+            for (var k = 0; k < holds.Length; k++)
+            {
+                needs[k] = [.. picks.Skip(4 * k).Take(lengths[k]).Select(pick => members[pick].Object)];
+            }
+
+            using var document = PdfDocument.Open(NeedingStreams(holds, needs));
+            var walk = ObjectStreamDependencies.Run(document);
+            var expected = SearchedWayBack(needs, members);
+
+            return walk.CircularStreams.SetEquals(expected.Select(found => found.Stream)) &&
+                walk.Circular.Select(finding => finding.Message).SequenceEqual(expected.Select(found => found.Message));
+        }));
+    }
+
+    [Theory]
+    [MemberData(nameof(ValuesDecodingDoesNotRead))]
+    public void A_value_decoding_does_not_read_is_needed_by_neither_the_reader_nor_the_walk(string shape)
+    {
+        // #277's table, and the shapes like it the walk took for loops: decoding reads a filter's names up to the first that
+        // ends the chain, of /DecodeParms only what a Flate or LZW step reads — the element at its place, /EarlyChange,
+        // /Predictor, and the rest only past a predictor of 1 —, and nothing else. The walk followed both keys whole, and
+        // found a loop through what the reader never reads.
+        var file = DecodingShapes[shape].Build();
+
+        Validate(file).Contains(PdfValidationRuleIds.XRefObjectStreamCircular).Should().BeFalse();
+        ReaderNeeds(file).Should().BeNull();
+    }
+
+    [Theory]
+    [MemberData(nameof(ValuesDecodingReads))]
+    public void A_value_decoding_reads_that_leads_to_an_object_the_stream_holds_is_circular_as_the_reader_finds(string shape, string key)
+    {
+        // What decoding reads, followed as decoding follows it: through objects written in the file, a parameter written as a
+        // stream — outside Table 5 of ISO 32000-1 —, whose /Length its parse resolves, and an object another object stream
+        // holds, whose value the reader reads on from. The walk stopped at a stream and at a member (#277).
+        var file = DecodingShapes[shape].Build();
+
+        var report = Validate(file);
+
+        Single(report, PdfValidationRuleIds.XRefObjectStreamCircular).Message.Should().Be(HoldsFive(key));
+        report.Contains(PdfValidationRuleIds.XRefObjectStreamBroken).Should().BeFalse("the loop is the fault, reported once");
+        ReaderNeeds(file).Should().Be(5);
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(1)]
+    [InlineData(4)]
+    public void Broken_object_streams_are_kept_whatever_the_room_for_their_rule_to_pass_over_the_circular_ones(int capacity)
+    {
+        // #168: streams 10, 20 and 30 need, for their /N, the object each holds: circular, and unreadable to the probe; the
+        // index places objects in streams 71 to 73, which it lacks. The probe cannot tell the circular ones, which a walk
+        // made later finds: it keeps a record of every broken stream, whatever the room, and the rule writes the findings of
+        // the others while the report has room for them. Each is counted once, as circular or as broken.
+        var file = ValidatorTests.ObjectStreamFaults();
+        using var document = PdfDocument.Open(file);
+        document.Reader.SettleIndex();
+
+        CrossReferenceProbe.Run(document, room: 0).BrokenObjectStreams.Select(broken => (broken.Stream, broken.Kind)).Should().Equal(
+            (10, BrokenObjectStreamKind.Unreadable),
+            (20, BrokenObjectStreamKind.Unreadable),
+            (30, BrokenObjectStreamKind.Unreadable),
+            (71, BrokenObjectStreamKind.NotHeld),
+            (72, BrokenObjectStreamKind.NotHeld),
+            (73, BrokenObjectStreamKind.NotHeld));
+
+        var report = new PdfValidator(new PdfValidatorOptions { FindingCapacity = capacity }).Validate(document);
+
+        report.ErrorCount.Should().Be(6, "three streams circular and three broken");
+        report.Contains(PdfValidationRuleIds.XRefObjectStreamBroken).Should().BeTrue();
+        report.Findings.Select(finding => finding.Location.Object?.Number).Should().Equal(new int?[] { 10, 20, 30, 71 }.Take(capacity));
+    }
+
+    [Fact]
+    public void Objects_referring_to_nothing_past_the_report_s_room_are_counted_and_not_read_again()
+    {
+        // #168: the graph read each object that refers to nothing again, once the walk was over, to say where in it the first
+        // such reference lies, whatever the report's room. Two hundred such objects, under the smallest cache, 64 objects:
+        // the walk reads them from the last to the first, which the cache keeps, and the graph describes them from the
+        // first. It reads again those it describes, as many as the report has room for, of which those the cache let go
+        // are read from the file: none of the first 64, and of a hundred less than half of what describing every one reads.
+        const int Objects = 200;
+        var file = HostileInputTests.ObjectsHolding(Objects, "/M 9999 0 R");
+
+        var (none, unread) = Walk(room: 0);
+        var (hundred, described) = Walk(room: 100);
+        var (every, _) = Walk(room: int.MaxValue);
+
+        unread.MissingReferences.Total.Should().Be(Objects);
+        unread.MissingReferences.Kept.Should().Be(0);
+        described.MissingReferences.Total.Should().Be(Objects);
+        described.MissingReferences.Select(finding => finding.Location.Object?.Number).Should().Equal(Enumerable.Range(3, 100).Select(number => (int?)number));
+        (hundred - none).Should().BePositive("the objects described the cache let go are read again");
+        (hundred - none).Should().BeLessThan((every - none) / 2, "a hundred objects are described, not two hundred");
+
+        (long Read, ObjectGraph Graph) Walk(int room)
+        {
+            using var source = new StrictCountingSource(file);
+            using var document = PdfDocument.Open(source, new PdfReaderOptions { ObjectCacheCapacity = 64 }, ownsSource: false);
+            var pages = PageTreeWalk.Run(document);
+            var before = source.BytesRead;
+            var graph = ObjectGraph.Run(document, pages, room);
+            return (source.BytesRead - before, graph);
+        }
+    }
+
+    [Fact]
+    public void The_walk_keeps_as_many_objects_as_the_reader_caches_and_reads_again_one_it_let_go()
+    {
+        // A hundred Flate object streams take their parameters each from an object of its own, written in the file, whose
+        // predictor is object 4, shared; the last stream's predictor is the object it holds. Opened with a cache of 64
+        // objects, the walk keeps 64 of what it read, lets go of object 4 long before the last stream, and reads it again
+        // for the streams after: the last stream alone is circular, and the walk reads more of the file than under a cache
+        // of a thousand objects, which keeps all it read. A walk that let nothing go read the same under both (#201).
+        const int Streams = 100;
+        var file = new HandWrittenFile(version: "1.5");
+        var rows = new Dictionary<int, (int Type, long Field2, int Field3)>
+        {
+            [1] = (1, file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"), 0),
+            [2] = (1, file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"), 0),
+            [4] = (1, file.Object(4, "1"), 0),
+        };
+
+        for (var k = 0; k < Streams; k++)
+        {
+            var (stream, member) = (2000 + (2 * k), 2001 + (2 * k));
+            var predictor = k + 1 < Streams ? "4 0 R" : string.Create(CultureInfo.InvariantCulture, $"{member} 0 R");
+            rows[1000 + k] = (1, file.Object(1000 + k, $"<< /Predictor {predictor} >>"), 0);
+            rows[stream] = (1, FlateObjectStream(file, stream, [(member, "1")], string.Create(CultureInfo.InvariantCulture, $"/DecodeParms {1000 + k} 0 R")), 0);
+            rows[member] = (2, stream, 0);
+        }
+
+        file.CrossReferenceStream(3000, 3001, rows, "/Root 1 0 R");
+
+        var (letGo, found) = Walk(64);
+        var (keptAll, _) = Walk(1000);
+
+        found.Circular.Select(finding => finding.Message).Should().Equal(
+            "Object stream 2198 needs object 2199, which it holds, to be read: its /DecodeParms names it, and the object cannot be read before the stream is.");
+        letGo.Should().BeGreaterThan(keptAll, "the walk reads object 4 again once it let go of it");
+
+        (long Read, ObjectStreamDependencies Found) Walk(int cache)
+        {
+            using var source = new StrictCountingSource(file.Bytes);
+            using var document = PdfDocument.Open(source, new PdfReaderOptions { ObjectCacheCapacity = cache }, ownsSource: false);
+            document.Reader.SettleIndex();
+            var before = source.BytesRead;
+            var dependencies = ObjectStreamDependencies.Run(document);
+            return (source.BytesRead - before, dependencies);
+        }
+    }
+
+    [Fact]
+    public void The_walk_lets_go_of_the_oldest_object_it_kept_when_it_keeps_one_past_as_many_as_the_reader_caches()
+    {
+        // As above, 65 streams, none circular. The walk keeps, in order, the first stream's parameters, object 4, then each
+        // next stream's parameters. Under a cache of 64 objects, keeping the 65th stream's parameters lets go of object 4,
+        // which that stream reads again next; under a cache of 65, it lets go of the first stream's parameters alone, and
+        // reads no object twice, as under a cache that keeps all.
+        const int Streams = 65;
+        var file = new HandWrittenFile(version: "1.5");
+        var rows = new Dictionary<int, (int Type, long Field2, int Field3)>
+        {
+            [1] = (1, file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"), 0),
+            [2] = (1, file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"), 0),
+            [4] = (1, file.Object(4, "1"), 0),
+        };
+
+        for (var k = 0; k < Streams; k++)
+        {
+            var (stream, member) = (2000 + (2 * k), 2001 + (2 * k));
+            rows[1000 + k] = (1, file.Object(1000 + k, "<< /Predictor 4 0 R >>"), 0);
+            rows[stream] = (1, FlateObjectStream(file, stream, [(member, "1")], string.Create(CultureInfo.InvariantCulture, $"/DecodeParms {1000 + k} 0 R")), 0);
+            rows[member] = (2, stream, 0);
+        }
+
+        file.CrossReferenceStream(3000, 3001, rows, "/Root 1 0 R");
+
+        var keptAll = Walk(1000);
+
+        Walk(65).Should().Be(keptAll, "a cache of 65 keeps every object the walk reads again");
+        Walk(64).Should().BeGreaterThan(keptAll, "a cache of 64 lets go of object 4 before the last stream reads it");
+
+        long Walk(int cache)
+        {
+            using var source = new StrictCountingSource(file.Bytes);
+            using var document = PdfDocument.Open(source, new PdfReaderOptions { ObjectCacheCapacity = cache }, ownsSource: false);
+            document.Reader.SettleIndex();
+            var before = source.BytesRead;
+            ObjectStreamDependencies.Run(document).CircularStreams.Should().BeEmpty();
+            return source.BytesRead - before;
+        }
+    }
+
+    [Fact]
+    public void An_object_a_run_of_links_ends_at_that_the_walk_keeps_already_is_not_kept_again()
+    {
+        // As above, 70 streams under a cache of 64, each taking its predictor from object 4 but the second, whose predictor
+        // is 3, which names 8, which names 4: the run of 3 and 8 ends at 4, which the first stream's walk kept. Kept once, 4
+        // is let go when the 64th stream's parameters are kept, read again by that stream, and kept to the end: the walk
+        // reads it twice. Kept again where the run ends, it would be let go a second time, and read a third.
+        const int Streams = 70;
+        var file = new HandWrittenFile(version: "1.5");
+        var rows = new Dictionary<int, (int Type, long Field2, int Field3)>
+        {
+            [1] = (1, file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"), 0),
+            [2] = (1, file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"), 0),
+            [3] = (1, file.Object(3, "8 0 R"), 0),
+            [4] = (1, file.Object(4, "1"), 0),
+            [8] = (1, file.Object(8, "4 0 R"), 0),
+        };
+
+        for (var k = 0; k < Streams; k++)
+        {
+            var (stream, member) = (2000 + (2 * k), 2001 + (2 * k));
+            rows[1000 + k] = (1, file.Object(1000 + k, k == 1 ? "<< /Predictor 3 0 R >>" : "<< /Predictor 4 0 R >>"), 0);
+            rows[stream] = (1, FlateObjectStream(file, stream, [(member, "1")], string.Create(CultureInfo.InvariantCulture, $"/DecodeParms {1000 + k} 0 R")), 0);
+            rows[member] = (2, stream, 0);
+        }
+
+        file.CrossReferenceStream(3000, 3001, rows, "/Root 1 0 R");
+
+        using var source = new OffsetCountingSource(file.Bytes);
+        using var document = PdfDocument.Open(source, new PdfReaderOptions { ObjectCacheCapacity = 64 }, ownsSource: false);
+        document.Reader.SettleIndex();
+        source.Reads.Clear();
+
+        ObjectStreamDependencies.Run(document).CircularStreams.Should().BeEmpty();
+
+        source.Reads.GetValueOrDefault(rows[4].Field2).Should().Be(2, "the walk keeps object 4 once, lets go of it once, and reads it again once");
+    }
+
+    [Theory]
+    [InlineData("50, which the index lists free")]
+    [InlineData("70, which object stream 9, known not to decode alike, holds")]
+    public void A_run_of_links_ending_where_every_walk_reads_alike_is_worked_out_once_for_the_streams_whose_chains_share_it(string end)
+    {
+        // Streams 20 and 22 take their parameters from 12, << /Predictor 3 0 R >>, written in the file, as 3 names 8 and 8
+        // names the chain's end: 50, or 70, which object stream 9 holds, its /Length being 70 itself, so that 9 does not
+        // decode alike — stream 10, which takes its parameters from 70, has the walk find it out before 20 is walked. Either
+        // end reads alike for every walk: the run of 3 and 8 is kept once 20's walk worked it out, and 22's takes it, so that
+        // the walk reads 8, which the run passes over, once.
+        var file = new HandWrittenFile(version: "1.5");
+        var member = end.StartsWith("70", StringComparison.Ordinal);
+        var rows = new Dictionary<int, (int Type, long Field2, int Field3)>
+        {
+            [1] = (1, file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"), 0),
+            [2] = (1, file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"), 0),
+            [3] = (1, file.Object(3, "8 0 R"), 0),
+            [8] = (1, file.Object(8, member ? "70 0 R" : "50 0 R"), 0),
+            [12] = (1, file.Object(12, "<< /Predictor 3 0 R >>"), 0),
+        };
+
+        if (member)
+        {
+            rows[9] = (1, file.Object(9, "<< /Type /ObjStm /N 1 /First 5 /Length 70 0 R >>\nstream\n70 0 << /Predictor 1 >> \nendstream"), 0);
+            rows[70] = (2, 9, 0);
+            rows[10] = (1, FlateObjectStream(file, 10, [(11, "1")], "/DecodeParms 70 0 R"), 0);
+            rows[11] = (2, 10, 0);
+        }
+
+        rows[20] = (1, FlateObjectStream(file, 20, [(21, "1")], "/DecodeParms 12 0 R"), 0);
+        rows[21] = (2, 20, 0);
+        rows[22] = (1, FlateObjectStream(file, 22, [(23, "1")], "/DecodeParms 12 0 R"), 0);
+        rows[23] = (2, 22, 0);
+        file.CrossReferenceStream(200, 201, rows, "/Root 1 0 R");
+
+        using var source = new OffsetCountingSource(file.Bytes);
+        using var document = PdfDocument.Open(source, PdfReaderOptions.Default, ownsSource: false);
+        document.Reader.SettleIndex();
+        source.Reads.Clear();
+
+        ObjectStreamDependencies.Run(document).CircularStreams.Should().Equal(member ? [9] : []);
+
+        source.Reads.GetValueOrDefault(rows[3].Field2).Should().Be(1, "the walk reads the run's first object once");
+        source.Reads.GetValueOrDefault(rows[8].Field2).Should().Be(1, "the walk works the run out once, and keeps it");
+    }
+
+    [Theory]
+    [InlineData("3 0 R", "3 = 8 0 R, 8 = 12 0 R", new[] { 3, 8, 12 }, new[] { 3, 12 })]
+    [InlineData("1 0 R", "1 = 8 0 R, 8 = 12 0 R", new[] { 1, 8, 12 }, new[] { 1, 12 })]
+    [InlineData("3 0 R", "3 = 1 0 R, 1 = 12 0 R", new[] { 3, 1, 12 }, new[] { 3, 12 })]
+    [InlineData("3 0 R", "3 = 0 0 R, which the index places in the file", new[] { 3 }, new[] { 3 })]
+    public void The_walk_reads_each_object_of_a_chain_of_links_once_and_keeps_only_the_one_it_starts_from_and_the_one_it_ends_at(string predictor, string chain, int[] read, int[] kept)
+    {
+        // As above, the second stream's predictor names a chain of links, which ends at object 12, the integer 1, or at
+        // object 0, which the reader never reads though the index places it in the file, written there as 12 0 R; the
+        // catalog is object 10. The walk reads each object of the chain once, none at all of object 0, and keeps the
+        // chain's first object and the one it ends at besides the stream's parameters — none it passes over, nor object 0
+        // — so that the smallest cache that lets go of nothing the last stream reads keeps as many objects as there are
+        // streams and those kept of the chain: one fewer lets go of object 4.
+        const int Streams = 64;
+        var file = new HandWrittenFile(version: "1.5");
+        var zero = chain.Contains("0 0 R", StringComparison.Ordinal) ? file.Object(0, "12 0 R") : -1;
+        var rows = new Dictionary<int, (int Type, long Field2, int Field3)>
+        {
+            [10] = (1, file.Object(10, "<< /Type /Catalog /Pages 11 0 R >>"), 0),
+            [11] = (1, file.Object(11, "<< /Type /Pages /Kids [] /Count 0 >>"), 0),
+            [4] = (1, file.Object(4, "1"), 0),
+            [12] = (1, file.Object(12, "1"), 0),
+        };
+
+        foreach (var link in chain.Split(", ", StringSplitOptions.None))
+        {
+            if (link.Contains(" = ", StringComparison.Ordinal))
+            {
+                var number = int.Parse(link.AsSpan(0, link.IndexOf(' ', StringComparison.Ordinal)), CultureInfo.InvariantCulture);
+                rows[number] = (1, file.Object(number, link[(link.IndexOf('=', StringComparison.Ordinal) + 2)..]), 0);
+            }
+        }
+
+        for (var k = 0; k < Streams; k++)
+        {
+            var (stream, member) = (2000 + (2 * k), 2001 + (2 * k));
+            rows[1000 + k] = (1, file.Object(1000 + k, $"<< /Predictor {(k == 1 ? predictor : "4 0 R")} >>"), 0);
+            rows[stream] = (1, FlateObjectStream(file, stream, [(member, "1")], string.Create(CultureInfo.InvariantCulture, $"/DecodeParms {1000 + k} 0 R")), 0);
+            rows[member] = (2, stream, 0);
+        }
+
+        file.CrossReferenceStream(3000, 3001, rows, "/Root 10 0 R");
+        var bytes = file.Bytes;
+
+        if (zero >= 0)
+        {
+            var text = Encoding.Latin1.GetString(bytes);
+            var row = text.IndexOf("stream\n", text.IndexOf("/Type /XRef", StringComparison.Ordinal), StringComparison.Ordinal) + "stream\n".Length;
+            bytes[row] = 1;
+            BinaryPrimitives.WriteInt32BigEndian(bytes.AsSpan(row + 1, 4), (int)zero);
+            BinaryPrimitives.WriteInt16BigEndian(bytes.AsSpan(row + 5, 2), 0);
+        }
+
+        var (keptAll, reads) = Walk(1000);
+        var cache = Streams + kept.Length;
+
+        foreach (var number in read)
+        {
+            reads.GetValueOrDefault(rows[number].Field2).Should().Be(1, $"the walk reads object {number} of the chain once");
+        }
+
+        if (zero >= 0)
+        {
+            reads.GetValueOrDefault(zero).Should().Be(0, "the walk never reads object 0");
+        }
+
+        Walk(cache).Read.Should().Be(keptAll, $"a cache of {cache} keeps every object the walk reads again");
+        Walk(cache - 1).Read.Should().BeGreaterThan(keptAll, $"a cache of {cache - 1} lets go of object 4 before the last stream reads it");
+
+        (long Read, Dictionary<long, int> Reads) Walk(int capacity)
+        {
+            using var source = new OffsetCountingSource(bytes);
+            using var document = PdfDocument.Open(source, new PdfReaderOptions { ObjectCacheCapacity = capacity }, ownsSource: false);
+            document.Reader.SettleIndex();
+            source.Reads.Clear();
+            var before = source.BytesRead;
+            ObjectStreamDependencies.Run(document).CircularStreams.Should().BeEmpty();
+            return (source.BytesRead - before, new Dictionary<long, int>(source.Reads));
+        }
+    }
+
+    [Theory]
+    [InlineData("met a level lower first, then higher up")]
+    [InlineData("taken a level lower, as far as the reader's nesting reaches")]
+    [InlineData("taken a level lower, short of the first stream past the reader's nesting")]
+    [InlineData("taken, its streams parsed")]
+    [InlineData("taken up to a stream the walk parsed already")]
+    [InlineData("taken short inside a parse, which gives no nest")]
+    [InlineData("taken where the reader's nesting cut it, inside a parse")]
+    [InlineData("met past a stream the walk parsed already")]
+    [InlineData("met past an object of an object stream")]
+    [InlineData("met past a run through objects of object streams")]
+    public void A_nest_the_walk_keeps_is_taken_only_where_the_parse_it_stands_for_would_find_what_it_found(string shape)
+    {
+        // The parse of a stream met on a chain parses the stream its /Length loads, a level deeper, and so on to the reader's
+        // deepest load (#201). The walk keeps the nest of streams a parse went through when it met nothing
+        // its own state answers — no object of an object stream, no stream parsed before —, and takes it at once where the
+        // stream is met again at that depth or below it, or at any depth when the parse ended where its chains do; the
+        // streams it parsed are parsed, up to one parsed already. Each shape tells a nest taken from a parse followed where
+        // either finds an object stream circular and the other does not: met higher up, a parse reaches a stream further, whose
+        // /Length names an object of the stream walked; a stream parsed is not parsed again, from higher up either. The
+        // verdict is the one the walk gives with no nest kept.
+        var (file, circular) = NestShapes[shape];
+        using var document = PdfDocument.Open(file());
+
+        ObjectStreamDependencies.Run(document).CircularStreams.Should().BeEquivalentTo(circular);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void A_nest_whose_parse_ended_where_its_chains_do_is_taken_from_higher_up(bool holdingOneTaken)
+    {
+        // Object stream 10 meets stream 400 under its /Length, at the third level, and 12 meets 500 under its /N, at the
+        // second; each heads a nest of twenty streams leading into a nest of eight, of 100 and of 600, whose last takes its
+        // /Length from a direct 2 — nests 6 met first, at the second level, when 400's holds a nest taken whole. 14 meets ten
+        // other such nests of eight, which, under the smallest cache, 64 objects, let go of every stream of 400's and 500's,
+        // the reader as well. 16 meets 400, or 500, at the second level: 400's parse ended where its chains do, short of the
+        // reader's nesting, and from higher up it parses the same streams; its nest is taken at once, as 500's is, the walk
+        // reading the stream heading it, which the reader parses with the streams it loads for its /Length (#201). Followed
+        // again, the parse reads the twenty streams besides, as when 16 is the first to meet 400, 10's /Length written
+        // directly: some two thirds more.
+        const int Heads = 10;
+        var written = Merged(StreamChain(100, 9, "2"), StreamChain(600, 9, "2"));
+        written = Merged(written, Merged(StreamChain(400, 20, "100 0 R"), StreamChain(500, 20, "600 0 R")));
+        var heads = new StringBuilder();
+
+        for (var head = 0; head < Heads; head++)
+        {
+            written = Merged(written, StreamChain(200 + (10 * head), 9, "2"));
+            heads.Append(CultureInfo.InvariantCulture, $"{200 + (10 * head)} 0 R ");
+        }
+
+        var none = Walk("<< >>");
+        var lowerFirst = Walk("400 0 R");
+        var higherFirst = Walk("500 0 R");
+        var noneFollowed = Walk("<< >>", tenLength: null);
+        var followed = Walk("400 0 R", tenLength: null);
+
+        (lowerFirst - none).Should().BeLessThan((higherFirst - none) * 5 / 4, "the nest is taken at once, as one found at the second level is");
+        (lowerFirst - none).Should().BeLessThan((followed - noneFollowed) * 3 / 4, "the nest is taken rather than its parse followed again");
+
+        long Walk(string parameters, string? tenLength = "400 0 R")
+        {
+            var file = PlainObjectStreams(
+                written,
+                new(6, holdingOneTaken ? "/Filter [/FlateDecode /FlateDecode] /DecodeParms [100 0 R 600 0 R]" : string.Empty, [(7, "<< >>")]),
+                new(10, string.Empty, [(11, "<< >>")], Length: tenLength),
+                new(12, string.Empty, [(13, "<< >>")], Count: "500 0 R"),
+                new(14, $"/Filter [{string.Concat(Enumerable.Repeat("/FlateDecode ", Heads))}] /DecodeParms [{heads}]", [(15, "<< >>")]),
+                new(16, $"/Filter /FlateDecode /DecodeParms {parameters}", [(17, "<< >>")]));
+            using var source = new StrictCountingSource(file);
+            using var document = PdfDocument.Open(source, new PdfReaderOptions { ObjectCacheCapacity = 64 }, ownsSource: false);
+            document.Reader.SettleIndex();
+            var before = source.BytesRead;
+            ObjectStreamDependencies.Run(document).CircularStreams.Should().BeEmpty();
+            return source.BytesRead - before;
+        }
+    }
+
+    [Fact]
+    public void A_nest_found_again_from_higher_up_lets_go_of_no_other_nest()
+    {
+        // Object stream 10 meets stream 100 under its /DecodeParms; 12 meets 200 under its /Length, at the third level, and 62
+        // more under its /DecodeParms, each heading a nest of eight streams; 200 heads a nest of 62 streams, which its parse
+        // from the third level follows to the reader's deepest load, where it is cut. Opened with the smallest cache, 64
+        // objects, the walk keeps the 64 nests. 14 meets 200 at the second level, where its parse reaches further: the nest
+        // found is kept in place of 200's, and the walk lets go of no other — 16 meets 100, or the first of the 62, and takes
+        // either nest at once (#201).
+        const int Heads = 62;
+        var written = Merged(StreamChain(100, 9, "2"), StreamChain(200, 63, "2"));
+        var heads = new StringBuilder();
+
+        for (var head = 0; head < Heads; head++)
+        {
+            written = Merged(written, StreamChain(1000 + (10 * head), 9, "2"));
+            heads.Append(CultureInfo.InvariantCulture, $"{1000 + (10 * head)} 0 R ");
+        }
+
+        var none = Walk("<< >>");
+        var first = Walk("100 0 R");
+        var later = Walk("1000 0 R");
+
+        (first - none).Should().BeLessThan((later - none) * 5 / 4, "the walk keeps the first nest it found, as it keeps the later");
+
+        long Walk(string parameters)
+        {
+            var file = PlainObjectStreams(
+                written,
+                new(10, "/Filter /FlateDecode /DecodeParms 100 0 R", [(11, "<< >>")]),
+                new(12, $"/Filter [{string.Concat(Enumerable.Repeat("/FlateDecode ", Heads))}] /DecodeParms [{heads}]", [(13, "<< >>")], Length: "200 0 R"),
+                new(14, "/Filter /FlateDecode /DecodeParms 200 0 R", [(15, "<< >>")]),
+                new(16, $"/Filter /FlateDecode /DecodeParms {parameters}", [(17, "<< >>")]));
+            using var source = new StrictCountingSource(file);
+            using var document = PdfDocument.Open(source, new PdfReaderOptions { ObjectCacheCapacity = 64 }, ownsSource: false);
+            document.Reader.SettleIndex();
+            var before = source.BytesRead;
+            ObjectStreamDependencies.Run(document).CircularStreams.Should().BeEmpty();
+            return source.BytesRead - before;
+        }
+    }
+
+    [Fact]
+    public void A_nest_found_again_from_higher_up_takes_the_place_of_the_one_kept()
+    {
+        // Object stream 10 meets stream 100; 12 meets 200 under its /Length, at the third level, and two streams heading nests
+        // of eight; 200 heads a nest of 62 streams, which its parse from the third level follows to the reader's deepest
+        // load, where it is cut. 14 meets 200 at the second level, where its parse reaches further, and the nest it finds
+        // takes the place of the one kept. Then, four times, a stream meets two chains of 40 streams, which under the
+        // smallest cache, 64 objects, let go of 200's, and the next stream meets 200 at the second level: it takes the nest
+        // kept since 14, reading the stream heading it, which the reader parses with the streams its /Length loads. Had the
+        // nest found from higher up not taken the place of the one kept, which a meeting at the second level cannot take,
+        // each meeting would follow the parse again, as one meeting a chain of its own does: twice as much (#201).
+        const int Meetings = 4;
+        var kept = Walk(meetsTwoHundred: true) - Walk(meetsTwoHundred: null);
+        var followed = Walk(meetsTwoHundred: false) - Walk(meetsTwoHundred: null);
+
+        (kept / Meetings).Should().BeLessThan(followed / Meetings * 3 / 4, "each meeting takes the nest found from higher up");
+
+        // Each stream after 14 meets 200, a chain of its own as long, or nothing.
+        long Walk(bool? meetsTwoHundred)
+        {
+            var written = Merged(Merged(StreamChain(100, 9, "2"), StreamChain(200, 63, "2")), Merged(StreamChain(1000, 9, "2"), StreamChain(1010, 9, "2")));
+            var streams = new List<PlainObjectStream>
+            {
+                new(10, "/Filter /FlateDecode /DecodeParms 100 0 R", [(11, "<< >>")]),
+                new(12, "/Filter [/FlateDecode /FlateDecode] /DecodeParms [1000 0 R 1010 0 R]", [(13, "<< >>")], Length: "200 0 R"),
+                new(14, "/Filter /FlateDecode /DecodeParms 200 0 R", [(15, "<< >>")]),
+            };
+
+            for (var meeting = 0; meeting < Meetings; meeting++)
+            {
+                var (spacers, own) = (10_000 + (1_000 * meeting), 50_000 + (100 * meeting));
+                written = Merged(Merged(written, StreamChain(spacers, 40, "2")), Merged(StreamChain(spacers + 100, 40, "2"), StreamChain(own, 63, "2")));
+                streams.Add(new(20 + (4 * meeting), string.Create(CultureInfo.InvariantCulture, $"/Filter [/FlateDecode /FlateDecode] /DecodeParms [{spacers} 0 R {spacers + 100} 0 R]"), [(21 + (4 * meeting), "<< >>")]));
+                var meets = meetsTwoHundred switch
+                {
+                    true => "/Filter /FlateDecode /DecodeParms 200 0 R",
+                    false => string.Create(CultureInfo.InvariantCulture, $"/Filter /FlateDecode /DecodeParms {own} 0 R"),
+                    _ => string.Empty,
+                };
+                streams.Add(new(22 + (4 * meeting), meets, [(23 + (4 * meeting), "<< >>")]));
+            }
+
+            using var source = new StrictCountingSource(PlainObjectStreams(written, [.. streams]));
+            using var document = PdfDocument.Open(source, new PdfReaderOptions { ObjectCacheCapacity = 64 }, ownsSource: false);
+            document.Reader.SettleIndex();
+            var before = source.BytesRead;
+            ObjectStreamDependencies.Run(document).CircularStreams.Should().BeEmpty();
+            return source.BytesRead - before;
+        }
+    }
+
+    [Fact]
+    public void The_walk_keeps_as_many_nests_as_the_reader_caches_and_parses_again_one_it_let_go()
+    {
+        // Object stream 10 takes 64 Flate steps' parameters from 64 streams, each heading a nest of eight streams, each
+        // taking its /Length from an object naming the next, the last from a direct 2; 12 two more such (#201).
+        // Opened with the smallest cache, 64 objects, the walk keeps 64 nests, and lets go of the first two as it finds the
+        // last two. 14 meets the second of them, whose parse it follows again, reading every object of the nest; or the
+        // third, whose nest it takes, reading the stream heading it, which the reader parses with what it loads for its
+        // /Length: about half as much. Its objects the walk let go of either way.
+        const int Heads = 66;
+        var written = new Dictionary<int, string>();
+        var (first, last) = (new StringBuilder(), new StringBuilder());
+
+        for (var head = 0; head < Heads; head++)
+        {
+            written = Merged(written, LinkedStreamChain(100 + (20 * head), 9, "2"));
+            (head < 64 ? first : last).Append(CultureInfo.InvariantCulture, $"{100 + (20 * head)} 0 R ");
+        }
+
+        var none = Walk("<< >>");
+        var letGo = Walk("120 0 R");
+        var kept = Walk("140 0 R");
+
+        (letGo - none).Should().BeGreaterThan((kept - none) * 3 / 2, "a nest let go is followed again, one kept taken");
+
+        long Walk(string parameters)
+        {
+            var file = PlainObjectStreams(
+                written,
+                new(10, $"/Filter [{string.Concat(Enumerable.Repeat("/FlateDecode ", 64))}] /DecodeParms [{first}]", [(11, "<< >>")]),
+                new(12, $"/Filter [/FlateDecode /FlateDecode] /DecodeParms [{last}]", [(13, "<< >>")]),
+                new(14, $"/Filter /FlateDecode /DecodeParms {parameters}", [(15, "<< >>")]));
+            using var source = new StrictCountingSource(file);
+            using var document = PdfDocument.Open(source, new PdfReaderOptions { ObjectCacheCapacity = 64 }, ownsSource: false);
+            document.Reader.SettleIndex();
+            var before = source.BytesRead;
+            ObjectStreamDependencies.Run(document).CircularStreams.Should().BeEmpty();
+            return source.BytesRead - before;
+        }
+    }
+
+    [Theory]
+    [InlineData("/Length", "/Length 100 0 R, 100 a stream whose /Length names 5")]
+    [InlineData("/N", "/N 100 0 R, 100 a stream whose /Length names 5")]
+    [InlineData("/First", "/First 100 0 R, 100 a stream whose /Length names 5")]
+    [InlineData("/Type", "/Type 100 0 R, 100 a stream whose /Length names 5")]
+    [InlineData("/Length", "/Length 100 0 R, 100 naming 101, a stream whose /Length names 5")]
+    [InlineData("/Length", "/Length 100 0 R, 100 a stream whose /Length names 101, a stream whose /Length names 5")]
+    [InlineData("/Length", "/Length 100 0 R, 100 a member of 9 naming 5")]
+    [InlineData("/N", "/N and /First 100 0 R, 100 a stream whose /Length names 5")]
+    public void A_stream_or_a_member_on_the_chain_of_a_key_the_reader_resolves_is_followed(string key, string shape)
+    {
+        // #277's comment: a link of the chain under /Length, /N, /First or /Type that is a stream is parsed, and its parse
+        // resolves its /Length, which leads to 5; one another object stream holds is read from it, and its value read on.
+        // The reader reports the loop; the walk stopped there, and found the stream broken, or nothing.
+        var file = KeyShapes[shape].Build();
+
+        var report = Validate(file);
+
+        Single(report, PdfValidationRuleIds.XRefObjectStreamCircular).Message.Should().Be(HoldsFive(key));
+        report.Contains(PdfValidationRuleIds.XRefObjectStreamBroken).Should().BeFalse("the loop is the fault, reported once");
+        ReaderNeeds(file).Should().Be(5);
+    }
+
+    [Theory]
+    [InlineData("0", null, false, false)]
+    [InlineData("2.5", null, false, true)]
+    [InlineData("2", "-1", false, true)]
+    [InlineData("2", "0", true, false)]
+    public void An_object_stream_needs_what_its_filters_name_only_when_its_count_and_start_let_it_decode(
+        string count, string? first, bool circular, bool broken)
+    {
+        // The reader reads a stream's /N and /First before its filters, and decodes nothing when they declare no object, or
+        // none it can read — a count that is no integer, a start below 0 —: /DecodeParms 5 0 R is never read. With /N 2.5,
+        // the walk found a loop, which hid the true fault. A start of 0 is one the reader decodes from.
+        var file = new StreamSeven("/Filter /FlateDecode /DecodeParms 5 0 R") { Five = "<< /Predictor 1 >>", Count = count, First = first }.Build();
+
+        var report = Validate(file);
+
+        report.Contains(PdfValidationRuleIds.XRefObjectStreamCircular).Should().Be(circular);
+        report.Contains(PdfValidationRuleIds.XRefObjectStreamBroken).Should().Be(broken);
+        ReaderNeeds(file).Should().Be(circular ? 5 : null);
+    }
+
+    [Theory]
+    [InlineData(31, true)]
+    [InlineData(32, false)]
+    public void A_count_at_the_end_of_a_chain_is_read_only_where_a_reference_takes_its_value(int links, bool circular)
+    {
+        // Stream 7's /N names the first of a chain of objects, each naming the next, the last 2. A reference takes the value
+        // of the 31st object of a chain, and drops that of the 32nd it loads (#173): one link further, the count is null, and
+        // the stream is not decoded.
+        var file = new StreamSeven("/Filter /FlateDecode /DecodeParms 5 0 R")
+        {
+            Five = "<< /Predictor 1 >>",
+            Count = "100 0 R",
+            Written = ReferenceChain(100, links, "2"),
+        }.Build();
+
+        Validate(file).Contains(PdfValidationRuleIds.XRefObjectStreamCircular).Should().Be(circular);
+        ReaderNeeds(file).Should().Be(circular ? 5 : null);
+    }
+
+    [Theory]
+    [InlineData("/N 6 0 R, /Filter [/FlateDecode 5 0 R]", 6, "/N")]
+    [InlineData("/First 6 0 R, a predictor 5 0 R", 6, "/First")]
+    [InlineData("a predictor 5 0 R, of 12, and a /Columns 6 0 R", 5, "/DecodeParms")]
+    [InlineData("two Flate steps, /DecodeParms [5 0 R 6 0 R]", 5, "/DecodeParms")]
+    public void Of_the_objects_an_object_stream_holds_and_needs_the_one_the_reader_needs_first_is_named(string shape, int named, string key)
+    {
+        // The reader reads /N and /First before the filters, and a step's parameters in their order; a predictor the stream
+        // holds reads as null, which is a predictor of 1, past which nothing more is read. The walk followed /Filter and
+        // /DecodeParms before /N and /First, and named another object than the reader does.
+        var file = OrderShapes[shape].Build();
+
+        Single(Validate(file), PdfValidationRuleIds.XRefObjectStreamCircular).Message.Should().Be(
+            $"Object stream 7 needs object {named}, which it holds, to be read: its {key} names it, and the object cannot be read before the stream is.");
+        ReaderNeeds(file).Should().Be(named);
+    }
+
+    [Theory]
+    [InlineData("/Length", 33, true)]
+    [InlineData("/Length", 34, false)]
+    [InlineData("/N", 32, true)]
+    [InlineData("/N", 33, false)]
+    [InlineData("/DecodeParms", 32, true)]
+    [InlineData("/DecodeParms", 33, false)]
+    [InlineData("the /Length of a stream /N names", 33, true)]
+    [InlineData("the /Length of a stream /N names", 34, false)]
+    public void An_object_on_a_chain_is_followed_as_far_as_the_reader_loads_the_chain(string key, int at, bool circular)
+    {
+        // A reference resolves through 32 objects, a /Length through 33; the last is loaded, and its value dropped (#173).
+        // Under /Length and /N, the object at the end is a stream whose /Length names 5, which its parse loads; under
+        // /DecodeParms, or the /Length of a stream met on the way, it is 5, which the stream holds. One object further, the
+        // reader loads nothing of it.
+        const string Stream = "<< /Length 5 0 R >>\nstream\nab\nendstream";
+        var lengthChain = ReferenceChain(110, at - 1, "5 0 R");
+        lengthChain[100] = "<< /Length 110 0 R >>\nstream\nab\nendstream";
+        var shape = key switch
+        {
+            "/Length" => new StreamSeven(string.Empty) { Five = "2", Data = SevenData.Plain, Length = "100 0 R", Written = ReferenceChain(100, at, Stream) },
+            "/N" => new StreamSeven(string.Empty) { Five = "2", Data = SevenData.Plain, Count = "100 0 R", Written = ReferenceChain(100, at, Stream) },
+            "/DecodeParms" => new StreamSeven("/Filter /FlateDecode /DecodeParms 100 0 R") { Five = "<< /Predictor 1 >>", Written = ReferenceChain(100, at - 1, "5 0 R") },
+            _ => new StreamSeven(string.Empty) { Five = "2", Data = SevenData.Plain, Count = "100 0 R", Written = lengthChain },
+        };
+        var file = shape.Build();
+
+        Validate(file).Contains(PdfValidationRuleIds.XRefObjectStreamCircular).Should().Be(circular);
+        ReaderNeeds(file).Should().Be(circular ? 5 : null);
+    }
+
+    [Theory]
+    [InlineData("/Length", 61, "5", true)]
+    [InlineData("/Length", 62, "5", true)]
+    [InlineData("/Length", 63, "5", false)]
+    [InlineData("/N", 62, "5", true)]
+    [InlineData("/N", 63, "5", true)]
+    [InlineData("/N", 64, "5", false)]
+    [InlineData("/N", 61, "a member of 9", true)]
+    [InlineData("/N", 62, "a member of 9", false)]
+    [InlineData("/N", 62, "an object", true)]
+    [InlineData("/N", 63, "an object", false)]
+    [InlineData("/Length and /N", 61, "a member of 9", false)]
+    public void Streams_nested_on_a_chain_are_followed_as_deep_as_the_reader_nests_its_loads(string key, int streams, string last, bool circular)
+    {
+        // The key names the first of a chain of streams, each taking its /Length from the next, the last from 5 — or from
+        // object 170, a member of object stream 9 or an object written in the file, whose value is 5 0 R. A read of 6 loads
+        // the stream a level below it, its /Length a level further, its /N where the stream was; each nested stream a level
+        // deeper; and nothing past 64 levels, so that 170 reads as null at the 65th, a member at the 64th already, its stream
+        // loaded a level deeper. 5 itself is reported at any depth, as the stream holds it. A chain of streams /Length met
+        // first, a level deeper than /N meets it, is parsed there, and kept: /N reads it again, and loads nothing more.
+        var chain = StreamChain(100, streams, last == "5" ? "5 0 R" : "170 0 R");
+        Dictionary<int, string> nine = [];
+
+        if (last == "a member of 9")
+        {
+            nine[170] = "5 0 R";
+        }
+        else if (last == "an object")
+        {
+            chain[170] = "5 0 R";
+        }
+
+        var file = new StreamSeven(string.Empty)
+        {
+            Five = "2",
+            Data = SevenData.Plain,
+            Length = key.StartsWith("/Length", StringComparison.Ordinal) ? "100 0 R" : null,
+            Count = key.EndsWith("/N", StringComparison.Ordinal) ? "100 0 R" : "2",
+            Written = chain,
+            InNine = nine,
+        }.Build();
+
+        Validate(file).Contains(PdfValidationRuleIds.XRefObjectStreamCircular).Should().Be(circular);
+        ReaderNeeds(file).Should().Be(circular ? 5 : null);
+    }
+
+    [Theory]
+    [InlineData(1, true)]
+    [InlineData(1, false)]
+    [InlineData(31, true)]
+    [InlineData(31, false)]
+    public void A_value_a_guard_cut_ends_what_the_walk_follows_as_it_ends_decoding(int at, bool guarded)
+    {
+        // Two Flate steps take their parameters from [100 0 R 5 0 R]; 100 is the first of a chain of references to
+        // parameters that run past MaxObjectLength when it is lowered to 128 bytes, the chain's 1st object or its 31st, the
+        // last whose value a reference takes, which decoding asks whether a guard cut. Decoding ends at the first step's
+        // parameters, which are the guard's, and never reads 5 (#263): the walk found a loop through 5 all the same.
+        // Unguarded, the second step reads 5, which the stream holds.
+        var file = new StreamSeven("/Filter [/FlateDecode /FlateDecode] /DecodeParms [100 0 R 5 0 R]")
+        {
+            Five = "<< /Predictor 1 >>",
+            Data = SevenData.FlateTwice,
+            Written = ReferenceChain(100, at, "<< /Predictor 1 /Pad (" + new string('x', 200) + ") >>"),
+        }.Build();
+        var options = guarded ? new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxObjectLength = 128 } } : null;
+
+        using var document = PdfDocument.Open(file, options);
+        new PdfValidator().Validate(document).Contains(PdfValidationRuleIds.XRefObjectStreamCircular).Should().Be(!guarded);
+        ReaderNeeds(file, options).Should().Be(guarded ? null : 5);
+    }
+
+    [Fact]
+    public void A_value_whose_chain_loads_an_object_a_guard_cut_past_its_31st_link_is_followed_on()
+    {
+        // As above, 100 heading a chain of 31 references, the 32nd object being the parameters that run past MaxObjectLength:
+        // the reference loads it, and drops its value (#173). Decoding asks of the 31st object, the last whose value the
+        // chain took, whether a guard cut it: none did, and the first step reads no parameters, the second 5, which the
+        // stream holds.
+        var file = new StreamSeven("/Filter [/FlateDecode /FlateDecode] /DecodeParms [100 0 R 5 0 R]")
+        {
+            Five = "<< /Predictor 1 >>",
+            Data = SevenData.FlateTwice,
+            Written = ReferenceChain(100, 32, "<< /Predictor 1 /Pad (" + new string('x', 200) + ") >>"),
+        }.Build();
+        var options = new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxObjectLength = 128 } };
+
+        using var document = PdfDocument.Open(file, options);
+        Single(new PdfValidator().Validate(document), PdfValidationRuleIds.XRefObjectStreamCircular).Message.Should().Be(HoldsFive("/DecodeParms"));
+        ReaderNeeds(file, options).Should().Be(5);
+    }
+
+    [Fact]
+    public void A_value_whose_chain_the_walk_takes_at_once_through_a_link_a_guard_cut_ends_what_the_walk_follows()
+    {
+        // Two Flate steps take their parameters from [100 0 R 5 0 R]; 100 heads a chain of 33 references, whose 31st, 130,
+        // the last whose value a reference takes, runs past MaxObjectLength lowered to 128 bytes after the reference it
+        // holds: the reader keeps it as far as it read it, and the chain goes on through it, a run of links the walk takes at
+        // once. Decoding asks of the 31st whether a guard cut it, and ends at the first step's parameters, which are the
+        // guard's: it never reads 5 (#263).
+        var file = new StreamSeven("/Filter [/FlateDecode /FlateDecode] /DecodeParms [100 0 R 5 0 R]")
+        {
+            Five = "<< /Predictor 1 >>",
+            Data = SevenData.FlateTwice,
+            Written = Merged(ReferenceChain(100, 33, "100 0 R"), new() { [130] = "131 0 R %" + new string('x', 200) }),
+        }.Build();
+        var options = new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxObjectLength = 128 } };
+
+        using var document = PdfDocument.Open(file, options);
+        new PdfValidator().Validate(document).Contains(PdfValidationRuleIds.XRefObjectStreamCircular).Should().BeFalse();
+        ReaderNeeds(file, options).Should().BeNull();
+    }
+
+    [Theory]
+    [InlineData("/DecodeParms", "directly", false)]
+    [InlineData("/DecodeParms", "through 49, written in the file", false)]
+    [InlineData("/DecodeParms", "directly", true)]
+    [InlineData("/DecodeParms", "through 49, written in the file", true)]
+    [InlineData("/Length", "directly", true)]
+    [InlineData("/Length", "through 49, written in the file", true)]
+    public void A_chain_the_walk_follows_to_an_object_the_index_lists_free_reads_as_null_whether_or_not_the_file_writes_it(string key, string through, bool written)
+    {
+        // Stream 7 takes its /DecodeParms, or its /Length, from 50, directly or through 49, written in the file; the index lists
+        // 50 free, and the file writes, in all but two cases, an object 50 near its header, 5 0 R, which no row places. The
+        // reader reads a free object as null, whatever the file writes: 7 needs nothing. The walk reads it so, and does not
+        // take it for a link of a run either, which would read 50 where the file writes it and lead 7 to 5, which it holds.
+        var file = new HandWrittenFile(version: "1.5");
+
+        if (written)
+        {
+            file.Object(50, "5 0 R");
+        }
+
+        var parameter = through.StartsWith("through", StringComparison.Ordinal) ? "49 0 R" : "50 0 R";
+        var rows = new Dictionary<int, (int Type, long Field2, int Field3)>
+        {
+            [1] = (1, file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"), 0),
+            [2] = (1, file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"), 0),
+            [5] = (2, 7, 0),
+            [6] = (2, 7, 1),
+            [49] = (1, file.Object(49, "50 0 R"), 0),
+        };
+        var (data, first) = ConvergenceShapes.ObjectStreamData((5, "<< /Predictor 1 >>"), (6, "<< /Title (six) >>"));
+        var compressed = Encoding.Latin1.GetString(HostileInputTests.Compress(Encoding.Latin1.GetBytes(data)));
+        var entries = key == "/Length"
+            ? $"/Filter /FlateDecode /Length {parameter}"
+            : $"/Filter /FlateDecode /DecodeParms {parameter} /Length {compressed.Length}";
+        rows[7] = (1, file.Object(7, string.Create(CultureInfo.InvariantCulture, $"<< /Type /ObjStm /N 2 /First {first} {entries} >>\nstream\n{compressed}\nendstream")), 0);
+        file.CrossReferenceStream(200, 201, rows, "/Root 1 0 R");
+
+        using var document = PdfDocument.Open(file.Bytes);
+        ObjectStreamDependencies.Run(document).CircularStreams.Should().BeEmpty();
+        Validate(file.Bytes).Contains(PdfValidationRuleIds.XRefObjectStreamCircular).Should().BeFalse();
+        ReaderNeeds(file.Bytes).Should().BeNull();
+    }
+
+    [Theory]
+    [InlineData("/Filter 3 0 R, 3 = [5 0 R]", "/Filter")]
+    [InlineData("Flate, /DecodeParms 3 0 R, 3 = [5 0 R]", "/DecodeParms")]
+    public void An_array_written_in_the_file_is_followed_whole_when_no_guard_bounds_the_chain_of_filters(string shape, string key)
+    {
+        // What the walk keeps of an array is as many elements as a chain of filters reads, and one more. With no bound on
+        // the chain, that bound plus one overflowed, and every such array was kept empty: the loop through its element went
+        // unseen, while the reader reported it.
+        var file = shape.StartsWith("/Filter", StringComparison.Ordinal)
+            ? new StreamSeven("/Filter 3 0 R") { Five = "/FlateDecode", Written = new Dictionary<int, string> { [3] = "[5 0 R]" } }.Build()
+            : new StreamSeven("/Filter /FlateDecode /DecodeParms 3 0 R") { Five = "<< /Predictor 1 >>", Written = new Dictionary<int, string> { [3] = "[5 0 R]" } }.Build();
+        var unbounded = new PdfReaderOptions { Limits = PdfReaderLimits.Unbounded };
+
+        using var document = PdfDocument.Open(file, unbounded);
+        Single(new PdfValidator().Validate(document), PdfValidationRuleIds.XRefObjectStreamCircular).Message.Should().Be(HoldsFive(key));
+        ReaderNeeds(file, unbounded).Should().Be(5);
+    }
+
+    [Theory]
+    [InlineData("written in the file")]
+    [InlineData("in the dictionary of a stream whose standing waits")]
+    public void An_array_as_long_as_the_guard_on_filters_lets_decoding_read_is_kept_as_it_was_read(string where)
+    {
+        // A /Filter array of two Flate steps, under a guard of two filters, which decoding reads whole: object 3, which
+        // stream 7 names as its /Filter, or the /Filter of object stream 5, which stream 3 takes its parameters from, whose
+        // /DecodeParms names 11, which object stream 10 holds, so that 5's standing waits on 10's, and the walk keeps what
+        // it read of 5's dictionary. Only an array longer than the guard is cut to what decoding reads: this one is kept as
+        // it was read, and the walk allocates the same as under a guard of three filters.
+        byte[] file;
+
+        if (where == "written in the file")
+        {
+            file = new StreamSeven("/Filter 3 0 R")
+            {
+                Five = "<< /Predictor 1 >>",
+                Data = SevenData.FlateTwice,
+                Written = new() { [3] = "[/FlateDecode /FlateDecode]" },
+            }.Build();
+        }
+        else
+        {
+            var (data, first) = ConvergenceShapes.ObjectStreamData((6, "<< /Predictor 1 >>"));
+            var objects = new SortedDictionary<int, (string Entries, byte[]? Data)>
+            {
+                [3] = ConvergenceShapes.FlateObjectStream("/DecodeParms 6 0 R", (4, "<< >>")),
+                [5] = (
+                    string.Create(CultureInfo.InvariantCulture, $"/Type /ObjStm /N 1 /First {first} /Length @L /Filter [/FlateDecode /FlateDecode] /DecodeParms [11 0 R null]"),
+                    HostileInputTests.Compress(HostileInputTests.Compress(Encoding.Latin1.GetBytes(data)))),
+                [10] = ConvergenceShapes.FlateObjectStream(string.Empty, (11, "<< /Predictor 1 >>")),
+            };
+            file = ConvergenceShapes.StreamsAndMembers(objects, new() { [4] = (3, 0), [6] = (5, 0), [11] = (10, 0) });
+        }
+
+        var two = Allocations.Least(() => Open(2), document => ObjectStreamDependencies.Run(document), out var twoDocument, out var twoResult);
+        var three = Allocations.Least(() => Open(3), document => ObjectStreamDependencies.Run(document), out var threeDocument, out var threeResult);
+
+        using (twoDocument)
+        using (threeDocument)
+        {
+            twoResult.CircularStreams.Should().BeEmpty();
+            threeResult.CircularStreams.Should().BeEmpty();
+            two.Should().Be(three, "an array no longer than the guard is kept as it was read, not copied");
+        }
+
+        PdfDocument Open(int filters) =>
+            PdfDocument.Open(file, new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxFilterChainLength = filters } });
+    }
+
+    [Theory]
+    [InlineData("[/FlateDecode 5 0 R /ASCIIHexDecode]")]
+    [InlineData("[5 0 R /FlateDecode /ASCIIHexDecode]")]
+    public void An_array_written_in_the_file_is_kept_as_far_as_the_guard_on_filters_lets_decoding_read_it(string three)
+    {
+        // Stream 7's /Filter is object 3, an array of three filters whose first or second is 5, which the stream holds, and
+        // the reader decodes through two filters at most: it reads 5, and stops at the third. The walk keeps of the array
+        // the two elements decoding reads, from the first.
+        var file = new StreamSeven("/Filter 3 0 R")
+        {
+            Five = "/FlateDecode",
+            Data = SevenData.FlateTwice,
+            Written = new() { [3] = three },
+        }.Build();
+        var options = new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxFilterChainLength = 2 } };
+
+        using var document = PdfDocument.Open(file, options);
+        Single(new PdfValidator().Validate(document), PdfValidationRuleIds.XRefObjectStreamCircular).Message.Should().Be(HoldsFive("/Filter"));
+        ReaderNeeds(file, options).Should().Be(5);
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void Two_object_streams_are_circular_through_their_parameters_only_where_decoding_reads_them(bool nineFiltered)
+    {
+        // Stream 7 takes its parameters from object 100, which object stream 9 holds; 9 names object 6, which 7 holds, as its
+        // /DecodeParms. Compressed, 9 reads them: each stream needs the other, and each names its own first need. With no
+        // filter, 9 never reads them, and neither stream needs the other — the walk found both circular.
+        var file = new StreamSeven("/Filter /FlateDecode /DecodeParms 100 0 R")
+        {
+            InNine = new Dictionary<int, string> { [100] = "<< /Predictor 1 >>" },
+            NineEntries = nineFiltered ? "/Filter /FlateDecode /DecodeParms 6 0 R" : "/DecodeParms 6 0 R",
+        }.Build();
+
+        var circular = Validate(file).Findings.Where(finding => finding.RuleId == PdfValidationRuleIds.XRefObjectStreamCircular).Select(finding => finding.Message);
+
+        circular.Should().Equal(
+            nineFiltered
+                ?
+                [
+                    "Object stream 7 needs object 100, which object stream 9 holds, to be read: its /DecodeParms names it, and reading object stream 9 needs object stream 7 in turn.",
+                    "Object stream 9 needs object 6, which object stream 7 holds, to be read: its /DecodeParms names it, and reading object stream 7 needs object stream 9 in turn.",
+                ]
+                : []);
+    }
+
+    [Theory]
+    [InlineData("the object stream")]
+    [InlineData("a stream its /N names")]
+    public void A_stream_whose_length_names_the_stream_itself_reads_as_null_there_and_needs_nothing(string stream)
+    {
+        // The reader refuses to load again an object it is loading: a stream whose /Length names it reads as null there,
+        // and its data is found by its endstream. Nothing the stream holds is needed on the way.
+        var shape = stream == "the object stream"
+            ? new StreamSeven(string.Empty) { Data = SevenData.Plain, Length = "7 0 R" }
+            : new StreamSeven(string.Empty) { Data = SevenData.Plain, Count = "100 0 R", Written = StreamChain(100, 1, "100 0 R") };
+        var file = shape.Build();
+
+        Validate(file).Contains(PdfValidationRuleIds.XRefObjectStreamCircular).Should().BeFalse();
+        ReaderNeeds(file).Should().BeNull();
+    }
+
+    [Fact]
+    public void An_object_of_a_stream_met_on_a_chain_while_its_length_is_resolved_is_not_needed_by_the_stream_walked()
+    {
+        // Stream 7's /N names object stream 9, whose /Length names object 170, which 9 holds; 9's /DecodeParms names 6,
+        // which 7 holds. Reading 6 parses 9 for 7's /N: 170 cannot be read while 9 is, and reads as null before 9 is decoded
+        // — the reader reports 9, not 7, which needs nothing of 9. Only 9 is circular: taking 170 for a need of 7 made 7
+        // circular through 9.
+        var file = new StreamSeven(string.Empty)
+        {
+            Data = SevenData.Plain,
+            Count = "9 0 R",
+            InNine = new() { [170] = "<< /Predictor 1 >>" },
+            NineEntries = "/Filter /FlateDecode /DecodeParms 6 0 R",
+            NineLength = "170 0 R",
+        }.Build();
+
+        Validate(file).Findings.Where(finding => finding.RuleId == PdfValidationRuleIds.XRefObjectStreamCircular)
+            .Select(finding => finding.Message).Should().Equal(
+                "Object stream 9 needs object 170, which it holds, to be read: its /Length names it, and the object cannot be read before the stream is.");
+        ReaderNeeds(file).Should().BeNull();
+    }
+
+    [Fact]
+    public void Decoding_reads_no_entry_of_a_step_s_parameters_the_walk_does_not_keep()
+    {
+        // The walk keeps of a parameters dictionary written in the file the entries FilterChain.ParameterKeys lists, and
+        // reads nothing else of it: an entry decoding came to read besides would be a need the walk could not see. An LZW
+        // step and a Flate step, a predictor past 1, and every entry ISO 32000-1 gives a filter's parameters besides.
+        string[] names =
+        [
+            "EarlyChange", "Predictor", "Colors", "BitsPerComponent", "Columns", "K", "EndOfLine", "EncodedByteAlign", "Rows",
+            "EndOfBlock", "BlackIs1", "DamagedRowsBeforeError", "JBIG2Globals", "ColorTransform", "Type", "Name",
+        ];
+        var parameters = new PdfDictionary();
+        var keys = new Dictionary<PdfObject, PdfName>(ReferenceEqualityComparer.Instance);
+
+        // Each value an instance of its own, by which the entry read is known: a predictor of 12, the rest past the
+        // integers the library shares instances of.
+        for (var index = 0; index < names.Length; index++)
+        {
+            var value = PdfInteger.Create(names[index] == "Predictor" ? 12 : 1_000_000 + index);
+            parameters.Set(PdfName.Get(names[index]), value);
+            keys[value] = PdfName.Get(names[index]);
+        }
+
+        var dictionary = new PdfDictionary();
+        dictionary.Set(PdfName.Filter, new PdfArray([PdfName.LZWDecode, PdfName.FlateDecode]));
+        dictionary.Set(PdfName.DecodeParms, parameters);
+        var reads = new ParameterReads(keys, []);
+
+        FilterChain.TryFollow(dictionary, maxFilters: 64, ref reads).Should().BeTrue();
+
+        reads.Read.Distinct().Should().BeEquivalentTo(FilterChain.ParameterKeys.ToArray(), "decoding reads every entry the walk keeps, and nothing else");
+    }
+
+    [Fact]
+    public void A_stream_whose_parameters_lead_back_to_it_through_a_stream_is_circular_and_not_also_broken()
+    {
+        // #277's sixth shape with a predictor of 12: the stream's parameters are object 3, a stream whose /Predictor is 5,
+        // which the stream holds. The reader decodes it with no predictor, 5 reading as null, and reads its objects; the probe
+        // decoded it with 5's own value and found its header broken. Once the loop is found, the broken finding, which the
+        // loop explains, is not made as well.
+        var file = new StreamSeven("/Filter /FlateDecode /DecodeParms 3 0 R")
+        {
+            Five = "12",
+            Written = new Dictionary<int, string> { [3] = "<< /Predictor 5 0 R /Length 2 >>\nstream\nab\nendstream" },
+        }.Build();
+
+        var report = Validate(file);
+
+        Single(report, PdfValidationRuleIds.XRefObjectStreamCircular).Message.Should().Be(HoldsFive("/DecodeParms"));
+        report.Contains(PdfValidationRuleIds.XRefObjectStreamBroken).Should().BeFalse("the loop is the fault, reported once");
+        ReaderNeeds(file).Should().Be(5);
+
+        using var document = PdfDocument.Open(file);
+        document.GetObject(new PdfObjectId(6)).Should().BeOfType<PdfDictionary>("the reader decodes the stream without the predictor");
+    }
+
+    [Theory]
+    [InlineData("nothing")]
+    [InlineData("5")]
+    [InlineData("6")]
+    [InlineData("7")]
+    [InlineData("8")]
+    [InlineData("5 6 7")]
+    [InlineData("7 6 5")]
+    [InlineData("6 5 7")]
+    [InlineData("a validation")]
+    public void Object_streams_that_take_their_parameters_from_one_another_s_objects_are_judged_alike_whatever_was_read_before(string before)
+    {
+        // Stream 10 takes its parameters from 6, which 11 holds; 11 from 5, which 10 holds; 12 from 8, which 10 holds. 11's
+        // data reads 6 as 7 0 R through the predictor 5 gives, and as 77 0 R without one, so that what the reader serves of 6
+        // depends on which of 10 and 11 it decoded first. The walk read 6 through the reader and followed it to 7, which 12
+        // holds: 12 was found circular after nothing was read, or 6, and not after 5, 7 or 8, though no read of an object 10
+        // holds decodes 12 (#277). Neither 10 nor 11 decodes alike in every read order, each lying on a loop with the other:
+        // 6 and 5 are needs and read as null, 10 and 11 are circular, and 12, which leads into their loop, is not (#312).
+        using var document = PdfDocument.Open(ConvergenceShapes.ObjectStreamsTakingParametersFromOneAnother());
+
+        if (before == "a validation")
+        {
+            new PdfValidator().Validate(document);
+        }
+        else if (before != "nothing")
+        {
+            foreach (var number in before.Split(' '))
+            {
+                document.GetObject(new PdfObjectId(int.Parse(number, CultureInfo.InvariantCulture)));
+            }
+        }
+
+        new PdfValidator().Validate(document).Findings.Where(finding => finding.RuleId == PdfValidationRuleIds.XRefObjectStreamCircular)
+            .Select(finding => finding.Message).Should().Equal(
+                "Object stream 10 needs object 6, which object stream 11 holds, to be read: its /DecodeParms names it, and reading object stream 11 needs object stream 10 in turn.",
+                "Object stream 11 needs object 5, which object stream 10 holds, to be read: its /DecodeParms names it, and reading object stream 10 needs object stream 11 in turn.");
+    }
+
+    [Theory]
+    [InlineData("100, directly")]
+    [InlineData("100, through 99, written in the file")]
+    [InlineData("100, once stream 3 has read 170")]
+    [InlineData("100, its stream needing one that needs a third")]
+    public void A_loop_through_the_value_of_an_object_whose_stream_needs_another_that_decodes_alike_is_found_as_the_reader_finds_it(string parameters)
+    {
+        // Stream 7 takes its parameters from 100, which 9 holds; 9 takes its own from 170, which 11 holds, and 11 needs
+        // nothing, or 180, which 13 holds, and 13 needs nothing; 100 is 5 0 R, which 7 holds. The reader decodes 9 within 7's
+        // decoding, 100 leads it to 5, and it reports that 7 needs 5. The walk read 100 as null, 9 meeting 170, and left the
+        // loop unseen (#312). 9 decodes alike in every read order: its decoding needs 11, and 11's 13, which need nothing in
+        // turn, and no stream among them needs 7 — the walk follows 100 to 5. So it does when 7 reaches 100 through 99,
+        // written in the file, which a run of links passes; and when an object stream the walk takes first, 3, has read
+        // 170, so that the run from 170 to 171 is known before 9's standing is.
+        var file = ConvergenceShapes.LoopThroughAHolder(parameters);
+
+        Single(Validate(file), PdfValidationRuleIds.XRefObjectStreamCircular).Message.Should().Be(HoldsFive("/DecodeParms"));
+        ReaderNeeds(file).Should().Be(5);
+    }
+
+    [Fact]
+    public void A_loop_through_the_value_of_an_object_whose_stream_lies_on_a_loop_itself_is_left_to_the_reader()
+    {
+        // Stream 7 takes its parameters from 100, which 9 holds, 5 0 R; 9 takes its own from 170, which 11 holds, and 11 its
+        // own from 101, which 9 holds. The reader decodes 9 within 7's decoding, and 11 within 9's, which reads 101 as null,
+        // 9 being decoded: 100 leads to 5, and it reports that 7 needs 5. What 9's decoding gives depends on which of 9 and
+        // 11 the reader decoded first: 9 does not decode alike, and 100 is a need of 7, which reads as null. 9 and 11 are
+        // circular; 7, whose loop closes only through 100's value, is left to the reader (#314).
+        var objects = new SortedDictionary<int, (string Entries, byte[]? Data)>
+        {
+            [7] = ConvergenceShapes.FlateObjectStream("/DecodeParms 100 0 R", (5, "<< /Predictor 1 >>"), (6, "<< /Title (six) >>")),
+            [9] = ConvergenceShapes.FlateObjectStream("/DecodeParms 170 0 R", (100, "5 0 R"), (101, "<< /Predictor 1 >>")),
+            [11] = ConvergenceShapes.FlateObjectStream("/DecodeParms 101 0 R", (170, "<< /Predictor 1 >>")),
+        };
+        var file = ConvergenceShapes.StreamsAndMembers(objects, new() { [5] = (7, 0), [6] = (7, 1), [100] = (9, 0), [101] = (9, 1), [170] = (11, 0) });
+        using var document = PdfDocument.Open(file);
+
+        ObjectStreamDependencies.Run(document).CircularStreams.Should().BeEquivalentTo([9, 11]);
+        ReaderNeeds(file).Should().Be(5);
+    }
+
+    [Theory]
+    [InlineData("free")]
+    [InlineData("stored in object stream 20")]
+    public void A_loop_through_the_value_of_an_object_whose_stream_reads_one_of_a_stream_the_chain_places_as_no_stream_is_left_to_the_reader(string nine)
+    {
+        // Stream 7 takes its parameters from 21, which 20 holds, 5 0 R; 20 takes its own from 100, which the chain places in
+        // 9. The file writes 9 at its start, a stream holding 100, but the chain lists 9 free, or places it in 20: 9 is no
+        // stream where the chain places it, whatever lies near where its row points, and the reader serves 100 as null. 20,
+        // which reads 100, does not decode alike, and 21 is a need of 7, which reads as null: 7, whose loop closes only
+        // through 21's value, is left to the reader, which decodes 20 without 100 and reports that 7 needs 5 (#314).
+        var file = new HandWrittenFile(version: "1.5");
+        FlateObjectStream(file, 9, [(100, "<< /Predictor 1 >>")], string.Empty);
+        var rows = new Dictionary<int, (int Type, long Field2, int Field3)>
+        {
+            [1] = (1, file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"), 0),
+            [2] = (1, file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"), 0),
+            [7] = (1, FlateObjectStream(file, 7, [(5, "<< /Predictor 1 >>"), (6, "<< /Title (six) >>")], "/DecodeParms 21 0 R"), 0),
+            [5] = (2, 7, 0),
+            [6] = (2, 7, 1),
+            [20] = (1, FlateObjectStream(file, 20, [(21, "5 0 R")], "/DecodeParms 100 0 R"), 0),
+            [21] = (2, 20, 0),
+            [100] = (2, 9, 0),
+        };
+
+        if (nine != "free")
+        {
+            rows[9] = (2, 20, 1);
+        }
+
+        file.CrossReferenceStream(200, 201, rows, "/Root 1 0 R");
+        using var document = PdfDocument.Open(file.Bytes);
+
+        ObjectStreamDependencies.Run(document).CircularStreams.Should().BeEmpty();
+        document.WasRepaired.Should().BeFalse();
+        ReaderNeeds(file.Bytes).Should().Be(5);
+    }
+
+    [Theory]
+    [InlineData("its /Type, then its /N")]
+    [InlineData("its /Type, then its /Length")]
+    [InlineData("its /Filter, then its /DecodeParms")]
+    [InlineData("its /N, then its filters")]
+    [InlineData("a predictor, then its /Columns")]
+    public void A_stream_s_own_loop_behind_a_value_read_through_a_stream_that_decodes_alike_is_found(string gate)
+    {
+        // Object stream 5 takes its parameters from 40, which 4 holds, and 4 needs nothing: 5 decodes alike in every read
+        // order, and serves 50, /ObjStm, 51, /FlateDecode, 52, 2, and 53, 12. Stream 7 takes one of its values from them, and
+        // what decoding reads after it names an object 7 holds. The walk read the value as null, 5 meeting 40, and what
+        // decoding reads after a null — a /Length, which a stream not of /Type /ObjStm does not judge; the filters, which a
+        // count of null does not read; the parameters of a /Filter that is null; the /Columns of a predictor that is null —
+        // it did not reach: 7's own loop, which the reader meets in every read order, went unseen. It follows the value.
+        var (entries, key, needed, members) = gate switch
+        {
+            "its /Type, then its /N" => ("/Type 50 0 R /N 60 0 R", "/N", 60, ((int, string)[])[(6, "<< >>"), (60, "2")]),
+            "its /Type, then its /Length" => ("/Type 50 0 R /N 2 /Length 61 0 R", "/Length", 61, [(6, "<< >>"), (61, "0")]),
+            "its /Filter, then its /DecodeParms" => ("/Type /ObjStm /N 2 /Filter 51 0 R /DecodeParms 62 0 R", "/DecodeParms", 62, [(6, "<< >>"), (62, "<< /Predictor 1 >>")]),
+            "its /N, then its filters" => ("/Type /ObjStm /N 52 0 R /Filter /FlateDecode /DecodeParms 62 0 R", "/DecodeParms", 62, [(6, "<< >>"), (62, "<< /Predictor 1 >>")]),
+            _ => ("/Type /ObjStm /N 2 /Filter /FlateDecode /DecodeParms << /Predictor 53 0 R /Columns 62 0 R >>", "/DecodeParms", 62, [(6, "<< >>"), (62, "1")]),
+        };
+        var (data, first) = ConvergenceShapes.ObjectStreamData(members);
+        var bytes = Encoding.Latin1.GetBytes(data);
+        var written = entries.Contains("/Filter", StringComparison.Ordinal)
+            ? HostileInputTests.Compress(entries.Contains("/Columns", StringComparison.Ordinal) ? ConvergenceShapes.PngRows(bytes, 1) : bytes)
+            : bytes;
+        var objects = new SortedDictionary<int, (string Entries, byte[]? Data)>
+        {
+            [4] = ConvergenceShapes.FlateObjectStream(string.Empty, (40, "<< /Predictor 1 >>")),
+            [5] = ConvergenceShapes.FlateObjectStream("/DecodeParms 40 0 R", (50, "/ObjStm"), (51, "/FlateDecode"), (52, "2"), (53, "12")),
+            [7] = (string.Create(CultureInfo.InvariantCulture, $"{entries} /First {first}{(entries.Contains("/Length", StringComparison.Ordinal) ? string.Empty : " /Length @L")}"), written),
+        };
+        var file = ConvergenceShapes.StreamsAndMembers(
+            objects,
+            new() { [40] = (4, 0), [50] = (5, 0), [51] = (5, 1), [52] = (5, 2), [53] = (5, 3), [6] = (7, 0), [needed] = (7, 1) });
+
+        Single(Validate(file), PdfValidationRuleIds.XRefObjectStreamCircular).Message.Should().Be(
+            $"Object stream 7 needs object {needed}, which it holds, to be read: its {key} names it, and the object cannot be read before the stream is.");
+        ReaderNeeds(file).Should().Be(needed);
+    }
+
+    [Theory]
+    [InlineData("a holder reading a stream that names itself as its /Length", false)]
+    [InlineData("a holder reading a stream whose /Length is written directly", true)]
+    [InlineData("a holder whose /Length names itself", false)]
+    [InlineData("a holder whose /Length names a stream naming it", false)]
+    [InlineData("a holder whose /Length is written directly", true)]
+    [InlineData("a holder whose /Length leads back to it through a link and 61 streams", false)]
+    [InlineData("a holder whose /Length leads back to it through a link and 61 streams, its parameters direct", false)]
+    [InlineData("a holder reading a stream twice whose /Length leads back to it through 61 streams", false)]
+    [InlineData("a holder reading a stream twice whose /Length leads back to it through 62 streams", false)]
+    [InlineData("a holder reading a stream twice whose /Length leads back to it through 63 streams", true)]
+    [InlineData("a holder parsing a stream again once its cache let it go", false)]
+    [InlineData("a holder parsing a stream again with nothing between", false)]
+    [InlineData("a holder taking a nest whose cut re-enters a stream in flight", false)]
+    public void An_object_of_a_stream_whose_decoding_reads_a_stream_again_while_the_reader_holds_it_is_not_followed(string shape, bool circular)
+    {
+        // Object stream 6 takes its parameters from 50, which 5 holds, 7 0 R where 5's last Flate step reads its predictor,
+        // and 77 0 R where it does not. The reader re-enters a stream it holds in its loads — one whose /Length a decoding
+        // resolves, 5 itself while its own is, one its deepest load names, one its cache let go and it parses again —, and
+        // reads it as null for the rest of every decoding in flight (#51): 5 decoded inside 6, or after a read that left
+        // something in its cache, reads its predictor otherwise than decoded first, and the reader meets 6's loop in some read
+        // orders and not in others. 5 does not decode alike, and the walk does not follow 50: 6 is not circular, whatever was
+        // read. So too where 5 meets itself again only while its own /Length is resolved, at the reader's deepest load, its
+        // parameters written directly: nothing here reads 5 again, but the reader reads it as null for the rest of every
+        // decoding in flight, which one enclosing 5's may read, and the walk does not follow 50 — on the safe side, leaving to
+        // the reader a loop it meets in every read order. Where 5 reads nothing again — a /Length written directly, a chain cut short of the stream it leads back to —, it
+        // decodes alike, and 50 leads 6 to 7. Parsing again a stream that a reader keeping it would not parse again, the walk
+        // misses the loop the reader meets at the default cache in the shape with nothing between: deterministic, and on the
+        // safe side of the read orders.
+        var crafted = ConvergenceShapes.All[shape];
+        using var document = PdfDocument.Open(crafted.File);
+
+        var findings = new PdfValidator().Validate(document).Findings.Where(finding => finding.RuleId == PdfValidationRuleIds.XRefObjectStreamCircular);
+
+        if (circular)
+        {
+            findings.Select(finding => finding.Message).Should().Equal(
+                "Object stream 6 needs object 7, which it holds, to be read: its /DecodeParms names it, and the object cannot be read before the stream is.");
+        }
+        else
+        {
+            findings.Should().BeEmpty();
+        }
+
+        crafted.Reads.Any(reads => ReaderMeetsTheLoopOfSix(crafted.File, reads)).Should().BeTrue("the reader meets 6's loop in some read order");
+    }
+
+    [Theory]
+    [InlineData("the stream holding it", false)]
+    [InlineData("nothing", true)]
+    [InlineData("the object itself, written again in the file", false)]
+    [InlineData("a parameter only the rebuilt index holds", false)]
+    [InlineData("a parameter written again in the file", false)]
+    [InlineData("a run through an object written again in the file", false)]
+    [InlineData("a nest through a stream written again in the file", false)]
+    [InlineData("a nest holding such a nest", false)]
+    [InlineData("a nest whose parse takes such a run", false)]
+    [InlineData("a parameter neither index holds", true)]
+    [InlineData("a parameter only the rebuilt index holds, past the chain's /Size", false)]
+    [InlineData("a parameter neither index holds, past the chain's /Size", true)]
+    [InlineData("the object itself, held at its index by a stream written before", false)]
+    [InlineData("the object itself, held at its index by a stream written before, its own known to decode alike", false)]
+    [InlineData("the object itself, at another index of its stream", false)]
+    [InlineData("a parameter a stream holds, which the chain writes at the file's first byte", false)]
+    public void An_object_is_followed_only_where_the_reader_s_rebuilt_index_places_what_its_stream_s_decoding_reads_as_the_chain_s(string redefined, bool circular)
+    {
+        // Stream 7 takes its parameters from 50, which object stream 9 holds, 5 0 R; 7 holds 5. The row of 30 leads nowhere,
+        // and the validation rebuilds the index, which finds what the file writes besides what the chain's rows place. The
+        // walk judges the chain's index (#128); the reader decodes 9 through its rebuilt one. Where the two place differently
+        // what 9's decoding reads — 9 itself, 50, a parameter, an object a run of links passes or a stream a nest goes through
+        // —, what the reader serves of 50 is no decoding the walk followed: 50 is a need of 7, which reads as null, and 7 is
+        // not circular. Where they place it alike, 50 is followed to 5. A number past the chain's /Size, of which its index has
+        // no row, is no more held there than one it lists free.
+        var file = RedefinedByARebuild(redefined);
+        using var document = PdfDocument.Open(file);
+
+        var circularStreams = new PdfValidator().Validate(document).Findings
+            .Where(finding => finding.RuleId == PdfValidationRuleIds.XRefObjectStreamCircular).Select(finding => finding.Location.Object?.Number);
+
+        document.WasRepaired.Should().BeTrue();
+        circularStreams.Should().Equal(circular ? [7] : []);
+    }
+
+    [Theory]
+    [InlineData("nothing", false)]
+    [InlineData("a validation", false)]
+    [InlineData("30, rebuilding the index", false)]
+    [InlineData("nothing, the chain placing the later 9", true)]
+    public void An_object_stream_a_rebuild_defines_again_is_followed_only_where_the_reader_s_index_places_it_as_the_chain_s(string before, bool laterOnly)
+    {
+        // Stream 7 takes its parameters from 100, which 9 holds, << /Predictor 1 >> where the chain places 9, needing
+        // nothing; a later 9, which a rebuild finds, holds it as 8 0 R through a predictor it takes from 5, which 7 holds. The
+        // walk followed 100 as the reader served it, from the later 9, after judging the chain's: 7 needed 8, a verdict neither
+        // index gives. The reader's index places 9 otherwise than the chain's: 100 is a need, read as null, and 7 needs nothing
+        // that leads back to it, as under the chain's index, whatever was read before. Where the chain's rows place the later
+        // 9, 7 and 9 need each other.
+        using var document = PdfDocument.Open(ConvergenceShapes.RedefinedHolder(laterOnly));
+
+        if (before == "a validation")
+        {
+            new PdfValidator().Validate(document);
+        }
+        else if (before.StartsWith("30", StringComparison.Ordinal))
+        {
+            document.GetObject(new PdfObjectId(30));
+        }
+
+        var circular = new PdfValidator().Validate(document).Findings.Where(finding => finding.RuleId == PdfValidationRuleIds.XRefObjectStreamCircular)
+            .Select(finding => finding.Message);
+
+        circular.Should().Equal(
+            laterOnly
+                ? ["Object stream 7 needs object 100, which object stream 9 holds, to be read: its /DecodeParms names it, and reading object stream 9 needs object stream 7 in turn.",
+                   "Object stream 9 needs object 5, which object stream 7 holds, to be read: its /DecodeParms names it, and reading object stream 7 needs object stream 9 in turn."]
+                : []);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void An_object_whose_stream_the_reader_found_a_few_bytes_off_its_row_is_followed_as_the_chain_places_it(bool foundFirst)
+    {
+        // #312's file, object stream 9, which holds 100, 5 0 R, starting three bytes before where its row says: a load finds
+        // it there, near the row, and corrects the reader's own index, rebuilding nothing. Until a rebuild, the reader's index
+        // differs from the chain's only by such a correction, which places the object the chain's row places: 9 decodes
+        // alike, whether a read found it first or not, and 100 leads 7 to 5, which it holds.
+        var file = new HandWrittenFile(version: "1.5");
+        var rows = new Dictionary<int, (int Type, long Field2, int Field3)>
+        {
+            [1] = (1, file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"), 0),
+            [2] = (1, file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"), 0),
+            [7] = (1, FlateObjectStream(file, 7, [(5, "<< /Predictor 1 >>"), (6, "<< /Title (six) >>")], "/DecodeParms 100 0 R"), 0),
+            [5] = (2, 7, 0),
+            [6] = (2, 7, 1),
+            [9] = (1, FlateObjectStream(file, 9, [(100, "5 0 R")], string.Empty) + 3, 0),
+            [100] = (2, 9, 0),
+        };
+        file.CrossReferenceStream(200, 201, rows, "/Root 1 0 R");
+        using var document = PdfDocument.Open(file.Bytes);
+
+        if (foundFirst)
+        {
+            document.GetObject(new PdfObjectId(9)).Should().BeOfType<PdfStream>();
+        }
+
+        Single(new PdfValidator().Validate(document), PdfValidationRuleIds.XRefObjectStreamCircular).Message.Should().Be(HoldsFive("/DecodeParms"));
+        document.WasRepaired.Should().BeFalse();
+    }
+
+    [Theory]
+    [InlineData(61, true, true, PdfValidationRuleIds.XRefObjectStreamBroken)]
+    [InlineData(61, true, false, PdfValidationRuleIds.XRefObjectStreamBroken)]
+    [InlineData(61, false, true, PdfValidationRuleIds.XRefObjectStreamCircular)]
+    [InlineData(60, true, true, PdfValidationRuleIds.XRefObjectStreamCircular)]
+    public void An_object_of_a_stream_whose_decoding_the_reader_s_nesting_cuts_where_it_is_met_is_not_followed(int streams, bool indirectLength, bool endstreamInside, string rule)
+    {
+        // Stream 7 takes its /N from 100, which heads streams by /Length, the last naming 180, 170 0 R, which 9 holds, 5 0 R;
+        // 7 holds 5. Met at the 63rd load with 61 streams, 170 has 9 decoded at the 64th, and 9's /Length, when it names 50, at
+        // the 65th, which the reader's nesting cuts: 9 decodes as far as an endstream search finds, or not at all, depending
+        // on how deep the read that first decoded it was. 9 does not decode alike there, and 170 reads as null: 7's /N is not
+        // one the reader can read, which is xref.object-stream-broken's. Its /Length written directly, or the chain a stream
+        // shorter, 9's decoding stays within the reader's nesting, and 170 leads 7 to 5 (#163 keeps the decoding the cut made).
+        var file = ConvergenceShapes.Edge(streams, indirectLength, endstreamInside);
+
+        Validate(file).Findings.Where(finding => finding.RuleId.StartsWith("xref.object-stream-", StringComparison.Ordinal))
+            .Select(finding => finding.RuleId).Should().Equal(rule);
+    }
+
+    [Theory]
+    [InlineData(61, PdfValidationRuleIds.XRefObjectStreamBroken)]
+    [InlineData(60, PdfValidationRuleIds.XRefObjectStreamCircular)]
+    public void An_object_of_a_stream_whose_length_is_a_run_of_links_the_walk_takes_at_once_is_followed_only_where_the_run_stays_within_the_reader_s_nesting(int streams, string rule)
+    {
+        // As above, 9's /Length taken from 60, 61 0 R, and 61, 60 0 R: a loop of links its parse loads a level below 9, as
+        // many as a /Length chain loads, which the walk takes at once, a run with no load left after it. Met at the 63rd
+        // load with 61 streams, 170 has 9 decoded at the 64th, and the run loaded at the 65th, which the reader's nesting
+        // cuts, as 50 is: 9 does not decode alike there, and 170 reads as null: 7's /N is not one the reader can read. A
+        // stream shorter, the run is loaded at the 64th, and 170 leads 7 to 5 (#312).
+        var file = ConvergenceShapes.Edge(streams, indirectLength: true, endstreamInside: false, loopingLength: true);
+
+        Validate(file).Findings.Where(finding => finding.RuleId.StartsWith("xref.object-stream-", StringComparison.Ordinal))
+            .Select(finding => finding.RuleId).Should().Equal(rule);
+    }
+
+    [Theory]
+    [InlineData(61, false, PdfValidationRuleIds.XRefObjectStreamBroken)]
+    [InlineData(60, false, PdfValidationRuleIds.XRefObjectStreamCircular)]
+    [InlineData(60, true, PdfValidationRuleIds.XRefObjectStreamBroken)]
+    [InlineData(59, true, PdfValidationRuleIds.XRefObjectStreamCircular)]
+    public void An_object_of_a_stream_whose_decoding_reads_another_s_object_is_followed_only_where_both_decodings_stay_within_the_reader_s_nesting(int streams, bool third, string rule)
+    {
+        // Stream 7 takes its /N from 100, which heads streams by /Length, the last naming 180, 170 0 R; 9 holds 170, 5 0 R
+        // read through the predictor 9 takes from 70, 55 0 R without it; 11 holds 70, 71 0 R; 7 holds 5. Met at the 63rd load
+        // with 61 streams, 170 has 9 decoded at the 64th, whose decoding reads 70 there, which has 11 decoded at the 65th,
+        // which the reader's nesting cuts: 9 decodes without its predictor there, and with it read first. 9 does not decode
+        // alike there, and 170 reads as null: 7's /N is not one the reader can read. A stream shorter, 11 is decoded at the
+        // 64th, and 170 leads 7 to 5. Where 70 is the predictor itself, read through the one 11 takes from 72, which 13 holds,
+        // 13 is decoded a level below 11: at the 65th with 60 streams.
+        Validate(ConvergenceShapes.ThroughARun(streams, third)).Findings.Where(finding => finding.RuleId.StartsWith("xref.object-stream-", StringComparison.Ordinal))
+            .Select(finding => finding.RuleId).Should().Equal(rule);
+    }
+
+    [Theory]
+    [InlineData(false, false, new int[0])]
+    [InlineData(true, false, new[] { 7 })]
+    [InlineData(true, true, new[] { 7 })]
+    public void An_object_of_a_stream_whose_decoding_takes_a_nest_leading_back_to_it_is_followed_only_where_the_reader_meets_it_short_of_the_cut(bool deeper, bool entering, int[] circular)
+    {
+        // Stream 3, walked first, takes its /Length from stream 100, which heads 60 streams by /Length, the last naming object
+        // stream 9: the walk keeps the nest of 100, 61 streams, 9 the last, cut where 9's /Length names 180, at the 65th load.
+        // 7 takes its parameters from 50, which 9 holds, 5 0 R; 7 holds 5. 9's /Length is 180, 100 0 R: its decoding takes
+        // 100's nest from where 3's walk met it, which reaches 9 at the reader's deepest load, while the reader resolves 9's
+        // /Length. The reader meets 9 again there, and reads it as null for the rest of every decoding in flight: 9 does not
+        // decode alike, and 50 is a need of 7, read as null. 7 is not circular. Where 9's /Length is stream 190, whose own is
+        // 180, the nest is taken a level deeper, and cut a stream short, where 160's /Length names 181, 9 0 R: the reader
+        // reads 181 as null there, and never meets 9 again. 9 decodes alike, and 50 leads 7 to 5; the walk keeps the nest of
+        // 190, 100 and the 60 streams it took, cut where 160's /Length names 181. Stream 13 takes its parameters from 12, which
+        // 11 holds, 14 0 R; 13 holds 14. 11's decoding enters the loop at 102, and takes the nest of 190 at the 62nd load: its
+        // second stream, 101, names 102 at the 65th, while 102's parse is in flight. The reader meets 102 again there: 11 does
+        // not decode alike, and 12 is a need of 13.
+        Validate(ConvergenceShapes.NestBackToAHolder(deeper, entering)).Findings.Where(finding => finding.RuleId == PdfValidationRuleIds.XRefObjectStreamCircular)
+            .Select(finding => finding.Location.Object?.Number).Should().Equal([.. circular.Select(number => (int?)number)]);
+    }
+
+    [Theory]
+    [InlineData(61, true)]
+    [InlineData(62, false)]
+    [InlineData(63, false)]
+    public void An_object_of_a_stream_whose_decoding_reads_through_holders_past_the_reader_s_nesting_is_not_followed(int holders, bool circular)
+    {
+        // Stream 7 takes its parameters from 50, which 9 holds, 5 0 R; 7 holds 5. 9 takes its own from 101, which object
+        // stream 100 holds; 100 from 103, which 102 holds; and so on, each decoding loading the next holder a level below it.
+        // Decoded at a first read of 5, 7 has 9 decoded at the 3rd load, and the last of 61 holders at the 64th: 50 leads 7 to
+        // 5. The last of 62 is loaded at the 65th, which the reader's nesting cuts, and 50 is a need of 7, read as null; of
+        // 63, at the 65th as well when 9 is read first: 9 does not decode alike, wherever it is met.
+        Validate(ConvergenceShapes.HolderChain(holders)).Findings.Where(finding => finding.RuleId == PdfValidationRuleIds.XRefObjectStreamCircular)
+            .Select(finding => finding.Location.Object?.Number).Should().Equal(circular ? [7] : []);
+    }
+
+    [Theory]
+    [InlineData(61, new[] { 7, 9 })]
+    [InlineData(62, new[] { 11 })]
+    public void An_object_another_stream_holds_met_at_the_reader_s_deepest_load_is_no_need(int streams, int[] circular)
+    {
+        // Stream 7 takes its parameters from stream 100, which heads streams by /Length, the last naming 50, which 9 holds; 9
+        // takes its own from 5, which 7 holds; 11 takes its own from 6, 8 0 R, which 7 holds, and holds 8. With 61 streams,
+        // 7's parse of them meets 50 at the 63rd load, and has 9 decoded at the 64th: 7 needs 9, which needs 7, and 11 needs 7.
+        // With 62, 50 is met at the 64th load, and 9 would be decoded past the reader's nesting: 50 reads as null before 9 is
+        // decoded, at a first read of 7 as inside 11's or 9's decoding, a /Length that places a stream's data. 7 needs nothing
+        // of 9, and decodes alike: 6 leads 11 to 8.
+        Validate(ConvergenceShapes.NeedAtTheCut(streams)).Findings.Where(finding => finding.RuleId == PdfValidationRuleIds.XRefObjectStreamCircular)
+            .Select(finding => finding.Location.Object?.Number).Should().Equal([.. circular.Select(number => (int?)number)]);
+    }
+
+    [Theory]
+    [InlineData(30)]
+    [InlineData(64)]
+    public void An_object_of_a_stream_whose_decoding_parses_a_nest_the_reader_s_nesting_cuts_below_it_is_followed(int streams)
+    {
+        // Stream 7 takes its parameters from 50, which 9 holds, 5 0 R; 7 holds 5. 9 takes its own from stream 300, which heads
+        // streams by /Length. With 64 of them, the nesting cuts the parse of the last but one, whose /Length the reader then
+        // finds by searching for endstream, however deep the read that decodes 9: a cut that places a stream's data, the
+        // stream's own, and that no stream in flight is met again at, reads the same values. 9 decodes alike, and 50 leads 7
+        // to 5, as with 30 streams, which no load cuts.
+        Single(Validate(ConvergenceShapes.NestBelow(streams)), PdfValidationRuleIds.XRefObjectStreamCircular).Message.Should().Be(HoldsFive("/DecodeParms"));
+    }
+
+    [Fact]
+    public void A_run_of_links_a_parse_takes_counts_not_for_how_deep_the_decoding_reaches()
+    {
+        // Stream 7 takes its parameters from 50, which 9 holds, 5 0 R; 7 holds 5. 9 takes its own from stream 300, which heads
+        // 62 streams by /Length, the last naming 400, 401 0 R, and 401, 2: the walk parses the last stream at the 63rd load,
+        // and takes 400 at once at the 64th, the reader's deepest. A /Length a parse resolves places a stream's data alone,
+        // and counts not for how deep 9's decoding reaches, the 2nd level: 50 is read a level below and leads 7 to 5.
+        // Counted, the run would take 9 to the 64th level, past what a read of 50 allows (#312).
+        var objects = new SortedDictionary<int, (string Entries, byte[]? Data)>
+        {
+            [7] = ConvergenceShapes.FlateObjectStream("/DecodeParms 50 0 R", (5, "<< /Predictor 1 >>"), (6, "<< /Title (six) >>")),
+            [9] = ConvergenceShapes.FlateObjectStream("/DecodeParms 300 0 R", (50, "5 0 R")),
+            [400] = ("401 0 R", null),
+            [401] = ("2", null),
+        };
+
+        for (var stream = 0; stream < 62; stream++)
+        {
+            var length = stream + 1 < 62 ? 301 + stream : 400;
+            objects[300 + stream] = (string.Create(CultureInfo.InvariantCulture, $"/Predictor 1 /Length {length} 0 R"), "ab"u8.ToArray());
+        }
+
+        var file = ConvergenceShapes.StreamsAndMembers(objects, new() { [5] = (7, 0), [6] = (7, 1), [50] = (9, 0) });
+
+        Single(Validate(file), PdfValidationRuleIds.XRefObjectStreamCircular).Message.Should().Be(HoldsFive("/DecodeParms"));
+        ReaderNeeds(file).Should().Be(5);
+    }
+
+    [Fact]
+    public void A_walk_of_a_standing_taking_a_nest_whose_stream_it_parsed_before_parses_it_again_and_goes_on()
+    {
+        // Object stream 3, walked first, takes its parameters from stream 100, whose /Length names stream 101: the walk keeps
+        // the nest of 100. 7 takes its parameters from 50, which 9 holds, 5 0 R; 7 holds 5. 9 takes two Flate steps, the
+        // first's parameters from 101, the second's from 100: 9's walk parses 101, then takes 100's nest, which holds 101.
+        // The reader holds 101 in its loads no more: a reader whose cache let it go parses it again, as the walk does, and
+        // the nest goes on. 9 decodes alike, and 50 leads 7 to 5. Taken for a stream the reader holds in its loads, 101
+        // would have made 9 one that does not decode alike (#312).
+        var (nine, first) = ConvergenceShapes.ObjectStreamData((50, "5 0 R"));
+        var objects = new SortedDictionary<int, (string Entries, byte[]? Data)>
+        {
+            [3] = ConvergenceShapes.FlateObjectStream("/DecodeParms 100 0 R", (4, "<< >>")),
+            [7] = ConvergenceShapes.FlateObjectStream("/DecodeParms 50 0 R", (5, "<< /Predictor 1 >>"), (6, "<< /Title (six) >>")),
+            [9] = (string.Create(CultureInfo.InvariantCulture, $"/Type /ObjStm /N 1 /First {first} /Length @L /Filter [/FlateDecode /FlateDecode] /DecodeParms [101 0 R 100 0 R]"), HostileInputTests.Compress(HostileInputTests.Compress(Encoding.Latin1.GetBytes(nine)))),
+            [100] = ("/Length 101 0 R", "ab"u8.ToArray()),
+            [101] = ("/Length 2", "ab"u8.ToArray()),
+        };
+        var file = ConvergenceShapes.StreamsAndMembers(objects, new() { [4] = (3, 0), [5] = (7, 0), [6] = (7, 1), [50] = (9, 0) });
+
+        Single(Validate(file), PdfValidationRuleIds.XRefObjectStreamCircular).Message.Should().Be(HoldsFive("/DecodeParms"));
+        ReaderNeeds(file).Should().Be(5);
+    }
+
+    [Theory]
+    [InlineData(57)]
+    [InlineData(60)]
+    public void An_object_of_another_stream_a_parse_meets_counts_neither_for_how_deep_the_decoding_reaches_nor_against_its_standing(int streams)
+    {
+        // Stream 7 takes its parameters from 50, which 9 holds, 5 0 R; 7 holds 5. 9 takes its own from stream 300, which heads
+        // 57 or 60 streams by /Length, the last naming 61, which object stream 60 holds; 60 takes its parameters from 63, which
+        // 62 holds, and so on through five holders, 60's decoding reaching 6 levels below where 61 is read. 9's walk meets 61
+        // inside the parse of the nest, at the 59th load or the 62nd: 60's decoding reaches the 64th, the reader's deepest, or
+        // past it, where the nesting cuts it. Either way 61's value places the last stream's data alone, and changes no value
+        // 9's decoding reads: 9 decodes alike, reaching the 2nd level, and 50 leads 7 to 5. Counted for 9's reach, 61 would
+        // take 9 to the 64th level, past what a read of 50 a level below allows; counted against 9's standing, 60 cut there
+        // would make 9 one that does not decode alike (#312).
+        var objects = new SortedDictionary<int, (string Entries, byte[]? Data)>
+        {
+            [7] = ConvergenceShapes.FlateObjectStream("/DecodeParms 50 0 R", (5, "<< /Predictor 1 >>"), (6, "<< /Title (six) >>")),
+            [9] = ConvergenceShapes.FlateObjectStream("/DecodeParms 300 0 R", (50, "5 0 R")),
+        };
+        var members = new Dictionary<int, (int Stream, int Index)> { [5] = (7, 0), [6] = (7, 1), [50] = (9, 0) };
+
+        for (var stream = 0; stream < streams; stream++)
+        {
+            var length = stream + 1 < streams ? string.Create(CultureInfo.InvariantCulture, $"{301 + stream} 0 R") : "61 0 R";
+            objects[300 + stream] = ("/Predictor 1 /Length " + length, "ab"u8.ToArray());
+        }
+
+        for (var holder = 0; holder < 5; holder++)
+        {
+            var number = 60 + (2 * holder);
+            var parameters = holder + 1 < 5 ? string.Create(CultureInfo.InvariantCulture, $"/DecodeParms {number + 3} 0 R") : string.Empty;
+            objects[number] = ConvergenceShapes.FlateObjectStream(parameters, (number + 1, holder == 0 ? "2" : "<< /Predictor 1 >>"));
+            members[number + 1] = (number, 0);
+        }
+
+        var file = ConvergenceShapes.StreamsAndMembers(objects, members);
+
+        Single(Validate(file), PdfValidationRuleIds.XRefObjectStreamCircular).Message.Should().Be(HoldsFive("/DecodeParms"));
+        ReaderNeeds(file).Should().Be(5);
+    }
+
+    [Theory]
+    [InlineData(new int[0], true)]
+    [InlineData(new[] { 6 }, true)]
+    [InlineData(new[] { 100 }, false)]
+    [InlineData(new[] { 100, 6 }, false)]
+    public void A_stream_the_reader_first_decodes_at_its_deepest_load_is_read_as_it_kept_that_decoding(int[] before, bool circular)
+    {
+        // #163's residual, which closing it flips. Stream 7 takes its parameters from 170, which 9 holds, 5 0 R; 9's /Length
+        // is 50, its data a string holding endstream, then 170. Streams 100 onward, 62 of them, each take their /Length from
+        // the next, the last from 170. 9 decodes alike, its decoding reaching the 3rd load, and the walk follows 170 to 5. Read
+        // first, 100 makes the reader decode 9 at its 64th load, 50 cut at the 65th: 9 ends at the endstream inside its
+        // data, 170 reads as null for good, and the walk, which reads 170 through the reader, finds 7 needing nothing. The
+        // reader keeps what a decoding its nesting cut gave (#163): what was read before decides.
+        using var document = PdfDocument.Open(ConvergenceShapes.Shallow(62));
+
+        foreach (var number in before)
+        {
+            document.GetObject(new PdfObjectId(number));
+        }
+
+        new PdfValidator().Validate(document).Contains(PdfValidationRuleIds.XRefObjectStreamCircular).Should().Be(circular);
+    }
+
+    [Theory]
+    [InlineData(new int[0], true)]
+    [InlineData(new[] { 30 }, true)]
+    [InlineData(new[] { 50 }, true)]
+    [InlineData(new[] { 30, 50 }, false)]
+    public void A_stream_whose_decoding_meets_a_link_the_reader_s_cache_serves_past_its_deepest_load_is_read_as_that_link_leads(int[] before, bool circular)
+    {
+        // #163's residual, which closing it flips, closing it with no cut kept alone leaving it as it is. Stream 6 holds 7 and
+        // takes its parameters from 50, which 5 holds: 7 0 R where 5's second Flate step reads stream 20's predictor, 77 0 R
+        // otherwise. 20's /Length leads through 62 streams to 30, written in the file, 20 0 R. The walk follows 50 through the
+        // reader: 5 decodes alike, its walk reading 30 as null at the 65th load, inside 20's parse, where it places 20's data
+        // alone. Read first, 50 has the reader cut 30 there, and gives 7 0 R: 6 is circular. Read after 30, which the reader's
+        // cache keeps, 50 has the cache serve 30 past the reader's nesting, which it asks after its cache: the chain goes on
+        // to 20, which the reader holds in its loads and reads as null for the rest of 5's decoding, and 50 gives 77 0 R, with
+        // no load cut. What was read before decides (#163).
+        using var document = PdfDocument.Open(ConvergenceShapes.CachedPastTheCut(62));
+
+        foreach (var number in before)
+        {
+            document.GetObject(new PdfObjectId(number));
+        }
+
+        new PdfValidator().Validate(document).Contains(PdfValidationRuleIds.XRefObjectStreamCircular).Should().Be(circular);
+    }
+
+    [Fact]
+    public void The_deepest_walk_gives_the_same_report_on_a_stack_of_256_KB_as_on_a_thread_of_its_own()
+    {
+        // Stream 3's /Length heads a nest of 60 streams ending at 6, which 5 holds; 5's /Length heads a nest of 60 ending at
+        // 12, which 11 holds; 11 takes its parameters from stream 300, which heads a nest of 61. Judging 3, the walk works out
+        // 5's standing from its 63rd level, and 5's walk 11's from its own deepest, each followed through the reader: the two
+        // walks and the reader's loads nest about as deep as a validation goes: some 420 KB of stack on first run, which the
+        // reader's probe, keeping 128 KB free, leaves uncut on a thread of 560 KB or more, and about 535 to 580 KB once tiered
+        // PGO has recompiled the reader and the walks, as the profile it gathered makes them, uncut from 720 KB. The suite's
+        // large stack, 1.5 MB, leaves the probe some 1,400 KB, more than twice what the read takes in either state. On 256 KB
+        // the report is the same. The reader and the walks each ask the thread for room before going down a level, and
+        // nothing overflows; read fresh, each value the walks read through the reader nests the reader's own loads below it,
+        // whose probe cuts first. The reads differ in where the reader cuts them, and there alone: on the large stack, at its
+        // bound on nested loads, which it reaches at stream 1002, three streams into 5's nest; on 256 KB, short of that bound,
+        // where the stack runs short. A small read given a larger stack another thread left would read as the large one does,
+        // and fail here (#312).
+        const string Bound = "Object 1002 is reached through more nested objects than the reader will follow, and reads as null.";
+        var file = DeepStack(60, 60, 61);
+        var options = new PdfReaderOptions { ObjectCacheCapacity = 1 };
+
+        var large = Stacks.Run(Stacks.Large, () => Read(file, options));
+        var small = Stacks.Run(Stacks.Small, () => Read(file, options));
+
+        small.Findings.Should().Equal(large.Findings);
+        large.Cuts.Should().Equal(Bound);
+        small.Cuts.Should().NotBeEmpty().And.NotContain(Bound, "a read that reaches the bound ran on more than 256 KB");
+
+        static (List<string> Findings, List<string> Cuts) Read(byte[] file, PdfReaderOptions options)
+        {
+            using var document = PdfDocument.Open(file, options);
+            List<string> findings = [.. new PdfValidator().Validate(document).Findings.Select(finding => finding.ToString())];
+            List<string> cuts =
+            [
+                .. document.Diagnostics
+                    .Where(diagnostic => diagnostic.Code == PdfDiagnosticCodes.SyntaxDepthExceeded)
+                    .Select(diagnostic => diagnostic.Message),
+            ];
+            return (findings, cuts);
+        }
+    }
+
+    [Fact]
+    public void The_walks_of_a_document_the_reader_holds_whole_are_cut_rather_than_run_past_the_end_of_the_stack()
+    {
+        // The deepest shape, its startxref naming the header: the reader rebuilds the index, and the walks read each object
+        // through it, with no chain to read the object where it places it. Validated once at the thread's start, the document
+        // is held whole in the reader's cache, which then serves the walks with no load, and none of the stack probes a load
+        // makes. From a caller 41 frames holding 1 KB below the first the probe fails at, the walks went as deep as their
+        // recursion goes, some 110 KB on first run, with no probe on the way, past the end of the stack: the process ended.
+        // They ask the thread for room before each level: the first load of each walk reads as null, object 100 the first,
+        // which stream 3's /Length names; the document reports it once, however many walks and validations are cut there
+        // (#312).
+        var file = StartxrefAtTheHeader(DeepStack(60, 60, 61));
+
+        var (first, second, cuts) = Stacks.Run(Stacks.Large, () =>
+        {
+            using var document = PdfDocument.Open(file);
+            new PdfValidator().Validate(document);
+            var first = NearTheProbe(-40, () => new PdfValidator().Validate(document));
+            var second = NearTheProbe(-40, () => new PdfValidator().Validate(document));
+            return (first, second, WalkCuts(document));
+        });
+
+        second.Findings.Should().Equal(first.Findings);
+        cuts.Should().Equal(new PdfDiagnostic(PdfDiagnosticSeverity.Warning, PdfDiagnosticCodes.SyntaxDepthExceeded, ReadAsNull(100), ObjectAt(file, 100)));
+    }
+
+    [Fact]
+    public void A_value_the_walk_that_judges_has_no_room_on_the_stack_to_load_reads_as_null()
+    {
+        // Stream 7 takes its parameters from 50, which 9 holds, 5 0 R; 7 holds 5, and is circular; 9 takes its own from stream
+        // 300, which heads 30 streams by /Length. From a caller below the first frame the stack probe fails at, the walk
+        // judging 7 cannot load 50, which reads as null: 7 needs nothing. 50, held by an object stream, has no place of its
+        // own in the file, nor has the report (#312).
+        var file = StartxrefAtTheHeader(ConvergenceShapes.NestBelow(30));
+
+        var (room, cut, cuts) = Stacks.Run(Stacks.Large, () =>
+        {
+            using var document = PdfDocument.Open(file);
+            var room = new PdfValidator().Validate(document);
+            var cut = NearTheProbe(-40, () => new PdfValidator().Validate(document));
+            return (room, cut, WalkCuts(document));
+        });
+
+        Single(room, PdfValidationRuleIds.XRefObjectStreamCircular).Message.Should().Be(HoldsFive("/DecodeParms"));
+        cut.Contains(PdfValidationRuleIds.XRefObjectStreamCircular).Should().BeFalse();
+        cuts.Should().Equal(new PdfDiagnostic(PdfDiagnosticSeverity.Warning, PdfDiagnosticCodes.SyntaxDepthExceeded, ReadAsNull(50)));
+    }
+
+    [Fact]
+    public void A_stream_whose_standing_the_stack_leaves_no_room_to_work_out_does_not_decode_alike()
+    {
+        // Stream 7 takes its parameters from 50, which 9 holds, 5 0 R; 7 holds 5; 9 takes its own from stream 300, which
+        // heads 60 streams by /Length. From a caller 20 frames holding 1 KB above the first the stack probe fails at, the
+        // walk judging 7 loads 50, and the walk of 9's standing, made inside it, runs short of room in 300's nest: 9 is taken
+        // for a stream that does not decode alike, and 50 for a need of 7's, which reads as null; on a thread with room, 9
+        // decodes alike, and 50 leads 7 to 5. Which of 300's streams the walk is cut at depends on the frames the runtime
+        // compiled, not on the file (#312).
+        var file = StartxrefAtTheHeader(ConvergenceShapes.NestBelow(60));
+
+        var (room, cut, cuts) = Stacks.Run(Stacks.Large, () =>
+        {
+            using var document = PdfDocument.Open(file);
+            var room = new PdfValidator().Validate(document);
+            var cut = NearTheProbe(20, () => new PdfValidator().Validate(document));
+            return (room, cut, WalkCuts(document));
+        });
+
+        Single(room, PdfValidationRuleIds.XRefObjectStreamCircular).Message.Should().Be(HoldsFive("/DecodeParms"));
+        cut.Contains(PdfValidationRuleIds.XRefObjectStreamCircular).Should().BeFalse();
+        Enumerable.Range(300, 60)
+            .Select(stream => new PdfDiagnostic(PdfDiagnosticSeverity.Warning, PdfDiagnosticCodes.SyntaxDepthExceeded, ReadAsNull(stream, unlike: 9), ObjectAt(file, stream)))
+            .Should().Contain(cuts.Should().ContainSingle().Subject);
+    }
+
+    [Fact]
+    public void A_walk_with_room_for_a_nest_follows_it_whole_wherever_the_stack_cut_an_earlier_walk_inside_it()
+    {
+        // Stream 3 takes its /Length from stream 100, which heads 40 streams by /Length, the last naming 8, which 7 holds,
+        // 200 0 R; 200 heads 20 streams, the last naming 6, which 5 holds; 5 takes its /Length from 200, and is circular.
+        // Judging 3, the walk meets 200 forty levels deeper than the walk judging 5 does, which then has room to reach 6
+        // wherever the stack cut 3's inside 200's nest. A parse the stack cut gives no nest, how far it reached being the
+        // thread's to say, not the file's: 5's walk parses 200 again. A nest given there, taken as the parse's whole, would
+        // end 5's walk where 3's was cut. Where the stack cuts 3's walk depends on the frames the runtime compiled, not on
+        // the file: the caller is moved 4 frames at a time, up to 100 frames, some 110 KB, above the first frame the probe
+        // fails at, and from some of those places 3's walk is cut inside 200's nest (#312). The cut it holds is the walks'
+        // own, which their probe reports; one the reader's probe or its parser's makes under a load the walks make is kept as
+        // the read gave it (#163).
+        var file = StartxrefAtTheHeader(NestBehindAHolder());
+        var met = 0;
+
+        for (var frames = 0; frames <= 100; frames += 4)
+        {
+            var (cut, cuts) = Stacks.Run(Stacks.Large, () =>
+            {
+                using var document = PdfDocument.Open(file);
+                new PdfValidator().Validate(document);
+                var cut = NearTheProbe(frames, () => new PdfValidator().Validate(document));
+                return (cut, WalkCuts(document));
+            });
+
+            if (cuts is [var only] && Enumerable.Range(201, 19).Any(stream => only.Message == ReadAsNull(stream)))
+            {
+                met++;
+                Single(cut, PdfValidationRuleIds.XRefObjectStreamCircular).Message.Should().Be(
+                    "Object stream 5 needs object 6, which it holds, to be read: its /Length names it, and the object cannot be read before the stream is.",
+                    $"5's walk has room for 200's nest wherever the stack cut 3's inside it: {only.Message}");
+            }
+        }
+
+        met.Should().BePositive("the stack cut 3's walk inside 200's nest from some of the callers");
+    }
+
+    [Fact]
+    public void A_run_of_links_the_walk_takes_at_the_reader_s_deepest_load_is_never_where_the_stack_cuts_it()
+    {
+        // Stream 3 takes its /Length from stream 100, which heads 61 streams by /Length, the last, 160, naming 170, which
+        // names 171, which names 170 again: the walk parses 160 at the 63rd load, and follows its /Length at the 64th, the
+        // reader's deepest, a run of 33 links it takes at once, as anywhere within the reader's nesting: the run loads nothing
+        // the walk goes down from, and the walk asks the thread for no room there. The caller is moved half a frame of 1 KB
+        // at a time from the first frame the probe fails at, up to the first place the walk has room for the whole nest
+        // from: from the places below it the stack cuts the walk at 160's load or above it, and from none at the run.
+        // Loaded an object at a time there, 170 was cut where 160 was not (#312).
+        var file = StartxrefAtTheHeader(PlainObjectStreams(
+            Merged(StreamChain(100, 61, "170 0 R"), new() { [170] = "171 0 R", [171] = "170 0 R" }),
+            new PlainObjectStream(3, string.Empty, [(4, "<< >>")], Length: "100 0 R")));
+        var cuts = new List<string>();
+        var uncut = 0;
+
+        for (var frames = 0; frames <= 1000 && uncut == 0; frames++)
+        {
+            foreach (var half in (bool[])[false, true])
+            {
+                var cut = Stacks.Run(Stacks.Large, () =>
+                {
+                    using var document = PdfDocument.Open(file);
+                    new PdfValidator().Validate(document);
+                    NearTheProbe(frames, () => half ? HalfAFrameBelow(() => new PdfValidator().Validate(document)) : new PdfValidator().Validate(document));
+                    return WalkCuts(document);
+                });
+
+                uncut += cut.Count == 0 ? 1 : 0;
+                cuts.AddRange(cut.Select(diagnostic => diagnostic.Message));
+            }
+        }
+
+        cuts.Should().Contain(ReadAsNull(160), "the stack cuts the walk at 160's load from some of the callers")
+            .And.NotContain(ReadAsNull(170)).And.NotContain(ReadAsNull(171));
+        uncut.Should().BePositive("the walk has room for the whole nest from some of the callers");
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void An_object_of_a_stream_the_chain_does_not_place_reads_as_null_whatever_a_rebuild_finds(bool rebuiltFirst)
+    {
+        // Stream 7 takes its parameters from 100, which the chain places in object stream 9; the chain holds 9 free, though
+        // the file writes it, holding 100 as 5 0 R, which 7 holds. The row of stream 30 leads nowhere: reading it rebuilds the
+        // index, which finds 9, and the reader then serves 100 from it. The walk judges the chain's index (#128): 9 is no
+        // stream there, so 100 is a need of a stream that has no place, and reads as null, before a rebuild or after.
+        var file = new HandWrittenFile(version: "1.5");
+        var rows = new Dictionary<int, (int Type, long Field2, int Field3)>
+        {
+            [1] = (1, file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"), 0),
+            [2] = (1, file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"), 0),
+            [7] = (1, FlateObjectStream(file, 7, [(5, "<< /Predictor 1 >>"), (6, "<< /Title (six) >>")], "/DecodeParms 100 0 R"), 0),
+            [5] = (2, 7, 0),
+            [6] = (2, 7, 1),
+            [100] = (2, 9, 0),
+            [30] = (1, 1, 0),
+            [31] = (2, 30, 0),
+        };
+        FlateObjectStream(file, 9, [(100, "5 0 R")], string.Empty);
+        file.CrossReferenceStream(200, 201, rows, "/Root 1 0 R");
+        using var document = PdfDocument.Open(file.Bytes);
+
+        if (rebuiltFirst)
+        {
+            document.GetObject(new PdfObjectId(30));
+        }
+
+        new PdfValidator().Validate(document).Contains(PdfValidationRuleIds.XRefObjectStreamCircular).Should().BeFalse();
+        document.WasRepaired.Should().BeTrue();
+        document.GetObject(new PdfObjectId(100)).Should().BeOfType<PdfReference>("the rebuilt index places 100 in 9, which the reader decodes");
+    }
+
+    [Theory(Timeout = 60_000)]
+    [InlineData("<< /Type /ObjStm /N 1 /First 6 >>")]
+    [InlineData("<< /N 1 /First 6 >>")]
+    [InlineData("42")]
+    public async Task An_object_of_a_stream_the_chain_places_as_no_stream_reads_as_null_and_the_stream_is_broken(string nine)
+    {
+        // Stream 7 takes its parameters from 100, which the index places in object stream 9; 7 holds 5. 9 is a regular object
+        // written with no stream: a dictionary, of /Type /ObjStm or not, or an integer. The reader decodes nothing of it, and
+        // serves 100 as nothing: 9 does not decode alike, 100 is a need of 7, read as null, and 7 needs nothing that leads
+        // back to it. The validation ends, its walk taking 9 for a stream that does not decode alike rather than one that
+        // waits, and 9 is the broken rule's.
+        var objects = new SortedDictionary<int, (string Entries, byte[]? Data)>
+        {
+            [7] = ConvergenceShapes.FlateObjectStream("/DecodeParms 100 0 R", (5, "<< /Predictor 1 >>"), (6, "<< /Title (six) >>")),
+            [9] = (nine, null),
+        };
+        var file = ConvergenceShapes.StreamsAndMembers(objects, new() { [5] = (7, 0), [6] = (7, 1), [100] = (9, 0) });
+
+        var report = await Task.Run(() => Validate(file), TestContext.Current.CancellationToken);
+
+        report.Contains(PdfValidationRuleIds.XRefObjectStreamCircular).Should().BeFalse();
+        Single(report, PdfValidationRuleIds.XRefObjectStreamBroken).Message.Should().Be("Object 9, where the index places 1 object, is not a stream.");
+    }
+
+    [Fact]
+    public void An_object_a_stream_decoding_alike_holds_is_read_from_it_though_the_file_writes_its_number_elsewhere()
+    {
+        // Stream 7 takes its parameters from 100, which stream 9 holds, << /Predictor 1 >>, 9 decoding alike in every read
+        // order, needing nothing (#312). The file also
+        // writes an object 100 near its start, << /Predictor 5 0 R >>, which no row places. The reader serves 100 from 9, and
+        // decoding 7 needs nothing of it: the walk reads 100 as the reader serves it, not where an object of its number lies.
+        var file = new HandWrittenFile(version: "1.5");
+        file.Object(100, "<< /Predictor 5 0 R >>");
+        var rows = new Dictionary<int, (int Type, long Field2, int Field3)>
+        {
+            [1] = (1, file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"), 0),
+            [2] = (1, file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"), 0),
+            [7] = (1, FlateObjectStream(file, 7, [(5, "<< /Predictor 1 >>"), (6, "<< /Title (six) >>")], "/DecodeParms 100 0 R"), 0),
+            [5] = (2, 7, 0),
+            [6] = (2, 7, 1),
+            [9] = (1, FlateObjectStream(file, 9, [(100, "<< /Predictor 1 >>")], string.Empty), 0),
+            [100] = (2, 9, 0),
+        };
+        file.CrossReferenceStream(200, 201, rows, "/Root 1 0 R");
+
+        Validate(file.Bytes).Contains(PdfValidationRuleIds.XRefObjectStreamCircular).Should().BeFalse();
+        ReaderNeeds(file.Bytes).Should().BeNull();
+    }
+
+    [Theory]
+    [InlineData("100 0 R", "Object stream 7 needs object 100, which object stream 9 holds, to be read: its /DecodeParms names it, and reading object stream 9 needs object stream 7 in turn.")]
+    [InlineData("9 0 R", "Object stream 7 needs object 5, which it holds, to be read: its /DecodeParms names it, and the object cannot be read before the stream is.")]
+    public void A_stream_of_another_type_whose_length_leads_back_makes_the_stream_whose_decoding_parses_it_circular_and_is_broken_itself(string parameters, string message)
+    {
+        // Stream 7 takes its parameters from 100, which 9 holds, or from 9 itself; 9 is of /Type /XObject and takes its
+        // /Length from 5, which 7 holds. Decoding 7 parses 9, which needs 5, and the reader reports that 7 needs 5. The walk
+        // dropped what 9's /Length needs, 9 not being an object stream (#274): a parameter naming 9 found the loop, one naming
+        // 100 did not. What 9's /Length needs links it to 7, though it does not judge 9, whose objects are lost to its type.
+        var file = new StreamSeven("/Filter /FlateDecode /DecodeParms " + parameters)
+        {
+            InNine = new() { [100] = "<< /Predictor 1 >>" },
+            NineType = "/XObject",
+            NineLength = "5 0 R",
+        }.Build();
+
+        var report = Validate(file);
+
+        Single(report, PdfValidationRuleIds.XRefObjectStreamCircular).Message.Should().Be(message);
+        Single(report, PdfValidationRuleIds.XRefObjectStreamBroken).Location.Object.Should().Be(new PdfObjectId(9));
+        ReaderNeeds(file).Should().Be(5);
+    }
+
+    [Fact]
+    public void Object_streams_whose_decoding_goes_through_the_length_of_a_stream_of_another_type_are_circular_and_it_is_broken()
+    {
+        // Stream 7 holds 5, a PNG predictor of 11 columns, and takes its parameters from 100, which 9 holds; 9 is of /Type
+        // /XObject and takes its /Length from 200, which 11 holds; 11 takes its parameters from 5. 11's data reads 200 as 56
+        // through the predictor and as 4 without one: read first, 200 is 56; once 6 is read, 4, 11 having been decoded while
+        // 7 was. The walk dropped what 9's /Length needs, and found none of the three circular.
+        var file = new HandWrittenFile(version: "1.5");
+        var data = Deflate("\0" + "200 0 4 56 ");
+        var rows = new Dictionary<int, (int Type, long Field2, int Field3)>
+        {
+            [1] = (1, file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"), 0),
+            [2] = (1, file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"), 0),
+            [7] = (1, FlateObjectStream(file, 7, [(5, "<< /Predictor 10 /Columns 11 >>"), (6, "<< /Title (six) >>")], "/DecodeParms 100 0 R"), 0),
+            [5] = (2, 7, 0),
+            [6] = (2, 7, 1),
+            [9] = (1, file.Object(9, "<< /Type /XObject /N 1 /First 6 /Length 200 0 R >>\nstream\n100 0 << /Predictor 1 >>\nendstream"), 0),
+            [100] = (2, 9, 0),
+            [11] = (1, file.Object(11, $"<< /Type /ObjStm /N 1 /First 7 /Filter /FlateDecode /DecodeParms 5 0 R /Length {data.Length} >>\nstream\n{data}\nendstream"), 0),
+            [200] = (2, 11, 0),
+        };
+        file.CrossReferenceStream(201, 202, rows, "/Root 1 0 R");
+
+        var report = Validate(file.Bytes);
+
+        report.Findings.Where(finding => finding.RuleId == PdfValidationRuleIds.XRefObjectStreamCircular).Select(finding => finding.Message).Should().Equal(
+            "Object stream 7 needs object 100, which object stream 9 holds, to be read: its /DecodeParms names it, and reading object stream 9 needs object stream 7 in turn.",
+            "Object stream 11 needs object 5, which object stream 7 holds, to be read: its /DecodeParms names it, and reading object stream 7 needs object stream 11 in turn.");
+        Single(report, PdfValidationRuleIds.XRefObjectStreamBroken).Location.Object.Should().Be(new PdfObjectId(9));
+
+        using (var fresh = PdfDocument.Open(file.Bytes))
+        {
+            fresh.GetObject(new PdfObjectId(200)).Should().BeOfType<PdfInteger>().Which.Value.Should().Be(56);
+        }
+
+        using var afterSix = PdfDocument.Open(file.Bytes);
+        afterSix.GetObject(new PdfObjectId(6));
+        afterSix.GetObject(new PdfObjectId(200)).Should().BeOfType<PdfInteger>().Which.Value.Should().Be(4, "the reader keeps what it decoded 11 to while 7 was in flight");
+    }
+
+    [Theory]
+    [InlineData(61, true)]
+    [InlineData(62, false)]
+    public void A_run_of_objects_a_stream_holds_is_not_taken_where_the_reader_reads_them_as_null(int streams, bool circular)
+    {
+        // Stream 7's /N names the first of a chain of streams, each taking its /Length from the next, the last from 180,
+        // written in the file, which names 170, which 9 holds and which names 5. Stream 3, which the walk takes first, reads
+        // 180 as its parameters, through a chain the walk keeps whole from 180 to 170, 9 decoding alike. Past 61
+        // streams, 170 is read at the 64th level, where its stream would be loaded at the 65th: it reads as null, as the
+        // reader reads it, though the chain kept from 180 passes it.
+        var file = new StreamSeven(string.Empty)
+        {
+            Five = "2",
+            Data = SevenData.Plain,
+            Count = "100 0 R",
+            Written = Merged(StreamChain(100, streams, "180 0 R"), new() { [180] = "170 0 R" }),
+            InNine = new() { [170] = "5 0 R", [171] = "/ObjStm" },
+            ThreeEntries = "/Type 171 0 R /Filter /FlateDecode /DecodeParms 180 0 R",
+        }.Build();
+
+        Validate(file).Findings.Where(finding => finding.RuleId == PdfValidationRuleIds.XRefObjectStreamCircular).Select(finding => finding.Message)
+            .Should().Equal(circular ? [HoldsFive("/N")] : []);
+        ReaderNeeds(file).Should().Be(circular ? 5 : null);
+    }
+
+    [Theory]
+    [InlineData("a longer chain", 60, 8192)]
+    [InlineData("a longer chain", 61, 8192)]
+    [InlineData("a longer chain", 62, 8192)]
+    [InlineData("a longer chain", 62, ConvergenceShapes.SmallestCache)]
+    [InlineData("a longer chain", 62, 8)]
+    [InlineData("a longer chain", 62, 1)]
+    [InlineData("a longer chain", 63, 8192)]
+    [InlineData("a stream's /Length", 61, 8192)]
+    [InlineData("a stream's /Length", 62, 8192)]
+    [InlineData("a stream's /Length", 62, ConvergenceShapes.SmallestCache)]
+    [InlineData("a stream's /Length", 63, 8192)]
+    public void A_chain_that_ends_inside_a_run_the_walk_kept_reaches_only_as_deep_as_the_objects_it_loads_whatever_the_cache(string keptFrom, int ladder, int capacity)
+    {
+        // Stream 16 takes its predictor from 40, which 14 holds, 41 0 R; 16 holds 41. 14's decoding loads 32 objects of the
+        // chain its predictor heads, the walk having kept a run that goes on past them to 1003, held by the first of a ladder
+        // of holders: the run of 1001 to 1003, which 14's chain meets with two loads left, or the run of the chain's 32 and
+        // 1003, which another stream's /Length, loading one object more than a value, kept from the chain's first. 14 reaches
+        // the 2nd load, decodes alike wherever 16 meets 40, and 40 leads 16 to 41, as the reader finds. With 62 holders, the
+        // ladder's decoding reaches 64 levels deeper: the run taken whole gave 14 that reach, and 16 read 40 as a need of 14,
+        // unless a cache too small to keep the run let it go. A run longer than what a chain loads is not taken: the chain
+        // reaches no deeper than what it loads (#312). Caches of 8 and 1 objects, which a caller may ask for, run the
+        // smallest cache again: the reader keeps 64 objects at least.
+        var file = keptFrom == "a longer chain" ? ConvergenceShapes.RunPastTheLoadsLeft(ladder) : ConvergenceShapes.LengthRunPastTheLoadsLeft(ladder);
+        using var document = PdfDocument.Open(file, new PdfReaderOptions { ObjectCacheCapacity = capacity });
+
+        Single(new PdfValidator().Validate(document), PdfValidationRuleIds.XRefObjectStreamCircular).Message.Should().Be(
+            "Object stream 16 needs object 41, which it holds, to be read: its /DecodeParms names it, and the object cannot be read before the stream is.");
+
+        using var reading = PdfDocument.Open(file, new PdfReaderOptions { ObjectCacheCapacity = capacity });
+        reading.GetObject(new PdfObjectId(41));
+        reading.Diagnostics.Should().Contain(diagnostic =>
+            diagnostic.Code == PdfDiagnosticCodes.StreamSelfReference && diagnostic.Message.StartsWith("Object stream 16 needs object 41,", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void Object_streams_whose_chains_end_inside_a_run_the_walk_kept_cost_each_no_more_than_their_own_walk()
+    {
+        // Object streams each take their /Length, and their predictor, from 1001, the first of 40 objects written in the file,
+        // each naming the next. A /Length loads 33 of them, one more than a value's chain: the walk keeps the run of 33 from
+        // 1001, and each stream's predictor meets it with a load too few. Working out again the 32 that chain loads read
+        // again, for each stream, the 31 objects the run passes over, which the walk does not keep: 5.2 KB a stream. Going
+        // on an object at a time from 1001, the first stream's predictor reads them again, and keeps the run of 31 from
+        // 1002, which fits the loads its chain has left there exactly; every stream after it takes that run whole and reads
+        // nothing again: 2.5 KB a stream, its own walk and the reader's read of its dictionary, the first 17 as the 1,500th.
+        // Refused where it fits exactly, the run would be gone round an object at a time as well, each object read again and
+        // a run built from it, over the first 32 streams or so: 4.6 KB a stream for the first 17 (#312).
+        const int One = 1;
+        const int First = 17;
+        const int Few = 500;
+        const int Many = 1500;
+        var one = StreamsSharingALengthChain(One);
+        var first = StreamsSharingALengthChain(First);
+        var few = StreamsSharingALengthChain(Few);
+        var many = StreamsSharingALengthChain(Many);
+
+        var oneAllocated = Allocations.Least(() => PdfDocument.Open(one), document => ObjectStreamDependencies.Run(document), out var oneDocument, out var oneResult);
+        var firstAllocated = Allocations.Least(() => PdfDocument.Open(first), document => ObjectStreamDependencies.Run(document), out var firstDocument, out var firstResult);
+        var fewAllocated = Allocations.Least(() => PdfDocument.Open(few), document => ObjectStreamDependencies.Run(document), out var fewDocument, out var fewResult);
+        var manyAllocated = Allocations.Least(() => PdfDocument.Open(many), document => ObjectStreamDependencies.Run(document), out var manyDocument, out var manyResult);
+
+        using (oneDocument)
+        using (firstDocument)
+        using (fewDocument)
+        using (manyDocument)
+        {
+            oneResult.CircularStreams.Should().BeEmpty();
+            firstResult.CircularStreams.Should().BeEmpty();
+            fewResult.CircularStreams.Should().BeEmpty();
+            manyResult.CircularStreams.Should().BeEmpty();
+            ((firstAllocated - oneAllocated) / (First - One)).Should().BeLessThan(3584, "the first streams that share the chain cost no more than their own walk either");
+            ((manyAllocated - fewAllocated) / (Many - Few)).Should().BeLessThan(3584, "what one more stream costs is its own walk");
+        }
+
+        // Gives a file of `streams` object streams, numbered from 10,000, each holding one dictionary.
+        static byte[] StreamsSharingALengthChain(int streams)
+        {
+            var objects = new SortedDictionary<int, (string Entries, byte[]? Data)>();
+            var members = new Dictionary<int, (int Stream, int Index)>();
+
+            for (var link = 1001; link <= 1040; link++)
+            {
+                objects[link] = (link < 1040 ? string.Create(CultureInfo.InvariantCulture, $"{link + 1} 0 R") : "7", null);
+            }
+
+            for (var stream = 10_000; stream < 10_000 + (2 * streams); stream += 2)
+            {
+                var (data, first) = ConvergenceShapes.ObjectStreamData((stream + 1, "<< >>"));
+                objects[stream] = (
+                    string.Create(CultureInfo.InvariantCulture, $"/Type /ObjStm /N 1 /First {first} /Length 1001 0 R /Filter /FlateDecode /DecodeParms << /Predictor 1001 0 R >>"),
+                    HostileInputTests.Compress(Encoding.Latin1.GetBytes(data)));
+                members[stream + 1] = (stream, 0);
+            }
+
+            return ConvergenceShapes.StreamsAndMembers(objects, members);
+        }
+    }
+
+    [Theory]
+    [InlineData(8192)]
+    [InlineData(ConvergenceShapes.SmallestCache)]
+    public void A_chain_meeting_a_run_whose_holder_s_decoding_reaches_exactly_the_reader_s_deepest_load_takes_it_whole_whatever_the_cache(int capacity)
+    {
+        // Object stream 10 takes its predictor from 5000, written in the file, which names 3001, the first of 30 objects
+        // object stream 2002 holds, each naming the next, the last naming 3100, an integer written in the file. 2002 heads a
+        // ladder of 61 or 62 object streams, each taking its predictor from an object the next holds. 10's chain loads 3001
+        // at the second level, and meets the run of 3002 to 3030 the walk keeps: with 62 holders, the decoding of 2002 from
+        // there reaches the reader's 64th load, its deepest, and the run is taken whole, as each of its objects would be
+        // followed. Gone round an object at a time, each object the run passes over would be read again, and a run built
+        // from it: about 30 KB more for the one stream, where the 62nd holder costs its own walk, about 6 KB (#312).
+        var options = new PdfReaderOptions { ObjectCacheCapacity = capacity };
+        var shorter = ChainThroughALadder(61);
+        var longer = ChainThroughALadder(62);
+
+        var shorterAllocated = Allocations.Least(() => PdfDocument.Open(shorter, options), document => ObjectStreamDependencies.Run(document), out var shorterDocument, out var shorterResult);
+        var longerAllocated = Allocations.Least(() => PdfDocument.Open(longer, options), document => ObjectStreamDependencies.Run(document), out var longerDocument, out var longerResult);
+
+        using (shorterDocument)
+        using (longerDocument)
+        {
+            shorterResult.CircularStreams.Should().BeEmpty();
+            longerResult.CircularStreams.Should().BeEmpty();
+            (longerAllocated - shorterAllocated).Should().BeLessThan(16 * 1024, "a run whose holder reaches the reader's deepest load from where it is met is taken whole ({0} B for the 62nd holder)", longerAllocated - shorterAllocated);
+        }
+
+        // Gives the file of object stream 10, and a ladder of `ladder` holders whose first holds the chain from 3001.
+        static byte[] ChainThroughALadder(int ladder)
+        {
+            var objects = new SortedDictionary<int, (string Entries, byte[]? Data)>
+            {
+                [10] = ConvergenceShapes.FlateObjectStream("/DecodeParms << /Predictor 5000 0 R >>", (11, "<< >>")),
+                [3100] = ("1", null),
+                [5000] = ("3001 0 R", null),
+            };
+            var members = new Dictionary<int, (int Stream, int Index)> { [11] = (10, 0) };
+            var chain = new (int Number, string Body)[30];
+
+            for (var link = 0; link < chain.Length; link++)
+            {
+                chain[link] = (3001 + link, string.Create(CultureInfo.InvariantCulture, $"{(link + 1 < chain.Length ? 3002 + link : 3100)} 0 R"));
+            }
+
+            ConvergenceShapes.Ladder(objects, members, ladder, chain);
+            return ConvergenceShapes.StreamsAndMembers(objects, members);
+        }
+    }
+
+    [Fact]
+    public void A_run_through_objects_of_two_holders_reaches_as_deep_as_the_deeper_holder_s_decoding_wherever_it_lies_in_the_run()
+    {
+        // Object stream 10 takes its predictor from 5000, written in the file, which names 3001, which object stream 2002
+        // holds; 3001 names 4001, which object stream 4000 holds, and 4001 names 11, which 10 holds itself. 2002 heads a
+        // ladder of 63 holders, each taking its predictor from an object the next holds, so that its decoding reaches 64
+        // levels deeper. 4000 needs nothing, and reaches two. Object stream 8, walked before 10, reads 3002 and
+        // 4002, which 2002 and 4000 hold, so that both are known when 10's chain meets them. From the second level, where
+        // 10's chain loads 3001, 2002's decoding runs past the reader's deepest load, which cuts it: 3001 is a need of 10,
+        // read as null, and the chain ends there. The run through 3001 and 4001 reaches as deep as 2002's decoding, though
+        // 4000's comes after it, and is not taken: 10 needs 2002, not itself.
+        var objects = new SortedDictionary<int, (string Entries, byte[]? Data)>
+        {
+            [8] = ConvergenceShapes.FlateObjectStream("/DecodeParms << /Predictor 12 /Colors 3002 0 R /BitsPerComponent 4002 0 R >>", (9, "<< >>")),
+            [10] = ConvergenceShapes.FlateObjectStream("/DecodeParms << /Predictor 5000 0 R >>", (11, "<< >>")),
+            [4000] = ConvergenceShapes.FlateObjectStream(string.Empty, (4001, "11 0 R"), (4002, "1")),
+            [5000] = ("3001 0 R", null),
+        };
+        var members = new Dictionary<int, (int Stream, int Index)> { [9] = (8, 0), [11] = (10, 0), [4001] = (4000, 0), [4002] = (4000, 1) };
+        ConvergenceShapes.Ladder(objects, members, 63, (3001, "4001 0 R"), (3002, "1"));
+
+        using var document = PdfDocument.Open(ConvergenceShapes.StreamsAndMembers(objects, members));
+        ObjectStreamDependencies.Run(document).CircularStreams.Should().BeEmpty();
     }
 
     [Theory]
@@ -807,7 +3140,7 @@ public class ObjectRuleTests
         {
             [1] = (1, file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"), 0),
             [2] = (1, file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"), 0),
-            [7] = (1, file.ObjectStream(7, [(5, "<< /Predictor 1 >>")], "/DecodeParms 5 0 R ") + 3, 0),
+            [7] = (1, FlateObjectStream(file, 7, [(5, "<< /Predictor 1 >>")], "/DecodeParms 5 0 R") + 3, 0),
             [5] = (2, 7, 0),
             [30] = (1, 9, 0),
             [31] = (2, 30, 0),
@@ -963,6 +3296,51 @@ public class ObjectRuleTests
         return Encoding.Latin1.GetString(compressed.ToArray());
     }
 
+    /// <summary>
+    /// Writes object stream <paramref name="number"/> into <paramref name="file"/>, holding <paramref name="members"/>
+    /// Flate-compressed, its dictionary holding <paramref name="entries"/> besides its own, and gives where its header starts.
+    /// </summary>
+    private static long FlateObjectStream(HandWrittenFile file, int number, (int Number, string Body)[] members, string entries)
+    {
+        var header = new StringBuilder();
+        var contents = new StringBuilder();
+
+        foreach (var (member, body) in members)
+        {
+            header.Append(CultureInfo.InvariantCulture, $"{member} {contents.Length} ");
+            contents.Append(body).Append(' ');
+        }
+
+        var data = Deflate(header.ToString() + contents);
+        return file.Object(
+            number,
+            string.Create(
+                CultureInfo.InvariantCulture,
+                $"<< /Type /ObjStm /N {members.Length} /First {header.Length} /Filter /FlateDecode {entries} /Length {data.Length} >>\nstream\n{data}\nendstream"));
+    }
+
+    /// <summary>
+    /// Gives the object the reader says object stream 7 needs, which it holds, as a document of its own first reads object 6;
+    /// null when it says none.
+    /// </summary>
+    private static int? ReaderNeeds(byte[] file, PdfReaderOptions? options = null)
+    {
+        const string Needs = "Object stream 7 needs object ";
+        using var document = PdfDocument.Open(file, options);
+        document.GetObject(new PdfObjectId(6));
+
+        foreach (var diagnostic in document.Diagnostics)
+        {
+            if (diagnostic.Code == PdfDiagnosticCodes.StreamSelfReference && diagnostic.Message.StartsWith(Needs, StringComparison.Ordinal))
+            {
+                var end = diagnostic.Message.IndexOf(',', Needs.Length);
+                return int.Parse(diagnostic.Message.AsSpan(Needs.Length, end - Needs.Length), CultureInfo.InvariantCulture);
+            }
+        }
+
+        return null;
+    }
+
     /// <summary>Objects 5 and 6 in object stream 7, whose dictionary gets <paramref name="entries"/>; object 5 is <paramref name="parameter"/>.</summary>
     private static byte[] ObjectStream(string entries, string parameter, bool compress = true) =>
         new TestPdfBuilder()
@@ -1038,7 +3416,7 @@ public class ObjectRuleTests
     }
 
     /// <summary>
-    /// Object streams 7 and 8, each needing the first object it holds, their headers written <c>7 0 %x</c> then
+    /// Object streams 7 and 8, Flate-compressed, each needing the first object it holds, their headers written <c>7 0 %x</c> then
     /// <c>obj</c> on the next line — which the reader reads where the index places them, and a rebuild does not find —;
     /// object stream 20, which no entry names and which lists object 8; and object stream <paramref name="broken"/>, whose
     /// entry leads nowhere, holding the object numbered after it. The index is a cross-reference stream, object 32.
@@ -1057,8 +3435,8 @@ public class ObjectRuleTests
         void WriteObjectStream(int number, string header, string objects, string entries)
         {
             offsets[number] = file.Position;
-            var data = header + objects;
-            Write($"{number} 0 %x\nobj\n<< /Type /ObjStm /N 2 /First {header.Length} {entries} /Length {data.Length} >>\nstream\n{data}\nendstream\nendobj\n");
+            var data = Deflate(header + objects);
+            Write($"{number} 0 %x\nobj\n<< /Type /ObjStm /N 2 /First {header.Length} /Filter /FlateDecode {entries} /Length {data.Length} >>\nstream\n{data}\nendstream\nendobj\n");
         }
 
         Write("%PDF-1.5\n");
@@ -1098,6 +3476,666 @@ public class ObjectRuleTests
         return file.ToArray();
     }
 
+    /// <summary>
+    /// Determines whether the reader, reading <paramref name="reads"/> first in a document of its own, reports that object
+    /// stream 6 needs object 7, which it holds.
+    /// </summary>
+    private static bool ReaderMeetsTheLoopOfSix(byte[] file, PdfObjectId[] reads)
+    {
+        using var document = PdfDocument.Open(file);
+
+        foreach (var id in reads)
+        {
+            document.GetObject(id);
+        }
+
+        return document.Diagnostics.Any(diagnostic =>
+            diagnostic.Code == PdfDiagnosticCodes.StreamSelfReference && diagnostic.Message.StartsWith("Object stream 6 needs object 7,", StringComparison.Ordinal));
+    }
+
+    /// <summary>
+    /// Object stream 7 holds 5, <c>&lt;&lt; /Predictor 1 &gt;&gt;</c>, and 6, and takes its parameters from 50, which object
+    /// stream 9 holds, <c>5 0 R</c>; the row of 30 leads nowhere, so that the validation rebuilds the index, and the file
+    /// writes, past what the chain's rows place, <paramref name="redefined"/> again — or nothing. Object streams 3 and 4,
+    /// walked first, meet the streams a nest goes through, so that the walk keeps their nests before it works out 9's
+    /// standing.
+    /// </summary>
+    private static byte[] RedefinedByARebuild(string redefined)
+    {
+        var file = new HandWrittenFile(version: "1.5");
+        var rows = new Dictionary<int, (int Type, long Field2, int Field3)>
+        {
+            [1] = (1, file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"), 0),
+            [2] = (1, file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"), 0),
+            [5] = (2, 7, 0),
+            [6] = (2, 7, 1),
+            [50] = (2, 9, 0),
+            [30] = (1, 1, 0),
+            [31] = (2, 30, 0),
+        };
+        var later = new List<(int Number, string Body)>();
+        var parameters = string.Empty;
+        var fiftyOne = false;
+
+        switch (redefined)
+        {
+            case "the stream holding it":
+                later.Add((9, ObjectStreamBody(string.Empty, (50, "5 0 R"))));
+                break;
+            case "the object itself, written again in the file":
+                later.Add((50, "5 0 R"));
+                break;
+            case "a parameter only the rebuilt index holds":
+                parameters = "/DecodeParms 80 0 R";
+                later.Add((80, "<< /Predictor 1 >>"));
+                break;
+            case "a parameter neither index holds":
+                parameters = "/DecodeParms 80 0 R";
+                break;
+            case "a parameter only the rebuilt index holds, past the chain's /Size":
+                // The chain's /Size is 401: its index holds no row for 900, free or in use.
+                parameters = "/DecodeParms 900 0 R";
+                later.Add((900, "<< /Predictor 1 >>"));
+                break;
+            case "a parameter neither index holds, past the chain's /Size":
+                parameters = "/DecodeParms 900 0 R";
+                break;
+            case "the object itself, held at its index by a stream written before":
+                file.Object(8, ObjectStreamBody(string.Empty, (50, "5 0 R")));
+                break;
+            case "the object itself, held at its index by a stream written before, its own known to decode alike":
+                // Stream 3, walked first, takes its parameters from 51, which 9 holds as well, and which both indexes place
+                // alike: 9's standing is known before 7 is walked.
+                file.Object(8, ObjectStreamBody(string.Empty, (50, "5 0 R")));
+                rows[3] = (1, file.Object(3, ObjectStreamBody("/DecodeParms 51 0 R", (60, "<< >>"))), 0);
+                rows[60] = (2, 3, 0);
+                rows[51] = (2, 9, 1);
+                fiftyOne = true;
+                break;
+            case "the object itself, at another index of its stream":
+                rows[50] = (2, 9, 1);
+                break;
+            case "a parameter a stream holds, which the chain writes at the file's first byte":
+                parameters = "/DecodeParms 80 0 R";
+                rows[80] = (1, 0, 0);
+                file.Object(8, ObjectStreamBody(string.Empty, (80, "<< /Predictor 1 >>")));
+                break;
+            case "a parameter written again in the file":
+                parameters = "/DecodeParms 80 0 R";
+                rows[80] = (1, file.Object(80, "<< /Predictor 1 >>"), 0);
+                later.Add((80, "<< /Predictor 1 >>"));
+                break;
+            case "a run through an object written again in the file":
+                parameters = "/DecodeParms 81 0 R";
+                rows[80] = (1, file.Object(80, "<< /Predictor 1 >>"), 0);
+                rows[81] = (1, file.Object(81, "82 0 R"), 0);
+                rows[82] = (1, file.Object(82, "80 0 R"), 0);
+                later.Add((82, "80 0 R"));
+                break;
+            case "a nest through a stream written again in the file":
+                parameters = "/DecodeParms 300 0 R";
+                rows[3] = (1, file.Object(3, ObjectStreamBody("/DecodeParms 300 0 R", (60, "<< >>"))), 0);
+                rows[60] = (2, 3, 0);
+                rows[300] = (1, file.Object(300, "<< /Length 301 0 R >>\nstream\nab\nendstream"), 0);
+                rows[301] = (1, file.Object(301, "<< /Length 2 >>\nstream\nab\nendstream"), 0);
+                later.Add((301, "<< /Length 2 >>\nstream\nab\nendstream"));
+                break;
+            case "a nest holding such a nest":
+                parameters = "/DecodeParms 310 0 R";
+                rows[3] = (1, file.Object(3, ObjectStreamBody("/DecodeParms 300 0 R", (60, "<< >>"))), 0);
+                rows[60] = (2, 3, 0);
+                rows[4] = (1, file.Object(4, ObjectStreamBody("/DecodeParms 310 0 R", (61, "<< >>"))), 0);
+                rows[61] = (2, 4, 0);
+                rows[310] = (1, file.Object(310, "<< /Length 300 0 R >>\nstream\nab\nendstream"), 0);
+                rows[300] = (1, file.Object(300, "<< /Length 301 0 R >>\nstream\nab\nendstream"), 0);
+                rows[301] = (1, file.Object(301, "<< /Length 2 >>\nstream\nab\nendstream"), 0);
+                later.Add((301, "<< /Length 2 >>\nstream\nab\nendstream"));
+                break;
+            case "a nest whose parse takes such a run":
+                parameters = "/DecodeParms 300 0 R";
+                rows[3] = (1, file.Object(3, ObjectStreamBody("/DecodeParms 300 0 R", (60, "<< >>"))), 0);
+                rows[60] = (2, 3, 0);
+                rows[300] = (1, file.Object(300, "<< /Length 81 0 R >>\nstream\nab\nendstream"), 0);
+                rows[81] = (1, file.Object(81, "82 0 R"), 0);
+                rows[82] = (1, file.Object(82, "301 0 R"), 0);
+                rows[301] = (1, file.Object(301, "<< /Length 2 >>\nstream\nab\nendstream"), 0);
+                later.Add((82, "301 0 R"));
+                break;
+        }
+
+        rows[7] = (1, file.Object(7, ObjectStreamBody("/DecodeParms 50 0 R", (5, "<< /Predictor 1 >>"), (6, "<< /Title (six) >>"))), 0);
+        rows[9] = (1, file.Object(9, fiftyOne ? ObjectStreamBody(parameters, (50, "5 0 R"), (51, "<< /Predictor 1 >>")) : ObjectStreamBody(parameters, (50, "5 0 R"))), 0);
+
+        foreach (var (number, body) in later)
+        {
+            file.Object(number, body);
+        }
+
+        file.CrossReferenceStream(400, 401, rows, "/Root 1 0 R");
+        return file.Bytes;
+
+        static string ObjectStreamBody(string entries, params (int Number, string Body)[] members)
+        {
+            var (data, first) = ConvergenceShapes.ObjectStreamData(members);
+            var compressed = Encoding.Latin1.GetString(HostileInputTests.Compress(Encoding.Latin1.GetBytes(data)));
+            return string.Create(
+                CultureInfo.InvariantCulture,
+                $"<< /Type /ObjStm /N {members.Length} /First {first} /Filter /FlateDecode {entries} /Length {compressed.Length} >>\nstream\n{compressed}\nendstream");
+        }
+    }
+
+    /// <summary>
+    /// Object stream 3, holding 4, takes its <c>/Length</c> from stream 100, which heads <paramref name="judged"/> streams by
+    /// <c>/Length</c>, the last naming 6, which 5 holds; 5 takes its own from stream 1000, which heads
+    /// <paramref name="holder"/> streams, the last naming 12, which 11 holds; 11 takes its parameters from stream 300, which
+    /// heads <paramref name="parameters"/> streams.
+    /// </summary>
+    private static byte[] DeepStack(int judged, int holder, int parameters)
+    {
+        var objects = new SortedDictionary<int, (string Entries, byte[]? Data)>();
+        Nest(100, judged, "6 0 R", string.Empty);
+        Nest(1000, holder, "12 0 R", string.Empty);
+        Nest(300, parameters, "0", "/Predictor 1 ");
+        Holding(3, 4, "<< >>", "/Length 100 0 R");
+        Holding(5, 6, "0", "/Length 1000 0 R");
+        Holding(11, 12, "0", "/Length @L /DecodeParms 300 0 R");
+        return ConvergenceShapes.StreamsAndMembers(objects, new() { [4] = (3, 0), [6] = (5, 0), [12] = (11, 0) });
+
+        void Nest(int head, int count, string last, string entries)
+        {
+            for (var stream = 0; stream < count; stream++)
+            {
+                var length = stream + 1 < count ? string.Create(CultureInfo.InvariantCulture, $"{head + stream + 1} 0 R") : last;
+                objects[head + stream] = ($"{(stream == 0 ? entries : string.Empty)}/Length {length}", []);
+            }
+        }
+
+        void Holding(int number, int member, string body, string entries)
+        {
+            var (data, first) = ConvergenceShapes.ObjectStreamData((member, body));
+            objects[number] = (string.Create(CultureInfo.InvariantCulture, $"/Type /ObjStm /N 1 /First {first} /Filter /FlateDecode {entries}"), HostileInputTests.Compress(Encoding.Latin1.GetBytes(data)));
+        }
+    }
+
+    /// <summary>
+    /// Object stream 3, holding 4, takes its <c>/Length</c> from stream 100, which heads 40 streams by <c>/Length</c>, the
+    /// last naming 8, which 7 holds, <c>200 0 R</c>; 200 heads 20 streams, the last naming 6, which 5 holds; 5 takes its
+    /// <c>/Length</c> from 200.
+    /// </summary>
+    private static byte[] NestBehindAHolder()
+    {
+        var objects = new SortedDictionary<int, (string Entries, byte[]? Data)>();
+        Nest(100, 40, "8 0 R");
+        Nest(200, 20, "6 0 R");
+        Holding(3, 4, "<< >>", "/Length 100 0 R");
+        Holding(5, 6, "0", "/Length 200 0 R");
+        Holding(7, 8, "200 0 R", "/Length @L");
+        return ConvergenceShapes.StreamsAndMembers(objects, new() { [4] = (3, 0), [6] = (5, 0), [8] = (7, 0) });
+
+        void Nest(int head, int count, string last)
+        {
+            for (var stream = 0; stream < count; stream++)
+            {
+                var length = stream + 1 < count ? string.Create(CultureInfo.InvariantCulture, $"{head + stream + 1} 0 R") : last;
+                objects[head + stream] = ($"/Length {length}", []);
+            }
+        }
+
+        void Holding(int number, int member, string body, string entries)
+        {
+            var (data, first) = ConvergenceShapes.ObjectStreamData((member, body));
+            objects[number] = (string.Create(CultureInfo.InvariantCulture, $"/Type /ObjStm /N 1 /First {first} /Filter /FlateDecode {entries}"), HostileInputTests.Compress(Encoding.Latin1.GetBytes(data)));
+        }
+    }
+
+    /// <summary>
+    /// Gives <paramref name="file"/> with its <c>startxref</c> naming the header: the reader finds no chain there, and
+    /// rebuilds the index, through which it, and the walks, read every object.
+    /// </summary>
+    private static byte[] StartxrefAtTheHeader(byte[] file)
+    {
+        var text = Encoding.Latin1.GetString(file);
+        var startxref = text.LastIndexOf("startxref\n", StringComparison.Ordinal) + "startxref\n".Length;
+        return Encoding.Latin1.GetBytes(string.Concat(text.AsSpan(0, startxref), "0", text.AsSpan(text.IndexOf('\n', startxref))));
+    }
+
+    /// <summary>Gives where object <paramref name="number"/> of <paramref name="file"/> starts.</summary>
+    private static long ObjectAt(byte[] file, int number) =>
+        Encoding.Latin1.GetString(file).IndexOf(string.Create(CultureInfo.InvariantCulture, $"\n{number} 0 obj"), StringComparison.Ordinal) + 1;
+
+    /// <summary>
+    /// Gives the report of object <paramref name="number"/>, which the walks had no room on the stack to load; and, of the
+    /// walk working out the standing of object stream <paramref name="unlike"/>, that it takes that stream as decoding
+    /// unlike.
+    /// </summary>
+    private static string ReadAsNull(int number, int? unlike = null) =>
+        string.Create(CultureInfo.InvariantCulture, $"Object {number} is reached through more nested objects than the thread's stack lets the validator follow: the validator reads it as null") +
+        (unlike is { } stream ? string.Create(CultureInfo.InvariantCulture, $", and takes object stream {stream} for one that does not decode alike in every read order.") : ".");
+
+    /// <summary>Gives what <paramref name="document"/> reported of the loads the walks had no room on the stack to make.</summary>
+    private static List<PdfDiagnostic> WalkCuts(PdfDocument document) =>
+    [
+        .. document.Diagnostics.Where(diagnostic =>
+            diagnostic.Code == PdfDiagnosticCodes.SyntaxDepthExceeded && diagnostic.Message.Contains("lets the validator follow", StringComparison.Ordinal)),
+    ];
+
+    /// <summary>
+    /// Runs <paramref name="work"/> from a caller <paramref name="frames"/> frames holding 1 KB above the first frame the
+    /// thread's stack probe fails at, where the probe finds room for about that many such frames more than it keeps free; or,
+    /// for a count of 0 or less, that many frames and one more below it, where it fails at once. Gives what
+    /// <paramref name="work"/> gave.
+    /// </summary>
+    /// <remarks>
+    /// The frames go down from the caller one at a time, each asking the probe, and <paramref name="work"/> runs on the way
+    /// back up, or further down: the caller is placed by where the probe fails rather than by a count from the thread's start,
+    /// which frames the runtime compiles anew would move.
+    /// </remarks>
+    private static T NearTheProbe<T>(int frames, Func<T> work)
+    {
+        T result = default!;
+        Probed(frames, () => result = work());
+        return result;
+    }
+
+    /// <summary>
+    /// Goes down a frame holding 1 KB, to the first the stack probe fails at, and runs <paramref name="work"/> from the frame
+    /// <paramref name="frames"/> above it, or that many frames and one more below it for a count of 0 or less.
+    /// </summary>
+    /// <returns>How many frames this one lies above the first the probe fails at.</returns>
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static int Probed(int frames, Action work)
+    {
+        Span<byte> frame = stackalloc byte[1024];
+
+        if (!RuntimeHelpers.TryEnsureSufficientExecutionStack())
+        {
+            return frames <= 0 ? Below(-frames, work) : 0;
+        }
+
+        // Written before the call and read after it, the frame stays whole through the call, which is no tail call.
+        frame[frames & 1023] = 1;
+        var above = Probed(frames, work) + 1;
+
+        if (above == frames)
+        {
+            work();
+        }
+
+        return above + frame[frames & 1023] - 1;
+    }
+
+    /// <summary>Runs <paramref name="work"/> from a frame holding half a KB, below the caller's, and gives what it gave.</summary>
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static T HalfAFrameBelow<T>(Func<T> work)
+    {
+        Span<byte> frame = stackalloc byte[512];
+
+        // Written before the call and read after it, the frame stays whole through the call, which is no tail call.
+        frame[511] = 1;
+        var result = work();
+        return frame[511] == 1 ? result : default!;
+    }
+
+    /// <summary>Goes down <paramref name="frames"/> frames holding 1 KB more, asking nothing, and runs <paramref name="work"/> there.</summary>
+    /// <returns>0.</returns>
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static int Below(int frames, Action work)
+    {
+        Span<byte> frame = stackalloc byte[1024];
+        frame[frames & 1023] = 1;
+
+        if (frames == 0)
+        {
+            work();
+        }
+        else
+        {
+            Below(frames - 1, work);
+        }
+
+        return frame[frames & 1023] - 1;
+    }
+
+    /// <summary>Gives the finding of object stream 7 needing object 5, which it holds, through <paramref name="key"/>.</summary>
+    private static string HoldsFive(string key) =>
+        $"Object stream 7 needs object 5, which it holds, to be read: its {key} names it, and the object cannot be read before the stream is.";
+
+    /// <summary>
+    /// Objects <paramref name="first"/> onward, <paramref name="count"/> of them, each a reference to the next, the last
+    /// <paramref name="last"/>.
+    /// </summary>
+    private static Dictionary<int, string> ReferenceChain(int first, int count, string last)
+    {
+        var objects = new Dictionary<int, string>();
+
+        for (var index = 0; index < count; index++)
+        {
+            objects[first + index] = index + 1 < count ? string.Create(CultureInfo.InvariantCulture, $"{first + index + 1} 0 R") : last;
+        }
+
+        return objects;
+    }
+
+    /// <summary>Gives the objects of <paramref name="first"/> and <paramref name="second"/> together.</summary>
+    private static Dictionary<int, string> Merged(Dictionary<int, string> first, Dictionary<int, string> second)
+    {
+        foreach (var (number, body) in second)
+        {
+            first[number] = body;
+        }
+
+        return first;
+    }
+
+    /// <summary>
+    /// Streams <paramref name="first"/> onward, <paramref name="count"/> of them, each taking its <c>/Length</c> from the
+    /// next, the last from <paramref name="last"/>.
+    /// </summary>
+    private static Dictionary<int, string> StreamChain(int first, int count, string last)
+    {
+        var objects = new Dictionary<int, string>();
+
+        for (var index = 0; index < count; index++)
+        {
+            var length = index + 1 < count ? string.Create(CultureInfo.InvariantCulture, $"{first + index + 1} 0 R") : last;
+            objects[first + index] = $"<< /Length {length} >>\nstream\nab\nendstream";
+        }
+
+        return objects;
+    }
+
+    /// <summary>
+    /// Streams <paramref name="first"/>, <paramref name="first"/> + 2 and onward, <paramref name="count"/> of them, each
+    /// taking its <c>/Length</c> from the object after it, which names the next stream, the last from
+    /// <paramref name="last"/>: a chain loads a run of one link between two streams.
+    /// </summary>
+    private static Dictionary<int, string> LinkedStreamChain(int first, int count, string last)
+    {
+        var objects = new Dictionary<int, string>();
+
+        for (var index = 0; index < count; index++)
+        {
+            var stream = first + (2 * index);
+            var length = index + 1 < count ? string.Create(CultureInfo.InvariantCulture, $"{stream + 1} 0 R") : last;
+            objects[stream] = $"<< /Length {length} >>\nstream\nab\nendstream";
+
+            if (index + 1 < count)
+            {
+                objects[stream + 1] = string.Create(CultureInfo.InvariantCulture, $"{stream + 2} 0 R");
+            }
+        }
+
+        return objects;
+    }
+
+    /// <summary>
+    /// Writes a file indexed by a cross-reference stream, of the objects <paramref name="written"/> directly in the file and
+    /// the object streams <paramref name="streams"/>, whose data is written as it is: the walk of their dependencies reads
+    /// none of it.
+    /// </summary>
+    private static byte[] PlainObjectStreams(Dictionary<int, string> written, params PlainObjectStream[] streams)
+    {
+        var file = new HandWrittenFile(version: "1.5");
+        var rows = new Dictionary<int, (int Type, long Field2, int Field3)>
+        {
+            [1] = (1, file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"), 0),
+            [2] = (1, file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"), 0),
+        };
+
+        foreach (var (number, body) in written)
+        {
+            rows[number] = (1, file.Object(number, body), 0);
+        }
+
+        foreach (var stream in streams)
+        {
+            var header = new StringBuilder();
+            var contents = new StringBuilder();
+
+            for (var index = 0; index < stream.Members.Length; index++)
+            {
+                header.Append(CultureInfo.InvariantCulture, $"{stream.Members[index].Number} {contents.Length} ");
+                contents.Append(stream.Members[index].Body).Append(' ');
+                rows[stream.Members[index].Number] = (2, stream.Number, index);
+            }
+
+            var data = header.ToString() + contents;
+            var length = stream.Length ?? data.Length.ToString(CultureInfo.InvariantCulture);
+            rows[stream.Number] = (1, file.Object(stream.Number, $"<< /Type /ObjStm /N {stream.Count ?? stream.Members.Length.ToString(CultureInfo.InvariantCulture)} /First {header.Length} {stream.Entries} /Length {length} >>\nstream\n{data}\nendstream"), 0);
+        }
+
+        var size = rows.Keys.Max() + 1;
+        file.CrossReferenceStream(size, size + 1, rows, "/Root 1 0 R");
+        return file.Bytes;
+    }
+
+    /// <summary>
+    /// The shapes whose filters and parameters decoding reads or does not, by name: #277's table and comment, and those the
+    /// measurement of the walk added.
+    /// </summary>
+    private static readonly Dictionary<string, StreamSeven> DecodingShapes = new()
+    {
+        // #277's table, and values decoding does not read that the walk took for needs.
+        ["row 1: Flate, /DecodeParms << /Foo 5 0 R >>"] = new("/Filter /FlateDecode /DecodeParms << /Foo 5 0 R >>"),
+        ["row 2: Flate, a /Columns 5 0 R past a predictor of 1"] = new("/Filter /FlateDecode /DecodeParms << /Predictor 1 /Columns 5 0 R >>"),
+        ["row 3: Flate, /DecodeParms [null 5 0 R]"] = new("/Filter /FlateDecode /DecodeParms [null 5 0 R]") { Five = "<< /Predictor 1 >>" },
+        ["row 4: no filter, a /Predictor 5 0 R"] = new("/DecodeParms << /Predictor 5 0 R >>") { Data = SevenData.Plain },
+        ["row 5: /Filter [/FlateDecode [5 0 R]]"] = new("/Filter [/FlateDecode [5 0 R]]"),
+        ["/Filter [/FlateDecode /Foo 5 0 R]"] = new("/Filter [/FlateDecode /Foo 5 0 R]") { Five = "/FlateDecode" },
+        ["/Filter 3 0 R, 3 = [/FlateDecode /Foo 5 0 R]"] = new("/Filter 3 0 R") { Five = "/FlateDecode", Written = new() { [3] = "[/FlateDecode /Foo 5 0 R]" } },
+        ["Flate, /DecodeParms 3 0 R, 3 = [null 5 0 R]"] = new("/Filter /FlateDecode /DecodeParms 3 0 R") { Five = "<< /Predictor 1 >>", Written = new() { [3] = "[null 5 0 R]" } },
+        ["Flate, /DecodeParms 3 0 R, 3 = [4 0 R], 4 = << /Foo 5 0 R >>"] = new("/Filter /FlateDecode /DecodeParms 3 0 R") { Written = new() { [3] = "[4 0 R]", [4] = "<< /Foo 5 0 R >>" } },
+        ["ASCIIHex, which reads no parameters, /DecodeParms 5 0 R"] = new("/Filter /ASCIIHexDecode /DecodeParms 5 0 R") { Five = "<< /Predictor 1 >>", Data = SevenData.Hex },
+        ["[/FlateDecode /Foo], /DecodeParms [null 5 0 R]"] = new("/Filter [/FlateDecode /Foo] /DecodeParms [null 5 0 R]") { Five = "<< /Predictor 1 >>" },
+        ["[/FlateDecode /JBIG2Decode], /DecodeParms [null << /JBIG2Globals 5 0 R >>]"] = new("/Filter [/FlateDecode /JBIG2Decode] /DecodeParms [null << /JBIG2Globals 5 0 R >>]"),
+        ["[/Crypt /FlateDecode], /DecodeParms [<< /Name 5 0 R >> null]"] = new("/Filter [/Crypt /FlateDecode] /DecodeParms [<< /Name 5 0 R >> null]") { Five = "/Identity" },
+        ["Flate, a /Columns 5 0 R past a predictor 4 0 R of 1"] = new("/Filter /FlateDecode /DecodeParms << /Predictor 4 0 R /Columns 5 0 R >>") { Written = new() { [4] = "1" } },
+        ["Flate, a /Columns 5 0 R past a predictor of 1 object stream 9 holds"] = new("/Filter /FlateDecode /DecodeParms << /Predictor 100 0 R /Columns 5 0 R >>") { InNine = new() { [100] = "1" } },
+        ["Flate, parameters object stream 9 holds, << /Foo 5 0 R >>"] = new("/Filter /FlateDecode /DecodeParms 100 0 R") { InNine = new() { [100] = "<< /Foo 5 0 R >>" } },
+        ["Flate, a /DecodeParms chain whose 31st object, which 9 holds, names a 32nd"] = new("/Filter /FlateDecode /DecodeParms 100 0 R")
+        {
+            Written = Merged(ReferenceChain(100, 30, "130 0 R"), ReferenceChain(140, 2, "<< /Predictor 5 0 R >>")),
+            InNine = new() { [130] = "140 0 R" },
+        },
+
+        // Values decoding reads: the needs the walk had, and those it missed — a stream, a member on the way (#277).
+        ["Flate, a /Columns 5 0 R past a predictor of 12"] = new("/Filter /FlateDecode /DecodeParms << /Predictor 12 /Columns 5 0 R >>"),
+        ["LZW, an /EarlyChange 5 0 R"] = new("/Filter /LZWDecode /DecodeParms << /EarlyChange 5 0 R >>") { Data = SevenData.Plain },
+        ["/Filter 3 0 R, 3 = [5 0 R]"] = new("/Filter 3 0 R") { Five = "/FlateDecode", Written = new() { [3] = "[5 0 R]" } },
+        ["Flate, /DecodeParms 3 0 R, 3 = [4 0 R], 4 = << /Predictor 5 0 R >>"] = new("/Filter /FlateDecode /DecodeParms 3 0 R") { Written = new() { [3] = "[4 0 R]", [4] = "<< /Predictor 5 0 R >>" } },
+        ["Flate, a /Predictor 4 0 R, 4 = 3 0 R, 3 = 5 0 R"] = new("/Filter /FlateDecode /DecodeParms << /Predictor 4 0 R >>") { Written = new() { [3] = "5 0 R", [4] = "3 0 R" } },
+        ["row 6: Flate, parameters a stream whose /Predictor is 5 0 R"] = new("/Filter /FlateDecode /DecodeParms 3 0 R") { Written = new() { [3] = "<< /Predictor 5 0 R /Length 2 >>\nstream\nab\nendstream" } },
+        ["row 7: Flate, parameters a stream whose /Length is 5 0 R"] = new("/Filter /FlateDecode /DecodeParms 3 0 R") { Five = "2", Written = new() { [3] = "<< /Length 5 0 R >>\nstream\nab\nendstream" } },
+        ["Flate, a /Predictor that is a stream whose /Length is 5 0 R"] = new("/Filter /FlateDecode /DecodeParms << /Predictor 3 0 R >>") { Five = "2", Written = new() { [3] = "<< /Length 5 0 R >>\nstream\nab\nendstream" } },
+        ["/Filter 3 0 R, 3 a stream whose /Length is 5 0 R"] = new("/Filter 3 0 R") { Five = "2", Data = SevenData.Plain, Written = new() { [3] = "<< /Length 5 0 R >>\nstream\nab\nendstream" } },
+        ["Flate, parameters object stream 9 holds, << /Predictor 5 0 R >>"] = new("/Filter /FlateDecode /DecodeParms 100 0 R") { InNine = new() { [100] = "<< /Predictor 5 0 R >>" } },
+        ["Flate, a /Columns 5 0 R past a predictor of 12 object stream 9 holds"] = new("/Filter /FlateDecode /DecodeParms << /Predictor 100 0 R /Columns 5 0 R >>") { InNine = new() { [100] = "12" } },
+        ["two Flate steps, the second's parameters a chain to the first's, << /Predictor 5 0 R >>"] = new("/Filter [/FlateDecode /FlateDecode] /DecodeParms [101 0 R 100 0 R]")
+        {
+            Data = SevenData.FlateTwice,
+            Written = new() { [100] = "101 0 R", [101] = "<< /Predictor 5 0 R >>" },
+        },
+    };
+
+    /// <summary>The names of <see cref="DecodingShapes"/> whose values decoding does not read.</summary>
+    public static TheoryData<string> ValuesDecodingDoesNotRead =>
+    [
+        "row 1: Flate, /DecodeParms << /Foo 5 0 R >>",
+        "row 2: Flate, a /Columns 5 0 R past a predictor of 1",
+        "row 3: Flate, /DecodeParms [null 5 0 R]",
+        "row 4: no filter, a /Predictor 5 0 R",
+        "row 5: /Filter [/FlateDecode [5 0 R]]",
+        "/Filter [/FlateDecode /Foo 5 0 R]",
+        "/Filter 3 0 R, 3 = [/FlateDecode /Foo 5 0 R]",
+        "Flate, /DecodeParms 3 0 R, 3 = [null 5 0 R]",
+        "Flate, /DecodeParms 3 0 R, 3 = [4 0 R], 4 = << /Foo 5 0 R >>",
+        "ASCIIHex, which reads no parameters, /DecodeParms 5 0 R",
+        "[/FlateDecode /Foo], /DecodeParms [null 5 0 R]",
+        "[/FlateDecode /JBIG2Decode], /DecodeParms [null << /JBIG2Globals 5 0 R >>]",
+        "[/Crypt /FlateDecode], /DecodeParms [<< /Name 5 0 R >> null]",
+        "Flate, a /Columns 5 0 R past a predictor 4 0 R of 1",
+        "Flate, a /Columns 5 0 R past a predictor of 1 object stream 9 holds",
+        "Flate, parameters object stream 9 holds, << /Foo 5 0 R >>",
+        "Flate, a /DecodeParms chain whose 31st object, which 9 holds, names a 32nd",
+    ];
+
+    /// <summary>The names of <see cref="DecodingShapes"/> whose values decoding reads, with the key that leads to 5.</summary>
+    public static TheoryData<string, string> ValuesDecodingReads => new()
+    {
+        { "Flate, a /Columns 5 0 R past a predictor of 12", "/DecodeParms" },
+        { "LZW, an /EarlyChange 5 0 R", "/DecodeParms" },
+        { "/Filter 3 0 R, 3 = [5 0 R]", "/Filter" },
+        { "Flate, /DecodeParms 3 0 R, 3 = [4 0 R], 4 = << /Predictor 5 0 R >>", "/DecodeParms" },
+        { "Flate, a /Predictor 4 0 R, 4 = 3 0 R, 3 = 5 0 R", "/DecodeParms" },
+        { "row 6: Flate, parameters a stream whose /Predictor is 5 0 R", "/DecodeParms" },
+        { "row 7: Flate, parameters a stream whose /Length is 5 0 R", "/DecodeParms" },
+        { "Flate, a /Predictor that is a stream whose /Length is 5 0 R", "/DecodeParms" },
+        { "/Filter 3 0 R, 3 a stream whose /Length is 5 0 R", "/Filter" },
+        { "Flate, parameters object stream 9 holds, << /Predictor 5 0 R >>", "/DecodeParms" },
+        { "Flate, a /Columns 5 0 R past a predictor of 12 object stream 9 holds", "/DecodeParms" },
+        { "two Flate steps, the second's parameters a chain to the first's, << /Predictor 5 0 R >>", "/DecodeParms" },
+    };
+
+    /// <summary>
+    /// Nests of streams the walk keeps and takes, or follows again, by name: each file, and the object streams the walk gives
+    /// with no nest kept as circular. Object stream 10 walks first; a stream met under /DecodeParms is at the second level, one
+    /// under an object stream's /Length at the third, and the streams of a nest each a level below the one before; the reader
+    /// loads nothing past the 64th, and an object of the stream walked is a need at any depth.
+    /// </summary>
+    private static readonly Dictionary<string, (Func<byte[]> File, int[] Circular)> NestShapes = new()
+    {
+        // 100 heads 101 to 162, the last naming 13, which 12 holds. Under 10's /Length its parse reaches 161; under 12's
+        // /DecodeParms, a level higher, it reaches 162 as well, whose /Length is 12's own object.
+        ["met a level lower first, then higher up"] = (
+            () => PlainObjectStreams(
+                StreamChain(100, 63, "13 0 R"),
+                new(10, string.Empty, [(11, "<< >>")], Length: "100 0 R"),
+                new(12, "/Filter /FlateDecode /DecodeParms 100 0 R", [(13, "<< >>")])),
+            [12]),
+
+        // 100 heads 101 to 163, the last naming 13. 10 meets 100 at the second level, which parses 101 to 162; 12 at the
+        // third, under its /Length, which parses 101 to 161, then meets 161, parsed, or 162, whose parse reaches 163.
+        ["taken a level lower, as far as the reader's nesting reaches"] = (
+            () => PlainObjectStreams(
+                StreamChain(100, 64, "13 0 R"),
+                new(10, "/Filter /FlateDecode /DecodeParms 100 0 R", [(11, "<< >>")]),
+                new(12, "/Filter /FlateDecode /DecodeParms 161 0 R", [(13, "<< >>")], Length: "100 0 R")),
+            []),
+        ["taken a level lower, short of the first stream past the reader's nesting"] = (
+            () => PlainObjectStreams(
+                StreamChain(100, 64, "13 0 R"),
+                new(10, "/Filter /FlateDecode /DecodeParms 100 0 R", [(11, "<< >>")]),
+                new(12, "/Filter /FlateDecode /DecodeParms 162 0 R", [(13, "<< >>")], Length: "100 0 R")),
+            [12]),
+
+        // Each stream meets 100, which parses 101 to 162, then 101, parsed: met first, 101's parse would reach 163, whose
+        // /Length names 13.
+        ["taken, its streams parsed"] = (
+            () => PlainObjectStreams(
+                StreamChain(100, 64, "13 0 R"),
+                new(10, "/Filter [/FlateDecode /FlateDecode] /DecodeParms [100 0 R 101 0 R]", [(11, "<< >>")]),
+                new(12, "/Filter [/FlateDecode /FlateDecode] /DecodeParms [100 0 R 101 0 R]", [(13, "<< >>")])),
+            []),
+
+        // 12 meets 200, whose nest of 57 streams leads to 105 at the 60th level, which parses 106 to 109; then 100, whose
+        // parse ends at 105, parsed; then 110, whose parse reaches 172, which names 13.
+        ["taken up to a stream the walk parsed already"] = (
+            () => PlainObjectStreams(
+                Merged(StreamChain(100, 73, "13 0 R"), StreamChain(200, 58, "105 0 R")),
+                new(10, "/Filter /FlateDecode /DecodeParms 100 0 R", [(11, "<< >>")]),
+                new(12, "/Filter [/FlateDecode /FlateDecode /FlateDecode] /DecodeParms [200 0 R 100 0 R 110 0 R]", [(13, "<< >>")])),
+            [12]),
+
+        // 12 parses 105, then 200, whose /Length names 100, whose nest ends at 105: 200's parse met a stream parsed already.
+        // 14 parses 200 to 161, and 16 takes its nest, the third level of 101 to 161 included, before it meets 110, parsed.
+        ["taken short inside a parse, which gives no nest"] = (
+            () => PlainObjectStreams(
+                Merged(StreamChain(100, 73, "17 0 R"), new() { [200] = "<< /Length 100 0 R >>\nstream\nab\nendstream" }),
+                new(10, "/Filter /FlateDecode /DecodeParms 100 0 R", [(11, "<< >>")]),
+                new(12, "/Filter [/FlateDecode /FlateDecode] /DecodeParms [105 0 R 200 0 R]", [(13, "<< >>")]),
+                new(14, "/Filter [/FlateDecode /FlateDecode] /DecodeParms [200 0 R 110 0 R]", [(15, "<< >>")]),
+                new(16, "/Filter [/FlateDecode /FlateDecode] /DecodeParms [200 0 R 110 0 R]", [(17, "<< >>")])),
+            []),
+
+        // 100 heads 101 to 161, the last naming 15. Under 10's /Length, 300 names 21, which 20, decoding alike, holds as
+        // 100 0 R: 100 at the fourth level parses 101 to 160. Under 12's /Length, 200 names 100 at the fourth level, whose
+        // nest is taken there, cut by the reader's nesting. Under 14's /DecodeParms, 200's parse reaches 161.
+        ["taken where the reader's nesting cut it, inside a parse"] = (
+            () => PlainObjectStreams(
+                Merged(StreamChain(100, 62, "15 0 R"), new() { [200] = "<< /Length 100 0 R >>\nstream\nab\nendstream", [300] = "<< /Length 21 0 R >>\nstream\nab\nendstream" }),
+                new(10, string.Empty, [(11, "<< >>")], Length: "300 0 R"),
+                new(12, string.Empty, [(13, "<< >>")], Length: "200 0 R"),
+                new(14, "/Filter /FlateDecode /DecodeParms 200 0 R", [(15, "<< >>")]),
+                new(20, string.Empty, [(21, "100 0 R")])),
+            [14]),
+
+        // 10 meets 111, whose parse reaches 140, which names 13; then 100, whose parse ends at 111, parsed. 12 meets 100,
+        // whose parse reaches 13.
+        ["met past a stream the walk parsed already"] = (
+            () => PlainObjectStreams(
+                StreamChain(100, 41, "13 0 R"),
+                new(10, "/Filter [/FlateDecode /FlateDecode] /DecodeParms [111 0 R 100 0 R]", [(11, "<< >>")]),
+                new(12, "/Filter /FlateDecode /DecodeParms 100 0 R", [(13, "<< >>")])),
+            [12]),
+
+        // 100's /Length names 11, which 10 holds: of 12's walk, a need, and what tells, as 10 meets 13, that 12 does not
+        // decode alike.
+        ["met past an object of an object stream"] = (
+            () => PlainObjectStreams(
+                new() { [100] = "<< /Length 11 0 R >>\nstream\nab\nendstream" },
+                new(10, "/Filter /FlateDecode /DecodeParms 13 0 R", [(11, "<< >>")]),
+                new(12, "/Filter /FlateDecode /DecodeParms 100 0 R", [(13, "<< /Predictor 1 >>")])),
+            [10, 12]),
+
+        // 100's /Length names 21, which 20, decoding alike, holds as 300 0 R: 12 takes it in a run, once 10 met it. 14 meets
+        // 17, which 16 holds as 15 0 R: 16's own walk meets 21, whose holder decodes alike, and 16 decodes alike in turn
+        // (#312), so that 17 leads 14 to 15, which it holds, as the reader finds it.
+        ["met past a run through objects of object streams"] = (
+            () => PlainObjectStreams(
+                new() { [100] = "<< /Length 21 0 R >>\nstream\nab\nendstream", [300] = "2" },
+                new(10, "/Filter /FlateDecode /DecodeParms 100 0 R", [(11, "<< >>")]),
+                new(12, "/Filter /FlateDecode /DecodeParms 100 0 R", [(13, "<< >>")]),
+                new(14, "/Filter /FlateDecode /DecodeParms 17 0 R", [(15, "<< >>")]),
+                new(16, "/Filter /FlateDecode /DecodeParms 100 0 R", [(17, "15 0 R")]),
+                new(20, string.Empty, [(21, "300 0 R")])),
+            [14]),
+    };
+
+    /// <summary>#277's comment: a stream or a member on the chain of a key the reader resolves, by name.</summary>
+    private static readonly Dictionary<string, StreamSeven> KeyShapes = new()
+    {
+        ["/Length 100 0 R, 100 a stream whose /Length names 5"] = new(string.Empty) { Five = "2", Data = SevenData.Plain, Length = "100 0 R", Written = StreamChain(100, 1, "5 0 R") },
+        ["/N 100 0 R, 100 a stream whose /Length names 5"] = new(string.Empty) { Five = "2", Data = SevenData.Plain, Count = "100 0 R", Written = StreamChain(100, 1, "5 0 R") },
+        ["/First 100 0 R, 100 a stream whose /Length names 5"] = new(string.Empty) { Five = "2", Data = SevenData.Plain, First = "100 0 R", Written = StreamChain(100, 1, "5 0 R") },
+        ["/Type 100 0 R, 100 a stream whose /Length names 5"] = new(string.Empty) { Five = "2", Data = SevenData.Plain, Type = "100 0 R", Written = StreamChain(100, 1, "5 0 R") },
+        ["/Length 100 0 R, 100 naming 101, a stream whose /Length names 5"] = new(string.Empty)
+        {
+            Five = "2",
+            Data = SevenData.Plain,
+            Length = "100 0 R",
+            Written = new() { [100] = "101 0 R", [101] = "<< /Length 5 0 R >>\nstream\nab\nendstream" },
+        },
+        ["/Length 100 0 R, 100 a stream whose /Length names 101, a stream whose /Length names 5"] = new(string.Empty) { Five = "2", Data = SevenData.Plain, Length = "100 0 R", Written = StreamChain(100, 2, "5 0 R") },
+        ["/Length 100 0 R, 100 a member of 9 naming 5"] = new(string.Empty) { Data = SevenData.Plain, Length = "100 0 R", InNine = new() { [100] = "5 0 R" } },
+        ["/N and /First 100 0 R, 100 a stream whose /Length names 5"] = new(string.Empty)
+        {
+            Five = "2",
+            Data = SevenData.Plain,
+            Count = "100 0 R",
+            First = "100 0 R",
+            Written = StreamChain(100, 1, "5 0 R"),
+        },
+    };
+
+    /// <summary>Shapes where the stream needs two objects it holds, by name.</summary>
+    private static readonly Dictionary<string, StreamSeven> OrderShapes = new()
+    {
+        ["/N 6 0 R, /Filter [/FlateDecode 5 0 R]"] = new("/Filter [/FlateDecode 5 0 R]") { Five = "/FlateDecode", Count = "6 0 R" },
+        ["/First 6 0 R, a predictor 5 0 R"] = new("/Filter /FlateDecode /DecodeParms << /Predictor 5 0 R >>") { First = "6 0 R" },
+        ["a predictor 5 0 R, of 12, and a /Columns 6 0 R"] = new("/Filter /FlateDecode /DecodeParms << /Predictor 5 0 R /Columns 6 0 R >>") { Five = "12" },
+        ["two Flate steps, /DecodeParms [5 0 R 6 0 R]"] = new("/Filter [/FlateDecode /FlateDecode] /DecodeParms [5 0 R 6 0 R]") { Five = "<< /Predictor 1 >>", Data = SevenData.FlateTwice },
+    };
+
     private static PdfValidationFinding Single(PdfValidationReport report, string ruleId)
     {
         report.Findings.Where(finding => finding.RuleId == ruleId).Should().ContainSingle(
@@ -1109,5 +4147,303 @@ public class ObjectRuleTests
     {
         using var document = PdfDocument.Open(file);
         return new PdfValidator().Validate(document);
+    }
+
+    /// <summary>The cases a property draws, from a fixed seed, so that a failure replays exactly.</summary>
+    private static Config PropertySettings =>
+        Config.QuickThrowOnFailure.WithMaxTest(200).WithReplay(0x5EED_1729UL, 0x9E37_79B9_7F4A_7C15UL).WithQuietOnSuccess(true);
+
+    /// <summary>
+    /// A file of object streams numbered 10, 20 and so on, the <c>k</c>th holding <c>holds[k]</c> objects numbered after
+    /// it, each <c>0</c>, and needing the objects <c>needs[k]</c> names, in that order: its <c>/Filter</c> names as many
+    /// Flate steps, each of which reads the element of <c>/DecodeParms</c> at its place, and its data is compressed as many
+    /// times. The index is a cross-reference stream.
+    /// </summary>
+    private static byte[] NeedingStreams(int[] holds, int[][] needs)
+    {
+        var file = new HandWrittenFile(version: "1.5");
+        var rows = new Dictionary<int, (int Type, long Field2, int Field3)>
+        {
+            [1] = (1, file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"), 0),
+            [2] = (1, file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"), 0),
+        };
+
+        for (var k = 0; k < holds.Length; k++)
+        {
+            var number = 10 * (k + 1);
+            var header = new StringBuilder();
+            var contents = new StringBuilder();
+
+            for (var index = 0; index < holds[k]; index++)
+            {
+                rows[number + index + 1] = (2, number, index);
+                header.Append(CultureInfo.InvariantCulture, $"{number + index + 1} {contents.Length} ");
+                contents.Append("0 ");
+            }
+
+            var data = header.ToString() + contents;
+            var filters = new StringBuilder();
+            var parameters = new StringBuilder();
+
+            foreach (var need in needs[k])
+            {
+                data = Deflate(data);
+                filters.Append("/FlateDecode ");
+                parameters.Append(CultureInfo.InvariantCulture, $"{need} 0 R ");
+            }
+
+            var entries = needs[k].Length == 0 ? string.Empty : $"/Filter [{filters}] /DecodeParms [{parameters}] ";
+            rows[number] = (1, file.Object(
+                number,
+                string.Create(
+                    CultureInfo.InvariantCulture,
+                    $"<< /Type /ObjStm /N {holds[k]} /First {header.Length} {entries}/Length {data.Length} >>\nstream\n{data}\nendstream")), 0);
+        }
+
+        var xref = 10 * (holds.Length + 1);
+        file.CrossReferenceStream(xref, xref + 1, rows, "/Root 1 0 R");
+        return file.Bytes;
+    }
+
+    /// <summary>
+    /// Gives the circular streams of the file <see cref="NeedingStreams"/> writes and the finding of each, as a search from
+    /// each need of each stream finds them: the first need of each stream it needs, in its own order, that names the stream
+    /// itself or one from which a search through every stream's needs reaches it.
+    /// </summary>
+    /// <param name="needs">The objects each stream needs, in order.</param>
+    /// <param name="members">The stream holding each object, by its place among the streams.</param>
+    private static List<(int Stream, string Message)> SearchedWayBack(int[][] needs, List<(int Stream, int Object)> members)
+    {
+        var holder = members.ToDictionary(member => member.Object, member => member.Stream);
+        var found = new List<(int Stream, string Message)>();
+
+        for (var k = 0; k < needs.Length; k++)
+        {
+            var seen = new HashSet<int>();
+
+            foreach (var need in needs[k])
+            {
+                var other = holder[need];
+
+                // Of the objects of one stream, the first is the need: another says nothing more.
+                if (!seen.Add(other) || (other != k && !Reaches(other, k)))
+                {
+                    continue;
+                }
+
+                var (stream, held) = (10 * (k + 1), 10 * (other + 1));
+                found.Add((stream, other == k
+                    ? $"Object stream {stream} needs object {need}, which it holds, to be read: its /DecodeParms names it, and the object cannot be read before the stream is."
+                    : $"Object stream {stream} needs object {need}, which object stream {held} holds, to be read: its /DecodeParms names it, and reading object stream {held} needs object stream {stream} in turn."));
+                break;
+            }
+        }
+
+        return found;
+
+        bool Reaches(int from, int target)
+        {
+            var reached = new HashSet<int> { from };
+            var work = new Queue<int>([from]);
+
+            while (work.TryDequeue(out var current))
+            {
+                foreach (var need in needs[current])
+                {
+                    if (holder[need] == target)
+                    {
+                        return true;
+                    }
+
+                    if (reached.Add(holder[need]))
+                    {
+                        work.Enqueue(holder[need]);
+                    }
+                }
+            }
+
+            return false;
+        }
+    }
+
+    /// <summary>A file in memory that counts what is read of it, and how many reads start at each offset.</summary>
+    private sealed class OffsetCountingSource(byte[] data) : PdfFileSource
+    {
+        /// <summary>Gets how many reads started at each offset.</summary>
+        public Dictionary<long, int> Reads { get; } = [];
+
+        /// <summary>Gets the number of bytes read so far.</summary>
+        public long BytesRead { get; private set; }
+
+        /// <inheritdoc/>
+        public override long Length => data.Length;
+
+        /// <inheritdoc/>
+        public override int Read(long offset, Span<byte> buffer)
+        {
+            var count = (int)Math.Min(buffer.Length, data.Length - offset);
+            data.AsSpan((int)offset, count).CopyTo(buffer);
+            Reads[offset] = Reads.GetValueOrDefault(offset) + 1;
+            BytesRead += count;
+            return count;
+        }
+    }
+
+    /// <summary>Notes which entries of a step's parameters decoding reads, by the value each holds.</summary>
+    /// <param name="keys">The entry each value is written under.</param>
+    /// <param name="read">The entries read, in the order decoding reads them.</param>
+    private readonly struct ParameterReads(Dictionary<PdfObject, PdfName> keys, List<PdfName> read) : IFilterValueReader
+    {
+        /// <summary>Gets the entries read, in the order decoding reads them.</summary>
+        public List<PdfName> Read { get; } = read;
+
+        /// <inheritdoc/>
+        public bool TryRead(PdfName key, PdfObject? written, bool entry, out PdfObject? value)
+        {
+            if (written is not null && keys.TryGetValue(written, out var name))
+            {
+                Read.Add(name);
+            }
+
+            value = written;
+            return true;
+        }
+    }
+
+    /// <summary>How <see cref="StreamSeven"/> writes its stream's data.</summary>
+    private enum SevenData
+    {
+        /// <summary>As it is.</summary>
+        Plain,
+
+        /// <summary>Flate-compressed once.</summary>
+        Flate,
+
+        /// <summary>Flate-compressed twice, for two Flate steps.</summary>
+        FlateTwice,
+
+        /// <summary>In hexadecimal, ended by <c>&gt;</c>.</summary>
+        Hex,
+    }
+
+    /// <summary>An object stream <see cref="PlainObjectStreams"/> writes, its data as it is.</summary>
+    /// <param name="Number">Its number.</param>
+    /// <param name="Entries">What its dictionary holds besides its <c>/Type</c>, <c>/N</c>, <c>/First</c> and <c>/Length</c>.</param>
+    /// <param name="Members">The objects it holds.</param>
+    /// <param name="Length">Its <c>/Length</c>, the length of its data when null.</param>
+    /// <param name="Count">Its <c>/N</c>, how many objects it holds when null.</param>
+    private sealed record PlainObjectStream(int Number, string Entries, (int Number, string Body)[] Members, string? Length = null, string? Count = null);
+
+    /// <summary>
+    /// A file, indexed by a cross-reference stream, object 200, whose object stream 7 holds objects 5 and 6 — 5 being
+    /// <see cref="Five"/> —, its dictionary giving <see cref="Entries"/> besides its own; objects written directly in the
+    /// file; members of a second object stream, 9, whose dictionary gives <see cref="NineEntries"/> besides its own; and, when
+    /// <see cref="ThreeEntries"/> gives one, an object stream 3, which the walk of the dependencies takes before 7.
+    /// </summary>
+    /// <param name="Entries">What stream 7's dictionary holds besides its <c>/Type</c>, <c>/N</c>, <c>/First</c> and <c>/Length</c>.</param>
+    private sealed record StreamSeven(string Entries)
+    {
+        /// <summary>Gets object 5's value.</summary>
+        public string Five { get; init; } = "1";
+
+        /// <summary>Gets how stream 7's data is written.</summary>
+        public SevenData Data { get; init; } = SevenData.Flate;
+
+        /// <summary>Gets stream 7's <c>/Type</c>.</summary>
+        public string Type { get; init; } = "/ObjStm";
+
+        /// <summary>Gets stream 7's <c>/N</c>.</summary>
+        public string Count { get; init; } = "2";
+
+        /// <summary>Gets stream 7's <c>/First</c>, where its objects start when null.</summary>
+        public string? First { get; init; }
+
+        /// <summary>Gets stream 7's <c>/Length</c>, the length of its data when null.</summary>
+        public string? Length { get; init; }
+
+        /// <summary>Gets the objects written directly in the file besides the catalog and the page tree.</summary>
+        public Dictionary<int, string> Written { get; init; } = [];
+
+        /// <summary>Gets the objects object stream 9 holds; there is no object 9 when there are none.</summary>
+        public Dictionary<int, string> InNine { get; init; } = [];
+
+        /// <summary>Gets what stream 9's dictionary holds besides its own entries; its data is Flate-compressed when they name the filter.</summary>
+        public string NineEntries { get; init; } = string.Empty;
+
+        /// <summary>Gets stream 9's <c>/Length</c>, the length of its data when null.</summary>
+        public string? NineLength { get; init; }
+
+        /// <summary>Gets stream 9's <c>/Type</c>.</summary>
+        public string NineType { get; init; } = "/ObjStm";
+
+        /// <summary>
+        /// Gets what the dictionary of object stream 3, which holds object 4, an empty dictionary, gives besides its
+        /// <c>/N</c>, <c>/First</c> and <c>/Length</c>, its <c>/Type</c> included; there is no object 3 when null. Its data is
+        /// Flate-compressed when they name the filter.
+        /// </summary>
+        public string? ThreeEntries { get; init; }
+
+        /// <summary>Writes the file.</summary>
+        public byte[] Build()
+        {
+            const string Six = "<< /Title (six) >>";
+            var header = string.Create(CultureInfo.InvariantCulture, $"5 0 6 {Five.Length + 1} ");
+            var plain = header + Five + " " + Six + " ";
+            var data = Data switch
+            {
+                SevenData.Flate => Deflate(plain),
+                SevenData.FlateTwice => Deflate(Deflate(plain)),
+                SevenData.Hex => Convert.ToHexString(Encoding.Latin1.GetBytes(plain)) + ">",
+                _ => plain,
+            };
+
+            var file = new HandWrittenFile(version: "1.5");
+            var rows = new Dictionary<int, (int Type, long Field2, int Field3)>
+            {
+                [1] = (1, file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"), 0),
+                [2] = (1, file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"), 0),
+            };
+
+            foreach (var (number, body) in Written)
+            {
+                rows[number] = (1, file.Object(number, body), 0);
+            }
+
+            var first = First ?? header.Length.ToString(CultureInfo.InvariantCulture);
+            var length = Length ?? data.Length.ToString(CultureInfo.InvariantCulture);
+            rows[7] = (1, file.Object(7, $"<< /Type {Type} /N {Count} /First {first} {Entries} /Length {length} >>\nstream\n{data}\nendstream"), 0);
+            rows[5] = (2, 7, 0);
+            rows[6] = (2, 7, 1);
+
+            if (InNine.Count > 0)
+            {
+                var nineHeader = new StringBuilder();
+                var nineBody = new StringBuilder();
+                var index = 0;
+
+                foreach (var (number, body) in InNine)
+                {
+                    nineHeader.Append(CultureInfo.InvariantCulture, $"{number} {nineBody.Length} ");
+                    nineBody.Append(body).Append(' ');
+                    rows[number] = (2, 9, index++);
+                }
+
+                var nineData = nineHeader.ToString() + nineBody;
+                nineData = NineEntries.Contains("/FlateDecode", StringComparison.Ordinal) ? Deflate(nineData) : nineData;
+                var nineLength = NineLength ?? nineData.Length.ToString(CultureInfo.InvariantCulture);
+                rows[9] = (1, file.Object(9, $"<< /Type {NineType} /N {InNine.Count} /First {nineHeader.Length} {NineEntries} /Length {nineLength} >>\nstream\n{nineData}\nendstream"), 0);
+            }
+
+            if (ThreeEntries is not null)
+            {
+                const string Three = "4 0 << >> ";
+                var threeData = ThreeEntries.Contains("/FlateDecode", StringComparison.Ordinal) ? Deflate(Three) : Three;
+                rows[3] = (1, file.Object(3, $"<< {ThreeEntries} /N 1 /First 4 /Length {threeData.Length} >>\nstream\n{threeData}\nendstream"), 0);
+                rows[4] = (2, 3, 0);
+            }
+
+            file.CrossReferenceStream(200, 201, rows, "/Root 1 0 R");
+            return file.Bytes;
+        }
     }
 }

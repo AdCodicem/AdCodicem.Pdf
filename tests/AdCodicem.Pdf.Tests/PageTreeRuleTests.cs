@@ -6,6 +6,7 @@ using AdCodicem.Pdf.Documents;
 using AdCodicem.Pdf.IO;
 using AdCodicem.Pdf.Objects;
 using AdCodicem.Pdf.Validation;
+using AdCodicem.Pdf.Validation.Rules;
 
 namespace AdCodicem.Pdf.Tests;
 
@@ -143,6 +144,92 @@ public class PageTreeRuleTests
             "The kid at index 2 of page tree node 2 names object 4, which the tree already lists: its 2 pages are counted again.");
         report.Contains(PdfValidationRuleIds.PageTreeCountMismatch).Should().BeFalse();
         PageTreeWalk.Run(document).PageCount.Should().Be(5);
+    }
+
+    [Theory]
+    [InlineData("4 0 R")]
+    [InlineData("7 0 R")]
+    public void What_is_listed_again_past_the_report_s_room_is_counted_again_all_the_same(string again)
+    {
+        // #168: the finding of a node listed again, or of a node naming an array of kids walked already, says what is counted
+        // again, and the counting was done as its message was written. Past the report's room no message is written: the
+        // pages are counted all the same, or the right /Count of the node above is called wrong once the report is full.
+        var file = Objects(
+            (2, $"<< /Type /Pages /Kids [3 0 R 4 0 R {again}] /Count 5 /MediaBox [0 0 1 1] /Resources << >> >>"),
+            (3, "<< /Type /Page /Parent 2 0 R >>"),
+            (4, "<< /Type /Pages /Parent 2 0 R /Kids 8 0 R /Count 2 >>"),
+            (5, "<< /Type /Page /Parent 4 0 R >>"),
+            (6, "<< /Type /Page /Parent 4 0 R >>"),
+            (7, "<< /Type /Pages /Parent 2 0 R /Kids 8 0 R /Count 2 >>"),
+            (8, "[5 0 R 6 0 R]"));
+
+        foreach (var capacity in (int[])[0, 1000])
+        {
+            using var document = PdfDocument.Open(file);
+            var report = new PdfValidator(new PdfValidatorOptions { FindingCapacity = capacity }).Validate(document);
+
+            report.Contains(PdfValidationRuleIds.PageTreeNodeRepeated).Should().BeTrue();
+            report.Contains(PdfValidationRuleIds.PageTreeCountMismatch).Should().BeFalse(
+                $"the pages listed again are counted again at a capacity of {capacity}");
+        }
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(1000)]
+    public void A_page_the_tree_leaves_out_is_not_judged_beside_a_broken_entry_whatever_the_report_s_room(int capacity)
+    {
+        // #168: the orphan rule judges an index the probe found sound throughout. Whether it found an entry broken is what it
+        // counted, not what it wrote, which past the report's room is nothing: at a capacity of 0, the probe writes no
+        // finding, and the index is not sound for all that. Object 4 is a member its stream does not list; object 6 a page
+        // the tree does not list.
+        const string Orphan = "<< /Type /Page /Parent 2 0 R >>";
+        var broken = HostileInputTests.CompressedRows(
+            4,
+            number => (2, 5, number - 3),
+            (5, "<< /Type /ObjStm /N 1 /First 4 /Length 9 >>\nstream\n3 0 <<>> \nendstream"),
+            (6, Orphan));
+        var sound = HostileInputTests.CompressedRows(
+            4,
+            number => (2, 5, number - 3),
+            (5, "<< /Type /ObjStm /N 2 /First 8 /Length 18 >>\nstream\n3 0 4 5 <<>> <<>> \nendstream"),
+            (6, Orphan));
+
+        var withBroken = Validate(broken, capacity, out var brokenRepaired);
+        var withSound = Validate(sound, capacity, out var soundRepaired);
+
+        brokenRepaired.Should().BeFalse();
+        soundRepaired.Should().BeFalse();
+        withSound.Contains(PdfValidationRuleIds.PageTreePageOrphaned).Should().BeTrue("the index is sound, and the page left out");
+        withSound.InformationCount.Should().Be(1);
+        withBroken.Contains(PdfValidationRuleIds.XRefEntryBroken).Should().BeTrue();
+        withBroken.ErrorCount.Should().Be(1);
+        withBroken.Contains(PdfValidationRuleIds.PageTreePageOrphaned).Should().BeFalse("an entry is broken, written or not");
+        withBroken.InformationCount.Should().Be(0);
+
+        static PdfValidationReport Validate(byte[] file, int capacity, out bool repaired)
+        {
+            using var document = PdfDocument.Open(file);
+            var report = new PdfValidator(new PdfValidatorOptions { FindingCapacity = capacity }).Validate(document);
+            repaired = document.WasRepaired;
+            return report;
+        }
+    }
+
+    [Fact]
+    public void A_page_the_tree_leaves_out_is_not_judged_beside_an_object_stream_that_cannot_serve_its_objects()
+    {
+        // Objects 3 and 4 are placed in object streams the index lacks: no entry is broken, but the streams cannot serve what
+        // the index places in them, and the index is not sound enough to say that object 5, a page the tree does not list,
+        // is left out.
+        var file = HostileInputTests.CompressedRows(3, number => (2, 4_000_000 + number, 0), (5, "<< /Type /Page /Parent 2 0 R >>"));
+        using var document = PdfDocument.Open(file);
+
+        var report = new PdfValidator().Validate(document);
+
+        report.Contains(PdfValidationRuleIds.XRefObjectStreamBroken).Should().BeTrue();
+        report.Contains(PdfValidationRuleIds.XRefEntryBroken).Should().BeFalse();
+        report.Contains(PdfValidationRuleIds.PageTreePageOrphaned).Should().BeFalse("the index is not sound enough to say a page is left out");
     }
 
     [Fact]
@@ -519,6 +606,40 @@ public class PageTreeRuleTests
     }
 
     [Fact]
+    public void A_kid_written_in_an_array_of_kids_that_is_object_1_is_located_at_that_array()
+    {
+        // The catalog is object 5, and node 2's array of kids is object 1, the lowest number an array can have.
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "[<< /Type /Page /MediaBox 5 /Resources << >> >>]"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids 1 0 R /Count 1 >>"),
+            [5] = file.Object(5, "<< /Type /Catalog /Pages 2 0 R >>"),
+        };
+        file.Table(6, rows, "/Size 6 /Root 5 0 R");
+
+        Single(Validate(file.Bytes), PdfValidationRuleIds.PageTreeMediaBoxInvalid).Should().Match<PdfValidationFinding>(finding =>
+            finding.Message == "The /MediaBox of the page object at [0] in object 1 is a number, not a rectangle." &&
+            finding.Location == PdfValidationLocation.OnPage(0, new PdfObjectId(1)));
+    }
+
+    [Fact]
+    public void The_path_of_a_kid_starts_at_the_array_of_kids_of_its_own_it_is_written_in_whatever_lists_that_array_s_node()
+    {
+        // Node 4 lists, written in its /Kids, a node whose kids are object 7, an array of its own, which holds a node written
+        // in it over a page: the page's path runs from object 7, where it is written, not from node 4, which lists the node
+        // the array is the kids of.
+        var file = TreeWith(
+            "/Kids [5 0 R 6 0 R] /Count 2",
+            "/Kids [5 0 R << /Type /Pages /Kids 7 0 R /Count 1 >>] /Count 2",
+            "[<< /Type /Pages /Kids [<< /Type /Page /MediaBox 5 >>] /Count 1 >>]");
+
+        Single(Validate(file), PdfValidationRuleIds.PageTreeMediaBoxInvalid).Should().Match<PdfValidationFinding>(finding =>
+            finding.Message == "The /MediaBox of the page object at [0]/Kids[0] in object 7 is a number, not a rectangle." &&
+            finding.Location == PdfValidationLocation.OnPage(2, new PdfObjectId(7)));
+    }
+
+    [Fact]
     public void A_long_path_to_a_node_written_in_the_array_is_shortened_as_any_path_is()
     {
         // Six nodes, each written in the one above, the last without /Kids: a path of twelve steps, the four past the first
@@ -602,6 +723,26 @@ public class PageTreeRuleTests
         var finding = report.Findings.Should().ContainSingle().Which;
         finding.RuleId.Should().Be(PdfValidationRuleIds.PageTreeCountMismatch);
         finding.Message.Should().Be("Page tree node 4 has no /Count; 2 pages lie below it.", "null in a dictionary is absence (ISO 32000-1, 7.3.7)");
+    }
+
+    [Theory]
+    [InlineData("/Count 7 0 R", "9", "Page tree node 4 gives /Count 9, and 2 pages lie below it.")]
+    [InlineData("/Count 7 0 R", "2", null)]
+    [InlineData("/Count 7 0 R", "(2)", null)]
+    [InlineData("/Count 5 0 R", "null", null)]
+    [InlineData("/Count 4 0 R", "null", null)]
+    public void A_count_read_through_a_reference_is_judged_as_one_written_in_the_node(string count, string seventh, string? message)
+    {
+        // The node's /Count is read when the walk enters it, so that its frame keeps what the node gives rather than the node
+        // (#201): one that names an integer is judged as an integer written there, and one that names anything else — a
+        // string, a page below the node, the node itself — is not this rule's.
+        using var document = PdfDocument.Open(TreeWith("/Kids [5 0 R 6 0 R] /Count 2", "/Kids [5 0 R 6 0 R] " + count, seventh));
+
+        var report = new PdfValidator().Validate(document);
+
+        report.Findings.Where(finding => finding.RuleId == PdfValidationRuleIds.PageTreeCountMismatch).Select(finding => finding.Message)
+            .Should().Equal(message is null ? [] : [message]);
+        PageTreeWalk.Run(document).PageCount.Should().Be(3, "a /Count read through a reference changes nothing of what the tree lists");
     }
 
     [Fact]
@@ -931,6 +1072,39 @@ public class PageTreeRuleTests
 
         new PdfValidator().Validate(document).Findings.Should().BeEmpty();
         PageTreeWalk.Run(document).PageCount.Should().Be(2, "a dictionary is no fragment of a reference");
+    }
+
+    [Fact]
+    public void A_stream_written_in_a_node_a_limit_cut_is_judged_on_nothing_and_still_counted()
+    {
+        var file = PdfTemplate.SoundWith(
+            "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+            "<< /Type /Pages /Count 1 /Kids [3 0 R << /Type /Page /Length 0 >>\nstream\n\nendstream]" + new string(' ', 200) + ">>");
+
+        using var document = PdfDocument.Open(file, CutAt(128));
+
+        new PdfValidator().Validate(document).Findings.Should().BeEmpty("what the cut array holds is not judged");
+        PageTreeWalk.Run(document).PageCount.Should().Be(2, "a stream is no fragment of a reference");
+    }
+
+    [Fact]
+    public void A_kid_a_node_a_limit_cut_names_is_judged_on_itself()
+    {
+        // Object 3 is a page given a stream body, which the node lists before the cut: what the kid is, a stream, is the
+        // kid's own fault, located at it, whatever the cut left of the array.
+        var file = PdfTemplate.Build(PdfTemplate.Sound
+            .Replace("<< /Type /Pages /Kids [3 0 R] /Count 1 >>", "<< /Type /Pages /Count 1 /Kids [3 0 R]" + new string(' ', 200) + ">>", StringComparison.Ordinal)
+            .Replace(
+                "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << >> >>",
+                "<< /Type /Page /Parent 2 0 R /Length 0 >>\nstream\n\nendstream",
+                StringComparison.Ordinal));
+
+        using var document = PdfDocument.Open(file, CutAt(128));
+
+        var finding = Single(new PdfValidator().Validate(document), PdfValidationRuleIds.PageTreeKidInvalid);
+        finding.Location.Object.Should().Be(new PdfObjectId(3));
+        finding.Message.Should().Be(
+            "The kid at index 0 of page tree node 2 names object 3, a stream rather than a dictionary: the reader reads the stream's dictionary in its place.");
     }
 
     [Fact]
@@ -1290,6 +1464,134 @@ public class PageTreeRuleTests
     }
 
     [Fact]
+    public void A_tree_a_caller_nested_deeper_than_the_stack_names_its_deepest_page_by_its_path()
+    {
+        // A caller sets the catalog's /Pages to 50,000 nodes, each written in the /Kids of the one above, over a page without
+        // a media box. No file nests values so deep in one object, which the parser bounds; a value a caller built nests as
+        // deep as it was built. The page's path, written for its finding, took a call for each node above it, and a stack of
+        // 1 MB overflowed past some 6,500 nodes, which nothing catches (#168). It is written in a loop, whatever its depth.
+        // The test runs on the suite's large stack, 1.5 MB, which a path written a call a node overflowed at 10,000 nodes,
+        // and at 30,000 once its code was compiled in full. The kids written in the array fill the report before the page's
+        // finding: the media box rule alone keeps it.
+        const int Depth = 50_000;
+        using var document = PdfDocument.Open(PdfTemplate.Build(PdfTemplate.Sound));
+        document.Catalog!.Set(PdfName.Pages, NestedNodes(Depth));
+        var mediaBox = new PdfValidatorOptions
+        {
+            Profile = new ValidationProfile("media box", 1, [new PageTreeMediaBoxInvalidRule()]),
+        };
+
+        var report = Stacks.Run(Stacks.Large, () => new PdfValidator().Validate(document));
+        var mediaBoxReport = Stacks.Run(Stacks.Large, () => new PdfValidator(mediaBox).Validate(document));
+
+        report.WarningCount.Should().Be(
+            Depth + 3,
+            "each node's kid is written in the array, the nodes lack /Parent, and the page lacks a media box and resources");
+        Single(mediaBoxReport, PdfValidationRuleIds.PageTreeMediaBoxInvalid).Should().Match<PdfValidationFinding>(finding =>
+            finding.Message ==
+                "The page object under /Pages/Kids[0]/Kids (99993 steps) /Kids[0]/Kids[0] of object 1 has no /MediaBox, and no page tree node above it gives one: the page's size is unknown." &&
+            finding.Location == PdfValidationLocation.OnPage(0, new PdfObjectId(1)));
+    }
+
+    [Theory]
+    [InlineData(3, "/Pages/Kids[0]/Kids[0]/Kids[0]/Resources")]
+    [InlineData(7, "/Pages/Kids[0]/Kids (8 steps) [0]/Kids[0]/Resources")]
+    [InlineData(50_000, "/Pages/Kids[0]/Kids (99994 steps) [0]/Kids[0]/Resources")]
+    public void A_reference_to_nothing_at_the_bottom_of_a_tree_a_caller_nested_is_placed_by_its_path_however_deep(int depth, string path)
+    {
+        // The page under nodes a caller nested, each written in the /Kids of the one above, gives for its /Resources an
+        // object the file lacks. The object graph reads the catalog again to place that reference for its finding, and the
+        // search took a call for each level it went down: a stack of 1 MB overflowed some 1,600 nodes down, which nothing
+        // catches (#168). It searches in a loop, keeping the containers it goes through in an array that starts with room for
+        // eight and doubles: under three nodes the reference lies eight containers down, under seven sixteen, as many as the
+        // array then holds, and under 50,000 far deeper than any stack: at that rate, some 2,400 nodes overflow the suite's
+        // large stack, 1.5 MB, which the test runs on. The kids written in the array fill the report before the object rules:
+        // the rule is run alone.
+        using var document = PdfDocument.Open(PdfTemplate.Build(PdfTemplate.Sound));
+        var page = new PdfDictionary();
+        page.Set(PdfName.Resources, new PdfReference(new PdfObjectId(9999), document.Reader));
+        document.Catalog!.Set(PdfName.Pages, NestedNodes(depth, page));
+        var references = new PdfValidatorOptions
+        {
+            Profile = new ValidationProfile("references", 1, [new ReferenceMissingRule()]),
+        };
+
+        var report = Stacks.Run(Stacks.Large, () => new PdfValidator(references).Validate(document));
+
+        Single(report, PdfValidationRuleIds.ObjectReferenceMissing).Should().Match<PdfValidationFinding>(finding =>
+            finding.Message == $"Object 1 refers to object 9999 0 under {path}, which the file lacks: the reference reads as null." &&
+            finding.Location == PdfValidationLocation.OfObject(new PdfObjectId(1)));
+    }
+
+    [Fact]
+    public void A_reference_to_nothing_in_a_stream_a_caller_wrote_in_a_page_is_placed_by_its_path()
+    {
+        // A stream read from a file is an object of its own, whose dictionary a search enters with its path empty; one a
+        // caller wrote in a page lies under the page's path, which the search keeps as it enters the stream's dictionary.
+        using var document = PdfDocument.Open(PdfTemplate.Build(PdfTemplate.Sound));
+        var dictionary = new PdfDictionary();
+        dictionary.Set(PdfName.Get("DecodeParms"), new PdfReference(new PdfObjectId(9999), document.Reader));
+        var page = new PdfDictionary();
+        page.Set(PdfName.Contents, new PdfStream(dictionary, PdfStreamData.FromMemory(ReadOnlyMemory<byte>.Empty)));
+        document.Catalog!.Set(PdfName.Pages, NestedNodes(1, page));
+
+        Single(new PdfValidator().Validate(document), PdfValidationRuleIds.ObjectReferenceMissing).Message.Should().Be(
+            "Object 1 refers to object 9999 0 under /Pages/Kids[0]/Contents/DecodeParms, which the file lacks: the reference reads as null.");
+    }
+
+    [Fact]
+    public void A_name_with_a_null_character_at_the_bottom_of_a_tree_a_caller_nested_deeper_than_the_stack_is_placed_by_its_path()
+    {
+        // The page under 50,000 nodes a caller nested lists among its procedure sets a name holding a null character. The
+        // search that places it for its finding took a call for each level it went down, as the one that places a reference
+        // to nothing did, and overflowed a stack of 1 MB as soon (#168). It searches in a loop, whatever the depth: the test
+        // runs on the suite's large stack, 1.5 MB.
+        const int Depth = 50_000;
+        using var document = PdfDocument.Open(PdfTemplate.Build(PdfTemplate.Sound));
+        var resources = new PdfDictionary();
+        resources.Set(PdfName.Get("ProcSet"), new PdfArray([PdfName.Get("PDF"), PdfName.Get("Text\0")]));
+        var page = new PdfDictionary();
+        page.Set(PdfName.Resources, resources);
+        document.Catalog!.Set(PdfName.Pages, NestedNodes(Depth, page));
+        var names = new PdfValidatorOptions
+        {
+            Profile = new ValidationProfile("names", 1, [new NameNullCharacterRule()]),
+        };
+
+        var report = Stacks.Run(Stacks.Large, () => new PdfValidator(names).Validate(document));
+
+        Single(report, PdfValidationRuleIds.ObjectNameNullCharacter).Should().Match<PdfValidationFinding>(finding =>
+            finding.Message ==
+                "Object 1 holds the name /Text#00, under /Pages/Kids[0]/Kids (99996 steps) [0]/Resources/ProcSet[1], and a name cannot contain a null character." &&
+            finding.Location == PdfValidationLocation.OfObject(new PdfObjectId(1)));
+    }
+
+    [Fact]
+    public void Writing_the_path_of_a_page_a_caller_nested_deep_allocates_in_proportion_to_its_depth()
+    {
+        // Each node's path was its own node's, copied, with its step added: a path of n nodes copied n²/2 steps, 8 MB for
+        // the path of a page under 1,000 nodes and 128 MB under 4,000 (#168). The indexes of the kids on the way are taken up
+        // the nodes, then written into one builder: what one more node costs the walk is its frame, and its step in the paths
+        // its findings write.
+        const int Few = 1_000;
+        const int Many = 4_000;
+        using var few = PdfDocument.Open(PdfTemplate.Build(PdfTemplate.Sound));
+        using var many = PdfDocument.Open(PdfTemplate.Build(PdfTemplate.Sound));
+        few.Catalog!.Set(PdfName.Pages, NestedNodes(Few));
+        many.Catalog!.Set(PdfName.Pages, NestedNodes(Many));
+
+        var fewAllocated = Allocations.Least(() => PageTreeWalk.Run(few, room: 1), out var fewWalk);
+        var manyAllocated = Allocations.Least(() => PageTreeWalk.Run(many, room: 1), out var manyWalk);
+
+        fewWalk.MediaBoxFaults.Should().ContainSingle().Which.Message.Should().StartWith(
+            "The page object under /Pages/Kids[0]/Kids (1993 steps) /Kids[0]/Kids[0] of object 1 has no /MediaBox");
+        manyWalk.MediaBoxFaults.Should().ContainSingle().Which.Message.Should().StartWith(
+            "The page object under /Pages/Kids[0]/Kids (7993 steps) /Kids[0]/Kids[0] of object 1 has no /MediaBox");
+        ((manyAllocated - fewAllocated) / (Many - Few)).Should().BeLessThan(
+            512, "what one more node costs is its frame, and its step in each path written");
+    }
+
+    [Fact]
     public void Nodes_listed_twice_at_every_level_are_counted_without_being_walked_again()
     {
         // Each node lists the one below it twice: 2^40 pages as qpdf would count them, and forty nodes to walk.
@@ -1399,6 +1701,35 @@ public class PageTreeRuleTests
             "Page tree node 3 gives /Kids 7 0 R, an array of kids above it: the tree loops back on itself there, and what it should have listed is unknown.");
         Single(report, PdfValidationRuleIds.PageTreeNodeRepeated).Message.Should().Be(
             "The kid at index 0 of page tree node 5 names object 3, which the tree already lists: what lies below it is counted again, how many pages that is being unknown.");
+    }
+
+    [Theory]
+    [InlineData("above it", PdfValidationRuleIds.PageTreeCycle)]
+    [InlineData("walked already", PdfValidationRuleIds.PageTreeNodeRepeated)]
+    public void A_node_a_limit_cut_is_not_judged_for_the_array_of_kids_it_gives(string array, string rule)
+    {
+        // Node 3's array of kids, 7, is above it, or walked already under node 4: a limit cuts node 3 after its /Kids, and
+        // what it gives may not be all it is.
+        var padded = "<< /Type /Pages /Parent 2 0 R /Kids 7 0 R /Count 0" + new string(' ', 200) + ">>";
+        var file = array == "above it"
+            ? Objects(
+                (2, "<< /Type /Pages /Kids 7 0 R /Count 0 /MediaBox [0 0 1 1] /Resources << >> >>"),
+                (3, padded),
+                (7, "[3 0 R]"))
+            : Objects(
+                (2, "<< /Type /Pages /Kids [4 0 R 3 0 R] /Count 2 /MediaBox [0 0 1 1] /Resources << >> >>"),
+                (3, padded),
+                (4, "<< /Type /Pages /Parent 2 0 R /Kids 7 0 R /Count 1 >>"),
+                (5, "<< /Type /Page /Parent 4 0 R >>"),
+                (7, "[5 0 R]"));
+
+        using var whole = PdfDocument.Open(file);
+        new PdfValidator().Validate(whole).Contains(rule).Should().BeTrue("read whole, the node gives the array again");
+
+        using var document = PdfDocument.Open(file, CutAt(128));
+
+        var report = new PdfValidator().Validate(document);
+        report.Contains(rule).Should().BeFalse(string.Join("; ", report.Findings));
     }
 
     [Theory]
@@ -1611,6 +1942,36 @@ public class PageTreeRuleTests
                 objects.Add((node, string.Create(CultureInfo.InvariantCulture, $"<< /Type /Pages /Parent {parent} 0 R /Kids [{kids}] /Count {1L << (last - node)} >>")));
             }
         }
+    }
+
+    [Theory]
+    [InlineData("null", "is null")]
+    [InlineData("99 0 R", "names object 99, which the file lacks")]
+    [InlineData("42", "is a number, neither a page nor a node")]
+    public void A_kid_that_is_no_page_listed_past_more_pages_than_a_long_holds_is_located_at_its_node_alone(string kid, string what)
+    {
+        // #167's tree, its last kid no page: node 10 lists 2^62 pages, which the root names twice, 2^63 pages past what a long
+        // holds, and node 100's 2^31 pages follow them. The count wrapped below zero, and the kid, standing for a page at an
+        // index whose low half is int.MinValue, threw out of the validator once located. The count stays at its greatest,
+        // and the kid, past every page index, is located at its node alone.
+        var objects = new List<(int Number, string Body)>
+        {
+            (2, $"<< /Type /Pages /Kids [10 0 R 10 0 R 100 0 R {kid}] /Count 4 /MediaBox [0 0 1 1] /Resources << >> >>"),
+            (4, "<< /Type /Page /Parent 72 0 R >>"),
+        };
+        Doubling(objects, 10, 72, page: 4);
+        Doubling(objects, 100, 131, page: 4);
+
+        using var document = PdfDocument.Open(Objects([.. objects]));
+        var report = new PdfValidator().Validate(document);
+
+        report.Findings.Where(finding => finding.RuleId == PdfValidationRuleIds.PageTreeNodeRepeated).Should().HaveCount(
+            1 + 62 + 31 + 1, "the root's second kid, a node of each tower naming the next again, and node 131 naming page 4 again");
+        var invalid = report.Findings.Where(finding => finding.RuleId != PdfValidationRuleIds.PageTreeNodeRepeated).Should().ContainSingle().Which;
+        invalid.RuleId.Should().Be(PdfValidationRuleIds.PageTreeKidInvalid);
+        invalid.Location.Should().Be(PdfValidationLocation.OfObject(new PdfObjectId(2)));
+        invalid.Message.Should().Be($"The kid at index 3 of page tree node 2 {what}: it counts as a page with nothing on it.");
+        PageTreeWalk.Run(document).PageCount.Should().Be(int.MaxValue);
     }
 
     [Fact]
@@ -1853,6 +2214,8 @@ public class PageTreeRuleTests
     [InlineData("[9 0 R 0 /Wide 1]", "The /MediaBox of object 3 holds a name among its corners, not a rectangle of four numbers.")]
     [InlineData("[0 9 0 R 0 1]", "The /MediaBox of object 3, [0 9 0 R 0 1], encloses no area.")]
     [InlineData("[0 0 9 0 R 1]", null)]
+    [InlineData("[9 0 R 0 0 1]", null)]
+    [InlineData("[0 9 0 R 1 0]", null)]
     public void The_corners_of_a_media_box_no_cut_touches_are_judged(string box, string? message)
     {
         // T3-04: a corner of the page's /MediaBox names object 9, which runs past the limit: it is unknown, and the corners
@@ -2116,6 +2479,34 @@ public class PageTreeRuleTests
             "The trailer refers to object 8 0 under /Info, which the file lacks: the reference reads as null.");
     }
 
+    [Theory]
+    [InlineData("/Prev")]
+    [InlineData("/XRefStm")]
+    public void A_reference_to_nothing_in_a_trailer_past_a_key_naming_a_section_is_the_one_described(string key)
+    {
+        // The trailer's own /Prev and /XRefStm name sections, not objects: the walk follows no reference written there, and
+        // the search that places the trailer's finding passes over it as well, to the reference the walk counted.
+        var report = Validate(PdfTemplate.SoundWith(
+            "<< /Size 4 /Root 1 0 R >>",
+            $"<< /Size 4 /Root 1 0 R {key} 8 0 R /Info 8 0 R >>"));
+
+        Single(report, PdfValidationRuleIds.ObjectReferenceMissing).Message.Should().Be(
+            "The trailer refers to object 8 0 under /Info, which the file lacks: the reference reads as null.");
+    }
+
+    [Fact]
+    public void A_name_with_a_null_character_under_a_catalog_s_own_prev_is_the_one_described()
+    {
+        // Only the trailer's own /Prev and /XRefStm name sections: the catalog's /Prev is a value as any other, which the
+        // walk counts a name with a null character in and the search that places it goes into.
+        var report = Validate(PdfTemplate.SoundWith(
+            "<< /Type /Catalog /Pages 2 0 R >>",
+            "<< /Type /Catalog /Pages 2 0 R /Prev /A#00B >>"));
+
+        Single(report, PdfValidationRuleIds.ObjectNameNullCharacter).Message.Should().Be(
+            "Object 1 holds the name /A#00B, under /Prev, and a name cannot contain a null character.");
+    }
+
     [Fact]
     public void A_root_written_in_a_catalog_a_trailer_cut_holds_is_judged_on_nothing()
     {
@@ -2187,6 +2578,28 @@ public class PageTreeRuleTests
 
         file.Table(size, rows, string.Create(CultureInfo.InvariantCulture, $"/Size {size} /Root 1 0 R"));
         return file.Bytes;
+    }
+
+    /// <summary>
+    /// Builds <paramref name="depth"/> nodes, each written in the <c>/Kids</c> of the one above and counting one page, over
+    /// <paramref name="page"/> made a page, or a page without a media box or resources: a tree only a caller can nest so
+    /// deep in one object.
+    /// </summary>
+    private static PdfDictionary NestedNodes(int depth, PdfDictionary? page = null)
+    {
+        var tree = page ?? new PdfDictionary();
+        tree.Set(PdfName.Type, PdfName.Page);
+
+        for (var level = 0; level < depth; level++)
+        {
+            var node = new PdfDictionary();
+            node.Set(PdfName.Type, PdfName.Pages);
+            node.Set(PdfName.Kids, new PdfArray([tree]));
+            node.Set(PdfName.Count, PdfInteger.Create(1));
+            tree = node;
+        }
+
+        return tree;
     }
 
     private static byte[] TreeWith(string text, string replacement)

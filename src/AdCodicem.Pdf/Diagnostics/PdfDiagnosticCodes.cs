@@ -133,7 +133,10 @@ public static class PdfDiagnosticCodes
     /// </summary>
     public const string SyntaxTruncatedObject = "syntax.truncated-object";
 
-    /// <summary>Nesting exceeded the depth the reader is willing to follow.</summary>
+    /// <summary>
+    /// Nesting exceeded the depth the reader follows, or the stack the thread leaves the reader, or the validator's walk
+    /// of what an object stream's decoding reads: what lies past it was skipped, or read as null.
+    /// </summary>
     public const string SyntaxDepthExceeded = "syntax.depth-exceeded";
 
     /// <summary>

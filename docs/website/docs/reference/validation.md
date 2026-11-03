@@ -41,9 +41,26 @@ Before its first rule, `Validate` has the reader rebuild the document's index wh
 index is incomplete through damage, or an entry places its object neither at its offset nor near it —, so that a
 document gives the same report whatever was read before validating it. A limit that rebuild reaches throws once, in the
 first validation, the index rebuilt whole; a later validation reads that index, and throws only where its rules read
-what the limit cut or left out. A document you changed between two validations is validated as changed, and a file
-crafted for it can still make where a damaged stream's data ends depend on which stream was read first
-([#138](https://github.com/AdCodicem/AdCodicem.Pdf/issues/138)).
+what the limit cut or left out. A document you changed between two validations is validated as changed. A file
+crafted for it can still make the report depend on what was read before, in three ways:
+
+- Where a damaged stream's data ends can depend on which stream was read first
+  ([#138](https://github.com/AdCodicem/AdCodicem.Pdf/issues/138)).
+- A load past the reader's deepest nesting is cut, or served from the reader's cache when a read before kept the
+  object, so that what was read before decides what it gives
+  ([#163](https://github.com/AdCodicem/AdCodicem.Pdf/issues/163)): a stream first decoded there keeps what the cut
+  gave, and a `/Length` chain a cached link carries past the cut can go on into a stream the reader still holds. The
+  read that first decoded the stream that deep may be one of the validation's own, so that validating a document you
+  have not read can read what the cut left, and reading it first can spare it, or the reverse. On a thread with little
+  stack, the reader's stack probe cuts sooner, even with nothing read first, and so does the probe the validator makes
+  before each level of its walk of the object streams, which reads as null what it has no room to load and is reported
+  as `syntax.depth-exceeded` ([#312](https://github.com/AdCodicem/AdCodicem.Pdf/issues/312)): the report can also depend
+  on the thread.
+- A value an object stream's decoding reads — its `/Type`, `/N`, `/First`, `/Filter` or `/DecodeParms` — held by a
+  stream that lies on a loop, or any such value of a stream on a loop itself, depends on which stream of the loop was
+  decoded first, and so do the verdicts of `xref.object-stream-broken`, `xref.entry-broken` and `xref.entry-shifted`
+  ([#313](https://github.com/AdCodicem/AdCodicem.Pdf/issues/313)).
+
 [Validation](../concepts/validation.md#reading-limits-and-exceptions) explains why.
 
 ## `PdfValidatorOptions`
@@ -53,7 +70,11 @@ An immutable record.
 | Property | Default | What it is |
 |---|---|---|
 | `Profile` | `ValidationProfile.Structural` | The profile documents are validated against; null is refused with an `ArgumentNullException` |
-| `FindingCapacity` | 1,000 | The most findings a report keeps; beyond it, findings are counted and not kept. Zero keeps none and still counts them; a negative value is refused with an `ArgumentOutOfRangeException` |
+| `FindingCapacity` | 1,000 | The most findings a report keeps; beyond it, findings are counted, not kept, and the walks that find them do not write them, so that the findings validation holds follow the capacity rather than the file. Zero keeps none and still counts them; a negative value is refused with an `ArgumentOutOfRangeException` |
+
+The report is the same whatever the capacity, but for how many findings it keeps: the first ones, in the order a
+report of every finding would give them, with every finding counted
+([#168](https://github.com/AdCodicem/AdCodicem.Pdf/issues/168)).
 
 ## `ValidationProfile`
 
@@ -76,8 +97,8 @@ your own.
 |---|---|
 | `ProfileName`, `ProfileVersion` | The profile the document was validated against |
 | `Findings` | The findings kept, in the order they were found — rules run in the profile's order —, so two validations of the same document give the same report |
-| `ErrorCount`, `WarningCount`, `InformationCount` | Every finding, by severity, kept or not |
-| `SuppressedCount` | How many findings were counted but not kept, past `FindingCapacity` |
+| `ErrorCount`, `WarningCount`, `InformationCount` | Every finding, by severity, kept or not; a count stays at 2,147,483,647, the greatest an `int` holds, past it, which billions of faulty values reach: a file of tens of kilobytes whose object streams decode to gigabytes can give them |
+| `SuppressedCount` | How many findings were counted but not kept, past `FindingCapacity`; it is counted apart, and it too stays at 2,147,483,647 past it, however many findings were kept |
 | `HasErrors`, `HasWarnings` | Whether any finding is an error, or a warning |
 | `Contains(ruleId)` | Whether a rule reported anything |
 | `ToString()` | `profile version: errors n, warnings n, information n` |

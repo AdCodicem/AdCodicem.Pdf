@@ -58,10 +58,12 @@ internal sealed class CheckedInPartRule : IValidationRule
                 remedy: null);
         }
 
+        // A section's finding is written while the report has room for it, and counted past it (#168): there are as many as
+        // the chain has sections.
         foreach (var section in structure.Sections)
         {
             // The section the index filled in is said so above, once.
-            if (section.CutByLimit && section.Offset != indexFullAt)
+            if (section.CutByLimit && section.Offset != indexFullAt && context.HasRoomFor(this))
             {
                 context.Report(
                     this,
@@ -74,7 +76,7 @@ internal sealed class CheckedInPartRule : IValidationRule
 
             // A hybrid file's /XRefStm names the cross-reference stream of the section's own revision, which a /Prev may
             // not follow: what the guard hides is that stream, and whatever is older.
-            if (section.ChainHiddenByGuard is { } hidden)
+            if (section.ChainHiddenByGuard is { } hidden && context.HasRoomFor(this))
             {
                 context.Report(
                     this,
@@ -90,9 +92,14 @@ internal sealed class CheckedInPartRule : IValidationRule
             }
         }
 
-        foreach (var finding in context.Probe.NotChecked)
+        var findings = context.Probe.NotChecked;
+
+        foreach (var finding in findings)
         {
             context.Report(this, finding.Location, finding.Message, remedy: null);
         }
+
+        // What the analysis counted past the room the report had when it was made, which it did not write (#168).
+        context.Count(this, findings.Unkept);
     }
 }

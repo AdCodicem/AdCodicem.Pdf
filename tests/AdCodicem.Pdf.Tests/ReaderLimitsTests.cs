@@ -439,6 +439,35 @@ public class ReaderLimitsTests
     }
 
     [Fact]
+    public void Opening_a_file_with_no_index_throws_the_guard_its_catalog_reaches_once_the_rebuilt_index_holds_it()
+    {
+        // The file has no index, and opening it rebuilds one. Object 1, the catalog the trailer names, is the one member of
+        // object stream 10, and runs past the object bound; 13 is object stream 12's. The rebuild reads the file's /Root
+        // through the index it rebuilt, the only step that reaches a guard here: the guard is held, as one any step of a
+        // rebuild reaches is, and thrown once the index is whole, the object streams expanded — the message names the byte
+        // of 10's decoded data the catalog starts at. Read without throwing, the same file opens, the guard reported there
+        // and 13 found.
+        var catalog = "<< /Type /Catalog /Pages 2 0 R /Pad (" + new string('x', 5000) + ") >>";
+        var file = new TestPdfBuilder()
+            .WithObject(2, Pages)
+            .Stream(10, "/Type /ObjStm /N 1 /First 4", "1 0 " + catalog)
+            .Stream(12, "/Type /ObjStm /N 1 /First 5", "13 0 (found)")
+            .BuildClassic(rootNumber: 1, includeXRef: false);
+        var limits = PdfReaderLimits.Default with { MaxObjectLength = 4096 };
+
+        var opening = () => PdfDocument.Open(file, new PdfReaderOptions { Limits = limits, ThrowOnLimit = true });
+
+        var thrown = opening.Should().Throw<PdfLimitExceededException>().Which;
+        thrown.LimitName.Should().Be(nameof(PdfReaderLimits.MaxObjectLength));
+        thrown.Message.Should().StartWith("Object 1, at byte 4 of object stream 10's decoded data, runs past 4 KB;");
+        using var tolerant = PdfDocument.Open(file, new PdfReaderOptions { Limits = limits });
+        tolerant.WasRepaired.Should().BeTrue();
+        tolerant.GetObject(new PdfObjectId(13)).AsText().Should().Be("found");
+        tolerant.Diagnostics.Should().ContainSingle(diagnostic => diagnostic.Code == PdfDiagnosticCodes.LimitObject)
+            .Which.Message.Should().StartWith("Object 1, at byte 4 of object stream 10's decoded data, runs past 4 KB;");
+    }
+
+    [Fact]
     public void A_rebuild_indexes_object_numbers_up_to_the_entry_guard_and_reports_the_first_it_had_no_room_for()
     {
         // #183, #158: a file with no index, rebuilt by scanning, of a hundred objects under a bound of fifty. The first fifty

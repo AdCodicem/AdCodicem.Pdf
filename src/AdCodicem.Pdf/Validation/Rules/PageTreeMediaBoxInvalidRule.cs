@@ -22,9 +22,14 @@ internal sealed class PageTreeMediaBoxInvalidRule : IValidationRule
     /// <inheritdoc/>
     public void Check(ValidationContext context)
     {
-        foreach (var finding in context.PageTree.MediaBoxFaults)
+        var findings = context.PageTree.MediaBoxFaults;
+
+        foreach (var finding in findings)
         {
             context.Report(this, finding.Location, finding.Message, "Give the page, or a node above it, a /MediaBox of four numbers enclosing the page's area.");
         }
+
+        // What the analysis counted past the room the report had when it was made, which it did not write (#168).
+        context.Count(this, findings.Unkept);
     }
 }

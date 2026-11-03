@@ -63,13 +63,27 @@ internal sealed class PdfXRefTable : IEnumerable<KeyValuePair<int, XRefEntry>>
     private int _version;
 
     /// <summary>
+    /// How many enumerations of <see cref="Numbers"/> under way read <see cref="_numbers"/> as it is now: while one is, the
+    /// table cleared records its numbers in a new array rather than over those it reads (#167). Any array that takes its
+    /// place is lent to none.
+    /// </summary>
+    private int _numbersLent;
+
+    /// <summary>
     /// The offsets of the entries in use written directly, sorted the first time <see cref="FirstOffsetAfter"/> is asked
     /// and kept up to date from then on; null until then, so that an index nothing searches costs nothing more.
     /// </summary>
     private SortedOffsets? _offsets;
 
     /// <summary>Gets the trailer, merged across every section of the chain.</summary>
-    public PdfDictionary Trailer { get; } = new();
+    /// <remarks>
+    /// What the reader merges into it or sets in it once the document is open, it does in a copy made first
+    /// (<see cref="RenewTrailer"/>), which takes its place as a rebuild, or an attempt to finish one, begins, and takes in
+    /// what the rebuild merges and sets while it still reads the file. A trailer taken before a rebuild, or after it, is
+    /// therefore never changed by the reader (#167); one a caller's own <see cref="PdfFileSource"/> takes from inside the
+    /// rebuilding read is that copy, and may still gain the trailers and the <c>/Root</c> the rebuild merges and sets after.
+    /// </remarks>
+    public PdfDictionary Trailer { get; private set; } = new();
 
     /// <summary>Gets the number of indexed objects.</summary>
     public int Count => _count;
@@ -86,14 +100,38 @@ internal sealed class PdfXRefTable : IEnumerable<KeyValuePair<int, XRefEntry>>
     /// <summary>Gets how many numbers the map holds room for, past the slots.</summary>
     internal int MapCapacity => _beyond?.EnsureCapacity(0) ?? 0;
 
-    /// <summary>Gets the indexed object numbers, in the order the table first recorded them.</summary>
+    /// <summary>
+    /// Gets the indexed object numbers, in the order the table first recorded them: those it held when the enumeration
+    /// began, at its first step, whatever is added or cleared meanwhile (#167).
+    /// </summary>
+    /// <remarks>
+    /// Nothing is copied. A number added meanwhile is written past those the enumeration began with, or into a larger
+    /// array once the room is full; and a table cleared while an enumeration is under way records its numbers from then
+    /// on in an array of its own (<see cref="Clear"/>). An enumeration left before its end and never disposed counts as
+    /// under way until the next clearing.
+    /// </remarks>
     public IEnumerable<int> Numbers
     {
         get
         {
-            foreach (var (number, _) in this)
+            var numbers = _numbers;
+            var count = _count;
+            _numbersLent++;
+
+            try
             {
-                yield return number;
+                for (var at = 0; at < count; at++)
+                {
+                    yield return numbers[at];
+                }
+            }
+            finally
+            {
+                // An array the table has stopped recording into is not one it counts as lent.
+                if (ReferenceEquals(numbers, _numbers))
+                {
+                    _numbersLent--;
+                }
             }
         }
     }
@@ -173,8 +211,19 @@ internal sealed class PdfXRefTable : IEnumerable<KeyValuePair<int, XRefEntry>>
     }
 
     /// <summary>Removes every entry.</summary>
+    /// <remarks>
+    /// The numbers an enumeration of <see cref="Numbers"/> under way reads are left where they are: the table then records
+    /// its numbers from now on in a new array, as long as the one it leaves, 4 bytes an entry of room (#167). Otherwise it
+    /// keeps its arrays, and allocates nothing.
+    /// </remarks>
     public void Clear()
     {
+        if (_numbersLent > 0)
+        {
+            _numbers = new int[_numbers.Length];
+            _numbersLent = 0;
+        }
+
         Array.Clear(_slots);
         _beyond = null;
         _count = 0;
@@ -183,8 +232,13 @@ internal sealed class PdfXRefTable : IEnumerable<KeyValuePair<int, XRefEntry>>
     }
 
     /// <summary>Removes every entry, and lets go of the room they took, for a table nothing will read again.</summary>
+    /// <remarks>
+    /// An enumeration of <see cref="Numbers"/> under way keeps reading the array it began with, which the table lets go of
+    /// rather than clear: none is made for it.
+    /// </remarks>
     public void Release()
     {
+        _numbersLent = 0;
         Clear();
         _numbers = [];
         _entries = [];
@@ -297,10 +351,15 @@ internal sealed class PdfXRefTable : IEnumerable<KeyValuePair<int, XRefEntry>>
     }
 
     /// <summary>Makes room for <paramref name="capacity"/> entries, keeping those held.</summary>
+    /// <remarks>
+    /// The numbers go into a new array: one an enumeration of <see cref="Numbers"/> under way reads is left as it is, and
+    /// the new one is lent to none.
+    /// </remarks>
     private void Resize(int capacity)
     {
         Array.Resize(ref _numbers, capacity);
         Array.Resize(ref _entries, capacity);
+        _numbersLent = 0;
     }
 
     /// <summary>
@@ -391,6 +450,27 @@ internal sealed class PdfXRefTable : IEnumerable<KeyValuePair<int, XRefEntry>>
             _slots = _slots.AsSpan(0, highest + 1).ToArray(),
             _beyond = _beyond is null ? null : new Dictionary<int, int>(_beyond, SeededComparer.Instance),
         };
+    }
+
+    /// <summary>
+    /// Replaces the trailer by a copy of it, holding the same keys, values and order, which what the reader merges or sets
+    /// from then on goes into: a trailer taken before is left as it was (#167).
+    /// </summary>
+    /// <remarks>
+    /// A rebuild calls it as it begins, and again as each attempt to finish it begins when loads in flight left it
+    /// unfinished, before either changes the trailer: each allocates a copy the size of what the reader holds already,
+    /// so that no bound is added (ADR 34).
+    /// </remarks>
+    public void RenewTrailer()
+    {
+        var renewed = new PdfDictionary(Trailer.Count);
+
+        foreach (var (key, value) in Trailer)
+        {
+            renewed.TryAdd(key, value);
+        }
+
+        Trailer = renewed;
     }
 
     /// <summary>Copies trailer keys that are not already known.</summary>

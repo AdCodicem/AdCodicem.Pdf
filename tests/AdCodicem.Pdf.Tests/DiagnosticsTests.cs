@@ -1,3 +1,4 @@
+using System.Collections;
 using System.Text;
 using AdCodicem.Pdf.Diagnostics;
 using AdCodicem.Pdf.Documents;
@@ -296,6 +297,141 @@ public class DiagnosticsTests
 
         ((IEnumerable<PdfDiagnostic>)diagnostics).Select(d => d.Code).Should().Equal("first", "second");
         ((System.Collections.IEnumerable)diagnostics).Cast<PdfDiagnostic>().Select(d => d.Code).Should().Equal("first", "second");
+    }
+
+    [Fact]
+    public void An_enumeration_gives_the_entries_recorded_when_it_began_and_the_next_one_those_recorded_since()
+    {
+        // A read the enumeration goes on through records into the document's diagnostics (#167): what it records is counted
+        // at once, and given by the next enumeration, through every interface, and the enumeration never throws for it.
+        var diagnostics = new PdfDiagnostics();
+        diagnostics.Warn("first", "One.");
+        diagnostics.Repair("second", "Two.");
+        var enumerated = new List<string>();
+
+        foreach (var entry in diagnostics)
+        {
+            enumerated.Add(entry.Code);
+            diagnostics.Warn("during", "Recorded while it is enumerated.");
+        }
+
+        var generic = ((IEnumerable<PdfDiagnostic>)diagnostics).GetEnumerator();
+        var nonGeneric = ((System.Collections.IEnumerable)diagnostics).GetEnumerator();
+        diagnostics.Warn("after", "Recorded once both began.");
+
+        enumerated.Should().Equal("first", "second");
+        diagnostics.Count.Should().Be(5);
+        diagnostics.Select(d => d.Code).Should().Equal("first", "second", "during", "during", "after");
+        Drain(generic).Should().Equal("first", "second", "during", "during");
+        Drain(nonGeneric).Should().Equal("first", "second", "during", "during");
+
+        static List<string> Drain(System.Collections.IEnumerator enumerator)
+        {
+            var codes = new List<string>();
+
+            while (enumerator.MoveNext())
+            {
+                codes.Add(((PdfDiagnostic)enumerator.Current).Code);
+            }
+
+            return codes;
+        }
+    }
+
+    [Fact]
+    public void An_enumeration_reset_starts_again_over_the_entries_it_began_with()
+    {
+        var diagnostics = new PdfDiagnostics();
+        diagnostics.Warn("first", "One.");
+        using var enumerator = diagnostics.GetEnumerator();
+
+        enumerator.MoveNext().Should().BeTrue();
+        diagnostics.Warn("second", "Recorded once it began.");
+        enumerator.MoveNext().Should().BeFalse();
+        enumerator.Reset();
+
+        enumerator.MoveNext().Should().BeTrue();
+        enumerator.Current.Code.Should().Be("first");
+        enumerator.MoveNext().Should().BeFalse();
+        enumerator.MoveNext().Should().BeFalse();
+    }
+
+    [Fact]
+    public void An_enumeration_ends_with_the_entries_a_roll_back_left_when_fewer_than_it_began_with()
+    {
+        // Within one call, a reading may withdraw what it recorded and record again (a rebuild finished again from its scan
+        // does), which only a caller's own source, enumerating from inside a read, can see: the enumeration ends with the
+        // entries left, reads none past them, and stays ended once the record grows back to the count it began with.
+        var diagnostics = new PdfDiagnostics();
+        diagnostics.Warn("kept", "Recorded before the mark.");
+        var mark = diagnostics.GetMark();
+        diagnostics.Warn("withdrawn", "Recorded after the mark.");
+        diagnostics.Warn("withdrawn too", "Recorded after the mark.");
+        var enumerator = diagnostics.GetEnumerator();
+
+        enumerator.MoveNext().Should().BeTrue();
+        diagnostics.RollBack(mark);
+
+        enumerator.Current.Code.Should().Be("kept");
+        enumerator.MoveNext().Should().BeFalse();
+        diagnostics.Warn("recorded again", "Recorded after the roll back.");
+        diagnostics.Warn("recorded again too", "Recorded after the roll back.");
+        enumerator.MoveNext().Should().BeFalse();
+        enumerator.MoveNext().Should().BeFalse();
+    }
+
+    [Fact]
+    public void An_enumeration_stepped_across_a_roll_back_keeps_the_entry_it_stands_on_and_reads_up_to_its_count_those_recorded_again()
+    {
+        // An enumeration not yet past the entries a roll back withdraws reads, up to the count it began with, what is held at
+        // those places once the record grows again: entries recorded after it began, as the remark of MoveNext says. One
+        // standing on an entry the roll back withdraws still gives it, whatever is recorded at its place after (#167).
+        var diagnostics = new PdfDiagnostics();
+        diagnostics.Warn("kept", "Recorded before the mark.");
+        var mark = diagnostics.GetMark();
+        diagnostics.Warn("withdrawn", "Recorded after the mark.");
+        var enumerator = diagnostics.GetEnumerator();
+        var standing = diagnostics.GetEnumerator();
+
+        enumerator.MoveNext().Should().BeTrue();
+        standing.MoveNext().Should().BeTrue();
+        standing.MoveNext().Should().BeTrue();
+        diagnostics.RollBack(mark);
+        var withdrawn = standing.Current;
+        diagnostics.Warn("recorded again", "Recorded after the roll back.");
+        diagnostics.Warn("recorded again too", "Recorded after the roll back.");
+
+        withdrawn.Code.Should().Be("withdrawn");
+        standing.Current.Code.Should().Be("withdrawn");
+        ((IEnumerator)standing).Current.Should().Be(withdrawn);
+        enumerator.Current.Code.Should().Be("kept");
+        enumerator.MoveNext().Should().BeTrue();
+        enumerator.Current.Code.Should().Be("recorded again");
+        enumerator.MoveNext().Should().BeFalse();
+        enumerator.Reset();
+        enumerator.MoveNext().Should().BeTrue();
+        enumerator.Current.Code.Should().Be("kept");
+    }
+
+    [Fact]
+    public void An_enumeration_gives_the_default_entry_before_its_first_step_once_reset_and_once_it_ended()
+    {
+        var diagnostics = new PdfDiagnostics();
+        diagnostics.Warn("only", "The only entry.");
+        var enumerator = diagnostics.GetEnumerator();
+
+        var before = enumerator.Current;
+        enumerator.MoveNext().Should().BeTrue();
+        var on = enumerator.Current;
+        enumerator.Reset();
+        var reset = enumerator.Current;
+        enumerator.MoveNext().Should().BeTrue();
+        enumerator.MoveNext().Should().BeFalse();
+
+        before.Should().Be(default(PdfDiagnostic));
+        on.Code.Should().Be("only");
+        reset.Should().Be(default(PdfDiagnostic));
+        enumerator.Current.Should().Be(default(PdfDiagnostic));
     }
 
     [Fact]
