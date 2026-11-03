@@ -131,8 +131,15 @@ public class ReaderTimingTests
         // One object stream of many members, each placed by the index: the probe finds each in the header through a lookup
         // built once, and each member written as a stream by a search of those it found, not by scanning the header for
         // each — four times the members take about four times as long, where a scan would take sixteen. The probe alone is
-        // timed, the documents opened and settled before, and each probed once first; each run starts from a collected heap,
-        // so that the findings of a run before it, one for each member, are not collected inside the next.
+        // timed, the documents opened and settled before, and each probed once first; each run starts from a collected heap.
+        // The probe is given the room a validation gives it by default, 1,000 findings of each kind: it writes those and
+        // counts the rest, and still looks up and searches every member (#317). Given room for every finding, it kept one
+        // for each member, 63 MB for the large stream whose every index is wrong and 75 MB for the one whose members are
+        // written as streams, and the collections that keeping them took fell inside the large probe: four to seven, some
+        // 80 to 120 ms of pause in a probe of 180 to 390 ms, where the small probe met one. Its ratio measured 5.0 to 7.3
+        // alone and up to 10.5 under four busy loops, and went past 8 three times in CI. Given that room, the large probe
+        // meets no collection, or a single young one, and the ratio measured 2.4 to 4.7 alone and 2.1 to 5.1 under four busy
+        // loops; a scan of the header for each member still measured 13.0 to 22.5.
         const int Small = 50_000;
         const int Large = 4 * Small;
         using var small = PdfDocument.Open(Packed(Small, shape));
@@ -173,7 +180,7 @@ public class ReaderTimingTests
 
         static void Probe(PdfDocument document)
         {
-            var probe = CrossReferenceProbe.Run(document);
+            var probe = CrossReferenceProbe.Run(document, PdfValidatorOptions.Default.FindingCapacity);
             (probe.Broken.Total + probe.Shifted.Total + probe.BrokenObjectStreams.Count).Should().BePositive();
         }
     }
