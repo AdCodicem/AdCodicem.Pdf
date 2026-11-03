@@ -225,6 +225,107 @@ public class DocumentReaderTests
             .Should().BeEquivalentTo(Enumerable.Range(1, 4).Select(number => $"Object {number} was found {found} where the index said."));
     }
 
+    [Theory]
+    [InlineData(100, 500, true)]
+    [InlineData(100, 600, false)]
+    [InlineData(400, 500, true)]
+    [InlineData(400, 505, true)]
+    [InlineData(400, 506, false)]
+    [InlineData(400, 600, false)]
+    [InlineData(1400, 500, true)]
+    [InlineData(1400, 505, true)]
+    [InlineData(1400, 506, false)]
+    [InlineData(1400, 600, false)]
+    public void An_object_is_found_near_its_entry_only_where_its_header_ends_within_512_bytes_after_it_however_near_the_file_s_start(
+        long row, long distance, bool nearby)
+    {
+        // The page's entry gives an offset before its header, "3 0 obj", in the file's first 512 bytes or past them. The search
+        // near the entry finds the header where it lies whole within 512 bytes of the offset, its obj keyword ending 512 bytes
+        // after it at most; otherwise the index is rebuilt, which finds it. A window clamped at the file's start once reached up
+        // to 1,024 bytes past the offset: one shift was found near the start, and rebuilt past it (#197).
+        using var document = PdfDocument.Open(NearbyFiles.PageNamedAt(row, row + distance));
+
+        document.GetObject(new PdfObjectId(3)).Should().BeOfType<PdfDictionary>().Which.IsOfType(PdfName.Page).Should().BeTrue();
+        document.WasRepaired.Should().Be(!nearby);
+        var report = document.Diagnostics.Should().ContainSingle().Which;
+        report.Code.Should().Be(nearby ? PdfDiagnosticCodes.XRefOffsetAdjusted : PdfDiagnosticCodes.XRefRebuilt);
+
+        if (nearby)
+        {
+            report.Message.Should().Be($"Object 3 was found {distance} bytes after where the index said.");
+        }
+    }
+
+    [Theory]
+    [InlineData(-500, 500, false)]
+    [InlineData(-500, 600, false)]
+    [InlineData(-511, 500, false)]
+    [InlineData(-511, 600, false)]
+    [InlineData(-1, 500, true)]
+    [InlineData(-1, 504, true)]
+    [InlineData(-1, 505, false)]
+    [InlineData(-1, 600, false)]
+    [InlineData(-9, 490, true)]
+    [InlineData(-9, 500, false)]
+    public void An_object_whose_entry_lies_before_the_file_s_start_is_found_near_it_only_where_its_header_ends_within_512_bytes_after_it(
+        long row, long at, bool nearby)
+    {
+        // The page's entry gives a negative offset, and its header, "3 0 obj", starts at 490 to 600 bytes into the file: the
+        // search near the entry finds it where its obj keyword ends 512 bytes after the offset at most, as for any other entry,
+        // and the index is otherwise rebuilt. A window clamped at the file's start once reached 1,024 bytes into the file
+        // whatever the offset, so that an entry of -500 found an object 1,323 bytes after it (#197).
+        using var document = PdfDocument.Open(NearbyFiles.PageNamedAt(row, at));
+
+        document.GetObject(new PdfObjectId(3)).Should().BeOfType<PdfDictionary>().Which.IsOfType(PdfName.Page).Should().BeTrue();
+        document.WasRepaired.Should().Be(!nearby);
+        document.Diagnostics.Select(diagnostic => diagnostic.Code).Should().Equal(
+            PdfDiagnosticCodes.XRefEntryOutOfRange, nearby ? PdfDiagnosticCodes.XRefOffsetAdjusted : PdfDiagnosticCodes.XRefRebuilt);
+
+        if (nearby)
+        {
+            document.Diagnostics[1].Message.Should().Be($"Object 3 was found {at - row} bytes after where the index said.");
+        }
+    }
+
+    [Theory]
+    [InlineData(4, 512, "near", true)]
+    [InlineData(4, 513, "near", false)]
+    [InlineData(14, 513, "four", false)]
+    public void An_object_is_found_near_its_entry_only_where_its_header_starts_within_512_bytes_before_it_whatever_number_the_window_s_start_cuts(
+        int number, long before, string served, bool nearby)
+    {
+        // Object 4's entry gives an offset 512 or 513 bytes past the header of object 4, or 513 bytes past object 14's, whose 4
+        // the window the search reads near the entry starts on. The search reads the byte before its window too: a header counts
+        // only where its number's first digit lies within the window, and object 14's body, which was served as object 4's with
+        // a warning, is not taken for it (#197). Otherwise the index is rebuilt, which finds object 4 where it is.
+        const long At = 805;
+        using var document = PdfDocument.Open(NearbyFiles.HeaderNear(number, At, At + before));
+
+        document.GetObject(new PdfObjectId(4)).Should().BeOfType<PdfString>().Which.ToText().Should().Be(served);
+        document.WasRepaired.Should().Be(!nearby);
+        var report = document.Diagnostics.Should().ContainSingle().Which;
+        report.Code.Should().Be(nearby ? PdfDiagnosticCodes.XRefOffsetAdjusted : PdfDiagnosticCodes.XRefRebuilt);
+
+        if (nearby)
+        {
+            report.Message.Should().Be("Object 4 was found 512 bytes before where the index said.");
+        }
+    }
+
+    [Fact]
+    public void A_window_that_starts_on_the_file_s_second_byte_reads_its_first_too_and_takes_no_number_it_cuts_for_a_header()
+    {
+        // The file starts with "14 0 obj", before its header, and object 4's entry gives the offset of the byte 513 bytes into
+        // the file: the window the search reads near it starts on the 4 of 14, the file's second byte. It reads the first byte
+        // too, as every window that does not start the file does, and object 14 is not taken for object 4 (#197). The index
+        // is rebuilt, which finds object 4 where it is.
+        using var document = PdfDocument.Open(NearbyFiles.FourNamedPastJunk("14 0 obj\n(fourteen)\nendobj\n", 513));
+
+        document.GetObject(new PdfObjectId(4)).Should().BeOfType<PdfString>().Which.ToText().Should().Be("four");
+        document.WasRepaired.Should().BeTrue();
+        document.Diagnostics.Should().NotContain(diagnostic => diagnostic.Message.StartsWith("Object 4 ", StringComparison.Ordinal));
+    }
+
     [Fact]
     public void Rebuilds_the_index_of_a_file_that_has_none()
     {

@@ -70,6 +70,129 @@ public class CrossReferenceChainTests
         document.WasRepaired.Should().BeTrue();
     }
 
+    [Theory]
+    [InlineData(700, 500, true)]
+    [InlineData(700, 508, true)]
+    [InlineData(700, 509, false)]
+    [InlineData(700, 600, false)]
+    [InlineData(2000, 500, true)]
+    [InlineData(2000, 508, true)]
+    [InlineData(2000, 509, false)]
+    [InlineData(2000, 600, false)]
+    public void A_section_prev_names_is_found_near_the_offset_only_where_it_lies_within_512_bytes_after_it_however_near_the_file_s_start(
+        long section, long distance, bool nearby)
+    {
+        // /Prev names an offset before the original table, which no section read yet holds: in the file's first 512 bytes when
+        // the table starts at 700, past them when it starts at 2,000. The search near the offset finds the table where its xref
+        // keyword lies whole within 512 bytes of it; otherwise the section is missing, and what only it indexes is found by
+        // rebuilding the index when it is asked for. A window clamped at the file's start once reached up to 1,024 bytes past
+        // the offset: one shift was found near the start, and missing past it (#197).
+        var named = section - distance;
+
+        using var document = PdfDocument.Open(NearbyFiles.UpdateNamingItsOriginal(section, named));
+
+        var report = document.Diagnostics.Should().ContainSingle().Which;
+
+        if (nearby)
+        {
+            report.Code.Should().Be(PdfDiagnosticCodes.XRefOffsetAdjusted);
+            report.Position.Should().Be(section);
+            report.Message.Should().Be($"The cross-reference section /Prev names at offset {named} was found {distance} bytes after it.");
+        }
+        else
+        {
+            report.Code.Should().Be(PdfDiagnosticCodes.XRefSectionMissing);
+            report.Position.Should().Be(named);
+            report.Message.Should().StartWith($"The cross-reference section /Prev names at offset {named} is not there, nor near it;");
+        }
+
+        document.WasRepaired.Should().BeFalse("nothing asked yet for what the original indexes");
+        Text(document, 4).Should().Be("updated");
+        Text(document, 5).Should().Be("five");
+        document.WasRepaired.Should().Be(!nearby);
+    }
+
+    [Theory]
+    [InlineData(null, 512, true)]
+    [InlineData(null, 513, false)]
+    [InlineData(7, 512, true)]
+    [InlineData(7, 513, false)]
+    [InlineData(14, 513, false)]
+    public void A_section_prev_names_is_found_near_the_offset_only_where_it_starts_within_512_bytes_before_it_whatever_number_the_window_s_start_cuts(
+        int? stream, long before, bool nearby)
+    {
+        // /Prev names an offset 512 or 513 bytes past where the original section starts: a classic table, cross-reference
+        // stream 7, or cross-reference stream 14, the window the search reads near the offset then starting on its 4. The
+        // search reads the byte before its window too: a section counts only where its xref keyword, or its number's first
+        // digit, lies within the window, and stream 14 is not taken for a stream that starts at its 4 (#197). Otherwise the
+        // section is missing, and what only it indexes is found by rebuilding the index when it is asked for.
+        const long Section = 700;
+        var named = Section + before;
+
+        using var document = PdfDocument.Open(NearbyFiles.UpdateNamingItsOriginal(Section, named, stream));
+
+        var report = document.Diagnostics.Should().ContainSingle().Which;
+        report.Code.Should().Be(nearby ? PdfDiagnosticCodes.XRefOffsetAdjusted : PdfDiagnosticCodes.XRefSectionMissing);
+
+        if (nearby)
+        {
+            report.Position.Should().Be(Section);
+            report.Message.Should().Be($"The cross-reference section /Prev names at offset {named} was found 512 bytes before it.");
+        }
+
+        Text(document, 5).Should().Be("five");
+        document.WasRepaired.Should().Be(!nearby);
+    }
+
+    [Fact]
+    public void A_window_that_starts_on_the_file_s_second_byte_reads_its_first_too_and_takes_no_number_it_cuts_for_a_section()
+    {
+        // The file starts with cross-reference stream 14, before its header, and /Prev names the offset of the byte 513 bytes
+        // into the file: the window the search reads near it starts on the 4 of 14, the file's second byte. It reads the first
+        // byte too, as every window that does not start the file does, and stream 14 is not taken for a stream that starts at
+        // its 4 (#197). The section is missing.
+        const string Junk = "14 0 obj\n<< /Type /XRef /Size 15 /W [1 4 2] /Index [14 1] /Length 7 >>\nstream\n\u0001\0\0\0\0\0\0\nendstream\nendobj\n";
+
+        using var document = PdfDocument.Open(NearbyFiles.UpdateNamingItsOriginal(1700, 513 - Junk.Length, junk: Junk));
+
+        document.Diagnostics.Should().ContainSingle(diagnostic => diagnostic.Code == PdfDiagnosticCodes.XRefSectionMissing)
+            .Which.Position.Should().Be(513);
+        document.Diagnostics.Should().NotContain(
+            diagnostic => diagnostic.Message.StartsWith("The cross-reference section /Prev names", StringComparison.Ordinal) &&
+                diagnostic.Code == PdfDiagnosticCodes.XRefOffsetAdjusted);
+    }
+
+    [Theory]
+    [InlineData(3)]
+    [InlineData(512)]
+    public void The_end_of_a_startxref_keyword_is_no_place_a_section_is_looked_for_even_where_the_window_s_start_cuts_it(int past)
+    {
+        // A startxref keyword, rows and a trailer after it, lies alone near where /Prev names a section: 3 bytes before the
+        // offset, or 512, so that the window searched near it starts on the keyword's xref. Its xref is the end of a longer
+        // keyword, read with the byte before it, there as anywhere in the window (#197): no place to look for the section,
+        // which is missing.
+        var file = new HandWrittenFile();
+        var catalog = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>");
+        var pages = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>");
+        file.Raw("%" + new string('p', 600) + "\n");
+        var keyword = file.Position + "start".Length;
+        file.Raw(string.Create(
+            CultureInfo.InvariantCulture,
+            $"startxref\n0 3\n0000000000 65535 f\r\n{catalog:D10} 00000 n\r\n{pages:D10} 00000 n\r\ntrailer\n<< /Size 3 /Root 1 0 R >>\n"));
+        file.Raw("%" + new string('u', 1200) + "\n");
+        var update = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>");
+        var table = file.Position;
+        file.Raw(string.Create(
+            CultureInfo.InvariantCulture,
+            $"xref\n1 1\n{update:D10} 00000 n\r\ntrailer\n<< /Size 3 /Root 1 0 R /Prev {keyword + past} >>\nstartxref\n{table}\n%%EOF\n"));
+
+        using var document = PdfDocument.Open(file.Bytes);
+
+        var report = document.Diagnostics.Should().ContainSingle().Which;
+        report.Code.Should().Be(PdfDiagnosticCodes.XRefSectionMissing);
+        report.Position.Should().Be(keyword + past);
+    }
+
     [Fact]
     public void Reports_a_section_that_prev_names_past_the_end_of_the_file_once_at_the_section_naming_it()
     {
@@ -638,6 +761,47 @@ public class CrossReferenceChainTests
         codes.Count(code => code == PdfDiagnosticCodes.XRefOffsetAdjusted).Should().Be(32);
         codes.Count(code => code == PdfDiagnosticCodes.XRefSectionMissing).Should().Be(Sections - 32);
         document.Reader.Structure.Sections.Should().HaveCount(2 * Sections);
+    }
+
+    [Fact]
+    public void The_search_near_a_section_reaches_the_file_s_last_byte_where_an_xref_keyword_ending_the_file_is_one_more_place_tried()
+    {
+        // Thirty-two tables, each but the oldest naming the one before it three bytes past its keyword, where it is found at
+        // the first place tried: thirty-one places. The oldest names a place in a comment after the end-of-file marker, 20
+        // bytes before the keyword xref the file ends with, and further from the table before the marker. The window searched
+        // near the place ends at the file's end, as it ends 512 bytes past it elsewhere (#197): the keyword the file ends with,
+        // the nearest place, is the thirty-second tried, whatever it reads, and the table, further, is not tried.
+        const int Tables = 32;
+        var text = new StringBuilder("%PDF-1.7\n");
+        var catalog = text.Length;
+        text.Append("1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n");
+        var pages = text.Length;
+        text.Append("2 0 obj\n<< /Type /Pages /Kids [] /Count 0 >>\nendobj\n");
+        var previous = -1;
+
+        for (var table = 0; table < Tables; table++)
+        {
+            var at = text.Length;
+            text.Append("xref\n0 3\n0000000000 65535 f\r\n")
+                .Append(CultureInfo.InvariantCulture, $"{catalog:D10} 00000 n\r\n{pages:D10} 00000 n\r\n")
+                .Append(previous < 0 ? "trailer\n<< /Size 3 /Root 1 0 R /Prev ########## >>\n" : string.Create(
+                    CultureInfo.InvariantCulture, $"trailer\n<< /Size 3 /Root 1 0 R /Prev {previous + 3} >>\n"));
+            previous = at;
+        }
+
+        text.Append('%').Append('-', 600).Append('\n');
+        var last = text.Length;
+        text.Append(CultureInfo.InvariantCulture, $"xref\n0 1\n0000000000 65535 f\r\ntrailer\n<< /Size 3 /Root 1 0 R >>\nstartxref\n{previous}\n%%EOF\n%")
+            .Append('-', 40).Append("\nxref");
+        var named = text.Length - 4 - 20;
+        named.Should().BeGreaterThan(last + 50, "the keyword the file ends with is the nearest place");
+        var file = Encoding.Latin1.GetBytes(text.ToString().Replace("##########", named.ToString("D10", CultureInfo.InvariantCulture), StringComparison.Ordinal));
+
+        using var document = PdfDocument.Open(file);
+
+        var adjusted = document.Diagnostics.Where(entry => entry.Code == PdfDiagnosticCodes.XRefOffsetAdjusted).ToList();
+        adjusted.Count(entry => entry.Message.EndsWith(" was found 3 bytes before it.", StringComparison.Ordinal)).Should().Be(Tables - 1);
+        adjusted.Should().NotContain(entry => entry.Position == last, "the table is further than the thirty-second place tried");
     }
 
     [Fact]

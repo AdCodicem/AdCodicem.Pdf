@@ -407,6 +407,36 @@ public class CrossReferenceRuleTests
             $"The cross-reference section /Prev names at offset {catalog} is not there, nor within 512 bytes of it: the offset holds object 1, which is not a cross-reference stream.");
     }
 
+    [Theory]
+    [InlineData(700, 600, PdfValidationRuleIds.XRefSectionNotFound)]
+    [InlineData(2000, 600, PdfValidationRuleIds.XRefSectionNotFound)]
+    [InlineData(700, 500, PdfValidationRuleIds.XRefSectionShifted)]
+    [InlineData(2000, 500, PdfValidationRuleIds.XRefSectionShifted)]
+    public void A_section_prev_names_600_bytes_before_it_is_not_found_and_one_500_bytes_before_it_shifted_however_near_the_file_s_start(
+        long section, long distance, string ruleId)
+    {
+        // /Prev names an offset in the file's first 512 bytes, or past them: a section 600 bytes after it is not found, and an
+        // error, wherever the offset falls, and one 500 bytes after it shifted, a warning. A window clamped at the file's start
+        // once found the first too, near the start alone (#197).
+        var named = section - distance;
+        var file = NearbyFiles.UpdateNamingItsOriginal(section, named);
+
+        var finding = Single(Validate(file), ruleId);
+
+        if (ruleId == PdfValidationRuleIds.XRefSectionNotFound)
+        {
+            finding.Severity.Should().Be(PdfValidationSeverity.Error);
+            finding.Location.Position.Should().Be(named);
+            finding.Message.Should().StartWith($"The cross-reference section /Prev names at offset {named} is not there, nor within 512 bytes of it:");
+        }
+        else
+        {
+            finding.Severity.Should().Be(PdfValidationSeverity.Warning);
+            finding.Location.Position.Should().Be(section);
+            finding.Message.Should().Be($"The cross-reference section /Prev names at offset {named} starts 500 bytes after it, at offset {section}.");
+        }
+    }
+
     [Fact]
     public void A_section_not_found_outside_the_file_and_named_from_nowhere_known_is_reported_at_the_document()
     {
@@ -552,6 +582,72 @@ public class CrossReferenceRuleTests
         finding.Location.Position.Should().Be(PdfTemplate.OffsetOf(file, "1 0 obj"));
         finding.Message.Should().Be(
             $"The entry of object 3 gives offset {PdfTemplate.OffsetOf(file, "1 0 obj")}, where there is the header of object 1, and the object is not within 512 bytes of it.");
+    }
+
+    [Theory]
+    [InlineData(400, 600, PdfValidationRuleIds.XRefEntryBroken)]
+    [InlineData(1400, 600, PdfValidationRuleIds.XRefEntryBroken)]
+    [InlineData(400, 500, PdfValidationRuleIds.XRefEntryShifted)]
+    [InlineData(1400, 500, PdfValidationRuleIds.XRefEntryShifted)]
+    public void An_entry_600_bytes_before_its_object_is_broken_and_one_500_bytes_before_it_shifted_however_near_the_file_s_start(
+        long row, long distance, string ruleId)
+    {
+        // The page's entry gives an offset in the file's first 512 bytes, or past them: an object 600 bytes after it is not
+        // found near it, an error, wherever the offset falls, and one 500 bytes after it shifted, a warning. A window clamped at
+        // the file's start once found the first too, near the start alone (#197).
+        var file = NearbyFiles.PageNamedAt(row, row + distance);
+
+        var finding = Single(Validate(file), ruleId);
+
+        finding.Location.Should().Be(PdfValidationLocation.OfObject(new PdfObjectId(3), row));
+        finding.Message.Should().Be(ruleId == PdfValidationRuleIds.XRefEntryBroken
+            ? $"The entry of object 3 gives offset {row}, where there is no object header, and the object is not within 512 bytes of it."
+            : $"The entry of object 3 gives offset {row}, where there is no object header; the object starts {distance} bytes after it, at offset {row + distance}.");
+        finding.Severity.Should().Be(ruleId == PdfValidationRuleIds.XRefEntryBroken ? PdfValidationSeverity.Error : PdfValidationSeverity.Warning);
+    }
+
+    [Theory]
+    [InlineData(-500, 500, PdfValidationRuleIds.XRefEntryBroken, "The entry of object 3 gives offset -500, outside the file.")]
+    [InlineData(-511, 600, PdfValidationRuleIds.XRefEntryBroken, "The entry of object 3 gives offset -511, outside the file.")]
+    [InlineData(-1, 600, PdfValidationRuleIds.XRefEntryBroken, "The entry of object 3 gives offset -1, outside the file.")]
+    [InlineData(
+        -1,
+        500,
+        PdfValidationRuleIds.XRefEntryShifted,
+        "The entry of object 3 gives offset -1, outside the file; the object starts 501 bytes after it, at offset 500.")]
+    public void An_entry_before_the_file_s_start_is_shifted_only_where_its_object_s_header_ends_within_512_bytes_after_it(
+        long row, long at, string ruleId, string message)
+    {
+        // The probe looks near an entry before the file's start as a load does (#175), within 512 bytes of the offset: an
+        // entry of -1 reaches a header 500 bytes into the file, but not one 600 bytes in, and one of -500 or -511 neither,
+        // where a window clamped at the file's start reached both (#197).
+        var file = NearbyFiles.PageNamedAt(row, at);
+
+        var finding = Single(Validate(file), ruleId);
+
+        finding.Location.Should().Be(PdfValidationLocation.OfObject(new PdfObjectId(3)));
+        finding.Message.Should().Be(message);
+    }
+
+    [Theory]
+    [InlineData(4, 512, PdfValidationRuleIds.XRefEntryShifted)]
+    [InlineData(4, 513, PdfValidationRuleIds.XRefEntryBroken)]
+    [InlineData(14, 513, PdfValidationRuleIds.XRefEntryBroken)]
+    public void An_entry_is_shifted_only_where_its_object_s_header_starts_within_512_bytes_before_it_whatever_number_the_window_s_start_cuts(
+        int number, long before, string ruleId)
+    {
+        // Object 4's entry gives an offset 512 or 513 bytes past the header of object 4, or 513 bytes past object 14's, whose 4
+        // the window searched near the entry starts on: the probe takes neither the second nor the third for object 4's header,
+        // as a load does not, where it once judged the third shifted (#197).
+        const long At = 805;
+        var file = NearbyFiles.HeaderNear(number, At, At + before);
+
+        var finding = Single(Validate(file), ruleId);
+
+        finding.Location.Should().Be(PdfValidationLocation.OfObject(new PdfObjectId(4), At + before));
+        finding.Message.Should().Be(ruleId == PdfValidationRuleIds.XRefEntryShifted
+            ? $"The entry of object 4 gives offset {At + before}, where there is no object header; the object starts 512 bytes before it, at offset {At}."
+            : $"The entry of object 4 gives offset {At + before}, where there is no object header, and the object is not within 512 bytes of it.");
     }
 
     [Theory]
@@ -2171,6 +2267,23 @@ public class CrossReferenceRuleTests
             ($"object 3 placed {back} bytes before the end", PdfTemplate.SoundWith("{row:3}", RowAt(length - back)))));
 
         static string RowAt(long offset) => string.Create(CultureInfo.InvariantCulture, $"{offset:D10} 00000 n ");
+    }
+
+    [Fact]
+    public void An_entry_a_few_bytes_before_a_header_the_file_ends_with_is_shifted_the_search_near_it_reaching_the_last_byte()
+    {
+        // Object 4's header ends the file, its obj keyword the file's last three bytes, and its entry gives an offset 3 bytes
+        // before it: the search near the entry reaches the file's last byte, as it reaches 512 bytes past an entry elsewhere
+        // (#197), and the probe finds the header there, as a load does.
+        var template = PdfTemplate.SoundEndingWith("4 0 obj").Replace("{row:4}", "{row:4:0:-3}", StringComparison.Ordinal);
+        var file = PdfTemplate.Build(template);
+        var header = file.Length - "4 0 obj".Length;
+
+        var finding = Single(Validate(file), PdfValidationRuleIds.XRefEntryShifted);
+
+        finding.Location.Should().Be(PdfValidationLocation.OfObject(new PdfObjectId(4), header - 3));
+        finding.Message.Should().Be(
+            $"The entry of object 4 gives offset {header - 3}, where there is no object header; the object starts 3 bytes after it, at offset {header}.");
     }
 
     [Fact]

@@ -71,6 +71,15 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// section exactly. An object not found this near is looked for by rebuilding the index; a section, reported
     /// missing.
     /// </summary>
+    /// <remarks>
+    /// Within the radius means lying whole between the offset less the radius and the offset plus it, clamped to the file,
+    /// wherever the offset falls: a header from the first digit of its number to the end of its <c>obj</c> keyword, a
+    /// classic table's <c>xref</c> keyword from its first byte to its last. Near the file's start the search reaches no
+    /// further past the offset than elsewhere, where a window clamped there once reached up to twice the radius past it
+    /// (#197); nothing is looked for near an offset more than the radius before the file's start. The byte before the
+    /// window is read as well, so that a number its start cuts — <c>14 0 obj</c> read from its <c>4</c> — is not taken
+    /// for a header that starts there.
+    /// </remarks>
     internal const int NearbySearchRadius = 512;
 
     /// <summary>
@@ -3227,7 +3236,8 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// cross-reference stream, nearest first.
     /// </summary>
     /// <remarks>
-    /// The search spans <see cref="NearbySearchRadius"/> bytes either side, as an object's does, and tries at most
+    /// The search spans <see cref="NearbySearchRadius"/> bytes either side, as an object's does — a place counts where what
+    /// starts there lies whole within them, however near the file's start the offset falls (#197) —, and tries at most
     /// <see cref="MaxRelocationCandidates"/> places in all, over the whole document: each is read through a window
     /// of up to 64 KB, the file chooses how many headers lie near a section, and a chain can name a section for
     /// each of its <see cref="PdfReaderLimits.MaxXRefSectionCount"/> links. Found, the section's record takes what
@@ -3249,13 +3259,19 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
             return false;
         }
 
+        // The window ends the radius past the position, or at the file's end, however near the file's start the position
+        // lies, where a window clamped there once reached up to twice the radius past it (#197): the position is in the
+        // file, so the end is too. The byte before the window is read as well, where there is one, so that a place counts
+        // only where it starts inside the window, as an object's header does: not the end of a startxref, nor a header whose
+        // number the window's start cuts.
         var start = Math.Max(0, absolute - NearbySearchRadius);
-        var length = (int)Math.Min(NearbySearchRadius * 2, _source.Length - start);
+        var end = absolute + Math.Min(NearbySearchRadius, _source.Length - absolute);
+        var lead = start > 0 ? 1 : 0;
         var candidates = new List<long>();
 
-        using (var window = _source.GetWindow(start, length))
+        using (var window = _source.GetWindow(start - lead, (int)(end - start) + lead))
         {
-            FindSectionCandidates(window.Memory.Span, start, candidates);
+            FindSectionCandidates(window.Memory.Span, start - lead, lead, candidates);
         }
 
         candidates.Sort((left, right) => Math.Abs(left - absolute).CompareTo(Math.Abs(right - absolute)));
@@ -3314,7 +3330,14 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// Collects where a cross-reference section could start in <paramref name="span"/>: an <c>xref</c> keyword
     /// standing on its own — not the end of <c>startxref</c> —, and every object header.
     /// </summary>
-    private static void FindSectionCandidates(ReadOnlySpan<byte> span, long start, List<long> candidates)
+    /// <param name="span">The bytes searched.</param>
+    /// <param name="start">Where <paramref name="span"/> starts in the file.</param>
+    /// <param name="from">
+    /// Where in <paramref name="span"/> a place may start: the bytes before it are read only to tell a keyword or a header
+    /// that starts there from a longer token, or a longer number, that runs into it (#197).
+    /// </param>
+    /// <param name="candidates">Receives where each place starts in the file.</param>
+    private static void FindSectionCandidates(ReadOnlySpan<byte> span, long start, int from, List<long> candidates)
     {
         var searchFrom = 0;
 
@@ -3329,7 +3352,8 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
             var position = searchFrom + index;
             var end = position + 4;
 
-            if ((position == 0 || !PdfCharacters.IsRegular(span[position - 1])) &&
+            if (position >= from &&
+                (position == 0 || !PdfCharacters.IsRegular(span[position - 1])) &&
                 (end == span.Length || !PdfCharacters.IsRegular(span[end])))
             {
                 candidates.Add(start + position);
@@ -3350,7 +3374,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
 
             var position = searchFrom + index;
 
-            if (TryReadHeaderBackwards(span, position, out _, out _, out var headerStart))
+            if (TryReadHeaderBackwards(span, position, out _, out _, out var headerStart) && headerStart >= from)
             {
                 candidates.Add(start + headerStart);
             }
@@ -6056,7 +6080,8 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// <summary>
     /// Looks for the header of object <paramref name="number"/> within <see cref="NearbySearchRadius"/> bytes either
     /// side of <paramref name="approximateOffset"/>, where careless writers leave an object their index misplaced,
-    /// and gives the first found, with the generation it gives.
+    /// and gives the first found, with the generation it gives: a header lying whole within them, from the first digit
+    /// of its number to the end of its <c>obj</c> keyword, however near the file's start the offset falls (#197).
     /// </summary>
     internal static bool TryFindObjectHeader(
         PdfFileSource source, int number, long approximateOffset, out long actualOffset, out int generation)
@@ -6071,15 +6096,22 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
             return false;
         }
 
+        // The window ends the radius past the offset, or at the file's end, however near the file's start the offset falls,
+        // where a window clamped there once reached up to twice the radius past it (#197). The end is worked out from what
+        // lies between the offset and the file's end, which wraps for no offset the test above lets through: long.MaxValue,
+        // which an entry past what a long holds gives, ends it at the file's end, and the window is empty.
         var start = Math.Max(0, approximateOffset - NearbySearchRadius);
-        var length = (int)Math.Min(NearbySearchRadius * 2, source.Length - start);
+        var length = approximateOffset + Math.Min(NearbySearchRadius, source.Length - approximateOffset) - start;
 
         if (length <= 0)
         {
             return false;
         }
 
-        using var window = source.GetWindow(start, length);
+        // The byte before the window is read as well, where there is one: a header counts only where it starts inside the
+        // window, not where the window's start cuts its number — "14 0 obj" read from its "4" as object 4's.
+        var lead = start > 0 ? 1 : 0;
+        using var window = source.GetWindow(start - lead, (int)length + lead);
         var span = window.Memory.Span;
         var searchFrom = 0;
 
@@ -6093,9 +6125,10 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
 
             var position = searchFrom + index;
 
-            if (TryReadHeaderBackwards(span, position, out var found, out var foundGeneration, out var headerStart) && found == number)
+            if (TryReadHeaderBackwards(span, position, out var found, out var foundGeneration, out var headerStart) &&
+                headerStart >= lead && found == number)
             {
-                actualOffset = start + headerStart;
+                actualOffset = start - lead + headerStart;
                 generation = foundGeneration;
                 return true;
             }
