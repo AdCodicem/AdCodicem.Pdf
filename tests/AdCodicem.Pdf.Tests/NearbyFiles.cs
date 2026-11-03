@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Text;
 
 namespace AdCodicem.Pdf.Tests;
 
@@ -58,6 +59,36 @@ internal static class NearbyFiles
     }
 
     /// <summary>
+    /// A one-page document indexed by one classic table, whose object 4, <c>(four)</c>, follows the page after
+    /// <paramref name="before"/>, its header written <paramref name="header"/>: object 4's row gives where that header starts,
+    /// <paramref name="shift"/> bytes on. Where <paramref name="startxrefLost"/>, startxref gives offset 9, where the catalog's
+    /// header starts, and the index is rebuilt as the document opens.
+    /// </summary>
+    public static byte[] FourWrittenAs(string header, long shift = 0, bool startxrefLost = false, string before = "")
+    {
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>"),
+            [3] = file.Object(3, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << >> >>"),
+        };
+        file.Raw(before);
+        rows[4] = file.Position + shift;
+        file.Raw(header + "\n(four)\nendobj\n");
+        var table = file.Table(5, rows, "/Size 5 /Root 1 0 R");
+
+        if (!startxrefLost)
+        {
+            return file.Bytes;
+        }
+
+        var text = Encoding.Latin1.GetString(file.Bytes);
+        return Encoding.Latin1.GetBytes(
+            text.Replace(string.Create(CultureInfo.InvariantCulture, $"startxref\n{table}\n"), "startxref\n9\n", StringComparison.Ordinal));
+    }
+
+    /// <summary>
     /// A file that starts with <paramref name="junk"/>, before its header, then holds the catalog, an empty page tree and, past
     /// 1,200 bytes of comment, object 4, <c>(four)</c>, whose row gives the offset of the file's byte at
     /// <paramref name="position"/>, counted from the file's first byte.
@@ -83,9 +114,10 @@ internal static class NearbyFiles
     /// that starts at <paramref name="section"/> — or, when <paramref name="stream"/> is given, by the cross-reference
     /// stream of that number. The second, past 1,200 bytes of comment, redefines the catalog and object 4,
     /// <c>(updated)</c>, in a classic table whose <c>/Prev</c> gives <paramref name="prev"/>: only the first indexes the page
-    /// tree, the page and object 5. Offsets are counted from the header, as the file's own are.
+    /// tree, the page and object 5. Offsets are counted from the header, as the file's own are. The stream's header is
+    /// written <paramref name="streamHeader"/> where one is given.
     /// </summary>
-    public static byte[] UpdateNamingItsOriginal(long section, long prev, int? stream = null, string junk = "")
+    public static byte[] UpdateNamingItsOriginal(long section, long prev, int? stream = null, string junk = "", string? streamHeader = null)
     {
         var file = new HandWrittenFile(prefix: junk, version: stream is null ? "1.7" : "1.5");
         var rows = new Dictionary<int, long>
@@ -107,7 +139,7 @@ internal static class NearbyFiles
                 streamRows[row] = (1, offset, 0);
             }
 
-            file.CrossReferenceStream(number, number + 1, streamRows, "/Root 1 0 R");
+            file.CrossReferenceStream(number, number + 1, streamRows, "/Root 1 0 R", header: streamHeader);
         }
         else
         {

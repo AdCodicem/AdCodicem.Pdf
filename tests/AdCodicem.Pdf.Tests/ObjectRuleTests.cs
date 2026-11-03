@@ -3097,8 +3097,8 @@ public class ObjectRuleTests
     [InlineData("the broken stream", 30, true)]
     public void Object_streams_are_judged_where_the_chain_places_them_whatever_was_read_before(string before, int broken, bool throughObject)
     {
-        // An object stream is not where its entry says: reading it rebuilds the index, which cannot find 7, whose header has
-        // a comment in it, and places 8 in object stream 20. The rebuild runs before the walk — the caller reads the broken
+        // An object stream is not where its entry says: reading it rebuilds the index, which cannot find 7, whose header the
+        // scan does not find (ChainFiles.HiddenHeader), and places 8 in object stream 20. The rebuild runs before the walk — the caller reads the broken
         // stream, or a validation settles the index — or during it, as the walk reads the broken stream. The walk reads each
         // stream, and each object written directly in the file its keys lead through, where the chain's row places it, the
         // chain's index read again for each lookup (#128): 7 and 8 are circular, at the positions their rows give, whatever
@@ -3123,7 +3123,7 @@ public class ObjectRuleTests
         dependencies.CircularStreams.Should().BeEquivalentTo([7, 8]);
         dependencies.Circular.Select(finding => finding.Location.Object).Should().Equal(new PdfObjectId(7), new PdfObjectId(8));
         dependencies.Circular.Select(finding => finding.Location.Position)
-            .Should().Equal(PdfTemplate.OffsetOf(file, "7 0 %x"), PdfTemplate.OffsetOf(file, "8 0 %x"));
+            .Should().Equal(PdfTemplate.OffsetOf(file, ChainFiles.HiddenHeader(7)), PdfTemplate.OffsetOf(file, ChainFiles.HiddenHeader(8)));
         dependencies.Circular.Select(finding => finding.Message).Should().Equal(
             "Object stream 7 needs object 5, which it holds, to be read: its /DecodeParms names it, and the object cannot be read before the stream is.",
             "Object stream 8 needs object 15, which it holds, to be read: its /DecodeParms names it, and the object cannot be read before the stream is.");
@@ -3416,8 +3416,9 @@ public class ObjectRuleTests
     }
 
     /// <summary>
-    /// Object streams 7 and 8, Flate-compressed, each needing the first object it holds, their headers written <c>7 0 %x</c> then
-    /// <c>obj</c> on the next line — which the reader reads where the index places them, and a rebuild does not find —;
+    /// Object streams 7 and 8, Flate-compressed, each needing the first object it holds, their headers written as
+    /// <see cref="ChainFiles.HiddenHeader"/> writes them — which the reader reads where the index places them, and a rebuild
+    /// does not find —;
     /// object stream 20, which no entry names and which lists object 8; and object stream <paramref name="broken"/>, whose
     /// entry leads nowhere, holding the object numbered after it. The index is a cross-reference stream, object 32.
     /// </summary>
@@ -3436,7 +3437,7 @@ public class ObjectRuleTests
         {
             offsets[number] = file.Position;
             var data = Deflate(header + objects);
-            Write($"{number} 0 %x\nobj\n<< /Type /ObjStm /N 2 /First {header.Length} /Filter /FlateDecode {entries} /Length {data.Length} >>\nstream\n{data}\nendstream\nendobj\n");
+            Write($"{ChainFiles.HiddenHeader(number)}\n<< /Type /ObjStm /N 2 /First {header.Length} /Filter /FlateDecode {entries} /Length {data.Length} >>\nstream\n{data}\nendstream\nendobj\n");
         }
 
         Write("%PDF-1.5\n");
@@ -3448,7 +3449,7 @@ public class ObjectRuleTests
         WriteObjectStream(8, "15 0 16 19 ", "<< /Predictor 1 >> << /Title (sixteen) >>", "/DecodeParms 15 0 R");
         Write("20 0 obj\n<< /Type /ObjStm /N 1 /First 4 /Length 9 >>\nstream\n8 0 << >>\nendstream\nendobj\n");
         offsets[12] = file.Position;
-        Write("12 0 %x\nobj\n[5 0 R]\nendobj\n");
+        Write(ChainFiles.HiddenHeader(12) + "\n[5 0 R]\nendobj\n");
 
         var xref = file.Position;
         var rows = new List<byte>();

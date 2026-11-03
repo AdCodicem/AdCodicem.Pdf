@@ -1111,8 +1111,8 @@ public class ReaderLimitsTests
     {
         // As above, the rebuild set off by a read: object 4's row leads into padding, and reading 4 rebuilds the index while
         // 4 is being loaded. The cross-reference stream decodes no further than its first ten rows; object 6, which holds 7,
-        // has a comment inside its header, which the scan does not find (#261): once the rebuild is finished, only the
-        // chain's entries for 6 and 7, kept through it, place 7.
+        // has a header the scan does not find (ChainFiles.HiddenHeader): once the rebuild is finished, only the chain's entries
+        // for 6 and 7, kept through it, place 7.
         var file = new HandWrittenFile(version: "1.5");
         var rows = new Dictionary<int, long>
         {
@@ -1120,7 +1120,7 @@ public class ReaderLimitsTests
             [2] = file.Object(2, Pages),
             [6] = file.Position,
         };
-        file.Raw("6 0 % object stream\nobj\n<< /Type /ObjStm /N 1 /First 4 /Length 18 >>\nstream\n7 0 (packed seven)\nendstream\nendobj\n");
+        file.Raw(ChainFiles.HiddenHeader(6) + "\n<< /Type /ObjStm /N 1 /First 4 /Length 18 >>\nstream\n7 0 (packed seven)\nendstream\nendobj\n");
         rows[8] = file.Padding(8);
         rows[4] = rows[8] + 600;
         file.Object(4, "(four)");

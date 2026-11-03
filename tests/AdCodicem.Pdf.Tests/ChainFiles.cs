@@ -1883,6 +1883,15 @@ internal static class ChainFiles
         return text.ToString();
     }
 
+    /// <summary>
+    /// The header of object <paramref name="number"/>, generation 0, as a load reads it where a row places it, and as neither a
+    /// rebuild's scan nor the search near a row finds it: its generation written with a sign, <c>+0</c>, which they refuse,
+    /// reading a header back from its <c>obj</c> by the digits of its numbers (#327). A test that needs an object its row
+    /// reaches and no rebuild does writes its header with this — a comment between the tokens did once, until the scan came
+    /// to read comments as a load does (#261) —, so that only this changes if the scan comes to read signs too.
+    /// </summary>
+    public static string HiddenHeader(int number) => string.Create(CultureInfo.InvariantCulture, $"{number} +0 obj");
+
     /// <summary>Compresses data in stored blocks, which show it as written.</summary>
     private static byte[] Compress(byte[] data)
     {

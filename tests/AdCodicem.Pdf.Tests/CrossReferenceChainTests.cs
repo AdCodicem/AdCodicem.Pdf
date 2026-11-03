@@ -144,6 +144,29 @@ public class CrossReferenceChainTests
         document.WasRepaired.Should().Be(!nearby);
     }
 
+    [Theory]
+    [InlineData("7 0 obj")]
+    [InlineData("7 % a comment\n0 obj")]
+    [InlineData("7 0 % a comment\nobj")]
+    [InlineData("7\r% one\r0 % two\robj")]
+    public void A_cross_reference_stream_whose_header_holds_comments_is_found_near_the_offset_prev_names(string header)
+    {
+        // /Prev names the offset two bytes past where the original cross-reference stream starts, its header written with
+        // comments between its tokens or without. The search near the offset reads a header back from its obj keyword as a
+        // load reads it, comments and all (#261): the stream is found where it starts, where a header that holds a comment
+        // was once no place to look for a section, and the section missing.
+        const long Section = 700;
+
+        using var document = PdfDocument.Open(NearbyFiles.UpdateNamingItsOriginal(Section, Section + 2, 7, streamHeader: header));
+
+        var report = document.Diagnostics.Should().ContainSingle().Which;
+        report.Code.Should().Be(PdfDiagnosticCodes.XRefOffsetAdjusted);
+        report.Position.Should().Be(Section);
+        report.Message.Should().Be("The cross-reference section /Prev names at offset 702 was found 2 bytes before it.");
+        Text(document, 5).Should().Be("five");
+        document.WasRepaired.Should().BeFalse();
+    }
+
     [Fact]
     public void A_window_that_starts_on_the_file_s_second_byte_reads_its_first_too_and_takes_no_number_it_cuts_for_a_section()
     {

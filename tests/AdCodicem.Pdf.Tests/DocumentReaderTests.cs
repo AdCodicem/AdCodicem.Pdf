@@ -326,6 +326,150 @@ public class DocumentReaderTests
         document.Diagnostics.Should().NotContain(diagnostic => diagnostic.Message.StartsWith("Object 4 ", StringComparison.Ordinal));
     }
 
+    /// <summary>
+    /// Headers of object 4 with comments between their tokens, each after what precedes it on its line, or on the line before
+    /// it — which ISO 32000-1 allows (7.2.3), and a load reads (#175).
+    /// </summary>
+    public static readonly TheoryData<string, string> HeadersHoldingComments = new()
+    {
+        { string.Empty, "4 % a comment\n0 obj" },
+        { string.Empty, "4 0 % a comment\nobj" },
+        { string.Empty, "4 % one\n0 % two\nobj" },
+        { string.Empty, "4% right after the number\n0 obj" },
+        { string.Empty, "4\n% one\n% two\n0\n% three\nobj" },
+        { string.Empty, "4 % a comment\r0 obj" },
+        { string.Empty, "4 % a comment\r\n0 obj" },
+        { string.Empty, "4 0 % a comment\robj" },
+        { string.Empty, "4 % 50% done\n0 obj" },
+        { string.Empty, "4 %\n0 obj" },
+        { "(50%) ", "4 % a comment\n0 obj" },
+        { "null ", "4 % a comment\n0 obj" },
+        { "(\n", "4 % a comment\n0 obj" },
+        { "(\r", "4 % a comment\r0 obj" },
+    };
+
+    [Theory]
+    [MemberData(nameof(HeadersHoldingComments))]
+    public void An_object_whose_header_holds_comments_is_read_where_its_entry_places_it(string before, string header)
+    {
+        using var document = PdfDocument.Open(NearbyFiles.FourWrittenAs(header, before: before));
+
+        document.GetObject(new PdfObjectId(4)).Should().BeOfType<PdfString>().Which.ToText().Should().Be("four");
+        document.WasRepaired.Should().BeFalse();
+        document.Diagnostics.Should().BeEmpty();
+    }
+
+    [Theory]
+    [MemberData(nameof(HeadersHoldingComments))]
+    public void An_object_whose_header_holds_comments_is_found_near_an_entry_two_bytes_past_it(string before, string header)
+    {
+        // The search near an entry reads a header back from its obj keyword: where an end of line lies between its tokens, the
+        // line it ends is read as a load reads it, from its start, which tells a comment from a % inside a string, and a line
+        // that holds only a comment is passed. It once stopped at the comment, and rebuilt the index, which did not find the
+        // object either (#261). What precedes the header on its line is read for what it is, and what a line before it leaves
+        // open is not: the header's line is read from its own start.
+        using var document = PdfDocument.Open(NearbyFiles.FourWrittenAs(header, shift: 2, before: before));
+
+        document.GetObject(new PdfObjectId(4)).Should().BeOfType<PdfString>().Which.ToText().Should().Be("four");
+        document.WasRepaired.Should().BeFalse();
+        var report = document.Diagnostics.Should().ContainSingle().Which;
+        report.Code.Should().Be(PdfDiagnosticCodes.XRefOffsetAdjusted);
+        report.Message.Should().Be("Object 4 was found 2 bytes before where the index said.");
+    }
+
+    [Theory]
+    [MemberData(nameof(HeadersHoldingComments))]
+    public void A_rebuild_finds_an_object_whose_header_holds_comments_where_its_number_starts(string before, string header)
+    {
+        // startxref names the catalog's header, no section: the index is rebuilt as the document opens, and its scan reads a
+        // header with comments between its tokens as the search near an entry does (#261).
+        var file = NearbyFiles.FourWrittenAs(header, startxrefLost: true, before: before);
+        using var document = PdfDocument.Open(file);
+
+        document.WasRepaired.Should().BeTrue();
+        document.GetObject(new PdfObjectId(4)).Should().BeOfType<PdfString>().Which.ToText().Should().Be("four");
+        document.Reader.Index.TryGet(4, out var entry).Should().BeTrue();
+        entry.Offset.Should().Be(PdfTemplate.OffsetOf(file, before + header) + before.Length);
+    }
+
+    [Theory]
+    [InlineData("% a note 4\n0 obj")]
+    [InlineData("4 (x) % a comment\nobj")]
+    [InlineData("4 0.0 % a comment\nobj")]
+    [InlineData("4 -1 % a comment\nobj")]
+    [InlineData("4 (open % a comment\n0 obj")]
+    [InlineData("/Four 0 % a comment\nobj")]
+    [InlineData("x4 % a comment\n0 obj")]
+    [InlineData("4\n(x) % a comment\n0 obj")]
+    [InlineData("4\n/Four 0 % a comment\nobj")]
+    public void Tokens_a_load_takes_for_no_header_are_none_for_a_rebuild_whatever_comments_lie_between_them(string header)
+    {
+        // Each is no header of object 4 as a load reads it: digits a comment ends with, a string, a real, a negative
+        // generation, a string the line does not close, a name, a keyword. The rebuild's scan, which reads the line a comment
+        // ends as a load does, takes none for object 4's header, where it once took digits ending a comment for its number.
+        using var document = PdfDocument.Open(NearbyFiles.FourWrittenAs(header, startxrefLost: true));
+
+        document.WasRepaired.Should().BeTrue();
+        document.Reader.Index.TryGet(4, out _).Should().BeFalse();
+        document.GetObject(new PdfObjectId(4)).Should().BeSameAs(PdfNull.Instance);
+    }
+
+    [Fact]
+    public void A_header_after_a_string_holding_a_percent_sign_on_its_line_is_read_by_its_tokens()
+    {
+        // The line that ends with object 4's number holds a % in a string, and no comment: it is lexed from its start as a
+        // load reads it, the string read past, and the number at its end taken, near the entry as by a rebuild (#261).
+        using var nearby = PdfDocument.Open(NearbyFiles.FourWrittenAs("4\n0 obj", shift: 2, before: "(50%) "));
+        using var rebuilt = PdfDocument.Open(NearbyFiles.FourWrittenAs("4\n0 obj", startxrefLost: true, before: "(50%) "));
+
+        nearby.GetObject(new PdfObjectId(4)).Should().BeOfType<PdfString>().Which.ToText().Should().Be("four");
+        nearby.WasRepaired.Should().BeFalse();
+        rebuilt.GetObject(new PdfObjectId(4)).Should().BeOfType<PdfString>().Which.ToText().Should().Be("four");
+        rebuilt.WasRepaired.Should().BeTrue();
+    }
+
+    [Fact]
+    public void The_line_of_an_obj_keyword_is_read_by_its_digits_whatever_else_it_holds()
+    {
+        // A line is lexed only where a walk back from an obj keyword enters it through an end of line: the keyword's own
+        // line is read by the digits before it, as it was, and a header a comment holds is taken for one, as a header in a
+        // string is (#171). Lexed from its start, the line would be a comment.
+        var file = NearbyFiles.FourWrittenAs("% 4 0 obj", startxrefLost: true);
+        using var document = PdfDocument.Open(file);
+
+        document.Reader.Index.TryGet(4, out var entry).Should().BeTrue();
+        entry.Offset.Should().Be(PdfTemplate.OffsetOf(file, "4 0 obj"));
+    }
+
+    [Fact]
+    public void Digits_a_comment_ends_with_are_no_object_number_for_the_search_near_an_entry()
+    {
+        // Object 4's entry gives where "% a note 4" starts, a line before "0 obj": a comment, then the header of no object,
+        // as a load reads it. The search near the entry once took the 4 for object 4's number, and served what follows as
+        // object 4, 9 bytes from its entry (#261); the index is rebuilt, which finds no object 4.
+        using var document = PdfDocument.Open(NearbyFiles.FourWrittenAs("% a note 4\n0 obj"));
+
+        document.GetObject(new PdfObjectId(4)).Should().BeSameAs(PdfNull.Instance);
+        document.WasRepaired.Should().BeTrue();
+        document.Diagnostics.Should().NotContain(diagnostic => diagnostic.Code == PdfDiagnosticCodes.XRefOffsetAdjusted);
+    }
+
+    [Theory]
+    [InlineData("x4 0 obj", "x4\n0 obj")]
+    [InlineData("-4 0 obj", "-4\n0 obj")]
+    public void A_line_end_between_a_header_s_tokens_changes_nothing_where_no_comment_lies_on_its_line(string oneLine, string twoLines)
+    {
+        // A line that holds no % is read back by its digits, whatever ends it: the rebuild's scan reads a header whose tokens a
+        // line end parts as it reads the same header on one line, here digits a regular character or a sign precedes (#171).
+        Read(oneLine).Should().Be(Read(twoLines));
+
+        static string Read(string header)
+        {
+            using var document = PdfDocument.Open(NearbyFiles.FourWrittenAs(header, startxrefLost: true));
+            return document.GetObject(new PdfObjectId(4)).ToString() ?? string.Empty;
+        }
+    }
+
     [Fact]
     public void Rebuilds_the_index_of_a_file_that_has_none()
     {
@@ -2021,23 +2165,21 @@ public class DocumentReaderTests
     [Fact]
     public void A_reference_the_chain_cannot_read_rebuilds_nothing_while_the_chain_is_read()
     {
-        // Two cross-reference streams, each header split by a comment, which a rebuild's scan does not take for an object
-        // header. The newer declares rows its data lacks, leaving the index incomplete; the older, which its /Prev names,
-        // numbers its rows from object 9, which the index lacks. Resolving it once rebuilt the index before any of its rows
-        // was read, and the chain's empty index asked for a rebuild once more (#182). Nothing is loaded while the chain is
-        // read: the reference names nothing the chain can read, the older stream is malformed, and the empty index the
-        // chain leaves is rebuilt once.
+        // Two cross-reference streams, each header one a rebuild's scan does not find (ChainFiles.HiddenHeader). The newer
+        // declares rows its data lacks, leaving the index incomplete; the older, which its /Prev names, numbers its rows from
+        // object 9, which the index lacks. Resolving it once rebuilt the index before any of its rows was read, and the
+        // chain's empty index asked for a rebuild once more (#182). Nothing is loaded while the chain is read: the reference
+        // names nothing the chain can read, the older stream is malformed, and the empty index the chain leaves is rebuilt
+        // once.
         const string Template = """
             %PDF-1.5
-            7 0 % a comment between the generation and the keyword
-            obj
+            {seven}
             << /Type /XRef /W [1 2 0] /Index [0 2] /Prev 00000 /Length 0 >>
             stream
 
             endstream
             endobj
-            8 0 % another
-            obj
+            {eight}
             << /Type /XRef /W [1 2 0] /Index [9 0 R 1] /Length 0 >>
             stream
 
@@ -2048,8 +2190,10 @@ public class DocumentReaderTests
             %%EOF
 
             """;
-        var text = Template.Replace("\r\n", "\n", StringComparison.Ordinal);
-        var older = text.IndexOf("8 0 %", StringComparison.Ordinal);
+        var text = Template.Replace("\r\n", "\n", StringComparison.Ordinal)
+            .Replace("{seven}", ChainFiles.HiddenHeader(7), StringComparison.Ordinal)
+            .Replace("{eight}", ChainFiles.HiddenHeader(8), StringComparison.Ordinal);
+        var older = text.IndexOf(ChainFiles.HiddenHeader(8), StringComparison.Ordinal);
         var file = Encoding.ASCII.GetBytes(text.Replace("/Prev 00000", string.Create(CultureInfo.InvariantCulture, $"/Prev {older:D5}"), StringComparison.Ordinal));
         var diagnostics = new PdfDiagnostics();
 
@@ -3142,6 +3286,9 @@ public class DocumentReaderTests
             9999999999 0 obj
             (too large)
             endobj
+            5 99999999999999999999 obj
+            (a generation past what a long holds)
+            endobj
 
             """;
 
@@ -3151,6 +3298,33 @@ public class DocumentReaderTests
         document.WasRepaired.Should().BeTrue();
         document.ObjectCount.Should().Be(sound.ObjectCount);
         document.Catalog.IsOfType(PdfName.Catalog).Should().BeTrue();
+    }
+
+    [Fact]
+    public void A_rebuild_finds_a_header_of_the_largest_object_number_and_generation()
+    {
+        // The largest number an object can have, 2,147,483,647, under the largest generation, 65,535, is a header the scan
+        // takes, as the parser does.
+        const string Text = """
+            %PDF-1.7
+            2147483647 65535 obj
+            (largest)
+            endobj
+            1 0 obj
+            << /Type /Catalog /Pages 2 0 R >>
+            endobj
+            2 0 obj
+            << /Type /Pages /Kids [] /Count 0 >>
+            endobj
+            %%EOF
+
+            """;
+
+        using var document = PdfDocument.Open(Encoding.ASCII.GetBytes(Text));
+
+        document.WasRepaired.Should().BeTrue();
+        document.Reader.Index.TryGet(PdfObjectId.MaxNumber, out var entry).Should().BeTrue();
+        entry.Generation.Should().Be(PdfObjectId.MaxGeneration);
     }
 
     [Theory]

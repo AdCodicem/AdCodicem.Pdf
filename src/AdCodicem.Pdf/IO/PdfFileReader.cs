@@ -6318,6 +6318,25 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// Reads the <c>N G</c> that precedes an <c>obj</c> keyword. Walking backwards is what distinguishes a
     /// real object header from the <c>obj</c> inside <c>endobj</c>.
     /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Each number, the generation first, is a run of digits read backwards over the white space after it, as a load reads
+    /// it where only white space lies between the tokens. A comment may lie there too (ISO 32000-1, 7.2.3), and runs to the
+    /// end of its line: one ends before a token only where the white space crossed holds an end of line. There, a line that
+    /// holds a <c>%</c> is read as a load reads it, lexed forward from its start, which tells a comment from a <c>%</c> a
+    /// string holds: its last tokens are the numbers still wanted, the nearest first, and a line that holds nothing but a
+    /// comment is passed for the line before it (#261). A line that holds no <c>%</c> is read by its digits, as is the line
+    /// of <c>obj</c> itself.
+    /// </para>
+    /// <para>
+    /// A walk lexes a line once at most, and enters it only through the white space right after it, which one walk at most
+    /// crosses — that of the <c>obj</c> the tokens after it lead to, through comments and a generation —: the work stays
+    /// linear in the bytes searched, and nothing is allocated. Those bytes bound a walk: the window of a search near an
+    /// offset, or a chunk of the scan. A line whose start lies inside a string a line before it opened is lexed from its
+    /// start all the same, and a comment whose <c>%</c> lies before the bytes searched is read as what it holds, as a number
+    /// their start cuts is in the scan's chunks (#171).
+    /// </para>
+    /// </remarks>
     /// <param name="span">The bytes the keyword lies in.</param>
     /// <param name="objPosition">Where the keyword starts in <paramref name="span"/>.</param>
     /// <param name="number">The object number the header gives.</param>
@@ -6338,60 +6357,145 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
             return false;
         }
 
-        while (index >= 0 && PdfCharacters.IsWhitespace(span[index]))
+        var numbers = default(HeaderNumbers);
+
+        while (numbers.Taken < 2)
         {
-            index--;
+            // The white space after the token, and whether a comment may end where it starts: only an end of line ends one.
+            var endOfLine = false;
+
+            while (index >= 0 && PdfCharacters.IsWhitespace(span[index]))
+            {
+                endOfLine |= span[index] is (byte)'\r' or (byte)'\n';
+                index--;
+            }
+
+            if (endOfLine)
+            {
+                var lineStart = span[..(index + 1)].LastIndexOfAny((byte)'\r', (byte)'\n') + 1;
+
+                if (span[lineStart..(index + 1)].Contains((byte)'%'))
+                {
+                    if (!numbers.TakeLine(span[..(index + 1)], lineStart))
+                    {
+                        return false;
+                    }
+
+                    index = lineStart - 1;
+                    continue;
+                }
+            }
+
+            // A run of digits, which ends the walk where it is empty: a byte that is neither white space nor a digit before the
+            // generation's digits, or no byte, leaves the number none.
+            var runEnd = index + 1;
+
+            while (index >= 0 && PdfCharacters.IsDigit(span[index]))
+            {
+                index--;
+            }
+
+            var runStart = index + 1;
+
+            if (runStart == runEnd)
+            {
+                return false;
+            }
+
+            // Each run is judged by its value, however many zeros lead it, as the parser judges it: a header the parser would
+            // refuse, found here, would be an object no read can serve. A run of digits always parses, as an integer within a
+            // long or as a real past one.
+            _ = PdfNumberParser.TryParse(span[runStart..runEnd], out var value, out _, out var pastLong);
+
+            if (pastLong)
+            {
+                return false;
+            }
+
+            numbers.Take(value, runStart);
         }
 
-        var generationEnd = index + 1;
-        while (index >= 0 && PdfCharacters.IsDigit(span[index]))
-        {
-            index--;
-        }
-
-        var generationStart = index + 1;
-        if (generationStart == generationEnd)
+        if (numbers.Number is <= 0 or > PdfObjectId.MaxNumber || numbers.Generation is < 0 or > PdfObjectId.MaxGeneration)
         {
             return false;
         }
 
-        if (index < 0 || !PdfCharacters.IsWhitespace(span[index]))
-        {
-            return false;
-        }
-
-        while (index >= 0 && PdfCharacters.IsWhitespace(span[index]))
-        {
-            index--;
-        }
-
-        var numberEnd = index + 1;
-        while (index >= 0 && PdfCharacters.IsDigit(span[index]))
-        {
-            index--;
-        }
-
-        var numberStart = index + 1;
-        if (numberStart == numberEnd)
-        {
-            return false;
-        }
-
-        // Each run is judged by its value, however many zeros lead it, as the parser judges it: a header the parser would
-        // refuse, found here, would be an object no read can serve. A run of digits always parses, as an integer within a
-        // long or as a real past one.
-        _ = PdfNumberParser.TryParse(span[numberStart..numberEnd], out var parsed, out _, out var numberPastLong);
-        _ = PdfNumberParser.TryParse(span[generationStart..generationEnd], out var parsedGeneration, out _, out var generationPastLong);
-
-        if (numberPastLong || parsed is <= 0 or > PdfObjectId.MaxNumber || generationPastLong || parsedGeneration > PdfObjectId.MaxGeneration)
-        {
-            return false;
-        }
-
-        number = (int)parsed;
-        generation = (int)parsedGeneration;
-        headerStart = numberStart;
+        number = (int)numbers.Number;
+        generation = (int)numbers.Generation;
+        headerStart = numbers.NumberStart;
         return true;
+    }
+
+    /// <summary>
+    /// The two numbers of an object header as a walk back from its <c>obj</c> takes them (<see cref="TryReadHeaderBackwards"/>):
+    /// the generation first, then the number, with where it starts.
+    /// </summary>
+    private struct HeaderNumbers
+    {
+        /// <summary>Gets how many of the two were taken.</summary>
+        public int Taken { get; private set; }
+
+        /// <summary>Gets the generation, once taken.</summary>
+        public long Generation { get; private set; }
+
+        /// <summary>Gets the object number, once taken.</summary>
+        public long Number { get; private set; }
+
+        /// <summary>Gets where the object number starts, once taken.</summary>
+        public int NumberStart { get; private set; }
+
+        /// <summary>Takes <paramref name="value"/>, which starts at <paramref name="start"/>, as the next number wanted.</summary>
+        public void Take(long value, int start)
+        {
+            if (Taken == 0)
+            {
+                Generation = value;
+            }
+            else
+            {
+                Number = value;
+                NumberStart = start;
+            }
+
+            Taken++;
+        }
+
+        /// <summary>
+        /// Lexes the line from <paramref name="lineStart"/> to the end of <paramref name="line"/> as a load reads it, and takes
+        /// its last tokens as the numbers still wanted, the nearest first; a line that holds nothing but a comment gives none.
+        /// False where one is no integer: a string the line does not close is its last token, and holds what follows it.
+        /// </summary>
+        public bool TakeLine(ReadOnlySpan<byte> line, int lineStart)
+        {
+            var lexer = new PdfLexer(line, lineStart);
+            var last = default(PdfToken);
+            var before = default(PdfToken);
+
+            for (var token = lexer.Read(); token.Kind != PdfTokenKind.EndOfInput; token = lexer.Read())
+            {
+                before = last;
+                last = token;
+            }
+
+            if (last.Kind == PdfTokenKind.EndOfInput)
+            {
+                return true;
+            }
+
+            return TakeInteger(last) && (Taken == 2 || before.Kind == PdfTokenKind.EndOfInput || TakeInteger(before));
+        }
+
+        /// <summary>Takes <paramref name="token"/> as the next number wanted where it is an integer, and says whether it is.</summary>
+        private bool TakeInteger(PdfToken token)
+        {
+            if (token.Kind != PdfTokenKind.Integer)
+            {
+                return false;
+            }
+
+            Take(token.Integer, token.Start);
+            return true;
+        }
     }
 
     private PdfObject? LoadCompressedObject(PdfObjectId id, XRefEntry entry)

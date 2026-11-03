@@ -50,8 +50,8 @@ zeros that erased the end of one and the objects after it would otherwise do, or
 Text in a damaged stream's data that reads as an object header stops the search as well: an object number and a
 generation the parser takes, however many zeros lead them, white space between the three tokens, however much, and
 white space, a delimiter, or the start or the end of the search around them. A comment between the tokens makes no
-header here, as it makes none for the scan that rebuilds a damaged index; nor does a regular character glued before
-the number, though that scan takes the digits after it for one. Neither `xref` nor `trailer` stops a search: the
+header here, though the scan that rebuilds a damaged index reads one as a load does; nor does a regular character glued
+before the number, though that scan takes the digits after it for one. Neither `xref` nor `trailer` stops a search: the
 stream of a classic file's last object, which no object follows, is searched through the table and the trailer to the
 end of the file.
 

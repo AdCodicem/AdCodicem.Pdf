@@ -667,6 +667,27 @@ public class CrossReferenceRuleTests
         finding.Message.Should().Be($"The entry of object 3 gives offset {header + error}, where there is {found}; the object starts {distance}, at offset {header}.");
     }
 
+    [Theory]
+    [InlineData("4 % a comment\n0 obj")]
+    [InlineData("4 0 % a comment\nobj")]
+    [InlineData("4\r% one\r0 % two\robj")]
+    public void An_entry_two_bytes_past_a_header_that_holds_comments_is_shifted_not_broken(string header)
+    {
+        // Object 4's header holds comments between its tokens, and its entry gives the offset two bytes past where it starts:
+        // the probe reads the header back from its obj keyword as a load reads it, comments and all, where it once stopped at
+        // the comment and judged the entry broken, an error (#261).
+        var file = NearbyFiles.FourWrittenAs(header, shift: 2);
+        var at = PdfTemplate.OffsetOf(file, header);
+
+        var finding = Validate(file).Findings.Should().ContainSingle().Which;
+
+        finding.RuleId.Should().Be(PdfValidationRuleIds.XRefEntryShifted);
+        finding.Severity.Should().Be(PdfValidationSeverity.Warning);
+        finding.Location.Should().Be(PdfValidationLocation.OfObject(new PdfObjectId(4), at + 2));
+        finding.Message.Should().Be(
+            $"The entry of object 4 gives offset {at + 2}, where there is no object header; the object starts 2 bytes before it, at offset {at}.");
+    }
+
     [Fact]
     public void An_entry_naming_the_object_before_its_own_is_shifted_from_that_object_s_header()
     {

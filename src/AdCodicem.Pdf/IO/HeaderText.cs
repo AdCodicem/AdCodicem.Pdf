@@ -129,8 +129,9 @@ internal ref struct HeaderText
     /// 2,147,483,647, and one whose value it takes for a generation, 0 to 65,535, however many zeros lead them; white
     /// space before each of the generation and <c>obj</c>, as much as the file holds; and white space, a delimiter or the
     /// end of the search after <c>obj</c>. <c>endobj</c> is no header, nor <c>10 0 objx</c>, nor digits a regular
-    /// character precedes, nor tokens a comment separates. The scan that rebuilds an index refuses <c>endobj</c> and
-    /// tokens a comment separates too, but takes <c>10 0 objx</c> and digits a regular character precedes (#171).
+    /// character precedes, nor tokens a comment separates. The scan that rebuilds an index refuses <c>endobj</c> too, but
+    /// takes tokens a comment separates, as a load reads them (#261), <c>10 0 objx</c> and digits a regular character
+    /// precedes (#171).
     /// A header lies whole in what the search reads, from the start of the data to the next object the index places: the
     /// stream's own header, and whatever precedes the data, is never one, and one that the next object's offset cuts is
     /// not seen, that offset stopping the search first. The rule reads nothing but the bytes, so where it stops cannot
