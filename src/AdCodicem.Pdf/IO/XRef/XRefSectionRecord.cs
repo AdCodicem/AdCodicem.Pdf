@@ -163,6 +163,28 @@ internal sealed class XRefSectionRecord
     /// </summary>
     public PdfDictionary? NamingTrailer { get; init; }
 
+    /// <summary>
+    /// Gets the record of what the chain read, or looked for, where an <c>/XRefStm</c> names a position it had reached
+    /// before (<see cref="XRefSectionState.NamedAgain"/>) — the first record named or read there —, or, for an
+    /// <c>/XRefStm</c> that names what its own table's <c>/Prev</c> names, the record of the section that <c>/Prev</c> reads
+    /// (#156); null for every other section, and while that <c>/Prev</c> has read nothing.
+    /// </summary>
+    public XRefSectionRecord? ReadAs { get; set; }
+
+    /// <summary>
+    /// Gets what a table's <c>/XRefStm</c> names in place of a cross-reference stream of the table's revision, in words —
+    /// "the table itself", "a cross-reference table, whose rows were read in the stream's place" —; null where it names a
+    /// stream, or what the chain could not read (#156).
+    /// </summary>
+    public string? NamesNoStream { get; set; }
+
+    /// <summary>
+    /// Gets a value indicating whether the section is a hybrid file's cross-reference stream: one a table's <c>/XRefStm</c>
+    /// named, which the chain found to be a stream. A record of a naming again is none: what it names is
+    /// <see cref="ReadAs"/>.
+    /// </summary>
+    public bool IsHybridStream => NamedBy == "/XRefStm" && Kind == XRefSectionKind.Stream;
+
     /// <summary>Gets the object number of a cross-reference stream, or 0 for a classic table.</summary>
     public int StreamObjectNumber { get; set; }
 

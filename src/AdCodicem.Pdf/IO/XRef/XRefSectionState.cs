@@ -23,4 +23,11 @@ internal enum XRefSectionState : byte
     /// another, an object that is no section — but for one a guard cut a value of, the guard's (#263).
     /// </remarks>
     Malformed,
+
+    /// <summary>
+    /// Named by an <c>/XRefStm</c> at a position the chain had reached before, or that its own table's <c>/Prev</c> names
+    /// too: nothing was read for it, what is there having been read, or looked for, once, where the chain reached it, and
+    /// <see cref="XRefSectionRecord.ReadAs"/> is its record (#156).
+    /// </summary>
+    NamedAgain,
 }

@@ -104,10 +104,16 @@ public static class PdfValidationRuleIds
     public const string XRefSubsectionMissing = "xref.subsection-missing";
 
     /// <summary>
-    /// The chain of cross-reference sections names a section it has already read, or an offset it has already named,
-    /// and the sections before the loop are out of reach. <see cref="PdfValidationSeverity.Error"/>.
+    /// A <c>/Prev</c> of the chain of cross-reference sections names a section the chain has already read, or an offset it
+    /// has already named, and the sections before the loop are out of reach. <see cref="PdfValidationSeverity.Error"/>.
     /// </summary>
     public const string XRefChainLoop = "xref.chain-loop";
+
+    /// <summary>
+    /// A hybrid file's table names through <c>/XRefStm</c> no cross-reference stream of its revision, and what only that
+    /// stream indexes is lost. <see cref="PdfValidationSeverity.Error"/>.
+    /// </summary>
+    public const string XRefHybridStreamWrong = "xref.hybrid-stream-wrong";
 
     /// <summary>
     /// An in-use entry places its object where it is not, nor near it; or in an object stream that does not hold

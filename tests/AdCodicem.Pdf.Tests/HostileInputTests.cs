@@ -4412,6 +4412,49 @@ public class HostileInputTests
     }
 
     [Fact]
+    public void A_thousand_tables_naming_one_stream_read_it_once()
+    {
+        // A thousand tables name through /XRefStm one cross-reference stream of 100,000 rows, 700 KB. It is read once, where
+        // the newest names it, and each older table's naming is recorded as naming it again, nothing read for it (#156): the
+        // chain reads not a byte more than when the newest alone names it, the older tables giving its offset under a key
+        // that names nothing, and allocates beside it the records of the namings, 168 bytes each as measured. Read again for
+        // each table, the stream would cost 700 MB of reads.
+        const int Tables = 1000;
+        var every = HybridFiles.TablesNamingOneStream(Tables, rows: 100_000, every: true);
+        var newest = HybridFiles.TablesNamingOneStream(Tables, rows: 100_000, every: false);
+
+        var (everyRead, sections) = Read(every);
+        var (newestRead, _) = Read(newest);
+        var everyAllocated = Allocations.Least(() => Open(every), out _);
+        var newestAllocated = Allocations.Least(() => Open(newest), out _);
+
+        sections.Should().HaveCount(2 * Tables);
+        sections.Where(section => section.IsHybridStream).Should().ContainSingle().Which.State.Should().Be(XRefSectionState.Read);
+        sections.Where(section => section.State == XRefSectionState.NamedAgain).Should().HaveCount(Tables - 1)
+            .And.OnlyContain(section => ReferenceEquals(section.ReadAs, sections[1]) && section.NamesNoStream == null);
+        everyRead.Should().Be(newestRead, "a naming again reads nothing");
+        (everyAllocated - newestAllocated).Should().BeLessThan(
+            (Tables - 1) * 256L,
+            "a naming again allocates its record, nothing it reads ({0:N0} bytes against {1:N0})",
+            everyAllocated,
+            newestAllocated);
+
+        static (long Read, IReadOnlyList<XRefSectionRecord> Sections) Read(byte[] file)
+        {
+            using var source = new StrictCountingSource(file);
+            using var document = Measure(() => PdfDocument.Open(source, options: null, ownsSource: false));
+            document.Diagnostics.Should().BeEmpty();
+            return (source.BytesRead, document.Reader.Structure.Sections);
+        }
+
+        static int Open(byte[] file)
+        {
+            using var document = PdfDocument.Open(file);
+            return document.Reader.Structure.Sections.Count;
+        }
+    }
+
+    [Fact]
     public void Four_times_as_many_lost_streams_declaring_numbers_of_their_own_allocate_about_four_times_as_much()
     {
         // A chain of cross-reference streams whose rows cannot be read, each handing its /Prev on and refusing to the older

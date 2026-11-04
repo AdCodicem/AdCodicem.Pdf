@@ -45,7 +45,11 @@ internal sealed class FileStructure
     /// <summary>Gets the offset <c>startxref</c> gives, as written, or -1 when it gives none.</summary>
     public long StartXRef { get; set; } = -1;
 
-    /// <summary>Gets the sections the chain named, newest first, each <c>/XRefStm</c> after the table that named it.</summary>
+    /// <summary>
+    /// Gets the sections the chain named, newest first, each <c>/XRefStm</c> after the table that named it — one that names
+    /// what the chain had reached, or what its table's <c>/Prev</c> names too, recorded as named again
+    /// (<see cref="XRefSectionState.NamedAgain"/>), so that each table's naming is there (#156).
+    /// </summary>
     public IReadOnlyList<XRefSectionRecord> Sections => _sections;
 
     /// <summary>

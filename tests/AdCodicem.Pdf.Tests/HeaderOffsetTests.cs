@@ -89,8 +89,21 @@ public sealed class HeaderOffsetTests
     public void A_chain_that_names_the_same_offset_outside_the_file_twice_loops(string offset, string named)
     {
         // Past what a long holds, the sum wrapped negative, which the rule took for no loop at all; past the end, the rule
-        // said the chain had read a section there.
-        var file = Updated("/Prev {offset} /XRefStm {offset}", offset);
+        // said the chain had read a section there. The newest table's /XRefStm names the offset, and the update's /Prev names
+        // it again: an /XRefStm that names what its own table's /Prev names is not followed, the /Prev reading it (#156).
+        var file = Shifted((Update
+            .Replace("{entries}", "/Prev {offset}", StringComparison.Ordinal)
+            .Replace("{object}", "(an update)", StringComparison.Ordinal) + """
+            xref
+            0 1
+            {free}
+            trailer
+            << /Size 5 /Root 1 0 R /Prev {xref:2} /XRefStm {offset} >>
+            startxref
+            {xref:3}
+            %%EOF
+
+            """).Replace("{offset}", offset, StringComparison.Ordinal));
         var update = PdfTemplate.OffsetOf(file, "xref\n4 1");
         using var document = PdfDocument.Open(file);
 
@@ -106,6 +119,27 @@ public sealed class HeaderOffsetTests
         finding.Message.Should().Be(string.Create(
             CultureInfo.InvariantCulture,
             $"The /Prev of the cross-reference section at offset {update} names offset {named}, outside the file, which the chain has already named: the chain loops."));
+    }
+
+    [Theory]
+    [InlineData(Largest, LargestShifted)]
+    [InlineData("999999", "1000004")]
+    public void A_table_naming_one_offset_outside_the_file_through_prev_and_xrefstm_is_reported_at_the_table(string offset, string named)
+    {
+        // The update's /XRefStm names what its /Prev names: not followed, the /Prev reading it, and reported at the update,
+        // the offset lying outside the file; the /Prev names no section, and no loop is made (#156).
+        var file = Updated("/Prev {offset} /XRefStm {offset}", offset);
+        var update = PdfTemplate.OffsetOf(file, "xref\n4 1");
+        using var document = PdfDocument.Open(file);
+
+        document.Reader.Structure.LoopOffset.Should().Be(-1);
+        var chain = document.Diagnostics
+            .Where(diagnostic => diagnostic.Code is PdfDiagnosticCodes.XRefHybridStreamLost or PdfDiagnosticCodes.XRefSectionMissing or PdfDiagnosticCodes.XRefChainCycle)
+            .ToList();
+        chain.Select(diagnostic => diagnostic.Code).Should().Equal(PdfDiagnosticCodes.XRefHybridStreamLost, PdfDiagnosticCodes.XRefSectionMissing);
+        chain[0].Position.Should().Be(update);
+        chain[0].Message.Should().StartWith($"The /XRefStm of the cross-reference table at offset {update} names offset {named}, the section its /Prev names too, ");
+        chain[1].Position.Should().Be(update);
     }
 
     [Fact]

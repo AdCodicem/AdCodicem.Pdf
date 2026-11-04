@@ -3022,12 +3022,27 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// has one, it is reported once, the index is left incomplete, and no section read after it stands for a number whose
     /// row it lost (#207, #210). Nothing is rebuilt at opening that nobody asks for. A section the chain has already
     /// reached, by the offset that names it or where it was read, is not read again: named by a <c>/Prev</c>, it ends the
-    /// chain in a loop (#188). What became of each section is recorded in <see cref="Structure"/>, for the validation rules.
+    /// chain in a loop (#188); named by an <c>/XRefStm</c>, it is recorded as named again, a hybrid file's stream counting
+    /// for each table that names it (#156). An <c>/XRefStm</c> that names no cross-reference stream of its table's revision —
+    /// a classic table, the table itself among them, or a section the chain reads through <c>/Prev</c> or
+    /// <c>startxref</c> — is reported, and leaves the index incomplete: the stream the table meant is unknown, as the section
+    /// past a loop is. One that names what its own table's <c>/Prev</c> names is not followed: the <c>/Prev</c> reads that
+    /// section whole, its own links with it. A classic table an <c>/XRefStm</c> names is read in the stream's place all the
+    /// same, its rows taken and its own links left unread (#263). What became of each section is recorded in
+    /// <see cref="Structure"/>, for the validation rules.
     /// </remarks>
     /// <param name="startOffset">The offset <c>startxref</c> gives.</param>
     private bool TryReadXRefChain(long startOffset)
     {
         var visited = new HashSet<long>(SeededComparer.Instance);
+
+        // The record of what the chain named, or read, first at each position it reached: where each section was named,
+        // and where it starts once read. An /XRefStm that names a position again is recorded as naming what is there
+        // (#156), keyed as the positions the chain read at are (_sectionsReadAt).
+        var sectionsAt = new Dictionary<long, XRefSectionRecord>(SeededComparer.Instance);
+
+        // The record of an /XRefStm that names what its table's /Prev names, which that /Prev reads next.
+        XRefSectionRecord? namedWithPrevious = null;
         var offset = startOffset;
         var sections = 0;
         var naming = "startxref";
@@ -3096,6 +3111,14 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
 
             var section = new XRefSectionRecord(naming, PositionOf(offset), namedFrom) { WrittenOffset = offset };
             _structure.Add(section);
+            sectionsAt.TryAdd(section.NamedOffset, section);
+
+            if (namedWithPrevious is not null)
+            {
+                // The /XRefStm of the table before named this section too: the /Prev reads it.
+                namedWithPrevious.ReadAs = section;
+                namedWithPrevious = null;
+            }
 
             if (TryReadXRefSection(section.Offset, section, out var previous, out var hybrid) != XRefSectionState.Read)
             {
@@ -3130,7 +3153,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
                 }
             }
 
-            RecordSectionRead(section);
+            RecordSectionRead(section, sectionsAt);
             ReportSectionReadInPart(section, naming);
             _olderNumberedPast |= sections > 1 && section.HighestNumber > _highestRead;
             _highestRead = Math.Max(_highestRead, section.HighestNumber);
@@ -3167,10 +3190,37 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
                 break;
             }
 
-            if (hybrid >= 0 && visited.Add(hybrid))
+            if (hybrid >= 0 && hybrid == previous && !ReachedBefore(hybrid, visited))
+            {
+                // The /XRefStm names what the /Prev names: read as the table's stream, that section would have its own links
+                // left unread, and the /Prev would loop back to it. The /Prev reads it, whole, and the table's own stream is
+                // unknown (#156).
+                namedWithPrevious = NameAgain(hybrid, section, readAs: null);
+                ReportNoStream(namedWithPrevious, "the section its /Prev names too, which the chain reads through that /Prev");
+            }
+            else if (hybrid >= 0 && ReachedBefore(hybrid, visited))
+            {
+                // Named again: what is there was read, or looked for, once, where the chain first reached it, and the naming
+                // is recorded, so that a hybrid file's stream a newer table names too counts for each (#156). What the chain
+                // read there and is no hybrid file's stream stands for none: the table's own stream is unknown.
+                var again = NameAgain(hybrid, section, sectionsAt.GetValueOrDefault(PositionOf(hybrid)));
+
+                if (again.ReadAs is { State: XRefSectionState.Read or XRefSectionState.Relocated, IsHybridStream: false } read)
+                {
+                    ReportNoStream(
+                        again,
+                        ReferenceEquals(read, section)
+                            ? "the table itself"
+                            : string.Create(
+                                CultureInfo.InvariantCulture,
+                                $"the cross-reference {(read.Kind == XRefSectionKind.Stream ? "stream" : "table")} at offset {read.Offset}, which the chain read through {read.NamedBy}"));
+                }
+            }
+            else if (hybrid >= 0)
             {
                 // A hybrid-reference file keeps a classic table for old readers and a stream for the rest: without
                 // the stream, the objects it indexes are missing, and the chain goes on through /Prev.
+                visited.Add(hybrid);
                 var cut = _cutByGuard;
                 var stream = new XRefSectionRecord("/XRefStm", PositionOf(hybrid), section.Offset)
                 {
@@ -3178,6 +3228,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
                     NamingTrailer = section.Trailer,
                 };
                 _structure.Add(stream);
+                sectionsAt.TryAdd(stream.NamedOffset, stream);
 
                 if (TryReadXRefSection(stream.Offset, stream, out _, out _) != XRefSectionState.Read &&
                     (stream.CutByLimit || DeclaresItselfASection(stream) ||
@@ -3196,7 +3247,15 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
                 }
                 else
                 {
-                    RecordSectionRead(stream);
+                    RecordSectionRead(stream, sectionsAt);
+
+                    if (stream.Kind == XRefSectionKind.Table)
+                    {
+                        // A classic table stands in the stream's place, its rows read and its own links left unread (#263):
+                        // whether it holds what the table's stream would have is unknown (#156).
+                        ReportNoStream(stream, "a cross-reference table, whose rows were read in the stream's place");
+                    }
+
                     ReportSectionReadInPart(stream, "/XRefStm");
                 }
 
@@ -3226,8 +3285,9 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// named that offset before, as written — among <paramref name="named"/>, whether it read a section there or not —, or it
     /// read a section at the position the offset names, where that section was named or where it was found moved
     /// (<see cref="_sectionsReadAt"/>). The one notion of "already read" the chain's checks share: a <c>/Prev</c> that names
-    /// what the chain has reached ends the chain in a loop, rather than reading a section twice, and a relocation, which
-    /// tries positions, passes over those where the chain read a section (#188).
+    /// what the chain has reached ends the chain in a loop, rather than reading a section twice; an <c>/XRefStm</c> that
+    /// names it is recorded as naming what is there, read once (#156); and a relocation, which tries positions, passes over
+    /// those where the chain read a section (#188).
     /// </summary>
     /// <remarks>
     /// The offsets named are kept as written: one the chain named and found nothing at, or found its section moved from,
@@ -3241,9 +3301,59 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// <summary>
     /// Records where <paramref name="section"/>, which the chain read — where it was named, or where it was found moved —,
     /// starts: its <c>xref</c> keyword or its stream's object header, past the white space the offset that names it fell
-    /// short by (<see cref="_sectionsReadAt"/>).
+    /// short by (<see cref="_sectionsReadAt"/>) — and, in <paramref name="sectionsAt"/>, that the section is what is there,
+    /// unless what was first named there is (#156).
     /// </summary>
-    private void RecordSectionRead(XRefSectionRecord section) => _sectionsReadAt.Add(section.Offset + section.Padding);
+    private void RecordSectionRead(XRefSectionRecord section, Dictionary<long, XRefSectionRecord> sectionsAt)
+    {
+        var start = section.Offset + section.Padding;
+        _sectionsReadAt.Add(start);
+        sectionsAt.TryAdd(start, section);
+    }
+
+    /// <summary>
+    /// Records that <paramref name="table"/>'s <c>/XRefStm</c> names <paramref name="offset"/>, which the chain has reached
+    /// before, where it read, or looked for, <paramref name="readAs"/> — a hybrid file's stream a newer table named too, as a
+    /// writer that copies <c>/XRefStm</c> into the next trailer leaves it, or what no such stream is —, or that the table's
+    /// <c>/Prev</c> names too, which reads it next (#156). Nothing is read: what is there was read once, where it was first
+    /// reached.
+    /// </summary>
+    /// <remarks>One record for each table the chain reads, at most: as many as the sections the chain may read.</remarks>
+    private XRefSectionRecord NameAgain(long offset, XRefSectionRecord table, XRefSectionRecord? readAs)
+    {
+        var again = new XRefSectionRecord("/XRefStm", PositionOf(offset), table.Offset)
+        {
+            WrittenOffset = offset,
+            NamingTrailer = table.Trailer,
+            State = XRefSectionState.NamedAgain,
+            ReadAs = readAs,
+        };
+        _structure.Add(again);
+        return again;
+    }
+
+    /// <summary>
+    /// Reports that the <c>/XRefStm</c> <paramref name="naming"/> records names <paramref name="what"/>, no cross-reference
+    /// stream of its table's revision, and marks the index incomplete: the objects only that stream indexes are looked for by
+    /// rebuilding the index when they are asked for, as a missing section's are (#156).
+    /// </summary>
+    /// <remarks>
+    /// Reported at the offset the <c>/XRefStm</c> names, or at its table when that offset lies outside the file, as a missing
+    /// section is.
+    /// </remarks>
+    /// <param name="naming">The record of the <c>/XRefStm</c>, its table at <see cref="XRefSectionRecord.NamedFrom"/>.</param>
+    /// <param name="what">What the offset holds, in words: "the table itself".</param>
+    private void ReportNoStream(XRefSectionRecord naming, string what)
+    {
+        naming.NamesNoStream = what;
+        _indexIncomplete = true;
+        _diagnostics.Warn(
+            PdfDiagnosticCodes.XRefHybridStreamLost,
+            string.Create(
+                CultureInfo.InvariantCulture,
+                $"The /XRefStm of the cross-reference table at offset {naming.NamedFrom} names offset {DescribeOffset(naming.WrittenOffset)}, {what}: ISO 32000-1 has it name the cross-reference stream of the table's revision (Table 19). The objects only that stream indexes are looked for by rebuilding the index."),
+            IsInFile(naming.NamedOffset) ? naming.NamedOffset : naming.NamedFrom);
+    }
 
     /// <summary>
     /// Determines whether a section the chain could not read declares itself one all the same: a classic table's

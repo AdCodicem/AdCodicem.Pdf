@@ -65,11 +65,25 @@ public static class PdfDiagnosticCodes
     public const string XRefSectionEmpty = "xref.section-empty";
 
     /// <summary>
-    /// The chain of previous cross-reference sections looped back on itself: a <c>/Prev</c> or <c>/XRefStm</c> names an
-    /// offset the chain has already reached, read or, outside the file, named. The report is placed at the section the
-    /// chain looped back to, or at the section whose trailer named it when that offset lies outside the file.
+    /// The chain of previous cross-reference sections looped back on itself: a <c>/Prev</c> names an offset the chain has
+    /// already reached — a section it read, however it was named, or an offset a <c>/Prev</c> or an <c>/XRefStm</c> named
+    /// where it read none, in the file or outside it. An <c>/XRefStm</c> ends no chain: one that names what the chain has
+    /// reached names a hybrid file's stream again, or is <see cref="XRefHybridStreamLost"/>'s (#156). The report is placed
+    /// at the section the chain looped back to, or at the section whose trailer named it when that offset lies outside the
+    /// file.
     /// </summary>
     public const string XRefChainCycle = "xref.chain-cycle";
+
+    /// <summary>
+    /// A hybrid file's table names through <c>/XRefStm</c> no cross-reference stream of its revision (ISO 32000-1, Table 19):
+    /// a classic table — the table itself, another the chain read, or one it reads in the stream's place, its rows taken —,
+    /// a cross-reference stream the chain read through <c>/Prev</c> or <c>startxref</c>, or what the table's own
+    /// <c>/Prev</c> names too, which the chain reads through that <c>/Prev</c> rather than in the stream's place (#156). The
+    /// objects only the table's stream indexes are missing from the index, which is rebuilt by scanning the file when one of
+    /// them is asked for. The report is placed at the offset the <c>/XRefStm</c> names, or at the table when that offset
+    /// lies outside the file.
+    /// </summary>
+    public const string XRefHybridStreamLost = "xref.hybrid-stream-lost";
 
     /// <summary>
     /// An object's cross-reference entry places it outside the file. The report carries no position, since the index

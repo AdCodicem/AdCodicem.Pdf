@@ -818,11 +818,22 @@ public class CrossReferenceRuleTests
     [Fact]
     public void A_loop_through_an_offset_the_chain_only_named_says_no_section_was_read_there()
     {
-        // The update's /XRefStm names an offset in a comment, more than 512 bytes from anything, and its /Prev names it again:
-        // the chain loops through an offset where it read no section, and says so.
-        static byte[] Build(string offset) => PdfTemplate.Build(Updated
+        // The newest table's /XRefStm names an offset in a comment, more than 512 bytes from anything, and the update's /Prev
+        // names it again: the chain loops through an offset where it read no section, and says so. An /XRefStm that names
+        // what its own table's /Prev names is not followed, the /Prev reading the section (#156): the loop takes two tables.
+        static byte[] Build(string offset) => PdfTemplate.Build((Updated
             .Replace("4 0 obj\n", "%" + new string('-', 1200) + "\n4 0 obj\n", StringComparison.Ordinal)
-            .Replace("/Prev {xref:1}", $"/XRefStm {offset} /Prev {offset}", StringComparison.Ordinal));
+            .Replace("/Prev {xref:1}", "/Prev {offset}", StringComparison.Ordinal) + """
+            xref
+            0 1
+            {free}
+            trailer
+            << /Size 5 /Root 1 0 R /Prev {xref:2} /XRefStm {offset} >>
+            startxref
+            {xref:3}
+            %%EOF
+
+            """).Replace("{offset}", offset, StringComparison.Ordinal));
         var hole = PdfTemplate.OffsetOf(Build("0000000000"), "%---") + 600;
         var named = hole.ToString("D10", CultureInfo.InvariantCulture);
         var file = Build(named);
@@ -867,6 +878,63 @@ public class CrossReferenceRuleTests
         var finding = context.ToReport(ValidationProfile.Structural).Findings.Should().ContainSingle().Which;
         finding.Location.IsDocument.Should().BeTrue();
         finding.Message.Should().Be("A /Prev names offset 9, a section the chain has already read: the chain loops.");
+    }
+
+    [Theory]
+    [InlineData("itself", "the table itself")]
+    [InlineData("the table its /Prev reads", "the cross-reference table at offset {named}, which the chain read through /Prev")]
+    [InlineData("the newest table", "the cross-reference table at offset {named}, which the chain read through startxref")]
+    [InlineData("a table no /Prev names", "a cross-reference table, whose rows were read in the stream's place")]
+    [InlineData("what its own /Prev names", "the section its /Prev names too, which the chain reads through that /Prev")]
+    public void An_xrefstm_that_names_no_cross_reference_stream_of_its_revision_is_an_error(string shape, string what)
+    {
+        // ISO 32000-1 has a hybrid table's /XRefStm name the cross-reference stream of its revision (Table 19). One that names
+        // a classic table, or a section the chain reads through /Prev or startxref, leaves that stream unknown, what only it
+        // indexes found, if at all, by rebuilding the index: an error (ADR 45), which nothing reported (#156).
+        var (file, naming, named) = shape switch
+        {
+            "itself" => Tables(HybridFiles.OldestNaming("{xref:1}"), 1, 1),
+            "the table its /Prev reads" => Tables(HybridFiles.OldestNaming("{xref:2}"), 1, 2),
+            "the newest table" => Tables(HybridFiles.OldestNaming("{xref:3}"), 1, 3),
+            "a table no /Prev names" => Tables(HybridFiles.NamingATableNeverRead(), 3, 2),
+            _ => Tables(HybridFiles.NamingThePreviousTable(), 3, 2),
+        };
+
+        var report = Validate(file);
+
+        var finding = report.Findings.Should().ContainSingle().Which;
+        finding.RuleId.Should().Be(PdfValidationRuleIds.XRefHybridStreamWrong);
+        finding.Severity.Should().Be(PdfValidationSeverity.Error);
+        finding.Location.Position.Should().Be(naming);
+        finding.Message.Should().Be(string.Create(
+            CultureInfo.InvariantCulture,
+            $"The /XRefStm of the cross-reference table at offset {naming} names offset {named}, {what.Replace("{named}", named.ToString(CultureInfo.InvariantCulture), StringComparison.Ordinal)}, where ISO 32000-1 names the cross-reference stream of the table's revision (Table 19): what only that stream indexes is lost."));
+        finding.Remedy.Should().Be("Point /XRefStm at the cross-reference stream of the table's revision, or remove it when the table indexes every object of its revision.");
+
+        static (byte[] File, long Naming, long Named) Tables(byte[] file, int naming, int named) =>
+            (file, PdfTemplate.OffsetOf(file, "\nxref\n", naming) + 1, PdfTemplate.OffsetOf(file, "\nxref\n", named) + 1);
+    }
+
+    [Fact]
+    public void An_xrefstm_naming_the_stream_startxref_names_is_an_error()
+    {
+        // A stream, but one the chain read through startxref, of a newer revision than the table's (#156).
+        var (file, table, stream) = HybridFiles.NamingANewerStream();
+
+        var finding = Single(Validate(file), PdfValidationRuleIds.XRefHybridStreamWrong);
+
+        finding.Location.Position.Should().Be(table);
+        finding.Message.Should().Contain(string.Create(
+            CultureInfo.InvariantCulture,
+            $"names offset {stream}, the cross-reference stream at offset {stream}, which the chain read through startxref, where"));
+    }
+
+    [Fact]
+    public void A_stream_two_tables_name_is_no_fault_of_this_rule()
+    {
+        // A writer that copies /XRefStm into the next trailer names one stream from two tables: each names a stream (#156).
+        Validate(HybridFiles.SharedStream(olderSize: 7).File).Findings.Should().BeEmpty();
+        Validate(HybridFiles.SharedStreamNamedShort().File).Contains(PdfValidationRuleIds.XRefHybridStreamWrong).Should().BeFalse();
     }
 
     [Fact]

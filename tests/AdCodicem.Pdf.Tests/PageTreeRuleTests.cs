@@ -4,6 +4,7 @@ using System.Text;
 using AdCodicem.Pdf.Diagnostics;
 using AdCodicem.Pdf.Documents;
 using AdCodicem.Pdf.IO;
+using AdCodicem.Pdf.IO.XRef;
 using AdCodicem.Pdf.Objects;
 using AdCodicem.Pdf.Validation;
 using AdCodicem.Pdf.Validation.Rules;
@@ -931,6 +932,54 @@ public class PageTreeRuleTests
         finding.Remedy.Should().BeNull();
         finding.Message.Should().Be(
             "Object 7 is a page, of /Type /Page with a /Parent, that the page tree does not list: no reader shows it.");
+    }
+
+    [Fact]
+    public void A_page_the_tree_leaves_out_is_orphaned_where_two_tables_name_one_stream()
+    {
+        // Two tables name one cross-reference stream, which indexes the page left out: the second naming reads nothing, and
+        // leaves the index sound (#156).
+        var (file, _, _, _, _) = HybridFiles.SharedStream(
+            olderSize: 7, six: "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << >> >>");
+
+        Single(Validate(file), PdfValidationRuleIds.PageTreePageOrphaned).Location.Object.Should().Be(new PdfObjectId(6));
+    }
+
+    [Fact]
+    public void A_page_the_tree_leaves_out_is_orphaned_where_a_section_was_found_moved()
+    {
+        // An update's /Prev names the first table 3 bytes short of it, where the chain finds it: read whole, the index is
+        // sound, and the page it holds that the tree leaves out is orphaned.
+        var built = WithObject(7, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << >> >>");
+        var first = PdfTemplate.OffsetOf(built, "\nxref\n") + 1;
+        byte[] file =
+        [
+            .. built,
+            .. Encoding.Latin1.GetBytes(string.Create(
+                CultureInfo.InvariantCulture,
+                $"xref\n0 1\n0000000000 65535 f \ntrailer\n<< /Size 8 /Root 1 0 R /Prev {first - 3} >>\nstartxref\n{built.Length}\n%%EOF\n")),
+        ];
+        using var document = PdfDocument.Open(file);
+
+        document.Reader.Structure.Sections[1].State.Should().Be(XRefSectionState.Relocated);
+        Single(new PdfValidator().Validate(document), PdfValidationRuleIds.PageTreePageOrphaned).Location.Object.Should().Be(new PdfObjectId(7));
+    }
+
+    [Fact]
+    public void A_page_the_tree_leaves_out_is_not_said_orphaned_where_a_limit_cut_the_section_indexing_it()
+    {
+        // The index has room for objects 0 to 7, and the table goes on to object 8: the guard cuts the section there, and
+        // the index is not whole enough to say that object 7, a page the tree leaves out, is orphaned.
+        var built = PdfTemplate.Build(Tree
+            .Replace("xref\n0 7\n", "7 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << >> >>\nendobj\n8 0 obj\n(eight)\nendobj\nxref\n0 9\n", StringComparison.Ordinal)
+            .Replace("{row:6}\n", "{row:6}\n{row:7}\n{row:8}\n", StringComparison.Ordinal)
+            .Replace("/Size 7", "/Size 9", StringComparison.Ordinal));
+        using var whole = PdfDocument.Open(built);
+        using var cut = PdfDocument.Open(built, new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxIndexEntries = 8 } });
+
+        Single(new PdfValidator().Validate(whole), PdfValidationRuleIds.PageTreePageOrphaned).Location.Object.Should().Be(new PdfObjectId(7));
+        cut.Reader.Structure.Sections[0].CutByLimit.Should().BeTrue();
+        new PdfValidator().Validate(cut).Contains(PdfValidationRuleIds.PageTreePageOrphaned).Should().BeFalse();
     }
 
     [Fact]

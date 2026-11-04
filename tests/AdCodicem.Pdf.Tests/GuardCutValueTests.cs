@@ -3198,13 +3198,14 @@ public class GuardCutValueTests
         // are read, and the chain goes on through the update's /Prev, as past a stream. The table's own /Prev or /XRefStm,
         // which a stream's is not since #263, was read all the same: one that leads to an object MaxObjectLength cuts ended
         // the chain for the guard, the original table and the catalog lost, and one no section places was said to name a
-        // missing section. The rule on trailer values judges it as the file wrote it.
+        // missing section. The rule on trailer values judges it as the file wrote it. That the /XRefStm names a table is the
+        // file's to be reported, whatever its links (#156).
         var file = ChainFiles.HybridNamingATable(key, value);
         using var document = PdfDocument.Open(file, guarded ? ObjectGuard : null);
 
         document.WasRepaired.Should().BeFalse();
         document.Reader.Structure.Sections.Should().HaveCount(3);
-        document.Diagnostics.Should().BeEmpty();
+        document.Diagnostics.Should().ContainSingle().Which.Code.Should().Be(PdfDiagnosticCodes.XRefHybridStreamLost);
         document.GetObject(new PdfObjectId(3)).AsDictionary().Should().NotBeNull();
         var report = new PdfValidator().Validate(document);
         report.Contains(PdfValidationRuleIds.XRefSectionNotFound).Should().BeFalse();
@@ -3216,7 +3217,13 @@ public class GuardCutValueTests
 
         // A table's /XRefStm may be a reference (Table 19); its /Prev is direct (Table 15).
         findings.Should().HaveCount(key == "Prev" ? 1 : 0).And.OnlyContain(message => message.Contains($"writes its /Prev as the reference {value}", StringComparison.Ordinal));
-        judged.Diagnostics.Should().BeEmpty();
+
+        // The validation rebuilds first the index the /XRefStm left incomplete, which reads object 9 whole: under the guard,
+        // the limit's to report. The table's links are read by neither.
+        judged.Diagnostics.Select(diagnostic => diagnostic.Code).Should().Equal(
+            guarded
+                ? [PdfDiagnosticCodes.XRefHybridStreamLost, PdfDiagnosticCodes.XRefRebuilt, PdfDiagnosticCodes.LimitObject]
+                : [PdfDiagnosticCodes.XRefHybridStreamLost, PdfDiagnosticCodes.XRefRebuilt]);
     }
 
     [Theory]
