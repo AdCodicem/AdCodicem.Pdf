@@ -17,14 +17,15 @@ public static class PdfDiagnosticCodes
 
     /// <summary>
     /// An object, or a cross-reference section the chain names, was not at the offset the file claimed, and was
-    /// found nearby.
+    /// found nearby — a section never where the chain read one, nor near one that is there and cannot be read.
     /// </summary>
     public const string XRefOffsetAdjusted = "xref.offset-adjusted";
 
     /// <summary>
     /// A cross-reference section the chain names, through <c>/Prev</c> or <c>/XRefStm</c>, is neither where
     /// it is named nor near it — nothing there reads as a section, which <see cref="XRefSectionUnreadable"/> reports
-    /// otherwise —, lies outside the file, or is named by a value that is not an offset. The objects only it
+    /// otherwise, and an object that gives a <c>/W</c> and another <c>/Type</c>, a CIDFont, holds none unless it reads as
+    /// one —, lies outside the file, or is named by a value that is not an offset. The objects only it
     /// indexes are missing from the index, which is rebuilt by scanning the file when one of them is asked for. The report
     /// is placed at the offset the section was named at, or, when that offset lies outside the file or the value is not an
     /// offset, at the section whose trailer named it.
@@ -36,7 +37,9 @@ public static class PdfDiagnosticCodes
     /// cannot be read — a stray token among a table's rows or in place of its trailer, a subsection numbering objects
     /// past 2,147,483,647, a cross-reference stream whose <c>/W</c>, <c>/Index</c>, <c>/Size</c> or data cannot give
     /// rows, or whose <c>/Length</c> no section read before it places and whose data no <c>endstream</c> ends before the
-    /// next object or the end of the file —, and nothing near it can be read in its place. A value that leads to an object
+    /// next object or the end of the file —: an <c>xref</c> keyword, or a stream whose dictionary gives <c>/Type /XRef</c>,
+    /// for which no section near it is taken; or a stream that only gives a <c>/W</c>, when nothing near it can be read in
+    /// its place. A value that leads to an object
     /// one of the reader's limits cut is the limit's: the chain ends there, and nothing is reported of the section. The rows read before the
     /// fault, if any, were kept; the objects only the rest indexes are missing from the index, which is rebuilt by
     /// scanning the file when one of them is asked for. The report is placed at the section, the fault in its message.

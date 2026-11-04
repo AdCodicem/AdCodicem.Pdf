@@ -21,8 +21,7 @@ internal static class ChainFiles
     /// reference to object 5, which holds the value. The second is a classic table that indexes object 5 again — where it
     /// is when <paramref name="placed"/>, at offset 99999, outside the file, otherwise — and names stream 7 through
     /// <c>/Prev</c>. Object 5's value is followed by <paramref name="padding"/> spaces. With <paramref name="reals"/>, the
-    /// stream's <c>/Length</c> and the integers object 5 holds are written as reals with no fractional part. A comment
-    /// keeps the newer table out of reach of the search near stream 7, which would take it for the stream (#188).
+    /// stream's <c>/Length</c> and the integers object 5 holds are written as reals with no fractional part.
     /// </summary>
     public static byte[] UnderAnUpdate(string key, bool placed, string version = "1.5", int padding = 0, bool reals = false)
     {
@@ -96,7 +95,6 @@ internal static class ChainFiles
             ],
             predicted ? Rows.PngFlate : compressed ? Rows.Flate : Rows.Raw);
         file.Stream(7, entries.Replace("{length}", data.Length.ToString(CultureInfo.InvariantCulture), StringComparison.Ordinal) + " /Root 1 0 R", data);
-        file.Text("%" + new string('-', 1200) + "\n");
         var xref = file.Position;
         var rows = new StringBuilder(string.Create(
             CultureInfo.InvariantCulture, $"xref\n0 1\n0000000000 65535 f\r\n5 1\n{(placed ? file.OffsetOf(5) : 99999):D10} 00000 n\r\n"));
@@ -300,16 +298,18 @@ internal static class ChainFiles
     /// second writes it again as <c>(new)</c>, and indexes it in cross-reference stream 10, whose <c>/Length</c> names
     /// object 4, which only that stream indexes, and whose rows of objects 5 and 6, of reserved types, spell
     /// <c>endstream</c> after an end-of-line when <paramref name="spellingEndStream"/>. With
-    /// <paramref name="olderIndirect"/>, stream 7's <c>/Length</c> names object 9, which only stream 7 indexes, and a comment
-    /// sets the update further from it than a search for a section's misplaced offset reaches. Object 4 holds
+    /// <paramref name="olderIndirect"/>, stream 7's <c>/Length</c> names object 9, which only stream 7 indexes. Object 4 holds
     /// <paramref name="four"/>, in which <c>{length}</c> stands for the length. The file is valid. With
-    /// <paramref name="nine"/>, the update writes object 9 again, holding it, and stream 10 indexes it there.
+    /// <paramref name="nine"/>, the update writes object 9 again, holding it, and stream 10 indexes it there. A comment of
+    /// <paramref name="gap"/> bytes, where one is given, sets the update that much further from stream 7: with none, stream
+    /// 10 lies within 512 bytes of it.
     /// </summary>
     public static byte[] UpdateWithIndirectLength(
         bool spellingEndStream,
         bool olderIndirect = false,
         string four = "{length}",
-        string? nine = null)
+        string? nine = null,
+        int gap = 0)
     {
         using var file = new Writer("1.5");
         file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>");
@@ -331,9 +331,9 @@ internal static class ChainFiles
         file.Stream(7, string.Create(CultureInfo.InvariantCulture, $"/Type /XRef /Size {olderRows} /W [1 4 2] /Root 1 0 R /Length {olderLength}"), rows);
         file.StartXRef(first);
 
-        if (olderIndirect)
+        if (gap > 0)
         {
-            file.Text("%" + new string('x', 2 * AdCodicem.Pdf.IO.PdfFileReader.NearbySearchRadius) + "\n");
+            file.Text("%" + new string('x', gap - 2) + "\n");
         }
 
         file.Object(8, "(new)");
@@ -362,9 +362,8 @@ internal static class ChainFiles
     /// <summary>
     /// A file of two revisions. The first writes object 8 as <c>(old)</c> and indexes it in cross-reference stream 7, whose
     /// <c>/Length</c> names object 4, which only that stream indexes; its rows of objects 5 and 6, of reserved types, spell
-    /// <c>endstream</c> after an end-of-line when <paramref name="spellingEndStream"/>. The second, set further from it than a
-    /// search for a section's misplaced offset reaches, writes object 8 again as <c>(new)</c> and indexes it in
-    /// cross-reference stream 9. The file is valid.
+    /// <c>endstream</c> after an end-of-line when <paramref name="spellingEndStream"/>. The second writes object 8 again as
+    /// <c>(new)</c> and indexes it in cross-reference stream 9. The file is valid.
     /// </summary>
     public static byte[] OlderWithIndirectLength(bool spellingEndStream)
     {
@@ -380,7 +379,6 @@ internal static class ChainFiles
         data.AddRange(Encode([(1, first, 0), (1, file.OffsetOf(8), 0)], Rows.Raw));
         file.Stream(7, "/Type /XRef /Size 9 /W [1 4 2] /Root 1 0 R /Length 4 0 R", [.. data]);
         file.StartXRef(first);
-        file.Text("%" + new string('x', 2 * AdCodicem.Pdf.IO.PdfFileReader.NearbySearchRadius) + "\n");
 
         file.Object(8, "(new)");
         var second = file.Position;
@@ -529,7 +527,6 @@ internal static class ChainFiles
             7,
             string.Create(CultureInfo.InvariantCulture, $"/Type /XRef /Size {(chained ? 12 : 10)} /W [1 4 2] /Index {index} /Root 1 0 R /Length {(chained ? 4 : 5)} 0 R"),
             [.. data]);
-        file.Text("%" + new string('-', 1200) + "\n");
         var xref = file.Position;
         file.Text(string.Create(
             CultureInfo.InvariantCulture,
@@ -575,7 +572,6 @@ internal static class ChainFiles
                 CultureInfo.InvariantCulture,
                 $"/Type /XRef /Size {size} /W [1 4 2] /Index [0 1 20 2 22 2 1 3 5 1 7 1 30 {free}]{(compressed ? " /Filter /FlateDecode" : string.Empty)} /Root 1 0 R /Length 5 0 R"),
             Data(file.OffsetOf(5), stream));
-        file.Text("%" + new string('-', 1200) + "\n");
         var xref = file.Position;
         file.Text(string.Create(
             CultureInfo.InvariantCulture,
@@ -611,7 +607,6 @@ internal static class ChainFiles
             5,
             $"/Type /XRef /Size 6 /W [1 4 2] /Filter [/ASCIIHexDecode /FlateDecode] /Root 1 0 R /Length {(deferred ? "4 0 R" : length)}",
             Data(file.OffsetOf(4), at));
-        file.Text("%" + new string('-', 1200) + "\n");
         var xref = file.Position;
         file.Text(string.Create(
             CultureInfo.InvariantCulture,
@@ -665,7 +660,6 @@ internal static class ChainFiles
             5,
             $"/Type /XRef /Size 6 /W [1 4 2] /Filter {(compressed ? "[/ASCIIHexDecode /FlateDecode]" : "/ASCIIHexDecode")} /Root 1 0 R /Length {(deferred ? "4 0 R" : length)}",
             data);
-        file.Text("%" + new string('-', 1200) + "\n");
         var xref = file.Position;
         file.Text(string.Create(
             CultureInfo.InvariantCulture,
@@ -728,7 +722,6 @@ internal static class ChainFiles
             5,
             $"/Type /XRef /Size 6 /W [1 4 2] /Filter [/RunLengthDecode /FlateDecode] /Root 1 0 R /Length {(deferred ? "4 0 R" : length)}",
             data);
-        file.Text("%" + new string('-', 1200) + "\n");
         var xref = file.Position;
         file.Text(string.Create(
             CultureInfo.InvariantCulture,
@@ -934,7 +927,6 @@ internal static class ChainFiles
                 CultureInfo.InvariantCulture,
                 $"/Type /XRef /Size 22 /W [1 4 2] /Index {(pageBefore ? "[0 4 20 2 5 1 7 1]" : "[1 1 20 2 2 2 5 1 7 1]")} /Filter /FlateDecode /DecodeParms << /Predictor 12 /Columns {columns} >> /Root 1 0 R /Length 5 0 R"),
             Data(file.OffsetOf(5), at));
-        file.Text("%" + new string('-', 1200) + "\n");
         var xref = file.Position;
         file.Text(string.Create(
             CultureInfo.InvariantCulture,
@@ -1281,7 +1273,6 @@ internal static class ChainFiles
             return file.ToArray();
         }
 
-        file.Text("%" + new string('-', 1200) + "\n");
         var xref = file.Position;
         file.Text(string.Create(
             CultureInfo.InvariantCulture,
@@ -1322,7 +1313,6 @@ internal static class ChainFiles
             20,
             string.Create(CultureInfo.InvariantCulture, $"/Type /XRef /Size 26 /W [1 4 2] /Index [6 1 20 6] /Root 1 0 R /Prev {older} /Length {(bothNameIt ? "5 0 R" : "49")}"),
             rows);
-        file.Text("%" + new string('-', 1200) + "\n");
         var xref = file.Position;
         file.Text(string.Create(
             CultureInfo.InvariantCulture,
@@ -1367,7 +1357,6 @@ internal static class ChainFiles
             7,
             string.Create(CultureInfo.InvariantCulture, $"/Type /XRef /Size 10 /W [1 4 2] /Index [0 3 {lengthNumber} 1 7 1 8 2 3 1] /Root 1 0 R /Length {lengthNumber} 0 R"),
             [.. data]);
-        file.Text("%" + new string('-', 1200) + "\n");
         var xref = file.Position;
         var rows = new StringBuilder("xref\n0 1\n0000000000 65535 f\r\n");
 

@@ -3930,7 +3930,6 @@ public class GuardCutValueTests
         ]);
         var prev = naming == "/Prev" ? Invariant($" /Prev {first}") : string.Empty;
         file.Raw(Invariant($"6 0 obj\n<< /Type /XRef /W [1 4 2] {numbering} /Root 1 0 R{prev} /Length {rows.Length} >>\nstream\n{rows}\nendstream\nendobj\n"));
-        file.Raw("%" + new string('-', 1200) + "\n");
         var table = file.Position;
         var link = naming == "/Prev" ? Invariant($"/Prev {sixAt}") : Invariant($"/Prev {first} /XRefStm {sixAt}");
         file.Raw(Invariant($"xref\n0 1\n0000000000 65535 f \n5 1\n{five:D10} 00000 n \ntrailer\n<< /Size {tableSize} /Root 1 0 R {link} >>\nstartxref\n{table}\n%%EOF\n"));
@@ -3960,7 +3959,6 @@ public class GuardCutValueTests
         var rows = Row(0, 0, 65535) + Row(1, one, 0) + Row(1, two, 0) + Row(1, three, 0) + Row(1, eight, 0) + Row(1, at, 0) +
             "\nendstream\0\0\0\0";
         file.Raw(Invariant($"7 0 obj\n<< /Type /XRef /W [5 0 R 4 2] /Index [0 4 8 1 7 1 20 2] /Root 1 0 R /Length 8 0 R >>\nstream\n{rows}\nendstream\nendobj\n"));
-        file.Raw("%" + new string('-', 1200) + "\n");
         var table = file.Position;
         file.Raw(Invariant($"xref\n0 1\n0000000000 65535 f \n5 1\n{five:D10} 00000 n \ntrailer\n<< /Size 22 /Root 1 0 R /Prev {at} >>\nstartxref\n{table}\n%%EOF\n"));
 

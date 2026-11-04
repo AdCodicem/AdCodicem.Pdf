@@ -92,6 +92,14 @@ internal sealed class XRefSectionRecord
     public bool TypedXRef { get; set; }
 
     /// <summary>
+    /// Gets a value indicating whether the stream's dictionary gives a <c>/Type</c> that names another type than
+    /// <c>/XRef</c> — a CIDFont's, whose <c>/W</c> gives its glyphs' widths —: what is there said it is something else, and
+    /// is the section only where the chain names it and it reads as one, or a guard cut a value it is read with (#263):
+    /// otherwise it holds no section (#281).
+    /// </summary>
+    public bool TypedOther { get; set; }
+
+    /// <summary>
     /// Gets a value indicating whether <see cref="Documents.PdfReaderLimits.MaxTrailerLength"/> cut the section's
     /// trailer: what lay past the cut — an older section's <c>/Prev</c>, a key a newer trailer gives — is unknown.
     /// </summary>
@@ -156,6 +164,7 @@ internal sealed class XRefSectionRecord
         CutByLimit = attempt.CutByLimit;
         CutByValue = attempt.CutByValue;
         TypedXRef = attempt.TypedXRef;
+        TypedOther = attempt.TypedOther;
         TrailerCutByLimit = attempt.TrailerCutByLimit;
         ChainHiddenByGuard = attempt.ChainHiddenByGuard;
         ChainHiddenAtStream = attempt.ChainHiddenAtStream;

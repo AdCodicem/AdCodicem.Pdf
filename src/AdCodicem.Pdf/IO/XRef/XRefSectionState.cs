@@ -16,5 +16,11 @@ internal enum XRefSectionState : byte
     /// A section is where it was named — an <c>xref</c> keyword, or a cross-reference stream — but it could not be
     /// read.
     /// </summary>
+    /// <remarks>
+    /// The <c>xref</c> keyword, or a stream whose dictionary gives <c>/Type /XRef</c>, is the section, and is not looked for
+    /// nearby (#281). An object that only gives a <c>/W</c> may be something else: the section is looked for nearby first,
+    /// and, with nothing there, stays malformed where it gives no <c>/Type</c>, and is <see cref="NotFound"/> where it gives
+    /// another, an object that is no section — but for one a guard cut a value of, the guard's (#263).
+    /// </remarks>
     Malformed,
 }

@@ -437,6 +437,168 @@ public class CrossReferenceRuleTests
         }
     }
 
+    [Theory]
+    [InlineData(0, "")]
+    [InlineData(0, "junk\n")]
+    [InlineData(1200, "")]
+    public void A_table_that_is_there_and_cannot_be_read_beside_the_one_naming_it_is_malformed_and_nothing_else(int gap, string junk)
+    {
+        // The first table holds a stray name where its trailer should start; the update's table, which names it, lies within
+        // 512 bytes of it, or 1,200 bytes on, or the file starts with junk. The update's table was taken for the first moved:
+        // the validator judged it twice — a /Size wrong twice —, found a shift and a loop the file does not have, and never
+        // the malformed table (#188). The first table is malformed, and that is all.
+        var (file, malformed, _) = NearbyFiles.MalformedTableUnderAnUpdate(gap, junk);
+        var name = PdfTemplate.OffsetOf(file, "/Bad");
+
+        var report = Validate(file);
+
+        report.Findings.Should().ContainSingle(finding => finding.RuleId != PdfValidationRuleIds.FileHeaderOffset);
+        var finding = Single(report, PdfValidationRuleIds.XRefSectionMalformed);
+        finding.Location.Position.Should().Be(malformed);
+        finding.Message.Should().Be(
+            $"The cross-reference table at offset {malformed} cannot be read: it holds a name at offset {name}, where a subsection or the trailer should start.");
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(1500)]
+    public void An_xrefstm_naming_an_object_of_another_type_near_its_table_is_not_found(int gap)
+    {
+        // The hybrid table's /XRefStm names object 4, of /Type /Foo, within 512 bytes of the table, or 1,500 bytes before it.
+        // The table itself was taken for the stream moved: a shift, a /Size said wrong, and a page the file lacks, but no error
+        // for the stream lost (#188). The stream is not found, an error, and the page is found by rebuilding the index.
+        var (file, four, _) = NearbyFiles.HybridNamingAnotherObject(gap);
+
+        var report = Validate(file);
+
+        var finding = report.Findings.Should().ContainSingle().Which;
+        finding.RuleId.Should().Be(PdfValidationRuleIds.XRefSectionNotFound);
+        finding.Location.Position.Should().Be(four);
+        finding.Message.Should().Be(
+            $"The cross-reference section /XRefStm names at offset {four} is not there, nor within 512 bytes of it: the offset holds object 4, which is not a cross-reference stream.");
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(1200)]
+    public void A_prev_naming_no_section_within_reach_of_the_table_naming_it_is_not_found_and_no_loop(int gap)
+    {
+        // The only table names a place inside the page tree's dictionary, within 512 bytes of the table or 1,200 bytes before
+        // it: once a shift and a loop, the table read twice (#188); now a section not found.
+        var (file, named, _) = NearbyFiles.TableNamingNoSection(gap);
+
+        var finding = Validate(file).Findings.Should().ContainSingle().Which;
+
+        finding.RuleId.Should().Be(PdfValidationRuleIds.XRefSectionNotFound);
+        finding.Message.Should().Be(
+            $"The cross-reference section /Prev names at offset {named} is not there, nor within 512 bytes of it: the offset holds neither the xref keyword nor an object.");
+    }
+
+    [Theory]
+    [InlineData(69)]
+    [InlineData(1269)]
+    public void A_prev_naming_a_place_between_two_tables_shifts_to_the_one_the_chain_has_not_read(int after)
+    {
+        // /Prev names a place 115 bytes past the first table's keyword, and the update's table starts 69 bytes past it, or
+        // 1,269: the first table is found, shifted, where once the update's was taken, and a loop found (#188).
+        var (file, original, named, _) = NearbyFiles.UpdateNamingBetweenItsTables(115, after);
+
+        var finding = Validate(file).Findings.Should().ContainSingle().Which;
+
+        finding.RuleId.Should().Be(PdfValidationRuleIds.XRefSectionShifted);
+        finding.Message.Should().Be($"The cross-reference section /Prev names at offset {named} starts 115 bytes before it, at offset {original}.");
+    }
+
+    [Theory]
+    [InlineData("/W [1 4 2]", "/W [1 4 /]", "its /W gives a field a width that is not an integer", 0)]
+    [InlineData("/W [1 4 2]", "/W [1 4 /]", "its /W gives a field a width that is not an integer", 1200)]
+    [InlineData("/Root 1 0 R", "/Index [0 ]", "its /Index holds 1 value, not pairs of a first object number and a count of rows", 0)]
+    [InlineData("/Root 1 0 R", "/Index [0 ]", "its /Index holds 1 value, not pairs of a first object number and a count of rows", 1200)]
+    [InlineData("/Size 9 ", "/Size/X ", "it has no /Index, and its /Size gives no count of objects", 0)]
+    [InlineData("/Size 9 ", "/Size/X ", "it has no /Index, and its /Size gives no count of objects", 1200)]
+    public void A_cross_reference_stream_an_update_names_that_cannot_be_read_is_malformed_however_near_the_update(
+        string written, string faulty, string fault, int gap)
+    {
+        // The older of two cross-reference streams has its /W, /Index or /Size written so that no row can be read, in place;
+        // the newer, which names it, lies within 512 bytes of it, or 1,200 bytes on. The newer was taken for the older moved:
+        // a shift and a loop, and the older never found malformed (#281). Read whole, the file has no finding.
+        var sound = ChainFiles.UpdateWithIndirectLength(spellingEndStream: false, gap: gap);
+        var older = PdfTemplate.OffsetOf(sound, "7 0 obj");
+        var text = Encoding.Latin1.GetString(sound);
+        var at = text.IndexOf(written, StringComparison.Ordinal);
+        at.Should().BeLessThan((int)PdfTemplate.OffsetOf(sound, "stream\n"), "the older stream's dictionary holds it");
+        var file = Encoding.Latin1.GetBytes(string.Concat(text.AsSpan(0, at), faulty, text.AsSpan(at + written.Length)));
+
+        Validate(sound).Findings.Should().BeEmpty();
+        var finding = Validate(file).Findings.Should().ContainSingle().Which;
+
+        finding.RuleId.Should().Be(PdfValidationRuleIds.XRefSectionMalformed);
+        finding.Location.Position.Should().Be(older);
+        finding.Message.Should().Be($"The cross-reference stream at offset {older} cannot be read: {fault}.");
+    }
+
+    [Theory]
+    [InlineData(false, 0)]
+    [InlineData(false, 1200)]
+    [InlineData(true, 0)]
+    [InlineData(true, 1200)]
+    public void A_section_that_is_there_and_cannot_be_read_near_an_older_one_is_malformed_not_shifted(bool streams, int gap)
+    {
+        // A malformed table or /Type /XRef stream alone indexes object 4, and the section before it, unread, lies within 512
+        // bytes of it, or 1,200 bytes more. It was taken for the malformed one moved: a shift, a /Size said wrong, and object 4
+        // lost with no error (#281). The section is malformed, an error, and object 4 is found by rebuilding the index.
+        var (file, _, second) = NearbyFiles.MalformedUpdateNearItsOriginal(streams, gap);
+
+        var finding = Validate(file).Findings.Should().ContainSingle().Which;
+
+        finding.RuleId.Should().Be(PdfValidationRuleIds.XRefSectionMalformed);
+        finding.Location.Position.Should().Be(second);
+    }
+
+    [Theory]
+    [InlineData("<< /Type /Font /Subtype /CIDFontType2 /W [0 [500]] /BaseFont /F >>")]
+    [InlineData("<< /Type /Font /W [1 -4 2] /Size 8 /Size 8 /Length 3 >>\nstream\nabc\nendstream")]
+    public void An_object_of_another_type_the_prev_names_with_no_section_near_is_not_found(string six)
+    {
+        // /Prev names object 6, a font that gives a /W, and nothing near it reads as a section. It was said to be a
+        // cross-reference stream that cannot be read, and the stream's dictionary, given a key twice, a trailer malformed: it
+        // says it is a font, and holds no section (#281).
+        var (file, at) = NearbyFiles.TableNamingAnObject(six);
+
+        var finding = Validate(file).Findings.Should().ContainSingle().Which;
+
+        finding.RuleId.Should().Be(PdfValidationRuleIds.XRefSectionNotFound);
+        finding.Message.Should().Be(
+            $"The cross-reference section /Prev names at offset {at} is not there, nor within 512 bytes of it: the offset holds object 6, which is not a cross-reference stream.");
+    }
+
+    [Fact]
+    public void A_prev_naming_a_place_inside_the_stream_its_hybrid_table_names_is_not_found()
+    {
+        // The hybrid table's /Prev names a place 30 bytes into the stream its /XRefStm names: the stream was taken for the
+        // section /Prev names, and the catalog only the first table indexes was said to be missing from the file (#188).
+        var (file, _, named) = NearbyFiles.HybridNamingInsideItsStream();
+
+        var finding = Validate(file).Findings.Should().ContainSingle().Which;
+
+        finding.RuleId.Should().Be(PdfValidationRuleIds.XRefSectionNotFound);
+        finding.Location.Position.Should().Be(named);
+    }
+
+    [Fact]
+    public void A_section_found_moved_and_then_named_where_it_lies_is_one_loop()
+    {
+        // The update names a place among the first table's rows, and the first table, found 40 bytes before it, names itself:
+        // a shift and a loop, the first table judged once (#188).
+        var (file, original, _) = NearbyFiles.UpdateNamingAroundItsOriginal(40, 0);
+
+        var report = Validate(file);
+
+        report.Findings.Select(finding => finding.RuleId).Should().Equal(PdfValidationRuleIds.XRefSectionShifted, PdfValidationRuleIds.XRefChainLoop);
+        Single(report, PdfValidationRuleIds.XRefChainLoop).Message.Should().Be(
+            $"The /Prev of the cross-reference section at offset {original} names offset {original}, a section the chain has already read: the chain loops.");
+    }
+
     [Fact]
     public void A_section_not_found_outside_the_file_and_named_from_nowhere_known_is_reported_at_the_document()
     {

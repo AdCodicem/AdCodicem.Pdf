@@ -2729,10 +2729,10 @@ public class DocumentReaderTests
         static byte[] WithUpdatePlacingFourOutside(byte[] file)
         {
             var stream = PdfTemplate.OffsetOf(file, "5 0 obj");
-            var update = new StringBuilder("%").Append('x', 2 * PdfFileReader.NearbySearchRadius).Append('\n');
-            var xref = file.Length + update.Length;
-            update.Append(CultureInfo.InvariantCulture, $"xref\n4 1\n0000099999 00000 n\r\ntrailer\n<< /Size 8 /Root 1 0 R /Prev {stream} >>\nstartxref\n{xref}\n%%EOF\n");
-            return [.. file, .. Encoding.Latin1.GetBytes(update.ToString())];
+            var update = string.Create(
+                CultureInfo.InvariantCulture,
+                $"xref\n4 1\n0000099999 00000 n\r\ntrailer\n<< /Size 8 /Root 1 0 R /Prev {stream} >>\nstartxref\n{file.Length}\n%%EOF\n");
+            return [.. file, .. Encoding.Latin1.GetBytes(update)];
         }
     }
 
@@ -2868,6 +2868,48 @@ public class DocumentReaderTests
         section.Fault.Should().Be(
             "its /Length is the reference 4 0 R, which no section read before it places where it can be read, and no endstream follows its data before the end of the file");
         document.Diagnostics.Select(entry => entry.Code).Should().NotContain(code => code.StartsWith("limit.", StringComparison.Ordinal));
+    }
+
+    [Theory]
+    [InlineData("/W [1 4 2]", "/W [1 4 /]", "its /W gives a field a width that is not an integer", 0)]
+    [InlineData("/W [1 4 2]", "/W [1 4 /]", "its /W gives a field a width that is not an integer", 1200)]
+    [InlineData("/Root 1 0 R", "/Index [0 ]", "its /Index holds 1 value, not pairs of a first object number and a count of rows", 0)]
+    [InlineData("/Root 1 0 R", "/Index [0 ]", "its /Index holds 1 value, not pairs of a first object number and a count of rows", 1200)]
+    [InlineData("/Size 9 ", "/Size/X ", "it has no /Index, and its /Size gives no count of objects", 0)]
+    [InlineData("/Size 9 ", "/Size/X ", "it has no /Index, and its /Size gives no count of objects", 1200)]
+    public void A_cross_reference_stream_an_update_names_that_cannot_be_read_is_reported_where_it_is_however_near_the_update(
+        string written, string faulty, string fault, int gap)
+    {
+        // The older stream's /W, /Index or /Size is written so that no row can be read, in place, and the newer stream, which
+        // names it through /Prev, lies within 512 bytes of it, or past a comment of 1,200 bytes. The newer stream was taken
+        // for the older moved, read again and named the older once more: a loop, a rebuild, and the older stream never said
+        // to be malformed (#281). It declares itself a cross-reference stream: it is reported where it is, as out of reach,
+        // and what only it indexes is found by rebuilding the index.
+        var sound = ChainFiles.UpdateWithIndirectLength(spellingEndStream: false, gap: gap);
+        var older = PdfTemplate.OffsetOf(sound, "7 0 obj");
+        var text = Encoding.Latin1.GetString(sound);
+        var at = text.IndexOf(written, StringComparison.Ordinal);
+        at.Should().BeGreaterThan((int)older).And.BeLessThan((int)PdfTemplate.OffsetOf(sound, "stream\n"), "the older stream's dictionary holds it");
+        var file = Encoding.Latin1.GetBytes(string.Concat(text.AsSpan(0, at), faulty, text.AsSpan(at + written.Length)));
+
+        using (var whole = PdfDocument.Open(sound))
+        {
+            whole.Diagnostics.Should().BeEmpty();
+            whole.Reader.Structure.Sections.Should().HaveCount(2).And.OnlyContain(section => section.State == XRefSectionState.Read);
+        }
+
+        using var document = PdfDocument.Open(file);
+
+        document.Diagnostics.Select(entry => entry.Code).Should().Equal(
+            PdfDiagnosticCodes.XRefSectionUnreadable, PdfDiagnosticCodes.XRefRebuilt, PdfDiagnosticCodes.ObjectRedefined);
+        document.Diagnostics[0].Position.Should().Be(older);
+        document.Diagnostics[0].Message.Should().StartWith(string.Create(
+            CultureInfo.InvariantCulture, $"The cross-reference stream /Prev names at offset {older} is there but cannot be read: {fault}."));
+        document.Reader.Structure.Sections.Should().HaveCount(2);
+        document.Reader.Structure.Sections[1].State.Should().Be(XRefSectionState.Malformed);
+        document.Reader.Structure.Sections[1].Offset.Should().Be(older);
+        document.GetObject(new PdfObjectId(8)).Should().BeOfType<PdfString>().Which.ToText().Should().Be("new");
+        document.GetObject(new PdfObjectId(3)).AsDictionary().IsOfType(PdfName.Page).Should().BeTrue();
     }
 
     [Fact]

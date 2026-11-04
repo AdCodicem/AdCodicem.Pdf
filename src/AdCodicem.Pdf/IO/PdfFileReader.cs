@@ -296,6 +296,18 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     private PdfDictionary? _cutTrailer;
 
     /// <summary>
+    /// Where each section the chain read starts, a position in the file: its <c>xref</c> keyword or its stream's object
+    /// header, where it was named — past the white space the offset fell short by — or where it was found moved, a hybrid
+    /// file's <c>/XRefStm</c> stream included. With the offsets the chain named, as written, it is what the chain has
+    /// already reached (<see cref="ReachedBefore"/>): a section found moved is named at one offset and read at another, and
+    /// bytes before the header set every position apart from the offset that names it (#188).
+    /// </summary>
+    /// <remarks>
+    /// As many as the sections the chain reads, and let go once it is read, when nothing reads it any more.
+    /// </remarks>
+    private readonly HashSet<long> _sectionsReadAt = new(SeededComparer.Instance);
+
+    /// <summary>
     /// Whether the cross-reference chain is being read. Nothing is loaded meanwhile: an object is read only where a
     /// section already read places it, and nothing is corrected, rebuilt, cached or recorded (#182).
     /// </summary>
@@ -2498,6 +2510,8 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
             _readWhileChainIsRead = null;
             _cutWhileChainIsRead = null;
             _refusedNumbers = null;
+            _sectionsReadAt.Clear();
+            _sectionsReadAt.TrimExcess();
         }
 
         if (!chainRead)
@@ -2935,11 +2949,14 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// </summary>
     /// <remarks>
     /// A section the chain names must be read, or the objects only it indexes are lost. One that is not where
-    /// it is named is looked for nearby, as an object is. One that cannot be found is reported and leaves the
-    /// index incomplete: the chain stops at a missing <c>/Prev</c> and goes on past a missing <c>/XRefStm</c>,
+    /// it is named is looked for nearby, as an object is — but for one that is there and cannot be read, the
+    /// <c>xref</c> keyword or a stream whose dictionary gives <c>/Type /XRef</c>, which is reported where it is: the
+    /// offset names it, and any section near it is another (#281). One that cannot be found or read is reported and
+    /// leaves the index incomplete: the chain stops at a lost <c>/Prev</c> and goes on past a lost <c>/XRefStm</c>,
     /// and an object the index then lacks is looked for by rebuilding it, when it is asked for. Nothing is
-    /// rebuilt at opening that nobody asks for. What became of each section is recorded in
-    /// <see cref="Structure"/>, for the validation rules.
+    /// rebuilt at opening that nobody asks for. A section the chain has already reached, by the offset that names it or
+    /// where it was read, is not read again: named by a <c>/Prev</c>, it ends the chain in a loop (#188). What became of
+    /// each section is recorded in <see cref="Structure"/>, for the validation rules.
     /// </remarks>
     /// <param name="startOffset">The offset <c>startxref</c> gives.</param>
     private bool TryReadXRefChain(long startOffset)
@@ -2952,17 +2969,18 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
 
         while (offset >= 0)
         {
-            if (!visited.Add(offset))
+            if (ReachedBefore(offset, visited))
             {
                 // The section the chain should have gone on to is unknown: what only it indexed is the index's to
                 // find, as a missing section's is.
                 // Placed at the section looped back to, a position in the file; one named outside the file, as an
                 // /XRefStm and a /Prev naming the same offset past its end are, is placed at what named it.
                 // A section the chain named there may have been read, or not: an /XRefStm that names nothing, named again by
-                // a /Prev, is a loop through an offset the chain only named.
+                // a /Prev, is a loop through an offset the chain only named. One read where it was found moved is read
+                // all the same, though the chain named another offset for it.
                 _indexIncomplete = true;
                 var looped = PositionOf(offset);
-                var read = ReadSectionNamedAt(offset);
+                var read = _sectionsReadAt.Contains(looped) || ReadSectionNamedAt(offset);
                 _structure.LoopOffset = looped;
                 _structure.LoopWrittenOffset = offset;
                 _structure.LoopOffsetRead = read;
@@ -2977,6 +2995,8 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
                     inFile ? looped : namedFrom);
                 break;
             }
+
+            visited.Add(offset);
 
             if (++sections > _guard.Bound(PdfLimit.XRefSectionCount))
             {
@@ -3022,14 +3042,17 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
                 }
 
                 // A section a guard cut is where it was named, and is not looked for elsewhere: what lies near it would
-                // stand for it.
-                if (section.CutByLimit || !TryRelocateXRefSection(offset, section, out previous, out hybrid))
+                // stand for it. So is one that is there and cannot be read: the offset names it, and any section near it
+                // is another (#281).
+                if (section.CutByLimit || DeclaresItselfASection(section) ||
+                    !TryRelocateXRefSection(offset, section, out previous, out hybrid))
                 {
                     ReportLostSection(section, naming, offset, namedFrom);
                     break;
                 }
             }
 
+            RecordSectionRead(section);
             _olderNumberedPast |= sections > 1 && section.HighestNumber > _highestRead;
             _highestRead = Math.Max(_highestRead, section.HighestNumber);
 
@@ -3078,9 +3101,14 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
                 _structure.Add(stream);
 
                 if (TryReadXRefSection(stream.Offset, stream, out _, out _) != XRefSectionState.Read &&
-                    (stream.CutByLimit || !TryRelocateXRefSection(hybrid, stream, out _, out _)))
+                    (stream.CutByLimit || DeclaresItselfASection(stream) ||
+                        !TryRelocateXRefSection(hybrid, stream, out _, out _)))
                 {
                     ReportLostSection(stream, "/XRefStm", hybrid, section.Offset);
+                }
+                else
+                {
+                    RecordSectionRead(stream);
                 }
 
                 _olderNumberedPast |= sections > 1 && stream.HighestNumber > _highestRead;
@@ -3103,6 +3131,45 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
 
         return _xref.Count > 0;
     }
+
+    /// <summary>
+    /// Determines whether the chain has already reached what <paramref name="offset"/>, an offset the file gives, names: it
+    /// named that offset before, as written — among <paramref name="named"/>, whether it read a section there or not —, or it
+    /// read a section at the position the offset names, where that section was named or where it was found moved
+    /// (<see cref="_sectionsReadAt"/>). The one notion of "already read" the chain's checks share: a <c>/Prev</c> that names
+    /// what the chain has reached ends the chain in a loop, rather than reading a section twice, and a relocation, which
+    /// tries positions, passes over those where the chain read a section (#188).
+    /// </summary>
+    /// <remarks>
+    /// The offsets named are kept as written: one the chain named and found nothing at, or found its section moved from,
+    /// leads nowhere new when named again — a loop, not a place to look for a section again.
+    /// </remarks>
+    /// <param name="offset">The offset a <c>/Prev</c> or an <c>/XRefStm</c> gives.</param>
+    /// <param name="named">The offsets the chain has named so far, as the file writes them.</param>
+    private bool ReachedBefore(long offset, HashSet<long> named) =>
+        named.Contains(offset) || _sectionsReadAt.Contains(PositionOf(offset));
+
+    /// <summary>
+    /// Records where <paramref name="section"/>, which the chain read — where it was named, or where it was found moved —,
+    /// starts: its <c>xref</c> keyword or its stream's object header, past the white space the offset that names it fell
+    /// short by (<see cref="_sectionsReadAt"/>).
+    /// </summary>
+    private void RecordSectionRead(XRefSectionRecord section) => _sectionsReadAt.Add(section.Offset + section.Padding);
+
+    /// <summary>
+    /// Determines whether a section the chain could not read declares itself one all the same: a classic table's
+    /// <c>xref</c> keyword, or a stream whose dictionary gives <c>/Type /XRef</c>. Such a section is reported where it is,
+    /// and not looked for nearby: the offset names it, and any section near it is another — a newer one the chain has
+    /// read, or an older one whose rows would stand for the lost ones (#281). An object that only gives a <c>/W</c> may be
+    /// anything — a CIDFont's <c>/W</c> gives its glyphs' widths — and leaves the section a guess, looked for nearby
+    /// (#263).
+    /// </summary>
+    /// <remarks>
+    /// Asked only of a section the chain could not read, whose state is then <see cref="XRefSectionState.Malformed"/>: a
+    /// table is one from its keyword on, and a stream gives <c>/Type /XRef</c> only once its object reads as one.
+    /// </remarks>
+    private static bool DeclaresItselfASection(XRefSectionRecord section) =>
+        section.Kind == XRefSectionKind.Table || section.TypedXRef;
 
     /// <summary>
     /// Determines whether the chain read a section it named at <paramref name="offset"/>, as the file writes it: where it was
@@ -3178,11 +3245,31 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// one otherwise.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// A section one of the reader's guards cut is already reported, under the guard's own code, which names the limit
     /// that lifts it: what the reader met past the cut is not the file's fault (ADR 34).
+    /// </para>
+    /// <para>
+    /// An object whose dictionary gives a <c>/W</c> and a <c>/Type</c> that names another type — a CIDFont, whose <c>/W</c>
+    /// gives its glyphs' widths — is read as the section where the chain names it, as #263 settled, and is the section when
+    /// it reads as one. When it does not, it holds no section: the section is missing, as at a place it may have been moved
+    /// to, where such an object is no section at all, rather than a cross-reference stream that cannot be read (#281). One
+    /// that gives no <c>/Type</c> stays a cross-reference stream that cannot be read, as untyped streams are read as
+    /// sections.
+    /// </para>
     /// </remarks>
     private void ReportLostSection(XRefSectionRecord section, string naming, long offset, long namedFrom)
     {
+        if (section.TypedOther && !section.CutByLimit)
+        {
+            // What it held is no trailer either: the validation rules judge none.
+            section.State = XRefSectionState.NotFound;
+            section.Fault = string.Create(
+                CultureInfo.InvariantCulture, $"holds object {section.StreamObjectNumber}, which is not a cross-reference stream");
+            section.Trailer = null;
+            section.TrailerFault = XRefTrailerFault.None;
+        }
+
         if (section.State != XRefSectionState.Malformed)
         {
             ReportMissingSection(naming, offset, namedFrom);
@@ -3246,6 +3333,11 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// an object that declares a cross-reference stream and no other type. A guard that kept it from being read keeps it the
     /// section where a value it is read with led to an object the guard cut, or where it declared itself one before the cut
     /// — the keyword, or <c>/Type /XRef</c> —; a dictionary cut before it said what it is may be anything, and is dropped.
+    /// Two kinds of place are passed over, and count toward no limit: where the section was named, which holds no section
+    /// that reads; and every place where the chain read a section — where it was named, or found moved —, which holds that
+    /// section, not the one looked for: taken, it would be read again, in a loop the file does not have, and what only the
+    /// section looked for indexes would be lost in silence (#188). The search is never asked for a section that is there
+    /// and cannot be read (<see cref="DeclaresItselfASection"/>): what is near it is another.
     /// </remarks>
     private bool TryRelocateXRefSection(long offset, XRefSectionRecord section, out long previous, out long hybrid)
     {
@@ -3278,7 +3370,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
 
         foreach (var candidate in candidates)
         {
-            if (candidate == absolute)
+            if (candidate == absolute || _sectionsReadAt.Contains(candidate))
             {
                 continue;
             }
@@ -4046,6 +4138,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
         section.Padding = (int)(header - absolute);
         section.TrailerPosition = absolute;
         section.TypedXRef = dictionary.IsOfType(PdfName.XRef);
+        section.TypedOther = !section.TypedXRef && dictionary.GetRaw(PdfName.Type) is PdfName;
 
         // A guard that cut the dictionary of what declares another type cut no section: such a dictionary — a CIDFont's,
         // whose /W gives widths — has no stream data read whole, and is no section. A stream of that type, which the cut

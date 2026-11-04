@@ -5,9 +5,10 @@ namespace AdCodicem.Pdf.Tests;
 
 /// <summary>
 /// Files whose index places an object, or whose chain names a section, some way from where it lies, for the search near the
-/// offset named, which reaches 512 bytes either side of it wherever the offset falls (#197). What the test is about is
-/// written where a comment pads the bytes before it to; offsets are counted from the header, which starts the file unless
-/// the file is said to start with other bytes.
+/// offset named, which reaches 512 bytes either side of it wherever the offset falls (#197); and files whose chain names a
+/// section near others the search must not take for it — one the chain has read, or any near a section that is there and
+/// cannot be read (#188, #281). What the test is about is written where a comment pads the bytes before it to; offsets are
+/// counted from the header, which starts the file unless the file is said to start with other bytes.
 /// </summary>
 internal static class NearbyFiles
 {
@@ -154,6 +155,258 @@ internal static class NearbyFiles
             CultureInfo.InvariantCulture,
             $"xref\n1 1\n{catalog:D10} 00000 n \n4 1\n{four:D10} 00000 n \ntrailer\n<< /Size {Math.Max(stream ?? 5, 5) + 1} /Root 1 0 R /Prev {prev} >>\nstartxref\n{update}\n%%EOF\n"));
         return file.Bytes;
+    }
+
+    /// <summary>
+    /// An empty document saved twice. The first table, at <c>Malformed</c>, holds the catalog's and the page tree's rows,
+    /// then a stray name, <c>/Bad 1</c>, where its trailer should start. The update's table, past <paramref name="gap"/>
+    /// bytes of comment, indexes nothing and names the first through <c>/Prev</c>: with no gap it lies within 512 bytes of
+    /// it. <paramref name="junk"/> comes before the header; the positions given are in the file, the junk counted.
+    /// </summary>
+    public static (byte[] File, long Malformed, long Update) MalformedTableUnderAnUpdate(int gap, string junk = "")
+    {
+        var file = new HandWrittenFile(prefix: junk);
+        var catalog = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>");
+        var pages = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>");
+        var malformed = file.Position;
+        file.Raw(string.Create(
+            CultureInfo.InvariantCulture,
+            $"xref\n0 3\n0000000000 65535 f \n{catalog:D10} 00000 n \n{pages:D10} 00000 n \n/Bad 1\ntrailer\n<< /Size 3 /Root 1 0 R >>\n"));
+        Gap(file, gap);
+        var update = file.Position;
+        file.Raw(string.Create(
+            CultureInfo.InvariantCulture,
+            $"xref\n0 1\n0000000000 65535 f \ntrailer\n<< /Size 3 /Root 1 0 R /Prev {malformed} >>\nstartxref\n{update}\n%%EOF\n"));
+        return (file.Bytes, malformed + junk.Length, update + junk.Length);
+    }
+
+    /// <summary>
+    /// A one-page document whose classic table, past object 4, <c>&lt;&lt; /Type /Foo &gt;&gt;</c>, and
+    /// <paramref name="gap"/> bytes of comment, indexes the catalog and the page tree and names object 4 through
+    /// <c>/XRefStm</c>: no cross-reference stream is there, and the page, object 3, is indexed by nothing. With no gap the
+    /// table lies within 512 bytes of object 4. <paramref name="junk"/> comes before the header; the positions given are in
+    /// the file, the junk counted.
+    /// </summary>
+    public static (byte[] File, long Four, long Table) HybridNamingAnotherObject(int gap, string junk = "")
+    {
+        var file = new HandWrittenFile(prefix: junk);
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>"),
+        };
+        file.Object(3, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << >> >>");
+        var four = file.Object(4, "<< /Type /Foo >>");
+        Gap(file, gap);
+        var table = file.Table(3, rows, string.Create(CultureInfo.InvariantCulture, $"/Size 5 /Root 1 0 R /XRefStm {four}"));
+        return (file.Bytes, four + junk.Length, table + junk.Length);
+    }
+
+    /// <summary>
+    /// A one-page document whose one table, past <paramref name="gap"/> bytes of comment, indexes every object and names
+    /// through <c>/Prev</c> a place inside the page tree's dictionary, where no section is. With no gap the table lies within
+    /// 512 bytes of that place.
+    /// </summary>
+    public static (byte[] File, long Named, long Table) TableNamingNoSection(int gap)
+    {
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>"),
+            [3] = file.Object(3, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << >> >>"),
+        };
+        var named = rows[2] + "2 0 obj\n<< /Type ".Length;
+        Gap(file, gap);
+        var table = file.Table(4, rows, string.Create(CultureInfo.InvariantCulture, $"/Size 4 /Root 1 0 R /Prev {named}"));
+        return (file.Bytes, named, table);
+    }
+
+    /// <summary>
+    /// A one-page document saved twice. The first table indexes the catalog, the page tree and the page. The update's,
+    /// which indexes object 4, names through <c>/Prev</c> the place <paramref name="before"/> bytes past the first table's
+    /// keyword, and starts <paramref name="after"/> bytes past that place, object 4 filling what lies between.
+    /// </summary>
+    public static (byte[] File, long Original, long Named, long Update) UpdateNamingBetweenItsTables(int before, int after)
+    {
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>"),
+            [3] = file.Object(3, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << >> >>"),
+        };
+        var original = file.Table(4, rows, "/Size 4 /Root 1 0 R");
+        var named = original + before;
+        var filler = named + after - file.Position - "4 0 obj\n()\nendobj\n".Length;
+        filler.Should().BeGreaterThanOrEqualTo(0, "object 4 fills the bytes up to the update's table");
+        var four = file.Object(4, "(" + new string('u', (int)filler) + ")");
+        var update = file.Position;
+        update.Should().Be(named + after);
+        file.Raw(string.Create(
+            CultureInfo.InvariantCulture,
+            $"xref\n4 1\n{four:D10} 00000 n \ntrailer\n<< /Size 5 /Root 1 0 R /Prev {named} >>\nstartxref\n{update}\n%%EOF\n"));
+        return (file.Bytes, original, named, update);
+    }
+
+    /// <summary>
+    /// A one-page document saved three times. The first section, a classic table or, with <paramref name="streams"/>,
+    /// cross-reference stream 5, indexes the catalog, the page tree and the page. The second, past object 4,
+    /// <c>(four)</c>, and <paramref name="gap"/> bytes of comment, alone indexes object 4 and names the first through
+    /// <c>/Prev</c>, and cannot be read: a classic table holding a stray name, <c>/Bad 1</c>, before its first subsection,
+    /// or cross-reference stream 6, whose <c>/W</c> gives a name for a width. With no gap it lies within 512 bytes of the
+    /// first. The third, a classic table past 1,200 bytes of comment, indexes nothing and names the second through
+    /// <c>/Prev</c>.
+    /// </summary>
+    public static (byte[] File, long First, long Second) MalformedUpdateNearItsOriginal(bool streams, int gap)
+    {
+        var file = new HandWrittenFile(version: streams ? "1.5" : "1.7");
+        var catalog = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>");
+        var pages = file.Object(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>");
+        var page = file.Object(3, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << >> >>");
+        var first = file.Position;
+
+        if (streams)
+        {
+            var rows = StreamRows((0, 0, 65535), (1, catalog, 0), (1, pages, 0), (1, page, 0), (1, first, 0));
+            file.Object(5, string.Create(
+                CultureInfo.InvariantCulture,
+                $"<< /Type /XRef /Size 6 /Index [0 4 5 1] /W [1 4 2] /Root 1 0 R /Length {rows.Length} >>\nstream\n{rows}\nendstream"));
+        }
+        else
+        {
+            file.Raw(string.Create(
+                CultureInfo.InvariantCulture,
+                $"xref\n0 4\n0000000000 65535 f \n{catalog:D10} 00000 n \n{pages:D10} 00000 n \n{page:D10} 00000 n \ntrailer\n<< /Size 4 /Root 1 0 R >>\n"));
+        }
+
+        var four = file.Object(4, "(four)");
+        Gap(file, gap);
+        var second = file.Position;
+
+        if (streams)
+        {
+            var rows = StreamRows((1, four, 0), (1, second, 0));
+            file.Object(6, string.Create(
+                CultureInfo.InvariantCulture,
+                $"<< /Type /XRef /Size 7 /Index [4 1 6 1] /W [1 4 /] /Root 1 0 R /Prev {first} /Length {rows.Length} >>\nstream\n{rows}\nendstream"));
+        }
+        else
+        {
+            file.Raw(string.Create(
+                CultureInfo.InvariantCulture,
+                $"xref\n/Bad 1\n4 1\n{four:D10} 00000 n \ntrailer\n<< /Size 5 /Root 1 0 R /Prev {first} >>\n"));
+        }
+
+        Gap(file, 1200);
+        var third = file.Position;
+        file.Raw(string.Create(
+            CultureInfo.InvariantCulture,
+            $"xref\n0 1\n0000000000 65535 f \ntrailer\n<< /Size 7 /Root 1 0 R /Prev {second} >>\nstartxref\n{third}\n%%EOF\n"));
+        return (file.Bytes, first, second);
+    }
+
+    /// <summary>
+    /// A one-page document saved twice. The first table, at <c>Original</c>, indexes the catalog, the page tree and the
+    /// page, and names through <c>/Prev</c> the offset <paramref name="originalPrev"/> bytes from its own <c>xref</c>
+    /// keyword — none when it is null —. The update's table, past 1,200 bytes of comment, indexes nothing and names through
+    /// <c>/Prev</c> the offset <paramref name="updatePrev"/> bytes from that keyword: 40 bytes in lies among its first rows,
+    /// where no section starts, and one byte before it is the end of line the keyword follows. <paramref name="junk"/> comes
+    /// before the header; the positions given are in the file, the junk counted.
+    /// </summary>
+    public static (byte[] File, long Original, long Update) UpdateNamingAroundItsOriginal(long updatePrev, long? originalPrev, string junk = "")
+    {
+        var file = new HandWrittenFile(prefix: junk);
+        var catalog = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>");
+        var pages = file.Object(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>");
+        var page = file.Object(3, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << >> >>");
+        var original = file.Position;
+        var prev = originalPrev is { } shift ? string.Create(CultureInfo.InvariantCulture, $" /Prev {original + shift}") : string.Empty;
+        file.Raw(string.Create(
+            CultureInfo.InvariantCulture,
+            $"xref\n0 4\n0000000000 65535 f \n{catalog:D10} 00000 n \n{pages:D10} 00000 n \n{page:D10} 00000 n \ntrailer\n<< /Size 4 /Root 1 0 R{prev} >>\n"));
+        Gap(file, 1200);
+        var update = file.Position;
+        file.Raw(string.Create(
+            CultureInfo.InvariantCulture,
+            $"xref\n0 1\n0000000000 65535 f \ntrailer\n<< /Size 4 /Root 1 0 R /Prev {original + updatePrev} >>\nstartxref\n{update}\n%%EOF\n"));
+        return (file.Bytes, original + junk.Length, update + junk.Length);
+    }
+
+    /// <summary>
+    /// A one-page document whose one table, past object 6, written <paramref name="six"/>, and 1,200 bytes of comment,
+    /// indexes the catalog, the page tree and the page and names object 6 through <c>/Prev</c>: no section is near it.
+    /// </summary>
+    public static (byte[] File, long Six) TableNamingAnObject(string six)
+    {
+        var file = new HandWrittenFile(version: "1.5");
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>"),
+            [3] = file.Object(3, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << >> >>"),
+        };
+        var at = file.Object(6, six);
+        Gap(file, 1200);
+        file.Table(4, rows, string.Create(CultureInfo.InvariantCulture, $"/Size 7 /Root 1 0 R /Prev {at}"));
+        return (file.Bytes, at);
+    }
+
+    /// <summary>
+    /// A one-page document saved twice. The first table indexes the catalog, the page tree and the page. The update writes
+    /// object 5, <c>(only in the stream)</c>, past 600 bytes of comment, and cross-reference stream 6, which indexes it; its
+    /// classic table, past 1,200 bytes of comment more, indexes nothing, names stream 6 through <c>/XRefStm</c> and,
+    /// through <c>/Prev</c>, a place 30 bytes into the stream's dictionary, more than 512 bytes from the first table.
+    /// </summary>
+    public static (byte[] File, long Stream, long Named) HybridNamingInsideItsStream()
+    {
+        var file = new HandWrittenFile(version: "1.5");
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>"),
+            [3] = file.Object(3, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << >> >>"),
+        };
+        file.Table(4, rows, "/Size 4 /Root 1 0 R");
+        Gap(file, 600);
+        var five = file.Object(5, "(only in the stream)");
+        var stream = file.Position;
+        var data = StreamRows((1, five, 0), (1, stream, 0));
+        file.Object(6, string.Create(
+            CultureInfo.InvariantCulture,
+            $"<< /Type /XRef /Size 7 /Index [5 2] /W [1 4 2] /Length {data.Length} >>\nstream\n{data}\nendstream"));
+        Gap(file, 1200);
+        var table = file.Position;
+        var named = stream + 30;
+        file.Raw(string.Create(
+            CultureInfo.InvariantCulture,
+            $"xref\n0 1\n0000000000 65535 f \ntrailer\n<< /Size 7 /Root 1 0 R /XRefStm {stream} /Prev {named} >>\nstartxref\n{table}\n%%EOF\n"));
+        return (file.Bytes, stream, named);
+    }
+
+    /// <summary>Writes a comment of <paramref name="length"/> bytes, its end of line counted, when it is more than none.</summary>
+    private static void Gap(HandWrittenFile file, int length)
+    {
+        if (length > 0)
+        {
+            file.Raw("%" + new string('-', length - 2) + "\n");
+        }
+    }
+
+    /// <summary>Writes cross-reference stream rows of <c>/W [1 4 2]</c>, one byte to a character.</summary>
+    private static string StreamRows(params (int Type, long Field2, int Field3)[] rows)
+    {
+        var data = new StringBuilder();
+
+        foreach (var (type, field2, field3) in rows)
+        {
+            data.Append((char)type)
+                .Append((char)((field2 >> 24) & 0xFF)).Append((char)((field2 >> 16) & 0xFF))
+                .Append((char)((field2 >> 8) & 0xFF)).Append((char)(field2 & 0xFF))
+                .Append((char)((field3 >> 8) & 0xFF)).Append((char)(field3 & 0xFF));
+        }
+
+        return data.ToString();
     }
 
     /// <summary>Writes a comment that brings the next byte written to <paramref name="at"/>.</summary>
