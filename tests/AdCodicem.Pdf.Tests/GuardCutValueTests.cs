@@ -690,12 +690,12 @@ public class GuardCutValueTests
         // The update's stream indexes its /Length, object 4, and object 8 after rows that spell an endstream, and
         // MaxObjectLength cuts object 4 after its 35: the section was said to lack the rows past the endstream, and object 8
         // read as the first revision wrote it. The 35 the cut left is where to look for the endstream, which confirms it
-        // (#224).
+        // (#224). The rows that spell the endstream, of reserved types, are then read, and reported (#221).
         var file = ChainFiles.UpdateWithIndirectLength(spellingEndStream: true, four: "{length}" + new string(' ', 3000));
         using var document = PdfDocument.Open(file, ObjectGuard);
 
         document.GetObject(new PdfObjectId(8)).Should().BeOfType<PdfString>().Which.ToText().Should().Be("new");
-        document.Diagnostics.Select(entry => entry.Code).Should().Equal(PdfDiagnosticCodes.LimitObject);
+        document.Diagnostics.Select(entry => entry.Code).Should().Equal(PdfDiagnosticCodes.XRefEntryReserved, PdfDiagnosticCodes.LimitObject);
         document.WasRepaired.Should().BeFalse();
         new PdfValidator().Validate(document).Contains(PdfValidationRuleIds.XRefSectionMalformed).Should().BeFalse();
     }
@@ -712,11 +712,13 @@ public class GuardCutValueTests
         // which only stream 7's own row places — and MaxObjectLength cuts it after its value. The value the cut left is where
         // to look for the endstream, as for an object the section's own row places: confirmed, the data is taken again to it
         // and every row read; otherwise the rows past the endstream they spell are the guard's (#224).
+        // The rows that spell the endstream, of reserved types, are reported where the data taken again holds them (#221).
         var file = ChainFiles.UpdatePlacingAPaddedLength(chained, lengthOff: lengthOff, lengthFirst: true);
         using var document = PdfDocument.Open(file, ObjectGuard);
+        string[] spelled = lengthOff == 0 ? [PdfDiagnosticCodes.XRefEntryReserved] : [];
 
         document.WasRepaired.Should().BeFalse();
-        document.Diagnostics.Select(entry => entry.Code).Should().Equal(PdfDiagnosticCodes.LimitObject);
+        document.Diagnostics.Select(entry => entry.Code).Should().Equal([.. spelled, PdfDiagnosticCodes.LimitObject]);
         document.Reader.Structure.Sections[1].CutByLimit.Should().Be(lengthOff != 0);
         document.Reader.Structure.Sections[1].Incomplete.Should().BeFalse();
         (document.GetObject(new PdfObjectId(3)).AsDictionary() is not null).Should().Be(lengthOff == 0);
@@ -733,14 +735,16 @@ public class GuardCutValueTests
 
         using (var whole = PdfDocument.Open(file))
         {
-            whole.Diagnostics.Should().BeEmpty();
+            // Read whole, the rows that spell the endstream, of reserved types, are read and reported (#221).
+            whole.Diagnostics.Select(entry => entry.Code).Should().Equal(PdfDiagnosticCodes.XRefEntryReserved);
             whole.GetObject(new PdfObjectId(3)).AsDictionary().Should().NotBeNull();
         }
 
         using var document = PdfDocument.Open(file, ObjectGuard);
 
         document.WasRepaired.Should().BeFalse();
-        document.Diagnostics.Select(entry => entry.Code).Should().Equal(PdfDiagnosticCodes.LimitObject);
+        // The rows the data taken again holds include those that spell the first endstream, of reserved types (#221).
+        document.Diagnostics.Select(entry => entry.Code).Should().Equal(PdfDiagnosticCodes.XRefEntryReserved, PdfDiagnosticCodes.LimitObject);
         document.Reader.Structure.Sections[1].CutByLimit.Should().BeTrue();
         document.Reader.Structure.Sections[1].Incomplete.Should().BeFalse();
         new PdfValidator().Validate(document).Contains(PdfValidationRuleIds.XRefSectionMalformed).Should().BeFalse();
@@ -2313,7 +2317,8 @@ public class GuardCutValueTests
 
         using (var whole = PdfDocument.Open(file))
         {
-            whole.Diagnostics.Should().BeEmpty();
+            // Read whole, the rows that spell the endstream, of reserved types, are read and reported (#221).
+            whole.Diagnostics.Select(entry => entry.Code).Should().Equal(PdfDiagnosticCodes.XRefEntryReserved);
             whole.GetObject(new PdfObjectId(3)).AsDictionary().Required().IsOfType(PdfName.Page).Should().BeTrue();
         }
 
@@ -2339,7 +2344,8 @@ public class GuardCutValueTests
 
         using (var whole = PdfDocument.Open(file))
         {
-            whole.Diagnostics.Should().BeEmpty();
+            // Read whole, the rows that spell the endstream, of reserved types, are read and reported (#221).
+            whole.Diagnostics.Select(entry => entry.Code).Should().Equal(PdfDiagnosticCodes.XRefEntryReserved);
         }
 
         using var document = PdfDocument.Open(file, ObjectGuard);
@@ -2361,7 +2367,8 @@ public class GuardCutValueTests
 
         using (var whole = PdfDocument.Open(file))
         {
-            whole.Diagnostics.Should().BeEmpty();
+            // Read whole, the rows that spell the endstream, of reserved types, are read and reported (#221).
+            whole.Diagnostics.Select(entry => entry.Code).Should().Equal(PdfDiagnosticCodes.XRefEntryReserved);
             whole.GetObject(new PdfObjectId(3)).AsDictionary().Required().IsOfType(PdfName.Page).Should().BeTrue();
         }
 
@@ -2384,13 +2391,16 @@ public class GuardCutValueTests
 
         using (var whole = PdfDocument.Open(file))
         {
-            whole.Diagnostics.Should().BeEmpty();
+            // Read whole, the rows that spell the endstream, of reserved types, are read and reported (#221).
+            whole.Diagnostics.Select(entry => entry.Code).Should().Equal(PdfDiagnosticCodes.XRefEntryReserved);
         }
 
         using var document = PdfDocument.Open(file, ObjectGuard);
 
         document.WasRepaired.Should().BeFalse();
-        document.Diagnostics.Select(entry => entry.Code).Should().Equal(PdfDiagnosticCodes.LimitObject);
+        // Taken again, the data holds the rows that spell the first endstream, of reserved types, which are reported (#221).
+        string[] spelled = free == 29 ? [PdfDiagnosticCodes.XRefEntryReserved] : [];
+        document.Diagnostics.Select(entry => entry.Code).Should().Equal([.. spelled, PdfDiagnosticCodes.LimitObject]);
         document.Reader.Structure.Sections[1].CutByLimit.Should().BeTrue();
     }
 
@@ -2403,14 +2413,16 @@ public class GuardCutValueTests
 
         using (var whole = PdfDocument.Open(file))
         {
-            whole.Diagnostics.Should().BeEmpty();
+            // Read whole, the rows that spell the endstream, of reserved types, are read and reported (#221).
+            whole.Diagnostics.Select(entry => entry.Code).Should().Equal(PdfDiagnosticCodes.XRefEntryReserved);
             whole.GetObject(new PdfObjectId(3)).AsDictionary().Should().NotBeNull();
         }
 
         using var document = PdfDocument.Open(file, ObjectGuard);
 
         document.WasRepaired.Should().BeFalse();
-        document.Diagnostics.Select(entry => entry.Code).Should().Equal(PdfDiagnosticCodes.LimitObject);
+        // The rows the data taken again holds include those that spell the first endstream, of reserved types (#221).
+        document.Diagnostics.Select(entry => entry.Code).Should().Equal(PdfDiagnosticCodes.XRefEntryReserved, PdfDiagnosticCodes.LimitObject);
         document.Reader.Structure.Sections[0].CutByLimit.Should().BeTrue();
         document.Reader.Structure.Sections[0].Incomplete.Should().BeFalse();
         new PdfValidator().Validate(document).Contains(PdfValidationRuleIds.XRefSectionMalformed).Should().BeFalse();
@@ -2428,10 +2440,13 @@ public class GuardCutValueTests
         var file = ChainFiles.OwnRowPlacingAPaddedLength(throughReference: true, lackingRow);
         using var whole = PdfDocument.Open(file);
         using var document = PdfDocument.Open(file, ObjectGuard);
-        string[] readInPart = lackingRow ? [PdfDiagnosticCodes.XRefSectionUnreadable] : [];
+        // The rows that spell the endstream, of reserved types, are read and reported, after the report of the rows lacking.
+        string[] reported = lackingRow
+            ? [PdfDiagnosticCodes.XRefSectionUnreadable, PdfDiagnosticCodes.XRefEntryReserved]
+            : [PdfDiagnosticCodes.XRefEntryReserved];
 
-        document.Diagnostics.Select(entry => entry.Code).Should().Equal([.. readInPart, PdfDiagnosticCodes.LimitObject]);
-        whole.Diagnostics.Select(entry => entry.Code).Should().Equal(readInPart);
+        document.Diagnostics.Select(entry => entry.Code).Should().Equal([.. reported, PdfDiagnosticCodes.LimitObject]);
+        whole.Diagnostics.Select(entry => entry.Code).Should().Equal(reported);
 
         foreach (var read in (ReadOnlySpan<PdfDocument>)[whole, document])
         {
@@ -2459,10 +2474,13 @@ public class GuardCutValueTests
         var file = ChainFiles.UpdatesReachingALengthThroughACutReference(bothNameIt, lackingRow);
         using var whole = PdfDocument.Open(file);
         using var document = PdfDocument.Open(file, ObjectGuard);
-        string[] readInPart = lackingRow ? [PdfDiagnosticCodes.XRefSectionUnreadable] : [];
+        // The rows that spell the endstream, of reserved types, are read and reported, after the report of the rows lacking.
+        string[] reported = lackingRow
+            ? [PdfDiagnosticCodes.XRefSectionUnreadable, PdfDiagnosticCodes.XRefEntryReserved]
+            : [PdfDiagnosticCodes.XRefEntryReserved];
 
-        document.Diagnostics.Select(entry => entry.Code).Should().Equal([.. readInPart, PdfDiagnosticCodes.LimitObject]);
-        whole.Diagnostics.Select(entry => entry.Code).Should().Equal(readInPart);
+        document.Diagnostics.Select(entry => entry.Code).Should().Equal([.. reported, PdfDiagnosticCodes.LimitObject]);
+        whole.Diagnostics.Select(entry => entry.Code).Should().Equal(reported);
 
         foreach (var read in (ReadOnlySpan<PdfDocument>)[whole, document])
         {
@@ -2809,7 +2827,8 @@ public class GuardCutValueTests
         using (var whole = PdfDocument.Open(file))
         {
             whole.GetObject(new PdfObjectId(3)).AsDictionary().Should().NotBeNull();
-            whole.Diagnostics.Should().BeEmpty();
+            // Read whole, the rows that spell the endstream, of reserved types, are read and reported (#221).
+            whole.Diagnostics.Select(entry => entry.Code).Should().Equal(PdfDiagnosticCodes.XRefEntryReserved);
         }
 
         using var document = PdfDocument.Open(file, ObjectGuard);
@@ -2890,13 +2909,14 @@ public class GuardCutValueTests
         // Stream 7's /Length leads to an object the newer table places — object 5 itself, or object 9 through object 4,
         // which only stream 7's own row places — and MaxObjectLength cuts before its value: the rows past the endstream they
         // spell are the guard's, as when the cut object is the one the section's own row places (#224) — the data taken to it
-        // holding no row whole too, the spelled rows first. Read whole, the file is clean.
+        // holding no row whole too, the spelled rows first.
         var file = ChainFiles.UpdatePlacingAPaddedLength(chained, spelledFirst: spelledFirst);
 
         using (var whole = PdfDocument.Open(file))
         {
             whole.GetObject(new PdfObjectId(3)).AsDictionary().Should().NotBeNull();
-            whole.Diagnostics.Should().BeEmpty();
+            // Read whole, the rows that spell the endstream, of reserved types, are read and reported (#221).
+            whole.Diagnostics.Select(entry => entry.Code).Should().Equal(PdfDiagnosticCodes.XRefEntryReserved);
         }
 
         using var document = PdfDocument.Open(file, ObjectGuard);
@@ -3636,7 +3656,10 @@ public class GuardCutValueTests
         // for the guard's: the chain ended, nothing was rebuilt and the catalog was lost (#263); then for a section that
         // cannot be read, whose trailer was lost, and which, where the chain names a place a few bytes off, was passed over
         // for an older revision's stream nearby. Named by /XRefStm it is read as named. Filters written direct are a name or
-        // an array of names, beside parameters written as a dictionary, or an array of them, that holds no reference.
+        // an array of names, beside parameters written as a dictionary, or an array of them, that holds no reference. The
+        // 56 bytes of data are eight rows each refused — placing its object in object stream 0, which is no object number —,
+        // which leave their objects to a rebuild to find, as the reader once left the rows of a reserved type written there,
+        // which it now reads as the null object (#221).
         using var output = new MemoryStream();
 
         using (var zlib = new ZLibStream(output, CompressionLevel.NoCompression, leaveOpen: true))
@@ -3648,7 +3671,7 @@ public class GuardCutValueTests
         six = six
             .Replace("{flate}", Encoding.Latin1.GetString(flate), StringComparison.Ordinal)
             .Replace("{length}", Invariant($"{flate.Length}"), StringComparison.Ordinal)
-            .Replace("{56}", new string('0', 56), StringComparison.Ordinal);
+            .Replace("{56}", string.Concat(Enumerable.Repeat("\u0002\0\0\0\0\0\0", 8)), StringComparison.Ordinal);
         var built = ChainFiles.UnderAnUpdate(
             "/Type /XRef /Size 8 /W [1 4 2] /Length {length}",
             five + new string(' ', 1100),

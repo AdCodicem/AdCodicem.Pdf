@@ -3189,6 +3189,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
 
             RecordSectionRead(section, sectionsAt);
             ReportSectionReadInPart(section, naming);
+            ReportReservedRows(section, naming);
             _olderNumberedPast |= sections > 1 && section.HighestNumber > _highestRead;
             _highestRead = Math.Max(_highestRead, section.HighestNumber);
 
@@ -3304,6 +3305,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
                     }
 
                     ReportSectionReadInPart(stream, "/XRefStm");
+                    ReportReservedRows(stream, "/XRefStm");
                 }
 
                 _olderNumberedPast |= sections > 1 && stream.HighestNumber > _highestRead;
@@ -3897,6 +3899,36 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
             string.Create(
                 CultureInfo.InvariantCulture,
                 $"The cross-reference {(section.Kind == XRefSectionKind.Stream ? "stream" : "table")} {naming} names at offset {section.Offset} was read only in part: {said}."),
+            section.Offset);
+    }
+
+    /// <summary>
+    /// Reports the rows of a reserved type a cross-reference stream the chain kept gives, once for the section, the first of
+    /// them in the message and the others counted (#221): each was read as ISO 32000-1 reads it, a reference to the null
+    /// object, its object indexed as a free one's is, so that no older section's row stands for it
+    /// (<see cref="ReadXRefStreamRows"/>).
+    /// </summary>
+    /// <remarks>
+    /// Reported after what <see cref="ReportSectionReadInPart"/> says of the section, whatever became of it once its rows were
+    /// read: read whole or in part, found moved, or stopped by a guard, which leaves the rows read before it the file's. A
+    /// section whose rows were never read gives none, and the section <c>startxref</c> names, when it cannot be read, leads to
+    /// a rebuild of the whole index, which none of its rows is in.
+    /// </remarks>
+    /// <param name="section">The section the chain kept, read where it was named or found moved.</param>
+    /// <param name="naming">What named the section: <c>startxref</c>, <c>/Prev</c> or <c>/XRefStm</c>.</param>
+    private void ReportReservedRows(XRefSectionRecord section, string naming)
+    {
+        if (section.ReservedRow is not { } first)
+        {
+            return;
+        }
+
+        var many = section.ReservedRows > 1;
+        _diagnostics.Warn(
+            PdfDiagnosticCodes.XRefEntryReserved,
+            string.Create(
+                CultureInfo.InvariantCulture,
+                $"The cross-reference stream {naming} names at offset {section.Offset} gives {CountText.Grouped(section.ReservedRows, "row", "rows")} a reserved type: {first}{(many ? ", the first of them" : string.Empty)}. ISO 32000-1 defines types 0, 1 and 2, and reads any other as a reference to the null object (7.5.8.3): {(many ? "the rows were read so, and no older section's row stands for their objects" : "the row was read so, and no older section's row stands for its object")}."),
             section.Offset);
     }
 
@@ -5293,17 +5325,17 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// numbers the object, its row past those held or not standing, where <paramref name="numbered"/> says so.
     /// </summary>
     /// <remarks>
-    /// The section's row for the object is the first that numbers it with a type the reading of its rows takes: one of a
-    /// reserved type is ignored there, as the specification says (<see cref="ReadXRefStreamRows"/>). The object is read
-    /// where that row places it as <see cref="ReadWithoutLoading"/> reads one: nothing is corrected, cached, recorded or
-    /// reported. One a guard cuts gives what the cut left of it, an integer read before the cut only a place to look for
-    /// <c>endstream</c> at (#224), and <paramref name="lengthCut"/> says so, whether an <c>endstream</c> confirms it or not:
-    /// rows the data taken again still lacks are the guard's. A reference it holds, which a cut after it leaves whole, leads
-    /// on, as does the <c>/Length</c> when a newer section gave the number: to a length an object read whole holds, the
-    /// file's, or to the integer the cut left of an object a guard cut, read where the sections read so far place it, only a
-    /// place to look at then (<see cref="TakeAgainThrough"/>). A row that does not stand otherwise — a newer section gave
-    /// the number, or refused it; the row lies past those held, places the object in an object stream, or under another
-    /// generation — leaves the data as it was taken.
+    /// The section's row for the object is the first that numbers it, whatever its type, as the reading of its rows takes
+    /// it: one of a reserved type stands for the null object, as ISO 32000-1 reads it, and places no length (#221,
+    /// <see cref="ReadXRefStreamRows"/>). The object is read where that row places it as <see cref="ReadWithoutLoading"/>
+    /// reads one: nothing is corrected, cached, recorded or reported. One a guard cuts gives what the cut left of it, an
+    /// integer read before the cut only a place to look for <c>endstream</c> at (#224), and <paramref name="lengthCut"/>
+    /// says so, whether an <c>endstream</c> confirms it or not: rows the data taken again still lacks are the guard's. A
+    /// reference it holds, which a cut after it leaves whole, leads on, as does the <c>/Length</c> when a newer section gave
+    /// the number: to a length an object read whole holds, the file's, or to the integer the cut left of an object a guard
+    /// cut, read where the sections read so far place it, only a place to look at then (<see cref="TakeAgainThrough"/>). A
+    /// row that does not stand otherwise — a newer section gave the number, or refused it; the row lies past those held,
+    /// places the object in an object stream, under another generation, or nowhere — leaves the data as it was taken.
     /// </remarks>
     private PdfStream? RetakeDeferred(
         PdfStream stream,
@@ -5328,15 +5360,15 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
             return TakeAgainThrough(stream, deferred, stream.Dictionary.GetRaw(PdfName.Length), LengthLinks, out lengthCut);
         }
 
-        // The rows that number the object, in the order the subsections give them, up to the first of a type the reading
-        // takes: their counts sum within a long, as the section's do.
+        // The first row that numbers the object, in the order the subsections give them, is the one the reading of the rows
+        // takes, whatever its type: one of a reserved type stands for the null object (#221). Their counts sum within a long,
+        // as the section's do. A number no subsection numbers leaves the type 0, which places nothing.
         long ordinal = 0;
         ulong type = 0;
         ulong offset = 0;
         ulong generation = 0;
-        var taken = false;
 
-        for (var i = 0; i < subsections.Length && !taken; i += 2)
+        for (var i = 0; i < subsections.Length && !numbered; i += 2)
         {
             if (number >= subsections[i] && number - subsections[i] < subsections[i + 1])
             {
@@ -5354,13 +5386,12 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
                 type = widths[0] == 0 ? 1 : ReadField(fields, ref cursor, widths[0]);
                 offset = ReadField(fields, ref cursor, widths[1]);
                 generation = ReadField(fields, ref cursor, widths[2]);
-                taken = type <= 2;
             }
 
             ordinal += subsections[i + 1];
         }
 
-        if (!taken || type != 1 || offset > long.MaxValue || generation != (ulong)deferred.Length.Generation)
+        if (type != 1 || offset > long.MaxValue || generation != (ulong)deferred.Length.Generation)
         {
             return null;
         }
@@ -6147,8 +6178,13 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
                     break;
 
                 default:
-                    // Types beyond 2 are reserved; the specification says to ignore the entry. A type field wider than 8
-                    // bytes whose leading bytes are not all zero gives one.
+                    // ISO 32000-1 defines types 0, 1 and 2, and reads any other "as a reference to the null object, thus
+                    // permitting new entry types to be defined in the future" (7.5.8.3): the row stands for its object as a
+                    // free row does, no older section's row standing for it, and is reported with the section (#221). A type
+                    // field wider than 8 bytes whose leading bytes are not all zero gives one too.
+                    AddFromChain(number, XRefEntry.Free, section);
+                    section.ReservedRow ??= ReservedRowFault(number, type, row, widths[0]);
+                    section.ReservedRows++;
                     break;
             }
         }
@@ -6331,11 +6367,28 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
                     ? Invariant($"the row for object {number} places it at an index of more than 64 bits in object stream {second}, past any an object stream can hold")
                     : Invariant($"the row for object {number} places it at index {third} of object stream {second}, past any an object stream can hold");
 
-        static bool IsPast64Bits(ReadOnlySpan<byte> row, int start, int width) =>
-            width > sizeof(ulong) && row.Slice(start, width - sizeof(ulong)).ContainsAnyExcept((byte)0);
-
         static string Invariant(FormattableString text) => text.ToString(CultureInfo.InvariantCulture);
     }
+
+    /// <summary>
+    /// Says what a cross-reference stream's row of a reserved type gives object <paramref name="number"/>: its type, or a
+    /// type of more than 64 bits, where the type field, <paramref name="width"/> bytes wide, holds one (#221).
+    /// </summary>
+    /// <remarks>
+    /// A type field of 8 bytes whose every bit is set gives the largest value 64 bits hold, as one past them is read
+    /// (<see cref="ReadField"/>): the field's bytes tell the two apart.
+    /// </remarks>
+    private static string ReservedRowFault(int number, ulong type, ReadOnlySpan<byte> row, int width) =>
+        IsPast64Bits(row, 0, width)
+            ? string.Create(CultureInfo.InvariantCulture, $"the row for object {number} gives it a type of more than 64 bits")
+            : string.Create(CultureInfo.InvariantCulture, $"the row for object {number} gives it type {type}");
+
+    /// <summary>
+    /// Determines whether the field of <paramref name="row"/> that starts at <paramref name="start"/>, <paramref name="width"/>
+    /// bytes wide, holds a value past 64 bits: it is wider than 8 bytes, and its leading bytes are not all zero.
+    /// </summary>
+    private static bool IsPast64Bits(ReadOnlySpan<byte> row, int start, int width) =>
+        width > sizeof(ulong) && row.Slice(start, width - sizeof(ulong)).ContainsAnyExcept((byte)0);
 
     /// <summary>
     /// Reads a field of a cross-reference stream's row, high byte first (ISO 32000-1, 7.5.8.3), as the unsigned value its

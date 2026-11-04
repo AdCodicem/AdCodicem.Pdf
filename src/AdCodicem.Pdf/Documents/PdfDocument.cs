@@ -170,8 +170,9 @@ public sealed class PdfDocument : IDisposable
 
     /// <summary>
     /// Gets the number of entries in the cross-reference index, one per object number: those in use, and those the
-    /// file's sections mark free, object 0 — the head of the free list — among them. A rebuild empties the index,
-    /// free entries included, and fills it with the objects its scan finds and those their object streams hold.
+    /// file's sections mark free, object 0 — the head of the free list — among them, or give a row of a reserved type, which
+    /// ISO 32000-1 reads as a reference to the null object. A rebuild empties the index, free entries included, and fills
+    /// it with the objects its scan finds and those their object streams hold.
     /// </summary>
     /// <remarks>
     /// It can therefore change after opening, on a read or at the start of a validation that rebuilds the index
@@ -335,8 +336,8 @@ public sealed class PdfDocument : IDisposable
     }
 
     /// <summary>
-    /// Gets the object numbers of the entries <see cref="ObjectCount"/> counts, those the file's sections mark free
-    /// included — object 0, the head of the free list, among them.
+    /// Gets the object numbers of the entries <see cref="ObjectCount"/> counts, those the file's sections mark free, or
+    /// give a row of a reserved type, included — object 0, the head of the free list, among them.
     /// </summary>
     /// <remarks>
     /// <para>

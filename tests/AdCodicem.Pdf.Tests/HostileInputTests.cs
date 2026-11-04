@@ -285,7 +285,8 @@ public class HostileInputTests
         // A hundred cross-reference streams, chained by /Prev, each with /Length 5 0 R and rows that spell an endstream
         // first; the newest table places object 5, which holds 28 then 2,000,000 spaces, past MaxObjectLength. Each section
         // takes its data again to the 28 the cut left, which an endstream confirms, and the chain goes on: the cut object
-        // was read again for each section, and opening read the file several times over (#224).
+        // was read again for each section, and opening read the file several times over (#224). Each section's rows that
+        // spell the endstream, of reserved types, are reported once for it (#221).
         const int Sections = 100;
         var file = new HandWrittenFile(version: "1.5");
         var one = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>");
@@ -314,7 +315,8 @@ public class HostileInputTests
         using var document = PdfDocument.Open(source, options, ownsSource: false);
 
         document.Reader.Structure.Sections.Should().HaveCount(Sections + 1).And.OnlyContain(section => !section.CutByLimit);
-        document.Diagnostics.Select(entry => entry.Code).Should().Equal(PdfDiagnosticCodes.LimitObject);
+        document.Diagnostics.Select(entry => entry.Code).Should().Equal(
+            [.. Enumerable.Repeat(PdfDiagnosticCodes.XRefEntryReserved, Sections), PdfDiagnosticCodes.LimitObject]);
         source.BytesRead.Should().BeLessThan(bytes.Length);
 
         static string Row(int type, long offset) => string.Concat(
@@ -924,11 +926,12 @@ public class HostileInputTests
     }
 
     [Fact]
-    public void Rows_that_index_nothing_make_room_for_no_more_entries_than_the_guard_allows()
+    public void Rows_of_a_reserved_type_take_no_more_entries_than_the_guard_allows()
     {
-        // A reserved row type indexes nothing, and the room its rows ask for is reserved all the same, as the rows the data
-        // holds: the guard bounds it, as it bounds the rows of a type that index. Eight million rows of type 3 decode from 16
-        // KB; under a guard of a million entries, the index is sized for a million.
+        // A row of a reserved type reads as a reference to the null object, its number indexed as a free one's is (#221):
+        // such rows take entries as free rows do, and the guard bounds them. Eight million rows of type 3 decode from 16 KB;
+        // under a guard of a million entries, the index fills at the millionth number, which is reported, and is sized for
+        // a million. They once indexed nothing, and the room they asked for was bounded by the guard all the same.
         var file = ReservedTypeRows(8_000_000);
         var limits = PdfReaderLimits.Default with { MaxIndexEntries = 1_000_000 };
         file.Length.Should().BeLessThan(32 * 1024);
@@ -937,13 +940,15 @@ public class HostileInputTests
         using var document = Measure(() => PdfDocument.Open(file, new PdfReaderOptions { Limits = limits }));
         allocated = GC.GetAllocatedBytesForCurrentThread() - allocated;
 
-        document.ObjectCount.Should().Be(4);
+        document.ObjectCount.Should().Be(1_000_000);
         document.Catalog.Required().IsOfType(PdfName.Catalog).Should().BeTrue();
-        document.Diagnostics.Should().NotContain(entry => entry.Code == PdfDiagnosticCodes.LimitIndexEntries);
-        // Measured at 119,843,360 and 119,851,472 bytes on 2026-10-28, 5 % above: 16 MB of rows decoded, and the index
-        // sized for a million entries, its slots with them, where it would be for eight million past the guard;
-        // 140,272,056 with the map it was before #155.
-        allocated.Should().BeLessThan(125_850_000, "the room made for rows that index nothing is bounded by the guard");
+        document.Diagnostics.Select(entry => entry.Code).Should().Equal(PdfDiagnosticCodes.LimitIndexEntries, PdfDiagnosticCodes.XRefEntryReserved);
+        document.Diagnostics.Should().ContainSingle(entry => entry.Code == PdfDiagnosticCodes.XRefEntryReserved).Which.Message.Should().Contain(
+            " gives 999,997 rows a reserved type: the row for object 4 gives it type 3, the first of them. ");
+        // Measured at 119,845,568 to 119,853,680 bytes on 2026-11-04, 5 % above: 16 MB of rows decoded, and the index sized
+        // for a million entries, its slots with them, where it would be for eight million past the guard; 119,843,360 and
+        // 119,851,472 on 2026-10-28, when the rows took no entry; 140,272,056 with the map it was before #155.
+        allocated.Should().BeLessThan(125_850_000, "the room made for rows of a reserved type is bounded by the guard");
     }
 
     [Fact]
@@ -1533,9 +1538,11 @@ public class HostileInputTests
     public void An_object_stream_decoded_again_while_it_is_decoded_counts_once_against_the_budget()
     {
         // Object stream 7 takes its /DecodeParms from object 5, which it holds and the index does not list — its row is
-        // of a reserved type —, in an index that declares a row more than it holds. Decoding 7 asks for 5, which
-        // rebuilds the index; the rebuilt index places 5 in 7, which is decoded again, 5 read as null, and kept. The
-        // first decoding then keeps 7 in place of the second: its data counts once, as it does in the sound file.
+        // refused, placing it in object stream 0, which is no object number —, the object left for a rebuild to find.
+        // Decoding 7 asks for 5, which rebuilds the index; the rebuilt index places 5 in 7, which is decoded again, 5 read
+        // as null, and kept. The first decoding then keeps 7 in place of the second: its data counts once, as it does in
+        // the sound file. A row of a reserved type, which once left 5 out of the index, now reads as the null object
+        // (#221).
         var sound = new TestPdfBuilder()
             .WithObject(1, "<< /Type /Catalog /Pages 2 0 R >>")
             .WithObject(2, "<< /Type /Pages /Kids [] /Count 0 >>")
@@ -1546,8 +1553,8 @@ public class HostileInputTests
         var dictionary = text.IndexOf("/Type /XRef /Size 9 ", StringComparison.Ordinal);
         var rows = text.IndexOf("stream\n", dictionary, StringComparison.Ordinal) + "stream\n".Length;
         var chars = text.ToCharArray();
-        chars[rows + (5 * 7)] = '\u0003';
-        var file = Encoding.Latin1.GetBytes(new string(chars).Replace("/Type /XRef /Size 9 ", "/Type /XRef /Size 10 ", StringComparison.Ordinal));
+        chars.AsSpan(rows + (5 * 7) + 1, 4).Clear();
+        var file = Encoding.Latin1.GetBytes(chars);
 
         using var expected = PdfDocument.Open(sound);
         Title(expected.GetObject(new PdfObjectId(6))).Should().Be("six");
@@ -1565,11 +1572,13 @@ public class HostileInputTests
     public void An_object_stream_decoded_again_while_it_is_decoded_and_short_both_times_reads_as_nothing_without_failing()
     {
         // Object stream 7 takes its first filter from object 10, which object stream 9 holds, and the parameters of its
-        // second, a Flate step, from object 5, which 7 holds and the index does not list — its row is of a reserved type
-        // —, in an index a row short of its /Size. Decoding 7 asks for 5, which rebuilds the index while 10 is not yet in
-        // it: the rebuild reads 7 as far as its first filter, which names none yet, and places 5 in it. Reading 5 decodes
-        // 7 again inside the first decoding, through /ASCIIHexDecode this time, into fewer bytes than its /First: neither
-        // decoding gives anything to keep, and the second to end has nothing to take the place of.
+        // second, a Flate step, from object 5, which 7 holds and the index does not list — its row is refused, placing it in
+        // object stream 0, which is no object number —, in an index a row short of its /Size. Decoding 7 asks for 5, which
+        // rebuilds the index while 10 is not yet in it: the rebuild reads 7 as far as its first filter, which names none
+        // yet, and places 5 in it. Reading 5 decodes 7 again inside the first decoding, through /ASCIIHexDecode this time,
+        // into fewer bytes than its /First: neither decoding gives anything to keep, and the second to end has nothing to
+        // take the place of. A row of a reserved type, which once left 5 out of the index, now reads as the null object
+        // (#221).
         using var output = new MemoryStream();
         var offsets = new Dictionary<int, long>();
         void Write(string text) => output.Write(Encoding.ASCII.GetBytes(text));
@@ -1590,7 +1599,7 @@ public class HostileInputTests
         using var rows = new MemoryStream();
         (int Type, long Field, int Index)[] entries =
         [
-            (0, 0, 65535), (1, offsets[1], 0), (1, offsets[2], 0), (0, 0, 0), (0, 0, 0), (3, 7, 0),
+            (0, 0, 65535), (1, offsets[1], 0), (1, offsets[2], 0), (0, 0, 0), (0, 0, 0), (2, 0, 0),
             (2, 7, 1), (1, offsets[7], 0), (0, 0, 0), (1, offsets[9], 0), (2, 9, 0), (1, xref, 0),
         ];
 
@@ -5931,7 +5940,8 @@ public class HostileInputTests
 
     /// <summary>
     /// The catalog, an empty page tree and a cross-reference stream of <paramref name="rows"/> rows of two bytes under one
-    /// Flate filter: rows 1 to 3 place objects 1 to 3, every other row is of type 3, which indexes nothing.
+    /// Flate filter: rows 1 to 3 place objects 1 to 3, every other row is of type 3, which reads as a reference to the null
+    /// object, its number indexed as a free one's is (#221).
     /// </summary>
     private static byte[] ReservedTypeRows(int rows)
     {

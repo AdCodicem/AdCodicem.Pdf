@@ -60,6 +60,7 @@ public class ValidatorTests
             PdfValidationRuleIds.FileSizeWrong,
             PdfValidationRuleIds.FileTrailerValueWrong,
             PdfValidationRuleIds.XRefSectionMalformed,
+            PdfValidationRuleIds.XRefEntryTypeReserved,
             PdfValidationRuleIds.XRefSectionNotFound,
             PdfValidationRuleIds.XRefSectionShifted,
             PdfValidationRuleIds.XRefSubsectionMissing,
@@ -373,6 +374,7 @@ public class ValidatorTests
     [InlineData("sections refusing a row", PdfValidationRuleIds.XRefSectionMalformed, 256)]
     [InlineData("sections naming streams that are not there", PdfValidationRuleIds.XRefSectionNotFound, 256)]
     [InlineData("tables holding no subsection", PdfValidationRuleIds.XRefSubsectionMissing, 256)]
+    [InlineData("streams giving rows of a reserved type", PdfValidationRuleIds.XRefEntryTypeReserved, 256)]
     [InlineData("tables naming themselves as their stream", PdfValidationRuleIds.XRefHybridStreamWrong, 256)]
     [InlineData("a table the section guard cuts", PdfValidationRuleIds.XRefCheckedInPart, 256)]
     [InlineData("older sections the object guard hides", PdfValidationRuleIds.XRefCheckedInPart, 256)]
@@ -686,6 +688,7 @@ public class ValidatorTests
             ["sections refusing a row"] = (SectionsRefusingARow(), PdfReaderLimits.Default),
             ["sections naming streams that are not there"] = (SectionsNamingNoStream(), PdfReaderLimits.Default),
             ["tables holding no subsection"] = (SectionsHoldingNoSubsection(), PdfReaderLimits.Default),
+            ["streams giving rows of a reserved type"] = (ReservedRowFiles.Updated(type: 3, more: 4, olderType: 9).File, PdfReaderLimits.Default),
             ["tables naming themselves as their stream"] = (TablesNamingThemselves(), PdfReaderLimits.Default),
             ["a table the section guard cuts"] = (LongTable(), PdfReaderLimits.Default with { MaxXRefSectionLength = 2048 }),
             ["older sections the object guard hides"] = (OlderSectionsBehindAnObject(), PdfReaderLimits.Default with { MaxObjectLength = 1024 }),

@@ -2499,6 +2499,110 @@ public class CrossReferenceChainTests
         document.Diagnostics.Should().BeEmpty();
     }
 
+    [Fact]
+    public void A_section_giving_rows_of_a_reserved_type_is_reported_once_its_first_row_named_and_its_rows_counted()
+    {
+        // The update gives object 3 and objects 7 to 1,006 rows of type 3: each reads as a reference to the null object, as
+        // ISO 32000-1 reads it, its number indexed as a free one's is, and the section is reported once, its count grouped by
+        // thousands (#221). They were skipped in silence, the numbers left out of the index.
+        var (file, _, newer) = ReservedRowFiles.Updated(type: 3, more: 1000);
+        using var document = PdfDocument.Open(file);
+
+        var report = document.Diagnostics.Should().ContainSingle().Which;
+        report.Code.Should().Be(PdfDiagnosticCodes.XRefEntryReserved);
+        report.Severity.Should().Be(PdfDiagnosticSeverity.Warning);
+        report.Position.Should().Be(newer);
+        report.Message.Should().Be(Invariant(
+            $"The cross-reference stream startxref names at offset {newer} gives 1,001 rows a reserved type: the row for object 3 gives it type 3, the first of them. ISO 32000-1 defines types 0, 1 and 2, and reads any other as a reference to the null object (7.5.8.3): the rows were read so, and no older section's row stands for their objects."));
+        document.ObjectCount.Should().Be(1007);
+        document.ObjectNumbers.Should().Contain(1006);
+        document.Reader.Index.TryGet(1006, out var last).Should().BeTrue();
+        last.Kind.Should().Be(XRefEntryKind.Free);
+        document.GetObject(new PdfObjectId(1006)).Should().BeSameAs(PdfNull.Instance);
+        document.WasRepaired.Should().BeFalse();
+    }
+
+    [Theory]
+    [InlineData(null, null)]
+    [InlineData(1UL, "new three")]
+    public void A_row_of_a_reserved_type_in_a_section_prev_names_is_reported_at_that_section_whatever_a_newer_row_gives(
+        ulong? newer, string? expected)
+    {
+        // The original stream gives object 3 a row of type 9. Where the update gives it no row, the row stands, and object 3
+        // reads as null; where the update places a newer revision, that row stands. Either way the original's row is the
+        // file's, and reported at the section the /Prev names (#221).
+        var (file, older, _) = ReservedRowFiles.Updated(newer, newer: newer is not null, olderType: 9);
+        using var document = PdfDocument.Open(file);
+        var three = document.GetObject(new PdfObjectId(3));
+
+        var report = document.Diagnostics.Should().ContainSingle().Which;
+        report.Code.Should().Be(PdfDiagnosticCodes.XRefEntryReserved);
+        report.Position.Should().Be(older);
+        report.Message.Should().StartWith(Invariant(
+            $"The cross-reference stream /Prev names at offset {older} gives 1 row a reserved type: the row for object 3 gives it type 9. "));
+
+        if (expected is null)
+        {
+            three.Should().BeSameAs(PdfNull.Instance);
+        }
+        else
+        {
+            three.Should().BeOfType<PdfString>().Which.ToText().Should().Be(expected);
+        }
+    }
+
+    [Fact]
+    public void A_row_of_a_reserved_type_in_a_hybrid_file_s_stream_reads_as_null_over_the_older_table_s_row()
+    {
+        // The update's stream, which its table names through /XRefStm, gives object 3 a row of type 3; the original table
+        // places object 3. The stream's row stands, a reference to the null object, and is reported at the stream: the
+        // original revision, which the update superseded, was served (#221).
+        var (file, stream, _) = ReservedRowFiles.Hybrid();
+        using var document = PdfDocument.Open(file);
+
+        var report = document.Diagnostics.Should().ContainSingle().Which;
+        report.Code.Should().Be(PdfDiagnosticCodes.XRefEntryReserved);
+        report.Position.Should().Be(stream);
+        report.Message.Should().StartWith(Invariant(
+            $"The cross-reference stream /XRefStm names at offset {stream} gives 1 row a reserved type: the row for object 3 gives it type 3. "));
+        document.GetObject(new PdfObjectId(3)).Should().BeSameAs(PdfNull.Instance);
+        document.WasRepaired.Should().BeFalse();
+    }
+
+    [Fact]
+    public void A_row_of_a_reserved_type_in_a_section_found_moved_is_reported_where_the_section_was_found()
+    {
+        // The update's /Prev names the original stream four bytes past its header, where the chain finds it moved: what its
+        // rows gave is carried to the section where it was named, and reported where it was found (#221).
+        var (file, older, _) = ReservedRowFiles.Updated(type: null, olderType: 3, prevShift: 4);
+        using var document = PdfDocument.Open(file);
+
+        document.Diagnostics.Select(entry => entry.Code).Should().Equal(PdfDiagnosticCodes.XRefOffsetAdjusted, PdfDiagnosticCodes.XRefEntryReserved);
+        document.Diagnostics[1].Position.Should().Be(older);
+        var section = document.Reader.Structure.Sections[1];
+        section.State.Should().Be(XRefSectionState.Relocated);
+        section.ReservedRow.Should().Be("the row for object 3 gives it type 3");
+        section.ReservedRows.Should().Be(1);
+        new PdfValidator().Validate(document).Findings.Should().ContainSingle(finding => finding.RuleId == PdfValidationRuleIds.XRefEntryTypeReserved)
+            .Which.Location.Position.Should().Be(older);
+    }
+
+    [Fact]
+    public void A_section_read_in_part_reports_its_rows_of_a_reserved_type_after_what_it_lost()
+    {
+        // The update declares rows for objects 7 to 9 and holds one of them: read only in part, it is reported so first, then
+        // for the rows of a reserved type it holds, object 3's and object 7's (#210, #221).
+        var (file, _, newer) = ReservedRowFiles.Updated(type: 3, more: 1, missing: 2);
+        using var document = PdfDocument.Open(file);
+
+        document.Diagnostics.Select(entry => entry.Code).Should().Equal(PdfDiagnosticCodes.XRefSectionUnreadable, PdfDiagnosticCodes.XRefEntryReserved);
+        document.Diagnostics.Should().OnlyContain(entry => entry.Position == newer);
+        document.Diagnostics[1].Message.Should().Contain(" gives 2 rows a reserved type: the row for object 3 gives it type 3, the first of them. ");
+        document.GetObject(new PdfObjectId(3)).Should().BeSameAs(PdfNull.Instance);
+        new PdfValidator().Validate(document).Findings.Should().ContainSingle(finding => finding.RuleId == PdfValidationRuleIds.XRefEntryTypeReserved)
+            .Which.Message.Should().Contain(" gives 2 rows a reserved type: the row for object 3 gives it type 3, the first of them. ");
+    }
+
     /// <summary>Where the first object starts: after the header line and the comment of binary bytes.</summary>
     private const long FirstObjectOffset = 15;
 

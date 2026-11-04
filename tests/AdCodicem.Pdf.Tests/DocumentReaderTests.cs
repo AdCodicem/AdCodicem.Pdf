@@ -2305,15 +2305,19 @@ public class DocumentReaderTests
         // Two rows of reserved types spell an endstream after an end-of-line, a few bytes in or past the first 64 KB: the
         // chain, which could not read the /Length, took the data up to it, and read the rows before it alone — once with a
         // report, the section said to lack rows. The stream's own row for object 4 lies among them: the object it places
-        // gives the length, which the endstream after it confirms, and the data is taken again to it (#220).
+        // gives the length, which the endstream after it confirms, and the data is taken again to it (#220). The two rows
+        // that spell it, of reserved types, read as the null object, their numbers indexed as free ones, and are reported
+        // (#221).
         var file = ChainFiles.AloneWithIndirectLength(spellingEndStream: true, padding: padding);
         using var document = PdfDocument.Open(file);
 
-        document.Diagnostics.Should().BeEmpty();
+        document.Diagnostics.Should().ContainSingle().Which.Message.Should().Contain(string.Create(
+            CultureInfo.InvariantCulture,
+            $" gives 2 rows a reserved type: the row for object {6 + padding} gives it type 10, the first of them. "));
         document.WasRepaired.Should().BeFalse();
-        document.Reader.Index.Count.Should().Be(6 + padding);
+        document.Reader.Index.Count.Should().Be(8 + padding);
         document.Reader.Structure.Sections.Should().ContainSingle().Which.Incomplete.Should().BeFalse();
-        new PdfValidator().Validate(document).Findings.Should().BeEmpty();
+        new PdfValidator().Validate(document).Findings.Select(finding => finding.RuleId).Should().Equal(PdfValidationRuleIds.XRefEntryTypeReserved);
     }
 
     [Fact]
@@ -2321,29 +2325,39 @@ public class DocumentReaderTests
     {
         // The update's stream indexes its /Length, object 4, and object 8 after rows that spell an endstream: read up to it,
         // the stream held object 4's row alone, and object 8 read as the first revision wrote it, a valid file said to have
-        // a malformed section. The update's rows are read whole, and object 8 reads as it does in its direct twin (#220).
+        // a malformed section. The update's rows are read whole, and object 8 reads as it does in its direct twin (#220),
+        // whose rows for objects 5 and 6 are free where the spelling rows are of reserved types, read as free ones and
+        // reported (#221).
         using var document = PdfDocument.Open(ChainFiles.UpdateWithIndirectLength(spellingEndStream: true));
         using var twin = PdfDocument.Open(ChainFiles.UpdateWithIndirectLength(spellingEndStream: false));
 
         document.GetObject(new PdfObjectId(8)).Should().BeOfType<PdfString>().Which.ToText().Should().Be("new");
         twin.GetObject(new PdfObjectId(8)).Should().BeOfType<PdfString>().Which.ToText().Should().Be("new");
-        document.Diagnostics.Should().BeEmpty();
+        document.Diagnostics.Select(entry => entry.Code).Should().Equal(PdfDiagnosticCodes.XRefEntryReserved);
+        twin.Diagnostics.Should().BeEmpty();
         document.Reader.Index.Count.Should().Be(twin.Reader.Index.Count);
-        new PdfValidator().Validate(document).Findings.Should().BeEmpty();
+        new PdfValidator().Validate(document).Findings.Select(finding => finding.RuleId).Should().Equal(PdfValidationRuleIds.XRefEntryTypeReserved);
     }
 
     [Fact]
-    public void A_deferred_length_is_taken_again_by_the_row_the_section_keeps_for_it()
+    public void A_deferred_length_is_taken_again_only_by_the_row_the_section_keeps_for_it_which_one_of_a_reserved_type_is()
     {
-        // The stream's /Index numbers its /Length, object 4, first in a row of a reserved type, which reading the rows ignores,
-        // then in the row that places it, before rows that spell an endstream: the data was not taken again by the first, and
-        // the section was said to lack the rows past them, the page's among them (#220).
+        // The stream's /Index numbers its /Length, object 4, first in a row of a reserved type whose fields give where object
+        // 4 lies, then in a row that places it, before rows that spell an endstream. The first row is the one the reading of
+        // the rows keeps, a reference to the null object as ISO 32000-1 reads it (#221): it places no length, whatever its
+        // fields give, and the data stays as the chain took it, up to the spelled endstream, the section lacking the rows past
+        // it, the page's among them, which a rebuild finds. The row after it, skipped as the first, once took the data again
+        // to the length (#220).
         using var document = PdfDocument.Open(ChainFiles.AloneWithIndirectLengthBeforeSpelledRows(reservedRowFirst: true));
 
-        document.Diagnostics.Should().BeEmpty();
-        document.Reader.Structure.Sections.Should().ContainSingle().Which.Incomplete.Should().BeFalse();
+        document.Diagnostics.Select(entry => entry.Code).Should().Equal(
+            PdfDiagnosticCodes.XRefSectionUnreadable, PdfDiagnosticCodes.XRefEntryReserved, PdfDiagnosticCodes.StreamLengthInvalid);
+        var section = document.Reader.Structure.Sections.Should().ContainSingle().Which;
+        section.Incomplete.Should().BeTrue();
+        section.ReservedRow.Should().Be("the row for object 4 gives it type 3");
         document.GetObject(new PdfObjectId(3)).AsDictionary().IsOfType(PdfName.Page).Should().BeTrue();
-        new PdfValidator().Validate(document).Contains(PdfValidationRuleIds.XRefSectionMalformed).Should().BeFalse();
+        document.WasRepaired.Should().BeTrue();
+        new PdfValidator().Validate(document).Contains(PdfValidationRuleIds.XRefSectionMalformed).Should().BeTrue();
     }
 
     [Fact]
@@ -2377,8 +2391,9 @@ public class DocumentReaderTests
 
         if (objects == 32)
         {
+            // The rows that spell the endstream, of reserved types, are read, and reported (#221).
             section.Incomplete.Should().BeFalse();
-            document.Diagnostics.Should().BeEmpty();
+            document.Diagnostics.Select(entry => entry.Code).Should().Equal(PdfDiagnosticCodes.XRefEntryReserved);
             return;
         }
 
@@ -2428,7 +2443,9 @@ public class DocumentReaderTests
         document.Diagnostics.Select(entry => entry.Code).Should().Equal(
             decoding ? PdfDiagnosticCodes.LimitDecodedStream : PdfDiagnosticCodes.LimitStreamLength);
         document.Reader.Structure.Sections.Should().ContainSingle().Which.CutByLimit.Should().BeTrue();
-        whole.Diagnostics.Should().BeEmpty();
+
+        // Read whole, the rows that spell the endstream, of reserved types, are read, and reported (#221).
+        whole.Diagnostics.Select(entry => entry.Code).Should().Equal(PdfDiagnosticCodes.XRefEntryReserved);
     }
 
     [Fact]
@@ -2441,7 +2458,8 @@ public class DocumentReaderTests
         using var whole = PdfDocument.Open(file);
         using var document = PdfDocument.Open(file, new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxFilterChainLength = 1 } });
 
-        whole.Diagnostics.Should().BeEmpty();
+        // Read whole, the rows that spell the endstream, of reserved types, are read, and reported (#221).
+        whole.Diagnostics.Select(entry => entry.Code).Should().Equal(PdfDiagnosticCodes.XRefEntryReserved);
         document.Diagnostics.Should().Contain(entry => entry.Code == PdfDiagnosticCodes.LimitFilterChain);
         document.Diagnostics.Should().NotContain(entry => entry.Code.StartsWith("filter.", StringComparison.Ordinal));
 
@@ -2747,14 +2765,17 @@ public class DocumentReaderTests
         // The older section's /Length names object 4, which only it indexes, and two of its rows spell an endstream: the
         // search for it stops at the update's first object, past them. Its data is taken again to the length object 4
         // gives, as the newest section's is (#220).
+        // The rows that spell it, of reserved types, are reported at the older section (#221).
         var file = ChainFiles.OlderWithIndirectLength(spellingEndStream: !twin);
         using var document = PdfDocument.Open(file);
+        string[] reported = twin ? [] : [PdfDiagnosticCodes.XRefEntryReserved];
+        string[] found = twin ? [] : [PdfValidationRuleIds.XRefEntryTypeReserved];
 
-        document.Diagnostics.Should().BeEmpty();
+        document.Diagnostics.Select(entry => entry.Code).Should().Equal(reported);
         document.WasRepaired.Should().BeFalse();
         document.Reader.Structure.Sections.Should().HaveCount(2).And.OnlyContain(section => !section.Incomplete);
         document.GetObject(new PdfObjectId(8)).Should().BeOfType<PdfString>().Which.ToText().Should().Be("new");
-        new PdfValidator().Validate(document).Findings.Should().BeEmpty();
+        new PdfValidator().Validate(document).Findings.Select(finding => finding.RuleId).Should().Equal(found);
     }
 
     [Fact]
@@ -2848,11 +2869,12 @@ public class DocumentReaderTests
     public void Rows_that_spell_an_object_header_do_not_end_a_deferred_length_s_data()
     {
         // Rows of reserved types spell "1 0 obj" past the first 64 KB: a header the bytes hold ends a search for a stream's
-        // endstream, but not one whose /Length the chain could not read, whose rows may spell anything (#220).
+        // endstream, but not one whose /Length the chain could not read, whose rows may spell anything (#220). Those two rows
+        // read as the null object, their numbers indexed as free ones, and are reported (#221).
         using var document = PdfDocument.Open(ChainFiles.AloneWithIndirectLength(padding: 10_000, spellingHeader: true));
 
-        document.Diagnostics.Should().BeEmpty();
-        document.Reader.Index.Count.Should().Be(10_006);
+        document.Diagnostics.Select(entry => entry.Code).Should().Equal(PdfDiagnosticCodes.XRefEntryReserved);
+        document.Reader.Index.Count.Should().Be(10_008);
     }
 
     [Fact]
@@ -4035,11 +4057,12 @@ public class DocumentReaderTests
         // its tag bytes in the rows; or, under the TIFF predictor, to that row still differenced —, and the row for the
         // /Length was not found, or found garbled. The section was charged with the rows it lacked and the index rebuilt
         // (#220).
+        // The rows that spell the endstream, of reserved types, are read once the data is, and reported (#221).
         var file = ChainFiles.DeferredLengthRowPartedBySpelledEndStream(columns, predictor);
 
         using var document = PdfDocument.Open(file);
 
-        document.Diagnostics.Should().BeEmpty();
+        document.Diagnostics.Select(entry => entry.Code).Should().Equal(PdfDiagnosticCodes.XRefEntryReserved);
         document.WasRepaired.Should().BeFalse();
         document.GetObject(new PdfObjectId(3)).AsDictionary().Required().IsOfType(PdfName.Page).Should().BeTrue();
     }
@@ -4120,9 +4143,10 @@ public class DocumentReaderTests
 
         var file = ChainFiles.DeferredLengthPageRowInPartedRunLengthRow();
 
+        // Unbounded, every row is read, those that spell the endstream, of reserved types, reported (#221).
         using (var unbounded = PdfDocument.Open(file))
         {
-            unbounded.Diagnostics.Should().BeEmpty();
+            unbounded.Diagnostics.Select(entry => entry.Code).Should().Equal(PdfDiagnosticCodes.XRefEntryReserved);
         }
 
         using var document = PdfDocument.Open(file, options);

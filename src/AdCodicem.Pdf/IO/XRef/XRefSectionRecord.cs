@@ -65,6 +65,17 @@ internal sealed class XRefSectionRecord
     public string? RefusedRow { get; set; }
 
     /// <summary>
+    /// Gets the first row of a reserved type the cross-reference stream gives, in words — "the row for object 3 gives it
+    /// type 3" —; null when it gives none. ISO 32000-1 (7.5.8.3) defines types 0, 1 and 2, and reads any other as a
+    /// reference to the null object, as the reader does: the row stands for its object as a free row does, and no older
+    /// section's row stands for it (#221). It is no cause of the section's being unreadable.
+    /// </summary>
+    public string? ReservedRow { get; set; }
+
+    /// <summary>Gets how many rows of a reserved type the cross-reference stream gives (<see cref="ReservedRow"/>).</summary>
+    public long ReservedRows { get; set; }
+
+    /// <summary>
     /// Gets a value indicating whether the section's own reading lost rows through the file's fault, the rows before the
     /// fault kept: a classic table's row that is no row, which ends its subsection; a classic table the end of the file cuts
     /// before its trailer, once it read a row; a cross-reference stream that holds fewer rows than it declares — where a
@@ -206,6 +217,8 @@ internal sealed class XRefSectionRecord
         Kind = attempt.Kind;
         Fault = attempt.Fault;
         RefusedRow = attempt.RefusedRow;
+        ReservedRow = attempt.ReservedRow;
+        ReservedRows = attempt.ReservedRows;
         Incomplete = attempt.Incomplete;
         NoSubsection = attempt.NoSubsection;
         CutByLimit = attempt.CutByLimit;

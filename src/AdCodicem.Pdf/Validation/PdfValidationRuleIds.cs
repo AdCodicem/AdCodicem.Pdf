@@ -86,6 +86,12 @@ public static class PdfValidationRuleIds
     public const string XRefSectionMalformed = "xref.section-malformed";
 
     /// <summary>
+    /// A cross-reference stream gives a row of a reserved type: a type ISO 32000-1 does not define, which it reads as a
+    /// reference to the null object. <see cref="PdfValidationSeverity.Warning"/>.
+    /// </summary>
+    public const string XRefEntryTypeReserved = "xref.entry-type-reserved";
+
+    /// <summary>
     /// A cross-reference section a <c>/Prev</c> or an <c>/XRefStm</c> names is neither there nor near it, or what
     /// names it is not an offset. <see cref="PdfValidationSeverity.Error"/>.
     /// </summary>

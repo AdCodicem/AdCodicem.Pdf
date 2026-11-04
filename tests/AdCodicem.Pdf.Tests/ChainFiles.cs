@@ -9,6 +9,14 @@ namespace AdCodicem.Pdf.Tests;
 /// dictionary written with references, an indirect <c>/Length</c>, a <c>/Prev</c> or an <c>/XRefStm</c> written as a
 /// reference —, which the reader reads without loading anything while the chain is read (#182).
 /// </summary>
+/// <remarks>
+/// Rows of 7 bytes that spell <c>endstream</c> or an object header after an end-of-line — 10 bytes or more — always
+/// hold a row's type byte, a letter or the end-of-line, of a type past 2: each such row reads as a reference to the
+/// null object, its number indexed as a free one's is, and its section is reported once for the rows of reserved types
+/// it gives (<see cref="Diagnostics.PdfDiagnosticCodes.XRefEntryReserved"/>, #221) wherever the chain reads them. A
+/// file said valid below that holds such rows is valid but for them: ISO 32000-1 defines no type past 2, and reads one
+/// as the null object.
+/// </remarks>
 internal static class ChainFiles
 {
     /// <summary>The keys <see cref="UnderAnUpdate"/> writes as references, one shape each.</summary>
@@ -175,8 +183,8 @@ internal static class ChainFiles
                 rows.Add((0, 0, 13));
             }
 
-            // Types 10 and 101 or 106, reserved: the rows are ignored, and their bytes read "\nendstream", or "\n1 0 obj". The
-            // length's row past them is written as they are, uncompressed.
+            // Types 10 and 101 or 106, reserved: the rows read as references to the null object, and their bytes read
+            // "\nendstream", or "\n1 0 obj". The length's row past them is written as they are, uncompressed.
             var data = new List<byte>(Encode([.. rows], encoding));
             data.AddRange(spelled);
 
@@ -194,9 +202,10 @@ internal static class ChainFiles
     /// A file of one cross-reference stream, object 5, whose <c>/Length</c> names object 4, which only that stream indexes,
     /// in a row before two rows of reserved types that spell <c>endstream</c> after an end-of-line; the page's row comes
     /// after them. With <paramref name="reservedRowFirst"/>, the <c>/Index</c> numbers object 4 twice: first in a row of a
-    /// reserved type, which the specification says to ignore, then in the row that places it. With <paramref name="stored"/>,
-    /// the data is compressed in stored blocks, which show the rows as written, <paramref name="layers"/> times over, each
-    /// layer a Flate filter. The file is valid.
+    /// reserved type, which ISO 32000-1 reads as a reference to the null object and which stands, though its fields give
+    /// object 4's offset and generation, then in the row that places it. With <paramref name="stored"/>, the data is
+    /// compressed in stored blocks, which show the rows as written, <paramref name="layers"/> times over, each layer a
+    /// Flate filter. The file is valid.
     /// </summary>
     public static byte[] AloneWithIndirectLengthBeforeSpelledRows(bool reservedRowFirst, bool stored = false, int layers = 1)
     {
@@ -204,11 +213,12 @@ internal static class ChainFiles
         file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>");
         file.Object(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>");
         file.Object(3, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << >> >>");
-        var reserved = reservedRowFirst ? [(3, 0L, 0)] : Array.Empty<(int, long, int)>();
 
         // The data's length does not depend on the offsets its rows hold.
         byte[] Data(long four, long stream)
         {
+            // The row of a reserved type keeps the fields of the one that places object 4: they place nothing.
+            (int, long, int)[] reserved = reservedRowFirst ? [(3, four, 0)] : [];
             var data = new List<byte>(Encode([(0, 0, 65535), (1, file.OffsetOf(1), 0), (1, file.OffsetOf(2), 0), .. reserved, (1, four, 0), (1, stream, 0)], Rows.Raw));
             data.AddRange("\nendstream\0\0\0\0"u8.ToArray());
             data.AddRange(Encode([(1, file.OffsetOf(3), 0)], Rows.Raw));
@@ -969,8 +979,8 @@ internal static class ChainFiles
             if (predictor == 2)
             {
                 // Each byte but a row's first is written as its difference from the one before it: the two rows of reserved
-                // types hold the bytes whose differences spell the endstream, their types still past 2, which no reading
-                // takes.
+                // types hold the bytes whose differences spell the endstream, their types still past 2, read as references to
+                // the null object.
                 var spelled = "\nendstream\0\0\0\0"u8;
 
                 for (var i = 35; i < 49; i++)

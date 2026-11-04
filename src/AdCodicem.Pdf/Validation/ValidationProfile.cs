@@ -56,6 +56,7 @@ public sealed class ValidationProfile
             new SizeWrongRule(),
             new TrailerValueWrongRule(),
             new SectionMalformedRule(),
+            new ReservedTypeRule(),
             new SectionNotFoundRule(),
             new SectionShiftedRule(),
             new SubsectionMissingRule(),

@@ -93,6 +93,15 @@ public static class PdfDiagnosticCodes
     public const string XRefEntryOutOfRange = "xref.entry-out-of-range";
 
     /// <summary>
+    /// A cross-reference stream the chain reads gives rows of a reserved type: a type past 2, or a type field wider than 8
+    /// bytes whose leading bytes are not all zero. ISO 32000-1 (7.5.8.3) defines types 0, 1 and 2, and reads any other as a
+    /// reference to the null object, permitting new types to be defined in the future: each such row is read so, its object
+    /// indexed as a free one's is, and no older section's row stands for it (#221). Reported once for each section, at the
+    /// section, the first such row in the message and the others counted.
+    /// </summary>
+    public const string XRefEntryReserved = "xref.entry-reserved";
+
+    /// <summary>
     /// A stream's <c>/Length</c> is not where its data ends: its <c>endstream</c> lies elsewhere and ends the data, the
     /// <c>/Length</c> gives no length the reader can take and the <c>endstream</c> ends the data, or no <c>endstream</c>
     /// follows the declared length — none before the next object or the end of the file, or none looked for once the

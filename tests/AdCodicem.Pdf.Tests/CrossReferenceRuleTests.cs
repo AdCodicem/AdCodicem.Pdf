@@ -1799,16 +1799,29 @@ public class CrossReferenceRuleTests
     }
 
     [Theory]
-    [InlineData(0x1_0000_0002UL)]
-    [InlineData(3UL)]
-    public void A_cross_reference_stream_row_of_a_type_past_2_is_ignored_however_wide_its_type_field(ulong type)
+    [InlineData(new[] { 8, 4, 2 }, 0x1_0000_0002UL, "type 4294967298")]
+    [InlineData(new[] { 8, 4, 2 }, 3UL, "type 3")]
+    [InlineData(new[] { 8, 4, 2 }, ulong.MaxValue, "type 18446744073709551615")]
+    [InlineData(new[] { 1, 4, 2 }, 255UL, "type 255")]
+    [InlineData(new[] { 9, 4, 2 }, 3UL, "type 3")]
+    public void A_cross_reference_stream_row_of_a_type_past_2_reads_as_the_null_object_however_wide_its_type_field(
+        int[] widths, ulong type, string given)
     {
-        // Object 3's row keeps its fields, object stream 4 and index 1. Narrowed to an int, 2^32 + 2 was type 2 and
-        // served the page; past 2, ISO 32000-1, Table 18, has the row ignored, as a reference to a null object.
-        using var document = PdfDocument.Open(WithRows([8, 4, 2], number: 3, type, second: 4, third: 1));
+        // Object 3's row keeps its fields, object stream 4 and index 1. Narrowed to an int, 2^32 + 2 was type 2 and served
+        // the page. ISO 32000-1 defines types 0, 1 and 2, and reads any other as a reference to the null object (7.5.8.3):
+        // the row is indexed as a free one is, and reported, never refused (#221). A ninth byte that is zero leads the type its
+        // last eight give, and eight bytes all set give the largest type 64 bits hold.
+        using var document = PdfDocument.Open(WithRows(widths, number: 3, type, second: 4, third: 1));
 
         document.GetObject(new PdfObjectId(3)).Should().BeSameAs(PdfNull.Instance);
+        document.Reader.Index.TryGet(3, out var entry).Should().BeTrue();
+        entry.Kind.Should().Be(XRefEntryKind.Free);
         document.GetObject(new PdfObjectId(2)).AsDictionary().IsOfType(PdfName.Pages).Should().BeTrue();
+        document.WasRepaired.Should().BeFalse();
+        var report = new PdfValidator().Validate(document);
+        report.Contains(PdfValidationRuleIds.XRefSectionMalformed).Should().BeFalse();
+        Single(report, PdfValidationRuleIds.XRefEntryTypeReserved).Message.Should().StartWith(
+            "The cross-reference stream at offset ").And.Contain(" gives 1 row a reserved type: the row for object 3 gives it " + given + ". ");
     }
 
     [Theory]
@@ -1845,14 +1858,94 @@ public class CrossReferenceRuleTests
     }
 
     [Fact]
-    public void A_cross_reference_stream_row_whose_wide_type_field_holds_more_than_64_bits_is_ignored()
+    public void A_cross_reference_stream_row_whose_wide_type_field_holds_more_than_64_bits_reads_as_the_null_object()
     {
-        // A type past 2, however it is written: the row is skipped, as one written in 8 bytes is (#221), not refused.
+        // A type past 2, however it is written: the row is read as a reference to the null object, as one written in 8 bytes
+        // is (#221), not refused, and the report says the type takes more than 64 bits, which its last 8 bytes do not tell.
         using var document = PdfDocument.Open(WithRows([9, 4, 2], number: 3, type: 2, second: 4, third: 1, leading: 0));
 
         document.GetObject(new PdfObjectId(3)).Should().BeSameAs(PdfNull.Instance);
+        document.Reader.Index.TryGet(3, out var entry).Should().BeTrue();
+        entry.Kind.Should().Be(XRefEntryKind.Free);
         document.GetObject(new PdfObjectId(2)).AsDictionary().IsOfType(PdfName.Pages).Should().BeTrue();
-        new PdfValidator().Validate(document).Contains(PdfValidationRuleIds.XRefSectionMalformed).Should().BeFalse();
+        var report = new PdfValidator().Validate(document);
+        report.Contains(PdfValidationRuleIds.XRefSectionMalformed).Should().BeFalse();
+        Single(report, PdfValidationRuleIds.XRefEntryTypeReserved).Message.Should().Contain(
+            ": the row for object 3 gives it a type of more than 64 bits. ");
+        document.Diagnostics.Should().ContainSingle(diagnostic => diagnostic.Code == PdfDiagnosticCodes.XRefEntryReserved)
+            .Which.Message.Should().Contain(": the row for object 3 gives it a type of more than 64 bits. ");
+    }
+
+    [Theory]
+    [InlineData("type 3", 3UL, true, null, true)]
+    [InlineData("free", 0UL, true, null, false)]
+    [InlineData("no row", null, true, "three", false)]
+    [InlineData("type 3, no older definition", 3UL, false, null, true)]
+    public void An_update_s_row_of_a_reserved_type_reads_its_object_as_null_over_an_older_one_and_is_reported(
+        string shape, ulong? type, bool older, string? expected, bool reported)
+    {
+        // #221's four shapes: two cross-reference streams, the update's giving object 3 a row of type 3, a free row, or none.
+        // ISO 32000-1 reads a type past 2 as a reference to the null object (7.5.8.3): the object reads as null, as for a free
+        // row, though the original revision defines it, and the reader and the validator both report the row, once, at the
+        // update's stream. A free row and no row are reported nowhere.
+        var (file, _, newer) = ReservedRowFiles.Updated(type, older);
+        using var document = PdfDocument.Open(file);
+        var three = document.GetObject(new PdfObjectId(3));
+        var report = new PdfValidator().Validate(document);
+
+        if (expected is null)
+        {
+            three.Should().BeSameAs(PdfNull.Instance, shape);
+        }
+        else
+        {
+            three.Should().BeOfType<PdfString>(shape).Which.ToText().Should().Be(expected);
+        }
+
+        document.WasRepaired.Should().BeFalse(shape);
+
+        if (!reported)
+        {
+            document.Diagnostics.Should().BeEmpty(shape);
+            report.Findings.Should().BeEmpty(shape);
+            return;
+        }
+
+        var diagnostic = document.Diagnostics.Should().ContainSingle(shape).Which;
+        diagnostic.Code.Should().Be(PdfDiagnosticCodes.XRefEntryReserved);
+        diagnostic.Severity.Should().Be(PdfDiagnosticSeverity.Warning);
+        diagnostic.Position.Should().Be(newer);
+        diagnostic.Message.Should().Be(string.Create(
+            CultureInfo.InvariantCulture,
+            $"The cross-reference stream startxref names at offset {newer} gives 1 row a reserved type: the row for object 3 gives it type 3. ISO 32000-1 defines types 0, 1 and 2, and reads any other as a reference to the null object (7.5.8.3): the row was read so, and no older section's row stands for its object."));
+        var finding = report.Findings.Should().ContainSingle(shape).Which;
+        finding.RuleId.Should().Be(PdfValidationRuleIds.XRefEntryTypeReserved);
+        finding.Severity.Should().Be(PdfValidationSeverity.Warning);
+        finding.Location.Position.Should().Be(newer);
+        finding.Message.Should().Be(string.Create(
+            CultureInfo.InvariantCulture,
+            $"The cross-reference stream at offset {newer} gives 1 row a reserved type: the row for object 3 gives it type 3. ISO 32000-1 defines types 0, 1 and 2, and reads any other as a reference to the null object (7.5.8.3), as the reader does."));
+        finding.Remedy.Should().Be("Rewrite the cross-reference stream with a row of type 0, 1 or 2 for each object it numbers: type 0 for one that is free.");
+    }
+
+    [Fact]
+    public void Each_stream_giving_rows_of_a_reserved_type_is_one_finding_its_first_row_named_and_its_rows_counted()
+    {
+        // The update gives object 3 and objects 7 to 1,006 rows of type 3, the original object 3 one of type 9: one finding a
+        // section, in the chain's order, the update's counting its rows by thousands as the reader's report does.
+        var (file, olderAt, newer) = ReservedRowFiles.Updated(type: 3, more: 1000, olderType: 9);
+
+        var findings = Validate(file).Findings;
+
+        findings.Select(finding => finding.RuleId).Should().Equal(PdfValidationRuleIds.XRefEntryTypeReserved, PdfValidationRuleIds.XRefEntryTypeReserved);
+        findings[0].Location.Position.Should().Be(newer);
+        findings[0].Message.Should().StartWith(string.Create(
+            CultureInfo.InvariantCulture,
+            $"The cross-reference stream at offset {newer} gives 1,001 rows a reserved type: the row for object 3 gives it type 3, the first of them. "));
+        findings[1].Location.Position.Should().Be(olderAt);
+        findings[1].Message.Should().StartWith(string.Create(
+            CultureInfo.InvariantCulture,
+            $"The cross-reference stream at offset {olderAt} gives 1 row a reserved type: the row for object 3 gives it type 9. "));
     }
 
     [Theory]
