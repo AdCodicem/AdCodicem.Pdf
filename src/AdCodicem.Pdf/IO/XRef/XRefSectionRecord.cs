@@ -167,7 +167,8 @@ internal sealed class XRefSectionRecord
     /// Gets the record of what the chain read, or looked for, where an <c>/XRefStm</c> names a position it had reached
     /// before (<see cref="XRefSectionState.NamedAgain"/>) — the first record named or read there —, or, for an
     /// <c>/XRefStm</c> that names what its own table's <c>/Prev</c> names, the record of the section that <c>/Prev</c> reads
-    /// (#156); null for every other section, and while that <c>/Prev</c> has read nothing.
+    /// (#156); null for every other section, and while that <c>/Prev</c> has read nothing — as past a guard that stopped
+    /// the table, where it reads nothing in the file (#264).
     /// </summary>
     public XRefSectionRecord? ReadAs { get; set; }
 

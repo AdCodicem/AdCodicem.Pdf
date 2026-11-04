@@ -74,6 +74,15 @@ table's bound, the objects past the most the index holds — is no damage either
 rather than missing, until you raise the limit; the reader does not rebuild the index for them, as it would for a file
 whose index is broken, since a rebuild would report a sound file as damaged and could lose what the chain had read.
 
+The chain of cross-reference sections ends at the section a guard stopped, since an older section's rows would stand for
+those the guard left unread. What that section names is still the file's to answer for, though, where it can name no
+section whatever the guard hid: a `/Prev` outside the file, one that names the section itself or another the chain has
+read, an `/XRefStm` that names no cross-reference stream. The reader judges such a value as a read of the whole file
+judges it, and reads nothing past the guard to do so: a guard never hides damage that can be seen without reading past
+it, and what the lost sections index is found by rebuilding the index, as in the file read whole. A value that may name a
+sound section — an offset in the file the chain has not reached — stays the guard's, the older sections with it
+([#264](https://github.com/AdCodicem/AdCodicem.Pdf/issues/264)).
+
 ## What decoding a stream may hold
 
 `MaxDecodedStreamLength` bounds what a stream decodes to, and a stream's data may pass through several filters, each

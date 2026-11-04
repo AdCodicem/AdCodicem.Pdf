@@ -58,7 +58,17 @@ there. Raise PdfReaderLimits.MaxDecodedStreamLength to read past it.
   missing. When the trailer's `/Root` names an object so left out, the catalog reads as null too: the reader does not
   look for another among the objects it indexed, which would be another object than the one `/Root` names. A classic table cut by its length, or whose rows run past a full index, keeps its trailer: the document's
   catalog, encryption and identity. The chain ends at such a cut, and at a section whose trailer a limit cut: a `/Prev`,
-  an `/XRefStm` or a `/Root` past the cut is unknown, and no older section stands for it. A section a limit cut is
+  an `/XRefStm` or a `/Root` past the cut is unknown, and no older section stands for it. What the section the chain
+  ends at names is still judged, as far as the cut lets it be, and nothing past the cut is read: a `/Prev` or an
+  `/XRefStm` — of a section whose rows a limit cut or filled the index at, or of a hybrid table whose stream a limit so
+  stopped — that can name no section whatever the cut hides is reported as a whole read reports it, under
+  `xref.section-missing`, `xref.chain-cycle` or `xref.hybrid-stream-lost`, and what only the sections it should have named
+  index is found by rebuilding the index when you ask for it
+  ([#264](https://github.com/AdCodicem/AdCodicem.Pdf/issues/264)). Such a value is no offset, a reference to a row the
+  reader read, an offset outside the file, or a section the chain has reached. One that may name a sound section — an
+  offset in the file the chain has not reached, a reference to a row past the cut — is the limit's, and so are the
+  trailers past it. A `/Prev` or an `/XRefStm` in a trailer a limit cut is not judged
+  ([#328](https://github.com/AdCodicem/AdCodicem.Pdf/issues/328)). A section a limit cut is
   where it was named, and is not looked for near there, as a section that is not there is.
 - An object cut at `MaxObjectLength` is kept as far as the bound, and the catalog among them: the reader takes the
   object `/Root` names for the catalog as it read it, rather than look for another or rebuild the index, until you raise

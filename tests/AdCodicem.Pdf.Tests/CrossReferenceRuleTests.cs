@@ -815,6 +815,107 @@ public class CrossReferenceRuleTests
         report.Contains(PdfValidationRuleIds.FileRootInvalid).Should().BeFalse("the catalog /Root names is found, where the file put it");
     }
 
+    [Theory]
+    [InlineData("/Prev 21 0 R", "table rows", PdfValidationRuleIds.XRefSectionNotFound)]
+    [InlineData("/Prev 21 0 R", "table index", PdfValidationRuleIds.XRefSectionNotFound)]
+    [InlineData("/Prev 21 0 R", "stream rows", PdfValidationRuleIds.XRefSectionNotFound)]
+    [InlineData("/Prev 21 0 R", "stream index", PdfValidationRuleIds.XRefSectionNotFound)]
+    [InlineData("/Prev 99999999", "table rows", PdfValidationRuleIds.XRefSectionNotFound)]
+    [InlineData("/Prev 99999999", "table index", PdfValidationRuleIds.XRefSectionNotFound)]
+    [InlineData("/Prev 99999999", "stream rows", PdfValidationRuleIds.XRefSectionNotFound)]
+    [InlineData("/Prev 99999999", "stream index", PdfValidationRuleIds.XRefSectionNotFound)]
+    [InlineData("/Prev {self}", "table rows", PdfValidationRuleIds.XRefChainLoop)]
+    [InlineData("/Prev {self}", "table index", PdfValidationRuleIds.XRefChainLoop)]
+    [InlineData("/Prev {self}", "stream rows", PdfValidationRuleIds.XRefChainLoop)]
+    [InlineData("/Prev {self}", "stream index", PdfValidationRuleIds.XRefChainLoop)]
+    public void A_prev_fault_a_section_a_guard_stops_shows_is_found_as_a_whole_read_finds_it(string prev, string guard, string rule)
+    {
+        // #264: the section a guard stops — its rows cut by MaxXRefSectionLength or MaxDecodedStreamLength, or filling
+        // MaxIndexEntries — names through /Prev a free row the guard let the reader read, an offset outside the file, or
+        // itself. The validation finds it as it does in the file read whole, beside the guard's xref.checked-in-part; it
+        // found only the guard's, and file.trailer-value-wrong for a /Prev written as a reference, which names no section.
+        var (file, _) = StoppedSectionFiles.Stopped(prev, stream: guard.StartsWith("stream", StringComparison.Ordinal));
+
+        var whole = Validate(file);
+        using var document = PdfDocument.Open(file, StoppedSectionFiles.Guard(guard));
+        var guarded = new PdfValidator().Validate(document);
+
+        Single(guarded, rule).Should().Be(Single(whole, rule));
+        guarded.Contains(PdfValidationRuleIds.XRefCheckedInPart).Should().BeTrue();
+        guarded.Findings.Where(finding => finding.RuleId != PdfValidationRuleIds.XRefCheckedInPart).Should().Equal(whole.Findings);
+    }
+
+    [Theory]
+    [InlineData("99999999", 0, "stream rows", PdfValidationRuleIds.XRefSectionNotFound)]
+    [InlineData("99999999", 0, "stream index", PdfValidationRuleIds.XRefSectionNotFound)]
+    [InlineData("{self}", 0, "stream rows", PdfValidationRuleIds.XRefChainLoop)]
+    [InlineData("{self}", 0, "stream index", PdfValidationRuleIds.XRefChainLoop)]
+    [InlineData("{stream}", 0, "stream rows", PdfValidationRuleIds.XRefHybridStreamWrong)]
+    [InlineData("{stream}", 0, "stream index", PdfValidationRuleIds.XRefHybridStreamWrong)]
+    [InlineData("{stream}", -4, "stream rows", PdfValidationRuleIds.XRefChainLoop)]
+    [InlineData("{stream}", -4, "stream index", PdfValidationRuleIds.XRefChainLoop)]
+    public void A_prev_fault_of_a_table_whose_hybrid_stream_a_guard_stops_is_found_as_a_whole_read_finds_it(string prev, int shift, string guard, string rule)
+    {
+        // #264, with #156: a table read whole names, through /XRefStm, the cross-reference stream a guard stops, and through
+        // /Prev an offset outside the file, itself, or the stream — where /XRefStm names it, which reads it through /Prev, or
+        // where it was found moved. The validation finds what it finds in the file read whole, beside the guard's
+        // xref.checked-in-part.
+        var (file, _) = StoppedSectionFiles.HybridWhoseStreamIsStopped(prev, shift);
+
+        var whole = Validate(file);
+        using var document = PdfDocument.Open(file, StoppedSectionFiles.Guard(guard));
+        var guarded = new PdfValidator().Validate(document);
+
+        Single(guarded, rule).Should().Be(Single(whole, rule));
+        guarded.Findings.Where(finding => finding.RuleId != PdfValidationRuleIds.XRefCheckedInPart).Should().Equal(whole.Findings);
+    }
+
+    [Theory]
+    [InlineData("/Prev {older} /XRefStm 99999999", "table rows", PdfValidationRuleIds.XRefSectionNotFound)]
+    [InlineData("/Prev {older} /XRefStm 99999999", "table index", PdfValidationRuleIds.XRefSectionNotFound)]
+    [InlineData("/Prev {older} /XRefStm {self}", "table rows", PdfValidationRuleIds.XRefHybridStreamWrong)]
+    [InlineData("/Prev {older} /XRefStm {self}", "table index", PdfValidationRuleIds.XRefHybridStreamWrong)]
+    [InlineData("/Prev {older} /XRefStm {newer}", "table rows", PdfValidationRuleIds.XRefHybridStreamWrong)]
+    [InlineData("/Prev {older} /XRefStm {newer}", "table index", PdfValidationRuleIds.XRefHybridStreamWrong)]
+    [InlineData("/Prev 99999999 /XRefStm 99999999", "table rows", PdfValidationRuleIds.XRefHybridStreamWrong)]
+    [InlineData("/Prev 99999999 /XRefStm 99999999", "table index", PdfValidationRuleIds.XRefHybridStreamWrong)]
+    public void An_xrefstm_fault_a_table_a_guard_stops_shows_is_found_as_a_whole_read_finds_it(string links, string guard, string rule)
+    {
+        // #264, with #156: the table a guard stops, under a newer one, names through /XRefStm an offset outside the file, the
+        // table itself, the newer table, or what its /Prev names too, outside the file: no cross-reference stream of its
+        // revision, whatever the guard hid. The validation finds it as it does in the file read whole, beside the guard's
+        // xref.checked-in-part; past the guard, it found nothing of the /XRefStm.
+        var (file, _) = StoppedSectionFiles.Stopped(links, newer: "/Prev");
+
+        var whole = Validate(file);
+        using var document = PdfDocument.Open(file, StoppedSectionFiles.Guard(guard));
+        var guarded = new PdfValidator().Validate(document);
+
+        Single(guarded, rule).Should().Be(Single(whole, rule));
+        guarded.Findings.Where(finding => finding.RuleId != PdfValidationRuleIds.XRefCheckedInPart).Should().Equal(whole.Findings);
+    }
+
+    [Theory]
+    [InlineData("table rows")]
+    [InlineData("table index")]
+    public void An_xrefstm_naming_what_the_prev_of_a_table_a_guard_stops_names_is_wrong_as_read_whole(string guard)
+    {
+        // #264, with #156: the table a guard stops names the older table, in the file, through /Prev and /XRefStm both. The
+        // /XRefStm names no stream of the table's revision, whatever the guard hid: an error, at the table, as read whole,
+        // which says the /Prev reads that table, where past the guard it reads nothing.
+        var (file, section) = StoppedSectionFiles.Stopped("/Prev {older} /XRefStm {older}");
+
+        var whole = Single(Validate(file), PdfValidationRuleIds.XRefHybridStreamWrong);
+        using var document = PdfDocument.Open(file, StoppedSectionFiles.Guard(guard));
+        var guarded = Single(new PdfValidator().Validate(document), PdfValidationRuleIds.XRefHybridStreamWrong);
+
+        guarded.Severity.Should().Be(PdfValidationSeverity.Error);
+        guarded.Location.Should().Be(whole.Location);
+        guarded.Location.Position.Should().Be(section);
+        guarded.Message.Should().Be(whole.Message.Replace("which the chain reads through that /Prev", "past the guard that stopped the table", StringComparison.Ordinal));
+        guarded.Message.Should().NotBe(whole.Message);
+    }
+
     [Fact]
     public void A_loop_through_an_offset_the_chain_only_named_says_no_section_was_read_there()
     {
