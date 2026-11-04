@@ -94,10 +94,11 @@ internal static class HybridFiles
     /// <summary>
     /// A one-page document, its first table at <c>xref:1</c> indexing it whole, updated by a table at <c>xref:3</c> that
     /// indexes object 9, <c>(nine)</c>, names the first through <c>/Prev</c> and, through <c>/XRefStm</c>, a classic table at
-    /// <c>xref:2</c> no <c>/Prev</c> names, which indexes object 10, <c>(ten)</c>, with a trailer of its own. With
-    /// <paramref name="firstNamesIt"/>, the first table names that table through <c>/XRefStm</c> too.
+    /// <c>xref:2</c> no <c>/Prev</c> names, which indexes object 10, <c>(ten)</c>, with a trailer of its own: what follows its
+    /// <c>xref</c> keyword is <paramref name="ten"/>, up to the trailer keyword. With <paramref name="firstNamesIt"/>, the first
+    /// table names that table through <c>/XRefStm</c> too.
     /// </summary>
-    public static byte[] NamingATableNeverRead(bool firstNamesIt = false) => PdfTemplate.Build(Objects + """
+    public static byte[] NamingATableNeverRead(bool firstNamesIt = false, string ten = "10 1\n{row:10}\n") => PdfTemplate.Build(Objects + """
         xref
         0 4
         {free}
@@ -116,9 +117,7 @@ internal static class HybridFiles
         (ten)
         endobj
         xref
-        10 1
-        {row:10}
-        trailer
+        {ten}trailer
         << /Size 11 >>
         xref
         0 1
@@ -131,7 +130,7 @@ internal static class HybridFiles
         {xref:3}
         %%EOF
 
-        """.Replace("{first}", firstNamesIt ? " /XRefStm {xref:2}" : string.Empty, StringComparison.Ordinal));
+        """.Replace("{first}", firstNamesIt ? " /XRefStm {xref:2}" : string.Empty, StringComparison.Ordinal).Replace("{ten}", ten, StringComparison.Ordinal));
 
     /// <summary>
     /// A one-page document saved twice: the first table, at <c>xref:1</c>, indexes it whole and names the newest, at

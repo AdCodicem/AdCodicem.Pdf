@@ -127,7 +127,8 @@ public sealed class HeaderOffsetTests
     public void A_table_naming_one_offset_outside_the_file_through_prev_and_xrefstm_is_reported_at_the_table(string offset, string named)
     {
         // The update's /XRefStm names what its /Prev names: not followed, the /Prev reading it, and reported at the update,
-        // the offset lying outside the file; the /Prev names no section, and no loop is made (#156).
+        // the offset lying outside the file, which the report says, where it said a section lay there; the /Prev names no
+        // section, and no loop is made (#156).
         var file = Updated("/Prev {offset} /XRefStm {offset}", offset);
         var update = PdfTemplate.OffsetOf(file, "xref\n4 1");
         using var document = PdfDocument.Open(file);
@@ -138,7 +139,7 @@ public sealed class HeaderOffsetTests
             .ToList();
         chain.Select(diagnostic => diagnostic.Code).Should().Equal(PdfDiagnosticCodes.XRefHybridStreamLost, PdfDiagnosticCodes.XRefSectionMissing);
         chain[0].Position.Should().Be(update);
-        chain[0].Message.Should().StartWith($"The /XRefStm of the cross-reference table at offset {update} names offset {named}, the section its /Prev names too, ");
+        chain[0].Message.Should().StartWith($"The /XRefStm of the cross-reference table at offset {update} names offset {named}, outside the file, which its /Prev names too: ");
         chain[1].Position.Should().Be(update);
     }
 

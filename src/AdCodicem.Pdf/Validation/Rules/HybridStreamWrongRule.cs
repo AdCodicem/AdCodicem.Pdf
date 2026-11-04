@@ -1,4 +1,5 @@
 using System.Globalization;
+using AdCodicem.Pdf.IO.XRef;
 
 namespace AdCodicem.Pdf.Validation.Rules;
 
@@ -12,8 +13,11 @@ namespace AdCodicem.Pdf.Validation.Rules;
 /// reads, or one the reader reads in the stream's place —, a cross-reference stream the chain reads through <c>/Prev</c>
 /// or <c>startxref</c>, or what the table's own <c>/Prev</c> names too, leaves that stream unknown: what only it indexed is
 /// found, if at all, by rebuilding the index, after which the reader cannot vouch that it reads what was written — an error
-/// (ADR 45), as a section that cannot be found is (#156). A stream that more than one table names, as a writer that copies
-/// <c>/XRefStm</c> into the next trailer leaves it, is a stream all the same, and not judged here.
+/// (ADR 45), as a section that cannot be found is (#156). So does one that names a classic table that cannot be read, whose
+/// own fault is <see cref="PdfValidationRuleIds.XRefSectionMalformed"/>'s, at each naming. What the table's own <c>/Prev</c>
+/// names too is said as the chain found it once it read on: the section it read, or what held no section it could read. A
+/// stream that more than one table names, as a writer that copies <c>/XRefStm</c> into the next trailer leaves it, is a
+/// stream all the same, and not judged here.
 /// </remarks>
 internal sealed class HybridStreamWrongRule : IValidationRule
 {
@@ -32,6 +36,14 @@ internal sealed class HybridStreamWrongRule : IValidationRule
             if (section.NamesNoStream is not { } what || !context.HasRoomFor(this))
             {
                 continue;
+            }
+
+            // What the /Prev names too was looked for after the reader reported the naming, and is said as the chain found it.
+            if (section is { NamesWhatPreviousReads: true, ReadAs: { } previous })
+            {
+                what = previous.State is XRefSectionState.Read or XRefSectionState.Relocated
+                    ? "the section its /Prev names too, which the chain read through that /Prev"
+                    : "what its /Prev names too, which holds no section the chain could read";
             }
 
             context.Report(

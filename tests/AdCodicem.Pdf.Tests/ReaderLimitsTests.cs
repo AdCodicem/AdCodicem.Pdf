@@ -2481,8 +2481,9 @@ public class ReaderLimitsTests
     public void An_xrefstm_naming_what_the_prev_of_a_table_a_guard_stops_names_is_reported_and_the_prev_stays_the_guard_s(string guard)
     {
         // #264, with #156: the table a guard stops names the older table, in the file, through /Prev and /XRefStm both. That
-        // /XRefStm names no stream of the table's revision whatever the guard hid, as read whole, where the /Prev reads that
-        // table; past the guard, the /Prev reads nothing, which the report says, and the older table is the guard's to hide.
+        // /XRefStm names no stream of the table's revision whatever the guard hid, as read whole, where the /Prev looks for
+        // that table, and reads it; past the guard, the /Prev reads nothing, which the report says, and the older table is the
+        // guard's to hide.
         var (file, section) = StoppedSectionFiles.Stopped("/Prev {older} /XRefStm {older}");
 
         using var whole = PdfDocument.Open(file);
@@ -2491,8 +2492,11 @@ public class ReaderLimitsTests
         var read = whole.Diagnostics.Should().ContainSingle(entry => entry.Code == PdfDiagnosticCodes.XRefHybridStreamLost).Which;
         var guarded = document.Diagnostics.Should().ContainSingle(entry => entry.Code == PdfDiagnosticCodes.XRefHybridStreamLost).Which;
         guarded.Position.Should().Be(read.Position);
-        read.Message.Should().Contain("the section its /Prev names too, which the chain reads through that /Prev:");
-        guarded.Message.Should().Be(read.Message.Replace("which the chain reads through that /Prev", "past the guard that stopped the table", StringComparison.Ordinal));
+        read.Message.Should().Contain("what its /Prev names too, which the chain looks for through that /Prev:");
+        guarded.Message.Should().Be(read.Message.Replace(
+            "what its /Prev names too, which the chain looks for through that /Prev",
+            "the section its /Prev names too, past the guard that stopped the table",
+            StringComparison.Ordinal));
         document.Diagnostics.Select(entry => entry.Code).Should().Equal(StoppedSectionFiles.GuardCode(guard), PdfDiagnosticCodes.XRefHybridStreamLost);
         var naming = document.Reader.Structure.Sections.Should().ContainSingle(record => record.NamedBy == "/XRefStm").Which;
         naming.State.Should().Be(XRefSectionState.NamedAgain);

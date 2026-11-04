@@ -721,6 +721,112 @@ public class CrossReferenceRuleTests
             $"The cross-reference section /Prev names at offset {at} is not there, nor within 512 bytes of it: the offset holds object 6, which is not a cross-reference stream.");
     }
 
+    [Theory]
+    [InlineData("<< /Type /Font /Subtype /CIDFontType2 /W [0 [500]] /BaseFont /F >>")]
+    [InlineData("<< /Type /Font /W [1 -4 2] /Size 8 /Length 3 >>\nstream\nabc\nendstream")]
+    [InlineData("<< /Type /Font /W [1 -4 2] /Size 8 /Size 8 /Length 3 >>\nstream\nabc\nendstream")]
+    public void An_object_of_another_type_startxref_names_is_where_startxref_is_wrong(string six)
+    {
+        // startxref names object 6, a font that gives a /W. The font was called a cross-reference stream that cannot be read,
+        // and its dictionary, given a key twice, a trailer malformed, where the same object a /Prev names holds no section: it
+        // says it is a font, and startxref names no section (#281).
+        var (file, at) = NearbyFiles.StartxrefNamingAnObject(six);
+        var keyword = PdfTemplate.OffsetOf(file, "startxref");
+
+        var finding = Validate(file).Findings.Should().ContainSingle(finding => finding.RuleId.StartsWith("xref.", StringComparison.Ordinal) || finding.RuleId.StartsWith("file.", StringComparison.Ordinal)).Which;
+
+        finding.RuleId.Should().Be(PdfValidationRuleIds.FileStartXRefWrong);
+        finding.Location.Position.Should().Be(keyword);
+        finding.Message.Should().Be($"startxref gives offset {at}, which holds object 6, which is not a cross-reference stream.");
+    }
+
+    [Theory]
+    [InlineData(false, 0, 1200)]
+    [InlineData(false, 0, 0)]
+    [InlineData(false, 1200, 1200)]
+    [InlineData(true, 0, 1200)]
+    [InlineData(true, 0, 0)]
+    [InlineData(true, 1200, 1200)]
+    public void A_section_that_cannot_be_read_found_nearest_to_where_its_offset_names_none_is_shifted_and_malformed(bool streams, int gap, int after)
+    {
+        // The third section names the second, which alone indexes object 4 and cannot be read, 7 bytes short of it, where no
+        // section starts. The first, within 512 bytes of it, was taken in its place: a shift to the first and a /Size said
+        // wrong; or, with nothing else near, the second was not found. It is the section found moved, which cannot be read: a
+        // shift and an error, where it is (#281).
+        var (file, _, second) = NearbyFiles.MalformedUpdateNearItsOriginal(streams, gap, shortBy: 7, after: after);
+
+        var report = Validate(file);
+
+        report.Findings.Select(finding => finding.RuleId).Should().BeEquivalentTo([PdfValidationRuleIds.XRefSectionMalformed, PdfValidationRuleIds.XRefSectionShifted]);
+        Single(report, PdfValidationRuleIds.XRefSectionMalformed).Location.Position.Should().Be(second);
+        Single(report, PdfValidationRuleIds.XRefSectionShifted).Message.Should().Be(
+            $"The cross-reference section /Prev names at offset {second - 7} starts 7 bytes after it, at offset {second}.");
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void An_xrefstm_naming_a_table_that_cannot_be_read_is_wrong_at_each_naming_beside_the_table_s_fault(bool twice)
+    {
+        // The update's /XRefStm, and the first table's too, name a classic table whose row for object 10 is no row. Only the
+        // table was malformed, an error whose remedy would leave the /XRefStm naming a table (#156): each naming is wrong.
+        var file = HybridFiles.NamingATableNeverRead(firstNamesIt: twice, ten: "10 1\n(garbage)\n");
+        var first = PdfTemplate.OffsetOf(file, "\nxref\n") + 1;
+        var table = PdfTemplate.OffsetOf(file, "\nxref\n", 2) + 1;
+        var update = PdfTemplate.OffsetOf(file, "\nxref\n", 3) + 1;
+
+        var report = Validate(file);
+
+        Single(report, PdfValidationRuleIds.XRefSectionMalformed).Location.Position.Should().Be(table);
+        var wrong = report.Findings.Where(finding => finding.RuleId == PdfValidationRuleIds.XRefHybridStreamWrong).ToList();
+        wrong.Select(finding => finding.Location.Position).Should().Equal(twice ? [update, first] : [update]);
+        wrong[0].Message.Should().Be(
+            $"The /XRefStm of the cross-reference table at offset {update} names offset {table}, a cross-reference table, which cannot be read, where ISO 32000-1 names the cross-reference stream of the table's revision (Table 19): what only that stream indexes is lost.");
+
+        if (twice)
+        {
+            wrong[1].Message.Should().StartWith(
+                $"The /XRefStm of the cross-reference table at offset {first} names offset {table}, the cross-reference table at offset {table}, which cannot be read, where ");
+        }
+    }
+
+    [Theory]
+    [InlineData("/Prev 99999999 /XRefStm 99999999", null, "outside the file, which its /Prev names too")]
+    [InlineData("/Prev 99999999 /XRefStm 99999999", "table rows", "outside the file, which its /Prev names too")]
+    [InlineData("/Prev {hole} /XRefStm {hole}", null, "what its /Prev names too, which holds no section the chain could read")]
+    [InlineData("/Prev {hole} /XRefStm {hole}", "table rows", "the section its /Prev names too, past the guard that stopped the table")]
+    [InlineData("/Prev {older} /XRefStm {older}", null, "the section its /Prev names too, which the chain read through that /Prev")]
+    [InlineData("/Prev {shifted} /XRefStm {shifted}", null, "the section its /Prev names too, which the chain read through that /Prev")]
+    public void An_xrefstm_naming_what_its_table_s_prev_names_is_wrong_in_words_that_say_what_the_prev_found_there(
+        string links, string? guard, string what)
+    {
+        // The table names through /Prev and /XRefStm one offset: outside the file; inside a string of 1,500 bytes, where no
+        // section lies within 512 bytes; the older table; or the end of the page's object, 7 bytes before the older table,
+        // where the /Prev finds it moved. The finding said the chain reads a section there through that /Prev, whatever it
+        // found (#156): it says what the /Prev read once the chain was read, or, past a guard that stopped the table, that
+        // the guard hides it (#264).
+        var twentyOne = "(" + new string('x', 1500) + ")";
+        var (built, _) = StoppedSectionFiles.Stopped(links.Replace("{hole}", "0000000000", StringComparison.Ordinal).Replace("{shifted}", "0000000000", StringComparison.Ordinal), twentyOne: twentyOne);
+        var hole = PdfTemplate.OffsetOf(built, "(xxx") + 750;
+        var shifted = PdfTemplate.OffsetOf(built, "xref\n") - 7;
+        var (file, section) = StoppedSectionFiles.Stopped(
+            links
+                .Replace("{hole}", hole.ToString("D10", CultureInfo.InvariantCulture), StringComparison.Ordinal)
+                .Replace("{shifted}", shifted.ToString("D10", CultureInfo.InvariantCulture), StringComparison.Ordinal),
+            twentyOne: twentyOne);
+        var named = links.Contains("{hole}", StringComparison.Ordinal) ? hole
+            : links.Contains("{shifted}", StringComparison.Ordinal) ? shifted
+            : links.Contains("{older}", StringComparison.Ordinal) ? PdfTemplate.OffsetOf(file, "xref\n")
+            : 99999999;
+        using var document = guard is null ? PdfDocument.Open(file) : PdfDocument.Open(file, StoppedSectionFiles.Guard(guard));
+
+        var finding = Single(new PdfValidator().Validate(document), PdfValidationRuleIds.XRefHybridStreamWrong);
+
+        finding.Location.Position.Should().Be(section);
+        finding.Message.Should().Be(
+            $"The /XRefStm of the cross-reference table at offset {section} names offset {named}, {what}, where ISO 32000-1 names the cross-reference stream of the table's revision (Table 19): what only that stream indexes is lost.");
+    }
+
     [Fact]
     public void A_prev_naming_a_place_inside_the_stream_its_hybrid_table_names_is_not_found()
     {
@@ -903,7 +1009,7 @@ public class CrossReferenceRuleTests
     {
         // #264, with #156: the table a guard stops names the older table, in the file, through /Prev and /XRefStm both. The
         // /XRefStm names no stream of the table's revision, whatever the guard hid: an error, at the table, as read whole,
-        // which says the /Prev reads that table, where past the guard it reads nothing.
+        // which says the /Prev read that table, where past the guard it reads nothing.
         var (file, section) = StoppedSectionFiles.Stopped("/Prev {older} /XRefStm {older}");
 
         var whole = Single(Validate(file), PdfValidationRuleIds.XRefHybridStreamWrong);
@@ -913,7 +1019,8 @@ public class CrossReferenceRuleTests
         guarded.Severity.Should().Be(PdfValidationSeverity.Error);
         guarded.Location.Should().Be(whole.Location);
         guarded.Location.Position.Should().Be(section);
-        guarded.Message.Should().Be(whole.Message.Replace("which the chain reads through that /Prev", "past the guard that stopped the table", StringComparison.Ordinal));
+        whole.Message.Should().Contain("the section its /Prev names too, which the chain read through that /Prev, where");
+        guarded.Message.Should().Be(whole.Message.Replace("which the chain read through that /Prev", "past the guard that stopped the table", StringComparison.Ordinal));
         guarded.Message.Should().NotBe(whole.Message);
     }
 
@@ -987,7 +1094,7 @@ public class CrossReferenceRuleTests
     [InlineData("the table its /Prev reads", "the cross-reference table at offset {named}, which the chain read through /Prev")]
     [InlineData("the newest table", "the cross-reference table at offset {named}, which the chain read through startxref")]
     [InlineData("a table no /Prev names", "a cross-reference table, whose rows were read in the stream's place")]
-    [InlineData("what its own /Prev names", "the section its /Prev names too, which the chain reads through that /Prev")]
+    [InlineData("what its own /Prev names", "the section its /Prev names too, which the chain read through that /Prev")]
     public void An_xrefstm_that_names_no_cross_reference_stream_of_its_revision_is_an_error(string shape, string what)
     {
         // ISO 32000-1 has a hybrid table's /XRefStm name the cross-reference stream of its revision (Table 19). One that names

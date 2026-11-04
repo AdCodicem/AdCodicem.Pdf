@@ -254,11 +254,14 @@ internal static class NearbyFiles
     /// cross-reference stream 5, indexes the catalog, the page tree and the page. The second, past object 4,
     /// <c>(four)</c>, and <paramref name="gap"/> bytes of comment, alone indexes object 4 and names the first through
     /// <c>/Prev</c>, and cannot be read: a classic table holding a stray name, <c>/Bad 1</c>, before its first subsection,
-    /// or cross-reference stream 6, whose <c>/W</c> gives a name for a width. With no gap it lies within 512 bytes of the
-    /// first. The third, a classic table past 1,200 bytes of comment, indexes nothing and names the second through
-    /// <c>/Prev</c>.
+    /// or cross-reference stream 6, whose <c>/W</c> gives a name for a width, and which gives <c>/Type /XRef</c> unless
+    /// <paramref name="untyped"/>. With no gap it lies within 512 bytes of the first. The third, a classic table past
+    /// <paramref name="after"/> bytes of comment, indexes nothing and names the second through <c>/Prev</c>,
+    /// <paramref name="shortBy"/> bytes short of it: 7 bytes short lies in the <c>endobj</c> of object 4, or in the comment
+    /// before the second, where no section starts. With no comment after it, the third lies within 512 bytes of the second.
     /// </summary>
-    public static (byte[] File, long First, long Second) MalformedUpdateNearItsOriginal(bool streams, int gap)
+    public static (byte[] File, long First, long Second) MalformedUpdateNearItsOriginal(
+        bool streams, int gap, int shortBy = 0, int after = 1200, bool untyped = false)
     {
         var file = new HandWrittenFile(version: streams ? "1.5" : "1.7");
         var catalog = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>");
@@ -289,7 +292,7 @@ internal static class NearbyFiles
             var rows = StreamRows((1, four, 0), (1, second, 0));
             file.Object(6, string.Create(
                 CultureInfo.InvariantCulture,
-                $"<< /Type /XRef /Size 7 /Index [4 1 6 1] /W [1 4 /] /Root 1 0 R /Prev {first} /Length {rows.Length} >>\nstream\n{rows}\nendstream"));
+                $"<< {(untyped ? string.Empty : "/Type /XRef ")}/Size 7 /Index [4 1 6 1] /W [1 4 /] /Root 1 0 R /Prev {first} /Length {rows.Length} >>\nstream\n{rows}\nendstream"));
         }
         else
         {
@@ -298,12 +301,62 @@ internal static class NearbyFiles
                 $"xref\n/Bad 1\n4 1\n{four:D10} 00000 n \ntrailer\n<< /Size 5 /Root 1 0 R /Prev {first} >>\n"));
         }
 
-        Gap(file, 1200);
+        Gap(file, after);
         var third = file.Position;
         file.Raw(string.Create(
             CultureInfo.InvariantCulture,
-            $"xref\n0 1\n0000000000 65535 f \ntrailer\n<< /Size 7 /Root 1 0 R /Prev {second} >>\nstartxref\n{third}\n%%EOF\n"));
+            $"xref\n0 1\n0000000000 65535 f \ntrailer\n<< /Size 7 /Root 1 0 R /Prev {second - shortBy} >>\nstartxref\n{third}\n%%EOF\n"));
         return (file.Bytes, first, second);
+    }
+
+    /// <summary>
+    /// A document saved twice. The first revision writes the catalog, an empty page tree, object 3, <c>(three)</c>, object 9,
+    /// <c>(nine)</c>, and, at <c>Section</c>, what <paramref name="kind"/> names, which indexes object 3 and cannot be read
+    /// whole: <c>table read in part</c>, a classic table of objects 0 to 3 whose row for object 3 is no row;
+    /// <c>table holding no subsection</c>, one whose trailer keyword follows its xref keyword; <c>table that cannot be
+    /// read</c>, one holding a stray name, <c>/Bad 1</c>, before its first subsection; <c>stream read in part</c>,
+    /// cross-reference stream 5 of <c>/Index [0 5]</c> that holds the rows of objects 0 to 3 alone, the last of the
+    /// reserved type 7; or <c>stream that cannot be read</c>, stream 5 of <c>/Type /XRef</c> whose <c>/W</c> gives a
+    /// negative width. The update, past 1,200 bytes of comment, indexes the catalog and the page tree, and names the section
+    /// through <paramref name="link"/>, <c>/Prev</c> or <c>/XRefStm</c>, 7 bytes short of it, in the <c>endobj</c> of
+    /// object 9, where no section starts: the search near that offset finds the section, the nearest place to it.
+    /// </summary>
+    public static (byte[] File, long Section, long Update) SectionNamedShort(string kind, string link)
+    {
+        var file = new HandWrittenFile(version: "1.5");
+        var catalog = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>");
+        var pages = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>");
+        var three = file.Object(3, "(three)");
+        file.Object(9, "(nine)");
+        var section = file.Position;
+
+        if (kind.StartsWith("table", StringComparison.Ordinal))
+        {
+            var rows = string.Create(CultureInfo.InvariantCulture, $"0 4\n0000000000 65535 f \n{catalog:D10} 00000 n \n{pages:D10} 00000 n \n");
+            file.Raw(kind switch
+            {
+                "table read in part" => string.Create(CultureInfo.InvariantCulture, $"xref\n{rows}{three:D10} 00000 x \ntrailer\n<< /Size 10 >>\n"),
+                "table holding no subsection" => "xref\ntrailer\n<< /Size 10 >>\n",
+                _ => string.Create(CultureInfo.InvariantCulture, $"xref\n/Bad 1\n{rows}{three:D10} 00000 n \ntrailer\n<< /Size 10 >>\n"),
+            });
+        }
+        else
+        {
+            var unreadable = kind == "stream that cannot be read";
+            var rows = unreadable
+                ? StreamRows((1, three, 0))
+                : StreamRows((0, 0, 65535), (1, catalog, 0), (1, pages, 0), (7, three, 0));
+            file.Object(5, string.Create(
+                CultureInfo.InvariantCulture,
+                $"<< /Type /XRef /Size 10 {(unreadable ? "/Index [3 1] /W [1 -4 2]" : "/Index [0 5] /W [1 4 2]")} /Length {rows.Length} >>\nstream\n{rows}\nendstream"));
+        }
+
+        Gap(file, 1200);
+        var update = file.Position;
+        file.Raw(string.Create(
+            CultureInfo.InvariantCulture,
+            $"xref\n0 3\n0000000000 65535 f \n{catalog:D10} 00000 n \n{pages:D10} 00000 n \ntrailer\n<< /Size 10 /Root 1 0 R {link} {section - 7} >>\nstartxref\n{update}\n%%EOF\n"));
+        return (file.Bytes, section, update);
     }
 
     /// <summary>
@@ -349,6 +402,53 @@ internal static class NearbyFiles
         var at = file.Object(6, six);
         Gap(file, 1200);
         file.Table(4, rows, string.Create(CultureInfo.InvariantCulture, $"/Size 7 /Root 1 0 R /Prev {at}"));
+        return (file.Bytes, at);
+    }
+
+    /// <summary>
+    /// An empty document saved three times. The oldest table, at <c>Oldest</c>, indexes the catalog, the page tree, object
+    /// 3, <c>(three)</c>, and object 4, <c>(old)</c>, then holds a stray name, <c>/Bad 1</c>, where its trailer should
+    /// start. The next, at <c>Next</c>, indexes object 4 again, <c>(new)</c>, and names the oldest through <c>/Prev</c>.
+    /// The newest, past 1,200 bytes of comment, indexes nothing and names through <c>/Prev</c> the place 30 bytes into the
+    /// oldest table's rows, at <c>Named</c>, where no section starts: the oldest table is the nearest place to it, the next
+    /// one farther on.
+    /// </summary>
+    public static (byte[] File, long Oldest, long Next, long Named) UnreadableTableNearerThanTheNextOne()
+    {
+        var file = new HandWrittenFile();
+        var catalog = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>");
+        var pages = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>");
+        var three = file.Object(3, "(three)");
+        var old = file.Object(4, "(old)");
+        var oldest = file.Position;
+        file.Raw(string.Create(
+            CultureInfo.InvariantCulture,
+            $"xref\n0 5\n0000000000 65535 f \n{catalog:D10} 00000 n \n{pages:D10} 00000 n \n{three:D10} 00000 n \n{old:D10} 00000 n \n/Bad 1\ntrailer\n<< /Size 5 /Root 1 0 R >>\n"));
+        var four = file.Object(4, "(new)");
+        var next = file.Position;
+        file.Raw(string.Create(
+            CultureInfo.InvariantCulture,
+            $"xref\n4 1\n{four:D10} 00000 n \ntrailer\n<< /Size 5 /Root 1 0 R /Prev {oldest} >>\n"));
+        Gap(file, 1200);
+        var newest = file.Position;
+        file.Raw(string.Create(
+            CultureInfo.InvariantCulture,
+            $"xref\n0 1\n0000000000 65535 f \ntrailer\n<< /Size 5 /Root 1 0 R /Prev {oldest + 30} >>\nstartxref\n{newest}\n%%EOF\n"));
+        return (file.Bytes, oldest, next, oldest + 30);
+    }
+
+    /// <summary>
+    /// A one-page document whose <c>startxref</c> names object 6, written <paramref name="six"/>, which follows the page and
+    /// is the last object; no section is in the file.
+    /// </summary>
+    public static (byte[] File, long Six) StartxrefNamingAnObject(string six)
+    {
+        var file = new HandWrittenFile(version: "1.5");
+        file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>");
+        file.Object(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>");
+        file.Object(3, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << >> >>");
+        var at = file.Object(6, six);
+        file.Raw(string.Create(CultureInfo.InvariantCulture, $"startxref\n{at}\n%%EOF\n"));
         return (file.Bytes, at);
     }
 

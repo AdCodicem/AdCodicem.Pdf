@@ -4042,13 +4042,14 @@ public class GuardCutValueTests
     [Fact]
     public void A_place_a_section_may_have_moved_to_that_cannot_be_read_leaves_what_it_read_through_to_the_rebuild()
     {
-        // The newer table's /Prev lands 3 bytes into stream 7, whose /W names object 5, which MaxObjectLength cuts after
-        // "6 0 R", whole, and whose /Index names object 9, which nothing places: the stream, read through object 5, cannot be
-        // read, the file's fault, and is no section. Object 5 was loaded once the chain was read all the same: nothing of a
-        // place dropped is kept. The index is rebuilt, as read whole, and the rebuild, which reads object 5, reaches the
-        // guard (#263).
+        // The newer table's /Prev lands 3 bytes into stream 7, which gives no /Type, whose /W names object 5, which
+        // MaxObjectLength cuts after "6 0 R", whole, and whose /Index names object 9, which nothing places: the stream, read
+        // through object 5, cannot be read, the file's fault, and, saying nothing of what it is, is no section. Object 5 was
+        // loaded once the chain was read all the same: nothing of a place dropped is kept. The index is rebuilt, as read
+        // whole, and the rebuild, which reads object 5, reaches the guard (#263). A stream of /Type /XRef would be the section
+        // found moved, which cannot be read (#281).
         var file = ChainFiles.UnderAnUpdate(
-            "/Type /XRef /Size 8 /W 5 0 R /Index 9 0 R /Length {length}",
+            "/Size 8 /W 5 0 R /Index 9 0 R /Length {length}",
             "6 0 R" + new string(' ', 1524),
             compressed: false,
             predicted: false,

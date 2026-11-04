@@ -139,9 +139,9 @@ internal sealed class XRefSectionRecord
     public bool ChainHiddenAtStream { get; set; }
 
     /// <summary>
-    /// Gets a value indicating whether the chain went on past the section, a cross-reference stream whose rows it could not
-    /// read, through the <c>/Prev</c> its dictionary gives (#208): the one value of that dictionary the reader read, and the
-    /// one the validation rules judge.
+    /// Gets a value indicating whether the chain read the <c>/Prev</c> the dictionary of the section gives, a cross-reference
+    /// stream whose rows it could not read, to go on past it (#208): the one value of that dictionary the reader read, and
+    /// the one the validation rules judge, whether it names an offset the chain went on to or no offset at all.
     /// </summary>
     public bool PreviousHandedOn { get; set; }
 
@@ -184,11 +184,21 @@ internal sealed class XRefSectionRecord
     public XRefSectionRecord? ReadAs { get; set; }
 
     /// <summary>
-    /// Gets what a table's <c>/XRefStm</c> names in place of a cross-reference stream of the table's revision, in words —
-    /// "the table itself", "a cross-reference table, whose rows were read in the stream's place" —; null where it names a
-    /// stream, or what the chain could not read (#156).
+    /// Gets what a table's <c>/XRefStm</c> names in place of a cross-reference stream of the table's revision, in words, as
+    /// the reader reported it — "the table itself", "a cross-reference table, whose rows were read in the stream's place", "a
+    /// cross-reference table, which cannot be read" —; null where it names a stream, or what the chain could not read but a
+    /// classic table (#156).
     /// </summary>
     public string? NamesNoStream { get; set; }
+
+    /// <summary>
+    /// Gets a value indicating whether the <c>/XRefStm</c> names, in the file, what its own table's <c>/Prev</c> names too,
+    /// which that <c>/Prev</c> reads (<see cref="ReadAs"/>) after the reader reported the naming: the report said only that
+    /// the chain looks for it there, and what it found is known from <see cref="ReadAs"/> once the chain is read (#156). False
+    /// for every other naming, and where a guard that stopped the table kept the <c>/Prev</c> from being read, or that offset
+    /// lies outside the file.
+    /// </summary>
+    public bool NamesWhatPreviousReads { get; set; }
 
     /// <summary>
     /// Gets a value indicating whether the section is a hybrid file's cross-reference stream: one a table's <c>/XRefStm</c>
