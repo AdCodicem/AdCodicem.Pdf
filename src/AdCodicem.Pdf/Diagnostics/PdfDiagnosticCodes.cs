@@ -42,7 +42,11 @@ public static class PdfDiagnosticCodes
     /// its place. A value that leads to an object
     /// one of the reader's limits cut is the limit's: the chain ends there, and nothing is reported of the section. The rows read before the
     /// fault, if any, were kept; the objects only the rest indexes are missing from the index, which is rebuilt by
-    /// scanning the file when one of them is asked for. The report is placed at the section, the fault in its message.
+    /// scanning the file when one of them is asked for. A stream of <c>/Type /XRef</c> whose dictionary was read whole and
+    /// gives a <c>/Prev</c> hands that <c>/Prev</c> on, and the chain goes on to the older sections, as the message says
+    /// (#208): no older section's row stands for an object the stream numbers — for any, where its numbering cannot be
+    /// read —, which is missing from the index as the objects only it indexes are. The report is placed at the section,
+    /// the fault in its message.
     /// </summary>
     public const string XRefSectionUnreadable = "xref.section-unreadable";
 

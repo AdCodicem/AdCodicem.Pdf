@@ -542,6 +542,72 @@ public class ReaderTimingTests
         }
     }
 
+    [Fact]
+    public void Four_times_as_many_lost_streams_declaring_numbers_of_their_own_cost_about_four_times_the_time()
+    {
+        // A chain of cross-reference streams of /Type /XRef whose rows cannot be read, each handing its /Prev on and refusing
+        // to the older rows the numbers it declares (#208): 700 one-row subsections of its own, about as many as
+        // MaxTrailerLength, lowered to 8 KB, lets its dictionary hold. Past 4,096 ranges kept, every number is refused, and
+        // nothing more is merged: four times the streams take about four times as long. Merging every range declared so far
+        // again for each stream, with no bound, took 11.7 times as long, 1.3 s against 114 ms. The measure is the ratio, the
+        // best opening of each, run in turn.
+        const int Small = 256;
+        const int Large = 4 * Small;
+        var options = new PdfReaderOptions
+        {
+            Limits = PdfReaderLimits.Default with { MaxXRefSectionCount = Large + 2, MaxTrailerLength = LostStreamFiles.TrailerLength },
+        };
+        var small = LostStreamFiles.OwnNumbers(Small, each: 700, rows: 16);
+        var large = LostStreamFiles.OwnNumbers(Large, each: 700, rows: 16);
+
+        var (smallTime, largeTime) = BestOfEach(() => Open(small, Small), () => Open(large, Large));
+
+        largeTime.Should().BeLessThan(
+            smallTime * 8,
+            "four times the streams must cost about four times the time ({0} for {1:N0}, {2} for {3:N0})",
+            smallTime,
+            Small,
+            largeTime,
+            Large);
+
+        void Open(byte[] file, int streams)
+        {
+            using var document = PdfDocument.Open(file, options);
+            document.Reader.Structure.Sections.Should().HaveCount(streams + 2);
+            document.Diagnostics.Should().OnlyContain(d => d.Code == PdfDiagnosticCodes.XRefSectionUnreadable);
+            document.Reader.ChainIndex!.TryGet(3, out _).Should().BeFalse("past 4,096 ranges, every number is refused");
+        }
+    }
+
+    [Fact]
+    public void Older_rows_looked_for_among_4096_refused_ranges_are_read_in_about_the_time_they_are_among_one()
+    {
+        // A lost stream declares 4,096 one-row subsections, every other number, or one after the other, which meet in one
+        // range, and the older table holds 262,144 rows (#208). Each row's number is looked for among the ranges by halves:
+        // 4,096 of them cost about what one does. Looking for each row range by range took 42 times as long, 1.18 s against
+        // 28 ms. The measure is the ratio, the best opening of each, run in turn.
+        const int Rows = 262_144;
+        var apart = LostStreamFiles.RangesOverOlderRows(apart: true, Rows);
+        var joined = LostStreamFiles.RangesOverOlderRows(apart: false, Rows);
+
+        var (joinedTime, apartTime) = BestOfEach(() => Open(joined, apart: false), () => Open(apart, apart: true));
+
+        apartTime.Should().BeLessThan(
+            joinedTime * 2,
+            "rows looked for among 4,096 ranges must cost about what they do among one ({0} against {1})",
+            apartTime,
+            joinedTime);
+
+        static void Open(byte[] file, bool apart)
+        {
+            using var document = PdfDocument.Open(file);
+            var index = document.Reader.ChainIndex!;
+            index.TryGet(3, out _).Should().BeTrue();
+            index.TryGet(11, out _).Should().Be(apart);
+            index.TryGet(10 + 4096, out _).Should().Be(!apart);
+        }
+    }
+
     /// <summary>
     /// Gets the shortest run of each action, the two run in turn: five times each at least, and on until neither has run
     /// faster for three turns — at most forty turns, or twenty seconds —, so that both are timed warm whatever ran before.

@@ -555,6 +555,83 @@ public class CrossReferenceRuleTests
         finding.Location.Position.Should().Be(second);
     }
 
+    [Fact]
+    public void A_stream_whose_rows_cannot_be_read_is_malformed_and_the_older_table_its_prev_names_is_judged()
+    {
+        // The middle of three revisions is a stream of /Type /XRef whose /W gives a negative width, and the oldest table's row
+        // for object 3 places it 2 bytes past its header. The chain stopped at the stream, and the oldest table was neither
+        // read nor judged (#208). It goes on through the stream's /Prev: the stream is malformed, an error, and the row is
+        // found shifted, as in the same file with the stream sound.
+        var (sound, _, _, _) = LostStreamFiles.ThreeRevisions(LostStreamFiles.Unreadable.Replace("/W [1 -4 2]", "/W [1 4 2]", StringComparison.Ordinal), shift: 2);
+        var (file, _, stream, _) = LostStreamFiles.ThreeRevisions(shift: 2);
+
+        var whole = Validate(sound);
+        var report = Validate(file);
+
+        whole.Findings.Select(finding => finding.RuleId).Should().Equal(PdfValidationRuleIds.XRefEntryShifted);
+        report.Findings.Select(finding => finding.RuleId).Should().Equal(PdfValidationRuleIds.XRefSectionMalformed, PdfValidationRuleIds.XRefEntryShifted);
+        var malformed = report.Findings[0];
+        malformed.Severity.Should().Be(PdfValidationSeverity.Error);
+        malformed.Location.Position.Should().Be(stream);
+        malformed.Message.Should().Be($"The cross-reference stream at offset {stream} cannot be read: its /W gives a field a negative width.");
+        report.Findings[1].Message.Should().Be(whole.Findings[0].Message);
+    }
+
+    [Theory]
+    [InlineData("{oldest}.0", null, "gives its /Prev as a real number, where Table 17 of ISO 32000-1 asks for an integer.")]
+    [InlineData("9 0 R", "{oldest}", "writes its /Prev as the reference 9 0 R, where ISO 32000-1 makes it direct (7.5.8.2).")]
+    [InlineData("99 0 R", null, null)]
+    [InlineData("/X", null, null)]
+    public void The_prev_a_stream_whose_rows_cannot_be_read_hands_on_is_judged_as_a_whole_read_judges_it(string prev, string? nine, string? wrong)
+    {
+        // The stream's /Prev is the one value of its dictionary the chain read: it is judged as the same value in a stream
+        // whose rows can be read, a real or a reference reported as written, and one that names no section left to
+        // xref.section-not-found (#208). The stream's other values are not judged.
+        var oldest = LostStreamFiles.ThreeRevisions().Oldest.ToString(CultureInfo.InvariantCulture);
+        var resolved = nine?.Replace("{oldest}", oldest, StringComparison.Ordinal);
+        var (sound, _, _, _) = LostStreamFiles.ThreeRevisions(
+            LostStreamFiles.Unreadable.Replace("/W [1 -4 2]", "/W [1 4 2]", StringComparison.Ordinal), prev: prev, nine: resolved);
+        var (file, _, stream, _) = LostStreamFiles.ThreeRevisions(prev: prev, nine: resolved);
+
+        var whole = Validate(sound);
+        var report = Validate(file);
+
+        Single(report, PdfValidationRuleIds.XRefSectionMalformed).Location.Position.Should().Be(stream);
+
+        if (wrong is null)
+        {
+            report.Contains(PdfValidationRuleIds.FileTrailerValueWrong).Should().BeFalse();
+            whole.Contains(PdfValidationRuleIds.FileTrailerValueWrong).Should().BeFalse();
+            Single(report, PdfValidationRuleIds.XRefSectionNotFound).Message.Should().Be(Single(whole, PdfValidationRuleIds.XRefSectionNotFound).Message);
+            return;
+        }
+
+        var finding = Single(report, PdfValidationRuleIds.FileTrailerValueWrong);
+        finding.Location.Position.Should().Be(stream);
+        finding.Message.Should().Be($"The cross-reference stream at offset {stream} {wrong}");
+        finding.Message.Should().Be(Single(whole, PdfValidationRuleIds.FileTrailerValueWrong).Message);
+    }
+
+    [Fact]
+    public void A_prev_a_guard_cut_that_a_lost_stream_hands_on_leaves_the_older_sections_unchecked()
+    {
+        // The stream's /Prev is the reference 9 0 R, and MaxObjectLength cuts object 9: the chain ends there for the guard,
+        // and the older sections are said unchecked, as for a stream whose rows can be read (#208).
+        var oldest = LostStreamFiles.ThreeRevisions().Oldest;
+        var (file, _, stream, _) = LostStreamFiles.ThreeRevisions(
+            prev: "9 0 R", nine: "%" + new string('-', 2000) + "\n" + oldest.ToString(CultureInfo.InvariantCulture));
+
+        using var document = PdfDocument.Open(file, new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxObjectLength = 1024 } });
+        var report = new PdfValidator().Validate(document);
+
+        document.Reader.Structure.Sections.Should().HaveCount(2);
+        var finding = Single(report, PdfValidationRuleIds.XRefCheckedInPart);
+        finding.Location.Position.Should().Be(stream);
+        finding.Message.Should().Be(
+            $"The cross-reference section at offset {stream} names older sections, but its /Prev is the reference 9 0 R, which one of the reader's limits cut: they were not checked.");
+        Single(report, PdfValidationRuleIds.XRefSectionMalformed).Location.Position.Should().Be(stream);
+    }
+
     [Theory]
     [InlineData("<< /Type /Font /Subtype /CIDFontType2 /W [0 [500]] /BaseFont /F >>")]
     [InlineData("<< /Type /Font /W [1 -4 2] /Size 8 /Size 8 /Length 3 >>\nstream\nabc\nendstream")]

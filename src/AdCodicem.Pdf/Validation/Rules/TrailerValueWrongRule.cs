@@ -26,7 +26,8 @@ namespace AdCodicem.Pdf.Validation.Rules;
 /// so — a reference no section read before it places, a real with a fractional part — is another fault, the section's
 /// (<see cref="PdfValidationRuleIds.XRefSectionMalformed"/>, <see cref="PdfValidationRuleIds.XRefSectionNotFound"/>) or
 /// the stream's; a <c>/Size</c> is <see cref="PdfValidationRuleIds.FileSizeWrong"/>'s. Only the sections the reader read
-/// are judged.
+/// are judged — and of a cross-reference stream whose rows it could not read, the chain going on through its <c>/Prev</c>,
+/// that <c>/Prev</c> alone, the one value the reader read (#208).
 /// </para>
 /// <para>
 /// Each trailer is judged as the file wrote it; a reference it holds is followed as any read follows it, through the index
@@ -67,6 +68,18 @@ internal sealed class TrailerValueWrongRule : IValidationRule
 
         foreach (var section in sections)
         {
+            if (section.PreviousHandedOn)
+            {
+                // A cross-reference stream whose rows the reader could not read, the chain going on through its /Prev: that
+                // value alone was read, as a whole read reads it, and is judged so (#208).
+                if (IsFollowed(sections, section, PdfName.Prev))
+                {
+                    new Judge(context, this, section).Value(new What(PdfName.Prev), section.Trailer!.GetRaw(PdfName.Prev), Iso1, "Table 17");
+                }
+
+                continue;
+            }
+
             if (section.State is not (XRefSectionState.Read or XRefSectionState.Relocated) || section.Trailer is not { } trailer)
             {
                 continue;

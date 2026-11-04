@@ -129,6 +129,17 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// file's sections are where its chain names them.
     /// </summary>
     private const int MaxRelocationCandidates = 32;
+
+    /// <summary>
+    /// The most ranges of object numbers the cross-reference streams a chain goes on past, their rows lost, refuse to the
+    /// older sections' rows, once ranges that meet are joined (<see cref="RefuseDeclared"/>); past it every number is
+    /// refused, and what the older sections index is looked for by rebuilding the index, as for a stream whose numbering
+    /// cannot be read. Not a guard a valid file can reach: only a file whose cross-reference sections cannot be read
+    /// refuses any number. It keeps what one refusal costs, a merge of the ranges kept with those a stream declares, from
+    /// growing with every stream a chain of such sections holds, each declaring thousands of subsections (#208).
+    /// </summary>
+    private const int MaxRefusedRanges = 4096;
+
     private const int ScanChunkSize = 1024 * 1024;
     private const int ScanOverlap = 64;
 
@@ -570,6 +581,26 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// which no number is in at once.
     /// </summary>
     private HashSet<int>? _refusedNumbers;
+
+    /// <summary>
+    /// The object numbers the cross-reference streams the chain went on past, their rows lost, declare, refused to the rows
+    /// of the sections the chain reads after them, which describe older revisions (#208): ranges from a first number up to
+    /// the one past the last, sorted by their first number, none meeting another, in the first
+    /// <see cref="_refusedRangeCount"/> elements. Null while no such stream declared a number; rented from the shared pool,
+    /// at most <see cref="MaxRefusedRanges"/> long, and given back once the chain is read, when nothing reads it any more
+    /// (<see cref="RefuseDeclared"/>).
+    /// </summary>
+    private (long First, long End)[]? _refusedRanges;
+
+    /// <summary>How many ranges of <see cref="_refusedRanges"/> hold refused numbers.</summary>
+    private int _refusedRangeCount;
+
+    /// <summary>
+    /// Whether every object number is refused to the rows of the sections the chain reads from here on: a cross-reference
+    /// stream it went on past, its rows lost, numbers them in a way that cannot be read, or the streams declared more ranges
+    /// than <see cref="MaxRefusedRanges"/> (#208).
+    /// </summary>
+    private bool _everyNumberRefused;
 
     /// <summary>
     /// Where the index first had no room for an object number, <see cref="PdfReaderLimits.MaxIndexEntries"/> reached: the
@@ -2510,6 +2541,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
             _readWhileChainIsRead = null;
             _cutWhileChainIsRead = null;
             _refusedNumbers = null;
+            ReleaseRefusedRanges();
             _sectionsReadAt.Clear();
             _sectionsReadAt.TrimExcess();
         }
@@ -2953,10 +2985,14 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// <c>xref</c> keyword or a stream whose dictionary gives <c>/Type /XRef</c>, which is reported where it is: the
     /// offset names it, and any section near it is another (#281). One that cannot be found or read is reported and
     /// leaves the index incomplete: the chain stops at a lost <c>/Prev</c> and goes on past a lost <c>/XRefStm</c>,
-    /// and an object the index then lacks is looked for by rebuilding it, when it is asked for. Nothing is
-    /// rebuilt at opening that nobody asks for. A section the chain has already reached, by the offset that names it or
-    /// where it was read, is not read again: named by a <c>/Prev</c>, it ends the chain in a loop (#188). What became of
-    /// each section is recorded in <see cref="Structure"/>, for the validation rules.
+    /// and an object the index then lacks is looked for by rebuilding it, when it is asked for. A cross-reference stream
+    /// whose dictionary gives <c>/Type /XRef</c> and a <c>/Prev</c>, read whole, is lost for its rows alone: the chain goes
+    /// on through that <c>/Prev</c>, and no older section's row stands for a number the stream declares, which is looked
+    /// for by rebuilding the index too (#208) — but where <c>startxref</c> names it, the whole file is rebuilt, as for any
+    /// first section that cannot be read. Nothing is rebuilt at opening that nobody asks for. A section the chain has
+    /// already reached, by the offset that names it or where it was read, is not read again: named by a <c>/Prev</c>, it
+    /// ends the chain in a loop (#188). What became of each section is recorded in <see cref="Structure"/>, for the
+    /// validation rules.
     /// </remarks>
     /// <param name="startOffset">The offset <c>startxref</c> gives.</param>
     private bool TryReadXRefChain(long startOffset)
@@ -3039,6 +3075,18 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
                 if (sections == 1)
                 {
                     return false;
+                }
+
+                // A cross-reference stream whose dictionary was read, and whose rows cannot be, names the older sections
+                // through its /Prev as a whole read names them: the chain goes on through it, the section reported, its
+                // rows lost and the numbers it declares refused to the older sections' rows (#208). It is there, and is not
+                // looked for elsewhere.
+                if (PreviousToHandOn(section) is { } dictionary)
+                {
+                    offset = HandOnPrevious(section, dictionary, naming, offset, namedFrom);
+                    naming = "/Prev";
+                    namedFrom = section.Offset;
+                    continue;
                 }
 
                 // A section a guard cut is where it was named, and is not looked for elsewhere: what lies near it would
@@ -3172,6 +3220,246 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
         section.Kind == XRefSectionKind.Table || section.TypedXRef;
 
     /// <summary>
+    /// Gives the dictionary of a cross-reference stream the chain could not read that names an older section all the same:
+    /// one that declares itself a section, <c>/Type /XRef</c> (<see cref="DeclaresItselfASection"/>), whose dictionary was
+    /// read whole and gives a <c>/Prev</c>, where the fault is in its rows or in a value they are read with (#208). Null for
+    /// any other: a table, whose trailer follows its rows and is unknown past a fault among them; a stream no guard let be
+    /// read whole, which is the guard's (ADR 34); an object that gives only a <c>/W</c>, which may be anything (#263); a
+    /// dictionary no stream data follows, which is no stream's; and a stream that names no older section.
+    /// </summary>
+    /// <remarks>
+    /// Asked only of a section the chain named through <c>/Prev</c> and could not read: <c>startxref</c>'s is the whole
+    /// file's to rebuild, and a hybrid file's stream gives a <c>/Prev</c> no reader follows.
+    /// </remarks>
+    private static PdfDictionary? PreviousToHandOn(XRefSectionRecord section) =>
+        section is { TypedXRef: true, CutByLimit: false, Trailer: { } dictionary } && dictionary.GetRaw(PdfName.Prev) is not null
+            ? dictionary
+            : null;
+
+    /// <summary>
+    /// Goes on past cross-reference stream <paramref name="section"/>, which the chain could not read, through the
+    /// <c>/Prev</c> its <paramref name="dictionary"/> gives (#208), and gives the offset that <c>/Prev</c> names, or -1 when
+    /// it names none.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The numbers the stream declares are refused to the older sections' rows first (<see cref="RefuseDeclared"/>): its
+    /// rows, lost, may give a newer revision of any of them, which an older row would stand for in silence, and the object
+    /// is looked for by rebuilding the index instead, which finds the last definition the file writes. The section is then
+    /// reported once, as one that is there and cannot be read, the index left incomplete, and its <c>/Prev</c> read as a
+    /// whole read reads it (<see cref="SectionOffset"/>), which reports one that names no section after. The section the
+    /// <c>/Prev</c> names is read under the checks any other is: what the chain has already reached
+    /// (<see cref="ReachedBefore"/>), <see cref="PdfReaderLimits.MaxXRefSectionCount"/>, and the search near an offset
+    /// that holds no section.
+    /// </para>
+    /// <para>
+    /// The <c>/Prev</c> is all that is read of the dictionary: it is not merged into the document's trailer, whose keys the
+    /// sections read give, and no other of its values names a section.
+    /// </para>
+    /// </remarks>
+    /// <param name="section">The record of the stream, which the chain named at <paramref name="offset"/>.</param>
+    /// <param name="dictionary">The stream's dictionary, read whole.</param>
+    /// <param name="naming">What named the stream: <c>/Prev</c>.</param>
+    /// <param name="offset">The offset that named the stream, as written.</param>
+    /// <param name="namedFrom">Where what named the stream is written.</param>
+    private long HandOnPrevious(XRefSectionRecord section, PdfDictionary dictionary, string naming, long offset, long namedFrom)
+    {
+        RefuseDeclared(dictionary);
+        section.PreviousHandedOn = true;
+        ReportLostSection(section, naming, offset, namedFrom);
+        var previous = SectionOffset(dictionary, PdfName.Prev, section.Offset, out var hidden);
+        section.ChainHiddenByGuard = hidden;
+        return previous;
+    }
+
+    /// <summary>
+    /// Refuses to the rows of every section the chain reads from here on, older revisions, the object numbers cross-reference
+    /// stream <paramref name="dictionary"/> declares, whose rows were lost: the subsections its <c>/Index</c> gives, or 0 up
+    /// to its <c>/Size</c> without one, as its rows would number them (#208). What an older row gives for such a number is
+    /// an older revision of the object than the stream's row would have given, and the object is left for a rebuild to
+    /// find, as one a row refused is (<see cref="Refuse"/>).
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Where the numbering cannot be read, every number is refused, and what the sections the chain read before do not index
+    /// is looked for by rebuilding the index: an <c>/Index</c> or a <c>/Size</c> <see cref="NumberingFault"/> finds wrong, or
+    /// one written as a reference, or holding one. ISO 32000-1 makes those values direct (7.5.8.2); the reader follows such
+    /// a reference where it lets a section's rows be read, as other readers do, but here no row is read, and which older
+    /// rows stand is not left to what an object a section placed holds.
+    /// </para>
+    /// <para>
+    /// The ranges are kept sorted, those that meet joined, and an older row's number is looked for among them by halves
+    /// (<see cref="RefusedToOlderRows"/>). Each stream's are sorted alone, then merged with those kept in one pass over both,
+    /// so that a refusal costs the stream's own subsections and at most <see cref="MaxRefusedRanges"/> more; past that many
+    /// ranges, every number is refused, and nothing is merged again. The arrays come from the shared pool, and go back to it
+    /// once read.
+    /// </para>
+    /// </remarks>
+    private void RefuseDeclared(PdfDictionary dictionary)
+    {
+        if (_everyNumberRefused)
+        {
+            return;
+        }
+
+        // An /Index that is null is one the dictionary does not have (7.3.7): the parse leaves the key out.
+        var index = dictionary.GetRaw(PdfName.Index);
+        var size = index is null ? dictionary.GetRaw(PdfName.Size) : null;
+
+        // An /Index written as a reference is no array to NumberingFault.
+        if (size is PdfReference || HoldsReference(index) || NumberingFault(index, index, size?.AsInteger(), out var subsections) is not null)
+        {
+            RefuseEveryNumber();
+            return;
+        }
+
+        // Without an /Index, the stream numbers its rows from 0 to its /Size less one, as one subsection.
+        if (index is null)
+        {
+            subsections = [0, size!.AsInteger().GetValueOrDefault()];
+        }
+
+        var pairs = subsections.Length / 2;
+        var declared = ArrayPool<(long First, long End)>.Shared.Rent(pairs);
+        var merged = ArrayPool<(long First, long End)>.Shared.Rent(Math.Min(_refusedRangeCount + pairs, MaxRefusedRanges));
+        var count = 0;
+        var past = false;
+
+        try
+        {
+            // Each first number and count is within the object numbers, as NumberingFault checked, and so is their sum. A
+            // subsection of no rows declares no number.
+            var added = 0;
+
+            for (var i = 0; i < subsections.Length; i += 2)
+            {
+                if (subsections[i + 1] > 0)
+                {
+                    declared[added++] = (subsections[i], subsections[i] + subsections[i + 1]);
+                }
+            }
+
+            var ranges = declared.AsSpan(0, added);
+            ranges.Sort();
+            var refused = _refusedRanges.AsSpan(0, _refusedRangeCount);
+            var kept = 0;
+            added = 0;
+
+            // One pass over both, in the order of their first numbers: a range that meets the last one merged joins it.
+            while (kept < refused.Length || added < ranges.Length)
+            {
+                var next = added == ranges.Length || (kept < refused.Length && refused[kept].First <= ranges[added].First)
+                    ? refused[kept++]
+                    : ranges[added++];
+
+                if (count > 0 && next.First <= merged[count - 1].End)
+                {
+                    merged[count - 1].End = Math.Max(merged[count - 1].End, next.End);
+                }
+                else if (count < MaxRefusedRanges)
+                {
+                    merged[count++] = next;
+                }
+                else
+                {
+                    past = true;
+                    break;
+                }
+            }
+        }
+        finally
+        {
+            ArrayPool<(long First, long End)>.Shared.Return(declared);
+        }
+
+        ReleaseRefusedRanges();
+        _refusedRanges = merged;
+        _refusedRangeCount = count;
+
+        if (past)
+        {
+            RefuseEveryNumber();
+        }
+    }
+
+    /// <summary>
+    /// Refuses every object number to the rows of the sections the chain reads from here on, and lets go of the ranges
+    /// refused so far, which every number includes (<see cref="RefuseDeclared"/>).
+    /// </summary>
+    private void RefuseEveryNumber()
+    {
+        _everyNumberRefused = true;
+        ReleaseRefusedRanges();
+    }
+
+    /// <summary>Gives the ranges of refused numbers back to the shared pool, and refuses none of them any more.</summary>
+    private void ReleaseRefusedRanges()
+    {
+        if (_refusedRanges is { } ranges)
+        {
+            ArrayPool<(long First, long End)>.Shared.Return(ranges);
+            _refusedRanges = null;
+        }
+
+        _refusedRangeCount = 0;
+    }
+
+    /// <summary>
+    /// Determines whether a row of a section the chain reads now, older than every cross-reference stream it went on past,
+    /// may not stand for object <paramref name="number"/>: a stream it went on past, its rows lost, declares it, or numbers
+    /// its rows in a way that cannot be read (<see cref="RefuseDeclared"/>). A lookup by halves among the ranges refused,
+    /// allocating nothing: it is asked of every row the chain reads.
+    /// </summary>
+    private bool RefusedToOlderRows(int number)
+    {
+        if (_everyNumberRefused)
+        {
+            return true;
+        }
+
+        var ranges = _refusedRanges;
+        var low = 0;
+        var high = _refusedRangeCount - 1;
+
+        while (low <= high)
+        {
+            var middle = (low + high) >>> 1;
+
+            if (number < ranges![middle].First)
+            {
+                high = middle - 1;
+            }
+            else if (number >= ranges[middle].End)
+            {
+                low = middle + 1;
+            }
+            else
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /// <summary>Determines whether <paramref name="value"/> is an array one element of which is written as a reference.</summary>
+    private static bool HoldsReference(PdfObject? value)
+    {
+        if (value is PdfArray array)
+        {
+            for (var i = 0; i < array.Count; i++)
+            {
+                if (array[i] is PdfReference)
+                {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    /// <summary>
     /// Determines whether the chain read a section it named at <paramref name="offset"/>, as the file writes it: where it was
     /// named, or near it.
     /// </summary>
@@ -3257,6 +3545,12 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// that gives no <c>/Type</c> stays a cross-reference stream that cannot be read, as untyped streams are read as
     /// sections.
     /// </para>
+    /// <para>
+    /// A stream the chain goes on past through its <c>/Prev</c> (<see cref="HandOnPrevious"/>) says so, and what becomes of
+    /// the objects it numbers, which no older section's row stands for: they are looked for by rebuilding the index, where
+    /// no section read before it indexes them — every object, where the numbers it declares could not be kept apart
+    /// (<see cref="RefuseDeclared"/>).
+    /// </para>
     /// </remarks>
     private void ReportLostSection(XRefSectionRecord section, string naming, long offset, long namedFrom)
     {
@@ -3288,11 +3582,18 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
         // Every fault but a table's missing trailer keyword is described where it is met: rows that run into a
         // dictionary, or into the end of the file, are the one left.
         var fault = section.Fault ?? "its rows are not followed by the trailer keyword";
+
+        // A stream whose /Prev the chain goes on through says what becomes of the numbers it declares (#208).
+        var lost = !section.PreviousHandedOn
+            ? "The rows read before the fault, if any, were kept; the objects only the rest indexes are looked for by rebuilding the index."
+            : _everyNumberRefused
+                ? "The chain goes on through its /Prev; every object no section read before it indexes is looked for by rebuilding the index, rather than taken from an older section's rows."
+                : "The chain goes on through its /Prev; the objects it numbers that no section read before it indexes are looked for by rebuilding the index, rather than taken from an older section's rows.";
         _diagnostics.Warn(
             PdfDiagnosticCodes.XRefSectionUnreadable,
             string.Create(
                 CultureInfo.InvariantCulture,
-                $"The cross-reference {(section.Kind == XRefSectionKind.Stream ? "stream" : "table")} {naming} names at offset {section.Offset} is there but cannot be read: {fault}. The rows read before the fault, if any, were kept; the objects only the rest indexes are looked for by rebuilding the index."),
+                $"The cross-reference {(section.Kind == XRefSectionKind.Stream ? "stream" : "table")} {naming} names at offset {section.Offset} is there but cannot be read: {fault}. {lost}"),
             section.Offset);
     }
 
@@ -5433,11 +5734,12 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
 
     /// <summary>
     /// Indexes what a row of <paramref name="section"/> says of object <paramref name="number"/>, unless a newer section
-    /// said it already or refused its row, or the index has no room left for a number it lacks.
+    /// said it already or refused its row, a newer cross-reference stream whose rows were lost declares it
+    /// (<see cref="RefusedToOlderRows"/>), or the index has no room left for a number it lacks.
     /// </summary>
     private void AddFromChain(int number, XRefEntry entry, XRefSectionRecord section)
     {
-        if (_refusedNumbers?.Contains(number) == true)
+        if (_refusedNumbers?.Contains(number) == true || RefusedToOlderRows(number))
         {
             return;
         }

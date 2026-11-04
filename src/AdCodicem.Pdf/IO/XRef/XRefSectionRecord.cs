@@ -118,6 +118,13 @@ internal sealed class XRefSectionRecord
     /// </summary>
     public bool ChainHiddenAtStream { get; set; }
 
+    /// <summary>
+    /// Gets a value indicating whether the chain went on past the section, a cross-reference stream whose rows it could not
+    /// read, through the <c>/Prev</c> its dictionary gives (#208): the one value of that dictionary the reader read, and the
+    /// one the validation rules judge.
+    /// </summary>
+    public bool PreviousHandedOn { get; set; }
+
     /// <summary>Gets the section's own trailer — a cross-reference stream's dictionary —, or null when none was read.</summary>
     public PdfDictionary? Trailer { get; set; }
 

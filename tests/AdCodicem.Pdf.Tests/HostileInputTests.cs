@@ -4412,6 +4412,72 @@ public class HostileInputTests
     }
 
     [Fact]
+    public void Four_times_as_many_lost_streams_declaring_numbers_of_their_own_allocate_about_four_times_as_much()
+    {
+        // A chain of cross-reference streams whose rows cannot be read, each handing its /Prev on and refusing to the older
+        // rows four numbers of its own, the ranges kept growing to 4,096 over 1,024 streams (#208). The ranges are merged into
+        // arrays the shared pool lends and takes back: what the chain allocates follows what it reads, the streams'
+        // dictionaries and the older table's 64 rows a stream, 4.02 times as much for four times the streams, on every run.
+        // A list of every range kept, made again for each stream, allocated 14 times as much, 106 MB against 7.6 MB.
+        const int Small = 256;
+        const int Large = 4 * Small;
+        var options = new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxXRefSectionCount = Large + 2 } };
+        var small = LostStreamFiles.OwnNumbers(Small, each: 4, rows: 64 * Small);
+        var large = LostStreamFiles.OwnNumbers(Large, each: 4, rows: 64 * Large);
+
+        var smallAllocated = Allocations.Least(() => Open(small), out var smallSections);
+        var largeAllocated = Allocations.Least(() => Open(large), out var largeSections);
+
+        smallSections.Should().Be(Small + 2);
+        largeSections.Should().Be(Large + 2);
+        largeAllocated.Should().BeLessThan(
+            smallAllocated * 9 / 2,
+            "four times the streams must allocate about four times as much ({0:N0} bytes for {1:N0}, {2:N0} for {3:N0})",
+            smallAllocated,
+            Small,
+            largeAllocated,
+            Large);
+
+        int Open(byte[] file)
+        {
+            using var document = PdfDocument.Open(file, options);
+            document.Reader.ChainIndex!.TryGet(3, out _).Should().BeTrue("no stream declares object 3");
+            return document.Reader.Structure.Sections.Count;
+        }
+    }
+
+    [Fact]
+    public void A_refusal_gives_back_the_arrays_it_merges_ranges_in()
+    {
+        // A lost stream declares 4,096 one-row subsections apart, and its /Prev names a table of 16 rows; the same file with
+        // the stream's /Prev renamed names no older section, and refuses nothing (#208). Opened again and again, the first
+        // allocates beyond the second the numbering it reads, 16 bytes a subsection, and the older table it reaches: 66.8 KB.
+        // The arrays the ranges are merged in come from the shared pool and go back to it, each document's once its chain is
+        // read: one kept back would cost 64 KB more each opening.
+        var refusing = LostStreamFiles.RangesOverOlderRows(apart: true, rows: 16);
+        var text = Encoding.Latin1.GetString(refusing);
+        var prev = text.IndexOf("/Prev", StringComparison.Ordinal);
+        var namingNone = Encoding.Latin1.GetBytes(string.Concat(text.AsSpan(0, prev), "/Xrev", text.AsSpan(prev + 5)));
+
+        var refusingAllocated = Allocations.Least(() => Open(refusing), out var refusingSections);
+        var namingNoneAllocated = Allocations.Least(() => Open(namingNone), out var namingNoneSections);
+
+        refusingSections.Should().Be(3);
+        namingNoneSections.Should().Be(2);
+        (refusingAllocated - namingNoneAllocated).Should().BeLessThan(
+            96 * 1024,
+            "a refusal allocates the numbering it reads, and gives back what it rents ({0:N0} bytes against {1:N0})",
+            refusingAllocated,
+            namingNoneAllocated);
+
+        static int Open(byte[] file)
+        {
+            using var document = PdfDocument.Open(file);
+            return document.Reader.Structure.Sections.Count;
+        }
+    }
+
+    [Fact]
     public async Task Survives_a_string_longer_than_the_largest_window()
     {
         // A string that never closes runs to the end of every window, so each attempt asks for a larger

@@ -7,6 +7,8 @@ using AdCodicem.Pdf.IO;
 using AdCodicem.Pdf.IO.XRef;
 using AdCodicem.Pdf.Objects;
 using AdCodicem.Pdf.Validation;
+using FsCheck;
+using FsCheck.Fluent;
 
 namespace AdCodicem.Pdf.Tests;
 
@@ -493,6 +495,315 @@ public class CrossReferenceChainTests
     }
 
     [Theory]
+    [InlineData("/W [1 -4 2]", "its /W gives a field a negative width")]
+    [InlineData("/W [1 4]", "its /W does not give the widths of three fields")]
+    public void A_cross_reference_stream_whose_rows_cannot_be_read_hands_its_prev_on_to_the_older_sections(string widths, string fault)
+    {
+        // The middle of three revisions is a stream of /Type /XRef whose /W no row can be read with, its dictionary read
+        // whole, its /Prev naming the oldest table. The chain stopped there: the oldest table was never read, and the catalog
+        // and object 3, which it alone indexes, cost a rebuild of the whole file (#208). The chain goes on through the /Prev:
+        // object 3 needs no rebuild, nor does object 8, which the stream does not number; object 4, which only the stream's
+        // rows index, is found by rebuilding the index.
+        var (sound, _, _, _) = LostStreamFiles.ThreeRevisions(LostStreamFiles.Unreadable.Replace("/W [1 -4 2]", "/W [1 4 2]", StringComparison.Ordinal));
+        var (file, oldest, stream, newest) = LostStreamFiles.ThreeRevisions(LostStreamFiles.Unreadable.Replace("/W [1 -4 2]", widths, StringComparison.Ordinal));
+
+        using (var whole = PdfDocument.Open(sound))
+        {
+            whole.Diagnostics.Should().BeEmpty();
+            Text(whole, 3).Should().Be("only in the oldest");
+            Text(whole, 4).Should().Be("only in the stream");
+            whole.WasRepaired.Should().BeFalse();
+        }
+
+        using var document = PdfDocument.Open(file);
+
+        var report = document.Diagnostics.Should().ContainSingle().Which;
+        report.Code.Should().Be(PdfDiagnosticCodes.XRefSectionUnreadable);
+        report.Severity.Should().Be(PdfDiagnosticSeverity.Warning);
+        report.Position.Should().Be(stream);
+        report.Message.Should().Be(string.Create(
+            CultureInfo.InvariantCulture,
+            $"The cross-reference stream /Prev names at offset {stream} is there but cannot be read: {fault}. The chain goes on through its /Prev; the objects it numbers that no section read before it indexes are looked for by rebuilding the index, rather than taken from an older section's rows."));
+
+        var sections = document.Reader.Structure.Sections;
+        sections.Select(section => (section.Offset, section.State)).Should().Equal(
+            (newest, XRefSectionState.Read), (stream, XRefSectionState.Malformed), (oldest, XRefSectionState.Read));
+        sections[1].PreviousHandedOn.Should().BeTrue();
+        sections[1].Fault.Should().Be(fault);
+        sections[2].NamedBy.Should().Be("/Prev");
+        sections[2].NamedFrom.Should().Be(stream);
+        Text(document, 3).Should().Be("only in the oldest");
+        Text(document, 8).Should().Be("old eight");
+        document.WasRepaired.Should().BeFalse("the oldest table indexes the catalog and objects 3 and 8");
+        Text(document, 4).Should().Be("only in the stream");
+        document.WasRepaired.Should().BeTrue();
+    }
+
+    [Theory]
+    [InlineData(7)]
+    [InlineData(3, 7)]
+    [InlineData(8, 7)]
+    [InlineData(4, 7)]
+    [InlineData(7, 4, 7)]
+    public void An_object_the_lost_stream_redefines_is_read_in_its_new_revision_whatever_was_read_before(params int[] order)
+    {
+        // Object 7 is written in the oldest revision and again in the stream's, whose rows cannot be read. The oldest table's
+        // row for it describes the older revision: were it taken, object 7 would read as the old one, and as the new one once
+        // a rebuild some other object set off had run. The stream declares 7: no older row stands for it, and it is found by
+        // rebuilding the index, which keeps the last definition the file writes, whatever was read before (#208).
+        var (file, _, _, _) = LostStreamFiles.ThreeRevisions();
+
+        using var document = PdfDocument.Open(file);
+
+        document.Reader.Structure.Sections.Should().HaveCount(3, "the chain goes on past the stream");
+
+        foreach (var number in order)
+        {
+            Text(document, number).Should().Be(number switch
+            {
+                3 => "only in the oldest",
+                4 => "only in the stream",
+                7 => "new seven",
+                _ => "old eight",
+            });
+        }
+
+        document.WasRepaired.Should().BeTrue();
+    }
+
+    [Theory]
+    [InlineData("/Index /X", null)]
+    [InlineData("/Index [4]", null)]
+    [InlineData("/Index [4 2 7 9 0 R]", "1")]
+    [InlineData("/Index 9 0 R", "[4 2 7 1]")]
+    public void A_lost_stream_whose_numbering_cannot_be_read_leaves_no_older_row_standing(string index, string? nine)
+    {
+        // The stream's /Index is no array of pairs, or is written as a reference, or holds one, which ISO 32000-1 makes
+        // direct: which numbers its rows give is unknown, and no older row may stand for any. The oldest table is read all
+        // the same, its trailer merged and its rows judged, but every object it alone indexes is found by rebuilding the
+        // index, the catalog first, at once (#208).
+        var (file, oldest, stream, _) = LostStreamFiles.ThreeRevisions(
+            LostStreamFiles.Unreadable.Replace("/Index [4 2 7 1]", index, StringComparison.Ordinal), nine: nine);
+
+        using var document = PdfDocument.Open(file);
+
+        document.Diagnostics[0].Message.Should().EndWith(
+            "The chain goes on through its /Prev; every object no section read before it indexes is looked for by rebuilding the index, rather than taken from an older section's rows.");
+        document.Reader.Structure.Sections.Select(section => section.Offset).Should().Equal(document.Reader.Structure.Sections[0].Offset, stream, oldest);
+        var chain = document.Reader.ChainIndex!;
+        chain.TryGet(3, out _).Should().BeFalse("no older row stands");
+        chain.TryGet(8, out _).Should().BeFalse("no older row stands, whatever the stream declares");
+        chain.TryGet(6, out _).Should().BeTrue("the newest table's rows stand");
+        document.WasRepaired.Should().BeTrue("the catalog is the oldest table's alone");
+        Text(document, 3).Should().Be("only in the oldest");
+        Text(document, 7).Should().Be("new seven");
+    }
+
+    [Theory]
+    [InlineData("/Size 8", new[] { 0, 6, 8 })]
+    [InlineData("/Size 8 /Index null", new[] { 0, 6, 8 })]
+    [InlineData("/Size 0", new[] { 0, 1, 2, 3, 6, 7, 8 })]
+    [InlineData("/Size 9 0 R", new[] { 0, 6, 9 })]
+    [InlineData("", new[] { 0, 6 })]
+    public void A_lost_stream_without_an_index_declares_the_numbers_below_its_size(string size, int[] standing)
+    {
+        // Without an /Index, or with one that is null, a stream's rows number the objects from 0 to its /Size less one: no
+        // older row stands for those, and the oldest table's row for object 8 stands past a /Size of 8. A /Size written as a
+        // reference — to an 8, which would leave object 8's row standing were it read —, or none, leaves the numbers unknown,
+        // and no older row stands (#208).
+        var (file, _, _, _) = LostStreamFiles.ThreeRevisions(
+            LostStreamFiles.Unreadable.Replace("/Size 9 /Index [4 2 7 1]", size, StringComparison.Ordinal),
+            nine: size.Contains(" R", StringComparison.Ordinal) ? "8" : null);
+
+        using var document = PdfDocument.Open(file);
+
+        document.Reader.Structure.Sections.Should().HaveCount(3);
+        document.Reader.ChainIndex!.CopyNumbers().Should().BeEquivalentTo(standing);
+    }
+
+    [Theory]
+    [InlineData(1, 4096, false)]
+    [InlineData(1, 4097, true)]
+    [InlineData(2, 2048, false)]
+    [InlineData(2, 2049, true)]
+    public void Lost_streams_keep_their_numbers_apart_up_to_4096_ranges_and_refuse_every_number_past_them(
+        int streams, int each, bool every)
+    {
+        // Each stream declares one-row subsections of its own, every other number from 100, the streams' interleaved. Up to
+        // 4,096 ranges, the numbers they declare are kept apart, and an older row stands for any other; past them, every
+        // number is refused, as where the numbering cannot be read, and what the older table alone indexes is found by
+        // rebuilding the index: what a refusal costs stays bounded (#208).
+        var file = LostStreamFiles.Chain(
+            streams,
+            rows: 100 + (2 * streams * each) + 2,
+            objects: [100, 101, 100 + (2 * streams * each) - 2, 100 + (2 * streams * each) - 1],
+            s => Enumerable.Range(0, each).Select(i => (100L + (2 * s) + (2L * streams * i), 1L)));
+
+        using var document = PdfDocument.Open(file);
+
+        var index = document.Reader.ChainIndex!;
+        index.TryGet(3, out _).Should().Be(!every, "object 3 is no stream's");
+        index.TryGet(101, out _).Should().Be(!every, "no stream declares 101");
+        index.TryGet(100 + (2 * streams * each) - 1, out _).Should().Be(!every, "no stream declares the number past the last");
+        index.TryGet(100, out _).Should().BeFalse("the newest stream declares 100");
+        index.TryGet(100 + (2 * streams * each) - 2, out _).Should().BeFalse("the oldest stream declares the last number");
+        document.Diagnostics.Select(d => d.Code).Should().StartWith(Enumerable.Repeat(PdfDiagnosticCodes.XRefSectionUnreadable, streams));
+        document.Diagnostics[streams - 1].Message.Should().Contain(every ? "every object no section read before it indexes" : "the objects it numbers");
+    }
+
+    [Theory]
+    [InlineData(1)]
+    [InlineData(2)]
+    public void Subsections_that_meet_are_one_range_and_one_of_no_rows_is_none(int step)
+    {
+        // A stream declares 4,096 one-row subsections every other number, beside one of no rows, or 5,000 one after the other
+        // from 100, which meet: 4,096 ranges at most either way, its numbers kept apart, and object 3's row stands (#208).
+        var subsections = step == 1
+            ? Enumerable.Range(0, 5000).Select(i => (100L + i, 1L))
+            : Enumerable.Range(0, 4096).Select(i => (100L + (2L * i), 1L)).Prepend((7L, 0L));
+        var file = LostStreamFiles.Chain(1, rows: 100 + (2 * 5000), objects: [7, 99, 5100], _ => subsections);
+
+        using var document = PdfDocument.Open(file);
+
+        var index = document.Reader.ChainIndex!;
+        index.TryGet(3, out _).Should().BeTrue();
+        index.TryGet(7, out _).Should().BeTrue("a subsection of no rows declares no number");
+        index.TryGet(99, out _).Should().BeTrue();
+        index.TryGet(100, out _).Should().BeFalse();
+    }
+
+    [Fact]
+    public void An_older_row_stands_for_a_number_exactly_where_no_lost_stream_declares_it()
+    {
+        // One to three lost streams, each declaring up to six subsections anywhere among the oldest table's numbers, which
+        // overlap, meet, nest or stand apart, in any order: an older row stands for a number exactly where none declares it,
+        // however the ranges were sorted and joined (#208).
+        var cases =
+            from streams in Gen.Choose(1, 3)
+            from declared in Gen.Choose(3, 60).SelectMany(first => Gen.Choose(0, 8).Select(count => (First: (long)first, Count: (long)count)))
+                .ArrayOf().Select(pairs => pairs.Take(6).ToArray()).ArrayOf(streams)
+            select declared;
+
+        Check.One(Properties, Prop.ForAll(cases.ToArbitrary(), declared =>
+        {
+            var file = LostStreamFiles.Chain(
+                declared.Length,
+                rows: 70,
+                objects: [.. Enumerable.Range(4, 66)],
+                s => declared[s].Length == 0 ? [(3, 0)] : declared[s]);
+
+            using var document = PdfDocument.Open(file);
+            var index = document.Reader.ChainIndex!;
+
+            for (var number = 3; number < 70; number++)
+            {
+                var refused = declared.Any(pairs => pairs.Any(pair => number >= pair.First && number < pair.First + pair.Count));
+                index.TryGet(number, out _).Should().Be(!refused, "object {0} is {1}declared", number, refused ? string.Empty : "not ");
+            }
+        }));
+    }
+
+    [Fact]
+    public void A_stream_with_no_prev_or_no_data_or_no_type_hands_nothing_on()
+    {
+        // The chain goes on only through what a stream of /Type /XRef, its dictionary read whole and followed by its data,
+        // names through /Prev: one that names nothing ends it as before, as does a dictionary no data follows, which is no
+        // stream's, and an object that only gives a /W, which may be anything (#263). The catalog, which the oldest table
+        // alone indexes, is found by rebuilding the index.
+        foreach (var (file, fault) in new[]
+        {
+            (LostStreamFiles.ThreeRevisions(prev: string.Empty).File, "its /W gives a field a negative width"),
+            (LostStreamFiles.ThreeRevisions(data: false).File, "its dictionary is not followed by stream data"),
+            (LostStreamFiles.ThreeRevisions(LostStreamFiles.Unreadable.Replace("/Type /XRef ", string.Empty, StringComparison.Ordinal)).File, "its /W gives a field a negative width"),
+        })
+        {
+            using var document = PdfDocument.Open(file);
+
+            document.Reader.Structure.Sections.Should().HaveCount(2);
+            document.Reader.Structure.Sections[1].PreviousHandedOn.Should().BeFalse();
+            document.Diagnostics[0].Message.Should().EndWith(
+                $": {fault}. The rows read before the fault, if any, were kept; the objects only the rest indexes are looked for by rebuilding the index.");
+            document.WasRepaired.Should().BeTrue();
+        }
+    }
+
+    [Fact]
+    public void A_stream_a_guard_cut_hands_nothing_on()
+    {
+        // The stream's /W is the reference 9 0 R, and MaxObjectLength cuts object 9: the section is the guard's, which ends
+        // the chain there, and the oldest table is not read past it, whatever the stream's /Prev names (ADR 34, #208).
+        var (file, _, stream, _) = LostStreamFiles.ThreeRevisions(
+            LostStreamFiles.Unreadable.Replace("/W [1 -4 2]", "/W 9 0 R", StringComparison.Ordinal), nine: "%" + new string('-', 2000) + "\n[1 4 2]");
+
+        using var document = PdfDocument.Open(file, new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxObjectLength = 1024 } });
+
+        document.Diagnostics.Select(d => d.Code).Should().Equal(PdfDiagnosticCodes.LimitObject);
+        document.Reader.Structure.Sections.Should().HaveCount(2);
+        document.Reader.Structure.Sections[1].Offset.Should().Be(stream);
+        document.Reader.Structure.Sections[1].CutByLimit.Should().BeTrue();
+        document.GetObject(new PdfObjectId(3)).Should().BeSameAs(PdfNull.Instance, "what only the older sections index is the guard's to hide");
+    }
+
+    [Fact]
+    public void The_prev_a_lost_stream_hands_on_is_followed_under_the_section_count_guard()
+    {
+        // Read under MaxXRefSectionCount 2, the section the stream's /Prev names is the third: the guard ends the chain there,
+        // and the objects the stream lost, the catalog among them, are found by rebuilding the index, as for any section lost
+        // before a guard (#208).
+        var (file, oldest, stream, _) = LostStreamFiles.ThreeRevisions();
+
+        using var document = PdfDocument.Open(file, new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxXRefSectionCount = 2 } });
+
+        document.Diagnostics.Select(d => d.Code).Should().StartWith([PdfDiagnosticCodes.XRefSectionUnreadable, PdfDiagnosticCodes.LimitXRefSectionCount]);
+        document.Diagnostics[0].Position.Should().Be(stream);
+        document.Diagnostics[1].Position.Should().Be(oldest);
+        document.Reader.Structure.Sections.Should().HaveCount(2);
+        Text(document, 3).Should().Be("only in the oldest");
+    }
+
+    [Theory]
+    [InlineData(3, "3 bytes before it")]
+    [InlineData(-3, "3 bytes after it")]
+    public void The_prev_a_lost_stream_hands_on_finds_its_section_near_where_it_names_it(int error, string distance)
+    {
+        // The stream's /Prev names a place a few bytes off the oldest table: it is found there, as any section named a few
+        // bytes off is, and object 3 needs no rebuild (#208).
+        var oldest = LostStreamFiles.ThreeRevisions().Oldest;
+        var (file, _, stream, _) = LostStreamFiles.ThreeRevisions(prev: (oldest + error).ToString(CultureInfo.InvariantCulture));
+
+        using var document = PdfDocument.Open(file);
+
+        document.Diagnostics.Select(d => d.Code).Should().Equal(PdfDiagnosticCodes.XRefSectionUnreadable, PdfDiagnosticCodes.XRefOffsetAdjusted);
+        document.Diagnostics[1].Message.Should().Be(string.Create(
+            CultureInfo.InvariantCulture, $"The cross-reference section /Prev names at offset {oldest + error} was found {distance}."));
+        document.Reader.Structure.Sections[2].NamedFrom.Should().Be(stream);
+        Text(document, 3).Should().Be("only in the oldest");
+        document.WasRepaired.Should().BeFalse();
+    }
+
+    [Theory]
+    [InlineData(false, "which the chain has already named")]
+    [InlineData(true, "which the chain has already read")]
+    public void The_prev_a_lost_stream_hands_on_ends_the_chain_in_a_loop_where_it_names_what_the_chain_reached(bool newest, string reached)
+    {
+        // The stream's /Prev names the stream itself, which the chain named and could not read, or the newest table, which it
+        // read: a loop, reported as one, and the objects the chain lost are found by rebuilding the index (#208).
+        var named = newest ? LostStreamFiles.ThreeRevisions(prev: "{stream}").Newest : -1;
+        var (file, _, stream, at) = LostStreamFiles.ThreeRevisions(prev: newest ? named.ToString(CultureInfo.InvariantCulture) : "{stream}");
+        var looped = newest ? at : stream;
+        looped.Should().Be(newest ? named : stream, "the newest table lies where it lay with the stream naming itself");
+
+        using var document = PdfDocument.Open(file);
+
+        document.Diagnostics.Select(d => d.Code).Should().StartWith([PdfDiagnosticCodes.XRefSectionUnreadable, PdfDiagnosticCodes.XRefChainCycle]);
+        document.Diagnostics[1].Message.Should().Be(string.Create(
+            CultureInfo.InvariantCulture,
+            $"The cross-reference chain loops back on itself: the /Prev of the section at offset {stream} names offset {looped}, {reached}."));
+        document.Reader.Structure.Sections.Should().HaveCount(2);
+        Text(document, 3).Should().Be("only in the oldest");
+    }
+
+    [Theory]
     [InlineData(0, "")]
     [InlineData(0, "junk\n")]
     [InlineData(1200, "")]
@@ -604,12 +915,25 @@ public class CrossReferenceChainTests
         // subsection, or a stream of /Type /XRef whose /W gives a name for a width. The first, which the chain has not read,
         // lies within 512 bytes of it, or 1,200 bytes more. It was taken for the second moved, and object 4 read as null with
         // nothing reported but a shift (#281). The keyword, or /Type /XRef, says the second is there: it is reported where it
-        // is, and object 4 is found by rebuilding the index, which the catalog, indexed by the first alone, asks for at once.
-        var (file, _, second) = NearbyFiles.MalformedUpdateNearItsOriginal(streams, gap);
+        // is, and object 4 is found by rebuilding the index. The table's trailer, past the fault, is unknown, and the catalog,
+        // indexed by the first alone, asks for the rebuild at once; the stream's /Prev, read whole, leads the chain on to the
+        // first, which indexes the catalog (#208).
+        var (file, first, second) = NearbyFiles.MalformedUpdateNearItsOriginal(streams, gap);
 
         using var document = PdfDocument.Open(file);
 
-        document.Diagnostics.Select(d => d.Code).Should().Equal(PdfDiagnosticCodes.XRefSectionUnreadable, PdfDiagnosticCodes.XRefRebuilt);
+        if (streams)
+        {
+            document.Diagnostics.Select(d => d.Code).Should().Equal(PdfDiagnosticCodes.XRefSectionUnreadable);
+            document.Reader.Structure.Sections.Should().HaveCount(3);
+            document.Reader.Structure.Sections[2].Offset.Should().Be(first);
+            document.WasRepaired.Should().BeFalse("the first section, read through the stream's /Prev, indexes the catalog");
+        }
+        else
+        {
+            document.Diagnostics.Select(d => d.Code).Should().Equal(PdfDiagnosticCodes.XRefSectionUnreadable, PdfDiagnosticCodes.XRefRebuilt);
+        }
+
         document.Diagnostics[0].Position.Should().Be(second);
         document.Diagnostics[0].Message.Should().StartWith(string.Create(
             CultureInfo.InvariantCulture,
@@ -1600,6 +1924,9 @@ public class CrossReferenceChainTests
         Text(document, 4).Should().Be("updated");
         Text(document, 5).Should().HaveLength(1024);
     }
+
+    private static Config Properties =>
+        Config.QuickThrowOnFailure.WithMaxTest(200).WithReplay(0x5EED_1729UL, 0x9E37_79B9_7F4A_7C15UL).WithQuietOnSuccess(true);
 
     private static string Text(PdfDocument document, int number) =>
         document.GetObject(new PdfObjectId(number)).Should().BeOfType<PdfString>().Subject.ToText();
