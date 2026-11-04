@@ -33,22 +33,36 @@ public static class PdfDiagnosticCodes
     public const string XRefSectionMissing = "xref.section-missing";
 
     /// <summary>
-    /// A cross-reference section the chain names, through <c>/Prev</c> or <c>/XRefStm</c>, is where it is named but
-    /// cannot be read — a stray token among a table's rows or in place of its trailer, a subsection numbering objects
-    /// past 2,147,483,647, a cross-reference stream whose <c>/W</c>, <c>/Index</c>, <c>/Size</c> or data cannot give
-    /// rows, or whose <c>/Length</c> no section read before it places and whose data no <c>endstream</c> ends before the
-    /// next object or the end of the file —: an <c>xref</c> keyword, or a stream whose dictionary gives <c>/Type /XRef</c>,
-    /// for which no section near it is taken; or a stream that only gives a <c>/W</c>, when nothing near it can be read in
-    /// its place. A value that leads to an object
-    /// one of the reader's limits cut is the limit's: the chain ends there, and nothing is reported of the section. The rows read before the
-    /// fault, if any, were kept; the objects only the rest indexes are missing from the index, which is rebuilt by
-    /// scanning the file when one of them is asked for. A stream of <c>/Type /XRef</c> whose dictionary was read whole and
-    /// gives a <c>/Prev</c> hands that <c>/Prev</c> on, and the chain goes on to the older sections, as the message says
-    /// (#208): no older section's row stands for an object the stream numbers — for any, where its numbering cannot be
-    /// read —, which is missing from the index as the objects only it indexes are. The report is placed at the section,
-    /// the fault in its message.
+    /// A cross-reference section the chain names cannot be read whole. Through <c>/Prev</c> or <c>/XRefStm</c>, it is where
+    /// it is named but cannot be read — a stray token among a table's rows or in place of its trailer, a subsection
+    /// numbering objects past 2,147,483,647, a table the end of the file cuts before its first row, a cross-reference stream
+    /// whose <c>/W</c>, <c>/Index</c>, <c>/Size</c> or data cannot give rows, or whose <c>/Length</c> no section read before
+    /// it places and whose data no <c>endstream</c> ends before the next object or the end of the file —: an <c>xref</c>
+    /// keyword, or a stream whose dictionary gives <c>/Type /XRef</c>, for which no section near it is taken; or a stream
+    /// that only gives a <c>/W</c>, when nothing near it can be read in its place. A value that leads to an object one of
+    /// the reader's limits cut is the limit's: the chain ends there, and nothing is reported of the section. The rows read
+    /// before the fault, if any, were kept; the objects only the rest indexes are missing from the index, which is rebuilt by
+    /// scanning the file when one of them is asked for. A stream of <c>/Type /XRef</c> whose dictionary was read whole loses
+    /// its rows alone: no older section's row stands for an object it numbers — for any, where its numbering cannot be read
+    /// —, which is missing from the index as the objects only it indexes are; and one that gives a <c>/Prev</c> hands that
+    /// <c>/Prev</c> on, the chain going on to the older sections, as the message says (#208). Or the section, the one
+    /// <c>startxref</c> names among them, was read only in part, and kept, the chain going on from it where its trailer was
+    /// read (#207, #210): a row that is no row ended a subsection of a table, a cross-reference stream holds fewer rows than
+    /// it declares, the end of the file cuts a table before its trailer, or a row that gives an object in use what no entry
+    /// can hold was refused alone. The rows read were kept, and the message says what was lost: the objects the lost rows
+    /// would index, which no older section's row stands for, and those only the sections a lost trailer would name index,
+    /// are missing from the index, rebuilt when one of them is asked for. The report is placed at the section, the fault in
+    /// its message — the first, where the section has several.
     /// </summary>
     public const string XRefSectionUnreadable = "xref.section-unreadable";
+
+    /// <summary>
+    /// A classic cross-reference table the chain names holds no subsection: its <c>trailer</c> keyword follows its
+    /// <c>xref</c> keyword, where ISO 32000-1 (7.5.4) has one or more subsections follow it. It was read as indexing nothing,
+    /// as a table whose one subsection is <c>0 0</c> is, and nothing is rebuilt for it (#222). The report is placed at the
+    /// table.
+    /// </summary>
+    public const string XRefSectionEmpty = "xref.section-empty";
 
     /// <summary>
     /// The chain of previous cross-reference sections looped back on itself: a <c>/Prev</c> or <c>/XRefStm</c> names an
@@ -195,7 +209,8 @@ public static class PdfDiagnosticCodes
 
     /// <summary>
     /// The trailer's <c>/Root</c> did not lead to a document catalog, and the reader found the catalog among the
-    /// file's objects: among those the file indexes when its index is sound, in a rebuilt index otherwise.
+    /// file's objects: among those the file indexes when its index is sound, in a rebuilt index otherwise. A rebuild after
+    /// opening that takes the same object again reports nothing more; one that takes another object reports it.
     /// </summary>
     public const string TrailerRootRecovered = "trailer.root-recovered";
 

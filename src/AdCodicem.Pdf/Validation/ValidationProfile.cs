@@ -58,6 +58,7 @@ public sealed class ValidationProfile
             new SectionMalformedRule(),
             new SectionNotFoundRule(),
             new SectionShiftedRule(),
+            new SubsectionMissingRule(),
             new ChainLoopRule(),
             new EntryBrokenRule(),
             new EntryShiftedRule(),

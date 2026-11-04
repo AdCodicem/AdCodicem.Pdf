@@ -2243,7 +2243,8 @@ public class GuardCutValueTests
         // As above, but for objects 8, 9 and 10, which follow stream 5 in that order and which only its rows place, 9 first,
         // then 8, then 10 — with a type field, or without, every row then of type 1. The object that follows the stream's
         // endobj is the nearest of them, 8, which proves the endstream its own whichever of the rows places it: the row the
-        // data lacks is the file's to lack, as read whole, the index rebuilt, the page read (#224).
+        // data lacks is the file's to lack, as read whole, the section reported read only in part (#210), the index rebuilt,
+        // the page read (#224).
         var file = ChainFiles.AloneWithACutLengthBeforeObjectsItsRowsPlace(typeField);
         using var whole = PdfDocument.Open(file);
         using var document = PdfDocument.Open(file, ObjectGuard);
@@ -2254,7 +2255,8 @@ public class GuardCutValueTests
         document.GetObject(new PdfObjectId(3)).AsDictionary().Required().IsOfType(PdfName.Page).Should().BeTrue();
         document.WasRepaired.Should().BeTrue();
         document.GetObject(new PdfObjectId(8)).Should().BeOfType<PdfString>().Which.ToText().Should().Be("eight");
-        document.Diagnostics.Select(entry => entry.Code).Should().Equal(PdfDiagnosticCodes.LimitObject, PdfDiagnosticCodes.XRefRebuilt);
+        document.Diagnostics.Select(entry => entry.Code).Should().Equal(
+            PdfDiagnosticCodes.XRefSectionUnreadable, PdfDiagnosticCodes.LimitObject, PdfDiagnosticCodes.XRefRebuilt);
     }
 
     [Theory]
@@ -2266,8 +2268,8 @@ public class GuardCutValueTests
     {
         // Stream 5's /Length, object 4, which only its own row places, is one MaxObjectLength cuts before its value, and its
         // data lacks the page's row; 100 spaces part its endstream from its endobj, which the update's first object follows.
-        // Read on to, that proves the endstream its own: the row is the file's to lack, as read whole, the index rebuilt, the
-        // page read. Five updates whose data runs over 500,000 spaces to an endstream they share read the file about once
+        // Read on to, that proves the endstream its own: the row is the file's to lack, as read whole, the section reported
+        // read only in part (#210), the index rebuilt, the page read. Five updates whose data runs over 500,000 spaces to an endstream they share read the file about once
         // each, as much as the document's searches may (EndStreamSearchPasses): nothing is read past stream 5's endstream,
         // which nothing then proves its own, and where its data ends is the guard's — the page's row with it, which reads as
         // null until the guard is lifted. So it is where 60 characters glued to the endstream make it no keyword, which
@@ -2293,7 +2295,8 @@ public class GuardCutValueTests
 
         document.GetObject(new PdfObjectId(3)).AsDictionary().Required().IsOfType(PdfName.Page).Should().BeTrue();
         document.WasRepaired.Should().BeTrue();
-        document.Diagnostics.Select(entry => entry.Code).Should().Equal(PdfDiagnosticCodes.LimitObject, PdfDiagnosticCodes.XRefRebuilt);
+        document.Diagnostics.Select(entry => entry.Code).Should().Equal(
+            PdfDiagnosticCodes.XRefSectionUnreadable, PdfDiagnosticCodes.LimitObject, PdfDiagnosticCodes.XRefRebuilt);
     }
 
     [Theory]
@@ -2420,14 +2423,15 @@ public class GuardCutValueTests
     {
         // The stream's own row places object 5, which MaxObjectLength cuts after "6 0 R", whole; object 6, which a newer
         // section places, holds the length. The data is taken again to it, as read whole: the guard hid nothing the length
-        // needs, and the rows the data lacks — one, where the /Index declares one more — are the file's, as read whole. They
-        // went to the guard (#224).
+        // needs, and the rows the data lacks — one, where the /Index declares one more — are the file's, as read whole, the
+        // section reported read only in part either way (#210). They went to the guard (#224).
         var file = ChainFiles.OwnRowPlacingAPaddedLength(throughReference: true, lackingRow);
         using var whole = PdfDocument.Open(file);
         using var document = PdfDocument.Open(file, ObjectGuard);
+        string[] readInPart = lackingRow ? [PdfDiagnosticCodes.XRefSectionUnreadable] : [];
 
-        document.Diagnostics.Select(entry => entry.Code).Should().Equal(PdfDiagnosticCodes.LimitObject);
-        whole.Diagnostics.Should().BeEmpty();
+        document.Diagnostics.Select(entry => entry.Code).Should().Equal([.. readInPart, PdfDiagnosticCodes.LimitObject]);
+        whole.Diagnostics.Select(entry => entry.Code).Should().Equal(readInPart);
 
         foreach (var read in (ReadOnlySpan<PdfDocument>)[whole, document])
         {
@@ -2451,13 +2455,14 @@ public class GuardCutValueTests
         // any section places 6, and what the cut left of it was kept as that read judged it: the older stream's data could
         // not be taken again, its rows past the spelled endstream went to the guard and the file was said to give a length
         // no endstream confirms; with a row lacking, the section was cut where it is the file's to lack (#224). The guard hides
-        // nothing either length needs: each reads as read whole.
+        // nothing either length needs: each reads as read whole, the section lacking a row reported read only in part (#210).
         var file = ChainFiles.UpdatesReachingALengthThroughACutReference(bothNameIt, lackingRow);
         using var whole = PdfDocument.Open(file);
         using var document = PdfDocument.Open(file, ObjectGuard);
+        string[] readInPart = lackingRow ? [PdfDiagnosticCodes.XRefSectionUnreadable] : [];
 
-        document.Diagnostics.Select(entry => entry.Code).Should().Equal(PdfDiagnosticCodes.LimitObject);
-        whole.Diagnostics.Should().BeEmpty();
+        document.Diagnostics.Select(entry => entry.Code).Should().Equal([.. readInPart, PdfDiagnosticCodes.LimitObject]);
+        whole.Diagnostics.Select(entry => entry.Code).Should().Equal(readInPart);
 
         foreach (var read in (ReadOnlySpan<PdfDocument>)[whole, document])
         {
@@ -3356,7 +3361,7 @@ public class GuardCutValueTests
         file.Raw(Invariant(
             $"xref\n%{new string('x', 2000)}\n0 4\n0000000000 65535 f\r\n{one:D10} 00000 n\r\n{two:D10} 00000 n\r\n{three:D10} 00000 n\r\ntrailer\n<< /Size 4 /Root 1 0 R >>\n"));
         var newer = file.Position;
-        file.Raw(Invariant($"xref\ntrailer\n<< /Size 4 /Root 1 0 R /Prev {older + shift} >>\nstartxref\n{newer}\n%%EOF\n"));
+        file.Raw(Invariant($"xref\n0 0\ntrailer\n<< /Size 4 /Root 1 0 R /Prev {older + shift} >>\nstartxref\n{newer}\n%%EOF\n"));
         var options = new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxXRefSectionLength = 1024 } };
 
         using var document = PdfDocument.Open(file.Bytes, options);
@@ -3817,7 +3822,8 @@ public class GuardCutValueTests
         // eight its /Index declares, whose first number names object 5, which MaxObjectLength cuts; the first revision's
         // table places the older one. Read whole, its rows win. The rows the data holds are read with the value the guard
         // cut: the guard's, as rows a guard cut are, the chain ending there, where an older section's rows would stand for
-        // them — the older catalog was served, and the guard neither reported nor thrown under ThrowOnLimit.
+        // them — the older catalog was served, and the guard neither reported nor thrown under ThrowOnLimit. The section is
+        // the file's to lack the eighth row: reported read only in part (#210).
         var file = LackingBesideCut(naming, "/Index [5 0 R 8] /Size 8", rows => string.Concat(rows[..7]), out var sixAt);
 
         using (var whole = PdfDocument.Open(file))
@@ -3830,7 +3836,7 @@ public class GuardCutValueTests
         using var document = PdfDocument.Open(file, ObjectGuard);
 
         document.Diagnostics.Select(entry => entry.Code).Should().Equal(
-            PdfDiagnosticCodes.LimitObject, PdfDiagnosticCodes.XRefRebuilt, PdfDiagnosticCodes.ObjectRedefined);
+            PdfDiagnosticCodes.XRefSectionUnreadable, PdfDiagnosticCodes.LimitObject, PdfDiagnosticCodes.XRefRebuilt, PdfDiagnosticCodes.ObjectRedefined);
         document.Reader.Structure.Sections.Should().HaveCount(2);
         var section = document.Reader.Structure.Sections[^1];
         section.Offset.Should().Be(sixAt);
@@ -3850,8 +3856,10 @@ public class GuardCutValueTests
     public void A_section_lacking_rows_beside_a_value_a_guard_cut_reaches_the_guard_once_the_chain_is_read(string naming)
     {
         // As above, but stream 6's data, three bytes, holds no row of seven bytes: the section lacks rows whatever the value
-        // holds, its trailer merged and the chain going on, the first revision's table indexing every object, so that
-        // nothing is rebuilt. The value the guard cut was never loaded: the guard was neither reported nor thrown.
+        // holds, its trailer merged and the chain going on, the first revision's table read. The value the guard cut was
+        // never loaded: the guard was neither reported nor thrown. It is reached once the chain is read, before the index is
+        // rebuilt at opening: the stream's /Index holds a reference, so the numbers it declares are unknown and no older row
+        // stands for any (#210) — the catalog's among them, whose newer definition the rebuild finds.
         var file = LackingBesideCut(naming, "/Index [5 0 R 8] /Size 8", _ => "abc", out var sixAt);
         string[] wholeCodes;
 
@@ -3859,16 +3867,19 @@ public class GuardCutValueTests
         {
             whole.Reader.Structure.Sections.Single(section => section.Offset == sixAt).Incomplete.Should().BeTrue();
             wholeCodes = [.. whole.Diagnostics.Select(entry => entry.Code)];
+            Revision(whole).Should().Be("two");
         }
+
+        wholeCodes.Should().Equal(PdfDiagnosticCodes.XRefSectionUnreadable, PdfDiagnosticCodes.XRefRebuilt, PdfDiagnosticCodes.ObjectRedefined);
 
         using var document = PdfDocument.Open(file, ObjectGuard);
 
-        document.Diagnostics.Select(entry => entry.Code).Should().Equal([.. wholeCodes, PdfDiagnosticCodes.LimitObject]);
+        document.Diagnostics.Select(entry => entry.Code).Should().Equal([wholeCodes[0], PdfDiagnosticCodes.LimitObject, .. wholeCodes[1..]]);
         document.Reader.Structure.Sections.Should().HaveCount(3);
         var section = document.Reader.Structure.Sections.Single(section => section.Offset == sixAt);
         section.CutByLimit.Should().BeFalse();
         section.Incomplete.Should().BeTrue();
-        Revision(document).Should().Be("one");
+        Revision(document).Should().Be("two");
 
         var throwing = () => PdfDocument.Open(file, ObjectGuard with { ThrowOnLimit = true });
         throwing.Should().Throw<PdfLimitExceededException>().Which.LimitName.Should().Be(nameof(PdfReaderLimits.MaxObjectLength));

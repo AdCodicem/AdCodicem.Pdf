@@ -20,7 +20,9 @@ namespace AdCodicem.Pdf.Validation.Rules;
 /// A <c>/Size</c> that leaves in-use objects numbered above it is
 /// <see cref="PdfValidationRuleIds.XRefObjectPastSize"/>'s instead, which says the specification makes a conforming
 /// reader ignore those objects. The rule needs the whole chain to count the objects each section updates: a chain
-/// that lost a section, or that one of the reader's limits cut, is not judged.
+/// that lost a section, or read one only in part — the rows it lost, or the older sections a trailer the end of the file
+/// cut would name, may number the objects the <c>/Size</c> counts (#207, #210) —, or that one of the reader's limits cut,
+/// is not judged.
 /// </para>
 /// </remarks>
 internal sealed class SizeWrongRule : IValidationRule
@@ -136,8 +138,8 @@ internal sealed class SizeWrongRule : IValidationRule
     {
         foreach (var section in sections)
         {
-            if (section.State is XRefSectionState.NotFound or XRefSectionState.Malformed || section.CutByLimit ||
-                section.ChainHiddenByGuard is not null)
+            if (section.State is XRefSectionState.NotFound or XRefSectionState.Malformed || section.Incomplete ||
+                section.CutByLimit || section.ChainHiddenByGuard is not null)
             {
                 return false;
             }

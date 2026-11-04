@@ -65,11 +65,20 @@ internal sealed class XRefSectionRecord
     public string? RefusedRow { get; set; }
 
     /// <summary>
-    /// Gets a value indicating whether a cross-reference stream holds fewer rows than it declares: the rows it holds place
-    /// objects, but where a value they are read with is one a guard cut, beside which the data holds too few whatever the
-    /// value holds.
+    /// Gets a value indicating whether the section's own reading lost rows through the file's fault, the rows before the
+    /// fault kept: a classic table's row that is no row, which ends its subsection; a classic table the end of the file cuts
+    /// before its trailer, once it read a row; a cross-reference stream that holds fewer rows than it declares — where a
+    /// value they are read with is one a guard cut too, beside which the data holds too few whatever the value holds. The
+    /// section was read only in part (#207, #210).
     /// </summary>
     public bool Incomplete { get; set; }
+
+    /// <summary>
+    /// Gets a value indicating whether a classic table holds no subsection: its <c>trailer</c> keyword follows its
+    /// <c>xref</c> keyword, where ISO 32000-1 (7.5.4) has one or more subsections follow it. It is read as indexing nothing,
+    /// as a table whose one subsection is <c>0 0</c> is (#222).
+    /// </summary>
+    public bool NoSubsection { get; set; }
 
     /// <summary>
     /// Gets a value indicating whether one of the reader's limits stopped it reading the section, or its trailer,
@@ -125,6 +134,13 @@ internal sealed class XRefSectionRecord
     /// </summary>
     public bool PreviousHandedOn { get; set; }
 
+    /// <summary>
+    /// Gets a value indicating whether the object numbers the cross-reference stream declares, its rows lost, were refused
+    /// to the rows of the sections the chain read after it: the stream declares itself one, and its dictionary was read
+    /// whole, whether the chain went on through its <c>/Prev</c> (#208) or it is a hybrid file's stream (#210).
+    /// </summary>
+    public bool NumbersRefused { get; set; }
+
     /// <summary>Gets the section's own trailer — a cross-reference stream's dictionary —, or null when none was read.</summary>
     public PdfDictionary? Trailer { get; set; }
 
@@ -168,6 +184,7 @@ internal sealed class XRefSectionRecord
         Fault = attempt.Fault;
         RefusedRow = attempt.RefusedRow;
         Incomplete = attempt.Incomplete;
+        NoSubsection = attempt.NoSubsection;
         CutByLimit = attempt.CutByLimit;
         CutByValue = attempt.CutByValue;
         TypedXRef = attempt.TypedXRef;

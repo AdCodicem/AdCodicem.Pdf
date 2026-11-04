@@ -291,6 +291,78 @@ public class CrossReferenceRuleTests
     }
 
     [Theory]
+    [InlineData("", true)]
+    [InlineData("0 0\n", false)]
+    public void A_table_holding_no_subsection_is_a_warning_and_one_whose_one_subsection_is_0_0_is_sound(string subsections, bool missing)
+    {
+        // An update whose trailer keyword follows its xref keyword, where ISO 32000-1 (7.5.4) has one or more subsections
+        // follow it, had no finding (#222). The reader reads it as indexing nothing, as the lawful 0 0 update, and rebuilds
+        // nothing for it: a warning (ADR 45).
+        var file = PdfTemplate.Build(PartialFiles.EmptyUpdate(subsections));
+        var update = PdfTemplate.OffsetOf(file, "\nxref\n", 2) + 1;
+        using var document = PdfDocument.Open(file);
+
+        var report = new PdfValidator().Validate(document);
+
+        document.WasRepaired.Should().BeFalse("the index is whole");
+
+        if (!missing)
+        {
+            report.Findings.Should().BeEmpty();
+            return;
+        }
+
+        var finding = report.Findings.Should().ContainSingle().Which;
+        finding.RuleId.Should().Be(PdfValidationRuleIds.XRefSubsectionMissing);
+        finding.Severity.Should().Be(PdfValidationSeverity.Warning);
+        finding.Location.Position.Should().Be(update);
+        finding.Message.Should().Be(string.Create(
+            CultureInfo.InvariantCulture,
+            $"The cross-reference table at offset {update} holds no subsection: its trailer keyword follows its xref keyword."));
+    }
+
+    [Fact]
+    public void A_table_the_end_of_the_file_cuts_after_a_row_is_missing_its_trailer_and_its_chain_s_size_is_not_judged()
+    {
+        // The table /Prev names is cut by the end of the file after object 3's row: its trailer is missing, an error, and the
+        // index is rebuilt before the rules run, what that trailer named being lost to the chain (#207). The update's /Size of
+        // 5 numbers object 4, which only the sections the lost trailer named index: the chain read in part is not judged for
+        // it, as one that lost a section is not, where it was said to make the /Size 4.
+        var file = PdfTemplate.Build(PartialFiles.CutUpdate());
+        var cut = PdfTemplate.OffsetOf(file, "\nxref\n", 3) + 1;
+        using var document = PdfDocument.Open(file);
+
+        var finding = new PdfValidator().Validate(document).Findings.Should().ContainSingle().Which;
+
+        finding.RuleId.Should().Be(PdfValidationRuleIds.FileTrailerMissing);
+        finding.Severity.Should().Be(PdfValidationSeverity.Error);
+        finding.Location.Position.Should().Be(file.Length);
+        finding.Message.Should().Be(string.Create(
+            CultureInfo.InvariantCulture, $"The cross-reference table at offset {cut} is not followed by a trailer: the file ends first."));
+        document.WasRepaired.Should().BeTrue();
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void A_table_whose_last_row_is_no_row_is_malformed_and_its_chain_s_size_is_not_judged(bool updated)
+    {
+        // Object 4's row, the table's last, ends in x: the table is malformed, an error, the index rebuilt before the rules
+        // run. Its /Size of 5 numbers object 4, whose row it lost: the chain read in part is not judged for it (#210).
+        var file = PdfTemplate.Build(PartialFiles.RowEndingInX(updated));
+        var table = PdfTemplate.OffsetOf(file, "\nxref\n") + 1;
+        var row = PdfTemplate.OffsetOf(file, string.Create(CultureInfo.InvariantCulture, $"{PdfTemplate.OffsetOf(file, "4 0 obj")} 00000 x"));
+
+        var finding = Validate(file).Findings.Should().ContainSingle().Which;
+
+        finding.RuleId.Should().Be(PdfValidationRuleIds.XRefSectionMalformed);
+        finding.Location.Position.Should().Be(table);
+        finding.Message.Should().Be(string.Create(
+            CultureInfo.InvariantCulture,
+            $"The cross-reference table at offset {table} is malformed: the row for object 4, at offset {row}, is not an offset, a generation and n or f."));
+    }
+
+    [Theory]
     [InlineData("/Extra", "a name")]
     [InlineData("1.5", "a real number")]
     [InlineData("(rows)", "a string")]

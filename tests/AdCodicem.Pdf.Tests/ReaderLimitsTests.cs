@@ -874,7 +874,8 @@ public class ReaderLimitsTests
         // /Root names object 3, a string. Object 4, the first a rebuild's search for the catalog reads, gives its /Type as a
         // reference to object 9, longer than MaxObjectLength; the catalog, object 1, comes after it. A rebuild — set off by
         // row 5, which leads into object 4's header, or by settling the index — searches for the catalog: the guard
-        // reached reading 4's /Type is held until the search has found 1, then thrown, as one reading a candidate is.
+        // reached reading 4's /Type is held until the search has found 1, then thrown, as one reading a candidate is. The
+        // search at opening took 1 too, which is said once.
         var file = new HandWrittenFile();
         var rows = new Dictionary<int, long>
         {
@@ -894,8 +895,8 @@ public class ReaderLimitsTests
         rebuilding.Should().Throw<PdfLimitExceededException>().Which.LimitName.Should().Be(nameof(PdfReaderLimits.MaxObjectLength));
         document.WasRepaired.Should().BeTrue();
         document.Trailer.GetRaw(PdfName.Root).Should().BeOfType<PdfReference>().Which.Id.Should().Be(new PdfObjectId(1));
-        document.Diagnostics.Where(diagnostic => diagnostic.Code == PdfDiagnosticCodes.TrailerRootRecovered).Should().HaveCount(2)
-            .And.AllSatisfy(diagnostic => diagnostic.Message.Should().EndWith("the catalog was found as object 1."));
+        document.Diagnostics.Where(diagnostic => diagnostic.Code == PdfDiagnosticCodes.TrailerRootRecovered).Should().ContainSingle()
+            .Which.Message.Should().EndWith("the catalog was found as object 1.");
 
         // The rebuild is finished: the next read rebuilds nothing, and throws nothing.
         document.Reader.SettleIndex();

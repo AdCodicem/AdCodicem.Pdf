@@ -62,6 +62,7 @@ public class ValidatorTests
             PdfValidationRuleIds.XRefSectionMalformed,
             PdfValidationRuleIds.XRefSectionNotFound,
             PdfValidationRuleIds.XRefSectionShifted,
+            PdfValidationRuleIds.XRefSubsectionMissing,
             PdfValidationRuleIds.XRefChainLoop,
             PdfValidationRuleIds.XRefEntryBroken,
             PdfValidationRuleIds.XRefEntryShifted,
@@ -370,6 +371,7 @@ public class ValidatorTests
     [InlineData("a trailer without its keyword", PdfValidationRuleIds.FileTrailerMissing, 256)]
     [InlineData("sections refusing a row", PdfValidationRuleIds.XRefSectionMalformed, 256)]
     [InlineData("sections naming streams that are not there", PdfValidationRuleIds.XRefSectionNotFound, 256)]
+    [InlineData("tables holding no subsection", PdfValidationRuleIds.XRefSubsectionMissing, 256)]
     [InlineData("a table the section guard cuts", PdfValidationRuleIds.XRefCheckedInPart, 256)]
     [InlineData("older sections the object guard hides", PdfValidationRuleIds.XRefCheckedInPart, 256)]
     [InlineData("object streams the index lacks", PdfValidationRuleIds.XRefObjectStreamBroken, 256)]
@@ -681,6 +683,7 @@ public class ValidatorTests
                 PdfTemplate.SoundWith("<< /Size 4 /Root 1 0 R >>", "/Size 4 /Root 1 0 R >>"), PdfReaderLimits.Default),
             ["sections refusing a row"] = (SectionsRefusingARow(), PdfReaderLimits.Default),
             ["sections naming streams that are not there"] = (SectionsNamingNoStream(), PdfReaderLimits.Default),
+            ["tables holding no subsection"] = (SectionsHoldingNoSubsection(), PdfReaderLimits.Default),
             ["a table the section guard cuts"] = (LongTable(), PdfReaderLimits.Default with { MaxXRefSectionLength = 2048 }),
             ["older sections the object guard hides"] = (OlderSectionsBehindAnObject(), PdfReaderLimits.Default with { MaxObjectLength = 1024 }),
             ["invalid kids"] = (HostileInputTests.Kids(12), PdfReaderLimits.Default),
@@ -990,6 +993,22 @@ public class ValidatorTests
         }
 
         return file.Bytes;
+    }
+
+    /// <summary>
+    /// A sound one-page document saved three more times by updates whose tables hold no subsection, each naming the one
+    /// before through <c>/Prev</c> (#222).
+    /// </summary>
+    private static byte[] SectionsHoldingNoSubsection()
+    {
+        var template = new StringBuilder(PdfTemplate.Sound);
+
+        for (var update = 1; update <= 3; update++)
+        {
+            template.Append(CultureInfo.InvariantCulture, $"xref\ntrailer\n<< /Size 4 /Root 1 0 R /Prev {{xref:{update}}} >>\nstartxref\n{{xref:{update + 1}}}\n%%EOF\n");
+        }
+
+        return PdfTemplate.Build(template.ToString());
     }
 
     /// <summary>A table of three hundred rows, some 6 KB, which a section guard of 2 KB cuts before its trailer.</summary>

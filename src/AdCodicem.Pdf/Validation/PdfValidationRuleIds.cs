@@ -98,6 +98,12 @@ public static class PdfValidationRuleIds
     public const string XRefSectionShifted = "xref.section-shifted";
 
     /// <summary>
+    /// A classic cross-reference table holds no subsection: its <c>trailer</c> keyword follows its <c>xref</c> keyword.
+    /// <see cref="PdfValidationSeverity.Warning"/>.
+    /// </summary>
+    public const string XRefSubsectionMissing = "xref.subsection-missing";
+
+    /// <summary>
     /// The chain of cross-reference sections names a section it has already read, or an offset it has already named,
     /// and the sections before the loop are out of reach. <see cref="PdfValidationSeverity.Error"/>.
     /// </summary>

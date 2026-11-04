@@ -2170,7 +2170,7 @@ public class DocumentReaderTests
         // object 9, which the index lacks. Resolving it once rebuilt the index before any of its rows was read, and the
         // chain's empty index asked for a rebuild once more (#182). Nothing is loaded while the chain is read: the reference
         // names nothing the chain can read, the older stream is malformed, and the empty index the chain leaves is rebuilt
-        // once.
+        // once. The newer stream, read only in part, is reported first (#210).
         const string Template = """
             %PDF-1.5
             {seven}
@@ -2208,8 +2208,11 @@ public class DocumentReaderTests
         reader.WasRepaired.Should().BeTrue();
         reader.Structure.ChainRead.Should().BeFalse();
         reader.Structure.Sections[1].Fault.Should().Be("its /Index holds the reference 9 0 R, which no section read before it places where it can be read");
-        diagnostics.Select(diagnostic => diagnostic.Code).Should().Equal(PdfDiagnosticCodes.XRefSectionUnreadable, PdfDiagnosticCodes.XRefRebuilt);
-        diagnostics[1].Message.Should().Be("The cross-reference index was rebuilt by scanning the file.");
+        diagnostics.Select(diagnostic => diagnostic.Code).Should().Equal(
+            PdfDiagnosticCodes.XRefSectionUnreadable, PdfDiagnosticCodes.XRefSectionUnreadable, PdfDiagnosticCodes.XRefRebuilt);
+        diagnostics[0].Message.Should().StartWith(
+            "The cross-reference stream startxref names at offset 9 was read only in part: it holds 0 rows where its /Index and /Size declare 2;");
+        diagnostics[2].Message.Should().Be("The cross-reference index was rebuilt by scanning the file.");
     }
 
     [Fact]
@@ -3665,7 +3668,7 @@ public class DocumentReaderTests
                     StaleChain.StreamsPast => "xref\n3 1\n0000000000 00001 f\r\n",
                     StaleChain.TablesPast => string.Create(CultureInfo.InvariantCulture, $"xref\n{newest + k} 1\n0000000000 00001 f\r\n"),
                     _ when k % 2 == 1 => string.Create(CultureInfo.InvariantCulture, $"xref\n{newest + ((k + 1) / 2)} 1\n0000000000 00001 f\r\n"),
-                    _ => "xref\n",
+                    _ => "xref\n0 0\n",
                 });
                 file.Append("trailer\n<< /Size 1 /Root 1 0 R");
                 file.Append(hybrid ? string.Create(CultureInfo.InvariantCulture, $" /XRefStm {stream}") : string.Empty);
@@ -4049,14 +4052,14 @@ public class DocumentReaderTests
     {
         // Stream 7's /Length names object 5, which only its own row places, and its data spells an endstream before its first
         // row: the data up to it holds no whole row, which the row for the /Length cannot lie in, nor a predicted row undone,
-        // and the section lacks every row, the file's. Asked to look for that row again, the reader would divide by the
-        // length of a row it took to be none.
+        // and the section lacks every row, the file's, which is reported (#210). Asked to look for that row again, the reader
+        // would divide by the length of a row it took to be none.
         var file = ChainFiles.DeferredLengthEndStreamSpelledBeforeRows(prefix);
 
         using var document = PdfDocument.Open(file);
 
         document.WasRepaired.Should().BeTrue();
-        document.Diagnostics.Select(entry => entry.Code).Should().Equal(PdfDiagnosticCodes.XRefRebuilt);
+        document.Diagnostics.Select(entry => entry.Code).Should().Equal(PdfDiagnosticCodes.XRefSectionUnreadable, PdfDiagnosticCodes.XRefRebuilt);
         document.GetObject(new PdfObjectId(3)).AsDictionary().Required().IsOfType(PdfName.Page).Should().BeTrue();
     }
 
