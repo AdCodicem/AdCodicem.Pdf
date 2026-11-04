@@ -137,9 +137,12 @@ searches read four times the file at most: a valid file is read past those bytes
 stream whose `/Length` the chain cannot read yet, for the data of a stream whose `/Length` a guard cut or left out of the
 index, and for white space and comments after a declared length, about twice the file — three times over the white
 space a cross-reference stream's search takes as data that its length, once read, is read on through —, and for the
-proof that an `endstream` found under a hidden `/Length` is the stream's own, about three times the file in all. Those stay internal
-constants, since lifting them would let nothing more be read, and
-each says where it is declared why no valid file reaches it.
+proof that an `endstream` found under a hidden `/Length` is the stream's own, about three times the file in all. The
+numbers that cross-reference sections the reader could not read whole lost, which no older section's row may stand for,
+are kept as 4,096 ranges at most, past which every number the newer sections do not give is looked for by rebuilding
+the index: a valid file's sections lose none ([#208](https://github.com/AdCodicem/AdCodicem.Pdf/issues/208),
+[#210](https://github.com/AdCodicem/AdCodicem.Pdf/issues/210)). Those stay internal constants, since lifting them would
+let nothing more be read, and each says where it is declared why no valid file reaches it.
 
 A new bound is classified when it is added ([ADR 34](/project/adr/every-valid-pdf-is-readable-and-the-readers-guards-are)):
 if a valid file can reach it, it becomes a limit, with its code and its test.

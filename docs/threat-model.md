@@ -294,8 +294,9 @@ through `FileQuote`, which writes it as a PDF writer writes a name: printable AS
 number sign and the delimiters as `#xx`. Past `FileQuote.MaxBytes` (127) it is cut, with the whole's length, from a
 buffer on the stack, so a name of 64 MB costs its quote and no copy. A path of keys in a finding keeps its first and
 last `RuleText.PathEnds` (4) steps. A string from the file is never quoted. Numbers are written in the invariant
-culture. What the reader keeps of a stream's length fault for the document's life is the value it found, not words
-about it. Held by `FileQuoteTests`; `PropertyTests.A_quote_of_the_file_is_printable_ascii_on_one_line_and_bounded_whatever_the_bytes`;
+culture; a count agrees with its noun, and a distance is written as a size and the way it runs, never as a negative
+number (`CountText`, [#241]), though some counts group their digits and others do not ([#326]). What the reader keeps of a stream's length fault for the document's life is the value it found, not words
+about it. Held by `FileQuoteTests`; `CountTextTests`; `PropertyTests.A_quote_of_the_file_is_printable_ascii_on_one_line_and_bounded_whatever_the_bytes`;
 `HostileInputTests.Reads_streams_whose_length_names_a_name_of_millions_of_characters_within_an_allocation_budget`,
 `Reads_fifty_streams_whose_length_names_one_long_name_within_an_allocation_budget`,
 `Quotes_a_keyword_of_ten_megabytes_where_a_subsection_should_start_by_its_first_bytes`,
@@ -439,7 +440,8 @@ Known gaps:
 Known gaps:
 
 - [#171] A rebuild takes headers cut at a chunk's edge, or lying in stream data or strings, and serves another object
-  under their number. It takes the bytes `trailer` anywhere — in stream data, a comment, a string, the end of a name —
+  under their number; and misses a header whose tokens comments part over more than the 64 bytes two chunks overlap
+  by, where a chunk's start cuts it ([#261]). It takes the bytes `trailer` anywhere — in stream data, a comment, a string, the end of a name —
   for a trailer's keyword: it merges every key the parse gives of the dictionary after them, not only the keys a
   trailer defines, and notes a reference after them, even in a valid entry such as `/Mytrailer 5 0 R`. A stream nested
   in that dictionary, within the nesting the parser follows, ends the parse, the key that holds it and the keys after
@@ -452,6 +454,23 @@ Known gaps:
 - [#49] A rebuild reads a 64 KB window at every `trailer` keyword.
 - [#189] A rebuild serves a direct definition over a newer copy in a later object stream, and takes `10 0 objx` for a
   header.
+- [#327] The scan, the search near a row and the search near a section read a header's number and generation as digits
+  alone, where a load reads an integer's sign: `4 +0 obj`, which a load at its row reads, is missed, so a rebuild loses
+  the object, and `-4 0 obj`, whose number is no object's, is taken for object 4's header.
+- [#320] A section the search near a missing one tries and drops as unreadable leaves the rows it read before its fault
+  in the index: an older revision's row then stands over the section taken next, and that object is served from the
+  older revision with nothing to say so.
+- [#322] A classic table whose `trailer` keyword no dictionary follows is read as sound: its `/Prev` is lost with the
+  trailer and the chain ends there, but nothing marks the index incomplete, so what only the older sections index reads
+  as null, with no rebuild.
+- [#324] A classic table a `/Prev` names that holds a row that is no row, a subsection header that gives no count, or a
+  stray token among its rows ends the chain there, though its trailer, a few bytes on, could be found: every older
+  section goes unread and unjudged, and what only they index costs a rebuild of the whole file.
+- [#323] When `startxref` names a section that is there and cannot be read whole, the index is rebuilt as the document
+  opens and only `xref.rebuilt` is reported, not why: the section's fault reaches the validator alone.
+- [#328] In a classic trailer `MaxTrailerLength` cut, a `/Prev` written whole before the cut is never judged, where a
+  whole read reports a section outside the file or a loop; and an `/XRefStm` there is followed as if whole, though the
+  cut may have parted its digits, and what it then names is blamed on the file.
 
 ### Resolving objects and object streams
 
@@ -673,6 +692,12 @@ Known gaps:
 - [#276] An object a rebuild serves from another object stream than the chain's index places it in, or from another
   definition of that stream, which does not list it or holds it written as a stream, reads as null with no finding that
   names it: the probe judges the stream and the definition the chain's index places.
+- [#325] `xref.section-malformed` judges a section only where its trailer has no fault: a section the reader could not
+  read for a fault of its own — a `/W` with a negative width, a row that is no row — whose trailer is at fault too earns
+  the trailer's finding alone, and no finding names the fault the reader reported.
+- [#321] A hybrid table that names through `/XRefStm` an older revision's cross-reference stream two or more revisions
+  late has that stream read before the revisions between, its rows standing over what they wrote, and no finding says
+  so: each naming is recorded ([#156]), and no rule judges where the namings lie yet.
 
 ## What holds the defenses
 
@@ -952,6 +977,7 @@ The last column also names the questions they leave open, which that milestone s
 [#229]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/229
 [#230]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/230
 [#237]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/237
+[#241]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/241
 [#255]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/255
 [#256]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/256
 [#259]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/259
@@ -976,5 +1002,12 @@ The last column also names the questions they leave open, which that milestone s
 [#313]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/313
 [#314]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/314
 [#315]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/315
+[#320]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/320
+[#321]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/321
+[#322]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/322
 [#323]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/323
+[#324]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/324
+[#325]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/325
+[#326]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/326
+[#327]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/327
 [#328]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/328

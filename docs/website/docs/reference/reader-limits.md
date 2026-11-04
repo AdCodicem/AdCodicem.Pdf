@@ -67,8 +67,9 @@ there. Raise PdfReaderLimits.MaxDecodedStreamLength to read past it.
   ([#264](https://github.com/AdCodicem/AdCodicem.Pdf/issues/264)). Such a value is no offset, a reference to a row the
   reader read, an offset outside the file, or a section the chain has reached. One that may name a sound section — an
   offset in the file the chain has not reached, a reference to a row past the cut — is the limit's, and so are the
-  trailers past it. A `/Prev` or an `/XRefStm` in a trailer a limit cut is not judged
-  ([#328](https://github.com/AdCodicem/AdCodicem.Pdf/issues/328)). A section a limit cut is
+  trailers past it. A `/Prev` in a trailer a limit cut is not judged, nor an `/XRefStm` in one found past rows a limit
+  stopped; but the `/XRefStm` that the cut trailer of a table read whole gives is followed as if whole, though the cut
+  may have parted its digits ([#328](https://github.com/AdCodicem/AdCodicem.Pdf/issues/328)). A section a limit cut is
   where it was named, and is not looked for near there, as a section that is not there is.
 - An object cut at `MaxObjectLength` is kept as far as the bound, and the catalog among them: the reader takes the
   object `/Root` names for the catalog as it read it, rather than look for another or rebuild the index, until you raise
