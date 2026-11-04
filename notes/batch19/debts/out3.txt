@@ -1,0 +1,264 @@
+### /XRefStm 99999999, MaxTrailerLength 33 [cut inside or after the value] (70372 bytes)
+  opened: WasRepaired False
+  section namedBy=startxref named=203 offset=203 state=Read kind=Table cut=True trailerCut=True trailerFault=None fault=-
+  loop=-1 trailersHidden=True
+  D Warning limit.trailer at 299: A trailer runs past 33 bytes; only what lies within it was read. Raise PdfReaderLimits.MaxTrailerLength to read past it.
+  GetObject(3): <</Type /Page ... 4 entries>>; WasRepaired False
+  F Information xref.checked-in-part: One of the reader's limits stopped it reading the cross-reference section at offset 203 whole: what lies past the limit was not checked.
+
+### /Prev 99999999, MaxTrailerLength 33 [cut inside or after the value] (70369 bytes)
+  opened: WasRepaired False
+  section namedBy=startxref named=203 offset=203 state=Read kind=Table cut=True trailerCut=True trailerFault=None fault=-
+  loop=-1 trailersHidden=True
+  D Warning limit.trailer at 299: A trailer runs past 33 bytes; only what lies within it was read. Raise PdfReaderLimits.MaxTrailerLength to read past it.
+  GetObject(3): <</Type /Page ... 4 entries>>; WasRepaired False
+  F Information xref.checked-in-part: One of the reader's limits stopped it reading the cross-reference section at offset 203 whole: what lies past the limit was not checked.
+
+### /XRefStm 99999999, MaxTrailerLength 35 [cut inside or after the value] (70372 bytes)
+  opened: WasRepaired False
+  section namedBy=startxref named=203 offset=203 state=Read kind=Table cut=True trailerCut=True trailerFault=None fault=-
+  section namedBy=/XRefStm named=99 offset=203 state=Relocated kind=Table cut=True trailerCut=True trailerFault=None fault=-
+  loop=-1 trailersHidden=True
+  D Warning limit.trailer at 299: A trailer runs past 35 bytes; only what lies within it was read. Raise PdfReaderLimits.MaxTrailerLength to read past it.
+  D Repair xref.offset-adjusted at 203: The cross-reference section /XRefStm names at offset 99 was found 104 bytes from there.
+  GetObject(3): <</Type /Page ... 4 entries>>; WasRepaired False
+  F Warning xref.section-shifted: The cross-reference section /XRefStm names at offset 99 starts 104 bytes after it, at offset 203.
+  F Information xref.checked-in-part: One of the reader's limits stopped it reading the cross-reference section at offset 203 whole: what lies past the limit was not checked.
+  F Information xref.checked-in-part: One of the reader's limits stopped it reading the cross-reference section at offset 203 whole: what lies past the limit was not checked.
+
+### /Prev 99999999, MaxTrailerLength 35 [cut inside or after the value] (70369 bytes)
+  opened: WasRepaired False
+  section namedBy=startxref named=203 offset=203 state=Read kind=Table cut=True trailerCut=True trailerFault=None fault=-
+  loop=-1 trailersHidden=True
+  D Warning limit.trailer at 299: A trailer runs past 35 bytes; only what lies within it was read. Raise PdfReaderLimits.MaxTrailerLength to read past it.
+  GetObject(3): <</Type /Page ... 4 entries>>; WasRepaired False
+  F Information xref.checked-in-part: One of the reader's limits stopped it reading the cross-reference section at offset 203 whole: what lies past the limit was not checked.
+
+### /XRefStm 99999999, MaxTrailerLength 37 [cut inside or after the value] (70372 bytes)
+  opened: WasRepaired False
+  section namedBy=startxref named=203 offset=203 state=Read kind=Table cut=True trailerCut=True trailerFault=None fault=-
+  section namedBy=/XRefStm named=9999 offset=9999 state=NotFound kind=Unknown cut=False trailerCut=False trailerFault=None fault=holds neither the xref keyword nor an object
+  loop=-1 trailersHidden=True
+  D Warning limit.trailer at 299: A trailer runs past 37 bytes; only what lies within it was read. Raise PdfReaderLimits.MaxTrailerLength to read past it.
+  D Warning limit.trailer at 9999: The dictionary of the object read as a cross-reference stream runs past 37 bytes; only what lies within it was read. Raise PdfReaderLimits.MaxTrailerLength to read past it.
+  D Warning xref.section-missing at 9999: The cross-reference section /XRefStm names at offset 9999 is not there, nor near it; the objects only it indexes are looked for by rebuilding the index.
+  GetObject(3): <</Type /Page ... 4 entries>>; WasRepaired False
+  D+ Repair xref.rebuilt: The cross-reference index was rebuilt by scanning the file.
+  F Error xref.section-not-found: The cross-reference section /XRefStm names at offset 9999 is not there, nor within 512 bytes of it: the offset holds neither the xref keyword nor an object.
+  F Information xref.checked-in-part: One of the reader's limits stopped it reading the cross-reference section at offset 203 whole: what lies past the limit was not checked.
+
+### /Prev 99999999, MaxTrailerLength 37 [cut inside or after the value] (70369 bytes)
+  opened: WasRepaired False
+  section namedBy=startxref named=203 offset=203 state=Read kind=Table cut=True trailerCut=True trailerFault=None fault=-
+  loop=-1 trailersHidden=True
+  D Warning limit.trailer at 299: A trailer runs past 37 bytes; only what lies within it was read. Raise PdfReaderLimits.MaxTrailerLength to read past it.
+  GetObject(3): <</Type /Page ... 4 entries>>; WasRepaired False
+  F Information xref.checked-in-part: One of the reader's limits stopped it reading the cross-reference section at offset 203 whole: what lies past the limit was not checked.
+
+### /XRefStm 99999999, MaxTrailerLength 39 [cut inside or after the value] (70372 bytes)
+  opened: WasRepaired False
+  section namedBy=startxref named=203 offset=203 state=Read kind=Table cut=True trailerCut=True trailerFault=None fault=-
+  section namedBy=/XRefStm named=999999 offset=999999 state=NotFound kind=Unknown cut=False trailerCut=False trailerFault=None fault=lies outside the file
+  loop=-1 trailersHidden=True
+  D Warning limit.trailer at 299: A trailer runs past 39 bytes; only what lies within it was read. Raise PdfReaderLimits.MaxTrailerLength to read past it.
+  D Warning xref.section-missing at 203: The cross-reference section /XRefStm names at offset 999999 lies outside the file, which is 70,372 bytes long; the objects only it indexes are looked for by rebuilding the index.
+  GetObject(3): <</Type /Page ... 4 entries>>; WasRepaired False
+  D+ Repair xref.rebuilt: The cross-reference index was rebuilt by scanning the file.
+  F Error xref.section-not-found: The cross-reference section /XRefStm names at offset 999999 is not there, nor within 512 bytes of it: the offset lies outside the file.
+  F Information xref.checked-in-part: One of the reader's limits stopped it reading the cross-reference section at offset 203 whole: what lies past the limit was not checked.
+
+### /Prev 99999999, MaxTrailerLength 39 [cut inside or after the value] (70369 bytes)
+  opened: WasRepaired False
+  section namedBy=startxref named=203 offset=203 state=Read kind=Table cut=True trailerCut=True trailerFault=None fault=-
+  loop=-1 trailersHidden=True
+  D Warning limit.trailer at 299: A trailer runs past 39 bytes; only what lies within it was read. Raise PdfReaderLimits.MaxTrailerLength to read past it.
+  GetObject(3): <</Type /Page ... 4 entries>>; WasRepaired False
+  F Information xref.checked-in-part: One of the reader's limits stopped it reading the cross-reference section at offset 203 whole: what lies past the limit was not checked.
+
+### /XRefStm 99999999, MaxTrailerLength 41 [cut inside or after the value] (70372 bytes)
+  opened: WasRepaired False
+  section namedBy=startxref named=203 offset=203 state=Read kind=Table cut=True trailerCut=True trailerFault=None fault=-
+  section namedBy=/XRefStm named=99999999 offset=99999999 state=NotFound kind=Unknown cut=False trailerCut=False trailerFault=None fault=lies outside the file
+  loop=-1 trailersHidden=True
+  D Warning limit.trailer at 299: A trailer runs past 41 bytes; only what lies within it was read. Raise PdfReaderLimits.MaxTrailerLength to read past it.
+  D Warning xref.section-missing at 203: The cross-reference section /XRefStm names at offset 99999999 lies outside the file, which is 70,372 bytes long; the objects only it indexes are looked for by rebuilding the index.
+  GetObject(3): <</Type /Page ... 4 entries>>; WasRepaired False
+  D+ Repair xref.rebuilt: The cross-reference index was rebuilt by scanning the file.
+  F Error xref.section-not-found: The cross-reference section /XRefStm names at offset 99999999 is not there, nor within 512 bytes of it: the offset lies outside the file.
+  F Information xref.checked-in-part: One of the reader's limits stopped it reading the cross-reference section at offset 203 whole: what lies past the limit was not checked.
+
+### /Prev 99999999, MaxTrailerLength 41 [cut inside or after the value] (70369 bytes)
+  opened: WasRepaired False
+  section namedBy=startxref named=203 offset=203 state=Read kind=Table cut=True trailerCut=True trailerFault=None fault=-
+  loop=-1 trailersHidden=True
+  D Warning limit.trailer at 299: A trailer runs past 41 bytes; only what lies within it was read. Raise PdfReaderLimits.MaxTrailerLength to read past it.
+  GetObject(3): <</Type /Page ... 4 entries>>; WasRepaired False
+  F Information xref.checked-in-part: One of the reader's limits stopped it reading the cross-reference section at offset 203 whole: what lies past the limit was not checked.
+
+### /XRefStm 99999999, MaxTrailerLength 42 [cut inside or after the value] (70372 bytes)
+  opened: WasRepaired False
+  section namedBy=startxref named=203 offset=203 state=Read kind=Table cut=True trailerCut=True trailerFault=None fault=-
+  section namedBy=/XRefStm named=99999999 offset=99999999 state=NotFound kind=Unknown cut=False trailerCut=False trailerFault=None fault=lies outside the file
+  loop=-1 trailersHidden=True
+  D Warning limit.trailer at 299: A trailer runs past 42 bytes; only what lies within it was read. Raise PdfReaderLimits.MaxTrailerLength to read past it.
+  D Warning xref.section-missing at 203: The cross-reference section /XRefStm names at offset 99999999 lies outside the file, which is 70,372 bytes long; the objects only it indexes are looked for by rebuilding the index.
+  GetObject(3): <</Type /Page ... 4 entries>>; WasRepaired False
+  D+ Repair xref.rebuilt: The cross-reference index was rebuilt by scanning the file.
+  F Error xref.section-not-found: The cross-reference section /XRefStm names at offset 99999999 is not there, nor within 512 bytes of it: the offset lies outside the file.
+  F Information xref.checked-in-part: One of the reader's limits stopped it reading the cross-reference section at offset 203 whole: what lies past the limit was not checked.
+
+### /Prev 99999999, MaxTrailerLength 42 [cut inside or after the value] (70369 bytes)
+  opened: WasRepaired False
+  section namedBy=startxref named=203 offset=203 state=Read kind=Table cut=True trailerCut=True trailerFault=None fault=-
+  loop=-1 trailersHidden=True
+  D Warning limit.trailer at 299: A trailer runs past 42 bytes; only what lies within it was read. Raise PdfReaderLimits.MaxTrailerLength to read past it.
+  GetObject(3): <</Type /Page ... 4 entries>>; WasRepaired False
+  F Information xref.checked-in-part: One of the reader's limits stopped it reading the cross-reference section at offset 203 whole: what lies past the limit was not checked.
+
+### /Prev outside the file, before the cut [default limits: MaxTrailerLength 64 KB cuts the 70 KB trailer] (70369 bytes)
+  opened: WasRepaired False
+  section namedBy=startxref named=203 offset=203 state=Read kind=Table cut=True trailerCut=True trailerFault=None fault=-
+  loop=-1 trailersHidden=True
+  D Warning limit.trailer at 299: A trailer runs past 64 KB; only what lies within it was read. Raise PdfReaderLimits.MaxTrailerLength to read past it.
+  GetObject(3): <</Type /Page ... 4 entries>>; WasRepaired False
+  F Information xref.checked-in-part: One of the reader's limits stopped it reading the cross-reference section at offset 203 whole: what lies past the limit was not checked.
+
+### /Prev outside the file, before the cut [MaxTrailerLength 1 MB: read whole] (70369 bytes)
+  opened: WasRepaired False
+  section namedBy=startxref named=203 offset=203 state=Read kind=Table cut=False trailerCut=False trailerFault=None fault=-
+  section namedBy=/Prev named=99999999 offset=99999999 state=NotFound kind=Unknown cut=False trailerCut=False trailerFault=None fault=lies outside the file
+  loop=-1 trailersHidden=False
+  D Warning xref.section-missing at 203: The cross-reference section /Prev names at offset 99999999 lies outside the file, which is 70,369 bytes long; the objects only it indexes are looked for by rebuilding the index.
+  GetObject(3): <</Type /Page ... 4 entries>>; WasRepaired False
+  D+ Repair xref.rebuilt: The cross-reference index was rebuilt by scanning the file.
+  F Error xref.section-not-found: The cross-reference section /Prev names at offset 99999999 is not there, nor within 512 bytes of it: the offset lies outside the file.
+
+### /Prev naming the table itself, before the cut [default limits: MaxTrailerLength 64 KB cuts the 70 KB trailer] (70364 bytes)
+  opened: WasRepaired False
+  section namedBy=startxref named=203 offset=203 state=Read kind=Table cut=True trailerCut=True trailerFault=None fault=-
+  loop=-1 trailersHidden=True
+  D Warning limit.trailer at 299: A trailer runs past 64 KB; only what lies within it was read. Raise PdfReaderLimits.MaxTrailerLength to read past it.
+  GetObject(3): <</Type /Page ... 4 entries>>; WasRepaired False
+  F Information xref.checked-in-part: One of the reader's limits stopped it reading the cross-reference section at offset 203 whole: what lies past the limit was not checked.
+
+### /Prev naming the table itself, before the cut [MaxTrailerLength 1 MB: read whole] (70364 bytes)
+  opened: WasRepaired False
+  section namedBy=startxref named=203 offset=203 state=Read kind=Table cut=False trailerCut=False trailerFault=None fault=-
+  loop=203 trailersHidden=False
+  D Warning xref.chain-cycle at 203: The cross-reference chain loops back on itself: the /Prev of the section at offset 203 names offset 203, which the chain has already read.
+  GetObject(3): <</Type /Page ... 4 entries>>; WasRepaired False
+  D+ Repair xref.rebuilt: The cross-reference index was rebuilt by scanning the file.
+  F Error xref.chain-loop: The /Prev of the cross-reference section at offset 203 names offset 203, a section the chain has already read: the chain loops.
+
+### /Prev a name, before the cut [default limits: MaxTrailerLength 64 KB cuts the 70 KB trailer] (70363 bytes)
+  opened: WasRepaired False
+  section namedBy=startxref named=203 offset=203 state=Read kind=Table cut=True trailerCut=True trailerFault=None fault=-
+  section namedBy=/Prev named=-1 offset=-1 state=NotFound kind=Unknown cut=False trailerCut=False trailerFault=None fault=is the name /X, not an offset
+  loop=-1 trailersHidden=True
+  D Warning limit.trailer at 299: A trailer runs past 64 KB; only what lies within it was read. Raise PdfReaderLimits.MaxTrailerLength to read past it.
+  D Warning xref.section-missing at 203: The /Prev of the cross-reference section at offset 203 is not an offset; the sections it names are looked for by rebuilding the index.
+  GetObject(3): <</Type /Page ... 4 entries>>; WasRepaired False
+  D+ Repair xref.rebuilt: The cross-reference index was rebuilt by scanning the file.
+  F Error xref.section-not-found: The /Prev of the cross-reference section at offset 203 is the name /X, not an offset.
+  F Information xref.checked-in-part: One of the reader's limits stopped it reading the cross-reference section at offset 203 whole: what lies past the limit was not checked.
+
+### /Prev a name, before the cut [MaxTrailerLength 1 MB: read whole] (70363 bytes)
+  opened: WasRepaired False
+  section namedBy=startxref named=203 offset=203 state=Read kind=Table cut=False trailerCut=False trailerFault=None fault=-
+  section namedBy=/Prev named=-1 offset=-1 state=NotFound kind=Unknown cut=False trailerCut=False trailerFault=None fault=is the name /X, not an offset
+  loop=-1 trailersHidden=False
+  D Warning xref.section-missing at 203: The /Prev of the cross-reference section at offset 203 is not an offset; the sections it names are looked for by rebuilding the index.
+  GetObject(3): <</Type /Page ... 4 entries>>; WasRepaired False
+  D+ Repair xref.rebuilt: The cross-reference index was rebuilt by scanning the file.
+  F Error xref.section-not-found: The /Prev of the cross-reference section at offset 203 is the name /X, not an offset.
+
+### /XRefStm outside the file, before the cut [default limits: MaxTrailerLength 64 KB cuts the 70 KB trailer] (70372 bytes)
+  opened: WasRepaired False
+  section namedBy=startxref named=203 offset=203 state=Read kind=Table cut=True trailerCut=True trailerFault=None fault=-
+  section namedBy=/XRefStm named=99999999 offset=99999999 state=NotFound kind=Unknown cut=False trailerCut=False trailerFault=None fault=lies outside the file
+  loop=-1 trailersHidden=True
+  D Warning limit.trailer at 299: A trailer runs past 64 KB; only what lies within it was read. Raise PdfReaderLimits.MaxTrailerLength to read past it.
+  D Warning xref.section-missing at 203: The cross-reference section /XRefStm names at offset 99999999 lies outside the file, which is 70,372 bytes long; the objects only it indexes are looked for by rebuilding the index.
+  GetObject(3): <</Type /Page ... 4 entries>>; WasRepaired False
+  D+ Repair xref.rebuilt: The cross-reference index was rebuilt by scanning the file.
+  F Error xref.section-not-found: The cross-reference section /XRefStm names at offset 99999999 is not there, nor within 512 bytes of it: the offset lies outside the file.
+  F Information xref.checked-in-part: One of the reader's limits stopped it reading the cross-reference section at offset 203 whole: what lies past the limit was not checked.
+
+### /XRefStm outside the file, before the cut [MaxTrailerLength 1 MB: read whole] (70372 bytes)
+  opened: WasRepaired False
+  section namedBy=startxref named=203 offset=203 state=Read kind=Table cut=False trailerCut=False trailerFault=None fault=-
+  section namedBy=/XRefStm named=99999999 offset=99999999 state=NotFound kind=Unknown cut=False trailerCut=False trailerFault=None fault=lies outside the file
+  loop=-1 trailersHidden=False
+  D Warning xref.section-missing at 203: The cross-reference section /XRefStm names at offset 99999999 lies outside the file, which is 70,372 bytes long; the objects only it indexes are looked for by rebuilding the index.
+  GetObject(3): <</Type /Page ... 4 entries>>; WasRepaired False
+  D+ Repair xref.rebuilt: The cross-reference index was rebuilt by scanning the file.
+  F Error xref.section-not-found: The cross-reference section /XRefStm names at offset 99999999 is not there, nor within 512 bytes of it: the offset lies outside the file.
+
+### object 4 written '4 0 obj', row at the header [default] (388 bytes)
+  opened: WasRepaired False
+  section namedBy=startxref named=225 offset=225 state=Read kind=Table cut=False trailerCut=False trailerFault=None fault=-
+  loop=-1 trailersHidden=False
+  GetObject(4): "four"; WasRepaired False
+
+### object 4 written '4 0 obj', index rebuilt (startxref 9) [default] (386 bytes)
+  opened: WasRepaired True
+  section namedBy=startxref named=9 offset=9 state=NotFound kind=Unknown cut=False trailerCut=False trailerFault=None fault=holds object 1, which is not a cross-reference stream
+  loop=-1 trailersHidden=False
+  D Repair xref.rebuilt: The cross-reference index was rebuilt by scanning the file.
+  GetObject(4): "four"; WasRepaired True
+  F Error file.startxref-wrong: startxref gives offset 9, which holds object 1, which is not a cross-reference stream.
+
+### object 4 written '4 +0 obj', row at the header [default] (389 bytes)
+  opened: WasRepaired False
+  section namedBy=startxref named=226 offset=226 state=Read kind=Table cut=False trailerCut=False trailerFault=None fault=-
+  loop=-1 trailersHidden=False
+  GetObject(4): "four"; WasRepaired False
+
+### object 4 written '4 +0 obj', index rebuilt (startxref 9) [default] (387 bytes)
+  opened: WasRepaired True
+  section namedBy=startxref named=9 offset=9 state=NotFound kind=Unknown cut=False trailerCut=False trailerFault=None fault=holds object 1, which is not a cross-reference stream
+  loop=-1 trailersHidden=False
+  D Repair xref.rebuilt: The cross-reference index was rebuilt by scanning the file.
+  GetObject(4): null; WasRepaired True
+  F Error file.startxref-wrong: startxref gives offset 9, which holds object 1, which is not a cross-reference stream.
+
+### object 4 written '+4 0 obj', row at the header [default] (389 bytes)
+  opened: WasRepaired False
+  section namedBy=startxref named=226 offset=226 state=Read kind=Table cut=False trailerCut=False trailerFault=None fault=-
+  loop=-1 trailersHidden=False
+  GetObject(4): "four"; WasRepaired False
+
+### object 4 written '+4 0 obj', index rebuilt (startxref 9) [default] (387 bytes)
+  opened: WasRepaired True
+  section namedBy=startxref named=9 offset=9 state=NotFound kind=Unknown cut=False trailerCut=False trailerFault=None fault=holds object 1, which is not a cross-reference stream
+  loop=-1 trailersHidden=False
+  D Repair xref.rebuilt: The cross-reference index was rebuilt by scanning the file.
+  GetObject(4): "four"; WasRepaired True
+  F Error file.startxref-wrong: startxref gives offset 9, which holds object 1, which is not a cross-reference stream.
+
+### object 4 written '-4 0 obj', row at the header [default] (389 bytes)
+  opened: WasRepaired False
+  section namedBy=startxref named=226 offset=226 state=Read kind=Table cut=False trailerCut=False trailerFault=None fault=-
+  loop=-1 trailersHidden=False
+  GetObject(4): "four"; WasRepaired False
+  F Warning xref.entry-shifted: The entry of object 4 gives offset 203, where there is no object header; the object starts 1 byte after it, at offset 204.
+
+### object 4 written '-4 0 obj', index rebuilt (startxref 9) [default] (387 bytes)
+  opened: WasRepaired True
+  section namedBy=startxref named=9 offset=9 state=NotFound kind=Unknown cut=False trailerCut=False trailerFault=None fault=holds object 1, which is not a cross-reference stream
+  loop=-1 trailersHidden=False
+  D Repair xref.rebuilt: The cross-reference index was rebuilt by scanning the file.
+  GetObject(4): "four"; WasRepaired True
+  F Error file.startxref-wrong: startxref gives offset 9, which holds object 1, which is not a cross-reference stream.
+
+### a /Prev table: a bad row, then a dictionary with no trailer keyword [default] (2948 bytes)
+  opened: WasRepaired True
+  section namedBy=startxref named=2853 offset=2853 state=Read kind=Table cut=False trailerCut=False trailerFault=None fault=-
+  section namedBy=/Prev named=1558 offset=1558 state=Malformed kind=Table cut=False trailerCut=False trailerFault=Missing fault=the row for object 5, at offset 1587, is not an offset, a generation and n or f
+  loop=-1 trailersHidden=False
+  D Warning xref.section-unreadable at 1558: The cross-reference table /Prev names at offset 1558 is there but cannot be read: the row for object 5, at offset 1587, is not an offset, a generation and n or f. The rows read before the fault, if any, were kept; the objects only the rest indexes are looked for by rebuilding the index.
+  D Repair xref.rebuilt: The cross-reference index was rebuilt by scanning the file.
+  GetObject(3): <</Type /Page ... 4 entries>>; WasRepaired True
+  GetObject(4): "four"; WasRepaired True
+  F Error file.trailer-missing: The cross-reference table at offset 1558 is not followed by a trailer: a dictionary follows its rows at offset 1607 without the trailer keyword.
+

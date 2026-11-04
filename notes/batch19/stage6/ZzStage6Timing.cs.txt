@@ -1,0 +1,52 @@
+using System.Diagnostics;
+using System.Globalization;
+using System.Text;
+using AdCodicem.Pdf.Documents;
+using AdCodicem.Pdf.Objects;
+
+namespace AdCodicem.Pdf.Tests;
+
+#pragma warning disable
+
+public class ZzStage6Timing
+{
+    private static (TimeSpan Time, long Allocated) Measure(byte[] file, PdfReaderOptions options)
+    {
+        var best = TimeSpan.MaxValue;
+        long least = long.MaxValue;
+
+        for (var run = 0; run < 7; run++)
+        {
+            var before = GC.GetAllocatedBytesForCurrentThread();
+            var watch = Stopwatch.StartNew();
+            using (var document = PdfDocument.Open(file, options)) { }
+            var t = watch.Elapsed;
+            least = Math.Min(least, GC.GetAllocatedBytesForCurrentThread() - before);
+            best = t < best ? t : best;
+        }
+
+        return (best, least);
+    }
+
+    [Fact]
+    public void ZzTime()
+    {
+        var output = new StringBuilder();
+        var tag = Environment.GetEnvironmentVariable("ZZ_TAG") ?? "base";
+        var options = new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxXRefSectionCount = 4096, MaxTrailerLength = LostStreamFiles.TrailerLength } };
+
+        var a = Measure(LostStreamFiles.OwnNumbers(256, 700, 16), options);
+        var b = Measure(LostStreamFiles.OwnNumbers(1024, 700, 16), options);
+        output.AppendLine(CultureInfo.InvariantCulture, $"{tag} full trailers: {a.Time.TotalMilliseconds:F1} ms {a.Allocated:N0} / {b.Time.TotalMilliseconds:F1} ms {b.Allocated:N0}; time {b.Time / a.Time:F2} alloc {(double)b.Allocated / a.Allocated:F3}");
+
+        a = Measure(LostStreamFiles.OwnNumbers(256, 4, 64 * 256), options);
+        b = Measure(LostStreamFiles.OwnNumbers(1024, 4, 64 * 1024), options);
+        output.AppendLine(CultureInfo.InvariantCulture, $"{tag} four: {a.Time.TotalMilliseconds:F1} ms {a.Allocated:N0} / {b.Time.TotalMilliseconds:F1} ms {b.Allocated:N0}; time {b.Time / a.Time:F2} alloc {(double)b.Allocated / a.Allocated:F3}");
+
+        a = Measure(LostStreamFiles.RangesOverOlderRows(false, 262_144), options);
+        b = Measure(LostStreamFiles.RangesOverOlderRows(true, 262_144), options);
+        output.AppendLine(CultureInfo.InvariantCulture, $"{tag} joined/apart: {a.Time.TotalMilliseconds:F1} ms {a.Allocated:N0} / {b.Time.TotalMilliseconds:F1} ms {b.Allocated:N0}; time {b.Time / a.Time:F2} alloc {(double)b.Allocated / a.Allocated:F3}");
+
+        File.AppendAllText("/tmp/claude-0/-home-user-AdCodicem-Pdf/b5ddd9fc-0507-5e11-8a94-c9e1fedd4860/scratchpad/lot19/stage6/ratios2.txt", output.ToString());
+    }
+}

@@ -1,0 +1,198 @@
+diff --git a/src/AdCodicem.Pdf/IO/PdfFileReader.cs b/src/AdCodicem.Pdf/IO/PdfFileReader.cs
+index a946dab..5a2aac1 100644
+--- a/src/AdCodicem.Pdf/IO/PdfFileReader.cs
++++ b/src/AdCodicem.Pdf/IO/PdfFileReader.cs
+@@ -325,6 +325,16 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
+     /// </summary>
+     private long[]? _rowsLeftUnread;
+ 
++    /// <summary>
++    /// The offsets the <c>/Prev</c> and <c>/XRefStm</c> of the section just read give, where a guard stopped its rows — cut
++    /// them, or filled the index — and the chain ends at it: judged as far as the guard lets them be, never read (#264). -1
++    /// where they give none, or the section was read whole.
++    /// </summary>
++    private long _previousPastGuard = -1;
++
++    /// <inheritdoc cref="_previousPastGuard"/>
++    private long _hybridPastGuard = -1;
++
+     /// <summary>
+     /// The cross-reference streams the chain read whose indirect <c>/Length</c> it could not read, by where their data
+     /// starts: each <c>/Length</c> is read once the chain is read, and checked against the data the chain took.
+@@ -2941,8 +2951,19 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
+         var naming = "startxref";
+         var namedFrom = _structure.StartXRefPosition;
+ 
++        // Whether the offset was named by a section a guard stopped, where the chain ends: judged, never read (#264).
++        var pastGuard = false;
++
+         while (offset >= 0)
+         {
++            // An offset in the file a section a guard stopped names is where the guard hides the older sections, which its
++            // report says: a section there would be read only past the guard. One the chain read already, or one outside the
++            // file, is judged as a whole read judges it, whatever the guard hid.
++            if (pastGuard && IsInFile(PositionOf(offset)) && !visited.Contains(offset))
++            {
++                break;
++            }
++
+             if (!visited.Add(offset))
+             {
+                 // The section the chain should have gone on to is unknown: what only it indexed is the index's to
+@@ -3049,11 +3070,17 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
+                 previous = -1;
+             }
+ 
+-            if (_indexFullAt >= 0)
++            if (_indexFullAt >= 0 || (endedByGuard && (_previousPastGuard >= 0 || _hybridPastGuard >= 0)))
+             {
+                 // The index takes no more numbers: an older section could only add rows for numbers it lacks, which it
+-                // has no room for, or for numbers a newer section gave already.
+-                break;
++                // has no room for, or for numbers a newer section gave already. Or a guard cut the section's rows: an older
++                // section's rows would stand for those the guard left unread. What the section names is judged, not read.
++                JudgeStreamPastGuard(hybrid >= 0 ? hybrid : _hybridPastGuard, section.Offset, visited);
++                offset = section.TrailerCutByLimit ? -1 : previous >= 0 ? previous : _previousPastGuard;
++                naming = "/Prev";
++                namedFrom = section.Offset;
++                pastGuard = true;
++                continue;
+             }
+ 
+             if (hybrid >= 0 && visited.Add(hybrid))
+@@ -3083,7 +3110,11 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
+                     // limit, an older section's rows would stand for the objects the rows left unread define. Its trailer,
+                     // unread, may give what the read ones lack, where the file can hold it and the chain has not read it.
+                     _structure.TrailersHiddenByGuard |= previous >= 0 && IsInFile(PositionOf(previous)) && !visited.Contains(previous);
+-                    break;
++                    offset = previous;
++                    naming = "/Prev";
++                    namedFrom = section.Offset;
++                    pastGuard = true;
++                    continue;
+                 }
+             }
+ 
+@@ -3095,6 +3126,29 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
+         return _xref.Count > 0;
+     }
+ 
++    /// <summary>
++    /// Judges the <c>/XRefStm</c> of a table a guard stopped, which the chain does not read, its rows standing for those the
++    /// guard left unread (#264): one outside the file is a section missing, as a whole read finds it; one in the file is the
++    /// guard's to hide, and one the chain read already is passed over, as a whole read passes it over.
++    /// </summary>
++    private void JudgeStreamPastGuard(long hybrid, long namedFrom, HashSet<long> visited)
++    {
++        if (hybrid < 0 || IsInFile(PositionOf(hybrid)) || !visited.Add(hybrid))
++        {
++            return;
++        }
++
++        // As TryReadXRefSection records a section outside the file, which it does not read.
++        var stream = new XRefSectionRecord("/XRefStm", PositionOf(hybrid), namedFrom)
++        {
++            WrittenOffset = hybrid,
++            State = XRefSectionState.NotFound,
++            Fault = "lies outside the file",
++        };
++        _structure.Add(stream);
++        ReportLostSection(stream, "/XRefStm", hybrid, namedFrom);
++    }
++
+     /// <summary>
+     /// Determines whether the chain read a section it named at <paramref name="offset"/>, as the file writes it: where it was
+     /// named, or near it.
+@@ -3381,6 +3435,8 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
+         previous = -1;
+         hybrid = -1;
+         _rowsLeftUnread = null;
++        _previousPastGuard = -1;
++        _hybridPastGuard = -1;
+ 
+         if (!IsInFile(absolute))
+         {
+@@ -3569,6 +3625,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
+                     if (!candidate)
+                     {
+                         ReadTrailerPastRows(absolute + lexer.Position, section);
++                        JudgeLinksPastGuard(section, absolute);
+                     }
+ 
+                     return true;
+@@ -3597,6 +3654,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
+                         ReadTrailerPastRows(
+                             Math.Max(absolute + (line >= 0 ? line + 1 : windowSize - TrailerKeyword.Length), absolute + section.Padding + "xref".Length),
+                             section);
++                        JudgeLinksPastGuard(section, absolute);
+                     }
+                 }
+                 else
+@@ -3614,6 +3672,26 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
+         }
+     }
+ 
++    /// <summary>
++    /// Reads the <c>/Prev</c> and <c>/XRefStm</c> of a classic table whose rows a guard stopped, its trailer found past them,
++    /// for the chain to judge without following them (#264): a value that names no offset is reported as a whole read reports
++    /// it, unless it leads to what the guard hides, and an offset is left for the chain to judge. Neither is read where the
++    /// trailer was cut — what it named may lie past the cut —, nor in a table an <c>/XRefStm</c> names, whose links a whole
++    /// read does not follow either.
++    /// </summary>
++    private void JudgeLinksPastGuard(XRefSectionRecord section, long absolute)
++    {
++        if (section.Trailer is not { } trailer || section.TrailerCutByLimit || section.NamedBy == "/XRefStm")
++        {
++            return;
++        }
++
++        _previousPastGuard = SectionOffset(trailer, PdfName.Prev, absolute, out var previousHidden, rowsHidden: true);
++        _hybridPastGuard = SectionOffset(trailer, PdfName.XRefStm, absolute, out var streamHidden, rowsHidden: true);
++        section.ChainHiddenByGuard = streamHidden ?? previousHidden;
++        section.ChainHiddenAtStream = streamHidden is not null;
++    }
++
+     /// <summary>
+     /// Finds the trailer of a classic table past the rows the reader left unread from <paramref name="from"/> on — those
+     /// <see cref="PdfReaderLimits.MaxXRefSectionLength"/> cut, or those past an index
+@@ -4404,8 +4482,14 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
+         // A hybrid file's stream gives a /Prev of its own, which the reader does not follow: the chain goes on through the
+         // table's, as ISO 32000-1 (7.5.8.4) describes, and the stream's is not read, to name a section missing or end the
+         // chain for a guard.
++        // Where a guard cut the rows, the chain ends here, and the /Prev is judged as far as the guard lets it be, never read
++        // (#264): at a place the section may have been moved to too, which a stream read so is taken for.
+         string? previousHidden = null;
+-        previous = rowsCut || section.NamedBy == "/XRefStm" ? -1 : SectionOffset(dictionary, PdfName.Prev, absolute, out previousHidden);
++        var linked = section.NamedBy == "/XRefStm"
++            ? -1
++            : SectionOffset(dictionary, PdfName.Prev, absolute, out previousHidden, rowsHidden: rowsCut);
++        previous = rowsCut ? -1 : linked;
++        _previousPastGuard = rowsCut ? linked : -1;
+         section.ChainHiddenByGuard = previousHidden;
+         return XRefSectionState.Read;
+     }
+@@ -5168,7 +5252,11 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
+     /// What the entry is, when it leads to an object a guard cut, which ends the chain — "its /Prev is the reference 9 0 R,
+     /// which one of the reader's limits cut" —; null otherwise.
+     /// </param>
+-    private long SectionOffset(PdfDictionary trailer, PdfName key, long section, out string? hidden)
++    /// <param name="rowsHidden">
++    /// Whether a guard cut the section's own rows, which may place the object a reference names: one that leads to a number
++    /// they may hold names what is unknown, as past a full index (#264).
++    /// </param>
++    private long SectionOffset(PdfDictionary trailer, PdfName key, long section, out string? hidden, bool rowsHidden = false)
+     {
+         hidden = null;
+ 
+@@ -5187,8 +5275,9 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
+         }
+ 
+         // A reference leading to what a guard that filled the index hides names what is unknown: the chain ends there for the
+-        // guard, not the file (#175).
+-        if (_indexFullAt >= 0 && LeadsPastIndex(value, out _))
++        // guard, not the file (#175). So does one leading to a row a guard left unread in the section itself, its rows cut
++        // (#264).
++        if ((_indexFullAt >= 0 || rowsHidden) && LeadsPastIndex(value, out _))
+         {
+             return -1;
+         }

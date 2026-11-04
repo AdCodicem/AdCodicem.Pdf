@@ -1,0 +1,108 @@
+diff --git a/src/AdCodicem.Pdf/IO/PdfFileReader.cs b/src/AdCodicem.Pdf/IO/PdfFileReader.cs
+index a946dab..b2fdcbb 100644
+--- a/src/AdCodicem.Pdf/IO/PdfFileReader.cs
++++ b/src/AdCodicem.Pdf/IO/PdfFileReader.cs
+@@ -3056,7 +3056,13 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
+                 break;
+             }
+ 
+-            if (hybrid >= 0 && visited.Add(hybrid))
++            if (hybrid >= 0 && visited.Contains(hybrid))
++            {
++                // Named again: what is there was read, or looked for, once, where it was first named; the naming is recorded,
++                // so that the validation rules see each table's stream (#156).
++                NameAgain(hybrid, section);
++            }
++            else if (hybrid >= 0 && visited.Add(hybrid))
+             {
+                 // A hybrid-reference file keeps a classic table for old readers and a stream for the rest: without
+                 // the stream, the objects it indexes are missing, and the chain goes on through /Prev.
+@@ -3095,6 +3101,43 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
+         return _xref.Count > 0;
+     }
+ 
++    /// <summary>
++    /// Records that <paramref name="table"/>'s <c>/XRefStm</c> names <paramref name="offset"/>, which the chain has named
++    /// before: a hybrid file's stream a newer table named too — a writer that copies <c>/XRefStm</c> into the next trailer —,
++    /// read once, where it was first named. Its rows count for each table that names it (#156).
++    /// </summary>
++    /// <remarks>
++    /// Run once for each table the chain reads, over the records made so far: at most twice as many as the sections the
++    /// chain may read.
++    /// </remarks>
++    private void NameAgain(long offset, XRefSectionRecord table)
++    {
++        XRefSectionRecord? first = null;
++
++        foreach (var section in _structure.Sections)
++        {
++            if (section.WrittenOffset == offset)
++            {
++                first = section;
++                break;
++            }
++        }
++
++        var again = new XRefSectionRecord("/XRefStm", PositionOf(offset), table.Offset)
++        {
++            WrittenOffset = offset,
++            NamingTrailer = table.Trailer,
++            ReadAs = first,
++        };
++        again.State = XRefSectionState.NamedAgain;
++        again.Kind = first?.Kind ?? XRefSectionKind.Unknown;
++
++        // A hybrid file's stream is part of each revision whose table names it; what the chain read through /Prev or
++        // startxref, or a table, is no table's stream.
++        again.HighestNumber = first is { NamedBy: "/XRefStm", Kind: XRefSectionKind.Stream } ? first.HighestNumber : -1;
++        _structure.Add(again);
++    }
++
+     /// <summary>
+     /// Determines whether the chain read a section it named at <paramref name="offset"/>, as the file writes it: where it was
+     /// named, or near it.
+diff --git a/src/AdCodicem.Pdf/IO/XRef/XRefSectionRecord.cs b/src/AdCodicem.Pdf/IO/XRef/XRefSectionRecord.cs
+index 06de2eb..0b125c0 100644
+--- a/src/AdCodicem.Pdf/IO/XRef/XRefSectionRecord.cs
++++ b/src/AdCodicem.Pdf/IO/XRef/XRefSectionRecord.cs
+@@ -132,6 +132,12 @@ internal sealed class XRefSectionRecord
+     /// </summary>
+     public PdfDictionary? NamingTrailer { get; init; }
+ 
++    /// <summary>
++    /// Gets the record of what the chain read, or looked for, where an earlier naming named the same offset, for an
++    /// <c>/XRefStm</c> that names it again (<see cref="XRefSectionState.NamedAgain"/>); null for every other section.
++    /// </summary>
++    public XRefSectionRecord? ReadAs { get; init; }
++
+     /// <summary>Gets the object number of a cross-reference stream, or 0 for a classic table.</summary>
+     public int StreamObjectNumber { get; set; }
+ 
+diff --git a/src/AdCodicem.Pdf/IO/XRef/XRefSectionState.cs b/src/AdCodicem.Pdf/IO/XRef/XRefSectionState.cs
+index 67a6627..28aa752 100644
+--- a/src/AdCodicem.Pdf/IO/XRef/XRefSectionState.cs
++++ b/src/AdCodicem.Pdf/IO/XRef/XRefSectionState.cs
+@@ -17,4 +17,10 @@ internal enum XRefSectionState : byte
+     /// read.
+     /// </summary>
+     Malformed,
++
++    /// <summary>
++    /// Named by an <c>/XRefStm</c> at an offset the chain had named before: what is there was read, or looked for, once,
++    /// where it was first named, and <see cref="XRefSectionRecord.ReadAs"/> is its record (#156).
++    /// </summary>
++    NamedAgain,
+ }
+diff --git a/src/AdCodicem.Pdf/Validation/Rules/PageTreePageOrphanedRule.cs b/src/AdCodicem.Pdf/Validation/Rules/PageTreePageOrphanedRule.cs
+index 8075927..a7581e2 100644
+--- a/src/AdCodicem.Pdf/Validation/Rules/PageTreePageOrphanedRule.cs
++++ b/src/AdCodicem.Pdf/Validation/Rules/PageTreePageOrphanedRule.cs
+@@ -97,7 +97,7 @@ internal sealed class PageTreePageOrphanedRule : IValidationRule
+ 
+         foreach (var section in structure.Sections)
+         {
+-            if (section.State is not (XRefSectionState.Read or XRefSectionState.Relocated) || section.Incomplete || section.CutByLimit ||
++            if (section.State is not (XRefSectionState.Read or XRefSectionState.Relocated or XRefSectionState.NamedAgain) || section.Incomplete || section.CutByLimit ||
+                 section.ChainHiddenByGuard is not null)
+             {
+                 return false;

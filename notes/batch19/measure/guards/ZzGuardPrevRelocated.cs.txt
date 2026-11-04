@@ -1,0 +1,86 @@
+using System.Globalization;
+using System.Text;
+using AdCodicem.Pdf.Documents;
+using AdCodicem.Pdf.IO;
+using AdCodicem.Pdf.Validation;
+
+namespace AdCodicem.Pdf.Tests;
+
+#pragma warning disable
+
+/// <summary>
+/// Probe (uncommitted): a cross-reference stream found 4 bytes from where the newest table's /Prev names it, its rows cut by
+/// MaxDecodedStreamLength, its own /Prev a fault or sound, beside the file read whole.
+/// </summary>
+public class ZzGuardPrevRelocated
+{
+    private static byte[] Build(string prev)
+    {
+        static string Row(int type, long offset, int generation) =>
+            string.Create(CultureInfo.InvariantCulture, $"{type:X2}{offset:X8}{generation:X4}");
+
+        var file = new HandWrittenFile();
+        var one = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>");
+        var two = file.Object(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>");
+        var three = file.Object(3, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 1 1] /Resources << >> >>");
+        var older = file.Table(4, new Dictionary<int, long> { [1] = one, [2] = two, [3] = three }, "/Size 4 /Root 1 0 R");
+        two = file.Object(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>");
+        three = file.Object(3, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 2 2] /Resources << >> >>");
+        var stream = file.Position;
+        var link = prev switch
+        {
+            "outside" => "99999999",
+            "free" => "21 0 R",
+            "sound" => older.ToString(CultureInfo.InvariantCulture),
+            _ => throw new ArgumentException(prev),
+        };
+        var data = Row(0, 0, 65535) + Row(0, 0, 0) + Row(1, two, 0) + Row(1, three, 0) +
+            string.Concat(Enumerable.Repeat(Row(0, 0, 0), 40)) + Row(1, stream, 0) + ">";
+        file.Raw($"44 0 obj\n<< /Type /XRef /Size 45 /Index [0 1 21 1 2 2 4 40 44 1] /W [1 4 2] /Filter /ASCIIHexDecode /Prev {link} /Length {data.Length} >>\nstream\n{data}\nendstream\nendobj\n");
+        var newest = file.Position;
+        file.Raw($"xref\n0 1\n0000000000 65535 f \ntrailer\n<< /Size 45 /Prev {stream - 4} /Root 1 0 R >>\nstartxref\n{newest}\n%%EOF\n");
+        return file.Bytes;
+    }
+
+    [Fact]
+    public void ZzGuardPrevRelocatedShapes()
+    {
+        if (Environment.GetEnvironmentVariable("ZZ_GUARD_OUT") is not { } path)
+        {
+            return;
+        }
+
+        var output = new StringBuilder();
+
+        foreach (var prev in new[] { "outside", "free", "sound" })
+        {
+            var file = Build(prev);
+
+            foreach (var (name, limits) in new (string, PdfReaderLimits?)[] { ("decoded", PdfReaderLimits.Default with { MaxDecodedStreamLength = 35 }), ("default", null) })
+            {
+                output.AppendLine($"=== relocated stream /Prev {prev}, {name}");
+                using var document = PdfDocument.Open(file, limits is null ? PdfReaderOptions.Default : new PdfReaderOptions { Limits = limits });
+
+                foreach (var diagnostic in document.Diagnostics)
+                {
+                    output.AppendLine("    " + diagnostic);
+                }
+
+                foreach (var record in document.Reader.Structure.Sections)
+                {
+                    output.AppendLine($"  section {record.NamedBy} named {record.WrittenOffset} at {record.Offset}: {record.State} cut={record.CutByLimit} fault={record.Fault ?? "-"}");
+                }
+
+                output.AppendLine($"  trailersHidden={document.Reader.Structure.TrailersHiddenByGuard} repaired={document.WasRepaired}");
+                var report = new PdfValidator().Validate(document);
+
+                foreach (var finding in report.Findings)
+                {
+                    output.AppendLine($"    {finding.Severity} {finding.RuleId}: {finding.Message}");
+                }
+            }
+        }
+
+        File.WriteAllText(path, output.ToString());
+    }
+}

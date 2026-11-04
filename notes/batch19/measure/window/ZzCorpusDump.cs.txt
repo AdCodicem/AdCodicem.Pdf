@@ -1,0 +1,71 @@
+using System.Text;
+using AdCodicem.Pdf.Documents;
+using AdCodicem.Pdf.TestSupport;
+using AdCodicem.Pdf.Validation;
+
+namespace AdCodicem.Pdf.Tests;
+
+#pragma warning disable
+
+/// <summary>Stage probe (uncommitted): each corpus document's validation report and diagnostics, validated twice, and its index after.</summary>
+public class ZzCorpusDump
+{
+    [Fact]
+    public void ZzCorpusDumpAll()
+    {
+        var output = new StringBuilder();
+
+        foreach (var entry in Corpus.Documents)
+        {
+            output.Append("== ").Append(entry.File).Append('\n');
+
+            try
+            {
+                var options = CorpusReadingTests.OptionsFor(entry) with { ThrowOnEncrypted = false };
+                using var document = PdfDocument.Open(Corpus.PathOf(entry.File), options);
+
+                for (var round = 0; round < 2; round++)
+                {
+                    var report = new PdfValidator().Validate(document);
+                    output.Append("  round ").Append(round).Append(" findings=").Append(report.Findings.Count).Append('\n');
+
+                    foreach (var finding in report.Findings)
+                    {
+                        output.Append("    F ").Append(finding).Append('\n');
+                    }
+                }
+
+                foreach (var diagnostic in document.Diagnostics)
+                {
+                    output.Append("    D ").Append(diagnostic).Append('\n');
+                }
+
+                // The index the reader serves after validation: its size and a hash of its entries (lens window, #261).
+                var entries = new List<(int Number, string Entry)>();
+
+                foreach (var (number, indexEntry) in document.Reader.Index)
+                {
+                    entries.Add((number, indexEntry.ToString()));
+                }
+
+                entries.Sort((left, right) => left.Number.CompareTo(right.Number));
+                var text = new StringBuilder();
+
+                foreach (var (number, indexEntry) in entries)
+                {
+                    text.Append(number).Append(':').Append(indexEntry).Append('\n');
+                }
+
+                var hash = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(Encoding.UTF8.GetBytes(text.ToString())))[..16];
+                output.Append("  index repaired=").Append(document.WasRepaired).Append(" entries=").Append(entries.Count)
+                    .Append(" hash=").Append(hash).Append('\n');
+            }
+            catch (Exception exception)
+            {
+                output.Append("  THREW ").Append(exception.GetType().Name).Append(": ").Append(exception.Message).Append('\n');
+            }
+        }
+
+        File.WriteAllText(Environment.GetEnvironmentVariable("ZZ_CORPUS_OUT") ?? "/tmp/zz-corpus.txt", output.ToString());
+    }
+}

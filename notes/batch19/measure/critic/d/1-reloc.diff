@@ -1,0 +1,118 @@
+diff --git a/src/AdCodicem.Pdf/IO/PdfFileReader.cs b/src/AdCodicem.Pdf/IO/PdfFileReader.cs
+index a946dab..957eea7 100644
+--- a/src/AdCodicem.Pdf/IO/PdfFileReader.cs
++++ b/src/AdCodicem.Pdf/IO/PdfFileReader.cs
+@@ -519,6 +519,12 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
+     /// <summary>How many places have been tried for sections of the chain that were not where it named them.</summary>
+     private int _relocationCandidatesTried;
+ 
++    /// <summary>
++    /// The positions in the file where the chain read a section, where it was named or where it was found moved: no other
++    /// section the chain names is looked for there (#188, #281).
++    /// </summary>
++    private readonly HashSet<long> _sectionsReadAt = new(SeededComparer.Instance);
++
+     /// <summary>
+     /// Whether the index may lack objects the file defines because the file is damaged: a section the chain names could not
+     /// be found or read, the chain loops, a cross-reference stream's data holds fewer rows than it declares, or a row was
+@@ -3013,14 +3019,17 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
+                 }
+ 
+                 // A section a guard cut is where it was named, and is not looked for elsewhere: what lies near it would
+-                // stand for it.
+-                if (section.CutByLimit || !TryRelocateXRefSection(offset, section, out previous, out hybrid))
++                // stand for it. So is one that is there and cannot be read — the xref keyword, or a stream whose dictionary
++                // gives /Type /XRef —: the offset names it, and any other section near it is another (#281).
++                if (section.CutByLimit || DeclaresItselfASection(section) ||
++                    !TryRelocateXRefSection(offset, section, out previous, out hybrid))
+                 {
+                     ReportLostSection(section, naming, offset, namedFrom);
+                     break;
+                 }
+             }
+ 
++            _sectionsReadAt.Add(section.Offset);
+             _olderNumberedPast |= sections > 1 && section.HighestNumber > _highestRead;
+             _highestRead = Math.Max(_highestRead, section.HighestNumber);
+ 
+@@ -3069,10 +3078,15 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
+                 _structure.Add(stream);
+ 
+                 if (TryReadXRefSection(stream.Offset, stream, out _, out _) != XRefSectionState.Read &&
+-                    (stream.CutByLimit || !TryRelocateXRefSection(hybrid, stream, out _, out _)))
++                    (stream.CutByLimit || DeclaresItselfASection(stream) ||
++                        !TryRelocateXRefSection(hybrid, stream, out _, out _)))
+                 {
+                     ReportLostSection(stream, "/XRefStm", hybrid, section.Offset);
+                 }
++                else
++                {
++                    _sectionsReadAt.Add(stream.Offset);
++                }
+ 
+                 _olderNumberedPast |= sections > 1 && stream.HighestNumber > _highestRead;
+                 _highestRead = Math.Max(_highestRead, stream.HighestNumber);
+@@ -3095,6 +3109,14 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
+         return _xref.Count > 0;
+     }
+ 
++    /// <summary>
++    /// Determines whether a section the chain could not read is there all the same: a classic table's <c>xref</c> keyword, or
++    /// a stream whose dictionary gives <c>/Type /XRef</c>. An object that only gives a <c>/W</c> may be anything — a CIDFont's
++    /// widths — and leaves the section looked for nearby (#263, #281).
++    /// </summary>
++    private static bool DeclaresItselfASection(XRefSectionRecord section) =>
++        section.State == XRefSectionState.Malformed && (section.Kind == XRefSectionKind.Table || section.TypedXRef);
++
+     /// <summary>
+     /// Determines whether the chain read a section it named at <paramref name="offset"/>, as the file writes it: where it was
+     /// named, or near it.
+@@ -3174,6 +3196,16 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
+     /// </remarks>
+     private void ReportLostSection(XRefSectionRecord section, string naming, long offset, long namedFrom)
+     {
++        // PROTOTYPE (c9): an object that only gives a /W, and no /Type /XRef, that cannot be read and has no section near it
++        // is no section: missing, as an object of another kind is.
++        if (section.State == XRefSectionState.Malformed && !section.CutByLimit && section.Kind == XRefSectionKind.Stream &&
++            section.TypedOther)
++        {
++            section.State = XRefSectionState.NotFound;
++            section.Fault = string.Create(
++                CultureInfo.InvariantCulture, $"holds object {section.StreamObjectNumber}, which is not a cross-reference stream");
++        }
++
+         if (section.State != XRefSectionState.Malformed)
+         {
+             ReportMissingSection(naming, offset, namedFrom);
+@@ -3262,7 +3294,8 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
+ 
+         foreach (var candidate in candidates)
+         {
+-            if (candidate == absolute)
++            // Where the section was named holds no section that can be read, and where the chain read one holds that one.
++            if (candidate == absolute || _sectionsReadAt.Contains(candidate))
+             {
+                 continue;
+             }
+@@ -4022,6 +4055,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
+         section.Padding = (int)(header - absolute);
+         section.TrailerPosition = absolute;
+         section.TypedXRef = dictionary.IsOfType(PdfName.XRef);
++        section.TypedOther = !section.TypedXRef && dictionary.GetRaw(PdfName.Type) is PdfName;
+ 
+         // A guard that cut the dictionary of what declares another type cut no section: such a dictionary — a CIDFont's,
+         // whose /W gives widths — has no stream data read whole, and is no section. A stream of that type, which the cut
+diff --git a/src/AdCodicem.Pdf/IO/XRef/XRefSectionRecord.cs b/src/AdCodicem.Pdf/IO/XRef/XRefSectionRecord.cs
+index 06de2eb..626e7ff 100644
+--- a/src/AdCodicem.Pdf/IO/XRef/XRefSectionRecord.cs
++++ b/src/AdCodicem.Pdf/IO/XRef/XRefSectionRecord.cs
+@@ -91,6 +91,9 @@ internal sealed class XRefSectionRecord
+     /// </summary>
+     public bool TypedXRef { get; set; }
+ 
++    /// <summary>PROTOTYPE (c9b): the stream's dictionary gives a /Type other than /XRef.</summary>
++    public bool TypedOther { get; set; }
++
+     /// <summary>
+     /// Gets a value indicating whether <see cref="Documents.PdfReaderLimits.MaxTrailerLength"/> cut the section's
+     /// trailer: what lay past the cut — an older section's <c>/Prev</c>, a key a newer trailer gives — is unknown.

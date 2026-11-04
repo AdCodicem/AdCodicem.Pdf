@@ -1,0 +1,389 @@
+using System.Globalization;
+using System.Reflection;
+using System.Text;
+using AdCodicem.Pdf.Documents;
+using AdCodicem.Pdf.IO.XRef;
+using AdCodicem.Pdf.Objects;
+using AdCodicem.Pdf.Validation;
+
+namespace AdCodicem.Pdf.Tests;
+
+#pragma warning disable
+
+/// <summary>
+/// Stage probe (uncommitted, #221): a cross-reference stream row of a reserved type. Writes each shape to
+/// ZZ_SHAPES_DIR (when set) for the referees, and prints what the reader and the validator make of it to ZZ_SHAPES_OUT.
+/// </summary>
+public class ZzReservedShapes
+{
+    private sealed class Writer
+    {
+        private readonly StringBuilder _text = new();
+
+        public Writer() => _text.Append("%PDF-1.7\n%âãÏÓ\n");
+
+        public long Position => _text.Length;
+
+        public byte[] Bytes => Encoding.Latin1.GetBytes(_text.ToString());
+
+        public long Object(int number, string body)
+        {
+            var at = Position;
+            _text.Append(CultureInfo.InvariantCulture, $"{number} 0 obj\n{body}\nendobj\n");
+            return at;
+        }
+
+        public void Raw(string text) => _text.Append(text);
+
+        /// <summary>
+        /// A cross-reference stream, object <paramref name="number"/>, its subsections <paramref name="subsections"/>, each row
+        /// (type, second, third) written with <paramref name="widths"/>; a row given as null is the stream's own, type 1 at
+        /// its offset. <paramref name="rawType"/> replaces the type field of the row for <paramref name="rawNumber"/>.
+        /// </summary>
+        public long XRefStream(
+            int number,
+            (int First, (ulong Type, ulong Second, ulong Third)?[] Rows)[] subsections,
+            int[] widths,
+            string entries,
+            int rawNumber = -1,
+            byte[]? rawType = null)
+        {
+            var at = Position;
+            var data = new StringBuilder();
+            var index = new StringBuilder();
+
+            foreach (var (first, rows) in subsections)
+            {
+                index.Append(CultureInfo.InvariantCulture, $"{first} {rows.Length} ");
+
+                for (var i = 0; i < rows.Length; i++)
+                {
+                    var (type, second, third) = rows[i] ?? (1UL, (ulong)at, 0UL);
+
+                    if (first + i == rawNumber && rawType is not null)
+                    {
+                        foreach (var b in rawType)
+                        {
+                            data.Append((char)b);
+                        }
+                    }
+                    else
+                    {
+                        Field(data, type, widths[0]);
+                    }
+
+                    Field(data, second, widths[1]);
+                    Field(data, third, widths[2]);
+                }
+            }
+
+            Object(
+                number,
+                string.Create(
+                    CultureInfo.InvariantCulture,
+                    $"<< /Type /XRef /Index [{index.ToString().TrimEnd()}] /W [{widths[0]} {widths[1]} {widths[2]}] {entries} /Length {data.Length} >>\nstream\n{data}\nendstream"));
+            _text.Append(CultureInfo.InvariantCulture, $"startxref\n{at}\n%%EOF\n");
+            return at;
+        }
+
+        private static void Field(StringBuilder data, ulong value, int width)
+        {
+            for (var shift = (width - 1) * 8; shift >= 0; shift -= 8)
+            {
+                data.Append((char)(shift >= 64 ? 0 : (byte)(value >> shift)));
+            }
+        }
+    }
+
+    private const string Font = "<< /Font << /F1 << /Type /Font /Subtype /Type1 /BaseFont /Helvetica >> >> >>";
+
+    /// <summary>
+    /// The original revision: catalog 1, pages 2, object 3 (unless <paramref name="three"/> is null), page 4, then the
+    /// cross-reference stream 5, whose rows number 0 to 5 — object 3's left out when <paramref name="rowForThree"/> is false.
+    /// With <paramref name="content"/>, object 3 is the page's content stream drawing <paramref name="three"/>.
+    /// </summary>
+    private static (Writer File, long Xref) Original(string? three, bool rowForThree, bool content)
+    {
+        var file = new Writer();
+        var one = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>");
+        var two = file.Object(2, "<< /Type /Pages /Kids [4 0 R] /Count 1 >>");
+        long threeAt = 0;
+
+        if (three is not null)
+        {
+            if (content)
+            {
+                var ops = $"BT /F1 24 Tf 72 720 Td ({three}) Tj ET";
+                threeAt = file.Object(3, $"<< /Length {ops.Length} >>\nstream\n{ops}\nendstream");
+            }
+            else
+            {
+                threeAt = file.Object(3, $"({three})");
+            }
+        }
+
+        var four = file.Object(
+            4,
+            content
+                ? $"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources {Font} /Contents 3 0 R >>"
+                : "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << >> >>");
+        (int, (ulong, ulong, ulong)?[])[] subsections = rowForThree
+            ? [(0, [(0UL, 0UL, 65535UL), (1UL, (ulong)one, 0UL), (1UL, (ulong)two, 0UL), three is null ? (0UL, 0UL, 0UL) : (1UL, (ulong)threeAt, 0UL), (1UL, (ulong)four, 0UL), null])]
+            : [(0, [(0UL, 0UL, 65535UL), (1UL, (ulong)one, 0UL), (1UL, (ulong)two, 0UL)]), (4, [(1UL, (ulong)four, 0UL), null])];
+        var xref = file.XRefStream(5, subsections, [1, 4, 2], "/Size 6 /Root 1 0 R");
+        return (file, xref);
+    }
+
+    private static byte[] Shape(string name)
+    {
+        var content = name.StartsWith("XC", StringComparison.Ordinal);
+        var bare = content ? "X" + name[2..] : name;
+
+        switch (bare)
+        {
+            case "X09":
+            case "X09f":
+            case "X09c":
+            case "X09n":
+            case "X09w":
+            case "X09w8":
+            {
+                var (file, prev) = Original("three", rowForThree: true, content);
+                long newThree = 0;
+
+                if (bare is "X09n" or "X09w" or "X09w8")
+                {
+                    // A newer body for object 3, which only a reader taking the reserved type for 1 serves.
+                    newThree = content
+                        ? file.Object(3, "<< /Length 40 >>\nstream\nBT /F1 24 Tf 72 720 Td (new three) Tj ET\nendstream")
+                        : file.Object(3, "(new three)");
+                }
+
+                (ulong, ulong, ulong)? row = bare switch
+                {
+                    "X09" => (3UL, 0UL, 0UL),
+                    "X09f" => (0UL, 0UL, 1UL),
+                    "X09n" => (3UL, (ulong)newThree, 0UL),
+                    "X09w" => (1UL, (ulong)newThree, 0UL),
+                    "X09w8" => (0xFFUL, (ulong)newThree, 0UL),
+                    _ => null,
+                };
+                var widths = bare == "X09w" ? new[] { 9, 4, 2 } : [1, 4, 2];
+                (int, (ulong, ulong, ulong)?[])[] subsections = bare == "X09c"
+                    ? [(6, [null])]
+                    : [(3, [row]), (6, [null])];
+                file.XRefStream(
+                    6,
+                    subsections,
+                    widths,
+                    $"/Size 7 /Root 1 0 R /Prev {prev}",
+                    rawNumber: bare == "X09w" ? 3 : -1,
+                    rawType: bare == "X09w" ? [1, 0, 0, 0, 0, 0, 0, 0, 1] : null);
+                return file.Bytes;
+            }
+
+            case "X04":
+            case "X04w":
+            {
+                // No older row for object 3: X04's file holds no object 3, X04w's holds one no row indexes.
+                var file = new Writer();
+                var one = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>");
+                var two = file.Object(2, "<< /Type /Pages /Kids [4 0 R] /Count 1 >>");
+
+                if (bare == "X04w")
+                {
+                    if (content)
+                    {
+                        file.Object(3, "<< /Length 36 >>\nstream\nBT /F1 24 Tf 72 720 Td (three) Tj ET\nendstream");
+                    }
+                    else
+                    {
+                        file.Object(3, "(three)");
+                    }
+                }
+
+                var four = file.Object(
+                    4,
+                    content
+                        ? $"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources {Font} /Contents 3 0 R >>"
+                        : "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << >> >>");
+                var prev = file.XRefStream(
+                    5,
+                    [(0, [(0UL, 0UL, 65535UL), (1UL, (ulong)one, 0UL), (1UL, (ulong)two, 0UL)]), (4, [(1UL, (ulong)four, 0UL), null])],
+                    [1, 4, 2],
+                    "/Size 6 /Root 1 0 R");
+                file.XRefStream(6, [(3, [(3UL, 0UL, 0UL)]), (6, [null])], [1, 4, 2], $"/Size 7 /Root 1 0 R /Prev {prev}");
+                return file.Bytes;
+            }
+
+            case "X01":
+            {
+                // One section: its own row for object 3, written in the file, is of type 3.
+                var file = new Writer();
+                var one = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>");
+                var two = file.Object(2, "<< /Type /Pages /Kids [4 0 R] /Count 1 >>");
+                var three = content
+                    ? file.Object(3, "<< /Length 36 >>\nstream\nBT /F1 24 Tf 72 720 Td (three) Tj ET\nendstream")
+                    : file.Object(3, "(three)");
+                var four = file.Object(
+                    4,
+                    content
+                        ? $"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources {Font} /Contents 3 0 R >>"
+                        : "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << >> >>");
+                file.XRefStream(
+                    5,
+                    [(0, [(0UL, 0UL, 65535UL), (1UL, (ulong)one, 0UL), (1UL, (ulong)two, 0UL), (3UL, (ulong)three, 0UL), (1UL, (ulong)four, 0UL), null])],
+                    [1, 4, 2],
+                    "/Size 6 /Root 1 0 R");
+                return file.Bytes;
+            }
+
+            case "X09d":
+            {
+                // One update, two subsections numbering object 3: the first row of type 3, the second of type 1 at a newer body.
+                var (file, prev) = Original("three", rowForThree: true, content);
+                var newThree = content
+                    ? file.Object(3, "<< /Length 40 >>\nstream\nBT /F1 24 Tf 72 720 Td (new three) Tj ET\nendstream")
+                    : file.Object(3, "(new three)");
+                file.XRefStream(
+                    6,
+                    [(3, [(3UL, 0UL, 0UL)]), (3, [(1UL, (ulong)newThree, 0UL)]), (6, [null])],
+                    [1, 4, 2],
+                    $"/Size 7 /Root 1 0 R /Prev {prev}");
+                return file.Bytes;
+            }
+
+            case "X09r":
+            {
+                // X09's update, giving every object of the document a row, its /Prev naming an offset past the file: the index is
+                // incomplete, and a lookup of an object it lacks — 5, the older stream — rebuilds it.
+                var (file, prev) = Original("three", rowForThree: true, content);
+                var text = Encoding.Latin1.GetString(file.Bytes);
+                long At(string header) => text.IndexOf("\n" + header, StringComparison.Ordinal) + 1;
+                file.XRefStream(
+                    6,
+                    [(1, [(1UL, (ulong)At("1 0 obj"), 0UL), (1UL, (ulong)At("2 0 obj"), 0UL), (3UL, 0UL, 0UL), (1UL, (ulong)At("4 0 obj"), 0UL)]), (6, [null])],
+                    [1, 4, 2],
+                    "/Size 7 /Root 1 0 R /Prev 999999");
+                return file.Bytes;
+            }
+
+            case "X09m":
+            {
+                // Many reserved rows in one update: objects 7 to 1006, each of type 3, and object 3's.
+                var (file, prev) = Original("three", rowForThree: true, content);
+                var many = new (ulong, ulong, ulong)?[1000];
+
+                for (var i = 0; i < many.Length; i++)
+                {
+                    many[i] = ((ulong)(3 + (i % 250)), 0UL, 0UL);
+                }
+
+                file.XRefStream(
+                    6,
+                    [(3, [(3UL, 0UL, 0UL)]), (6, [null]), (7, many)],
+                    [1, 4, 2],
+                    $"/Size 1007 /Root 1 0 R /Prev {prev}");
+                return file.Bytes;
+            }
+
+            default:
+                throw new ArgumentException(name);
+        }
+    }
+
+    public static readonly string[] Names =
+    [
+        "X09", "X09f", "X09c", "X04", "X04w", "X01", "X09n", "X09w", "X09w8", "X09d", "X09m", "X09r",
+        "XC09", "XC09f", "XC09c", "XC04", "XC04w", "XC01", "XC09n", "XC09w", "XC09d", "XC09r",
+    ];
+
+    [Fact]
+    public void ZzReservedShapesAll()
+    {
+        var output = new StringBuilder();
+        var dir = Environment.GetEnvironmentVariable("ZZ_SHAPES_DIR");
+
+        foreach (var name in Names)
+        {
+            var bytes = Shape(name);
+
+            if (dir is not null)
+            {
+                Directory.CreateDirectory(dir);
+                File.WriteAllBytes(Path.Combine(dir, name + ".pdf"), bytes);
+            }
+
+            output.Append("== ").Append(name).Append(" (").Append(bytes.Length).Append(" bytes)\n");
+
+            try
+            {
+                using var document = PdfDocument.Open(bytes);
+                output.Append("  at open: ").Append(document.Diagnostics.Count).Append(" diagnostic(s)\n");
+
+                foreach (var diagnostic in document.Diagnostics)
+                {
+                    output.Append("    D ").Append(diagnostic).Append('\n');
+                }
+
+                foreach (var section in document.Reader.Structure.Sections)
+                {
+                    output.Append("  section ").Append(section.Offset).Append(' ').Append(section.Kind).Append(' ').Append(section.State)
+                        .Append(" fault=").Append(section.Fault ?? "-").Append(" refused=").Append(section.RefusedRow ?? "-");
+
+                    // The prototype's record of a reserved row, when it has one.
+                    foreach (var property in typeof(XRefSectionRecord).GetProperties(BindingFlags.Public | BindingFlags.Instance))
+                    {
+                        if (property.Name.Contains("Reserved", StringComparison.Ordinal))
+                        {
+                            output.Append(' ').Append(property.Name).Append('=').Append(property.GetValue(section) ?? "-");
+                        }
+                    }
+
+                    output.Append('\n');
+                }
+
+                var index = document.Reader.Index;
+                output.Append("  index: count=").Append(document.ObjectCount)
+                    .Append(" numbers=[").Append(string.Join(' ', document.ObjectNumbers.Order().Take(12))).Append(document.ObjectCount > 12 ? " ..." : string.Empty).Append(']');
+                output.Append(" entry(3)=").Append(index.TryGet(3, out var entry) ? entry.ToString() : "none").Append('\n');
+                var three = document.GetObject(new PdfObjectId(3));
+                output.Append("  GetObject(3): ").Append(Describe(three)).Append("; presence=").Append(document.Reader.GetPresence(3))
+                    .Append("; WasRepaired=").Append(document.WasRepaired).Append('\n');
+
+                for (var round = 0; round < 2; round++)
+                {
+                    var report = new PdfValidator().Validate(document);
+                    output.Append("  validator round ").Append(round).Append(": ").Append(report.Findings.Count).Append(" finding(s)\n");
+
+                    foreach (var finding in report.Findings)
+                    {
+                        output.Append("    F ").Append(finding).Append('\n');
+                    }
+                }
+
+                output.Append("  after: ").Append(document.Diagnostics.Count).Append(" diagnostic(s); WasRepaired=").Append(document.WasRepaired)
+                    .Append("; GetObject(3): ").Append(Describe(document.GetObject(new PdfObjectId(3)))).Append('\n');
+
+                foreach (var diagnostic in document.Diagnostics)
+                {
+                    output.Append("    D ").Append(diagnostic).Append('\n');
+                }
+            }
+            catch (Exception exception)
+            {
+                output.Append("  THREW ").Append(exception.GetType().Name).Append(": ").Append(exception.Message).Append('\n');
+            }
+        }
+
+        File.WriteAllText(Environment.GetEnvironmentVariable("ZZ_SHAPES_OUT") ?? "/tmp/zz-shapes.txt", output.ToString());
+    }
+
+    private static string Describe(PdfObject value) => value switch
+    {
+        PdfNull => "null",
+        PdfString text => "(" + text.ToText() + ")",
+        PdfStream stream => "stream " + Encoding.Latin1.GetString(stream.GetRawBytes().Span),
+        _ => value.ToString() ?? value.GetType().Name,
+    };
+}

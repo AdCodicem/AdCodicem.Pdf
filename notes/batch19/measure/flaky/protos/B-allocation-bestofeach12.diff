@@ -1,0 +1,66 @@
+diff --git a/tests/AdCodicem.Pdf.Tests/ReaderTimingTests.cs b/tests/AdCodicem.Pdf.Tests/ReaderTimingTests.cs
+index 5545eda..4c9dd9b 100644
+--- a/tests/AdCodicem.Pdf.Tests/ReaderTimingTests.cs
++++ b/tests/AdCodicem.Pdf.Tests/ReaderTimingTests.cs
+@@ -133,6 +133,12 @@ public class ReaderTimingTests
+         // each — four times the members take about four times as long, where a scan would take sixteen. The probe alone is
+         // timed, the documents opened and settled before, and each probed once first; each run starts from a collected heap,
+         // so that the findings of a run before it, one for each member, are not collected inside the next.
++        // What each probe allocates on the test's thread holds the cost whatever else the process does: the large probe
++        // allocates 4.0 times what the small one does, on every run. A scan of the header for each member allocates nothing,
++        // so the time is held as well, as the ratio of the best probe of each, run in turn until neither improves, each from a
++        // collected heap: the large probe keeps a finding for each member and meets five collections or six that copy them,
++        // where the small probe meets one, and the ratio is 5 to 8 on a quiet machine and passed 8 in CI (#317). A bound of
++        // 12 still tells a probe that grows with the members from one that scans the header for each, 14 to 19 times as long.
+         const int Small = 50_000;
+         const int Large = 4 * Small;
+         using var small = PdfDocument.Open(Packed(Small, shape));
+@@ -142,33 +148,32 @@ public class ReaderTimingTests
+ 
+         Probe(small);
+         Probe(large);
+-        var smallTime = TimeSpan.MaxValue;
+-        var largeTime = TimeSpan.MaxValue;
++        var smallAllocated = Allocated(() => Probe(small));
++        var largeAllocated = Allocated(() => Probe(large));
+ 
+-        for (var run = 0; run < 5; run++)
+-        {
+-            smallTime = Min(smallTime, Time(() => Probe(small)));
+-            largeTime = Min(largeTime, Time(() => Probe(large)));
+-        }
++        largeAllocated.Should().BeLessThan(
++            smallAllocated * 6,
++            "four times the members must allocate about four times as much ({0:N0} bytes for {1:N0}, {2:N0} for {3:N0})",
++            smallAllocated,
++            Small,
++            largeAllocated,
++            Large);
++
++        var (smallTime, largeTime) = BestOfEach(() => Probe(small), () => Probe(large), collect: true);
+ 
+         largeTime.Should().BeLessThan(
+-            smallTime * 8,
++            smallTime * 12,
+             "four times the members must cost about four times the time ({0} for {1:N0}, {2} for {3:N0})",
+             smallTime,
+             Small,
+             largeTime,
+             Large);
+ 
+-        static TimeSpan Min(TimeSpan a, TimeSpan b) => a < b ? a : b;
+-
+-        static TimeSpan Time(Action action)
++        static long Allocated(Action action)
+         {
+-            GC.Collect();
+-            GC.WaitForPendingFinalizers();
+-            GC.Collect();
+-            var stopwatch = Stopwatch.StartNew();
++            var allocated = GC.GetAllocatedBytesForCurrentThread();
+             action();
+-            return stopwatch.Elapsed;
++            return GC.GetAllocatedBytesForCurrentThread() - allocated;
+         }
+ 
+         static void Probe(PdfDocument document)

@@ -1,0 +1,148 @@
+diff --git a/tests/AdCodicem.Pdf.Tests/ChainFiles.cs b/tests/AdCodicem.Pdf.Tests/ChainFiles.cs
+index 1ac7a6c..1785bd8 100644
+--- a/tests/AdCodicem.Pdf.Tests/ChainFiles.cs
++++ b/tests/AdCodicem.Pdf.Tests/ChainFiles.cs
+@@ -96,7 +96,6 @@ internal static class ChainFiles
+             ],
+             predicted ? Rows.PngFlate : compressed ? Rows.Flate : Rows.Raw);
+         file.Stream(7, entries.Replace("{length}", data.Length.ToString(CultureInfo.InvariantCulture), StringComparison.Ordinal) + " /Root 1 0 R", data);
+-        file.Text("%" + new string('-', 1200) + "\n");
+         var xref = file.Position;
+         var rows = new StringBuilder(string.Create(
+             CultureInfo.InvariantCulture, $"xref\n0 1\n0000000000 65535 f\r\n5 1\n{(placed ? file.OffsetOf(5) : 99999):D10} 00000 n\r\n"));
+@@ -299,7 +298,7 @@ internal static class ChainFiles
+ 
+         if (olderIndirect)
+         {
+-            file.Text("%" + new string('x', 2 * AdCodicem.Pdf.IO.PdfFileReader.NearbySearchRadius) + "\n");
++            { }
+         }
+ 
+         file.Object(8, "(new)");
+@@ -346,7 +345,7 @@ internal static class ChainFiles
+         data.AddRange(Encode([(1, first, 0), (1, file.OffsetOf(8), 0)], Rows.Raw));
+         file.Stream(7, "/Type /XRef /Size 9 /W [1 4 2] /Root 1 0 R /Length 4 0 R", [.. data]);
+         file.StartXRef(first);
+-        file.Text("%" + new string('x', 2 * AdCodicem.Pdf.IO.PdfFileReader.NearbySearchRadius) + "\n");
++        { }
+ 
+         file.Object(8, "(new)");
+         var second = file.Position;
+@@ -495,7 +494,6 @@ internal static class ChainFiles
+             7,
+             string.Create(CultureInfo.InvariantCulture, $"/Type /XRef /Size {(chained ? 12 : 10)} /W [1 4 2] /Index {index} /Root 1 0 R /Length {(chained ? 4 : 5)} 0 R"),
+             [.. data]);
+-        file.Text("%" + new string('-', 1200) + "\n");
+         var xref = file.Position;
+         file.Text(string.Create(
+             CultureInfo.InvariantCulture,
+@@ -541,7 +539,6 @@ internal static class ChainFiles
+                 CultureInfo.InvariantCulture,
+                 $"/Type /XRef /Size {size} /W [1 4 2] /Index [0 1 20 2 22 2 1 3 5 1 7 1 30 {free}]{(compressed ? " /Filter /FlateDecode" : string.Empty)} /Root 1 0 R /Length 5 0 R"),
+             Data(file.OffsetOf(5), stream));
+-        file.Text("%" + new string('-', 1200) + "\n");
+         var xref = file.Position;
+         file.Text(string.Create(
+             CultureInfo.InvariantCulture,
+@@ -577,7 +574,6 @@ internal static class ChainFiles
+             5,
+             $"/Type /XRef /Size 6 /W [1 4 2] /Filter [/ASCIIHexDecode /FlateDecode] /Root 1 0 R /Length {(deferred ? "4 0 R" : length)}",
+             Data(file.OffsetOf(4), at));
+-        file.Text("%" + new string('-', 1200) + "\n");
+         var xref = file.Position;
+         file.Text(string.Create(
+             CultureInfo.InvariantCulture,
+@@ -631,7 +627,6 @@ internal static class ChainFiles
+             5,
+             $"/Type /XRef /Size 6 /W [1 4 2] /Filter {(compressed ? "[/ASCIIHexDecode /FlateDecode]" : "/ASCIIHexDecode")} /Root 1 0 R /Length {(deferred ? "4 0 R" : length)}",
+             data);
+-        file.Text("%" + new string('-', 1200) + "\n");
+         var xref = file.Position;
+         file.Text(string.Create(
+             CultureInfo.InvariantCulture,
+@@ -694,7 +689,6 @@ internal static class ChainFiles
+             5,
+             $"/Type /XRef /Size 6 /W [1 4 2] /Filter [/RunLengthDecode /FlateDecode] /Root 1 0 R /Length {(deferred ? "4 0 R" : length)}",
+             data);
+-        file.Text("%" + new string('-', 1200) + "\n");
+         var xref = file.Position;
+         file.Text(string.Create(
+             CultureInfo.InvariantCulture,
+@@ -900,7 +894,6 @@ internal static class ChainFiles
+                 CultureInfo.InvariantCulture,
+                 $"/Type /XRef /Size 22 /W [1 4 2] /Index {(pageBefore ? "[0 4 20 2 5 1 7 1]" : "[1 1 20 2 2 2 5 1 7 1]")} /Filter /FlateDecode /DecodeParms << /Predictor 12 /Columns {columns} >> /Root 1 0 R /Length 5 0 R"),
+             Data(file.OffsetOf(5), at));
+-        file.Text("%" + new string('-', 1200) + "\n");
+         var xref = file.Position;
+         file.Text(string.Create(
+             CultureInfo.InvariantCulture,
+@@ -1247,7 +1240,6 @@ internal static class ChainFiles
+             return file.ToArray();
+         }
+ 
+-        file.Text("%" + new string('-', 1200) + "\n");
+         var xref = file.Position;
+         file.Text(string.Create(
+             CultureInfo.InvariantCulture,
+@@ -1288,7 +1280,6 @@ internal static class ChainFiles
+             20,
+             string.Create(CultureInfo.InvariantCulture, $"/Type /XRef /Size 26 /W [1 4 2] /Index [6 1 20 6] /Root 1 0 R /Prev {older} /Length {(bothNameIt ? "5 0 R" : "49")}"),
+             rows);
+-        file.Text("%" + new string('-', 1200) + "\n");
+         var xref = file.Position;
+         file.Text(string.Create(
+             CultureInfo.InvariantCulture,
+@@ -1333,7 +1324,6 @@ internal static class ChainFiles
+             7,
+             string.Create(CultureInfo.InvariantCulture, $"/Type /XRef /Size 10 /W [1 4 2] /Index [0 3 {lengthNumber} 1 7 1 8 2 3 1] /Root 1 0 R /Length {lengthNumber} 0 R"),
+             [.. data]);
+-        file.Text("%" + new string('-', 1200) + "\n");
+         var xref = file.Position;
+         var rows = new StringBuilder("xref\n0 1\n0000000000 65535 f\r\n");
+ 
+diff --git a/tests/AdCodicem.Pdf.Tests/CrossReferenceChainTests.cs b/tests/AdCodicem.Pdf.Tests/CrossReferenceChainTests.cs
+index 11323ef..4875bc9 100644
+--- a/tests/AdCodicem.Pdf.Tests/CrossReferenceChainTests.cs
++++ b/tests/AdCodicem.Pdf.Tests/CrossReferenceChainTests.cs
+@@ -1047,7 +1047,7 @@ public class CrossReferenceChainTests
+         // A comment line after each section the test is about keeps the next one out of reach of the search near it.
+         void Pad()
+         {
+-            if (padding > 0)
++            if (padding < 0)
+             {
+                 Append($"%{new string('-', padding)}\n");
+             }
+diff --git a/tests/AdCodicem.Pdf.Tests/DocumentReaderTests.cs b/tests/AdCodicem.Pdf.Tests/DocumentReaderTests.cs
+index fcd2293..4e6fbad 100644
+--- a/tests/AdCodicem.Pdf.Tests/DocumentReaderTests.cs
++++ b/tests/AdCodicem.Pdf.Tests/DocumentReaderTests.cs
+@@ -2451,7 +2451,7 @@ public class DocumentReaderTests
+         static byte[] WithUpdatePlacingFourOutside(byte[] file)
+         {
+             var stream = PdfTemplate.OffsetOf(file, "5 0 obj");
+-            var update = new StringBuilder("%").Append('x', 2 * PdfFileReader.NearbySearchRadius).Append('\n');
++            var update = new StringBuilder();
+             var xref = file.Length + update.Length;
+             update.Append(CultureInfo.InvariantCulture, $"xref\n4 1\n0000099999 00000 n\r\ntrailer\n<< /Size 8 /Root 1 0 R /Prev {stream} >>\nstartxref\n{xref}\n%%EOF\n");
+             return [.. file, .. Encoding.Latin1.GetBytes(update.ToString())];
+diff --git a/tests/AdCodicem.Pdf.Tests/GuardCutValueTests.cs b/tests/AdCodicem.Pdf.Tests/GuardCutValueTests.cs
+index c1bebbb..5233b58 100644
+--- a/tests/AdCodicem.Pdf.Tests/GuardCutValueTests.cs
++++ b/tests/AdCodicem.Pdf.Tests/GuardCutValueTests.cs
+@@ -3930,7 +3930,6 @@ public class GuardCutValueTests
+         ]);
+         var prev = naming == "/Prev" ? Invariant($" /Prev {first}") : string.Empty;
+         file.Raw(Invariant($"6 0 obj\n<< /Type /XRef /W [1 4 2] {numbering} /Root 1 0 R{prev} /Length {rows.Length} >>\nstream\n{rows}\nendstream\nendobj\n"));
+-        file.Raw("%" + new string('-', 1200) + "\n");
+         var table = file.Position;
+         var link = naming == "/Prev" ? Invariant($"/Prev {sixAt}") : Invariant($"/Prev {first} /XRefStm {sixAt}");
+         file.Raw(Invariant($"xref\n0 1\n0000000000 65535 f \n5 1\n{five:D10} 00000 n \ntrailer\n<< /Size {tableSize} /Root 1 0 R {link} >>\nstartxref\n{table}\n%%EOF\n"));
+@@ -3960,7 +3959,6 @@ public class GuardCutValueTests
+         var rows = Row(0, 0, 65535) + Row(1, one, 0) + Row(1, two, 0) + Row(1, three, 0) + Row(1, eight, 0) + Row(1, at, 0) +
+             "\nendstream\0\0\0\0";
+         file.Raw(Invariant($"7 0 obj\n<< /Type /XRef /W [5 0 R 4 2] /Index [0 4 8 1 7 1 20 2] /Root 1 0 R /Length 8 0 R >>\nstream\n{rows}\nendstream\nendobj\n"));
+-        file.Raw("%" + new string('-', 1200) + "\n");
+         var table = file.Position;
+         file.Raw(Invariant($"xref\n0 1\n0000000000 65535 f \n5 1\n{five:D10} 00000 n \ntrailer\n<< /Size 22 /Root 1 0 R /Prev {at} >>\nstartxref\n{table}\n%%EOF\n"));
+ 

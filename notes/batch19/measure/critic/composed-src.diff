@@ -1,0 +1,1843 @@
+diff --git a/docs/website/docs/reference/diagnostics.md b/docs/website/docs/reference/diagnostics.md
+index 8b3b015..141bfb3 100644
+--- a/docs/website/docs/reference/diagnostics.md
++++ b/docs/website/docs/reference/diagnostics.md
+@@ -105,6 +105,7 @@ Codes are stable: they are part of the public contract, because callers filter o
+ | `xref.section-missing` | A cross-reference section `/Prev` or `/XRefStm` names holds nothing that reads as a section, nor does any place nearby, lies outside the file, or is named by a value that is not an offset; what only it indexed is found by rebuilding the index when it is asked for. Reported at the offset the section was named at, or, when that offset lies outside the file or the value is not an offset, at the section whose trailer named it. A `/Prev` or `/XRefStm` the reader follows — not a hybrid file's cross-reference stream's own `/Prev`, nor the links of a table an `/XRefStm` names, which it leaves unread —, written as a reference that leads to an object one of the reader's limits cut, names what the guard hides: no section is reported missing, nothing is rebuilt, the chain ends there, and the guard is reported once the chain is read |
+ | `xref.section-unreadable` | A cross-reference section `/Prev` or `/XRefStm` names is there and cannot be read — a stray token among a table's rows or in place of its trailer, a subsection numbering objects past 2,147,483,647, a stream whose `/W`, `/Index`, data or — with no `/Index` — `/Size` cannot give rows, or whose `/W`, `/Index`, `/Filter` or `/DecodeParms`, or `/Size` with no `/Index`, is a reference no section read before it places where it can be read without loading it, or whose `/Length` is such a reference, or leads to one through others, and no `endstream` follows its data before the next object the sections read so far place, or before the end of the file, or none was looked for once the document's searches for `endstream` read as much of the file as they may — and nothing nearby can be read in its place; the rows read before the fault are kept, and what only the rest indexed is found by rebuilding the index when it is asked for. Reported at the section, the fault in the message. A value that names an object one of the reader's limits cut, directly or through a chain of references — a `/Length` whose data no `endstream` ends before that stop among them —, is the guard's, not the file's: the section is not reported, nor looked for nearby, the chain ends there, nothing is rebuilt, what only that section and the older ones index reads as null, and the guard is reported once the chain is read — but for what makes the section unreadable whatever the value holds, which is the file's and reported here, as read whole: a value past it no section read so far places, a `/W` that gives no three widths or none past 0, or rows numbered wrongly as far as the values read say — a subsection wrong by the element read whatever the cut one holds among them —; data whose length the file gives, its filters written direct, decoded whole, that holds fewer rows than the counts read declare however few bytes the widths read leave a row is read as read whole instead, lacking rows, its trailer merged and the chain going on, where it was moved to too |
+ | `xref.chain-cycle` | The chain of previous sections looped: a `/Prev` or `/XRefStm` names an offset the chain has already named, whether it read a section there or not. Reported at that offset, or, when it lies outside the file, at the section whose trailer named it |
++| `xref.hybrid-stream-lost` | A hybrid table's `/XRefStm` names no cross-reference stream of its revision: a classic table, or a section the chain reads through `/Prev` or `startxref`; what only the table's stream indexed is found by rebuilding the index when it is asked for. Reported at the offset named, or, when it lies outside the file, at the table |
+ | `xref.entry-out-of-range` | An object's entry places it outside the file — past its end, before its start, or past what a `long` holds once the header's offset is added —; reported with no position, the offset in the message, exactly. A section named outside the file is `xref.section-missing`'s, or the rebuild's when `startxref` names it |
+ | `stream.length-invalid` | A stream's `/Length` is not where its data ends: its `endstream` lies elsewhere and ends the data; or the `/Length` is no length — absent, not a non-negative integer, or naming an object the file lacks or that could not be read — and the `endstream` ends the data; or no `endstream` lies before the next object or the end of the file, no `endobj` of its object ends the data, and the data is the declared length, when it ends before that stop, or runs up to the next object; or the document's searches for `endstream` have read as much of the file as they may, and the data is taken without a search — but where a guard hid the `/Length`, whose data is then the guard's. A `/Length` that names an object a guard cut, or left out of the index, is not judged, though a missing `endstream` is reported all the same. [Streams whose length is wrong](#streams-whose-length-is-wrong), below, gives each case. A cross-reference stream whose `/Length` the chain could not read, its data taken up to its first `endstream`, has it read once the chain is, unless a guard cut that data before every row the section declares — data that holds them all is checked whatever a guard did —: a `/Length` that is no length, or that no `endstream` confirms, is reported as any stream's, and one an `endstream` past the one the chain stopped at confirms is reported with the rows the chain left unread. Where the section's own row for that `/Length` lies among the rows the data holds — in a predicted row the spelled `endstream` parts too, the data decoded once more knowing its end hidden —, and gives a length an `endstream` confirms, the data is taken again to it before the rows are read, and nothing is reported; where that decoding reaches `MaxDecodedStreamLength` short of the row, the rows past the bound are the guard's, reported under `limit.decoded-stream`; nor is anything of a `/Length` a guard cut or left out of the index |
+ | `stream.truncated` | A stream has no `endstream` before the next object or the end of the file, and its object's `endobj` ends its data — following the declared length, which is kept, or ending the object before that stop —; or neither, no declared length ends before the end of the file, and its data runs to it. Data taken without a search, the document's searches having read as much of the file as they may, is `stream.length-invalid`'s, to the end of the file too. [Streams whose length is wrong](#streams-whose-length-is-wrong), below, gives each case |
+diff --git a/docs/website/docs/reference/validation-rules.md b/docs/website/docs/reference/validation-rules.md
+index 774739e..1c3bc8c 100644
+--- a/docs/website/docs/reference/validation-rules.md
++++ b/docs/website/docs/reference/validation-rules.md
+@@ -53,8 +53,10 @@ References are to ISO 32000-1:2008.
+ |---|---|---|---|
+ | `xref.section-malformed` | Error | A cross-reference section the chain names is there — an `xref` keyword, or a cross-reference stream — and cannot be read, or holds fewer rows than it declares: a subsection header that is not two integers or that numbers objects past 2,147,483,647, a row that is not an offset, a generation and `n` or `f`, a `/W` that is not three field widths that are not negative and not all zero, an `/Index` that is not pairs numbering objects from 0 to 2,147,483,647, a `/Size` that is no count of objects where there is no `/Index`, or a value the rows are read with — `/W`, `/Index`, `/Filter`, `/DecodeParms` and the parameters a Flate or LZW step reads, a `/Size` where there is no `/Index` — written as a reference no section read before it places where it can be read without loading it, or as references that lead from one to the next to no value ([#182]); or a cross-reference stream whose `/Length` is such a reference, or leads through references to an object no section read before it places, and whose data no `endstream` ends before the next object the sections read so far place, or the end of the file — or was not searched for one, the document's searches for `endstream` having read as much of the file as they may ([#220]). Rows that spell `endstream` end such a stream's data there, and the section lacks the rows past them, unless the section's own row for that `/Length` — the row the reading of its rows keeps, one of a reserved type ignored —, among the rows before them, places an object that gives a longer length an `endstream` confirms — in a predicted row the spelled one parts too, undone as far as it goes —: the data is then taken to it. A row that gives an object in use what no entry can hold — a generation past 65,535, an offset of 2⁶³ or more, an object stream that is no object number, an index past 2,147,483,647, or a field wider than 8 bytes whose leading bytes are not all zero — is refused alone, and makes the section malformed too; a free row is read whatever its generation, and a row of a type past 2 is skipped ([#221]). The objects it leaves out are found, if at all, by scanning the file. A section one of the reader's limits cut is not malformed for the cut (ADR 34), but what the reader read of it is the file's: a row it refused before the cut, what it met past the rows reading on to a table's trailer. Nor is a cross-reference stream whose value the rows are read with leads to an object a limit cut: the section counts as cut there, the chain ends at it, nothing is rebuilt, and `xref.checked-in-part` says so ([#263]) — but for what makes it unreadable whatever the value holds, as read whole: a value past it no section read so far places, a `/W` that gives no three widths or none past 0, or rows numbered wrongly as far as the values read say — a subsection wrong by the element read whatever the cut one holds among them —, or data whose length the file gives, its filters written direct, decoded whole, that holds fewer rows than the counts read declare however few bytes the widths read leave a row — read then as read whole, lacking rows —, whatever type the stream gives. Nor is one whose `/Length`, which the chain could not read, leads to an object `MaxObjectLength` cuts, where only that length could say where the data ends: with no `endstream` before the next object or the end of the file, the section counts as cut, as above; when its rows spell one, the integer the cut left of that object — whether the section's own row places it, or a newer section does — is where an `endstream` is looked for, the data taken to it when one confirms it, and otherwise the rows past the spelled one the limit's, the section counting as cut there, as above ([#224]). | Each section of the chain |
+ | `xref.section-not-found` | Error | A section a `/Prev` or an `/XRefStm` names is neither there nor within 512 bytes of it, or what names it is not an offset — tiff2pdf writes `/Prev 576066 0 R`. The objects only it indexes are missing from the index. The section `startxref` names is `file.startxref-wrong`'s. A `/Prev` or an `/XRefStm` the reader follows, written as a reference that leads to an object `MaxObjectLength` cuts, names no section missing: the chain ends there for the limit, what it names unread, which `xref.checked-in-part` says ([#263]). | Each section of the chain |
++| `xref.subsection-missing` | Warning | A classic cross-reference table holds no subsection: its `trailer` keyword follows its `xref` keyword, where ISO 32000-1 (7.5.4) has one or more subsections follow it. The reader reads it as indexing nothing, as a table whose one subsection is `0 0`, and rebuilds nothing for it ([#222]). | Each classic table of the chain |
+ | `xref.section-shifted` | Warning | A section a `/Prev` or an `/XRefStm` names starts a few bytes from where it is named, and the reader found it there. | Each section of the chain |
+ | `xref.chain-loop` | Error | The chain names a section it has already read, or an offset it has already named where it read none, in the file or outside it: the reader stops there, and the section the chain should have gone on to is unknown, what only it indexed found, if at all, by rebuilding the index — as for `xref.section-not-found`. | The chain |
++| `xref.hybrid-stream-wrong` | Error | A hybrid table's `/XRefStm` names no cross-reference stream of its revision (Table 19, 7.5.8.4): a classic table — the table itself, another the chain reads, or one it reads in the stream's place —, or a section the chain reads through `/Prev` or `startxref`. What only that stream indexes is lost, found, if at all, by rebuilding the index — as for `xref.section-not-found`. | The chain |
+ | `xref.entry-broken` | Error | An in-use entry places its object neither at its offset nor within 512 bytes of it, in an object stream whose header does not list it, or in one where it is written as a stream or holds one, which an object stream cannot hold (7.5.7), and which reads as null — the index the reader rebuilt included, where it places such an object and the file's own index places nothing, or the part of it the reader read where one of its limits stopped the chain short ([#161]) — as a load decides it: the header read at the offset after white space and comments, however long, a whole token no header begins with ruling one out at once, and the one found near it confirmed by what a load parses there ([#175], [#256]). An offset outside the file — past its end, before its start, or past what a `long` holds once the header's offset is added — is looked for nearby as a load looks: an object found there is `xref.entry-shifted`'s. One finding per entry, located at the object and the offset the entry gives, or at the object alone when that offset lies outside the file. | Each object's header, as a load reads it, a few dozen bytes in a sound file; each object stream's header, and each member whose bytes hold `stream`, parsed as a load parses it |
+ | `xref.entry-shifted` | Warning | An in-use entry places its object a few bytes from where it is — the object's own header confirming it —, or at another index of its object stream than the one its header gives. One finding per entry, located at the object alone when the entry's offset lies outside the file, a load having found the object near it ([#175]). | As `xref.entry-broken` |
+ | `xref.generation-mismatch` | Warning | An in-use entry gives a generation other than the one its object is written with. The references and the object's header agree against the entry, and the reader reads the object; qpdf reads a reference to it as a reference to nothing. | Each object's header |
+diff --git a/src/AdCodicem.Pdf/Diagnostics/PdfDiagnosticCodes.cs b/src/AdCodicem.Pdf/Diagnostics/PdfDiagnosticCodes.cs
+index f192094..e3fa02f 100644
+--- a/src/AdCodicem.Pdf/Diagnostics/PdfDiagnosticCodes.cs
++++ b/src/AdCodicem.Pdf/Diagnostics/PdfDiagnosticCodes.cs
+@@ -43,6 +43,13 @@ public static class PdfDiagnosticCodes
+     /// </summary>
+     public const string XRefSectionUnreadable = "xref.section-unreadable";
+ 
++    /// <summary>
++    /// A classic cross-reference table holds no subsection: its <c>trailer</c> keyword follows its <c>xref</c> keyword,
++    /// where ISO 32000-1 (7.5.4) has one or more subsections follow it. It was read as indexing nothing, as a table whose
++    /// one subsection is <c>0 0</c> is.
++    /// </summary>
++    public const string XRefSectionEmpty = "xref.section-empty";
++
+     /// <summary>
+     /// The chain of previous cross-reference sections looped back on itself: a <c>/Prev</c> or <c>/XRefStm</c> names an
+     /// offset the chain has already reached, read or, outside the file, named. The report is placed at the section the
+@@ -50,6 +57,14 @@ public static class PdfDiagnosticCodes
+     /// </summary>
+     public const string XRefChainCycle = "xref.chain-cycle";
+ 
++    /// <summary>
++    /// A hybrid table's <c>/XRefStm</c> names no cross-reference stream of its revision: a classic table — the table itself,
++    /// another the chain read, or one it reads in the stream's place —, or a section the chain reads through <c>/Prev</c> or
++    /// <c>startxref</c>. The objects only the table's stream indexes are missing from the index, which is rebuilt by scanning
++    /// the file when one of them is asked for. Reported at the offset named, or at the table when that lies outside the file.
++    /// </summary>
++    public const string XRefHybridStreamLost = "xref.hybrid-stream-lost";
++
+     /// <summary>
+     /// An object's cross-reference entry places it outside the file. The report carries no position, since the index
+     /// does not keep where the entry was read; its message gives the offset. A section named outside the file is
+@@ -57,6 +72,13 @@ public static class PdfDiagnosticCodes
+     /// </summary>
+     public const string XRefEntryOutOfRange = "xref.entry-out-of-range";
+ 
++    /// <summary>
++    /// A cross-reference stream gives rows of a reserved type — a type past 2, which ISO 32000-1 (7.5.8.3) allows no PDF 1.5
++    /// to 1.7 file —, each read, as ISO 32000-1 reads it, as a reference to the null object, no older section's row standing for its object. Reported once a section, at the section, the first
++    /// such row in the message.
++    /// </summary>
++    public const string XRefEntryReserved = "xref.entry-reserved";
++
+     /// <summary>
+     /// A stream's <c>/Length</c> is not where its data ends: its <c>endstream</c> lies elsewhere and ends the data, the
+     /// <c>/Length</c> gives no length the reader can take and the <c>endstream</c> ends the data, or no <c>endstream</c>
+diff --git a/src/AdCodicem.Pdf/IO/PdfFileReader.cs b/src/AdCodicem.Pdf/IO/PdfFileReader.cs
+index a946dab..ee6d9c4 100644
+--- a/src/AdCodicem.Pdf/IO/PdfFileReader.cs
++++ b/src/AdCodicem.Pdf/IO/PdfFileReader.cs
+@@ -325,6 +325,16 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
+     /// </summary>
+     private long[]? _rowsLeftUnread;
+ 
++    /// <summary>
++    /// The offsets the <c>/Prev</c> and <c>/XRefStm</c> of the section just read give, where a guard stopped its rows — cut
++    /// them, or filled the index — and the chain ends at it: judged as far as the guard lets them be, never read (#264). -1
++    /// where they give none, or the section was read whole.
++    /// </summary>
++    private long _previousPastGuard = -1;
++
++    /// <inheritdoc cref="_previousPastGuard"/>
++    private long _hybridPastGuard = -1;
++
+     /// <summary>
+     /// The cross-reference streams the chain read whose indirect <c>/Length</c> it could not read, by where their data
+     /// starts: each <c>/Length</c> is read once the chain is read, and checked against the data the chain took.
+@@ -519,6 +529,12 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
+     /// <summary>How many places have been tried for sections of the chain that were not where it named them.</summary>
+     private int _relocationCandidatesTried;
+ 
++    /// <summary>
++    /// The positions in the file where the chain read a section, where it was named or where it was found moved: no other
++    /// section the chain names is looked for there (#188, #281).
++    /// </summary>
++    private readonly HashSet<long> _sectionsReadAt = new(SeededComparer.Instance);
++
+     /// <summary>
+     /// Whether the index may lack objects the file defines because the file is damaged: a section the chain names could not
+     /// be found or read, the chain loops, a cross-reference stream's data holds fewer rows than it declares, or a row was
+@@ -550,6 +566,24 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
+     /// </summary>
+     private HashSet<int>? _refusedNumbers;
+ 
++    /// <summary>
++    /// The numbers an unreadable cross-reference stream the chain went on past declares, as merged ranges sorted by their
++    /// start, each from its first number up to the one past its last; null while none was (<see cref="RefuseDeclared"/>).
++    /// </summary>
++    private (long Start, long End)[]? _refusedRanges;
++
++    /// <summary>
++    /// Whether every number is refused to the rows of the sections the chain reads from here on: an unreadable cross-reference
++    /// stream the chain went on past declares numbers it cannot say (<see cref="RefuseDeclared"/>).
++    /// </summary>
++    private bool _olderRowsRefused;
++
++    /// <summary>
++    /// The most ranges of numbers the unreadable streams of a chain refuse to older rows before every number is: an internal
++    /// bound, not a guard (ADR 34), which only a file whose sections cannot be read reaches.
++    /// </summary>
++    private const int MaxRefusedRanges = 4096;
++
+     /// <summary>
+     /// Where the index first had no room for an object number, <see cref="PdfReaderLimits.MaxIndexEntries"/> reached: the
+     /// section of the chain whose row it was, or the header or object stream a rebuild found it in; -1 while it has room.
+@@ -2936,13 +2970,26 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
+     private bool TryReadXRefChain(long startOffset)
+     {
+         var visited = new HashSet<long>(SeededComparer.Instance);
++        var firstAt = new Dictionary<long, XRefSectionRecord>(SeededComparer.Instance);
+         var offset = startOffset;
+         var sections = 0;
+         var naming = "startxref";
+         var namedFrom = _structure.StartXRefPosition;
++        XRefSectionRecord? namedByBoth = null;
++
++        // Whether the offset was named by a section a guard stopped, where the chain ends: judged, never read (#264).
++        var pastGuard = false;
+ 
+         while (offset >= 0)
+         {
++            // An offset in the file a section a guard stopped names is where the guard hides the older sections, which its
++            // report says: a section there would be read only past the guard. One the chain read already, or one outside the
++            // file, is judged as a whole read judges it, whatever the guard hid.
++            if (pastGuard && IsInFile(PositionOf(offset)) && !visited.Contains(offset))
++            {
++                break;
++            }
++
+             if (!visited.Add(offset))
+             {
+                 // The section the chain should have gone on to is unknown: what only it indexed is the index's to
+@@ -3001,6 +3048,13 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
+ 
+             var section = new XRefSectionRecord(naming, PositionOf(offset), namedFrom) { WrittenOffset = offset };
+             _structure.Add(section);
++            firstAt.TryAdd(offset, section);
++
++            if (namedByBoth is not null)
++            {
++                namedByBoth.ReadAs = section;
++                namedByBoth = null;
++            }
+ 
+             if (TryReadXRefSection(section.Offset, section, out var previous, out var hybrid) != XRefSectionState.Read)
+             {
+@@ -3012,15 +3066,32 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
+                     return false;
+                 }
+ 
++                // A cross-reference stream whose dictionary was read, and whose rows cannot be, is there: it is not looked for
++                // elsewhere, what lies near it would stand for it. Its /Prev, read from that dictionary, names the older
++                // sections as a whole read names them (#208): the section stays unreadable, reported once, the index
++                // incomplete for what only its rows index, and the numbers it declares are refused to the older sections'
++                // rows, which would stand for what its own rows give.
++                if (UnreadStreamNamingPrevious(section) is { } dictionary)
++                {
++                    ReportLostSection(section, naming, offset, namedFrom);
++                    previous = HandOnPrevious(section, dictionary);
++                }
++
+                 // A section a guard cut is where it was named, and is not looked for elsewhere: what lies near it would
+-                // stand for it.
+-                if (section.CutByLimit || !TryRelocateXRefSection(offset, section, out previous, out hybrid))
++                // stand for it. So is one that is there and cannot be read — the xref keyword, or a stream whose dictionary
++                // gives /Type /XRef —: the offset names it, and any other section near it is another (#281).
++                else if (section.CutByLimit || DeclaresItselfASection(section) ||
++                    !TryRelocateXRefSection(offset, section, out previous, out hybrid))
+                 {
+                     ReportLostSection(section, naming, offset, namedFrom);
++                    ReportReservedRows(section, naming);
+                     break;
+                 }
+             }
+ 
++            _sectionsReadAt.Add(section.Offset);
++            ReportSectionReadInPart(section, naming);
++            ReportReservedRows(section, naming);
+             _olderNumberedPast |= sections > 1 && section.HighestNumber > _highestRead;
+             _highestRead = Math.Max(_highestRead, section.HighestNumber);
+ 
+@@ -3049,14 +3120,47 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
+                 previous = -1;
+             }
+ 
+-            if (_indexFullAt >= 0)
++            if (_indexFullAt >= 0 || (endedByGuard && (_previousPastGuard >= 0 || _hybridPastGuard >= 0)))
+             {
+                 // The index takes no more numbers: an older section could only add rows for numbers it lacks, which it
+-                // has no room for, or for numbers a newer section gave already.
+-                break;
++                // has no room for, or for numbers a newer section gave already. Or a guard cut the section's rows: an older
++                // section's rows would stand for those the guard left unread. What the section names is judged, not read.
++                JudgeStreamPastGuard(hybrid >= 0 ? hybrid : _hybridPastGuard, section.Offset, visited);
++                offset = section.TrailerCutByLimit ? -1 : previous >= 0 ? previous : _previousPastGuard;
++                naming = "/Prev";
++                namedFrom = section.Offset;
++                pastGuard = true;
++                continue;
+             }
+ 
+-            if (hybrid >= 0 && visited.Add(hybrid))
++            if (hybrid >= 0 && hybrid == previous && !visited.Contains(hybrid))
++            {
++                // The /XRefStm names the section the /Prev names: the chain reads it there, whole, its own /Prev followed.
++                // Read as the table's stream, it would leave that /Prev unread, and the /Prev would loop back to it; the
++                // table's own stream is unknown (#156).
++                namedByBoth = NameAgain(hybrid, section, first: null);
++                ReportNoStream(namedByBoth, "the section its /Prev names");
++            }
++            else if (hybrid >= 0 && visited.Contains(hybrid))
++            {
++                // Named again: what is there was read, or looked for, once, where it was first named; the naming is recorded,
++                // so that the validation rules see each table's stream (#156). A section that is no hybrid file's stream
++                // stands for none: the table's own stream is unknown.
++                var again = NameAgain(hybrid, section, firstAt.GetValueOrDefault(hybrid));
++
++                if (again.ReadAs is { State: XRefSectionState.Read or XRefSectionState.Relocated } read &&
++                    read is not { NamedBy: "/XRefStm", Kind: XRefSectionKind.Stream })
++                {
++                    ReportNoStream(
++                        again,
++                        ReferenceEquals(read, section)
++                            ? "the table itself"
++                            : read.Kind == XRefSectionKind.Table
++                                ? string.Create(CultureInfo.InvariantCulture, $"the cross-reference table at offset {read.Offset}, which the chain has already read")
++                                : string.Create(CultureInfo.InvariantCulture, $"the cross-reference section at offset {read.Offset}, which the chain read through {read.NamedBy}"));
++                }
++            }
++            else if (hybrid >= 0 && visited.Add(hybrid))
+             {
+                 // A hybrid-reference file keeps a classic table for old readers and a stream for the rest: without
+                 // the stream, the objects it indexes are missing, and the chain goes on through /Prev.
+@@ -3067,13 +3171,28 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
+                     NamingTrailer = section.Trailer,
+                 };
+                 _structure.Add(stream);
++                firstAt.TryAdd(hybrid, stream);
+ 
+                 if (TryReadXRefSection(stream.Offset, stream, out _, out _) != XRefSectionState.Read &&
+-                    (stream.CutByLimit || !TryRelocateXRefSection(hybrid, stream, out _, out _)))
++                    (stream.CutByLimit || DeclaresItselfASection(stream) ||
++                        !TryRelocateXRefSection(hybrid, stream, out _, out _)))
+                 {
+                     ReportLostSection(stream, "/XRefStm", hybrid, section.Offset);
+                 }
++                else
++                {
++                    _sectionsReadAt.Add(stream.Offset);
++                    ReportSectionReadInPart(stream, "/XRefStm");
++
++                    if (stream.Kind == XRefSectionKind.Table && !stream.CutByLimit)
++                    {
++                        // A classic table stands in the stream's place, its rows read, its own links not followed: whether
++                        // it holds what the table's stream would have is unknown (#156).
++                        ReportNoStream(stream, "a cross-reference table, whose rows were read in the stream's place");
++                    }
++                }
+ 
++                ReportReservedRows(stream, "/XRefStm");
+                 _olderNumberedPast |= sections > 1 && stream.HighestNumber > _highestRead;
+                 _highestRead = Math.Max(_highestRead, stream.HighestNumber);
+ 
+@@ -3083,7 +3202,11 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
+                     // limit, an older section's rows would stand for the objects the rows left unread define. Its trailer,
+                     // unread, may give what the read ones lack, where the file can hold it and the chain has not read it.
+                     _structure.TrailersHiddenByGuard |= previous >= 0 && IsInFile(PositionOf(previous)) && !visited.Contains(previous);
+-                    break;
++                    offset = previous;
++                    naming = "/Prev";
++                    namedFrom = section.Offset;
++                    pastGuard = true;
++                    continue;
+                 }
+             }
+ 
+@@ -3095,6 +3218,236 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
+         return _xref.Count > 0;
+     }
+ 
++    /// <summary>
++    /// Determines whether a section the chain could not read is there all the same: a classic table's <c>xref</c> keyword, or
++    /// a stream whose dictionary gives <c>/Type /XRef</c>. An object that only gives a <c>/W</c> may be anything — a CIDFont's
++    /// widths — and leaves the section looked for nearby (#263, #281).
++    /// </summary>
++    private static bool DeclaresItselfASection(XRefSectionRecord section) =>
++        section.State == XRefSectionState.Malformed && (section.Kind == XRefSectionKind.Table || section.TypedXRef);
++
++    /// <summary>
++    /// Gives the dictionary of a cross-reference stream the chain cannot read, where it was read as the section's and gives a
++    /// <c>/Prev</c>: a fault in the rows, or in a value they are read with, leaves that <c>/Prev</c> as a whole read reads it
++    /// (#208). Null for a section a guard cut, which is the guard's (ADR 34), for a hybrid file's stream, whose <c>/Prev</c>
++    /// no reader follows, and for a table, whose trailer follows its rows.
++    /// </summary>
++    private static PdfDictionary? UnreadStreamNamingPrevious(XRefSectionRecord section) =>
++        section is { State: XRefSectionState.Malformed, CutByLimit: false, Kind: XRefSectionKind.Stream, TypedXRef: true } &&
++        section.NamedBy != "/XRefStm" && section.Trailer is { } dictionary && dictionary.GetRaw(PdfName.Prev) is not null
++            ? dictionary
++            : null;
++
++    /// <summary>
++    /// Hands on the <c>/Prev</c> of cross-reference stream <paramref name="section"/>, which the chain cannot read: read as a
++    /// whole read reads it (<see cref="SectionOffset"/>), once the numbers the stream declares are refused to the older
++    /// sections' rows (<see cref="RefuseDeclared"/>).
++    /// </summary>
++    /// <returns>The offset the <c>/Prev</c> gives, or -1.</returns>
++    private long HandOnPrevious(XRefSectionRecord section, PdfDictionary dictionary)
++    {
++        section.PreviousHandedOn = true;
++        RefuseDeclared(dictionary);
++        var previous = SectionOffset(dictionary, PdfName.Prev, section.Offset, out var hidden);
++        section.ChainHiddenByGuard = hidden;
++        return previous;
++    }
++
++    /// <summary>
++    /// Refuses to the rows of every section older than an unreadable cross-reference stream the numbers that stream declares:
++    /// its <c>/Index</c>'s subsections, or 0 to its <c>/Size</c> less one without an <c>/Index</c>. An older row for such a
++    /// number describes an older revision than the one the stream's rows give, and the object is left for a rebuild to find.
++    /// Where the numbering cannot be read — a value written as a reference, or one <see cref="NumberingFault"/> finds wrong —
++    /// every number is.
++    /// </summary>
++    /// <remarks>
++    /// The numbers are kept as ranges, merged and sorted, looked up by halves for each older row. Past
++    /// <see cref="MaxRefusedRanges"/> ranges every number is refused: not a guard (ADR 34), as only a file whose sections cannot
++    /// be read reaches it, and the bound keeps a chain of such sections, each declaring thousands of subsections, from costing
++    /// a merge of every range so far for each.
++    /// </remarks>
++    private void RefuseDeclared(PdfDictionary dictionary)
++    {
++        if (_olderRowsRefused)
++        {
++            return;
++        }
++
++        var written = dictionary.GetRaw(PdfName.Index);
++        var index = written is PdfNull ? null : written;
++        var size = index is null ? dictionary.GetRaw(PdfName.Size) : null;
++
++        if (index is PdfReference || size is PdfReference ||
++            NumberingFault(index, index, size?.AsInteger(), out var subsections) is not null)
++        {
++            _olderRowsRefused = true;
++            return;
++        }
++
++        long[] declared = index is null ? [0, size!.AsInteger().GetValueOrDefault()] : subsections;
++        var ranges = new List<(long Start, long End)>((_refusedRanges?.Length ?? 0) + (declared.Length / 2));
++        ranges.AddRange(_refusedRanges ?? []);
++
++        for (var i = 0; i < declared.Length; i += 2)
++        {
++            if (declared[i + 1] > 0)
++            {
++                ranges.Add((declared[i], declared[i] + declared[i + 1]));
++            }
++        }
++
++        ranges.Sort();
++        var merged = new List<(long Start, long End)>(ranges.Count);
++
++        foreach (var range in ranges)
++        {
++            if (merged.Count > 0 && range.Start <= merged[^1].End)
++            {
++                merged[^1] = (merged[^1].Start, Math.Max(merged[^1].End, range.End));
++            }
++            else
++            {
++                merged.Add(range);
++            }
++        }
++
++        if (merged.Count > MaxRefusedRanges)
++        {
++            _olderRowsRefused = true;
++            _refusedRanges = null;
++            return;
++        }
++
++        _refusedRanges = [.. merged];
++    }
++
++    /// <summary>Determines whether an older section's row for <paramref name="number"/> is refused (<see cref="RefuseDeclared"/>).</summary>
++    private bool RefusedToOlderRows(int number)
++    {
++        if (_olderRowsRefused)
++        {
++            return true;
++        }
++
++        var ranges = _refusedRanges!;
++        var low = 0;
++        var high = ranges.Length - 1;
++
++        while (low <= high)
++        {
++            var middle = (low + high) >>> 1;
++
++            if (number < ranges[middle].Start)
++            {
++                high = middle - 1;
++            }
++            else if (number >= ranges[middle].End)
++            {
++                low = middle + 1;
++            }
++            else
++            {
++                return true;
++            }
++        }
++
++        return false;
++    }
++
++    /// <summary>
++    /// Records that <paramref name="table"/>'s <c>/XRefStm</c> names <paramref name="offset"/>, which the chain has named
++    /// before: a hybrid file's stream a newer table named too — a writer that copies <c>/XRefStm</c> into the next trailer —,
++    /// read once, where it was first named. Its rows count for each table that names it (#156).
++    /// </summary>
++    /// <remarks>
++    /// Run once for each table the chain reads, over the records made so far: at most twice as many as the sections the
++    /// chain may read.
++    /// </remarks>
++    private XRefSectionRecord NameAgain(long offset, XRefSectionRecord table, XRefSectionRecord? first)
++    {
++        var again = new XRefSectionRecord("/XRefStm", PositionOf(offset), table.Offset)
++        {
++            WrittenOffset = offset,
++            NamingTrailer = table.Trailer,
++            ReadAs = first,
++        };
++        again.State = XRefSectionState.NamedAgain;
++        again.Kind = first?.Kind ?? XRefSectionKind.Unknown;
++
++        // A hybrid file's stream is part of each revision whose table names it; what the chain read through /Prev or
++        // startxref, or a table, is no table's stream.
++        again.HighestNumber = first is { NamedBy: "/XRefStm", Kind: XRefSectionKind.Stream } ? first.HighestNumber : -1;
++        _structure.Add(again);
++        return again;
++    }
++
++    /// <summary>
++    /// Reports that the <c>/XRefStm</c> <paramref name="naming"/> records names <paramref name="what"/>, no cross-reference
++    /// stream of the naming table's revision, and marks the index incomplete: the objects only that stream indexes are
++    /// looked for by rebuilding the index, when they are asked for, as a missing section's are (#156).
++    /// </summary>
++    private void ReportNoStream(XRefSectionRecord naming, string what)
++    {
++        naming.NamesNoStream = what;
++        _indexIncomplete = true;
++        var named = PositionOf(naming.WrittenOffset);
++        _diagnostics.Warn(
++            PdfDiagnosticCodes.XRefHybridStreamLost,
++            string.Create(
++                CultureInfo.InvariantCulture,
++                $"The /XRefStm of the cross-reference table at offset {naming.NamedFrom} names offset {DescribeOffset(naming.WrittenOffset)}, {what}, where ISO 32000-1 names a cross-reference stream (Table 19); the objects only the table's stream indexes are looked for by rebuilding the index."),
++            IsInFile(named) ? named : naming.NamedFrom);
++    }
++
++    /// <summary>
++    /// Reports the rows of a reserved type a cross-reference stream of the chain gave — what the rows read of a section the
++    /// chain lost gave too —, once for the section, the first of them in the message (#221).
++    /// </summary>
++    private void ReportReservedRows(XRefSectionRecord section, string naming)
++    {
++        if (section.ReservedRow is not { } first)
++        {
++            return;
++        }
++
++        var rows = section.ReservedRows == 1
++            ? "a row"
++            : string.Create(CultureInfo.InvariantCulture, $"{section.ReservedRows} rows");
++        _diagnostics.Warn(
++            PdfDiagnosticCodes.XRefEntryReserved,
++            string.Create(
++                CultureInfo.InvariantCulture,
++                $"The cross-reference stream {naming} names at offset {section.Offset} gives {rows} a reserved type, {ReservedReading}: {first}."),
++            section.Offset);
++    }
++
++    /// <summary>What the reader made of a row of a reserved type, as its report says it.</summary>
++    private const string ReservedReading =
++        "read as ISO 32000-1 reads it, a reference to the null object (7.5.8.3), no older section's row standing for its object";
++
++    /// <summary>
++    /// Judges the <c>/XRefStm</c> of a table a guard stopped, which the chain does not read, its rows standing for those the
++    /// guard left unread (#264): one outside the file is a section missing, as a whole read finds it; one in the file is the
++    /// guard's to hide, and one the chain read already is passed over, as a whole read passes it over.
++    /// </summary>
++    private void JudgeStreamPastGuard(long hybrid, long namedFrom, HashSet<long> visited)
++    {
++        if (hybrid < 0 || IsInFile(PositionOf(hybrid)) || !visited.Add(hybrid))
++        {
++            return;
++        }
++
++        // As TryReadXRefSection records a section outside the file, which it does not read.
++        var stream = new XRefSectionRecord("/XRefStm", PositionOf(hybrid), namedFrom)
++        {
++            WrittenOffset = hybrid,
++            State = XRefSectionState.NotFound,
++            Fault = "lies outside the file",
++        };
++        _structure.Add(stream);
++        ReportLostSection(stream, "/XRefStm", hybrid, namedFrom);
++    }
++
+     /// <summary>
+     /// Determines whether the chain read a section it named at <paramref name="offset"/>, as the file writes it: where it was
+     /// named, or near it.
+@@ -3174,6 +3527,16 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
+     /// </remarks>
+     private void ReportLostSection(XRefSectionRecord section, string naming, long offset, long namedFrom)
+     {
++        // PROTOTYPE (c9): an object that only gives a /W, and no /Type /XRef, that cannot be read and has no section near it
++        // is no section: missing, as an object of another kind is.
++        if (section.State == XRefSectionState.Malformed && !section.CutByLimit && section.Kind == XRefSectionKind.Stream &&
++            section.TypedOther)
++        {
++            section.State = XRefSectionState.NotFound;
++            section.Fault = string.Create(
++                CultureInfo.InvariantCulture, $"holds object {section.StreamObjectNumber}, which is not a cross-reference stream");
++        }
++
+         if (section.State != XRefSectionState.Malformed)
+         {
+             ReportMissingSection(naming, offset, namedFrom);
+@@ -3200,6 +3563,71 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
+             section.Offset);
+     }
+ 
++    /// <summary>
++    /// Reports a section of the chain that was read, but only in part — a row that is no row ended a subsection, a stream
++    /// holds fewer rows than it declares, the end of the file cuts a table before its trailer, a row was refused —, and
++    /// marks the index incomplete; or a classic table that holds no subsection, read as indexing nothing.
++    /// </summary>
++    /// <remarks>
++    /// Reported once, at the section, the first fault in the message (#207, #210, #222). A section one of the reader's
++    /// guards cut is the guard's, which says so (ADR 34), whatever the reading met before the cut.
++    /// </remarks>
++    private void ReportSectionReadInPart(XRefSectionRecord section, string naming)
++    {
++        if (section.State is not (XRefSectionState.Read or XRefSectionState.Relocated))
++        {
++            return;
++        }
++
++        var kind = section.Kind == XRefSectionKind.Stream ? "stream" : "table";
++        string fault;
++        string kept;
++
++        if (section.Incomplete && section.Fault is { } stopped)
++        {
++            fault = stopped;
++            kept = "the rows before it were kept, and the objects only the rest would index are looked for by rebuilding the index";
++        }
++        else if (section.Incomplete)
++        {
++            fault = "the file ends before its trailer";
++            kept = "its rows were kept, and the objects only the sections its trailer would name index are looked for by rebuilding the index";
++        }
++        else if (section.RefusedRow is { } refused)
++        {
++            fault = refused;
++            kept = "that row alone was refused, the rows after it read, and its object is looked for by rebuilding the index";
++        }
++        else
++        {
++            if (section.NoSubsection)
++            {
++                _diagnostics.Repair(
++                    SectionEmptyCode,
++                    string.Create(
++                        CultureInfo.InvariantCulture,
++                        $"The cross-reference table {naming} names at offset {section.Offset} holds no subsection: its trailer keyword follows its xref keyword. It was read as indexing nothing."),
++                    section.Offset);
++            }
++
++            return;
++        }
++
++        _indexIncomplete = true;
++        _diagnostics.Warn(
++            ReadInPartCode,
++            string.Create(
++                CultureInfo.InvariantCulture,
++                $"The cross-reference {kind} {naming} names at offset {section.Offset} was read only in part: {fault}; {kept}."),
++            section.Offset);
++    }
++
++    /// <summary>The code a section read in part is reported under (prototype: chosen by the maintainer).</summary>
++    private const string ReadInPartCode = PdfDiagnosticCodes.XRefSectionUnreadable;
++
++    /// <summary>The code a classic table with no subsection is reported under (prototype: chosen by the maintainer).</summary>
++    private const string SectionEmptyCode = PdfDiagnosticCodes.XRefSectionEmpty;
++
+     /// <summary>
+     /// Reports a section of the chain that could not be found, and marks the index incomplete: at the offset it was
+     /// named at, or, when that lies outside the file, at <paramref name="namedFrom"/>, the section whose trailer named
+@@ -3249,20 +3677,28 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
+             return false;
+         }
+ 
++        // The window ends NearbySearchRadius bytes past the offset, or at the file's end, wherever the offset falls: clamped
++        // at the file's start, it is not lengthened (#197). The position is in the file, so neither sum wraps.
+         var start = Math.Max(0, absolute - NearbySearchRadius);
+-        var length = (int)Math.Min(NearbySearchRadius * 2, _source.Length - start);
++        var length = (int)(absolute + Math.Min(NearbySearchRadius, _source.Length - absolute) - start);
+         var candidates = new List<long>();
+ 
+-        using (var window = _source.GetWindow(start, length))
++        // The byte before the window, as for an object's (#197): a candidate starts in the window.
++        var lead = start > 0 ? 1 : 0;
++
++        using (var window = _source.GetWindow(start - lead, length + lead))
+         {
+-            FindSectionCandidates(window.Memory.Span, start, candidates);
++            FindSectionCandidates(window.Memory.Span, start - lead, candidates);
+         }
+ 
++        candidates.RemoveAll(candidate => candidate < start);
++
+         candidates.Sort((left, right) => Math.Abs(left - absolute).CompareTo(Math.Abs(right - absolute)));
+ 
+         foreach (var candidate in candidates)
+         {
+-            if (candidate == absolute)
++            // Where the section was named holds no section that can be read, and where the chain read one holds that one.
++            if (candidate == absolute || _sectionsReadAt.Contains(candidate))
+             {
+                 continue;
+             }
+@@ -3381,6 +3817,8 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
+         previous = -1;
+         hybrid = -1;
+         _rowsLeftUnread = null;
++        _previousPastGuard = -1;
++        _hybridPastGuard = -1;
+ 
+         if (!IsInFile(absolute))
+         {
+@@ -3439,6 +3877,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
+             using var window = _source.GetWindow(absolute, windowSize);
+             var span = window.Memory.Span;
+             var lexer = new PdfLexer(span);
++            var subsections = 0;
+ 
+             // A window shorter than asked holds the end of the file: what it holds is all there is, as it is for a full one
+             // that ends where the file does. Any other full one may have cut the table, and is grown until the guard allows
+@@ -3488,6 +3927,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
+                 if (token.IsKeyword(TrailerKeyword))
+                 {
+                     section.TrailerPosition = absolute + token.Start;
++                    section.NoSubsection = subsections == 0;
+ 
+                     var trailer = ReadTrailer(window.Memory, absolute, lexer.Position, windowFull, section);
+ 
+@@ -3558,6 +3998,8 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
+                     return false;
+                 }
+ 
++                subsections++;
++
+                 // A count is bounded by what it numbers, and its rows by the window, which MaxXRefSectionLength bounds: the
+                 // most rows an int counts lie far past any window, and a count past them describes rows that are not read.
+                 truncated = !ReadSubsection(ref lexer, (int)first, (int)Math.Min(countToken.Integer, int.MaxValue), section, absolute);
+@@ -3569,6 +4011,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
+                     if (!candidate)
+                     {
+                         ReadTrailerPastRows(absolute + lexer.Position, section);
++                        JudgeLinksPastGuard(section, absolute);
+                     }
+ 
+                     return true;
+@@ -3597,13 +4040,18 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
+                         ReadTrailerPastRows(
+                             Math.Max(absolute + (line >= 0 ? line + 1 : windowSize - TrailerKeyword.Length), absolute + section.Padding + "xref".Length),
+                             section);
++                        JudgeLinksPastGuard(section, absolute);
+                     }
+                 }
+                 else
+                 {
+-                    // The file ends before the table's trailer.
++                    // The file ends before the table's trailer: a table that read rows is read in part, and reported so by
++                    // the chain; one that read none is no section to keep (#207). The count is the section's rows, not the
++                    // index's, which a newer section may have filled.
+                     section.TrailerFault = XRefTrailerFault.Missing;
+                     section.TrailerPosition = _source.Length;
++                    section.Incomplete = true;
++                    return section.HighestNumber >= 0;
+                 }
+ 
+                 // Keep whatever was indexed.
+@@ -3614,6 +4062,26 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
+         }
+     }
+ 
++    /// <summary>
++    /// Reads the <c>/Prev</c> and <c>/XRefStm</c> of a classic table whose rows a guard stopped, its trailer found past them,
++    /// for the chain to judge without following them (#264): a value that names no offset is reported as a whole read reports
++    /// it, unless it leads to what the guard hides, and an offset is left for the chain to judge. Neither is read where the
++    /// trailer was cut — what it named may lie past the cut —, nor in a table an <c>/XRefStm</c> names, whose links a whole
++    /// read does not follow either.
++    /// </summary>
++    private void JudgeLinksPastGuard(XRefSectionRecord section, long absolute)
++    {
++        if (section.Trailer is not { } trailer || section.TrailerCutByLimit || section.NamedBy == "/XRefStm")
++        {
++            return;
++        }
++
++        _previousPastGuard = SectionOffset(trailer, PdfName.Prev, absolute, out var previousHidden, rowsHidden: true);
++        _hybridPastGuard = SectionOffset(trailer, PdfName.XRefStm, absolute, out var streamHidden, rowsHidden: true);
++        section.ChainHiddenByGuard = streamHidden ?? previousHidden;
++        section.ChainHiddenAtStream = streamHidden is not null;
++    }
++
+     /// <summary>
+     /// Finds the trailer of a classic table past the rows the reader left unread from <paramref name="from"/> on — those
+     /// <see cref="PdfReaderLimits.MaxXRefSectionLength"/> cut, or those past an index
+@@ -3907,6 +4375,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
+                 // A malformed row: stop this subsection rather than misread every row after it. The rows it
+                 // leaves unread index nothing, and the objects they stood for are the index's to find.
+                 _indexIncomplete = true;
++                section.Incomplete = true;
+                 section.Fault ??= string.Create(
+                     CultureInfo.InvariantCulture,
+                     $"the row for object {number}, at offset {absolute + offsetToken.Start}, is not an offset, a generation and n or f");
+@@ -4022,6 +4491,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
+         section.Padding = (int)(header - absolute);
+         section.TrailerPosition = absolute;
+         section.TypedXRef = dictionary.IsOfType(PdfName.XRef);
++        section.TypedOther = !section.TypedXRef && dictionary.GetRaw(PdfName.Type) is PdfName;
+ 
+         // A guard that cut the dictionary of what declares another type cut no section: such a dictionary — a CIDFont's,
+         // whose /W gives widths — has no stream data read whole, and is no section. A stream of that type, which the cut
+@@ -4404,8 +4874,14 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
+         // A hybrid file's stream gives a /Prev of its own, which the reader does not follow: the chain goes on through the
+         // table's, as ISO 32000-1 (7.5.8.4) describes, and the stream's is not read, to name a section missing or end the
+         // chain for a guard.
++        // Where a guard cut the rows, the chain ends here, and the /Prev is judged as far as the guard lets it be, never read
++        // (#264): at a place the section may have been moved to too, which a stream read so is taken for.
+         string? previousHidden = null;
+-        previous = rowsCut || section.NamedBy == "/XRefStm" ? -1 : SectionOffset(dictionary, PdfName.Prev, absolute, out previousHidden);
++        var linked = section.NamedBy == "/XRefStm"
++            ? -1
++            : SectionOffset(dictionary, PdfName.Prev, absolute, out previousHidden, rowsHidden: rowsCut);
++        previous = rowsCut ? -1 : linked;
++        _previousPastGuard = rowsCut ? linked : -1;
+         section.ChainHiddenByGuard = previousHidden;
+         return XRefSectionState.Read;
+     }
+@@ -4459,8 +4935,8 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
+     /// numbers the object, its row past those held or not standing, where <paramref name="numbered"/> says so.
+     /// </summary>
+     /// <remarks>
+-    /// The section's row for the object is the first that numbers it with a type the reading of its rows takes: one of a
+-    /// reserved type is ignored there, as the specification says (<see cref="ReadXRefStreamRows"/>). The object is read
++    /// The section's row for the object is the first that numbers it, as the reading of its rows takes it: one of a
++    /// reserved type stands for the null object there (<see cref="ReadXRefStreamRows"/>), and places no length. The object is read
+     /// where that row places it as <see cref="ReadWithoutLoading"/> reads one: nothing is corrected, cached, recorded or
+     /// reported. One a guard cuts gives what the cut left of it, an integer read before the cut only a place to look for
+     /// <c>endstream</c> at (#224), and <paramref name="lengthCut"/> says so, whether an <c>endstream</c> confirms it or not:
+@@ -4520,7 +4996,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
+                 type = widths[0] == 0 ? 1 : ReadField(fields, ref cursor, widths[0]);
+                 offset = ReadField(fields, ref cursor, widths[1]);
+                 generation = ReadField(fields, ref cursor, widths[2]);
+-                taken = type <= 2;
++                taken = true;
+             }
+ 
+             ordinal += subsections[i + 1];
+@@ -5168,7 +5644,11 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
+     /// What the entry is, when it leads to an object a guard cut, which ends the chain — "its /Prev is the reference 9 0 R,
+     /// which one of the reader's limits cut" —; null otherwise.
+     /// </param>
+-    private long SectionOffset(PdfDictionary trailer, PdfName key, long section, out string? hidden)
++    /// <param name="rowsHidden">
++    /// Whether a guard cut the section's own rows, which may place the object a reference names: one that leads to a number
++    /// they may hold names what is unknown, as past a full index (#264).
++    /// </param>
++    private long SectionOffset(PdfDictionary trailer, PdfName key, long section, out string? hidden, bool rowsHidden = false)
+     {
+         hidden = null;
+ 
+@@ -5187,8 +5667,9 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
+         }
+ 
+         // A reference leading to what a guard that filled the index hides names what is unknown: the chain ends there for the
+-        // guard, not the file (#175).
+-        if (_indexFullAt >= 0 && LeadsPastIndex(value, out _))
++        // guard, not the file (#175). So does one leading to a row a guard left unread in the section itself, its rows cut
++        // (#264).
++        if ((_indexFullAt >= 0 || rowsHidden) && LeadsPastIndex(value, out _))
+         {
+             return -1;
+         }
+@@ -5307,8 +5788,13 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
+                     break;
+ 
+                 default:
+-                    // Types beyond 2 are reserved; the specification says to ignore the entry. A type field wider than 8
+-                    // bytes whose leading bytes are not all zero gives one.
++                    // ISO 32000-1 allows types 0, 1 and 2 only, and reads any other "as a reference to the null object, thus
++                    // permitting new entry types to be defined in the future" (7.5.8.3): the row stands for its object as a
++                    // free row does, no older section's row standing for it (#221). A type field wider than 8 bytes whose
++                    // leading bytes are not all zero gives one.
++                    AddFromChain(number, XRefEntry.Free, section);
++                    section.ReservedRow ??= ReservedRowFault(number, type, row, widths[0]);
++                    section.ReservedRows++;
+                     break;
+             }
+         }
+@@ -5325,6 +5811,12 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
+             return;
+         }
+ 
++        // A number a newer unreadable stream declares: its row there, unread, is newer than this one (#208).
++        if ((_refusedRanges is not null || _olderRowsRefused) && RefusedToOlderRows(number))
++        {
++            return;
++        }
++
+         // While the index has room, a number it holds is simply not taken again: one lookup a row.
+         if (IndexHasRoom)
+         {
+@@ -5496,6 +5988,12 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
+         static string Invariant(FormattableString text) => text.ToString(CultureInfo.InvariantCulture);
+     }
+ 
++    /// <summary>Says what a row of a reserved type gives, in words: its object and its type.</summary>
++    private static string ReservedRowFault(int number, ulong type, ReadOnlySpan<byte> row, int width) =>
++        width > sizeof(ulong) && row[..(width - sizeof(ulong))].ContainsAnyExcept((byte)0)
++            ? string.Create(CultureInfo.InvariantCulture, $"the row for object {number} gives it a type of more than 64 bits")
++            : string.Create(CultureInfo.InvariantCulture, $"the row for object {number} gives it type {type}");
++
+     /// <summary>
+     /// Reads a field of a cross-reference stream's row, high byte first (ISO 32000-1, 7.5.8.3), as the unsigned value its
+     /// bytes give.
+@@ -6071,15 +6569,22 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
+             return false;
+         }
+ 
++        // The window ends NearbySearchRadius bytes past the offset, or at the file's end, wherever the offset falls: clamped
++        // at the file's start, it is not lengthened (#197). The end is worked out from what lies between the offset and the
++        // file's end, which wraps for no offset — long.MaxValue, an entry past what a long holds, gives the file's end.
+         var start = Math.Max(0, approximateOffset - NearbySearchRadius);
+-        var length = (int)Math.Min(NearbySearchRadius * 2, source.Length - start);
++        var end = approximateOffset + Math.Min(NearbySearchRadius, source.Length - approximateOffset);
++        var length = end - start;
+ 
+         if (length <= 0)
+         {
+             return false;
+         }
+ 
+-        using var window = source.GetWindow(start, length);
++        // The byte before the window, where it does not start the file, tells a number the window's start cuts - "14 0 obj"
++        // read from its "4" - from one that starts there: a header is taken only where it starts in the window.
++        var lead = start > 0 ? 1 : 0;
++        using var window = source.GetWindow(start - lead, (int)length + lead);
+         var span = window.Memory.Span;
+         var searchFrom = 0;
+ 
+@@ -6093,9 +6598,10 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
+ 
+             var position = searchFrom + index;
+ 
+-            if (TryReadHeaderBackwards(span, position, out var found, out var foundGeneration, out var headerStart) && found == number)
++            if (TryReadHeaderBackwards(span, position, out var found, out var foundGeneration, out var headerStart) &&
++                headerStart >= lead && found == number)
+             {
+-                actualOffset = start + headerStart;
++                actualOffset = start - lead + headerStart;
+                 generation = foundGeneration;
+                 return true;
+             }
+@@ -6305,59 +6811,181 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
+             return false;
+         }
+ 
+-        while (index >= 0 && PdfCharacters.IsWhitespace(span[index]))
+-        {
+-            index--;
+-        }
++        // The header's two numbers, the generation first, each read backwards as a run of digits, or forwards with the lexer
++        // from the start of a line that holds a comment (#261).
++        long generationValue = 0;
++        long numberValue = 0;
++        var numberStart = 0;
++        var taken = 0;
+ 
+-        var generationEnd = index + 1;
+-        while (index >= 0 && PdfCharacters.IsDigit(span[index]))
++        while (taken < 2)
+         {
+-            index--;
+-        }
++            var crossedLine = false;
+ 
+-        var generationStart = index + 1;
+-        if (generationStart == generationEnd)
+-        {
+-            return false;
++            while (index >= 0 && PdfCharacters.IsWhitespace(span[index]))
++            {
++                crossedLine |= span[index] is (byte)'\r' or (byte)'\n';
++                index--;
++            }
++
++            if (index < 0)
++            {
++                return false;
++            }
++
++            if (crossedLine)
++            {
++                var lineStart = span[..(index + 1)].LastIndexOfAny((byte)'\r', (byte)'\n') + 1;
++
++                if (span[lineStart..(index + 1)].IndexOf((byte)'%') >= 0)
++                {
++                    // A line that holds a % may end with a comment, which starts where the lexer, reading the line from its
++                    // start, meets a % outside a string: its tokens are what precedes the comment, the nearest taken first.
++                    if (!TakeLineTokens(span, lineStart, index + 1, ref taken, ref generationValue, ref numberValue, ref numberStart))
++                    {
++                        return false;
++                    }
++
++                    if (taken == 2)
++                    {
++                        break;
++                    }
++
++                    index = lineStart - 1;
++
++                    if (index < 0)
++                    {
++                        return false;
++                    }
++
++                    continue;
++                }
++            }
++
++            var runEnd = index + 1;
++            while (index >= 0 && PdfCharacters.IsDigit(span[index]))
++            {
++                index--;
++            }
++
++            var runStart = index + 1;
++            if (runStart == runEnd)
++            {
++                return false;
++            }
++
++            // Each run is judged by its value, however many zeros lead it, as the parser judges it: a header the parser would
++            // refuse, found here, would be an object no read can serve. A run of digits always parses, as an integer within a
++            // long or as a real past one.
++            _ = PdfNumberParser.TryParse(span[runStart..runEnd], out var parsed, out _, out var pastLong);
++
++            if (pastLong)
++            {
++                return false;
++            }
++
++            if (taken == 0)
++            {
++                generationValue = parsed;
++            }
++            else
++            {
++                numberValue = parsed;
++                numberStart = runStart;
++            }
++
++            taken++;
++
++            if (taken == 1 && (index < 0 || !PdfCharacters.IsWhitespace(span[index])))
++            {
++                return false;
++            }
+         }
+ 
+-        if (index < 0 || !PdfCharacters.IsWhitespace(span[index]))
++        if (numberValue is <= 0 or > PdfObjectId.MaxNumber || generationValue is < 0 or > PdfObjectId.MaxGeneration)
+         {
+             return false;
+         }
+ 
+-        while (index >= 0 && PdfCharacters.IsWhitespace(span[index]))
+-        {
+-            index--;
+-        }
++        number = (int)numberValue;
++        generation = (int)generationValue;
++        headerStart = numberStart;
++        return true;
++    }
++
++    /// <summary>
++    /// Lexes the line <c>[lineStart, lineEnd)</c> of <paramref name="span"/> forward, from its start, and takes its last tokens
++    /// as the header's numbers still wanting, the nearest first: each must be an integer. False where one is not, or where a
++    /// string runs past the line's end, which would hold what follows.
++    /// </summary>
++    private static bool TakeLineTokens(
++        ReadOnlySpan<byte> span, int lineStart, int lineEnd, ref int taken, ref long generationValue, ref long numberValue, ref int numberStart)
++    {
++        var lexer = new PdfLexer(span[..lineEnd], lineStart);
++        var lastKind = PdfTokenKind.EndOfInput;
++        var lastValue = 0L;
++        var lastStart = 0;
++        var beforeKind = PdfTokenKind.EndOfInput;
++        var beforeValue = 0L;
++        var beforeStart = 0;
++        var count = 0;
+ 
+-        var numberEnd = index + 1;
+-        while (index >= 0 && PdfCharacters.IsDigit(span[index]))
++        while (true)
+         {
+-            index--;
++            var token = lexer.Read();
++
++            if (token.Kind == PdfTokenKind.EndOfInput)
++            {
++                break;
++            }
++
++            if ((token.Kind == PdfTokenKind.LiteralString && token.End == lineEnd && span[lineEnd - 1] != (byte)')') ||
++                (token.Kind == PdfTokenKind.HexString && token.End == lineEnd && span[lineEnd - 1] != (byte)'>'))
++            {
++                return false;
++            }
++
++            beforeKind = lastKind;
++            beforeValue = lastValue;
++            beforeStart = lastStart;
++            lastKind = token.Kind;
++            lastValue = token.Integer;
++            lastStart = token.Start;
++            count++;
+         }
+ 
+-        var numberStart = index + 1;
+-        if (numberStart == numberEnd)
++        if (count > 0)
+         {
+-            return false;
+-        }
++            if (lastKind != PdfTokenKind.Integer)
++            {
++                return false;
++            }
+ 
+-        // Each run is judged by its value, however many zeros lead it, as the parser judges it: a header the parser would
+-        // refuse, found here, would be an object no read can serve. A run of digits always parses, as an integer within a
+-        // long or as a real past one.
+-        _ = PdfNumberParser.TryParse(span[numberStart..numberEnd], out var parsed, out _, out var numberPastLong);
+-        _ = PdfNumberParser.TryParse(span[generationStart..generationEnd], out var parsedGeneration, out _, out var generationPastLong);
++            if (taken == 0)
++            {
++                generationValue = lastValue;
++            }
++            else
++            {
++                numberValue = lastValue;
++                numberStart = lastStart;
++            }
++
++            taken++;
++        }
+ 
+-        if (numberPastLong || parsed is <= 0 or > PdfObjectId.MaxNumber || generationPastLong || parsedGeneration > PdfObjectId.MaxGeneration)
++        if (count > 1 && taken < 2)
+         {
+-            return false;
++            if (beforeKind != PdfTokenKind.Integer)
++            {
++                return false;
++            }
++
++            numberValue = beforeValue;
++            numberStart = beforeStart;
++            taken++;
+         }
+ 
+-        number = (int)parsed;
+-        generation = (int)parsedGeneration;
+-        headerStart = numberStart;
+         return true;
+     }
+ 
+diff --git a/src/AdCodicem.Pdf/IO/XRef/XRefSectionRecord.cs b/src/AdCodicem.Pdf/IO/XRef/XRefSectionRecord.cs
+index 06de2eb..50e989d 100644
+--- a/src/AdCodicem.Pdf/IO/XRef/XRefSectionRecord.cs
++++ b/src/AdCodicem.Pdf/IO/XRef/XRefSectionRecord.cs
+@@ -65,12 +65,28 @@ internal sealed class XRefSectionRecord
+     public string? RefusedRow { get; set; }
+ 
+     /// <summary>
+-    /// Gets a value indicating whether a cross-reference stream holds fewer rows than it declares: the rows it holds place
+-    /// objects, but where a value they are read with is one a guard cut, beside which the data holds too few whatever the
+-    /// value holds.
++    /// Gets the first row of a reserved type the cross-reference stream gives — a type past 2, which ISO 32000-1 (7.5.8.3)
++    /// allows no PDF 1.5 to 1.7 file and reads as a reference to the null object —, in words; null when it gives none.
++    /// </summary>
++    public string? ReservedRow { get; set; }
++
++    /// <summary>Gets how many rows of a reserved type the cross-reference stream gives.</summary>
++    public long ReservedRows { get; set; }
++
++    /// <summary>
++    /// Gets a value indicating whether the section's own reading lost rows through the file's fault, the rows before the
++    /// fault kept: a classic table's row that is no row, which ends its subsection; a table the end of the file cuts before
++    /// its trailer; a cross-reference stream that holds fewer rows than it declares — but where a value they are read with
++    /// is one a guard cut, beside which the data holds too few whatever the value holds.
+     /// </summary>
+     public bool Incomplete { get; set; }
+ 
++    /// <summary>
++    /// Gets a value indicating whether a classic table holds no subsection: its <c>trailer</c> keyword follows its
++    /// <c>xref</c> keyword, where ISO 32000-1 (7.5.4) has one or more subsections follow it.
++    /// </summary>
++    public bool NoSubsection { get; set; }
++
+     /// <summary>
+     /// Gets a value indicating whether one of the reader's limits stopped it reading the section, or its trailer,
+     /// whole (ADR 34): what lies past the limit was not read, and is not the file's fault.
+@@ -91,6 +107,9 @@ internal sealed class XRefSectionRecord
+     /// </summary>
+     public bool TypedXRef { get; set; }
+ 
++    /// <summary>PROTOTYPE (c9b): the stream's dictionary gives a /Type other than /XRef.</summary>
++    public bool TypedOther { get; set; }
++
+     /// <summary>
+     /// Gets a value indicating whether <see cref="Documents.PdfReaderLimits.MaxTrailerLength"/> cut the section's
+     /// trailer: what lay past the cut — an older section's <c>/Prev</c>, a key a newer trailer gives — is unknown.
+@@ -110,6 +129,12 @@ internal sealed class XRefSectionRecord
+     /// </summary>
+     public bool ChainHiddenAtStream { get; set; }
+ 
++    /// <summary>
++    /// Gets a value indicating whether the chain went on through the <c>/Prev</c> of a cross-reference stream it cannot read,
++    /// read from the stream's dictionary as a whole read reads it (#208): the one value of that dictionary the reader read.
++    /// </summary>
++    public bool PreviousHandedOn { get; set; }
++
+     /// <summary>Gets the section's own trailer — a cross-reference stream's dictionary —, or null when none was read.</summary>
+     public PdfDictionary? Trailer { get; set; }
+ 
+@@ -132,6 +157,18 @@ internal sealed class XRefSectionRecord
+     /// </summary>
+     public PdfDictionary? NamingTrailer { get; init; }
+ 
++    /// <summary>
++    /// Gets the record of what the chain read, or looked for, where an earlier naming named the same offset, for an
++    /// <c>/XRefStm</c> that names it again (<see cref="XRefSectionState.NamedAgain"/>); null for every other section.
++    /// </summary>
++    public XRefSectionRecord? ReadAs { get; set; }
++
++    /// <summary>
++    /// Gets what a table's <c>/XRefStm</c> named in place of a cross-reference stream of its revision, in words — "the
++    /// table itself", "a cross-reference table" —; null when it named a stream, or nothing the chain could read (#156).
++    /// </summary>
++    public string? NamesNoStream { get; set; }
++
+     /// <summary>Gets the object number of a cross-reference stream, or 0 for a classic table.</summary>
+     public int StreamObjectNumber { get; set; }
+ 
+@@ -152,7 +189,10 @@ internal sealed class XRefSectionRecord
+         Kind = attempt.Kind;
+         Fault = attempt.Fault;
+         RefusedRow = attempt.RefusedRow;
++        ReservedRow = attempt.ReservedRow;
++        ReservedRows = attempt.ReservedRows;
+         Incomplete = attempt.Incomplete;
++        NoSubsection = attempt.NoSubsection;
+         CutByLimit = attempt.CutByLimit;
+         CutByValue = attempt.CutByValue;
+         TypedXRef = attempt.TypedXRef;
+diff --git a/src/AdCodicem.Pdf/IO/XRef/XRefSectionState.cs b/src/AdCodicem.Pdf/IO/XRef/XRefSectionState.cs
+index 67a6627..28aa752 100644
+--- a/src/AdCodicem.Pdf/IO/XRef/XRefSectionState.cs
++++ b/src/AdCodicem.Pdf/IO/XRef/XRefSectionState.cs
+@@ -17,4 +17,10 @@ internal enum XRefSectionState : byte
+     /// read.
+     /// </summary>
+     Malformed,
++
++    /// <summary>
++    /// Named by an <c>/XRefStm</c> at an offset the chain had named before: what is there was read, or looked for, once,
++    /// where it was first named, and <see cref="XRefSectionRecord.ReadAs"/> is its record (#156).
++    /// </summary>
++    NamedAgain,
+ }
+diff --git a/src/AdCodicem.Pdf/Validation/PdfValidationRuleIds.cs b/src/AdCodicem.Pdf/Validation/PdfValidationRuleIds.cs
+index 9d3427b..e83b13a 100644
+--- a/src/AdCodicem.Pdf/Validation/PdfValidationRuleIds.cs
++++ b/src/AdCodicem.Pdf/Validation/PdfValidationRuleIds.cs
+@@ -97,12 +97,24 @@ public static class PdfValidationRuleIds
+     /// </summary>
+     public const string XRefSectionShifted = "xref.section-shifted";
+ 
++    /// <summary>
++    /// A classic cross-reference table holds no subsection: its <c>trailer</c> keyword follows its <c>xref</c> keyword.
++    /// <see cref="PdfValidationSeverity.Warning"/>.
++    /// </summary>
++    public const string XRefSubsectionMissing = "xref.subsection-missing";
++
+     /// <summary>
+     /// The chain of cross-reference sections names a section it has already read, or an offset it has already named,
+     /// and the sections before the loop are out of reach. <see cref="PdfValidationSeverity.Error"/>.
+     /// </summary>
+     public const string XRefChainLoop = "xref.chain-loop";
+ 
++    /// <summary>
++    /// A hybrid table's <c>/XRefStm</c> names no cross-reference stream of its revision, and what only that stream indexes
++    /// is lost. <see cref="PdfValidationSeverity.Error"/>.
++    /// </summary>
++    public const string XRefHybridStreamWrong = "xref.hybrid-stream-wrong";
++
+     /// <summary>
+     /// An in-use entry places its object where it is not, nor near it; or in an object stream that does not hold
+     /// it, or holds it written as a stream. <see cref="PdfValidationSeverity.Error"/>.
+@@ -159,6 +171,12 @@ public static class PdfValidationRuleIds
+     /// </summary>
+     public const string XRefCheckedInPart = "xref.checked-in-part";
+ 
++    /// <summary>
++    /// A cross-reference stream gives a row of a reserved type — a type past 2, which ISO 32000-1 allows no PDF 1.5 to 1.7
++    /// file. <see cref="PdfValidationSeverity.Warning"/>.
++    /// </summary>
++    public const string XRefEntryTypeReserved = "xref.entry-type-reserved";
++
+     /// <summary>
+     /// An object reachable from the trailer refers to an object the file lacks — none in its index, or a free
+     /// entry —, which reads as null. <see cref="PdfValidationSeverity.Warning"/>.
+diff --git a/src/AdCodicem.Pdf/Validation/Rules/HybridStreamWrongRule.cs b/src/AdCodicem.Pdf/Validation/Rules/HybridStreamWrongRule.cs
+new file mode 100644
+index 0000000..d2287d2
+--- /dev/null
++++ b/src/AdCodicem.Pdf/Validation/Rules/HybridStreamWrongRule.cs
+@@ -0,0 +1,44 @@
++using System.Globalization;
++
++namespace AdCodicem.Pdf.Validation.Rules;
++
++/// <summary>
++/// <see cref="PdfValidationRuleIds.XRefHybridStreamWrong"/>: a hybrid table's <c>/XRefStm</c> names the cross-reference
++/// stream of its revision.
++/// </summary>
++/// <remarks>
++/// ISO 32000-1 makes <c>/XRefStm</c> the offset of a cross-reference stream (Table 19), which holds the rows the table
++/// leaves out for readers of PDF 1.4 (7.5.8.4). One that names a classic table — the table itself, another the chain reads,
++/// or one it reads in the stream's place —, or a section the chain reads through <c>/Prev</c> or <c>startxref</c>, leaves
++/// that stream unknown: what only it indexed is found, if at all, by rebuilding the index, after which the reader cannot
++/// vouch that it reads what was written — an error (ADR 45), as a section that cannot be found is (#156).
++/// </remarks>
++internal sealed class HybridStreamWrongRule : IValidationRule
++{
++    /// <inheritdoc/>
++    public string Id => PdfValidationRuleIds.XRefHybridStreamWrong;
++
++    /// <inheritdoc/>
++    public PdfValidationSeverity Severity => PdfValidationSeverity.Error;
++
++    /// <inheritdoc/>
++    public void Check(ValidationContext context)
++    {
++        foreach (var section in context.Structure.Sections)
++        {
++            // Past the report's room, the section is counted, its finding not written (#168).
++            if (section.NamesNoStream is not { } what || !context.HasRoomFor(this))
++            {
++                continue;
++            }
++
++            context.Report(
++                this,
++                PdfValidationLocation.AtPosition(section.NamedFrom),
++                string.Create(
++                    CultureInfo.InvariantCulture,
++                    $"The /XRefStm of the cross-reference table at offset {section.NamedFrom} names offset {context.Document.Reader.DescribeOffset(section.WrittenOffset)}, {what}, where ISO 32000-1 names the cross-reference stream of the table's revision (Table 19): what only that stream indexes is lost."),
++                "Point /XRefStm at the cross-reference stream of the table's revision, or remove it.");
++        }
++    }
++}
+diff --git a/src/AdCodicem.Pdf/Validation/Rules/PageTreePageOrphanedRule.cs b/src/AdCodicem.Pdf/Validation/Rules/PageTreePageOrphanedRule.cs
+index 8075927..a7581e2 100644
+--- a/src/AdCodicem.Pdf/Validation/Rules/PageTreePageOrphanedRule.cs
++++ b/src/AdCodicem.Pdf/Validation/Rules/PageTreePageOrphanedRule.cs
+@@ -97,7 +97,7 @@ internal sealed class PageTreePageOrphanedRule : IValidationRule
+ 
+         foreach (var section in structure.Sections)
+         {
+-            if (section.State is not (XRefSectionState.Read or XRefSectionState.Relocated) || section.Incomplete || section.CutByLimit ||
++            if (section.State is not (XRefSectionState.Read or XRefSectionState.Relocated or XRefSectionState.NamedAgain) || section.Incomplete || section.CutByLimit ||
+                 section.ChainHiddenByGuard is not null)
+             {
+                 return false;
+diff --git a/src/AdCodicem.Pdf/Validation/Rules/ReservedTypeRule.cs b/src/AdCodicem.Pdf/Validation/Rules/ReservedTypeRule.cs
+new file mode 100644
+index 0000000..5b16fbc
+--- /dev/null
++++ b/src/AdCodicem.Pdf/Validation/Rules/ReservedTypeRule.cs
+@@ -0,0 +1,54 @@
++using System.Globalization;
++
++namespace AdCodicem.Pdf.Validation.Rules;
++
++/// <summary>
++/// <see cref="PdfValidationRuleIds.XRefEntryTypeReserved"/>: no cross-reference stream the chain reads gives a row of a
++/// reserved type — a type past 2, which ISO 32000-1 (7.5.8.3) allows no PDF 1.5 to 1.7 file, "thus permitting new entry
++/// types to be defined in the future".
++/// </summary>
++/// <remarks>
++/// ISO 32000-1 reads such a row as a reference to the null object, and so does the reader, no older section's row
++/// standing for its object (#221): the file breaks the specification and is read as the specification says, a warning
++/// (ADR 45), as a reference to an object the file lacks is (<see cref="PdfValidationRuleIds.ObjectReferenceMissing"/>).
++/// What a later version may define the type to stand for is unknown to the reader. Each section that gives such rows is
++/// reported once, the first named, the others counted — a section the reader could not read whole too: the rows it read
++/// are the file's.
++/// </remarks>
++internal sealed class ReservedTypeRule : IValidationRule
++{
++    /// <inheritdoc/>
++    public string Id => PdfValidationRuleIds.XRefEntryTypeReserved;
++
++    /// <inheritdoc/>
++    public PdfValidationSeverity Severity => PdfValidationSeverity.Warning;
++
++    /// <inheritdoc/>
++    public void Check(ValidationContext context)
++    {
++        foreach (var section in context.Structure.Sections)
++        {
++            // Past the report's room, the section is counted, its finding not written (#168).
++            if (section.ReservedRow is not { } first || !context.HasRoomFor(this))
++            {
++                continue;
++            }
++
++            var more = section.ReservedRows - 1;
++            var others = more switch
++            {
++                0 => string.Empty,
++                1 => ", and 1 row more",
++                _ => string.Create(CultureInfo.InvariantCulture, $", and {more} rows more"),
++            };
++
++            context.Report(
++                this,
++                PdfValidationLocation.AtPosition(section.Offset),
++                string.Create(
++                    CultureInfo.InvariantCulture,
++                    $"The cross-reference stream at offset {section.Offset} gives a row a reserved type: {first}{others}. ISO 32000-1 allows types 0, 1 and 2 only, and reads the object as null."),
++                "Rewrite the cross-reference stream with a row of type 0, 1 or 2 for each object.");
++        }
++    }
++}
+diff --git a/src/AdCodicem.Pdf/Validation/Rules/SizeWrongRule.cs b/src/AdCodicem.Pdf/Validation/Rules/SizeWrongRule.cs
+index c25e079..00e29e5 100644
+--- a/src/AdCodicem.Pdf/Validation/Rules/SizeWrongRule.cs
++++ b/src/AdCodicem.Pdf/Validation/Rules/SizeWrongRule.cs
+@@ -59,11 +59,26 @@ internal sealed class SizeWrongRule : IValidationRule
+ 
+         var pastSize = context.Probe.PastSizeCount > 0 && structure.SizeAsWritten is PdfInteger merged ? merged.Value : -1;
+ 
++        // A hybrid file's stream that more than one table names — a writer that copies /XRefStm into the next trailer — is
++        // judged once, where the oldest of them names it: the revision that wrote it, before which no table could name it
++        // (#156).
++        var judgedAt = new Dictionary<XRefSectionRecord, int>(ReferenceEqualityComparer.Instance);
++
+         for (var index = 0; index < sections.Count; index++)
+         {
+-            var section = sections[index];
++            if (Stream(sections[index]) is { } stream)
++            {
++                judgedAt[stream] = index;
++            }
++        }
+ 
+-            if (section.Trailer is not { } trailer || highest[index] < 0)
++        for (var index = 0; index < sections.Count; index++)
++        {
++            var named = sections[index];
++            var section = named.State == XRefSectionState.NamedAgain ? Stream(named) : named;
++
++            if (section?.Trailer is not { } trailer || highest[index] < 0 ||
++                (judgedAt.TryGetValue(section, out var at) && at != index))
+             {
+                 continue;
+             }
+@@ -74,7 +89,7 @@ internal sealed class SizeWrongRule : IValidationRule
+             // A count that is right, or Table 17's other reading of it; or one that leaves objects numbered above it, which
+             // the error rule says.
+             if (size is PdfInteger { Value: >= 0 } count &&
+-                (count.Value == expected || count.Value == NamingTableSize(section) || (count.Value < expected && count.Value == pastSize)))
++                (count.Value == expected || count.Value == NamingTableSize(named) || (count.Value < expected && count.Value == pastSize)))
+             {
+                 continue;
+             }
+@@ -132,6 +147,15 @@ internal sealed class SizeWrongRule : IValidationRule
+     private static long NamingTableSize(XRefSectionRecord section) =>
+         section.NamingTrailer?.GetRaw(PdfName.Size) is PdfInteger { Value: >= 0 } size ? size.Value : -1;
+ 
++    /// <summary>
++    /// Gets the hybrid file's stream <paramref name="section"/> records — where a table's <c>/XRefStm</c> named it, or named
++    /// it again —, or null when it records no such stream.
++    /// </summary>
++    private static XRefSectionRecord? Stream(XRefSectionRecord section) =>
++        (section.State == XRefSectionState.NamedAgain ? section.ReadAs : section) is { NamedBy: "/XRefStm", Kind: XRefSectionKind.Stream } stream
++            ? stream
++            : null;
++
+     private static bool IsWhole(IReadOnlyList<XRefSectionRecord> sections)
+     {
+         foreach (var section in sections)
+diff --git a/src/AdCodicem.Pdf/Validation/Rules/SubsectionMissingRule.cs b/src/AdCodicem.Pdf/Validation/Rules/SubsectionMissingRule.cs
+new file mode 100644
+index 0000000..5bbaf8f
+--- /dev/null
++++ b/src/AdCodicem.Pdf/Validation/Rules/SubsectionMissingRule.cs
+@@ -0,0 +1,43 @@
++using System.Globalization;
++using AdCodicem.Pdf.IO.XRef;
++
++namespace AdCodicem.Pdf.Validation.Rules;
++
++/// <summary>
++/// <see cref="PdfValidationRuleIds.XRefSubsectionMissing"/>: each classic cross-reference table holds one or more
++/// subsections (ISO 32000-1, 7.5.4).
++/// </summary>
++/// <remarks>
++/// A table whose <c>trailer</c> keyword follows its <c>xref</c> keyword is read as indexing nothing, as a table whose one
++/// subsection is <c>0 0</c> is, which ISO 32000-1 allows: the reader reads the file as written, and rebuilds nothing for
++/// it, so the fault is a warning (ADR 45). qpdf calls such a table's syntax invalid and reconstructs the file.
++/// </remarks>
++internal sealed class SubsectionMissingRule : IValidationRule
++{
++    /// <inheritdoc/>
++    public string Id => PdfValidationRuleIds.XRefSubsectionMissing;
++
++    /// <inheritdoc/>
++    public PdfValidationSeverity Severity => PdfValidationSeverity.Warning;
++
++    /// <inheritdoc/>
++    public void Check(ValidationContext context)
++    {
++        foreach (var section in context.Structure.Sections)
++        {
++            if (!section.NoSubsection || section.State is not (XRefSectionState.Read or XRefSectionState.Relocated) ||
++                !context.HasRoomFor(this))
++            {
++                continue;
++            }
++
++            context.Report(
++                this,
++                PdfValidationLocation.AtPosition(section.Offset),
++                string.Create(
++                    CultureInfo.InvariantCulture,
++                    $"The cross-reference table at offset {section.Offset} holds no subsection: its trailer keyword follows its xref keyword."),
++                "Write a subsection after the xref keyword — 0 0 for a table that indexes nothing.");
++        }
++    }
++}
+diff --git a/src/AdCodicem.Pdf/Validation/Rules/TrailerValueWrongRule.cs b/src/AdCodicem.Pdf/Validation/Rules/TrailerValueWrongRule.cs
+index 024ed9c..6100f64 100644
+--- a/src/AdCodicem.Pdf/Validation/Rules/TrailerValueWrongRule.cs
++++ b/src/AdCodicem.Pdf/Validation/Rules/TrailerValueWrongRule.cs
+@@ -67,6 +67,14 @@ internal sealed class TrailerValueWrongRule : IValidationRule
+ 
+         foreach (var section in sections)
+         {
++            if (section.PreviousHandedOn && section.Trailer is { } unread && IsFollowed(sections, section, PdfName.Prev))
++            {
++                // A cross-reference stream the reader cannot read, but whose /Prev the chain went on through: that value alone
++                // was read, and is judged (#208).
++                new Judge(context, this, section).Value(new What(PdfName.Prev), unread.GetRaw(PdfName.Prev), Iso1, "Table 17", resolve: true);
++                continue;
++            }
++
+             if (section.State is not (XRefSectionState.Read or XRefSectionState.Relocated) || section.Trailer is not { } trailer)
+             {
+                 continue;
+diff --git a/src/AdCodicem.Pdf/Validation/ValidationProfile.cs b/src/AdCodicem.Pdf/Validation/ValidationProfile.cs
+index 1853c38..e5a52b8 100644
+--- a/src/AdCodicem.Pdf/Validation/ValidationProfile.cs
++++ b/src/AdCodicem.Pdf/Validation/ValidationProfile.cs
+@@ -56,9 +56,12 @@ public sealed class ValidationProfile
+             new SizeWrongRule(),
+             new TrailerValueWrongRule(),
+             new SectionMalformedRule(),
++            new ReservedTypeRule(),
+             new SectionNotFoundRule(),
+             new SectionShiftedRule(),
++            new SubsectionMissingRule(),
+             new ChainLoopRule(),
++            new HybridStreamWrongRule(),
+             new EntryBrokenRule(),
+             new EntryShiftedRule(),
+             new GenerationMismatchRule(),
+diff --git a/tests/AdCodicem.Pdf.Tests/ChainFiles.cs b/tests/AdCodicem.Pdf.Tests/ChainFiles.cs
+index 1ac7a6c..ed63a8b 100644
+--- a/tests/AdCodicem.Pdf.Tests/ChainFiles.cs
++++ b/tests/AdCodicem.Pdf.Tests/ChainFiles.cs
+@@ -1862,6 +1862,88 @@ internal static class ChainFiles
+         return output.ToArray();
+     }
+ 
++    /// <summary>
++    /// A file of two revisions (#264, shapes F and G). The first, a classic table, holds the catalog, the page tree and the
++    /// page, objects 1 to 3, and gives <c>/Root</c>. The second updates objects 2 and 3 and numbers its rows as
++    /// <c>0 1</c>, <c>21 1</c> — a free row —, <c>2 2</c> and <c>4 40</c> — free rows —, its trailer giving <c>/Size 44</c>,
++    /// no <c>/Root</c>, and <paramref name="prev"/>, in which <c>{self}</c> stands for its own offset and <c>{older}</c> for
++    /// the first table's: a classic table, or, with <paramref name="stream"/>, cross-reference stream 44, whose
++    /// ASCIIHex-encoded rows of 7 bytes are numbered so through its <c>/Index</c>, its own row last.
++    /// <c>MaxXRefSectionLength = 128</c> cuts the table's rows in its fifth, <c>MaxDecodedStreamLength = 35</c> the stream's
++    /// after it, and <c>MaxIndexEntries = 4</c> fills the index at it, in either.
++    /// </summary>
++    public static (byte[] File, long Section) SectionAGuardStops(string prev, bool stream = false)
++    {
++        var file = new HandWrittenFile();
++        var one = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>");
++        var two = file.Object(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>");
++        var three = file.Object(3, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 1 1] /Resources << >> >>");
++        var older = file.Table(4, new Dictionary<int, long> { [1] = one, [2] = two, [3] = three }, "/Size 4 /Root 1 0 R");
++        two = file.Object(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>");
++        three = file.Object(3, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 2 2] /Resources << >> >>");
++        var section = file.Position;
++        var link = prev
++            .Replace("{self}", section.ToString(CultureInfo.InvariantCulture), StringComparison.Ordinal)
++            .Replace("{older}", older.ToString(CultureInfo.InvariantCulture), StringComparison.Ordinal);
++
++        if (stream)
++        {
++            var data = Row(0, 0, 65535) + Row(0, 0, 0) + Row(1, two, 0) + Row(1, three, 0) +
++                string.Concat(Enumerable.Repeat(Row(0, 0, 0), 40)) + Row(1, section, 0) + ">";
++            file.Raw(string.Create(
++                CultureInfo.InvariantCulture,
++                $"44 0 obj\n<< /Type /XRef /Size 45 /Index [0 1 21 1 2 2 4 40 44 1] /W [1 4 2] /Filter /ASCIIHexDecode /Prev {link} /Length {data.Length} >>\nstream\n{data}\nendstream\nendobj\n"));
++        }
++        else
++        {
++            var free = string.Concat(Enumerable.Repeat("0000000000 00000 f \n", 40));
++            file.Raw(string.Create(
++                CultureInfo.InvariantCulture,
++                $"xref\n0 1\n0000000000 65535 f \n21 1\n0000000000 00000 f \n2 2\n{two:D10} 00000 n \n{three:D10} 00000 n \n4 40\n{free}trailer\n<< /Size 44 /Prev {link} >>\n"));
++        }
++
++        file.Raw(string.Create(CultureInfo.InvariantCulture, $"startxref\n{section}\n%%EOF\n"));
++        return (file.Bytes, section);
++
++        static string Row(int type, long offset, int generation) =>
++            string.Create(CultureInfo.InvariantCulture, $"{type:X2}{offset:X8}{generation:X4}");
++    }
++
++    /// <summary>
++    /// A file of two revisions, as <see cref="SectionAGuardStops"/> writes them, the second a hybrid section: cross-reference
++    /// stream 44, numbered as there and with no <c>/Prev</c> of its own, then a classic table of object 0 alone whose trailer
++    /// names the stream through <c>/XRefStm</c> and gives <paramref name="prev"/>, in which <c>{self}</c> stands for the
++    /// table's offset, <c>{stream}</c> for the stream's and <c>{older}</c> for the first table's.
++    /// </summary>
++    public static (byte[] File, long Table) HybridWhoseStreamAGuardStops(string prev)
++    {
++        var file = new HandWrittenFile();
++        var one = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>");
++        var two = file.Object(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>");
++        var three = file.Object(3, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 1 1] /Resources << >> >>");
++        var older = file.Table(4, new Dictionary<int, long> { [1] = one, [2] = two, [3] = three }, "/Size 4 /Root 1 0 R");
++        two = file.Object(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>");
++        three = file.Object(3, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 2 2] /Resources << >> >>");
++        var stream = file.Position;
++        var data = Row(0, 0, 65535) + Row(0, 0, 0) + Row(1, two, 0) + Row(1, three, 0) +
++            string.Concat(Enumerable.Repeat(Row(0, 0, 0), 40)) + Row(1, stream, 0) + ">";
++        file.Raw(string.Create(
++            CultureInfo.InvariantCulture,
++            $"44 0 obj\n<< /Type /XRef /Size 45 /Index [0 1 21 1 2 2 4 40 44 1] /W [1 4 2] /Filter /ASCIIHexDecode /Length {data.Length} >>\nstream\n{data}\nendstream\nendobj\n"));
++        var table = file.Position;
++        var link = prev
++            .Replace("{self}", table.ToString(CultureInfo.InvariantCulture), StringComparison.Ordinal)
++            .Replace("{stream}", stream.ToString(CultureInfo.InvariantCulture), StringComparison.Ordinal)
++            .Replace("{older}", older.ToString(CultureInfo.InvariantCulture), StringComparison.Ordinal);
++        file.Raw(string.Create(
++            CultureInfo.InvariantCulture,
++            $"xref\n0 1\n0000000000 65535 f \ntrailer\n<< /Size 45 /XRefStm {stream} /Prev {link} >>\nstartxref\n{table}\n%%EOF\n"));
++        return (file.Bytes, table);
++
++        static string Row(int type, long offset, int generation) =>
++            string.Create(CultureInfo.InvariantCulture, $"{type:X2}{offset:X8}{generation:X4}");
++    }
++
+     /// <summary>Writes a file object by object, knowing where each starts.</summary>
+     private sealed class Writer : IDisposable
+     {
+diff --git a/tests/AdCodicem.Pdf.Tests/CrossReferenceRuleTests.cs b/tests/AdCodicem.Pdf.Tests/CrossReferenceRuleTests.cs
+index 83e60c6..ba44193 100644
+--- a/tests/AdCodicem.Pdf.Tests/CrossReferenceRuleTests.cs
++++ b/tests/AdCodicem.Pdf.Tests/CrossReferenceRuleTests.cs
+@@ -474,6 +474,45 @@ public class CrossReferenceRuleTests
+         report.Contains(PdfValidationRuleIds.FileRootInvalid).Should().BeFalse("the catalog /Root names is found, where the file put it");
+     }
+ 
++    [Theory]
++    [InlineData("21 0 R", "table rows", PdfValidationRuleIds.XRefSectionNotFound)]
++    [InlineData("21 0 R", "table index", PdfValidationRuleIds.XRefSectionNotFound)]
++    [InlineData("21 0 R", "stream rows", PdfValidationRuleIds.XRefSectionNotFound)]
++    [InlineData("21 0 R", "stream index", PdfValidationRuleIds.XRefSectionNotFound)]
++    [InlineData("99999999", "table rows", PdfValidationRuleIds.XRefSectionNotFound)]
++    [InlineData("99999999", "table index", PdfValidationRuleIds.XRefSectionNotFound)]
++    [InlineData("99999999", "stream rows", PdfValidationRuleIds.XRefSectionNotFound)]
++    [InlineData("99999999", "stream index", PdfValidationRuleIds.XRefSectionNotFound)]
++    [InlineData("{self}", "table rows", PdfValidationRuleIds.XRefChainLoop)]
++    [InlineData("{self}", "table index", PdfValidationRuleIds.XRefChainLoop)]
++    [InlineData("{self}", "stream rows", PdfValidationRuleIds.XRefChainLoop)]
++    [InlineData("{self}", "stream index", PdfValidationRuleIds.XRefChainLoop)]
++    public void A_prev_fault_a_section_a_guard_stops_shows_is_found_as_a_whole_read_finds_it(string prev, string guard, string rule)
++    {
++        // #264, shapes F and G: the section a guard stops still names, through /Prev, a free row the guard let the reader
++        // read, an offset outside the file, or itself. The validation finds it as it does in the file read whole, beside the
++        // guard's xref.checked-in-part; it found only the guard's, and file.trailer-value-wrong for a /Prev written as a
++        // reference, which names no section.
++        var (file, _) = ChainFiles.SectionAGuardStops(prev, stream: guard.StartsWith("stream", StringComparison.Ordinal));
++        var limits = guard switch
++        {
++            "table rows" => PdfReaderLimits.Default with { MaxXRefSectionLength = 128 },
++            "stream rows" => PdfReaderLimits.Default with { MaxDecodedStreamLength = 35 },
++            _ => PdfReaderLimits.Default with { MaxIndexEntries = 4 },
++        };
++
++        var whole = Validate(file);
++        using var document = PdfDocument.Open(file, new PdfReaderOptions { Limits = limits });
++        var guarded = new PdfValidator().Validate(document);
++
++        var expected = Single(whole, rule);
++        Single(guarded, rule).Should().Be(expected);
++        guarded.Contains(PdfValidationRuleIds.XRefCheckedInPart).Should().BeTrue();
++        guarded.Contains(PdfValidationRuleIds.FileTrailerValueWrong).Should().BeFalse();
++        guarded.Findings.Where(finding => finding.RuleId != PdfValidationRuleIds.XRefCheckedInPart).Should()
++            .Equal(whole.Findings.Where(finding => finding.RuleId != PdfValidationRuleIds.FileSizeWrong));
++    }
++
+     [Fact]
+     public void A_loop_through_an_offset_the_chain_only_named_says_no_section_was_read_there()
+     {
+diff --git a/tests/AdCodicem.Pdf.Tests/ReaderLimitsTests.cs b/tests/AdCodicem.Pdf.Tests/ReaderLimitsTests.cs
+index 828a4ef..69ab366 100644
+--- a/tests/AdCodicem.Pdf.Tests/ReaderLimitsTests.cs
++++ b/tests/AdCodicem.Pdf.Tests/ReaderLimitsTests.cs
+@@ -2205,6 +2205,124 @@ public class ReaderLimitsTests
+             string.Create(CultureInfo.InvariantCulture, $"{type:X2}{offset:X8}{generation:X4}");
+     }
+ 
++    /// <summary>The guards that stop a section's rows, by the name the theories give them, as #264's shapes reach them.</summary>
++    private static PdfReaderOptions RowGuard(string guard) => new()
++    {
++        Limits = guard switch
++        {
++            "table rows" => PdfReaderLimits.Default with { MaxXRefSectionLength = 128 },
++            "stream rows" => PdfReaderLimits.Default with { MaxDecodedStreamLength = 35 },
++            _ => PdfReaderLimits.Default with { MaxIndexEntries = 4 },
++        },
++    };
++
++    [Theory]
++    [InlineData("21 0 R", "table rows")]
++    [InlineData("21 0 R", "table index")]
++    [InlineData("21 0 R", "stream rows")]
++    [InlineData("21 0 R", "stream index")]
++    [InlineData("99999999", "table rows")]
++    [InlineData("99999999", "table index")]
++    [InlineData("99999999", "stream rows")]
++    [InlineData("99999999", "stream index")]
++    [InlineData("{self}", "table rows")]
++    [InlineData("{self}", "table index")]
++    [InlineData("{self}", "stream rows")]
++    [InlineData("{self}", "stream index")]
++    public void A_section_a_guard_stops_reports_the_faults_of_its_prev_a_whole_read_reports(string prev, string guard)
++    {
++        // #264, shapes F and G: the newest section's rows run past MaxXRefSectionLength or MaxDecodedStreamLength, or fill
++        // MaxIndexEntries, and its /Prev names a free row the guard let the reader read, an offset outside the file, or the
++        // section itself. The chain ended at the section for the guard and said nothing of the /Prev, which a whole read
++        // reports: what it names is no section, whatever the guard hid. The guard is reported first, then the /Prev as read
++        // whole, and the index is rebuilt for the /Root the trailers then lack, as read whole.
++        var (file, _) = ChainFiles.SectionAGuardStops(prev, stream: guard.StartsWith("stream", StringComparison.Ordinal));
++        var limit = guard.EndsWith("rows", StringComparison.Ordinal)
++            ? guard.StartsWith("table", StringComparison.Ordinal) ? PdfDiagnosticCodes.LimitXRefSectionLength : PdfDiagnosticCodes.LimitDecodedStream
++            : PdfDiagnosticCodes.LimitIndexEntries;
++
++        using var whole = PdfDocument.Open(file);
++        using var document = PdfDocument.Open(file, RowGuard(guard));
++
++        var faults = whole.Diagnostics.Where(entry => entry.Code is PdfDiagnosticCodes.XRefSectionMissing or PdfDiagnosticCodes.XRefChainCycle).ToList();
++        faults.Should().ContainSingle();
++        document.Diagnostics.Select(entry => entry.Code).Should().StartWith([limit, faults[0].Code]);
++        document.Diagnostics.Should().Contain(faults[0]);
++        document.Reader.Structure.TrailersHiddenByGuard.Should().BeFalse();
++        document.WasRepaired.Should().Be(whole.WasRepaired).And.BeTrue();
++
++        var throwing = () => PdfDocument.Open(file, RowGuard(guard) with { ThrowOnLimit = true });
++        throwing.Should().Throw<PdfLimitExceededException>();
++    }
++
++    [Theory]
++    [InlineData("30 0 R", "table rows")]
++    [InlineData("30 0 R", "table index")]
++    [InlineData("30 0 R", "stream rows")]
++    [InlineData("30 0 R", "stream index")]
++    [InlineData("{older}", "table rows")]
++    [InlineData("{older}", "table index")]
++    [InlineData("{older}", "stream rows")]
++    [InlineData("{older}", "stream index")]
++    public void A_prev_a_section_a_guard_stops_names_that_may_be_sound_stays_the_guard_s(string prev, string guard)
++    {
++        // #264: the /Prev names a row the guard left unread — free, read whole, which a whole read reports —, or the older
++        // section, in the file. Either may name a sound section as far as the reader can tell without reading past the guard:
++        // the chain ends there for the guard, which is the only report, and the older trailers are the guard's to hide.
++        var (file, _) = ChainFiles.SectionAGuardStops(prev, stream: guard.StartsWith("stream", StringComparison.Ordinal));
++
++        using var document = PdfDocument.Open(file, RowGuard(guard));
++
++        document.Diagnostics.Should().ContainSingle().Which.Code.Should().StartWith("limit.");
++        document.Reader.Structure.TrailersHiddenByGuard.Should().BeTrue();
++        document.Reader.Structure.Sections.Should().ContainSingle();
++        document.WasRepaired.Should().BeFalse();
++        using var whole = PdfDocument.Open(file);
++        whole.Diagnostics.Any(entry => entry.Code == PdfDiagnosticCodes.XRefSectionMissing).Should().Be(prev == "30 0 R");
++    }
++
++    [Theory]
++    [InlineData("99999999", "stream rows")]
++    [InlineData("99999999", "stream index")]
++    [InlineData("{self}", "stream rows")]
++    [InlineData("{self}", "stream index")]
++    [InlineData("{stream}", "stream rows")]
++    [InlineData("{stream}", "stream index")]
++    public void A_table_whose_hybrid_stream_a_guard_stops_reports_the_faults_of_its_prev_a_whole_read_reports(string prev, string guard)
++    {
++        // #264, beside shapes F and G: the table is read whole, and the cross-reference stream its /XRefStm names is the
++        // section the guard stops, which ends the chain. The table's /Prev, an offset outside the file, the table itself or
++        // the stream the chain read, names no section whatever the guard hid: it is reported as read whole.
++        var (file, _) = ChainFiles.HybridWhoseStreamAGuardStops(prev);
++
++        using var whole = PdfDocument.Open(file);
++        using var document = PdfDocument.Open(file, RowGuard(guard));
++
++        var fault = whole.Diagnostics.Should().ContainSingle(entry => entry.Code == PdfDiagnosticCodes.XRefSectionMissing || entry.Code == PdfDiagnosticCodes.XRefChainCycle).Which;
++        document.Diagnostics.Should().Contain(fault);
++        document.Diagnostics[0].Code.Should().StartWith("limit.");
++        document.Reader.Structure.TrailersHiddenByGuard.Should().BeFalse();
++    }
++
++    [Theory]
++    [InlineData("table rows")]
++    [InlineData("table index")]
++    public void An_xrefstm_outside_the_file_in_a_table_a_guard_stops_is_reported_missing_as_read_whole(string guard)
++    {
++        // #264, beside shapes F and G: the table a guard stops names, through /XRefStm, an offset outside the file, and the
++        // older table through /Prev. The stream is no section whatever the guard hid: it is reported missing as read whole,
++        // and the older table, in the file, is the guard's to hide.
++        var (file, _) = ChainFiles.SectionAGuardStops("{older} /XRefStm 99999999");
++
++        using var whole = PdfDocument.Open(file);
++        using var document = PdfDocument.Open(file, RowGuard(guard));
++
++        var missing = whole.Diagnostics.Should().ContainSingle(entry => entry.Code == PdfDiagnosticCodes.XRefSectionMissing).Which;
++        document.Diagnostics.Should().Contain(missing);
++        document.Reader.Structure.Sections.Should().Contain(section => section.NamedBy == "/XRefStm" && section.State == XRefSectionState.NotFound);
++        document.Reader.Structure.TrailersHiddenByGuard.Should().BeTrue();
++    }
++
+     [Fact]
+     public void A_table_that_fills_the_index_hides_the_trailer_of_the_hybrid_stream_its_xrefstm_names()
+     {
+diff --git a/tests/corpus/manifest.schema.json b/tests/corpus/manifest.schema.json
+index 4dc6f6a..8cf7262 100644
+--- a/tests/corpus/manifest.schema.json
++++ b/tests/corpus/manifest.schema.json
+@@ -252,8 +252,11 @@
+               "xref.offset-adjusted",
+               "xref.section-missing",
+               "xref.section-unreadable",
++              "xref.section-empty",
+               "xref.chain-cycle",
++              "xref.hybrid-stream-lost",
+               "xref.entry-out-of-range",
++              "xref.entry-reserved",
+               "stream.length-invalid",
+               "stream.truncated",
+               "stream.self-reference",
+@@ -303,7 +306,9 @@
+               "xref.section-malformed",
+               "xref.section-not-found",
+               "xref.section-shifted",
++              "xref.subsection-missing",
+               "xref.chain-loop",
++              "xref.hybrid-stream-wrong",
+               "xref.entry-broken",
+               "xref.entry-shifted",
+               "xref.generation-mismatch",
+@@ -313,6 +318,7 @@
+               "xref.offset-imprecise",
+               "xref.object-past-size",
+               "xref.checked-in-part",
++              "xref.entry-type-reserved",
+               "object.reference-missing",
+               "object.endobj-missing",
+               "object.name-null-character",

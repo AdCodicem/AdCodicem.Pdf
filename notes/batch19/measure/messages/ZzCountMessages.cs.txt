@@ -1,0 +1,239 @@
+using System.Globalization;
+using System.IO.Compression;
+using System.Text;
+using AdCodicem.Pdf.Diagnostics;
+using AdCodicem.Pdf.Documents;
+using AdCodicem.Pdf.IO;
+using AdCodicem.Pdf.IO.Filters;
+using AdCodicem.Pdf.Objects;
+using AdCodicem.Pdf.TestSupport;
+using AdCodicem.Pdf.Validation;
+
+namespace AdCodicem.Pdf.Tests;
+
+#pragma warning disable
+
+/// <summary>Batch 19 probe (uncommitted): messages that write a count of one, or a distance back (#241).</summary>
+public class ZzCountMessages
+{
+    private readonly StringBuilder _out = new();
+
+    [Fact]
+    public void ZzCountMessagesAll()
+    {
+        // S1: one byte before the header.
+        var sample = Sample().BuildClassic(rootNumber: 1);
+        Dump("S1 header one byte in", [(byte)' ', .. sample], read: [4]);
+        Dump("S1b header two bytes in (control)", [(byte)' ', (byte)' ', .. sample], read: [4]);
+
+        // S2: every entry one byte past its object; then one and two bytes before it.
+        Dump("S2a entries 1 past (offsetError 1)", Sample().BuildClassic(rootNumber: 1, offsetError: 1), read: [4]);
+        Dump("S2b entries 3 past (offsetError 3, control)", Sample().BuildClassic(rootNumber: 1, offsetError: 3), read: [4]);
+        Dump("S2c entries 1 before (offsetError -1)", Sample().BuildClassic(rootNumber: 1, offsetError: -1), read: [4]);
+        Dump("S2d entries 2 before (offsetError -2)", Sample().BuildClassic(rootNumber: 1, offsetError: -2), read: [4]);
+
+        // S3: an update whose /Prev names the original section one byte late, two bytes early, and one byte early.
+        foreach (var error in (int[])[1, 3, -2, -3])
+        {
+            Dump($"S3 /Prev off by {error}", PrevOff(error), read: [4]);
+        }
+
+        // S4: an object stream that declares one object and lists none (empty header), the index placing object 3 in it.
+        Dump("S4 objstm /N 1, empty header", new TestPdfBuilder()
+            .WithObject(1, "<< /Type /Catalog /Pages 2 0 R >>")
+            .WithObject(2, "<< /Type /Pages /Kids [] /Count 0 >>")
+            .WithObject(3, "(packed)")
+            .BuildWithXRefStream(rootNumber: 1, compressedObjects: [3], objectStreamHeader: _ => string.Empty), read: [3]);
+        Dump("S4b objstm /N 1, stray header", new TestPdfBuilder()
+            .WithObject(1, "<< /Type /Catalog /Pages 2 0 R >>")
+            .WithObject(2, "<< /Type /Pages /Kids [] /Count 0 >>")
+            .WithObject(3, "(packed)")
+            .BuildWithXRefStream(rootNumber: 1, compressedObjects: [3], objectStreamHeader: h => "x " + h), read: [3]);
+        Dump("S4c objstm /N 1, pair past data", new TestPdfBuilder()
+            .WithObject(1, "<< /Type /Catalog /Pages 2 0 R >>")
+            .WithObject(2, "<< /Type /Pages /Kids [] /Count 0 >>")
+            .WithObject(3, "(packed)")
+            .BuildWithXRefStream(rootNumber: 1, compressedObjects: [3], objectStreamHeader: _ => "3 999 "), read: [3]);
+
+        // S5: an object stream whose data is one byte, /First past it: the rebuild's report, then the validator's finding.
+        Dump("S5a objstm data 1 byte, /First 40 (rebuild)", new TestPdfBuilder()
+            .WithObject(1, "<< /Type /Catalog /Pages 2 0 R >>")
+            .WithObject(2, "<< /Type /Pages /Kids [] /Count 0 >>")
+            .WithObject(5, "<< /Type /ObjStm /N 1 /First 40 /Length 1 >>\nstream\nX\nendstream")
+            .BuildClassic(rootNumber: 1, includeXRef: false), read: [6]);
+        Dump("S5b objstm data 1 byte, /First 5 (index places 6 in it)", ObjStmOneByte(), read: [6]);
+
+        // S6: a /MediaBox of one value.
+        Dump("S6 /MediaBox [612]", new TestPdfBuilder()
+            .WithObject(1, "<< /Type /Catalog /Pages 2 0 R >>")
+            .WithObject(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>")
+            .WithObject(3, "<< /Type /Page /Parent 2 0 R /MediaBox [612] /Resources << >> >>")
+            .BuildClassic(rootNumber: 1), read: []);
+
+        // S7: Flate data of one byte whose checksum is wrong; Flate data that faults after one byte.
+        var zlib = ZLib("A"u8.ToArray());
+        zlib[^1] ^= 0xFF;
+        DecodeAlone("S7a Flate checksum, 1 byte decoded", zlib, PdfName.FlateDecode);
+        DecodeAlone("S7b Flate corrupt after 1 byte", [0x78, 0x01, 0x00, 0x01, 0x00, 0xFE, 0xFF, 0x41, 0x07, 0x00, 0x00, 0x00], PdfName.FlateDecode);
+        DecodeAlone("S7c Flate corrupt after 2 bytes (control)", [0x78, 0x01, 0x00, 0x02, 0x00, 0xFD, 0xFF, 0x41, 0x42, 0x07, 0x00, 0x00, 0x00], PdfName.FlateDecode);
+
+        // S8: RunLength: a run of 3 bytes, of which the data holds 1.
+        DecodeAlone("S8 RunLength run of 3, holds 1", [0x02, 0x41], PdfName.RunLengthDecode);
+
+        // S9: a stream that declares one byte and holds three; one whose endobj follows its one declared byte.
+        Dump("S9a /Length 1, data 3", Sample().WithObject(5, "<< /Length 1 >>\nstream\nABC\nendstream").BuildClassic(rootNumber: 1), read: [5]);
+        Dump("S9b /Length 1, endobj after it", Sample().WithObject(5, "<< /Length 1 >>\nstream\nX\nendobj\n6 0 obj\n(next)").BuildClassic(rootNumber: 1), read: [5]);
+        Dump("S9c /Length 9, endobj after 1 byte", Sample().WithObject(5, "<< /Length 99 >>\nstream\nX\nendobj\n6 0 obj\n(next)").BuildClassic(rootNumber: 1), read: [5]);
+
+        // S10: a cross-reference stream whose indirect /Length gives 1 where its data holds 42.
+        Dump("S10 deferred /Length 1", ChainFiles.AloneWithIndirectLength(-41), read: []);
+
+        // S11: limits of one.
+        Dump("S11a MaxXRefSectionCount 1", PrevOff(0), read: [4], limits: PdfReaderLimits.Default with { MaxXRefSectionCount = 1 });
+        DecodeAlone("S11b MaxFilterChainLength 1", Encoding.ASCII.GetBytes("3431>"), PdfName.ASCIIHexDecode, chain: true, limits: PdfReaderLimits.Default with { MaxFilterChainLength = 1 });
+        DecodeAlone("S11c MaxDecodedStreamLength 1", Encoding.ASCII.GetBytes("414243>"), PdfName.ASCIIHexDecode, limits: PdfReaderLimits.Default with { MaxDecodedStreamLength = 1 });
+        Dump("S11d MaxStreamLength 1", Sample().BuildClassic(rootNumber: 1), read: [4], limits: PdfReaderLimits.Default with { MaxStreamLength = 1 });
+        Dump("S11e MaxTrailerLength 1", Sample().BuildClassic(rootNumber: 1), read: [4], limits: PdfReaderLimits.Default with { MaxTrailerLength = 1 });
+        Dump("S11e2 MaxTrailerLength 1, cross-reference stream", Sample().BuildWithXRefStream(rootNumber: 1), read: [4], limits: PdfReaderLimits.Default with { MaxTrailerLength = 1 });
+        Dump("S11f MaxXRefSectionLength 1", Sample().BuildClassic(rootNumber: 1), read: [4], limits: PdfReaderLimits.Default with { MaxXRefSectionLength = 1 });
+        Dump("S11g MaxObjectLength 1", Sample().BuildClassic(rootNumber: 1), read: [4], limits: PdfReaderLimits.Default with { MaxObjectLength = 1 });
+
+        // S12: a one-byte file.
+        Dump("S12 one-byte file", "%"u8.ToArray(), read: []);
+
+        File.WriteAllText(Environment.GetEnvironmentVariable("ZZ_OUT") ?? "/tmp/zz-count.txt", _out.ToString());
+    }
+
+    private static TestPdfBuilder Sample() =>
+        new TestPdfBuilder()
+            .WithObject(1, "<< /Type /Catalog /Pages 2 0 R >>")
+            .WithObject(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>")
+            .WithObject(3, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 4 0 R /Resources << >> >>")
+            .Stream(4, string.Empty, "BT (Bonjour) Tj ET");
+
+    private static byte[] PrevOff(int error)
+    {
+        var original = Sample().WithObject(5, $"({new string('x', 1024)})").BuildClassic(rootNumber: 1);
+        var updated = TestPdfBuilder.AppendIncrementalUpdate(original, 1, [(4, "<< /Length 0 >>\nstream\n\nendstream")]);
+        var text = Encoding.Latin1.GetString(updated);
+        var at = text.LastIndexOf("/Prev ", StringComparison.Ordinal) + "/Prev ".Length;
+        var end = text.IndexOf(' ', at);
+        var prev = long.Parse(text[at..end], CultureInfo.InvariantCulture);
+        var moved = (prev + error).ToString(CultureInfo.InvariantCulture);
+        var startxref = text.LastIndexOf("startxref", StringComparison.Ordinal);
+        var rest = text[(startxref + 10)..].Trim();
+        var newest = long.Parse(rest[..rest.IndexOfAny(['\r', '\n'])], CultureInfo.InvariantCulture);
+        var shift = moved.Length - (end - at);
+        text = text[..at] + moved + text[end..startxref] + "startxref\n" + (newest).ToString(CultureInfo.InvariantCulture) + "\n%%EOF\n";
+        return Encoding.Latin1.GetBytes(text);
+    }
+
+    private static byte[] ObjStmOneByte()
+    {
+        var file = new MemoryStream();
+        var offsets = new SortedDictionary<int, long>();
+
+        void Text(string text) => file.Write(Encoding.Latin1.GetBytes(text));
+
+        Text("%PDF-1.5\n");
+        offsets[1] = file.Position;
+        Text("1 0 obj\n<< /Type /Catalog /Pages 2 0 R /Extra 6 0 R >>\nendobj\n");
+        offsets[2] = file.Position;
+        Text("2 0 obj\n<< /Type /Pages /Kids [] /Count 0 >>\nendobj\n");
+        offsets[5] = file.Position;
+        Text("5 0 obj\n<< /Type /ObjStm /N 1 /First 5 /Length 1 >>\nstream\nX\nendstream\nendobj\n");
+        var xref = file.Position;
+        var rows = new List<byte>();
+
+        void Row(byte type, long second, int third) =>
+            rows.AddRange([type, (byte)(second >> 24), (byte)(second >> 16), (byte)(second >> 8), (byte)second, (byte)(third >> 8), (byte)third]);
+
+        Row(0, 0, 65535);
+        Row(1, offsets[1], 0);
+        Row(1, offsets[2], 0);
+        Row(0, 0, 0);
+        Row(0, 0, 0);
+        Row(1, offsets[5], 0);
+        Row(2, 5, 0);
+        Row(1, xref, 0);
+        Text($"7 0 obj\n<< /Type /XRef /Size 8 /W [1 4 2] /Root 1 0 R /Length {rows.Count} >>\nstream\n");
+        file.Write(rows.ToArray());
+        Text("\nendstream\nendobj\n");
+        Text($"startxref\n{xref}\n%%EOF\n");
+        return file.ToArray();
+    }
+
+    private static byte[] ZLib(byte[] data)
+    {
+        using var compressed = new MemoryStream();
+        using (var zlib = new ZLibStream(compressed, CompressionLevel.Optimal))
+        {
+            zlib.Write(data);
+        }
+
+        return compressed.ToArray();
+    }
+
+    private void DecodeAlone(string name, byte[] data, PdfName filter, bool chain = false, PdfReaderLimits? limits = null)
+    {
+        _out.Append("== ").Append(name).Append('\n');
+
+        try
+        {
+            var dictionary = new PdfDictionary();
+            dictionary.Set(PdfName.Filter, chain ? new PdfArray([filter, filter]) : filter);
+            var diagnostics = new PdfDiagnostics();
+            var stream = new PdfStream(dictionary, PdfStreamData.FromMemory(data));
+            var decoded = limits is null
+                ? stream.Decode(diagnostics)
+                : PdfFilterPipeline.Decode(stream, diagnostics, new PdfLimitGuard(limits, false));
+            _out.Append("  decoded ").Append(decoded.Length).Append('\n');
+
+            foreach (var diagnostic in diagnostics)
+            {
+                _out.Append("    D ").Append(diagnostic).Append('\n');
+            }
+        }
+        catch (Exception exception)
+        {
+            _out.Append("  THREW ").Append(exception.GetType().Name).Append(": ").Append(exception.Message).Append('\n');
+        }
+    }
+
+    private void Dump(string name, byte[] file, int[] read, PdfReaderLimits? limits = null)
+    {
+        _out.Append("== ").Append(name).Append('\n');
+
+        try
+        {
+            var options = limits is null ? PdfReaderOptions.Default : PdfReaderOptions.Default with { Limits = limits };
+            using var document = PdfDocument.Open(file, options);
+
+            foreach (var number in read)
+            {
+                var value = document.GetObject(new PdfObjectId(number));
+
+                if (value is PdfStream stream)
+                {
+                    _ = stream.Decode(document.Diagnostics);
+                }
+            }
+
+            var report = new PdfValidator().Validate(document);
+
+            foreach (var finding in report.Findings)
+            {
+                _out.Append("    F ").Append(finding).Append('\n');
+            }
+
+            foreach (var diagnostic in document.Diagnostics)
+            {
+                _out.Append("    D ").Append(diagnostic).Append('\n');
+            }
+        }
+        catch (Exception exception)
+        {
+            _out.Append("  THREW ").Append(exception.GetType().Name).Append(": ").Append(exception.Message).Append('\n');
+        }
+    }
+}

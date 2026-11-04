@@ -1,0 +1,121 @@
+    [Theory]
+    [InlineData("0 1\n{free}\n")]
+    [InlineData("3 1\n{off:3} 65536 n \n")]
+    public void A_table_the_end_of_the_file_cuts_after_a_free_or_refused_row_is_kept_read_in_part(string rows)
+    {
+        // What decides is a row of the table's own, whatever it gives: object 0's free row, or object 3's, refused for its
+        // generation, keep the table, read only in part, its trailer lost (#207).
+        var file = PdfTemplate.Build(PartialFiles.CutUpdate(rows));
+        var cut = PdfTemplate.OffsetOf(file, "\nxref\n", 3) + 1;
+
+        using var document = PdfDocument.Open(file);
+
+        document.Reader.Structure.Sections[^1].State.Should().Be(XRefSectionState.Read);
+        document.Diagnostics.Should().ContainSingle().Which.Message.Should().StartWith(string.Create(
+            CultureInfo.InvariantCulture,
+            $"The cross-reference table /Prev names at offset {cut} was read only in part: the file ends before its trailer;"));
+        Text(document, 3).Should().Be("object 3");
+        document.WasRepaired.Should().BeTrue();
+    }
+
+    [Fact]
+    public void A_table_an_xrefstm_names_that_the_end_of_the_file_cuts_inside_a_subsection_leaves_no_older_row_standing_for_the_rest_of_it()
+    {
+        // The hybrid table's /XRefStm names a table that ends the file inside its subsection 5 2, after object 5's row:
+        // object 6's row, which would give its newer revision, is lost, and the chain goes on through the hybrid table's /Prev
+        // to the oldest table, whose row for 6 gives the older one. It does not stand; object 7's, past the subsection, does
+        // (#207, #210).
+        var (file, _, cut) = PartialFiles.CutTableAnXRefStmNames();
+
+        using var document = PdfDocument.Open(file);
+
+        document.Diagnostics.Should().ContainSingle(d => d.Code == PdfDiagnosticCodes.XRefSectionUnreadable).Which.Message.Should().StartWith(
+            string.Create(
+                CultureInfo.InvariantCulture,
+                $"The cross-reference table /XRefStm names at offset {cut} was read only in part: the file ends before its trailer;"));
+        var index = document.Reader.ChainIndex!;
+        index.TryGet(6, out _).Should().BeFalse();
+        index.TryGet(7, out _).Should().BeTrue();
+        index.TryGet(3, out _).Should().BeTrue();
+        Text(document, 7).Should().Be("old seven");
+        document.WasRepaired.Should().BeFalse();
+        Text(document, 6).Should().Be("new six");
+        document.WasRepaired.Should().BeTrue();
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void A_row_refused_alone_is_reported_once_at_its_section_and_the_rows_after_it_read(bool stream)
+    {
+        // The page's row gives it generation 65,536, or, in a cross-reference stream, places it in object stream 0, which is
+        // no object number: refused alone, the rows after it read, its fault reported nowhere but by the rebuild its object
+        // set off (#210). It is reported once, at the section, read only in part.
+        byte[] file;
+        string fault;
+        long section;
+
+        if (stream)
+        {
+            var written = new HandWrittenFile(version: "1.5");
+            var rows = new Dictionary<int, (int Type, long Field2, int Field3)>
+            {
+                [1] = (1, written.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"), 0),
+                [2] = (1, written.Object(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>"), 0),
+                [3] = (2, 0, 1),
+            };
+            written.Object(3, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] >>");
+            rows[4] = (1, written.Object(4, "(after it)"), 0);
+            section = written.CrossReferenceStream(5, 6, rows, "/Root 1 0 R");
+            file = written.Bytes;
+            fault = "the row for object 3 places it in object stream 0, which is no object number";
+        }
+        else
+        {
+            file = PdfTemplate.Build(PdfTemplate.Spread.Replace("{row:3}", "{off:3} 65536 n", StringComparison.Ordinal));
+            section = PdfTemplate.OffsetOf(file, "\nxref\n") + 1;
+            var page = PdfTemplate.OffsetOf(file, "\n3 0 obj") + 1;
+            fault = string.Create(
+                CultureInfo.InvariantCulture,
+                $"the row for object 3, at offset {PdfTemplate.OffsetOf(file, $"{page} 65536 n")}, gives it generation 65536, outside 0 to 65535");
+        }
+
+        using var document = PdfDocument.Open(file);
+
+        var report = document.Diagnostics.Should().ContainSingle().Which;
+        report.Code.Should().Be(PdfDiagnosticCodes.XRefSectionUnreadable);
+        report.Position.Should().Be(section);
+        report.Message.Should().Be(string.Create(
+            CultureInfo.InvariantCulture,
+            $"The cross-reference {(stream ? "stream" : "table")} startxref names at offset {section} was read only in part: {fault}; that row alone was refused, the rows after it read, and its object is looked for by rebuilding the index where no section read before it indexes it, rather than taken from an older section's row."));
+        document.GetObject(new PdfObjectId(4)).Should().BeOfType<PdfString>();
+        document.WasRepaired.Should().BeFalse();
+        document.GetObject(new PdfObjectId(3)).AsDictionary()!.IsOfType(PdfName.Page).Should().BeTrue();
+        document.WasRepaired.Should().BeTrue();
+    }
+
+    [Fact]
+    public void A_table_holding_no_subsection_found_near_where_prev_names_it_is_reported_where_it_was_found()
+    {
+        // The newest update's /Prev names the empty update 2 bytes before it: found there, read as indexing nothing, and
+        // reported where it was found, as found moved (#222).
+        var empty = PdfTemplate.Build(PartialFiles.EmptyUpdate(string.Empty));
+        var update = PdfTemplate.OffsetOf(empty, "\nxref\n", 2) + 1;
+        byte[] file =
+        [
+            .. empty,
+            .. Encoding.Latin1.GetBytes(string.Create(
+                CultureInfo.InvariantCulture,
+                $"xref\n0 1\n0000000000 65535 f \ntrailer\n<< /Size 4 /Root 1 0 R /Prev {update - 2} >>\nstartxref\n{empty.Length}\n%%EOF\n")),
+        ];
+
+        using var document = PdfDocument.Open(file);
+
+        document.Diagnostics.Select(d => d.Code).Should().Equal(PdfDiagnosticCodes.XRefOffsetAdjusted, PdfDiagnosticCodes.XRefSectionEmpty);
+        document.Diagnostics[1].Message.Should().Be(string.Create(
+            CultureInfo.InvariantCulture,
+            $"The cross-reference table /Prev names at offset {update} holds no subsection: its trailer keyword follows its xref keyword. It was read as indexing nothing."));
+        document.Reader.Structure.Sections[1].NoSubsection.Should().BeTrue();
+        new PdfValidator().Validate(document).Findings.Select(finding => finding.RuleId).Should().Contain(PdfValidationRuleIds.XRefSubsectionMissing);
+    }
+

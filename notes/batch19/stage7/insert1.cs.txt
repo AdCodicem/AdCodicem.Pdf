@@ -1,0 +1,116 @@
+    /// <summary>
+    /// Reports a section of the chain kept though read only in part — a row that is no row ended a subsection of a table,
+    /// a stream holds fewer rows than it declares, the end of the file cuts a table before its trailer, a row was refused —,
+    /// marks the index incomplete, and refuses the numbers whose rows it lost to the rows of the sections the chain reads
+    /// after it; or reports a classic table that holds no subsection, read as indexing nothing.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A section read only in part is reported once, at the section, under
+    /// <see cref="PdfDiagnosticCodes.XRefSectionUnreadable"/> — it cannot be read whole —, its first fault in the message:
+    /// one that lost rows, else the end of the file before its trailer, else the first row it refused (#207, #210). The
+    /// section <c>startxref</c> names is reported so too, and what it lost is looked for by rebuilding the index when it is
+    /// asked for, not at opening. What the reading met before a guard's cut is the file's, whatever the guard also did; a
+    /// section a guard cut that lost no row is the guard's alone, which says so (ADR 34).
+    /// </para>
+    /// <para>
+    /// The numbers whose rows were lost are refused as a lost stream's are (<see cref="RefuseRowsLost"/>): a newer revision
+    /// of an object may lie in a lost row, which an older section's row would stand for in silence. A table the end of the
+    /// file cuts loses its trailer too, and with it the older sections that trailer would name: the chain ends there.
+    /// </para>
+    /// <para>
+    /// A classic table whose <c>trailer</c> keyword follows its <c>xref</c> keyword indexes nothing, as one whose one
+    /// subsection is <c>0 0</c> does, which ISO 32000-1 allows: it is read as written and reported, the index left whole, and
+    /// nothing rebuilt for it (#222).
+    /// </para>
+    /// </remarks>
+    /// <param name="section">The section the chain kept, read where it was named or found moved.</param>
+    /// <param name="naming">What named the section: <c>startxref</c>, <c>/Prev</c> or <c>/XRefStm</c>.</param>
+    private void ReportSectionReadInPart(XRefSectionRecord section, string naming)
+    {
+        string said;
+
+        if (section.Incomplete)
+        {
+            RefuseRowsLost(section);
+            said = section.Kind == XRefSectionKind.Stream
+                ? section.Fault + "; the rows it holds were kept, and the objects whose rows it lacks are looked for by rebuilding the index where no section read before it indexes them, rather than taken from an older section's rows"
+                : section.Fault is { } stopped
+                    ? stopped + "; the rows read were kept, and the objects the rest of that subsection numbers are looked for by rebuilding the index where no section read before it indexes them, rather than taken from an older section's rows"
+                    : "the file ends before its trailer; the rows read were kept, and what only the rest of the table, or the sections its trailer would name, index is looked for by rebuilding the index";
+        }
+        else if (section.RefusedRow is { } refused)
+        {
+            said = refused + "; that row alone was refused, the rows after it read, and its object is looked for by rebuilding the index where no section read before it indexes it, rather than taken from an older section's row";
+        }
+        else
+        {
+            if (section.NoSubsection)
+            {
+                _diagnostics.Repair(
+                    PdfDiagnosticCodes.XRefSectionEmpty,
+                    string.Create(
+                        CultureInfo.InvariantCulture,
+                        $"The cross-reference table {naming} names at offset {section.Offset} holds no subsection: its trailer keyword follows its xref keyword. It was read as indexing nothing."),
+                    section.Offset);
+            }
+
+            return;
+        }
+
+        _indexIncomplete = true;
+        _diagnostics.Warn(
+            PdfDiagnosticCodes.XRefSectionUnreadable,
+            string.Create(
+                CultureInfo.InvariantCulture,
+                $"The cross-reference {(section.Kind == XRefSectionKind.Stream ? "stream" : "table")} {naming} names at offset {section.Offset} was read only in part: {said}."),
+            section.Offset);
+    }
+
+    /// <summary>
+    /// Refuses to the rows of every section the chain reads from here on the object numbers whose rows
+    /// <paramref name="section"/>, kept though read only in part, lost (#210): every number a cross-reference stream
+    /// declares — those it holds rows for are indexed already, and no later row stands for them anyway —, or the rest of
+    /// each subsection a classic table's faults ended (<see cref="_rowsLost"/>), every number where they were more ranges
+    /// than <see cref="MaxRefusedRanges"/>.
+    /// </summary>
+    private void RefuseRowsLost(XRefSectionRecord section)
+    {
+        if (section.Kind == XRefSectionKind.Stream)
+        {
+            // A stream's rows are read from its dictionary on, which is its trailer.
+            RefuseDeclared(section.Trailer!);
+        }
+        else if (_rowsLostPast)
+        {
+            RefuseEveryNumber();
+        }
+        else if (_rowsLost is { } lost)
+        {
+            RefuseRanges(CollectionsMarshal.AsSpan(lost));
+        }
+    }
+
+    /// <summary>
+    /// Notes that the classic table being read lost the rows of object numbers <paramref name="first"/> up to
+    /// <paramref name="end"/>, which is not among them (<see cref="_rowsLost"/>).
+    /// </summary>
+    private void LoseRows(long first, long end)
+    {
+        if (_rowsLostPast)
+        {
+            return;
+        }
+
+        var lost = _rowsLost ??= [];
+
+        if (lost.Count < MaxRefusedRanges)
+        {
+            lost.Add((first, end));
+        }
+        else
+        {
+            _rowsLostPast = true;
+        }
+    }
+

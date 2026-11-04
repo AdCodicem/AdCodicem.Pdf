@@ -1,0 +1,357 @@
+using System.Globalization;
+using System.Text;
+using AdCodicem.Pdf.Documents;
+using AdCodicem.Pdf.Objects;
+using AdCodicem.Pdf.Validation;
+
+namespace AdCodicem.Pdf.Tests;
+
+#pragma warning disable
+
+/// <summary>Stage probe (uncommitted): batch 19, lens window — #197 and #261 shapes.</summary>
+public class ZzWindow
+{
+    private static readonly string Out = Environment.GetEnvironmentVariable("ZZ_WINDOW_OUT") ?? "/tmp/zz-window.txt";
+
+    private static string Describe(PdfObject value) => value switch
+    {
+        PdfString text => "\"" + text.ToText() + "\"",
+        PdfDictionary dictionary => dictionary.ToString(),
+        _ => value.ToString() ?? "?",
+    };
+
+    /// <summary>Opens the file, asks for object <paramref name="number"/>, prints value, WasRepaired, diagnostics; validates a fresh open.</summary>
+    private static void Run(StringBuilder output, string title, byte[] file, int number)
+    {
+        output.Append("### ").Append(title).Append('\n');
+
+        using (var document = PdfDocument.Open(file))
+        {
+            var value = document.GetObject(new PdfObjectId(number));
+            output.Append("  object ").Append(number).Append(": ").Append(Describe(value))
+                .Append("; WasRepaired: ").Append(document.WasRepaired).Append('\n');
+
+            foreach (var diagnostic in document.Diagnostics)
+            {
+                output.Append("  ").Append(diagnostic).Append('\n');
+            }
+        }
+
+        using (var document = PdfDocument.Open(file))
+        {
+            var report = new PdfValidator().Validate(document);
+
+            foreach (var finding in report.Findings)
+            {
+                output.Append("  finding: ").Append(finding).Append('\n');
+            }
+
+            output.Append("  (validation) WasRepaired: ").Append(document.WasRepaired).Append('\n');
+        }
+    }
+
+    /// <summary>
+    /// Objects 1 and 2, then a comment that pads object 3 to <paramref name="target"/> (counted from the header), the table
+    /// placing object 3 at <paramref name="row"/>. <paramref name="lead"/> bytes of comment come before object 1.
+    /// </summary>
+    private static byte[] ObjectThree(long target, Func<long, long> row, int lead = 0)
+    {
+        var file = new HandWrittenFile();
+
+        if (lead > 0)
+        {
+            file.Raw("%" + new string('c', lead - 2) + "\n");
+        }
+
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>"),
+        };
+
+        var gap = target - file.Position;
+
+        if (gap < 2)
+        {
+            throw new InvalidOperationException("target too near");
+        }
+
+        file.Raw("%" + new string('p', (int)gap - 2) + "\n");
+        rows[3] = row(file.Object(3, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << >> >>"));
+        file.Table(4, rows, "/Size 4 /Root 1 0 R");
+        return file.Bytes;
+    }
+
+    /// <summary>The comment's shape: objects 1 to 3, then <paramref name="spaces"/> spaces and object 4; row 4 given.</summary>
+    private static byte[] ObjectFourAfterSpaces(int spaces, long row4, out long four)
+    {
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>"),
+            [3] = file.Object(3, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << >> >>"),
+        };
+        file.Raw(new string(' ', spaces));
+        four = file.Object(4, "(four)");
+        rows[4] = row4;
+        file.Table(5, rows, "/Size 5 /Root 1 0 R");
+        return file.Bytes;
+    }
+
+    /// <summary>
+    /// An original classic table at a position padded to <paramref name="original"/>, then an update redefining object 3
+    /// whose table's /Prev is <paramref name="prev"/>(original).
+    /// </summary>
+    private static byte[] PrevNamed(long original, Func<long, long> prev, out long at)
+    {
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>"),
+            [3] = file.Object(3, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << >> >>"),
+            [4] = file.Object(4, "(four)"),
+        };
+        var gap = original - file.Position;
+        file.Raw("%" + new string('p', (int)gap - 2) + "\n");
+        at = file.Table(5, rows, "/Size 5 /Root 1 0 R");
+        var three = file.Object(3, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 600 800] /Resources << >> >>");
+        var xref = file.Position;
+        file.Raw(string.Create(
+            CultureInfo.InvariantCulture,
+            $"xref\n3 1\n{three:D10} 00000 n \ntrailer\n<< /Size 5 /Root 1 0 R /Prev {prev(at)} >>\nstartxref\n{xref}\n%%EOF\n"));
+        return file.Bytes;
+    }
+
+    /// <summary>
+    /// A hybrid-style file: classic table padded to <paramref name="tableAt"/>, whose trailer's /XRefStm names
+    /// <paramref name="named"/>; nothing at the named offset is a section.
+    /// </summary>
+    private static byte[] XRefStmNamed(long tableAt, long named)
+    {
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>"),
+            [3] = file.Object(3, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << >> >>"),
+        };
+        var gap = tableAt - file.Position;
+        file.Raw("%" + new string('p', (int)gap - 2) + "\n");
+        file.Table(4, rows, string.Create(CultureInfo.InvariantCulture, $"/Size 4 /Root 1 0 R /XRefStm {named}"));
+        return file.Bytes;
+    }
+
+    [Fact]
+    public void ZzWindow197()
+    {
+        var output = new StringBuilder();
+
+        // Issue shape A: entry of object 3 gives 20, object 3 at 817.
+        Run(output, "A: entry of object 3 gives 20, object 3 at 817", ObjectThree(817, _ => 20), 3);
+
+        // Issue shape B: /XRefStm names 184, the table at 918.
+        Run(output, "B: /XRefStm names 184, the table at 918", XRefStmNamed(918, 184), 3);
+
+        // Issue shape C: 1,000 bytes of comment before object 1; entry gives 1022, object 3 at 1819.
+        Run(output, "C: lead 1000, entry 1022, object 3 at 1819", ObjectThree(1819, _ => 1022, lead: 1000), 3);
+
+        // Comment 1 (batch 9): row 3 = -500 with object 3 at 823; row 3 = -513.
+        Run(output, "N1: row 3 = -500, object 3 at 823", ObjectThree(823, _ => -500), 3);
+        Run(output, "N2: row 3 = -513, object 3 at 823", ObjectThree(823, _ => -513), 3);
+
+        // Comment 2 (batch 14): objects 1-3, 800 spaces, object 4 at 972; rows -511, -9, -400.
+        foreach (var row in new long[] { -511, -9, -400 })
+        {
+            var bytes = ObjectFourAfterSpaces(800, row, out var four);
+            Run(output, string.Create(CultureInfo.InvariantCulture, $"N3: 800 spaces, object 4 at {four}, row 4 = {row}"), bytes, 4);
+        }
+
+        // What closes it: an object named below 512, the object 600 / 500 bytes after it.
+        Run(output, "K1: object 3 named at 100, at 700 (600 after)", ObjectThree(700, _ => 100), 3);
+        Run(output, "K2: object 3 named at 100, at 600 (500 after)", ObjectThree(600, _ => 100), 3);
+        Run(output, "K3: object 3 named at 400, at 1000 (600 after)", ObjectThree(1000, _ => 400), 3);
+        Run(output, "K4: object 3 named at 400, at 900 (500 after)", ObjectThree(900, _ => 400), 3);
+
+        // Negative rows: object 600 / 500 bytes after the start.
+        Run(output, "K5: row 3 = -1, object 3 at 600", ObjectThree(600, _ => -1), 3);
+        Run(output, "K6: row 3 = -1, object 3 at 500", ObjectThree(500, _ => -1), 3);
+        Run(output, "K7: row 3 = -9, object 3 at 500", ObjectThree(500, _ => -9), 3);
+        Run(output, "K8: row 3 = -9, object 3 at 490", ObjectThree(490, _ => -9), 3);
+
+        // Sections named below 512: /Prev names original-600 / original-500.
+        var prev600 = PrevNamed(700, at => at - 600, out var at600);
+        Run(output, string.Create(CultureInfo.InvariantCulture, $"S1: /Prev names {at600 - 600}, the table at {at600} (600 after)"), prev600, 4);
+        var prev500 = PrevNamed(700, at => at - 500, out var at500);
+        Run(output, string.Create(CultureInfo.InvariantCulture, $"S2: /Prev names {at500 - 500}, the table at {at500} (500 after)"), prev500, 4);
+        var prev600far = PrevNamed(2000, at => at - 600, out var at600far);
+        Run(output, string.Create(CultureInfo.InvariantCulture, $"S3: /Prev names {at600far - 600}, the table at {at600far} (600 after, far)"), prev600far, 4);
+        Run(output, "S4: /XRefStm names 300, the table at 900 (600 after)", XRefStmNamed(900, 300), 3);
+        Run(output, "S5: /XRefStm names 400, the table at 900 (500 after)", XRefStmNamed(900, 400), 3);
+
+        // Left edge: "14 0 obj" with the window starting at its '4' (offset - 512 = position of '4').
+        var leftEdge = new HandWrittenFile();
+        var rowsLeft = new Dictionary<int, long>
+        {
+            [1] = leftEdge.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),
+            [2] = leftEdge.Object(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>"),
+            [3] = leftEdge.Object(3, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << >> >>"),
+        };
+        leftEdge.Raw("%" + new string('p', 600) + "\n");
+        var fourteen = leftEdge.Object(14, "(fourteen)");
+        leftEdge.Raw("%" + new string('q', 1200) + "\n");
+        leftEdge.Object(4, "(four, far away)");
+        rowsLeft[4] = fourteen + 1 + 512;
+        leftEdge.Table(15, rowsLeft, "/Size 15 /Root 1 0 R");
+        Run(output, string.Create(CultureInfo.InvariantCulture, $"E1: 14 0 obj at {fourteen}, row 4 = {fourteen + 1 + 512} (window starts on its '4')"), leftEdge.Bytes, 4);
+
+        File.WriteAllText(Out + ".197", output.ToString());
+    }
+
+    /// <summary>Objects 1 to 3, then object 4 written as <paramref name="written"/>, its row at its header + <paramref name="shift"/>.</summary>
+    private static byte[] FourWritten(string written, long shift, out long four, string eol = "\n")
+    {
+        var file = new HandWrittenFile(eol: eol);
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>"),
+            [3] = file.Object(3, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << >> >>"),
+        };
+        four = file.Position;
+        file.Raw(written);
+        rows[4] = four + shift;
+        file.Table(5, rows, "/Size 5 /Root 1 0 R");
+        return file.Bytes;
+    }
+
+    private static byte[] NoTable(byte[] bytes)
+    {
+        // The index otherwise damaged: startxref names nothing.
+        var text = Encoding.Latin1.GetString(bytes);
+        var at = text.LastIndexOf("startxref", StringComparison.Ordinal);
+        var end = text.IndexOf("%%EOF", at, StringComparison.Ordinal);
+        return Encoding.Latin1.GetBytes(text[..at] + "startxref\n9\n" + text[end..]);
+    }
+
+    [Fact]
+    public void ZzWindowHide()
+    {
+        // Headers the parser reads at their row: which does a rebuild's scan find? (a replacement for "5 0 % lost\nobj")
+        var output = new StringBuilder();
+
+        foreach (var written in new[]
+                 {
+                     "4 0 % lost\nobj\n(four)\nendobj\n", "4 +0 obj\n(four)\nendobj\n", "+4 0 obj\n(four)\nendobj\n",
+                     "(x) 4 % lost\n0 obj\n(four)\nendobj\n", "4 0 obj\n(four)\nendobj\n",
+                 })
+        {
+            Run(output, $"hide '{written.Replace("\n", "\\n")}': row at it", FourWritten(written, written.StartsWith("(x) ", StringComparison.Ordinal) ? 4 : 0, out _), 4);
+            Run(output, $"hide '{written.Replace("\n", "\\n")}': rebuild", NoTable(FourWritten(written, 0, out _)), 4);
+        }
+
+        File.WriteAllText(Out + ".hide", output.ToString());
+    }
+
+    [Fact]
+    public void ZzWindow261()
+    {
+        var output = new StringBuilder();
+        var shapes = new (string Name, string Written)[]
+        {
+            ("plain", "4 0 obj\n(four)\nendobj\n"),
+            ("number % comment LF gen", "4 % a comment\n0 obj\n(four)\nendobj\n"),
+            ("gen % comment LF obj", "4 0 % a comment\nobj\n(four)\nendobj\n"),
+            ("both", "4 % a\n0 % b\nobj\n(four)\nendobj\n"),
+            ("number%comment (no space) LF gen", "4% a comment\n0 obj\n(four)\nendobj\n"),
+            ("comment lines between", "4\n% one\n% two\n0\n% three\nobj\n(four)\nendobj\n"),
+            ("number % comment CR gen", "4 % a comment\r0 obj\r(four)\rendobj\r"),
+            ("number % comment CRLF gen", "4 % a comment\r\n0 obj\r\n(four)\r\nendobj\r\n"),
+            ("gen % comment CR obj", "4 0 % a comment\robj\r(four)\rendobj\r"),
+            ("comment holding %", "4 % 50% done\n0 obj\n(four)\nendobj\n"),
+            ("string with % before header", "(50%) 4 % x\n0 obj\n(four)\nendobj\n"),
+            ("comment of 80 bytes", "4 %" + new string('c', 80) + "\n0 obj\n(four)\nendobj\n"),
+        };
+
+        shapes =
+        [
+            .. shapes,
+            ("number LF gen, no comment", "4\n0 obj\n(four)\nendobj\n"),
+            ("comment ending in digits, then gen (no header as the lexer reads it)", "% note 4\n0 obj\n(four)\nendobj\n"),
+            ("string over two lines holding %, then header with comment", "(multi\nline 50%) 4 % c\n0 obj\n(four)\nendobj\n"),
+            ("endobj then header with comment on one line", "endobj 4 % c\n0 obj\n(four)\nendobj\n"),
+            ("comment of 600 bytes", "4 %" + new string('c', 600) + "\n0 obj\n(four)\nendobj\n"),
+        ];
+
+        foreach (var (name, written) in shapes)
+        {
+            var headerAt = written.StartsWith("(50%) ", StringComparison.Ordinal) ? 6
+                : written.StartsWith("(multi", StringComparison.Ordinal) ? written.IndexOf("4 %", StringComparison.Ordinal)
+                : written.StartsWith("endobj 4", StringComparison.Ordinal) ? 7
+                : 0;
+
+            foreach (var shift in new long[] { 0, 2 })
+            {
+                var bytes = FourWritten(written, headerAt + shift, out var four);
+                Run(output, string.Create(CultureInfo.InvariantCulture, $"{name}: header at {four + headerAt}, row {(shift == 0 ? "at it" : "+2")}"), bytes, 4);
+            }
+
+            var damaged = NoTable(FourWritten(written, headerAt, out _));
+            Run(output, $"{name}: startxref names nothing (rebuild)", damaged, 4);
+        }
+
+        // A cross-reference stream whose header holds a comment, startxref 2 bytes past it: relocation's candidates.
+        foreach (var header in new[] { "5 0 obj", "5 % c\n0 obj", "5 0 % c\nobj" })
+        {
+            foreach (var shift in new long[] { 0, 2 })
+            {
+                var file = new HandWrittenFile();
+                var rows = new Dictionary<int, (int Type, long Field2, int Field3)>
+                {
+                    [1] = (1, file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"), 0),
+                    [2] = (1, file.Object(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>"), 0),
+                    [3] = (1, file.Object(3, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << >> >>"), 0),
+                    [4] = (1, file.Object(4, "(four)"), 0),
+                };
+                var at = file.CrossReferenceStream(5, 6, rows, "/Root 1 0 R");
+                var text = Encoding.Latin1.GetString(file.Bytes);
+                var headerAt = (int)at;
+                text = text[..headerAt] + header + text[(headerAt + "5 0 obj".Length)..];
+                // An update redefines object 3, its table's /Prev naming the stream, or 2 bytes past it.
+                var three = text.Length;
+                text += "3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 600 800] /Resources << >> >>\nendobj\n";
+                var xref = text.Length;
+                text += string.Create(
+                    CultureInfo.InvariantCulture,
+                    $"xref\n3 1\n{three:D10} 00000 n \ntrailer\n<< /Size 6 /Root 1 0 R /Prev {at + shift} >>\nstartxref\n{xref}\n%%EOF\n");
+                Run(output, string.Create(CultureInfo.InvariantCulture, $"xref stream header {header.Replace("\n", "\\n")}: at {at}, /Prev {(shift == 0 ? "at it" : "+2")}"), Encoding.Latin1.GetBytes(text), 4);
+            }
+        }
+
+        // The rebuild's scan: object 4's obj keyword at 1,048,580, past the first chunk; its header straddles 1,048,512.
+        foreach (var before in new[]
+                 {
+                     "4 0 ", "4 % c\n0 ", "4 0 % c\n", "4 %" + new string('c', 100) + "\n0 ", new string('0', 70) + "4 0 ",
+                     "1" + new string('0', 70) + "4 0 ",
+                 })
+        {
+            var file = new HandWrittenFile();
+            var rows = new Dictionary<int, long>
+            {
+                [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),
+                [2] = file.Object(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>"),
+                [3] = file.Object(3, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << >> >>"),
+            };
+            var start = 1048580 - before.Length;
+            file.Raw("%" + new string('p', (int)(start - file.Position) - 2) + "\n");
+            rows[4] = file.Position;
+            file.Raw(before + "obj\n(four)\nendobj\n");
+            file.Table(5, rows, "/Size 5 /Root 1 0 R");
+            var label = before.Length > 40 ? before[..3] + "...(" + before.Length + " bytes)" : before.Replace("\n", "\\n");
+            Run(output, string.Create(CultureInfo.InvariantCulture, $"scan chunk edge: header '{label}obj' from {start}, rebuild"), NoTable(file.Bytes), 4);
+        }
+
+        File.WriteAllText(Out + ".261", output.ToString());
+    }
+}

@@ -1,0 +1,242 @@
+1c1
+< ## shapes-main3-mx.txt
+---
+> ## shapes-b1-mx.txt
+18,20c18,20
+<    sections: startxref@2961:Read | /Prev@1583:Malformed
+<    reader: xref.section-unreadable, xref.rebuilt, object.redefined
+<    objects: 3=ok(R) 4=ok(R) 7=NEW(R) 6=ok(R)
+---
+>    sections: startxref@2961:Read | /Prev@1583:Malformed | /Prev@173:Read
+>    reader: xref.section-unreadable
+>    objects: 3=ok 4=ok(R) 7=NEW(R) 6=ok
+23,25c23,25
+<    sections: startxref@2958:Read | /Prev@1583:Malformed
+<    reader: xref.section-unreadable, xref.rebuilt, object.redefined
+<    objects: 3=ok(R) 4=ok(R) 7=NEW(R) 6=ok(R)
+---
+>    sections: startxref@2958:Read | /Prev@1583:Malformed | /Prev@173:Read
+>    reader: xref.section-unreadable
+>    objects: 3=ok 4=ok(R) 7=NEW(R) 6=ok
+28,30c28,30
+<    sections: startxref@2961:Read | /Prev@1583:Malformed
+<    reader: xref.section-unreadable, xref.rebuilt, object.redefined
+<    objects: 3=ok(R) 4=ok(R) 7=NEW(R) 6=ok(R)
+---
+>    sections: startxref@2961:Read | /Prev@1583:Malformed | /Prev@173:Read
+>    reader: xref.section-unreadable
+>    objects: 3=ok 4=ok(R) 7=NEW(R) 6=ok
+33,35c33,35
+<    sections: startxref@2960:Read | /Prev@1583:Malformed
+<    reader: xref.section-unreadable, xref.rebuilt, object.redefined
+<    objects: 3=ok(R) 4=ok(R) 7=NEW(R) 6=ok(R)
+---
+>    sections: startxref@2960:Read | /Prev@1583:Malformed | /Prev@173:Read
+>    reader: xref.section-unreadable
+>    objects: 3=ok 4=ok(R) 7=NEW(R) 6=ok
+38,40c38,40
+<    sections: startxref@2950:Read | /Prev@1583:Malformed
+<    reader: xref.section-unreadable, xref.rebuilt, object.redefined
+<    objects: 3=ok(R) 4=ok(R) 7=NEW(R) 6=ok(R)
+---
+>    sections: startxref@2950:Read | /Prev@1583:Malformed | /Prev@173:Read
+>    reader: xref.section-unreadable
+>    objects: 3=ok 4=ok(R) 7=NEW(R) 6=ok
+43,45c43,45
+<    sections: startxref@2959:Read | /Prev@1583:Malformed
+<    reader: xref.section-unreadable, xref.rebuilt, object.redefined
+<    objects: 3=ok(R) 4=ok(R) 7=NEW(R) 6=ok(R)
+---
+>    sections: startxref@2959:Read | /Prev@1583:Malformed | /Prev@173:Read
+>    reader: xref.section-unreadable
+>    objects: 3=ok 4=ok(R) 7=NEW(R) 6=ok
+48c48
+<    sections: startxref@2954:Read | /Prev@1583:Malformed
+---
+>    sections: startxref@2954:Read | /Prev@1583:Malformed | /Prev@173:Read
+53c53
+<    sections: startxref@2961:Read | /Prev@1583:Malformed
+---
+>    sections: startxref@2961:Read | /Prev@1583:Malformed | /Prev@173:Read
+58c58
+<    sections: startxref@2953:Read | /Prev@1583:Malformed
+---
+>    sections: startxref@2953:Read | /Prev@1583:Malformed | /Prev@173:Read
+63c63
+<    sections: startxref@2961:Read | /Prev@1583:Malformed
+---
+>    sections: startxref@2961:Read | /Prev@1583:Malformed | /Prev@173:Read
+68c68
+<    sections: startxref@2961:Read | /Prev@1583:Malformed
+---
+>    sections: startxref@2961:Read | /Prev@1583:Malformed | /Prev@173:Read
+73c73
+<    sections: startxref@2935:Read | /Prev@1583:Malformed
+---
+>    sections: startxref@2935:Read | /Prev@1583:Malformed | /Prev@173:Read
+78c78
+<    sections: startxref@2944:Read | /Prev@1583:Malformed
+---
+>    sections: startxref@2944:Read | /Prev@1583:Malformed | /Prev@173:Read
+83c83
+<    sections: startxref@2953:Read | /Prev@1583:Malformed
+---
+>    sections: startxref@2953:Read | /Prev@1583:Malformed | /Prev@173:Read
+123,125c123,125
+<    sections: startxref@2963:Read | /Prev@1583:Malformed
+<    reader: xref.section-unreadable, xref.rebuilt, stream.truncated, object.redefined
+<    objects: 3=ok(R) 4=ok(R) 7=NEW(R) 6=ok(R)
+---
+>    sections: startxref@2963:Read | /Prev@1583:Malformed | /Prev@173:Read
+>    reader: xref.section-unreadable
+>    objects: 3=ok 4=ok(R) 7=NEW(R) 6=ok
+128,129c128,129
+<    sections: startxref@2960:Read | /Prev@1583:Malformed
+<    reader: xref.section-unreadable, xref.rebuilt, object.redefined
+---
+>    sections: startxref@2960:Read | /Prev@1583:Malformed | /Prev@-1:NotFound
+>    reader: xref.section-unreadable, xref.section-missing, xref.rebuilt, object.redefined
+131c131
+<    validator: xref.section-malformed
+---
+>    validator: xref.section-malformed, xref.section-not-found
+138,139c138,139
+<    sections: startxref@2966:Read | /Prev@1583:Malformed
+<    reader: xref.section-unreadable, xref.rebuilt, object.redefined
+---
+>    sections: startxref@2966:Read | /Prev@1583:Malformed | /Prev@99999999:NotFound
+>    reader: xref.section-unreadable, xref.section-missing, xref.rebuilt, object.redefined
+141c141
+<    validator: xref.section-malformed
+---
+>    validator: xref.section-malformed, xref.section-not-found
+143,144c143,144
+<    sections: startxref@2960:Read | /Prev@1583:Malformed
+<    reader: xref.section-unreadable, xref.rebuilt, object.redefined
+---
+>    sections: startxref@2960:Read | /Prev@1583:Malformed | /Prev@-1:NotFound
+>    reader: xref.section-unreadable, xref.section-missing, xref.rebuilt, object.redefined
+146c146
+<    validator: xref.section-malformed
+---
+>    validator: xref.section-malformed, xref.section-not-found
+148,149c148,149
+<    sections: startxref@2963:Read | /Prev@1583:Malformed
+<    reader: xref.section-unreadable, xref.rebuilt, object.redefined
+---
+>    sections: startxref@2963:Read | /Prev@1583:Malformed | /Prev@-1:NotFound
+>    reader: xref.section-unreadable, xref.section-missing, xref.rebuilt, object.redefined
+151c151
+<    validator: xref.section-malformed
+---
+>    validator: xref.section-malformed, xref.section-not-found
+153,155c153,155
+<    sections: startxref@2960:Read | /Prev@1583:Malformed
+<    reader: xref.section-unreadable, xref.rebuilt, object.redefined
+<    objects: 3=ok(R) 4=ok(R) 7=NEW(R) 6=ok(R)
+---
+>    sections: startxref@2960:Read | /Prev@1583:Malformed | /Prev@173:Read
+>    reader: xref.section-unreadable
+>    objects: 3=ok 4=ok(R) 7=NEW(R) 6=ok
+158,160c158,160
+<    sections: startxref@2949:Read | /Prev@1583:Malformed
+<    reader: xref.section-unreadable, xref.rebuilt, object.redefined
+<    objects: 3=ok(R) 4=ok(R) 7=NEW(R) 6=ok(R)
+---
+>    sections: startxref@2949:Read | /Prev@1583:Malformed | /Prev@173:Read
+>    reader: xref.section-unreadable
+>    objects: 3=ok 4=ok(R) 7=NEW(R) 6=ok
+163,165c163,165
+<    sections: startxref@2963:Read | /Prev@1583:Malformed
+<    reader: syntax.unexpected-token, xref.section-unreadable, xref.rebuilt, object.redefined
+<    objects: 3=ok(R) 4=ok(R) 7=NEW(R) 6=ok(R)
+---
+>    sections: startxref@2963:Read | /Prev@1583:Malformed | /Prev@173:Read
+>    reader: syntax.unexpected-token, xref.section-unreadable
+>    objects: 3=ok 4=ok(R) 7=NEW(R) 6=ok
+168,171c168,171
+<    sections: startxref@2963:Read | /Prev@1583:Malformed
+<    reader: xref.section-unreadable, xref.rebuilt, object.redefined
+<    objects: 3=ok(R) 4=ok(R) 7=NEW(R) 6=ok(R)
+<    validator: xref.section-malformed
+---
+>    sections: startxref@2963:Read | /Prev@1583:Malformed | /Prev@173:Read
+>    reader: xref.section-unreadable
+>    objects: 3=ok 4=ok(R) 7=NEW(R) 6=ok
+>    validator: file.trailer-value-wrong, xref.section-malformed
+179c179
+<    reader: xref.section-unreadable, xref.rebuilt, object.redefined
+---
+>    reader: xref.section-unreadable, xref.chain-cycle, xref.rebuilt, object.redefined
+181c181
+<    validator: xref.section-malformed
+---
+>    validator: xref.section-malformed, xref.chain-loop
+213c213
+<    sections: startxref@4984:Read | /Prev@1583:Malformed
+---
+>    sections: startxref@4984:Read | /Prev@1583:Malformed | /Prev@173:Read
+219c219
+<    reader: xref.section-unreadable, xref.rebuilt, limit.object, object.redefined
+---
+>    reader: xref.section-unreadable, limit.object, xref.rebuilt, object.redefined
+221c221
+<    validator: xref.section-malformed, xref.object-past-size
+---
+>    validator: file.trailer-value-wrong, xref.section-malformed, xref.object-past-size, xref.checked-in-part
+223,226c223,226
+<    sections: startxref@4984:Read | /Prev@1583:Malformed
+<    reader: xref.section-unreadable, xref.rebuilt, object.redefined
+<    objects: 3=ok(R) 4=ok(R) 7=NEW(R) 6=ok(R)
+<    validator: xref.section-malformed, xref.object-past-size
+---
+>    sections: startxref@4984:Read | /Prev@1583:Malformed | /Prev@173:Read
+>    reader: xref.section-unreadable
+>    objects: 3=ok 4=ok(R) 7=NEW(R) 6=ok
+>    validator: file.trailer-value-wrong, xref.section-malformed, xref.object-past-size
+228,230c228,230
+<    sections: startxref@30424:Read | /Prev@1583:Malformed
+<    reader: xref.section-unreadable, xref.rebuilt, object.redefined
+<    objects: 3=ok(R) 4=ok(R) 7=NEW(R) 6=ok(R)
+---
+>    sections: startxref@30424:Read | /Prev@1583:Malformed | /Prev@173:Read
+>    reader: xref.section-unreadable
+>    objects: 3=ok 4=ok(R) 7=NEW(R) 6=ok
+233c233
+<    sections: startxref@37430:Read | /Prev@1583:Malformed
+---
+>    sections: startxref@37430:Read | /Prev@1583:Malformed | /Prev@173:Read
+238c238
+<    sections: startxref@2944:Read | /Prev@1583:Malformed
+---
+>    sections: startxref@2944:Read | /Prev@1583:Malformed | /Prev@173:Read
+253,256c253,256
+<    sections: startxref@1861:Read | /Prev@1861:Relocated
+<    reader: xref.offset-adjusted, xref.chain-cycle, xref.rebuilt, object.redefined
+<    objects: 3=ok(R) 4=ok(R) 7=NEW(R) 6=ok(R)
+<    validator: file.size-wrong, file.size-wrong, xref.section-shifted, xref.chain-loop
+---
+>    sections: startxref@1861:Read | /Prev@1583:Malformed | /Prev@173:Read
+>    reader: xref.section-unreadable
+>    objects: 3=ok 4=ok(R) 7=NEW(R) 6=ok
+>    validator: xref.section-malformed
+258,261c258,261
+<    sections: startxref@1763:Read | /Prev@173:Relocated
+<    reader: xref.offset-adjusted
+<    objects: 3=ok 4=null 7=OLD 6=ok
+<    validator: xref.section-shifted
+---
+>    sections: startxref@1763:Read | /Prev@385:Malformed | /Prev@173:Read
+>    reader: xref.section-unreadable
+>    objects: 3=ok 4=ok(R) 7=NEW(R) 6=ok
+>    validator: xref.section-malformed
+263,266c263,266
+<    sections: startxref@663:Read | /Prev@173:Relocated
+<    reader: xref.offset-adjusted
+<    objects: 3=ok 4=null 7=OLD 6=ok
+<    validator: xref.section-shifted
+---
+>    sections: startxref@663:Read | /Prev@385:Malformed | /Prev@173:Read
+>    reader: xref.section-unreadable
+>    objects: 3=ok 4=ok(R) 7=NEW(R) 6=ok
+>    validator: xref.section-malformed

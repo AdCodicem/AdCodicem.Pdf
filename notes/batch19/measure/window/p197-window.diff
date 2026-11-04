@@ -1,0 +1,38 @@
+diff --git a/src/AdCodicem.Pdf/IO/PdfFileReader.cs b/src/AdCodicem.Pdf/IO/PdfFileReader.cs
+index a946dab..159c7dd 100644
+--- a/src/AdCodicem.Pdf/IO/PdfFileReader.cs
++++ b/src/AdCodicem.Pdf/IO/PdfFileReader.cs
+@@ -3249,8 +3249,10 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
+             return false;
+         }
+ 
++        // The window ends NearbySearchRadius bytes past the offset, or at the file's end, wherever the offset falls: clamped
++        // at the file's start, it is not lengthened (#197). The position is in the file, so neither sum wraps.
+         var start = Math.Max(0, absolute - NearbySearchRadius);
+-        var length = (int)Math.Min(NearbySearchRadius * 2, _source.Length - start);
++        var length = (int)(absolute + Math.Min(NearbySearchRadius, _source.Length - absolute) - start);
+         var candidates = new List<long>();
+ 
+         using (var window = _source.GetWindow(start, length))
+@@ -6071,15 +6073,19 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
+             return false;
+         }
+ 
++        // The window ends NearbySearchRadius bytes past the offset, or at the file's end, wherever the offset falls: clamped
++        // at the file's start, it is not lengthened (#197). The end is worked out from what lies between the offset and the
++        // file's end, which wraps for no offset — long.MaxValue, an entry past what a long holds, gives the file's end.
+         var start = Math.Max(0, approximateOffset - NearbySearchRadius);
+-        var length = (int)Math.Min(NearbySearchRadius * 2, source.Length - start);
++        var end = approximateOffset + Math.Min(NearbySearchRadius, source.Length - approximateOffset);
++        var length = end - start;
+ 
+         if (length <= 0)
+         {
+             return false;
+         }
+ 
+-        using var window = source.GetWindow(start, length);
++        using var window = source.GetWindow(start, (int)length);
+         var span = window.Memory.Span;
+         var searchFrom = 0;
+ 

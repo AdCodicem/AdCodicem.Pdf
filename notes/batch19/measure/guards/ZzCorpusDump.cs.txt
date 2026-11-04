@@ -1,0 +1,56 @@
+using System.Text;
+using AdCodicem.Pdf.Documents;
+using AdCodicem.Pdf.TestSupport;
+using AdCodicem.Pdf.Validation;
+
+namespace AdCodicem.Pdf.Tests;
+
+#pragma warning disable
+
+/// <summary>Stage probe (uncommitted): each committed corpus document's validation report and diagnostics, validated twice.</summary>
+public class ZzCorpusDump
+{
+    [Fact]
+    public void ZzCorpusDumpAll()
+    {
+        if (Environment.GetEnvironmentVariable("ZZ_CORPUS_OUT") is not { } path)
+        {
+            return;
+        }
+
+        var output = new StringBuilder();
+
+        foreach (var entry in Corpus.Documents)
+        {
+            output.Append("== ").Append(entry.File).Append('\n');
+
+            try
+            {
+                var options = CorpusReadingTests.OptionsFor(entry) with { ThrowOnEncrypted = false };
+                using var document = PdfDocument.Open(Corpus.PathOf(entry.File), options);
+
+                for (var round = 0; round < 2; round++)
+                {
+                    var report = new PdfValidator().Validate(document);
+                    output.Append("  round ").Append(round).Append(" findings=").Append(report.Findings.Count).Append('\n');
+
+                    foreach (var finding in report.Findings)
+                    {
+                        output.Append("    F ").Append(finding).Append('\n');
+                    }
+                }
+
+                foreach (var diagnostic in document.Diagnostics)
+                {
+                    output.Append("    D ").Append(diagnostic).Append('\n');
+                }
+            }
+            catch (Exception exception)
+            {
+                output.Append("  THREW ").Append(exception.GetType().Name).Append(": ").Append(exception.Message).Append('\n');
+            }
+        }
+
+        File.WriteAllText(path, output.ToString());
+    }
+}

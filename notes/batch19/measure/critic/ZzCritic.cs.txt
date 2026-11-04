@@ -1,0 +1,104 @@
+using System.Globalization;
+using System.Text;
+using AdCodicem.Pdf.Documents;
+using AdCodicem.Pdf.Objects;
+using AdCodicem.Pdf.Validation;
+
+namespace AdCodicem.Pdf.Tests;
+
+#pragma warning disable
+
+/// <summary>Batch 19 critic probe (uncommitted): what no lens measured, and how the prototypes compose.</summary>
+public class ZzCritic
+{
+    private static readonly StringBuilder Out = new();
+
+    private static void Dump(string title, byte[] file, PdfReaderOptions? options, params int[] numbers)
+    {
+        options ??= new PdfReaderOptions();
+        Out.Append("### ").Append(title).Append(CultureInfo.InvariantCulture, $" ({file.Length} bytes)\n");
+        try
+        {
+            using (var document = PdfDocument.Open(file, options))
+            {
+                Out.Append("  opened: WasRepaired ").Append(document.WasRepaired).Append('\n');
+                foreach (var s in document.Reader.Structure.Sections)
+                {
+                    Out.Append(CultureInfo.InvariantCulture, $"  section namedBy={s.NamedBy} named={s.NamedOffset} offset={s.Offset} state={s.State} kind={s.Kind} cut={s.CutByLimit} incomplete={s.Incomplete} fault={s.Fault ?? "-"}\n");
+                }
+
+                foreach (var d in document.Diagnostics) Out.Append("  D ").Append(d).Append('\n');
+            }
+
+            foreach (var n in numbers)
+            {
+                using var document = PdfDocument.Open(file, options);
+                var value = document.GetObject(new PdfObjectId(n));
+                Out.Append(CultureInfo.InvariantCulture, $"  GetObject({n}): {value}; WasRepaired: {document.WasRepaired}\n");
+            }
+
+            using (var document = PdfDocument.Open(file, options))
+            {
+                var report = new PdfValidator().Validate(document);
+                foreach (var f in report.Findings) Out.Append("  F ").Append(f).Append('\n');
+                foreach (var d in document.Diagnostics) Out.Append("  D' ").Append(d).Append('\n');
+            }
+        }
+        catch (Exception exception)
+        {
+            Out.Append("  THREW ").Append(exception.GetType().Name).Append(": ").Append(exception.Message).Append('\n');
+        }
+
+        Out.Append('\n');
+    }
+
+    private static byte[] Replace(byte[] file, string from, string to)
+    {
+        var text = Encoding.Latin1.GetString(file);
+        var at = text.IndexOf(from, StringComparison.Ordinal);
+        if (at < 0 || from.Length != to.Length) throw new InvalidOperationException("no " + from);
+        return Encoding.Latin1.GetBytes(text[..at] + to + text[(at + from.Length)..]);
+    }
+
+    private const string NegativeWidth = "/Type /XRef /Size 8 /Index [4 2 7 1] /W [1 -4 2] /Root 1 0 R";
+    private const string Sound = "/Type /XRef /Size 8 /Index [4 2 7 1] /W [1 4 2] /Root 1 0 R";
+
+    [Fact]
+    public void ZzCriticAll()
+    {
+        Out.Clear();
+        var limits = static (PdfReaderLimits l) => new PdfReaderOptions { Limits = l };
+
+        // #208: the section count guard over a /Prev handed on.
+        var w1 = ZzStreamPrev.Build(new ZzStreamPrev.Spec { Entries = NegativeWidth, DataWidth = 4 });
+        Dump("208-count W1 default limits", w1.File, null, 3, 4, 7);
+        Dump("208-count W1 MaxXRefSectionCount 2", w1.File, limits(new PdfReaderLimits { MaxXRefSectionCount = 2 }), 3, 4, 7);
+
+        // #208: a handed /Prev 3 bytes off the oldest table (relocation of what it names), and 3 bytes before.
+        var after = ZzStreamPrev.Build(new ZzStreamPrev.Spec { Entries = NegativeWidth, DataWidth = 4, Prev = (w1.Oldest + 3).ToString(CultureInfo.InvariantCulture) });
+        Dump("208-reloc W1 /Prev oldest+3", after.File, null, 3, 4, 7);
+        var before = ZzStreamPrev.Build(new ZzStreamPrev.Spec { Entries = NegativeWidth, DataWidth = 4, Prev = (w1.Oldest - 3).ToString(CultureInfo.InvariantCulture) });
+        Dump("208-reloc W1 /Prev oldest-3", before.File, null, 3, 4, 7);
+
+        // #208: the validator judges the older table — its row for object 3 two bytes past the header.
+        var text = Encoding.Latin1.GetString(w1.File);
+        var three = text.IndexOf("3 0 obj", StringComparison.Ordinal);
+        var row = three.ToString("D10", CultureInfo.InvariantCulture) + " 00000 n";
+        var shifted = (three + 2).ToString("D10", CultureInfo.InvariantCulture) + " 00000 n";
+        Dump("208-judge W1, oldest row 3 two bytes past", Replace(w1.File, row, shifted), null, 3);
+        var sound = ZzStreamPrev.Build(new ZzStreamPrev.Spec { Entries = Sound, DataWidth = 4 });
+        Dump("208-judge control: sound stream, oldest row 3 two bytes past", Replace(sound.File, row, shifted), null, 3);
+
+        // #156 x #264: a hybrid table whose /XRefStm names itself (B1), whole and stopped by a guard.
+        var files = Environment.GetEnvironmentVariable("ZZ_CRITIC_FILES") ?? "/tmp";
+        foreach (var name in new[] { "B1", "B2" })
+        {
+            var b = File.ReadAllBytes(Path.Combine(files, name + ".pdf"));
+            Dump($"156x264 {name} default", b, null, 3);
+            Dump($"156x264 {name} MaxXRefSectionLength 40", b, limits(new PdfReaderLimits { MaxXRefSectionLength = 40 }), 3);
+            Dump($"156x264 {name} MaxIndexEntries 2", b, limits(new PdfReaderLimits { MaxIndexEntries = 2 }), 3);
+        }
+
+        File.WriteAllText(Environment.GetEnvironmentVariable("ZZ_OUT") ?? "/tmp/zz-critic.txt", Out.ToString());
+    }
+}

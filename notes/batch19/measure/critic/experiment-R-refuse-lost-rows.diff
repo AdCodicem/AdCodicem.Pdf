@@ -1,0 +1,49 @@
+diff --git a/src/AdCodicem.Pdf/IO/PdfFileReader.cs b/src/AdCodicem.Pdf/IO/PdfFileReader.cs
+index ee6d9c4..44b4601 100644
+--- a/src/AdCodicem.Pdf/IO/PdfFileReader.cs
++++ b/src/AdCodicem.Pdf/IO/PdfFileReader.cs
+@@ -3092,6 +3092,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
+             _sectionsReadAt.Add(section.Offset);
+             ReportSectionReadInPart(section, naming);
+             ReportReservedRows(section, naming);
++            RefuseWhatALostRowDeclared(section);
+             _olderNumberedPast |= sections > 1 && section.HighestNumber > _highestRead;
+             _highestRead = Math.Max(_highestRead, section.HighestNumber);
+ 
+@@ -3178,11 +3179,13 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
+                         !TryRelocateXRefSection(hybrid, stream, out _, out _)))
+                 {
+                     ReportLostSection(stream, "/XRefStm", hybrid, section.Offset);
++                    RefuseWhatALostRowDeclared(stream);
+                 }
+                 else
+                 {
+                     _sectionsReadAt.Add(stream.Offset);
+                     ReportSectionReadInPart(stream, "/XRefStm");
++                    RefuseWhatALostRowDeclared(stream);
+ 
+                     if (stream.Kind == XRefSectionKind.Table && !stream.CutByLimit)
+                     {
+@@ -3321,6 +3324,22 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
+         _refusedRanges = [.. merged];
+     }
+ 
++    /// <summary>CRITIC EXPERIMENT (R): a cross-reference stream that lost rows — read in part, or an /XRefStm stream that
++    /// cannot be read but declares itself one — refuses the numbers it declares to older rows, as #208's hand-on does.</summary>
++    private void RefuseWhatALostRowDeclared(XRefSectionRecord section)
++    {
++        if (section.Kind != XRefSectionKind.Stream || section.CutByLimit || section.Trailer is not { } declared)
++        {
++            return;
++        }
++
++        if ((section.State is XRefSectionState.Read or XRefSectionState.Relocated && section.Incomplete) ||
++            (section.State == XRefSectionState.Malformed && section.TypedXRef && section.NamedBy == "/XRefStm"))
++        {
++            RefuseDeclared(declared);
++        }
++    }
++
+     /// <summary>Determines whether an older section's row for <paramref name="number"/> is refused (<see cref="RefuseDeclared"/>).</summary>
+     private bool RefusedToOlderRows(int number)
+     {

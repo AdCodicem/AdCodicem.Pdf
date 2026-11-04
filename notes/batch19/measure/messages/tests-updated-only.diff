@@ -1,0 +1,87 @@
+diff --git a/tests/AdCodicem.Pdf.Tests/CrossReferenceChainTests.cs b/tests/AdCodicem.Pdf.Tests/CrossReferenceChainTests.cs
+index 11323ef..f412e5d 100644
+--- a/tests/AdCodicem.Pdf.Tests/CrossReferenceChainTests.cs
++++ b/tests/AdCodicem.Pdf.Tests/CrossReferenceChainTests.cs
+@@ -23,12 +23,12 @@ namespace AdCodicem.Pdf.Tests;
+ public class CrossReferenceChainTests
+ {
+     [Theory]
+-    [InlineData(-7)]
+-    [InlineData(-2)]
+-    [InlineData(1)]
+-    [InlineData(3)]
+-    [InlineData(12)]
+-    public void Reads_a_section_that_prev_names_a_few_bytes_off(int error)
++    [InlineData(-7, "7 bytes after")]
++    [InlineData(-2, "2 bytes after")]
++    [InlineData(1, "1 byte before")]
++    [InlineData(3, "3 bytes before")]
++    [InlineData(12, "12 bytes before")]
++    public void Reads_a_section_that_prev_names_a_few_bytes_off(int error, string found)
+     {
+         // Twelve bytes past the keyword is where IBM's QMF manual points, inside the first row of the table. One
+         // byte before it is the end-of-line the keyword follows, where the table is read as it stands.
+@@ -44,7 +44,7 @@ public class CrossReferenceChainTests
+         report.Position.Should().Be(original);
+         report.Message.Should().Be(string.Create(
+             CultureInfo.InvariantCulture,
+-            $"The cross-reference section /Prev names at offset {original + error} was found {-error} bytes from there."));
++            $"The cross-reference section /Prev names at offset {original + error} was found {found} it."));
+     }
+ 
+     [Fact]
+diff --git a/tests/AdCodicem.Pdf.Tests/DocumentReaderTests.cs b/tests/AdCodicem.Pdf.Tests/DocumentReaderTests.cs
+index fcd2293..cc77ac9 100644
+--- a/tests/AdCodicem.Pdf.Tests/DocumentReaderTests.cs
++++ b/tests/AdCodicem.Pdf.Tests/DocumentReaderTests.cs
+@@ -200,7 +200,7 @@ public class DocumentReaderTests
+             _ = PageContent(document);
+ 
+             document.Diagnostics.Where(entry => entry.Code == PdfDiagnosticCodes.XRefOffsetAdjusted).Should().NotBeEmpty()
+-                .And.OnlyContain(entry => entry.Message.EndsWith(" was found -3 bytes from where the index said.", StringComparison.Ordinal));
++                .And.OnlyContain(entry => entry.Message.EndsWith(" was found 3 bytes before where the index said.", StringComparison.Ordinal));
+         }
+         finally
+         {
+@@ -1560,7 +1560,7 @@ public class DocumentReaderTests
+ 
+         document.GetObject(new PdfObjectId(6)).Should().BeSameAs(PdfNull.Instance);
+         document.Diagnostics.Should().ContainSingle(entry => entry.Code == PdfDiagnosticCodes.ObjectStreamUnreadable).Which.Message.Should().Be(
+-            "Object stream 5 has a header that holds something other than an object number and an offset after 0 of the 1 objects its /N declares; none of its objects can be read from it.");
++            "Object stream 5 has a header that holds something other than an object number and an offset after 0 of the 1 object its /N declares; none of its objects can be read from it.");
+     }
+ 
+     [Theory]
+@@ -1844,8 +1844,8 @@ public class DocumentReaderTests
+         document.Diagnostics.Should().NotContain(entry => entry.Code == PdfDiagnosticCodes.ObjectRedefined);
+         document.Diagnostics.Where(entry => entry.Code == PdfDiagnosticCodes.ObjectStreamUnreadable).Select(entry => entry.Message)
+             .Should().Equal(
+-                "Object stream 5 has a header that lists object -5 at offset 0, which no member can be, after 0 of the 1 objects its /N declares; none of its objects can be read from it.",
+-                "Object stream 7 has a header that lists object -5 at offset 0, which no member can be, after 0 of the 1 objects its /N declares; none of its objects can be read from it.");
++                "Object stream 5 has a header that lists object -5 at offset 0, which no member can be, after 0 of the 1 object its /N declares; none of its objects can be read from it.",
++                "Object stream 7 has a header that lists object -5 at offset 0, which no member can be, after 0 of the 1 object its /N declares; none of its objects can be read from it.");
+     }
+ 
+     [Fact]
+@@ -2817,7 +2817,7 @@ public class DocumentReaderTests
+ 
+         document.WasRepaired.Should().BeFalse();
+         document.Diagnostics.Select(diagnostic => diagnostic.Code).Should().Equal(PdfDiagnosticCodes.LimitTrailer, PdfDiagnosticCodes.XRefOffsetAdjusted);
+-        document.Diagnostics[1].Message.Should().EndWith(string.Create(CultureInfo.InvariantCulture, $"was found {stream - named} bytes from there."));
++        document.Diagnostics[1].Message.Should().EndWith(string.Create(CultureInfo.InvariantCulture, $"was found {stream - named} bytes after it."));
+         document.GetObject(new PdfObjectId(6)).AsDictionary().IsOfType(PdfName.Font).Should().BeTrue();
+     }
+ 
+diff --git a/tests/AdCodicem.Pdf.Tests/HeaderOffsetTests.cs b/tests/AdCodicem.Pdf.Tests/HeaderOffsetTests.cs
+index 8897fec..0e08797 100644
+--- a/tests/AdCodicem.Pdf.Tests/HeaderOffsetTests.cs
++++ b/tests/AdCodicem.Pdf.Tests/HeaderOffsetTests.cs
+@@ -143,7 +143,7 @@ public sealed class HeaderOffsetTests
+         var limit = document.Diagnostics.Should().ContainSingle(d => d.Code == PdfDiagnosticCodes.LimitXRefSectionCount).Which;
+         limit.Position.Should().Be(update);
+         limit.Message.Should().StartWith(
+-            $"The cross-reference chain has more than 1 sections; the older ones were not read: the chain goes on at offset {LargestShifted}, outside the file.");
++            $"The cross-reference chain has more than 1 section; the older ones were not read: the chain goes on at offset {LargestShifted}, outside the file.");
+ 
+         var report = new PdfValidator().Validate(document);
+         var finding = Single(report, PdfValidationRuleIds.XRefCheckedInPart);

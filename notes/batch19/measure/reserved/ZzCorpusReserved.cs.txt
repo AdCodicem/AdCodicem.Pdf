@@ -1,0 +1,67 @@
+using System.Reflection;
+using System.Text;
+using AdCodicem.Pdf.Documents;
+using AdCodicem.Pdf.IO.XRef;
+using AdCodicem.Pdf.TestSupport;
+
+namespace AdCodicem.Pdf.Tests;
+
+#pragma warning disable
+
+/// <summary>
+/// Stage probe (uncommitted, #221): for each corpus document, the cross-reference sections the chain read, their kind, and
+/// the rows of a reserved type each gave (the prototype's ReservedRows, when the build has it), the sections of a rebuild
+/// left aside.
+/// </summary>
+public class ZzCorpusReserved
+{
+    [Fact]
+    public void ZzCorpusReservedAll()
+    {
+        var output = new StringBuilder();
+        var counter = typeof(XRefSectionRecord).GetProperty("ReservedRows", BindingFlags.Public | BindingFlags.Instance);
+        long documents = 0, streams = 0, tables = 0, reserved = 0, withReserved = 0;
+
+        foreach (var entry in Corpus.Documents)
+        {
+            documents++;
+
+            try
+            {
+                var options = CorpusReadingTests.OptionsFor(entry) with { ThrowOnEncrypted = false };
+                using var document = PdfDocument.Open(Corpus.PathOf(entry.File), options);
+                long here = 0;
+                var kinds = new StringBuilder();
+
+                foreach (var section in document.Reader.Structure.Sections)
+                {
+                    var count = counter is null ? 0L : (long)counter.GetValue(section)!;
+                    here += count;
+                    streams += section.Kind == XRefSectionKind.Stream ? 1 : 0;
+                    tables += section.Kind == XRefSectionKind.Table ? 1 : 0;
+                    kinds.Append(section.Kind == XRefSectionKind.Stream ? 'S' : section.Kind == XRefSectionKind.Table ? 'T' : '?')
+                        .Append(section.State == XRefSectionState.Read ? string.Empty : "(" + section.State + ")");
+
+                    if (count > 0)
+                    {
+                        kinds.Append('[').Append(count).Append(']');
+                    }
+                }
+
+                reserved += here;
+                withReserved += here > 0 ? 1 : 0;
+                output.Append(entry.File).Append(" sections=").Append(kinds).Append(" reserved=").Append(here)
+                    .Append(" repaired=").Append(document.WasRepaired).Append('\n');
+            }
+            catch (Exception exception)
+            {
+                output.Append(entry.File).Append(" THREW ").Append(exception.GetType().Name).Append('\n');
+            }
+        }
+
+        output.Append("documents=").Append(documents).Append(" stream sections=").Append(streams).Append(" table sections=").Append(tables)
+            .Append(" reserved rows=").Append(reserved).Append(" documents with reserved rows=").Append(withReserved)
+            .Append(" counter=").Append(counter is null ? "absent (main)" : "present").Append('\n');
+        File.WriteAllText(Environment.GetEnvironmentVariable("ZZ_CORPUS_OUT") ?? "/tmp/zz-corpus-reserved.txt", output.ToString());
+    }
+}

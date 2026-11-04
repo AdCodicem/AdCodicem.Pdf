@@ -1,0 +1,235 @@
+diff --git a/src/AdCodicem.Pdf/IO/PdfFileReader.cs b/src/AdCodicem.Pdf/IO/PdfFileReader.cs
+index a946dab..2bc2c28 100644
+--- a/src/AdCodicem.Pdf/IO/PdfFileReader.cs
++++ b/src/AdCodicem.Pdf/IO/PdfFileReader.cs
+@@ -550,6 +550,24 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
+     /// </summary>
+     private HashSet<int>? _refusedNumbers;
+ 
++    /// <summary>
++    /// The numbers an unreadable cross-reference stream the chain went on past declares, as merged ranges sorted by their
++    /// start, each from its first number up to the one past its last; null while none was (<see cref="RefuseDeclared"/>).
++    /// </summary>
++    private (long Start, long End)[]? _refusedRanges;
++
++    /// <summary>
++    /// Whether every number is refused to the rows of the sections the chain reads from here on: an unreadable cross-reference
++    /// stream the chain went on past declares numbers it cannot say (<see cref="RefuseDeclared"/>).
++    /// </summary>
++    private bool _olderRowsRefused;
++
++    /// <summary>
++    /// The most ranges of numbers the unreadable streams of a chain refuse to older rows before every number is: an internal
++    /// bound, not a guard (ADR 34), which only a file whose sections cannot be read reaches.
++    /// </summary>
++    private const int MaxRefusedRanges = 4096;
++
+     /// <summary>
+     /// Where the index first had no room for an object number, <see cref="PdfReaderLimits.MaxIndexEntries"/> reached: the
+     /// section of the chain whose row it was, or the header or object stream a rebuild found it in; -1 while it has room.
+@@ -3012,9 +3030,20 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
+                     return false;
+                 }
+ 
++                // A cross-reference stream whose dictionary was read, and whose rows cannot be, is there: it is not looked for
++                // elsewhere, what lies near it would stand for it. Its /Prev, read from that dictionary, names the older
++                // sections as a whole read names them (#208): the section stays unreadable, reported once, the index
++                // incomplete for what only its rows index, and the numbers it declares are refused to the older sections'
++                // rows, which would stand for what its own rows give.
++                if (UnreadStreamNamingPrevious(section) is { } dictionary)
++                {
++                    ReportLostSection(section, naming, offset, namedFrom);
++                    previous = HandOnPrevious(section, dictionary);
++                }
++
+                 // A section a guard cut is where it was named, and is not looked for elsewhere: what lies near it would
+                 // stand for it.
+-                if (section.CutByLimit || !TryRelocateXRefSection(offset, section, out previous, out hybrid))
++                else if (section.CutByLimit || !TryRelocateXRefSection(offset, section, out previous, out hybrid))
+                 {
+                     ReportLostSection(section, naming, offset, namedFrom);
+                     break;
+@@ -3095,6 +3124,134 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
+         return _xref.Count > 0;
+     }
+ 
++    /// <summary>
++    /// Gives the dictionary of a cross-reference stream the chain cannot read, where it was read as the section's and gives a
++    /// <c>/Prev</c>: a fault in the rows, or in a value they are read with, leaves that <c>/Prev</c> as a whole read reads it
++    /// (#208). Null for a section a guard cut, which is the guard's (ADR 34), for a hybrid file's stream, whose <c>/Prev</c>
++    /// no reader follows, and for a table, whose trailer follows its rows.
++    /// </summary>
++    private static PdfDictionary? UnreadStreamNamingPrevious(XRefSectionRecord section) =>
++        section is { State: XRefSectionState.Malformed, CutByLimit: false, Kind: XRefSectionKind.Stream } &&
++        section.NamedBy != "/XRefStm" && section.Trailer is { } dictionary && dictionary.GetRaw(PdfName.Prev) is not null
++            ? dictionary
++            : null;
++
++    /// <summary>
++    /// Hands on the <c>/Prev</c> of cross-reference stream <paramref name="section"/>, which the chain cannot read: read as a
++    /// whole read reads it (<see cref="SectionOffset"/>), once the numbers the stream declares are refused to the older
++    /// sections' rows (<see cref="RefuseDeclared"/>).
++    /// </summary>
++    /// <returns>The offset the <c>/Prev</c> gives, or -1.</returns>
++    private long HandOnPrevious(XRefSectionRecord section, PdfDictionary dictionary)
++    {
++        section.PreviousHandedOn = true;
++        RefuseDeclared(dictionary);
++        var previous = SectionOffset(dictionary, PdfName.Prev, section.Offset, out var hidden);
++        section.ChainHiddenByGuard = hidden;
++        return previous;
++    }
++
++    /// <summary>
++    /// Refuses to the rows of every section older than an unreadable cross-reference stream the numbers that stream declares:
++    /// its <c>/Index</c>'s subsections, or 0 to its <c>/Size</c> less one without an <c>/Index</c>. An older row for such a
++    /// number describes an older revision than the one the stream's rows give, and the object is left for a rebuild to find.
++    /// Where the numbering cannot be read — a value written as a reference, or one <see cref="NumberingFault"/> finds wrong —
++    /// every number is.
++    /// </summary>
++    /// <remarks>
++    /// The numbers are kept as ranges, merged and sorted, looked up by halves for each older row. Past
++    /// <see cref="MaxRefusedRanges"/> ranges every number is refused: not a guard (ADR 34), as only a file whose sections cannot
++    /// be read reaches it, and the bound keeps a chain of such sections, each declaring thousands of subsections, from costing
++    /// a merge of every range so far for each.
++    /// </remarks>
++    private void RefuseDeclared(PdfDictionary dictionary)
++    {
++        if (_olderRowsRefused)
++        {
++            return;
++        }
++
++        var written = dictionary.GetRaw(PdfName.Index);
++        var index = written is PdfNull ? null : written;
++        var size = index is null ? dictionary.GetRaw(PdfName.Size) : null;
++
++        if (index is PdfReference || size is PdfReference ||
++            NumberingFault(index, index, size?.AsInteger(), out var subsections) is not null)
++        {
++            _olderRowsRefused = true;
++            return;
++        }
++
++        long[] declared = index is null ? [0, size!.AsInteger().GetValueOrDefault()] : subsections;
++        var ranges = new List<(long Start, long End)>((_refusedRanges?.Length ?? 0) + (declared.Length / 2));
++        ranges.AddRange(_refusedRanges ?? []);
++
++        for (var i = 0; i < declared.Length; i += 2)
++        {
++            if (declared[i + 1] > 0)
++            {
++                ranges.Add((declared[i], declared[i] + declared[i + 1]));
++            }
++        }
++
++        ranges.Sort();
++        var merged = new List<(long Start, long End)>(ranges.Count);
++
++        foreach (var range in ranges)
++        {
++            if (merged.Count > 0 && range.Start <= merged[^1].End)
++            {
++                merged[^1] = (merged[^1].Start, Math.Max(merged[^1].End, range.End));
++            }
++            else
++            {
++                merged.Add(range);
++            }
++        }
++
++        if (merged.Count > MaxRefusedRanges)
++        {
++            _olderRowsRefused = true;
++            _refusedRanges = null;
++            return;
++        }
++
++        _refusedRanges = [.. merged];
++    }
++
++    /// <summary>Determines whether an older section's row for <paramref name="number"/> is refused (<see cref="RefuseDeclared"/>).</summary>
++    private bool RefusedToOlderRows(int number)
++    {
++        if (_olderRowsRefused)
++        {
++            return true;
++        }
++
++        var ranges = _refusedRanges!;
++        var low = 0;
++        var high = ranges.Length - 1;
++
++        while (low <= high)
++        {
++            var middle = (low + high) >>> 1;
++
++            if (number < ranges[middle].Start)
++            {
++                high = middle - 1;
++            }
++            else if (number >= ranges[middle].End)
++            {
++                low = middle + 1;
++            }
++            else
++            {
++                return true;
++            }
++        }
++
++        return false;
++    }
++
+     /// <summary>
+     /// Determines whether the chain read a section it named at <paramref name="offset"/>, as the file writes it: where it was
+     /// named, or near it.
+@@ -5325,6 +5482,12 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
+             return;
+         }
+ 
++        // A number a newer unreadable stream declares: its row there, unread, is newer than this one (#208).
++        if ((_refusedRanges is not null || _olderRowsRefused) && RefusedToOlderRows(number))
++        {
++            return;
++        }
++
+         // While the index has room, a number it holds is simply not taken again: one lookup a row.
+         if (IndexHasRoom)
+         {
+diff --git a/src/AdCodicem.Pdf/IO/XRef/XRefSectionRecord.cs b/src/AdCodicem.Pdf/IO/XRef/XRefSectionRecord.cs
+index 06de2eb..daef52f 100644
+--- a/src/AdCodicem.Pdf/IO/XRef/XRefSectionRecord.cs
++++ b/src/AdCodicem.Pdf/IO/XRef/XRefSectionRecord.cs
+@@ -110,6 +110,12 @@ internal sealed class XRefSectionRecord
+     /// </summary>
+     public bool ChainHiddenAtStream { get; set; }
+ 
++    /// <summary>
++    /// Gets a value indicating whether the chain went on through the <c>/Prev</c> of a cross-reference stream it cannot read,
++    /// read from the stream's dictionary as a whole read reads it (#208): the one value of that dictionary the reader read.
++    /// </summary>
++    public bool PreviousHandedOn { get; set; }
++
+     /// <summary>Gets the section's own trailer — a cross-reference stream's dictionary —, or null when none was read.</summary>
+     public PdfDictionary? Trailer { get; set; }
+ 
+diff --git a/src/AdCodicem.Pdf/Validation/Rules/TrailerValueWrongRule.cs b/src/AdCodicem.Pdf/Validation/Rules/TrailerValueWrongRule.cs
+index 024ed9c..6100f64 100644
+--- a/src/AdCodicem.Pdf/Validation/Rules/TrailerValueWrongRule.cs
++++ b/src/AdCodicem.Pdf/Validation/Rules/TrailerValueWrongRule.cs
+@@ -67,6 +67,14 @@ internal sealed class TrailerValueWrongRule : IValidationRule
+ 
+         foreach (var section in sections)
+         {
++            if (section.PreviousHandedOn && section.Trailer is { } unread && IsFollowed(sections, section, PdfName.Prev))
++            {
++                // A cross-reference stream the reader cannot read, but whose /Prev the chain went on through: that value alone
++                // was read, and is judged (#208).
++                new Judge(context, this, section).Value(new What(PdfName.Prev), unread.GetRaw(PdfName.Prev), Iso1, "Table 17", resolve: true);
++                continue;
++            }
++
+             if (section.State is not (XRefSectionState.Read or XRefSectionState.Relocated) || section.Trailer is not { } trailer)
+             {
+                 continue;

@@ -1,0 +1,214 @@
+using System.Globalization;
+using System.Text;
+using AdCodicem.Pdf.Documents;
+using AdCodicem.Pdf.IO;
+using AdCodicem.Pdf.Validation;
+
+namespace AdCodicem.Pdf.Tests;
+
+#pragma warning disable CA1305, CA1307, CA1310, CA1822, CA1515, CA1707, CA2000, IDE0058, IDE0011, IDE0055, IDE0008, IDE0007, IDE0010, IDE0072, IDE0045, IDE0046, IDE0060, MA0076, CA1861, CA1859, IDE0057, IDE0301, IDE0300, IDE0028, IDE0090, CA1822, IDE0047, IDE0048, IDE0078, IDE0066, IDE0022, IDE0021, IDE0039, IDE0062, CA1854, CA1866, CA1865, CA1847, CA1834
+public class ZzGuardPrev
+{
+    // The shapes of #264's second gap: a section a guard stops, whose /Prev is judged or not.
+    // container: "table" (classic) or "stream" (cross-reference stream).
+    // prev: "free" (21 0 R, a free row read before the cut), "outside" (99999999), "self", "visited" (a newer section),
+    // "hidden" (30 0 R, a row past the cut), "sound" (the older table), "garbage" (/Garbage), "regular" (2 0 R, a row read,
+    // a dictionary), "xrefstm-outside" (/XRefStm 99999999 beside a sound /Prev; table only).
+    private static (byte[] File, long Guarded) Build(string container, string prev, bool root)
+    {
+        var file = new HandWrittenFile();
+        var o1 = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>");
+        var o2 = file.Object(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>");
+        var o3 = file.Object(3, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 1 1] /Resources << >> >>");
+        var older = file.Table(4, new Dictionary<int, long> { [1] = o1, [2] = o2, [3] = o3 }, "/Size 4 /Root 1 0 R");
+        var n2 = file.Object(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>");
+        var n3 = file.Object(3, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 2 2] /Resources << >> >>");
+        var guarded = file.Position;
+        var rootText = root ? " /Root 1 0 R" : string.Empty;
+
+        // The section the visited shape loops back to is written after the guarded one: its offset is written on ten digits,
+        // so that the guarded section's length does not depend on it.
+        string Link(long newer) => prev switch
+        {
+            "free" => "/Prev 21 0 R",
+            "outside" => "/Prev 99999999",
+            "self" => $"/Prev {guarded}",
+            "visited" => $"/Prev {newer:D10}",
+            "hidden" => "/Prev 30 0 R",
+            "sound" => $"/Prev {older}",
+            "garbage" => "/Prev /Garbage",
+            "regular" => "/Prev 2 0 R",
+            "xrefstm-outside" => $"/XRefStm 99999999 /Prev {older}",
+            _ => throw new ArgumentException(prev),
+        };
+
+        string section;
+
+        if (container == "hybrid")
+        {
+            static string HRow(int type, long offset, int generation) =>
+                string.Create(CultureInfo.InvariantCulture, $"{type:X2}{offset:X8}{generation:X4}");
+
+            var stream = guarded;
+            var hdata = HRow(0, 0, 65535) + HRow(0, 0, 0) + HRow(1, n2, 0) + HRow(1, n3, 0) +
+                string.Concat(Enumerable.Repeat(HRow(0, 0, 0), 40)) + HRow(1, stream, 0) + ">";
+            var body = $"44 0 obj\n<< /Type /XRef /Size 45 /Index [0 1 21 1 2 2 4 40 44 1] /W [1 4 2] /Filter /ASCIIHexDecode /Length {hdata.Length} >>\nstream\n{hdata}\nendstream\nendobj\n";
+            file.Raw(body);
+            var table = file.Position;
+            var link = prev switch
+            {
+                "free" => "/Prev 21 0 R",
+                "outside" => "/Prev 99999999",
+                "self" => $"/Prev {table}",
+                "visited" => $"/Prev {stream}",
+                "hidden" => "/Prev 30 0 R",
+                "sound" => $"/Prev {older}",
+                "garbage" => "/Prev /Garbage",
+                "regular" => "/Prev 2 0 R",
+                _ => throw new ArgumentException(prev),
+            };
+            file.Raw($"xref\n0 1\n0000000000 65535 f \ntrailer\n<< /Size 45 /XRefStm {stream} {link}{rootText} >>\nstartxref\n{table}\n%%EOF\n");
+            return (file.Bytes, stream);
+        }
+
+        if (container == "table")
+        {
+            var free = string.Concat(Enumerable.Repeat("0000000000 00000 f \n", 40));
+            section = $"xref\n0 1\n0000000000 65535 f \n21 1\n0000000000 00000 f \n2 2\n{n2:D10} 00000 n \n{n3:D10} 00000 n \n4 40\n{free}trailer\n<< /Size 44 {Link(0)}{rootText} >>\n";
+            var newer = guarded + section.Length;
+            section = $"xref\n0 1\n0000000000 65535 f \n21 1\n0000000000 00000 f \n2 2\n{n2:D10} 00000 n \n{n3:D10} 00000 n \n4 40\n{free}trailer\n<< /Size 44 {Link(newer)}{rootText} >>\n";
+        }
+        else
+        {
+            static string Row(int type, long offset, int generation) =>
+                string.Create(CultureInfo.InvariantCulture, $"{type:X2}{offset:X8}{generation:X4}");
+
+            var data = Row(0, 0, 65535) + Row(0, 0, 0) + Row(1, n2, 0) + Row(1, n3, 0) +
+                string.Concat(Enumerable.Repeat(Row(0, 0, 0), 40)) + Row(1, guarded, 0) + ">";
+            string Body(long newer) =>
+                $"44 0 obj\n<< /Type /XRef /Size 45 /Index [0 1 21 1 2 2 4 40 44 1] /W [1 4 2] /Filter /ASCIIHexDecode {Link(newer)}{rootText} /Length {data.Length} >>\nstream\n{data}\nendstream\nendobj\n";
+            var newer = guarded + Body(0).Length;
+            section = Body(newer);
+        }
+
+        file.Raw(section);
+
+        if (prev == "visited")
+        {
+            var newest = file.Position;
+            file.Raw($"xref\n0 1\n0000000000 65535 f \ntrailer\n<< /Size 45 /Prev {guarded}{rootText} >>\nstartxref\n{newest}\n%%EOF\n");
+        }
+        else
+        {
+            file.Raw($"startxref\n{guarded}\n%%EOF\n");
+        }
+
+        return (file.Bytes, guarded);
+    }
+
+    private static PdfReaderLimits? Limits(string guard) => guard switch
+    {
+        "length" => PdfReaderLimits.Default with { MaxXRefSectionLength = 128 },
+        "index" => PdfReaderLimits.Default with { MaxIndexEntries = 4 },
+        "decoded" => PdfReaderLimits.Default with { MaxDecodedStreamLength = 35 },
+        _ => null,
+    };
+
+    private static string Describe(byte[] file, PdfReaderLimits? limits, bool throws = false)
+    {
+        var text = new StringBuilder();
+        var options = limits is null ? PdfReaderOptions.Default : new PdfReaderOptions { Limits = limits, ThrowOnLimit = throws };
+
+        if (throws)
+        {
+            try
+            {
+                using var thrown = PdfDocument.Open(file, options);
+                text.AppendLine("  throw: none at opening; diagnostics " + string.Join(", ", thrown.Diagnostics.Select(d => d.Code)));
+            }
+            catch (Exception exception)
+            {
+                text.AppendLine("  throw: " + exception.GetType().Name + " " + (exception is AdCodicem.Pdf.Diagnostics.PdfLimitExceededException limit ? limit.LimitName : exception.Message));
+            }
+
+            return text.ToString();
+        }
+
+        using var document = PdfDocument.Open(file, options);
+        var structure = document.Reader.Structure;
+        text.AppendLine("  reader at opening:");
+
+        foreach (var diagnostic in document.Diagnostics)
+        {
+            text.AppendLine("    " + diagnostic);
+        }
+
+        foreach (var section in structure.Sections)
+        {
+            text.AppendLine($"  section {section.NamedBy} named {section.WrittenOffset} at {section.Offset} from {section.NamedFrom}: {section.State} {section.Kind} cut={section.CutByLimit} hidden={section.ChainHiddenByGuard ?? "-"} fault={section.Fault ?? "-"}");
+        }
+
+        text.AppendLine($"  trailersHidden={structure.TrailersHiddenByGuard} loop={structure.LoopOffset} loopNamedBy={structure.LoopNamedBy ?? "-"} repaired={document.WasRepaired}");
+        var catalog = document.Catalog;
+        text.AppendLine($"  catalog={(catalog is null ? "null" : "found")} catalogFoundAs={document.Reader.CatalogFoundAs} repaired={document.WasRepaired} rootHidden={structure.RootHiddenByGuard}");
+        var count = document.Diagnostics.Count;
+        var report = new PdfValidator().Validate(document);
+        text.AppendLine("  reader after validation (new):");
+
+        for (var i = count; i < document.Diagnostics.Count; i++)
+        {
+            text.AppendLine("    " + document.Diagnostics[i]);
+        }
+
+        text.AppendLine("  validator:");
+
+        foreach (var finding in report.Findings)
+        {
+            text.AppendLine($"    {finding.Severity} {finding.RuleId}: {finding.Message}");
+        }
+
+        return text.ToString();
+    }
+
+    [Fact]
+    public void ZzGuardPrevShapes()
+    {
+        if (Environment.GetEnvironmentVariable("ZZ_GUARD_OUT") is not { } path)
+        {
+            return;
+        }
+
+        var output = new StringBuilder();
+        string[] prevs = ["free", "outside", "self", "visited", "hidden", "sound", "garbage", "regular", "xrefstm-outside"];
+
+        foreach (var container in new[] { "table", "stream", "hybrid" })
+        {
+            var guards = container == "table" ? new[] { "length", "index" } : new[] { "index", "decoded" };
+
+            foreach (var prev in prevs)
+            {
+                if (container != "table" && prev == "xrefstm-outside")
+                {
+                    continue;
+                }
+
+                foreach (var root in new[] { false, true })
+                {
+                    var (file, guarded) = Build(container, prev, root);
+
+                    foreach (var guard in guards)
+                    {
+                        output.AppendLine($"=== {container} prev={prev} root={(root ? "1 0 R" : "none")} guard={guard} (guarded section at {guarded}, file {file.Length} bytes)");
+                        output.Append(Describe(file, Limits(guard)));
+                        output.Append(Describe(file, Limits(guard), throws: true));
+                    }
+
+                    output.AppendLine($"=== {container} prev={prev} root={(root ? "1 0 R" : "none")} guard=default (whole read)");
+                    output.Append(Describe(file, null));
+                }
+            }
+        }
+
+        File.WriteAllText(path, output.ToString());
+    }
+}

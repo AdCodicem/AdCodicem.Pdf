@@ -1,0 +1,71 @@
+using System.Globalization;
+using System.IO.Compression;
+using System.Text;
+using AdCodicem.Pdf.Documents;
+using AdCodicem.Pdf.Objects;
+
+namespace AdCodicem.Pdf.Tests;
+
+#pragma warning disable
+
+/// <summary>
+/// Stage probe (uncommitted, #221): HostileInputTests' eight million rows of type 3 under a guard of a million entries —
+/// what the index holds, what the reader reports, what opening allocates.
+/// </summary>
+public class ZzReservedMillion
+{
+    [Fact]
+    public void ZzReservedMillionRows()
+    {
+        var file = ReservedTypeRows(8_000_000);
+        var limits = PdfReaderLimits.Default with { MaxIndexEntries = 1_000_000 };
+        var allocated = GC.GetAllocatedBytesForCurrentThread();
+        using var document = PdfDocument.Open(file, new PdfReaderOptions { Limits = limits });
+        allocated = GC.GetAllocatedBytesForCurrentThread() - allocated;
+        var output = new StringBuilder();
+        output.Append("bytes=").Append(file.Length).Append(" ObjectCount=").Append(document.ObjectCount)
+            .Append(" catalog=").Append(document.Catalog?.IsOfType(PdfName.Catalog)).Append(" allocated=").Append(allocated.ToString("N0", CultureInfo.InvariantCulture)).Append('\n');
+
+        foreach (var diagnostic in document.Diagnostics)
+        {
+            output.Append("  D ").Append(diagnostic).Append('\n');
+        }
+
+        File.WriteAllText(Environment.GetEnvironmentVariable("ZZ_MILLION_OUT") ?? "/tmp/zz-million.txt", output.ToString());
+    }
+
+    private static byte[] ReservedTypeRows(int rows)
+    {
+        var head = new StringBuilder("%PDF-1.7\n");
+        var catalog = head.Length;
+        head.Append("1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n");
+        var pages = head.Length;
+        head.Append("2 0 obj\n<< /Type /Pages /Kids [] /Count 0 >>\nendobj\n");
+        var section = head.Length;
+
+        using var compressed = new MemoryStream();
+        using (var zlib = new ZLibStream(compressed, CompressionLevel.Optimal, leaveOpen: true))
+        {
+            zlib.Write([0, 0, 1, (byte)catalog, 1, (byte)pages, 1, (byte)section]);
+            var reserved = new byte[64 * 1024];
+            reserved.AsSpan().Fill(3);
+
+            for (long written = 8; written < 2L * rows; written += reserved.Length)
+            {
+                zlib.Write(reserved, 0, (int)Math.Min(reserved.Length, (2L * rows) - written));
+            }
+        }
+
+        var data = compressed.ToArray();
+        head.Append(string.Create(
+            CultureInfo.InvariantCulture,
+            $"3 0 obj\n<< /Type /XRef /Size {rows} /W [1 1 0] /Root 1 0 R /Filter /FlateDecode /Length {data.Length} >>\nstream\n"));
+
+        return
+        [
+            .. Encoding.ASCII.GetBytes(head.ToString()),
+            .. data,
+            .. Encoding.ASCII.GetBytes(string.Create(CultureInfo.InvariantCulture, $"\nendstream\nendobj\nstartxref\n{section}\n%%EOF\n")),
+        ];
+    }
+}

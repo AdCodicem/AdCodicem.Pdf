@@ -1,0 +1,148 @@
+2,3c2,3
+<     F Warning file.header-offset at offset 0: The PDF header starts 1 bytes into the file instead of at its first byte.
+<     D Repair xref.offset-adjusted at 1: The PDF header starts 1 bytes into the file; offsets were shifted accordingly.
+---
+>     F Warning file.header-offset at offset 0: The PDF header starts 1 byte into the file instead of at its first byte.
+>     D Repair xref.offset-adjusted at 1: The PDF header starts 1 byte into the file; offsets were shifted accordingly.
+12,15c12,15
+<     D Repair xref.offset-adjusted at 15: Object 1 was found -1 bytes from where the index said.
+<     D Repair xref.offset-adjusted at 225: Object 4 was found -1 bytes from where the index said.
+<     D Repair xref.offset-adjusted at 64: Object 2 was found -1 bytes from where the index said.
+<     D Repair xref.offset-adjusted at 121: Object 3 was found -1 bytes from where the index said.
+---
+>     D Repair xref.offset-adjusted at 15: Object 1 was found 1 byte before where the index said.
+>     D Repair xref.offset-adjusted at 225: Object 4 was found 1 byte before where the index said.
+>     D Repair xref.offset-adjusted at 64: Object 2 was found 1 byte before where the index said.
+>     D Repair xref.offset-adjusted at 121: Object 3 was found 1 byte before where the index said.
+21,24c21,24
+<     D Repair xref.offset-adjusted at 15: Object 1 was found -3 bytes from where the index said.
+<     D Repair xref.offset-adjusted at 225: Object 4 was found -3 bytes from where the index said.
+<     D Repair xref.offset-adjusted at 64: Object 2 was found -3 bytes from where the index said.
+<     D Repair xref.offset-adjusted at 121: Object 3 was found -3 bytes from where the index said.
+---
+>     D Repair xref.offset-adjusted at 15: Object 1 was found 3 bytes before where the index said.
+>     D Repair xref.offset-adjusted at 225: Object 4 was found 3 bytes before where the index said.
+>     D Repair xref.offset-adjusted at 64: Object 2 was found 3 bytes before where the index said.
+>     D Repair xref.offset-adjusted at 121: Object 3 was found 3 bytes before where the index said.
+32,35c32,35
+<     D Repair xref.offset-adjusted at 15: Object 1 was found 2 bytes from where the index said.
+<     D Repair xref.offset-adjusted at 225: Object 4 was found 2 bytes from where the index said.
+<     D Repair xref.offset-adjusted at 64: Object 2 was found 2 bytes from where the index said.
+<     D Repair xref.offset-adjusted at 121: Object 3 was found 2 bytes from where the index said.
+---
+>     D Repair xref.offset-adjusted at 15: Object 1 was found 2 bytes after where the index said.
+>     D Repair xref.offset-adjusted at 225: Object 4 was found 2 bytes after where the index said.
+>     D Repair xref.offset-adjusted at 64: Object 2 was found 2 bytes after where the index said.
+>     D Repair xref.offset-adjusted at 121: Object 3 was found 2 bytes after where the index said.
+38c38
+<     D Repair xref.offset-adjusted at 1336: The cross-reference section /Prev names at offset 1337 was found -1 bytes from there.
+---
+>     D Repair xref.offset-adjusted at 1336: The cross-reference section /Prev names at offset 1337 was found 1 byte before it.
+41c41
+<     D Repair xref.offset-adjusted at 1336: The cross-reference section /Prev names at offset 1339 was found -3 bytes from there.
+---
+>     D Repair xref.offset-adjusted at 1336: The cross-reference section /Prev names at offset 1339 was found 3 bytes before it.
+44c44
+<     D Repair xref.offset-adjusted at 1336: The cross-reference section /Prev names at offset 1334 was found 2 bytes from there.
+---
+>     D Repair xref.offset-adjusted at 1336: The cross-reference section /Prev names at offset 1334 was found 2 bytes after it.
+47c47
+<     D Repair xref.offset-adjusted at 1336: The cross-reference section /Prev names at offset 1333 was found 3 bytes from there.
+---
+>     D Repair xref.offset-adjusted at 1336: The cross-reference section /Prev names at offset 1333 was found 3 bytes after it.
+49,50c49,50
+<     F Error xref.object-stream-broken at object 4 0, at offset 116: Object stream 4, where the index places 1 object, cannot be read: its header lists 0 of the 1 objects its /N declares, then ends.
+<     D Warning object-stream.unreadable at 175: Object stream 4 has a header that ends after 0 of the 1 objects its /N declares; none of its objects can be read from it.
+---
+>     F Error xref.object-stream-broken at object 4 0, at offset 116: Object stream 4, where the index places 1 object, cannot be read: its header lists 0 of the 1 object its /N declares, then ends.
+>     D Warning object-stream.unreadable at 175: Object stream 4 has a header that ends after 0 of the 1 object its /N declares; none of its objects can be read from it.
+52,53c52,53
+<     F Error xref.object-stream-broken at object 4 0, at offset 116: Object stream 4, where the index places 1 object, cannot be read: its header lists 0 of the 1 objects its /N declares, then something else.
+<     D Warning object-stream.unreadable at 176: Object stream 4 has a header that holds something other than an object number and an offset after 0 of the 1 objects its /N declares; none of its objects can be read from it.
+---
+>     F Error xref.object-stream-broken at object 4 0, at offset 116: Object stream 4, where the index places 1 object, cannot be read: its header lists 0 of the 1 object its /N declares, then something else.
+>     D Warning object-stream.unreadable at 176: Object stream 4 has a header that holds something other than an object number and an offset after 0 of the 1 object its /N declares; none of its objects can be read from it.
+55,56c55,56
+<     F Error xref.object-stream-broken at object 4 0, at offset 116: Object stream 4, where the index places 1 object, cannot be read: its header lists 0 of the 1 objects its /N declares, then object 3 at offset 999, past what its 15 bytes of decoded data hold.
+<     D Warning object-stream.unreadable at 176: Object stream 4 has a header that lists object 3 at offset 999, past what its 15 bytes of decoded data hold, after 0 of the 1 objects its /N declares; none of its objects can be read from it.
+---
+>     F Error xref.object-stream-broken at object 4 0, at offset 116: Object stream 4, where the index places 1 object, cannot be read: its header lists 0 of the 1 object its /N declares, then object 3 at offset 999, past what its 15 bytes of decoded data hold.
+>     D Warning object-stream.unreadable at 176: Object stream 4 has a header that lists object 3 at offset 999, past what its 15 bytes of decoded data hold, after 0 of the 1 object its /N declares; none of its objects can be read from it.
+60c60
+<     D Warning object-stream.unreadable at 176: Object stream 5 gives in /First an offset, 40, past the end of its decoded data, which is 1 bytes long; none of its objects can be read from it.
+---
+>     D Warning object-stream.unreadable at 176: Object stream 5 gives in /First an offset, 40, past the end of its decoded data, which is 1 byte long; none of its objects can be read from it.
+63,64c63,64
+<     F Error xref.object-stream-broken at object 5 0, at offset 123: Object stream 5, where the index places 1 object, cannot be read: it decodes to 1 bytes, fewer than its /First of 5.
+<     D Warning object-stream.unreadable at 182: Object stream 5 gives in /First an offset, 5, past the end of its decoded data, which is 1 bytes long; none of its objects can be read from it.
+---
+>     F Error xref.object-stream-broken at object 5 0, at offset 123: Object stream 5, where the index places 1 object, cannot be read: it decodes to 1 byte, fewer than its /First of 5.
+>     D Warning object-stream.unreadable at 182: Object stream 5 gives in /First an offset, 5, past the end of its decoded data, which is 1 byte long; none of its objects can be read from it.
+66c66
+<     F Warning page-tree.mediabox-invalid at page 1, object 3 0: The /MediaBox of object 3 is an array of 1 values, not a rectangle.
+---
+>     F Warning page-tree.mediabox-invalid at page 1, object 3 0: The /MediaBox of object 3 is an array of 1 value, not a rectangle.
+69c69
+<     D Warning filter.checksum-mismatch: A Flate stream's checksum disagrees with the 1 bytes its data decoded to; all were kept, and some may be wrong.
+---
+>     D Warning filter.checksum-mismatch: A Flate stream's checksum disagrees with the 1 byte its data decoded to; it was kept, and may be wrong.
+72c72
+<     D Warning filter.failed: A Flate stream is corrupt at byte 9 of its 12; the 1 bytes decoded before the fault was found were kept.
+---
+>     D Warning filter.failed: A Flate stream is corrupt at byte 9 of its 12; the 1 byte decoded before the fault was found was kept.
+78c78
+<     D Warning filter.failed: A RunLength stream ends inside a run of 3 bytes, of which it holds 1; they were kept, and data may have been lost.
+---
+>     D Warning filter.failed: A RunLength stream ends inside a run of 3 bytes, of which it holds 1; it was kept, and data may have been lost.
+80c80
+<     D Warning stream.length-invalid at 325: The stream declared 1 bytes but ended after 3.
+---
+>     D Warning stream.length-invalid at 325: The stream declared 1 byte but ended after 3.
+82c82
+<     D Warning stream.truncated at 325: The stream has no endstream: its object's endobj follows the 1 bytes it declared, which are taken as its data.
+---
+>     D Warning stream.truncated at 325: The stream has no endstream: its object's endobj follows the 1 byte it declared, which is taken as its data.
+84c84
+<     D Warning stream.truncated at 326: The stream declared 99 bytes, and no endstream follows its data before the next object, at 335: its object's endobj ends it, after 1 bytes.
+---
+>     D Warning stream.truncated at 326: The stream declared 99 bytes, and no endstream follows its data before the next object, at 335: its object's endobj ends it, after 1 byte.
+86c86
+<     D Warning stream.length-invalid at 298: The stream declared 1 bytes but ended after 42.
+---
+>     D Warning stream.length-invalid at 298: The stream declared 1 byte but ended after 42.
+89c89
+<     D Warning limit.xref-section-count at 1336: The cross-reference chain has more than 1 sections; the older ones were not read. Raise PdfReaderLimits.MaxXRefSectionCount to read past it.
+---
+>     D Warning limit.xref-section-count at 1336: The cross-reference chain has more than 1 section; the older ones were not read. Raise PdfReaderLimits.MaxXRefSectionCount to read past it.
+92c92
+<     D Warning limit.filter-chain: The /Filter entry names more than 1 filters; decoding stopped after the first 1. Raise PdfReaderLimits.MaxFilterChainLength to read past it.
+---
+>     D Warning limit.filter-chain: The /Filter entry names more than 1 filter; decoding stopped after the first. Raise PdfReaderLimits.MaxFilterChainLength to read past it.
+95c95
+<     D Warning limit.decoded-stream: The /ASCIIHexDecode data decodes to more than 1 bytes; decoding stopped there. Raise PdfReaderLimits.MaxDecodedStreamLength to read past it.
+---
+>     D Warning limit.decoded-stream: The /ASCIIHexDecode data decodes to more than 1 byte; decoding stopped there. Raise PdfReaderLimits.MaxDecodedStreamLength to read past it.
+97c97
+<     D Warning limit.stream-length at 258: A stream's data runs past 1 bytes; only what lies within it was read. Raise PdfReaderLimits.MaxStreamLength to read past it.
+---
+>     D Warning limit.stream-length at 258: A stream's data runs past 1 byte; only what lies within it was read. Raise PdfReaderLimits.MaxStreamLength to read past it.
+101c101
+<     D Warning limit.trailer at 294: The dictionary of the object read as a cross-reference stream runs past 1 bytes; only what lies within it was read. Raise PdfReaderLimits.MaxTrailerLength to read past it.
+---
+>     D Warning limit.trailer at 294: The dictionary of the object read as a cross-reference stream runs past 1 byte; only what lies within it was read. Raise PdfReaderLimits.MaxTrailerLength to read past it.
+106c106
+<     D Warning limit.xref-section-length at 294: The cross-reference table runs past 1 bytes; only the entries within it were read. Raise PdfReaderLimits.MaxXRefSectionLength to read past it.
+---
+>     D Warning limit.xref-section-length at 294: The cross-reference table runs past 1 byte; only the entries within it were read. Raise PdfReaderLimits.MaxXRefSectionLength to read past it.
+114c114
+<     D Warning limit.object at 15: Object 1 runs past 1 bytes, its stream data aside; only what lies within it was read. Raise PdfReaderLimits.MaxObjectLength to read past it.
+---
+>     D Warning limit.object at 15: Object 1 runs past 1 byte, its stream data aside; only what lies within it was read. Raise PdfReaderLimits.MaxObjectLength to read past it.
+116,118c116,118
+<     D Warning limit.object at 64: Object 2 runs past 1 bytes, its stream data aside; only what lies within it was read. Raise PdfReaderLimits.MaxObjectLength to read past it.
+<     D Warning limit.object at 121: Object 3 runs past 1 bytes, its stream data aside; only what lies within it was read. Raise PdfReaderLimits.MaxObjectLength to read past it.
+<     D Warning limit.object at 225: Object 4 runs past 1 bytes, its stream data aside; only what lies within it was read. Raise PdfReaderLimits.MaxObjectLength to read past it.
+---
+>     D Warning limit.object at 64: Object 2 runs past 1 byte, its stream data aside; only what lies within it was read. Raise PdfReaderLimits.MaxObjectLength to read past it.
+>     D Warning limit.object at 121: Object 3 runs past 1 byte, its stream data aside; only what lies within it was read. Raise PdfReaderLimits.MaxObjectLength to read past it.
+>     D Warning limit.object at 225: Object 4 runs past 1 byte, its stream data aside; only what lies within it was read. Raise PdfReaderLimits.MaxObjectLength to read past it.

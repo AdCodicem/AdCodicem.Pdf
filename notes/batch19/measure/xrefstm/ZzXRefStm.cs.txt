@@ -1,0 +1,395 @@
+using System.Globalization;
+using System.Text;
+using AdCodicem.Pdf.Documents;
+using AdCodicem.Pdf.IO.XRef;
+using AdCodicem.Pdf.Objects;
+using AdCodicem.Pdf.Validation;
+
+namespace AdCodicem.Pdf.Tests;
+
+#pragma warning disable
+
+/// <summary>Measurement probe (uncommitted), #156: how the chain reads an /XRefStm that names what it already read, or no stream.</summary>
+public class ZzXRefStm
+{
+    private const string Catalog = "<< /Type /Catalog /Pages 2 0 R >>";
+    private const string Pages = "<< /Type /Pages /Kids [3 0 R] /Count 1 >>";
+    private const string Page = "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << >> >>";
+    private const string Free = "0000000000 65535 f\r\n";
+
+    private static string Row(long offset) => offset.ToString("D10", CultureInfo.InvariantCulture) + " 00000 n\r\n";
+
+    private sealed class B
+    {
+        private readonly StringBuilder _s = new();
+        private readonly Dictionary<int, long> _o = [];
+
+        public B(string version = "1.5") => _s.Append("%PDF-").Append(version).Append('\n');
+
+        public long Pos => _s.Length;
+
+        public long Of(int number) => _o[number];
+
+        public void T(string text) => _s.Append(text);
+
+        public void Obj(int number, string body)
+        {
+            _o[number] = _s.Length;
+            _s.Append(number).Append(" 0 obj\n").Append(body).Append("\nendobj\n");
+        }
+
+        /// <summary>A cross-reference stream, /W [1 4 2], unfiltered.</summary>
+        public void XStm(int number, string entries, (int Type, long Second, int Third)[] rows)
+        {
+            var data = new StringBuilder();
+            foreach (var (type, second, third) in rows)
+            {
+                data.Append((char)type)
+                    .Append((char)((second >> 24) & 0xFF)).Append((char)((second >> 16) & 0xFF))
+                    .Append((char)((second >> 8) & 0xFF)).Append((char)(second & 0xFF))
+                    .Append((char)((third >> 8) & 0xFF)).Append((char)(third & 0xFF));
+            }
+
+            _o[number] = _s.Length;
+            _s.Append(CultureInfo.InvariantCulture, $"{number} 0 obj\n<< /Type /XRef /W [1 4 2] {entries} /Length {data.Length} >>\nstream\n")
+                .Append(data).Append("\nendstream\nendobj\n");
+        }
+
+        public void Replace(string token, long value) =>
+            _s.Replace(token, value.ToString("D10", CultureInfo.InvariantCulture));
+
+        public byte[] Bytes => Encoding.Latin1.GetBytes(_s.ToString());
+    }
+
+    // T0 table 1-3 /Size 4; T1 table 4,5 /Prev T0 /XRefStm S1; S1 stream object 5 /Index [6 1]; T2 table 7 /Prev T1 /XRefStm S1.
+    internal static byte[] IssueShape(int t1Size, bool t2CopiesXRefStm = true)
+    {
+        var b = new B();
+        b.Obj(1, Catalog);
+        b.Obj(2, Pages);
+        b.Obj(3, Page);
+        var t0 = b.Pos;
+        b.T($"xref\n0 4\n{Free}{Row(b.Of(1))}{Row(b.Of(2))}{Row(b.Of(3))}trailer\n<< /Size 4 /Root 1 0 R >>\nstartxref\n{t0}\n%%EOF\n");
+        b.Obj(4, "(four)");
+        b.Obj(6, "(six)");
+        var s1 = b.Pos;
+        b.XStm(5, "/Size 7 /Index [6 1]", [(1, b.Of(6), 0)]);
+        var t1 = b.Pos;
+        b.T($"xref\n0 1\n{Free}4 2\n{Row(b.Of(4))}{Row(s1)}trailer\n<< /Size {t1Size} /Root 1 0 R /Prev {t0} /XRefStm {s1} >>\nstartxref\n{t1}\n%%EOF\n");
+        b.Obj(7, "(seven)");
+        var t2 = b.Pos;
+        var copied = t2CopiesXRefStm ? $" /XRefStm {s1}" : string.Empty;
+        b.T($"xref\n0 1\n{Free}7 1\n{Row(b.Of(7))}trailer\n<< /Size 8 /Root 1 0 R /Prev {t1}{copied} >>\nstartxref\n{t2}\n%%EOF\n");
+        return b.Bytes;
+    }
+
+    // A copy two revisions late: T1's stream S1 indexes object 6, "old six"; T2 writes object 6 again, "new six", in a table
+    // naming no stream; T3's trailer copies T1's /XRefStm.
+    internal static byte[] CopiedTwoRevisionsLate()
+    {
+        var b = new B();
+        b.Obj(1, Catalog);
+        b.Obj(2, Pages);
+        b.Obj(3, Page);
+        var t0 = b.Pos;
+        b.T($"xref\n0 4\n{Free}{Row(b.Of(1))}{Row(b.Of(2))}{Row(b.Of(3))}trailer\n<< /Size 4 /Root 1 0 R >>\nstartxref\n{t0}\n%%EOF\n");
+        b.Obj(6, "(old six)");
+        var s1 = b.Pos;
+        b.XStm(5, "/Size 7 /Index [6 1]", [(1, b.Of(6), 0)]);
+        var t1 = b.Pos;
+        b.T($"xref\n0 1\n{Free}5 1\n{Row(s1)}trailer\n<< /Size 7 /Root 1 0 R /Prev {t0} /XRefStm {s1} >>\nstartxref\n{t1}\n%%EOF\n");
+        b.Obj(6, "(new six)");
+        var t2 = b.Pos;
+        b.T($"xref\n0 1\n{Free}6 1\n{Row(b.Of(6))}trailer\n<< /Size 7 /Root 1 0 R /Prev {t1} >>\nstartxref\n{t2}\n%%EOF\n");
+        b.Obj(7, "(seven)");
+        var t3 = b.Pos;
+        b.T($"xref\n0 1\n{Free}7 1\n{Row(b.Of(7))}trailer\n<< /Size 8 /Root 1 0 R /Prev {t2} /XRefStm {s1} >>\nstartxref\n{t3}\n%%EOF\n");
+        return b.Bytes;
+    }
+
+    // One hybrid table whose /XRefStm names the table itself; stream 7, named by nothing, alone indexes the page, object 3.
+    internal static byte[] NamingItself()
+    {
+        var b = new B();
+        b.Obj(1, Catalog);
+        b.Obj(2, Pages);
+        b.Obj(3, Page);
+        var s = b.Pos;
+        b.XStm(7, "/Size 8 /Index [3 1]", [(1, b.Of(3), 0)]);
+        var t = b.Pos;
+        b.T($"xref\n0 3\n{Free}{Row(b.Of(1))}{Row(b.Of(2))}7 1\n{Row(s)}trailer\n<< /Size 8 /Root 1 0 R /XRefStm {t} >>\nstartxref\n{t}\n%%EOF\n");
+        return b.Bytes;
+    }
+
+    // The original table T0, hybrid, whose /XRefStm names T1, the newer table; stream 7 alone indexes the page, object 3.
+    internal static byte[] NamingANewerTable()
+    {
+        var b = new B();
+        b.Obj(1, Catalog);
+        b.Obj(2, Pages);
+        b.Obj(3, Page);
+        var s = b.Pos;
+        b.XStm(7, "/Size 8 /Index [3 1]", [(1, b.Of(3), 0)]);
+        var t0 = b.Pos;
+        b.T($"xref\n0 3\n{Free}{Row(b.Of(1))}{Row(b.Of(2))}7 1\n{Row(s)}trailer\n<< /Size 8 /Root 1 0 R /XRefStm @@@@T1@@@@ >>\nstartxref\n{t0}\n%%EOF\n");
+        b.Obj(4, "(four)");
+        var t1 = b.Pos;
+        b.T($"xref\n0 1\n{Free}4 1\n{Row(b.Of(4))}trailer\n<< /Size 8 /Root 1 0 R /Prev {t0} >>\nstartxref\n{t1}\n%%EOF\n");
+        b.Replace("@@@@T1@@@@", t1);
+        return b.Bytes;
+    }
+
+    // ChainFiles.HybridNamingATable's shape: the update's /XRefStm names a table no /Prev names, which indexes object 10.
+    internal static byte[] NamingATableNeverRead()
+    {
+        var b = new B();
+        b.Obj(1, Catalog);
+        b.Obj(2, Pages);
+        b.Obj(3, Page);
+        var t0 = b.Pos;
+        b.T($"xref\n0 4\n{Free}{Row(b.Of(1))}{Row(b.Of(2))}{Row(b.Of(3))}trailer\n<< /Size 4 /Root 1 0 R >>\nstartxref\n{t0}\n%%EOF\n");
+        b.Obj(9, "(nine)");
+        b.Obj(10, "(ten)");
+        var named = b.Pos;
+        b.T($"xref\n10 1\n{Row(b.Of(10))}trailer\n<< /Size 11 >>\n");
+        var t1 = b.Pos;
+        b.T($"xref\n0 1\n{Free}9 1\n{Row(b.Of(9))}trailer\n<< /Size 11 /Root 1 0 R /Prev {t0} /XRefStm {named} >>\nstartxref\n{t1}\n%%EOF\n");
+        return b.Bytes;
+    }
+
+    // The update's /XRefStm names T0, the older table its /Prev names too.
+    internal static byte[] NamingThePrevTable()
+    {
+        var b = new B();
+        b.Obj(1, Catalog);
+        b.Obj(2, Pages);
+        b.Obj(3, Page);
+        var t0 = b.Pos;
+        b.T($"xref\n0 4\n{Free}{Row(b.Of(1))}{Row(b.Of(2))}{Row(b.Of(3))}trailer\n<< /Size 4 /Root 1 0 R >>\nstartxref\n{t0}\n%%EOF\n");
+        b.Obj(4, "(four)");
+        var t1 = b.Pos;
+        b.T($"xref\n0 1\n{Free}4 1\n{Row(b.Of(4))}trailer\n<< /Size 5 /Root 1 0 R /Prev {t0} /XRefStm {t0} >>\nstartxref\n{t1}\n%%EOF\n");
+        return b.Bytes;
+    }
+
+    // The newest section is cross-reference stream 6 (/Prev T1); T1, a hybrid table, names stream 6, the newer one, as its /XRefStm.
+    internal static byte[] NamingANewerStream()
+    {
+        var b = new B();
+        b.Obj(1, Catalog);
+        b.Obj(2, Pages);
+        b.Obj(3, Page);
+        var t0 = b.Pos;
+        b.T($"xref\n0 4\n{Free}{Row(b.Of(1))}{Row(b.Of(2))}{Row(b.Of(3))}trailer\n<< /Size 4 /Root 1 0 R >>\nstartxref\n{t0}\n%%EOF\n");
+        b.Obj(4, "(four)");
+        var t1 = b.Pos;
+        b.T($"xref\n0 1\n{Free}4 1\n{Row(b.Of(4))}trailer\n<< /Size 5 /Root 1 0 R /Prev {t0} /XRefStm @@@@S6@@@@ >>\nstartxref\n{t1}\n%%EOF\n");
+        b.Obj(5, "(five)");
+        var s6 = b.Pos;
+        b.XStm(6, $"/Size 7 /Root 1 0 R /Index [5 2] /Prev {t1}", [(1, b.Of(5), 0), (1, s6, 0)]);
+        b.T($"startxref\n{s6}\n%%EOF\n");
+        b.Replace("@@@@S6@@@@", s6);
+        return b.Bytes;
+    }
+
+    // The update T1 names stream section S0, the original revision, both through /Prev and through /XRefStm; S0's own /Prev
+    // names T00, the first table, which alone indexes the page.
+    internal static byte[] NamingThePrevStream()
+    {
+        var b = new B();
+        b.Obj(1, Catalog);
+        b.Obj(2, Pages);
+        b.Obj(3, Page);
+        var t00 = b.Pos;
+        b.T($"xref\n0 4\n{Free}{Row(b.Of(1))}{Row(b.Of(2))}{Row(b.Of(3))}trailer\n<< /Size 4 /Root 1 0 R >>\nstartxref\n{t00}\n%%EOF\n");
+        b.Obj(4, "(four)");
+        var s0 = b.Pos;
+        b.XStm(5, $"/Size 6 /Root 1 0 R /Index [4 2] /Prev {t00}", [(1, b.Of(4), 0), (1, s0, 0)]);
+        b.T($"startxref\n{s0}\n%%EOF\n");
+        b.Obj(6, "(six)");
+        var t1 = b.Pos;
+        b.T($"xref\n0 1\n{Free}6 1\n{Row(b.Of(6))}trailer\n<< /Size 7 /Root 1 0 R /Prev {s0} /XRefStm {s0} >>\nstartxref\n{t1}\n%%EOF\n");
+        return b.Bytes;
+    }
+
+    // #188's second shape: a hybrid table whose /XRefStm names object 4, << /Type /Foo >>, near it or 1,500 bytes away.
+    internal static byte[] NamingANonStream(bool far)
+    {
+        var b = new B();
+        b.Obj(1, Catalog);
+        b.Obj(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>");
+        b.Obj(3, Page);
+        var four = b.Pos;
+        b.Obj(4, "<< /Type /Foo >>");
+        if (far)
+        {
+            b.T("%" + new string('x', 1500) + "\n");
+        }
+
+        var t = b.Pos;
+        b.T($"xref\n0 3\n{Free}{Row(b.Of(1))}{Row(b.Of(2))}4 1\n{Row(four)}trailer\n<< /Size 5 /Root 1 0 R /XRefStm {four} >>\nstartxref\n{t}\n%%EOF\n");
+        return b.Bytes;
+    }
+
+    internal static IEnumerable<(string Name, byte[] File, int[] Objects)> Shapes()
+    {
+        yield return ("A1 issue shape, T1 /Size 7 (right)", IssueShape(7), [5, 6, 7]);
+        yield return ("A2 issue shape, T1 /Size 6 (wrong)", IssueShape(6), [5, 6, 7]);
+        yield return ("A3 control: T2 names no /XRefStm, T1 /Size 7", IssueShape(7, t2CopiesXRefStm: false), [5, 6, 7]);
+        yield return ("A4 control: T2 names no /XRefStm, T1 /Size 6", IssueShape(6, t2CopiesXRefStm: false), [5, 6, 7]);
+        yield return ("A5 a copy two revisions late: object 6 rewritten between", CopiedTwoRevisionsLate(), [5, 6, 7]);
+        yield return ("B1 /XRefStm names its own table", NamingItself(), [3]);
+        yield return ("B2 /XRefStm names a newer table", NamingANewerTable(), [3, 4]);
+        yield return ("B3 /XRefStm names a table never read", NamingATableNeverRead(), [9, 10]);
+        yield return ("B4 /XRefStm names the older table /Prev names", NamingThePrevTable(), [3, 4]);
+        yield return ("C1 /XRefStm names a newer stream (the chain's head)", NamingANewerStream(), [3, 4, 5]);
+        yield return ("C2 /XRefStm names the older stream section /Prev names", NamingThePrevStream(), [3, 4, 6]);
+        yield return ("E1 #188: /XRefStm names a non-stream object 32 bytes before the table", NamingANonStream(far: false), [3]);
+        yield return ("E2 #188: /XRefStm names a non-stream object 1,500 bytes before the table", NamingANonStream(far: true), [3]);
+    }
+
+    internal static void Dump(StringBuilder output, string name, byte[] file, int[] objects)
+    {
+        output.Append("== ").Append(name).Append(" (").Append(file.Length).Append(" bytes)\n");
+        using var document = PdfDocument.Open(file);
+        output.Append("  opened: WasRepaired=").Append(document.WasRepaired).Append('\n');
+
+        foreach (var section in document.Reader.Structure.Sections)
+        {
+            output.Append(CultureInfo.InvariantCulture,
+                $"  S {section.NamedBy,-9} named@{section.NamedOffset} written={section.WrittenOffset} from={section.NamedFrom} read@{section.Offset} kind={section.Kind} state={section.State} highest={section.HighestNumber} trailer={(section.Trailer is null ? "none" : "yes")} size={section.Trailer?.GetRaw(PdfName.Size)}\n");
+        }
+
+        var structure = document.Reader.Structure;
+        output.Append(CultureInfo.InvariantCulture, $"  LoopOffset={structure.LoopOffset} LoopNamedBy={structure.LoopNamedBy} LoopOffsetRead={structure.LoopOffsetRead}\n");
+
+        foreach (var diagnostic in document.Diagnostics)
+        {
+            output.Append("  D ").Append(diagnostic).Append('\n');
+        }
+
+        foreach (var number in objects)
+        {
+            var value = document.GetObject(new PdfObjectId(number));
+            output.Append(CultureInfo.InvariantCulture, $"  GetObject({number}) = {(value is null ? "null" : value is PdfStream ? "stream" : value.ToString())}; WasRepaired={document.WasRepaired}\n");
+        }
+
+        foreach (var diagnostic in document.Diagnostics)
+        {
+            output.Append("  D' ").Append(diagnostic).Append('\n');
+        }
+
+        using var fresh = PdfDocument.Open(file);
+        var report = new PdfValidator().Validate(fresh);
+        output.Append("  validation (fresh document): ").Append(report.Findings.Count).Append(" findings\n");
+
+        foreach (var finding in report.Findings)
+        {
+            output.Append("  F ").Append(finding).Append('\n');
+        }
+    }
+
+    // tables tables, each naming the one cross-reference stream, object 3, of rows rows, through /XRefStm.
+    internal static byte[] ManyTablesNamingOneStream(int tables, int rows, bool self = false)
+    {
+        var b = new B("1.7");
+        b.Obj(1, "<< /Type /Catalog /Pages 2 0 R >>");
+        b.Obj(2, "<< /Type /Pages /Kids [] /Count 0 >>");
+        var stream = b.Pos;
+        var data = new (int, long, int)[rows];
+        for (var row = 0; row < rows; row++)
+        {
+            data[row] = (0, 0, 0);
+        }
+
+        b.XStm(3, $"/Size {100 + rows} /Index [100 {rows}]", data);
+        var previous = -1L;
+
+        for (var table = 0; table < tables; table++)
+        {
+            var xref = b.Pos;
+            var named = self ? xref : stream;
+            b.T($"xref\n0 3\n{Free}{Row(b.Of(1))}{Row(b.Of(2))}trailer\n<< /Size {100 + rows} /Root 1 0 R /XRefStm {named} ");
+            b.T(previous < 0 ? string.Empty : $"/Prev {previous} ");
+            b.T(">>\n");
+            previous = xref;
+        }
+
+        b.T($"startxref\n{previous}\n%%EOF\n");
+        return b.Bytes;
+    }
+
+    [Fact]
+    public void ZzManyNamings()
+    {
+        var output = new StringBuilder();
+
+        foreach (var (tables, rows, self) in new[] { (1, 100_000, false), (2, 100_000, false), (1000, 100_000, false), (1000, 10, true) })
+        {
+            var bytes = ManyTablesNamingOneStream(tables, rows, self);
+            using var source = new StrictCountingSource(bytes);
+            var watch = System.Diagnostics.Stopwatch.StartNew();
+            using var document = PdfDocument.Open(source, options: null, ownsSource: false);
+            var opened = watch.Elapsed;
+            var best = double.MaxValue;
+            for (var round = 0; round < 7; round++)
+            {
+                var timer = System.Diagnostics.Stopwatch.StartNew();
+                using (PdfDocument.Open(bytes)) { }
+                best = Math.Min(best, timer.Elapsed.TotalMilliseconds);
+            }
+            var sections = document.Reader.Structure.Sections;
+            var again = 0;
+            var streams = 0;
+            foreach (var section in sections)
+            {
+                if ((int)section.State == 4) again++;
+                if (section.Kind == XRefSectionKind.Stream && section.State == XRefSectionState.Read) streams++;
+            }
+
+            output.Append(CultureInfo.InvariantCulture,
+                $"tables={tables} rows={rows} self={self} file={bytes.Length:N0} bytesRead={source.BytesRead:N0} records={sections.Count} streamRecordsRead={streams} namedAgain={again} diagnostics={document.Diagnostics.Count} open={opened.TotalMilliseconds:F1}ms bestOf7={best:F2}ms\n");
+            watch.Restart();
+            var report = new PdfValidator().Validate(document);
+            output.Append(CultureInfo.InvariantCulture, $"   validate={watch.Elapsed.TotalMilliseconds:F1}ms findings={report.Findings.Count} bytesRead after={source.BytesRead:N0}\n");
+
+            foreach (var group in report.Findings.GroupBy(finding => finding.RuleId))
+            {
+                output.Append("   F ").Append(group.Key).Append(" x").Append(group.Count()).Append(": ").Append(group.First().Message).Append('\n');
+            }
+
+            foreach (var group in document.Diagnostics.GroupBy(diagnostic => diagnostic.Code))
+            {
+                output.Append("   D ").Append(group.Key).Append(" x").Append(group.Count()).Append(": ").Append(group.First().Message).Append('\n');
+            }
+        }
+
+        File.WriteAllText(Environment.GetEnvironmentVariable("ZZ_MANY_OUT") ?? "/tmp/zz-many.txt", output.ToString());
+    }
+
+    [Fact]
+    public void ZzXRefStmShapes()
+    {
+        var output = new StringBuilder();
+        var dir = Environment.GetEnvironmentVariable("ZZ_XREFSTM_FILES");
+
+        foreach (var (name, file, objects) in Shapes())
+        {
+            if (dir is not null)
+            {
+                File.WriteAllBytes(Path.Combine(dir, name[..2] + ".pdf"), file);
+            }
+
+            try
+            {
+                Dump(output, name, file, objects);
+            }
+            catch (Exception exception)
+            {
+                output.Append("  THREW ").Append(exception).Append('\n');
+            }
+        }
+
+        File.WriteAllText(Environment.GetEnvironmentVariable("ZZ_XREFSTM_OUT") ?? "/tmp/zz-xrefstm.txt", output.ToString());
+    }
+}

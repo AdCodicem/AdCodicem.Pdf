@@ -1,0 +1,112 @@
+using System.Globalization;
+using System.Text;
+using AdCodicem.Pdf.Documents;
+using AdCodicem.Pdf.IO;
+using AdCodicem.Pdf.Validation;
+
+namespace AdCodicem.Pdf.Tests;
+
+#pragma warning disable
+
+/// <summary>
+/// Probe (uncommitted): a section a row guard stops whose /Prev is a reference to an object its read rows place, the
+/// object's value past MaxObjectLength (header or value cut), beside the same file read under one guard or none.
+/// </summary>
+public class ZzGuardPrevObjCut
+{
+    private static (byte[] File, long Section) Build(bool headerCut, bool stream)
+    {
+        var file = new HandWrittenFile();
+        var one = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>");
+        var two = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>");
+        var older = file.Table(3, new Dictionary<int, long> { [1] = one, [2] = two }, "/Size 3 /Root 1 0 R");
+
+        // Object 3 holds the older table's offset after 3,000 blanks: in its value, or between its number and "obj".
+        var three = file.Position;
+        file.Raw(headerCut
+            ? $"3 0{new string(' ', 3000)}obj\n{older}\nendobj\n"
+            : $"3 0 obj\n{new string(' ', 3000)}{older}\nendobj\n");
+        var section = file.Position;
+
+        if (stream)
+        {
+            static string Row(int type, long offset, int generation) =>
+                string.Create(CultureInfo.InvariantCulture, $"{type:X2}{offset:X8}{generation:X4}");
+
+            var data = Row(0, 0, 65535) + Row(0, 0, 0) + Row(1, two, 0) + Row(1, three, 0) +
+                string.Concat(Enumerable.Repeat(Row(0, 0, 0), 40)) + Row(1, section, 0) + ">";
+            file.Raw($"44 0 obj\n<< /Type /XRef /Size 45 /Index [0 1 21 1 2 2 4 40 44 1] /W [1 4 2] /Filter /ASCIIHexDecode /Prev 3 0 R /Length {data.Length} >>\nstream\n{data}\nendstream\nendobj\n");
+        }
+        else
+        {
+            var free = string.Concat(Enumerable.Repeat("0000000000 00000 f \n", 40));
+            file.Raw($"xref\n0 1\n0000000000 65535 f \n21 1\n0000000000 00000 f \n2 2\n{two:D10} 00000 n \n{three:D10} 00000 n \n4 40\n{free}trailer\n<< /Size 44 /Prev 3 0 R >>\n");
+        }
+
+        file.Raw($"startxref\n{section}\n%%EOF\n");
+        return (file.Bytes, section);
+    }
+
+    [Fact]
+    public void ZzGuardPrevObjCutShapes()
+    {
+        if (Environment.GetEnvironmentVariable("ZZ_GUARD_OUT") is not { } path)
+        {
+            return;
+        }
+
+        var output = new StringBuilder();
+
+        foreach (var stream in new[] { false, true })
+        {
+            foreach (var headerCut in new[] { false, true })
+            {
+                var (file, section) = Build(headerCut, stream);
+                var rows = stream ? PdfReaderLimits.Default with { MaxDecodedStreamLength = 35 } : PdfReaderLimits.Default with { MaxXRefSectionLength = 128 };
+                var cases = new (string Name, PdfReaderLimits? Limits)[]
+                {
+                    ("rows guard + object guard", rows with { MaxObjectLength = 1024 }),
+                    ("rows guard alone", rows),
+                    ("object guard alone", PdfReaderLimits.Default with { MaxObjectLength = 1024 }),
+                    ("default", null),
+                };
+
+                foreach (var (name, limits) in cases)
+                {
+                    output.AppendLine($"=== {(stream ? "stream" : "table")} /Prev 3 0 R, {(headerCut ? "header" : "value")} cut, {name} (section at {section})");
+                    using var document = PdfDocument.Open(file, limits is null ? PdfReaderOptions.Default : new PdfReaderOptions { Limits = limits });
+                    output.AppendLine("  reader at opening:");
+
+                    foreach (var diagnostic in document.Diagnostics)
+                    {
+                        output.AppendLine("    " + diagnostic);
+                    }
+
+                    foreach (var record in document.Reader.Structure.Sections)
+                    {
+                        output.AppendLine($"  section {record.NamedBy} at {record.Offset}: {record.State} cut={record.CutByLimit} hidden={record.ChainHiddenByGuard ?? "-"}");
+                    }
+
+                    output.AppendLine($"  trailersHidden={document.Reader.Structure.TrailersHiddenByGuard} repaired={document.WasRepaired}");
+                    var count = document.Diagnostics.Count;
+                    var report = new PdfValidator().Validate(document);
+                    output.AppendLine("  reader after validation (new):");
+
+                    for (var i = count; i < document.Diagnostics.Count; i++)
+                    {
+                        output.AppendLine("    " + document.Diagnostics[i]);
+                    }
+
+                    output.AppendLine("  validator:");
+
+                    foreach (var finding in report.Findings)
+                    {
+                        output.AppendLine($"    {finding.Severity} {finding.RuleId}: {finding.Message}");
+                    }
+                }
+            }
+        }
+
+        File.WriteAllText(path, output.ToString());
+    }
+}

@@ -1,0 +1,68 @@
+diff --git a/src/AdCodicem.Pdf/IO/PdfFileReader.cs b/src/AdCodicem.Pdf/IO/PdfFileReader.cs
+index a946dab..4dcce22 100644
+--- a/src/AdCodicem.Pdf/IO/PdfFileReader.cs
++++ b/src/AdCodicem.Pdf/IO/PdfFileReader.cs
+@@ -3249,15 +3249,22 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
+             return false;
+         }
+ 
++        // The window ends NearbySearchRadius bytes past the offset, or at the file's end, wherever the offset falls: clamped
++        // at the file's start, it is not lengthened (#197). The position is in the file, so neither sum wraps.
+         var start = Math.Max(0, absolute - NearbySearchRadius);
+-        var length = (int)Math.Min(NearbySearchRadius * 2, _source.Length - start);
++        var length = (int)(absolute + Math.Min(NearbySearchRadius, _source.Length - absolute) - start);
+         var candidates = new List<long>();
+ 
+-        using (var window = _source.GetWindow(start, length))
++        // The byte before the window, as for an object's (#197): a candidate starts in the window.
++        var lead = start > 0 ? 1 : 0;
++
++        using (var window = _source.GetWindow(start - lead, length + lead))
+         {
+-            FindSectionCandidates(window.Memory.Span, start, candidates);
++            FindSectionCandidates(window.Memory.Span, start - lead, candidates);
+         }
+ 
++        candidates.RemoveAll(candidate => candidate < start);
++
+         candidates.Sort((left, right) => Math.Abs(left - absolute).CompareTo(Math.Abs(right - absolute)));
+ 
+         foreach (var candidate in candidates)
+@@ -6071,15 +6078,22 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
+             return false;
+         }
+ 
++        // The window ends NearbySearchRadius bytes past the offset, or at the file's end, wherever the offset falls: clamped
++        // at the file's start, it is not lengthened (#197). The end is worked out from what lies between the offset and the
++        // file's end, which wraps for no offset — long.MaxValue, an entry past what a long holds, gives the file's end.
+         var start = Math.Max(0, approximateOffset - NearbySearchRadius);
+-        var length = (int)Math.Min(NearbySearchRadius * 2, source.Length - start);
++        var end = approximateOffset + Math.Min(NearbySearchRadius, source.Length - approximateOffset);
++        var length = end - start;
+ 
+         if (length <= 0)
+         {
+             return false;
+         }
+ 
+-        using var window = source.GetWindow(start, length);
++        // The byte before the window, where it does not start the file, tells a number the window's start cuts - "14 0 obj"
++        // read from its "4" - from one that starts there: a header is taken only where it starts in the window.
++        var lead = start > 0 ? 1 : 0;
++        using var window = source.GetWindow(start - lead, (int)length + lead);
+         var span = window.Memory.Span;
+         var searchFrom = 0;
+ 
+@@ -6093,9 +6107,10 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
+ 
+             var position = searchFrom + index;
+ 
+-            if (TryReadHeaderBackwards(span, position, out var found, out var foundGeneration, out var headerStart) && found == number)
++            if (TryReadHeaderBackwards(span, position, out var found, out var foundGeneration, out var headerStart) &&
++                headerStart >= lead && found == number)
+             {
+-                actualOffset = start + headerStart;
++                actualOffset = start - lead + headerStart;
+                 generation = foundGeneration;
+                 return true;
+             }

@@ -1,0 +1,312 @@
+using System.Globalization;
+using System.IO.Compression;
+using System.Text;
+using AdCodicem.Pdf.Documents;
+using AdCodicem.Pdf.Objects;
+using AdCodicem.Pdf.Validation;
+
+namespace AdCodicem.Pdf.Tests;
+
+#pragma warning disable
+
+/// <summary>Batch 19 probe (uncommitted): #208, a cross-reference stream whose rows cannot be read but whose dictionary names /Prev.</summary>
+public class ZzStreamPrev
+{
+    private static readonly StringBuilder Out = new();
+
+    private sealed class W
+    {
+        private readonly MemoryStream _o = new();
+        public readonly Dictionary<int, long> Offsets = [];
+        public W(string version = "1.5") => T($"%PDF-{version}\n");
+        public long P => _o.Position;
+        public void T(string text) => _o.Write(Encoding.Latin1.GetBytes(text));
+        public void B(byte[] b) => _o.Write(b);
+        public void Obj(int n, string body) { Offsets[n] = P; T($"{n} 0 obj\n{body}\nendobj\n"); }
+        public void Pad(int count) { if (count > 1) T("%" + new string('-', count - 2) + "\n"); }
+        public byte[] Bytes => _o.ToArray();
+    }
+
+    /// <summary>Rows of /W [1 w 2]: type, offset in w bytes big-endian, generation in 2.</summary>
+    private static byte[] Rows(int w, params (int T, long S, int G)[] rows)
+    {
+        var d = new List<byte>();
+        foreach (var (t, s, g) in rows)
+        {
+            d.Add((byte)t);
+            for (var i = w - 1; i >= 0; i--) d.Add(i >= 8 ? (byte)0 : (byte)(s >> (8 * i)));
+            d.Add((byte)(g >> 8));
+            d.Add((byte)g);
+        }
+
+        return [.. d];
+    }
+
+    private static string Row(long offset, string kind = "n", int gen = 0) => string.Create(CultureInfo.InvariantCulture, $"{offset:D10} {gen:D5} {kind}\r\n");
+
+    internal sealed record Spec
+    {
+        /// <summary>The middle stream's entries but /Length and /Prev; {W} placeholder replaced by the /W written.</summary>
+        public string Entries { get; init; } = "/Type /XRef /Size 8 /Index [4 2 7 1] /W [1 9 2] /Root 1 0 R";
+        public int DataWidth { get; init; } = 9;
+        /// <summary>What /Prev the stream gives: null for the oldest table's offset, "" for none.</summary>
+        public string? Prev { get; init; }
+        public string? LengthText { get; init; }
+        public Func<byte[], byte[]>? Data { get; init; }
+        public bool DictionaryOnly { get; init; }
+        public string EndStream { get; init; } = "endstream";
+        public int Gap1 { get; init; } = 1200;
+        public int Gap2 { get; init; } = 1200;
+        /// <summary>The middle section is a classic table, written as given ({4}, {7} replaced by rows).</summary>
+        public string? Table { get; init; }
+        public bool StartAtMiddle { get; init; }
+        /// <summary>The newest is a hybrid table whose /XRefStm names the stream; its /Prev names the oldest.</summary>
+        public bool Hybrid { get; init; }
+        public string? Extra { get; init; }
+        /// <summary>Object 9, written before the newest table, which indexes it.</summary>
+        public string? Nine { get; init; }
+    }
+
+    internal static (byte[] File, long Oldest, long Middle, long Newest) Build(Spec spec)
+    {
+        var w = new W();
+        w.Obj(1, "<< /Type /Catalog /Pages 2 0 R >>");
+        w.Obj(2, "<< /Type /Pages /Kids [] /Count 0 >>");
+        w.Obj(3, "(only in the oldest)");
+        w.Obj(7, "(old seven)");
+        var oldest = w.P;
+        w.T("xref\n0 4\n" + Row(0, "f", 65535) + Row(w.Offsets[1]) + Row(w.Offsets[2]) + Row(w.Offsets[3]) + "7 1\n" + Row(w.Offsets[7]) +
+            "trailer\n<< /Size 8 /Root 1 0 R >>\n");
+        if (spec.StartAtMiddle)
+        {
+            w.T($"startxref\n{oldest}\n%%EOF\n");
+        }
+
+        w.Pad(spec.Gap1);
+        w.Obj(4, "(only in the middle)");
+        w.Obj(7, "(new seven)");
+        if (spec.Extra is { } extra) w.T(extra);
+        var middle = w.P;
+        var prev = spec.Prev is null ? $" /Prev {oldest}" : spec.Prev.Length == 0 ? string.Empty : " /Prev " + spec.Prev.Replace("{o}", oldest.ToString(CultureInfo.InvariantCulture));
+
+        if (spec.Table is { } table)
+        {
+            w.T(table.Replace("{4}", Row(w.Offsets[4]).TrimEnd('\n').TrimEnd('\r') + "\r\n").Replace("{7}", Row(w.Offsets[7]).TrimEnd('\n').TrimEnd('\r') + "\r\n").Replace("{prev}", prev));
+        }
+        else
+        {
+            var data = Rows(spec.DataWidth, (1, w.Offsets[4], 0), (1, middle, 0), (1, w.Offsets[7], 0));
+            data = spec.Data?.Invoke(data) ?? data;
+            var length = spec.LengthText ?? data.Length.ToString(CultureInfo.InvariantCulture);
+            w.Offsets[5] = middle;
+            if (spec.DictionaryOnly)
+            {
+                w.T($"5 0 obj\n<< {spec.Entries}{prev} >>\nendobj\n");
+            }
+            else
+            {
+                w.T($"5 0 obj\n<< {spec.Entries}{prev} /Length {length} >>\nstream\n");
+                w.B(data);
+                w.T($"\n{spec.EndStream}\nendobj\n");
+            }
+        }
+
+        if (spec.StartAtMiddle)
+        {
+            w.T($"startxref\n{middle}\n%%EOF\n");
+            return (w.Bytes, oldest, middle, -1);
+        }
+
+        w.Pad(spec.Gap2);
+        w.Obj(6, "(only in the newest)");
+        var nine = string.Empty;
+        if (spec.Nine is { } nineBody)
+        {
+            w.Obj(9, nineBody);
+            nine = "9 1\n" + Row(w.Offsets[9]);
+        }
+
+        var newest = w.P;
+        var trailerPrev = spec.Hybrid ? $"/Prev {oldest} /XRefStm {middle}" : $"/Prev {middle}";
+        w.T("xref\n0 1\n" + Row(0, "f", 65535) + "6 1\n" + Row(w.Offsets[6]) + nine + $"trailer\n<< /Size 8 /Root 1 0 R {trailerPrev} >>\nstartxref\n{newest}\n%%EOF\n");
+        return (w.Bytes, oldest, middle, newest);
+    }
+
+    private static void Dump(string title, Spec spec, PdfReaderOptions? options = null) => Dump(title, Build(spec), options);
+
+    private static void Dump(string title, (byte[] File, long Oldest, long Middle, long Newest) built, PdfReaderOptions? options = null)
+    {
+        var file = built.File;
+        options ??= new PdfReaderOptions();
+        Out.Append("### ").Append(title).Append(CultureInfo.InvariantCulture, $" ({file.Length} bytes; oldest {built.Oldest}, middle {built.Middle}, newest {built.Newest})\n");
+        try
+        {
+            using (var document = PdfDocument.Open(file, options))
+            {
+                Out.Append("  opened: WasRepaired ").Append(document.WasRepaired).Append('\n');
+                foreach (var s in document.Reader.Structure.Sections)
+                {
+                    var trailerPrev = s.Trailer?.GetRaw(PdfName.Prev)?.ToString() ?? "-";
+                    Out.Append(CultureInfo.InvariantCulture, $"  section namedBy={s.NamedBy} named={s.NamedOffset} offset={s.Offset} state={s.State} kind={s.Kind} cut={s.CutByLimit} incomplete={s.Incomplete} trailer={(s.Trailer is null ? "null" : "set")} trailerPrev={trailerPrev} trailerFault={s.TrailerFault} fault={s.Fault ?? "-"}\n");
+                }
+
+                foreach (var d in document.Diagnostics) Out.Append("  D ").Append(d).Append('\n');
+            }
+
+            foreach (var n in new[] { 3, 4, 7, 6 })
+            {
+                using var document = PdfDocument.Open(file, options);
+                var value = document.GetObject(new PdfObjectId(n));
+                Out.Append(CultureInfo.InvariantCulture, $"  GetObject({n}): {value}; WasRepaired: {document.WasRepaired}\n");
+            }
+
+            using (var document = PdfDocument.Open(file, options))
+            {
+                var report = new PdfValidator().Validate(document);
+                foreach (var f in report.Findings) Out.Append("  F ").Append(f).Append('\n');
+                foreach (var d in document.Diagnostics) Out.Append("  D' ").Append(d).Append('\n');
+            }
+        }
+        catch (Exception exception)
+        {
+            Out.Append("  THREW ").Append(exception.GetType().Name).Append(": ").Append(exception.Message).Append('\n');
+        }
+
+        Out.Append('\n');
+    }
+
+    private static void Sequence(string title, Spec spec)
+    {
+        var built = Build(spec);
+        Out.Append("### ").Append(title).Append('\n');
+        using var document = PdfDocument.Open(built.File);
+        foreach (var n in new[] { 7, 4, 7, 3 })
+        {
+            var value = document.GetObject(new PdfObjectId(n));
+            Out.Append(CultureInfo.InvariantCulture, $"  GetObject({n}): {value}; WasRepaired: {document.WasRepaired}\n");
+        }
+
+        Out.Append('\n');
+    }
+
+    private static byte[] Deflate(byte[] data)
+    {
+        using var output = new MemoryStream();
+        using (var z = new ZLibStream(output, CompressionLevel.Optimal, leaveOpen: true)) z.Write(data);
+        return output.ToArray();
+    }
+
+    private const string Base = "/Type /XRef /Size 8 /Index [4 2 7 1] /W [1 9 2] /Root 1 0 R";
+
+    private const string Base4 = "/Type /XRef /Size 8 /Index [4 2 7 1] /W [1 4 2] /Root 1 0 R";
+
+    private static Spec Fault(string from, string to) => new() { Entries = Base4.Replace(from, to), DataWidth = 4 };
+
+    [Fact]
+    public void ZzStreamPrevAll()
+    {
+        Out.Clear();
+
+        // The issue's shape, data written for /W [1 9 2], then for /W [1 4 2] under /W [1 9 2].
+        Dump("I0 issue shape: /W [1 9 2], 12-byte rows", new Spec());
+        Dump("I0b /W [1 9 2] over 7-byte rows (data for [1 4 2])", new Spec { DataWidth = 4 });
+        Dump("I1 control: /W [1 4 2], sound", Fault("/W [1 4 2]", "/W [1 4 2]"));
+
+        // Faults of the rows' values: /W.
+        Dump("W1 /W [1 -4 2] negative width", Fault("/W [1 4 2]", "/W [1 -4 2]"));
+        Dump("W2 /W [1 4] two widths", Fault("/W [1 4 2]", "/W [1 4]"));
+        Dump("W3 /W [1 4 /x] a width not an integer", Fault("/W [1 4 2]", "/W [1 4 /x]"));
+        Dump("W4 /W [0 0 0] rows of no bytes", Fault("/W [1 4 2]", "/W [0 0 0]"));
+        Dump("W5 no /W", Fault("/W [1 4 2]", ""));
+        Dump("W6 /W 99 0 R, no section places it", Fault("/W [1 4 2]", "/W 99 0 R"));
+
+        // /Index and /Size.
+        Dump("X1 /Index [4] odd", Fault("/Index [4 2 7 1]", "/Index [4]"));
+        Dump("X2 /Index [-1 2 7 1] first out of range", Fault("/Index [4 2 7 1]", "/Index [-1 2 7 1]"));
+        Dump("X3 /Index /X not an array", Fault("/Index [4 2 7 1]", "/Index /X"));
+        Dump("X4 /Index [4 /x 7 1]", Fault("/Index [4 2 7 1]", "/Index [4 /x 7 1]"));
+        Dump("X5 /Index [4 -1 7 1] negative count", Fault("/Index [4 2 7 1]", "/Index [4 -1 7 1]"));
+        Dump("X6 no /Index, no /Size", Fault("/Size 8 /Index [4 2 7 1] ", ""));
+        Dump("X7 no /Index, /Size -1", Fault("/Size 8 /Index [4 2 7 1] ", "/Size -1 "));
+        Dump("X8 /Index [] empty", Fault("/Index [4 2 7 1]", "/Index []"));
+
+        // Data that cannot give rows.
+        Dump("D1 /Filter /FlateDecode over data not deflated", Fault("/W [1 4 2]", "/W [1 4 2] /Filter /FlateDecode"));
+        Dump("D2 /Filter /Foo unknown", Fault("/W [1 4 2]", "/W [1 4 2] /Filter /Foo"));
+        Dump("D3 /Length 5, too short", Fault("/W [1 4 2]", "/W [1 4 2]") with { LengthText = "5" });
+        Dump("D4 /Length 999, too long", Fault("/W [1 4 2]", "/W [1 4 2]") with { LengthText = "999" });
+        Dump("D5 rows short: /Index [4 5 7 1], data for 3 rows", Fault("/Index [4 2 7 1]", "/Index [4 5 7 1]"));
+        Dump("D6 /Filter /FlateDecode, deflated data cut in two", Fault("/W [1 4 2]", "/W [1 4 2] /Filter /FlateDecode") with { Data = data => Deflate(data)[..6] });
+        Dump("D7 dictionary not followed by stream data", Fault("/W [1 4 2]", "/W [1 4 2]") with { DictionaryOnly = true });
+        Dump("D8 deferred /Length 9 0 R no section places, no endstream (#220)", Fault("/W [1 4 2]", "/W [1 4 2]") with { LengthText = "9 0 R", EndStream = "endstrean" });
+
+        // Dictionary faults beside a row fault (/W [1 -4 2]).
+        Dump("P1 /Prev /X, beside /W [1 -4 2]", Fault("/W [1 4 2]", "/W [1 -4 2]") with { Prev = "/X" });
+        Dump("P1b /Prev /X, rows sound", Fault("/W [1 4 2]", "/W [1 4 2]") with { Prev = "/X" });
+        Dump("P2 /Prev outside the file, beside /W [1 -4 2]", Fault("/W [1 4 2]", "/W [1 -4 2]") with { Prev = "99999999" });
+        Dump("P3 /Prev -5, beside /W [1 -4 2]", Fault("/W [1 4 2]", "/W [1 -4 2]") with { Prev = "-5" });
+        Dump("P4 /Prev 8 0 R, object 8 nowhere, beside /W [1 -4 2]", Fault("/W [1 4 2]", "/W [1 -4 2]") with { Prev = "8 0 R" });
+        Dump("P5 /Type /Foo, /W [1 -4 2]", Fault("/W [1 4 2]", "/W [1 -4 2]") with { Entries = Base4.Replace("/Type /XRef", "/Type /Foo").Replace("/W [1 4 2]", "/W [1 -4 2]") });
+        Dump("P6 no /Type, /W [1 -4 2]", Fault("/W [1 4 2]", "/W [1 -4 2]") with { Entries = Base4.Replace("/Type /XRef ", "").Replace("/W [1 4 2]", "/W [1 -4 2]") });
+        Dump("P7 dictionary syntax fault (stray ')'), /W [1 -4 2]", Fault("/W [1 4 2]", "/W [1 -4 2] )"));
+        Dump("P9 /Prev written as a real (oldest.0), /W [1 -4 2]", Fault("/W [1 4 2]", "/W [1 -4 2]") with { Prev = "{o}.0" });
+        Dump("P9b /Prev written as a real (oldest.0), rows sound", Fault("/W [1 4 2]", "/W [1 4 2]") with { Prev = "{o}.0" });
+        Dump("P10 /Prev names the stream itself, /W [1 -4 2]", Fault("/W [1 4 2]", "/W [1 -4 2]") with { Prev = "1583" });
+        Dump("P8 no /Prev, /W [1 -4 2]", Fault("/W [1 4 2]", "/W [1 -4 2]") with { Prev = "" });
+
+        // Guards.
+        var trailerGuard = new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxTrailerLength = 256 } };
+        Dump("G1 MaxTrailerLength 256 cuts the stream's dictionary (a /Pad string first)", Fault("/Type /XRef", "/Pad (" + new string('x', 400) + ") /Type /XRef"), trailerGuard);
+        Dump("G1b MaxTrailerLength 256 cuts the dictionary after /Type /XRef", Fault("/W [1 4 2]", "/W [1 4 2] /Pad (" + new string('x', 400) + ")"), trailerGuard);
+        var decodedGuard = new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxDecodedStreamLength = 10 } };
+        Dump("G2 MaxDecodedStreamLength 10 cuts the rows", Fault("/W [1 4 2]", "/W [1 4 2] /Filter /FlateDecode") with { Data = Deflate }, decodedGuard);
+
+        var objectGuard = new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxObjectLength = 1024 } };
+        Dump("G3 MaxObjectLength 1024 cuts object 9, the stream's /W (9 0 R), newest places 9", Fault("/W [1 4 2]", "/W 9 0 R") with { Nine = "%" + new string('-', 2000) + "\n[1 4 2]" }, objectGuard);
+        Dump("G3b the same, default limits", Fault("/W [1 4 2]", "/W 9 0 R") with { Nine = "%" + new string('-', 2000) + "\n[1 4 2]" });
+        Dump("G3c MaxObjectLength 1024 cuts object 9 (/W 9 0 R) beside /Index [4 -1 7 1]", Fault("/W [1 4 2]", "/W 9 0 R") with { Entries = Base4.Replace("/W [1 4 2]", "/W 9 0 R").Replace("/Index [4 2 7 1]", "/Index [4 -1 7 1]"), Nine = "%" + new string('-', 2000) + "\n[1 4 2]" }, objectGuard);
+
+        Dump("G4 MaxObjectLength 1024 cuts object 9, the stream's /Prev (9 0 R), beside /W [1 -4 2]", Fault("/W [1 4 2]", "/W [1 -4 2]") with { Prev = "9 0 R", Nine = "%" + new string('-', 2000) + "\n173" }, objectGuard);
+        Dump("G4b the same, default limits", Fault("/W [1 4 2]", "/W [1 -4 2]") with { Prev = "9 0 R", Nine = "%" + new string('-', 2000) + "\n173" });
+
+        // Many subsections: 4,000 and 5,000 disjoint ones past 4 2 7 1.
+        static string Many(int pairs)
+        {
+            var text = new StringBuilder("/Index [4 2 7 1");
+            for (var k = 0; k < pairs; k++) text.Append(CultureInfo.InvariantCulture, $" {10 + (2 * k)} 1");
+            return text.Append(']').ToString();
+        }
+
+        Dump("K1 /W [1 -4 2], /Index of 4,002 disjoint subsections", Fault("/W [1 4 2]", "/W [1 -4 2]") with { Entries = Base4.Replace("/W [1 4 2]", "/W [1 -4 2]").Replace("/Index [4 2 7 1]", Many(4000)).Replace("/Size 8", "/Size 9000") });
+        Dump("K2 /W [1 -4 2], /Index of 5,002 disjoint subsections", Fault("/W [1 4 2]", "/W [1 -4 2]") with { Entries = Base4.Replace("/W [1 4 2]", "/W [1 -4 2]").Replace("/Index [4 2 7 1]", Many(5000)).Replace("/Size 8", "/Size 11000") });
+
+        // Without /Index: the stream numbers 0 to /Size - 1.
+        Dump("N1 no /Index, /Size 8, /W [1 -4 2]", Fault("/W [1 4 2]", "/W [1 -4 2]") with { Entries = Base4.Replace("/Index [4 2 7 1] ", "").Replace("/W [1 4 2]", "/W [1 -4 2]") });
+
+        // Hybrid: the newest table's /XRefStm names the stream, its own /Prev the oldest.
+        Dump("H1 hybrid: /XRefStm stream /W [1 -4 2] with /Prev 99999999", Fault("/W [1 4 2]", "/W [1 -4 2]") with { Hybrid = true, Prev = "99999999" });
+        Dump("H2 hybrid: /XRefStm stream /W [1 -4 2] with /Prev oldest", Fault("/W [1 4 2]", "/W [1 -4 2]") with { Hybrid = true });
+
+        // Relocation: the newest within reach of the malformed stream (#281), and the oldest within reach (#188).
+        Dump("R1 /W [1 -4 2], newest table 100 bytes after the stream", Fault("/W [1 4 2]", "/W [1 -4 2]") with { Gap2 = 100 });
+        Dump("R2 /W [1 -4 2], oldest table 100 bytes before the stream", Fault("/W [1 4 2]", "/W [1 -4 2]") with { Gap1 = 2 });
+        Dump("R3 /W [1 -4 2], both within reach", Fault("/W [1 4 2]", "/W [1 -4 2]") with { Gap1 = 2, Gap2 = 100 });
+
+        // The first section: startxref names the stream.
+        Dump("S1 startxref names the stream, /W [1 -4 2], /Prev oldest", Fault("/W [1 4 2]", "/W [1 -4 2]") with { StartAtMiddle = true });
+
+        // A classic table in the middle.
+        Dump("T0 control: classic middle table, sound", new Spec { Table = "xref\n4 1\n{4}7 1\n{7}trailer\n<< /Size 8 /Root 1 0 R{prev} >>\n" });
+        Dump("T1 classic middle table, a bad row in the middle (xref 4 4: 4 n, 5 x, 6 f, 7 n)", new Spec { Table = "xref\n4 4\n{4}0000000000 00000 x\r\n0000000000 00000 f\r\n{7}trailer\n<< /Size 8 /Root 1 0 R{prev} >>\n" });
+        Dump("T2 classic middle table, a bad subsection header (4 1 / {4} / 7 x)", new Spec { Table = "xref\n4 1\n{4}7 x\n{7}trailer\n<< /Size 8 /Root 1 0 R{prev} >>\n" });
+        Dump("T3 classic middle table, a stray name before the trailer", new Spec { Table = "xref\n4 1\n{4}7 1\n{7}/Bad 1\ntrailer\n<< /Size 8 /Root 1 0 R{prev} >>\n" });
+        Dump("T4 classic middle table, rows run into a dictionary, no trailer keyword", new Spec { Table = "xref\n4 1\n{4}7 1\n{7}\n<< /Size 8 /Root 1 0 R{prev} >>\n" });
+
+        // The order objects are read in, in one document: 7, then 4 (which rebuilds), then 7 again.
+        Sequence("Q1 W1 read 7, 4, 7 in one document", Fault("/W [1 4 2]", "/W [1 -4 2]"));
+        Sequence("Q2 H2 (hybrid stream unreadable) read 7, 4, 7 in one document", Fault("/W [1 4 2]", "/W [1 -4 2]") with { Hybrid = true });
+        Sequence("Q3 rows short (2 of 3 rows, 7 lacking) read 7, 4, 7 in one document", Fault("/W [1 4 2]", "/W [1 4 2]") with { Data = data => data[..14] });
+
+        File.WriteAllText(Environment.GetEnvironmentVariable("ZZ_OUT") ?? "/tmp/zz-stream-prev.txt", Out.ToString());
+    }
+}

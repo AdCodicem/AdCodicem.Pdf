@@ -1,0 +1,263 @@
+diff --git a/src/AdCodicem.Pdf/Diagnostics/PdfDiagnosticCodes.cs b/src/AdCodicem.Pdf/Diagnostics/PdfDiagnosticCodes.cs
+index f192094..825163d 100644
+--- a/src/AdCodicem.Pdf/Diagnostics/PdfDiagnosticCodes.cs
++++ b/src/AdCodicem.Pdf/Diagnostics/PdfDiagnosticCodes.cs
+@@ -57,6 +57,13 @@ public static class PdfDiagnosticCodes
+     /// </summary>
+     public const string XRefEntryOutOfRange = "xref.entry-out-of-range";
+ 
++    /// <summary>
++    /// A cross-reference stream gives rows of a reserved type — a type past 2, which ISO 32000-1 (7.5.8.3) allows no PDF 1.5
++    /// to 1.7 file —, each read, as ISO 32000-1 reads it, as a reference to the null object, no older section's row standing for its object. Reported once a section, at the section, the first
++    /// such row in the message.
++    /// </summary>
++    public const string XRefEntryReserved = "xref.entry-reserved";
++
+     /// <summary>
+     /// A stream's <c>/Length</c> is not where its data ends: its <c>endstream</c> lies elsewhere and ends the data, the
+     /// <c>/Length</c> gives no length the reader can take and the <c>endstream</c> ends the data, or no <c>endstream</c>
+diff --git a/src/AdCodicem.Pdf/IO/PdfFileReader.cs b/src/AdCodicem.Pdf/IO/PdfFileReader.cs
+index a946dab..5056a4e 100644
+--- a/src/AdCodicem.Pdf/IO/PdfFileReader.cs
++++ b/src/AdCodicem.Pdf/IO/PdfFileReader.cs
+@@ -3017,10 +3017,12 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
+                 if (section.CutByLimit || !TryRelocateXRefSection(offset, section, out previous, out hybrid))
+                 {
+                     ReportLostSection(section, naming, offset, namedFrom);
++                    ReportReservedRows(section, naming);
+                     break;
+                 }
+             }
+ 
++            ReportReservedRows(section, naming);
+             _olderNumberedPast |= sections > 1 && section.HighestNumber > _highestRead;
+             _highestRead = Math.Max(_highestRead, section.HighestNumber);
+ 
+@@ -3074,6 +3076,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
+                     ReportLostSection(stream, "/XRefStm", hybrid, section.Offset);
+                 }
+ 
++                ReportReservedRows(stream, "/XRefStm");
+                 _olderNumberedPast |= sections > 1 && stream.HighestNumber > _highestRead;
+                 _highestRead = Math.Max(_highestRead, stream.HighestNumber);
+ 
+@@ -3095,6 +3098,32 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
+         return _xref.Count > 0;
+     }
+ 
++    /// <summary>
++    /// Reports the rows of a reserved type a cross-reference stream of the chain gave — what the rows read of a section the
++    /// chain lost gave too —, once for the section, the first of them in the message (#221).
++    /// </summary>
++    private void ReportReservedRows(XRefSectionRecord section, string naming)
++    {
++        if (section.ReservedRow is not { } first)
++        {
++            return;
++        }
++
++        var rows = section.ReservedRows == 1
++            ? "a row"
++            : string.Create(CultureInfo.InvariantCulture, $"{section.ReservedRows} rows");
++        _diagnostics.Warn(
++            PdfDiagnosticCodes.XRefEntryReserved,
++            string.Create(
++                CultureInfo.InvariantCulture,
++                $"The cross-reference stream {naming} names at offset {section.Offset} gives {rows} a reserved type, {ReservedReading}: {first}."),
++            section.Offset);
++    }
++
++    /// <summary>What the reader made of a row of a reserved type, as its report says it.</summary>
++    private const string ReservedReading =
++        "read as ISO 32000-1 reads it, a reference to the null object (7.5.8.3), no older section's row standing for its object";
++
+     /// <summary>
+     /// Determines whether the chain read a section it named at <paramref name="offset"/>, as the file writes it: where it was
+     /// named, or near it.
+@@ -4459,8 +4488,8 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
+     /// numbers the object, its row past those held or not standing, where <paramref name="numbered"/> says so.
+     /// </summary>
+     /// <remarks>
+-    /// The section's row for the object is the first that numbers it with a type the reading of its rows takes: one of a
+-    /// reserved type is ignored there, as the specification says (<see cref="ReadXRefStreamRows"/>). The object is read
++    /// The section's row for the object is the first that numbers it, as the reading of its rows takes it: one of a
++    /// reserved type stands for the null object there (<see cref="ReadXRefStreamRows"/>), and places no length. The object is read
+     /// where that row places it as <see cref="ReadWithoutLoading"/> reads one: nothing is corrected, cached, recorded or
+     /// reported. One a guard cuts gives what the cut left of it, an integer read before the cut only a place to look for
+     /// <c>endstream</c> at (#224), and <paramref name="lengthCut"/> says so, whether an <c>endstream</c> confirms it or not:
+@@ -4520,7 +4549,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
+                 type = widths[0] == 0 ? 1 : ReadField(fields, ref cursor, widths[0]);
+                 offset = ReadField(fields, ref cursor, widths[1]);
+                 generation = ReadField(fields, ref cursor, widths[2]);
+-                taken = type <= 2;
++                taken = true;
+             }
+ 
+             ordinal += subsections[i + 1];
+@@ -5307,8 +5336,13 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
+                     break;
+ 
+                 default:
+-                    // Types beyond 2 are reserved; the specification says to ignore the entry. A type field wider than 8
+-                    // bytes whose leading bytes are not all zero gives one.
++                    // ISO 32000-1 allows types 0, 1 and 2 only, and reads any other "as a reference to the null object, thus
++                    // permitting new entry types to be defined in the future" (7.5.8.3): the row stands for its object as a
++                    // free row does, no older section's row standing for it (#221). A type field wider than 8 bytes whose
++                    // leading bytes are not all zero gives one.
++                    AddFromChain(number, XRefEntry.Free, section);
++                    section.ReservedRow ??= ReservedRowFault(number, type, row, widths[0]);
++                    section.ReservedRows++;
+                     break;
+             }
+         }
+@@ -5496,6 +5530,12 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
+         static string Invariant(FormattableString text) => text.ToString(CultureInfo.InvariantCulture);
+     }
+ 
++    /// <summary>Says what a row of a reserved type gives, in words: its object and its type.</summary>
++    private static string ReservedRowFault(int number, ulong type, ReadOnlySpan<byte> row, int width) =>
++        width > sizeof(ulong) && row[..(width - sizeof(ulong))].ContainsAnyExcept((byte)0)
++            ? string.Create(CultureInfo.InvariantCulture, $"the row for object {number} gives it a type of more than 64 bits")
++            : string.Create(CultureInfo.InvariantCulture, $"the row for object {number} gives it type {type}");
++
+     /// <summary>
+     /// Reads a field of a cross-reference stream's row, high byte first (ISO 32000-1, 7.5.8.3), as the unsigned value its
+     /// bytes give.
+diff --git a/src/AdCodicem.Pdf/IO/XRef/XRefSectionRecord.cs b/src/AdCodicem.Pdf/IO/XRef/XRefSectionRecord.cs
+index 06de2eb..42eee20 100644
+--- a/src/AdCodicem.Pdf/IO/XRef/XRefSectionRecord.cs
++++ b/src/AdCodicem.Pdf/IO/XRef/XRefSectionRecord.cs
+@@ -64,6 +64,15 @@ internal sealed class XRefSectionRecord
+     /// </summary>
+     public string? RefusedRow { get; set; }
+ 
++    /// <summary>
++    /// Gets the first row of a reserved type the cross-reference stream gives — a type past 2, which ISO 32000-1 (7.5.8.3)
++    /// allows no PDF 1.5 to 1.7 file and reads as a reference to the null object —, in words; null when it gives none.
++    /// </summary>
++    public string? ReservedRow { get; set; }
++
++    /// <summary>Gets how many rows of a reserved type the cross-reference stream gives.</summary>
++    public long ReservedRows { get; set; }
++
+     /// <summary>
+     /// Gets a value indicating whether a cross-reference stream holds fewer rows than it declares: the rows it holds place
+     /// objects, but where a value they are read with is one a guard cut, beside which the data holds too few whatever the
+@@ -152,6 +161,8 @@ internal sealed class XRefSectionRecord
+         Kind = attempt.Kind;
+         Fault = attempt.Fault;
+         RefusedRow = attempt.RefusedRow;
++        ReservedRow = attempt.ReservedRow;
++        ReservedRows = attempt.ReservedRows;
+         Incomplete = attempt.Incomplete;
+         CutByLimit = attempt.CutByLimit;
+         CutByValue = attempt.CutByValue;
+diff --git a/src/AdCodicem.Pdf/Validation/PdfValidationRuleIds.cs b/src/AdCodicem.Pdf/Validation/PdfValidationRuleIds.cs
+index 9d3427b..a618faa 100644
+--- a/src/AdCodicem.Pdf/Validation/PdfValidationRuleIds.cs
++++ b/src/AdCodicem.Pdf/Validation/PdfValidationRuleIds.cs
+@@ -159,6 +159,12 @@ public static class PdfValidationRuleIds
+     /// </summary>
+     public const string XRefCheckedInPart = "xref.checked-in-part";
+ 
++    /// <summary>
++    /// A cross-reference stream gives a row of a reserved type — a type past 2, which ISO 32000-1 allows no PDF 1.5 to 1.7
++    /// file. <see cref="PdfValidationSeverity.Warning"/>.
++    /// </summary>
++    public const string XRefEntryTypeReserved = "xref.entry-type-reserved";
++
+     /// <summary>
+     /// An object reachable from the trailer refers to an object the file lacks — none in its index, or a free
+     /// entry —, which reads as null. <see cref="PdfValidationSeverity.Warning"/>.
+diff --git a/src/AdCodicem.Pdf/Validation/Rules/ReservedTypeRule.cs b/src/AdCodicem.Pdf/Validation/Rules/ReservedTypeRule.cs
+new file mode 100644
+index 0000000..5b16fbc
+--- /dev/null
++++ b/src/AdCodicem.Pdf/Validation/Rules/ReservedTypeRule.cs
+@@ -0,0 +1,54 @@
++using System.Globalization;
++
++namespace AdCodicem.Pdf.Validation.Rules;
++
++/// <summary>
++/// <see cref="PdfValidationRuleIds.XRefEntryTypeReserved"/>: no cross-reference stream the chain reads gives a row of a
++/// reserved type — a type past 2, which ISO 32000-1 (7.5.8.3) allows no PDF 1.5 to 1.7 file, "thus permitting new entry
++/// types to be defined in the future".
++/// </summary>
++/// <remarks>
++/// ISO 32000-1 reads such a row as a reference to the null object, and so does the reader, no older section's row
++/// standing for its object (#221): the file breaks the specification and is read as the specification says, a warning
++/// (ADR 45), as a reference to an object the file lacks is (<see cref="PdfValidationRuleIds.ObjectReferenceMissing"/>).
++/// What a later version may define the type to stand for is unknown to the reader. Each section that gives such rows is
++/// reported once, the first named, the others counted — a section the reader could not read whole too: the rows it read
++/// are the file's.
++/// </remarks>
++internal sealed class ReservedTypeRule : IValidationRule
++{
++    /// <inheritdoc/>
++    public string Id => PdfValidationRuleIds.XRefEntryTypeReserved;
++
++    /// <inheritdoc/>
++    public PdfValidationSeverity Severity => PdfValidationSeverity.Warning;
++
++    /// <inheritdoc/>
++    public void Check(ValidationContext context)
++    {
++        foreach (var section in context.Structure.Sections)
++        {
++            // Past the report's room, the section is counted, its finding not written (#168).
++            if (section.ReservedRow is not { } first || !context.HasRoomFor(this))
++            {
++                continue;
++            }
++
++            var more = section.ReservedRows - 1;
++            var others = more switch
++            {
++                0 => string.Empty,
++                1 => ", and 1 row more",
++                _ => string.Create(CultureInfo.InvariantCulture, $", and {more} rows more"),
++            };
++
++            context.Report(
++                this,
++                PdfValidationLocation.AtPosition(section.Offset),
++                string.Create(
++                    CultureInfo.InvariantCulture,
++                    $"The cross-reference stream at offset {section.Offset} gives a row a reserved type: {first}{others}. ISO 32000-1 allows types 0, 1 and 2 only, and reads the object as null."),
++                "Rewrite the cross-reference stream with a row of type 0, 1 or 2 for each object.");
++        }
++    }
++}
+diff --git a/src/AdCodicem.Pdf/Validation/ValidationProfile.cs b/src/AdCodicem.Pdf/Validation/ValidationProfile.cs
+index 1853c38..3399728 100644
+--- a/src/AdCodicem.Pdf/Validation/ValidationProfile.cs
++++ b/src/AdCodicem.Pdf/Validation/ValidationProfile.cs
+@@ -56,6 +56,7 @@ public sealed class ValidationProfile
+             new SizeWrongRule(),
+             new TrailerValueWrongRule(),
+             new SectionMalformedRule(),
++            new ReservedTypeRule(),
+             new SectionNotFoundRule(),
+             new SectionShiftedRule(),
+             new ChainLoopRule(),
+diff --git a/tests/corpus/manifest.schema.json b/tests/corpus/manifest.schema.json
+index 4dc6f6a..3fae1a5 100644
+--- a/tests/corpus/manifest.schema.json
++++ b/tests/corpus/manifest.schema.json
+@@ -254,6 +254,7 @@
+               "xref.section-unreadable",
+               "xref.chain-cycle",
+               "xref.entry-out-of-range",
++              "xref.entry-reserved",
+               "stream.length-invalid",
+               "stream.truncated",
+               "stream.self-reference",
+@@ -313,6 +314,7 @@
+               "xref.offset-imprecise",
+               "xref.object-past-size",
+               "xref.checked-in-part",
++              "xref.entry-type-reserved",
+               "object.reference-missing",
+               "object.endobj-missing",
+               "object.name-null-character",

@@ -1,0 +1,95 @@
+using System.Globalization;
+using System.Text;
+using AdCodicem.Pdf.Documents;
+using AdCodicem.Pdf.Validation;
+
+namespace AdCodicem.Pdf.Tests;
+
+#pragma warning disable
+
+public class ZzStage9Probe
+{
+    private static readonly StringBuilder Out = new();
+
+    private static void Dump(string name, byte[] file, PdfReaderOptions? options)
+    {
+        Out.AppendLine("== " + name);
+        try
+        {
+            using var document = PdfDocument.Open(file, options ?? PdfReaderOptions.Default);
+            foreach (var diagnostic in document.Diagnostics)
+            {
+                Out.AppendLine("  D " + diagnostic);
+            }
+
+            foreach (var record in document.Reader.Structure.Sections)
+            {
+                Out.AppendLine(string.Create(CultureInfo.InvariantCulture, $"  S {record.NamedBy} named {record.WrittenOffset} at {record.Offset}: {record.State} cut={record.CutByLimit} fault={record.Fault ?? "-"} nonstream={record.NamesNoStream ?? "-"} readAs={record.ReadAs?.Offset}"));
+            }
+
+            Out.AppendLine($"  trailersHidden={document.Reader.Structure.TrailersHiddenByGuard} repaired={document.WasRepaired} catalog={(document.Catalog is null ? "null" : "found")}");
+            var report = new PdfValidator().Validate(document);
+            foreach (var finding in report.Findings)
+            {
+                Out.AppendLine($"  F {finding.Severity} {finding.RuleId}: {finding.Message}");
+            }
+        }
+        catch (Exception exception)
+        {
+            Out.AppendLine("  THROWS " + exception.GetType().Name + ": " + exception.Message);
+        }
+    }
+
+    [Fact]
+    public void ZzStage9Shapes()
+    {
+        if (Environment.GetEnvironmentVariable("ZZ_STAGE9_OUT") is not { } path)
+        {
+            return;
+        }
+
+        foreach (var links in new[] { "/Prev 21 0 R", "/Prev 99999999", "/Prev {self}", "/Prev 30 0 R", "/Prev {older}", "/Prev /Garbage" })
+        {
+            foreach (var guard in new[] { "table rows", "table index", "stream rows", "stream index" })
+            {
+                var stream = guard.StartsWith("stream", StringComparison.Ordinal);
+                var (file, _) = StoppedSectionFiles.Stopped(links, stream, newer: links.Contains("{newer}", StringComparison.Ordinal) ? "/Prev" : null);
+                if (guard is "table rows" or "stream rows")
+                {
+                    Dump($"F/G {links} {(stream ? "stream" : "table")} default", file, null);
+                }
+
+                Dump($"F/G {links} {guard}", file, StoppedSectionFiles.Guard(guard));
+            }
+        }
+
+        foreach (var links in new[] { "/Prev {older} /XRefStm 99999999", "/Prev {older} /XRefStm {self}", "/Prev {older} /XRefStm {newer}", "/Prev {older} /XRefStm {older}", "/Prev 99999999 /XRefStm 99999999", "/Prev 99999999 /XRefStm {older}" })
+        {
+            var (file, _) = StoppedSectionFiles.Stopped(links, newer: "/Prev");
+            Dump($"T {links} default", file, null);
+            foreach (var guard in new[] { "table rows", "table index" })
+            {
+                Dump($"T {links} {guard}", file, StoppedSectionFiles.Guard(guard));
+            }
+        }
+
+        foreach (var (prev, shift) in new[] { ("99999999", 0), ("{self}", 0), ("{stream}", 0), ("{older}", 0), ("{stream}", -4) })
+        {
+            var (file, _) = StoppedSectionFiles.HybridWhoseStreamIsStopped(prev, shift);
+            Dump($"H {prev} shift {shift} default", file, null);
+            foreach (var guard in new[] { "stream rows", "stream index" })
+            {
+                Dump($"H {prev} shift {shift} {guard}", file, StoppedSectionFiles.Guard(guard));
+            }
+        }
+
+        foreach (var prev in new[] { "99999999", "21 0 R", "{self}", "{older}" })
+        {
+            var file = StoppedSectionFiles.StreamFoundMoved(prev);
+            Dump($"R {prev} default", file, null);
+            Dump($"R {prev} stream rows", file, StoppedSectionFiles.Guard("stream rows"));
+        }
+
+        File.WriteAllText(path, Out.ToString());
+    }
+}

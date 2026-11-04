@@ -1,0 +1,254 @@
+diff --git a/src/AdCodicem.Pdf/IO/PdfFileReader.cs b/src/AdCodicem.Pdf/IO/PdfFileReader.cs
+index a946dab..f11fd18 100644
+--- a/src/AdCodicem.Pdf/IO/PdfFileReader.cs
++++ b/src/AdCodicem.Pdf/IO/PdfFileReader.cs
+@@ -3007,14 +3007,59 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
+                 // The first section is where startxref says, and one that is not there leaves no index to
+                 // complete: the file is scanned whole, which is reported. A later one is named by the section
+                 // before it.
+-                if (sections == 1)
++                if (sections == 1 && (Zz208Mode & 16) == 0)
+                 {
+                     return false;
+                 }
+ 
++                if ((Zz208Mode & 2) != 0)
++                {
++                    // Variant A1 (probe): relocation first, the /Prev handed on only where none is found.
++                    if (section.CutByLimit)
++                    {
++                        if (sections == 1)
++                        {
++                            return false;
++                        }
++
++                        ReportLostSection(section, naming, offset, namedFrom);
++                        break;
++                    }
++
++                    if (!TryRelocateXRefSection(offset, section, out previous, out hybrid))
++                    {
++                        if (HandsOnPrevious(section, out previous))
++                        {
++                            ReportLostSection(section, naming, offset, namedFrom);
++                        }
++                        else
++                        {
++                            if (sections == 1)
++                            {
++                                return false;
++                            }
++
++                            ReportLostSection(section, naming, offset, namedFrom);
++                            break;
++                        }
++                    }
++                }
++
++                // A cross-reference stream whose dictionary was read, and whose rows cannot be, is there: it is not looked for
++                // elsewhere, and its /Prev, read from that dictionary, names the older sections as a whole read names them
++                // (#208). The section stays unreadable, reported once, and the index incomplete for what only its rows index.
++                else if (HandsOnPrevious(section, out previous))
++                {
++                    ReportLostSection(section, naming, offset, namedFrom);
++                }
++
+                 // A section a guard cut is where it was named, and is not looked for elsewhere: what lies near it would
+                 // stand for it.
+-                if (section.CutByLimit || !TryRelocateXRefSection(offset, section, out previous, out hybrid))
++                else if (sections == 1)
++                {
++                    return false;
++                }
++                else if (section.CutByLimit || !TryRelocateXRefSection(offset, section, out previous, out hybrid))
+                 {
+                     ReportLostSection(section, naming, offset, namedFrom);
+                     break;
+@@ -3095,6 +3140,132 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
+         return _xref.Count > 0;
+     }
+ 
++    /// <summary>
++    /// Gives the offset the <c>/Prev</c> of a cross-reference stream the chain cannot read names, where its dictionary was read
++    /// as the section's and gives one: a fault in its rows, or in a value they are read with, leaves the dictionary's
++    /// <c>/Prev</c> as a whole read reads it (#208). A section a guard cut, or a hybrid file's stream, hands nothing on.
++    /// </summary>
++    private bool HandsOnPrevious(XRefSectionRecord section, out long previous)
++    {
++        previous = -1;
++
++        if (Zz208Mode == 0 || section.State != XRefSectionState.Malformed || section.CutByLimit ||
++            (section.Kind != XRefSectionKind.Stream && (section.Kind != XRefSectionKind.Table || (Zz208Mode & 8) == 0)) ||
++            section.NamedBy == "/XRefStm" || section.Trailer is not { } dictionary || dictionary.GetRaw(PdfName.Prev) is null)
++        {
++            return false;
++        }
++
++        previous = SectionOffset(dictionary, PdfName.Prev, section.Offset, out var hidden);
++        section.ChainHiddenByGuard = hidden;
++
++        if ((Zz208Mode & 4) != 0)
++        {
++            RefuseDeclared(dictionary);
++        }
++
++        return true;
++    }
++
++    /// <summary>
++    /// Variant B (probe): the numbers the unreadable stream declares — its /Index's subsections, or 0 to /Size - 1 without
++    /// one — are refused to every older section's rows, which would stand for what its rows give; every number, where the
++    /// numbering cannot be read.
++    /// </summary>
++    private void RefuseDeclared(PdfDictionary dictionary)
++    {
++        var written = dictionary.GetRaw(PdfName.Index);
++        var sizeWritten = dictionary.GetRaw(PdfName.Size);
++
++        if (written is PdfReference || sizeWritten is PdfReference)
++        {
++            _refuseAllOlder = true;
++            return;
++        }
++
++        var index = written is null or PdfNull ? null : written;
++        var size = index is null ? dictionary.GetInteger(PdfName.Size) : null;
++
++        if (NumberingFault(written, index, size, out var subsections) is not null)
++        {
++            _refuseAllOlder = true;
++            return;
++        }
++
++        long[] declared = index is null ? [0, size.GetValueOrDefault()] : subsections;
++        var ranges = _refusedRanges ?? [];
++
++        for (var i = 0; i < declared.Length; i += 2)
++        {
++            if (declared[i + 1] > 0)
++            {
++                ranges.Add((declared[i], declared[i] + declared[i + 1]));
++            }
++        }
++
++        ranges.Sort();
++        var merged = new List<(long Start, long End)>(ranges.Count);
++
++        foreach (var range in ranges)
++        {
++            if (merged.Count > 0 && range.Start <= merged[^1].End)
++            {
++                merged[^1] = (merged[^1].Start, Math.Max(merged[^1].End, range.End));
++            }
++            else
++            {
++                merged.Add(range);
++            }
++        }
++
++        _refusedRanges = merged;
++    }
++
++    /// <summary>Variant B (probe): whether an older section's row for <paramref name="number"/> is refused.</summary>
++    private bool RefusedToOlder(int number)
++    {
++        if (_refuseAllOlder)
++        {
++            return true;
++        }
++
++        if (_refusedRanges is not { Count: > 0 } ranges)
++        {
++            return false;
++        }
++
++        var low = 0;
++        var high = ranges.Count - 1;
++
++        while (low <= high)
++        {
++            var middle = (low + high) >>> 1;
++            var (start, end) = ranges[middle];
++
++            if (number < start)
++            {
++                high = middle - 1;
++            }
++            else if (number >= end)
++            {
++                low = middle + 1;
++            }
++            else
++            {
++                return true;
++            }
++        }
++
++        return false;
++    }
++
++    private List<(long Start, long End)>? _refusedRanges;
++
++    private bool _refuseAllOlder;
++
++    /// <summary>Probe switch (uncommitted): 0 main; bits 1 hands /Prev on, 2 relocation first, 4 refuses declared numbers, 8 tables, 16 first section.</summary>
++    private static readonly int Zz208Mode = int.TryParse(Environment.GetEnvironmentVariable("ZZ_208"), out var mode) ? mode : 1;
++
+     /// <summary>
+     /// Determines whether the chain read a section it named at <paramref name="offset"/>, as the file writes it: where it was
+     /// named, or near it.
+@@ -3528,6 +3699,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
+                         section.Fault ??= string.Create(
+                             CultureInfo.InvariantCulture,
+                             $"it holds {DescribeToken(token)} at offset {absolute + token.Start}, where a subsection or the trailer should start");
++                        ZzTrailerPastFault(span, token.Start, absolute, section, candidate);
+                     }
+ 
+                     return false;
+@@ -3546,6 +3718,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
+                     section.Fault ??= string.Create(
+                         CultureInfo.InvariantCulture,
+                         $"the subsection header at offset {absolute + token.Start} does not give a first object number and a count of rows");
++                    ZzTrailerPastFault(span, token.Start, absolute, section, candidate);
+                     return false;
+                 }
+ 
+@@ -3555,6 +3728,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
+                     section.Fault ??= string.Create(
+                         CultureInfo.InvariantCulture,
+                         $"the subsection header at offset {absolute + token.Start} numbers its rows past object {PdfObjectId.MaxNumber}");
++                    ZzTrailerPastFault(span, token.Start, absolute, section, candidate);
+                     return false;
+                 }
+ 
+@@ -3614,6 +3788,18 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
+         }
+     }
+ 
++    /// <summary>Variant C (probe): a table whose rows hold a fault is read on to its trailer, from the line the fault is in.</summary>
++    private void ZzTrailerPastFault(ReadOnlySpan<byte> span, int at, long absolute, XRefSectionRecord section, bool candidate)
++    {
++        if ((Zz208Mode & 8) == 0 || candidate)
++        {
++            return;
++        }
++
++        var line = span[..at].LastIndexOfAny((byte)'\r', (byte)'\n');
++        ReadTrailerPastRows(Math.Max(absolute + line + 1, absolute + section.Padding + "xref".Length), section);
++    }
++
+     /// <summary>
+     /// Finds the trailer of a classic table past the rows the reader left unread from <paramref name="from"/> on — those
+     /// <see cref="PdfReaderLimits.MaxXRefSectionLength"/> cut, or those past an index
+@@ -5325,6 +5511,11 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
+             return;
+         }
+ 
++        if ((_refusedRanges is not null || _refuseAllOlder) && !_xref.TryGet(number, out _) && RefusedToOlder(number))
++        {
++            return;
++        }
++
+         // While the index has room, a number it holds is simply not taken again: one lookup a row.
+         if (IndexHasRoom)
+         {

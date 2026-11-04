@@ -1,0 +1,88 @@
+using System.Globalization;
+using System.Text;
+using AdCodicem.Pdf.Documents;
+using AdCodicem.Pdf.Objects;
+using AdCodicem.Pdf.Validation;
+
+namespace AdCodicem.Pdf.Tests;
+
+#pragma warning disable
+
+public class ZzStage5Probe
+{
+    private static readonly StringBuilder Out = new();
+
+    private static void Dump(string title, byte[] file, int[] objects)
+    {
+        Out.Append("### ").Append(title).Append(" (").Append(file.Length).Append(" bytes)\n");
+        using (var document = PdfDocument.Open(file))
+        {
+            Out.Append("  opened: WasRepaired ").Append(document.WasRepaired).Append('\n');
+            foreach (var s in document.Reader.Structure.Sections)
+            {
+                Out.Append(CultureInfo.InvariantCulture, $"  section namedBy={s.NamedBy} named={s.NamedOffset} written={s.WrittenOffset} from={s.NamedFrom} offset={s.Offset} state={s.State} kind={s.Kind} fault={s.Fault ?? "-"} trailerFault={s.TrailerFault} highest={s.HighestNumber} padding={s.Padding}\n");
+            }
+            Out.Append(CultureInfo.InvariantCulture, $"  loop={document.Reader.Structure.LoopOffset} loopRead={document.Reader.Structure.LoopOffsetRead}\n");
+            foreach (var d in document.Diagnostics) Out.Append("  D ").Append(d).Append('\n');
+            foreach (var n in objects)
+            {
+                var value = document.GetObject(new PdfObjectId(n));
+                Out.Append(CultureInfo.InvariantCulture, $"  GetObject({n}): {value}; WasRepaired: {document.WasRepaired}\n");
+            }
+            foreach (var d in document.Diagnostics) Out.Append("  D' ").Append(d).Append('\n');
+        }
+
+        using (var document = PdfDocument.Open(file))
+        {
+            var report = new PdfValidator().Validate(document);
+            foreach (var f in report.Findings) Out.Append("  F ").Append(f).Append('\n');
+        }
+
+        Out.Append('\n');
+    }
+
+    private static byte[] Patch(byte[] file, string from, string to)
+    {
+        var text = Encoding.Latin1.GetString(file);
+        var at = text.IndexOf(from, StringComparison.Ordinal);
+        return Encoding.Latin1.GetBytes(text[..at] + to + text[(at + from.Length)..]);
+    }
+
+    [Fact]
+    public void ZzRun()
+    {
+        Out.Clear();
+        foreach (var gap in new[] { 0, 1200 })
+        {
+            foreach (var junk in new[] { "", "junk\n" })
+            {
+                Dump($"S1 gap={gap} junk={junk.Length}", NearbyFiles.MalformedTableUnderAnUpdate(gap, junk).File, [1, 2]);
+                Dump($"S2 gap={gap} junk={junk.Length}", NearbyFiles.HybridNamingAnotherObject(gap, junk).File, [3]);
+            }
+
+            Dump($"S3a gap={gap}", NearbyFiles.TableNamingNoSection(gap).File, [3]);
+        }
+
+        Dump("S3b 115/69", NearbyFiles.UpdateNamingBetweenItsTables(115, 69).File, [3, 4]);
+        Dump("S3b 115/1269", NearbyFiles.UpdateNamingBetweenItsTables(115, 1269).File, [3, 4]);
+        foreach (var gap in new[] { 0, 1200 })
+        {
+            Dump($"S4 none gap={gap}", ChainFiles.UpdateWithIndirectLength(spellingEndStream: false, gap: gap), [3, 8]);
+            Dump($"S4 W gap={gap}", Patch(ChainFiles.UpdateWithIndirectLength(spellingEndStream: false, gap: gap), "/W [1 4 2]", "/W [1 4 /]"), [3, 8]);
+            Dump($"S4 Index gap={gap}", Patch(ChainFiles.UpdateWithIndirectLength(spellingEndStream: false, gap: gap), "/Root 1 0 R", "/Index [0 ]"), [3, 8]);
+            Dump($"S4 Size gap={gap}", Patch(ChainFiles.UpdateWithIndirectLength(spellingEndStream: false, gap: gap), "/Size 9 ", "/Size/X "), [3, 8]);
+            Dump($"S6 tables gap={gap}", NearbyFiles.MalformedUpdateNearItsOriginal(false, gap).File, [1, 4]);
+            Dump($"S6 streams gap={gap}", NearbyFiles.MalformedUpdateNearItsOriginal(true, gap).File, [1, 4]);
+        }
+
+        Dump("S7 L1 update 40, original itself", NearbyFiles.UpdateNamingAroundItsOriginal(40, 0).File, [3]);
+        Dump("S7 L2 update 40, original 40", NearbyFiles.UpdateNamingAroundItsOriginal(40, 40).File, [3]);
+        Dump("S7 L3 update -1, original 40", NearbyFiles.UpdateNamingAroundItsOriginal(-1, 40).File, [3]);
+        Dump("S7 L0 update 40, original none", NearbyFiles.UpdateNamingAroundItsOriginal(40, null).File, [3]);
+        Dump("S9 font", NearbyFiles.TableNamingAnObject("<< /Type /Font /Subtype /CIDFontType2 /W [0 [500]] /BaseFont /F >>").File, [3]);
+        Dump("S9 font stream twice size", NearbyFiles.TableNamingAnObject("<< /Type /Font /W [1 -4 2] /Size 8 /Size 8 /Length 3 >>\nstream\nabc\nendstream").File, [3]);
+        Dump("S9 untyped", NearbyFiles.TableNamingAnObject("<< /Subtype /CIDFontType2 /W [0 [500]] /BaseFont /F >>").File, [3]);
+        Dump("S10", NearbyFiles.HybridNamingInsideItsStream().File, [3, 5]);
+        File.WriteAllText(Environment.GetEnvironmentVariable("ZZ_OUT") ?? "/tmp/zz-stage5.txt", Out.ToString());
+    }
+}

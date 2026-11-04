@@ -1,0 +1,71 @@
+using System.Globalization;
+using System.Text;
+using AdCodicem.Pdf.Documents;
+using AdCodicem.Pdf.IO.XRef;
+using AdCodicem.Pdf.TestSupport;
+
+namespace AdCodicem.Pdf.Tests;
+
+#pragma warning disable
+
+/// <summary>Batch 19 probe (uncommitted): every corpus document's cross-reference section records, and how often relocation fires.</summary>
+public class ZzCorpusSections
+{
+    [Fact]
+    public void ZzCorpusSectionsAll()
+    {
+        var output = new StringBuilder();
+        var documents = 0;
+        var sections = 0;
+        var relocated = 0;
+        var states = new Dictionary<string, int>();
+        var adjusted = 0;
+
+        foreach (var entry in Corpus.Documents)
+        {
+            documents++;
+            output.Append("== ").Append(entry.File).Append('\n');
+
+            try
+            {
+                var options = CorpusReadingTests.OptionsFor(entry) with { ThrowOnEncrypted = false };
+                using var document = PdfDocument.Open(Corpus.PathOf(entry.File), options);
+
+                foreach (var s in document.Reader.Structure.Sections)
+                {
+                    sections++;
+                    relocated += s.WasRelocated ? 1 : 0;
+                    var key = s.State + (s.WasRelocated ? "+moved" : string.Empty) + (s.CutByLimit ? "+cut" : string.Empty);
+                    states[key] = states.GetValueOrDefault(key) + 1;
+                    output.Append(CultureInfo.InvariantCulture, $"  S {s.NamedBy} named={s.NamedOffset} offset={s.Offset} state={s.State} kind={s.Kind} moved={s.WasRelocated} cut={s.CutByLimit} fault={s.Fault ?? "-"}\n");
+                }
+
+                foreach (var d in document.Diagnostics)
+                {
+                    if (d.Code == "xref.offset-adjusted" && d.Message.StartsWith("The cross-reference section", StringComparison.Ordinal))
+                    {
+                        adjusted++;
+                        output.Append("  D ").Append(d).Append('\n');
+                    }
+
+                    if (d.Code is "xref.chain-cycle" or "xref.section-unreadable" or "xref.section-missing")
+                    {
+                        output.Append("  D ").Append(d).Append('\n');
+                    }
+                }
+            }
+            catch (Exception exception)
+            {
+                output.Append("  THREW ").Append(exception.GetType().Name).Append(": ").Append(exception.Message).Append('\n');
+            }
+        }
+
+        output.Append(CultureInfo.InvariantCulture, $"SUMMARY documents={documents} sections={sections} relocatedRecords={relocated} sectionOffsetAdjusted={adjusted}\n");
+        foreach (var (key, count) in states.OrderBy(p => p.Key, StringComparer.Ordinal))
+        {
+            output.Append(CultureInfo.InvariantCulture, $"SUMMARY state {key}: {count}\n");
+        }
+
+        File.WriteAllText(Environment.GetEnvironmentVariable("ZZ_OUT") ?? "/tmp/zz-sections.txt", output.ToString());
+    }
+}

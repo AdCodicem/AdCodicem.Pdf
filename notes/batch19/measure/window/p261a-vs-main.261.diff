@@ -1,0 +1,232 @@
+18,21c18,21
+<   object 4: null; WasRepaired: True
+<   Repair xref.rebuilt: The cross-reference index was rebuilt by scanning the file.
+<   finding: Error xref.entry-broken at object 4 0, at offset 205: The entry of object 4 gives offset 205, where there is no object header, and the object is not within 512 bytes of it.
+<   (validation) WasRepaired: True
+---
+>   object 4: "four"; WasRepaired: False
+>   Repair xref.offset-adjusted at 203: Object 4 was found -2 bytes from where the index said.
+>   finding: Warning xref.entry-shifted at object 4 0, at offset 205: The entry of object 4 gives offset 205, where there is no object header; the object starts 2 bytes before it, at offset 203.
+>   (validation) WasRepaired: False
+23c23
+<   object 4: null; WasRepaired: True
+---
+>   object 4: "four"; WasRepaired: True
+31,34c31,34
+<   object 4: null; WasRepaired: True
+<   Repair xref.rebuilt: The cross-reference index was rebuilt by scanning the file.
+<   finding: Error xref.entry-broken at object 4 0, at offset 205: The entry of object 4 gives offset 205, where there is no object header, and the object is not within 512 bytes of it.
+<   (validation) WasRepaired: True
+---
+>   object 4: "four"; WasRepaired: False
+>   Repair xref.offset-adjusted at 203: Object 4 was found -2 bytes from where the index said.
+>   finding: Warning xref.entry-shifted at object 4 0, at offset 205: The entry of object 4 gives offset 205, where there is no object header; the object starts 2 bytes before it, at offset 203.
+>   (validation) WasRepaired: False
+36c36
+<   object 4: null; WasRepaired: True
+---
+>   object 4: "four"; WasRepaired: True
+44,47c44,47
+<   object 4: null; WasRepaired: True
+<   Repair xref.rebuilt: The cross-reference index was rebuilt by scanning the file.
+<   finding: Error xref.entry-broken at object 4 0, at offset 205: The entry of object 4 gives offset 205, where there is no object header, and the object is not within 512 bytes of it.
+<   (validation) WasRepaired: True
+---
+>   object 4: "four"; WasRepaired: False
+>   Repair xref.offset-adjusted at 203: Object 4 was found -2 bytes from where the index said.
+>   finding: Warning xref.entry-shifted at object 4 0, at offset 205: The entry of object 4 gives offset 205, where there is no object header; the object starts 2 bytes before it, at offset 203.
+>   (validation) WasRepaired: False
+49c49
+<   object 4: null; WasRepaired: True
+---
+>   object 4: "four"; WasRepaired: True
+57,60c57,60
+<   object 4: null; WasRepaired: True
+<   Repair xref.rebuilt: The cross-reference index was rebuilt by scanning the file.
+<   finding: Error xref.entry-broken at object 4 0, at offset 205: The entry of object 4 gives offset 205, where there is no object header, and the object is not within 512 bytes of it.
+<   (validation) WasRepaired: True
+---
+>   object 4: "four"; WasRepaired: False
+>   Repair xref.offset-adjusted at 203: Object 4 was found -2 bytes from where the index said.
+>   finding: Warning xref.entry-shifted at object 4 0, at offset 205: The entry of object 4 gives offset 205, where there is no object header; the object starts 2 bytes before it, at offset 203.
+>   (validation) WasRepaired: False
+62c62
+<   object 4: null; WasRepaired: True
+---
+>   object 4: "four"; WasRepaired: True
+70,73c70,73
+<   object 4: null; WasRepaired: True
+<   Repair xref.rebuilt: The cross-reference index was rebuilt by scanning the file.
+<   finding: Error xref.entry-broken at object 4 0, at offset 205: The entry of object 4 gives offset 205, where there is no object header, and the object is not within 512 bytes of it.
+<   (validation) WasRepaired: True
+---
+>   object 4: "four"; WasRepaired: False
+>   Repair xref.offset-adjusted at 203: Object 4 was found -2 bytes from where the index said.
+>   finding: Warning xref.entry-shifted at object 4 0, at offset 205: The entry of object 4 gives offset 205, where there is no object header; the object starts 2 bytes before it, at offset 203.
+>   (validation) WasRepaired: False
+75c75
+<   object 4: null; WasRepaired: True
+---
+>   object 4: "four"; WasRepaired: True
+83,86c83,86
+<   object 4: null; WasRepaired: True
+<   Repair xref.rebuilt: The cross-reference index was rebuilt by scanning the file.
+<   finding: Error xref.entry-broken at object 4 0, at offset 205: The entry of object 4 gives offset 205, where there is no object header, and the object is not within 512 bytes of it.
+<   (validation) WasRepaired: True
+---
+>   object 4: "four"; WasRepaired: False
+>   Repair xref.offset-adjusted at 203: Object 4 was found -2 bytes from where the index said.
+>   finding: Warning xref.entry-shifted at object 4 0, at offset 205: The entry of object 4 gives offset 205, where there is no object header; the object starts 2 bytes before it, at offset 203.
+>   (validation) WasRepaired: False
+88c88
+<   object 4: null; WasRepaired: True
+---
+>   object 4: "four"; WasRepaired: True
+96,99c96,99
+<   object 4: null; WasRepaired: True
+<   Repair xref.rebuilt: The cross-reference index was rebuilt by scanning the file.
+<   finding: Error xref.entry-broken at object 4 0, at offset 205: The entry of object 4 gives offset 205, where there is no object header, and the object is not within 512 bytes of it.
+<   (validation) WasRepaired: True
+---
+>   object 4: "four"; WasRepaired: False
+>   Repair xref.offset-adjusted at 203: Object 4 was found -2 bytes from where the index said.
+>   finding: Warning xref.entry-shifted at object 4 0, at offset 205: The entry of object 4 gives offset 205, where there is no object header; the object starts 2 bytes before it, at offset 203.
+>   (validation) WasRepaired: False
+101c101
+<   object 4: null; WasRepaired: True
+---
+>   object 4: "four"; WasRepaired: True
+109,112c109,112
+<   object 4: null; WasRepaired: True
+<   Repair xref.rebuilt: The cross-reference index was rebuilt by scanning the file.
+<   finding: Error xref.entry-broken at object 4 0, at offset 205: The entry of object 4 gives offset 205, where there is no object header, and the object is not within 512 bytes of it.
+<   (validation) WasRepaired: True
+---
+>   object 4: "four"; WasRepaired: False
+>   Repair xref.offset-adjusted at 203: Object 4 was found -2 bytes from where the index said.
+>   finding: Warning xref.entry-shifted at object 4 0, at offset 205: The entry of object 4 gives offset 205, where there is no object header; the object starts 2 bytes before it, at offset 203.
+>   (validation) WasRepaired: False
+114c114
+<   object 4: null; WasRepaired: True
+---
+>   object 4: "four"; WasRepaired: True
+122,125c122,125
+<   object 4: null; WasRepaired: True
+<   Repair xref.rebuilt: The cross-reference index was rebuilt by scanning the file.
+<   finding: Error xref.entry-broken at object 4 0, at offset 205: The entry of object 4 gives offset 205, where there is no object header, and the object is not within 512 bytes of it.
+<   (validation) WasRepaired: True
+---
+>   object 4: "four"; WasRepaired: False
+>   Repair xref.offset-adjusted at 203: Object 4 was found -2 bytes from where the index said.
+>   finding: Warning xref.entry-shifted at object 4 0, at offset 205: The entry of object 4 gives offset 205, where there is no object header; the object starts 2 bytes before it, at offset 203.
+>   (validation) WasRepaired: False
+127c127
+<   object 4: null; WasRepaired: True
+---
+>   object 4: "four"; WasRepaired: True
+148,151c148,151
+<   object 4: null; WasRepaired: True
+<   Repair xref.rebuilt: The cross-reference index was rebuilt by scanning the file.
+<   finding: Error xref.entry-broken at object 4 0, at offset 205: The entry of object 4 gives offset 205, where there is no object header, and the object is not within 512 bytes of it.
+<   (validation) WasRepaired: True
+---
+>   object 4: "four"; WasRepaired: False
+>   Repair xref.offset-adjusted at 203: Object 4 was found -2 bytes from where the index said.
+>   finding: Warning xref.entry-shifted at object 4 0, at offset 205: The entry of object 4 gives offset 205, where there is no object header; the object starts 2 bytes before it, at offset 203.
+>   (validation) WasRepaired: False
+153c153
+<   object 4: null; WasRepaired: True
+---
+>   object 4: "four"; WasRepaired: True
+171,174c171,174
+<   object 4: "four"; WasRepaired: False
+<   Repair xref.offset-adjusted at 210: Object 4 was found 7 bytes from where the index said.
+<   finding: Warning xref.entry-shifted at object 4 0, at offset 203: The entry of object 4 gives offset 203, where there is no object header; the object starts 7 bytes after it, at offset 210.
+<   (validation) WasRepaired: False
+---
+>   object 4: null; WasRepaired: True
+>   Repair xref.rebuilt: The cross-reference index was rebuilt by scanning the file.
+>   finding: Error xref.entry-broken at object 4 0, at offset 203: The entry of object 4 gives offset 203, where there is no object header, and the object is not within 512 bytes of it.
+>   (validation) WasRepaired: True
+176,179c176,179
+<   object 4: "four"; WasRepaired: False
+<   Repair xref.offset-adjusted at 210: Object 4 was found 5 bytes from where the index said.
+<   finding: Warning xref.entry-shifted at object 4 0, at offset 205: The entry of object 4 gives offset 205, where there is no object header; the object starts 5 bytes after it, at offset 210.
+<   (validation) WasRepaired: False
+---
+>   object 4: null; WasRepaired: True
+>   Repair xref.rebuilt: The cross-reference index was rebuilt by scanning the file.
+>   finding: Error xref.entry-broken at object 4 0, at offset 205: The entry of object 4 gives offset 205, where there is no object header, and the object is not within 512 bytes of it.
+>   (validation) WasRepaired: True
+181c181
+<   object 4: "four"; WasRepaired: True
+---
+>   object 4: null; WasRepaired: True
+202,205c202,205
+<   object 4: null; WasRepaired: True
+<   Repair xref.rebuilt: The cross-reference index was rebuilt by scanning the file.
+<   finding: Error xref.entry-broken at object 4 0, at offset 212: The entry of object 4 gives offset 212, where there is no object header, and the object is not within 512 bytes of it.
+<   (validation) WasRepaired: True
+---
+>   object 4: "four"; WasRepaired: False
+>   Repair xref.offset-adjusted at 210: Object 4 was found -2 bytes from where the index said.
+>   finding: Warning xref.entry-shifted at object 4 0, at offset 212: The entry of object 4 gives offset 212, where there is no object header; the object starts 2 bytes before it, at offset 210.
+>   (validation) WasRepaired: False
+207c207
+<   object 4: null; WasRepaired: True
+---
+>   object 4: "four"; WasRepaired: True
+215,218c215,218
+<   object 4: null; WasRepaired: True
+<   Repair xref.rebuilt: The cross-reference index was rebuilt by scanning the file.
+<   finding: Error xref.entry-broken at object 4 0, at offset 205: The entry of object 4 gives offset 205, where there is no object header, and the object is not within 512 bytes of it.
+<   (validation) WasRepaired: True
+---
+>   object 4: "four"; WasRepaired: False
+>   Repair xref.offset-adjusted at 203: Object 4 was found -2 bytes from where the index said.
+>   finding: Warning xref.entry-shifted at object 4 0, at offset 205: The entry of object 4 gives offset 205, where there is no object header; the object starts 2 bytes before it, at offset 203.
+>   (validation) WasRepaired: False
+220c220
+<   object 4: null; WasRepaired: True
+---
+>   object 4: "four"; WasRepaired: True
+236,245c236,239
+<   object 4: "four"; WasRepaired: True
+<   Repair xref.offset-adjusted at 472: The cross-reference section /Prev names at offset 227 was found 245 bytes from there.
+<   Warning xref.chain-cycle at 227: The cross-reference chain loops back on itself: the /Prev of the section at offset 472 names offset 227, which the chain has already read.
+<   Repair xref.rebuilt: The cross-reference index was rebuilt by scanning the file.
+<   Information object.redefined: Rebuilding the index met a second definition of object 3. Of each number, the definition kept is the last written directly in the file, or, for a number written only inside object streams, the first listed in the object stream read first.
+<   finding: Warning file.size-wrong at offset 501: The trailer of the cross-reference table at offset 472 gives /Size 6, where the highest object number it and the sections it updates use, 3, makes it 4.
+<   finding: Warning file.size-wrong at offset 501: The trailer of the cross-reference table at offset 472 gives /Size 6, where the highest object number it and the sections it updates use, 3, makes it 4.
+<   finding: Warning xref.section-shifted at offset 472: The cross-reference section /Prev names at offset 227 starts 245 bytes after it, at offset 472.
+<   finding: Error xref.chain-loop at offset 472: The /Prev of the cross-reference section at offset 472 names offset 227, a section the chain has already read: the chain loops.
+<   (validation) WasRepaired: True
+---
+>   object 4: "four"; WasRepaired: False
+>   Repair xref.offset-adjusted at 225: The cross-reference section /Prev names at offset 227 was found -2 bytes from there.
+>   finding: Warning xref.section-shifted at offset 225: The cross-reference section /Prev names at offset 227 starts 2 bytes before it, at offset 225.
+>   (validation) WasRepaired: False
+250,259c244,247
+<   object 4: "four"; WasRepaired: True
+<   Repair xref.offset-adjusted at 472: The cross-reference section /Prev names at offset 227 was found 245 bytes from there.
+<   Warning xref.chain-cycle at 227: The cross-reference chain loops back on itself: the /Prev of the section at offset 472 names offset 227, which the chain has already read.
+<   Repair xref.rebuilt: The cross-reference index was rebuilt by scanning the file.
+<   Information object.redefined: Rebuilding the index met a second definition of object 3. Of each number, the definition kept is the last written directly in the file, or, for a number written only inside object streams, the first listed in the object stream read first.
+<   finding: Warning file.size-wrong at offset 501: The trailer of the cross-reference table at offset 472 gives /Size 6, where the highest object number it and the sections it updates use, 3, makes it 4.
+<   finding: Warning file.size-wrong at offset 501: The trailer of the cross-reference table at offset 472 gives /Size 6, where the highest object number it and the sections it updates use, 3, makes it 4.
+<   finding: Warning xref.section-shifted at offset 472: The cross-reference section /Prev names at offset 227 starts 245 bytes after it, at offset 472.
+<   finding: Error xref.chain-loop at offset 472: The /Prev of the cross-reference section at offset 472 names offset 227, a section the chain has already read: the chain loops.
+<   (validation) WasRepaired: True
+---
+>   object 4: "four"; WasRepaired: False
+>   Repair xref.offset-adjusted at 225: The cross-reference section /Prev names at offset 227 was found -2 bytes from there.
+>   finding: Warning xref.section-shifted at offset 225: The cross-reference section /Prev names at offset 227 starts 2 bytes before it, at offset 225.
+>   (validation) WasRepaired: False
+266c254
+<   object 4: null; WasRepaired: True
+---
+>   object 4: "four"; WasRepaired: True
+271c259
+<   object 4: null; WasRepaired: True
+---
+>   object 4: "four"; WasRepaired: True

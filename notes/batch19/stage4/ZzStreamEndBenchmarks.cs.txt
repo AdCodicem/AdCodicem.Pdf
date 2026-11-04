@@ -1,0 +1,91 @@
+using System.Globalization;
+using System.Text;
+using AdCodicem.Pdf.Documents;
+using AdCodicem.Pdf.Objects;
+using BenchmarkDotNet.Attributes;
+
+namespace AdCodicem.Pdf.Benchmarks;
+
+#pragma warning disable
+
+/// <summary>Stage benchmark (uncommitted): the search for a lost endstream over 4 MB of data shaped against the header rule.</summary>
+[MemoryDiagnoser]
+public class ZzStreamEndBenchmarks
+{
+    private byte[] _document = [];
+
+    [Params("text-lines", "one-line", "comment-lines", "open-string", "comment-headers-not", "binary")]
+    public string Shape { get; set; } = "text-lines";
+
+    [GlobalSetup]
+    public void Setup()
+    {
+        const int Size = 4 * 1024 * 1024;
+        var data = Shape switch
+        {
+            // Lines of text, as content streams hold them.
+            "text-lines" => Repeat("BT /F1 12 Tf 72 712 Td (Hello, world) Tj ET\n", Size),
+
+            // One line of regular bytes, no end of line: the line each read starts in is lexed through.
+            "one-line" => new string('x', Size),
+
+            // Lines that end in a comment, each read back by an obj on the next line.
+            "comment-lines" => Repeat("% a comment of sixty bytes .............................\nobj\n", Size),
+
+            // A string opened and never closed, no end of line.
+            "open-string" => "(" + new string('a', Size - 1),
+
+            // Numbers and comments that are no header: a string between them.
+            "comment-headers-not" => Repeat("12 (x) % c\n0 obj\n", Size),
+
+            // Bytes of every value but the keywords' letters.
+            "binary" => Binary(Size),
+            _ => throw new InvalidOperationException(),
+        };
+
+        var text = new StringBuilder("%PDF-1.7\n");
+        var one = text.Length;
+        text.Append("1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n");
+        var two = text.Length;
+        text.Append("2 0 obj\n<< /Type /Pages /Kids [] /Count 0 >>\nendobj\n");
+        var three = text.Length;
+        text.Append(CultureInfo.InvariantCulture, $"3 0 obj\n<< /Length {data.Length + 1000} >>\nstream\n").Append(data).Append("\nendstream\nendobj\n");
+        var xref = text.Length;
+        text.Append(CultureInfo.InvariantCulture, $"xref\n0 4\n0000000000 65535 f \n{one:D10} 00000 n \n{two:D10} 00000 n \n{three:D10} 00000 n \n");
+        text.Append(CultureInfo.InvariantCulture, $"trailer\n<< /Size 4 /Root 1 0 R >>\nstartxref\n{xref}\n%%EOF\n");
+        _document = Encoding.Latin1.GetBytes(text.ToString());
+    }
+
+    [Benchmark(Description = "Search 4 MB for a lost endstream")]
+    public int Search()
+    {
+        using var document = PdfDocument.Open(_document);
+        return document.GetObject(new PdfObjectId(3)) is PdfStream stream ? stream.Data.Length : -1;
+    }
+
+    private static string Repeat(string line, int size)
+    {
+        var text = new StringBuilder(size + line.Length);
+
+        while (text.Length < size)
+        {
+            text.Append(line);
+        }
+
+        return text.ToString();
+    }
+
+    private static string Binary(int size)
+    {
+        var random = new Random(1729);
+        var chars = new char[size];
+
+        for (var i = 0; i < size; i++)
+        {
+            var value = random.Next(256);
+            chars[i] = value is 'o' or 'b' or 'j' or 'e' ? 'z' : (char)value;
+        }
+
+        return new string(chars);
+    }
+}

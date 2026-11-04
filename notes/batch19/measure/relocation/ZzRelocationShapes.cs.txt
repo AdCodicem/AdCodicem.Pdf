@@ -1,0 +1,323 @@
+using System.Globalization;
+using System.Text;
+using AdCodicem.Pdf.Documents;
+using AdCodicem.Pdf.Objects;
+using AdCodicem.Pdf.Validation;
+
+namespace AdCodicem.Pdf.Tests;
+
+#pragma warning disable
+
+/// <summary>Batch 19 probe (uncommitted): the relocation shapes of #188 and #281, reader and validator.</summary>
+public class ZzRelocationShapes
+{
+    private static readonly StringBuilder Out = new();
+
+    private sealed class W
+    {
+        private readonly MemoryStream _o = new();
+        public readonly Dictionary<int, long> Offsets = [];
+        public W(string version = "1.7") => T($"%PDF-{version}\n");
+        public long P => _o.Position;
+        public void T(string text) => _o.Write(Encoding.Latin1.GetBytes(text));
+        public void B(byte[] b) => _o.Write(b);
+        public void Obj(int n, string body) { Offsets[n] = P; T($"{n} 0 obj\n{body}\nendobj\n"); }
+        public void Stream(int n, string entries, byte[] data) { Offsets[n] = P; T($"{n} 0 obj\n<< {entries} >>\nstream\n"); B(data); T("\nendstream\nendobj\n"); }
+        public void Pad(int count) { if (count > 0) T("%" + new string('-', count - 2) + "\n"); }
+        public byte[] Bytes => _o.ToArray();
+    }
+
+    private static byte[] Rows(params (int T, long S, int G)[] rows)
+    {
+        var d = new List<byte>();
+        foreach (var (t, s, g) in rows) d.AddRange([(byte)t, (byte)(s >> 24), (byte)(s >> 16), (byte)(s >> 8), (byte)s, (byte)(g >> 8), (byte)g]);
+        return [.. d];
+    }
+
+    private static string Row(long offset, string kind = "n", int gen = 0) => string.Create(CultureInfo.InvariantCulture, $"{offset:D10} {gen:D5} {kind}\r\n");
+
+    private static void Dump(string title, byte[] file, int[] objects)
+    {
+        Out.Append("### ").Append(title).Append(" (").Append(file.Length).Append(" bytes)\n");
+        using (var document = PdfDocument.Open(file))
+        {
+            Out.Append("  opened: WasRepaired ").Append(document.WasRepaired).Append('\n');
+            foreach (var s in document.Reader.Structure.Sections)
+            {
+                Out.Append(CultureInfo.InvariantCulture, $"  section namedBy={s.NamedBy} named={s.NamedOffset} written={s.WrittenOffset} from={s.NamedFrom} offset={s.Offset} state={s.State} kind={s.Kind} relocated={s.WasRelocated} fault={s.Fault ?? "-"} trailerFault={s.TrailerFault} highest={s.HighestNumber}\n");
+            }
+            foreach (var d in document.Diagnostics) Out.Append("  D ").Append(d).Append('\n');
+            foreach (var n in objects)
+            {
+                var value = document.GetObject(new PdfObjectId(n));
+                Out.Append(CultureInfo.InvariantCulture, $"  GetObject({n}): {value}; WasRepaired: {document.WasRepaired}\n");
+            }
+            var count = document.Diagnostics.Count;
+            Out.Append("  diagnostics after reads: ").Append(count).Append('\n');
+            foreach (var d in document.Diagnostics) Out.Append("  D' ").Append(d).Append('\n');
+        }
+
+        using (var document = PdfDocument.Open(file))
+        {
+            var report = new PdfValidator().Validate(document);
+            foreach (var f in report.Findings) Out.Append("  F ").Append(f).Append('\n');
+        }
+
+        Out.Append('\n');
+    }
+
+    // Shape 1: a table at 110 with "/Bad 1" after its rows, and the sound table at 220 naming it by /Prev.
+    internal static byte[] Shape1(int gap = 0)
+    {
+        var w = new W();
+        w.Obj(1, "<< /Type /Catalog /Pages 2 0 R >>");
+        w.Obj(2, "<< /Type /Pages /Kids [] /Count 0 >>");
+        var older = w.P;
+        w.T("xref\n0 3\n" + Row(0, "f", 65535) + Row(w.Offsets[1]) + Row(w.Offsets[2]) + "/Bad 1\ntrailer\n<< /Size 3 /Root 1 0 R >>\n");
+        w.Pad(gap);
+        var newer = w.P;
+        w.T($"xref\n0 1\n{Row(0, "f", 65535)}trailer\n<< /Size 3 /Root 1 0 R /Prev {older} >>\nstartxref\n{newer}\n%%EOF\n");
+        return w.Bytes;
+    }
+
+    // Shape 2: a hybrid table at 216 whose /XRefStm names object 4 at 184, no cross-reference stream; object 3 indexed by nothing.
+    internal static byte[] Shape2(int gap = 0)
+    {
+        var w = new W();
+        w.Obj(1, "<< /Type /Catalog /Pages 2 0 R >>");
+        w.Obj(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>");
+        w.Obj(3, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 61 79] >>");
+        w.Obj(4, "<< /Type /Foo >>");
+        w.T("\n");
+        w.Pad(gap);
+        var table = w.P;
+        w.T("xref\n0 3\n" + Row(0, "f", 65535) + Row(w.Offsets[1]) + Row(w.Offsets[2]) + $"trailer\n<< /Size 5 /Root 1 0 R /XRefStm {w.Offsets[4]} >>\nstartxref\n{table}\n%%EOF\n");
+        return w.Bytes;
+    }
+
+    // Shape 3a: a single table at 192 whose /Prev names 100, where nothing is.
+    internal static byte[] Shape3a(int gap = 0)
+    {
+        var w = new W();
+        w.Obj(1, "<< /Type /Catalog /Pages 2 0 R >>");
+        w.Obj(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>");
+        w.Obj(3, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 79] >>");
+        w.T("\n");
+        w.Pad(gap);
+        var table = w.P;
+        w.T("xref\n0 4\n" + Row(0, "f", 65535) + Row(w.Offsets[1]) + Row(w.Offsets[2]) + Row(w.Offsets[3]) + $"trailer\n<< /Size 4 /Root 1 0 R /Prev 100 >>\nstartxref\n{table}\n%%EOF\n");
+        return w.Bytes;
+    }
+
+    // Shape 3b: an old table at 192 and a new one at 370 whose /Prev names 301.
+    internal static byte[] Shape3b(int filler = 0)
+    {
+        var w = new W();
+        w.Obj(1, "<< /Type /Catalog /Pages 2 0 R >>");
+        w.Obj(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>");
+        w.Obj(3, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 79] >>");
+        w.T("\n");
+        var old = w.P;
+        w.T("xref\n0 4\n" + Row(0, "f", 65535) + Row(w.Offsets[1]) + Row(w.Offsets[2]) + Row(w.Offsets[3]) + $"trailer\n<< /Size 4 /Root 1 0 R >>\nstartxref\n{old}\n%%EOF\n");
+        var fourAt = w.P;
+        // Object 4 sized so that the new table falls at 370.
+        var body = "(" + new string('u', (int)Math.Max(0, 370 - fourAt - "4 0 obj\n()\nendobj\n".Length)) + ")";
+        w.Obj(4, body);
+        var table = w.P;
+        w.T("xref\n4 1\n" + Row(fourAt) + $"trailer\n<< /Size 5 /Root 1 0 R /Prev 301 >>\nstartxref\n{table}\n%%EOF\n");
+        return w.Bytes;
+    }
+
+    // Shape 4 (#281): ChainFiles.UpdateWithIndirectLength(spellingEndStream: false), the older stream's dictionary patched in place.
+    internal static byte[] Shape4(string fault, int gap = 0)
+    {
+        var w = new W("1.5");
+        w.Obj(1, "<< /Type /Catalog /Pages 2 0 R >>");
+        w.Obj(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>");
+        w.Obj(3, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << >> >>");
+        w.Obj(8, "(old)");
+        var first = w.P;
+        var rows = Rows((0, 0, 65535), (1, w.Offsets[1], 0), (1, w.Offsets[2], 0), (1, w.Offsets[3], 0), (0, 0, 0), (0, 0, 0), (0, 0, 0), (1, first, 0), (1, w.Offsets[8], 0));
+        var entries = $"/Type /XRef /Size 9 /W [1 4 2] /Root 1 0 R /Length {rows.Length}";
+        entries = fault switch
+        {
+            "W" => entries.Replace("/W [1 4 2]", "/W [1 4 /]"),
+            "Size" => entries.Replace("/Size 9 ", "/Size/X "),
+            "Index" => entries.Replace("/Root 1 0 R", "/Index [0 ]"),
+            _ => entries,
+        };
+        w.Stream(7, entries, rows);
+        w.T($"startxref\n{first}\n%%EOF\n");
+        w.Pad(gap);
+        w.Obj(8, "(new)");
+        var spelled = Rows((0, 0, 0), (0, 0, 0));
+        w.Obj(4, (7 + spelled.Length + 14).ToString(CultureInfo.InvariantCulture));
+        var second = w.P;
+        var data = new List<byte>(Rows((1, w.Offsets[4], 0)));
+        data.AddRange(spelled);
+        data.AddRange(Rows((1, w.Offsets[8], 0), (1, second, 0)));
+        w.Stream(10, $"/Type /XRef /Size 11 /W [1 4 2] /Index [4 3 8 1 10 1] /Root 1 0 R /Prev {first} /Length 4 0 R", [.. data]);
+        w.T($"startxref\n{second}\n%%EOF\n");
+        return w.Bytes;
+    }
+
+    // Shape 5 (batch 6): ChainFiles.UnderAnUpdate("W", placed: false), the 1,200-byte comment cut to `keep` bytes.
+    internal static byte[] Shape5(string key, int keep)
+    {
+        var file = ChainFiles.UnderAnUpdate(key, placed: false);
+        var text = Encoding.Latin1.GetString(file);
+        var comment = "%" + new string('-', 1200) + "\n";
+        var at = text.IndexOf(comment, StringComparison.Ordinal);
+        var xref = text.IndexOf("\nxref\n", at, StringComparison.Ordinal) + 1;
+        var replacement = keep <= 0 ? string.Empty : "%" + new string('-', keep - 2) + "\n";
+        var shift = replacement.Length - comment.Length;
+        text = text[..at] + replacement + text[(at + comment.Length)..];
+        text = text.Replace($"startxref\n{xref}\n", $"startxref\n{xref + shift}\n", StringComparison.Ordinal);
+        return Encoding.Latin1.GetBytes(text);
+    }
+
+    // Shape 6 (b1 against b2): A, a sound oldest table, then object 4 and B, a table that is there and malformed before its
+    // first row (it alone indexes object 4), within 512 bytes of A; then, out of reach, C, the newest, whose /Prev names B.
+    internal static byte[] Shape6(bool streams)
+    {
+        var w = new W(streams ? "1.5" : "1.7");
+        w.Obj(1, "<< /Type /Catalog /Pages 2 0 R >>");
+        w.Obj(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>");
+        w.Obj(3, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << >> >>");
+        var a = w.P;
+        if (streams)
+        {
+            var rows = Rows((0, 0, 65535), (1, w.Offsets[1], 0), (1, w.Offsets[2], 0), (1, w.Offsets[3], 0), (1, a, 0));
+            w.Stream(5, $"/Type /XRef /Size 6 /Index [0 4 5 1] /W [1 4 2] /Root 1 0 R /Length {rows.Length}", rows);
+        }
+        else
+        {
+            w.T("xref\n0 4\n" + Row(0, "f", 65535) + Row(w.Offsets[1]) + Row(w.Offsets[2]) + Row(w.Offsets[3]) + "trailer\n<< /Size 4 /Root 1 0 R >>\n");
+        }
+
+        w.Obj(4, "(four)");
+        var b = w.P;
+        if (streams)
+        {
+            var rows = Rows((1, w.Offsets[4], 0), (1, b, 0));
+            w.Stream(6, $"/Type /XRef /Size 7 /Index [4 1 6 1] /W [1 4 /] /Root 1 0 R /Prev {a} /Length {rows.Length}", rows);
+        }
+        else
+        {
+            w.T("xref\n/Bad 1\n4 1\n" + Row(w.Offsets[4]) + $"trailer\n<< /Size 5 /Root 1 0 R /Prev {a} >>\n");
+        }
+
+        w.Pad(1200);
+        var c = w.P;
+        w.T($"xref\n0 1\n{Row(0, "f", 65535)}trailer\n<< /Size 7 /Root 1 0 R /Prev {b} >>\nstartxref\n{c}\n%%EOF\n");
+        return w.Bytes;
+    }
+
+    // Shape 7 (neighbor): A, the oldest table, names itself by /Prev; B, the newest, names by /Prev a place inside A's rows,
+    // where no section is: B's /Prev is relocated onto A, unread then, whose /Prev names A's own offset, which `visited`
+    // does not hold.
+    internal static byte[] Shape7()
+    {
+        var w = new W();
+        w.Obj(1, "<< /Type /Catalog /Pages 2 0 R >>");
+        w.Obj(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>");
+        w.Obj(3, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << >> >>");
+        var a = w.P;
+        w.T("xref\n0 4\n" + Row(0, "f", 65535) + Row(w.Offsets[1]) + Row(w.Offsets[2]) + Row(w.Offsets[3]) + $"trailer\n<< /Size 4 /Root 1 0 R /Prev {a} >>\n");
+        w.Pad(1200);
+        var b = w.P;
+        w.T($"xref\n0 1\n{Row(0, "f", 65535)}trailer\n<< /Size 4 /Root 1 0 R /Prev {a + 40} >>\nstartxref\n{b}\n%%EOF\n");
+        return w.Bytes;
+    }
+
+    // Shape 8 (neighbor): M, an old table malformed after its rows (object 4 at its old place), B, the next revision's table
+    // (object 4 again, new), then far, C, the newest, whose /Prev names a place inside M's rows, nearer M than B. The
+    // relocation tries M first and drops it, then takes B: does M's row for 4 stay in the index ahead of B's?
+    internal static byte[] Shape8()
+    {
+        var w = new W();
+        w.Obj(1, "<< /Type /Catalog /Pages 2 0 R >>");
+        w.Obj(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>");
+        w.Obj(3, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << >> >>");
+        w.Obj(4, "(old)");
+        var m = w.P;
+        w.T("xref\n0 5\n" + Row(0, "f", 65535) + Row(w.Offsets[1]) + Row(w.Offsets[2]) + Row(w.Offsets[3]) + Row(w.Offsets[4]) + "/Bad 1\ntrailer\n<< /Size 5 /Root 1 0 R >>\n");
+        w.Obj(4, "(new)");
+        var b = w.P;
+        w.T("xref\n4 1\n" + Row(w.Offsets[4]) + $"trailer\n<< /Size 5 /Root 1 0 R /Prev {m} >>\n");
+        w.Pad(1200);
+        var c = w.P;
+        w.T($"xref\n0 1\n{Row(0, "f", 65535)}trailer\n<< /Size 5 /Root 1 0 R /Prev {m + 30} >>\nstartxref\n{c}\n%%EOF\n");
+        return w.Bytes;
+    }
+
+    // Shape 9 (b2t's line): the /Prev names a CIDFont (a /W, /Type /Font), read whole, nothing that reads as a section near
+    // it; the newest table far.
+    internal static byte[] Shape9()
+    {
+        var w = new W("1.5");
+        w.Obj(1, "<< /Type /Catalog /Pages 2 0 R >>");
+        w.Obj(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>");
+        w.Obj(3, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << >> >>");
+        w.Obj(6, "<< /Type /Font /Subtype /CIDFontType2 /W [0 [500]] /BaseFont /F >>");
+        w.Pad(1200);
+        var c = w.P;
+        w.T("xref\n0 4\n" + Row(0, "f", 65535) + Row(w.Offsets[1]) + Row(w.Offsets[2]) + Row(w.Offsets[3]) + $"trailer\n<< /Size 7 /Root 1 0 R /Prev {w.Offsets[6]} >>\nstartxref\n{c}\n%%EOF\n");
+        return w.Bytes;
+    }
+
+    // Shape 10 (the hybrid branch's position): O, the oldest table (object 3), then a hybrid revision: object 5 and its
+    // cross-reference stream S (object 5 only), and its table T, which names S by /XRefStm and, by /Prev, a place inside S's
+    // data, nearer S than O. On main the /Prev lands on S, read already.
+    internal static byte[] Shape10()
+    {
+        var w = new W("1.5");
+        w.Obj(1, "<< /Type /Catalog /Pages 2 0 R >>");
+        w.Obj(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>");
+        w.Obj(3, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << >> >>");
+        var o = w.P;
+        w.T("xref\n0 4\n" + Row(0, "f", 65535) + Row(w.Offsets[1]) + Row(w.Offsets[2]) + Row(w.Offsets[3]) + "trailer\n<< /Size 4 /Root 1 0 R >>\n");
+        w.Pad(600);
+        w.Obj(5, "(only in the stream)");
+        var s = w.P;
+        var rows = Rows((1, w.Offsets[5], 0), (1, s, 0));
+        w.Stream(6, $"/Type /XRef /Size 7 /Index [5 2] /W [1 4 2] /Length {rows.Length}", rows);
+        w.Pad(1200);
+        var t = w.P;
+        w.T($"xref\n0 1\n{Row(0, "f", 65535)}trailer\n<< /Size 7 /Root 1 0 R /XRefStm {s} /Prev {s + 30} >>\nstartxref\n{t}\n%%EOF\n");
+        return w.Bytes;
+    }
+
+    [Fact]
+    public void ZzRelocationShapesAll()
+    {
+        Out.Clear();
+        Dump("S1 malformed table + sound table naming it (/Prev), adjacent", Shape1(), [1, 2]);
+        Dump("S1-control same, 1,200-byte comment between the tables", Shape1(1200), [1, 2]);
+        Dump("S2 hybrid table, /XRefStm names object 4 (no xref stream), adjacent", Shape2(), [3]);
+        Dump("S2-far same, 1,500 bytes between object 4 and the table", Shape2(1500), [3]);
+        Dump("S3a single table, /Prev 100 where nothing is", Shape3a(), [3]);
+        Dump("S3a-far same, table 1,200 bytes further", Shape3a(1200), [3]);
+        Dump("S3b old table at 192, new table at 370, /Prev 301", Shape3b(), [3, 4]);
+        foreach (var fault in new[] { "none", "W", "Index", "Size" })
+        {
+            Dump($"S4 two xref streams, older fault={fault}, adjacent", Shape4(fault), [3, 8]);
+            Dump($"S4-far two xref streams, older fault={fault}, 1,100-byte comment between", Shape4(fault, 1100), [3, 8]);
+        }
+
+        foreach (var keep in new[] { 0, 600, 1202 })
+        {
+            Dump($"S5 UnderAnUpdate(W, placed: false), comment of {keep} bytes", Shape5("W", keep), [3, 5]);
+        }
+
+        Dump("S6 tables: sound A, malformed B within reach of A, newest C far, C /Prev B", Shape6(false), [1, 4]);
+        Dump("S6 streams: sound A, malformed B (/W) within reach of A, newest table C far, C /Prev B", Shape6(true), [1, 4]);
+        Dump("S7 A names itself by /Prev; newest B's /Prev names inside A's rows, relocated onto A", Shape7(), [3]);
+        Dump("S8 C's /Prev names inside M (malformed, old object 4), nearer M than B (object 4 new)", Shape8(), [4]);
+        Dump("S1j S1 with 5 bytes of junk before the header (offsets count from the header)", [.. "junk\n"u8, .. Shape1()], [1, 2]);
+        Dump("S2j S2 with 5 bytes of junk before the header", [.. "junk\n"u8, .. Shape2()], [3]);
+        Dump("S9 /Prev names a CIDFont read whole, nothing near", Shape9(), [3]);
+        Dump("S10 hybrid T: /XRefStm S read, /Prev inside S's data, nearer S than the oldest table O", Shape10(), [3, 5]);
+        File.WriteAllText(Environment.GetEnvironmentVariable("ZZ_OUT") ?? "/tmp/zz-reloc.txt", Out.ToString());
+    }
+}

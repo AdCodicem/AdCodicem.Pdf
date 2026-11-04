@@ -1,0 +1,34 @@
+using System.Text;
+using AdCodicem.Pdf.Documents;
+using AdCodicem.Pdf.Objects;
+using AdCodicem.Pdf.Validation;
+
+namespace AdCodicem.Pdf.Tests;
+
+#pragma warning disable
+
+public class ZzStage10Probe
+{
+    [Fact]
+    public void Probe()
+    {
+        var output = new StringBuilder();
+        void Dump(string name, byte[] file, PdfReaderLimits? limits = null)
+        {
+            using var document = PdfDocument.Open(file, new PdfReaderOptions { Limits = limits ?? PdfReaderLimits.Default });
+            output.AppendLine("== " + name + " count=" + document.Reader.Index.Count);
+            foreach (var d in document.Diagnostics) output.AppendLine($"  D {d.Severity} {d.Code} @{d.Position}: {d.Message}");
+            foreach (var s in document.Reader.Structure.Sections) output.AppendLine($"  S {s.NamedBy} {s.Offset} {s.State} {s.Kind} reserved={s.ReservedRows} first={s.ReservedRow} inc={s.Incomplete} cut={s.CutByLimit}");
+            output.AppendLine("  3=" + document.GetObject(new PdfObjectId(3)) + " repaired=" + document.WasRepaired);
+            foreach (var f in new PdfValidator().Validate(document).Findings) output.AppendLine($"  F {f.Severity} {f.RuleId} @{f.Location.Position}: {f.Message}");
+        }
+
+        Dump("reservedRowFirst", ChainFiles.AloneWithIndirectLengthBeforeSpelledRows(reservedRowFirst: true));
+        Dump("X09", ReservedRowFiles.Updated(3).File);
+        Dump("X09 relocated older", ReservedRowFiles.Updated(null, olderType: 3, prevShift: 4).File);
+        Dump("read in part", ReservedRowFiles.Updated(3, more: 1, missing: 2).File);
+        Dump("hybrid", ReservedRowFiles.Hybrid().File);
+        Dump("wide", ReservedRowFiles.Updated(3, width: 9, past64Bits: true).File);
+        File.WriteAllText(Environment.GetEnvironmentVariable("ZZ_OUT") ?? "/dev/null", output.ToString());
+    }
+}

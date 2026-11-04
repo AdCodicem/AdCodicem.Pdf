@@ -1,0 +1,64 @@
+diff --git a/src/AdCodicem.Pdf/IO/PdfFileReader.cs b/src/AdCodicem.Pdf/IO/PdfFileReader.cs
+index a946dab..5386b4c 100644
+--- a/src/AdCodicem.Pdf/IO/PdfFileReader.cs
++++ b/src/AdCodicem.Pdf/IO/PdfFileReader.cs
+@@ -519,6 +519,12 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
+     /// <summary>How many places have been tried for sections of the chain that were not where it named them.</summary>
+     private int _relocationCandidatesTried;
+ 
++    /// <summary>
++    /// The positions in the file where the chain read a section, where it was named or where it was found moved: no other
++    /// section the chain names is looked for there (#188, #281).
++    /// </summary>
++    private readonly HashSet<long> _sectionsReadAt = new(SeededComparer.Instance);
++
+     /// <summary>
+     /// Whether the index may lack objects the file defines because the file is damaged: a section the chain names could not
+     /// be found or read, the chain loops, a cross-reference stream's data holds fewer rows than it declares, or a row was
+@@ -3013,14 +3019,17 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
+                 }
+ 
+                 // A section a guard cut is where it was named, and is not looked for elsewhere: what lies near it would
+-                // stand for it.
+-                if (section.CutByLimit || !TryRelocateXRefSection(offset, section, out previous, out hybrid))
++                // stand for it. So is one that is there and cannot be read — the xref keyword, or a cross-reference stream's
++                // header and dictionary —: the offset names it, and any other section near it is another (#281).
++                if (section.CutByLimit || section.State == XRefSectionState.Malformed ||
++                    !TryRelocateXRefSection(offset, section, out previous, out hybrid))
+                 {
+                     ReportLostSection(section, naming, offset, namedFrom);
+                     break;
+                 }
+             }
+ 
++            _sectionsReadAt.Add(section.Offset);
+             _olderNumberedPast |= sections > 1 && section.HighestNumber > _highestRead;
+             _highestRead = Math.Max(_highestRead, section.HighestNumber);
+ 
+@@ -3069,10 +3078,15 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
+                 _structure.Add(stream);
+ 
+                 if (TryReadXRefSection(stream.Offset, stream, out _, out _) != XRefSectionState.Read &&
+-                    (stream.CutByLimit || !TryRelocateXRefSection(hybrid, stream, out _, out _)))
++                    (stream.CutByLimit || stream.State == XRefSectionState.Malformed ||
++                        !TryRelocateXRefSection(hybrid, stream, out _, out _)))
+                 {
+                     ReportLostSection(stream, "/XRefStm", hybrid, section.Offset);
+                 }
++                else
++                {
++                    _sectionsReadAt.Add(stream.Offset);
++                }
+ 
+                 _olderNumberedPast |= sections > 1 && stream.HighestNumber > _highestRead;
+                 _highestRead = Math.Max(_highestRead, stream.HighestNumber);
+@@ -3262,7 +3276,8 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
+ 
+         foreach (var candidate in candidates)
+         {
+-            if (candidate == absolute)
++            // Where the section was named holds no section that can be read, and where the chain read one holds that one.
++            if (candidate == absolute || _sectionsReadAt.Contains(candidate))
+             {
+                 continue;
+             }

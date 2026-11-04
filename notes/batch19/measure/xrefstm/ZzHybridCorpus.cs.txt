@@ -1,0 +1,170 @@
+using System.Globalization;
+using System.Text;
+using AdCodicem.Pdf.Documents;
+using AdCodicem.Pdf.IO.XRef;
+using AdCodicem.Pdf.Objects;
+using AdCodicem.Pdf.TestSupport;
+
+namespace AdCodicem.Pdf.Tests;
+
+#pragma warning disable
+
+/// <summary>
+/// Measurement probe (uncommitted), #156: which corpus documents are hybrid, and whether any table names, through /XRefStm,
+/// a stream another table names too, or anything but a cross-reference stream.
+/// </summary>
+public class ZzHybridCorpus
+{
+    [Fact]
+    public void ZzHybridCorpusScan()
+    {
+        var output = new StringBuilder();
+        int documents = 0, committed = 0, remote = 0, hybridCommitted = 0, hybridRemote = 0, rawCommitted = 0, rawRemote = 0;
+        int shared = 0, notStream = 0, skipped = 0, self = 0;
+
+        foreach (var entry in Corpus.Documents)
+        {
+            documents++;
+            var isRemote = entry.Origin == "remote";
+            if (isRemote) remote++; else committed++;
+            var bytes = File.ReadAllBytes(Corpus.PathOf(entry.File));
+            var raw = Count(bytes, "/XRefStm"u8);
+
+            if (raw > 0)
+            {
+                if (isRemote) rawRemote++; else rawCommitted++;
+            }
+
+            try
+            {
+                var options = CorpusReadingTests.OptionsFor(entry) with { ThrowOnEncrypted = false };
+                using var document = PdfDocument.Open(Corpus.PathOf(entry.File), options);
+                var sections = document.Reader.Structure.Sections;
+                var namings = new List<string>();
+                var hybrid = false;
+
+                foreach (var section in sections)
+                {
+                    if (section.Kind != XRefSectionKind.Table || section.NamedBy == "/XRefStm" || section.Trailer is not { } trailer)
+                    {
+                        continue;
+                    }
+
+                    var value = trailer.GetRaw(PdfName.XRefStm);
+                    if (value is null)
+                    {
+                        continue;
+                    }
+
+                    hybrid = true;
+                    XRefSectionRecord? record = null;
+                    foreach (var other in sections)
+                    {
+                        if (other.NamedBy == "/XRefStm" && other.NamedFrom == section.Offset)
+                        {
+                            record = other;
+                        }
+                    }
+
+                    var written = value.AsInteger() ?? -1;
+                    string what;
+                    if (record is not null)
+                    {
+                        what = $"record kind={record.Kind} state={record.State} read@{record.Offset}";
+                        if (record.Kind != XRefSectionKind.Stream || record.State is not (XRefSectionState.Read)) notStream++;
+                    }
+                    else
+                    {
+                        // No record: the chain had visited the offset, or the value names no offset.
+                        XRefSectionRecord? visited = null;
+                        foreach (var other in sections)
+                        {
+                            if (other.WrittenOffset == written && written >= 0)
+                            {
+                                visited ??= other;
+                            }
+                        }
+
+                        what = visited is null
+                            ? "NO RECORD, no section written there"
+                            : $"NO RECORD: already visited as {visited.NamedBy} from {visited.NamedFrom} kind={visited.Kind} state={visited.State}";
+                        skipped++;
+                        if (visited is not null && visited.Kind == XRefSectionKind.Stream && visited.NamedBy == "/XRefStm") shared++;
+                        if (written >= 0 && written == section.WrittenOffset) self++;
+                    }
+
+                    namings.Add(string.Create(CultureInfo.InvariantCulture, $"table@{section.Offset} ({section.NamedBy}) /XRefStm {value} -> {what}"));
+                }
+
+                if (hybrid)
+                {
+                    if (isRemote) hybridRemote++; else hybridCommitted++;
+                    output.Append(CultureInfo.InvariantCulture, $"== {entry.File} [{entry.Origin}] sections={sections.Count} raw/XRefStm={raw}\n");
+                    foreach (var naming in namings)
+                    {
+                        output.Append("   ").Append(naming).Append('\n');
+                    }
+                }
+                else if (raw > 0)
+                {
+                    output.Append(CultureInfo.InvariantCulture, $"== {entry.File} [{entry.Origin}] RAW /XRefStm x{raw} but no table of the chain names one; sections={sections.Count}\n");
+                    foreach (var section in sections)
+                    {
+                        output.Append(CultureInfo.InvariantCulture, $"   {section.NamedBy} {section.Kind} {section.State} @{section.Offset}\n");
+                    }
+                }
+            }
+            catch (Exception exception)
+            {
+                output.Append("== ").Append(entry.File).Append(" THREW ").Append(exception.GetType().Name).Append(": ").Append(exception.Message).Append('\n');
+            }
+        }
+
+        output.Append(CultureInfo.InvariantCulture,
+            $"\nSUMMARY documents={documents} committed={committed} remote={remote}\n" +
+            $"  hybrid (a table of the chain names /XRefStm): committed={hybridCommitted} remote={hybridRemote}\n" +
+            $"  files whose bytes hold /XRefStm: committed={rawCommitted} remote={rawRemote}\n" +
+            $"  namings with no record (skipped as visited)={skipped}, of which a stream another /XRefStm named={shared}, naming the table itself={self}\n" +
+            $"  namings whose record is no stream read where named={notStream}\n");
+        File.WriteAllText(Environment.GetEnvironmentVariable("ZZ_HYBRID_OUT") ?? "/tmp/zz-hybrid.txt", output.ToString());
+    }
+
+    [Fact]
+    public void ZzSharedStreamRecords()
+    {
+        var output = new StringBuilder();
+
+        foreach (var file in new[] { "vendor/opf-format-corpus/pdfmaker7-powerpoint-va-cancer-database-course.pdf", "remote/opf-format-corpus/jhove-hul-122-word-dissertation.pdf" })
+        {
+            output.Append("== ").Append(file).Append('\n');
+            using var document = PdfDocument.Open(Corpus.PathOf(file));
+
+            foreach (var section in document.Reader.Structure.Sections)
+            {
+                output.Append(CultureInfo.InvariantCulture,
+                    $"  {section.NamedBy,-9} from={section.NamedFrom} read@{section.Offset} kind={section.Kind} state={section.State} highest={section.HighestNumber} /Size={section.Trailer?.GetRaw(PdfName.Size)} namingTable/Size={section.NamingTrailer?.GetRaw(PdfName.Size)}\n");
+            }
+
+            foreach (var finding in new AdCodicem.Pdf.Validation.PdfValidator().Validate(document).Findings)
+            {
+                output.Append("  F ").Append(finding).Append('\n');
+            }
+        }
+
+        File.WriteAllText(Environment.GetEnvironmentVariable("ZZ_SHARED_OUT") ?? "/tmp/zz-shared.txt", output.ToString());
+    }
+
+    private static int Count(byte[] bytes, ReadOnlySpan<byte> needle)
+    {
+        var count = 0;
+        var span = bytes.AsSpan();
+        int index;
+        while ((index = span.IndexOf(needle)) >= 0)
+        {
+            count++;
+            span = span[(index + needle.Length)..];
+        }
+
+        return count;
+    }
+}

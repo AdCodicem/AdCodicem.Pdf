@@ -1,0 +1,33 @@
+diff --git a/tests/AdCodicem.Pdf.Tests/ReaderTimingTests.cs b/tests/AdCodicem.Pdf.Tests/ReaderTimingTests.cs
+index 5545eda..6050070 100644
+--- a/tests/AdCodicem.Pdf.Tests/ReaderTimingTests.cs
++++ b/tests/AdCodicem.Pdf.Tests/ReaderTimingTests.cs
+@@ -131,10 +131,17 @@ public class ReaderTimingTests
+         // One object stream of many members, each placed by the index: the probe finds each in the header through a lookup
+         // built once, and each member written as a stream by a search of those it found, not by scanning the header for
+         // each — four times the members take about four times as long, where a scan would take sixteen. The probe alone is
+-        // timed, the documents opened and settled before, and each probed once first; each run starts from a collected heap,
+-        // so that the findings of a run before it, one for each member, are not collected inside the next.
++        // timed, the documents opened and settled before, and each probed once first; each run starts from a collected heap.
++        // The probe is given the room a validation gives it by default, and writes that many findings, counting the rest
++        // (#317). Given room for every finding, it kept one for each member, 63 MB for the large stream, and every large
++        // probe met five collections or seven that copied them, a full one among them, where the small probe met one: the
++        // ratio was 3.3 to 8.2 alone, up to 11.3 under four busy loops, and passed 8 in CI three times in some three hundred
++        // runs. Given 1,000, the probes of a stream whose every index is wrong meet no collection, and the two rows that
++        // write findings measured 2.2 to 6.1 in 162 runs, on .NET 10 and 11, alone, under coverage, under load and in the
++        // suite; a scan of the header for each member still takes 14 to 20 times as long.
+         const int Small = 50_000;
+         const int Large = 4 * Small;
++        const int Room = 1000;
+         using var small = PdfDocument.Open(Packed(Small, shape));
+         using var large = PdfDocument.Open(Packed(Large, shape));
+         small.Reader.SettleIndex();
+@@ -173,7 +180,7 @@ public class ReaderTimingTests
+ 
+         static void Probe(PdfDocument document)
+         {
+-            var probe = CrossReferenceProbe.Run(document);
++            var probe = CrossReferenceProbe.Run(document, Room);
+             (probe.Broken.Total + probe.Shifted.Total + probe.BrokenObjectStreams.Count).Should().BePositive();
+         }
+     }

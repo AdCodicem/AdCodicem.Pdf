@@ -1,0 +1,322 @@
+using System.Diagnostics;
+using System.Globalization;
+using System.Text;
+using AdCodicem.Pdf.Documents;
+using AdCodicem.Pdf.Validation;
+
+namespace AdCodicem.Pdf.Tests;
+
+/// <summary>
+/// Probe for #317: replays ReaderTimingTests.The_validator_judges_an_object_stream_s_members_in_linear_time, row for row,
+/// and records every run: its time, what it allocated on the test's thread, and the collections that fell inside it. The
+/// first five turns are the test as it stands; the turns past them are BestOfEach's (on until neither improves for three
+/// turns, at most forty, or twenty seconds). Lines go to ZZ317_OUT (summary) and ZZ317_RAW (each run).
+/// </summary>
+[Collection(TimingCollection.Name)]
+public class ZzFlaky317
+{
+    [Theory]
+    [InlineData("a header broken before its last member")]
+    [InlineData("members written as streams")]
+    [InlineData("an index wrong for every member")]
+    public void ZzFlaky317Probe(string shape) =>
+        Measure(shape, int.TryParse(Environment.GetEnvironmentVariable("ZZ317_ROOM"), out var r) ? r : int.MaxValue, string.Empty);
+
+    /// <summary>The same, the probe given the room a validation gives it by default, when ZZ317_BOTH is set.</summary>
+    [Theory]
+    [InlineData("a header broken before its last member")]
+    [InlineData("members written as streams")]
+    [InlineData("an index wrong for every member")]
+    public void ZzFlaky317ProbeRoom(string shape)
+    {
+        if (Environment.GetEnvironmentVariable("ZZ317_BOTH") == "1")
+        {
+            Measure(shape, 1000, "-room1000");
+        }
+    }
+
+    /// <summary>What a probe of each size keeps once it returns, in each room, when ZZ317_KEPT is set.</summary>
+    [Theory]
+    [InlineData("members written as streams")]
+    [InlineData("an index wrong for every member")]
+    public void ZzKept317(string shape)
+    {
+        if (Environment.GetEnvironmentVariable("ZZ317_KEPT") != "1")
+        {
+            return;
+        }
+
+        var outPath = Environment.GetEnvironmentVariable("ZZ317_OUT") ?? "/tmp/zz317.txt";
+        var line = new StringBuilder(shape);
+
+        foreach (var members in new[] { 50_000, 200_000 })
+        {
+            using var document = PdfDocument.Open(Packed(members, shape));
+            document.Reader.SettleIndex();
+            _ = CrossReferenceProbe.Run(document);
+
+            foreach (var room in new[] { int.MaxValue, 1000 })
+            {
+                var before = GC.GetTotalMemory(forceFullCollection: true);
+                var probe = CrossReferenceProbe.Run(document, room);
+                var after = GC.GetTotalMemory(forceFullCollection: true);
+                GC.KeepAlive(probe);
+                line.Append(CultureInfo.InvariantCulture, $"\tmembers={members} room={room} kept={after - before}");
+            }
+        }
+
+        File.AppendAllText(outPath, line + "\n");
+    }
+
+    private static void Measure(string shape, int room, string suffix)
+    {
+        var only = Environment.GetEnvironmentVariable("ZZ317_ROW");
+
+        if (!string.IsNullOrEmpty(only) && !shape.StartsWith(only, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        var tag = (Environment.GetEnvironmentVariable("ZZ317_TAG") ?? "untagged") + suffix;
+        var outPath = Environment.GetEnvironmentVariable("ZZ317_OUT") ?? "/tmp/zz317.txt";
+        var rawPath = Environment.GetEnvironmentVariable("ZZ317_RAW") ?? "/tmp/zz317.raw.txt";
+        var maxTurns = int.TryParse(Environment.GetEnvironmentVariable("ZZ317_MAXTURNS"), out var m) ? m : 40;
+        var noGc = long.TryParse(Environment.GetEnvironmentVariable("ZZ317_NOGC"), out var n) ? n : 0L;
+        var whole = Stopwatch.StartNew();
+
+        // A heap such as the suite's leaves before the timing collection: that many megabytes of live objects, half in
+        // arrays of 64 KB, half in small strings.
+        var ballastMb = int.TryParse(Environment.GetEnvironmentVariable("ZZ317_BALLAST_MB"), out var b) ? b : 0;
+        var ballast = new List<byte[]>();
+
+        for (var i = 0; i < ballastMb * 8; i++)
+        {
+            ballast.Add(new byte[(64 * 1024) - 64]);
+        }
+
+        var ballastObjects = new List<object>();
+
+        for (var i = 0; i < ballastMb * 2048; i++)
+        {
+            ballastObjects.Add(new string('x', 100));
+        }
+
+        const int Small = 50_000;
+        const int Large = 4 * Small;
+        using var small = PdfDocument.Open(Packed(Small, shape));
+        using var large = PdfDocument.Open(Packed(Large, shape));
+        small.Reader.SettleIndex();
+        large.Reader.SettleIndex();
+
+        Probe(small, room);
+        Probe(large, room);
+        var setup = whole.Elapsed;
+
+        var runs = new List<(Run Small, Run Large)>();
+        var bestSmall = TimeSpan.MaxValue;
+        var bestLarge = TimeSpan.MaxValue;
+        var steady = 0;
+        var spent = Stopwatch.StartNew();
+        TimeSpan best5Small = default, best5Large = default, spent5 = default;
+        var bestNpSmall = TimeSpan.MaxValue;
+        var bestNpLarge = TimeSpan.MaxValue;
+        TimeSpan bestNp5Small = default, bestNp5Large = default;
+        var turns = 0;
+
+        for (var turn = 0; turn < 5 || (steady < 3 && turn < maxTurns && spent.Elapsed < TimeSpan.FromSeconds(20)); turn++)
+        {
+            var s = Time(() => Probe(small, room), noGc);
+            var l = Time(() => Probe(large, room), noGc);
+            runs.Add((s, l));
+            steady = s.Elapsed < bestSmall || l.Elapsed < bestLarge ? 0 : steady + 1;
+            bestSmall = s.Elapsed < bestSmall ? s.Elapsed : bestSmall;
+            bestLarge = l.Elapsed < bestLarge ? l.Elapsed : bestLarge;
+            bestNpSmall = s.Elapsed - s.Pause < bestNpSmall ? s.Elapsed - s.Pause : bestNpSmall;
+            bestNpLarge = l.Elapsed - l.Pause < bestNpLarge ? l.Elapsed - l.Pause : bestNpLarge;
+            turns = turn + 1;
+
+            if (turn == 4)
+            {
+                best5Small = bestSmall;
+                best5Large = bestLarge;
+                spent5 = spent.Elapsed;
+                bestNp5Small = bestNpSmall;
+                bestNp5Large = bestNpLarge;
+            }
+        }
+
+        var spentAll = spent.Elapsed;
+        var row = shape switch
+        {
+            "a header broken before its last member" => "broken",
+            "members written as streams" => "streams",
+            _ => "wrong-index",
+        };
+
+        var runtime = System.Runtime.InteropServices.RuntimeInformation.FrameworkDescription;
+        var gcinfo = GC.GetGCMemoryInfo();
+        var line = string.Create(
+            CultureInfo.InvariantCulture,
+            $"{tag}\t{row}\t{runtime}\tr5={best5Large.TotalMilliseconds / best5Small.TotalMilliseconds:0.00}\tsmall5={best5Small.TotalMilliseconds:0.00}\tlarge5={best5Large.TotalMilliseconds:0.00}\tspent5={spent5.TotalMilliseconds:0}\trNoPause5={bestNp5Large.TotalMilliseconds / bestNp5Small.TotalMilliseconds:0.00}\tnp5S={bestNp5Small.TotalMilliseconds:0.00}\tnp5L={bestNp5Large.TotalMilliseconds:0.00}\trNoPauseB={bestNpLarge.TotalMilliseconds / bestNpSmall.TotalMilliseconds:0.00}\trBoE={bestLarge.TotalMilliseconds / bestSmall.TotalMilliseconds:0.00}\tsmallB={bestSmall.TotalMilliseconds:0.00}\tlargeB={bestLarge.TotalMilliseconds:0.00}\tturns={turns}\tspentB={spentAll.TotalMilliseconds:0}\tsetup={setup.TotalMilliseconds:0}\tallocS={runs[0].Small.Allocated}\tallocL={runs[0].Large.Allocated}\trAlloc={(double)runs[0].Large.Allocated / runs[0].Small.Allocated:0.000}\tallocSmin={Min(runs, true)}\tallocSmax={Max(runs, true)}\tallocLmin={Min(runs, false)}\tallocLmax={Max(runs, false)}\tgcL={Gcs(runs, false)}\tgcS={Gcs(runs, true)}\tserver={System.Runtime.GCSettings.IsServerGC}\tlatency={System.Runtime.GCSettings.LatencyMode}\tcpus={Environment.ProcessorCount}\theapMB={gcinfo.HeapSizeBytes / 1048576}\troom={room}\tnoGc={noGc}\tnoGcEntered={NoGcEntered}\tballastMb={ballastMb}");
+        File.AppendAllText(outPath, line + "\n");
+
+        var raw = new StringBuilder();
+
+        for (var i = 0; i < runs.Count; i++)
+        {
+            var (s, l) = runs[i];
+            raw.Append(CultureInfo.InvariantCulture, $"{tag}\t{row}\t{i}\t{s.Elapsed.TotalMilliseconds:0.00}\t{l.Elapsed.TotalMilliseconds:0.00}\t{s.Gen0}/{s.Gen1}/{s.Gen2}\t{l.Gen0}/{l.Gen1}/{l.Gen2}\t{s.Allocated}\t{l.Allocated}\t{s.Pause.TotalMilliseconds:0.00}\t{l.Pause.TotalMilliseconds:0.00}\n");
+        }
+
+        File.AppendAllText(rawPath, raw.ToString());
+        GC.KeepAlive(ballast);
+        GC.KeepAlive(ballastObjects);
+
+        static long Min(List<(Run Small, Run Large)> runs, bool smallOne)
+        {
+            var min = long.MaxValue;
+
+            foreach (var (s, l) in runs)
+            {
+                min = Math.Min(min, smallOne ? s.Allocated : l.Allocated);
+            }
+
+            return min;
+        }
+
+        static long Max(List<(Run Small, Run Large)> runs, bool smallOne)
+        {
+            var max = long.MinValue;
+
+            foreach (var (s, l) in runs)
+            {
+                max = Math.Max(max, smallOne ? s.Allocated : l.Allocated);
+            }
+
+            return max;
+        }
+
+        static string Gcs(List<(Run Small, Run Large)> runs, bool smallOne)
+        {
+            var text = new StringBuilder();
+
+            foreach (var (s, l) in runs)
+            {
+                var r = smallOne ? s : l;
+                text.Append(CultureInfo.InvariantCulture, $"{r.Gen0}{r.Gen1}{r.Gen2},");
+            }
+
+            return text.ToString();
+        }
+
+        static Run Time(Action action, long noGc)
+        {
+            GC.Collect();
+            GC.WaitForPendingFinalizers();
+            GC.Collect();
+            var inRegion = noGc > 0 && GC.TryStartNoGCRegion(noGc);
+            NoGcEntered |= inRegion;
+            var paused = GC.GetTotalPauseDuration();
+            var g0 = GC.CollectionCount(0);
+            var g1 = GC.CollectionCount(1);
+            var g2 = GC.CollectionCount(2);
+            var allocated = GC.GetAllocatedBytesForCurrentThread();
+            var stopwatch = Stopwatch.StartNew();
+            action();
+            var elapsed = stopwatch.Elapsed;
+            var after = GC.GetAllocatedBytesForCurrentThread();
+            var run = new Run(elapsed, after - allocated, GC.CollectionCount(0) - g0, GC.CollectionCount(1) - g1, GC.CollectionCount(2) - g2, GC.GetTotalPauseDuration() - paused);
+
+            if (inRegion && System.Runtime.GCSettings.LatencyMode == System.Runtime.GCLatencyMode.NoGCRegion)
+            {
+                GC.EndNoGCRegion();
+            }
+
+            return run;
+        }
+
+        static void Probe(PdfDocument document, int room)
+        {
+            var probe = CrossReferenceProbe.Run(document, room);
+            (probe.Broken.Total + probe.Shifted.Total + probe.BrokenObjectStreams.Count).Should().BePositive();
+        }
+    }
+
+    private static bool NoGcEntered { get; set; }
+
+    private readonly record struct Run(TimeSpan Elapsed, long Allocated, int Gen0, int Gen1, int Gen2, TimeSpan Pause);
+
+    private static byte[] Packed(int members, string shape)
+    {
+        using var output = new MemoryStream();
+        var offsets = new Dictionary<int, long>();
+        void Write(string text) => output.Write(Encoding.ASCII.GetBytes(text));
+
+        void WriteObject(int number, string body)
+        {
+            offsets[number] = output.Position;
+            Write(string.Create(CultureInfo.InvariantCulture, $"{number} 0 obj\n{body}\nendobj\n"));
+        }
+
+        Write("%PDF-1.5\n");
+        WriteObject(1, "<< /Type /Catalog /Pages 2 0 R >>");
+        WriteObject(2, "<< /Type /Pages /Kids [] /Count 0 >>");
+
+        var member = shape == "members written as streams" ? "<<>>stream\n" : "1\n";
+        var header = new StringBuilder();
+
+        var broken = shape == "a header broken before its last member";
+
+        for (var index = 0; index < (broken ? members - 1 : members); index++)
+        {
+            header.Append(CultureInfo.InvariantCulture, $"{4 + index} {index * member.Length} ");
+        }
+
+        if (broken)
+        {
+            header.Append("999 0 ");
+        }
+
+        var declared = members;
+
+        var data = header + string.Concat(Enumerable.Repeat(member, members));
+        WriteObject(3, string.Create(CultureInfo.InvariantCulture, $"<< /Type /ObjStm /N {declared} /First {header.Length} /Length {data.Length} >>\nstream\n{data}\nendstream"));
+
+        var xref = 4 + members;
+        var xrefOffset = output.Position;
+        offsets[xref] = xrefOffset;
+        var rows = new byte[(xref + 1) * 9];
+
+        for (var number = 0; number <= xref; number++)
+        {
+            var row = rows.AsSpan(number * 9, 9);
+
+            if (offsets.TryGetValue(number, out var offset))
+            {
+                row[0] = 1;
+                Put(row[1..5], offset);
+            }
+            else if (number >= 4)
+            {
+                var index = number - 4;
+                row[0] = 2;
+                Put(row[1..5], 3);
+                Put(row[5..9], shape == "an index wrong for every member" ? (index + 1) % members : index);
+            }
+        }
+
+        Write(string.Create(CultureInfo.InvariantCulture, $"{xref} 0 obj\n<< /Type /XRef /Size {xref + 1} /W [1 4 4] /Root 1 0 R /Length {rows.Length} >>\nstream\n"));
+        output.Write(rows);
+        Write(string.Create(CultureInfo.InvariantCulture, $"\nendstream\nendobj\nstartxref\n{xrefOffset}\n%%EOF\n"));
+        return output.ToArray();
+
+        static void Put(Span<byte> field, long value)
+        {
+            for (var i = field.Length - 1; i >= 0; i--)
+            {
+                field[i] = (byte)value;
+                value >>= 8;
+            }
+        }
+    }
+}

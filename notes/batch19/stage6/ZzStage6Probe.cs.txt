@@ -1,0 +1,93 @@
+using System.Globalization;
+using System.Text;
+using AdCodicem.Pdf.Documents;
+using AdCodicem.Pdf.Objects;
+using AdCodicem.Pdf.Validation;
+
+namespace AdCodicem.Pdf.Tests;
+
+#pragma warning disable
+
+public class ZzStage6Probe
+{
+    private static readonly StringBuilder Out = new();
+
+    private static void Dump(string title, (byte[] File, long Oldest, long Stream, long Newest) built, PdfReaderOptions? options = null, int[]? numbers = null)
+    {
+        options ??= new PdfReaderOptions();
+        Out.Append("### ").Append(title).Append(CultureInfo.InvariantCulture, $" (oldest {built.Oldest}, stream {built.Stream}, newest {built.Newest})\n");
+        try
+        {
+            using (var document = PdfDocument.Open(built.File, options))
+            {
+                Out.Append("  opened: WasRepaired ").Append(document.WasRepaired).Append('\n');
+                foreach (var s in document.Reader.Structure.Sections)
+                {
+                    Out.Append(CultureInfo.InvariantCulture, $"  section namedBy={s.NamedBy} named={s.NamedOffset} offset={s.Offset} state={s.State} handed={s.PreviousHandedOn} cut={s.CutByLimit} hidden={s.ChainHiddenByGuard ?? "-"} fault={s.Fault ?? "-"}\n");
+                }
+
+                foreach (var d in document.Diagnostics) Out.Append("  D ").Append(d).Append('\n');
+                Out.Append("  chain index: ").Append(string.Join(",", (document.Reader.ChainIndex?.CopyNumbers() ?? []).Order())).Append('\n');
+            }
+
+            foreach (var n in numbers ?? [3, 4, 7, 8, 6])
+            {
+                using var document = PdfDocument.Open(built.File, options);
+                var value = document.GetObject(new PdfObjectId(n));
+                Out.Append(CultureInfo.InvariantCulture, $"  GetObject({n}): {value}; WasRepaired: {document.WasRepaired}\n");
+            }
+
+            using (var document = PdfDocument.Open(built.File, options))
+            {
+                var report = new PdfValidator().Validate(document);
+                foreach (var f in report.Findings) Out.Append("  F ").Append(f).Append('\n');
+            }
+        }
+        catch (Exception exception)
+        {
+            Out.Append("  THREW ").Append(exception.GetType().Name).Append(": ").Append(exception.Message).Append('\n');
+        }
+
+        Out.Append('\n');
+    }
+
+    [Fact]
+    public void ZzRun()
+    {
+        Out.Clear();
+        var u = LostStreamFiles.Unreadable;
+        Dump("sound", LostStreamFiles.ThreeRevisions(u.Replace("/W [1 -4 2]", "/W [1 4 2]")));
+        Dump("W1", LostStreamFiles.ThreeRevisions());
+        Dump("W2", LostStreamFiles.ThreeRevisions(u.Replace("/W [1 -4 2]", "/W [1 4]")));
+        Dump("X /Index /X", LostStreamFiles.ThreeRevisions(u.Replace("/Index [4 2 7 1]", "/Index /X")));
+        Dump("X /Index 9 0 R", LostStreamFiles.ThreeRevisions(u.Replace("/Index [4 2 7 1]", "/Index 9 0 R"), nine: "[4 2 7 1]"));
+        Dump("X /Size 9 0 R", LostStreamFiles.ThreeRevisions(u.Replace("/Size 10 /Index [4 2 7 1]", "/Size 9 0 R"), nine: "10"));
+        Dump("X element", LostStreamFiles.ThreeRevisions(u.Replace("/Index [4 2 7 1]", "/Index [4 2 7 9 0 R]"), nine: "1"));
+        Dump("X numbering own fault", LostStreamFiles.ThreeRevisions(u.Replace("/Index [4 2 7 1]", "/Index [4 -1 7 1]").Replace("/W [1 -4 2]", "/W [1 4 2]")));
+        Dump("N /Size 8", LostStreamFiles.ThreeRevisions(u.Replace("/Size 10 /Index [4 2 7 1]", "/Size 8")));
+        Dump("N /Size 0", LostStreamFiles.ThreeRevisions(u.Replace("/Size 10 /Index [4 2 7 1]", "/Size 0")));
+        Dump("P8 no prev", LostStreamFiles.ThreeRevisions(prev: ""));
+        Dump("D7 no data", LostStreamFiles.ThreeRevisions(data: false));
+        Dump("P6 untyped", LostStreamFiles.ThreeRevisions(u.Replace("/Type /XRef ", "")));
+        Dump("P5 /Type /Foo", LostStreamFiles.ThreeRevisions(u.Replace("/Type /XRef", "/Type /Foo")));
+        var oldest = LostStreamFiles.ThreeRevisions().Oldest;
+        Dump("R +3", LostStreamFiles.ThreeRevisions(prev: (oldest + 3).ToString(CultureInfo.InvariantCulture)));
+        Dump("R -3", LostStreamFiles.ThreeRevisions(prev: (oldest - 3).ToString(CultureInfo.InvariantCulture)));
+        Dump("loop self", LostStreamFiles.ThreeRevisions(prev: "{stream}"));
+        var newest = LostStreamFiles.ThreeRevisions(prev: "{stream}").Newest;
+        Dump("loop newest", LostStreamFiles.ThreeRevisions(prev: newest.ToString(CultureInfo.InvariantCulture)));
+        Dump("count guard 2", LostStreamFiles.ThreeRevisions(), new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxXRefSectionCount = 2 } });
+        Dump("P9 real", LostStreamFiles.ThreeRevisions(prev: "{oldest}.0"));
+        Dump("P /X", LostStreamFiles.ThreeRevisions(prev: "/X"));
+        Dump("P 99 0 R", LostStreamFiles.ThreeRevisions(prev: "99 0 R"));
+        Dump("P 9 0 R readable", LostStreamFiles.ThreeRevisions(prev: "9 0 R", nine: oldest.ToString(CultureInfo.InvariantCulture)));
+        var objectGuard = new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxObjectLength = 1024 } };
+        Dump("G4 prev 9 0 R cut", LostStreamFiles.ThreeRevisions(prev: "9 0 R", nine: "%" + new string('-', 2000) + "\n" + oldest.ToString(CultureInfo.InvariantCulture)), objectGuard);
+        Dump("G3 /W 9 0 R cut", LostStreamFiles.ThreeRevisions(u.Replace("/W [1 -4 2]", "/W 9 0 R"), nine: "%" + new string('-', 2000) + "\n[1 4 2]"), objectGuard);
+        Dump("shift 3", LostStreamFiles.ThreeRevisions(shift: 2));
+        Dump("near before (R2)", LostStreamFiles.ThreeRevisions(before: 2));
+        Dump("near after (R1)", LostStreamFiles.ThreeRevisions(after: 100));
+
+        File.WriteAllText("/tmp/claude-0/-home-user-AdCodicem-Pdf/b5ddd9fc-0507-5e11-8a94-c9e1fedd4860/scratchpad/lot19/stage6/probe.txt", Out.ToString());
+    }
+}

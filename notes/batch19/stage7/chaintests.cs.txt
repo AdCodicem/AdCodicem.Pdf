@@ -1,0 +1,346 @@
+    [Fact]
+    public void A_table_prev_names_that_the_end_of_the_file_cuts_after_a_row_is_reported_once_its_rows_kept_and_what_its_trailer_named_found_by_a_rebuild()
+    {
+        // The update names through /Prev a table the end of the file cuts after object 3's row: its trailer, which would have
+        // named the older table that indexes object 4, is lost. It read as sound, in silence, and object 4 as null (#207). The
+        // table is kept, read only in part, reported once: object 3 is read through its row with no rebuild, and object 4,
+        // which only what the cut took leads to, by rebuilding the index.
+        var file = PdfTemplate.Build(PartialFiles.CutUpdate());
+        var cut = PdfTemplate.OffsetOf(file, "\nxref\n", 3) + 1;
+
+        using var document = PdfDocument.Open(file);
+
+        var report = document.Diagnostics.Should().ContainSingle().Which;
+        report.Code.Should().Be(PdfDiagnosticCodes.XRefSectionUnreadable);
+        report.Severity.Should().Be(PdfDiagnosticSeverity.Warning);
+        report.Position.Should().Be(cut);
+        report.Message.Should().Be(string.Create(
+            CultureInfo.InvariantCulture,
+            $"The cross-reference table /Prev names at offset {cut} was read only in part: the file ends before its trailer; the rows read were kept, and what only the rest of the table, or the sections its trailer would name, index is looked for by rebuilding the index."));
+
+        var section = document.Reader.Structure.Sections[^1];
+        section.Offset.Should().Be(cut);
+        section.State.Should().Be(XRefSectionState.Read);
+        section.Incomplete.Should().BeTrue();
+        section.TrailerFault.Should().Be(XRefTrailerFault.Missing);
+        Text(document, 3).Should().Be("object 3");
+        document.WasRepaired.Should().BeFalse("the cut table's row places object 3");
+        Text(document, 4).Should().Be("object 4");
+        document.WasRepaired.Should().BeTrue();
+        document.Diagnostics.Select(d => d.Code).Should().Equal(PdfDiagnosticCodes.XRefSectionUnreadable, PdfDiagnosticCodes.XRefRebuilt);
+    }
+
+    [Fact]
+    public void The_table_startxref_names_that_the_end_of_the_file_cuts_after_a_row_is_kept_and_nothing_rebuilt_at_opening()
+    {
+        // The section startxref names is judged by its own rows, as one /Prev names: it read the catalog's, and is kept, read
+        // only in part, its trailer lost; the catalog, which no trailer then names, is found among the objects it indexes.
+        // Object 4, which only an older table nothing names indexes, is found by rebuilding the index when it is asked for,
+        // not at opening (#207).
+        var file = PdfTemplate.Build(PartialFiles.CutFirst);
+        var cut = PdfTemplate.OffsetOf(file, "\nxref\n", 2) + 1;
+
+        using var document = PdfDocument.Open(file);
+
+        document.Diagnostics.Select(d => d.Code).Should().Equal(PdfDiagnosticCodes.XRefSectionUnreadable, PdfDiagnosticCodes.TrailerRootRecovered);
+        document.Diagnostics[0].Message.Should().StartWith(string.Create(
+            CultureInfo.InvariantCulture,
+            $"The cross-reference table startxref names at offset {cut} was read only in part: the file ends before its trailer;"));
+        document.WasRepaired.Should().BeFalse();
+        Text(document, 3).Should().Be("object 3");
+        document.WasRepaired.Should().BeFalse();
+        Text(document, 4).Should().Be("object 4");
+        document.WasRepaired.Should().BeTrue();
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("3 1\n")]
+    [InlineData("3 1\n00000001")]
+    public void A_table_the_end_of_the_file_cuts_before_any_row_is_there_and_cannot_be_read_and_nothing_near_it_is_taken_for_it(string rows)
+    {
+        // The table /Prev names holds its xref keyword alone, a subsection header, or the start of a row, when the file ends:
+        // it read no row, and is no section to keep, but one that is there and cannot be read, reported where it is — not the
+        // update's table just before it, which the chain has read (#207, #281).
+        var file = PdfTemplate.Build(PartialFiles.CutUpdate(rows));
+        var cut = PdfTemplate.OffsetOf(file, "\nxref\n", 3) + 1;
+
+        using var document = PdfDocument.Open(file);
+
+        var report = document.Diagnostics.Should().ContainSingle().Which;
+        report.Code.Should().Be(PdfDiagnosticCodes.XRefSectionUnreadable);
+        report.Position.Should().Be(cut);
+        report.Message.Should().Be(string.Create(
+            CultureInfo.InvariantCulture,
+            $"The cross-reference table /Prev names at offset {cut} is there but cannot be read: the file ends before its trailer. The rows read before the fault, if any, were kept; the objects only the rest indexes are looked for by rebuilding the index."));
+        document.Reader.Structure.Sections[^1].State.Should().Be(XRefSectionState.Malformed);
+        Text(document, 4).Should().Be("object 4");
+        Text(document, 3).Should().Be("object 3");
+        document.WasRepaired.Should().BeTrue();
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void A_table_whose_last_row_is_no_row_is_reported_read_in_part_once_whether_prev_or_startxref_names_it(bool updated)
+    {
+        // Object 4's row, the table's last, ends in x, and its trailer follows: the table was read, its fault reported
+        // nowhere, the rebuild that found object 4 the only report (#210). It is reported once, at the table, read only in part.
+        var file = PdfTemplate.Build(PartialFiles.RowEndingInX(updated));
+        var table = PdfTemplate.OffsetOf(file, "\nxref\n") + 1;
+        var row = PdfTemplate.OffsetOf(file, string.Create(CultureInfo.InvariantCulture, $"{PdfTemplate.OffsetOf(file, "4 0 obj")} 00000 x"));
+
+        using var document = PdfDocument.Open(file);
+
+        var report = document.Diagnostics.Should().ContainSingle().Which;
+        report.Code.Should().Be(PdfDiagnosticCodes.XRefSectionUnreadable);
+        report.Severity.Should().Be(PdfDiagnosticSeverity.Warning);
+        report.Position.Should().Be(table);
+        report.Message.Should().Be(string.Create(
+            CultureInfo.InvariantCulture,
+            $"The cross-reference table {(updated ? "/Prev" : "startxref")} names at offset {table} was read only in part: the row for object 4, at offset {row}, is not an offset, a generation and n or f; the rows read were kept, and the objects the rest of that subsection numbers are looked for by rebuilding the index where no section read before it indexes them, rather than taken from an older section's rows."));
+        Text(document, 3).Should().Be("object 3");
+        document.WasRepaired.Should().BeFalse();
+        Text(document, 4).Should().Be("object 4");
+        document.WasRepaired.Should().BeTrue();
+        document.Diagnostics.Select(d => d.Code).Should().Equal(PdfDiagnosticCodes.XRefSectionUnreadable, PdfDiagnosticCodes.XRefRebuilt);
+    }
+
+    [Theory]
+    [InlineData(true, "/XRefStm")]
+    [InlineData(false, "startxref")]
+    public void A_cross_reference_stream_holding_fewer_rows_than_it_declares_is_reported_once_and_no_older_row_stands_for_one_it_lacks(
+        bool hybrid, string naming)
+    {
+        // The stream declares objects 4, 5 and 7, and its data holds the rows of 4 and 5: object 7's row, which gives its
+        // newer revision, is lost. It was read in silence, and the oldest table's row served the older revision (#210). The
+        // stream is reported once, read only in part, and no older row stands for a number it declares: object 7 is found by
+        // rebuilding the index, its newer revision, while object 3, which no stream declares, is read through the oldest
+        // table's row.
+        var (whole, _, _, _) = PartialFiles.StreamOverOlderRows(hybrid: hybrid);
+        var (file, _, stream, _) = PartialFiles.StreamOverOlderRows(rows: 2, hybrid: hybrid);
+
+        using (var sound = PdfDocument.Open(whole))
+        {
+            sound.Diagnostics.Should().BeEmpty();
+            Text(sound, 7).Should().Be("new seven");
+            Text(sound, 3).Should().Be("only in the oldest");
+            sound.WasRepaired.Should().BeFalse();
+        }
+
+        using var document = PdfDocument.Open(file);
+
+        var report = document.Diagnostics.Should().ContainSingle().Which;
+        report.Code.Should().Be(PdfDiagnosticCodes.XRefSectionUnreadable);
+        report.Position.Should().Be(stream);
+        report.Message.Should().Be(string.Create(
+            CultureInfo.InvariantCulture,
+            $"The cross-reference stream {naming} names at offset {stream} was read only in part: it holds 2 rows where its /Index and /Size declare 3; the rows it holds were kept, and the objects whose rows it lacks are looked for by rebuilding the index where no section read before it indexes them, rather than taken from an older section's rows."));
+        Text(document, 3).Should().Be("only in the oldest");
+        Text(document, 4).Should().Be("only in the stream");
+        document.WasRepaired.Should().BeFalse();
+        document.Reader.ChainIndex!.TryGet(7, out _).Should().BeFalse("the oldest table's row for object 7 does not stand");
+        Text(document, 7).Should().Be("new seven");
+        document.WasRepaired.Should().BeTrue();
+    }
+
+    [Theory]
+    [InlineData("/Index [4 2 7 1]", "The objects it numbers that no section read before it indexes are looked for by rebuilding the index, rather than taken from an older section's rows.")]
+    [InlineData("/Index [4 2 7 1 0 R]", "Every object no section read before it indexes is looked for by rebuilding the index, rather than taken from an older section's rows.")]
+    public void A_hybrid_file_s_stream_that_cannot_be_read_leaves_no_older_row_standing_for_the_numbers_it_declares(string index, string lost)
+    {
+        // The stream the hybrid table names through /XRefStm declares objects 4, 5 and 7, and its /W gives a negative width:
+        // its rows are lost, and the oldest table's row for object 7 served the older revision. No older row stands for a
+        // number it declares — for any, where its /Index holds a reference —, which is found by rebuilding the index (#210).
+        var (file, _, stream, _) = PartialFiles.StreamOverOlderRows("/Type /XRef /W [1 -4 2] " + index, hybrid: true);
+
+        using var document = PdfDocument.Open(file);
+
+        var report = document.Diagnostics[0];
+        report.Code.Should().Be(PdfDiagnosticCodes.XRefSectionUnreadable);
+        report.Position.Should().Be(stream);
+        report.Message.Should().Be(string.Create(
+            CultureInfo.InvariantCulture,
+            $"The cross-reference stream /XRefStm names at offset {stream} is there but cannot be read: its /W gives a field a negative width. {lost}"));
+        document.Reader.Structure.Sections.Should().HaveCount(3, "the chain goes on through the table's /Prev");
+        document.Reader.ChainIndex!.TryGet(7, out _).Should().BeFalse();
+        document.Reader.ChainIndex!.TryGet(3, out _).Should().Be(index == "/Index [4 2 7 1]");
+        Text(document, 7).Should().Be("new seven");
+        Text(document, 3).Should().Be("only in the oldest");
+    }
+
+    [Theory]
+    [InlineData(1, false)]
+    [InlineData(2, true)]
+    public void A_table_read_in_part_leaves_no_older_row_standing_for_the_rest_of_the_subsection_its_fault_ended(int count, bool fiveRefused)
+    {
+        // The newer table's subsection 4 1, or 4 2, holds one row, object 4's, which ends in x: the rows of that subsection
+        // from object 4 on are lost — 4's, or 4's and 5's. No older row stands for them: the oldest table's row for object 4
+        // served its older revision. Object 3, past the subsection, is read through the oldest table's row (#210).
+        var (file, _, middle) = PartialFiles.LostRowOverOlderOnes(count);
+
+        using var document = PdfDocument.Open(file);
+
+        document.Diagnostics.Should().ContainSingle().Which.Message.Should().StartWith(string.Create(
+            CultureInfo.InvariantCulture,
+            $"The cross-reference table startxref names at offset {middle} was read only in part: the row for object 4, at offset "));
+        var index = document.Reader.ChainIndex!;
+        index.TryGet(4, out _).Should().BeFalse();
+        index.TryGet(5, out _).Should().Be(!fiveRefused);
+        index.TryGet(3, out _).Should().BeTrue();
+        Text(document, 3).Should().Be("only in the oldest");
+        document.WasRepaired.Should().BeFalse();
+        Text(document, 4).Should().Be("new four");
+        Text(document, 5).Should().Be("old five");
+        document.WasRepaired.Should().BeTrue();
+    }
+
+    [Fact]
+    public void A_table_read_in_part_keeps_the_subsections_after_its_fault_standing_over_the_older_rows()
+    {
+        // The rows a subsection after the fault gives are the table's own: the number the lost one refuses is refused to the
+        // sections read after it, not to the rest of the table — a later subsection 5 1 placing object 5 stands (#210).
+        var (sound, _, _) = PartialFiles.LostRowOverOlderOnes(2);
+        var five = PdfTemplate.OffsetOf(sound, "5 0 obj");
+        var (file, _, _) = PartialFiles.LostRowOverOlderOnes(2, string.Create(CultureInfo.InvariantCulture, $"5 1\n{five:D10} 00000 n \n"));
+
+        using var document = PdfDocument.Open(file);
+
+        document.Diagnostics.Should().ContainSingle();
+        document.Reader.ChainIndex!.TryGet(5, out var entry).Should().BeTrue();
+        entry.Offset.Should().Be(five);
+        Text(document, 5).Should().Be("old five");
+        document.WasRepaired.Should().BeFalse();
+    }
+
+    [Theory]
+    [InlineData(4096, false)]
+    [InlineData(4097, true)]
+    public void A_table_keeps_the_numbers_its_faults_lost_apart_up_to_4096_ranges_and_refuses_every_number_past_them(int lost, bool every)
+    {
+        // Every other number from 100, a one-row subsection whose row ends in x, and then a thousand free rows that run past
+        // the 64 KB a table is first read through: the rows are read twice, the first window's edge cutting the free rows
+        // short, which the second reads whole. Up to 4,096 ranges, the numbers the table lost are kept apart, and the oldest
+        // table's row for object 3 stands; past them, every number is refused, as for a stream whose numbering cannot be read,
+        // and what only the oldest table indexes is found by rebuilding the index: what the refusal keeps stays bounded (#210).
+        var file = PartialFiles.LostSubsections(lost, free: 1000);
+        var newest = PdfTemplate.OffsetOf(file, "\nxref\n", 2) + 1;
+        (PdfTemplate.OffsetOf(file, "20000 1000") - newest).Should().BeLessThan(PdfFileReader.XRefWindow, "the first window holds every lost subsection");
+        (file.Length - newest).Should().BeGreaterThan(PdfFileReader.XRefWindow, "the free rows run past it");
+
+        using var document = PdfDocument.Open(file);
+
+        var index = document.Reader.ChainIndex!;
+        index.TryGet(3, out _).Should().Be(!every);
+        index.TryGet(100, out _).Should().BeFalse();
+        index.TryGet(20999, out _).Should().BeTrue("the newest table's free rows stand");
+        document.Diagnostics[0].Code.Should().Be(PdfDiagnosticCodes.XRefSectionUnreadable);
+        document.WasRepaired.Should().Be(every, "the catalog is the oldest table's alone");
+    }
+
+    [Theory]
+    [InlineData("", "startxref")]
+    [InlineData("", "/Prev")]
+    [InlineData("0 0\n", "startxref")]
+    public void A_table_holding_no_subsection_is_read_as_indexing_nothing_and_reported_once(string subsections, string naming)
+    {
+        // An update whose trailer keyword follows its xref keyword, where ISO 32000-1 has one or more subsections follow it,
+        // read as sound in silence (#222): it is read as indexing nothing, as one whose one subsection is 0 0 is, the index
+        // left whole and nothing rebuilt, and reported once. Named through /Prev by a newer update that indexes nothing too,
+        // it is reported as /Prev names it. The 0 0 one is sound.
+        var template = PartialFiles.EmptyUpdate(subsections);
+        template += naming == "/Prev"
+            ? "xref\n0 1\n{free}\ntrailer\n<< /Size 4 /Root 1 0 R /Prev {xref:2} >>\nstartxref\n{xref:3}\n%%EOF\n"
+            : string.Empty;
+        var file = PdfTemplate.Build(template);
+        var update = PdfTemplate.OffsetOf(file, "\nxref\n", 2) + 1;
+
+        using var document = PdfDocument.Open(file);
+
+        if (subsections.Length > 0)
+        {
+            document.Diagnostics.Should().BeEmpty();
+        }
+        else
+        {
+            var report = document.Diagnostics.Should().ContainSingle().Which;
+            report.Code.Should().Be(PdfDiagnosticCodes.XRefSectionEmpty);
+            report.Severity.Should().Be(PdfDiagnosticSeverity.Repair);
+            report.Position.Should().Be(update);
+            report.Message.Should().Be(string.Create(
+                CultureInfo.InvariantCulture,
+                $"The cross-reference table {naming} names at offset {update} holds no subsection: its trailer keyword follows its xref keyword. It was read as indexing nothing."));
+        }
+
+        document.Reader.Structure.Sections.Single(section => section.Offset == update).NoSubsection.Should().Be(subsections.Length == 0);
+        document.Catalog.GetDictionary(PdfName.Pages)!.GetArray(PdfName.Kids)!.Resolved(0).AsDictionary()!.IsOfType(PdfName.Page).Should().BeTrue();
+        document.GetObject(new PdfObjectId(4)).Should().BeSameAs(PdfNull.Instance, "no section indexes object 4, and the index is whole");
+        document.WasRepaired.Should().BeFalse();
+    }
+
+    [Fact]
+    public void A_file_whose_only_table_holds_no_subsection_is_reported_and_rebuilt()
+    {
+        // The only table holds no subsection: it indexes nothing, and the file is rebuilt at opening, as for any chain that
+        // gives no row (#222).
+        var file = PdfTemplate.Build(PdfTemplate.Sound.Replace("xref\n0 4\n{free}\n{row:1}\n{row:2}\n{row:3}\n", "xref\n", StringComparison.Ordinal));
+
+        using var document = PdfDocument.Open(file);
+
+        document.Diagnostics.Select(d => d.Code).Should().Equal(PdfDiagnosticCodes.XRefSectionEmpty, PdfDiagnosticCodes.XRefRebuilt);
+        document.Catalog.IsOfType(PdfName.Catalog).Should().BeTrue();
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void The_catalog_a_rebuild_after_opening_takes_again_is_reported_recovered_once(bool cut)
+    {
+        // No trailer the file holds gives /Root: the catalog is found among the objects the chain indexes as the document
+        // opens. A rebuild set off after — by object 4, which the only table the end of the file cuts lacks (#207), or by the
+        // page, whose row a generation of 65,536 refuses — sets that guess aside and finds the same object again, which
+        // was reported a second time.
+        var file = cut
+            ? PdfTemplate.Build(PartialFiles.CutAlone)
+            : PdfTemplate.Build(PdfTemplate.Sound
+                .Replace("{row:3}", "{off:3} 65536 n", StringComparison.Ordinal)
+                .Replace("/Root 1 0 R", "/Rot 1 0 R", StringComparison.Ordinal));
+        var asked = cut ? 4 : 3;
+
+        using var document = PdfDocument.Open(file);
+
+        document.Diagnostics.Select(d => d.Code).Should().Equal(PdfDiagnosticCodes.XRefSectionUnreadable, PdfDiagnosticCodes.TrailerRootRecovered);
+        document.GetObject(new PdfObjectId(asked)).Should().NotBeSameAs(PdfNull.Instance);
+        document.WasRepaired.Should().BeTrue();
+        document.Diagnostics.Select(d => d.Code).Should().Equal(
+            PdfDiagnosticCodes.XRefSectionUnreadable, PdfDiagnosticCodes.TrailerRootRecovered, PdfDiagnosticCodes.XRefRebuilt);
+        document.Diagnostics.Should().OnlyHaveUniqueItems();
+    }
+
+    [Fact]
+    public void A_rebuild_after_opening_that_takes_another_object_for_the_catalog_reports_it()
+    {
+        // No trailer gives /Root. The table frees object 1, an older catalog, and indexes object 5, the newer one, taken as
+        // the document opens; the page's row is refused. The rebuild its read sets off finds both, and takes the first the
+        // file writes, object 1: the reader now serves another catalog, which is reported.
+        var file = new HandWrittenFile();
+        file.Object(1, "<< /Type /Catalog /Pages 2 0 R /Rev (old) >>");
+        var pages = file.Object(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>");
+        var page = file.Object(3, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] >>");
+        var catalog = file.Object(5, "<< /Type /Catalog /Pages 2 0 R /Rev (new) >>");
+        var table = file.Position;
+        file.Raw(string.Create(
+            CultureInfo.InvariantCulture,
+            $"xref\n0 6\n0000000000 65535 f \n0000000000 00001 f \n{pages:D10} 00000 n \n{page:D10} 65536 n \n0000000000 00001 f \n{catalog:D10} 00000 n \ntrailer\n<< /Size 6 >>\nstartxref\n{table}\n%%EOF\n"));
+
+        using var document = PdfDocument.Open(file.Bytes);
+
+        document.Diagnostics.Where(d => d.Code == PdfDiagnosticCodes.TrailerRootRecovered).Should().ContainSingle()
+            .Which.Message.Should().EndWith("the catalog was found as object 5.");
+        document.GetObject(new PdfObjectId(3)).AsDictionary()!.IsOfType(PdfName.Page).Should().BeTrue();
+        document.WasRepaired.Should().BeTrue();
+        document.Diagnostics.Where(d => d.Code == PdfDiagnosticCodes.TrailerRootRecovered).Select(d => d.Message).Should().Equal(
+            "The trailer's /Root does not lead to a document catalog; the catalog was found as object 5.",
+            "The trailer's /Root does not lead to a document catalog; the catalog was found as object 1.");
+    }
+

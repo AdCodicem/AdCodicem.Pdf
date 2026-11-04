@@ -1,0 +1,315 @@
+4,5c4,6
+<   S /Prev named=346 offset=346 state=Read kind=Table fault=- refused=- incomplete=False trailerFault=Missing trailerAt=375 cut=False highest=3
+<   at open: 0 diagnostic(s)
+---
+>   S /Prev named=346 offset=346 state=Read kind=Table fault=- refused=- incomplete=True trailerFault=Missing trailerAt=375 cut=False highest=3
+>   at open: 1 diagnostic(s)
+>     D Warning xref.section-unreadable at 346: The cross-reference table /Prev names at offset 346 was read only in part: the file ends before its trailer; its rows were kept, and the objects only the sections its trailer would name index are looked for by rebuilding the index.
+7,8c8,10
+<   GetObject(4): null; WasRepaired: False
+<   PdfValidator: 2 finding(s); WasRepaired False
+---
+>   GetObject(4): "object 4"; WasRepaired: True
+>     D+ Repair xref.rebuilt: The cross-reference index was rebuilt by scanning the file.
+>   PdfValidator: 2 finding(s); WasRepaired True
+10a13,14
+>     D(v) Warning xref.section-unreadable at 346: The cross-reference table /Prev names at offset 346 was read only in part: the file ends before its trailer; its rows were kept, and the objects only the sections its trailer would name index are looked for by rebuilding the index.
+>     D(v) Repair xref.rebuilt: The cross-reference index was rebuilt by scanning the file.
+15,16c19,21
+<   S /Prev named=1548 offset=1548 state=Read kind=Table fault=- refused=- incomplete=False trailerFault=Missing trailerAt=1577 cut=False highest=3
+<   at open: 0 diagnostic(s)
+---
+>   S /Prev named=1548 offset=1548 state=Read kind=Table fault=- refused=- incomplete=True trailerFault=Missing trailerAt=1577 cut=False highest=3
+>   at open: 1 diagnostic(s)
+>     D Warning xref.section-unreadable at 1548: The cross-reference table /Prev names at offset 1548 was read only in part: the file ends before its trailer; its rows were kept, and the objects only the sections its trailer would name index are looked for by rebuilding the index.
+18,19c23,25
+<   GetObject(4): null; WasRepaired: False
+<   PdfValidator: 2 finding(s); WasRepaired False
+---
+>   GetObject(4): "object 4"; WasRepaired: True
+>     D+ Repair xref.rebuilt: The cross-reference index was rebuilt by scanning the file.
+>   PdfValidator: 2 finding(s); WasRepaired True
+21a28,29
+>     D(v) Warning xref.section-unreadable at 1548: The cross-reference table /Prev names at offset 1548 was read only in part: the file ends before its trailer; its rows were kept, and the objects only the sections its trailer would name index are looked for by rebuilding the index.
+>     D(v) Repair xref.rebuilt: The cross-reference index was rebuilt by scanning the file.
+26,31c34,41
+<   S /Prev named=346 offset=346 state=Read kind=Table fault=- refused=- incomplete=False trailerFault=Missing trailerAt=351 cut=False highest=-1
+<   at open: 0 diagnostic(s)
+<   GetObject(3): null; WasRepaired: False
+<   GetObject(4): null; WasRepaired: False
+<   PdfValidator: 2 finding(s); WasRepaired False
+<     F Error file.trailer-missing at offset 351: The cross-reference table at offset 346 is not followed by a trailer: the file ends first.
+---
+>   S /Prev named=346 offset=213 state=Relocated kind=Table fault=- refused=- incomplete=False trailerFault=None trailerAt=282 cut=False highest=2
+>   at open: 2 diagnostic(s)
+>     D Repair xref.offset-adjusted at 213: The cross-reference section /Prev names at offset 346 was found -133 bytes from there.
+>     D Warning xref.chain-cycle at 346: The cross-reference chain loops back on itself: the /Prev of the section at offset 213 names offset 346, which the chain has already read.
+>   GetObject(3): "object 3"; WasRepaired: True
+>   GetObject(4): "object 4"; WasRepaired: True
+>     D+ Repair xref.rebuilt: The cross-reference index was rebuilt by scanning the file.
+>   PdfValidator: 4 finding(s); WasRepaired True
+32a43,48
+>     F Warning file.size-wrong at offset 282: The trailer of the cross-reference table at offset 213 gives /Size 5, where the highest object number it and the sections it updates use, 2, makes it 3.
+>     F Warning xref.section-shifted at offset 213: The cross-reference section /Prev names at offset 346 starts 133 bytes before it, at offset 213.
+>     F Error xref.chain-loop at offset 213: The /Prev of the cross-reference section at offset 213 names offset 346, a section the chain has already read: the chain loops.
+>     D(v) Repair xref.offset-adjusted at 213: The cross-reference section /Prev names at offset 346 was found -133 bytes from there.
+>     D(v) Warning xref.chain-cycle at 346: The cross-reference chain loops back on itself: the /Prev of the section at offset 213 names offset 346, which the chain has already read.
+>     D(v) Repair xref.rebuilt: The cross-reference index was rebuilt by scanning the file.
+37,42c53,61
+<   S /Prev named=1548 offset=1548 state=Read kind=Table fault=- refused=- incomplete=False trailerFault=Missing trailerAt=1553 cut=False highest=-1
+<   at open: 0 diagnostic(s)
+<   GetObject(3): null; WasRepaired: False
+<   GetObject(4): null; WasRepaired: False
+<   PdfValidator: 2 finding(s); WasRepaired False
+<     F Error file.trailer-missing at offset 1553: The cross-reference table at offset 1548 is not followed by a trailer: the file ends first.
+---
+>   S /Prev named=1548 offset=1413 state=Relocated kind=Table fault=- refused=- incomplete=False trailerFault=None trailerAt=1482 cut=False highest=2
+>   at open: 2 diagnostic(s)
+>     D Repair xref.offset-adjusted at 1413: The cross-reference section /Prev names at offset 1548 was found -135 bytes from there.
+>     D Warning xref.chain-cycle at 1548: The cross-reference chain loops back on itself: the /Prev of the section at offset 1413 names offset 1548, which the chain has already read.
+>   GetObject(3): "object 3"; WasRepaired: True
+>   GetObject(4): "object 4"; WasRepaired: True
+>     D+ Repair xref.rebuilt: The cross-reference index was rebuilt by scanning the file.
+>   PdfValidator: 4 finding(s); WasRepaired True
+>     F Warning file.size-wrong at offset 1482: The trailer of the cross-reference table at offset 1413 gives /Size 5, where the highest object number it and the sections it updates use, 2, makes it 3.
+43a63,67
+>     F Warning xref.section-shifted at offset 1413: The cross-reference section /Prev names at offset 1548 starts 135 bytes before it, at offset 1413.
+>     F Error xref.chain-loop at offset 1413: The /Prev of the cross-reference section at offset 1413 names offset 1548, a section the chain has already read: the chain loops.
+>     D(v) Repair xref.offset-adjusted at 1413: The cross-reference section /Prev names at offset 1548 was found -135 bytes from there.
+>     D(v) Warning xref.chain-cycle at 1548: The cross-reference chain loops back on itself: the /Prev of the section at offset 1413 names offset 1548, which the chain has already read.
+>     D(v) Repair xref.rebuilt: The cross-reference index was rebuilt by scanning the file.
+48,53c72,79
+<   S /Prev named=346 offset=346 state=Read kind=Table fault=- refused=- incomplete=False trailerFault=Missing trailerAt=363 cut=False highest=-1
+<   at open: 0 diagnostic(s)
+<   GetObject(3): null; WasRepaired: False
+<   GetObject(4): null; WasRepaired: False
+<   PdfValidator: 2 finding(s); WasRepaired False
+<     F Error file.trailer-missing at offset 363: The cross-reference table at offset 346 is not followed by a trailer: the file ends first.
+---
+>   S /Prev named=346 offset=213 state=Relocated kind=Table fault=- refused=- incomplete=False trailerFault=None trailerAt=282 cut=False highest=2
+>   at open: 2 diagnostic(s)
+>     D Repair xref.offset-adjusted at 213: The cross-reference section /Prev names at offset 346 was found -133 bytes from there.
+>     D Warning xref.chain-cycle at 346: The cross-reference chain loops back on itself: the /Prev of the section at offset 213 names offset 346, which the chain has already read.
+>   GetObject(3): "object 3"; WasRepaired: True
+>   GetObject(4): "object 4"; WasRepaired: True
+>     D+ Repair xref.rebuilt: The cross-reference index was rebuilt by scanning the file.
+>   PdfValidator: 4 finding(s); WasRepaired True
+54a81,86
+>     F Warning file.size-wrong at offset 282: The trailer of the cross-reference table at offset 213 gives /Size 5, where the highest object number it and the sections it updates use, 2, makes it 3.
+>     F Warning xref.section-shifted at offset 213: The cross-reference section /Prev names at offset 346 starts 133 bytes before it, at offset 213.
+>     F Error xref.chain-loop at offset 213: The /Prev of the cross-reference section at offset 213 names offset 346, a section the chain has already read: the chain loops.
+>     D(v) Repair xref.offset-adjusted at 213: The cross-reference section /Prev names at offset 346 was found -133 bytes from there.
+>     D(v) Warning xref.chain-cycle at 346: The cross-reference chain loops back on itself: the /Prev of the section at offset 213 names offset 346, which the chain has already read.
+>     D(v) Repair xref.rebuilt: The cross-reference index was rebuilt by scanning the file.
+58,59c90,92
+<   S startxref named=309 offset=309 state=Read kind=Table fault=- refused=- incomplete=False trailerFault=Missing trailerAt=398 cut=False highest=3
+<   at open: 1 diagnostic(s)
+---
+>   S startxref named=309 offset=309 state=Read kind=Table fault=- refused=- incomplete=True trailerFault=Missing trailerAt=398 cut=False highest=3
+>   at open: 2 diagnostic(s)
+>     D Warning xref.section-unreadable at 309: The cross-reference table startxref names at offset 309 was read only in part: the file ends before its trailer; its rows were kept, and the objects only the sections its trailer would name index are looked for by rebuilding the index.
+62,63c95,97
+<   GetObject(4): null; WasRepaired: False
+<   PdfValidator: 1 finding(s); WasRepaired False
+---
+>   GetObject(4): "object 4"; WasRepaired: True
+>     D+ Repair xref.rebuilt: The cross-reference index was rebuilt by scanning the file.
+>   PdfValidator: 1 finding(s); WasRepaired True
+64a99
+>     D(v) Warning xref.section-unreadable at 309: The cross-reference table startxref names at offset 309 was read only in part: the file ends before its trailer; its rows were kept, and the objects only the sections its trailer would name index are looked for by rebuilding the index.
+65a101
+>     D(v) Repair xref.rebuilt: The cross-reference index was rebuilt by scanning the file.
+69,70c105,107
+<   S startxref named=309 offset=309 state=Read kind=Table fault=- refused=- incomplete=False trailerFault=Missing trailerAt=338 cut=False highest=3
+<   at open: 1 diagnostic(s)
+---
+>   S startxref named=309 offset=309 state=Read kind=Table fault=- refused=- incomplete=True trailerFault=Missing trailerAt=338 cut=False highest=3
+>   at open: 2 diagnostic(s)
+>     D Warning xref.section-unreadable at 309: The cross-reference table startxref names at offset 309 was read only in part: the file ends before its trailer; its rows were kept, and the objects only the sections its trailer would name index are looked for by rebuilding the index.
+75a113
+>     D(v) Warning xref.section-unreadable at 309: The cross-reference table startxref names at offset 309 was read only in part: the file ends before its trailer; its rows were kept, and the objects only the sections its trailer would name index are looked for by rebuilding the index.
+80c118
+<   S startxref named=309 offset=309 state=Malformed kind=Table fault=- refused=- incomplete=False trailerFault=Missing trailerAt=314 cut=False highest=-1
+---
+>   S startxref named=309 offset=309 state=Malformed kind=Table fault=- refused=- incomplete=True trailerFault=Missing trailerAt=314 cut=False highest=-1
+91,92c129,131
+<   S startxref named=182 offset=182 state=Read kind=Table fault=- refused=- incomplete=False trailerFault=Missing trailerAt=271 cut=False highest=3
+<   at open: 1 diagnostic(s)
+---
+>   S startxref named=182 offset=182 state=Read kind=Table fault=- refused=- incomplete=True trailerFault=Missing trailerAt=271 cut=False highest=3
+>   at open: 2 diagnostic(s)
+>     D Warning xref.section-unreadable at 182: The cross-reference table startxref names at offset 182 was read only in part: the file ends before its trailer; its rows were kept, and the objects only the sections its trailer would name index are looked for by rebuilding the index.
+95,96c134,137
+<   GetObject(4): null; WasRepaired: False
+<   PdfValidator: 1 finding(s); WasRepaired False
+---
+>   GetObject(4): "object 4"; WasRepaired: True
+>     D+ Repair xref.rebuilt: The cross-reference index was rebuilt by scanning the file.
+>     D+ Repair trailer.root-recovered: The trailer's /Root does not lead to a document catalog; the catalog was found as object 1.
+>   PdfValidator: 1 finding(s); WasRepaired True
+97a139,141
+>     D(v) Warning xref.section-unreadable at 182: The cross-reference table startxref names at offset 182 was read only in part: the file ends before its trailer; its rows were kept, and the objects only the sections its trailer would name index are looked for by rebuilding the index.
+>     D(v) Repair trailer.root-recovered: The trailer's /Root does not lead to a document catalog; the catalog was found as object 1.
+>     D(v) Repair xref.rebuilt: The cross-reference index was rebuilt by scanning the file.
+103,104c147,149
+<   S /Prev named=162 offset=162 state=Read kind=Table fault=the row for object 4, at offset 251, is not an offset, a generation and n or f refused=- incomplete=False trailerFault=None trailerAt=271 cut=False highest=3
+<   at open: 0 diagnostic(s)
+---
+>   S /Prev named=162 offset=162 state=Read kind=Table fault=the row for object 4, at offset 251, is not an offset, a generation and n or f refused=- incomplete=True trailerFault=None trailerAt=271 cut=False highest=3
+>   at open: 1 diagnostic(s)
+>     D Warning xref.section-unreadable at 162: The cross-reference table /Prev names at offset 162 was read only in part: the row for object 4, at offset 251, is not an offset, a generation and n or f; the rows before it were kept, and the objects only the rest would index are looked for by rebuilding the index.
+111a157
+>     D(v) Warning xref.section-unreadable at 162: The cross-reference table /Prev names at offset 162 was read only in part: the row for object 4, at offset 251, is not an offset, a generation and n or f; the rows before it were kept, and the objects only the rest would index are looked for by rebuilding the index.
+118c164,165
+<   at open: 0 diagnostic(s)
+---
+>   at open: 1 diagnostic(s)
+>     D Warning xref.section-unreadable at 188: The cross-reference stream /XRefStm names at offset 188 was read only in part: it holds 1 row where its /Index and /Size declare 2; the rows before it were kept, and the objects only the rest would index are looked for by rebuilding the index.
+124a172
+>     D(v) Warning xref.section-unreadable at 188: The cross-reference stream /XRefStm names at offset 188 was read only in part: it holds 1 row where its /Index and /Size declare 2; the rows before it were kept, and the objects only the rest would index are looked for by rebuilding the index.
+129,130c177,179
+<   S startxref named=162 offset=162 state=Read kind=Table fault=the row for object 4, at offset 251, is not an offset, a generation and n or f refused=- incomplete=False trailerFault=None trailerAt=271 cut=False highest=3
+<   at open: 0 diagnostic(s)
+---
+>   S startxref named=162 offset=162 state=Read kind=Table fault=the row for object 4, at offset 251, is not an offset, a generation and n or f refused=- incomplete=True trailerFault=None trailerAt=271 cut=False highest=3
+>   at open: 1 diagnostic(s)
+>     D Warning xref.section-unreadable at 162: The cross-reference table startxref names at offset 162 was read only in part: the row for object 4, at offset 251, is not an offset, a generation and n or f; the rows before it were kept, and the objects only the rest would index are looked for by rebuilding the index.
+136a186
+>     D(v) Warning xref.section-unreadable at 162: The cross-reference table startxref names at offset 162 was read only in part: the row for object 4, at offset 251, is not an offset, a generation and n or f; the rows before it were kept, and the objects only the rest would index are looked for by rebuilding the index.
+142c192,193
+<   at open: 0 diagnostic(s)
+---
+>   at open: 1 diagnostic(s)
+>     D Warning xref.section-unreadable at 162: The cross-reference stream startxref names at offset 162 was read only in part: it holds 4 rows where its /Index and /Size declare 6; the rows before it were kept, and the objects only the rest would index are looked for by rebuilding the index.
+147a199
+>     D(v) Warning xref.section-unreadable at 162: The cross-reference stream startxref names at offset 162 was read only in part: it holds 4 rows where its /Index and /Size declare 6; the rows before it were kept, and the objects only the rest would index are looked for by rebuilding the index.
+154c206,207
+<   at open: 0 diagnostic(s)
+---
+>   at open: 1 diagnostic(s)
+>     D Warning xref.section-unreadable at 162: The cross-reference stream /Prev names at offset 162 was read only in part: it holds 4 rows where its /Index and /Size declare 6; the rows before it were kept, and the objects only the rest would index are looked for by rebuilding the index.
+159a213
+>     D(v) Warning xref.section-unreadable at 162: The cross-reference stream /Prev names at offset 162 was read only in part: it holds 4 rows where its /Index and /Size declare 6; the rows before it were kept, and the objects only the rest would index are looked for by rebuilding the index.
+165c219
+<   S /Prev named=162 offset=162 state=Malformed kind=Table fault=the row for object 2, at offset 211, is not an offset, a generation and n or f refused=- incomplete=False trailerFault=None trailerAt=-1 cut=False highest=1
+---
+>   S /Prev named=162 offset=162 state=Malformed kind=Table fault=the row for object 2, at offset 211, is not an offset, a generation and n or f refused=- incomplete=True trailerFault=None trailerAt=-1 cut=False highest=1
+180,181c234,236
+<   S /Prev named=162 offset=162 state=Read kind=Table fault=the row for object 2, at offset 211, is not an offset, a generation and n or f refused=- incomplete=False trailerFault=None trailerAt=275 cut=False highest=4
+<   at open: 0 diagnostic(s)
+---
+>   S /Prev named=162 offset=162 state=Read kind=Table fault=the row for object 2, at offset 211, is not an offset, a generation and n or f refused=- incomplete=True trailerFault=None trailerAt=275 cut=False highest=4
+>   at open: 1 diagnostic(s)
+>     D Warning xref.section-unreadable at 162: The cross-reference table /Prev names at offset 162 was read only in part: the row for object 2, at offset 211, is not an offset, a generation and n or f; the rows before it were kept, and the objects only the rest would index are looked for by rebuilding the index.
+187a243
+>     D(v) Warning xref.section-unreadable at 162: The cross-reference table /Prev names at offset 162 was read only in part: the row for object 2, at offset 211, is not an offset, a generation and n or f; the rows before it were kept, and the objects only the rest would index are looked for by rebuilding the index.
+211c267,268
+<   at open: 0 diagnostic(s)
+---
+>   at open: 1 diagnostic(s)
+>     D Repair xref.section-empty at 392: The cross-reference table startxref names at offset 392 holds no subsection: its trailer keyword follows its xref keyword. It was read as indexing nothing.
+214c271,273
+<   PdfValidator: 0 finding(s); WasRepaired False
+---
+>   PdfValidator: 1 finding(s); WasRepaired False
+>     F Warning xref.subsection-missing at offset 392: The cross-reference table at offset 392 holds no subsection: its trailer keyword follows its xref keyword.
+>     D(v) Repair xref.section-empty at 392: The cross-reference table startxref names at offset 392 holds no subsection: its trailer keyword follows its xref keyword. It was read as indexing nothing.
+221c280,281
+<   at open: 0 diagnostic(s)
+---
+>   at open: 1 diagnostic(s)
+>     D Repair xref.section-empty at 392: The cross-reference table /Prev names at offset 392 holds no subsection: its trailer keyword follows its xref keyword. It was read as indexing nothing.
+224c284,286
+<   PdfValidator: 0 finding(s); WasRepaired False
+---
+>   PdfValidator: 1 finding(s); WasRepaired False
+>     F Warning xref.subsection-missing at offset 392: The cross-reference table at offset 392 holds no subsection: its trailer keyword follows its xref keyword.
+>     D(v) Repair xref.section-empty at 392: The cross-reference table /Prev names at offset 392 holds no subsection: its trailer keyword follows its xref keyword. It was read as indexing nothing.
+229c291,292
+<   at open: 1 diagnostic(s)
+---
+>   at open: 2 diagnostic(s)
+>     D Repair xref.section-empty at 203: The cross-reference table startxref names at offset 203 holds no subsection: its trailer keyword follows its xref keyword. It was read as indexing nothing.
+232c295,297
+<   PdfValidator: 0 finding(s); WasRepaired True
+---
+>   PdfValidator: 1 finding(s); WasRepaired True
+>     F Warning xref.subsection-missing at offset 203: The cross-reference table at offset 203 holds no subsection: its trailer keyword follows its xref keyword.
+>     D(v) Repair xref.section-empty at 203: The cross-reference table startxref names at offset 203 holds no subsection: its trailer keyword follows its xref keyword. It was read as indexing nothing.
+238c303,304
+<   at open: 0 diagnostic(s)
+---
+>   at open: 1 diagnostic(s)
+>     D Warning xref.section-unreadable at 229: The cross-reference table startxref names at offset 229 was read only in part: the row for object 3, at offset 298, gives it generation 65536, outside 0 to 65535; that row alone was refused, the rows after it read, and its object is looked for by rebuilding the index.
+243a310
+>     D(v) Warning xref.section-unreadable at 229: The cross-reference table startxref names at offset 229 was read only in part: the row for object 3, at offset 298, gives it generation 65536, outside 0 to 65535; that row alone was refused, the rows after it read, and its object is looked for by rebuilding the index.
+249c316,317
+<   at open: 0 diagnostic(s)
+---
+>   at open: 1 diagnostic(s)
+>     D Warning xref.section-unreadable at 229: The cross-reference table startxref names at offset 229 was read only in part: the row for object 3, at offset 298, gives it generation 4294967296, outside 0 to 65535; that row alone was refused, the rows after it read, and its object is looked for by rebuilding the index.
+254a323
+>     D(v) Warning xref.section-unreadable at 229: The cross-reference table startxref names at offset 229 was read only in part: the row for object 3, at offset 298, gives it generation 4294967296, outside 0 to 65535; that row alone was refused, the rows after it read, and its object is looked for by rebuilding the index.
+260c329,330
+<   at open: 0 diagnostic(s)
+---
+>   at open: 1 diagnostic(s)
+>     D Warning xref.section-unreadable at 229: The cross-reference table startxref names at offset 229 was read only in part: the row for object 3, at offset 298, gives it generation -1, outside 0 to 65535; that row alone was refused, the rows after it read, and its object is looked for by rebuilding the index.
+265a336
+>     D(v) Warning xref.section-unreadable at 229: The cross-reference table startxref names at offset 229 was read only in part: the row for object 3, at offset 298, gives it generation -1, outside 0 to 65535; that row alone was refused, the rows after it read, and its object is looked for by rebuilding the index.
+272c343,344
+<   at open: 0 diagnostic(s)
+---
+>   at open: 1 diagnostic(s)
+>     D Warning xref.section-unreadable at 229: The cross-reference table /Prev names at offset 229 was read only in part: the row for object 4, at offset 318, gives it generation 65536, outside 0 to 65535; that row alone was refused, the rows after it read, and its object is looked for by rebuilding the index.
+277a350
+>     D(v) Warning xref.section-unreadable at 229: The cross-reference table /Prev names at offset 229 was read only in part: the row for object 4, at offset 318, gives it generation 65536, outside 0 to 65535; that row alone was refused, the rows after it read, and its object is looked for by rebuilding the index.
+283c356,357
+<   at open: 0 diagnostic(s)
+---
+>   at open: 1 diagnostic(s)
+>     D Warning xref.section-unreadable at 229: The cross-reference stream startxref names at offset 229 was read only in part: the row for object 4 gives it offset 9223372036854775808, past any a file can have; that row alone was refused, the rows after it read, and its object is looked for by rebuilding the index.
+288a363
+>     D(v) Warning xref.section-unreadable at 229: The cross-reference stream startxref names at offset 229 was read only in part: the row for object 4 gives it offset 9223372036854775808, past any a file can have; that row alone was refused, the rows after it read, and its object is looked for by rebuilding the index.
+294c369,370
+<   at open: 0 diagnostic(s)
+---
+>   at open: 1 diagnostic(s)
+>     D Warning xref.section-unreadable at 229: The cross-reference stream startxref names at offset 229 was read only in part: the row for object 4 gives it generation 65536, outside 0 to 65535; that row alone was refused, the rows after it read, and its object is looked for by rebuilding the index.
+299a376
+>     D(v) Warning xref.section-unreadable at 229: The cross-reference stream startxref names at offset 229 was read only in part: the row for object 4 gives it generation 65536, outside 0 to 65535; that row alone was refused, the rows after it read, and its object is looked for by rebuilding the index.
+305c382,383
+<   at open: 0 diagnostic(s)
+---
+>   at open: 1 diagnostic(s)
+>     D Warning xref.section-unreadable at 229: The cross-reference stream startxref names at offset 229 was read only in part: the row for object 3 places it in object stream 0, which is no object number; that row alone was refused, the rows after it read, and its object is looked for by rebuilding the index.
+310a389
+>     D(v) Warning xref.section-unreadable at 229: The cross-reference stream startxref names at offset 229 was read only in part: the row for object 3 places it in object stream 0, which is no object number; that row alone was refused, the rows after it read, and its object is looked for by rebuilding the index.
+316c395,396
+<   at open: 0 diagnostic(s)
+---
+>   at open: 1 diagnostic(s)
+>     D Warning xref.section-unreadable at 229: The cross-reference stream startxref names at offset 229 was read only in part: the row for object 3 places it in object stream 2147483648, which is no object number; that row alone was refused, the rows after it read, and its object is looked for by rebuilding the index.
+321a402
+>     D(v) Warning xref.section-unreadable at 229: The cross-reference stream startxref names at offset 229 was read only in part: the row for object 3 places it in object stream 2147483648, which is no object number; that row alone was refused, the rows after it read, and its object is looked for by rebuilding the index.
+327c408,409
+<   at open: 0 diagnostic(s)
+---
+>   at open: 1 diagnostic(s)
+>     D Warning xref.section-unreadable at 229: The cross-reference stream startxref names at offset 229 was read only in part: the row for object 3 places it at index 2147483648 of object stream 4, past any an object stream can hold; that row alone was refused, the rows after it read, and its object is looked for by rebuilding the index.
+332a415
+>     D(v) Warning xref.section-unreadable at 229: The cross-reference stream startxref names at offset 229 was read only in part: the row for object 3 places it at index 2147483648 of object stream 4, past any an object stream can hold; that row alone was refused, the rows after it read, and its object is looked for by rebuilding the index.
+338c421,422
+<   at open: 0 diagnostic(s)
+---
+>   at open: 1 diagnostic(s)
+>     D Warning xref.section-unreadable at 229: The cross-reference stream startxref names at offset 229 was read only in part: the row for object 4 gives it a generation of more than 64 bits, outside 0 to 65535; that row alone was refused, the rows after it read, and its object is looked for by rebuilding the index.
+343a428
+>     D(v) Warning xref.section-unreadable at 229: The cross-reference stream startxref names at offset 229 was read only in part: the row for object 4 gives it a generation of more than 64 bits, outside 0 to 65535; that row alone was refused, the rows after it read, and its object is looked for by rebuilding the index.
+360c445,446
+<   at open: 1 diagnostic(s)
+---
+>   at open: 2 diagnostic(s)
+>     D Warning xref.section-unreadable at 229: The cross-reference table startxref names at offset 229 was read only in part: the row for object 3, at offset 298, gives it generation 65536, outside 0 to 65535; that row alone was refused, the rows after it read, and its object is looked for by rebuilding the index.
+368a455
+>     D(v) Warning xref.section-unreadable at 229: The cross-reference table startxref names at offset 229 was read only in part: the row for object 3, at offset 298, gives it generation 65536, outside 0 to 65535; that row alone was refused, the rows after it read, and its object is looked for by rebuilding the index.

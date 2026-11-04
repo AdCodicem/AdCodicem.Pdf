@@ -1,0 +1,46 @@
+diff --git a/src/AdCodicem.Pdf/IO/PdfFileReader.cs b/src/AdCodicem.Pdf/IO/PdfFileReader.cs
+index a946dab..decd2c3 100644
+--- a/src/AdCodicem.Pdf/IO/PdfFileReader.cs
++++ b/src/AdCodicem.Pdf/IO/PdfFileReader.cs
+@@ -519,6 +519,12 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
+     /// <summary>How many places have been tried for sections of the chain that were not where it named them.</summary>
+     private int _relocationCandidatesTried;
+ 
++    /// <summary>
++    /// The positions in the file where the chain read a section, where it was named or where it was found moved: no other
++    /// section the chain names is looked for there (#188, #281).
++    /// </summary>
++    private readonly HashSet<long> _sectionsReadAt = new(SeededComparer.Instance);
++
+     /// <summary>
+     /// Whether the index may lack objects the file defines because the file is damaged: a section the chain names could not
+     /// be found or read, the chain loops, a cross-reference stream's data holds fewer rows than it declares, or a row was
+@@ -3021,6 +3027,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
+                 }
+             }
+ 
++            _sectionsReadAt.Add(section.Offset);
+             _olderNumberedPast |= sections > 1 && section.HighestNumber > _highestRead;
+             _highestRead = Math.Max(_highestRead, section.HighestNumber);
+ 
+@@ -3073,6 +3080,10 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
+                 {
+                     ReportLostSection(stream, "/XRefStm", hybrid, section.Offset);
+                 }
++                else
++                {
++                    _sectionsReadAt.Add(stream.Offset);
++                }
+ 
+                 _olderNumberedPast |= sections > 1 && stream.HighestNumber > _highestRead;
+                 _highestRead = Math.Max(_highestRead, stream.HighestNumber);
+@@ -3262,7 +3273,8 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
+ 
+         foreach (var candidate in candidates)
+         {
+-            if (candidate == absolute)
++            // Where the section was named holds no section that can be read, and where the chain read one holds that one.
++            if (candidate == absolute || _sectionsReadAt.Contains(candidate))
+             {
+                 continue;
+             }

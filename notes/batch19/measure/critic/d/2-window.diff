@@ -1,0 +1,284 @@
+diff --git a/src/AdCodicem.Pdf/IO/PdfFileReader.cs b/src/AdCodicem.Pdf/IO/PdfFileReader.cs
+index a946dab..82d10d9 100644
+--- a/src/AdCodicem.Pdf/IO/PdfFileReader.cs
++++ b/src/AdCodicem.Pdf/IO/PdfFileReader.cs
+@@ -3249,15 +3249,22 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
+             return false;
+         }
+ 
++        // The window ends NearbySearchRadius bytes past the offset, or at the file's end, wherever the offset falls: clamped
++        // at the file's start, it is not lengthened (#197). The position is in the file, so neither sum wraps.
+         var start = Math.Max(0, absolute - NearbySearchRadius);
+-        var length = (int)Math.Min(NearbySearchRadius * 2, _source.Length - start);
++        var length = (int)(absolute + Math.Min(NearbySearchRadius, _source.Length - absolute) - start);
+         var candidates = new List<long>();
+ 
+-        using (var window = _source.GetWindow(start, length))
++        // The byte before the window, as for an object's (#197): a candidate starts in the window.
++        var lead = start > 0 ? 1 : 0;
++
++        using (var window = _source.GetWindow(start - lead, length + lead))
+         {
+-            FindSectionCandidates(window.Memory.Span, start, candidates);
++            FindSectionCandidates(window.Memory.Span, start - lead, candidates);
+         }
+ 
++        candidates.RemoveAll(candidate => candidate < start);
++
+         candidates.Sort((left, right) => Math.Abs(left - absolute).CompareTo(Math.Abs(right - absolute)));
+ 
+         foreach (var candidate in candidates)
+@@ -6071,15 +6078,22 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
+             return false;
+         }
+ 
++        // The window ends NearbySearchRadius bytes past the offset, or at the file's end, wherever the offset falls: clamped
++        // at the file's start, it is not lengthened (#197). The end is worked out from what lies between the offset and the
++        // file's end, which wraps for no offset — long.MaxValue, an entry past what a long holds, gives the file's end.
+         var start = Math.Max(0, approximateOffset - NearbySearchRadius);
+-        var length = (int)Math.Min(NearbySearchRadius * 2, source.Length - start);
++        var end = approximateOffset + Math.Min(NearbySearchRadius, source.Length - approximateOffset);
++        var length = end - start;
+ 
+         if (length <= 0)
+         {
+             return false;
+         }
+ 
+-        using var window = source.GetWindow(start, length);
++        // The byte before the window, where it does not start the file, tells a number the window's start cuts - "14 0 obj"
++        // read from its "4" - from one that starts there: a header is taken only where it starts in the window.
++        var lead = start > 0 ? 1 : 0;
++        using var window = source.GetWindow(start - lead, (int)length + lead);
+         var span = window.Memory.Span;
+         var searchFrom = 0;
+ 
+@@ -6093,9 +6107,10 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
+ 
+             var position = searchFrom + index;
+ 
+-            if (TryReadHeaderBackwards(span, position, out var found, out var foundGeneration, out var headerStart) && found == number)
++            if (TryReadHeaderBackwards(span, position, out var found, out var foundGeneration, out var headerStart) &&
++                headerStart >= lead && found == number)
+             {
+-                actualOffset = start + headerStart;
++                actualOffset = start - lead + headerStart;
+                 generation = foundGeneration;
+                 return true;
+             }
+@@ -6305,59 +6320,181 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
+             return false;
+         }
+ 
+-        while (index >= 0 && PdfCharacters.IsWhitespace(span[index]))
+-        {
+-            index--;
+-        }
++        // The header's two numbers, the generation first, each read backwards as a run of digits, or forwards with the lexer
++        // from the start of a line that holds a comment (#261).
++        long generationValue = 0;
++        long numberValue = 0;
++        var numberStart = 0;
++        var taken = 0;
+ 
+-        var generationEnd = index + 1;
+-        while (index >= 0 && PdfCharacters.IsDigit(span[index]))
++        while (taken < 2)
+         {
+-            index--;
+-        }
++            var crossedLine = false;
+ 
+-        var generationStart = index + 1;
+-        if (generationStart == generationEnd)
+-        {
+-            return false;
++            while (index >= 0 && PdfCharacters.IsWhitespace(span[index]))
++            {
++                crossedLine |= span[index] is (byte)'\r' or (byte)'\n';
++                index--;
++            }
++
++            if (index < 0)
++            {
++                return false;
++            }
++
++            if (crossedLine)
++            {
++                var lineStart = span[..(index + 1)].LastIndexOfAny((byte)'\r', (byte)'\n') + 1;
++
++                if (span[lineStart..(index + 1)].IndexOf((byte)'%') >= 0)
++                {
++                    // A line that holds a % may end with a comment, which starts where the lexer, reading the line from its
++                    // start, meets a % outside a string: its tokens are what precedes the comment, the nearest taken first.
++                    if (!TakeLineTokens(span, lineStart, index + 1, ref taken, ref generationValue, ref numberValue, ref numberStart))
++                    {
++                        return false;
++                    }
++
++                    if (taken == 2)
++                    {
++                        break;
++                    }
++
++                    index = lineStart - 1;
++
++                    if (index < 0)
++                    {
++                        return false;
++                    }
++
++                    continue;
++                }
++            }
++
++            var runEnd = index + 1;
++            while (index >= 0 && PdfCharacters.IsDigit(span[index]))
++            {
++                index--;
++            }
++
++            var runStart = index + 1;
++            if (runStart == runEnd)
++            {
++                return false;
++            }
++
++            // Each run is judged by its value, however many zeros lead it, as the parser judges it: a header the parser would
++            // refuse, found here, would be an object no read can serve. A run of digits always parses, as an integer within a
++            // long or as a real past one.
++            _ = PdfNumberParser.TryParse(span[runStart..runEnd], out var parsed, out _, out var pastLong);
++
++            if (pastLong)
++            {
++                return false;
++            }
++
++            if (taken == 0)
++            {
++                generationValue = parsed;
++            }
++            else
++            {
++                numberValue = parsed;
++                numberStart = runStart;
++            }
++
++            taken++;
++
++            if (taken == 1 && (index < 0 || !PdfCharacters.IsWhitespace(span[index])))
++            {
++                return false;
++            }
+         }
+ 
+-        if (index < 0 || !PdfCharacters.IsWhitespace(span[index]))
++        if (numberValue is <= 0 or > PdfObjectId.MaxNumber || generationValue is < 0 or > PdfObjectId.MaxGeneration)
+         {
+             return false;
+         }
+ 
+-        while (index >= 0 && PdfCharacters.IsWhitespace(span[index]))
+-        {
+-            index--;
+-        }
++        number = (int)numberValue;
++        generation = (int)generationValue;
++        headerStart = numberStart;
++        return true;
++    }
++
++    /// <summary>
++    /// Lexes the line <c>[lineStart, lineEnd)</c> of <paramref name="span"/> forward, from its start, and takes its last tokens
++    /// as the header's numbers still wanting, the nearest first: each must be an integer. False where one is not, or where a
++    /// string runs past the line's end, which would hold what follows.
++    /// </summary>
++    private static bool TakeLineTokens(
++        ReadOnlySpan<byte> span, int lineStart, int lineEnd, ref int taken, ref long generationValue, ref long numberValue, ref int numberStart)
++    {
++        var lexer = new PdfLexer(span[..lineEnd], lineStart);
++        var lastKind = PdfTokenKind.EndOfInput;
++        var lastValue = 0L;
++        var lastStart = 0;
++        var beforeKind = PdfTokenKind.EndOfInput;
++        var beforeValue = 0L;
++        var beforeStart = 0;
++        var count = 0;
+ 
+-        var numberEnd = index + 1;
+-        while (index >= 0 && PdfCharacters.IsDigit(span[index]))
++        while (true)
+         {
+-            index--;
++            var token = lexer.Read();
++
++            if (token.Kind == PdfTokenKind.EndOfInput)
++            {
++                break;
++            }
++
++            if ((token.Kind == PdfTokenKind.LiteralString && token.End == lineEnd && span[lineEnd - 1] != (byte)')') ||
++                (token.Kind == PdfTokenKind.HexString && token.End == lineEnd && span[lineEnd - 1] != (byte)'>'))
++            {
++                return false;
++            }
++
++            beforeKind = lastKind;
++            beforeValue = lastValue;
++            beforeStart = lastStart;
++            lastKind = token.Kind;
++            lastValue = token.Integer;
++            lastStart = token.Start;
++            count++;
+         }
+ 
+-        var numberStart = index + 1;
+-        if (numberStart == numberEnd)
++        if (count > 0)
+         {
+-            return false;
+-        }
++            if (lastKind != PdfTokenKind.Integer)
++            {
++                return false;
++            }
+ 
+-        // Each run is judged by its value, however many zeros lead it, as the parser judges it: a header the parser would
+-        // refuse, found here, would be an object no read can serve. A run of digits always parses, as an integer within a
+-        // long or as a real past one.
+-        _ = PdfNumberParser.TryParse(span[numberStart..numberEnd], out var parsed, out _, out var numberPastLong);
+-        _ = PdfNumberParser.TryParse(span[generationStart..generationEnd], out var parsedGeneration, out _, out var generationPastLong);
++            if (taken == 0)
++            {
++                generationValue = lastValue;
++            }
++            else
++            {
++                numberValue = lastValue;
++                numberStart = lastStart;
++            }
+ 
+-        if (numberPastLong || parsed is <= 0 or > PdfObjectId.MaxNumber || generationPastLong || parsedGeneration > PdfObjectId.MaxGeneration)
++            taken++;
++        }
++
++        if (count > 1 && taken < 2)
+         {
+-            return false;
++            if (beforeKind != PdfTokenKind.Integer)
++            {
++                return false;
++            }
++
++            numberValue = beforeValue;
++            numberStart = beforeStart;
++            taken++;
+         }
+ 
+-        number = (int)parsed;
+-        generation = (int)parsedGeneration;
+-        headerStart = numberStart;
+         return true;
+     }
+ 

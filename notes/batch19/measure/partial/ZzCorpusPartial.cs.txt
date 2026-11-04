@@ -1,0 +1,81 @@
+using System.Globalization;
+using System.Text;
+using AdCodicem.Pdf.Documents;
+using AdCodicem.Pdf.IO.XRef;
+using AdCodicem.Pdf.TestSupport;
+
+namespace AdCodicem.Pdf.Tests;
+
+#pragma warning disable
+
+/// <summary>Batch 19 probe (uncommitted): every corpus section read in part or in silence, as the reader records it at opening.</summary>
+public class ZzCorpusPartial
+{
+    [Fact]
+    public void ZzCorpusPartialAll()
+    {
+        var output = new StringBuilder();
+        var counts = new SortedDictionary<string, int>(StringComparer.Ordinal);
+
+        foreach (var entry in Corpus.Documents)
+        {
+            try
+            {
+                var options = CorpusReadingTests.OptionsFor(entry) with { ThrowOnEncrypted = false };
+                using var document = PdfDocument.Open(Corpus.PathOf(entry.File), options);
+                var length = new FileInfo(Corpus.PathOf(entry.File)).Length;
+                var index = 0;
+
+                foreach (var s in document.Reader.Structure.Sections)
+                {
+                    var read = s.State is XRefSectionState.Read or XRefSectionState.Relocated;
+                    var tags = new List<string>();
+                    if (read && s.Fault is not null) tags.Add("read+fault");
+                    if (read && s.RefusedRow is not null) tags.Add("read+refused");
+                    if (read && s.TrailerFault == XRefTrailerFault.Missing) tags.Add(s.TrailerPosition >= length ? "read+eof-before-trailer" : "read+trailer-missing");
+                    if (read && s.TrailerFault == XRefTrailerFault.NotADictionary) tags.Add("read+trailer-not-dictionary");
+                    if (s.Kind == XRefSectionKind.Table && s.HighestNumber < 0 && read) tags.Add("read+no-row");
+                    if (s.State == XRefSectionState.Malformed && s.TrailerFault == XRefTrailerFault.Missing) tags.Add("malformed+trailer-missing");
+                    if (read && s.CutByLimit) tags.Add("read+cut");
+                    if (read && s.Incomplete) tags.Add("read+incomplete");
+
+                    foreach (var tag in tags)
+                    {
+                        counts[tag] = counts.GetValueOrDefault(tag) + 1;
+                    }
+
+                    if (tags.Count > 0)
+                    {
+                        output.Append(CultureInfo.InvariantCulture, $"{entry.File} #{index} {s.NamedBy} offset={s.Offset} state={s.State} kind={s.Kind} cut={s.CutByLimit} [{string.Join(",", tags)}] fault={s.Fault ?? "-"} refused={s.RefusedRow ?? "-"} trailer={s.TrailerFault}@{s.TrailerPosition} highest={s.HighestNumber}\n");
+                    }
+
+                    index++;
+                }
+
+                var noSubsection = typeof(XRefSectionRecord).GetProperty("NoSubsection");
+                if (noSubsection is not null)
+                {
+                    foreach (var s in document.Reader.Structure.Sections)
+                    {
+                        if (noSubsection.GetValue(s) is true)
+                        {
+                            counts["no-subsection"] = counts.GetValueOrDefault("no-subsection") + 1;
+                            output.Append(CultureInfo.InvariantCulture, $"{entry.File} {s.NamedBy} offset={s.Offset} state={s.State} [no-subsection]\n");
+                        }
+                    }
+                }
+            }
+            catch (Exception exception)
+            {
+                output.Append(entry.File).Append(" THREW ").Append(exception.GetType().Name).Append('\n');
+            }
+        }
+
+        foreach (var (key, count) in counts)
+        {
+            output.Append(CultureInfo.InvariantCulture, $"SUMMARY {key}: {count}\n");
+        }
+
+        File.WriteAllText(Environment.GetEnvironmentVariable("ZZ_OUT") ?? "/tmp/zz-partial-corpus.txt", output.ToString());
+    }
+}

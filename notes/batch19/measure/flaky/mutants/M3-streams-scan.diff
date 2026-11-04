@@ -1,0 +1,13 @@
+diff --git a/src/AdCodicem.Pdf/Validation/CrossReferenceProbe.cs b/src/AdCodicem.Pdf/Validation/CrossReferenceProbe.cs
+index bd259d5..01741c9 100644
+--- a/src/AdCodicem.Pdf/Validation/CrossReferenceProbe.cs
++++ b/src/AdCodicem.Pdf/Validation/CrossReferenceProbe.cs
+@@ -390,7 +390,7 @@ internal sealed class CrossReferenceProbe
+ 
+             // An object written as a stream is lost: the reader reads it as null (#161, #202). The places of such members
+             // are listed in increasing order.
+-            if (actual >= 0 && Array.BinarySearch(streamMembers, actual) >= 0)
++            if (actual >= 0 && Array.IndexOf(streamMembers, actual) >= 0)
+             {
+                 if (!Broken.Take())
+                 {

@@ -1,0 +1,24 @@
+diff --git a/src/AdCodicem.Pdf/Validation/CrossReferenceProbe.cs b/src/AdCodicem.Pdf/Validation/CrossReferenceProbe.cs
+index bd259d5..80f74df 100644
+--- a/src/AdCodicem.Pdf/Validation/CrossReferenceProbe.cs
++++ b/src/AdCodicem.Pdf/Validation/CrossReferenceProbe.cs
+@@ -512,8 +512,17 @@ internal sealed class CrossReferenceProbe
+     /// </summary>
+     private static int FirstIndexOf(int[] numbers, int number, ref long[]? places)
+     {
+-        places ??= ObjectStreamPlaces.Of(numbers);
+-        return ObjectStreamPlaces.FirstIndexOf(places, number);
++        _ = places;
++
++        for (var i = 0; i < numbers.Length; i++)
++        {
++            if (numbers[i] == number)
++            {
++                return i;
++            }
++        }
++
++        return -1;
+     }
+ 
+     private static string Invariant(FormattableString text) => text.ToString(CultureInfo.InvariantCulture);

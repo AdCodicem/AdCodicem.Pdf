@@ -1,0 +1,84 @@
+using System.Text;
+using AdCodicem.Pdf.Documents;
+using BenchmarkDotNet.Attributes;
+
+namespace AdCodicem.Pdf.Benchmarks;
+
+#pragma warning disable
+
+/// <summary>Stage benchmark (uncommitted): the rebuild's object scan over whole files (batch 19, #261).</summary>
+[MemoryDiagnoser]
+public class ZzScanBenchmarks
+{
+    private byte[] _document = [];
+
+    [Params("sound", "plain-headers", "comment-headers", "comment-lines", "obj-lines", "percent-lines")]
+    public string Shape { get; set; } = "sound";
+
+    [GlobalSetup]
+    public void Setup()
+    {
+        _document = Shape switch
+        {
+            // A sound document of 1,000 pages of 4 KB, ~4.4 MB, whose startxref names nothing: opening rebuilds.
+            "sound" => Broken(SyntheticDocument.Create(1000, contentBytes: 4096)),
+
+            // 100,000 objects, each header "N 0 obj": what indexing them costs, for the shape below.
+            "plain-headers" => Headers(100_000, number => $"{number} 0 obj\n(x)\nendobj\n"),
+
+            // 100,000 objects, each header "N % comment\n0 obj": the scan finds them only where it reads comments.
+            "comment-headers" => Headers(100_000, number => $"{number} % a comment\n0 obj\n(x)\nendobj\n"),
+
+            // 4 MB of comment lines of 60 bytes each followed by "0 obj": every obj crosses an end of line into a comment.
+            "comment-lines" => Lines(4 * 1024 * 1024, "%" + new string('c', 60) + "\n0 obj\n"),
+
+            // 4 MB of "\nobj" after a line holding a '%' near its end, 1,000 bytes long.
+            "obj-lines" => Lines(4 * 1024 * 1024, new string('x', 1000) + "%\nobj\n"),
+
+            // 4 MB of lines "(50%) 4 % x" then "0 obj": a string holding % before a header's comment.
+            "percent-lines" => Lines(4 * 1024 * 1024, "(50%) 4 % x\n0 obj\n"),
+            _ => throw new InvalidOperationException(),
+        };
+    }
+
+    private static byte[] Broken(byte[] file)
+    {
+        var text = Encoding.Latin1.GetString(file);
+        var at = text.LastIndexOf("startxref", StringComparison.Ordinal);
+        var end = text.IndexOf("%%EOF", at, StringComparison.Ordinal);
+        return Encoding.Latin1.GetBytes(text[..at] + "startxref\n9\n" + text[end..]);
+    }
+
+    private static byte[] Headers(int count, Func<int, string> header)
+    {
+        var text = new StringBuilder("%PDF-1.7\n1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n2 0 obj\n<< /Type /Pages /Kids [] /Count 0 >>\nendobj\n");
+
+        for (var number = 3; number < count + 3; number++)
+        {
+            text.Append(header(number));
+        }
+
+        text.Append("trailer\n<< /Root 1 0 R >>\n%%EOF\n");
+        return Encoding.Latin1.GetBytes(text.ToString());
+    }
+
+    private static byte[] Lines(int length, string line)
+    {
+        var text = new StringBuilder("%PDF-1.7\n1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n2 0 obj\n<< /Type /Pages /Kids [] /Count 0 >>\nendobj\n");
+
+        while (text.Length < length)
+        {
+            text.Append(line);
+        }
+
+        text.Append("trailer\n<< /Root 1 0 R >>\n%%EOF\n");
+        return Encoding.Latin1.GetBytes(text.ToString());
+    }
+
+    [Benchmark(Description = "Rebuild by scanning the whole file")]
+    public int Open()
+    {
+        using var document = PdfDocument.Open(_document);
+        return document.ObjectCount;
+    }
+}

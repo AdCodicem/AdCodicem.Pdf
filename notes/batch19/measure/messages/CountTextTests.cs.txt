@@ -1,0 +1,283 @@
+using System.Globalization;
+using System.IO.Compression;
+using System.Text;
+using AdCodicem.Pdf.Diagnostics;
+using AdCodicem.Pdf.Documents;
+using AdCodicem.Pdf.IO;
+using AdCodicem.Pdf.IO.Filters;
+using AdCodicem.Pdf.Objects;
+using AdCodicem.Pdf.TestSupport;
+using AdCodicem.Pdf.Validation;
+
+namespace AdCodicem.Pdf.Tests;
+
+/// <summary>
+/// Every message that writes a count agrees it with its noun, a count of one included, and a distance says which way it
+/// runs (#241): the reader's diagnostics and the validator's findings alike.
+/// </summary>
+public class CountTextTests
+{
+    [Theory]
+    [InlineData(0, "0 bytes")]
+    [InlineData(1, "1 byte")]
+    [InlineData(2, "2 bytes")]
+    [InlineData(-1, "-1 bytes")]
+    public void A_count_takes_the_singular_for_one_alone(long count, string expected) =>
+        CountText.Bytes(count).Should().Be(expected);
+
+    [Fact]
+    public void Each_noun_agrees_with_its_count()
+    {
+        CountText.Objects(1).Should().Be("1 object");
+        CountText.Objects(3).Should().Be("3 objects");
+        CountText.Pages(1).Should().Be("1 page");
+        CountText.Pages(2).Should().Be("2 pages");
+        CountText.Of(1, "value", "values").Should().Be("1 value");
+        CountText.Of(12345, "value", "values").Should().Be("12345 values");
+        CountText.Grouped(1, "section", "sections").Should().Be("1 section");
+        CountText.Grouped(12345, "section", "sections").Should().Be("12,345 sections");
+    }
+
+    [Theory]
+    [InlineData(-1, "1 byte before it")]
+    [InlineData(-12, "12 bytes before it")]
+    [InlineData(1, "1 byte after it")]
+    [InlineData(3, "3 bytes after it")]
+    public void A_distance_says_which_way_it_runs(long delta, string expected) =>
+        CountText.Distance(delta, "it").Should().Be(expected);
+
+    [Theory]
+    [InlineData("sv-SE")]
+    [InlineData("fa-IR")]
+    public void A_count_is_written_the_same_whatever_the_culture(string name)
+    {
+        var culture = CultureInfo.CurrentCulture;
+
+        try
+        {
+            CultureInfo.CurrentCulture = new CultureInfo(name);
+            CountText.Grouped(1048576, "byte", "bytes").Should().Be("1,048,576 bytes");
+            CountText.Distance(-3, "where the index said").Should().Be("3 bytes before where the index said");
+        }
+        finally
+        {
+            CultureInfo.CurrentCulture = culture;
+        }
+    }
+
+    [Fact]
+    public void A_header_one_byte_into_the_file_is_said_to_start_one_byte_in()
+    {
+        byte[] file = [(byte)' ', .. Sample().BuildClassic(rootNumber: 1)];
+        using var document = PdfDocument.Open(file);
+
+        document.Diagnostics.Should().ContainSingle(entry => entry.Code == PdfDiagnosticCodes.XRefOffsetAdjusted).Which.Message
+            .Should().Be("The PDF header starts 1 byte into the file; offsets were shifted accordingly.");
+        new PdfValidator().Validate(document).Findings.Should().ContainSingle(f => f.RuleId == PdfValidationRuleIds.FileHeaderOffset).Which.Message
+            .Should().Be("The PDF header starts 1 byte into the file instead of at its first byte.");
+    }
+
+    [Theory]
+    [InlineData(1, "1 byte before")]
+    [InlineData(-2, "2 bytes after")]
+    public void An_object_found_near_its_entry_is_said_to_lie_before_or_after_it(int offsetError, string found)
+    {
+        using var document = PdfDocument.Open(Sample().BuildClassic(rootNumber: 1, offsetError: offsetError));
+        _ = document.GetObject(new PdfObjectId(1));
+
+        document.Diagnostics.Should().ContainSingle(entry => entry.Code == PdfDiagnosticCodes.XRefOffsetAdjusted).Which.Message
+            .Should().Be($"Object 1 was found {found} where the index said.");
+    }
+
+    [Theory]
+    [InlineData(1, "1 byte before")]
+    [InlineData(-2, "2 bytes after")]
+    public void A_section_found_near_where_prev_names_it_is_said_to_lie_before_or_after_it(int error, string found)
+    {
+        var (file, named) = PrevOff(error);
+
+        using var document = PdfDocument.Open(file);
+
+        document.Diagnostics.Should().ContainSingle(entry => entry.Code == PdfDiagnosticCodes.XRefOffsetAdjusted).Which.Message
+            .Should().Be($"The cross-reference section /Prev names at offset {named} was found {found} it.");
+    }
+
+    [Fact]
+    public void An_object_stream_that_declares_one_object_says_so_in_the_singular()
+    {
+        var file = new TestPdfBuilder()
+            .WithObject(1, "<< /Type /Catalog /Pages 2 0 R >>")
+            .WithObject(2, "<< /Type /Pages /Kids [] /Count 0 >>")
+            .WithObject(3, "(packed)")
+            .BuildWithXRefStream(rootNumber: 1, compressedObjects: [3], objectStreamHeader: _ => string.Empty);
+
+        using var document = PdfDocument.Open(file);
+        var report = new PdfValidator().Validate(document);
+        document.GetObject(new PdfObjectId(3)).Should().BeSameAs(PdfNull.Instance);
+
+        report.Findings.Should().ContainSingle(f => f.RuleId == PdfValidationRuleIds.XRefObjectStreamBroken).Which.Message.Should().Be(
+            "Object stream 4, where the index places 1 object, cannot be read: its header lists 0 of the 1 object its /N declares, then ends.");
+        document.Diagnostics.Should().ContainSingle(entry => entry.Code == PdfDiagnosticCodes.ObjectStreamUnreadable).Which.Message.Should().Be(
+            "Object stream 4 has a header that ends after 0 of the 1 object its /N declares; none of its objects can be read from it.");
+    }
+
+    [Fact]
+    public void An_object_stream_that_decodes_to_one_byte_says_so_in_the_singular()
+    {
+        using var document = PdfDocument.Open(ObjStmOneByte());
+        var report = new PdfValidator().Validate(document);
+
+        report.Findings.Should().ContainSingle(f => f.RuleId == PdfValidationRuleIds.XRefObjectStreamBroken).Which.Message.Should().Be(
+            "Object stream 5, where the index places 1 object, cannot be read: it decodes to 1 byte, fewer than its /First of 5.");
+        document.Diagnostics.Should().ContainSingle(entry => entry.Code == PdfDiagnosticCodes.ObjectStreamUnreadable).Which.Message.Should().Be(
+            "Object stream 5 gives in /First an offset, 5, past the end of its decoded data, which is 1 byte long; none of its objects can be read from it.");
+    }
+
+    [Fact]
+    public void A_media_box_of_one_value_says_so_in_the_singular()
+    {
+        var file = new TestPdfBuilder()
+            .WithObject(1, "<< /Type /Catalog /Pages 2 0 R >>")
+            .WithObject(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>")
+            .WithObject(3, "<< /Type /Page /Parent 2 0 R /MediaBox [612] /Resources << >> >>")
+            .BuildClassic(rootNumber: 1);
+
+        using var document = PdfDocument.Open(file);
+
+        new PdfValidator().Validate(document).Findings.Should().ContainSingle(f => f.RuleId == PdfValidationRuleIds.PageTreeMediaBoxInvalid)
+            .Which.Message.Should().Be("The /MediaBox of object 3 is an array of 1 value, not a rectangle.");
+    }
+
+    [Fact]
+    public void Filters_that_keep_one_byte_say_so_in_the_singular()
+    {
+        var zlib = ZLib("A"u8.ToArray());
+        zlib[^1] ^= 0xFF;
+
+        Report(zlib, PdfName.FlateDecode).Should().Be(
+            "A Flate stream's checksum disagrees with the 1 byte its data decoded to; it was kept, and may be wrong.");
+        Report([0x78, 0x01, 0x00, 0x01, 0x00, 0xFE, 0xFF, 0x41, 0x07, 0x00, 0x00, 0x00], PdfName.FlateDecode).Should().Be(
+            "A Flate stream is corrupt at byte 9 of its 12; the 1 byte decoded before the fault was found was kept.");
+        Report([0x02, 0x41], PdfName.RunLengthDecode).Should().Be(
+            "A RunLength stream ends inside a run of 3 bytes, of which it holds 1; it was kept, and data may have been lost.");
+    }
+
+    [Theory]
+    [InlineData("<< /Length 1 >>\nstream\nABC\nendstream", "The stream declared 1 byte but ended after 3.")]
+    [InlineData("<< /Length 1 >>\nstream\nX\nendobj\n6 0 obj\n(next)", "The stream has no endstream: its object's endobj follows the 1 byte it declared, which is taken as its data.")]
+    [InlineData("<< /Length 99 >>\nstream\nX\nendobj\n6 0 obj\n(next)", "The stream declared 99 bytes, and no endstream follows its data before the next object, at 335: its object's endobj ends it, after 1 byte.")]
+    public void A_stream_of_one_byte_says_so_in_the_singular(string body, string message)
+    {
+        using var document = PdfDocument.Open(Sample().WithObject(5, body).BuildClassic(rootNumber: 1));
+        _ = document.GetObject(new PdfObjectId(5));
+
+        document.Diagnostics.Should().ContainSingle().Which.Message.Should().Be(message);
+    }
+
+    [Fact]
+    public void A_cross_reference_stream_that_declares_one_byte_says_so_in_the_singular()
+    {
+        using var document = PdfDocument.Open(ChainFiles.AloneWithIndirectLength(-41));
+
+        document.Diagnostics.Should().ContainSingle().Which.Message.Should().Be("The stream declared 1 byte but ended after 42.");
+    }
+
+    [Fact]
+    public void Limits_of_one_are_said_in_the_singular()
+    {
+        var (file, _) = PrevOff(0);
+        using (var document = PdfDocument.Open(file, With(PdfReaderLimits.Default with { MaxXRefSectionCount = 1 })))
+        {
+            document.Diagnostics.Should().ContainSingle(entry => entry.Code == PdfDiagnosticCodes.LimitXRefSectionCount).Which.Message.Should().StartWith(
+                "The cross-reference chain has more than 1 section; the older ones were not read.");
+        }
+
+        Report(Encoding.ASCII.GetBytes("3431>"), PdfName.ASCIIHexDecode, chain: true, PdfReaderLimits.Default with { MaxFilterChainLength = 1 })
+            .Should().StartWith("The /Filter entry names more than 1 filter; decoding stopped after the first.");
+        Report(Encoding.ASCII.GetBytes("414243>"), PdfName.ASCIIHexDecode, chain: false, PdfReaderLimits.Default with { MaxDecodedStreamLength = 1 })
+            .Should().StartWith("The /ASCIIHexDecode data decodes to more than 1 byte; decoding stopped there.");
+
+        using (var document = PdfDocument.Open(Sample().BuildClassic(rootNumber: 1), With(PdfReaderLimits.Default with { MaxStreamLength = 1 })))
+        {
+            _ = document.GetObject(new PdfObjectId(4)).AsStream()!.Decode(document.Diagnostics);
+            document.Diagnostics.Should().Contain(entry => entry.Message.StartsWith("A stream's data runs past 1 byte;", StringComparison.Ordinal));
+        }
+    }
+
+    private static PdfReaderOptions With(PdfReaderLimits limits) => PdfReaderOptions.Default with { Limits = limits };
+
+    private static TestPdfBuilder Sample() =>
+        new TestPdfBuilder()
+            .WithObject(1, "<< /Type /Catalog /Pages 2 0 R >>")
+            .WithObject(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>")
+            .WithObject(3, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 4 0 R /Resources << >> >>")
+            .Stream(4, string.Empty, "BT (Bonjour) Tj ET");
+
+    /// <summary>A document and its update, whose /Prev names the original section <paramref name="error"/> bytes late.</summary>
+    private static (byte[] File, long Named) PrevOff(int error)
+    {
+        var original = Sample().WithObject(5, $"({new string('x', 1024)})").BuildClassic(rootNumber: 1);
+        var text = Encoding.Latin1.GetString(TestPdfBuilder.AppendIncrementalUpdate(original, 1, [(4, "<< /Length 0 >>\nstream\n\nendstream")]));
+        var at = text.LastIndexOf("/Prev ", StringComparison.Ordinal) + "/Prev ".Length;
+        var end = text.IndexOf(' ', at);
+        var named = long.Parse(text[at..end], CultureInfo.InvariantCulture) + error;
+        return (Encoding.Latin1.GetBytes(text[..at] + named.ToString(CultureInfo.InvariantCulture) + text[end..]), named);
+    }
+
+    /// <summary>A cross-reference stream that places object 6 in object stream 5, whose data is one byte.</summary>
+    private static byte[] ObjStmOneByte()
+    {
+        var file = new MemoryStream();
+        var offsets = new SortedDictionary<int, long>();
+
+        void Text(string text) => file.Write(Encoding.Latin1.GetBytes(text));
+
+        Text("%PDF-1.5\n");
+        offsets[1] = file.Position;
+        Text("1 0 obj\n<< /Type /Catalog /Pages 2 0 R /Extra 6 0 R >>\nendobj\n");
+        offsets[2] = file.Position;
+        Text("2 0 obj\n<< /Type /Pages /Kids [] /Count 0 >>\nendobj\n");
+        offsets[5] = file.Position;
+        Text("5 0 obj\n<< /Type /ObjStm /N 1 /First 5 /Length 1 >>\nstream\nX\nendstream\nendobj\n");
+        var xref = file.Position;
+        var rows = new List<byte>();
+
+        void Row(byte type, long second, int third) =>
+            rows.AddRange([type, (byte)(second >> 24), (byte)(second >> 16), (byte)(second >> 8), (byte)second, (byte)(third >> 8), (byte)third]);
+
+        Row(0, 0, 65535);
+        Row(1, offsets[1], 0);
+        Row(1, offsets[2], 0);
+        Row(0, 0, 0);
+        Row(0, 0, 0);
+        Row(1, offsets[5], 0);
+        Row(2, 5, 0);
+        Row(1, xref, 0);
+        Text(string.Create(CultureInfo.InvariantCulture, $"7 0 obj\n<< /Type /XRef /Size 8 /W [1 4 2] /Root 1 0 R /Length {rows.Count} >>\nstream\n"));
+        file.Write(rows.ToArray());
+        Text("\nendstream\nendobj\n");
+        Text(string.Create(CultureInfo.InvariantCulture, $"startxref\n{xref}\n%%EOF\n"));
+        return file.ToArray();
+    }
+
+    private static byte[] ZLib(byte[] data)
+    {
+        using var compressed = new MemoryStream();
+        using (var zlib = new ZLibStream(compressed, CompressionLevel.Optimal))
+        {
+            zlib.Write(data);
+        }
+
+        return compressed.ToArray();
+    }
+
+    private static string Report(byte[] data, PdfName filter, bool chain = false, PdfReaderLimits? limits = null)
+    {
+        var dictionary = new PdfDictionary();
+        dictionary.Set(PdfName.Filter, chain ? new PdfArray([filter, filter]) : filter);
+        var diagnostics = new PdfDiagnostics();
+        var stream = new PdfStream(dictionary, PdfStreamData.FromMemory(data));
+        _ = limits is null ? stream.Decode(diagnostics) : PdfFilterPipeline.Decode(stream, diagnostics, new PdfLimitGuard(limits, false));
+        return diagnostics.Should().ContainSingle().Which.Message;
+    }
+}

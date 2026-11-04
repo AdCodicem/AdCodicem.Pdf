@@ -1,0 +1,516 @@
+diff --git a/src/AdCodicem.Pdf/IO/CountText.cs b/src/AdCodicem.Pdf/IO/CountText.cs
+new file mode 100644
+index 0000000..e802227
+--- /dev/null
++++ b/src/AdCodicem.Pdf/IO/CountText.cs
+@@ -0,0 +1,39 @@
++using System.Globalization;
++
++namespace AdCodicem.Pdf.IO;
++
++/// <summary>
++/// Says in a message how many, and how far: a count agreed with its noun — <c>1 byte</c>, <c>3 bytes</c> —, and a
++/// distance with the way it runs — <c>1 byte before it</c>, <c>3 bytes after it</c> —, for the reader's diagnostics and
++/// the validator's findings alike.
++/// </summary>
++/// <remarks>
++/// A count is written in digits, in the invariant culture, as every number of a message is. A count a message groups by
++/// thousands, as it states a bound, is written through <see cref="Grouped"/>; its noun agrees with it the same way.
++/// </remarks>
++internal static class CountText
++{
++    /// <summary>Says a number of bytes: <c>1 byte</c>, <c>12 bytes</c>.</summary>
++    public static string Bytes(long count) => Of(count, "byte", "bytes");
++
++    /// <summary>Says a number of objects: <c>1 object</c>, <c>3 objects</c>.</summary>
++    public static string Objects(long count) => Of(count, "object", "objects");
++
++    /// <summary>Says a number of pages: <c>1 page</c>, <c>3 pages</c>.</summary>
++    public static string Pages(long count) => Of(count, "page", "pages");
++
++    /// <summary>Says a count with the noun that agrees with it: <paramref name="one"/> for 1, <paramref name="many"/> otherwise.</summary>
++    public static string Of(long count, string one, string many) =>
++        string.Create(CultureInfo.InvariantCulture, $"{count} {(count == 1 ? one : many)}");
++
++    /// <summary>Says a count as <see cref="Of"/> does, its digits grouped by thousands: <c>1 section</c>, <c>1,024 sections</c>.</summary>
++    public static string Grouped(long count, string one, string many) =>
++        string.Create(CultureInfo.InvariantCulture, $"{count:N0} {(count == 1 ? one : many)}");
++
++    /// <summary>
++    /// Says how far, and which way, something lies from <paramref name="from"/>, where it was named:
++    /// <c>12 bytes after it</c>, <c>1 byte before where the index said</c>.
++    /// </summary>
++    public static string Distance(long delta, string from) =>
++        delta < 0 ? $"{Bytes(-delta)} before {from}" : $"{Bytes(delta)} after {from}";
++}
+diff --git a/src/AdCodicem.Pdf/IO/Filters/PdfFilterPipeline.cs b/src/AdCodicem.Pdf/IO/Filters/PdfFilterPipeline.cs
+index 7645630..157dd1c 100644
+--- a/src/AdCodicem.Pdf/IO/Filters/PdfFilterPipeline.cs
++++ b/src/AdCodicem.Pdf/IO/Filters/PdfFilterPipeline.cs
+@@ -602,7 +602,7 @@ internal static class PdfFilterPipeline
+             DataEnding.UnmarkedInsideRun when faults.UnitHeld == 0 =>
+                 Invariant($"{subject} ends after the length of a run of {faults.UnitLength} bytes, without any of them; data may have been lost."),
+             DataEnding.UnmarkedInsideRun =>
+-                Invariant($"{subject} ends inside a run of {faults.UnitLength} bytes, of which it holds {faults.UnitHeld}; they were kept, and data may have been lost."),
++                Invariant($"{subject} ends inside a run of {faults.UnitLength} bytes, of which it holds {faults.UnitHeld}; {(faults.UnitHeld == 1 ? "it was" : "they were")} kept, and data may have been lost."),
+             _ => $"{subject} ends after the length of a run, without the byte the run repeats; data may have been lost.",
+         };
+ 
+@@ -624,7 +624,7 @@ internal static class PdfFilterPipeline
+                 diagnostics,
+                 string.Create(
+                     CultureInfo.InvariantCulture,
+-                    $"The /Filter entry names more than {chain.EndIndex:N0} filters; decoding stopped after the first {chain.EndIndex:N0}."),
++                    $"The /Filter entry names more than {CountText.Grouped(chain.EndIndex, "filter", "filters")}; decoding stopped after the first{(chain.EndIndex == 1 ? string.Empty : " " + chain.EndIndex.ToString("N0", CultureInfo.InvariantCulture))}."),
+                 position);
+             return;
+         }
+@@ -673,7 +673,7 @@ internal static class PdfFilterPipeline
+                     PdfDiagnosticCodes.FilterChecksumMismatch,
+                     string.Create(
+                         CultureInfo.InvariantCulture,
+-                        $"A Flate stream's checksum disagrees with the {decoded} bytes its data decoded to; all were kept, and some may be wrong."),
++                        $"A Flate stream's checksum disagrees with the {CountText.Bytes(decoded)} its data decoded to; {(decoded == 1 ? "it was kept, and may be wrong" : "all were kept, and some may be wrong")}."),
+                     position);
+                 break;
+ 
+@@ -689,7 +689,7 @@ internal static class PdfFilterPipeline
+                     PdfDiagnosticCodes.FilterFailed,
+                     string.Create(
+                         CultureInfo.InvariantCulture,
+-                        $"A Flate stream is corrupt at byte {faultAt} of its {encoded}; the {decoded} bytes decoded before the fault was found were kept."),
++                        $"A Flate stream is corrupt at byte {faultAt} of its {encoded}; the {CountText.Bytes(decoded)} decoded before the fault was found {(decoded == 1 ? "was" : "were")} kept."),
+                     position);
+                 break;
+         }
+diff --git a/src/AdCodicem.Pdf/IO/PdfFileReader.cs b/src/AdCodicem.Pdf/IO/PdfFileReader.cs
+index a946dab..a942290 100644
+--- a/src/AdCodicem.Pdf/IO/PdfFileReader.cs
++++ b/src/AdCodicem.Pdf/IO/PdfFileReader.cs
+@@ -2575,7 +2575,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
+                 };
+                 message = string.Create(
+                     CultureInfo.InvariantCulture,
+-                    $"The /Length of cross-reference stream {deferred.Stream} names object {number} {generation}, {held}; the chain took its data up to its endstream, after {deferred.Taken} bytes.");
++                    $"The /Length of cross-reference stream {deferred.Stream} names object {number} {generation}, {held}; the chain took its data up to its endstream, after {CountText.Bytes(deferred.Taken)}.");
+             }
+             else if (length != deferred.Taken)
+             {
+@@ -2583,13 +2583,13 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
+ 
+                 if (((IPdfStreamDataProvider)this).CheckEndStream(dataStart + length) is null)
+                 {
+-                    message = string.Create(CultureInfo.InvariantCulture, $"The stream declared {length} bytes but ended after {deferred.Taken}.");
++                    message = string.Create(CultureInfo.InvariantCulture, $"The stream declared {CountText.Bytes(length)} but ended after {deferred.Taken}.");
+                 }
+                 else if (dataStart + length > stopped)
+                 {
+                     message = string.Create(
+                         CultureInfo.InvariantCulture,
+-                        $"The /Length of cross-reference stream {deferred.Stream} gives {length} bytes, which an endstream confirms; the chain, which could not read it, took the data up to an endstream {deferred.Taken} bytes in, and read no row past it.");
++                        $"The /Length of cross-reference stream {deferred.Stream} gives {CountText.Bytes(length)}, which an endstream confirms; the chain, which could not read it, took the data up to an endstream {CountText.Bytes(deferred.Taken)} in, and read no row past it.");
+                 }
+             }
+ 
+@@ -2842,7 +2842,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
+             _headerOffset = index;
+             _diagnostics.Repair(
+                 PdfDiagnosticCodes.XRefOffsetAdjusted,
+-                string.Create(CultureInfo.InvariantCulture, $"The PDF header starts {index} bytes into the file; offsets were shifted accordingly."),
++                string.Create(CultureInfo.InvariantCulture, $"The PDF header starts {CountText.Bytes(index)} into the file; offsets were shifted accordingly."),
+                 index);
+         }
+ 
+@@ -2991,10 +2991,10 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
+                     inFile
+                         ? string.Create(
+                             CultureInfo.InvariantCulture,
+-                            $"The cross-reference chain has more than {_guard.Bound(PdfLimit.XRefSectionCount):N0} sections; the older ones were not read.")
++                            $"The cross-reference chain has more than {CountText.Grouped(_guard.Bound(PdfLimit.XRefSectionCount), "section", "sections")}; the older ones were not read.")
+                         : string.Create(
+                             CultureInfo.InvariantCulture,
+-                            $"The cross-reference chain has more than {_guard.Bound(PdfLimit.XRefSectionCount):N0} sections; the older ones were not read: the chain goes on at offset {DescribeOffset(offset)}, outside the file."),
++                            $"The cross-reference chain has more than {CountText.Grouped(_guard.Bound(PdfLimit.XRefSectionCount), "section", "sections")}; the older ones were not read: the chain goes on at offset {DescribeOffset(offset)}, outside the file."),
+                     inFile ? cut : namedFrom);
+                 break;
+             }
+@@ -3290,7 +3290,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
+                     PdfDiagnosticCodes.XRefOffsetAdjusted,
+                     string.Create(
+                         CultureInfo.InvariantCulture,
+-                        $"The cross-reference section {section.NamedBy} names at offset {absolute} was found {candidate - absolute} bytes from there."),
++                        $"The cross-reference section {section.NamedBy} names at offset {absolute} was found {CountText.Distance(candidate - absolute, "it")}."),
+                     candidate);
+ 
+                 if (state == XRefSectionState.Read)
+@@ -5637,7 +5637,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
+         {
+             _diagnostics.Repair(
+                 PdfDiagnosticCodes.XRefOffsetAdjusted,
+-                string.Create(CultureInfo.InvariantCulture, $"Object {id.Number} was found {nearby - offset} bytes from where the index said."),
++                string.Create(CultureInfo.InvariantCulture, $"Object {id.Number} was found {CountText.Distance(nearby - offset, "where the index said")}."),
+                 nearby);
+ 
+             // The entry records the header found, as a rebuilt one does: not the generation of the reference that asked
+@@ -6207,7 +6207,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
+         if (first > data.Length)
+         {
+             fault = string.Create(
+-                CultureInfo.InvariantCulture, $"it decodes to {data.Length} bytes, fewer than its /First of {first}");
++                CultureInfo.InvariantCulture, $"it decodes to {CountText.Bytes(data.Length)}, fewer than its /First of {first}");
+             return cut ? ObjectStreamHeaderResult.CutByLimit : ObjectStreamHeaderResult.Unreadable;
+         }
+ 
+@@ -6224,12 +6224,12 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
+         fault = header.Fault switch
+         {
+             ObjectStreamHeaderFault.Ended => string.Create(
+-                CultureInfo.InvariantCulture, $"its header lists {header.Count} of the {count} objects its /N declares, then ends"),
++                CultureInfo.InvariantCulture, $"its header lists {header.Count} of the {CountText.Objects(count)} its /N declares, then ends"),
+             ObjectStreamHeaderFault.Stray => string.Create(
+-                CultureInfo.InvariantCulture, $"its header lists {header.Count} of the {count} objects its /N declares, then something else"),
++                CultureInfo.InvariantCulture, $"its header lists {header.Count} of the {CountText.Objects(count)} its /N declares, then something else"),
+             _ => string.Create(
+                 CultureInfo.InvariantCulture,
+-                $"its header lists {header.Count} of the {count} objects its /N declares, then object {header.FaultNumber} at offset {header.FaultOffset}, {header.Why(data.Length)}"),
++                $"its header lists {header.Count} of the {CountText.Objects(count)} its /N declares, then object {header.FaultNumber} at offset {header.FaultOffset}, {header.Why(data.Length)}"),
+         };
+         return ObjectStreamHeaderResult.Unreadable;
+     }
+@@ -7768,7 +7768,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
+                         position,
+                         string.Create(
+                             CultureInfo.InvariantCulture,
+-                            $"gives in /First an offset, {first:N0}, past the end of its decoded data, which is {data.Length:N0} bytes long"),
++                            $"gives in /First an offset, {first:N0}, past the end of its decoded data, which is {CountText.Grouped(data.Length, "byte", "bytes")} long"),
+                         0,
+                         count);
+                 }
+@@ -7788,13 +7788,13 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
+                     header.Fault switch
+                     {
+                         ObjectStreamHeaderFault.Ended => string.Create(
+-                            CultureInfo.InvariantCulture, $"has a header that ends after {header.Count:N0} of the {count:N0} objects its /N declares"),
++                            CultureInfo.InvariantCulture, $"has a header that ends after {header.Count:N0} of the {CountText.Grouped(count, "object", "objects")} its /N declares"),
+                         ObjectStreamHeaderFault.Stray => string.Create(
+                             CultureInfo.InvariantCulture,
+-                            $"has a header that holds something other than an object number and an offset after {header.Count:N0} of the {count:N0} objects its /N declares"),
++                            $"has a header that holds something other than an object number and an offset after {header.Count:N0} of the {CountText.Grouped(count, "object", "objects")} its /N declares"),
+                         _ => string.Create(
+                             CultureInfo.InvariantCulture,
+-                            $"has a header that lists object {header.FaultNumber} at offset {header.FaultOffset}, {header.Why(data.Length)}, after {header.Count:N0} of the {count:N0} objects its /N declares"),
++                            $"has a header that lists object {header.FaultNumber} at offset {header.FaultOffset}, {header.Why(data.Length)}, after {header.Count:N0} of the {CountText.Grouped(count, "object", "objects")} its /N declares"),
+                     },
+                     header.Count,
+                     count);
+diff --git a/src/AdCodicem.Pdf/IO/PdfLimitGuard.cs b/src/AdCodicem.Pdf/IO/PdfLimitGuard.cs
+index aabebd6..1e9478a 100644
+--- a/src/AdCodicem.Pdf/IO/PdfLimitGuard.cs
++++ b/src/AdCodicem.Pdf/IO/PdfLimitGuard.cs
+@@ -80,7 +80,7 @@ internal sealed class PdfLimitGuard(PdfReaderLimits limits, bool throwOnLimit, P
+     {
+         > 0 when length % (1024 * 1024) == 0 => string.Create(CultureInfo.InvariantCulture, $"{length / (1024 * 1024):N0} MB"),
+         > 0 when length % 1024 == 0 => string.Create(CultureInfo.InvariantCulture, $"{length / 1024:N0} KB"),
+-        _ => string.Create(CultureInfo.InvariantCulture, $"{length:N0} bytes"),
++        _ => CountText.Grouped(length, "byte", "bytes"),
+     };
+ 
+     private static string Code(PdfLimit limit) => limit switch
+diff --git a/src/AdCodicem.Pdf/IO/PdfObjectParser.cs b/src/AdCodicem.Pdf/IO/PdfObjectParser.cs
+index fa19ea5..3299496 100644
+--- a/src/AdCodicem.Pdf/IO/PdfObjectParser.cs
++++ b/src/AdCodicem.Pdf/IO/PdfObjectParser.cs
+@@ -948,10 +948,10 @@ internal ref struct PdfObjectParser
+                     fits
+                         ? string.Create(
+                             CultureInfo.InvariantCulture,
+-                            $"The stream declared {length} bytes, and no endstream follows them; the declared length is kept without a search, the document's searches for endstream having read as much of the file as they may.")
++                            $"The stream declared {CountText.Bytes(length)}, and no endstream follows {(length == 1 ? "it" : "them")}; the declared length is kept without a search, the document's searches for endstream having read as much of the file as they may.")
+                         : string.Create(
+                             CultureInfo.InvariantCulture,
+-                            $"{Describe(declared)}, and no endstream follows its data in the bytes read with its object; the {kept} bytes {(search.NextObject is null ? "to the end of the file" : "up to the next object")} are taken as its data without a search, the document's searches for endstream having read as much of the file as they may."),
++                            $"{Describe(declared)}, and no endstream follows its data in the bytes read with its object; the {CountText.Bytes(kept)} {(search.NextObject is null ? "to the end of the file" : "up to the next object")} {(kept == 1 ? "is" : "are")} taken as its data without a search, the document's searches for endstream having read as much of the file as they may."),
+                     dataStart);
+             }
+ 
+@@ -967,7 +967,7 @@ internal ref struct PdfObjectParser
+                     PdfDiagnosticCodes.StreamTruncated,
+                     string.Create(
+                         CultureInfo.InvariantCulture,
+-                        $"The stream has no endstream: its object's endobj follows the {length} bytes it declared, which are taken as its data."),
++                        $"The stream has no endstream: its object's endobj follows the {CountText.Bytes(length)} it declared, which {(length == 1 ? "is" : "are")} taken as its data."),
+                     dataStart);
+             }
+ 
+@@ -985,7 +985,7 @@ internal ref struct PdfObjectParser
+                     PdfDiagnosticCodes.StreamTruncated,
+                     string.Create(
+                         CultureInfo.InvariantCulture,
+-                        $"{Describe(declared)}, and no endstream follows its data {Where(search.NextObject)}: its object's endobj ends it, after {taken} bytes."),
++                        $"{Describe(declared)}, and no endstream follows its data {Where(search.NextObject)}: its object's endobj ends it, after {CountText.Bytes(taken)}."),
+                     dataStart);
+             }
+ 
+@@ -1001,7 +1001,7 @@ internal ref struct PdfObjectParser
+                     PdfDiagnosticCodes.StreamLengthInvalid,
+                     string.Create(
+                         CultureInfo.InvariantCulture,
+-                        $"The stream declared {length} bytes, and no endstream follows them {Where(search.NextObject)}; the declared length is kept."),
++                        $"The stream declared {CountText.Bytes(length)}, and no endstream follows {(length == 1 ? "it" : "them")} {Where(search.NextObject)}; the declared length is kept."),
+                     dataStart);
+             }
+ 
+@@ -1027,7 +1027,7 @@ internal ref struct PdfObjectParser
+                 search.NextObject is null ? PdfDiagnosticCodes.StreamTruncated : PdfDiagnosticCodes.StreamLengthInvalid,
+                 string.Create(
+                     CultureInfo.InvariantCulture,
+-                    $"{Describe(declared)}, and no endstream follows its data {Where(search.NextObject)}; the {upToStop} bytes {(search.NextObject is null ? "to the end of the file" : "up to that object")} are taken as its data."),
++                    $"{Describe(declared)}, and no endstream follows its data {Where(search.NextObject)}; the {CountText.Bytes(upToStop)} {(search.NextObject is null ? "to the end of the file" : "up to that object")} {(upToStop == 1 ? "is" : "are")} taken as its data."),
+                 dataStart);
+         }
+ 
+@@ -1224,8 +1224,8 @@ internal ref struct PdfObjectParser
+ 
+     /// <summary>Says what was wrong with a stream's <c>/Length</c>, its <c>endstream</c> found after <paramref name="recovered"/> bytes.</summary>
+     private static string DescribeRecovered(DeclaredLength declared, int recovered) => declared.Form == StreamLengthForm.Integer
+-        ? string.Create(CultureInfo.InvariantCulture, $"The stream declared {declared.Value} bytes but ended after {recovered}.")
+-        : string.Create(CultureInfo.InvariantCulture, $"{Describe(declared)}; its data ends after {recovered} bytes.");
++        ? string.Create(CultureInfo.InvariantCulture, $"The stream declared {CountText.Bytes(declared.Value.GetValueOrDefault())} but ended after {recovered}.")
++        : string.Create(CultureInfo.InvariantCulture, $"{Describe(declared)}; its data ends after {CountText.Bytes(recovered)}.");
+ 
+     /// <summary>
+     /// Says how a stream's <c>/Length</c> was written, as a report starts: the length it declared, or why it gives none.
+@@ -1234,7 +1234,7 @@ internal ref struct PdfObjectParser
+     {
+         if (declared.Form == StreamLengthForm.Integer)
+         {
+-            return string.Create(CultureInfo.InvariantCulture, $"The stream declared {declared.Value} bytes");
++            return string.Create(CultureInfo.InvariantCulture, $"The stream declared {CountText.Bytes(declared.Value.GetValueOrDefault())}");
+         }
+ 
+         if (declared.Form == StreamLengthForm.Absent)
+diff --git a/src/AdCodicem.Pdf/Validation/BrokenObjectStream.cs b/src/AdCodicem.Pdf/Validation/BrokenObjectStream.cs
+index cfeb214..21847d2 100644
+--- a/src/AdCodicem.Pdf/Validation/BrokenObjectStream.cs
++++ b/src/AdCodicem.Pdf/Validation/BrokenObjectStream.cs
+@@ -1,4 +1,5 @@
+ using System.Globalization;
++using AdCodicem.Pdf.IO;
+ using AdCodicem.Pdf.Objects;
+ 
+ namespace AdCodicem.Pdf.Validation;
+@@ -40,17 +41,17 @@ internal readonly record struct BrokenObjectStream(
+     public string Describe() => Kind switch
+     {
+         BrokenObjectStreamKind.NotHeld =>
+-            Invariant($"The index places {RuleText.Objects(Objects)} in object stream {Stream}, which it does not hold as an object."),
++            Invariant($"The index places {CountText.Objects(Objects)} in object stream {Stream}, which it does not hold as an object."),
+         BrokenObjectStreamKind.InAnotherStream =>
+-            Invariant($"The index places {RuleText.Objects(Objects)} in object stream {Stream}, which it places in object stream {Detail} in turn: an object stream cannot be stored in another."),
++            Invariant($"The index places {CountText.Objects(Objects)} in object stream {Stream}, which it places in object stream {Detail} in turn: an object stream cannot be stored in another."),
+         BrokenObjectStreamKind.NotAnObjectStream =>
+-            Invariant($"Object {Stream}, where the index places {RuleText.Objects(Objects)}, {Fault}."),
++            Invariant($"Object {Stream}, where the index places {CountText.Objects(Objects)}, {Fault}."),
+         BrokenObjectStreamKind.Unreadable =>
+-            Invariant($"Object stream {Stream}, where the index places {RuleText.Objects(Objects)}, cannot be read: {Fault}."),
++            Invariant($"Object stream {Stream}, where the index places {CountText.Objects(Objects)}, cannot be read: {Fault}."),
+         _ when Objects == 1 =>
+             Invariant($"Object stream {Stream}, where the index places 1 object, can be read only in part: {Fault}; it is not listed before that, and lost."),
+         _ =>
+-            Invariant($"Object stream {Stream}, where the index places {RuleText.Objects(Objects)}, can be read only in part: {Fault}; {Detail} of them {(Detail == 1 ? "is" : "are")} not listed before that, and lost."),
++            Invariant($"Object stream {Stream}, where the index places {CountText.Objects(Objects)}, can be read only in part: {Fault}; {Detail} of them {(Detail == 1 ? "is" : "are")} not listed before that, and lost."),
+     };
+ 
+     private static string Invariant(FormattableString text) => text.ToString(CultureInfo.InvariantCulture);
+diff --git a/src/AdCodicem.Pdf/Validation/CrossReferenceProbe.cs b/src/AdCodicem.Pdf/Validation/CrossReferenceProbe.cs
+index bd259d5..cf92d41 100644
+--- a/src/AdCodicem.Pdf/Validation/CrossReferenceProbe.cs
++++ b/src/AdCodicem.Pdf/Validation/CrossReferenceProbe.cs
+@@ -158,7 +158,7 @@ internal sealed class CrossReferenceProbe
+                 first.Location,
+                 probe._undecidedCount == 1
+                     ? Invariant($"{Stopped}: the entry of {first.Message}, which it had not decided by then, was not checked.")
+-                    : Invariant($"{Stopped}: the entries of {RuleText.Objects(probe._undecidedCount)} it had not decided by then, the first {first.Message}'s, were not checked.")));
++                    : Invariant($"{Stopped}: the entries of {CountText.Objects(probe._undecidedCount)} it had not decided by then, the first {first.Message}'s, were not checked.")));
+         }
+ 
+         if (packed.Count > 0)
+@@ -188,7 +188,7 @@ internal sealed class CrossReferenceProbe
+                 {
+                     FirstImprecise = new ProbeFinding(
+                         PdfValidationLocation.OfObject(id, offset),
+-                        Invariant($"the entry of object {number} gives offset {offset}, {RuleText.Bytes(placement.Position - offset)} before its header"));
++                        Invariant($"the entry of object {number} gives offset {offset}, {CountText.Bytes(placement.Position - offset)} before its header"));
+                 }
+ 
+                 CheckGeneration(number, entry, placement.Position, placement.Generation);
+@@ -205,7 +205,7 @@ internal sealed class CrossReferenceProbe
+ 
+                     Shifted.Keep(new ProbeFinding(
+                         at,
+-                        Invariant($"The entry of object {number} gives offset {Named(reader, entry, offset, inFile)}, {found}; the object starts {RuleText.Distance(placement.Position - offset)}, at offset {placement.Position}.")));
++                        Invariant($"The entry of object {number} gives offset {Named(reader, entry, offset, inFile)}, {found}; the object starts {CountText.Distance(placement.Position - offset, "it")}, at offset {placement.Position}.")));
+                 }
+ 
+                 CheckGeneration(number, entry, placement.Position, placement.Generation);
+@@ -349,7 +349,7 @@ internal sealed class CrossReferenceProbe
+                 {
+                     NotChecked.Keep(new ProbeFinding(
+                         at,
+-                        Invariant($"One of the reader's limits stopped it reading object stream {stream} before its header ended: the {RuleText.Objects(objects.Count)} the index places in it {(objects.Count == 1 ? "was" : "were")} not checked. Raising the limit the reader reported lets {(objects.Count == 1 ? "it" : "them")} be.")));
++                        Invariant($"One of the reader's limits stopped it reading object stream {stream} before its header ended: the {CountText.Objects(objects.Count)} the index places in it {(objects.Count == 1 ? "was" : "were")} not checked. Raising the limit the reader reported lets {(objects.Count == 1 ? "it" : "them")} be.")));
+                 }
+ 
+                 return;
+diff --git a/src/AdCodicem.Pdf/Validation/PageTreeWalk.cs b/src/AdCodicem.Pdf/Validation/PageTreeWalk.cs
+index f710468..257019a 100644
+--- a/src/AdCodicem.Pdf/Validation/PageTreeWalk.cs
++++ b/src/AdCodicem.Pdf/Validation/PageTreeWalk.cs
+@@ -510,7 +510,7 @@ internal sealed class PageTreeWalk
+     {
+         -1 => "what lies below it is counted again, how many pages that is being unknown",
+         1 => "its page is counted again",
+-        _ => Invariant($"its {RuleText.Pages(counted)} are counted again"),
++        _ => Invariant($"its {CountText.Pages(counted)} are counted again"),
+     };
+ 
+     /// <summary>
+@@ -771,7 +771,7 @@ internal sealed class PageTreeWalk
+         {
+             CountMismatches.Keep(new ProbeFinding(
+                 Location(frame.Place),
+-                Invariant($"{Subject(frame.Place, NodeKind)} gives /Count {declared}, and {RuleText.Pages(below)} {Lie(below)} below it.")));
++                Invariant($"{Subject(frame.Place, NodeKind)} gives /Count {declared}, and {CountText.Pages(below)} {Lie(below)} below it.")));
+         }
+     }
+ 
+@@ -783,7 +783,7 @@ internal sealed class PageTreeWalk
+             CountMismatches.Keep(new ProbeFinding(
+                 Location(place),
+                 countable
+-                    ? Invariant($"{Subject(place, NodeKind)} has no /Count; {RuleText.Pages(below)} {Lie(below)} below it.")
++                    ? Invariant($"{Subject(place, NodeKind)} has no /Count; {CountText.Pages(below)} {Lie(below)} below it.")
+                     : $"{Subject(place, NodeKind)} has no /Count, and how many pages lie below it is unknown."));
+         }
+     }
+@@ -926,7 +926,7 @@ internal sealed class PageTreeWalk
+                 MediaBoxFaults.Keep(new ProbeFinding(
+                     location,
+                     resolved is PdfArray other
+-                        ? Invariant($"{MediaBoxOf(place, what)} is an array of {other.Count} values, not a rectangle.")
++                        ? Invariant($"{MediaBoxOf(place, what)} is an array of {CountText.Of(other.Count, "value", "values")}, not a rectangle.")
+                         : $"{MediaBoxOf(place, what)} is {RuleText.Kind(resolved)}, not a rectangle."));
+             }
+ 
+diff --git a/src/AdCodicem.Pdf/Validation/RuleText.cs b/src/AdCodicem.Pdf/Validation/RuleText.cs
+index c36e83e..a137945 100644
+--- a/src/AdCodicem.Pdf/Validation/RuleText.cs
++++ b/src/AdCodicem.Pdf/Validation/RuleText.cs
+@@ -5,9 +5,9 @@ using AdCodicem.Pdf.Objects;
+ namespace AdCodicem.Pdf.Validation;
+ 
+ /// <summary>
+-/// Words the rules' messages share: counts of bytes, objects and pages, distances either way, what kind of value a file
+-/// wrote where another was due, and the path to a value. A name the file wrote is quoted through
+-/// <see cref="IO.FileQuote"/>.
++/// Words the rules' messages share: what kind of value a file wrote where another was due, and the path to a value. A
++/// name the file wrote is quoted through <see cref="IO.FileQuote"/>; a count, or a distance, is said through
++/// <see cref="IO.CountText"/>, which the reader's diagnostics share.
+ /// </summary>
+ internal static class RuleText
+ {
+@@ -19,22 +19,6 @@ internal static class RuleText
+     /// </remarks>
+     internal const int PathEnds = 4;
+ 
+-    /// <summary>Says a number of bytes: <c>1 byte</c>, <c>12 bytes</c>.</summary>
+-    public static string Bytes(long count) =>
+-        count == 1 ? "1 byte" : string.Create(CultureInfo.InvariantCulture, $"{count} bytes");
+-
+-    /// <summary>Says how far, and which way, something lies from where it was named: <c>12 bytes after it</c>.</summary>
+-    public static string Distance(long delta) =>
+-        delta < 0 ? $"{Bytes(-delta)} before it" : $"{Bytes(delta)} after it";
+-
+-    /// <summary>Says a number of objects: <c>1 object</c>, <c>3 objects</c>.</summary>
+-    public static string Objects(long count) =>
+-        count == 1 ? "1 object" : string.Create(CultureInfo.InvariantCulture, $"{count} objects");
+-
+-    /// <summary>Says a number of pages: <c>1 page</c>, <c>3 pages</c>.</summary>
+-    public static string Pages(long count) =>
+-        count == 1 ? "1 page" : string.Create(CultureInfo.InvariantCulture, $"{count} pages");
+-
+     /// <summary>Says what kind of value a file wrote: <c>a number</c>, <c>an array</c>, <c>null</c>.</summary>
+     public static string Kind(PdfObject value) => value switch
+     {
+diff --git a/src/AdCodicem.Pdf/Validation/Rules/FileHeaderOffsetRule.cs b/src/AdCodicem.Pdf/Validation/Rules/FileHeaderOffsetRule.cs
+index c8dfe1c..311169c 100644
+--- a/src/AdCodicem.Pdf/Validation/Rules/FileHeaderOffsetRule.cs
++++ b/src/AdCodicem.Pdf/Validation/Rules/FileHeaderOffsetRule.cs
+@@ -1,4 +1,5 @@
+ using System.Globalization;
++using AdCodicem.Pdf.IO;
+ 
+ namespace AdCodicem.Pdf.Validation.Rules;
+ 
+@@ -31,7 +32,7 @@ internal sealed class FileHeaderOffsetRule : IValidationRule
+                 PdfValidationLocation.AtPosition(0),
+                 string.Create(
+                     CultureInfo.InvariantCulture,
+-                    $"The PDF header starts {header} bytes into the file instead of at its first byte."),
++                    $"The PDF header starts {CountText.Bytes(header)} into the file instead of at its first byte."),
+                 "Remove the bytes before the header; a rewrite of the file puts every offset right.");
+         }
+     }
+diff --git a/src/AdCodicem.Pdf/Validation/Rules/OffsetImpreciseRule.cs b/src/AdCodicem.Pdf/Validation/Rules/OffsetImpreciseRule.cs
+index 875ce38..e0e62f8 100644
+--- a/src/AdCodicem.Pdf/Validation/Rules/OffsetImpreciseRule.cs
++++ b/src/AdCodicem.Pdf/Validation/Rules/OffsetImpreciseRule.cs
+@@ -1,4 +1,5 @@
+ using System.Globalization;
++using AdCodicem.Pdf.IO;
+ using AdCodicem.Pdf.IO.XRef;
+ 
+ namespace AdCodicem.Pdf.Validation.Rules;
+@@ -46,7 +47,7 @@ internal sealed class OffsetImpreciseRule : IValidationRule
+                     PdfValidationLocation.AtPosition(section.Offset),
+                     string.Create(
+                         CultureInfo.InvariantCulture,
+-                        $"{section.NamedBy} gives offset {section.Offset}, {RuleText.Bytes(section.Padding)} before {target}"));
++                        $"{section.NamedBy} gives offset {section.Offset}, {CountText.Bytes(section.Padding)} before {target}"));
+             }
+         }
+ 
+diff --git a/src/AdCodicem.Pdf/Validation/Rules/SectionShiftedRule.cs b/src/AdCodicem.Pdf/Validation/Rules/SectionShiftedRule.cs
+index 983b052..6458817 100644
+--- a/src/AdCodicem.Pdf/Validation/Rules/SectionShiftedRule.cs
++++ b/src/AdCodicem.Pdf/Validation/Rules/SectionShiftedRule.cs
+@@ -1,4 +1,5 @@
+ using System.Globalization;
++using AdCodicem.Pdf.IO;
+ 
+ namespace AdCodicem.Pdf.Validation.Rules;
+ 
+@@ -37,7 +38,7 @@ internal sealed class SectionShiftedRule : IValidationRule
+                 PdfValidationLocation.AtPosition(section.Offset),
+                 string.Create(
+                     CultureInfo.InvariantCulture,
+-                    $"The cross-reference section {section.NamedBy} names at offset {section.NamedOffset} starts {RuleText.Distance(section.Offset - section.NamedOffset)}, at offset {section.Offset}."),
++                    $"The cross-reference section {section.NamedBy} names at offset {section.NamedOffset} starts {CountText.Distance(section.Offset - section.NamedOffset, "it")}, at offset {section.Offset}."),
+                 "Correct the offset that names the section.");
+         }
+     }
+diff --git a/tests/AdCodicem.Pdf.Tests/ValidatorTests.cs b/tests/AdCodicem.Pdf.Tests/ValidatorTests.cs
+index 618438a..5acfcec 100644
+--- a/tests/AdCodicem.Pdf.Tests/ValidatorTests.cs
++++ b/tests/AdCodicem.Pdf.Tests/ValidatorTests.cs
+@@ -574,8 +574,8 @@ public class ValidatorTests
+         RuleText.Kind(PdfBoolean.True).Should().Be("a boolean");
+         RuleText.Kind(new PdfReference(new PdfObjectId(1))).Should().Be("a reference");
+         RuleText.Kind(PdfNull.Instance).Should().Be("null");
+-        RuleText.Pages(1).Should().Be("1 page");
+-        RuleText.Pages(2).Should().Be("2 pages");
++        CountText.Pages(1).Should().Be("1 page");
++        CountText.Pages(2).Should().Be("2 pages");
+         FileQuote.Name(PdfName.Get("A\0B")).Should().Be("/A#00B");
+     }
+ 
