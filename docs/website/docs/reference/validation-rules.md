@@ -316,8 +316,9 @@ Some faults the structural profile does not report, each for a reason:
   reports it as `syntax.truncated-object`, in the document's diagnostics ([#119]); `object.endobj-missing` reports the
   object that runs to the end of the file, as it reports any other object without its `endobj`, and the one whose
   containers the next object's header ended ([#230]). A container an `endobj` ends is `syntax.truncated-object`'s alone,
-  that `endobj` being the object's — or the next object's, when the object lost its own and that object's header holds
-  a comment, which the header rule does not take for one: the container then runs on to that `endobj`.
+  that `endobj` being the object's — or the next object's, when the object lost its own and that object's header is one
+  the header rule does not take, a sign before its number say: the container then runs on to that `endobj`. A comment
+  between a header's tokens no longer hides it, since the rule reads comments as a load does ([#261]).
 
 The object-shape rules read part of the Arlington PDF Model, and leave the rest silent until a rule of its own is
 worth its noise:
@@ -383,6 +384,7 @@ PDF/UA profiles of the `AdCodicem.Pdf.Conformance` package (M20) take families o
 [#237]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/237
 [#256]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/256
 [#259]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/259
+[#261]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/261
 [#263]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/263
 [#274]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/274
 [#275]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/275

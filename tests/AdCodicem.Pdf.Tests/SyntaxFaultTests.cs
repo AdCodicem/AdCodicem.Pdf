@@ -193,18 +193,37 @@ public class SyntaxFaultTests
     [InlineData("[1 6 0 R", 2, 0)]
     [InlineData("[1 6 65536 obj", 4, 1)]
     [InlineData("[1 2147483648 0 obj", 4, 1)]
-    [InlineData("[1 6 %a comment\n0 obj", 4, 1)]
     [InlineData("[1 +6 0 obj", 4, 1)]
+    [InlineData("[1 6 +0 obj", 4, 1)]
     public void Text_that_is_no_object_header_ends_no_container(string value, int count, int strays)
     {
-        // A header in a string is no token; a reference is decided first; a generation or a number out of range, a comment
-        // between the tokens, a sign before the number: none is a header, as the search for a stream's endstream takes
-        // one, and the array goes on, a stray obj reported, to object 5's header (#230).
+        // A header in a string is no token; a reference is decided first; a generation or a number out of range, a sign
+        // before the number or the generation: none is a header, as the search for a stream's endstream takes one, and the
+        // array goes on, a stray obj reported, to object 5's header (#230).
         var file = FourLostItsEnd(value);
         using var document = PdfDocument.Open(file);
 
         document.GetObject(new PdfObjectId(4)).AsArray().Required().Should().HaveCount(count);
         document.Diagnostics.Count(entry => entry.Code == PdfDiagnosticCodes.SyntaxUnexpectedToken).Should().Be(strays);
+        document.Diagnostics.Should().ContainSingle(entry => entry.Code == PdfDiagnosticCodes.SyntaxTruncatedObject)
+            .Which.Message.Should().Be("An object header ended the object inside an array, which was never closed.");
+    }
+
+    [Theory]
+    [InlineData("[1 6 %a comment\n0 obj")]
+    [InlineData("[1 6 0 %a comment\nobj")]
+    [InlineData("[1 6\n%one\n%two\n0 %three\nobj")]
+    [InlineData("[1 6 %a comment\r0 obj")]
+    public void An_object_header_with_comments_between_its_tokens_ends_a_container_left_open(string value)
+    {
+        // The lexer reads a comment between a header's tokens as white space, as a load does, and as the search for a stream's
+        // endstream and the scan that rebuilds an index do (#261): object 6's header, comments inside it, ends the array
+        // object 4 left open, where it once read on to object 5's header.
+        var file = FourLostItsEnd(value);
+        using var document = PdfDocument.Open(file);
+
+        document.GetObject(new PdfObjectId(4)).AsArray().Required().Should().ContainSingle();
+        document.Diagnostics.Should().NotContain(entry => entry.Code == PdfDiagnosticCodes.SyntaxUnexpectedToken);
         document.Diagnostics.Should().ContainSingle(entry => entry.Code == PdfDiagnosticCodes.SyntaxTruncatedObject)
             .Which.Message.Should().Be("An object header ended the object inside an array, which was never closed.");
     }
@@ -279,6 +298,9 @@ public class SyntaxFaultTests
     [InlineData(" /A 1\n\n6 0 obj")]
     [InlineData(" /A 1\n\n6 0 ")]
     [InlineData(" /A 1 /A\n\n6 0 obj")]
+    [InlineData(" /A 1\n\n6 %c\n0 obj")]
+    [InlineData(" /A 1\n\n6 0 %c\nobj")]
+    [InlineData(" /A 1\n\n6 %c")]
     public void A_header_the_guard_s_cut_leaves_undecided_is_the_guard_s(string tail)
     {
         // Object 4 lost its >> and its endobj, and the next object's header comes where MaxObjectLength cuts it: the header's
@@ -303,13 +325,15 @@ public class SyntaxFaultTests
         document.Diagnostics.Should().Contain(entry => entry.Code == PdfDiagnosticCodes.LimitObject);
     }
 
-    [Fact]
-    public void A_header_the_guard_s_cut_leaves_undecided_gives_the_key_before_it_no_value()
+    [Theory]
+    [InlineData(" /A 1 /A\n\n6 0 obj")]
+    [InlineData(" /A 1 /A 6 %c\n0 obj")]
+    public void A_header_the_guard_s_cut_leaves_undecided_gives_the_key_before_it_no_value(string tail)
     {
         // "6" after the second /A may be the value it is given, or the next object's header, which a larger limit reads, the
-        // key then left out: the guard's cut decides neither, the key keeps the value the file gave first, and the repeat
-        // is not said to keep a last one (#230).
-        var document = CutAt(" /A 1 /A\n\n6 0 obj", 128);
+        // key then left out — a comment between its tokens as well (#261): the guard's cut decides neither, the key keeps the
+        // value the file gave first, and the repeat is not said to keep a last one (#230).
+        var document = CutAt(tail, 128);
 
         document.GetObject(new PdfObjectId(4)).AsDictionary().Required().GetInteger(PdfName.Get("A")).Should().Be(1);
         document.Diagnostics.Should().NotContain(entry => entry.Code == PdfDiagnosticCodes.SyntaxKeyRepeated);
@@ -320,7 +344,6 @@ public class SyntaxFaultTests
     [InlineData(" /A 1\n\n0 0 obj", 2)]
     [InlineData(" /A 1 /B 6 70000 obj", 1)]
     [InlineData(" /A 1\n\n+6 0 obj", 2)]
-    [InlineData(" /A 1\n\n6 %c\n0 obj", 2)]
     public void Tokens_no_header_begins_with_are_reported_at_the_guard_s_cut_as_past_it(string tail, int keys)
     {
         // An object number 0, or a generation past 65,535, rules a header out whatever the cut hides: the keys that are not
@@ -337,11 +360,10 @@ public class SyntaxFaultTests
 
     [Theory]
     [InlineData(" /A 1 /B +6 0 obj")]
-    [InlineData(" /A 1 /B 6 %c\n0 obj")]
     public void A_value_no_header_can_begin_with_keeps_its_place_at_the_guard_s_cut(string tail)
     {
-        // A sign, or a comment between the tokens, rules a header out whatever the cut hides: "+6" is the value of /B, as a
-        // larger limit reads it, not the start of a header the edge left undecided (#230).
+        // A sign rules a header out whatever the cut hides: "+6" is the value of /B, as a larger limit reads it, not the
+        // start of a header the edge left undecided (#230).
         using var document = CutAt(tail, 128);
 
         document.GetObject(new PdfObjectId(4)).AsDictionary().Required().GetInteger(PdfName.Get("B")).Should().Be(6);

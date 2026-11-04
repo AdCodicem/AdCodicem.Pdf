@@ -510,16 +510,30 @@ public class StreamLengthTests
     [InlineData("2147483648 0 obj", null)]
     [InlineData("02147483648 0 obj", null)]
     [InlineData("99999999999999999999999 0 obj", null)]
-    [InlineData("12 0 %\nobj", null)]
-    [InlineData("12 %\n0 obj", null)]
+    [InlineData("12 0 %\nobj", 0)]
+    [InlineData("12 %\n0 obj", 0)]
+    [InlineData("12 % a comment\n0 % another\nobj", 0)]
+    [InlineData("12\n% one\n% two\n0\n% three\nobj", 0)]
+    [InlineData("12% right after the number\r0 obj", 0)]
+    [InlineData("12 % a comment\r\n0 obj", 0)]
+    [InlineData("12 % 50% done\n0 obj", 0)]
+    [InlineData("(50%) 12 % a comment\n0 obj", 6)]
+    [InlineData("5 12 % a comment\n0 obj", 2)]
+    [InlineData("% 12 0 obj", 2)]
+    [InlineData("% a note 12\n0 obj", null)]
+    [InlineData("12 (x) % a comment\nobj", null)]
+    [InlineData("12 +0 % a comment\nobj", null)]
+    [InlineData("/A 0 % a comment\nobj", null)]
+    [InlineData("12\n(x) % a comment\n0 obj", null)]
     public void Text_that_follows_a_lost_endstream_stops_the_search_when_it_is_an_object_header_and_only_then(string text, int? header)
     {
         // An object header is "N G obj" at a token boundary, as the bytes hold it: a number and a generation whose values
-        // the parser takes, however many zeros lead them, and white space between its tokens, however much. Text that is
-        // one stops the search before the endstream after it, and the data, which no declared length runs past, ends there
-        // (#174); text that only looks like
-        // one — endobj, obj glued to what follows or precedes it, digits after a regular character, a number or a
-        // generation out of range, a comment between its tokens — is read past, and the endstream after it ends the data.
+        // the parser takes, however many zeros lead them, and white space between its tokens, however much, and comments,
+        // the line one ends read from its start as a load reads it (#261). Text that is one stops the search before the
+        // endstream after it, and the data, which no declared length runs past, ends there (#174); text that only looks
+        // like one — endobj, obj glued to what follows or precedes it, digits after a regular character, a number or a
+        // generation out of range, a sign, digits a comment ends with, a token that is no number on a line a comment ends —
+        // is read past, and the endstream after it ends the data.
         var data = Data(3 * Window);
         var file = Document(
             (StreamNumber, Stream(data.Length + 400, data, end: "\n" + text + "\nendstream")),
@@ -583,13 +597,25 @@ public class StreamLengthTests
     [InlineData(Wide + "x", false)]
     [InlineData("2147483648" + Spaces + "0 obj", false)]
     [InlineData("7" + Spaces + "65536 obj", false)]
+    [InlineData("7 % a comment longer than a read repeats\n0 obj", true)]
+    [InlineData("7 0 % a comment longer than a read repeats\r\nobj", true)]
+    [InlineData("7\n% a line that holds only a comment\n0\n%\nobj", true)]
+    [InlineData("7 % (a parenthesis the comment holds\n0 obj", true)]
+    [InlineData("% a note 7\n0 obj", false)]
+    [InlineData("7 (a string % that holds a percent sign) % c\n0 obj", false)]
+    [InlineData("7 <41 42> % c\n0 obj", false)]
+    [InlineData("7 << % c\n0 obj", false)]
+    [InlineData("7 >> % c\n0 obj", false)]
+    [InlineData("7 /A % c\n0 obj", false)]
     public void A_header_the_edge_between_two_reads_of_the_search_cuts_is_decided_whole(string text, bool header)
     {
         // The search reads the window's part of the data, then the file a read at a time, each repeating the last bytes of
         // the one before and twice as large: a header, with the byte before it and the byte after its obj, is decided
         // whole wherever the edge of the window or of the reads past it cuts it — here one wider than a read repeats, and
-        // the same with a regular character before or after it, or a number or a generation out of range, which are none.
-        // What a read's start cuts of a header, the read before carries into it. The start of a read is no boundary before
+        // the same with a regular character before or after it, or a number or a generation out of range, which are none;
+        // and headers with comments between their tokens, or text that only looks like one, the lines a comment ends cut
+        // anywhere (#261). What a read's start cuts of a header, the read before carries into it, the line it starts in
+        // lexed so far. The start of a read is no boundary before
         // a number, nor its end one after obj, unless the search starts or ends there. A header missed, the endstream after
         // it would end the data; text taken for one, the data would end there.
         var prefix = Invariant($"{StreamNumber} 0 obj\n") + Stream(0, string.Empty, end: string.Empty, width: 7);
@@ -635,12 +661,24 @@ public class StreamLengthTests
     [InlineData("12 1{0} obj", '0', false)]
     [InlineData("x{0}12 0 obj", '0', false)]
     [InlineData("12{0}x 0 obj", ' ', false)]
+    [InlineData("12 %{0}\n0 obj", 'c', true)]
+    [InlineData("12 0 %{0}\nobj", 'c', true)]
+    [InlineData("12\n%{0}\n0 obj", 'c', true)]
+    [InlineData("12 %{0}\n0 %{0}\nobj", '%', true)]
+    [InlineData("%{0} 12\n0 obj", 'c', false)]
+    [InlineData("12 ({0}%) % c\n0 obj", 'c', false)]
+    [InlineData("12 ({0}) % c\n0 obj", '(', false)]
+    [InlineData("12 <{0}> % c\n0 obj", '4', false)]
+    [InlineData("12 /{0} % c\n0 obj", 'c', false)]
+    [InlineData("12 {0} % c\n0 obj", 'c', false)]
     public void A_header_whose_runs_span_whole_reads_of_the_search_is_decided_as_its_bytes_say(string text, char fill, bool header)
     {
         // White space or digits that run on from inside the window across its edge and the whole of the first read past
         // it: each read carries into the next what it cuts of a header, however long, and the search decides it as it
         // would the bytes whole. Zeros leading a number or a generation change nothing; other digits make it too large;
-        // a regular character before the number, or in place of a token, makes none.
+        // a regular character before the number, or in place of a token, makes none. A comment line that spans whole reads
+        // is carried as the state its lexing leaves, however long, and so is a string, a name or a keyword it cuts, which is
+        // no number: the line is read as a load reads it (#261).
         var spread = string.Format(CultureInfo.InvariantCulture, text, new string(fill, 5 * Window));
         var data = Data(Window / 2);
         var declared = data.Length + spread.Length + 400;

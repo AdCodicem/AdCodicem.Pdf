@@ -49,11 +49,11 @@ Stopping at the next object keeps a later object's `endstream` from ending this 
 zeros that erased the end of one and the objects after it would otherwise do, or an object whose entry the index lost.
 Text in a damaged stream's data that reads as an object header stops the search as well: an object number and a
 generation the parser takes, however many zeros lead them, white space between the three tokens, however much, and
-white space, a delimiter, or the start or the end of the search around them. A comment between the tokens makes no
-header here, though the scan that rebuilds a damaged index reads one as a load does; nor does a regular character glued
-before the number, though that scan takes the digits after it for one. Neither `xref` nor `trailer` stops a search: the
-stream of a classic file's last object, which no object follows, is searched through the table and the trailer to the
-end of the file.
+white space, a delimiter, or the start or the end of the search around them. Comments may lie between the tokens, as a
+load reads them: the line a comment ends is read from its start, as the scan that rebuilds a damaged index reads it. A
+regular character glued before the number makes no header here, though that scan takes the digits after it for one.
+Neither `xref` nor `trailer` stops a search: the stream of a classic file's last object, which no object follows, is
+searched through the table and the trailer to the end of the file.
 
 With no `endstream` before the stop, the object's `endobj` plays its part. A declared length that ends before the stop,
 and that the object's `endobj` follows as an `endstream` would, is kept: the stream lost only its `endstream`. Otherwise,

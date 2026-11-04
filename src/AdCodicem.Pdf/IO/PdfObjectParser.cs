@@ -1625,7 +1625,7 @@ internal ref struct PdfObjectParser
     /// </summary>
     private readonly bool HeaderUndecided(PdfToken number, PdfToken generation, PdfToken keyword) =>
         !_endsData && _member is null && MayBeginHeader(number, generation, _memory.Length) &&
-        MayBeHeaderBytes(number, generation, keyword) &&
+        MayBeHeaderBytes(number, generation) &&
         (generation.Kind == PdfTokenKind.EndOfInput ||
             (generation.Kind == PdfTokenKind.Integer &&
                 (keyword.Kind == PdfTokenKind.EndOfInput ||
@@ -1634,9 +1634,9 @@ internal ref struct PdfObjectParser
     /// <summary>
     /// Determines whether three tokens are an object header as the bytes hold one, the rule the search for a stream's
     /// <c>endstream</c> stops at (<see cref="HeaderText"/>): <c>N G obj</c>, digits alone for a number from 1 to
-    /// 2,147,483,647 and a generation from 0 to 65,535, white space alone between them — no comment —, and <c>obj</c> a
-    /// whole keyword, which one a window's edge reaches may not be. An object stream's member is never followed by a
-    /// header: its members have none (#230).
+    /// 2,147,483,647 and a generation from 0 to 65,535 — no sign —, white space and comments between them, which the lexer
+    /// reads past as a load does (#261), and <c>obj</c> a whole keyword, which one a window's edge reaches may not be. An
+    /// object stream's member is never followed by a header: its members have none (#230).
     /// </summary>
     private readonly bool IsHeader(PdfToken number, PdfToken generation, PdfToken keyword)
     {
@@ -1647,35 +1647,18 @@ internal ref struct PdfObjectParser
             return false;
         }
 
-        var span = _memory.Span;
-        return !span[number.Start..number.End].ContainsAnyExceptInRange((byte)'0', (byte)'9') &&
-            !span[generation.Start..generation.End].ContainsAnyExceptInRange((byte)'0', (byte)'9') &&
-            !span[number.End..generation.Start].ContainsAnyExcept(PdfCharacters.Whitespace) &&
-            !span[generation.End..keyword.Start].ContainsAnyExcept(PdfCharacters.Whitespace);
+        return MayBeHeaderBytes(number, generation);
     }
 
     /// <summary>
-    /// Determines whether the bytes read of what may be a header, up to the window's edge, keep to the header's byte rule
-    /// (<see cref="IsHeader"/>): digits alone, white space alone between the tokens — no sign, no comment.
+    /// Determines whether the tokens read of what may be a header, up to the window's edge, keep to the header's byte rule
+    /// (<see cref="IsHeader"/>): digits alone — no sign —, whatever white space and comments lie between them.
     /// </summary>
-    private readonly bool MayBeHeaderBytes(PdfToken number, PdfToken generation, PdfToken keyword)
+    private readonly bool MayBeHeaderBytes(PdfToken number, PdfToken generation)
     {
         var span = _memory.Span;
-
-        if (span[number.Start..number.End].ContainsAnyExceptInRange((byte)'0', (byte)'9'))
-        {
-            return false;
-        }
-
-        if (generation.Kind != PdfTokenKind.Integer)
-        {
-            return !span[number.End..].ContainsAnyExcept(PdfCharacters.Whitespace);
-        }
-
-        var upTo = keyword.Kind == PdfTokenKind.EndOfInput ? span.Length : keyword.Start;
-        return !span[generation.Start..generation.End].ContainsAnyExceptInRange((byte)'0', (byte)'9') &&
-            !span[number.End..generation.Start].ContainsAnyExcept(PdfCharacters.Whitespace) &&
-            !span[generation.End..upTo].ContainsAnyExcept(PdfCharacters.Whitespace);
+        return !span[number.Start..number.End].ContainsAnyExceptInRange((byte)'0', (byte)'9') &&
+            (generation.Kind != PdfTokenKind.Integer || !span[generation.Start..generation.End].ContainsAnyExceptInRange((byte)'0', (byte)'9'));
     }
 
     /// <summary>Gets what ended the buffer, as a report of what it cut short names it.</summary>
