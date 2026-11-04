@@ -852,13 +852,14 @@ public class CrossReferenceRuleTests
     [InlineData("{self}", 0, "stream index", PdfValidationRuleIds.XRefChainLoop)]
     [InlineData("{stream}", 0, "stream rows", PdfValidationRuleIds.XRefHybridStreamWrong)]
     [InlineData("{stream}", 0, "stream index", PdfValidationRuleIds.XRefHybridStreamWrong)]
-    [InlineData("{stream}", -4, "stream rows", PdfValidationRuleIds.XRefChainLoop)]
-    [InlineData("{stream}", -4, "stream index", PdfValidationRuleIds.XRefChainLoop)]
+    [InlineData("{stream}", -4, "stream rows", PdfValidationRuleIds.XRefHybridStreamWrong)]
+    [InlineData("{stream}", -4, "stream index", PdfValidationRuleIds.XRefHybridStreamWrong)]
     public void A_prev_fault_of_a_table_whose_hybrid_stream_a_guard_stops_is_found_as_a_whole_read_finds_it(string prev, int shift, string guard, string rule)
     {
         // #264, with #156: a table read whole names, through /XRefStm, the cross-reference stream a guard stops, and through
-        // /Prev an offset outside the file, itself, or the stream — where /XRefStm names it, which reads it through /Prev, or
-        // where it was found moved. The validation finds what it finds in the file read whole, beside the guard's
+        // /Prev an offset outside the file, itself, or the stream — where /XRefStm names it, or a few bytes before it, where
+        // the search near the /XRefStm's offset would find it: either way the /Prev reads it, and the /XRefStm names no stream
+        // of its revision. The validation finds what it finds in the file read whole, beside the guard's
         // xref.checked-in-part.
         var (file, _) = StoppedSectionFiles.HybridWhoseStreamIsStopped(prev, shift);
 

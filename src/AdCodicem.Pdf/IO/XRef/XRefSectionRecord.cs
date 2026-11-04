@@ -205,7 +205,10 @@ internal sealed class XRefSectionRecord
 
     /// <summary>
     /// Gets how many bytes of white space or comments lie between where the section was read and its first token —
-    /// the <c>xref</c> keyword, or the stream's object header —, where the offset should have named that token.
+    /// the <c>xref</c> keyword, or the stream's object header —, where the offset should have named that token. For an
+    /// <c>/XRefStm</c> that names what the chain reaches anyway (<see cref="XRefSectionState.NamedAgain"/>), how many lie
+    /// between where it names and the first token of the section <see cref="ReadAs"/> records, which it reached through
+    /// them: none where it names that token, or the offset the chain reached the section by (#156).
     /// </summary>
     public int Padding { get; set; }
 

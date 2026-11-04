@@ -384,6 +384,62 @@ internal static class NearbyFiles
         return (file.Bytes, stream, named);
     }
 
+    /// <summary>
+    /// A document whose two tables name through <c>/XRefStm</c> object 9 at <c>Object</c>, which gives a <c>/W</c> of a
+    /// negative width and no <c>/Type</c>: the newest at its header, the older 600 bytes short of it, in the spaces before
+    /// it. Cross-reference stream 7, at <c>Stream</c>, 1,000 bytes before the object, indexes object 6, <c>(six)</c>, and
+    /// itself; a comment of 1,200 bytes follows the object, then the oldest table, which indexes the catalog and an empty
+    /// page tree, and names nothing.
+    /// </summary>
+    public static (byte[] File, long Stream, long Object) ObjectGivingOnlyAWidthNamedTwice()
+    {
+        var file = new HandWrittenFile(version: "1.5");
+        var catalog = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>");
+        var pages = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>");
+        var six = file.Object(6, "(six)");
+        var stream = file.Position;
+        var rows = StreamRows((1, six, 0), (1, stream, 0));
+        file.Object(7, string.Create(
+            CultureInfo.InvariantCulture,
+            $"<< /Type /XRef /Size 8 /W [1 4 2] /Index [6 2] /Length {rows.Length} >>\nstream\n{rows}\nendstream"));
+        file.Raw(new string(' ', (int)(stream + 1000 - file.Position)));
+        var named = file.Position;
+        file.Object(9, "<< /W [1 -4 2] /Size 10 /Length 7 >>\nstream\n\u0001\u0001\u0001\u0001\u0001\u0001\u0001\nendstream");
+        Gap(file, 1200);
+        var oldest = file.Position;
+        file.Raw(string.Create(
+            CultureInfo.InvariantCulture,
+            $"xref\n0 3\n0000000000 65535 f \n{catalog:D10} 00000 n \n{pages:D10} 00000 n \ntrailer\n<< /Size 10 /Root 1 0 R >>\n"));
+        var older = file.Position;
+        file.Raw(string.Create(
+            CultureInfo.InvariantCulture,
+            $"xref\n0 1\n0000000000 65535 f \ntrailer\n<< /Size 10 /Root 1 0 R /Prev {oldest} /XRefStm {named - 600} >>\n"));
+        var newest = file.Position;
+        file.Raw(string.Create(
+            CultureInfo.InvariantCulture,
+            $"xref\n0 1\n0000000000 65535 f \ntrailer\n<< /Size 10 /Root 1 0 R /Prev {older} /XRefStm {named} >>\nstartxref\n{newest}\n%%EOF\n"));
+        return (file.Bytes, stream, named);
+    }
+
+    /// <summary>
+    /// An empty document indexed by one cross-reference stream, object 3 at <c>Stream</c>, after two spaces: <c>startxref</c>
+    /// names it at the first of them, and its own <c>/Prev</c> at the second.
+    /// </summary>
+    public static (byte[] File, long Stream) StreamNamedShortTwice()
+    {
+        var file = new HandWrittenFile(version: "1.5");
+        var catalog = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>");
+        var pages = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>");
+        file.Raw("  ");
+        var stream = file.Position;
+        var rows = StreamRows((0, 0, 65535), (1, catalog, 0), (1, pages, 0), (1, stream, 0));
+        file.Object(3, string.Create(
+            CultureInfo.InvariantCulture,
+            $"<< /Type /XRef /Size 4 /W [1 4 2] /Root 1 0 R /Prev {stream - 1} /Length {rows.Length} >>\nstream\n{rows}\nendstream"));
+        file.Raw(string.Create(CultureInfo.InvariantCulture, $"startxref\n{stream - 2}\n%%EOF\n"));
+        return (file.Bytes, stream);
+    }
+
     /// <summary>Writes a comment of <paramref name="length"/> bytes, its end of line counted, when it is more than none.</summary>
     private static void Gap(HandWrittenFile file, int length)
     {

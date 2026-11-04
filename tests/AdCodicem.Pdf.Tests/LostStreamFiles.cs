@@ -34,6 +34,10 @@ internal static class LostStreamFiles
     /// <param name="nine">What object 9 holds, which the newest table indexes; none when null.</param>
     /// <param name="data">Whether stream data follows the stream's dictionary: object 5 is the dictionary alone otherwise.</param>
     /// <param name="shift">How many bytes past object 3's header the oldest table's row for it places it.</param>
+    /// <param name="namedShortBy">
+    /// How many bytes short of the stream's header the newest table's <c>/Prev</c> names it, in the end of line before it.
+    /// </param>
+    /// <param name="oldestTrailer">What the oldest table's trailer gives besides its <c>/Size</c> and <c>/Root</c>.</param>
     public static (byte[] File, long Oldest, long Stream, long Newest) ThreeRevisions(
         string entries = Unreadable,
         string? prev = null,
@@ -41,7 +45,9 @@ internal static class LostStreamFiles
         int after = 1200,
         string? nine = null,
         bool data = true,
-        int shift = 0)
+        int shift = 0,
+        int namedShortBy = 0,
+        string oldestTrailer = "")
     {
         var file = new HandWrittenFile(version: "1.5");
         var catalog = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>");
@@ -52,7 +58,7 @@ internal static class LostStreamFiles
         var oldest = file.Position;
         file.Raw(string.Create(
             CultureInfo.InvariantCulture,
-            $"xref\n0 4\n0000000000 65535 f \n{Row(catalog)}{Row(pages)}{Row(three + shift)}7 2\n{Row(oldSeven)}{Row(eight)}trailer\n<< /Size 9 /Root 1 0 R >>\nstartxref\n{oldest}\n%%EOF\n"));
+            $"xref\n0 4\n0000000000 65535 f \n{Row(catalog)}{Row(pages)}{Row(three + shift)}7 2\n{Row(oldSeven)}{Row(eight)}trailer\n<< /Size 9 /Root 1 0 R{oldestTrailer} >>\nstartxref\n{oldest}\n%%EOF\n"));
         Gap(file, before);
 
         var four = file.Object(4, "(only in the stream)");
@@ -78,7 +84,7 @@ internal static class LostStreamFiles
         var newest = file.Position;
         file.Raw(string.Create(
             CultureInfo.InvariantCulture,
-            $"xref\n0 1\n0000000000 65535 f \n6 1\n{Row(six)}{nineRow}trailer\n<< /Size {(nine is null ? 9 : 10)} /Root 1 0 R /Prev {stream} >>\nstartxref\n{newest}\n%%EOF\n"));
+            $"xref\n0 1\n0000000000 65535 f \n6 1\n{Row(six)}{nineRow}trailer\n<< /Size {(nine is null ? 9 : 10)} /Root 1 0 R /Prev {stream - namedShortBy} >>\nstartxref\n{newest}\n%%EOF\n"));
         return (file.Bytes, oldest, stream, newest);
     }
 

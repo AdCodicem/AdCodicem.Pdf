@@ -266,7 +266,8 @@ public class CrossReferenceChainTests
     [Fact]
     public void Reports_a_loop_in_the_chain_at_the_section_it_loops_back_to_whatever_precedes_the_header()
     {
-        // The offset a /Prev gives counts from the header; the report gives a position in the file (#187).
+        // The offset a /Prev gives counts from the header; the report gives a position in the file (#187). The /Prev names
+        // where the section starts, and the validation counts it among no offsets that name a section short (#188).
         var original = new TestPdfBuilder()
             .WithObject(1, "<< /Type /Catalog /Pages 2 0 R >>")
             .WithObject(2, "<< /Type /Pages /Kids [] /Count 0 >>")
@@ -283,6 +284,7 @@ public class CrossReferenceChainTests
         cycle.Message.Should().EndWith(string.Create(
             CultureInfo.InvariantCulture,
             $"the /Prev of the section at offset {section} names offset {section}, which the chain has already read."));
+        new PdfValidator().Validate(document).Findings.Select(finding => finding.RuleId).Should().NotContain(PdfValidationRuleIds.XRefOffsetImprecise);
     }
 
     [Fact]
@@ -2297,14 +2299,17 @@ public class CrossReferenceChainTests
     }
 
     [Theory]
-    [InlineData("", "/Prev 0 /XRefStm 0", "the section its /Prev names too, which the chain reads through that /Prev")]
-    [InlineData(" /XRefStm 0", "/Prev 0", "the table itself")]
-    [InlineData("", "/Prev {xref:1} /XRefStm 0", "a cross-reference table, whose rows were read in the stream's place")]
-    public void An_xrefstm_naming_offset_zero_is_judged_as_one_naming_any_other_offset(string original, string update, string what)
+    [InlineData("", "/Prev 0 /XRefStm 0", 0, "the section its /Prev names too, which the chain reads through that /Prev")]
+    [InlineData(" /XRefStm 0", "/Prev 0", 0, "the table itself")]
+    [InlineData("", "/Prev {xref:1} /XRefStm 0", 0, "the section its /Prev names too, which the chain reads through that /Prev")]
+    [InlineData("", "/Prev 0 /XRefStm 8", 8, "the section its /Prev names too, which the chain reads through that /Prev")]
+    public void An_xrefstm_naming_offset_zero_is_judged_as_one_naming_any_other_offset(string original, string update, long named, string what)
     {
         // Offset 0 holds the header, and the first table lies within 512 bytes of it, where the chain finds it: an /XRefStm
-        // that names 0 is followed, named again or left to the /Prev that names 0 too, as one that names any other offset
-        // (#156).
+        // that names 0 is named again or left to the /Prev that reaches the first table too, by 0 or by its own offset, as
+        // one that names any other offset (#156); so is one that names the end of the header's line, before the catalog's
+        // header, where a /Prev naming 0 comes to as well. Found there through the /XRefStm, the table had its own links
+        // left unread, and the /Prev that names it was reported as a loop.
         var file = PdfTemplate.Build(SoundUpdated
             .Replace("<< /Size 4 /Root 1 0 R >>", "<< /Size 4 /Root 1 0 R" + original + " >>", StringComparison.Ordinal)
             .Replace("/Prev {xref:1}", update, StringComparison.Ordinal));
@@ -2312,7 +2317,89 @@ public class CrossReferenceChainTests
         using var document = PdfDocument.Open(file);
 
         document.Diagnostics.Should().ContainSingle(diagnostic => diagnostic.Code == PdfDiagnosticCodes.XRefHybridStreamLost).Which.Message.Should().StartWith(Invariant(
-            $"The /XRefStm of the cross-reference table at offset {naming} names offset 0, {what}: "));
+            $"The /XRefStm of the cross-reference table at offset {naming} names offset {named}, {what}: "));
+        document.Diagnostics.Select(diagnostic => diagnostic.Code).Should().NotContain(PdfDiagnosticCodes.XRefChainCycle);
+        document.Reader.Structure.LoopOffset.Should().Be(-1);
+        document.Reader.Structure.Sections.Should().ContainSingle(section => section.NamedBy == "/Prev").Which.State.Should().NotBe(XRefSectionState.NotFound);
+        document.WasRepaired.Should().BeFalse();
+    }
+
+    [Fact]
+    public void An_xrefstm_naming_offset_zero_of_a_table_with_no_prev_is_read_where_it_names_whatever_precedes_the_header()
+    {
+        // Five bytes precede the header, and the update's table, which gives no /Prev, names offset 0 through /XRefStm: what
+        // it names is looked for there, the first table found near it and read in the stream's place. A table with no /Prev
+        // has no section its /Prev reaches, though the byte before the header, where an offset of -1 would lie, is in the
+        // file (#156).
+        var file = Encoding.Latin1.GetBytes("junk\n" + Encoding.Latin1.GetString(PdfTemplate.Build(SoundUpdated
+            .Replace("/Prev {xref:1}", "/XRefStm 0", StringComparison.Ordinal))));
+        var naming = PdfTemplate.OffsetOf(file, "\nxref\n", 2) + 1;
+        using var document = PdfDocument.Open(file);
+
+        document.Diagnostics.Select(diagnostic => diagnostic.Code).Should().Equal(
+            PdfDiagnosticCodes.XRefOffsetAdjusted, PdfDiagnosticCodes.XRefOffsetAdjusted, PdfDiagnosticCodes.XRefHybridStreamLost);
+        document.Diagnostics[^1].Message.Should().StartWith(Invariant(
+            $"The /XRefStm of the cross-reference table at offset {naming} names offset 5, a cross-reference table, whose rows were read in the stream's place: "));
+        document.Reader.Structure.Sections.Select(section => (section.NamedBy, section.State)).Should().Equal(
+            ("startxref", XRefSectionState.Read), ("/XRefStm", XRefSectionState.Relocated));
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void An_xrefstm_of_a_file_without_a_header_is_judged_by_what_it_reaches_from_the_file_s_first_byte(bool namesTheFirstByte)
+    {
+        // A file with no header counts its offsets from its first byte, where the first table lies. Read through startxref, it
+        // names the second through /Prev, and the second names it back through /Prev and /XRefStm both: the /XRefStm names
+        // the table the chain read through startxref, not what its own /Prev reaches, and the /Prev loops. Or the second, read
+        // first, names the table at the first byte through /Prev and gives an /XRefStm outside the file, which reaches
+        // nothing, whatever the /Prev reaches: a section missing, the first table read (#156).
+        var (file, second) = namesTheFirstByte
+            ? Headerless(" /Prev {second}", " /Prev 0 /XRefStm 0", startAtFirst: true)
+            : Headerless(string.Empty, " /Prev 0 /XRefStm 99999999", startAtFirst: false);
+        using var document = PdfDocument.Open(file);
+
+        var codes = document.Diagnostics.Select(diagnostic => diagnostic.Code).ToList();
+        codes[0].Should().Be(PdfDiagnosticCodes.HeaderMissing);
+
+        if (namesTheFirstByte)
+        {
+            codes.Should().Equal(PdfDiagnosticCodes.HeaderMissing, PdfDiagnosticCodes.XRefHybridStreamLost, PdfDiagnosticCodes.XRefChainCycle);
+            document.Diagnostics[1].Message.Should().StartWith(Invariant(
+                $"The /XRefStm of the cross-reference table at offset {second} names offset 0, the cross-reference table at offset 0, which the chain read through startxref: "));
+            document.Reader.Structure.LoopOffset.Should().Be(0);
+        }
+        else
+        {
+            codes.Should().Equal(PdfDiagnosticCodes.HeaderMissing, PdfDiagnosticCodes.XRefSectionMissing);
+            document.Diagnostics[1].Message.Should().StartWith("The cross-reference section /XRefStm names at offset 99999999 lies outside the file");
+            document.Reader.Structure.Sections.Select(section => (section.NamedBy, section.State)).Should().Equal(
+                ("startxref", XRefSectionState.Read), ("/XRefStm", XRefSectionState.NotFound), ("/Prev", XRefSectionState.Read));
+        }
+    }
+
+    [Fact]
+    public void An_xrefstm_falling_short_of_where_its_table_s_prev_names_a_section_found_moved_names_no_section_short()
+    {
+        // The newest table names through /Prev the endobj 7 bytes before the table before it, where the search near it finds
+        // that table, and through /XRefStm the end of line before that endobj: both links reach the endobj, which the /Prev,
+        // left to read it, finds no section at. What the /XRefStm crossed is white space before no section, and its offset is
+        // not counted among those that name a section short (#156).
+        var built = HybridFiles.NamingThePreviousTable();
+        var previous = PreviousSection(built, stream: false);
+        var file = Encoding.Latin1.GetBytes(Encoding.Latin1.GetString(built).Replace(
+            Invariant($"/Prev {previous} /XRefStm {previous} >>"), Invariant($"/Prev {previous - 7} /XRefStm {previous - 8} >>"), StringComparison.Ordinal));
+        file.Should().HaveCount(built.Length, "the offsets are written in as many digits");
+        Encoding.Latin1.GetString(file, (int)previous - 8, 8).Should().Be("\nendobj\n");
+        using var document = PdfDocument.Open(file);
+
+        var sections = document.Reader.Structure.Sections;
+        sections.Select(section => (section.State, section.Offset)).Skip(1).Take(2).Should().Equal(
+            (XRefSectionState.NamedAgain, previous - 8), (XRefSectionState.Relocated, previous));
+        sections[1].ReadAs.Should().BeSameAs(sections[2]);
+        document.Diagnostics.Select(diagnostic => diagnostic.Code).Should().Equal(PdfDiagnosticCodes.XRefHybridStreamLost, PdfDiagnosticCodes.XRefOffsetAdjusted);
+        var findings = new PdfValidator().Validate(document).Findings.Select(finding => finding.RuleId).ToList();
+        findings.Should().Contain(PdfValidationRuleIds.XRefSectionShifted).And.NotContain(PdfValidationRuleIds.XRefOffsetImprecise);
     }
 
     [Fact]
@@ -2424,39 +2511,64 @@ public class CrossReferenceChainTests
     }
 
     [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public void An_xrefstm_naming_what_its_table_s_prev_names_is_left_to_the_prev_which_reads_the_section_whole(bool stream)
+    [InlineData(false, 0, "")]
+    [InlineData(true, 0, "")]
+    [InlineData(false, 1, "")]
+    [InlineData(true, 1, "")]
+    [InlineData(false, 1, "junk\n")]
+    [InlineData(true, 1, "junk\n")]
+    [InlineData(false, 7, "")]
+    [InlineData(true, 7, "")]
+    [InlineData(false, 7, "junk\n")]
+    [InlineData(true, 7, "junk\n")]
+    public void An_xrefstm_reaching_what_its_table_s_prev_names_is_left_to_the_prev_which_reads_the_section_whole(
+        bool stream, int shortBy, string junk)
     {
-        // The newest table names the section before it through /Prev and through /XRefStm. Read as the table's stream first,
-        // the section had its own /Prev left unread, the /Prev looped back to it, and what only the oldest table indexes, the
-        // page, was found by rebuilding the index. The /XRefStm is not followed: the /Prev reads the section whole, its own
-        // /Prev with it, and the /XRefStm, which names no stream of its revision, is reported (#156).
-        var (file, oldest, previous, newest) = stream
-            ? HybridFiles.NamingThePreviousStream()
-            : Tables(HybridFiles.NamingThePreviousTable());
+        // The newest table names the section before it through /Prev and through /XRefStm: at the same offset, at the end of
+        // line before it, or 7 bytes before it, in the endobj before it, where the search near that offset finds the section —
+        // and the file starts with junk before its header, or not. Read as the table's stream first, the section had its own
+        // /Prev left unread, the /Prev looped back to it, and what only the oldest table indexes, the page, was found by
+        // rebuilding the index. The /XRefStm is not followed: the /Prev reads the section whole, its own /Prev with it, and the
+        // /XRefStm, which names no stream of its revision, is reported (#156). Only an offset that names the end of line is
+        // imprecise: what lies 7 bytes before is no white space.
+        var built = stream ? HybridFiles.NamingThePreviousStream().File : HybridFiles.NamingThePreviousTable();
+        var named = PreviousSection(built, stream);
+        var file = Encoding.Latin1.GetBytes(junk + Encoding.Latin1.GetString(built).Replace(
+            Invariant($"/XRefStm {named} >>"), Invariant($"/XRefStm {named - shortBy} >>"), StringComparison.Ordinal));
+        var oldest = PdfTemplate.OffsetOf(file, "\nxref\n") + 1;
+        var previous = PreviousSection(file, stream);
+        var newest = PdfTemplate.OffsetOf(file, "\nxref\n", stream ? 2 : 3) + 1;
         using var document = PdfDocument.Open(file);
 
         var sections = document.Reader.Structure.Sections;
         sections.Select(section => (section.State, section.Offset)).Should().Equal(
             (XRefSectionState.Read, newest),
-            (XRefSectionState.NamedAgain, previous),
+            (XRefSectionState.NamedAgain, previous - shortBy),
             (XRefSectionState.Read, previous),
             (XRefSectionState.Read, oldest));
         sections[1].ReadAs.Should().BeSameAs(sections[2]);
         sections[2].NamedBy.Should().Be("/Prev");
         document.Reader.Structure.LoopOffset.Should().Be(-1);
-        document.Diagnostics.Should().ContainSingle().Which.Message.Should().Be(Invariant(
-            $"The /XRefStm of the cross-reference table at offset {newest} names offset {previous}, the section its /Prev names too, which the chain reads through that /Prev: ISO 32000-1 has it name the cross-reference stream of the table's revision (Table 19). The objects only that stream indexes are looked for by rebuilding the index."));
+        document.Diagnostics.Select(diagnostic => diagnostic.Code).Should().Equal(
+            junk.Length > 0
+                ? [PdfDiagnosticCodes.XRefOffsetAdjusted, PdfDiagnosticCodes.XRefHybridStreamLost]
+                : [PdfDiagnosticCodes.XRefHybridStreamLost]);
+        document.Diagnostics[^1].Message.Should().Be(Invariant(
+            $"The /XRefStm of the cross-reference table at offset {newest} names offset {previous - shortBy}, the section its /Prev names too, which the chain reads through that /Prev: ISO 32000-1 has it name the cross-reference stream of the table's revision (Table 19). The objects only that stream indexes are looked for by rebuilding the index."));
         document.GetObject(new PdfObjectId(3)).AsDictionary()!.IsOfType(PdfName.Page).Should().BeTrue();
         document.WasRepaired.Should().BeFalse();
-
-        static (byte[] File, long Oldest, long Previous, long Newest) Tables(byte[] file) => (
-            file,
-            PdfTemplate.OffsetOf(file, "\nxref\n") + 1,
-            PdfTemplate.OffsetOf(file, "\nxref\n", 2) + 1,
-            PdfTemplate.OffsetOf(file, "\nxref\n", 3) + 1);
+        var findings = new PdfValidator().Validate(document).Findings.Select(finding => finding.RuleId).ToList();
+        findings.Should().NotContain(PdfValidationRuleIds.XRefChainLoop);
+        findings.Count(id => id == PdfValidationRuleIds.XRefHybridStreamWrong).Should().Be(1);
+        findings.Count(id => id == PdfValidationRuleIds.XRefOffsetImprecise).Should().Be(shortBy == 1 ? 1 : 0);
     }
+
+    /// <summary>
+    /// Gives where the section before the newest lies in a file <see cref="HybridFiles.NamingThePreviousStream"/> writes, its
+    /// stream's object header, or <see cref="HybridFiles.NamingThePreviousTable"/> writes, its second table's keyword.
+    /// </summary>
+    private static long PreviousSection(byte[] file, bool stream) =>
+        stream ? PdfTemplate.OffsetOf(file, "5 0 obj") : PdfTemplate.OffsetOf(file, "\nxref\n", 2) + 1;
 
     [Fact]
     public void A_stream_two_tables_name_is_read_once_and_recorded_where_each_names_it()
@@ -2497,6 +2609,299 @@ public class CrossReferenceChainTests
         sections[1].Offset.Should().Be(stream - 2);
         sections[1].Padding.Should().Be(2);
         document.Diagnostics.Should().BeEmpty();
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void A_stream_one_table_names_at_its_header_and_one_short_of_it_is_read_once_whichever_names_it_first(bool headerFirst)
+    {
+        // The two tables name the stream at its header and two bytes short of it, in the spaces before it; its row for object
+        // 8 is of type 3, and its /Size, 12, is wrong. Named at its header first, it was read again through the spaces, and
+        // each report on it came out twice, the second naming's imprecise offset among them: the chain knows a section by
+        // where its first token starts, and records the second naming, either way, as naming it again (#156).
+        var (file, stream) = HybridFiles.SharedStreamNamedTwice(headerFirst, size: 12, eightType: 3);
+        using var document = PdfDocument.Open(file);
+
+        var sections = document.Reader.Structure.Sections;
+        var read = sections.Should().ContainSingle(section => section.IsHybridStream).Which;
+        read.State.Should().Be(XRefSectionState.Read);
+        (read.Offset + read.Padding).Should().Be(stream);
+        var again = sections.Should().ContainSingle(section => section.State == XRefSectionState.NamedAgain).Which;
+        again.ReadAs.Should().BeSameAs(read);
+        again.Offset.Should().Be(headerFirst ? stream - 2 : stream);
+        again.Padding.Should().Be(headerFirst ? 2 : 0);
+        document.Diagnostics.Should().ContainSingle().Which.Code.Should().Be(PdfDiagnosticCodes.XRefEntryReserved);
+        var findings = new PdfValidator().Validate(document).Findings;
+        findings.Select(finding => finding.RuleId).Should().BeEquivalentTo(
+            [PdfValidationRuleIds.FileSizeWrong, PdfValidationRuleIds.XRefEntryTypeReserved, PdfValidationRuleIds.XRefOffsetImprecise]);
+        findings.Single(finding => finding.RuleId == PdfValidationRuleIds.XRefOffsetImprecise).Message.Should().Be(Invariant(
+            $"An offset names the white space before what it designates rather than its first byte: /XRefStm gives offset {stream - 2}, 2 bytes before the header of the cross-reference stream."));
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void A_lost_stream_one_table_names_at_its_header_and_one_short_of_it_is_reported_once_whichever_names_it_first(bool headerFirst)
+    {
+        // The stream's /W gives a negative width: there, and lost, it was read again for the naming that did not name the
+        // offset read first, reported twice, and found malformed twice. Where it starts is reached all the same, though the
+        // chain could not read it, and the second naming records naming it again (#156).
+        var (file, stream) = HybridFiles.SharedStreamNamedTwice(headerFirst, widths: "[1 -4 2]");
+        using var document = PdfDocument.Open(file);
+
+        var sections = document.Reader.Structure.Sections;
+        var lost = sections.Should().ContainSingle(section => section.State == XRefSectionState.Malformed).Which;
+        (lost.Offset + lost.Padding).Should().Be(stream);
+        sections.Should().ContainSingle(section => section.State == XRefSectionState.NamedAgain).Which.ReadAs.Should().BeSameAs(lost);
+        document.Diagnostics.Should().ContainSingle().Which.Code.Should().Be(PdfDiagnosticCodes.XRefSectionUnreadable);
+        new PdfValidator().Validate(document).Findings.Select(finding => finding.RuleId).Should().Equal(PdfValidationRuleIds.XRefSectionMalformed);
+    }
+
+    [Theory]
+    [InlineData(1, 0)]
+    [InlineData(0, 1)]
+    public void A_lost_stream_named_again_through_the_end_of_line_before_its_header_is_handed_on_once_and_ends_the_chain_in_a_loop(
+        int namedShortBy, int ownShortBy)
+    {
+        // The newest table's /Prev names the lost stream at the end of line before its header, and the stream's own /Prev names
+        // the header, or the other way round. A stream handed on left no mark of where it is: it was read and handed on again,
+        // and reported twice, before the loop was seen. It is reached where it starts, which the /Prev that names it again
+        // reaches too: a loop, placed at the stream, through a section the chain named and could not read (#188, #208).
+        var stream = LostStreamFiles.ThreeRevisions().Stream;
+        var (file, _, at, _) = LostStreamFiles.ThreeRevisions(
+            prev: (stream - ownShortBy).ToString(CultureInfo.InvariantCulture), namedShortBy: namedShortBy);
+        at.Should().Be(stream, "where the stream lies depends on nothing its /Prev or the newest table's says");
+        using var document = PdfDocument.Open(file);
+
+        document.Diagnostics.Select(diagnostic => diagnostic.Code).Should().StartWith([PdfDiagnosticCodes.XRefSectionUnreadable, PdfDiagnosticCodes.XRefChainCycle]);
+        document.Diagnostics.Count(diagnostic => diagnostic.Code == PdfDiagnosticCodes.XRefSectionUnreadable).Should().Be(1);
+        document.Diagnostics[1].Position.Should().Be(stream);
+        document.Diagnostics[1].Message.Should().Be(Invariant(
+            $"The cross-reference chain loops back on itself: the /Prev of the section at offset {stream - namedShortBy} names offset {stream - ownShortBy}, which the chain has already named."));
+        document.Reader.Structure.Sections.Should().HaveCount(2);
+        document.Reader.Structure.LoopOffset.Should().Be(stream);
+        Text(document, 3).Should().Be("only in the oldest");
+        var findings = new PdfValidator().Validate(document).Findings.Select(finding => finding.RuleId);
+        findings.Count(id => id == PdfValidationRuleIds.XRefSectionMalformed).Should().Be(1);
+        findings.Count(id => id == PdfValidationRuleIds.XRefChainLoop).Should().Be(1);
+        findings.Should().NotContain(PdfValidationRuleIds.XRefOffsetImprecise, "a section that cannot be read counts nowhere it is named short");
+    }
+
+    [Fact]
+    public void A_stream_whose_prev_names_the_end_of_line_before_its_header_is_read_once_and_its_size_judged_once()
+    {
+        // The stream reads whole, gives /Size 12 where the numbers read make it 8, and its /Prev names the end of line before its
+        // header. The chain read it a second time there, judged its /Size twice, and placed the loop at the copy. It is where
+        // the chain read it, past the white space: the /Prev loops back to it at once, and its /Size is judged once (#188).
+        const string Readable = "/Type /XRef /Size 12 /Index [4 2 7 1] /W [1 4 2]";
+        var stream = LostStreamFiles.ThreeRevisions(Readable).Stream;
+        var (file, _, at, newest) = LostStreamFiles.ThreeRevisions(Readable, prev: (stream - 1).ToString(CultureInfo.InvariantCulture));
+        at.Should().Be(stream);
+        using var document = PdfDocument.Open(file);
+
+        document.Reader.Structure.Sections.Select(section => (section.State, section.Offset)).Should().Equal(
+            (XRefSectionState.Read, newest),
+            (XRefSectionState.Read, stream));
+        var loop = document.Diagnostics.Should().ContainSingle(diagnostic => diagnostic.Code == PdfDiagnosticCodes.XRefChainCycle).Which;
+        loop.Position.Should().Be(stream);
+        loop.Message.Should().Be(Invariant(
+            $"The cross-reference chain loops back on itself: the /Prev of the section at offset {stream} names offset {stream - 1}, which the chain has already read."));
+        var findings = new PdfValidator().Validate(document).Findings;
+        findings.Where(finding => finding.RuleId == PdfValidationRuleIds.FileSizeWrong).Select(finding => finding.Message).Should().Equal(
+            Invariant($"The trailer of the cross-reference table at offset {newest} gives /Size 9, where the highest object number it and the sections it updates use, 7, makes it 8."),
+            Invariant($"The cross-reference stream at offset {stream} gives /Size 12, where the highest object number it and the sections it updates use, 7, makes it 8."));
+        findings.Count(finding => finding.RuleId == PdfValidationRuleIds.XRefChainLoop).Should().Be(1);
+        findings.Single(finding => finding.RuleId == PdfValidationRuleIds.XRefOffsetImprecise).Message.Should().Be(Invariant(
+            $"An offset names the white space before what it designates rather than its first byte: /Prev gives offset {stream - 1}, 1 byte before the header of the cross-reference stream."));
+    }
+
+    [Fact]
+    public void A_lost_stream_an_xrefstm_names_again_through_the_end_of_line_before_its_header_is_reported_once()
+    {
+        // The chain goes on past the lost stream through its /Prev, to the oldest table, whose /XRefStm names the stream at the
+        // end of line before its header: read again there, in the stream's place, it was reported twice, and found malformed
+        // twice. It is reached where it starts, and the /XRefStm records naming it again (#156, #208).
+        // The offset is written in ten digits, so that the stream lies where it lay with a stand-in of the same length.
+        var stream = LostStreamFiles.ThreeRevisions(oldestTrailer: " /XRefStm 0000000000").Stream;
+        var (file, _, at, _) = LostStreamFiles.ThreeRevisions(oldestTrailer: Invariant($" /XRefStm {stream - 1:D10}"));
+        at.Should().Be(stream);
+        using var document = PdfDocument.Open(file);
+
+        document.Diagnostics.Select(diagnostic => diagnostic.Code).Should().Equal(PdfDiagnosticCodes.XRefSectionUnreadable);
+        var sections = document.Reader.Structure.Sections;
+        var again = sections.Should().ContainSingle(section => section.State == XRefSectionState.NamedAgain).Which;
+        again.ReadAs.Should().BeSameAs(sections[1]);
+        again.Padding.Should().Be(1);
+        Text(document, 3).Should().Be("only in the oldest");
+        new PdfValidator().Validate(document).Findings.Select(finding => finding.RuleId).Should().ContainSingle(id => id == PdfValidationRuleIds.XRefSectionMalformed);
+    }
+
+    [Theory]
+    [InlineData("an empty table", PdfDiagnosticCodes.XRefSectionEmpty, PdfValidationRuleIds.XRefSubsectionMissing, "the xref keyword")]
+    [InlineData("a table read in part", PdfDiagnosticCodes.XRefSectionUnreadable, PdfValidationRuleIds.XRefSectionMalformed, "the xref keyword")]
+    [InlineData("a stream of a reserved row", PdfDiagnosticCodes.XRefEntryReserved, PdfValidationRuleIds.XRefEntryTypeReserved, "the header of the cross-reference stream")]
+    public void A_section_whose_prev_names_the_end_of_line_before_it_ends_the_chain_in_a_loop_at_it_and_is_reported_once(
+        string kind, string code, string rule, string target)
+    {
+        // The section startxref names gives a /Prev that names the end of line before it: the chain read it again there,
+        // reported it twice, and found it twice, the loop seen one step late. Its first token is where the chain read it: the
+        // /Prev loops back to it at once, and the offset that falls short of it is counted once among the imprecise ones
+        // (#156, #188).
+        var (file, at) = SectionNamingItsOwnEndOfLine(kind);
+        using var document = PdfDocument.Open(file);
+
+        document.Diagnostics.Count(diagnostic => diagnostic.Code == code).Should().Be(1);
+        var loop = document.Diagnostics.Should().ContainSingle(diagnostic => diagnostic.Code == PdfDiagnosticCodes.XRefChainCycle).Which;
+        loop.Position.Should().Be(at);
+        loop.Message.Should().Be(Invariant(
+            $"The cross-reference chain loops back on itself: the /Prev of the section at offset {at} names offset {at - 1}, which the chain has already read."));
+        document.Reader.Structure.Sections.Should().ContainSingle();
+        var findings = new PdfValidator().Validate(document).Findings;
+        findings.Count(finding => finding.RuleId == rule).Should().Be(1);
+        findings.Count(finding => finding.RuleId == PdfValidationRuleIds.XRefChainLoop).Should().Be(1);
+        findings.Single(finding => finding.RuleId == PdfValidationRuleIds.XRefOffsetImprecise).Message.Should().Be(Invariant(
+            $"An offset names the white space before what it designates rather than its first byte: /Prev gives offset {at - 1}, 1 byte before {target}."));
+    }
+
+    [Fact]
+    public void A_section_a_prev_names_again_through_the_white_space_before_it_where_it_was_found_moved_ends_the_chain_in_a_loop_at_once()
+    {
+        // The middle table, which the newest names 3 bytes short of it, is found moved; the oldest's /Prev names the end of line
+        // before it. The chain read it again there, its rows and its trailer, judged its /Size twice, and blamed the loop on
+        // the middle table's sound /Prev. The oldest table's /Prev loops back to it, where it was found (#188). The oldest's
+        // offset is written in thirteen digits, as long as the /XRefStm it stands for.
+        var built = HybridFiles.OldestNaming("0000000000");
+        var middle = PdfTemplate.OffsetOf(built, "\nxref\n", 2) + 1;
+        var oldest = PdfTemplate.OffsetOf(built, "\nxref\n") + 1;
+        var text = Encoding.Latin1.GetString(built)
+            .Replace(Invariant($"/Prev {middle} >>"), Invariant($"/Prev {middle - 3} >>"), StringComparison.Ordinal)
+            .Replace("/XRefStm 0000000000 >>", Invariant($"/Prev {middle - 1:D13} >>"), StringComparison.Ordinal);
+        using var document = PdfDocument.Open(Encoding.Latin1.GetBytes(text));
+
+        var sections = document.Reader.Structure.Sections;
+        sections.Select(section => section.State).Should().Equal(XRefSectionState.Read, XRefSectionState.Relocated, XRefSectionState.Read);
+        sections[1].Offset.Should().Be(middle);
+        var loop = document.Diagnostics.Should().ContainSingle(diagnostic => diagnostic.Code == PdfDiagnosticCodes.XRefChainCycle).Which;
+        loop.Position.Should().Be(middle);
+        loop.Message.Should().Be(Invariant(
+            $"The cross-reference chain loops back on itself: the /Prev of the section at offset {oldest} names offset {middle - 1}, which the chain has already read."));
+        var findings = new PdfValidator().Validate(document).Findings;
+        findings.Single(finding => finding.RuleId == PdfValidationRuleIds.XRefChainLoop).Message.Should().Be(Invariant(
+            $"The /Prev of the cross-reference section at offset {oldest} names offset {middle - 1}, a section the chain has already read: the chain loops."));
+        findings.Should().NotContain(finding => finding.Message.Contains(Invariant($"at offset {middle - 1} gives /Size"), StringComparison.Ordinal));
+        findings.Single(finding => finding.RuleId == PdfValidationRuleIds.XRefOffsetImprecise).Message.Should().Be(Invariant(
+            $"An offset names the white space before what it designates rather than its first byte: /Prev gives offset {middle - 1}, 1 byte before the xref keyword."));
+    }
+
+    [Fact]
+    public void An_xrefstm_copied_a_few_bytes_off_the_table_the_prev_names_is_judged_at_each_naming_by_what_it_reaches()
+    {
+        // The middle table and the newest both name through /XRefStm the endobj 7 bytes before the middle table, which the
+        // newest's /Prev names: the search near that offset comes to the middle table, which is left to the /Prev, read
+        // whole. Named again by the middle table, the offset leads to that table itself, as the middle table's own offset
+        // would. It was looked near again, the middle table passed over as read, and the oldest table read in the stream's
+        // place, which the middle table's /Prev then looped back to (#156).
+        var (file, oldest, middle, newest) = HybridFiles.CopyingAnXRefStmOffThePreviousTable();
+        using var document = PdfDocument.Open(file);
+
+        var sections = document.Reader.Structure.Sections;
+        sections.Select(section => (section.NamedBy, section.State, section.Offset)).Should().Equal(
+            ("startxref", XRefSectionState.Read, newest),
+            ("/XRefStm", XRefSectionState.NamedAgain, middle - 7),
+            ("/Prev", XRefSectionState.Read, middle),
+            ("/XRefStm", XRefSectionState.NamedAgain, middle - 7),
+            ("/Prev", XRefSectionState.Read, oldest));
+        sections[1].ReadAs.Should().BeSameAs(sections[2]);
+        sections[3].ReadAs.Should().BeSameAs(sections[2]);
+        document.Reader.Structure.LoopOffset.Should().Be(-1);
+        document.Diagnostics.Select(diagnostic => diagnostic.Message).Should().SatisfyRespectively(
+            first => first.Should().StartWith(Invariant(
+                $"The /XRefStm of the cross-reference table at offset {newest} names offset {middle - 7}, the section its /Prev names too, which the chain reads through that /Prev: ")),
+            second => second.Should().StartWith(Invariant(
+                $"The /XRefStm of the cross-reference table at offset {middle} names offset {middle - 7}, the table itself: ")));
+        document.GetObject(new PdfObjectId(3)).AsDictionary()!.IsOfType(PdfName.Page).Should().BeTrue();
+        document.WasRepaired.Should().BeFalse();
+    }
+
+    [Fact]
+    public void A_prev_and_an_xrefstm_writing_one_offset_short_of_the_previous_section_count_once_among_the_imprecise_offsets()
+    {
+        // The newest table names the section before it, through /Prev and through /XRefStm, at the end of line before it: one
+        // offset, written twice, names the white space before the section, counted once, as an offset a table copies from
+        // another is (#156).
+        var built = HybridFiles.NamingThePreviousTable();
+        var previous = PreviousSection(built, stream: false);
+        var file = Encoding.Latin1.GetBytes(Encoding.Latin1.GetString(built).Replace(
+            Invariant($"/Prev {previous} /XRefStm {previous} >>"), Invariant($"/Prev {previous - 1} /XRefStm {previous - 1} >>"), StringComparison.Ordinal));
+        using var document = PdfDocument.Open(file);
+
+        var sections = document.Reader.Structure.Sections;
+        sections[1].State.Should().Be(XRefSectionState.NamedAgain);
+        sections[1].ReadAs.Should().BeSameAs(sections[2]);
+        sections[2].Padding.Should().Be(1);
+        new PdfValidator().Validate(document).Findings.Single(finding => finding.RuleId == PdfValidationRuleIds.XRefOffsetImprecise).Message.Should().Be(Invariant(
+            $"An offset names the white space before what it designates rather than its first byte: /Prev gives offset {previous - 1}, 1 byte before the xref keyword."));
+    }
+
+    [Fact]
+    public void An_xrefstm_naming_again_the_white_space_before_a_section_found_moved_names_it_short()
+    {
+        // The middle table, which the newest names 3 bytes short of it, is found moved; the oldest's /XRefStm names the end
+        // of line before it, where it lies: a naming again, through the white space before the section, counted among the
+        // imprecise offsets as the section's own would be (#156).
+        var built = HybridFiles.OldestNaming("0000000000");
+        var middle = PdfTemplate.OffsetOf(built, "\nxref\n", 2) + 1;
+        var text = Encoding.Latin1.GetString(built)
+            .Replace(Invariant($"/Prev {middle} >>"), Invariant($"/Prev {middle - 3} >>"), StringComparison.Ordinal)
+            .Replace("/XRefStm 0000000000 >>", Invariant($"/XRefStm {middle - 1:D10} >>"), StringComparison.Ordinal);
+        using var document = PdfDocument.Open(Encoding.Latin1.GetBytes(text));
+
+        var sections = document.Reader.Structure.Sections;
+        sections[1].State.Should().Be(XRefSectionState.Relocated);
+        var again = sections.Should().ContainSingle(section => section.State == XRefSectionState.NamedAgain).Which;
+        again.ReadAs.Should().BeSameAs(sections[1]);
+        again.Padding.Should().Be(1);
+        new PdfValidator().Validate(document).Findings.Single(finding => finding.RuleId == PdfValidationRuleIds.XRefOffsetImprecise).Message.Should().Be(Invariant(
+            $"An offset names the white space before what it designates rather than its first byte: /XRefStm gives offset {middle - 1}, 1 byte before the xref keyword."));
+    }
+
+    [Fact]
+    public void A_prev_looping_back_through_the_white_space_before_a_section_named_short_counts_as_a_second_imprecise_offset()
+    {
+        // startxref names the stream two bytes short of its header, where the chain reads it, and the stream's /Prev names it
+        // one byte short: a loop at the stream, and two offsets that name the white space before it (#188).
+        var (file, stream) = NearbyFiles.StreamNamedShortTwice();
+        using var document = PdfDocument.Open(file);
+
+        document.Reader.Structure.Sections.Should().ContainSingle().Which.Padding.Should().Be(2);
+        document.Reader.Structure.LoopOffset.Should().Be(stream);
+        new PdfValidator().Validate(document).Findings.Single(finding => finding.RuleId == PdfValidationRuleIds.XRefOffsetImprecise).Message.Should().Be(Invariant(
+            $"2 offsets name the white space before what they designate rather than its first byte; the first: startxref gives offset {stream - 2}, 2 bytes before the header of the cross-reference stream."));
+    }
+
+    [Fact]
+    public void An_object_that_only_gives_a_width_is_no_section_the_chain_reached_and_a_naming_short_of_it_is_looked_for_near_where_it_names()
+    {
+        // The newest table's /XRefStm names the object, which may be anything (#263): nothing near it reads, and it is
+        // reported. The older table's names the spaces 600 bytes before it, where the search comes to cross-reference stream
+        // 7, 400 bytes further back, and reads it in the stream's place: the object is no section the chain reached, so that
+        // a naming through the white space before it is a guess of its own (#156).
+        var (file, stream, named) = NearbyFiles.ObjectGivingOnlyAWidthNamedTwice();
+        using var document = PdfDocument.Open(file);
+
+        var sections = document.Reader.Structure.Sections;
+        sections.Select(section => (section.NamedBy, section.State)).Should().Equal(
+            ("startxref", XRefSectionState.Read),
+            ("/XRefStm", XRefSectionState.Malformed),
+            ("/Prev", XRefSectionState.Read),
+            ("/XRefStm", XRefSectionState.Relocated),
+            ("/Prev", XRefSectionState.Read));
+        sections[1].Offset.Should().Be(named);
+        sections[3].Offset.Should().Be(stream);
+        document.Diagnostics.Select(diagnostic => diagnostic.Code).Should().Equal(PdfDiagnosticCodes.XRefSectionUnreadable, PdfDiagnosticCodes.XRefOffsetAdjusted);
+        Text(document, 6).Should().Be("six");
+        document.WasRepaired.Should().BeFalse();
     }
 
     [Fact]
@@ -2794,6 +3199,60 @@ public class CrossReferenceChainTests
         document.GetObject(new PdfObjectId(number)).Should().BeOfType<PdfString>().Subject.ToText();
 
     private static string Invariant(FormattableString text) => text.ToString(CultureInfo.InvariantCulture);
+
+    /// <summary>
+    /// Gives a file whose section <c>startxref</c> names, of <paramref name="kind"/>, gives a <c>/Prev</c> that names the end
+    /// of line before it, and where that section starts: an update's table that holds no subsection (#222), a table whose
+    /// last row ends in <c>x</c> (#210), or an update's cross-reference stream whose row for object 3 is of type 7 (#221).
+    /// Each is built once to find where the section lies, then again with its <c>/Prev</c>, which nothing before it moves.
+    /// </summary>
+    /// <summary>
+    /// Gives a file with no header, whose offsets count from its first byte, and where its second table lies: a classic
+    /// table at offset 0 that indexes the catalog and an empty page tree, written after it, and gives <paramref name="first"/>
+    /// in its trailer, <c>{second}</c> standing for the second table's offset; then a table that indexes nothing and gives
+    /// <paramref name="second"/>. <c>startxref</c> names the first table where <paramref name="startAtFirst"/>, the second
+    /// otherwise. Offsets are written in ten digits, so that a stand-in moves nothing.
+    /// </summary>
+    private static (byte[] File, long Second) Headerless(string first, string second, bool startAtFirst)
+    {
+        // Built once with stand-ins as long as what they stand for, to find where each object and the second table lie.
+        var stand = Build(0, 0, 0);
+        var text = Encoding.Latin1.GetString(stand);
+        var catalog = text.IndexOf("1 0 obj", StringComparison.Ordinal);
+        var pages = text.IndexOf("2 0 obj", StringComparison.Ordinal);
+        var at = text.LastIndexOf("\nxref\n", StringComparison.Ordinal) + 1;
+        var file = Build(catalog, pages, at);
+        file.Should().HaveCount(stand.Length);
+        return (file, at);
+
+        byte[] Build(long catalogAt, long pagesAt, long secondAt) => Encoding.Latin1.GetBytes(Invariant(
+            $"xref\n0 3\n0000000000 65535 f \n{catalogAt:D10} 00000 n \n{pagesAt:D10} 00000 n \ntrailer\n<< /Size 3 /Root 1 0 R{first.Replace("{second}", Invariant($"{secondAt:D10}"), StringComparison.Ordinal)} >>\n1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n2 0 obj\n<< /Type /Pages /Kids [] /Count 0 >>\nendobj\nxref\n0 1\n0000000000 65535 f \ntrailer\n<< /Size 3 /Root 1 0 R{second} >>\nstartxref\n{(startAtFirst ? 0 : secondAt):D10}\n%%EOF\n"));
+    }
+
+    private static (byte[] File, long At) SectionNamingItsOwnEndOfLine(string kind)
+    {
+        if (kind == "an empty table")
+        {
+            var built = PdfTemplate.Build(PartialFiles.EmptyUpdate(string.Empty));
+            var first = PdfTemplate.OffsetOf(built, "\nxref\n") + 1;
+            var at = PdfTemplate.OffsetOf(built, "\nxref\n", 2) + 1;
+            var file = Encoding.Latin1.GetBytes(Encoding.Latin1.GetString(built).Replace(
+                Invariant($"/Prev {first} >>"), Invariant($"/Prev {at - 1} >>"), StringComparison.Ordinal));
+            file.Should().HaveCount(built.Length, "the offsets are written in as many digits");
+            return (file, at);
+        }
+
+        if (kind == "a table read in part")
+        {
+            var at = PdfTemplate.OffsetOf(PdfTemplate.Build(PartialFiles.RowEndingInX(updated: false)), "\nxref\n") + 1;
+            var file = PdfTemplate.Build(PartialFiles.RowEndingInX(updated: false).Replace(
+                "<< /Size 5 /Root 1 0 R >>", Invariant($"<< /Size 5 /Root 1 0 R /Prev {at - 1} >>"), StringComparison.Ordinal));
+            return (file, at);
+        }
+
+        var (_, older, newer) = ReservedRowFiles.Updated(type: 7);
+        return (ReservedRowFiles.Updated(type: 7, prevShift: (int)(newer - 1 - older)).File, newer);
+    }
 
     /// <summary>Gives where <paramref name="text"/> first appears in <paramref name="file"/> at or after <paramref name="start"/>.</summary>
     private static long OffsetAfter(byte[] file, long start, string text) =>

@@ -242,6 +242,29 @@ internal static class HybridFiles
 
     /// <summary>
     /// A one-page document saved three times: the first table, at <c>Oldest</c>, alone indexes the page tree and its page;
+    /// the second, at <c>Middle</c>, indexes object 4, <c>(four)</c>, and names the first through <c>/Prev</c>; the newest,
+    /// at <c>Newest</c>, indexes object 5, <c>(five)</c>, and names the second through <c>/Prev</c>. Both name through
+    /// <c>/XRefStm</c>, as a writer that copies it into the next trailer leaves it, the place 7 bytes before the second
+    /// table, in the <c>endobj</c> of object 4, where no section starts: the second table is the nearest one, and the first
+    /// lies within 512 bytes of it.
+    /// </summary>
+    public static (byte[] File, long Oldest, long Middle, long Newest) CopyingAnXRefStmOffThePreviousTable()
+    {
+        var file = new HandWrittenFile();
+        var (catalog, pages, page) = Page(file);
+        var oldest = file.Position;
+        file.Raw(Invariant($"xref\n0 4\n0000000000 65535 f \n{Row(catalog)}{Row(pages)}{Row(page)}trailer\n<< /Size 4 /Root 1 0 R >>\nstartxref\n{oldest}\n%%EOF\n"));
+        var four = file.Object(4, "(four)");
+        var middle = file.Position;
+        file.Raw(Invariant($"xref\n0 1\n0000000000 65535 f \n4 1\n{Row(four)}trailer\n<< /Size 5 /Root 1 0 R /Prev {oldest} /XRefStm {middle - 7} >>\nstartxref\n{middle}\n%%EOF\n"));
+        var five = file.Object(5, "(five)");
+        var newest = file.Position;
+        file.Raw(Invariant($"xref\n0 1\n0000000000 65535 f \n5 1\n{Row(five)}trailer\n<< /Size 6 /Root 1 0 R /Prev {middle} /XRefStm {middle - 7} >>\nstartxref\n{newest}\n%%EOF\n"));
+        return (file.Bytes, oldest, middle, newest);
+    }
+
+    /// <summary>
+    /// A one-page document saved three times: the first table, at <c>Oldest</c>, alone indexes the page tree and its page;
     /// cross-reference stream 5, at <c>Stream</c>, indexes object 4, <c>(four)</c>, and itself, and names the first table
     /// through <c>/Prev</c>; the newest table, at <c>Newest</c>, indexes object 6, <c>(six)</c>, and names the stream through
     /// <c>/Prev</c> and through <c>/XRefStm</c> both.
@@ -356,19 +379,54 @@ internal static class HybridFiles
     }
 
     /// <summary>
+    /// #156's shape, as a writer that copies <c>/XRefStm</c> into the next trailer and names a stream short of it leaves it:
+    /// a one-page document whose first table, at <c>Oldest</c>, indexes objects 1 to 3; an update that writes objects 4, 6
+    /// <c>(six)</c> and 8 <c>(eight)</c>, two spaces, and cross-reference stream 5 at <c>Stream</c>, of <c>/W</c>
+    /// <paramref name="widths"/> and <c>/Size</c> <paramref name="size"/>, whose rows place object 6 and give object 8 type
+    /// <paramref name="eightType"/>, at the offset of <c>(eight)</c> where that type is 1; the update's table, which indexes
+    /// objects 4 and 5 and names the stream through <c>/XRefStm</c>; and the newest table, which indexes object 7,
+    /// <c>(seven)</c>, and names the stream through <c>/XRefStm</c> too. Where <paramref name="headerFirst"/>, the newest
+    /// table, read first, names the stream's header, and the update two bytes short of it, in the spaces; the other way
+    /// round otherwise. Both tables give <c>/Size 9</c>.
+    /// </summary>
+    public static (byte[] File, long Stream) SharedStreamNamedTwice(bool headerFirst, string widths = "[1 4 2]", int size = 9, int eightType = 1)
+    {
+        var file = new HandWrittenFile(version: "1.5");
+        var (catalog, pages, page) = Page(file);
+        var oldest = file.Position;
+        file.Raw(Invariant($"xref\n0 4\n0000000000 65535 f \n{Row(catalog)}{Row(pages)}{Row(page)}trailer\n<< /Size 4 /Root 1 0 R >>\nstartxref\n{oldest}\n%%EOF\n"));
+        var four = file.Object(4, "(four)");
+        var six = file.Object(6, "(six)");
+        var eight = file.Object(8, "(eight)");
+        file.Raw("  ");
+        var stream = file.Position;
+        var rows = StreamRows((1, six, 0), (eightType, eightType == 1 ? eight : 0, 0));
+        file.Object(5, Invariant($"<< /Type /XRef /Size {size} /W {widths} /Index [6 1 8 1] /Length {rows.Length} >>\nstream\n{rows}\nendstream"));
+        var older = file.Position;
+        file.Raw(Invariant($"xref\n0 1\n0000000000 65535 f \n4 2\n{Row(four)}{Row(stream)}trailer\n<< /Size 9 /Root 1 0 R /Prev {oldest} /XRefStm {(headerFirst ? stream - 2 : stream)} >>\nstartxref\n{older}\n%%EOF\n"));
+        var seven = file.Object(7, "(seven)");
+        var newest = file.Position;
+        file.Raw(Invariant($"xref\n0 1\n0000000000 65535 f \n7 1\n{Row(seven)}trailer\n<< /Size 9 /Root 1 0 R /Prev {older} /XRefStm {(headerFirst ? stream : stream - 2)} >>\nstartxref\n{newest}\n%%EOF\n"));
+        return (file.Bytes, stream);
+    }
+
+    /// <summary>
     /// An empty document whose <paramref name="tables"/> tables, each naming the one before through <c>/Prev</c>, index the
     /// catalog and the page tree, and whose <c>/XRefStm</c> names, in every table when <paramref name="every"/> and in the
-    /// newest alone otherwise, cross-reference stream 3, which declares <paramref name="rows"/> free rows from object 100.
-    /// The older tables that do not name it give its offset under <c>/XRefStx</c>, a key of the same length that names
-    /// nothing: either file is as long as the other, each table where it is in both.
+    /// newest alone otherwise, cross-reference stream 3, which declares <paramref name="rows"/> free rows from object 100,
+    /// past <paramref name="spaces"/> spaces. The older tables that do not name it give its offset under <c>/XRefStx</c>, a
+    /// key of the same length that names nothing, and every offset is written in ten digits: either file is as long as the
+    /// other, each table where it is in both. Where <paramref name="shifted"/>, each table names the stream short of its
+    /// header, in the spaces, by as many bytes as tables were written after it, as far as the spaces reach: the newest names
+    /// the header itself.
     /// </summary>
-    public static byte[] TablesNamingOneStream(int tables, int rows, bool every)
+    public static byte[] TablesNamingOneStream(int tables, int rows, bool every, int spaces = 0, bool shifted = false)
     {
         var text = new StringBuilder("%PDF-1.7\n");
         var catalog = text.Length;
         text.Append("1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n");
         var pages = text.Length;
-        text.Append("2 0 obj\n<< /Type /Pages /Kids [] /Count 0 >>\nendobj\n");
+        text.Append("2 0 obj\n<< /Type /Pages /Kids [] /Count 0 >>\nendobj\n").Append(' ', spaces);
         var stream = text.Length;
         text.Append(CultureInfo.InvariantCulture, $"3 0 obj\n<< /Type /XRef /Size {100 + rows} /W [1 4 2] /Index [100 {rows}] /Length {7 * rows} >>\nstream\n")
             .Append('\0', 7 * rows)
@@ -379,7 +437,8 @@ internal static class HybridFiles
         {
             var xref = text.Length;
             text.Append(CultureInfo.InvariantCulture, $"xref\n0 3\n0000000000 65535 f \n{Row(catalog)}{Row(pages)}trailer\n<< /Size {100 + rows} /Root 1 0 R");
-            text.Append(CultureInfo.InvariantCulture, $" /{(every || table == tables - 1 ? "XRefStm" : "XRefStx")} {stream}");
+            var named = shifted ? stream - ((tables - 1 - table) % (spaces + 1)) : stream;
+            text.Append(CultureInfo.InvariantCulture, $" /{(every || table == tables - 1 ? "XRefStm" : "XRefStx")} {named:D10}");
             text.Append(previous < 0 ? string.Empty : Invariant($" /Prev {previous}"));
             text.Append(" >>\n");
             previous = xref;
