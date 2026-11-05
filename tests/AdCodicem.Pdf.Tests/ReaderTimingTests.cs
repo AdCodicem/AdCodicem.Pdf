@@ -137,15 +137,20 @@ public class ReaderTimingTests
         // for each member, 63 MB for the large stream whose every index is wrong and 75 MB for the one whose members are
         // written as streams, and the collections that keeping them took fell inside the large probe: four to seven, some
         // 80 to 120 ms of pause in a probe of 180 to 390 ms, where the small probe met one. Its ratio measured 5.0 to 7.3
-        // alone and up to 10.5 under four busy loops, and went past 8 three times in CI. Given that room, the large probe
-        // meets no collection, or a single young one; but one probe of the small stream takes 5 to 17 ms, and on a busy
-        // machine one of its five turns would fall in a quiet moment that no turn of the large one met: under four busy
+        // without load and up to 10.5 under four busy loops, and went past 8 three times in CI. Given that room, the large
+        // probe meets no collection, or a single young one; but one probe of the small stream takes 5 to 17 ms, and on a
+        // busy machine one of its five turns would fall in a quiet moment that no turn of the large one met: under four busy
         // loops the ratio went past 8 in 3 runs of 71, at 8.7 to 9.4, each time beside other timing tests. Each turn times
-        // four probes back to back, 14 to 46 ms of the small stream's, which contention slows as it slows the large one's:
-        // the ratio measured 3.7 to 4.6 alone over 50 runs, and under four busy loops 2.3 to 6.6 over 300 runs beside the
-        // other timing tests and 2.1 to 7.7 over 100 runs on its own — 7.7 once, nothing else past 6.4 —, never past 8. A
-        // scan of the header for each member, the lookup removed, measured 13.1 to 21.9 where every index is wrong, and
-        // failed each of 45 runs, under four busy loops and without.
+        // four probes back to back, 14 to 46 ms of the small stream's, which a busy machine slows apart from the large
+        // one's far less often than a single probe: the ratio measured 3.7 to 4.6 without load over 50 runs, and under four
+        // busy loops 2.3 to 6.6 over 300 runs beside two other timing tests and 2.1 to 7.7 over 100 runs on its own — 7.7
+        // once, nothing else past 6.4 —, never past 8. A heavier load still slows the large probes alone now and then: with
+        // builds running beside four busy loops, the load reaching 8 to 14 on four cores, the ratio went past 8 once in 20
+        // runs on its own, at 8.6, and once in 5 runs beside the other timing tests and the hostile input tests, at 9.0, its
+        // small probes at their usual time and every large turn slowed; under that load three other timing tests of this
+        // class failed too, up to 18.3 at a bound of 12. A scan of the header for each member, the lookup removed, measured
+        // 13.1 to 21.9 where every index is wrong, and failed each of 45 runs, under four busy loops and without, and each
+        // of 3 at a load of 9.5 to 16.
         const int Small = 50_000;
         const int Large = 4 * Small;
         const int Probes = 4;
@@ -565,9 +570,9 @@ public class ReaderTimingTests
         // what each opening asserts, object 3 refused past 4,096 ranges, which such a merge fails at its first opening.
         // The time tells a chain whose cost grows with the streams, about four times, from one whose cost grows with their
         // square, about sixteen. Every opening of the larger file is slowed now and then on a busy machine while those of the
-        // smaller one are not: the ratio measured 4.0 to 4.2 alone over 20 runs and 3.2 to 6.2 over 300 runs under four busy
-        // loops, but reached 7.4 to 10.0 with builds running beside them, which a bound of 12 allows for, as it does for the
-        // circular object streams. The measure is the ratio, the best opening of each, run in turn.
+        // smaller one are not: the ratio measured 4.0 to 4.2 without load over 20 runs and 3.2 to 6.2 over 300 runs under
+        // four busy loops, but reached 7.4 to 10.0 with builds running beside them, which a bound of 12 allows for, as it
+        // does for the circular object streams. The measure is the ratio, the best opening of each, run in turn.
         const int Small = 256;
         const int Large = 4 * Small;
         var options = new PdfReaderOptions
