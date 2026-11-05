@@ -4512,6 +4512,74 @@ public class HostileInputTests
         }
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void A_chain_whose_offsets_name_long_runs_of_white_space_crosses_each_run_once(bool hybrid)
+    {
+        // A hundred tables, each named, by startxref or by the /Prev of the table after it, at the start of the 60,000 spaces
+        // before its xref keyword — and, in a hybrid file, each naming through /XRefStm a stream of its own. Where the chain
+        // reaches what an offset names, it crossed the run as far as a trailer's window reaches, then again where it read the
+        // section there, and a hybrid table's /Prev a third time: two or three crossings of 84 KB for each run. Each run is
+        // crossed once, its probe answering each time it is asked of (#188): beside the same file whose offsets name the
+        // keywords, a crossing a section at most, and a few bytes more.
+        const int Tables = 100;
+        const long Crossing = PdfFileReader.XRefProbeLength + 256 + 2048 + 16384 + 65536;
+        var padded = Chain(namesTheRun: true);
+        var exact = Chain(namesTheRun: false);
+        padded.Should().HaveCount(exact.Length, "the offsets are written in ten digits in both");
+
+        var paddedRead = Read(padded);
+        var exactRead = Read(exact);
+
+        (paddedRead - exactRead).Should().BeInRange(
+            Tables * Crossing,
+            Tables * (Crossing + 4096),
+            "each run is crossed once ({0:N0} bytes against {1:N0})",
+            paddedRead,
+            exactRead);
+
+        byte[] Chain(bool namesTheRun)
+        {
+            var text = new StringBuilder("%PDF-1.7\n1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n2 0 obj\n<< /Type /Pages /Kids [] /Count 0 >>\nendobj\n");
+            var previous = -1L;
+
+            for (var table = 0; table < Tables; table++)
+            {
+                var stream = -1L;
+
+                if (hybrid)
+                {
+                    // One free row for object 0, in seven bytes.
+                    stream = text.Length;
+                    text.Append(CultureInfo.InvariantCulture, $"{table + 3} 0 obj\n<< /Type /XRef /Size 3 /Index [0 1] /W [1 4 2] /Length 7 >>\nstream\n")
+                        .Append("\0\0\0\0\0ÿÿ\nendstream\nendobj\n");
+                }
+
+                var named = text.Length;
+                text.Append(' ', 60_000);
+                var xref = text.Length;
+                text.Append("xref\n0 1\n0000000000 65535 f\r\ntrailer\n<< /Size 3 /Root 1 0 R")
+                    .Append(previous < 0 ? string.Empty : string.Create(CultureInfo.InvariantCulture, $" /Prev {previous:D10}"))
+                    .Append(stream < 0 ? string.Empty : string.Create(CultureInfo.InvariantCulture, $" /XRefStm {stream:D10}"))
+                    .Append(" >>\n");
+                previous = namesTheRun ? named : xref;
+            }
+
+            text.Append(CultureInfo.InvariantCulture, $"startxref\n{previous:D10}\n%%EOF\n");
+            return Encoding.Latin1.GetBytes(text.ToString());
+        }
+
+        long Read(byte[] file)
+        {
+            using var source = new StrictCountingSource(file);
+            using var document = PdfDocument.Open(source, options: null, ownsSource: false);
+            document.Reader.Structure.Sections.Should().HaveCount(hybrid ? 2 * Tables : Tables)
+                .And.OnlyContain(section => section.State == XRefSectionState.Read);
+            return source.BytesRead;
+        }
+    }
+
     [Fact]
     public void A_section_named_again_where_it_was_found_moved_is_known_without_reading_there_again()
     {

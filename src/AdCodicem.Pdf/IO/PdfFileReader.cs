@@ -326,6 +326,18 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     private readonly HashSet<long> _sectionsReadAt = new(SeededComparer.Instance);
 
     /// <summary>
+    /// What the last probe <see cref="PaddingAt"/> read found, and the one before it: the chain asks of each position it
+    /// names where the first token there starts, to know whether it has reached what is there (<see cref="ReachedAt"/>), then
+    /// again where it reads the section there, and of a hybrid table's <c>/Prev</c> in between. Each position's white space
+    /// is crossed once, however often it is asked of: through a run of it, a probe reads as far as a trailer's window does.
+    /// </summary>
+    /// <remarks>
+    /// The file's bytes and the trailer's bound do not change while the reader reads it, so that a probe's answer stands
+    /// wherever it is asked for again: two are kept, nothing more, and what is read is what a reading that asked once read.
+    /// </remarks>
+    private (PaddingProbe Last, PaddingProbe Before) _paddingProbes = (PaddingProbe.None, PaddingProbe.None);
+
+    /// <summary>
     /// Whether the cross-reference chain is being read. Nothing is loaded meanwhile: an object is read only where a
     /// section already read places it, and nothing is corrected, rebuilt, cached or recorded (#182).
     /// </summary>
@@ -3487,7 +3499,8 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// leads nowhere new when named again — a loop, not a place to look for a section again. Where the offset names neither,
     /// and lies in the file, the bytes there are read as far as a section's own probe reads them: one window, grown no
     /// further than a trailer's, for each offset the chain names, which
-    /// <see cref="PdfReaderLimits.MaxXRefSectionCount"/> bounds.
+    /// <see cref="PdfReaderLimits.MaxXRefSectionCount"/> bounds — the probe the section's own reading there then answers from,
+    /// rather than crossing the white space again (<see cref="_paddingProbes"/>).
     /// </remarks>
     /// <param name="offset">The offset a <c>/Prev</c> or an <c>/XRefStm</c> gives, not negative.</param>
     /// <param name="named">The offsets the chain has named so far, as the file writes them.</param>
@@ -4547,6 +4560,17 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// <param name="table">Receives whether the first token is the <c>xref</c> keyword.</param>
     private int PaddingAt(long absolute, out bool table)
     {
+        // A position asked of again is answered as it was, read once (_paddingProbes).
+        var (last, before) = _paddingProbes;
+
+        if (last.Position == absolute || before.Position == absolute)
+        {
+            var known = last.Position == absolute ? last : before;
+            _paddingProbes = (known, last.Position == absolute ? before : last);
+            table = known.Table;
+            return known.Padding;
+        }
+
         var probeLength = XRefProbeLength;
 
         while (true)
@@ -4565,8 +4589,22 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
             }
 
             table = first.IsKeyword("xref"u8);
+            _paddingProbes = (new PaddingProbe(absolute, first.Start, table), last);
             return first.Start;
         }
+    }
+
+    /// <summary>
+    /// What a probe <see cref="PaddingAt"/> read found at a position: how many bytes of white space and comments lie there
+    /// before the first token, and whether that token is the <c>xref</c> keyword.
+    /// </summary>
+    /// <param name="Position">The position probed, in the file; -1 for no probe.</param>
+    /// <param name="Padding">The bytes before the first token.</param>
+    /// <param name="Table">Whether the first token is the <c>xref</c> keyword.</param>
+    private readonly record struct PaddingProbe(long Position, int Padding, bool Table)
+    {
+        /// <summary>Gets no probe: one that answers no position.</summary>
+        public static PaddingProbe None => new(-1, 0, false);
     }
 
     private bool TryReadClassicTable(long absolute, XRefSectionRecord section, out long previous, out long hybrid, bool candidate)
