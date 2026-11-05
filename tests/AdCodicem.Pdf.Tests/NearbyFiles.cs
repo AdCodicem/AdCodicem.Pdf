@@ -540,6 +540,78 @@ internal static class NearbyFiles
         return (file.Bytes, stream);
     }
 
+    /// <summary>
+    /// A one-page document saved twice, whose newest table names through <c>/Prev</c> a place 2 bytes into the
+    /// <c>endobj</c> that ends object 3's new revision, past which <paramref name="between"/> stands before the update's
+    /// table, at <c>Update</c>. The first table, 1,200 bytes before, indexes objects 1 to 3, object 3 as <c>(three old)</c>;
+    /// the update's indexes object 4, <c>(four)</c>, and object 3 again, <c>(three new)</c> — or, with
+    /// <paramref name="deleted"/>, frees it, writing object 6 where object 3 would be —, and names the first through
+    /// <c>/Prev</c>; the newest indexes object 5, <c>(five)</c>.
+    /// </summary>
+    public static (byte[] File, long Update, long Named) UpdateBehindAStrayWord(string between, bool deleted = false)
+    {
+        var file = new HandWrittenFile();
+        var catalog = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>");
+        var pages = file.Object(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>");
+        var three = file.Object(3, "(three old)");
+        var oldest = file.Position;
+        file.Raw(string.Create(
+            CultureInfo.InvariantCulture,
+            $"xref\n0 4\n0000000000 65535 f \n{catalog:D10} 00000 n \n{pages:D10} 00000 n \n{three:D10} 00000 n \ntrailer\n<< /Size 4 /Root 1 0 R >>\nstartxref\n{oldest}\n%%EOF\n"));
+        Gap(file, 1200);
+        var four = file.Object(4, "(four)");
+        var newThree = deleted ? file.Object(6, "(six)") : file.Object(3, "(three new)");
+        var named = file.Position - "endobj\n".Length + 2;
+        file.Raw(between);
+        var update = file.Position;
+        var threeRow = deleted ? "0000000000 00001 f " : string.Create(CultureInfo.InvariantCulture, $"{newThree:D10} 00000 n ");
+        file.Raw(string.Create(
+            CultureInfo.InvariantCulture,
+            $"xref\n0 1\n0000000000 65535 f \n3 2\n{threeRow}\n{four:D10} 00000 n \ntrailer\n<< /Size 5 /Root 1 0 R /Prev {oldest} >>\nstartxref\n{update}\n%%EOF\n"));
+        var five = file.Object(5, "(five)");
+        var newest = file.Position;
+        file.Raw(string.Create(
+            CultureInfo.InvariantCulture,
+            $"xref\n0 1\n0000000000 65535 f \n5 1\n{five:D10} 00000 n \ntrailer\n<< /Size 6 /Root 1 0 R /Prev {named} >>\nstartxref\n{newest}\n%%EOF\n"));
+        return (file.Bytes, update, named);
+    }
+
+    /// <summary>
+    /// A one-page document saved twice: the first table indexes objects 1 to 3 and object 7, <c>(old seven)</c>; past
+    /// 1,200 bytes of comment, object 7's new revision, <c>(new seven)</c>, then <paramref name="between"/>, then
+    /// cross-reference stream 9, at <c>Stream</c>, which indexes it; past 1,200 bytes more, the update's classic table
+    /// indexes object 6, <c>(six)</c>, and names the first table through <c>/Prev</c> and, through <c>/XRefStm</c>, the
+    /// place 2 bytes into the <c>endobj</c> of object 7's new revision, at <c>Named</c>.
+    /// </summary>
+    public static (byte[] File, long Stream, long Named) HybridBehindAStrayWord(string between)
+    {
+        var file = new HandWrittenFile(version: "1.5");
+        var catalog = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>");
+        var pages = file.Object(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>");
+        var three = file.Object(3, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << >> >>");
+        var seven = file.Object(7, "(old seven)");
+        var oldest = file.Position;
+        file.Raw(string.Create(
+            CultureInfo.InvariantCulture,
+            $"xref\n0 4\n0000000000 65535 f \n{catalog:D10} 00000 n \n{pages:D10} 00000 n \n{three:D10} 00000 n \n7 1\n{seven:D10} 00000 n \ntrailer\n<< /Size 8 /Root 1 0 R >>\nstartxref\n{oldest}\n%%EOF\n"));
+        Gap(file, 1200);
+        var newSeven = file.Object(7, "(new seven)");
+        var named = file.Position - "endobj\n".Length + 2;
+        file.Raw(between);
+        var stream = file.Position;
+        var rows = StreamRows((1, newSeven, 0));
+        file.Object(9, string.Create(
+            CultureInfo.InvariantCulture,
+            $"<< /Type /XRef /Size 10 /W [1 4 2] /Index [7 1] /Length {rows.Length} >>\nstream\n{rows}\nendstream"));
+        Gap(file, 1200);
+        var six = file.Object(6, "(six)");
+        var update = file.Position;
+        file.Raw(string.Create(
+            CultureInfo.InvariantCulture,
+            $"xref\n0 1\n0000000000 65535 f \n6 1\n{six:D10} 00000 n \ntrailer\n<< /Size 10 /Root 1 0 R /Prev {oldest} /XRefStm {named} >>\nstartxref\n{update}\n%%EOF\n"));
+        return (file.Bytes, stream, named);
+    }
+
     /// <summary>Writes a comment of <paramref name="length"/> bytes, its end of line counted, when it is more than none.</summary>
     private static void Gap(HandWrittenFile file, int length)
     {

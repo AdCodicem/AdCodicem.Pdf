@@ -1028,6 +1028,82 @@ public class CrossReferenceChainTests
         Text(document, 4).Should().Be("four");
     }
 
+    [Theory]
+    [InlineData("%xref\n", 11)]
+    [InlineData("% the xref section follows\n", 32)]
+    [InlineData("6 0 obj\n(see xref)\nendobj\n", 31)]
+    public void The_word_xref_in_a_comment_or_a_string_near_where_an_offset_names_no_section_is_no_section_found_moved(string between, int distance)
+    {
+        // The newest table's /Prev names a place inside the endobj before the update's table, past which a comment or a
+        // string holds the word xref, nearer than the table. Read from that word, it is a table's keyword followed by what
+        // no table holds: it was taken for the section found moved, which cannot be read, the chain ended there, and the
+        // file was rebuilt as it opened. A load reads no keyword there, the line lexed from its start: the word is dropped
+        // as any place that holds no section, and the search goes on to the update's table (#281).
+        var (file, update, named) = NearbyFiles.UpdateBehindAStrayWord(between);
+        using var document = PdfDocument.Open(file);
+
+        var sections = document.Reader.Structure.Sections;
+        sections[1].State.Should().Be(XRefSectionState.Relocated);
+        sections[1].Offset.Should().Be(update);
+        sections.Should().HaveCount(3).And.OnlyContain(section => section.State != XRefSectionState.Malformed);
+        document.Diagnostics.Should().ContainSingle().Which.Message.Should().Be(Invariant(
+            $"The cross-reference section /Prev names at offset {named} was found {distance} bytes after it."));
+        Text(document, 3).Should().Be("three new");
+        document.WasRepaired.Should().BeFalse();
+    }
+
+    [Theory]
+    [InlineData("xref\n")]
+    [InlineData(">>xref\n")]
+    public void An_xref_keyword_a_load_reads_on_its_line_near_where_an_offset_names_no_section_is_the_section_found_moved(string between)
+    {
+        // The same file, with an xref keyword where the word was: at the start of its line, or after the end of a dictionary on
+        // it, a token a load reads. What follows it is no table's: it is the section found moved, which cannot be read, and
+        // ends the search, as the keyword ends it where an offset names it (#281).
+        var (file, update, _) = NearbyFiles.UpdateBehindAStrayWord(between);
+        var keyword = update - between.Length + between.IndexOf('x', StringComparison.Ordinal);
+        using var document = PdfDocument.Open(file);
+
+        var found = document.Reader.Structure.Sections[1];
+        found.State.Should().Be(XRefSectionState.Malformed);
+        found.Offset.Should().Be(keyword);
+        document.Diagnostics.Select(diagnostic => diagnostic.Code).Should().StartWith([PdfDiagnosticCodes.XRefOffsetAdjusted, PdfDiagnosticCodes.XRefSectionUnreadable]);
+    }
+
+    [Fact]
+    public void An_object_an_update_frees_stays_free_where_the_word_xref_lies_between_where_its_table_is_named_and_where_it_is()
+    {
+        // The update frees object 3, and a comment holding the word xref lies between where the newest table's /Prev names the
+        // update's table and where it is. Taken for the section found moved, the word ended the chain, and the rebuild that
+        // followed found object 3's old revision, which the update freed (#281).
+        var (file, _, _) = NearbyFiles.UpdateBehindAStrayWord("%xref\n", deleted: true);
+        using var document = PdfDocument.Open(file);
+
+        document.GetObject(new PdfObjectId(3)).Should().BeSameAs(PdfNull.Instance);
+        document.WasRepaired.Should().BeFalse();
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("%xref\n")]
+    public void An_xrefstm_falling_short_of_its_stream_past_the_word_xref_in_a_comment_reads_the_stream(string between)
+    {
+        // The update's /XRefStm names a place inside the endobj before its stream, past which a comment holds the word xref,
+        // nearer than the stream. Taken for a table found moved that cannot be read, the word was reported as what the
+        // /XRefStm names instead of a stream, every number refused, and the file rebuilt as it opened. The word is no
+        // keyword a load reads: the search goes on to the stream (#156, #281).
+        var (file, stream, named) = NearbyFiles.HybridBehindAStrayWord(between);
+        using var document = PdfDocument.Open(file);
+
+        var read = document.Reader.Structure.Sections.Should().ContainSingle(section => section.IsHybridStream).Which;
+        read.State.Should().Be(XRefSectionState.Relocated);
+        read.Offset.Should().Be(stream);
+        document.Diagnostics.Should().ContainSingle().Which.Message.Should().Be(Invariant(
+            $"The cross-reference section /XRefStm names at offset {named} was found {stream - named} bytes after it."));
+        Text(document, 7).Should().Be("new seven");
+        document.WasRepaired.Should().BeFalse();
+    }
+
     [Fact]
     public void The_nearest_section_that_cannot_be_read_is_found_moved_though_one_that_reads_lies_farther_off()
     {

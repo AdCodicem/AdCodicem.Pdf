@@ -4474,8 +4474,9 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// was read there — a section that cannot be read too, which is not found to be read, and which the chain reports where
     /// it was found, as where it is named —; not found, it keeps what the named offset held. A place is a guess: a table's
     /// <c>xref</c> keyword, or an object that declares a cross-reference stream and no other type. One that cannot be read is
-    /// the section all the same, the search ending there, where it declared itself one — the keyword, or <c>/Type /XRef</c>,
-    /// before a fault or a guard's cut —, as at the offset named, so that no older section farther off stands for its lost
+    /// the section all the same, the search ending there, where it declared itself one — the keyword, a token a load reads
+    /// from the start of its line, not a word in a comment or a string there (<see cref="IsTokenOnItsLine"/>), or
+    /// <c>/Type /XRef</c>, before a fault or a guard's cut —, as at the offset named, so that no older section farther off stands for its lost
     /// rows in silence (#281), or where a value it is read with led to an object a guard cut (#263). An object that only
     /// gives a <c>/W</c>, or a dictionary a guard cut before it said what it is, may be anything, and is dropped, the search
     /// going on to the next place. Two kinds of place are passed over, and count toward no limit: where the section was
@@ -4538,10 +4539,10 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
         var lead = start > 0 ? 1 : 0;
         var candidates = new List<long>();
 
-        using (var window = _source.GetWindow(start - lead, (int)(end - start) + lead))
-        {
-            FindSectionCandidates(window.Memory.Span, start - lead, lead, candidates);
-        }
+        // The window stays open while the places are tried: a table that cannot be read is told from a word in a comment or a
+        // string by the line it lies in.
+        using var window = _source.GetWindow(start - lead, (int)(end - start) + lead);
+        FindSectionCandidates(window.Memory.Span, start - lead, lead, candidates);
 
         candidates.Sort((left, right) => Math.Abs(left - absolute).CompareTo(Math.Abs(right - absolute)));
 
@@ -4584,9 +4585,12 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
             // with leads to (#263): found where it was moved, it is reported there, as where it is named, rather than passed
             // over for an older section farther off, whose rows would stand for its lost ones in silence. A value cut is a
             // guard's cut. A place that said nothing of what it is — an object that gives only a /W, a dictionary a guard cut
-            // before it said — may be anything, and is dropped as any other is, with what it read through.
+            // before it said, the word xref in a comment or a string — may be anything, and is dropped as any other is, with
+            // what it read through.
             if (state == XRefSectionState.Read ||
-                (state == XRefSectionState.Malformed && (attempt.CutByValue || DeclaresItselfASection(attempt))))
+                (state == XRefSectionState.Malformed &&
+                    (attempt.CutByValue || attempt.TypedXRef ||
+                        (attempt.Kind == XRefSectionKind.Table && IsTokenOnItsLine(window.Memory.Span, (int)(candidate - (start - lead)))))))
             {
                 section.RelocateTo(attempt);
                 _diagnostics.Repair(
@@ -4611,6 +4615,33 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
         previous = -1;
         hybrid = -1;
         return false;
+    }
+
+    /// <summary>
+    /// Determines whether a token starts at <paramref name="at"/> in <paramref name="span"/>, the line it lies in lexed from
+    /// its start as a load reads it: the <c>xref</c> a place the search near an offset tried starts with is a table's keyword
+    /// there, which declares a section, and not a word a comment or a string on that line holds (#281).
+    /// </summary>
+    /// <remarks>
+    /// The line starts past the last end of line before the place, or where the bytes searched do: a string a line before it
+    /// opened, or a comment whose <c>%</c> lies before the bytes searched, is not seen, as in an object's header (#171). The
+    /// bytes lexed are those of the window searched, before the place, once for each place that cannot be read, which
+    /// <see cref="MaxRelocationCandidates"/> bounds.
+    /// </remarks>
+    /// <param name="span">The bytes searched.</param>
+    /// <param name="at">Where the place starts in <paramref name="span"/>.</param>
+    private static bool IsTokenOnItsLine(ReadOnlySpan<byte> span, int at)
+    {
+        // The end of the input ends past the place, as every token that holds it does.
+        var lexer = new PdfLexer(span, span[..at].LastIndexOfAny((byte)'\r', (byte)'\n') + 1);
+        var token = lexer.Read();
+
+        while (token.End <= at)
+        {
+            token = lexer.Read();
+        }
+
+        return token.Start == at;
     }
 
     /// <summary>

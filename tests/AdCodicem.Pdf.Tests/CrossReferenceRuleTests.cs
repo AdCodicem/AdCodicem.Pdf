@@ -769,6 +769,25 @@ public class CrossReferenceRuleTests
     }
 
     [Theory]
+    [InlineData("a /Prev", "%xref\n")]
+    [InlineData("a /Prev", "% the xref section follows\n")]
+    [InlineData("a /Prev", "6 0 obj\n(see xref)\nendobj\n")]
+    [InlineData("an /XRefStm", "%xref\n")]
+    public void The_word_xref_in_a_comment_or_a_string_near_where_an_offset_names_no_section_is_no_malformed_section(string link, string between)
+    {
+        // A /Prev, or a hybrid table's /XRefStm, names a place inside an endobj, past which a comment or a string holds the
+        // word xref, nearer than the section it means. The word was taken for a table found moved that cannot be read: an
+        // error where a comment is, and, for the /XRefStm, a second, the stream said to be named nowhere. The section is
+        // found where it lies, and shifted only (#156, #281).
+        var file = link == "a /Prev" ? NearbyFiles.UpdateBehindAStrayWord(between).File : NearbyFiles.HybridBehindAStrayWord(between).File;
+
+        var report = Validate(file);
+
+        report.Findings.Select(finding => finding.RuleId).Should().Contain(PdfValidationRuleIds.XRefSectionShifted)
+            .And.NotContain([PdfValidationRuleIds.XRefSectionMalformed, PdfValidationRuleIds.XRefHybridStreamWrong]);
+    }
+
+    [Theory]
     [InlineData(false)]
     [InlineData(true)]
     public void An_xrefstm_naming_a_table_that_cannot_be_read_is_wrong_at_each_naming_beside_the_table_s_fault(bool twice)

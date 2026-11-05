@@ -163,7 +163,8 @@ place, which that table's `/Prev` takes, reading it whole
 itself a section — an `xref` keyword, or a stream whose dictionary gives `/Type /XRef` — and cannot be read: it is
 reported where it is, any section near it being another
 ([#281](https://github.com/AdCodicem/AdCodicem.Pdf/issues/281)). Where the offset holds no section, the search near it,
-nearest first, ends at a place that so declares itself and cannot be read, as at one it reads: that is the section
+nearest first, ends at a place that so declares itself and cannot be read — an `xref` keyword a load reads from the start
+of its line, not the word in a comment or a string —, as at one it reads: that is the section
 found moved, reported where it was found, rather than passed over for an older section farther off whose rows would
 stand for its lost ones in silence. An object there that gives a `/W` and another `/Type`, with no section near it, is
 no section, and is reported missing; where `startxref` names one, it holds no section either, and its dictionary is no
