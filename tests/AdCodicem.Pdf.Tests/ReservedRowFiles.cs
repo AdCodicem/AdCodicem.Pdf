@@ -107,6 +107,26 @@ internal static class ReservedRowFiles
     }
 
     /// <summary>
+    /// A document indexed by one cross-reference stream, stream 5 at <c>Stream</c>, which <c>startxref</c> names: its row
+    /// for object 3 <c>(three)</c> is of type 3, and its row for object 4 <c>(four)</c> places it 900 bytes into the string
+    /// of 1,500 letters object 9 holds, which no row indexes — neither where the entry says nor within 512 bytes of it.
+    /// </summary>
+    public static (byte[] File, long Stream) Astray()
+    {
+        var file = new HandWrittenFile(version: "1.5");
+        var catalog = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>");
+        var pages = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>");
+        var three = file.Object(3, "(three)");
+        file.Object(4, "(four)");
+        var letters = file.Object(9, "(" + new string('x', 1500) + ")");
+        var stream = file.Position;
+        var rows = Rows(1, (0, 0, 65535), (1, (ulong)catalog, 0), (1, (ulong)pages, 0), (3, (ulong)three, 0), (1, (ulong)letters + 900, 0), (1, (ulong)stream, 0));
+        file.Object(5, Invariant($"<< /Type /XRef /Size 6 /W [1 4 2] /Root 1 0 R /Length {rows.Length} >>\nstream\n{rows}\nendstream"));
+        file.Raw(Invariant($"startxref\n{stream}\n%%EOF\n"));
+        return (file.Bytes, stream);
+    }
+
+    /// <summary>
     /// Writes cross-reference stream rows in fields of <paramref name="width"/>, 4 and 2 bytes, one byte to a character: a
     /// type field wider than 8 bytes is written with leading zeros.
     /// </summary>

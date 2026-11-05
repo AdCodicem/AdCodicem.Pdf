@@ -2222,6 +2222,42 @@ public class CrossReferenceRuleTests
             $"The cross-reference stream at offset {newerAt} gives 1 row a reserved type: the row for object 3 gives it type 3. ISO 32000-1 defines types 0, 1 and 2, and reads any other as a reference to the null object (7.5.8.3), as the reader did until it rebuilt the index by scanning the file; it now reads each object such a row numbers as the rebuild finds it."));
     }
 
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void A_row_of_a_reserved_type_in_an_index_a_read_after_opening_rebuilt_is_said_to_be_read_so_only_until_the_rebuild(bool lacked)
+    {
+        // The index stands at opening, object 3's row of type 3 read as the null object. A read after it then has the index
+        // rebuilt, before any validation: of object 9, which the update's stream numbers but does not hold, while the index
+        // may have lost entries, or of object 4, whose entry places it in the middle of a string, far from any header.
+        // Object 3 then reads as the scan finds it, and the finding says the reader read the row so only until it rebuilt
+        // the index, as where the rebuild came at opening (#221).
+        var (file, stream, asked) = lacked ? Lacking() : Astray();
+        using var document = PdfDocument.Open(file);
+
+        document.WasRepaired.Should().BeFalse();
+        document.GetObject(new PdfObjectId(3)).Should().BeSameAs(PdfNull.Instance);
+        document.GetObject(new PdfObjectId(asked));
+        document.WasRepaired.Should().BeTrue();
+        document.Diagnostics.Should().Contain(diagnostic => diagnostic.Code == PdfDiagnosticCodes.XRefRebuilt);
+        document.GetObject(new PdfObjectId(3)).Should().BeOfType<PdfString>().Which.ToText().Should().Be("three");
+        Single(new PdfValidator().Validate(document), PdfValidationRuleIds.XRefEntryTypeReserved).Message.Should().Be(string.Create(
+            CultureInfo.InvariantCulture,
+            $"The cross-reference stream at offset {stream} gives {(lacked ? "3 rows" : "1 row")} a reserved type: the row for object 3 gives it type 3{(lacked ? ", the first of them" : string.Empty)}. ISO 32000-1 defines types 0, 1 and 2, and reads any other as a reference to the null object (7.5.8.3), as the reader did until it rebuilt the index by scanning the file; it now reads each object such a row numbers as the rebuild finds it."));
+
+        static (byte[] File, long Stream, int Asked) Lacking()
+        {
+            var (file, _, newer) = ReservedRowFiles.Updated(type: 3, more: 2, missing: 1);
+            return (file, newer, 9);
+        }
+
+        static (byte[] File, long Stream, int Asked) Astray()
+        {
+            var (file, stream) = ReservedRowFiles.Astray();
+            return (file, stream, 4);
+        }
+    }
+
     [Fact]
     public void Each_stream_giving_rows_of_a_reserved_type_is_one_finding_its_first_row_named_and_its_rows_counted()
     {
