@@ -4804,13 +4804,14 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// <param name="table">Receives whether the first token is the <c>xref</c> keyword.</param>
     private int PaddingAt(long absolute, out bool table)
     {
-        // A position asked of again is answered as it was, read once (_paddingProbes).
+        // A position asked of again is answered as it was, read once (_paddingProbes), and the two are kept in the order they
+        // were read: a hybrid table's /Prev, probed after its /XRefStm, outlasts that /XRefStm's reading and a place its search
+        // near the offset tries, and is known when the chain comes to it.
         var (last, before) = _paddingProbes;
 
         if (last.Position == absolute || before.Position == absolute)
         {
             var known = last.Position == absolute ? last : before;
-            _paddingProbes = (known, last.Position == absolute ? before : last);
             table = known.Table;
             return known.Padding;
         }

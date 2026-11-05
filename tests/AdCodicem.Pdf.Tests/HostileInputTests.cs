@@ -4513,16 +4513,18 @@ public class HostileInputTests
     }
 
     [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public void A_chain_whose_offsets_name_long_runs_of_white_space_crosses_each_run_once(bool hybrid)
+    [InlineData(false, 0)]
+    [InlineData(true, 0)]
+    [InlineData(true, 3)]
+    public void A_chain_whose_offsets_name_long_runs_of_white_space_crosses_each_run_once(bool hybrid, int streamShortBy)
     {
         // A hundred tables, each named, by startxref or by the /Prev of the table after it, at the start of the 60,000 spaces
-        // before its xref keyword — and, in a hybrid file, each naming through /XRefStm a stream of its own. Where the chain
-        // reaches what an offset names, it crossed the run as far as a trailer's window reaches, then again where it read the
-        // section there, and a hybrid table's /Prev a third time: two or three crossings of 84 KB for each run. Each run is
-        // crossed once, its probe answering each time it is asked of (#188): beside the same file whose offsets name the
-        // keywords, a crossing a section at most, and a few bytes more.
+        // before its xref keyword — and, in a hybrid file, each naming through /XRefStm a stream of its own, at its header or
+        // 3 bytes short of it, inside the token before it, where the search near that offset finds it. Where the chain reaches
+        // what an offset names, it crossed the run as far as a trailer's window reaches, then again where it read the section
+        // there, and a hybrid table's /Prev a third time: two or three crossings of 84 KB for each run. Each run is crossed
+        // once, its probe answering each time it is asked of, the /Prev's outlasting its /XRefStm's search (#188): beside the
+        // same file whose offsets name the keywords, a crossing a section at most, and a few bytes more.
         const int Tables = 100;
         const long Crossing = PdfFileReader.XRefProbeLength + 256 + 2048 + 16384 + 65536;
         var padded = Chain(namesTheRun: true);
@@ -4553,7 +4555,7 @@ public class HostileInputTests
                     // One free row for object 0, in seven bytes.
                     stream = text.Length;
                     text.Append(CultureInfo.InvariantCulture, $"{table + 3} 0 obj\n<< /Type /XRef /Size 3 /Index [0 1] /W [1 4 2] /Length 7 >>\nstream\n")
-                        .Append("\0\0\0\0\0ÿÿ\nendstream\nendobj\n");
+                        .Append("\0\0\0\0\0\u00ff\u00ff\nendstream\nendobj\n");
                 }
 
                 var named = text.Length;
@@ -4561,7 +4563,7 @@ public class HostileInputTests
                 var xref = text.Length;
                 text.Append("xref\n0 1\n0000000000 65535 f\r\ntrailer\n<< /Size 3 /Root 1 0 R")
                     .Append(previous < 0 ? string.Empty : string.Create(CultureInfo.InvariantCulture, $" /Prev {previous:D10}"))
-                    .Append(stream < 0 ? string.Empty : string.Create(CultureInfo.InvariantCulture, $" /XRefStm {stream:D10}"))
+                    .Append(stream < 0 ? string.Empty : string.Create(CultureInfo.InvariantCulture, $" /XRefStm {stream - streamShortBy:D10}"))
                     .Append(" >>\n");
                 previous = namesTheRun ? named : xref;
             }
@@ -4574,8 +4576,13 @@ public class HostileInputTests
         {
             using var source = new StrictCountingSource(file);
             using var document = PdfDocument.Open(source, options: null, ownsSource: false);
-            document.Reader.Structure.Sections.Should().HaveCount(hybrid ? 2 * Tables : Tables)
-                .And.OnlyContain(section => section.State == XRefSectionState.Read);
+            // Each table is read where it is named; a stream named short of it is found by as many searches as a document
+            // allows, the others missing, which the file reads the same whichever way its tables are named.
+            var sections = document.Reader.Structure.Sections;
+            sections.Should().HaveCount(hybrid ? 2 * Tables : Tables);
+            sections.Where(section => section.NamedBy != "/XRefStm").Should().OnlyContain(section => section.State == XRefSectionState.Read);
+            sections.Where(section => section.NamedBy == "/XRefStm").Should().OnlyContain(section =>
+                section.State == (streamShortBy > 0 ? XRefSectionState.Relocated : XRefSectionState.Read) || section.State == XRefSectionState.NotFound);
             return source.BytesRead;
         }
     }
