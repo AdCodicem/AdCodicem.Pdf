@@ -453,7 +453,8 @@ Known gaps:
   element an array reads as null: what follows it is read on as that container's keys or elements, and merged.
 - [#47] Each section is read through a window of up to 64 KB, whatever its size; and the probe that looks for a
   classic table's `xref` keyword past white space an offset falls short by reads again from the offset as it grows,
-  eight times larger each time up to `MaxTrailerLength`: about nine times the run it crosses, once per section.
+  eight times larger each time up to `MaxTrailerLength`: about nine times the run it crosses, once per section, however
+  often the chain asks where that section starts, the last two answers kept ([#188]).
 - [#49] A rebuild reads a 64 KB window at every `trailer` keyword.
 - [#189] A rebuild serves a direct definition over a newer copy in a later object stream, and takes `10 0 objx` for a
   header.

@@ -148,9 +148,13 @@ declares; and one that a classic table an `/XRefStm` names lost, when it cannot 
 it, the chain going on past it through the table that names it: the rest of the subsection its fault ended, and, where
 what follows the fault cannot be known — a subsection header that is no header, a stray token, the end of the file —,
 every number its rows do not give ([#156](https://github.com/AdCodicem/AdCodicem.Pdf/issues/156)). Where what was lost
-cannot be told — a stream whose numbering cannot be read, or lost numbers that make more than 4,096 ranges, those that
-meet joined first —, no older section's row stands for any number that no section read before it gives. Any other
-section a `/Prev` names that cannot be read ends the chain there.
+cannot be told — a stream whose numbering cannot be read, or lost numbers that make more than 4,096 ranges, counted
+once those of the sections read so far that meet are joined, a table's own each joined as it is lost to the last one
+lost where the two meet, one that meets only an earlier one kept apart —, no older section's row stands for any number
+that no section read before it gives. A section the chain reads after such a refusal keeps none of its rows whose
+numbers were refused, and none at all where every number was; where it was read only in part, or cannot be read, its
+report says which of its rows stand, rather than that they were kept. Any other section a `/Prev` names that cannot be
+read ends the chain there.
 
 An object, or a section a `/Prev` or a `/XRefStm` names, that lies a few bytes from where it is said to be is
 found nearby (`xref.offset-adjusted`), and the map is not rebuilt for it: within 512 bytes either side, however near the
