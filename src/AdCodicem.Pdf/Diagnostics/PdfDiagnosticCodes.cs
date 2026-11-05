@@ -45,8 +45,9 @@ public static class PdfDiagnosticCodes
     /// <c>/Type /XRef</c>, for which no section near it is taken, and which, the nearest place to an offset that holds no
     /// section, is the section found moved, reported where it was found (#281); or a stream that only gives a <c>/W</c>,
     /// when nothing near it can be read in its place. A value that leads to an object one of the reader's limits cut is
-    /// the limit's: the chain ends there, and nothing is reported of the section. The rows read
-    /// before the fault, if any, were kept; the objects only the rest indexes are missing from the index, which is rebuilt by
+    /// the limit's: the chain ends there, and nothing is reported of the section. The rows read before the fault, if any,
+    /// were kept, but for those whose numbers a newer section refused — none of them, where a newer section refused every
+    /// number, as the message says —; the objects only the rest indexes are missing from the index, which is rebuilt by
     /// scanning the file when one of them is asked for. A stream of <c>/Type /XRef</c> whose dictionary was read whole loses
     /// its rows alone: no older section's row stands for an object it numbers — for any, where its numbering cannot be read
     /// —, which is missing from the index as the objects only it indexes are; and one that gives a <c>/Prev</c> hands that
@@ -58,8 +59,9 @@ public static class PdfDiagnosticCodes
     /// <c>startxref</c> names among them, was read only in part, and kept, the chain going on from it where its trailer was
     /// read (#207, #210): a row that is no row ended a subsection of a table, a cross-reference stream holds fewer rows than
     /// it declares, the end of the file cuts a table before its trailer or within its <c>trailer</c> keyword, or a row that
-    /// gives an object in use what no entry can hold was refused alone. The rows read were kept, and the message says what
-    /// was lost: the objects the lost rows would index, which no older section's row stands for, and those only the
+    /// gives an object in use what no entry can hold was refused alone. The rows read were kept, but for those whose numbers a
+    /// newer section refused — none of them, where a newer section refused every number —, and the message says which, and
+    /// what was lost: the objects the lost rows would index, which no older section's row stands for, and those only the
     /// sections a lost trailer would name index, are missing from the index, rebuilt when one of them is asked for. The
     /// report is placed at the section, once, one
     /// fault in its message: the first that lost rows, else the end of the file before its trailer, else the first row it

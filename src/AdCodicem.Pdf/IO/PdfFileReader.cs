@@ -136,11 +136,11 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// the cross-reference streams it goes on past, and the sections it keeps though read only in part —, once ranges that
     /// meet are joined (<see cref="RefuseRanges"/>); past it every number is refused, and what the older sections index is
     /// looked for by rebuilding the index, as for a stream whose numbering cannot be read. So many ranges a classic table's
-    /// faults lose are kept at most, too, those that meet joined as they are lost, until the table is kept (#210) or, named
-    /// by an <c>/XRefStm</c>, lost (#156). Not a guard a valid file can reach: only a file whose cross-reference sections
-    /// cannot be read whole refuses any number. It keeps what one refusal costs, a merge of the ranges kept with those a
-    /// section lost, from growing with every section a chain of such sections holds, each losing thousands of subsections
-    /// (#208, #210).
+    /// faults lose are kept at most, too, each joined as it is lost to the last one lost where the two meet, until the table
+    /// is kept (#210) or, named by an <c>/XRefStm</c>, lost (#156). Not a guard a valid file can reach: only a file whose
+    /// cross-reference sections cannot be read whole refuses any number. It keeps what one refusal costs, a merge of the
+    /// ranges kept with those a section lost, from growing with every section a chain of such sections holds, each losing
+    /// thousands of subsections (#208, #210).
     /// </summary>
     private const int MaxRefusedRanges = 4096;
 
@@ -647,10 +647,11 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
 
     /// <summary>
     /// The object numbers the rows of the classic table being read lost — the rest of each subsection a row that is no row,
-    /// or the end of the file, ended —, as ranges from a first number up to the one past the last, those that meet joined
-    /// as they are lost, at most <see cref="MaxRefusedRanges"/> of them: refused to the rows of the sections the chain reads
-    /// after the table, once it keeps the table read only in part (#210), or loses one an <c>/XRefStm</c> names (#156).
-    /// Emptied as each pass over a table's rows starts, and let go once the chain is read; null while no table lost a row.
+    /// or the end of the file, ended —, as ranges from a first number up to the one past the last, each joined as it is lost
+    /// to the last one lost where the two meet, at most <see cref="MaxRefusedRanges"/> of them: refused to the rows of the
+    /// sections the chain reads after the table, once it keeps the table read only in part (#210), or loses one an
+    /// <c>/XRefStm</c> names (#156). Emptied as each pass over a table's rows starts, and let go once the chain is read; null
+    /// while no table lost a row.
     /// </summary>
     private List<(long First, long End)>? _rowsLost;
 
@@ -3252,7 +3253,13 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
                 break;
             }
 
-            var section = new XRefSectionRecord(naming, PositionOf(offset), namedFrom) { WrittenOffset = offset };
+            // Whether the sections read so far refused every number is noted before this one refuses what it loses, so that its
+            // report tells the two apart, whichever runs first (#210).
+            var section = new XRefSectionRecord(naming, PositionOf(offset), namedFrom)
+            {
+                WrittenOffset = offset,
+                EveryNumberRefusedBefore = _everyNumberRefused,
+            };
             _structure.Add(section);
             sectionsAt.TryAdd(section.NamedOffset, section);
 
@@ -3436,6 +3443,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
                 {
                     WrittenOffset = hybrid,
                     NamingTrailer = section.Trailer,
+                    EveryNumberRefusedBefore = _everyNumberRefused,
                 };
 
                 // Where nothing the /XRefStm names can be read, the search near it stops where the section the /Prev names
@@ -3511,8 +3519,13 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
                         if (stream.Kind == XRefSectionKind.Table)
                         {
                             // A classic table stands in the stream's place, its rows read and its own links left unread
-                            // (#263): whether it holds what the table's stream would have is unknown (#156).
-                            ReportNoStream(stream, "a cross-reference table, whose rows were read in the stream's place");
+                            // (#263): whether it holds what the table's stream would have is unknown (#156). One a guard cut
+                            // before its first row read none, which the naming says, the guard's own report beside it.
+                            ReportNoStream(
+                                stream,
+                                stream.CutByLimit && stream.HighestNumber < 0
+                                    ? "a cross-reference table, which one of the reader's limits cut before its first row"
+                                    : "a cross-reference table, whose rows were read in the stream's place");
                         }
 
                         ReportSectionReadInPart(stream, "/XRefStm");
@@ -4188,6 +4201,13 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// ended, or every number but those its rows read before the fault give (#156).
     /// </para>
     /// <para>
+    /// The rows read before the fault are said kept but for those whose numbers a newer section refused, which stand for
+    /// nothing (<see cref="XRefSectionRecord.RowsRefusedBefore"/>); where a newer section refused every number before the
+    /// chain came to the section, none of them stands, and every object the sections read before do not index is looked for
+    /// by rebuilding the index (<see cref="XRefSectionRecord.EveryNumberRefusedBefore"/>). What the section refuses itself is
+    /// told apart, whether it refused it before the report or not (#210).
+    /// </para>
+    /// <para>
     /// A section found moved is named by both offsets: the one that names it and where it was found
     /// (<see cref="SectionNamed"/>).
     /// </para>
@@ -4224,18 +4244,27 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
         var fault = section.Fault ?? "its rows are not followed by the trailer keyword";
 
         // A stream whose numbers were refused says what becomes of them, and one whose /Prev the chain goes on through says
-        // so (#208, #210).
+        // so (#208, #210). The rows read before the fault stand but for the numbers a newer section refused: none, where it
+        // refused every one before the chain came to the section; a stream whose numbers were refused keeps none anyway.
+        var kept = section.RowsRefusedBefore
+            ? "The rows read before the fault, if any, were kept but for those whose numbers a newer section refused"
+            : "The rows read before the fault, if any, were kept";
         string lost;
 
-        if (!section.NumbersRefused)
+        if (section.EveryNumberRefusedBefore && (!section.NumbersRefused || section.Kind == XRefSectionKind.Table))
         {
-            lost = "The rows read before the fault, if any, were kept; the objects only the rest indexes are looked for by rebuilding the index.";
+            lost = "None of the rows read before the fault, if any, stands, a newer section having refused every number to the older sections' rows; every object no section read before it indexes is looked for by rebuilding the index.";
+        }
+        else if (!section.NumbersRefused)
+        {
+            lost = kept + "; the objects only the rest indexes are looked for by rebuilding the index.";
         }
         else if (section.Kind == XRefSectionKind.Table)
         {
-            lost = _everyNumberRefused
-                ? "The rows read before the fault, if any, were kept; every other object no section read before it indexes is looked for by rebuilding the index, rather than taken from an older section's rows."
-                : "The rows read before the fault, if any, were kept; the objects the rest of that subsection numbers are looked for by rebuilding the index where no section read before it indexes them, rather than taken from an older section's rows.";
+            // Every number refused is the table's own here, what follows its fault unknown (#156).
+            lost = kept + (_everyNumberRefused
+                ? "; every other object no section read before it indexes is looked for by rebuilding the index, rather than taken from an older section's rows."
+                : "; the objects the rest of that subsection numbers are looked for by rebuilding the index where no section read before it indexes them, rather than taken from an older section's rows.");
         }
         else if (goesOn)
         {
@@ -4322,7 +4351,15 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// trailer would name: the chain ends there, where <c>startxref</c> or a <c>/Prev</c> names it. One an <c>/XRefStm</c>
     /// names, whose trailer's links are not followed either (#263), leaves the chain going on through the table that names
     /// it, and what the rest of it held cannot be known: every number but those its rows give is refused (#156). The message
-    /// agrees with the count of rows a stream holds: the row it holds, or none (#241).
+    /// agrees with the count of rows a stream holds: the row it holds, or none (#241). A table whose fault is followed by the
+    /// end of the file loses its trailer as one the end of the file cuts does, which the message says.
+    /// </para>
+    /// <para>
+    /// The rows read are said kept but for those whose numbers a newer section refused, which stand for nothing
+    /// (<see cref="XRefSectionRecord.RowsRefusedBefore"/>); where a newer section refused every number before the chain came
+    /// to the section, none of them stands, and every object the sections read before do not index is looked for by
+    /// rebuilding the index (<see cref="XRefSectionRecord.EveryNumberRefusedBefore"/>), whatever the section lost (#208,
+    /// #210). A row the section refused itself is then not said to be the one row that does not stand.
     /// </para>
     /// <para>
     /// A classic table whose <c>trailer</c> keyword follows its <c>xref</c> keyword indexes nothing, as one whose one
@@ -4340,35 +4377,63 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     {
         string said;
 
+        // Where a newer section refused every number before the chain came to the section, none of its rows stands, and
+        // every object the sections read before do not index is the rebuild's; where it refused some, the rows read stand but
+        // for those (#208, #210).
+        const string EveryNumberRefused =
+            "a newer section having refused every number to the older sections' rows, and every object no section read before it indexes is looked for by rebuilding the index";
+        var noneStands = section.EveryNumberRefusedBefore;
+        var someRefused = section.RowsRefusedBefore;
+
         if (section.Incomplete && section.Kind == XRefSectionKind.Stream)
         {
             // Rows a guard left unread are none the stream kept; of those it holds, the clause agrees with their count.
+            const string Lacking =
+                ", and the objects whose rows it lacks are looked for by rebuilding the index where no section read before it indexes them, rather than taken from an older section's rows";
             said = section.Fault + (section.RowsLeftToGuard
                 ? "; the rows its data may hold were not read, a value they are read with having been cut by one of the reader's limits, and the objects it numbers are looked for by rebuilding the index where no section read before it indexes them, rather than taken from an older section's rows"
                 : section.RowsHeld switch
                 {
+                    0 when noneStands => "; every object no section read before it indexes is looked for by rebuilding the index, a newer section having refused every number to the older sections' rows",
                     0 => "; the objects whose rows it lacks are looked for by rebuilding the index where no section read before it indexes them, rather than taken from an older section's rows",
-                    1 => "; the row it holds was kept, and the objects whose rows it lacks are looked for by rebuilding the index where no section read before it indexes them, rather than taken from an older section's rows",
-                    _ => "; the rows it holds were kept, and the objects whose rows it lacks are looked for by rebuilding the index where no section read before it indexes them, rather than taken from an older section's rows",
+                    1 when noneStands => "; the row it holds does not stand, " + EveryNumberRefused,
+                    1 when someRefused => "; the row it holds does not stand, a newer section having refused its number" + Lacking,
+                    1 => "; the row it holds was kept" + Lacking,
+                    _ when noneStands => "; none of the rows it holds stands, " + EveryNumberRefused,
+                    _ when someRefused => "; the rows it holds were kept but for those whose numbers a newer section refused" + Lacking,
+                    _ => "; the rows it holds were kept" + Lacking,
                 });
         }
         else if (section.Incomplete)
         {
             // Every number is refused where what the table lost cannot be told — the rest of one an /XRefStm names, past which
-            // the chain goes on, or more ranges than are kept apart —, or where a newer section refused every number already.
-            said = (section.Fault ?? "the file ends before its trailer") +
-                (_everyNumberRefused || _rowsLostPast || (section.SubsectionsUnknown && naming == "/XRefStm")
-                    ? "; the rows read were kept, and every other object no section read before it indexes is looked for by rebuilding the index, rather than taken from an older section's rows"
-                    : section.Fault is not null
-                        ? "; the rows read were kept, and the objects the rest of that subsection numbers are looked for by rebuilding the index where no section read before it indexes them, rather than taken from an older section's rows"
-                        : "; the rows read were kept, and what only the rest of the table, or the sections its trailer would name, index is looked for by rebuilding the index");
+            // the chain goes on, or more ranges than are kept apart. A table read in part lost rows to a row that is no row, or
+            // to the end of the file: the rest of the subsection the fault ended is all the first loses where the next
+            // subsection or the trailer follows; where the end of the file cuts the table, after a fault too, the trailer is
+            // lost, and with it the sections it would name.
+            said = (section.Fault ?? "the file ends before its trailer") + (noneStands
+                ? "; none of the rows read stands, " + EveryNumberRefused
+                : (someRefused ? "; the rows read were kept but for those whose numbers a newer section refused" : "; the rows read were kept") +
+                    (_rowsLostPast || (section.SubsectionsUnknown && naming == "/XRefStm")
+                        ? ", and every other object no section read before it indexes is looked for by rebuilding the index, rather than taken from an older section's rows"
+                        : !section.SubsectionsUnknown
+                            ? ", and the objects the rest of that subsection numbers are looked for by rebuilding the index where no section read before it indexes them, rather than taken from an older section's rows"
+                            : ", and what only the rest of the table, or the sections its trailer would name, index is looked for by rebuilding the index"));
         }
         else if (section.RefusedRow is { } refused)
         {
             // A guard that stopped the section past the row stopped the rows after it too, which its own report says.
-            said = refused + (section.CutByLimit
-                ? "; that row alone was refused, the rows after it read as far as one of the reader's limits let the section be read, and its object is looked for by rebuilding the index where no section read before it indexes it, rather than taken from an older section's row"
-                : "; that row alone was refused, the rows after it read, and its object is looked for by rebuilding the index where no section read before it indexes it, rather than taken from an older section's row");
+            said = refused + (noneStands
+                ? (section.CutByLimit
+                    ? "; none of the rows read, as far as one of the reader's limits let the section be read, stands, "
+                    : "; none of the rows read stands, ") + EveryNumberRefused
+                : (someRefused ? "; that row was refused" : "; that row alone was refused") +
+                    (section.CutByLimit
+                        ? ", the rows after it read as far as one of the reader's limits let the section be read"
+                        : ", the rows after it read") +
+                    (someRefused
+                        ? ", and the other rows read kept but for those whose numbers a newer section refused; its object is looked for by rebuilding the index where no section read before it indexes it, rather than taken from an older section's row"
+                        : ", and its object is looked for by rebuilding the index where no section read before it indexes it, rather than taken from an older section's row"));
         }
         else
         {
@@ -4461,12 +4526,13 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
         // Past the bound, the list holds as many ranges as it may, and every number will be refused.
         var lost = _rowsLost ??= [];
 
-        // A range lost from within the last one, or just past it, joins it — as the subsections a table writes in the order
-        // of their numbers lose them —, before the bound counts it, as the refused ranges are counted once those that meet
-        // are joined (RefuseRanges). One lost below the last is kept apart, where joining it would drop it.
-        if (lost.Count > 0 && first >= lost[^1].First && first <= lost[^1].End)
+        // A range that meets the last one lost — from within it, just past it or just below it, as the subsections a table
+        // writes in the order of their numbers, or in the reverse order, lose them — joins it before the bound counts it, as
+        // the refused ranges are counted once those that meet are joined (RefuseRanges). One apart from the last is kept
+        // apart, though it may meet one lost before: the list is not searched, each range lost costing one comparison.
+        if (lost.Count > 0 && first <= lost[^1].End && end >= lost[^1].First)
         {
-            lost[^1] = (lost[^1].First, Math.Max(lost[^1].End, end));
+            lost[^1] = (Math.Min(lost[^1].First, first), Math.Max(lost[^1].End, end));
         }
         else if (lost.Count < MaxRefusedRanges)
         {
@@ -6894,12 +6960,14 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// <summary>
     /// Indexes what a row of <paramref name="section"/> says of object <paramref name="number"/>, unless a newer section
     /// said it already or refused its row, a newer cross-reference stream whose rows were lost declares it
-    /// (<see cref="RefusedToOlderRows"/>), or the index has no room left for a number it lacks.
+    /// (<see cref="RefusedToOlderRows"/>), or the index has no room left for a number it lacks. A row refused so is noted on
+    /// the section, whose report says it does not stand (<see cref="XRefSectionRecord.RowsRefusedBefore"/>).
     /// </summary>
     private void AddFromChain(int number, XRefEntry entry, XRefSectionRecord section)
     {
         if (_refusedNumbers?.Contains(number) == true || RefusedToOlderRows(number))
         {
+            section.RowsRefusedBefore = true;
             return;
         }
 

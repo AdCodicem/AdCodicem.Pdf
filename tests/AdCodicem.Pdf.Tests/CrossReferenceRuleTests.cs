@@ -815,6 +815,36 @@ public class CrossReferenceRuleTests
     }
 
     [Theory]
+    [InlineData(true, "{spaces}10 1\n{row:10}\n", "a cross-reference table, which one of the reader's limits cut before its first row")]
+    [InlineData(false, "{spaces}10 1\n{row:10}\n", "a cross-reference table, whose rows were read in the stream's place")]
+    [InlineData(true, "0 1\n0000000000 65535 f \n{spaces}10 1\n{row:10}\n", "a cross-reference table, whose rows were read in the stream's place")]
+    [InlineData(false, "0 0\n", "a cross-reference table, whose rows were read in the stream's place")]
+    public void An_xrefstm_naming_a_table_a_guard_cuts_before_its_first_row_is_wrong_in_words_that_say_none_of_its_rows_was_read(
+        bool guarded, string ten, string what)
+    {
+        // The update's /XRefStm names a classic table whose row for object 10 lies past 300 spaces, which
+        // MaxXRefSectionLength = 150 cuts before it. The /XRefStm names a table where a stream belongs, an error whatever the
+        // guard hid; the finding said the table's rows were read in the stream's place, as read whole, though none was (#156).
+        // A table whose first row, object 0's, the guard lets be read, and one read whole that holds no row, keep the words a
+        // whole read gives.
+        var file = HybridFiles.NamingATableNeverRead(ten: ten.Replace("{spaces}", new string(' ', 300), StringComparison.Ordinal));
+        var table = PdfTemplate.OffsetOf(file, "\nxref\n", 2) + 1;
+        var update = PdfTemplate.OffsetOf(file, "\nxref\n", 3) + 1;
+        using var document = guarded
+            ? PdfDocument.Open(file, new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxXRefSectionLength = 150 } })
+            : PdfDocument.Open(file);
+
+        var report = new PdfValidator().Validate(document);
+
+        var wrong = Single(report, PdfValidationRuleIds.XRefHybridStreamWrong);
+        wrong.Severity.Should().Be(PdfValidationSeverity.Error);
+        wrong.Location.Position.Should().Be(update);
+        wrong.Message.Should().Be(
+            $"The /XRefStm of the cross-reference table at offset {update} names offset {table}, {what}, where ISO 32000-1 names the cross-reference stream of the table's revision (Table 19): what only that stream indexes is lost.");
+        report.Contains(PdfValidationRuleIds.XRefCheckedInPart).Should().Be(guarded);
+    }
+
+    [Theory]
     [InlineData(0, 1, "what its /Prev names too, past the guard that ended the chain there")]
     [InlineData(2, 1, "what its /Prev names too, past the guard that ended the chain there")]
     [InlineData(0, 2, "the section its /Prev names too, which the chain read through that /Prev")]

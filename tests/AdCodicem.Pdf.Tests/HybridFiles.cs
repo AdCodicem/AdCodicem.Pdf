@@ -613,6 +613,35 @@ internal static class HybridFiles
         return (file.Bytes, stream, middle, newest);
     }
 
+    /// <summary>
+    /// A document saved three times. The first revision writes the catalog, an empty page tree and object 6,
+    /// <c>(old six)</c>, and a classic table at <c>Oldest</c> that indexes them. The second writes object 6 again,
+    /// <c>(new six)</c>; a classic table at <c>Table</c>, which no <c>/Prev</c> names, whose subsection <c>6 2</c> holds the
+    /// row of the newer revision, then <paramref name="rest"/>; and a hybrid file's table at <c>Hybrid</c> that indexes
+    /// nothing and names that table through <c>/XRefStm</c> and the oldest through <c>/Prev</c>. The third writes
+    /// cross-reference stream 9, whose rows cannot be read — its <c>/W</c> gives a field a negative width —, of
+    /// <c>/Index <paramref name="index"/></c>, whose <c>/Prev</c> names the hybrid table, and a table, which <c>startxref</c>
+    /// names, that indexes the catalog and the page tree and names the stream through <c>/Prev</c>.
+    /// </summary>
+    public static (byte[] File, long Table, long Hybrid) PastALostStream(string index, string rest)
+    {
+        var file = new HandWrittenFile(version: "1.5");
+        var catalog = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>");
+        var pages = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>");
+        var oldSix = file.Object(6, "(old six)");
+        var oldest = file.Position;
+        file.Raw(Invariant($"xref\n0 3\n0000000000 65535 f \n{Row(catalog)}{Row(pages)}6 1\n{Row(oldSix)}trailer\n<< /Size 7 >>\n"));
+        var six = file.Object(6, "(new six)");
+        var table = file.Position;
+        file.Raw(Invariant($"xref\n6 2\n{Row(six)}{rest}"));
+        var hybrid = file.Position;
+        file.Raw(Invariant($"xref\n0 1\n0000000000 65535 f \ntrailer\n<< /Size 9 /XRefStm {table} /Prev {oldest} >>\n"));
+        var lost = file.Object(9, Invariant($"<< /Type /XRef /Size 12 /Index {index} /W [1 -4 2] /Prev {hybrid} /Length 0 >>\nstream\n\nendstream"));
+        var newest = file.Position;
+        file.Raw(Invariant($"xref\n0 3\n0000000000 65535 f \n{Row(catalog)}{Row(pages)}trailer\n<< /Size 12 /Root 1 0 R /Prev {lost} >>\nstartxref\n{newest}\n%%EOF\n"));
+        return (file.Bytes, table, hybrid);
+    }
+
     /// <summary>Writes the catalog, the page tree and its page, objects 1 to 3, and gives where each starts.</summary>
     private static (long Catalog, long Pages, long Page) Page(HandWrittenFile file) => (
         file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),

@@ -180,6 +180,23 @@ internal sealed class XRefSectionRecord
     /// </summary>
     public bool NumbersRefused { get; set; }
 
+    /// <summary>
+    /// Gets a value indicating whether a section the chain read before this one had refused every object number to the rows
+    /// of the sections read after it when the chain came to this one — a cross-reference stream whose rows were lost and whose
+    /// numbering cannot be read, more ranges lost than are kept apart, a classic table whose rest cannot be known (#208,
+    /// #210) —: none of the rows this section reads stands, and its report says so rather than that they were kept. What
+    /// the section refuses once it is read is its own, and does not count, whatever order the reports take.
+    /// </summary>
+    public bool EveryNumberRefusedBefore { get; init; }
+
+    /// <summary>
+    /// Gets a value indicating whether a row the section read was not indexed, its number refused before the row was read:
+    /// by a section the chain read before this one — a range of numbers a stream whose rows were lost declares, the rest of a
+    /// subsection a table lost, a row refused alone (#208, #210) —, or, where the section gives a number twice, by its own
+    /// row refused first. Its report says the rows read were kept but for those, rather than all of them.
+    /// </summary>
+    public bool RowsRefusedBefore { get; set; }
+
     /// <summary>Gets the section's own trailer — a cross-reference stream's dictionary —, or null when none was read.</summary>
     public PdfDictionary? Trailer { get; set; }
 
@@ -214,7 +231,8 @@ internal sealed class XRefSectionRecord
     /// <summary>
     /// Gets what a table's <c>/XRefStm</c> names in place of a cross-reference stream of the table's revision, in words, as
     /// the reader reported it — "the table itself", "a cross-reference table, whose rows were read in the stream's place", "a
-    /// cross-reference table, which cannot be read" —, or, where <see cref="Documents.PdfReaderLimits.MaxXRefSectionCount"/>
+    /// cross-reference table, which one of the reader's limits cut before its first row", "a cross-reference table, which
+    /// cannot be read" —, or, where <see cref="Documents.PdfReaderLimits.MaxXRefSectionCount"/>
     /// ended the chain at what the table's <c>/Prev</c> names too, as the guard hides it; null where it names a stream, or
     /// what the chain could not read but a classic table (#156).
     /// </summary>
@@ -269,6 +287,7 @@ internal sealed class XRefSectionRecord
         SubsectionsUnknown = attempt.SubsectionsUnknown;
         RowsHeld = attempt.RowsHeld;
         RowsLeftToGuard = attempt.RowsLeftToGuard;
+        RowsRefusedBefore = attempt.RowsRefusedBefore;
         NoSubsection = attempt.NoSubsection;
         CutByLimit = attempt.CutByLimit;
         CutByValue = attempt.CutByValue;

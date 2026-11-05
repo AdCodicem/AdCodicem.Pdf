@@ -257,9 +257,10 @@ internal static class PartialFiles
     /// The catalog, an empty page tree and object 3 <c>(only in the oldest)</c> in a classic table at <c>Oldest</c>; then a
     /// table, which <c>startxref</c> names and whose <c>/Prev</c> names the oldest, of <paramref name="lost"/> one-row
     /// subsections from 100, every other number when <paramref name="apart"/>, one after the other otherwise, each row ending
-    /// in <c>x</c>, and then a subsection of <paramref name="free"/> free rows from 20,000.
+    /// in <c>x</c> — written from the highest number down when <paramref name="descending"/> —, and then a subsection of
+    /// <paramref name="free"/> free rows from 20,000.
     /// </summary>
-    public static byte[] LostSubsections(int lost, int free = 0, bool apart = true)
+    public static byte[] LostSubsections(int lost, int free = 0, bool apart = true, bool descending = false)
     {
         var text = new StringBuilder("%PDF-1.7\n");
         var catalog = text.Length;
@@ -275,7 +276,7 @@ internal static class PartialFiles
 
         for (var i = 0; i < lost; i++)
         {
-            text.Append(CultureInfo.InvariantCulture, $"{100 + ((apart ? 2 : 1) * i)} 1\n0 0 x\n");
+            text.Append(CultureInfo.InvariantCulture, $"{100 + ((apart ? 2 : 1) * (descending ? lost - 1 - i : i))} 1\n0 0 x\n");
         }
 
         if (free > 0)
@@ -357,6 +358,64 @@ internal static class PartialFiles
             .Replace("{six}", Row(newSix), StringComparison.Ordinal)
             .Replace("{seven}", Row(newSeven), StringComparison.Ordinal));
         return (file.Bytes, at);
+    }
+
+    /// <summary>
+    /// A document saved three times. The first revision writes the catalog, an empty page tree, objects 3 to 6,
+    /// <c>(old three)</c> to <c>(old six)</c>, and a classic table at <c>Oldest</c> that indexes them. The second writes
+    /// objects 3 and 4 again, <c>(new three)</c> and <c>(new four)</c>, and the section at <c>Middle</c>, whose <c>/Prev</c>
+    /// names the oldest table: a classic table written <paramref name="table"/> after its <c>xref</c> keyword, its trailer
+    /// included, <c>{three}</c> and <c>{four}</c> standing for the offsets of the newer revisions and <c>{oldest}</c> for the
+    /// oldest table's; or, where <paramref name="table"/> is null, cross-reference stream 7, whose dictionary holds
+    /// <paramref name="stream"/> — by default <c>/Index [3 3]</c> and a <c>/Prev</c> naming the oldest table —, and whose data
+    /// holds the rows of the first <paramref name="streamRows"/> of the newer objects 3 and 4. The third writes
+    /// cross-reference stream 9 at <c>Lost</c>, whose rows cannot be read — its <c>/W</c> gives a field a negative width —, of
+    /// <c>/Index <paramref name="index"/></c>, whose <c>/Prev</c> names the middle section <paramref name="shift"/> bytes past
+    /// where it starts, and a table, which <c>startxref</c> names, that indexes the catalog and the page tree and names the
+    /// stream through <c>/Prev</c>. The stream the chain goes on past refuses to the older sections' rows the numbers its
+    /// <c>/Index</c> declares, or every number where it is no array (#208).
+    /// </summary>
+    public static (byte[] File, long Middle, long Lost) PastALostStream(
+        string index, string? table, int streamRows = 0, int shift = 0, string stream = "/Type /XRef /Size 12 /Index [3 3] /W [1 4 2] /Prev {oldest}")
+    {
+        var file = new HandWrittenFile(version: "1.5");
+        var catalog = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>");
+        var pages = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>");
+        var oldThree = file.Object(3, "(old three)");
+        var oldFour = file.Object(4, "(old four)");
+        var oldFive = file.Object(5, "(old five)");
+        var oldSix = file.Object(6, "(old six)");
+        var oldest = file.Position;
+        file.Raw(string.Create(
+            CultureInfo.InvariantCulture,
+            $"xref\n0 7\n0000000000 65535 f \n{Row(catalog)}{Row(pages)}{Row(oldThree)}{Row(oldFour)}{Row(oldFive)}{Row(oldSix)}trailer\n<< /Size 7 >>\n"));
+        var three = file.Object(3, "(new three)");
+        var four = file.Object(4, "(new four)");
+        var middle = file.Position;
+
+        if (table is not null)
+        {
+            file.Raw("xref\n" + table
+                .Replace("{three}", three.ToString("D10", CultureInfo.InvariantCulture), StringComparison.Ordinal)
+                .Replace("{four}", four.ToString("D10", CultureInfo.InvariantCulture), StringComparison.Ordinal)
+                .Replace("{oldest}", oldest.ToString(CultureInfo.InvariantCulture), StringComparison.Ordinal));
+        }
+        else
+        {
+            var data = StreamRows([(three, 0), (four, 0)], streamRows);
+            file.Object(7, string.Create(
+                CultureInfo.InvariantCulture,
+                $"<< {stream.Replace("{oldest}", oldest.ToString(CultureInfo.InvariantCulture), StringComparison.Ordinal)} /Length {data.Length} >>\nstream\n{data}\nendstream"));
+        }
+
+        var lost = file.Object(9, string.Create(
+            CultureInfo.InvariantCulture,
+            $"<< /Type /XRef /Size 12 /Index {index} /W [1 -4 2] /Prev {middle + shift} /Length 0 >>\nstream\n\nendstream"));
+        var newest = file.Position;
+        file.Raw(string.Create(
+            CultureInfo.InvariantCulture,
+            $"xref\n0 3\n0000000000 65535 f \n{Row(catalog)}{Row(pages)}trailer\n<< /Size 12 /Root 1 0 R /Prev {lost} >>\nstartxref\n{newest}\n%%EOF\n"));
+        return (file.Bytes, middle, lost);
     }
 
     /// <summary>Writes a classic table's row placing an object in use at <paramref name="offset"/>.</summary>
