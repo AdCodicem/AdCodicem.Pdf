@@ -3002,16 +3002,16 @@ public class CrossReferenceChainTests
     }
 
     [Theory]
-    [InlineData("6 2\n{six}junk junk junk\nmore\n", "the row for object 7, at offset {at}, is not an offset, a generation and n or f", "junk", false, true, false)]
-    [InlineData("6 2\n{six}junk junk junk\n/Bad\ntrailer\n<< /Size 8 >>\n", "the row for object 7, at offset {at}, is not an offset, a generation and n or f", "junk", false, true, false)]
-    [InlineData("6 1\n{six}7 x\n{seven}trailer\n<< /Size 8 >>\n", "the subsection header at offset {at} does not give a first object number and a count of rows", "7 x", false, true, false)]
-    [InlineData("6 1\n{six}2147483647 2\n{seven}trailer\n<< /Size 8 >>\n", "the subsection header at offset {at} numbers its rows past object 2147483647", "2147483647", false, true, false)]
-    [InlineData("6 2\n{six}{seven}/Bad\ntrailer\n<< /Size 8 >>\n", "it holds a name at offset {at}, where a subsection or the trailer should start", "/Bad", false, true, true)]
-    [InlineData("6 1\n", "the file ends before its trailer", "", false, true, false)]
-    [InlineData("6 2\n{six}junk junk junk\n<< /Size 8 >>\n", "the row for object 7, at offset {at}, is not an offset, a generation and n or f", "junk", false, false, false)]
-    [InlineData("6 2\n{six}junk junk junk\ntrailer\n<< /Size 8 >>\n", "the row for object 7, at offset {at}, is not an offset, a generation and n or f", "junk", true, false, false)]
+    [InlineData("6 2\n{six}junk junk junk\nmore\n", "the row for object 7, at offset {at}, is not an offset, a generation and n or f", "junk", false, true, false, false)]
+    [InlineData("6 2\n{six}junk junk junk\n/Bad\ntrailer\n<< /Size 8 >>\n", "the row for object 7, at offset {at}, is not an offset, a generation and n or f", "junk", false, true, false, false)]
+    [InlineData("6 1\n{six}7 x\n{seven}trailer\n<< /Size 8 >>\n", "the subsection header at offset {at} does not give a first object number and a count of rows", "7 x", false, true, false, false)]
+    [InlineData("6 1\n{six}2147483647 2\n{seven}trailer\n<< /Size 8 >>\n", "the subsection header at offset {at} numbers its rows past object 2147483647", "2147483647", false, true, false, false)]
+    [InlineData("6 2\n{six}{seven}/Bad\ntrailer\n<< /Size 8 >>\n", "it holds a name at offset {at}, where a subsection or the trailer should start", "/Bad", false, true, true, false)]
+    [InlineData("6 1\n", "the file ends before its trailer", "", false, true, false, true)]
+    [InlineData("6 2\n{six}junk junk junk\n<< /Size 8 >>\n", "the row for object 7, at offset {at}, is not an offset, a generation and n or f", "junk", false, false, false, true)]
+    [InlineData("6 2\n{six}junk junk junk\ntrailer\n<< /Size 8 >>\n", "the row for object 7, at offset {at}, is not an offset, a generation and n or f", "junk", true, false, false, false)]
     public void A_table_an_xrefstm_names_that_cannot_be_read_leaves_no_older_row_standing_for_what_it_lost(
-        string rows, string fault, string needle, bool read, bool every, bool sevenGiven)
+        string rows, string fault, string needle, bool read, bool every, bool sevenGiven, bool trailerMissing)
     {
         // The hybrid table's /XRefStm names a classic table that gives the newer revisions of objects 6 and 7, or the first
         // of them, and cannot be read: a row that is no row, a subsection header that is no header, a stray token, or the end
@@ -3046,11 +3046,17 @@ public class CrossReferenceChainTests
         Text(document, 5).Should().Be("old five");
         Text(document, 3).Should().Be("only in the oldest");
 
-        // A table whose trailer is missing too — its rows run into a dictionary, or into the end of the file — is said to be
-        // so, rather than malformed (#325).
+        // A table whose rows, after any bad row, run into a dictionary, or whose subsection header the end of the file
+        // follows, is said to miss its trailer, and every other one to be malformed; whether a bad row before a missing
+        // trailer is said malformed too is #325's to settle, and is not held here.
         var findings = new PdfValidator().Validate(document).Findings.Select(finding => finding.RuleId).ToList();
         findings.Should().Contain(PdfValidationRuleIds.XRefHybridStreamWrong);
-        findings.Should().Contain(id => id == PdfValidationRuleIds.XRefSectionMalformed || id == PdfValidationRuleIds.FileTrailerMissing);
+        findings.Should().Contain(trailerMissing ? PdfValidationRuleIds.FileTrailerMissing : PdfValidationRuleIds.XRefSectionMalformed);
+
+        if (!trailerMissing)
+        {
+            findings.Should().NotContain(PdfValidationRuleIds.FileTrailerMissing);
+        }
     }
 
     [Fact]
