@@ -56,7 +56,14 @@ internal static class StoppedSectionFiles
     /// <param name="twentyOne">
     /// The body of object 21, which the second revision places, <c>{older}</c> standing for that offset; a free row when null.
     /// </param>
-    public static (byte[] File, long Section) Stopped(string links, bool stream = false, string? newer = null, string? twentyOne = null)
+    /// <param name="lost">
+    /// The <c>/Index</c> of a cross-reference stream of <c>/Type /XRef</c> whose <c>/W</c> gives a negative width, object 45,
+    /// written after the second revision and naming it through <c>/Prev</c>, which the third revision then names through
+    /// <c>/Prev</c>, whatever <paramref name="newer"/> says: its rows lost, the stream refuses the numbers it declares to the
+    /// second revision's rows (#208). None when null.
+    /// </param>
+    public static (byte[] File, long Section) Stopped(
+        string links, bool stream = false, string? newer = null, string? twentyOne = null, string? lost = null)
     {
         var file = new HandWrittenFile();
         var (older, two, three) = Older(file);
@@ -69,12 +76,45 @@ internal static class StoppedSectionFiles
         var next = section + Fill(text, section, older, 0).Length + tail.Length;
         file.Raw(Fill(text, section, older, next) + tail);
 
-        if (newer is not null)
+        if (lost is not null)
+        {
+            var at = file.Object(45, Invariant($"<< /Type /XRef /Size 46 /Index {lost} /W [1 -4 2] /Prev {section} /Length 0 >>\nstream\n\nendstream"));
+            file.Raw(Invariant($"xref\n0 1\n0000000000 65535 f \ntrailer\n<< /Size 46 /Prev {at} >>\nstartxref\n{file.Position}\n%%EOF\n"));
+        }
+        else if (newer is not null)
         {
             file.Raw(Invariant($"xref\n0 1\n0000000000 65535 f \ntrailer\n<< /Size 44 {newer} {section} >>\nstartxref\n{next}\n%%EOF\n"));
         }
 
         return (file.Bytes, section);
+    }
+
+    /// <summary>
+    /// A file whose only revision, or older one with <paramref name="updated"/>, writes the catalog, an empty page tree and
+    /// object 3, and a classic table at <c>Table</c> whose <c>xref</c> keyword 300 spaces follow, so that
+    /// <c>MaxXRefSectionLength = 150</c> cuts it before its first row, then the rows of those objects and a trailer that gives
+    /// <c>/Root</c> and <paramref name="prev"/>. With <paramref name="updated"/>, an update's table of the one subsection
+    /// <c>0 0</c>, which indexes nothing, names it through <c>/Prev</c>, and is what <c>startxref</c> names.
+    /// </summary>
+    /// <param name="prev">The table's <c>/Prev</c>, as written, <c>{self}</c> standing for its offset.</param>
+    /// <param name="updated">Whether an update names the table, rather than <c>startxref</c>.</param>
+    public static (byte[] File, long Table) CutBeforeItsRows(string prev, bool updated = false)
+    {
+        var file = new HandWrittenFile();
+        var one = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>");
+        var two = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>");
+        var three = file.Object(3, "(three)");
+        var table = file.Position;
+        var link = prev.Replace("{self}", table.ToString(CultureInfo.InvariantCulture), StringComparison.Ordinal);
+        file.Raw("xref" + new string(' ', 300) + Invariant($"\n0 4\n0000000000 65535 f \n{one:D10} 00000 n \n{two:D10} 00000 n \n{three:D10} 00000 n \ntrailer\n<< /Size 4 /Root 1 0 R /Prev {link} >>\nstartxref\n{table}\n%%EOF\n"));
+
+        if (updated)
+        {
+            var update = file.Position;
+            file.Raw(Invariant($"xref\n0 0\ntrailer\n<< /Size 4 /Root 1 0 R /Prev {table} >>\nstartxref\n{update}\n%%EOF\n"));
+        }
+
+        return (file.Bytes, table);
     }
 
     /// <summary>

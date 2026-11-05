@@ -321,14 +321,18 @@ public class CrossReferenceRuleTests
             $"The cross-reference table at offset {update} holds no subsection: its trailer keyword follows its xref keyword."));
     }
 
-    [Fact]
-    public void A_table_the_end_of_the_file_cuts_after_a_row_is_missing_its_trailer_and_its_chain_s_size_is_not_judged()
+    [Theory]
+    [InlineData("")]
+    [InlineData("t")]
+    [InlineData("trai")]
+    public void A_table_the_end_of_the_file_cuts_after_a_row_is_missing_its_trailer_and_its_chain_s_size_is_not_judged(string tail)
     {
         // The table /Prev names is cut by the end of the file after object 3's row: its trailer is missing, an error, and the
         // index is rebuilt before the rules run, what that trailer named being lost to the chain (#207). The update's /Size of
         // 5 numbers object 4, which only the sections the lost trailer named index: the chain read in part is not judged for
-        // it, as one that lost a section is not, where it was said to make the /Size 4.
-        var file = PdfTemplate.Build(PartialFiles.CutUpdate());
+        // it, as one that lost a section is not, where it was said to make the /Size 4. Cut within the trailer keyword, it is
+        // missing its trailer all the same, where it was said to hold the start of the keyword where a subsection should start.
+        var file = PdfTemplate.Build(PartialFiles.CutUpdate("3 1\n{row:3}\n" + tail));
         var cut = PdfTemplate.OffsetOf(file, "\nxref\n", 3) + 1;
         using var document = PdfDocument.Open(file);
 
@@ -372,6 +376,7 @@ public class CrossReferenceRuleTests
     [InlineData(")", "a byte that starts no token")]
     [InlineData("key", "the keyword key")]
     [InlineData("k\u001Bey#", "the keyword k#1Bey#23")]
+    [InlineData("trai", "the keyword trai")]
     public void A_table_holding_something_else_where_a_subsection_should_start_says_what(string text, string what)
     {
         var file = PdfTemplate.SoundWith("{row:3}\ntrailer", "{row:3}\n" + text + "\ntrailer");
@@ -1055,6 +1060,78 @@ public class CrossReferenceRuleTests
         cycle.Message.Should().EndWith($"names offset {hole}, which the chain has already named.");
         Single(new PdfValidator().Validate(document), PdfValidationRuleIds.XRefChainLoop).Message.Should().Be(
             $"The /Prev of the cross-reference section at offset {update} names offset {hole}, which the chain has already named: the chain loops.");
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void A_chain_that_ends_in_a_loop_has_no_size_judged_the_section_it_lost_may_number_the_objects_of(bool atTheFirstByte)
+    {
+        // The original's table indexes objects 1 to 5; the update writes object 4 again, and its table, which gives /Size 6,
+        // names through /Prev the newest table rather than the original's, which names the update: the chain loops, and the
+        // original is never read. The update's /Size counts the original's objects, as it should: the chain is not judged,
+        // the section the last /Prev should have named unknown, where both tables were said to give a /Size that 4, the
+        // highest number read, makes 5 (#156). In a file with no header, the update starts the file, and its /Prev names
+        // offset 0, itself: a loop at the file's first byte, judged as any other.
+        byte[] bytes;
+        long update;
+        long loop;
+
+        if (atTheFirstByte)
+        {
+            const string Head = "xref\n4 1\n{0:D10} 00000 n \ntrailer\n<< /Size 6 /Root 1 0 R /Prev 0 >>\n";
+            var length = string.Format(CultureInfo.InvariantCulture, Head, 0).Length;
+            var objects = new StringBuilder();
+            var offsets = new long[6];
+
+            foreach (var (number, body) in new[] { (1, "<< /Type /Catalog /Pages 2 0 R >>"), (2, "<< /Type /Pages /Kids [] /Count 0 >>"), (3, "(three)"), (4, "(four)"), (5, "(five)") })
+            {
+                offsets[number] = length + objects.Length;
+                objects.Append(CultureInfo.InvariantCulture, $"{number} 0 obj\n{body}\nendobj\n");
+            }
+
+            objects.Append("xref\n0 6\n0000000000 65535 f \n");
+
+            for (var number = 1; number < 6; number++)
+            {
+                objects.Append(CultureInfo.InvariantCulture, $"{offsets[number]:D10} 00000 n \n");
+            }
+
+            objects.Append("trailer\n<< /Size 6 /Root 1 0 R >>\n");
+            bytes = Encoding.Latin1.GetBytes(string.Format(CultureInfo.InvariantCulture, Head, offsets[4]) + objects + "startxref\n0\n%%EOF\n");
+            update = 0;
+            loop = 0;
+        }
+        else
+        {
+            var file = new HandWrittenFile();
+            var rows = new Dictionary<int, long>
+            {
+                [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),
+                [2] = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"),
+                [3] = file.Object(3, "(three)"),
+                [4] = file.Object(4, "(old four)"),
+                [5] = file.Object(5, "(five)"),
+            };
+            file.Table(6, rows, "/Size 6 /Root 1 0 R");
+            var four = file.Object(4, "(new four)");
+            update = file.Position;
+            string Update(long newest) => string.Create(
+                CultureInfo.InvariantCulture, $"xref\n4 1\n{four:D10} 00000 n \ntrailer\n<< /Size 6 /Root 1 0 R /Prev {newest:D10} >>\n");
+            loop = update + Update(0).Length;
+            file.Raw(Update(loop));
+            file.Raw(string.Create(
+                CultureInfo.InvariantCulture, $"xref\n0 1\n0000000000 65535 f \ntrailer\n<< /Size 6 /Root 1 0 R /Prev {update} >>\nstartxref\n{loop}\n%%EOF\n"));
+            bytes = file.Bytes;
+        }
+
+        using var document = PdfDocument.Open(bytes);
+
+        var report = new PdfValidator().Validate(document);
+
+        document.Reader.Structure.LoopOffset.Should().Be(loop);
+        Single(report, PdfValidationRuleIds.XRefChainLoop).Location.Position.Should().Be(update);
+        report.Contains(PdfValidationRuleIds.FileSizeWrong).Should().BeFalse(string.Join("; ", report.Findings));
     }
 
     [Fact]

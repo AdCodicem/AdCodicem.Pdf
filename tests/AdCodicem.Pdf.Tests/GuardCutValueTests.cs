@@ -3711,6 +3711,12 @@ public class GuardCutValueTests
         section.CutByLimit.Should().Be(hidesRows);
         section.Incomplete.Should().BeTrue();
         section.Fault.Should().Contain(fault);
+
+        // Rows the data may hold, read with the cut value, were not read, and none was kept, which the report says, where it
+        // said the rows the stream holds were kept; data that holds none keeps none, which it does not say it kept (#210).
+        document.Diagnostics.Single(entry => entry.Code == PdfDiagnosticCodes.XRefSectionUnreadable).Message.Should().EndWith(hidesRows
+            ? "; the rows its data may hold were not read, a value they are read with having been cut by one of the reader's limits, and the objects it numbers are looked for by rebuilding the index where no section read before it indexes them, rather than taken from an older section's rows."
+            : "; the objects whose rows it lacks are looked for by rebuilding the index where no section read before it indexes them, rather than taken from an older section's rows.");
         document.WasRepaired.Should().BeTrue();
         document.GetObject(new PdfObjectId(1)).AsDictionary().Required().IsOfType(PdfName.Catalog).Should().BeTrue();
         document.Trailer.Keys.Select(key => key.Value).Order().Should().Equal(wholeKeys);
@@ -3723,6 +3729,49 @@ public class GuardCutValueTests
             hidesRows
                 ? [.. wholeRules.Where(rule => rule != PdfValidationRuleIds.FileSizeWrong).Append(PdfValidationRuleIds.XRefCheckedInPart).Order()]
                 : wholeRules);
+    }
+
+    [Fact]
+    public void Rows_a_section_beside_a_value_a_guard_cut_holds_are_kept_read_whole_and_said_unread_under_the_guard()
+    {
+        // As above, object 6's /W names object 5, [1 1 1], which MaxObjectLength cuts, and its 6 bytes of data hold the rows of
+        // objects 0 and 1, of the 8 its /Size declares. Read whole, the stream keeps both rows, which its report says; under
+        // the guard, the rows are read with the cut value, the guard's, and none is kept: its report says they were not read,
+        // where it said the rows it holds were kept, as read whole (#210, #263).
+        var built = ChainFiles.UnderAnUpdate(
+            "/Type /XRef /Size 8 /W [1 4 2] /Length {length}",
+            "[1 1 1]" + new string(' ', 1100),
+            compressed: false,
+            predicted: false,
+            placed: true,
+            six: "<< /Type /XRef /W 5 0 R /Size 8 /Length 6 >>\nstream\n{rows}\nendstream",
+            placedToo: new Dictionary<int, string> { [8] = "(eight)" });
+        var text = Encoding.Latin1.GetString(built);
+        var stream = text.IndexOf("\n7 0 obj", StringComparison.Ordinal) + 1;
+        var sixAt = text.IndexOf("\n6 0 obj", StringComparison.Ordinal) + 1;
+        var catalog = text.IndexOf("1 0 obj", StringComparison.Ordinal);
+        catalog.Should().BeLessThan(256, "a field of one byte places it");
+        var file = Encoding.Latin1.GetBytes(text
+            .Replace(Invariant($"/Prev {stream} "), Invariant($"/Prev {sixAt} "), StringComparison.Ordinal)
+            .Replace("{rows}", "\0\0\0\u0001" + (char)catalog + "\0", StringComparison.Ordinal));
+        const string Lost = "the objects whose rows it lacks are looked for by rebuilding the index where no section read before it indexes them, rather than taken from an older section's rows.";
+
+        using (var whole = PdfDocument.Open(file))
+        {
+            whole.Reader.ChainIndex!.TryGet(1, out var entry).Should().BeTrue();
+            entry.Offset.Should().Be(catalog);
+            whole.Diagnostics.Single(diagnostic => diagnostic.Code == PdfDiagnosticCodes.XRefSectionUnreadable).Message.Should().Be(Invariant(
+                $"The cross-reference stream /Prev names at offset {sixAt} was read only in part: it holds 2 rows where its /Index and /Size declare 8; the rows it holds were kept, and {Lost}"));
+        }
+
+        using var document = PdfDocument.Open(file, ObjectGuard);
+
+        document.Reader.ChainIndex!.TryGet(1, out _).Should().BeFalse("the rows the data holds are not read under the guard");
+        var section = document.Reader.Structure.Sections[^1];
+        section.CutByLimit.Should().BeTrue();
+        section.RowsLeftToGuard.Should().BeTrue();
+        document.Diagnostics.Single(diagnostic => diagnostic.Code == PdfDiagnosticCodes.XRefSectionUnreadable).Message.Should().Be(Invariant(
+            $"The cross-reference stream /Prev names at offset {sixAt} was read only in part: its data, 6 bytes decoded, holds at most 6 of the 8 rows its /Index and /Size declare; the rows its data may hold were not read, a value they are read with having been cut by one of the reader's limits, and the objects it numbers are looked for by rebuilding the index where no section read before it indexes them, rather than taken from an older section's rows."));
     }
 
     [Theory]

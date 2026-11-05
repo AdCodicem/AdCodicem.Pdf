@@ -26,7 +26,9 @@ namespace AdCodicem.Pdf.Validation.Rules;
 /// reader ignore those objects. The rule needs the whole chain to count the objects each section updates: a chain
 /// that lost a section — a hybrid file's stream among them, where its table's <c>/XRefStm</c> names none (#156) —, or
 /// read one only in part — the rows it lost, or the older sections a trailer the end of the file cut would name, may
-/// number the objects the <c>/Size</c> counts (#207, #210) —, or that one of the reader's limits cut, is not judged.
+/// number the objects the <c>/Size</c> counts (#207, #210) —, that ends in a loop — which leaves the section the last
+/// <c>/Prev</c> should have named unknown, its objects among those a <c>/Size</c> may count (#156) —, or that one of the
+/// reader's limits cut, is not judged.
 /// </para>
 /// </remarks>
 internal sealed class SizeWrongRule : IValidationRule
@@ -43,7 +45,7 @@ internal sealed class SizeWrongRule : IValidationRule
         var structure = context.Structure;
         var sections = structure.Sections;
 
-        if (!structure.ChainRead || structure.ChainCutAt >= 0 || !IsWhole(sections))
+        if (!structure.ChainRead || structure.ChainCutAt >= 0 || structure.LoopOffset >= 0 || !IsWhole(sections))
         {
             return;
         }

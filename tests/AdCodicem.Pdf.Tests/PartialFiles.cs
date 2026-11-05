@@ -256,10 +256,10 @@ internal static class PartialFiles
     /// <summary>
     /// The catalog, an empty page tree and object 3 <c>(only in the oldest)</c> in a classic table at <c>Oldest</c>; then a
     /// table, which <c>startxref</c> names and whose <c>/Prev</c> names the oldest, of <paramref name="lost"/> one-row
-    /// subsections every other number from 100, each row ending in <c>x</c>, and then a subsection of
-    /// <paramref name="free"/> free rows from 20,000.
+    /// subsections from 100, every other number when <paramref name="apart"/>, one after the other otherwise, each row ending
+    /// in <c>x</c>, and then a subsection of <paramref name="free"/> free rows from 20,000.
     /// </summary>
-    public static byte[] LostSubsections(int lost, int free = 0)
+    public static byte[] LostSubsections(int lost, int free = 0, bool apart = true)
     {
         var text = new StringBuilder("%PDF-1.7\n");
         var catalog = text.Length;
@@ -275,7 +275,7 @@ internal static class PartialFiles
 
         for (var i = 0; i < lost; i++)
         {
-            text.Append(CultureInfo.InvariantCulture, $"{100 + (2 * i)} 1\n0 0 x\n");
+            text.Append(CultureInfo.InvariantCulture, $"{100 + ((apart ? 2 : 1) * i)} 1\n0 0 x\n");
         }
 
         if (free > 0)
@@ -322,6 +322,41 @@ internal static class PartialFiles
         file.Raw(Hybrid(cutAt));
         file.Raw("xref\n" + rows);
         return (file.Bytes, oldest, cutAt);
+    }
+
+    /// <summary>
+    /// <see cref="CutTableAnXRefStmNames"/>'s shape, whose second revision writes object 7 again too, <c>(new seven)</c>,
+    /// and whose last table, at <c>Table</c>, which the hybrid table names through <c>/XRefStm</c>, is written
+    /// <paramref name="rows"/> after its <c>xref</c> keyword, <c>{six}</c> and <c>{seven}</c> standing for the rows that place
+    /// the newer revisions of objects 6 and 7; the file ends with it. The <c>/XRefStm</c> names the table
+    /// <paramref name="shift"/> bytes past where its <c>xref</c> keyword starts, where nothing is but the rest of that keyword
+    /// when it is more than none, and where the table is found moved.
+    /// </summary>
+    public static (byte[] File, long Table) TableAnXRefStmNamesOverOlderRows(string rows, int shift = 0)
+    {
+        var file = new HandWrittenFile();
+        var catalog = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>");
+        var pages = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>");
+        var three = file.Object(3, "(only in the oldest)");
+        var five = file.Object(5, "(old five)");
+        var oldSix = file.Object(6, "(old six)");
+        var oldSeven = file.Object(7, "(old seven)");
+        var oldest = file.Position;
+        file.Raw(string.Create(
+            CultureInfo.InvariantCulture,
+            $"xref\n0 4\n0000000000 65535 f \n{Row(catalog)}{Row(pages)}{Row(three)}5 3\n{Row(five)}{Row(oldSix)}{Row(oldSeven)}trailer\n<< /Size 8 /Root 1 0 R >>\n"));
+        var newSix = file.Object(6, "(new six)");
+        var newSeven = file.Object(7, "(new seven)");
+        var hybrid = file.Position;
+        string Hybrid(long table) => string.Create(
+            CultureInfo.InvariantCulture,
+            $"xref\n0 1\n0000000000 65535 f \ntrailer\n<< /Size 8 /Root 1 0 R /Prev {oldest} /XRefStm {table:D10} >>\nstartxref\n{hybrid}\n%%EOF\n");
+        var at = hybrid + Hybrid(0).Length;
+        file.Raw(Hybrid(at + shift));
+        file.Raw("xref\n" + rows
+            .Replace("{six}", Row(newSix), StringComparison.Ordinal)
+            .Replace("{seven}", Row(newSeven), StringComparison.Ordinal));
+        return (file.Bytes, at);
     }
 
     /// <summary>Writes a classic table's row placing an object in use at <paramref name="offset"/>.</summary>

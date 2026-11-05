@@ -1379,9 +1379,11 @@ public class ReaderLimitsTests
     [Theory]
     [InlineData("<< /Size", "missing")]
     [InlineData("startxref 0 << /Size", "the keyword startxref")]
+    [InlineData("trai << /Size", "the keyword trai")]
     public void What_ends_the_rows_a_length_bound_cut_is_judged_as_it_is_where_none_did(string replacement, string judged)
     {
-        // A dictionary the trailer keyword does not introduce is a trailer missing; anything else is no part of a table.
+        // A dictionary the trailer keyword does not introduce is a trailer missing; anything else is no part of a table — the
+        // start of the trailer keyword among them, where the file does not end with it.
         var file = Trailed(string.Empty);
         file = Encoding.Latin1.GetBytes(Encoding.Latin1.GetString(file).Replace("trailer\n<< /Size", replacement, StringComparison.Ordinal));
         var end = Encoding.Latin1.GetString(file).LastIndexOf(replacement, StringComparison.Ordinal);
@@ -1411,24 +1413,45 @@ public class ReaderLimitsTests
         }
     }
 
-    [Fact]
-    public void A_table_a_length_bound_cuts_that_runs_to_the_end_of_the_file_has_no_trailer()
+    [Theory]
+    [InlineData("", null)]
+    [InlineData("t", null)]
+    [InlineData("trai", null)]
+    [InlineData("traile", null)]
+    [InlineData("tx", "the keyword tx")]
+    public void A_table_a_length_bound_cuts_that_runs_to_the_end_of_the_file_has_no_trailer(string tail, string? stray)
     {
-        // The file ends in the table's rows, its startxref written before them, in reach of the search at the file's end.
+        // The file ends in the table's rows, its startxref written before them, in reach of the search at the file's end. It
+        // ends so within the trailer keyword too, whose start the search past the rows took for no part of a table (#207); a
+        // word the keyword does not start is one, and the section is judged by it.
         var written = Trailed(string.Empty);
         var table = OffsetOf(written, "xref\n");
         var rows = written.AsSpan(table, OffsetOf(written, "trailer") - table).ToArray();
         const string Pointer = "startxref\n{0:D10}\n%%EOF\n";
         var pointer = Encoding.ASCII.GetBytes(string.Format(CultureInfo.InvariantCulture, Pointer, table + string.Format(CultureInfo.InvariantCulture, Pointer, 0).Length));
-        byte[] file = [.. written.AsSpan(0, table), .. pointer, .. rows];
+        byte[] file = [.. written.AsSpan(0, table), .. pointer, .. rows, .. Encoding.ASCII.GetBytes(tail)];
         var limits = PdfReaderLimits.Default with { MaxXRefSectionLength = 128 };
 
         using var document = PdfDocument.Open(file, new PdfReaderOptions { Limits = limits });
 
         var section = document.Reader.Structure.Sections.Should().ContainSingle().Which;
         section.Offset.Should().Be(table + pointer.Length);
-        section.TrailerFault.Should().Be(XRefTrailerFault.Missing);
-        section.TrailerPosition.Should().Be(file.Length);
+        var findings = new PdfValidator().Validate(document).Findings;
+
+        if (stray is null)
+        {
+            section.TrailerFault.Should().Be(XRefTrailerFault.Missing);
+            section.TrailerPosition.Should().Be(file.Length);
+            section.Fault.Should().BeNull();
+            findings.Should().ContainSingle(finding => finding.RuleId == PdfValidationRuleIds.FileTrailerMissing);
+            findings.Should().NotContain(finding => finding.RuleId == PdfValidationRuleIds.XRefSectionMalformed);
+        }
+        else
+        {
+            section.TrailerFault.Should().Be(XRefTrailerFault.None);
+            section.TrailerPosition.Should().Be(file.Length - tail.Length);
+            section.Fault.Should().Be($"it holds {stray} at offset {file.Length - tail.Length}, where a subsection or the trailer should start");
+        }
     }
 
     [Fact]
@@ -2345,6 +2368,154 @@ public class ReaderLimitsTests
     }
 
     [Theory]
+    [InlineData("/Prev 21 0 R", "[21 1]", "table rows")]
+    [InlineData("/Prev 21 0 R", "[21 1]", "table index")]
+    [InlineData("/Prev 21 0 R", "[21 1]", "stream rows")]
+    [InlineData("/Prev 21 0 R", "[21 1]", "stream index")]
+    [InlineData("/Prev 30 0 R", "[30 1]", "table rows")]
+    [InlineData("/Prev 30 0 R", "[30 1]", "table index")]
+    [InlineData("/Prev 30 0 R", "[30 1]", "stream rows")]
+    [InlineData("/Prev 30 0 R", "[30 1]", "stream index")]
+    [InlineData("/Prev 30 0 R", "[21 -1]", "table rows")]
+    [InlineData("/Prev 30 0 R", "[21 -1]", "stream rows")]
+    public void A_reference_a_section_a_guard_stops_gives_to_a_number_a_newer_section_refused_is_judged_as_a_whole_read_judges_it(
+        string prev, string index, string guard)
+    {
+        // #264, beside #208: a newer cross-reference stream whose rows cannot be read declares object 21, whose free row the
+        // section a guard stops reads before the cut, or object 30, whose row lies past it — or numbers its rows in a way that
+        // cannot be read, which refuses every number —, and hands its /Prev on to that section, whose /Prev is a reference to
+        // that number. No row past the guard can place it, every older row for it refused: the /Prev names no section
+        // whatever the guard hid, and is reported as read whole, beside the guard. It was taken for one that may name a sound
+        // section, the guard's, and nothing was said of it.
+        var (file, _) = StoppedSectionFiles.Stopped(prev, stream: guard.StartsWith("stream", StringComparison.Ordinal), lost: index);
+
+        using var whole = PdfDocument.Open(file);
+        using var document = PdfDocument.Open(file, StoppedSectionFiles.Guard(guard));
+
+        whole.Diagnostics.Should().ContainSingle(entry => entry.Code == PdfDiagnosticCodes.XRefSectionMissing);
+        document.Diagnostics.Where(entry => entry.Code != StoppedSectionFiles.GuardCode(guard)).Should().Equal(whole.Diagnostics);
+        document.Diagnostics.Should().ContainSingle(entry => entry.Code == StoppedSectionFiles.GuardCode(guard));
+        document.Reader.Structure.TrailersHiddenByGuard.Should().BeFalse();
+        document.WasRepaired.Should().BeTrue();
+        new PdfValidator().Validate(document).Contains(PdfValidationRuleIds.XRefSectionNotFound).Should().BeTrue();
+    }
+
+    [Theory]
+    [InlineData("table rows")]
+    [InlineData("stream index")]
+    public void A_reference_a_section_a_guard_stops_gives_to_a_number_a_newer_section_refused_not_stays_the_guard_s(string guard)
+    {
+        // As above, the newer stream declaring object 45, its own, and not object 30, which the /Prev names: a row past the
+        // guard may place object 30, which may name a sound section, the guard's (#264).
+        var (file, _) = StoppedSectionFiles.Stopped("/Prev 30 0 R", stream: guard.StartsWith("stream", StringComparison.Ordinal), lost: "[45 1]");
+
+        using var document = PdfDocument.Open(file, StoppedSectionFiles.Guard(guard));
+
+        document.Diagnostics.Select(entry => entry.Code).Should().Equal(PdfDiagnosticCodes.XRefSectionUnreadable, StoppedSectionFiles.GuardCode(guard));
+        document.Reader.Structure.TrailersHiddenByGuard.Should().BeTrue();
+        document.WasRepaired.Should().BeFalse();
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void A_section_a_guard_stops_whose_prev_names_a_number_it_lost_and_places_past_the_guard_stays_the_guard_s(bool stream)
+    {
+        // #264, beside #210: the newest section loses the row of object 10 — a table's row that is no row, or a stream's data
+        // holding 30 of the 50 rows it declares, the numbers it lost those it declares — and places object 10, which holds
+        // the older table's offset, in a row past where MaxXRefSectionLength cuts the table, or past where MaxIndexEntries
+        // fills the index, the stream's rows placing the catalog and the page tree before it. Its /Prev is a reference
+        // to object 10, which a whole read reads through that row, the numbers the section lost refused only to the sections
+        // read after it: under the guard, the /Prev may name a sound section, the guard's, its trailers hidden, nothing
+        // rebuilt and no /Root said missing. Refused before what the section names was judged, its own numbers were taken for
+        // a newer section's, and the /Prev for one that names nothing.
+        var file = new HandWrittenFile(version: "1.5");
+        var catalog = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>");
+        var pages = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>");
+        var older = file.Table(3, new Dictionary<int, long> { [1] = catalog, [2] = pages }, "/Size 3 /Root 1 0 R");
+        var ten = file.Object(10, string.Create(CultureInfo.InvariantCulture, $"{older}"));
+        var newest = file.Position;
+        PdfReaderLimits limits;
+
+        if (stream)
+        {
+            var data = new StringBuilder();
+
+            for (var row = 0; row < 30; row++)
+            {
+                var (type, field2) = row switch
+                {
+                    1 => (1, catalog),
+                    2 => (1, pages),
+                    10 => (1, ten),
+                    _ => (0, 0L),
+                };
+                data.Append((char)type).Append((char)((field2 >> 24) & 0xFF)).Append((char)((field2 >> 16) & 0xFF))
+                    .Append((char)((field2 >> 8) & 0xFF)).Append((char)(field2 & 0xFF)).Append('\0').Append('\0');
+            }
+
+            file.Object(60, string.Create(CultureInfo.InvariantCulture, $"<< /Type /XRef /Size 61 /Index [0 50] /W [1 4 2] /Prev 10 0 R /Length {data.Length} >>\nstream\n{data}\nendstream"));
+            limits = PdfReaderLimits.Default with { MaxIndexEntries = 5 };
+        }
+        else
+        {
+            var free = string.Concat(Enumerable.Repeat("0000000000 00000 f \n", 20));
+            file.Raw(string.Create(CultureInfo.InvariantCulture, $"xref\n0 1\n0000000000 65535 f \n10 1\nabcdefghij 00000 n \n11 20\n{free}10 1\n{ten:D10} 00000 n \ntrailer\n<< /Size 31 /Prev 10 0 R >>\n"));
+            limits = PdfReaderLimits.Default with { MaxXRefSectionLength = 150 };
+        }
+
+        file.Raw(string.Create(CultureInfo.InvariantCulture, $"startxref\n{newest}\n%%EOF\n"));
+
+        using (var whole = PdfDocument.Open(file.Bytes))
+        {
+            whole.Reader.Structure.Sections.Should().HaveCount(2);
+            whole.Reader.Structure.TrailersHiddenByGuard.Should().BeFalse();
+            whole.WasRepaired.Should().BeFalse();
+            whole.Catalog.IsOfType(PdfName.Catalog).Should().BeTrue();
+        }
+
+        using var document = PdfDocument.Open(file.Bytes, new PdfReaderOptions { Limits = limits });
+
+        document.Reader.Structure.Sections.Should().ContainSingle().Which.Incomplete.Should().BeTrue();
+        document.Reader.Structure.TrailersHiddenByGuard.Should().BeTrue();
+        document.WasRepaired.Should().BeFalse("what a guard hides is no reason to rebuild the index (ADR 34)");
+        var report = new PdfValidator().Validate(document);
+        report.Contains(PdfValidationRuleIds.FileRootInvalid).Should().BeFalse(string.Join("; ", report.Findings));
+        report.Contains(PdfValidationRuleIds.XRefCheckedInPart).Should().BeTrue();
+    }
+
+    [Theory]
+    [InlineData("999999", false, PdfDiagnosticCodes.XRefSectionMissing, PdfValidationRuleIds.XRefSectionNotFound)]
+    [InlineData("{self}", false, PdfDiagnosticCodes.XRefChainCycle, PdfValidationRuleIds.XRefChainLoop)]
+    [InlineData("999999", true, PdfDiagnosticCodes.XRefSectionMissing, PdfValidationRuleIds.XRefSectionNotFound)]
+    public void A_table_its_length_bound_cuts_before_its_first_row_is_the_guard_s_and_its_prev_judged_whatever_the_index_holds(
+        string prev, bool updated, string code, string rule)
+    {
+        // #264, beside ADR 34: 300 spaces follow the table's xref keyword, and MaxXRefSectionLength cuts it before its first
+        // row. Its keyword declared it a section before the cut: it is kept, the guard's, whatever the index holds, and its
+        // /Prev — an offset outside the file, or the table itself — names no section whatever the guard hid, which is
+        // reported as read whole. Where the index held nothing — the table startxref names, or one an update that indexes
+        // nothing names —, the table was taken for one that cannot be read, and its /Prev went unjudged. The chain leaves the
+        // index empty, which is rebuilt at opening, as for any chain a guard leaves no row (ADR 34).
+        var (file, table) = StoppedSectionFiles.CutBeforeItsRows(prev, updated);
+
+        using var whole = PdfDocument.Open(file);
+        using var document = PdfDocument.Open(file, new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxXRefSectionLength = 150 } });
+
+        var judged = whole.Diagnostics.Should().ContainSingle().Which;
+        judged.Code.Should().Be(code);
+        document.Diagnostics.Should().Equal(document.Diagnostics[0], judged, document.Diagnostics[2]);
+        document.Diagnostics[0].Code.Should().Be(PdfDiagnosticCodes.LimitXRefSectionLength);
+        document.Diagnostics[0].Position.Should().Be(table);
+        document.Diagnostics[2].Code.Should().Be(PdfDiagnosticCodes.XRefRebuilt);
+        var section = document.Reader.Structure.Sections.Single(record => record.Offset == table);
+        section.State.Should().Be(XRefSectionState.Read);
+        section.CutByLimit.Should().BeTrue();
+        new PdfValidator().Validate(whole).Contains(rule).Should().BeTrue();
+        new PdfValidator().Validate(document).Contains(rule).Should().BeTrue();
+    }
+
+    [Theory]
     [InlineData("/Prev 30 0 R", "table rows")]
     [InlineData("/Prev 30 0 R", "table index")]
     [InlineData("/Prev 30 0 R", "stream rows")]
@@ -2580,7 +2751,8 @@ public class ReaderLimitsTests
         // #264, beside #263: the section a guard stops gives its /Prev, or its /XRefStm, as a reference to object 21, a row it
         // read before the cut placing a comment of 3,000 bytes and then the older table's offset, which MaxObjectLength cuts.
         // What the link names is unknown, as in a section read whole: nothing is blamed on the file, nothing is rebuilt, and
-        // the trailers past it are the guards' to hide.
+        // the trailers past it are the guards' to hide. The section's own cut says what lies past it was not checked: the
+        // link is the section's guard's, and is not said hidden by the object guard as well.
         var (file, _) = StoppedSectionFiles.Stopped(
             links,
             stream: guard.StartsWith("stream", StringComparison.Ordinal),
@@ -2596,7 +2768,8 @@ public class ReaderLimitsTests
         var report = new PdfValidator().Validate(document);
         report.Contains(PdfValidationRuleIds.XRefSectionNotFound).Should().BeFalse();
         report.Contains(PdfValidationRuleIds.FileRootInvalid).Should().BeFalse();
-        report.Contains(PdfValidationRuleIds.XRefCheckedInPart).Should().BeTrue();
+        report.Findings.Should().ContainSingle(finding => finding.RuleId == PdfValidationRuleIds.XRefCheckedInPart);
+        document.Reader.Structure.Sections[0].ChainHiddenByGuard.Should().BeNull();
     }
 
     [Theory]

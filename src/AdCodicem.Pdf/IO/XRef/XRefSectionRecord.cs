@@ -85,6 +85,31 @@ internal sealed class XRefSectionRecord
     public bool Incomplete { get; set; }
 
     /// <summary>
+    /// Gets a value indicating whether what a classic table holds past where its reading stopped cannot be known: a
+    /// subsection header that gives no first object number and count of rows, or numbers its rows past the last object
+    /// number, a token where a subsection or the trailer should start, or the end of the file before its trailer — within
+    /// its <c>trailer</c> keyword too (#207). A row for any number may lie there, and the reader refuses every number to the
+    /// rows of the sections the chain reads after the table: for a table an <c>/XRefStm</c> names, whose trailer's links are
+    /// not followed, the chain goes on through the table that names it (#156, #210). Rows that run into a dictionary no
+    /// trailer keyword introduces end where the trailer starts, which is known.
+    /// </summary>
+    public bool SubsectionsUnknown { get; set; }
+
+    /// <summary>
+    /// Gets how many rows a cross-reference stream holds, read, where its data holds fewer than its <c>/Index</c> and
+    /// <c>/Size</c> declare (#210); -1 for every other section, and for a stream whose rows were left to a guard
+    /// (<see cref="RowsLeftToGuard"/>).
+    /// </summary>
+    public long RowsHeld { get; set; } = -1;
+
+    /// <summary>
+    /// Gets a value indicating whether the rows a cross-reference stream's data may hold were left unread: a value they are
+    /// read with leads to an object one of the reader's guards cut, beside which the data holds fewer rows than the stream
+    /// declares whatever that value holds. The section was read only in part, and the chain ends at it (#210, #263).
+    /// </summary>
+    public bool RowsLeftToGuard { get; set; }
+
+    /// <summary>
     /// Gets a value indicating whether a classic table holds no subsection: its <c>trailer</c> keyword follows its
     /// <c>xref</c> keyword, where ISO 32000-1 (7.5.4) has one or more subsections follow it. It is read as indexing nothing,
     /// as a table whose one subsection is <c>0 0</c> is (#222).
@@ -146,9 +171,12 @@ internal sealed class XRefSectionRecord
     public bool PreviousHandedOn { get; set; }
 
     /// <summary>
-    /// Gets a value indicating whether the object numbers the cross-reference stream declares, its rows lost, were refused
-    /// to the rows of the sections the chain read after it: the stream declares itself one, and its dictionary was read
-    /// whole, whether the chain went on through its <c>/Prev</c> (#208) or it is a hybrid file's stream (#210).
+    /// Gets a value indicating whether the object numbers the section lost, that cannot be read, were refused to the rows of
+    /// the sections the chain read after it: those a cross-reference stream declares, which declares itself one and whose
+    /// dictionary was read whole, whether the chain went on through its <c>/Prev</c> (#208) or it is a hybrid file's stream
+    /// (#210); and those a classic table an <c>/XRefStm</c> names lost — the rest of the subsection its fault ended, or every
+    /// number, where what follows the fault cannot be known (<see cref="SubsectionsUnknown"/>) —, the chain going on past it
+    /// through the table that names it (#156).
     /// </summary>
     public bool NumbersRefused { get; set; }
 
@@ -233,6 +261,9 @@ internal sealed class XRefSectionRecord
         ReservedRow = attempt.ReservedRow;
         ReservedRows = attempt.ReservedRows;
         Incomplete = attempt.Incomplete;
+        SubsectionsUnknown = attempt.SubsectionsUnknown;
+        RowsHeld = attempt.RowsHeld;
+        RowsLeftToGuard = attempt.RowsLeftToGuard;
         NoSubsection = attempt.NoSubsection;
         CutByLimit = attempt.CutByLimit;
         CutByValue = attempt.CutByValue;
