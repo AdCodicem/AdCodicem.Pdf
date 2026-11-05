@@ -7631,7 +7631,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// <param name="generation">The generation the header gives, as the parser reads it: what an entry recording the
     /// header records (#118).</param>
     /// <param name="headerStart">Where the header starts in <paramref name="span"/>.</param>
-    private static bool TryReadHeaderBackwards(
+    internal static bool TryReadHeaderBackwards(
         ReadOnlySpan<byte> span, int objPosition, out int number, out int generation, out int headerStart)
     {
         number = 0;

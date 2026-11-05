@@ -438,6 +438,28 @@ public class PropertyTests
     }
 
     [Fact]
+    public void The_rule_for_object_headers_takes_the_header_the_scan_that_rebuilds_an_index_takes()
+    {
+        // The rule a search for endstream stops at reads comments between a header's tokens as the scan that rebuilds an
+        // index reads them (#261). Read whole or a part at a time, it finds the first header the scan finds, but for the two
+        // differences its remarks list: the scan takes digits a regular byte precedes (#171), and an obj a regular byte
+        // follows. The texts hold no sign, which the scan reads as the lexer does and the rule refuses (#327).
+        var cases =
+            from text in Gen.OneOf(HeaderTexts, HeaderLikeTexts)
+            from count in Gen.Choose(0, 12)
+            from sizes in Gen.ArrayOf(Gen.Choose(PdfFileReader.EndStreamSearchOverlap + 1, 40), count)
+            select (Text: text.Replace("+", string.Empty, StringComparison.Ordinal).Replace("-", string.Empty, StringComparison.Ordinal), Sizes: sizes);
+
+        Check.One(Settings.WithMaxTest(10 * Cases), Prop.ForAll(cases.ToArbitrary(), drawn =>
+        {
+            var data = Encoding.Latin1.GetBytes(drawn.Text);
+            var scanned = FirstHeaderTheScanTakes(data);
+
+            FirstHeaderReadPartly(data, drawn.Sizes).Should().Be(scanned < 0 ? -1 : HeaderDataStart + scanned, drawn.Text);
+        }));
+    }
+
+    [Fact]
     public void The_tail_of_an_object_s_endobj_reads_the_same_wherever_the_reads_part_the_data_up_to_where_it_stops()
     {
         // The search follows the object's own endobj through its reads, each repeating the last bytes of the one before, and
@@ -684,6 +706,36 @@ public class PropertyTests
         decimals < digits.Length
             ? digits[..^decimals] + "." + digits[^decimals..]
             : "0." + new string('0', decimals - digits.Length) + digits;
+
+    /// <summary>
+    /// Gives where the first object header of <paramref name="data"/> starts that the scan that rebuilds an index takes, and
+    /// that no regular byte precedes or follows, walking back from each <c>obj</c> in turn; -1 when there is none.
+    /// </summary>
+    private static long FirstHeaderTheScanTakes(byte[] data)
+    {
+        for (var from = 0; from < data.Length;)
+        {
+            var index = data.AsSpan(from).IndexOf("obj"u8);
+
+            if (index < 0)
+            {
+                return -1;
+            }
+
+            var keyword = from + index;
+
+            if (PdfFileReader.TryReadHeaderBackwards(data, keyword, out _, out _, out var start) &&
+                (start == 0 || !PdfCharacters.IsRegular(data[start - 1])) &&
+                (keyword + 3 == data.Length || !PdfCharacters.IsRegular(data[keyword + 3])))
+            {
+                return start;
+            }
+
+            from = keyword + 3;
+        }
+
+        return -1;
+    }
 
     /// <summary>
     /// Gives where the first object header of <paramref name="data"/> starts, which starts at offset
