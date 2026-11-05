@@ -789,12 +789,13 @@ public class CrossReferenceChainTests
     }
 
     [Theory]
-    [InlineData(false, "which the chain has already named")]
+    [InlineData(false, "where the chain has already reached a section it could not read")]
     [InlineData(true, "which the chain has already read")]
     public void The_prev_a_lost_stream_hands_on_ends_the_chain_in_a_loop_where_it_names_what_the_chain_reached(bool newest, string reached)
     {
-        // The stream's /Prev names the stream itself, which the chain named and could not read, or the newest table, which it
-        // read: a loop, reported as one, and the objects the chain lost are found by rebuilding the index (#208).
+        // The stream's /Prev names the stream itself, which the chain reached and could not read, or the newest table, which
+        // it read: a loop, reported as one, in words that say which, and the objects the chain lost are found by rebuilding
+        // the index (#188, #208).
         var named = newest ? LostStreamFiles.ThreeRevisions(prev: "{stream}").Newest : -1;
         var (file, _, stream, at) = LostStreamFiles.ThreeRevisions(prev: newest ? named.ToString(CultureInfo.InvariantCulture) : "{stream}");
         var looped = newest ? at : stream;
@@ -1224,7 +1225,7 @@ public class CrossReferenceChainTests
             CultureInfo.InvariantCulture,
             $"the /Prev of the section at offset {position} names offset {position}, which the chain has already read."));
         document.Reader.Structure.Sections.Should().HaveCount(2, "the first table is read once");
-        document.Reader.Structure.LoopOffsetRead.Should().BeTrue();
+        document.Reader.Structure.LoopTarget.Should().Be(XRefLoopTarget.Read);
     }
 
     [Fact]
@@ -3669,13 +3670,16 @@ public class CrossReferenceChainTests
     [Theory]
     [InlineData(1, 0)]
     [InlineData(0, 1)]
+    [InlineData(1, 1)]
     public void A_lost_stream_named_again_through_the_end_of_line_before_its_header_is_handed_on_once_and_ends_the_chain_in_a_loop(
         int namedShortBy, int ownShortBy)
     {
         // The newest table's /Prev names the lost stream at the end of line before its header, and the stream's own /Prev names
-        // the header, or the other way round. A stream handed on left no mark of where it is: it was read and handed on again,
-        // and reported twice, before the loop was seen. It is reached where it starts, which the /Prev that names it again
-        // reaches too: a loop, placed at the stream, through a section the chain named and could not read (#188, #208).
+        // the header, or the other way round, or the end of line again. A stream handed on left no mark of where it is: it was
+        // read and handed on again, and reported twice, before the loop was seen. It is reached where it starts, which the
+        // /Prev that names it again reaches too: a loop, placed at the stream — the same offset named again among them, which
+        // was placed in the white space —, through a section the chain reached and could not read, which the message said the
+        // chain had only named, of an offset it never named (#188, #208).
         var stream = LostStreamFiles.ThreeRevisions().Stream;
         var (file, _, at, _) = LostStreamFiles.ThreeRevisions(
             prev: (stream - ownShortBy).ToString(CultureInfo.InvariantCulture), namedShortBy: namedShortBy);
@@ -3686,14 +3690,112 @@ public class CrossReferenceChainTests
         document.Diagnostics.Count(diagnostic => diagnostic.Code == PdfDiagnosticCodes.XRefSectionUnreadable).Should().Be(1);
         document.Diagnostics[1].Position.Should().Be(stream);
         document.Diagnostics[1].Message.Should().Be(Invariant(
-            $"The cross-reference chain loops back on itself: the /Prev of the section at offset {stream - namedShortBy} names offset {stream - ownShortBy}, which the chain has already named."));
+            $"The cross-reference chain loops back on itself: the /Prev of the section at offset {stream - namedShortBy} names offset {stream - ownShortBy}, where the chain has already reached a section it could not read."));
         document.Reader.Structure.Sections.Should().HaveCount(2);
         document.Reader.Structure.LoopOffset.Should().Be(stream);
+        document.Reader.Structure.LoopTarget.Should().Be(XRefLoopTarget.Reached);
         Text(document, 3).Should().Be("only in the oldest");
         var findings = new PdfValidator().Validate(document).Findings.Select(finding => finding.RuleId);
         findings.Count(id => id == PdfValidationRuleIds.XRefSectionMalformed).Should().Be(1);
         findings.Count(id => id == PdfValidationRuleIds.XRefChainLoop).Should().Be(1);
         findings.Should().NotContain(PdfValidationRuleIds.XRefOffsetImprecise, "a section that cannot be read counts nowhere it is named short");
+    }
+
+    [Fact]
+    public void A_prev_looping_back_to_a_lost_stream_found_moved_says_the_chain_reached_a_section_it_could_not_read()
+    {
+        // The newest table names the lost stream 7 bytes short of it, inside the endobj before it, where the search near that
+        // offset finds it moved, and the stream's own /Prev names its header. The loop was said to run through an offset the
+        // chain had named, though it named only the place 7 bytes before: the chain reached the stream there, found moved,
+        // and could not read it, which the reader and the validator say (#188, #208).
+        var (file, _, stream, _) = LostStreamFiles.ThreeRevisions(prev: "{stream}", namedShortBy: 7);
+        using var document = PdfDocument.Open(file);
+
+        document.Reader.Structure.Sections[1].State.Should().Be(XRefSectionState.Malformed);
+        document.Reader.Structure.Sections[1].Offset.Should().Be(stream);
+        var loop = document.Diagnostics.Should().ContainSingle(diagnostic => diagnostic.Code == PdfDiagnosticCodes.XRefChainCycle).Which;
+        loop.Position.Should().Be(stream);
+        loop.Message.Should().Be(Invariant(
+            $"The cross-reference chain loops back on itself: the /Prev of the section at offset {stream} names offset {stream}, where the chain has already reached a section it could not read."));
+        new PdfValidator().Validate(document).Findings.Single(finding => finding.RuleId == PdfValidationRuleIds.XRefChainLoop).Message.Should().Be(Invariant(
+            $"The /Prev of the cross-reference section at offset {stream} names offset {stream}, a section the chain has already reached and could not read: the chain loops."));
+    }
+
+    [Theory]
+    [InlineData(3, 3, 1)]
+    [InlineData(3, 2, 2)]
+    [InlineData(3, 0, 1)]
+    public void A_prev_looping_back_through_the_white_space_before_a_table_is_placed_where_it_starts_whatever_offset_it_repeats(
+        int newestShortBy, int oldestShortBy, int imprecise)
+    {
+        // The newest table names the middle one 3 bytes short of it, in the spaces before it, and the oldest's /Prev names it
+        // again: at the same offset, at another in the spaces, or at its keyword. The same offset named again was the loop's
+        // place, in the spaces: the loop is placed where the table starts, whatever offset repeats, and each offset that
+        // falls short of it is counted once (#188).
+        var (file, oldest, middle, _) = NearbyFiles.ChainNamingTheSpacesBeforeTheMiddle(newestShortBy, oldestPrev: oldestShortBy);
+        using var document = PdfDocument.Open(file);
+
+        var loop = document.Diagnostics.Should().ContainSingle(diagnostic => diagnostic.Code == PdfDiagnosticCodes.XRefChainCycle).Which;
+        loop.Position.Should().Be(middle);
+        loop.Message.Should().Be(Invariant(
+            $"The cross-reference chain loops back on itself: the /Prev of the section at offset {oldest} names offset {middle - oldestShortBy}, which the chain has already read."));
+        document.Reader.Structure.LoopOffset.Should().Be(middle);
+        document.Reader.Structure.LoopTarget.Should().Be(XRefLoopTarget.Read);
+        var finding = new PdfValidator().Validate(document).Findings.Single(finding => finding.RuleId == PdfValidationRuleIds.XRefOffsetImprecise);
+        finding.Message.Should().StartWith(imprecise == 1 ? "An offset names the white space" : Invariant($"{imprecise} offsets name the white space"));
+        finding.Message.Should().EndWith(Invariant($"/Prev gives offset {middle - newestShortBy}, {newestShortBy} bytes before the xref keyword."));
+    }
+
+    [Fact]
+    public void A_prev_looping_back_to_the_offset_the_prev_of_the_newest_table_s_xrefstm_reached_is_placed_where_its_section_starts()
+    {
+        // The newest table's /XRefStm names the end of line before the table before it, which it read in the stream's place,
+        // and its /Prev the endobj 7 bytes short, whose search reads that table again, whole; the middle table's /Prev names
+        // again the offset the /XRefStm wrote. What the chain recorded there is the /Prev's reading, found moved from another
+        // offset: the white space is crossed again, and the loop placed where the table starts (#156, #188).
+        var (file, _, middleAt, previous, _) = HybridFiles.PrevFallingShortOfTheTableBefore(1, middle: true, middlePrev: 1);
+        using var document = PdfDocument.Open(file);
+
+        var loop = document.Diagnostics.Should().ContainSingle(diagnostic => diagnostic.Code == PdfDiagnosticCodes.XRefChainCycle).Which;
+        loop.Position.Should().Be(previous);
+        loop.Message.Should().Be(Invariant(
+            $"The cross-reference chain loops back on itself: the /Prev of the section at offset {middleAt} names offset {previous - 1}, which the chain has already read."));
+    }
+
+    [Fact]
+    public void A_prev_looping_back_to_the_offset_startxref_names_short_of_a_stream_is_placed_at_the_stream_and_counted_once()
+    {
+        // startxref names the stream two bytes short of its header, where the chain reads it, and the stream's /Prev writes
+        // the same offset: a loop placed at the stream, as one byte off is, and one offset that names the white space before
+        // it, written twice (#188).
+        var (file, stream) = NearbyFiles.StreamNamedShortTwice(prevShortBy: 2);
+        using var document = PdfDocument.Open(file);
+
+        document.Reader.Structure.LoopOffset.Should().Be(stream);
+        document.Diagnostics.Should().ContainSingle(diagnostic => diagnostic.Code == PdfDiagnosticCodes.XRefChainCycle).Which.Position.Should().Be(stream);
+        new PdfValidator().Validate(document).Findings.Single(finding => finding.RuleId == PdfValidationRuleIds.XRefOffsetImprecise).Message.Should().Be(Invariant(
+            $"An offset names the white space before what it designates rather than its first byte: startxref gives offset {stream - 2}, 2 bytes before the header of the cross-reference stream."));
+    }
+
+    [Theory]
+    [InlineData(0, 2, 2, null, null, 1, "/XRefStm", 2)]
+    [InlineData(0, 2, null, 2, null, 1, "/XRefStm", 2)]
+    [InlineData(2, null, null, 0, 2, 1, "/Prev", 2)]
+    [InlineData(0, 2, 1, null, null, 2, "/XRefStm", 2)]
+    [InlineData(3, null, null, 2, null, 2, "/Prev", 3)]
+    public void Each_offset_that_names_the_white_space_before_a_section_counts_once_whichever_naming_the_chain_met_first(
+        int newestPrev, int? newestXRefStm, int? middleXRefStm, int? oldestPrev, int? oldestXRefStm, int count, string first, int firstShortBy)
+    {
+        // The links name the white space before the middle table: one offset that an /XRefStm the newest table leaves to its
+        // /Prev writes, and the middle table's /XRefStm, or the oldest's looping /Prev, writes again; the same offset met first
+        // through a /Prev; and two offsets apart. An offset first met through an /XRefStm left to the /Prev was counted again
+        // at its next naming, and one first met through a /Prev was not: each offset, as written, counts once (#156, #188).
+        var (file, _, middle, _) = NearbyFiles.ChainNamingTheSpacesBeforeTheMiddle(newestPrev, newestXRefStm, middleXRefStm, oldestPrev, oldestXRefStm);
+        using var document = PdfDocument.Open(file);
+
+        var finding = new PdfValidator().Validate(document).Findings.Single(finding => finding.RuleId == PdfValidationRuleIds.XRefOffsetImprecise);
+        finding.Message.Should().StartWith(count == 1 ? "An offset names the white space" : Invariant($"{count} offsets name the white space"));
+        finding.Message.Should().EndWith(Invariant($"{first} gives offset {middle - firstShortBy}, {firstShortBy} bytes before the xref keyword."));
     }
 
     [Fact]

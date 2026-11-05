@@ -3156,27 +3156,56 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
                 // The section the chain should have gone on to is unknown: what only it indexed is the index's to
                 // find, as a missing section's is.
                 // Placed at the section looped back to, a position in the file — where it starts, when the offset names the
-                // white space before it —; one named outside the file, as an /XRefStm and a /Prev naming the same offset
-                // past its end are, is placed at what named it.
-                // A section the chain named there may have been read, or not: an /XRefStm that names nothing, named again by
-                // a /Prev, is a loop through an offset the chain only named, and so is a section reached and lost. One read
-                // where it was found moved is read all the same, though the chain named another offset for it: what was
-                // first named, or read, at a position the chain reached is recorded there, and changes its state when it is
-                // read where it was named, or found moved.
+                // white space before it, whether the chain named that offset before or not (#188) —; one named outside the
+                // file, as an /XRefStm and a /Prev naming the same offset past its end are, is placed at what named it. An
+                // offset the chain named and found no section at, nor any reached past the white space there, is where it
+                // loops: one where it found the section moved among them.
                 _indexIncomplete = true;
                 var looped = reached;
-                var read = sectionsAt.GetValueOrDefault(looped) is { State: XRefSectionState.Read or XRefSectionState.Relocated };
+
+                if (IsInFile(looped) && !_sectionsReadAt.Contains(looped))
+                {
+                    // Where the chain read, or looked for, a section at the offset, it knows where the first token there
+                    // starts; a section found moved from it keeps the loop where it was named, known without a look. Only an
+                    // offset that leads to what another link's record holds is looked at again.
+                    var start = sectionsAt.GetValueOrDefault(looped) switch
+                    {
+                        { } there when there.Offset == looped => looped + there.Padding,
+                        { } moved when moved.NamedOffset == looped => looped,
+                        _ => StartOf(looped),
+                    };
+                    looped = _sectionsReadAt.Contains(start) ? start : looped;
+                }
+
+                // A section the chain named there may have been read, or not: one read where it was found moved is read all
+                // the same, though the chain named another offset for it, and one that is there and could not be read,
+                // though it declares itself one, was reached, where it starts, or where the chain found it moved. Anything
+                // else is an offset the chain only named: an /XRefStm that names nothing, named again by a /Prev, among them.
+                // What was first named, or read, at a position the chain reached is recorded there, and changes its state
+                // when it is read where it was named, or found moved.
+                var target = sectionsAt.GetValueOrDefault(looped) switch
+                {
+                    { State: XRefSectionState.Read or XRefSectionState.Relocated } => XRefLoopTarget.Read,
+                    { State: XRefSectionState.Malformed } lost when _sectionsReadAt.Contains(lost.Offset + lost.Padding) => XRefLoopTarget.Reached,
+                    _ => XRefLoopTarget.Named,
+                };
                 _structure.LoopOffset = looped;
                 _structure.LoopWrittenOffset = offset;
-                _structure.LoopOffsetRead = read;
+                _structure.LoopTarget = target;
                 _structure.LoopNamedBy = naming;
                 _structure.LoopNamedFrom = namedFrom;
                 var inFile = IsInFile(looped);
+                var what = target switch
+                {
+                    XRefLoopTarget.Read => "which the chain has already read",
+                    XRefLoopTarget.Reached => "where the chain has already reached a section it could not read",
+                    _ => inFile ? "which the chain has already named" : "outside the file, which the chain has already named",
+                };
                 _diagnostics.Warn(
                     PdfDiagnosticCodes.XRefChainCycle,
                     string.Create(
                         CultureInfo.InvariantCulture,
-                        $"The cross-reference chain loops back on itself: the {naming} of the section at offset {namedFrom} names offset {DescribeOffset(offset)}, {(read ? "which the chain has already read" : inFile ? "which the chain has already named" : "outside the file, which the chain has already named")}."),
+                        $"The cross-reference chain loops back on itself: the {naming} of the section at offset {namedFrom} names offset {DescribeOffset(offset)}, {what}."),
                     inFile ? looped : namedFrom);
                 break;
             }
@@ -3191,6 +3220,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
                 // Placed where the chain goes on, a position in the file; one named outside the file is placed at what
                 // named it, the offset in the message, as a section that is missing is (#125).
                 _cutByGuard = true;
+
                 var cut = PositionOf(offset);
                 var inFile = IsInFile(cut);
 

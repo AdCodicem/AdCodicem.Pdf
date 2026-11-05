@@ -523,9 +523,10 @@ internal static class NearbyFiles
 
     /// <summary>
     /// An empty document indexed by one cross-reference stream, object 3 at <c>Stream</c>, after two spaces: <c>startxref</c>
-    /// names it at the first of them, and its own <c>/Prev</c> at the second.
+    /// names it at the first of them, and its own <c>/Prev</c> <paramref name="prevShortBy"/> bytes short of it, at the
+    /// second by default, or at the first, the offset <c>startxref</c> writes.
     /// </summary>
-    public static (byte[] File, long Stream) StreamNamedShortTwice()
+    public static (byte[] File, long Stream) StreamNamedShortTwice(int prevShortBy = 1)
     {
         var file = new HandWrittenFile(version: "1.5");
         var catalog = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>");
@@ -535,9 +536,53 @@ internal static class NearbyFiles
         var rows = StreamRows((0, 0, 65535), (1, catalog, 0), (1, pages, 0), (1, stream, 0));
         file.Object(3, string.Create(
             CultureInfo.InvariantCulture,
-            $"<< /Type /XRef /Size 4 /W [1 4 2] /Root 1 0 R /Prev {stream - 1} /Length {rows.Length} >>\nstream\n{rows}\nendstream"));
+            $"<< /Type /XRef /Size 4 /W [1 4 2] /Root 1 0 R /Prev {stream - prevShortBy} /Length {rows.Length} >>\nstream\n{rows}\nendstream"));
         file.Raw(string.Create(CultureInfo.InvariantCulture, $"startxref\n{stream - 2}\n%%EOF\n"));
         return (file.Bytes, stream);
+    }
+
+    /// <summary>
+    /// A document saved three times, whose links name the white space before the middle table, at <c>Middle</c>, which
+    /// three spaces precede, past the end of line of the object before it. The oldest table, at <c>Oldest</c>, indexes
+    /// objects 1 to 3, <c>(three)</c>; the middle one, object 4, <c>(four)</c>, and names the oldest through <c>/Prev</c>; the
+    /// newest, at <c>Newest</c>, object 5, <c>(five)</c>. Each other count is how many bytes short of the middle table a link
+    /// names, the link written only where one is given: the newest's <c>/Prev</c> <paramref name="newestPrev"/> and
+    /// <c>/XRefStm</c> <paramref name="newestXRefStm"/>, the middle's <c>/XRefStm</c> <paramref name="middleXRefStm"/>, and
+    /// the oldest's <c>/Prev</c> <paramref name="oldestPrev"/> and <c>/XRefStm</c> <paramref name="oldestXRefStm"/>, each
+    /// written in ten digits.
+    /// </summary>
+    public static (byte[] File, long Oldest, long Middle, long Newest) ChainNamingTheSpacesBeforeTheMiddle(
+        int newestPrev, int? newestXRefStm = null, int? middleXRefStm = null, int? oldestPrev = null, int? oldestXRefStm = null)
+    {
+        var file = new HandWrittenFile();
+        var catalog = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>");
+        var pages = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>");
+        var three = file.Object(3, "(three)");
+        var oldest = file.Position;
+
+        // The oldest table names the middle one, written after it, through stand-ins of ten characters, replaced once its
+        // place is known.
+        file.Raw(string.Create(
+            CultureInfo.InvariantCulture,
+            $"xref\n0 4\n0000000000 65535 f \n{catalog:D10} 00000 n \n{pages:D10} 00000 n \n{three:D10} 00000 n \ntrailer\n<< /Size 4 /Root 1 0 R{(oldestPrev is null ? string.Empty : " /Prev @@@@PREV@@")}{(oldestXRefStm is null ? string.Empty : " /XRefStm @@XREFSTM@")} >>\nstartxref\n{oldest}\n%%EOF\n"));
+        var four = file.Object(4, "(four)");
+        file.Raw("   ");
+        var middle = file.Position;
+        file.Raw(string.Create(
+            CultureInfo.InvariantCulture,
+            $"xref\n0 1\n0000000000 65535 f \n4 1\n{four:D10} 00000 n \ntrailer\n<< /Size 5 /Root 1 0 R /Prev {oldest}{Link("XRefStm", middle, middleXRefStm)} >>\nstartxref\n{middle}\n%%EOF\n"));
+        var five = file.Object(5, "(five)");
+        var newest = file.Position;
+        file.Raw(string.Create(
+            CultureInfo.InvariantCulture,
+            $"xref\n0 1\n0000000000 65535 f \n5 1\n{five:D10} 00000 n \ntrailer\n<< /Size 6 /Root 1 0 R{Link("Prev", middle, newestPrev)}{Link("XRefStm", middle, newestXRefStm)} >>\nstartxref\n{newest}\n%%EOF\n"));
+        var text = Encoding.Latin1.GetString(file.Bytes)
+            .Replace("@@@@PREV@@", string.Create(CultureInfo.InvariantCulture, $"{middle - oldestPrev.GetValueOrDefault():D10}"), StringComparison.Ordinal)
+            .Replace("@@XREFSTM@", string.Create(CultureInfo.InvariantCulture, $"{middle - oldestXRefStm.GetValueOrDefault():D10}"), StringComparison.Ordinal);
+        return (Encoding.Latin1.GetBytes(text), oldest, middle, newest);
+
+        static string Link(string key, long middle, int? shortBy) =>
+            shortBy is { } bytes ? string.Create(CultureInfo.InvariantCulture, $" /{key} {middle - bytes:D10}") : string.Empty;
     }
 
     /// <summary>

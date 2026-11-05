@@ -519,12 +519,13 @@ internal static class HybridFiles
     /// as <c>(three as the oldest has it)</c> — or, with <paramref name="middle"/>, a middle table, at <c>Middle</c>, which
     /// indexes object 3 as <c>(three as the middle revision has it)</c>, names the oldest through <c>/Prev</c> and, where
     /// <paramref name="middleXRefStm"/> is given, the place that many bytes before the table before the newest through
-    /// <c>/XRefStm</c>. The middle table is written before the oldest, which lies nearer the table before the newest, both
-    /// within reach of a search near it; without a middle table, the oldest lies 1,200 bytes before it, out of reach. The
-    /// newest table indexes object 5, <c>(five)</c>.
+    /// <c>/XRefStm</c> — and, where <paramref name="middlePrev"/> is given, names the place that many bytes before that table
+    /// through <c>/Prev</c> in place of the oldest. The middle table is written before the oldest, which lies nearer the
+    /// table before the newest, both within reach of a search near it; without a middle table, the oldest lies 1,200 bytes
+    /// before it, out of reach. The newest table indexes object 5, <c>(five)</c>.
     /// </summary>
     public static (byte[] File, long Oldest, long Middle, long Previous, long Newest) PrevFallingShortOfTheTableBefore(
-        int xrefStmShortBy, bool middle, int? middleXRefStm = null)
+        int xrefStmShortBy, bool middle, int? middleXRefStm = null, int? middlePrev = null)
     {
         var file = new HandWrittenFile();
         var (catalog, pages, _) = Page(file);
@@ -555,7 +556,7 @@ internal static class HybridFiles
         var newest = file.Position;
         file.Raw(Invariant($"xref\n0 1\n0000000000 65535 f \n5 1\n{Row(five)}trailer\n<< /Size 6 /Root 1 0 R /Prev {previous - 7} /XRefStm {previous - xrefStmShortBy} >>\nstartxref\n{newest}\n%%EOF\n"));
         var text = Encoding.Latin1.GetString(file.Bytes)
-            .Replace("@@OLDEST@@", Invariant($"{oldest:D10}"), StringComparison.Ordinal)
+            .Replace("@@OLDEST@@", Invariant($"{(middlePrev is { } before ? previous - before : oldest):D10}"), StringComparison.Ordinal)
             .Replace("@@BEFORE@@", Invariant($"{previous - middleXRefStm.GetValueOrDefault():D10}"), StringComparison.Ordinal);
         return (Encoding.Latin1.GetBytes(text), oldest, middleAt, previous, newest);
     }

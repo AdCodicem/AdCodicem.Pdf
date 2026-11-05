@@ -16,10 +16,11 @@ namespace AdCodicem.Pdf.Validation.Rules;
 /// the first of them — a writer that does it does it everywhere.
 /// </para>
 /// <para>
-/// Sections come first, in the chain's order, then entries, by object number. A section counts once for each offset, as
-/// written, that names it short: where it was read, where an <c>/XRefStm</c> names it again, or names what its table's
-/// <c>/Prev</c> reads, through the white space before it (#156), and where a <c>/Prev</c> loops back to it so (#188) —
-/// so that what is reported does not depend on which naming the chain met first.
+/// Sections come first, in the chain's order, then entries, by object number. Each offset that names a section short counts
+/// once, as written, however many namings write it: where the section was read, where an <c>/XRefStm</c> names it again,
+/// or names what its table's <c>/Prev</c> reads, through the white space before it (#156), and where a <c>/Prev</c> loops
+/// back to it so (#188) — so that what is reported does not depend on which naming the chain met first, nor on whether
+/// it went on to the section or left it to another link.
 /// </para>
 /// </remarks>
 internal sealed class OffsetImpreciseRule : IValidationRule
@@ -36,6 +37,9 @@ internal sealed class OffsetImpreciseRule : IValidationRule
         var count = 0;
         ProbeFinding? first = null;
 
+        // The offsets counted, as written: one a /Prev and an /XRefStm both write, or two tables copy, is one offset.
+        var counted = new HashSet<long>(SeededComparer.Instance);
+
         foreach (var section in context.Structure.Sections)
         {
             // What a naming again reached is the section it records as read there, where the white space it falls short by
@@ -49,7 +53,7 @@ internal sealed class OffsetImpreciseRule : IValidationRule
                 _ => XRefSectionKind.Unknown,
             };
 
-            if (kind == XRefSectionKind.Unknown || section.Padding <= 0)
+            if (kind == XRefSectionKind.Unknown || section.Padding <= 0 || !counted.Add(section.WrittenOffset))
             {
                 continue;
             }
@@ -65,12 +69,14 @@ internal sealed class OffsetImpreciseRule : IValidationRule
         }
 
         // A /Prev that loops back through the white space before a section the chain read names it short too, the loop
-        // placed where that section starts, past what the offset names: the chain's last naming. One that loops back to the
-        // offset it names, or to a section the chain could not read, names none short.
+        // placed where that section starts, past what the offset names: the chain's last naming, counted where no naming
+        // before it wrote that offset. One that loops back to where a section starts, or to an offset the chain reached no
+        // section past, or to a section the chain could not read, names none short.
         var structure = context.Structure;
         var named = context.Document.Reader.PositionOf(structure.LoopWrittenOffset);
 
-        if (structure.LoopOffset > named && ReadAt(structure, structure.LoopOffset) is { } looped)
+        if (structure.LoopOffset > named && ReadAt(structure, structure.LoopOffset) is { } looped &&
+            counted.Add(structure.LoopWrittenOffset))
         {
             if (count++ == 0)
             {

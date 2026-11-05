@@ -1073,7 +1073,7 @@ public class CrossReferenceRuleTests
         var update = PdfTemplate.OffsetOf(file, "\nxref\n", 2) + 1;
         using var document = PdfDocument.Open(file);
 
-        document.Reader.Structure.LoopOffsetRead.Should().BeFalse();
+        document.Reader.Structure.LoopTarget.Should().Be(XRefLoopTarget.Named);
         var cycle = document.Diagnostics.Should().ContainSingle(d => d.Code == PdfDiagnosticCodes.XRefChainCycle).Which;
         cycle.Position.Should().Be(hole);
         cycle.Message.Should().EndWith($"names offset {hole}, which the chain has already named.");
@@ -1174,7 +1174,7 @@ public class CrossReferenceRuleTests
         var structure = document.Reader.Structure;
         structure.LoopOffset = 9;
         structure.LoopWrittenOffset = 9;
-        structure.LoopOffsetRead = true;
+        structure.LoopTarget = XRefLoopTarget.Read;
         structure.LoopNamedBy = "/Prev";
         var context = new ValidationContext(document, capacity: 16);
 

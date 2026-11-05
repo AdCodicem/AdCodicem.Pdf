@@ -59,12 +59,14 @@ internal sealed class FileStructure
     public bool ChainRead { get; set; }
 
     /// <summary>
-    /// Gets where the chain named, through <see cref="LoopNamedBy"/>, a section it had already read; -1 when it
-    /// never did.
+    /// Gets where the chain named again, through <see cref="LoopNamedBy"/>, what it had already reached; -1 when it never
+    /// did.
     /// </summary>
     /// <remarks>
     /// A position, the header's offset added; one whose sum a long cannot hold reads as <see cref="long.MaxValue"/>, past
-    /// the end of the file (#125). <see cref="LoopWrittenOffset"/> is the offset as written.
+    /// the end of the file (#125). <see cref="LoopWrittenOffset"/> is the offset as written. Where a section the chain
+    /// reached starts, past the white space and comments the offset names, whether the chain named that offset before or
+    /// not (#188); the offset itself where it reaches no such section.
     /// </remarks>
     public long LoopOffset { get; set; } = -1;
 
@@ -72,10 +74,10 @@ internal sealed class FileStructure
     public long LoopWrittenOffset { get; set; } = -1;
 
     /// <summary>
-    /// Gets a value indicating whether the chain read a section at the offset it looped back through, rather than only
-    /// naming it there; false when it never looped.
+    /// Gets what the chain had found at <see cref="LoopOffset"/>: a section it read there, one it reached there and could
+    /// not read, or only an offset it named; <see cref="XRefLoopTarget.Named"/> when it never looped.
     /// </summary>
-    public bool LoopOffsetRead { get; set; }
+    public XRefLoopTarget LoopTarget { get; set; }
 
     /// <summary>Gets what named the section the chain looped back to.</summary>
     public string? LoopNamedBy { get; set; }
