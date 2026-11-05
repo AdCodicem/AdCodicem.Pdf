@@ -608,6 +608,58 @@ public class ReaderTimingTests
         }
     }
 
+    [Fact]
+    public void A_search_through_four_times_as_long_a_line_of_one_byte_tokens_costs_about_four_times_the_time()
+    {
+        // A stream whose /Length runs past its data, one line of one-byte tokens that a '%' ends: the search for its endstream
+        // lexes the line each read ends in as a load reads it, and carries what it lexed into the next read, a few fields,
+        // rather than lexing the line again from its start (#261). The search allocates the same whatever the line's length,
+        // and four times the line take about four times as long. Lexing the line again from its start at each read took 13
+        // times as long, 1.13 s against 85 ms. The measure is the ratio, the best search of each, run in turn.
+        const int Small = 1024 * 1024;
+        const int Large = 4 * Small;
+        var small = LineOfOneByteTokens(Small);
+        var large = LineOfOneByteTokens(Large);
+
+        var smallAllocated = Allocations.Least(() => Search(small, Small), out _);
+        var largeAllocated = Allocations.Least(() => Search(large, Large), out _);
+        var (smallTime, largeTime) = BestOfEach(() => Search(small, Small), () => Search(large, Large));
+
+        largeAllocated.Should().Be(smallAllocated, "what the search allocates does not grow with what it reads");
+        largeTime.Should().BeLessThan(
+            smallTime * 8,
+            "four times the line must cost about four times the time ({0} for {1:N0} bytes, {2} for {3:N0})",
+            smallTime,
+            Small,
+            largeTime,
+            Large);
+
+        static int Search(byte[] file, int length)
+        {
+            using var document = PdfDocument.Open(file);
+            var data = document.GetObject(new PdfObjectId(3)).AsStream().Required().RawLength;
+            data.Should().Be(length);
+            return data;
+        }
+
+        static byte[] LineOfOneByteTokens(int length)
+        {
+            var data = new StringBuilder(length);
+
+            while (data.Length < length - 1)
+            {
+                data.Append("1 ");
+            }
+
+            data.Length = length - 1;
+            return new TestPdfBuilder()
+                .WithObject(1, "<< /Type /Catalog /Pages 2 0 R >>")
+                .WithObject(2, "<< /Type /Pages /Kids [] /Count 0 >>")
+                .WithObject(3, string.Create(CultureInfo.InvariantCulture, $"<< /Length {length + 1000} >>\nstream\n{data}%\nendstream"))
+                .BuildClassic(rootNumber: 1);
+        }
+    }
+
     /// <summary>
     /// Gets the shortest run of each action, the two run in turn: five times each at least, and on until neither has run
     /// faster for three turns — at most forty turns, or twenty seconds —, so that both are timed warm whatever ran before.
