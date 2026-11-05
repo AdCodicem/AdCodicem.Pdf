@@ -3726,7 +3726,9 @@ public class CrossReferenceChainTests
     public void A_section_read_in_part_reports_its_rows_of_a_reserved_type_after_what_it_lost()
     {
         // The update declares rows for objects 7 to 9 and holds one of them: read only in part, it is reported so first, then
-        // for the rows of a reserved type it holds, object 3's and object 7's (#210, #221).
+        // for the rows of a reserved type it holds, object 3's and object 7's (#210, #221). The index it left incomplete is
+        // rebuilt as the validation starts, which reads object 3 as the scan finds it, the original revision's: the finding
+        // says the reader read the rows as the null object only until then.
         var (file, _, newer) = ReservedRowFiles.Updated(type: 3, more: 1, missing: 2);
         using var document = PdfDocument.Open(file);
 
@@ -3734,8 +3736,12 @@ public class CrossReferenceChainTests
         document.Diagnostics.Should().OnlyContain(entry => entry.Position == newer);
         document.Diagnostics[1].Message.Should().Contain(" gives 2 rows a reserved type: the row for object 3 gives it type 3, the first of them. ");
         document.GetObject(new PdfObjectId(3)).Should().BeSameAs(PdfNull.Instance);
+        document.WasRepaired.Should().BeFalse();
         new PdfValidator().Validate(document).Findings.Should().ContainSingle(finding => finding.RuleId == PdfValidationRuleIds.XRefEntryTypeReserved)
-            .Which.Message.Should().Contain(" gives 2 rows a reserved type: the row for object 3 gives it type 3, the first of them. ");
+            .Which.Message.Should().Be(Invariant(
+                $"The cross-reference stream at offset {newer} gives 2 rows a reserved type: the row for object 3 gives it type 3, the first of them. ISO 32000-1 defines types 0, 1 and 2, and reads any other as a reference to the null object (7.5.8.3), as the reader did until it rebuilt the index by scanning the file; it now reads each object such a row numbers as the rebuild finds it."));
+        document.WasRepaired.Should().BeTrue();
+        document.GetObject(new PdfObjectId(3)).Should().BeOfType<PdfString>().Which.ToText().Should().Be("three");
     }
 
     /// <summary>Where the first object starts: after the header line and the comment of binary bytes.</summary>

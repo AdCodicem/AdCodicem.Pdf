@@ -2113,6 +2113,27 @@ public class CrossReferenceRuleTests
         finding.Remedy.Should().Be("Rewrite the cross-reference stream with a row of type 0, 1 or 2 for each object it numbers: type 0 for one that is free.");
     }
 
+    [Theory]
+    [InlineData(true, "new three")]
+    [InlineData(false, "three")]
+    public void A_row_of_a_reserved_type_in_an_index_rebuilt_at_opening_is_said_to_be_read_so_only_until_the_rebuild(bool newer, string expected)
+    {
+        // The update's /Prev names an offset past the end of the file, so the index is rebuilt at opening, the update's row
+        // of type 3 read first: object 3 reads as the scan finds it, its last definition, the update's or the original's.
+        // The finding says the reader read the row as the null object only until it rebuilt the index (#221).
+        var (file, _, newerAt) = ReservedRowFiles.Updated(type: 3, newer: newer, prevShift: 700);
+        using var document = PdfDocument.Open(file);
+
+        document.WasRepaired.Should().BeTrue();
+        document.Diagnostics.Should().Contain(diagnostic => diagnostic.Code == PdfDiagnosticCodes.XRefEntryReserved);
+        document.GetObject(new PdfObjectId(3)).Should().BeOfType<PdfString>().Which.ToText().Should().Be(expected);
+        var finding = Single(new PdfValidator().Validate(document), PdfValidationRuleIds.XRefEntryTypeReserved);
+        finding.Location.Position.Should().Be(newerAt);
+        finding.Message.Should().Be(string.Create(
+            CultureInfo.InvariantCulture,
+            $"The cross-reference stream at offset {newerAt} gives 1 row a reserved type: the row for object 3 gives it type 3. ISO 32000-1 defines types 0, 1 and 2, and reads any other as a reference to the null object (7.5.8.3), as the reader did until it rebuilt the index by scanning the file; it now reads each object such a row numbers as the rebuild finds it."));
+    }
+
     [Fact]
     public void Each_stream_giving_rows_of_a_reserved_type_is_one_finding_its_first_row_named_and_its_rows_counted()
     {

@@ -16,6 +16,11 @@ namespace AdCodicem.Pdf.Validation.Rules;
 /// (<see cref="PdfValidationRuleIds.ObjectReferenceMissing"/>). What a later version may define the type to mean is
 /// unknown to this one. Each section that gives such rows is reported once, the first named and the others counted,
 /// whatever became of the section once its rows were read: the rows it read are the file's, before a guard's cut too.
+/// A rebuilt index (<see cref="Documents.PdfDocument.WasRepaired"/>) — at opening, or as the validation settles the index
+/// before its first rule — no longer holds what the chain's rows gave: each object such a row numbers reads as the rebuild
+/// finds it, which is the object an older revision defines when the file writes no newer one, and the finding says the
+/// reader read the rows so only until it rebuilt the index. Settled before the first rule, whether the index was rebuilt
+/// is known here and stays so, so that the finding reads the same whatever was read before the validation.
 /// </remarks>
 internal sealed class ReservedTypeRule : IValidationRule
 {
@@ -38,12 +43,17 @@ internal sealed class ReservedTypeRule : IValidationRule
 
             var others = section.ReservedRows > 1 ? ", the first of them" : string.Empty;
 
+            // A rebuild serves each object as the scan finds it, the row the chain read for it set aside.
+            var reader = context.Document.WasRepaired
+                ? "as the reader did until it rebuilt the index by scanning the file; it now reads each object such a row numbers as the rebuild finds it"
+                : "as the reader does";
+
             context.Report(
                 this,
                 PdfValidationLocation.AtPosition(section.Offset),
                 string.Create(
                     CultureInfo.InvariantCulture,
-                    $"The cross-reference stream at offset {section.Offset} gives {CountText.Grouped(section.ReservedRows, "row", "rows")} a reserved type: {first}{others}. ISO 32000-1 defines types 0, 1 and 2, and reads any other as a reference to the null object (7.5.8.3), as the reader does."),
+                    $"The cross-reference stream at offset {section.Offset} gives {CountText.Grouped(section.ReservedRows, "row", "rows")} a reserved type: {first}{others}. ISO 32000-1 defines types 0, 1 and 2, and reads any other as a reference to the null object (7.5.8.3), {reader}."),
                 "Rewrite the cross-reference stream with a row of type 0, 1 or 2 for each object it numbers: type 0 for one that is free.");
         }
     }
