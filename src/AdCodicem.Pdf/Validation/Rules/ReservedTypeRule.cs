@@ -16,11 +16,13 @@ namespace AdCodicem.Pdf.Validation.Rules;
 /// (<see cref="PdfValidationRuleIds.ObjectReferenceMissing"/>). What a later version may define the type to mean is
 /// unknown to this one. Each section that gives such rows is reported once, the first named and the others counted,
 /// whatever became of the section once its rows were read: the rows it read are the file's, before a guard's cut too.
-/// A rebuilt index (<see cref="Documents.PdfDocument.WasRepaired"/>) — at opening, or as the validation settles the index
-/// before its first rule — no longer holds what the chain's rows gave: each object such a row numbers reads as the rebuild
-/// finds it, which is the object an older revision defines when the file writes no newer one, and the finding says the
-/// reader read the rows so only until it rebuilt the index. Settled before the first rule, whether the index was rebuilt
-/// is known here and stays so, so that the finding reads the same whatever was read before the validation.
+/// A rebuilt index (<see cref="Documents.PdfDocument.WasRepaired"/>) — at opening; by a read after it that asks for an
+/// object the index lacks while the index may have lost entries, or that finds an object neither where its entry says
+/// nor near it; or as the validation settles the index before its first rule — no longer holds what the chain's rows
+/// gave: each object such a row numbers reads as the rebuild finds it, which is the object an older revision defines
+/// when the file writes no newer one, and the finding says the reader read the rows so only until it rebuilt the index.
+/// Settled before the first rule, whether the index was rebuilt is known here and stays so, so that the finding reads the
+/// same whatever was read before the validation.
 /// </remarks>
 internal sealed class ReservedTypeRule : IValidationRule
 {

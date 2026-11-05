@@ -272,8 +272,8 @@ public static class PdfDiagnosticCodes
 
     /// <summary>
     /// A Flate stream's data decoded to its end, but the zlib checksum that follows it disagrees with what it
-    /// decoded to: all of it was kept, as other readers keep it, and some of it may be wrong. Data that decoded to nothing
-    /// is said to have, and nothing more.
+    /// decoded to: all of it was kept, as other readers keep it, and some of it may be wrong. Of data that decoded to
+    /// nothing, the report says only that it decoded to nothing.
     /// </summary>
     public const string FilterChecksumMismatch = "filter.checksum-mismatch";
 

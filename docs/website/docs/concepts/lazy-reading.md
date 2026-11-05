@@ -88,11 +88,12 @@ bytes are not all zero, which ISO 32000-1 leaves for later versions to define an
 object — is read so: the map holds its number as a free one's, no older section's row stands for its object, which
 reads as null, and nothing is rebuilt for it (`xref.entry-reserved`,
 [#221](https://github.com/AdCodicem/AdCodicem.Pdf/issues/221)) — until the map is rebuilt for another fault, at
-opening or as a validation settles it, which reads the object as the scan finds it: `xref.entry-type-reserved` then
-says the reader read the row so only until then. A classic table that holds no subsection, its `trailer`
-keyword right after its `xref` keyword, reads as one whose one subsection is `0 0`: it indexes nothing, and nothing is
-rebuilt for it (`xref.section-empty`, [#222](https://github.com/AdCodicem/AdCodicem.Pdf/issues/222)) — unless no
-section of the chain indexes anything, below.
+any of the moments below: at opening, by a read after it, or as a validation settles it. The rebuild reads the object
+as the scan finds it, and `xref.entry-type-reserved` then says the reader read the row so only until then. A classic
+table that holds no subsection, its `trailer` keyword right after its `xref` keyword, reads as one whose one subsection
+is `0 0`: it indexes nothing, and nothing is rebuilt for it (`xref.section-empty`,
+[#222](https://github.com/AdCodicem/AdCodicem.Pdf/issues/222)) — unless no section of the chain indexes anything,
+below.
 
 The map is rebuilt by scanning the whole file, once at most, and never while the chain is read:
 

@@ -130,10 +130,9 @@ data again, the last few kilobytes before the fault a byte at a time; a sound st
 
 A Flate stream that decodes to its end, but whose zlib checksum disagrees with what it decoded to, is a
 warning of its own, `filter.checksum-mismatch`: all of its data is kept, as other readers keep it, and some of
-it may be wrong — the checksum does not say where; of data that decoded to nothing, the report says only that. In
-the project's test corpus, none of the 86 such streams
-could be shown intact, and 39 were shown damaged, 28 of them by a change of line endings that, undone, makes
-the checksum agree.
+it may be wrong — the checksum does not say where; of data that decoded to nothing, the report says only that it
+did. In the project's test corpus, none of the 86 such streams could be shown intact, and 39 were shown damaged, 28
+of them by a change of line endings that, undone, makes the checksum agree.
 
 An LZW stream that uses a code it has not defined stops there, since what follows cannot be read reliably.
 
