@@ -354,6 +354,24 @@ public class FilterDamageTests
             $"A Flate stream is corrupt at byte {faultAt} of its {data.Length}; the 1 byte decoded before the fault was found was kept."));
     }
 
+    [Theory]
+    [InlineData("78DA030000000002")]
+    [InlineData("789C0300FFFFFFFF")]
+    [InlineData("789C010000FFFF00000002")]
+    public void A_flate_stream_that_decodes_to_nothing_against_a_wrong_checksum_says_it_decoded_to_nothing(string hex)
+    {
+        // A last block that is empty, fixed or stored, then a checksum other than empty data's: nothing decoded, so nothing
+        // kept may be wrong, and the report says only that the data decoded to nothing, not that all of no bytes were kept.
+        var diagnostics = new PdfDiagnostics();
+
+        Decode(Convert.FromHexString(hex), PdfName.FlateDecode, diagnostics).ToArray().Should().BeEmpty();
+
+        Describe(diagnostics).Should().Be(Report(
+            PdfDiagnosticSeverity.Warning,
+            "A Flate stream's checksum disagrees with its data, which decoded to nothing.",
+            PdfDiagnosticCodes.FilterChecksumMismatch));
+    }
+
     [Fact]
     public void Leaves_encoded_a_stream_that_turns_corrupt_before_anything_decodes()
     {
@@ -1743,7 +1761,9 @@ public class FilterDamageTests
         $"A Flate stream is corrupt at byte {faultAt} of its {encoded}; the {kept} bytes decoded before the fault was found were kept.";
 
     private static string ChecksumMismatch(int decoded) =>
-        $"A Flate stream's checksum disagrees with the {decoded} bytes its data decoded to; all were kept, and some may be wrong.";
+        decoded == 0
+            ? "A Flate stream's checksum disagrees with its data, which decoded to nothing."
+            : $"A Flate stream's checksum disagrees with the {decoded} bytes its data decoded to; all were kept, and some may be wrong.";
 
     private static string ChecksumReport(int decoded) =>
         Report(PdfDiagnosticSeverity.Warning, ChecksumMismatch(decoded), PdfDiagnosticCodes.FilterChecksumMismatch);

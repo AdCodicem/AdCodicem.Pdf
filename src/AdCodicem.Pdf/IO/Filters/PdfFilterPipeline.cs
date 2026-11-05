@@ -671,11 +671,14 @@ internal static class PdfFilterPipeline
                 break;
 
             case FlateEnding.ChecksumMismatch:
+                // Data that decoded to nothing kept nothing that could be wrong: the report says only that it decoded so.
                 diagnostics?.Warn(
                     PdfDiagnosticCodes.FilterChecksumMismatch,
-                    string.Create(
-                        CultureInfo.InvariantCulture,
-                        $"A Flate stream's checksum disagrees with the {CountText.Bytes(decoded)} its data decoded to; {(decoded == 1 ? "it was kept, and may be wrong" : "all were kept, and some may be wrong")}."),
+                    decoded == 0
+                        ? "A Flate stream's checksum disagrees with its data, which decoded to nothing."
+                        : string.Create(
+                            CultureInfo.InvariantCulture,
+                            $"A Flate stream's checksum disagrees with the {CountText.Bytes(decoded)} its data decoded to; {(decoded == 1 ? "it was kept, and may be wrong" : "all were kept, and some may be wrong")}."),
                     position);
                 break;
 
