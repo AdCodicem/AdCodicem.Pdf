@@ -152,4 +152,12 @@ internal sealed class FileStructure
 
     /// <summary>Records a section the chain named.</summary>
     public void Add(XRefSectionRecord section) => _sections.Add(section);
+
+    /// <summary>
+    /// Puts <paramref name="replacement"/> where <paramref name="section"/>, a section the chain named, is recorded: an
+    /// <c>/XRefStm</c>'s reading in the stream's place that becomes the naming of what its table's <c>/Prev</c> read (#156).
+    /// </summary>
+    /// <param name="section">A record <see cref="Add"/> recorded.</param>
+    /// <param name="replacement">The record that takes its place, in the chain's order.</param>
+    public void Replace(XRefSectionRecord section, XRefSectionRecord replacement) => _sections[_sections.LastIndexOf(section)] = replacement;
 }

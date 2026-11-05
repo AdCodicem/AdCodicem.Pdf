@@ -220,11 +220,14 @@ internal sealed class XRefSectionRecord
     public string? NamesNoStream { get; set; }
 
     /// <summary>
-    /// Gets a value indicating whether the <c>/XRefStm</c> names, in the file, what its own table's <c>/Prev</c> names too,
-    /// which that <c>/Prev</c> reads (<see cref="ReadAs"/>) after the reader reported the naming: the report said only that
-    /// the chain looks for it there, and what it found is known from <see cref="ReadAs"/> once the chain is read (#156). False
-    /// for every other naming, and where a guard that stopped the table kept the <c>/Prev</c> from being read, or that offset
-    /// lies outside the file.
+    /// Gets a value indicating whether the <c>/XRefStm</c> names, in the file, what its own table's <c>/Prev</c> reaches too,
+    /// which that <c>/Prev</c> reads (<see cref="ReadAs"/>): what the <c>/Prev</c> names, or what its search near the offset
+    /// it names came to, which the <c>/XRefStm</c> read in the stream's place first (#156). The reader reported the naming
+    /// as it knew it then — before the <c>/Prev</c> read what is there, as what the chain looks for there; as what the
+    /// <c>/XRefStm</c>'s own reading found, a table whose rows were read in the stream's place; or, a stream that reading
+    /// took for the table's own, once the <c>/Prev</c> read it —, and what the <c>/Prev</c> found is known from
+    /// <see cref="ReadAs"/> once the chain is read. False for every other naming, and where a guard that stopped the table
+    /// kept the <c>/Prev</c> from being read, or that offset lies outside the file.
     /// </summary>
     public bool NamesWhatPreviousReads { get; set; }
 
