@@ -130,18 +130,25 @@ public class ReaderTimingTests
     {
         // One object stream of many members, each placed by the index: the probe finds each in the header through a lookup
         // built once, and each member written as a stream by a search of those it found, not by scanning the header for
-        // each — four times the members take about four times as long, where a scan would take sixteen. The probe alone is
-        // timed, the documents opened and settled before, and each probed once first; each run starts from a collected heap.
+        // each — four times the members take about four times as long, where a scan would take sixteen. The probes alone are
+        // timed, the documents opened and settled before, and each probed once first; each turn starts from a collected heap.
         // The probe is given the room a validation gives it by default, 1,000 findings of each kind: it writes those and
         // counts the rest, and still looks up and searches every member (#317). Given room for every finding, it kept one
         // for each member, 63 MB for the large stream whose every index is wrong and 75 MB for the one whose members are
         // written as streams, and the collections that keeping them took fell inside the large probe: four to seven, some
         // 80 to 120 ms of pause in a probe of 180 to 390 ms, where the small probe met one. Its ratio measured 5.0 to 7.3
         // alone and up to 10.5 under four busy loops, and went past 8 three times in CI. Given that room, the large probe
-        // meets no collection, or a single young one, and the ratio measured 2.4 to 4.7 alone and 2.1 to 5.1 under four busy
-        // loops; a scan of the header for each member still measured 13.0 to 22.5.
+        // meets no collection, or a single young one; but one probe of the small stream takes 5 to 17 ms, and on a busy
+        // machine one of its five turns would fall in a quiet moment that no turn of the large one met: under four busy
+        // loops the ratio went past 8 in 3 runs of 71, at 8.7 to 9.4, each time beside other timing tests. Each turn times
+        // four probes back to back, 14 to 46 ms of the small stream's, which contention slows as it slows the large one's:
+        // the ratio measured 3.7 to 4.6 alone over 50 runs, and under four busy loops 2.3 to 6.6 over 300 runs beside the
+        // other timing tests and 2.1 to 7.7 over 100 runs on its own — 7.7 once, nothing else past 6.4 —, never past 8. A
+        // scan of the header for each member, the lookup removed, measured 13.1 to 21.9 where every index is wrong, and
+        // failed each of 45 runs, under four busy loops and without.
         const int Small = 50_000;
         const int Large = 4 * Small;
+        const int Probes = 4;
         using var small = PdfDocument.Open(Packed(Small, shape));
         using var large = PdfDocument.Open(Packed(Large, shape));
         small.Reader.SettleIndex();
@@ -154,8 +161,8 @@ public class ReaderTimingTests
 
         for (var run = 0; run < 5; run++)
         {
-            smallTime = Min(smallTime, Time(() => Probe(small)));
-            largeTime = Min(largeTime, Time(() => Probe(large)));
+            smallTime = Min(smallTime, Time(small));
+            largeTime = Min(largeTime, Time(large));
         }
 
         largeTime.Should().BeLessThan(
@@ -168,13 +175,18 @@ public class ReaderTimingTests
 
         static TimeSpan Min(TimeSpan a, TimeSpan b) => a < b ? a : b;
 
-        static TimeSpan Time(Action action)
+        static TimeSpan Time(PdfDocument document)
         {
             GC.Collect();
             GC.WaitForPendingFinalizers();
             GC.Collect();
             var stopwatch = Stopwatch.StartNew();
-            action();
+
+            for (var probe = 0; probe < Probes; probe++)
+            {
+                Probe(document);
+            }
+
             return stopwatch.Elapsed;
         }
 
@@ -549,8 +561,13 @@ public class ReaderTimingTests
         // to the older rows the numbers it declares (#208): 700 one-row subsections of its own, about as many as
         // MaxTrailerLength, lowered to 8 KB, lets its dictionary hold. Past 4,096 ranges kept, every number is refused, and
         // nothing more is merged: four times the streams take about four times as long. Merging every range declared so far
-        // again for each stream, with no bound, took 11.7 times as long, 1.3 s against 114 ms. The measure is the ratio, the
-        // best opening of each, run in turn.
+        // again for each stream, with no bound, took 11.7 times as long, 1.3 s against 114 ms; but what holds the bound is
+        // what each opening asserts, object 3 refused past 4,096 ranges, which such a merge fails at its first opening.
+        // The time tells a chain whose cost grows with the streams, about four times, from one whose cost grows with their
+        // square, about sixteen. Every opening of the larger file is slowed now and then on a busy machine while those of the
+        // smaller one are not: the ratio measured 4.0 to 4.2 alone over 20 runs and 3.2 to 6.2 over 300 runs under four busy
+        // loops, but reached 7.4 to 10.0 with builds running beside them, which a bound of 12 allows for, as it does for the
+        // circular object streams. The measure is the ratio, the best opening of each, run in turn.
         const int Small = 256;
         const int Large = 4 * Small;
         var options = new PdfReaderOptions
@@ -563,7 +580,7 @@ public class ReaderTimingTests
         var (smallTime, largeTime) = BestOfEach(() => Open(small, Small), () => Open(large, Large));
 
         largeTime.Should().BeLessThan(
-            smallTime * 8,
+            smallTime * 12,
             "four times the streams must cost about four times the time ({0} for {1:N0}, {2} for {3:N0})",
             smallTime,
             Small,
