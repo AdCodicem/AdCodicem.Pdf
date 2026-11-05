@@ -53,6 +53,50 @@ public class HeaderTextTests
         FirstHeader(data, [0]).Should().Be(expected);
     }
 
+    [Theory]
+    [InlineData("1 2\n3 4 % c 5 6", new[] { 0 }, new[] { 0, 2, 4, 6, 12, 14 })]
+    [InlineData("1 2\n3 4 % 7 8 9", new[] { 0 }, new[] { 0, 2, 4, 6, 12, 14 })]
+    [InlineData("12345 678", new[] { 0 }, new[] { 0, 6 })]
+    [InlineData("x 12 0 % c", new[] { 0, 5 }, new[] { 2, 5 })]
+    [InlineData("12\n% one\n% two\n0\n% three", new[] { 0, 3, 9, 15, 17 }, new[] { 0, 15 })]
+    [InlineData("(a) /b <41>", new[] { 0 }, new int[0])]
+    [InlineData("(5 6", new[] { 0 }, new[] { 1, 3 })]
+    [InlineData("x 12 y z ", new[] { 0, 4 }, new int[0])]
+    [InlineData("123 456\ny\n", new[] { 0, 8 }, new int[0])]
+    public void A_read_gives_where_each_number_it_carries_into_the_next_starts_once_the_nearest_the_data_s_start_first(
+        string data, int[] starts, int[] carried)
+    {
+        // A header the next reads find that starts before them starts at a number the reads carry, where the search keeps the
+        // tail of the object's endobj as it stood (#261): the runs of digits at the read's end, the numbers before the line it
+        // ends in, and that line's last two tokens. Six at most: two runs and two numbers here, a third run of digits, the
+        // byte before the runs, no number starts at; every digit of a number names its start. What a read carried before
+        // and the next no longer carries is not given, however much of it the room still holds.
+        CarriedStarts(data, starts).Should().Equal(carried.Select(start => DataStart + start));
+    }
+
+    /// <summary>
+    /// Gives where each number <paramref name="data"/>, which starts at <see cref="DataStart"/>, carries into a read after its
+    /// end, read a part at a time as <see cref="FirstHeader"/> reads it.
+    /// </summary>
+    private static long[] CarriedStarts(string data, int[] starts)
+    {
+        var bytes = Encoding.Latin1.GetBytes(data);
+        Span<byte> carried = stackalloc byte[HeaderText.CarriedLength];
+        Span<long> carriedAt = stackalloc long[HeaderText.CarriedLength];
+        Span<long> found = stackalloc long[HeaderText.MostNumbersCarried];
+        var text = new HeaderText(carried, carriedAt, DataStart);
+
+        for (var read = 0; read < starts.Length; read++)
+        {
+            var start = starts[read];
+            var end = read + 1 < starts.Length ? Math.Min(bytes.Length, starts[read + 1] + 4) : bytes.Length;
+            text.Read(bytes.AsSpan(start, end - start), DataStart + start);
+            text.CarryTo(DataStart + (read + 1 < starts.Length ? starts[read + 1] : bytes.Length));
+        }
+
+        return found[..text.CarriedStarts(found)].ToArray();
+    }
+
     /// <summary>
     /// Gives where the first object header of <paramref name="data"/> starts, which starts at <see cref="DataStart"/>, read a
     /// part at a time: each from where <paramref name="starts"/> says to four bytes past where the next starts, the last to

@@ -635,6 +635,120 @@ public class WindowEdgeTests
             .Which.Message.Should().EndWith("the declared length is kept.");
     }
 
+    [Theory]
+    [InlineData("\nendobj\n12 % endobj\n0 obj", 0, true)]
+    [InlineData("\n12 % endobj\n0 obj", 1, false)]
+    [InlineData("\nendobj\n12\n% endobj\n0 obj", 0, true)]
+    [InlineData("\nendobj\n12 0 % endobj\nobj", 0, true)]
+    [InlineData("\nendobj\n12\n% endobj\n% endobj x\n0\n% endobj\nobj", 0, true)]
+    [InlineData("\nendobj\n1234567 % endobj\n00000 % endobj\nobj", 0, true)]
+    [InlineData("\nendobj \n 12 \n % endobj \n 0 \n obj", 0, true)]
+    [InlineData("\nendobj\n12 % endobjx\n0 obj", 0, true)]
+    public void An_endobj_a_comment_between_a_header_s_tokens_holds_changes_nothing_wherever_the_reads_part_the_header(
+        string header, int past, bool ended)
+    {
+        // Object 5 lost its endstream, and its data runs to a header no index places whose tokens a comment holding endobj
+        // parts (#261). The window, the first read of the file past it, or a lower object guard ends inside that header,
+        // after the comment's endobj and before the read that decides the header: the data ends at the object's own endobj
+        // or at the header, its endobj judged present or missing, the same wherever the reads part the header.
+        var windowEdge = Window - LostEndPrefix.Length;
+        var firstReadEdge = windowEdge - PdfFileReader.EndStreamSearchOverlap + PdfFileReader.EndStreamSearchFirstRead(windowEdge);
+        var splits = new List<(int Filler, int? Guard)>();
+
+        foreach (var edge in new[] { windowEdge, firstReadEdge })
+        {
+            for (var filler = edge - header.Length - 2; filler <= edge + 2; filler++)
+            {
+                splits.Add((filler, null));
+            }
+        }
+
+        // A guard below the 8 KB window parses the object through a smaller one, and moves both edges: the window's to where
+        // the guard ends, and the first read's to three times as far into the data, less what the reads repeat.
+        for (var guard = 6000 + LostEndPrefix.Length - 2; guard <= 6000 + LostEndPrefix.Length + header.Length + 2; guard++)
+        {
+            splits.Add((6000, guard));
+        }
+
+        for (var held = (18_000 + PdfFileReader.EndStreamSearchOverlap - 2) / 3; held <= (18_000 + PdfFileReader.EndStreamSearchOverlap + header.Length + 2) / 3; held++)
+        {
+            for (var shift = 0; shift < 3; shift++)
+            {
+                splits.Add((18_000 + shift, held + LostEndPrefix.Length));
+            }
+        }
+
+        foreach (var (filler, guard) in splits)
+        {
+            var length = filler + past;
+            var ending = HeaderEnding(header, filler, guard);
+
+            ending.Length.Should().Be(length, "the filler is {0} bytes and the guard {1}", filler, guard);
+            ending.Diagnostic.Should().Be(
+                ended
+                    ? $"{PdfDiagnosticCodes.StreamTruncated}: its object's endobj ends it, after {CountText.Bytes(length)}."
+                    : $"{PdfDiagnosticCodes.StreamLengthInvalid}: the {CountText.Bytes(length)} up to that object are taken as its data.",
+                "the filler is {0} bytes and the guard {1}",
+                filler,
+                guard);
+            ending.EndObjMissing.Should().Be(!ended, "the filler is {0} bytes and the guard {1}", filler, guard);
+            ending.RuleFires.Should().Be(!ended, "the filler is {0} bytes and the guard {1}", filler, guard);
+        }
+    }
+
+    [Theory]
+    [InlineData("\nendobj\n12 % ", 0, true)]
+    [InlineData("\n5 12 % ", 3, false)]
+    public void An_endobj_a_long_comment_of_a_header_holds_changes_nothing_wherever_the_reads_after_its_number_end(
+        string before, int past, bool ended)
+    {
+        // As above, but the comment runs on for 40,000 bytes, the header's numbers read long before it ends: two reads past
+        // the window carry them, and the third decides the header. The second read takes in the comment's endobj, or stops
+        // before it, where text after the endobj leaves the header to the next read; the tail is taken as the copy the first
+        // read kept, and the second kept again, where the header's number starts.
+        var header = before + new string('c', 40_000) + " endobj " + new string('c', 16) + "\n0 obj";
+        var windowEdge = Window - LostEndPrefix.Length;
+        var size = PdfFileReader.EndStreamSearchFirstRead(windowEdge);
+        var secondRead = windowEdge - (2 * PdfFileReader.EndStreamSearchOverlap) + size;
+        var secondReadEdge = secondRead + Math.Min(2 * size, PdfFileReader.EndStreamSearchChunk);
+        var keyword = header.LastIndexOf("endobj", StringComparison.Ordinal);
+
+        for (var filler = secondReadEdge - keyword - 36; filler <= secondReadEdge - keyword - 8; filler++)
+        {
+            var ending = HeaderEnding(header, filler, null);
+
+            ending.Length.Should().Be(filler + past, "the filler is {0} bytes", filler);
+            ending.EndObjMissing.Should().Be(!ended, "the filler is {0} bytes", filler);
+            ending.RuleFires.Should().Be(!ended, "the filler is {0} bytes", filler);
+        }
+    }
+
+    [Fact]
+    public void An_endobj_a_comment_holds_changes_nothing_when_the_header_s_number_starts_where_a_read_does()
+    {
+        // As above, the header's number where the first read of the file past the window starts, or a byte either side of
+        // it, and its comment as long as puts the comment's endobj in that read and leaves the header to the next: the copy
+        // of the tail kept where the number starts is the one taken before that read reads on.
+        var windowEdge = Window - LostEndPrefix.Length;
+        var firstRead = windowEdge - PdfFileReader.EndStreamSearchOverlap;
+        var firstReadEdge = firstRead + PdfFileReader.EndStreamSearchFirstRead(windowEdge);
+        const string Before = "\nendobj\n12 % ";
+        var after = " endobj " + new string('c', 16) + "\n0 obj";
+
+        for (var shift = -1; shift <= 1; shift++)
+        {
+            var filler = firstRead - Before.Length + "12 % ".Length + shift;
+
+            for (var comment = firstReadEdge - filler - Before.Length - 40; comment <= firstReadEdge - filler - Before.Length - 10; comment++)
+            {
+                var ending = HeaderEnding(Before + new string('c', comment) + after, filler, null);
+
+                ending.Length.Should().Be(filler, "the number is {0} bytes off the read's start, the comment {1} bytes long", shift, comment);
+                ending.EndObjMissing.Should().BeFalse("the number is {0} bytes off the read's start, the comment {1} bytes long", shift, comment);
+            }
+        }
+    }
+
     [Fact]
     public void An_object_whose_header_lies_past_the_window_is_read_where_the_index_says()
     {
@@ -740,6 +854,44 @@ public class WindowEdgeTests
         var seen = string.Join("; ", whole.Select(d => d.Code));
 
         return reported == seen ? null : $"reported [{reported}], where the whole object gives [{seen}]";
+    }
+
+    /// <summary>What comes before the data of the stream <see cref="HeaderEnding"/> reads: its header, a length past the file, the keyword.</summary>
+    private const string LostEndPrefix = "5 0 obj\n<< /Length 9999999 >>\nstream\n";
+
+    /// <summary>
+    /// Reads object 5, a stream that lost its <c>endstream</c>, whose data is <paramref name="filler"/> bytes and then
+    /// <paramref name="header"/>, a header no index places, under an object guard of <paramref name="guard"/> bytes or the
+    /// default: what its data ends at — its length, what the report says of it, from the colon on, under its code —,
+    /// whether the reader judges its <c>endobj</c> missing, and whether the validator does, the catalog naming it.
+    /// </summary>
+    private static (int Length, string Diagnostic, bool EndObjMissing, bool RuleFires) HeaderEnding(string header, int filler, int? guard)
+    {
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R /Metadata 5 0 R >>"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"),
+        };
+        rows[ObjectNumber] = file.Position;
+        file.Raw(LostEndPrefix + new string('A', filler) + header + "\n(twelve)\nendobj\n");
+        rows[6] = file.Object(6, "(six)");
+        file.Table(7, rows, "/Size 7 /Root 1 0 R");
+        var options = guard is { } bytes
+            ? PdfReaderOptions.Default with { Limits = PdfReaderLimits.Default with { MaxObjectLength = bytes } }
+            : PdfReaderOptions.Default;
+        using var document = PdfDocument.Open(file.Bytes, options);
+
+        var length = document.GetObject(new PdfObjectId(ObjectNumber)).AsStream().Required().RawLength;
+        var reported = document.Diagnostics.Single(d => d.Code is PdfDiagnosticCodes.StreamTruncated or PdfDiagnosticCodes.StreamLengthInvalid);
+        var message = reported.Message;
+        var colon = message.IndexOfAny([':', ';']);
+
+        return (
+            length,
+            reported.Code + ":" + message[(colon + 1)..],
+            document.Reader.IsEndObjMissing(ObjectNumber, out _),
+            new PdfValidator().Validate(document).Contains(PdfValidationRuleIds.ObjectEndObjMissing));
     }
 
     private static byte[] Document(string body) =>

@@ -32,6 +32,9 @@ public class PropertyTests
 
     private const ulong DefaultSeed = 0x5EED_1729UL;
 
+    /// <summary>Where the data the rule for object headers reads starts in the file the properties read it from.</summary>
+    private const long HeaderDataStart = 100;
+
     /// <summary>
     /// The second half of FsCheck's random state. It must be odd — FsCheck rejects an even gamma outright —
     /// which is why it is a constant here and only the seed is taken from the environment.
@@ -435,6 +438,47 @@ public class PropertyTests
     }
 
     [Fact]
+    public void The_tail_of_an_object_s_endobj_reads_the_same_wherever_the_reads_part_the_data_up_to_where_it_stops()
+    {
+        // The search follows the object's own endobj through its reads, each repeating the last bytes of the one before, and
+        // stops reading it where a header starts, a copy of it kept at each place one may start (#174, #261). However the
+        // reads part the data up to that place, the tail says what one read of it all says: where an endobj that only white
+        // space and comments follow ends the data, and whether the data holds an endobj at all.
+        var pieces = Gen.Elements(
+            "endobj", "endobj ", "obj", "end", "e", "%", "% endobj", "% c", "\n", "\r", "\r\n", " ", "x", "/", "1", "(");
+        var cases =
+            from count in Gen.Choose(0, 24)
+            from parts in Gen.ArrayOf(pieces, count)
+            from stop in Gen.Choose(0, 1000)
+            from cuts in Gen.ArrayOf(Gen.Choose(0, 1000), 6)
+            from back in Gen.Choose(0, PdfFileReader.EndStreamSearchOverlap)
+            select (Text: string.Concat(parts), Stop: stop, Cuts: cuts, Back: back);
+
+        Check.One(Settings.WithMaxTest(10 * Cases), Prop.ForAll(cases.ToArbitrary(), drawn =>
+        {
+            var data = Encoding.Latin1.GetBytes(drawn.Text);
+            var stop = Math.Min(drawn.Stop, data.Length);
+            var whole = new EndObjTail(HeaderDataStart);
+            whole.Read(data.AsSpan(0, stop), HeaderDataStart, HeaderDataStart + stop);
+
+            var parted = new EndObjTail(HeaderDataStart);
+            var from = 0;
+
+            foreach (var cut in drawn.Cuts.Select(value => Math.Min(value, stop)).Order().Append(stop))
+            {
+                var start = Math.Max(0, from - drawn.Back);
+                parted.Read(data.AsSpan(start, cut - start), HeaderDataStart + start, HeaderDataStart + cut);
+                from = Math.Max(from, cut);
+            }
+
+            whole.Seen.Should().Be(data.AsSpan(0, stop).IndexOf("endobj"u8) >= 0, drawn.Text);
+            parted.UpTo.Should().Be(HeaderDataStart + stop, drawn.Text);
+            parted.Seen.Should().Be(whole.Seen, drawn.Text);
+            parted.DataEnd(HeaderDataStart + stop).Should().Be(whole.DataEnd(HeaderDataStart + stop), drawn.Text);
+        }));
+    }
+
+    [Fact]
     public void A_property_failure_replays_from_its_seed()
     {
         // The guarantee the remarks above claim, asserted rather than assumed: the same seed draws the
@@ -642,13 +686,13 @@ public class PropertyTests
             : "0." + new string('0', decimals - digits.Length) + digits;
 
     /// <summary>
-    /// Gives where the first object header of <paramref name="data"/> starts, which starts at offset 100, read as a search
-    /// reads it: a part at a time, each of the size <paramref name="sizes"/> gives in turn — the rest when they run out —,
+    /// Gives where the first object header of <paramref name="data"/> starts, which starts at offset
+    /// <see cref="HeaderDataStart"/>, read as a search reads it: a part at a time, each of the size <paramref name="sizes"/> gives in turn — the rest when they run out —,
     /// and each repeating the last bytes of the one before; -1 when there is none.
     /// </summary>
     private static long FirstHeaderReadPartly(byte[] data, int[] sizes)
     {
-        const long DataStart = 100;
+        const long DataStart = HeaderDataStart;
         Span<byte> carried = stackalloc byte[HeaderText.CarriedLength];
         Span<long> carriedAt = stackalloc long[HeaderText.CarriedLength];
         var text = new HeaderText(carried, carriedAt, DataStart);

@@ -1817,6 +1817,43 @@ public class StreamLengthTests
     }
 
     [Theory]
+    [InlineData(1)]
+    [InlineData(100)]
+    public void A_source_that_stops_giving_bytes_ends_the_search_with_what_the_data_read_before_held(int past)
+    {
+        // The file shrinks under the document a byte past the window its object was read through, or a hundred: the search
+        // reads on to where the source stops giving bytes, one less each read near the end, and stops there. The data runs to
+        // the next object, its length past it, and holds an endobj in the window, a token after it: the object's endobj is not
+        // judged missing, as the data read up to where the source stopped holds one.
+        var data = Data(Window / 2) + " endobj x " + Data(2 * Window);
+        var file = Document((StreamNumber, Stream(100_000, data)), (6, "(six)"));
+        var source = new CutShortSource(file);
+
+        using var document = PdfDocument.Open(source, options: null, ownsSource: true);
+        source.CutAt((int)HeaderOf(file, StreamNumber) + Window + past);
+        document.GetObject(new PdfObjectId(StreamNumber)).AsStream().Required();
+
+        document.Reader.IsEndObjMissing(StreamNumber, out _).Should().BeFalse();
+        document.Diagnostics.Should().ContainSingle(d => d.Code == PdfDiagnosticCodes.StreamLengthInvalid)
+            .Which.Message.Should().EndWith("are taken as its data.");
+    }
+
+    [Fact]
+    public void A_stream_past_the_window_whose_endstream_ends_the_file_ends_there()
+    {
+        // The file ends on the stream's endstream, no object, table or trailer after it: the search reads to the end of the
+        // file, and the keyword there ends the data.
+        var data = Data(3 * Window);
+        var text = "%PDF-1.7\n1 0 obj << /Type /Catalog /Pages 2 0 R >> endobj\n" +
+            "2 0 obj << /Type /Pages /Kids [] /Count 0 >> endobj\n5 0 obj << /Length 99999 >>\nstream\n" + data + "\nendstream";
+        using var document = PdfDocument.Open(Encoding.Latin1.GetBytes(text));
+
+        document.GetObject(new PdfObjectId(5)).AsStream().Required().RawLength.Should().Be(data.Length);
+        document.Diagnostics.Should().ContainSingle(entry => entry.Code == PdfDiagnosticCodes.StreamLengthInvalid)
+            .Which.Message.Should().Be(Invariant($"The stream declared 99999 bytes but ended after {data.Length}."));
+    }
+
+    [Theory]
     [InlineData(10, 5501, 19954, 19952)]
     [InlineData(13, 26856, 26018, 26016)]
     [InlineData(64, 93559, 16400, 16398)]

@@ -51,6 +51,12 @@ internal ref struct HeaderText
     /// <summary>The most bytes carried into a read: those of its two views.</summary>
     internal const int CarriedLength = 2 * ViewLength;
 
+    /// <summary>
+    /// The most numbers carried into a read (<see cref="CarriedStarts"/>): two runs of digits, two numbers before the line it
+    /// starts in, and that line's last two tokens.
+    /// </summary>
+    internal const int MostNumbersCarried = 6;
+
     private readonly Span<byte> _runs;
     private readonly Span<long> _runsAt;
     private readonly Span<byte> _lead;
@@ -129,6 +135,48 @@ internal ref struct HeaderText
         _line = line;
         CarryLead(numbers);
         CarryRuns(end, endOfLine + 1, View.Lead);
+    }
+
+    /// <summary>
+    /// Writes into <paramref name="starts"/> where each number carried into the next read starts in the file, each place
+    /// once and the nearest the start of the data first, and gives how many: room for <see cref="MostNumbersCarried"/>.
+    /// </summary>
+    /// <remarks>
+    /// A header the next reads find that starts before them starts at one of these places (#261): its number is a run of
+    /// digits a walk reads back through what is carried — a run of the first view, a number of the second, a token of the
+    /// line lexed so far —, each recording where it starts; a token the line's bytes so far end in, which the next read may
+    /// go on, is the first view's last run. A number carried into a read that starts before it was carried into the read
+    /// before, so a place is first given by the read that holds it, and then by each read after it, as long as a header may
+    /// still start there.
+    /// </remarks>
+    public readonly int CarriedStarts(Span<long> starts)
+    {
+        var count = 0;
+
+        // Each view keeps its first byte for what precedes its numbers, which no number starts at; every digit of a number
+        // records where the number starts.
+        for (var index = 1; index < _runsLength; index++)
+        {
+            if (PdfCharacters.IsDigit(_runs[index]))
+            {
+                count = AddStart(starts, count, _runsAt[index]);
+            }
+        }
+
+        for (var index = 1; index < _leadLength; index++)
+        {
+            if (PdfCharacters.IsDigit(_lead[index]))
+            {
+                count = AddStart(starts, count, _leadAt[index]);
+            }
+        }
+
+        if (_line.Last.Kind == LineTokens.Kind.Digits)
+        {
+            count = AddStart(starts, count, _line.Last.Start);
+        }
+
+        return _line.Before.Kind == LineTokens.Kind.Digits ? AddStart(starts, count, _line.Before.Start) : count;
     }
 
     /// <summary>
@@ -426,6 +474,30 @@ internal ref struct HeaderText
         index >= start ? _at + index
         : view == View.Runs ? _runsAt[_runsLength + index - start]
         : _leadAt[_leadLength + index - start];
+
+    /// <summary>
+    /// Adds <paramref name="start"/> to the first <paramref name="count"/> places of <paramref name="starts"/>, which run from
+    /// the nearest the start of the data, where it is not one of them already, and gives how many there are then.
+    /// </summary>
+    private static int AddStart(Span<long> starts, int count, long start)
+    {
+        var at = count;
+
+        while (at > 0 && starts[at - 1] > start)
+        {
+            at--;
+        }
+
+        if (at > 0 && starts[at - 1] == start)
+        {
+            return count;
+        }
+
+        // The views hold four numbers at most and the line two, so the room given is never short of one more.
+        starts[at..count].CopyTo(starts[(at + 1)..]);
+        starts[at] = start;
+        return count + 1;
+    }
 
     /// <summary>
     /// Gives the value of the digits from <paramref name="from"/> to <paramref name="to"/>, or <see cref="Beyond"/> when it is

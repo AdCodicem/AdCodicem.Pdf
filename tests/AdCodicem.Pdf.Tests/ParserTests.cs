@@ -380,6 +380,22 @@ public class ParserTests
         diagnostics.Should().ContainSingle().Which.Code.Should().Be(PdfDiagnosticCodes.StreamLengthInvalid);
     }
 
+    [Theory]
+    [InlineData("hello endobj x\n", true)]
+    [InlineData("hello x\n", false)]
+    public void A_stream_a_window_given_alone_runs_to_a_header_without_its_endobj_unless_its_data_holds_one(
+        string data, bool holdsEndObj)
+    {
+        // A window no reader backs is searched as the reader searches the file: a stream that lost its endstream runs to the
+        // header after it, and its object lacks its endobj unless the data taken holds one, which may be the object's own.
+        var parser = new PdfObjectParser(Encoding.ASCII.GetBytes("5 0 obj\n<< /Length 99 >>\nstream\n" + data + "6 0 obj\n(six)\nendobj"));
+
+        parser.TryReadIndirectObject(out _, out var value).Should().BeTrue();
+
+        Encoding.ASCII.GetString(value.Should().BeOfType<PdfStream>().Subject.GetRawBytes().Span).Should().Be(data);
+        parser.EndObj.Should().Be(holdsEndObj ? EndObjState.Unknown : EndObjState.Absent);
+    }
+
     [Fact]
     public void A_window_given_to_the_parser_alone_that_cannot_say_where_a_stream_ends_asks_for_more()
     {

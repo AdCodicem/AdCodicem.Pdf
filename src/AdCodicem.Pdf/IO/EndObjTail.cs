@@ -3,7 +3,8 @@ namespace AdCodicem.Pdf.IO;
 /// <summary>
 /// Follows, through the reads of a search for <c>endstream</c> in their order, where the data of a stream that has no
 /// <c>endstream</c> ends when its object's own <c>endobj</c> ends it: at the last <c>endobj</c>, a whole keyword, after
-/// which only white space and comments run to where the search stops, the end-of-line before it left out (#174).
+/// which only white space and comments run to where the search stops, the end-of-line before it left out (#174); and
+/// whether the bytes up to there hold an <c>endobj</c> at all.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -14,9 +15,12 @@ namespace AdCodicem.Pdf.IO;
 /// </para>
 /// <para>
 /// Where the search stops is known only once the read that holds the header stopping it is searched, and that header may
-/// start in a read before it, which was followed past it. What lies between is the header's runs of digits and white
-/// space, which make no keyword: the place where what follows the last <c>endobj</c> stopped being white space and
-/// comments says, alone, whether that run reached the header.
+/// start in a read before it, which was followed past it. What lies between may hold more than the header's runs of digits
+/// and white space: comment lines between its tokens (#261), whose <c>endobj</c> would be taken for the last, and said to
+/// be seen. The search reads each read only up to where the next starts, and keeps a copy of the tail at each place the
+/// numbers carried into the next read start (<see cref="HeaderText.CarriedStarts"/>, <see cref="EndObjTailCopies"/>): a
+/// header found to start before the read that finds it is judged with the tail as it stood at its start, whatever the
+/// reads read past it.
 /// </para>
 /// </remarks>
 internal struct EndObjTail
@@ -35,6 +39,7 @@ internal struct EndObjTail
     private long _brokenAt;
     private ulong _recent;
     private int _recentCount;
+    private bool _seen;
 
     /// <summary>Initializes a new instance of the <see cref="EndObjTail"/> struct, for data that starts at <paramref name="dataStart"/>.</summary>
     public EndObjTail(long dataStart)
@@ -45,6 +50,15 @@ internal struct EndObjTail
         _dataEnd = -1;
         _brokenAt = long.MaxValue;
     }
+
+    /// <summary>Gets where the bytes read end in the file: where the next read is read from.</summary>
+    public readonly long UpTo => _upTo;
+
+    /// <summary>
+    /// Gets a value indicating whether the bytes read hold an <c>endobj</c>, a whole keyword or not: what a search that
+    /// stopped where they end has seen of one.
+    /// </summary>
+    public readonly bool Seen => _seen;
 
     private enum Mode : byte
     {
@@ -200,6 +214,9 @@ internal struct EndObjTail
     /// <returns>Whether the keyword starts a token.</returns>
     private bool Found(ReadOnlySpan<byte> bytes, long at, int start, long keyword)
     {
+        // Every endobj the data holds is found here, but those a whole keyword's tail holds, which is seen before them.
+        _seen = true;
+
         if (ByteAt(bytes, at, start, keyword - 1) is var before and >= 0 &&
             (PdfCharacters.IsRegular((byte)before) || before is '/' or '%'))
         {

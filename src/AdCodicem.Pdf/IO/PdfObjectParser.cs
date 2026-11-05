@@ -1123,7 +1123,7 @@ internal ref struct PdfObjectParser
         return new StreamEndSearch(null, header < 0 ? null : header, EndObjState.Unknown)
         {
             HeaderStopped = header >= 0,
-            EndObjSeen = StreamEnds.HoldsEndObj(stretch, stretch.Length),
+            EndObjSeen = tail.Seen,
             EndObjAfterDeclared = declaredEnd >= start && declaredEnd - _baseOffset <= stop &&
                 StreamEnds.IsEndObjAt(span[..stop], (int)(declaredEnd - _baseOffset), reachesEndOfFile: true) == true,
             ObjectEnd = tail.DataEnd(_baseOffset + stop),

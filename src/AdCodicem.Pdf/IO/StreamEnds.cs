@@ -100,13 +100,6 @@ internal static class StreamEnds
     }
 
     /// <summary>
-    /// Determines whether the first <paramref name="before"/> bytes of <paramref name="bytes"/> hold an <c>endobj</c>
-    /// keyword: a read of a search that may end inside its object.
-    /// </summary>
-    public static bool HoldsEndObj(ReadOnlySpan<byte> bytes, int before) =>
-        bytes[..Math.Clamp(before, 0, bytes.Length)].IndexOf(EndObjKeyword) >= 0;
-
-    /// <summary>
     /// Searches one read of a search for <c>endstream</c> — the parser's bytes, or a window of the file — for the first
     /// <c>endstream</c>, and for the first object header before it: returns where the data ends in the file, the
     /// end-of-line before the keyword left out, or -1 when the read holds no <c>endstream</c> or a header comes first,

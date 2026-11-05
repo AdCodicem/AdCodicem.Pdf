@@ -2410,7 +2410,12 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// last whatever the source returns: the search ends at <paramref name="limit"/>, at the end of the file, at a header,
     /// or at a source that has nothing more to give, and reads no byte past the end of the file. The file is read once, but
     /// for what each read repeats, and each read is searched for both: a header only before the <c>endstream</c> it holds,
-    /// with what <see cref="HeaderText"/> carries into it of the reads before.
+    /// with what <see cref="HeaderText"/> carries into it of the reads before. The object's own <c>endobj</c> is followed
+    /// through each read up to where the next starts, or to where the search stops (<see cref="EndObjTail"/>), a copy kept
+    /// at each place a number carried into the next read starts: a header that a later read finds to start in a read
+    /// before it — comment lines between its tokens, which may hold <c>endobj</c> (#261) — is judged with the tail as it
+    /// stood at its start, so that what the data ends at, and whether an <c>endobj</c> was seen before it, does not depend
+    /// on where the reads part the data (<see cref="EndObjTailCopies"/>).
     /// </remarks>
     /// <param name="dataStart">Where the data starts in the file.</param>
     /// <param name="buffered">The bytes of the data the parser holds, from its start.</param>
@@ -2437,41 +2442,49 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     {
         Span<byte> carried = stackalloc byte[HeaderText.CarriedLength];
         Span<long> carriedAt = stackalloc long[HeaderText.CarriedLength];
+        Span<long> starts = stackalloc long[HeaderText.MostNumbersCarried];
+        Span<EndObjTail> copies = stackalloc EndObjTail[HeaderText.MostNumbersCarried];
+        Span<long> copiedAt = stackalloc long[HeaderText.MostNumbersCarried];
         var text = new HeaderText(carried, carriedAt, dataStart);
         var tail = new EndObjTail(dataStart);
+        var held = new EndObjTailCopies(copies, copiedAt);
         searched = true;
         objectEnd = -1;
 
         var inBuffer = (int)Math.Clamp(limit - dataStart, 0, buffered.Length);
         text.Read(buffered[..inBuffer], dataStart);
         var found = StreamEnds.SearchStretch(text, endsRange: dataStart + inBuffer >= limit, deferred, out header);
-        endObjSeen = StreamEnds.HoldsEndObj(buffered[..inBuffer], header >= 0 ? (int)(header - dataStart) : inBuffer);
-        tail.Read(buffered[..inBuffer], dataStart, header >= 0 ? header : dataStart + inBuffer);
-
-        if (found >= 0 || header >= 0)
-        {
-            objectEnd = found < 0 ? tail.DataEnd(header) : -1;
-            return found;
-        }
-
         var end = Math.Min(limit, _source.Length);
 
-        if (dataStart + buffered.Length >= end)
+        if (found >= 0 || header >= 0 || dataStart + buffered.Length >= end || !readsFile)
         {
-            objectEnd = tail.DataEnd(end);
-            return -1;
-        }
+            tail.Read(buffered[..inBuffer], dataStart, header >= 0 ? header : dataStart + inBuffer);
+            endObjSeen = tail.Seen;
 
-        if (!readsFile)
-        {
+            if (found >= 0 || header >= 0)
+            {
+                objectEnd = found < 0 ? tail.DataEnd(header) : -1;
+                return found;
+            }
+
+            if (dataStart + buffered.Length >= end)
+            {
+                objectEnd = tail.DataEnd(end);
+                return -1;
+            }
+
             searched = false;
             return -1;
         }
 
-        // Each window starts before the end, and the next one further on than it: the loop ends at one of the returns.
+        // A read the search goes on past is followed only up to where the next starts, which reads the rest again, a copy of
+        // the tail kept where a header the next may find starts before it (EndObjTailCopies).
         var position = dataStart + Math.Max(0, buffered.Length - EndStreamSearchOverlap);
-        var size = EndStreamSearchFirstRead(buffered.Length);
         text.CarryTo(position);
+        held.ReadTo(ref tail, buffered[..inBuffer], dataStart, position, starts[..text.CarriedStarts(starts)]);
+
+        // Each window starts before the end, and the next one further on than it: the loop ends at one of the returns.
+        var size = EndStreamSearchFirstRead(buffered.Length);
 
         while (true)
         {
@@ -2481,22 +2494,35 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
 
             if (span.IsEmpty)
             {
+                endObjSeen = tail.Seen;
                 return -1;
             }
 
             text.Read(span, position);
             found = StreamEnds.SearchStretch(text, endsRange: position + span.Length >= end, deferred, out header);
-            endObjSeen |= StreamEnds.HoldsEndObj(span, header >= 0 ? (int)(header - position) : span.Length);
-            tail.Read(span, position, header >= 0 ? header : position + span.Length);
 
             if (found >= 0 || header >= 0 || position + span.Length >= end)
             {
+                // A header that starts before this read starts at a number the reads before carried into it, where a copy of
+                // the tail was kept: it is judged as the tail stood there, not as the reads before read on past it.
+                if (held.TryGet(header, out var atHeader))
+                {
+                    tail = atHeader;
+                }
+                else
+                {
+                    tail.Read(span, position, header >= 0 ? header : position + span.Length);
+                }
+
+                endObjSeen = tail.Seen;
                 objectEnd = found < 0 ? tail.DataEnd(header >= 0 ? header : end) : -1;
                 return found;
             }
 
-            position += Math.Max(1, span.Length - EndStreamSearchOverlap);
-            text.CarryTo(position);
+            var next = position + Math.Max(1, span.Length - EndStreamSearchOverlap);
+            text.CarryTo(next);
+            held.ReadTo(ref tail, span, position, next, starts[..text.CarriedStarts(starts)]);
+            position = next;
             size = Math.Min(2 * size, EndStreamSearchChunk);
         }
     }
