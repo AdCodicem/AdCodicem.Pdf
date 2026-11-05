@@ -258,13 +258,14 @@ public class FilterDamageTests
 
     [Theory]
     [MemberData(nameof(Payloads))]
-    public void Keeps_all_of_a_zlib_stream_whose_checksum_is_wrong_and_warns_that_some_may_be_wrong(string payload, byte[] plain)
+    public void Keeps_all_of_a_zlib_stream_whose_checksum_is_wrong_and_reports_the_disagreement(string payload, byte[] plain)
     {
         // A whole checksum that disagrees with whole data: the framework throws from the read that meets it, and
         // what that read decoded was lost with it — all of it for data one read takes, which was left encoded. The
         // body read again as raw deflate reads to its end, so every byte is kept, as other readers keep it; the
-        // disagreement is a warning of its own, since the data may be wrong anywhere. Whatever the stream's length
-        // took in after the checksum changes nothing.
+        // disagreement is a warning of its own, which says some of the data may be wrong, since it may be wrong
+        // anywhere — or, of data that decoded to nothing, only that it did. Whatever the stream's length took in
+        // after the checksum changes nothing.
         var compressed = WithWrongChecksum(Compress(plain, CompressionLevel.Optimal));
         byte[][] tails = [[], [0x0A], [0x0D], [0x0D, 0x0A]];
         var failures = new List<string>();

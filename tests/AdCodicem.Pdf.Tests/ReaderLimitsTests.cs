@@ -2403,7 +2403,7 @@ public class ReaderLimitsTests
     [Theory]
     [InlineData("table rows")]
     [InlineData("stream index")]
-    public void A_reference_a_section_a_guard_stops_gives_to_a_number_a_newer_section_refused_not_stays_the_guard_s(string guard)
+    public void A_reference_a_section_a_guard_stops_gives_to_a_number_no_newer_section_refused_stays_the_guard_s(string guard)
     {
         // As above, the newer stream declaring object 45, its own, and not object 30, which the /Prev names: a row past the
         // guard may place object 30, which may name a sound section, the guard's (#264).
