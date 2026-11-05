@@ -1216,11 +1216,13 @@ public class CrossReferenceRuleTests
     }
 
     [Fact]
-    public void A_stream_two_tables_name_is_no_fault_of_this_rule()
+    public void An_xrefstm_the_next_table_copies_names_no_wrong_stream()
     {
-        // A writer that copies /XRefStm into the next trailer names one stream from two tables: each names a stream (#156).
+        // A writer that copies /XRefStm into the next trailer names one stream from two tables: each names a stream, and the
+        // file breaks no rule (#156).
         Validate(HybridFiles.SharedStream(olderSize: 7).File).Findings.Should().BeEmpty();
-        Validate(HybridFiles.SharedStreamNamedShort().File).Contains(PdfValidationRuleIds.XRefHybridStreamWrong).Should().BeFalse();
+        Validate(HybridFiles.SharedStreamNamedShort().File).Contains(PdfValidationRuleIds.XRefHybridStreamWrong).Should().BeFalse(
+            "a copy naming the white space before the stream's header still names the stream, an imprecise offset only");
     }
 
     [Fact]

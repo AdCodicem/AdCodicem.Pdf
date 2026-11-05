@@ -2340,7 +2340,7 @@ public class DocumentReaderTests
     }
 
     [Fact]
-    public void A_deferred_length_is_taken_again_only_by_the_row_the_section_keeps_for_it_which_one_of_a_reserved_type_is()
+    public void A_deferred_length_is_not_taken_again_when_the_row_the_section_keeps_for_it_is_of_a_reserved_type()
     {
         // The stream's /Index numbers its /Length, object 4, first in a row of a reserved type whose fields give where object
         // 4 lies, then in a row that places it, before rows that spell an endstream. The first row is the one the reading of
