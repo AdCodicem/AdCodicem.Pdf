@@ -320,8 +320,8 @@ Some faults the structural profile does not report, each for a reason:
   object that runs to the end of the file, as it reports any other object without its `endobj`, and the one whose
   containers the next object's header ended ([#230]). A container an `endobj` ends is `syntax.truncated-object`'s alone,
   that `endobj` being the object's — or the next object's, when the object lost its own and that object's header is one
-  the header rule does not take, a sign before its number say: the container then runs on to that `endobj`. A comment
-  between a header's tokens no longer hides it, since the rule reads comments as a load does ([#261]).
+  the header rule does not take — a sign before its number, say —: the container then runs on to that `endobj`. A comment
+  between a header's tokens does not hide it: the rule reads comments as a load does ([#261]).
 
 The object-shape rules read part of the Arlington PDF Model, and leave the rest silent until a rule of its own is
 worth its noise:
