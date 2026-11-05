@@ -815,6 +815,29 @@ public class CrossReferenceRuleTests
     }
 
     [Theory]
+    [InlineData(0, 1, "what its /Prev names too, past the guard that ended the chain there")]
+    [InlineData(2, 1, "what its /Prev names too, past the guard that ended the chain there")]
+    [InlineData(0, 2, "the section its /Prev names too, which the chain read through that /Prev")]
+    public void An_xrefstm_naming_what_its_table_s_prev_names_where_the_section_count_guard_ends_the_chain_is_wrong_as_the_guard_hides_it(
+        int xrefStmShortBy, int maxSections, string what)
+    {
+        // The newest table names the middle one through /Prev and /XRefStm, at one offset or at the white space before it, and
+        // MaxXRefSectionCount ends the chain right at that /Prev, or one section later. Reported before the /Prev was read, the
+        // naming said the chain looks for what the /Prev names, and the finding said so too, though the guard kept the chain
+        // from looking: it says the guard hides it, beside the guard's own finding (#156, #264).
+        var (file, _, middle, newest) = NearbyFiles.ChainNamingTheSpacesBeforeTheMiddle(0, newestXRefStm: xrefStmShortBy);
+        using var document = PdfDocument.Open(file, new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxXRefSectionCount = maxSections } });
+
+        var report = new PdfValidator().Validate(document);
+
+        Single(report, PdfValidationRuleIds.XRefHybridStreamWrong).Message.Should().Be(string.Create(
+            CultureInfo.InvariantCulture,
+            $"The /XRefStm of the cross-reference table at offset {newest} names offset {middle - xrefStmShortBy}, {what}, where ISO 32000-1 names the cross-reference stream of the table's revision (Table 19): what only that stream indexes is lost."));
+        Single(report, PdfValidationRuleIds.XRefCheckedInPart);
+        document.Reader.Structure.Sections[1].NamesWhatPreviousReads.Should().Be(maxSections > 1);
+    }
+
+    [Theory]
     [InlineData("/Prev 99999999 /XRefStm 99999999", null, "outside the file, which its /Prev names too")]
     [InlineData("/Prev 99999999 /XRefStm 99999999", "table rows", "outside the file, which its /Prev names too")]
     [InlineData("/Prev {hole} /XRefStm {hole}", null, "what its /Prev names too, which holds no section the chain could read")]

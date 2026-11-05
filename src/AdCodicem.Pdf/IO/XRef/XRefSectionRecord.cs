@@ -214,8 +214,9 @@ internal sealed class XRefSectionRecord
     /// <summary>
     /// Gets what a table's <c>/XRefStm</c> names in place of a cross-reference stream of the table's revision, in words, as
     /// the reader reported it — "the table itself", "a cross-reference table, whose rows were read in the stream's place", "a
-    /// cross-reference table, which cannot be read" —; null where it names a stream, or what the chain could not read but a
-    /// classic table (#156).
+    /// cross-reference table, which cannot be read" —, or, where <see cref="Documents.PdfReaderLimits.MaxXRefSectionCount"/>
+    /// ended the chain at what the table's <c>/Prev</c> names too, as the guard hides it; null where it names a stream, or
+    /// what the chain could not read but a classic table (#156).
     /// </summary>
     public string? NamesNoStream { get; set; }
 
@@ -226,8 +227,9 @@ internal sealed class XRefSectionRecord
     /// as it knew it then — before the <c>/Prev</c> read what is there, as what the chain looks for there; as what the
     /// <c>/XRefStm</c>'s own reading found, a table whose rows were read in the stream's place; or, a stream that reading
     /// took for the table's own, once the <c>/Prev</c> read it —, and what the <c>/Prev</c> found is known from
-    /// <see cref="ReadAs"/> once the chain is read. False for every other naming, and where a guard that stopped the table
-    /// kept the <c>/Prev</c> from being read, or that offset lies outside the file.
+    /// <see cref="ReadAs"/> once the chain is read. False for every other naming, and where a guard kept the <c>/Prev</c>
+    /// from being read — one that stopped the table, or <see cref="Documents.PdfReaderLimits.MaxXRefSectionCount"/> ending
+    /// the chain at what the <c>/Prev</c> names —, or that offset lies outside the file.
     /// </summary>
     public bool NamesWhatPreviousReads { get; set; }
 

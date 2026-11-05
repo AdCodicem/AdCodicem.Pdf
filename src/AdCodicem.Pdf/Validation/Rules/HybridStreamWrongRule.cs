@@ -15,9 +15,10 @@ namespace AdCodicem.Pdf.Validation.Rules;
 /// found, if at all, by rebuilding the index, after which the reader cannot vouch that it reads what was written — an error
 /// (ADR 45), as a section that cannot be found is (#156). So does one that names a classic table that cannot be read, whose
 /// own fault is <see cref="PdfValidationRuleIds.XRefSectionMalformed"/>'s, at each naming. What the table's own <c>/Prev</c>
-/// names too is said as the chain found it once it read on: the section it read, or what held no section it could read. A
-/// stream that more than one table names, as a writer that copies <c>/XRefStm</c> into the next trailer leaves it, is a
-/// stream all the same, and not judged here.
+/// names too is said as the chain found it once it read on: the section it read, or what held no section it could read — or,
+/// past the section count guard that ended the chain there, as the guard hides it. A stream that more than one table
+/// names, as a writer that copies <c>/XRefStm</c> into the next trailer leaves it, is a stream all the same, and not judged
+/// here.
 /// </remarks>
 internal sealed class HybridStreamWrongRule : IValidationRule
 {

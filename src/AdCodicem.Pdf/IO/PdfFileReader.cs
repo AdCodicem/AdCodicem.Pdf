@@ -3221,6 +3221,15 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
                 // named it, the offset in the message, as a section that is missing is (#125).
                 _cutByGuard = true;
 
+                // An /XRefStm of the table before that names what this /Prev names too was reported as naming what the chain
+                // looks for there, which the guard keeps it from reading: the guard hides what is there, as past a guard
+                // that stopped the table (#156, #264).
+                if (namedWithPrevious is { NamesWhatPreviousReads: true } leftToGuard)
+                {
+                    leftToGuard.NamesWhatPreviousReads = false;
+                    leftToGuard.NamesNoStream = "what its /Prev names too, past the guard that ended the chain there";
+                }
+
                 var cut = PositionOf(offset);
                 var inFile = IsInFile(cut);
 
