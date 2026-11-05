@@ -162,3 +162,33 @@ Round 1 fixes: workflow wf_a2870240-11e (track, R1a-reached, R1b-relocation, R1c
   PR notes: M04.md clarification, B19-8 fourth way, b09f981's long-line claim. For round 2: a section read in part
   after a newer section refused every number still says 'the rows read were kept'.
   The -wip branch is kept as the off-container backup of these notes (local lot19-r1c-wip deleted by R1c).
+- 2026-11-05: review round 2 launched: wf_cc2b032a-f83 (task wnqp7obdr), lenses chain, sections, headers, validator-tests, docs, on 761ce0b.
+
+# Review round 2 (wf_cc2b032a-f83 on 761ce0b): 24 findings, 23 confirmed or narrowed (3 major, 10 minor, 10 nit), 1
+# refuted ([12]). Findings in r2-findings.md ('######## [n]'). No maintainer question: every fix implements a decision.
+- [0] the /XRefStm's search stops at leaveAt only where the /Prev would keep its own place (it reads, a guard cut it,
+  or it declares itself a section there); otherwise it goes on (font/CIDFont/string shapes, constant shift).
+- [1] mirror of branch (c): a /Prev whose search comes to the start this table's /XRefStm read in the stream's place
+  (links unread) takes it and reads it whole; the /XRefStm's record becomes the branch (c) naming; a real stream so
+  read gets the branch (c) report.
+- [2] a Malformed table candidate declares itself only where its 'xref' is a token a load lexes from its line's start
+  (not in a comment or a string on that line); else dropped (ForgetReadThrough). Not widened at the named offset
+  (B19-1 unchanged there: a load at that offset reads the keyword).
+- [3] cross each position's white space once (memo PaddingAt); [4] a loop through an exact white-space offset placed at
+  the section's start; [5] OffsetImpreciseRule counts each written offset once; [6] branch (c) text under the section
+  count guard; [20] the loop record says 'reached but not read' for a lost section started there.
+- [7][14][19] a section read in part after a newer section refused every number (or a range covering its rows) says
+  none of its rows stands (recorded independent of read order); [8] tail by SubsectionsUnknown; [9] LoseRows joins
+  ranges meeting on either side; [10] an /XRefStm-named table cut before its first row is not said read.
+- Tests/docs nits: [11] benchmark summary; [13] #317 comment (heavier load); [15] R1-Q2 theory column; [16] checksum
+  theory rename; [17] rename; [18] 'without load'; [21] XML doc + reference wording; [22] rebuild moments; [23]
+  threat-model size-wrong loop clause.
+- 2026-11-05: round 2 fixes launched: wf_66d7eddc-e11 (task w01pj3hun), script scratchpad lot19/lot19-r2-fixes.js: R2a-chain, R2b-sections, R2c-nits (+docs, site), R2d-check.
+- 2026-11-05: session restart during R2d; R2a-c had pushed d63f093..19122f0 (15 commits). Run resumed (task wh6nnahqq): only R2d (check) reruns.
+- 2026-11-05: round 2 fixes finished: R2a d63f093 394028c b9de553 cb22c69 d5d99f3 7c0748b 5656c64; R2b 95d8e0f 930d26f;
+  R2c 734487e 46e4796 2a84c29 1bdbf98 b88ee54 19122f0. R2d check at 19122f0: build 0 warnings; whole suite 10,114, 0
+  failed, 3 skipped; corpus output unchanged from 761ce0b. Mutation: R2a 108 (100 killed, 6 eq, 2 n/v), R2b 85 settled.
+  Open for round 3: R2b's wording gaps (a stream read in part whose one row it refused itself still 'kept the row it
+  holds'; a table read in part that refused a row of its own still 'the rows read were kept'); comment on #330 the
+  trade-off (an /XRefStm passing a /Prev that does not keep its place may find a stream farther off); corpus-
+  contributions.md:310 '(batch 19)' (precedent on main) and the unused duplicate [#51] at :750-751 (pre-existing).
