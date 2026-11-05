@@ -74,17 +74,22 @@ the rows past an `endstream` its rows spell, which only that length could tell f
 a `/Prev` or an `/XRefStm` the reader follows that leads to such an object names — the older ones, or the cross-reference stream of a hybrid
 file's revision, with the sections older than it, the chain ending with it —, the numbers past `MaxIndexEntries`. An
 object the guard cut after a whole reference it holds hides none of them: the chain reads through it. That is no
-damage, and the map is not rebuilt for it. What the section a limit stopped names is judged all the same, as far as
-the limit lets it be, and nothing past the limit is read: a `/Prev` or an `/XRefStm` there that can name no section
-whatever the limit hid — an offset outside the file, the section itself, another the chain read — is the file's damage,
-reported as in the file read whole, and leaves the map to be rebuilt as that damage does
-([#264](https://github.com/AdCodicem/AdCodicem.Pdf/issues/264)).
+damage, and the map is not rebuilt for it. What a section whose rows a limit stopped names is judged all the same, as
+far as the limit lets it be, and nothing past the limit is read: a `/Prev` or an `/XRefStm` there that can name no
+section whatever the limit hid — no offset, an offset outside the file, the section itself, another the chain reached —
+is the file's damage, reported as in the file read whole, and leaves the map to be rebuilt as that damage does
+([#264](https://github.com/AdCodicem/AdCodicem.Pdf/issues/264)). The `/Prev` of a cross-reference stream at which a
+limit's cut of a value its rows are read with ends the chain, and a `/Prev` in a trailer a limit cut, are not judged
+yet ([#329](https://github.com/AdCodicem/AdCodicem.Pdf/issues/329),
+[#328](https://github.com/AdCodicem/AdCodicem.Pdf/issues/328)).
 
 A row of a cross-reference stream of a reserved type — a type past 2, or a type field wider than 8 bytes whose leading
 bytes are not all zero, which ISO 32000-1 leaves for later versions to define and reads as a reference to the null
 object — is read so: the map holds its number as a free one's, no older section's row stands for its object, which
 reads as null, and nothing is rebuilt for it (`xref.entry-reserved`,
-[#221](https://github.com/AdCodicem/AdCodicem.Pdf/issues/221)). A classic table that holds no subsection, its `trailer`
+[#221](https://github.com/AdCodicem/AdCodicem.Pdf/issues/221)) — until the map is rebuilt for another fault, at
+opening or as a validation settles it, which reads the object as the scan finds it: `xref.entry-type-reserved` then
+says the reader read the row so only until then. A classic table that holds no subsection, its `trailer`
 keyword right after its `xref` keyword, reads as one whose one subsection is `0 0`: it indexes nothing, and nothing is
 rebuilt for it (`xref.section-empty`, [#222](https://github.com/AdCodicem/AdCodicem.Pdf/issues/222)) — unless no
 section of the chain indexes anything, below.
@@ -105,14 +110,18 @@ The map is rebuilt by scanning the whole file, once at most, and never while the
   read, which ends its subsection, a row gives an object in use what no entry can hold — a generation past 65,535, an
   offset of 2⁶³ or more, an object stream that is no object number, an index past 2,147,483,647, a field wider than 8
   bytes whose leading bytes are not all zero —, which refuses that row alone, a cross-reference stream whose data the
-  reader decoded whole holds fewer rows than it declares, or the end of the file cuts a table before its trailer once
-  it read a row ([#207](https://github.com/AdCodicem/AdCodicem.Pdf/issues/207),
+  reader decoded whole holds fewer rows than it declares, or the end of the file cuts a table before its trailer, or
+  within its `trailer` keyword, once it read a row ([#207](https://github.com/AdCodicem/AdCodicem.Pdf/issues/207),
   [#210](https://github.com/AdCodicem/AdCodicem.Pdf/issues/210)); a `/Prev` loops back on the chain
   (`xref.chain-cycle`); or a hybrid file's table names through `/XRefStm` no cross-reference stream of its revision — a
-  classic table, a section the chain reads through `/Prev` or `startxref`, or what the table's own `/Prev` names
-  too — (`xref.hybrid-stream-lost`,
-  [#156](https://github.com/AdCodicem/AdCodicem.Pdf/issues/156)). A stream an older table names again, as a writer
-  that copies `/XRefStm` into the next trailer leaves it, is no such fault, and is read once;
+  classic table, one that cannot be read among them, a section the chain reads through `/Prev` or `startxref`, or what
+  the table's own `/Prev` reaches too, whatever offset each writes: the same, one in the white space before that
+  section, or one a few bytes off where the search near it comes to that section — (`xref.hybrid-stream-lost`,
+  [#156](https://github.com/AdCodicem/AdCodicem.Pdf/issues/156)); the report on what the `/Prev` reaches too is made
+  before that `/Prev` is read, and says only that the chain looks for it there, or that the offset lies outside the
+  file. A stream an older table names again,
+  as a writer that copies `/XRefStm` into the next trailer leaves it, is no such fault, and is read once, whatever
+  offset in the white space before its header each table writes;
 - when an object is asked for, by opening or after it, that is neither where the map says nor within 512 bytes
   of it;
 - before a validation's first rule, when one of the two cases above could still happen — the map may have lost
@@ -124,27 +133,37 @@ The map is rebuilt by scanning the whole file, once at most, and never while the
 A section read only in part does not end the chain: the chain goes on from its trailer, where it has one. Nor does a
 cross-reference stream whose dictionary gives `/Type /XRef` and was read whole, though its rows cannot be: it hands on
 the `/Prev` that dictionary gives, so that the older sections are read and judged rather than lost with it
-([#208](https://github.com/AdCodicem/AdCodicem.Pdf/issues/208)) — but where `startxref` names it, the map is rebuilt at
-opening, as for any first section that cannot be read. Either way, an object such a section numbered and lost — the
-rest of each subsection a table's fault ended, a refused row's, every number a stream declares, through its `/Index` or
-below its `/Size` — is not taken from an older section's row, which would serve what an update replaced: it is looked
-for by rebuilding the map, which keeps the last definition the file writes. So is an object that a hybrid file's stream
-of `/Type /XRef`, its dictionary read whole and its rows not, declares. Where what was lost cannot be told — a stream
-whose numbering cannot be read, or lost numbers that make more than 4,096 ranges —, no older section's row stands for
-any number that no section read before it gives. Any other section a `/Prev` names that cannot be read ends the chain
-there.
+([#208](https://github.com/AdCodicem/AdCodicem.Pdf/issues/208)), its report saying so where that `/Prev` names an
+offset or leads to what a limit hides — one that is no offset is reported missing after it, and the chain ends there —;
+but where `startxref` names it, the map is rebuilt at opening, as for any first section that cannot be read. Either
+way, an object such a section numbered and lost — the rest of each subsection a table's fault ended, a refused row's,
+every number a stream declares, through its `/Index` or below its `/Size` — is not taken from an older section's row,
+which would serve what an update replaced: it is looked for by rebuilding the map, which keeps the last definition the
+file writes. So is an object that a hybrid file's stream of `/Type /XRef`, its dictionary read whole and its rows not,
+declares; and one that a classic table an `/XRefStm` names lost, when it cannot be read or the end of the file cuts
+it, the chain going on past it through the table that names it: the rest of the subsection its fault ended, and, where
+what follows the fault cannot be known — a subsection header that is no header, a stray token, the end of the file —,
+every number its rows do not give ([#156](https://github.com/AdCodicem/AdCodicem.Pdf/issues/156)). Where what was lost
+cannot be told — a stream whose numbering cannot be read, or lost numbers that make more than 4,096 ranges, those that
+meet joined first —, no older section's row stands for any number that no section read before it gives. Any other
+section a `/Prev` names that cannot be read ends the chain there.
 
 An object, or a section a `/Prev` or a `/XRefStm` names, that lies a few bytes from where it is said to be is
 found nearby (`xref.offset-adjusted`), and the map is not rebuilt for it: within 512 bytes either side, however near the
 file's start that falls ([#197](https://github.com/AdCodicem/AdCodicem.Pdf/issues/197)), comments between its
 header's tokens included, as a load reads them ([#261](https://github.com/AdCodicem/AdCodicem.Pdf/issues/261)). A
-section is never found where the chain read one, which is not the one looked for
+section is never found where a section the chain reached starts — one it read, or one there that it could not read
+though it declares itself a section —, which is not the one looked for
 ([#188](https://github.com/AdCodicem/AdCodicem.Pdf/issues/188)); nor is one looked for when what is there declares
 itself a section — an `xref` keyword, or a stream whose dictionary gives `/Type /XRef` — and cannot be read: it is
 reported where it is, any section near it being another
-([#281](https://github.com/AdCodicem/AdCodicem.Pdf/issues/281)). An object there that gives a `/W` and another `/Type`,
-with no section near it, is no section, and is reported missing. The section `startxref` names is not looked for
-nearby: when it is not where `startxref` says, the map is rebuilt.
+([#281](https://github.com/AdCodicem/AdCodicem.Pdf/issues/281)). Where the offset holds no section, the search near it,
+nearest first, ends at a place that so declares itself and cannot be read, as at one it reads: that is the section
+found moved, reported where it was found, rather than passed over for an older section farther off whose rows would
+stand for its lost ones in silence. An object there that gives a `/W` and another `/Type`, with no section near it, is
+no section, and is reported missing; where `startxref` names one, it holds no section either, and its dictionary is no
+trailer. The section `startxref` names is not looked for nearby: when it is not where `startxref` says, the map is
+rebuilt.
 
 A rebuilt map keeps, of each number, the definition `object.redefined` names — the last written directly in the file,
 or, for a number written only inside object streams, the first listed in the object stream read first —, a direct

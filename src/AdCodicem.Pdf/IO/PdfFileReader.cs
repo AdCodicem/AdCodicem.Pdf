@@ -4113,8 +4113,8 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// <remarks>
     /// <para>
     /// A section read only in part is reported once, at the section, under
-    /// <see cref="PdfDiagnosticCodes.XRefSectionUnreadable"/> — it cannot be read whole —, its first fault in the message:
-    /// one that lost rows, else the end of the file before its trailer, else the first row it refused (#207, #210). The
+    /// <see cref="PdfDiagnosticCodes.XRefSectionUnreadable"/> — it cannot be read whole —, one fault in the message: the
+    /// first that lost rows, else the end of the file before its trailer, else the first row it refused (#207, #210). The
     /// section <c>startxref</c> names is reported so too, and what it lost is looked for by rebuilding the index when it is
     /// asked for, not at opening. What the reading met before a guard's cut is the file's, whatever the guard also did; a
     /// section a guard cut that lost no row is the guard's alone, which says so (ADR 34), and the message says how far a

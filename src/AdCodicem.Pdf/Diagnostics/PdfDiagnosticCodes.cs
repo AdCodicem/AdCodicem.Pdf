@@ -17,7 +17,10 @@ public static class PdfDiagnosticCodes
 
     /// <summary>
     /// An object, or a cross-reference section the chain names, was not at the offset the file claimed, and was
-    /// found nearby — a section never where the chain read one, nor near one that is there and cannot be read.
+    /// found nearby — a section never where a section the chain reached starts, nor near one that is there and cannot be
+    /// read. Where the offset holds no section, the nearest place near it that declares itself one — an <c>xref</c>
+    /// keyword, a stream whose dictionary gives <c>/Type /XRef</c> — is the section found moved though it cannot be read,
+    /// which <see cref="XRefSectionUnreadable"/> then reports where it was found (#281).
     /// </summary>
     public const string XRefOffsetAdjusted = "xref.offset-adjusted";
 
@@ -35,24 +38,32 @@ public static class PdfDiagnosticCodes
     /// <summary>
     /// A cross-reference section the chain names cannot be read whole. Through <c>/Prev</c> or <c>/XRefStm</c>, it is where
     /// it is named but cannot be read — a stray token among a table's rows or in place of its trailer, a subsection
-    /// numbering objects past 2,147,483,647, a table the end of the file cuts before its first row, a cross-reference stream
-    /// whose <c>/W</c>, <c>/Index</c>, <c>/Size</c> or data cannot give rows, or whose <c>/Length</c> no section read before
-    /// it places and whose data no <c>endstream</c> ends before the next object or the end of the file —: an <c>xref</c>
-    /// keyword, or a stream whose dictionary gives <c>/Type /XRef</c>, for which no section near it is taken; or a stream
-    /// that only gives a <c>/W</c>, when nothing near it can be read in its place. A value that leads to an object one of
-    /// the reader's limits cut is the limit's: the chain ends there, and nothing is reported of the section. The rows read
+    /// numbering objects past 2,147,483,647, a table the end of the file cuts before its first row, within its
+    /// <c>trailer</c> keyword too, a cross-reference stream whose <c>/W</c>, <c>/Index</c>, <c>/Size</c> or data cannot give
+    /// rows, or whose <c>/Length</c> no section read before it places and whose data no <c>endstream</c> ends before the
+    /// next object or the end of the file —: an <c>xref</c> keyword, or a stream whose dictionary gives
+    /// <c>/Type /XRef</c>, for which no section near it is taken, and which, the nearest place to an offset that holds no
+    /// section, is the section found moved, reported where it was found (#281); or a stream that only gives a <c>/W</c>,
+    /// when nothing near it can be read in its place. A value that leads to an object one of the reader's limits cut is
+    /// the limit's: the chain ends there, and nothing is reported of the section. The rows read
     /// before the fault, if any, were kept; the objects only the rest indexes are missing from the index, which is rebuilt by
     /// scanning the file when one of them is asked for. A stream of <c>/Type /XRef</c> whose dictionary was read whole loses
     /// its rows alone: no older section's row stands for an object it numbers — for any, where its numbering cannot be read
     /// —, which is missing from the index as the objects only it indexes are; and one that gives a <c>/Prev</c> hands that
-    /// <c>/Prev</c> on, the chain going on to the older sections, as the message says (#208). Or the section, the one
+    /// <c>/Prev</c> on, the chain going on to the older sections, as the message says where that <c>/Prev</c> names an
+    /// offset or leads to what one of the reader's limits hides (#208). A classic table an <c>/XRefStm</c> names, past which
+    /// the chain goes on through the table that names it, leaves no older section's row standing for the rest of the
+    /// subsection its fault ended, nor, where what follows the fault cannot be known — a subsection header that is no
+    /// header, a stray token, the end of the file —, for any number its rows do not give (#156). Or the section, the one
     /// <c>startxref</c> names among them, was read only in part, and kept, the chain going on from it where its trailer was
     /// read (#207, #210): a row that is no row ended a subsection of a table, a cross-reference stream holds fewer rows than
-    /// it declares, the end of the file cuts a table before its trailer, or a row that gives an object in use what no entry
-    /// can hold was refused alone. The rows read were kept, and the message says what was lost: the objects the lost rows
-    /// would index, which no older section's row stands for, and those only the sections a lost trailer would name index,
-    /// are missing from the index, rebuilt when one of them is asked for. The report is placed at the section, the fault in
-    /// its message — the first, where the section has several.
+    /// it declares, the end of the file cuts a table before its trailer or within its <c>trailer</c> keyword, or a row that
+    /// gives an object in use what no entry can hold was refused alone. The rows read were kept, and the message says what
+    /// was lost: the objects the lost rows would index, which no older section's row stands for, and those only the
+    /// sections a lost trailer would name index, are missing from the index, rebuilt when one of them is asked for. The
+    /// report is placed at the section, once, one
+    /// fault in its message: the first that lost rows, else the end of the file before its trailer, else the first row it
+    /// refused, which is not named beside either of the others.
     /// </summary>
     public const string XRefSectionUnreadable = "xref.section-unreadable";
 
@@ -66,19 +77,24 @@ public static class PdfDiagnosticCodes
 
     /// <summary>
     /// The chain of previous cross-reference sections looped back on itself: a <c>/Prev</c> names an offset the chain has
-    /// already reached — a section it read, however it was named, or an offset a <c>/Prev</c> or an <c>/XRefStm</c> named
-    /// where it read none, in the file or outside it. An <c>/XRefStm</c> ends no chain: one that names what the chain has
-    /// reached names a hybrid file's stream again, or is <see cref="XRefHybridStreamLost"/>'s (#156). The report is placed
-    /// at the section the chain looped back to, or at the section whose trailer named it when that offset lies outside the
-    /// file.
+    /// already reached — where a section it reached starts, or the white space and comments before it, a section it read
+    /// however it was named and one there that it could not read though it declares itself one among them (#188, #208), or
+    /// an offset a <c>/Prev</c> or an <c>/XRefStm</c> named where it read none, in the file or outside it. An
+    /// <c>/XRefStm</c> ends no chain: one that names what the chain has reached names a hybrid file's stream again, or is
+    /// <see cref="XRefHybridStreamLost"/>'s (#156). The report is placed at the offset the <c>/Prev</c> names, or where the
+    /// section it reaches past the white space there starts, or at the section whose trailer named it when that offset lies
+    /// outside the file.
     /// </summary>
     public const string XRefChainCycle = "xref.chain-cycle";
 
     /// <summary>
     /// A hybrid file's table names through <c>/XRefStm</c> no cross-reference stream of its revision (ISO 32000-1, Table 19):
-    /// a classic table — the table itself, another the chain read, or one it reads in the stream's place, its rows taken —,
-    /// a cross-reference stream the chain read through <c>/Prev</c> or <c>startxref</c>, or what the table's own
-    /// <c>/Prev</c> names too, which the chain reads through that <c>/Prev</c> rather than in the stream's place (#156). The
+    /// a classic table — the table itself, another the chain read, one it reads in the stream's place, its rows taken, or
+    /// one that cannot be read, at each table that names it —, a cross-reference stream the chain read through
+    /// <c>/Prev</c> or <c>startxref</c>, or what the table's own <c>/Prev</c> reaches too — at the same offset, through the
+    /// white space before that section, or where the search near the offset the <c>/XRefStm</c> names comes to it —, which
+    /// the chain reads through that <c>/Prev</c> rather than in the stream's place, the report saying no more of it than
+    /// the chain knows before that <c>/Prev</c> is read (#156). The
     /// objects only the table's stream indexes are missing from the index, which is rebuilt by scanning the file when one of
     /// them is asked for. The report is placed at the offset the <c>/XRefStm</c> names, or at the table when that offset
     /// lies outside the file.
@@ -96,8 +112,9 @@ public static class PdfDiagnosticCodes
     /// A cross-reference stream the chain reads gives rows of a reserved type: a type past 2, or a type field wider than 8
     /// bytes whose leading bytes are not all zero. ISO 32000-1 (7.5.8.3) defines types 0, 1 and 2, and reads any other as a
     /// reference to the null object, permitting new types to be defined in the future: each such row is read so, its object
-    /// indexed as a free one's is, and no older section's row stands for it (#221). Reported once for each section, at the
-    /// section, the first such row in the message and the others counted.
+    /// indexed as a free one's is, and no older section's row stands for it (#221), until the index is rebuilt for another
+    /// fault, which reads the object as the scan finds it. Reported once for each section, at the section, the first such
+    /// row in the message and the others counted.
     /// </summary>
     public const string XRefEntryReserved = "xref.entry-reserved";
 
@@ -253,7 +270,8 @@ public static class PdfDiagnosticCodes
 
     /// <summary>
     /// A Flate stream's data decoded to its end, but the zlib checksum that follows it disagrees with what it
-    /// decoded to: all of it was kept, as other readers keep it, and some of it may be wrong.
+    /// decoded to: all of it was kept, as other readers keep it, and some of it may be wrong. Data that decoded to nothing
+    /// is said to have, and nothing more.
     /// </summary>
     public const string FilterChecksumMismatch = "filter.checksum-mismatch";
 

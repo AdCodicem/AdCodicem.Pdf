@@ -75,13 +75,18 @@ rather than missing, until you raise the limit; the reader does not rebuild the 
 whose index is broken, since a rebuild would report a sound file as damaged and could lose what the chain had read.
 
 The chain of cross-reference sections ends at the section a guard stopped, since an older section's rows would stand for
-those the guard left unread. What that section names is still the file's to answer for, though, where it can name no
-section whatever the guard hid: a `/Prev` outside the file, one that names the section itself or another the chain has
-read, an `/XRefStm` that names no cross-reference stream. The reader judges such a value as a read of the whole file
-judges it, and reads nothing past the guard to do so: a guard never hides damage that can be seen without reading past
-it, and what the lost sections index is found by rebuilding the index, as in the file read whole. A value that may name a
-sound section — an offset in the file the chain has not reached — stays the guard's, the older sections with it
-([#264](https://github.com/AdCodicem/AdCodicem.Pdf/issues/264)).
+those the guard left unread. Where the guard stopped its rows — cut them, or filled the index at them —, what that
+section names is still the file's to answer for, though, where it can name no section whatever the guard hid: a `/Prev`
+that is no offset or lies outside the file, one that names the section itself or another the chain has reached, an
+`/XRefStm` that names no cross-reference stream. The reader judges such a value as a read of the whole file judges it,
+and reads nothing past the guard to do so: such a guard hides no damage that can be seen without reading past it, and
+what the lost sections index is found by rebuilding the index, as in the file read whole. A value that may name a sound
+section — an offset in the file the chain has not reached — stays the guard's, the older sections with it
+([#264](https://github.com/AdCodicem/AdCodicem.Pdf/issues/264)). The `/Prev` of a cross-reference stream at which a
+guard's cut of a value its rows are read with ends the chain, and a `/Prev` in a trailer a guard cut, are not judged
+yet: a fault they show without reading past the guard goes unreported
+([#329](https://github.com/AdCodicem/AdCodicem.Pdf/issues/329),
+[#328](https://github.com/AdCodicem/AdCodicem.Pdf/issues/328)).
 
 ## What decoding a stream may hold
 
@@ -139,8 +144,8 @@ index, and for white space and comments after a declared length, about twice the
 space a cross-reference stream's search takes as data that its length, once read, is read on through —, and for the
 proof that an `endstream` found under a hidden `/Length` is the stream's own, about three times the file in all. The
 numbers that cross-reference sections the reader could not read whole lost, which no older section's row may stand for,
-are kept as 4,096 ranges at most, past which every number the newer sections do not give is looked for by rebuilding
-the index: a valid file's sections lose none ([#208](https://github.com/AdCodicem/AdCodicem.Pdf/issues/208),
+are kept as 4,096 ranges at most, those that meet joined, past which every number the newer sections do not give is
+looked for by rebuilding the index: a valid file's sections lose none ([#208](https://github.com/AdCodicem/AdCodicem.Pdf/issues/208),
 [#210](https://github.com/AdCodicem/AdCodicem.Pdf/issues/210)). Those stay internal constants, since lifting them would
 let nothing more be read, and each says where it is declared why no valid file reaches it.
 

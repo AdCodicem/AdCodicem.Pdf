@@ -60,7 +60,9 @@ and that the object's `endobj` follows as an `endstream` would, is kept: the str
 the object's own `endobj`, when only white space and comments separate it from the stop, ends the data, the end-of-line
 before it left out. Both are reported as `stream.truncated`. Without one, a declared length that ends before the stop is
 kept, and whether the object ends with its `endobj` is not judged; and the data otherwise runs to the stop, a declared
-length past it cut there, the object judged to lack its `endobj` unless what is taken holds one. Both are reported as
+length past it cut there, the object judged to lack its `endobj` unless what is taken holds one — what is taken ends
+where the stopping header starts, so that an `endobj` a comment between that header's tokens holds plays no part,
+wherever the reader's reads part the data. Both are reported as
 `stream.length-invalid`, but data that runs to the end of the file as `stream.truncated`.
 
 A `/Length` that names an object one of the reader's limits cut is no length the file gave: what the cut left of it —
@@ -128,7 +130,8 @@ data again, the last few kilobytes before the fault a byte at a time; a sound st
 
 A Flate stream that decodes to its end, but whose zlib checksum disagrees with what it decoded to, is a
 warning of its own, `filter.checksum-mismatch`: all of its data is kept, as other readers keep it, and some of
-it may be wrong — the checksum does not say where. In the project's test corpus, none of the 86 such streams
+it may be wrong — the checksum does not say where; of data that decoded to nothing, the report says only that. In
+the project's test corpus, none of the 86 such streams
 could be shown intact, and 39 were shown damaged, 28 of them by a change of line endings that, undone, makes
 the checksum agree.
 
