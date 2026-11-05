@@ -588,6 +588,31 @@ internal static class HybridFiles
         return (file.Bytes, oldest, stream, newest);
     }
 
+    /// <summary>
+    /// The document <see cref="PrevFallingShortOfTheStreamBefore"/> writes, saved once more: its newest table, at
+    /// <c>Middle</c>, names the <c>endobj</c> 7 bytes before stream 6 through <c>/Prev</c> as it did, and no stream; a newer
+    /// table, at <c>Newest</c>, names it through <c>/Prev</c>, and stream 6 through <c>/XRefStm</c>, and indexes nothing.
+    /// </summary>
+    public static (byte[] File, long Stream, long Middle, long Newest) OlderPrevFallingShortOfTheStreamBefore()
+    {
+        var file = new HandWrittenFile(version: "1.5");
+        var (catalog, pages, _) = Page(file);
+        var oldThree = file.Object(3, "(three as the oldest has it)");
+        var oldest = file.Position;
+        file.Raw(Invariant($"xref\n0 4\n0000000000 65535 f \n{Row(catalog)}{Row(pages)}{Row(oldThree)}trailer\n<< /Size 4 /Root 1 0 R >>\nstartxref\n{oldest}\n%%EOF\n"));
+        file.Raw("%" + new string('-', 1200) + "\n");
+        var four = file.Object(4, "(four)");
+        var stream = file.Position;
+        var rows = StreamRows((1, four, 0), (1, stream, 0));
+        file.Object(6, Invariant($"<< /Type /XRef /Size 8 /W [1 4 2] /Index [4 1 6 1] /Root 1 0 R /Prev {oldest} /Length {rows.Length} >>\nstream\n{rows}\nendstream"));
+        var five = file.Object(5, "(five)");
+        var middle = file.Position;
+        file.Raw(Invariant($"xref\n0 1\n0000000000 65535 f \n5 1\n{Row(five)}trailer\n<< /Size 8 /Root 1 0 R /Prev {stream - 7} >>\nstartxref\n{middle}\n%%EOF\n"));
+        var newest = file.Position;
+        file.Raw(Invariant($"xref\n0 1\n0000000000 65535 f \ntrailer\n<< /Size 8 /Root 1 0 R /Prev {middle} /XRefStm {stream} >>\nstartxref\n{newest}\n%%EOF\n"));
+        return (file.Bytes, stream, middle, newest);
+    }
+
     /// <summary>Writes the catalog, the page tree and its page, objects 1 to 3, and gives where each starts.</summary>
     private static (long Catalog, long Pages, long Page) Page(HandWrittenFile file) => (
         file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),

@@ -10,6 +10,8 @@ namespace AdCodicem.Pdf.Tests;
 internal sealed class CutShortSource(byte[] data) : PdfFileSource
 {
     private int _available = data.Length;
+    private long _cutWhenReadAt = -1;
+    private int _cutTo;
 
     /// <inheritdoc/>
     public override long Length => data.Length;
@@ -17,9 +19,20 @@ internal sealed class CutShortSource(byte[] data) : PdfFileSource
     /// <summary>Cuts the file at <paramref name="length"/> bytes, the length the source gives unchanged.</summary>
     public void CutAt(int length) => _available = length;
 
+    /// <summary>
+    /// Cuts the file at <paramref name="length"/> bytes when the reader first reads at <paramref name="position"/>, that read
+    /// included: a file cut short while the document opens, past what the reader read before.
+    /// </summary>
+    public void CutWhenReadAt(long position, int length) => (_cutWhenReadAt, _cutTo) = (position, length);
+
     /// <inheritdoc/>
     public override int Read(long offset, Span<byte> buffer)
     {
+        if (offset == _cutWhenReadAt)
+        {
+            (_available, _cutWhenReadAt) = (_cutTo, -1);
+        }
+
         if (offset < 0 || offset >= _available)
         {
             return 0;

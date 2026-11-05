@@ -4588,6 +4588,28 @@ public class HostileInputTests
     }
 
     [Fact]
+    public void A_prev_looping_back_through_the_spaces_before_a_table_it_named_there_is_known_without_a_look()
+    {
+        // The newest table names the middle one 3 bytes short of it, where the chain reads it; the oldest's /Prev names it
+        // again at that offset, or at its keyword. Either loop is placed where the table starts, known from what the chain
+        // read there, without a look at the spaces again: the chain reads not a byte more for the one than for the other
+        // (#188).
+        var (repeated, _, _, _) = NearbyFiles.ChainNamingTheSpacesBeforeTheMiddle(3, oldestPrev: 3);
+        var (atKeyword, _, _, _) = NearbyFiles.ChainNamingTheSpacesBeforeTheMiddle(3, oldestPrev: 0);
+        repeated.Should().HaveCount(atKeyword.Length);
+
+        Read(repeated).Should().Be(Read(atKeyword), "the place the chain read a section at is known without a look");
+
+        static long Read(byte[] file)
+        {
+            using var source = new StrictCountingSource(file);
+            using var document = PdfDocument.Open(source, options: null, ownsSource: false);
+            document.Diagnostics.Should().ContainSingle(diagnostic => diagnostic.Code == PdfDiagnosticCodes.XRefChainCycle);
+            return source.BytesRead;
+        }
+    }
+
+    [Fact]
     public void A_section_named_again_where_it_was_found_moved_is_known_without_reading_there_again()
     {
         // The middle table, which the newest names 3 bytes short of it, is found moved; the oldest's /Prev names it again,

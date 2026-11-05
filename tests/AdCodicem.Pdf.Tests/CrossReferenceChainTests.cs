@@ -1072,6 +1072,31 @@ public class CrossReferenceChainTests
     }
 
     [Fact]
+    public void An_xref_keyword_on_a_line_that_starts_before_the_bytes_searched_is_lexed_from_where_they_start()
+    {
+        // The newest table's /Prev names a place inside object 4, an array of 400 zeros written on one line, 50 bytes before
+        // the xref keyword that follows its endobj on that line, and no table after it. The line starts more than 512 bytes
+        // before the place, before the bytes searched near it: they are lexed from where they start, as an object's header
+        // is, and the keyword, a token there, is the section found moved, which cannot be read (#281).
+        var file = new HandWrittenFile();
+        var catalog = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>");
+        var pages = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>");
+        file.Table(3, new() { [1] = catalog, [2] = pages }, "/Size 3 /Root 1 0 R");
+        file.Raw("%" + new string('-', 1200) + "\n");
+        var line = "4 0 obj [" + string.Concat(Enumerable.Repeat("0 ", 400)) + "] endobj xref 0 1 bad\n";
+        var keyword = file.Position + line.IndexOf("xref", StringComparison.Ordinal);
+        file.Raw(line);
+        file.Raw("%" + new string('-', 1200) + "\n");
+        file.Table(3, new() { [1] = catalog, [2] = pages }, Invariant($"/Size 3 /Root 1 0 R /Prev {keyword - 50}"));
+        using var document = PdfDocument.Open(file.Bytes);
+
+        var found = document.Reader.Structure.Sections[1];
+        found.State.Should().Be(XRefSectionState.Malformed);
+        found.Offset.Should().Be(keyword);
+        document.Diagnostics.Select(diagnostic => diagnostic.Code).Should().StartWith([PdfDiagnosticCodes.XRefOffsetAdjusted, PdfDiagnosticCodes.XRefSectionUnreadable]);
+    }
+
+    [Fact]
     public void An_object_an_update_frees_stays_free_where_the_word_xref_lies_between_where_its_table_is_named_and_where_it_is()
     {
         // The update frees object 3, and a comment holding the word xref lies between where the newest table's /Prev names the
@@ -3401,24 +3426,38 @@ public class CrossReferenceChainTests
     [Theory]
     [InlineData("a font whose dictionary a guard cuts", 0, true)]
     [InlineData("a font whose dictionary a guard cuts", 1024 * 1024, false)]
+    [InlineData("a font whose dictionary a lowered guard cuts", 1024, true)]
     [InlineData("a stream of no type", 0, false)]
+    [InlineData("a dictionary of no type", 0, false)]
+    [InlineData("a dictionary of no type", 1024, false)]
     [InlineData("a dictionary the end of the file cuts", 0, false)]
+    [InlineData("a dictionary the end of the file cuts", -1, false)]
     public void An_xrefstm_stops_short_of_its_stream_only_where_its_table_s_prev_keeps_its_place(string four, int maxTrailerLength, bool stops)
     {
         // The newest table names object 4 through /Prev, and through /XRefStm a place 30 bytes before it, whose search comes
         // to object 4 before the stream. Object 4 is a font whose dictionary holds 70,000 bytes before its /Type, which
-        // MaxTrailerLength cuts before the /Type unless it is raised; a stream of 70,000 bytes whose dictionary gives no /Type;
-        // or a dictionary a string the file never closes runs to the end of the file. The /Prev keeps its place where a guard
-        // cut what is there before it said what it is, the guard's, and the /XRefStm's search stops there, leaving it to the
-        // /Prev; anywhere else, the /Prev looks for its own section nearby, and the search goes on to the stream (#156).
+        // MaxTrailerLength cuts before the /Type unless it is raised, or 2,000 bytes, which MaxTrailerLength lowered to 1,024
+        // cuts; a stream of 70,000 bytes whose dictionary gives no /Type; a dictionary read whole that gives none either,
+        // within MaxTrailerLength lowered to 1,024 too; or a dictionary a string the file never closes runs to the end of the
+        // file, which MaxTrailerLength lowered to the bytes from object 4 to that end (-1) reaches. The /Prev keeps its place
+        // where a guard cut what is there before it said what it is, the guard's, and the /XRefStm's search stops there,
+        // leaving it to the /Prev; anywhere else, the end of the file included, the /Prev looks for its own section nearby,
+        // and the search goes on to the stream (#156).
         var body = four switch
         {
             "a font whose dictionary a guard cuts" => "<< /Pad (" + new string('-', 70_000) + ") /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
+            "a font whose dictionary a lowered guard cuts" => "<< /Pad (" + new string('-', 2_000) + ") /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
             "a stream of no type" => "<< /Length 70000 >>\nstream\n" + new string('-', 70_000) + "\nendstream",
+            "a dictionary of no type" => "<< /Pad (none) >>",
             _ => "<< /Pad (",
         };
         var (file, oldest, at, stream, _) = HybridFiles.NamingAnObjectBesideTheStream(body);
-        var limits = maxTrailerLength > 0 ? PdfReaderLimits.Default with { MaxTrailerLength = maxTrailerLength } : PdfReaderLimits.Default;
+        var limits = maxTrailerLength switch
+        {
+            0 => PdfReaderLimits.Default,
+            < 0 => PdfReaderLimits.Default with { MaxTrailerLength = (int)(file.Length - at) },
+            _ => PdfReaderLimits.Default with { MaxTrailerLength = maxTrailerLength },
+        };
         using var document = PdfDocument.Open(file, new PdfReaderOptions { Limits = limits });
 
         var sections = document.Reader.Structure.Sections;
@@ -3439,6 +3478,98 @@ public class CrossReferenceChainTests
             Text(document, 7).Should().Be("new seven");
             document.WasRepaired.Should().BeFalse();
         }
+    }
+
+    [Theory]
+    [InlineData("/Prev 0 /XRefStm 4", "", "/XRefStm NamedAgain 4, /Prev Read 0")]
+    [InlineData("/Prev 999999 /XRefStm 4", "", "/XRefStm Relocated 0, /Prev NotFound 999999")]
+    [InlineData("/Prev 0", " /Prev 5", "/Prev Read 0, /Prev NotFound 5")]
+    public void A_section_at_the_file_s_first_byte_is_a_place_like_any_other(string newest, string first, string expected)
+    {
+        // A file without a header, whose first byte starts cross-reference stream 9, which indexes the catalog and gives
+        // <first>; the newest table, after it, gives <newest>, an /XRefStm 4 bytes into the stream's header. A /Prev that
+        // names offset 0 keeps its place there, and the /XRefStm's search stops at it, leaving it to the /Prev; one that names
+        // no place in the file leaves the search to go on, and the /XRefStm finds the stream there, moved. Read, the stream
+        // is passed over by the search near a /Prev that names a place inside it, as any section the chain read is (#156).
+        var text = new StringBuilder();
+        var rows = new string('\0', 14);
+        var stream = Invariant($"9 0 obj\n<< /Type /XRef /Size 10 /W [1 4 2] /Index [1 2] /Length 14{first} >>\nstream\n{rows}\nendstream\nendobj\n");
+        var one = stream.Length;
+        var catalog = "1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n";
+        var two = one + catalog.Length;
+        text.Append(stream.Replace(rows, StreamRow(one) + StreamRow(two), StringComparison.Ordinal));
+        text.Append(catalog).Append("2 0 obj\n<< /Type /Pages /Kids [] /Count 0 >>\nendobj\n");
+        var table = text.Length;
+        text.Append(Invariant($"xref\n0 1\n0000000000 65535 f \ntrailer\n<< /Size 10 /Root 1 0 R {newest} >>\nstartxref\n{table}\n%%EOF\n"));
+        using var document = PdfDocument.Open(Encoding.Latin1.GetBytes(text.ToString()));
+
+        string.Join(", ", document.Reader.Structure.Sections.Skip(1).Select(section => Invariant($"{section.NamedBy} {section.State} {section.Offset}")))
+            .Should().Be(expected);
+        document.GetObject(new PdfObjectId(2)).Should().BeOfType<PdfDictionary>();
+
+        static string StreamRow(int offset) =>
+            Invariant($"\u0001{(char)((offset >> 24) & 0xFF)}{(char)((offset >> 16) & 0xFF)}{(char)((offset >> 8) & 0xFF)}{(char)(offset & 0xFF)}\0\0");
+    }
+
+    [Fact]
+    public void A_prev_naming_a_dictionary_a_file_cut_short_as_it_opens_ends_keeps_no_place_there()
+    {
+        // The file of the theory above, object 4 a dictionary that gives no /Type, is cut short inside it, 18 bytes past its
+        // header, as the reader first reads there, while the document opens. The window the reader reads it through ends
+        // where the file now ends, not at an edge of its own: the dictionary is read as far as the file goes, and says
+        // nothing of a section, as one the end of the file cuts. The /Prev does not keep its place there, and the /XRefStm's
+        // search goes on to the stream (#156).
+        var (file, _, at, stream, _) = HybridFiles.NamingAnObjectBesideTheStream("<< /Pad (none) >>");
+        using var source = new CutShortSource(file);
+        source.CutWhenReadAt(at, (int)at + 18);
+        using var document = PdfDocument.Open(source, options: null, ownsSource: false);
+
+        document.Reader.Structure.Sections[1].Should().Match<XRefSectionRecord>(section =>
+            section.NamedBy == "/XRefStm" && section.State == XRefSectionState.Relocated && section.Offset == stream);
+    }
+
+    [Fact]
+    public void Raising_max_trailer_length_reads_no_more_of_a_prev_s_object_that_a_first_window_holds_whole()
+    {
+        // The file of the theory above, object 4 a dictionary that gives no /Type, whose newest table's /XRefStm is looked for
+        // nearby: whether its /Prev keeps its place at object 4 is told from the dictionary, which the first window, 64 KB,
+        // holds whole. Raised to 16 MB, MaxTrailerLength lets windows grow further, and none is read past that first one
+        // (#156).
+        var (file, _, _, _, _) = HybridFiles.NamingAnObjectBesideTheStream("<< /Pad (none) >>");
+
+        Read(PdfReaderLimits.Default).Should().Be(Read(PdfReaderLimits.Default with { MaxTrailerLength = 16 * 1024 * 1024 }));
+
+        long Read(PdfReaderLimits limits)
+        {
+            var source = new StrictCountingSource(file);
+            using var document = PdfDocument.Open(source, new PdfReaderOptions { Limits = limits }, ownsSource: true);
+            return source.BytesRead;
+        }
+    }
+
+    [Fact]
+    public void What_the_look_at_a_prev_s_object_meets_takes_no_room_from_what_the_document_reports()
+    {
+        // The newest table names object 4 through /Prev, a dictionary whose eight keys are numbers, and through /XRefStm a
+        // place in a comment past it where no stream lies; MaxXRefSectionCount 1 ends the chain at the newest table, past
+        // which object 4 is never read, and the reader keeps eight reports. The look at object 4 that tells whether the /Prev
+        // keeps its place there, made as the /XRefStm is looked for nearby, keeps nothing of what it meets: object 3, loaded,
+        // reports its own fault, and nothing is left out (#156).
+        var file = new HandWrittenFile();
+        var catalog = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>");
+        var pages = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>");
+        var three = file.Object(3, "<< /A 1 2 >>");
+        var four = file.Object(4, "<< 1 2 3 4 5 6 7 8 >>");
+        file.Raw("%" + new string('-', 1200) + "\n");
+        file.Table(4, new() { [1] = catalog, [2] = pages, [3] = three }, Invariant($"/Size 5 /Root 1 0 R /Prev {four} /XRefStm {four + 80}"));
+        var options = new PdfReaderOptions { DiagnosticCapacity = 8, Limits = PdfReaderLimits.Default with { MaxXRefSectionCount = 1 } };
+        using var document = PdfDocument.Open(file.Bytes, options);
+
+        document.GetObject(new PdfObjectId(3)).Should().BeOfType<PdfDictionary>();
+
+        document.Diagnostics.Should().ContainSingle(diagnostic => diagnostic.Code == PdfDiagnosticCodes.SyntaxUnexpectedToken)
+            .Which.Position.Should().BeGreaterThan(three).And.BeLessThan(four);
+        document.Diagnostics.SuppressedCount.Should().Be(0);
     }
 
     [Theory]
@@ -3570,6 +3701,23 @@ public class CrossReferenceChainTests
         findings.Should().NotContain(finding => finding.RuleId == PdfValidationRuleIds.XRefSectionNotFound);
         findings.Should().ContainSingle(finding => finding.RuleId == PdfValidationRuleIds.XRefHybridStreamWrong);
         findings.Count(finding => finding.RuleId == PdfValidationRuleIds.XRefEntryTypeReserved).Should().Be(reservedRow ? 1 : 0);
+    }
+
+    [Fact]
+    public void Only_the_prev_of_the_table_whose_xrefstm_read_a_stream_reads_it_again()
+    {
+        // The file of the test above, saved once more by a table that names through /XRefStm stream 6, read in the stream's
+        // place, and through /Prev the table that was newest, whose own /Prev falls short of the stream as it did. The search
+        // near the offset that /Prev names comes to the stream, which only the /Prev of the table that read it would take:
+        // that of an older table passes over it, as over any section the chain read, and finds none (#156).
+        var (file, stream, middle, newest) = HybridFiles.OlderPrevFallingShortOfTheStreamBefore();
+        using var document = PdfDocument.Open(file);
+
+        document.Reader.Structure.Sections.Select(section => (section.NamedBy, section.State, section.Offset)).Should().Equal(
+            ("startxref", XRefSectionState.Read, newest),
+            ("/XRefStm", XRefSectionState.Read, stream),
+            ("/Prev", XRefSectionState.Read, middle),
+            ("/Prev", XRefSectionState.NotFound, stream - 7));
     }
 
     /// <summary>
@@ -3719,6 +3867,29 @@ public class CrossReferenceChainTests
             $"The cross-reference chain loops back on itself: the /Prev of the section at offset {stream} names offset {stream}, where the chain has already reached a section it could not read."));
         new PdfValidator().Validate(document).Findings.Single(finding => finding.RuleId == PdfValidationRuleIds.XRefChainLoop).Message.Should().Be(Invariant(
             $"The /Prev of the cross-reference section at offset {stream} names offset {stream}, a section the chain has already reached and could not read: the chain loops."));
+    }
+
+    [Fact]
+    public void A_prev_looping_back_to_an_object_an_xrefstm_named_that_only_gives_a_width_says_the_chain_only_named_it()
+    {
+        // The newest table names through /XRefStm object 9, which gives a /W of a negative width and no /Type, and the oldest
+        // table's /Prev names it again. What gives only a /W may be anything: the chain could not read it, and did not reach
+        // a section there, as it reaches one that declares itself a section — the loop runs through an offset it only named.
+        var file = new HandWrittenFile();
+        var catalog = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>");
+        var pages = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>");
+        var nine = file.Object(9, "<< /Size 10 /W [1 -4 2] /Length 0 >>\nstream\n\nendstream");
+        file.Raw("%" + new string('-', 1200) + "\n");
+        var oldest = file.Position;
+        file.Raw(Invariant($"xref\n0 3\n0000000000 65535 f \n{catalog:D10} 00000 n \n{pages:D10} 00000 n \ntrailer\n<< /Size 3 /Root 1 0 R /Prev {nine} >>\nstartxref\n{oldest}\n%%EOF\n"));
+        var newest = file.Position;
+        file.Raw(Invariant($"xref\n0 1\n0000000000 65535 f \ntrailer\n<< /Size 3 /Root 1 0 R /Prev {oldest} /XRefStm {nine} >>\nstartxref\n{newest}\n%%EOF\n"));
+        using var document = PdfDocument.Open(file.Bytes);
+
+        document.Reader.Structure.Sections[1].State.Should().Be(XRefSectionState.Malformed);
+        document.Reader.Structure.LoopTarget.Should().Be(XRefLoopTarget.Named);
+        document.Diagnostics.Should().ContainSingle(diagnostic => diagnostic.Code == PdfDiagnosticCodes.XRefChainCycle).Which.Message.Should().Be(Invariant(
+            $"The cross-reference chain loops back on itself: the /Prev of the section at offset {oldest} names offset {nine}, which the chain has already named."));
     }
 
     [Theory]

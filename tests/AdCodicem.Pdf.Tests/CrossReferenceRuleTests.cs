@@ -837,6 +837,20 @@ public class CrossReferenceRuleTests
         document.Reader.Structure.Sections[1].NamesWhatPreviousReads.Should().Be(maxSections > 1);
     }
 
+    [Fact]
+    public void An_xrefstm_naming_what_its_table_s_prev_names_outside_the_file_where_the_section_count_guard_ends_the_chain_says_so()
+    {
+        // The table names one offset past the file's end through /Prev and /XRefStm, and MaxXRefSectionCount ends the chain at
+        // that /Prev: what lies outside the file holds no section whatever the guard hid, which the finding says, as read
+        // whole (#156).
+        var (file, section) = StoppedSectionFiles.Stopped("/Prev 99999999 /XRefStm 99999999");
+        using var document = PdfDocument.Open(file, new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxXRefSectionCount = 1 } });
+
+        Single(new PdfValidator().Validate(document), PdfValidationRuleIds.XRefHybridStreamWrong).Message.Should().Be(string.Create(
+            CultureInfo.InvariantCulture,
+            $"The /XRefStm of the cross-reference table at offset {section} names offset 99999999, outside the file, which its /Prev names too, where ISO 32000-1 names the cross-reference stream of the table's revision (Table 19): what only that stream indexes is lost."));
+    }
+
     [Theory]
     [InlineData("/Prev 99999999 /XRefStm 99999999", null, "outside the file, which its /Prev names too")]
     [InlineData("/Prev 99999999 /XRefStm 99999999", "table rows", "outside the file, which its /Prev names too")]
