@@ -34,10 +34,11 @@ public class StreamEndSearchBenchmarks
     private byte[] _document = [];
 
     /// <summary>
-    /// Gets or sets what the data is made of: lines of text, as content streams hold them; bytes of every value but the
-    /// keywords' letters; one token of letters; one number; one line of one-byte tokens; a string never closed, its letters
-    /// ending in <c>%</c> and a line <c>0 obj</c>; strings opened one inside the other and never closed, ending so too;
-    /// lines that hold only <c>%</c>; one run of white space; a line of one hexadecimal string.
+    /// Gets or sets what the data is made of: lines of text, as content streams hold them; bytes of every value but
+    /// <c>o</c>, <c>b</c>, <c>j</c> and <c>e</c>, so that they spell no keyword; one token of letters; one number; one line
+    /// of one-byte tokens; a string never closed, its letters ending in <c>%</c> and a line <c>0 obj</c>; strings opened
+    /// one inside the other and never closed, ending so too; lines that hold only <c>%</c>; one run of white space; a line
+    /// of one hexadecimal string.
     /// </summary>
     [Params(
         "text-lines",
@@ -105,7 +106,10 @@ public class StreamEndSearchBenchmarks
         return text.ToString(0, Size);
     }
 
-    /// <summary>Draws <see cref="Size"/> bytes from a fixed seed, every value but the letters of <c>obj</c> and <c>endstream</c>.</summary>
+    /// <summary>
+    /// Draws <see cref="Size"/> bytes from a fixed seed, every value but <c>o</c>, <c>b</c>, <c>j</c> and <c>e</c>, so that
+    /// the data spells no keyword: neither <c>obj</c>, <c>endobj</c> nor <c>endstream</c>.
+    /// </summary>
     private static string Binary()
     {
         var random = new Random(1729);
