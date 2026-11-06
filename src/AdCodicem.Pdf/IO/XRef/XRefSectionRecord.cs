@@ -208,6 +208,15 @@ internal sealed class XRefSectionRecord
     /// </summary>
     public bool RowsRefusedBefore { get; set; }
 
+    /// <summary>
+    /// Gets which of the readings the chain started read the section, counted from 1 — the chain's own, and each place a
+    /// section may have been moved to that it tried —; 0 while none did. The reader keeps it, rather than the record, with
+    /// each object number a reading refused, so that a row for a number the section refused itself is told from one a
+    /// section read before it refused (<see cref="RowsRefusedBefore"/>) at the cost of an int a number (#210). A section
+    /// found moved keeps its own: it reads nothing more once it takes what the reading of the place it was found at read.
+    /// </summary>
+    public int Ordinal { get; set; }
+
     /// <summary>Gets the section's own trailer — a cross-reference stream's dictionary —, or null when none was read.</summary>
     public PdfDictionary? Trailer { get; set; }
 

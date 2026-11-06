@@ -630,14 +630,29 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     private bool _indexFull;
 
     /// <summary>
-    /// The object numbers whose row a section of the chain refused, each with the record of the section that refused it
-    /// first, or null while none was: the sections the chain reads after it describe older revisions, whose rows must not
-    /// stand for the current one. A row of the section that refused the number, which gives it twice, does not stand either,
-    /// and is not said to have been refused by a newer section (<see cref="XRefSectionRecord.RowsRefusedBefore"/>). Let go
-    /// once the chain is read, when nothing reads it any more; until then <see cref="PdfReaderLimits.MaxIndexEntries"/>
-    /// counts it with the index, which no number is in at once.
+    /// The object numbers whose row a section of the chain refused, each with the ordinal of the reading that refused it
+    /// first (<see cref="XRefSectionRecord.Ordinal"/>), or null while none was: the sections the chain reads after it describe
+    /// older revisions, whose rows must not stand for the current one. A row of the section that refused the number, which
+    /// gives it twice, does not stand either, and is not said to have been refused by a newer section
+    /// (<see cref="XRefSectionRecord.RowsRefusedBefore"/>). Let go once the chain is read, when nothing reads it any more;
+    /// until then <see cref="PdfReaderLimits.MaxIndexEntries"/> counts it with the index, which no number is in at once.
     /// </summary>
-    private Dictionary<int, XRefSectionRecord>? _refusedNumbers;
+    /// <remarks>
+    /// The ordinal of the reading rather than its record: each slot of the map takes 20 bytes — its entry and its bucket —, 4
+    /// more than a set of the numbers alone and 8 fewer than with a reference. Filled a number at a time, as rows are
+    /// refused, it holds up to about twice as many slots as numbers, and allocates about 60 bytes a number in all as it
+    /// grows, where a reference took about 85, beside the index's 40, for no more numbers than the guard lets the index hold.
+    /// </remarks>
+    private Dictionary<int, int>? _refusedNumbers;
+
+    /// <summary>
+    /// How many readings of a cross-reference section the chain started — the chain's own, and each place a section may have
+    /// been moved to that it tried —, the count given to each reading's record as it starts
+    /// (<see cref="XRefSectionRecord.Ordinal"/>). Only told equal or not: two readings share one only 4,294,967,296 readings
+    /// apart, past what any file gives, the chain reading at most two sections for each one
+    /// <see cref="PdfReaderLimits.MaxXRefSectionCount"/> counts, and <see cref="MaxRelocationCandidates"/> places more.
+    /// </summary>
+    private int _sectionReadings;
 
     /// <summary>
     /// The object numbers whose rows the sections the chain read lost — the numbers a cross-reference stream it went on past
@@ -5047,7 +5062,10 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// Where the section is looked for, a position in the file: one an offset the chain gives names, or one the reader found,
     /// before the header though it be.
     /// </param>
-    /// <param name="section">Receives what became of the section.</param>
+    /// <param name="section">
+    /// Receives what became of the section, and the ordinal of the reading, which the numbers it refuses are kept with
+    /// (<see cref="XRefSectionRecord.Ordinal"/>).
+    /// </param>
     /// <param name="previous">The offset its <c>/Prev</c> gives, or -1.</param>
     /// <param name="hybrid">The offset its <c>/XRefStm</c> gives, or -1.</param>
     /// <param name="candidate">
@@ -5057,6 +5075,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     private XRefSectionState TryReadXRefSection(
         long absolute, XRefSectionRecord section, out long previous, out long hybrid, bool candidate = false)
     {
+        section.Ordinal = ++_sectionReadings;
         previous = -1;
         hybrid = -1;
         _rowsLeftUnread = null;
@@ -7292,14 +7311,15 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// (<see cref="RefusedToOlderRows"/>), the section refused a row of its own for the number before, or the index has no
     /// room left for a number it lacks. A row a newer section refused so is noted on the section, whose report says it does
     /// not stand (<see cref="XRefSectionRecord.RowsRefusedBefore"/>); one whose number the section refused itself, which
-    /// gives it twice, is not, its report saying the section refused rows of its own.
+    /// gives it twice — the reading that refused it the section's own (<see cref="XRefSectionRecord.Ordinal"/>) —, is not,
+    /// its report saying the section refused rows of its own.
     /// </summary>
     /// <returns>False where the row does not stand, its number refused before it was read; true otherwise.</returns>
     private bool AddFromChain(int number, XRefEntry entry, XRefSectionRecord section)
     {
         if (_refusedNumbers is not null && _refusedNumbers.TryGetValue(number, out var refuser))
         {
-            section.RowsRefusedBefore |= refuser != section;
+            section.RowsRefusedBefore |= refuser != section.Ordinal;
             return false;
         }
 
@@ -7339,7 +7359,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
 
         if (IndexHasRoom)
         {
-            (_refusedNumbers ??= new(SeededComparer.Instance)).Add(number, section);
+            (_refusedNumbers ??= new(SeededComparer.Instance)).Add(number, section.Ordinal);
         }
         else
         {

@@ -162,7 +162,10 @@ public sealed record PdfReaderLimits
     /// rebuild in the file's order —, and once it holds this many takes no more: an object it holds no entry for reads
     /// as null until the bound is raised, and the index is not rebuilt for it. Reaching it reports
     /// <see cref="Diagnostics.PdfDiagnosticCodes.LimitIndexEntries"/>, once. The bound also sets what validating a
-    /// document can cost, which follows its index: about 24 seconds and 3 GB near the default.
+    /// document can cost, which follows its index: about 24 seconds and 3 GB near the default. While the cross-reference
+    /// chain is read, the numbers whose rows it refused, which the bound counts with the index, are held apart as well, each
+    /// with an int that tells which section refused it: about 60 bytes a number allocated in all as that set grows, let go
+    /// once the chain is read.
     /// </remarks>
     /// <exception cref="ArgumentOutOfRangeException">The value is zero or less.</exception>
     public int MaxIndexEntries

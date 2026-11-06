@@ -1014,6 +1014,46 @@ public class HostileInputTests
     }
 
     [Fact]
+    public void The_numbers_a_stream_refuses_cost_no_more_than_a_map_of_them_to_an_int()
+    {
+        // Each of 100,000 rows gives an offset past what a long holds, and is refused: its number is held apart while the
+        // chain is read, so that no older section's row stands for it, with the ordinal of the reading that refused it, which
+        // tells a row a section refused itself from one a newer section refused (#210). Held with the section's record
+        // instead, each number took 8 bytes more, which the set's growth doubles. Beside the same stream whose rows stand,
+        // the refused numbers cost what a map of them to an int costs, filled one at a time, and a few kilobytes more.
+        const int Rows = 100_000;
+        var refused = RefusedRows(Rows, out _);
+        var standing = RefusedRows(Rows, out _, offset: 10);
+
+        var refusing = Allocations.Least(() => Opened(refused), out var refusedCodes);
+        var placing = Allocations.Least(() => Opened(standing), out var standingCodes);
+        var map = Allocations.Least(() => Map(Rows), out var mapped);
+
+        refusedCodes.Should().Equal(PdfDiagnosticCodes.XRefSectionUnreadable);
+        standingCodes.Should().BeEmpty();
+        mapped.Should().Be(Rows);
+        (refusing - placing).Should().BeLessThan(map + (16 * 1024), "each number refused is held with an int beside it, not a reference");
+
+        static string[] Opened(byte[] file)
+        {
+            using var document = PdfDocument.Open(file);
+            return [.. document.Diagnostics.Select(entry => entry.Code)];
+        }
+
+        static int Map(int count)
+        {
+            var numbers = new Dictionary<int, int>();
+
+            for (var number = 4; number < count + 4; number++)
+            {
+                numbers.Add(number, 1);
+            }
+
+            return numbers.Count;
+        }
+    }
+
+    [Fact]
     public void Serves_no_object_under_a_number_past_a_long_that_once_wrapped_to_its_number()
     {
         // #157: 92233720368547758082 wrapped at its 19th digit to 2, so /Pages led to object 2, and the header written
@@ -6263,9 +6303,10 @@ public class HostileInputTests
 
     /// <summary>
     /// The catalog, an empty page tree and a cross-reference stream whose rows place them, then <paramref name="refused"/>
-    /// rows for objects 4 onward whose offsets need all of eight bytes, past what a long holds.
+    /// rows for objects 4 onward whose offsets need all of eight bytes, past what a long holds — or that give
+    /// <paramref name="offset"/>, where one a long holds is given, and stand.
     /// </summary>
-    private static byte[] RefusedRows(int refused, out long section)
+    private static byte[] RefusedRows(int refused, out long section, ulong offset = ulong.MaxValue)
     {
         var head = new StringBuilder("%PDF-1.7\n");
         var catalog = head.Length;
@@ -6282,7 +6323,7 @@ public class HostileInputTests
 
         for (var i = 0; i < refused; i++)
         {
-            Row(1, ulong.MaxValue);
+            Row(1, offset);
         }
 
         head.Append(string.Create(
