@@ -204,7 +204,8 @@ internal ref struct HeaderText
     /// walk enters a line only through the white space after it, which the walk of one <c>obj</c> at most crosses, besides
     /// the walk that carries the end of the read into the next: a line the read holds is lexed twice at most, and the line
     /// the read starts in once, as it is read, so that what the search lexes is bounded by what it reads, a comment line
-    /// however long included.
+    /// however long included. The line the search's first <c>endstream</c> lies on is lexed once more, up to the keyword, to
+    /// tell whether a comment holds it (<see cref="PendsHeader"/>): once in a search.
     /// <para>
     /// The rule is no guard (ADR 34): only a stream whose <c>endstream</c> does not follow its declared length is
     /// searched with it, which no valid file holds (ISO 32000-1, 7.3.8.1); a cross-reference stream whose <c>/Length</c>
@@ -243,6 +244,28 @@ internal ref struct HeaderText
 
             from = after;
         }
+    }
+
+    /// <summary>
+    /// Gives where the object header that ends with the <c>obj</c> at <paramref name="keyword"/> in the read starts in the
+    /// file, as <see cref="FindHeader"/> takes one, or -1 when it takes none there: the token <c>obj</c>, which white space
+    /// or a delimiter follows, or the end of the search (<see cref="PendingEndStream"/>).
+    /// </summary>
+    public readonly long HeaderAt(int keyword) => TryFindStart(keyword, out var start) ? start : -1;
+
+    /// <summary>
+    /// Determines whether the byte at <paramref name="index"/> in the read, where an <c>endstream</c> starts, lies inside a
+    /// comment of its line, lexed from the line's start as a load reads it, on a line whose tokens before the comment may
+    /// begin an object header that ends past it: a run of digits last, or no token, which a walk back from a later
+    /// <c>obj</c> reads across (<see cref="PendingEndStream"/>, #261). A line that starts before the read is the one carried
+    /// into it.
+    /// </summary>
+    public readonly bool PendsHeader(int index)
+    {
+        var lineStart = _bytes[..index].LastIndexOfAny((byte)'\r', (byte)'\n') + 1;
+        var tokens = lineStart > 0 ? default : _line;
+        tokens.Read(_bytes[lineStart..index], _at + lineStart);
+        return tokens.InComment && tokens.Last.Kind != LineTokens.Kind.Other;
     }
 
     /// <summary>

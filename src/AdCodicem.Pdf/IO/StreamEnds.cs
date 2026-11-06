@@ -102,21 +102,35 @@ internal static class StreamEnds
     /// <summary>
     /// Searches one read of a search for <c>endstream</c> — the parser's bytes, or a window of the file — for the first
     /// <c>endstream</c>, and for the first object header before it: returns where the data ends in the file, the
-    /// end-of-line before the keyword left out, or -1 when the read holds no <c>endstream</c> or a header comes first,
-    /// whose start in the file is then <paramref name="header"/>, -1 otherwise.
+    /// end-of-line before the keyword left out, or -1 when the read holds no <c>endstream</c>, a header comes first, whose
+    /// start in the file is then <paramref name="header"/>, -1 otherwise, or the keyword waits for the reads after it.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// The overlap between reads puts the end-of-line before a keyword first seen in a read inside it, unless the keyword
     /// starts the data. A cross-reference stream whose <c>/Length</c> the chain could not read is searched as
     /// <paramref name="deferred"/>: its rows may spell a header, and may end in a carriage return, so neither stops nor
     /// trims it (#220).
+    /// </para>
+    /// <para>
+    /// A keyword inside a comment, on a line whose tokens may begin a header, may lie between the tokens of a header that
+    /// ends past it (#261): it ends the data only once what follows its line says no header that starts before it ends
+    /// there, which may take the reads after this one (<see cref="PendingEndStream"/>). While it waits, the search reads on
+    /// as for a read that holds no keyword, and each read after it goes on deciding it.
+    /// </para>
     /// </remarks>
     /// <param name="text">The bytes read, after what the reads before carry into them.</param>
     /// <param name="endsRange">Whether they end where the search does: at the next object the index places, or the end of the file.</param>
     /// <param name="deferred">Whether the stream's <c>/Length</c> is one the chain could not read, which is no fault.</param>
+    /// <param name="pending">The keyword found in a comment that waits for the reads after it, the search's own from its first read.</param>
     /// <param name="header">Where the header that stopped the search starts in the file, or -1.</param>
-    public static long SearchStretch(in HeaderText text, bool endsRange, bool deferred, out long header)
+    public static long SearchStretch(in HeaderText text, bool endsRange, bool deferred, ref PendingEndStream pending, out long header)
     {
+        if (pending.IsPending)
+        {
+            return pending.Decide(text, endsRange, out header);
+        }
+
         var span = text.Bytes;
         var keyword = span.IndexOf(EndStreamKeyword);
         header = deferred ? -1 : text.FindHeader(keyword >= 0 ? keyword : span.Length, endsRange);
@@ -126,16 +140,24 @@ internal static class StreamEnds
             return -1;
         }
 
-        if (keyword > 0 && span[keyword - 1] == (byte)'\n')
+        var end = keyword;
+
+        if (end > 0 && span[end - 1] == (byte)'\n')
         {
-            keyword--;
+            end--;
         }
 
-        if (!deferred && keyword > 0 && span[keyword - 1] == (byte)'\r')
+        if (!deferred && end > 0 && span[end - 1] == (byte)'\r')
         {
-            keyword--;
+            end--;
         }
 
-        return text.PositionOf(keyword);
+        if (deferred || !text.PendsHeader(keyword))
+        {
+            return text.PositionOf(end);
+        }
+
+        pending.Start(text.PositionOf(end), text.PositionOf(keyword + EndStreamKeyword.Length));
+        return pending.Decide(text, endsRange, out header);
     }
 }

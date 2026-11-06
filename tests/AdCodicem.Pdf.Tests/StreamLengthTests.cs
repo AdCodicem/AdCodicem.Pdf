@@ -517,6 +517,9 @@ public class StreamLengthTests
     [InlineData("12% right after the number\r0 obj", 0)]
     [InlineData("12 % a comment\r\n0 obj", 0)]
     [InlineData("12 % 50% done\n0 obj", 0)]
+    [InlineData("12 % endstream\n0 obj", 0)]
+    [InlineData("12 0 % endstream\nobj", 0)]
+    [InlineData("12\n% endstream\n% endstream\n0 % endstream\nobj", 0)]
     [InlineData("(50%) 12 % a comment\n0 obj", 6)]
     [InlineData("5 12 % a comment\n0 obj", 2)]
     [InlineData("% 12 0 obj", 2)]
@@ -665,6 +668,9 @@ public class StreamLengthTests
     [InlineData("12 0 %{0}\nobj", 'c', true)]
     [InlineData("12\n%{0}\n0 obj", 'c', true)]
     [InlineData("12 %{0}\n0 %{0}\nobj", '%', true)]
+    [InlineData("12 % endstream{0}\n0 obj", 'c', true)]
+    [InlineData("12 0 %{0} endstream{0}\nobj", 'c', true)]
+    [InlineData("12\n% endstream{0}\n0\n%{0}\nobj", 'c', true)]
     [InlineData("%{0} 12\n0 obj", 'c', false)]
     [InlineData("12 ({0}%) % c\n0 obj", 'c', false)]
     [InlineData("12 ({0}) % c\n0 obj", '(', false)]
@@ -1756,6 +1762,106 @@ public class StreamLengthTests
         second.Data.Length.Should().Be(data.Length);
         document.Reader.Index.Count.Should().Be(Size);
         document.Diagnostics.Where(d => d.Code == PdfDiagnosticCodes.StreamLengthInvalid).Should().HaveCount(2);
+    }
+
+    [Fact]
+    public void An_endstream_in_a_header_s_comment_is_decided_by_reading_on_once_through_the_comment_lines_after_it()
+    {
+        // The stream's data runs into a header whose number a comment holding endstream follows, then four megabytes of
+        // comment lines, then its generation and obj (#261). The search reads on past that endstream to the header's obj,
+        // which decides it, through one pooled window at a time and each byte once, as it reads data with no endstream,
+        // and the data ends at the header.
+        var data = Data(Window / 2);
+        var comments = string.Concat(Enumerable.Repeat("% " + new string('c', 1022) + "\n", 4096));
+        var text = "\n12 % endstream\n" + comments + "0 obj\n(twelve)\nendobj";
+        var file = new TestPdfBuilder()
+            .WithObject(1, "<< /Type /Catalog /Pages 2 0 R >>")
+            .WithObject(2, "<< /Type /Pages /Kids [] /Count 0 >>")
+            .WithObject(StreamNumber, Invariant($"<< /Length {data.Length + 400} >>\nstream\n") + data + text)
+            .BuildClassic(rootNumber: 1);
+
+        using var source = new StrictCountingSource(file);
+        using var document = PdfDocument.Open(source, PdfReaderOptions.Default, ownsSource: false);
+        var opened = source.BytesRead;
+
+        var allocated = GC.GetAllocatedBytesForCurrentThread();
+        var stream = Measure(() => document.GetObject(new PdfObjectId(StreamNumber)).AsStream().Required());
+        allocated = GC.GetAllocatedBytesForCurrentThread() - allocated;
+
+        stream.Data.Length.Should().Be(data.Length + 1, "the data runs to the header, the endstream in its comment ending none of it");
+        var repeated = ((comments.Length / PdfFileReader.EndStreamSearchChunk) + 2) * PdfFileReader.EndStreamSearchOverlap;
+        (source.BytesRead - opened).Should().BeLessThan(text.Length + (2 * Window) + repeated, "what follows the endstream is read once");
+        allocated.Should().BeLessThan(256 * 1024, "the search reads through one pooled window at a time, and allocates nothing for what it reads");
+    }
+
+    [Fact]
+    public void An_endstream_in_a_header_s_comment_ends_the_data_once_the_searches_may_read_no_more()
+    {
+        // Ten streams whose data share a megabyte read as much of the file as the searches may. Stream 13's data runs into a
+        // header whose number a comment holding endstream follows, and whose obj lies past the bytes the parser holds: the
+        // search, which may read no further, cannot tell whether the header ends past the endstream, which ends the data as
+        // the first endstream does, rather than leave it unsearched (#261).
+        const int Streams = 10;
+        var data = Data(Window / 4);
+        var (file, _) = NestedStreams(
+            Streams,
+            100_000,
+            Invariant($"{Streams + 3} 0 obj\n<< /Length {data.Length + 400} >>\nstream\n{data}\n12 % endstream {new string('c', 3 * Window)}\n0 obj\n(twelve)\nendobj\n"));
+        using var document = PdfDocument.Open(file);
+
+        for (var number = 3; number <= Streams + 2; number++)
+        {
+            document.GetObject(new PdfObjectId(number));
+        }
+
+        document.Reader.EndStreamSearchBytes.Should().BeGreaterThanOrEqualTo(PdfFileReader.EndStreamSearchPasses * file.Length);
+        var stream = document.GetObject(new PdfObjectId(Streams + 3)).AsStream().Required();
+
+        stream.Data.Length.Should().Be(data.Length + "\n12 % ".Length);
+    }
+
+    [Fact]
+    public void An_endstream_in_a_header_s_comment_that_the_bytes_read_with_the_object_decide_stops_at_the_header_once_the_searches_may_read_no_more()
+    {
+        // As above, but the header's obj lies in the bytes the parser holds, which decide it: the data runs to the header, as
+        // where the searches may read on, rather than to the endstream (#261).
+        const int Streams = 10;
+        var data = Data(Window / 4);
+        var (file, _) = NestedStreams(
+            Streams,
+            100_000,
+            Invariant($"{Streams + 3} 0 obj\n<< /Length {data.Length + 400} >>\nstream\n{data}\n12 % endstream\n0 obj\n(twelve)\nendobj\n"));
+        using var document = PdfDocument.Open(file);
+
+        for (var number = 3; number <= Streams + 2; number++)
+        {
+            document.GetObject(new PdfObjectId(number));
+        }
+
+        document.Reader.EndStreamSearchBytes.Should().BeGreaterThanOrEqualTo(PdfFileReader.EndStreamSearchPasses * file.Length);
+        var stream = document.GetObject(new PdfObjectId(Streams + 3)).AsStream().Required();
+
+        stream.Data.Length.Should().Be(data.Length + 1);
+    }
+
+    [Fact]
+    public void An_endstream_in_a_header_s_comment_ends_the_data_where_the_file_was_cut_short_before_the_header_s_obj()
+    {
+        // As above, the searches unspent, but the file is cut short past the window once the document is open: the reads past
+        // the cut give nothing, and the endstream ends the data, as the first endstream does (#261).
+        var data = Data(Window / 4);
+        var file = new TestPdfBuilder()
+            .WithObject(1, "<< /Type /Catalog /Pages 2 0 R >>")
+            .WithObject(2, "<< /Type /Pages /Kids [] /Count 0 >>")
+            .WithObject(StreamNumber, Invariant($"<< /Length {data.Length + 400} >>\nstream\n{data}\n12 % endstream {new string('c', 3 * Window)}\n0 obj\n(twelve)\nendobj"))
+            .BuildClassic(rootNumber: 1);
+        var source = new CutShortSource(file);
+        using var document = PdfDocument.Open(source, options: null, ownsSource: true);
+
+        source.CutAt((int)HeaderOf(file, StreamNumber) + Window + 100);
+        var stream = document.GetObject(new PdfObjectId(StreamNumber)).AsStream().Required();
+
+        stream.Data.Length.Should().Be(data.Length + "\n12 % ".Length);
     }
 
     [Fact]

@@ -46,6 +46,7 @@ public class WindowEdgeTests
         { "a stream with CR LF", "<< /Pad (", 'x', ") " + Entries + " /Length 11 >>\r\nstream\r\nHello world\r\nendstream" },
         { "a stream with LF", "<< /Pad (", 'x', ") /Length 11 >>\nstream\nHello world\nendstream" },
         { "a stream with no end-of-line before endstream", "<< /Pad (", 'x', ") /Length 11 >>\nstream\nHello worldendstream" },
+        { "a stream whose only endstream a comment between a header's tokens holds", "<< /Pad (", 'x', ") /Length 9999 >>\nstream\nHello\nendobj\n12 % endstream\n0 obj" },
         { "a literal string", "(", 'x', " \\(escaped\\) (nested (twice)) \\\\ \\r\\n\\t \\101 end)" },
         { "a hexadecimal string", "<", '0', "48 65 6c 6C 6F 2>" },
         { "a name", "/", 'n', "#20name" },
@@ -697,6 +698,95 @@ public class WindowEdgeTests
     }
 
     [Theory]
+    [InlineData("\nendobj\n12 % endstream\n0 obj", 0, true)]
+    [InlineData("\n12 % endstream\n0 obj", 1, false)]
+    [InlineData("\nendobj\n12 0 % endstream\nobj", 0, true)]
+    [InlineData("\nendobj\n12\n% endstream\n0 obj", 0, true)]
+    [InlineData("\nendobj\n12 % endstream\n0 % endstream\nobj", 0, true)]
+    [InlineData("\nendobj\n12 % c\n% endstream\n% endstream x\n0\n% endstream\nobj", 0, true)]
+    [InlineData("\nendobj\n12 %endstream\r0\robj", 0, true)]
+    [InlineData("\nendobj \n 12 \n % endstream \n 0 \n obj", 0, true)]
+    [InlineData("\n(x\n12 % endstream\n0 obj", 4, false)]
+    [InlineData("\r(x\r12 % endstream\r0 obj", 4, false)]
+    public void An_endstream_a_comment_between_a_header_s_tokens_holds_ends_no_data_wherever_the_reads_part_the_header(
+        string header, int past, bool ended)
+    {
+        // Object 5 lost its endstream, and its data runs to a header no index places whose tokens a comment holding endstream
+        // parts (#261) — the line before it holding a string it leaves open, or not. That endstream, the first of the data, ended it, inside the header, which the data ran into, and the
+        // object's own endobj before the header was judged missing, where a search whose next object is the header, the
+        // index placing it, stopped there. What follows the comment's line is read until it decides the header: the data ends
+        // at the object's own endobj or at the header, the same wherever the window, the first read of the file past it, or a
+        // lower object guard parts the header, and whether the index places the header's object or not.
+        var windowEdge = Window - LostEndPrefix.Length;
+        var firstReadEdge = windowEdge - PdfFileReader.EndStreamSearchOverlap + PdfFileReader.EndStreamSearchFirstRead(windowEdge);
+        var splits = new List<(int Filler, int? Guard)>();
+
+        foreach (var edge in new[] { windowEdge, firstReadEdge })
+        {
+            for (var filler = edge - header.Length - 2; filler <= edge + 2; filler++)
+            {
+                splits.Add((filler, null));
+            }
+        }
+
+        for (var guard = 6000 + LostEndPrefix.Length - 2; guard <= 6000 + LostEndPrefix.Length + header.Length + 2; guard++)
+        {
+            splits.Add((6000, guard));
+        }
+
+        foreach (var (filler, guard) in splits)
+        {
+            var length = filler + past;
+            var ending = HeaderEnding(header, filler, guard);
+
+            ending.Length.Should().Be(length, "the filler is {0} bytes and the guard {1}", filler, guard);
+            ending.Diagnostic.Should().Be(
+                ended
+                    ? $"{PdfDiagnosticCodes.StreamTruncated}: its object's endobj ends it, after {CountText.Bytes(length)}."
+                    : $"{PdfDiagnosticCodes.StreamLengthInvalid}: the {CountText.Bytes(length)} up to that object are taken as its data.",
+                "the filler is {0} bytes and the guard {1}",
+                filler,
+                guard);
+            ending.EndObjMissing.Should().Be(!ended, "the filler is {0} bytes and the guard {1}", filler, guard);
+            ending.RuleFires.Should().Be(!ended, "the filler is {0} bytes and the guard {1}", filler, guard);
+        }
+
+        HeaderEnding(header, 100, null, placed: true).Should().Be(HeaderEnding(header, 100, null));
+        HeaderEnding(header, 20_000, null, placed: true).Should().Be(HeaderEnding(header, 20_000, null));
+    }
+
+    [Theory]
+    [InlineData("\nAAAA % endstream\n0 obj", 8, true)]
+    [InlineData("\n/Name % endstream\n12 0 obj", 9, true)]
+    [InlineData("\n12 % endstream\n0 0 obj", 6, true)]
+    [InlineData("\n12 % endstream\n5 0 obj", 6, true)]
+    [InlineData("\n12 % endstream\n0 abc\n12 0 obj", 6, true)]
+    [InlineData("\n12 % endstream\nendobj\n12 0 obj", 6, false)]
+    [InlineData("\n12 % endstream\n(0) obj", 6, true)]
+    [InlineData("\n12 % endstream\n0 objx\n12 0 obj", 6, true)]
+    [InlineData("\n12 % endstream\n0\n", 6, true)]
+    [InlineData("\n12 (% endstream\n0 obj", 7, true)]
+    [InlineData("\nendstream 12 0\nobj", 0, true)]
+    public void An_endstream_in_a_comment_ends_the_data_where_no_header_that_starts_before_it_ends_past_it(
+        string header, int past, bool endObjMissing)
+    {
+        // As above, but nothing after the comment's line ends a header that starts before the endstream: the line's tokens
+        // end in a keyword or a name, a second number — which starts a header past the endstream —, a keyword or a string
+        // follows the first, an obj a regular byte follows, or the first number is the last token before the end of the
+        // object. An endstream in a string, or one that
+        // is a token, is in no comment, and a header after it starts past it. The endstream, the first of the data, ends it,
+        // wherever the reads part what follows, and its object's endobj is judged by what follows it.
+        foreach (var filler in new[] { 100, 20_000, Window - LostEndPrefix.Length - header.Length + 6 })
+        {
+            var ending = HeaderEnding(header, filler, null);
+
+            ending.Length.Should().Be(filler + past, "the filler is {0} bytes", filler);
+            ending.Diagnostic.Should().StartWith(PdfDiagnosticCodes.StreamLengthInvalid + ":", "the filler is {0} bytes", filler);
+            ending.EndObjMissing.Should().Be(endObjMissing, "the filler is {0} bytes", filler);
+        }
+    }
+
+    [Theory]
     [InlineData("\nendobj\n12 % ", 0, true)]
     [InlineData("\n5 12 % ", 3, false)]
     public void An_endobj_a_long_comment_of_a_header_holds_changes_nothing_wherever_the_reads_after_its_number_end(
@@ -861,11 +951,13 @@ public class WindowEdgeTests
 
     /// <summary>
     /// Reads object 5, a stream that lost its <c>endstream</c>, whose data is <paramref name="filler"/> bytes and then
-    /// <paramref name="header"/>, a header no index places, under an object guard of <paramref name="guard"/> bytes or the
-    /// default: what its data ends at — its length, what the report says of it, from the colon on, under its code —,
-    /// whether the reader judges its <c>endobj</c> missing, and whether the validator does, the catalog naming it.
+    /// <paramref name="header"/>, a header no index places — unless <paramref name="placed"/> says the index places object 12
+    /// where the header's first <c>12</c> starts —, under an object guard of <paramref name="guard"/> bytes or the default:
+    /// what its data ends at — its length, what the report says of it, from the colon on, under its code —, whether the
+    /// reader judges its <c>endobj</c> missing, and whether the validator does, the catalog naming it.
     /// </summary>
-    private static (int Length, string Diagnostic, bool EndObjMissing, bool RuleFires) HeaderEnding(string header, int filler, int? guard)
+    private static (int Length, string Diagnostic, bool EndObjMissing, bool RuleFires) HeaderEnding(
+        string header, int filler, int? guard, bool placed = false)
     {
         var file = new HandWrittenFile();
         var rows = new Dictionary<int, long>
@@ -874,6 +966,12 @@ public class WindowEdgeTests
             [2] = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"),
         };
         rows[ObjectNumber] = file.Position;
+
+        if (placed)
+        {
+            rows[12] = file.Position + LostEndPrefix.Length + filler + header.IndexOf("12", StringComparison.Ordinal);
+        }
+
         file.Raw(LostEndPrefix + new string('A', filler) + header + "\n(twelve)\nendobj\n");
         rows[6] = file.Object(6, "(six)");
         file.Table(7, rows, "/Size 7 /Root 1 0 R");

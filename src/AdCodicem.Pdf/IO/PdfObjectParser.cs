@@ -1101,9 +1101,12 @@ internal ref struct PdfObjectParser
         Span<long> carriedAt = stackalloc long[HeaderText.CarriedLength];
         var start = _baseOffset + dataStart;
         var text = new HeaderText(carried, carriedAt, start);
+        var pending = default(PendingEndStream);
         text.Read(span[dataStart..], start);
 
-        var dataEnd = StreamEnds.SearchStretch(text, endsRange: _endsData, deferred, out var header);
+        // A keyword in a comment that what follows its line is still to decide leaves the buffer undecided, as a header the
+        // end of the buffer cuts does: a larger window says (#261).
+        var dataEnd = StreamEnds.SearchStretch(text, endsRange: _endsData, deferred, ref pending, out var header);
 
         if (dataEnd >= 0)
         {

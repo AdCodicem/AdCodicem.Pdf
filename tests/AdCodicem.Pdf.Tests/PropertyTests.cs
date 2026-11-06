@@ -438,6 +438,28 @@ public class PropertyTests
     }
 
     [Fact]
+    public void A_search_for_endstream_ends_the_data_at_the_same_place_wherever_its_reads_part_the_data()
+    {
+        // The first endstream of the data ends it, unless a header comes first; one inside a comment, between the tokens of
+        // a header that ends past it, waits for what follows its line, which the reads after it may hold (#261). However
+        // the reads part the data, each repeating the last bytes of the one before, the search ends the data, or stops at a
+        // header, where a single read of it all does.
+        var pieces = Gen.OneOf(HeaderPieces, Gen.Elements("endstream", "% endstream", "%endstream\n", " endstream", "\nendstream"));
+        var cases =
+            from count in Gen.Choose(0, 40)
+            from parts in Gen.ArrayOf(pieces, count)
+            from reads in Gen.Choose(0, 12)
+            from sizes in Gen.ArrayOf(Gen.Choose(PdfFileReader.EndStreamSearchOverlap + 1, 40), reads)
+            select (Text: string.Concat(parts), Sizes: sizes);
+
+        Check.One(Settings.WithMaxTest(10 * Cases), Prop.ForAll(cases.ToArbitrary(), drawn =>
+        {
+            var data = Encoding.Latin1.GetBytes(drawn.Text);
+            EndReadPartly(data, drawn.Sizes).Should().Be(EndReadPartly(data, []), drawn.Text);
+        }));
+    }
+
+    [Fact]
     public void The_rule_for_object_headers_takes_the_header_the_scan_that_rebuilds_an_index_takes()
     {
         // The rule a search for endstream stops at reads comments between a header's tokens as the scan that rebuilds an
@@ -760,6 +782,38 @@ public class PropertyTests
             if (header >= 0 || end == data.Length)
             {
                 return header;
+            }
+
+            start = Math.Max(start + 1, end - PdfFileReader.EndStreamSearchOverlap);
+            text.CarryTo(DataStart + start);
+            read++;
+        }
+    }
+
+    /// <summary>
+    /// Searches <paramref name="data"/>, which starts at <see cref="HeaderDataStart"/>, for where its first <c>endstream</c> ends
+    /// it, as a search for one reads a stream's data — in reads of <paramref name="sizes"/> bytes, then one to the end, each
+    /// repeating the last bytes of the one before — and gives where the data ends, or the header that stopped the search.
+    /// </summary>
+    private static (long Found, long Header) EndReadPartly(byte[] data, int[] sizes)
+    {
+        const long DataStart = HeaderDataStart;
+        Span<byte> carried = stackalloc byte[HeaderText.CarriedLength];
+        Span<long> carriedAt = stackalloc long[HeaderText.CarriedLength];
+        var text = new HeaderText(carried, carriedAt, DataStart);
+        var pending = default(PendingEndStream);
+        var start = 0;
+        var read = 0;
+
+        while (true)
+        {
+            var end = read < sizes.Length ? Math.Min(data.Length, start + sizes[read]) : data.Length;
+            text.Read(data.AsSpan(start, end - start), DataStart + start);
+            var found = StreamEnds.SearchStretch(text, endsRange: end == data.Length, deferred: false, ref pending, out var header);
+
+            if (found >= 0 || header >= 0 || end == data.Length)
+            {
+                return (found, header);
             }
 
             start = Math.Max(start + 1, end - PdfFileReader.EndStreamSearchOverlap);

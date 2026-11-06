@@ -82,6 +82,9 @@ internal struct LineTokens
     /// <summary>Gets a value indicating whether the line holds a <c>%</c> so far, in a comment or in a string.</summary>
     public bool HoldsPercent { get; private set; }
 
+    /// <summary>Gets a value indicating whether the bytes read so far end inside a comment, which runs to the end of the line.</summary>
+    public readonly bool InComment => _mode == Mode.Comment;
+
     /// <summary>Lexes <paramref name="bytes"/>, which start at <paramref name="at"/> in the file, as the line's next bytes.</summary>
     public void Read(ReadOnlySpan<byte> bytes, long at)
     {

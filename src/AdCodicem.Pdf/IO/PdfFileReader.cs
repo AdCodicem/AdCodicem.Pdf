@@ -2425,9 +2425,10 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
 
     /// <summary>
     /// Finds the first <c>endstream</c> after <paramref name="dataStart"/> that ends before <paramref name="limit"/> and
-    /// before the first object header the bytes hold — in the bytes the parser holds, then in the file past them —, and
-    /// returns where the data ends, the end-of-line before the keyword left out; -1 when there is none, and then
-    /// <paramref name="header"/> is where that header starts, when one stopped the search, or -1.
+    /// before the first object header the bytes hold — in the bytes the parser holds, then in the file past them; one a
+    /// comment between that header's tokens holds is not before it —, and returns where the data ends, the end-of-line
+    /// before the keyword left out; -1 when there is none, and then <paramref name="header"/> is where that header starts,
+    /// when one stopped the search, or -1.
     /// </summary>
     /// <remarks>
     /// The file is read forward through windows the source lends, each repeating the last
@@ -2436,7 +2437,11 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// last whatever the source returns: the search ends at <paramref name="limit"/>, at the end of the file, at a header,
     /// or at a source that has nothing more to give, and reads no byte past the end of the file. The file is read once, but
     /// for what each read repeats, and each read is searched for both: a header only before the <c>endstream</c> it holds,
-    /// with what <see cref="HeaderText"/> carries into it of the reads before. The object's own <c>endobj</c> is followed
+    /// with what <see cref="HeaderText"/> carries into it of the reads before — but for a first <c>endstream</c> inside a
+    /// comment, on a line whose tokens may begin a header, which waits for the tokens past its line, through the reads after
+    /// it, to say whether a header that starts before it ends past it (#261): the search reads on as where no keyword was
+    /// found, and one that reads no further, past its budget or at a source with nothing more to give, takes the keyword
+    /// (<see cref="PendingEndStream"/>). The object's own <c>endobj</c> is followed
     /// through each read up to where the next starts, or to where the search stops (<see cref="EndObjTail"/>), a copy kept
     /// at each place a number carried into the next read starts: a header that a later read finds to start in a read
     /// before it — comment lines between its tokens, which may hold <c>endobj</c> (#261) — is judged with the tail as it
@@ -2474,13 +2479,20 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
         var text = new HeaderText(carried, carriedAt, dataStart);
         var tail = new EndObjTail(dataStart);
         var held = new EndObjTailCopies(copies, copiedAt);
+        var pending = default(PendingEndStream);
         searched = true;
         objectEnd = -1;
 
         var inBuffer = (int)Math.Clamp(limit - dataStart, 0, buffered.Length);
         text.Read(buffered[..inBuffer], dataStart);
-        var found = StreamEnds.SearchStretch(text, endsRange: dataStart + inBuffer >= limit, deferred, out header);
+        var found = StreamEnds.SearchStretch(text, endsRange: dataStart + inBuffer >= limit, deferred, ref pending, out header);
         var end = Math.Min(limit, _source.Length);
+
+        // A keyword in a comment that waits for the reads after it ends the data where the search reads no further (#261).
+        if (pending.IsPending && !readsFile)
+        {
+            found = pending.DataEnd;
+        }
 
         if (found >= 0 || header >= 0 || dataStart + buffered.Length >= end || !readsFile)
         {
@@ -2521,11 +2533,11 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
             if (span.IsEmpty)
             {
                 endObjSeen = tail.Seen;
-                return -1;
+                return pending.IsPending ? pending.DataEnd : -1;
             }
 
             text.Read(span, position);
-            found = StreamEnds.SearchStretch(text, endsRange: position + span.Length >= end, deferred, out header);
+            found = StreamEnds.SearchStretch(text, endsRange: position + span.Length >= end, deferred, ref pending, out header);
 
             if (found >= 0 || header >= 0 || position + span.Length >= end)
             {
