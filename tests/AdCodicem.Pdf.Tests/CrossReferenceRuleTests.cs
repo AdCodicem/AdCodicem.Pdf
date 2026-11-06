@@ -2597,7 +2597,7 @@ public class CrossReferenceRuleTests
         document.Diagnostics[0].Position.Should().Be(table - padding);
         document.Diagnostics[0].Message.Should().Be(string.Create(
             CultureInfo.InvariantCulture,
-            $"White space and comments run past {(padding > PdfReaderLimits.Default.MaxTrailerLength ? "64 KB" : "256 bytes")} where a cross-reference section is named; what follows them was not read. Raise PdfReaderLimits.MaxTrailerLength to read past it."));
+            $"White space and comments run past {(padding > PdfReaderLimits.Default.MaxTrailerLength ? "64 KB" : "256 bytes")} where a cross-reference section is named; the section was not read from there. Raise PdfReaderLimits.MaxTrailerLength to read past it."));
         document.GetObject(new PdfObjectId(3)).AsDictionary().Required().IsOfType(PdfName.Page).Should().BeTrue();
     }
 

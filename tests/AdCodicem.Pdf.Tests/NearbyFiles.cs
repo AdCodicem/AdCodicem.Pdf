@@ -730,6 +730,35 @@ internal static class NearbyFiles
         return (file.Bytes, stream, named);
     }
 
+    /// <summary>
+    /// A document saved twice, whose first section, at <c>Original</c>, lies past <paramref name="run"/> spaces, the first
+    /// of them at <c>Run</c>: a classic table or, with <paramref name="stream"/>, cross-reference stream 8, which indexes
+    /// the catalog, the page tree, object 5, <c>(five)</c>, and object 7, <c>(old seven)</c>. The update's table, at
+    /// <c>Update</c>, indexes object 7 again, <c>(new seven)</c>, and names through <c>/Prev</c> the first of the spaces.
+    /// </summary>
+    public static (byte[] File, long Run, long Original, long Update) UpdateNamingTheSpacesBeforeItsOriginal(int run, bool stream = false)
+    {
+        var file = new HandWrittenFile(version: "1.5");
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"),
+            [5] = file.Object(5, "(five)"),
+            [7] = file.Object(7, "(old seven)"),
+        };
+        var spaces = file.Position;
+        file.Raw(new string(' ', run));
+        var original = stream
+            ? file.CrossReferenceStream(8, 9, rows.ToDictionary(row => row.Key, row => (1, row.Value, 0)), "/Root 1 0 R")
+            : file.Table(8, rows, "/Size 8 /Root 1 0 R");
+        var seven = file.Object(7, "(new seven)");
+        var update = file.Position;
+        file.Raw(string.Create(
+            CultureInfo.InvariantCulture,
+            $"xref\n0 1\n0000000000 65535 f \n7 1\n{seven:D10} 00000 n \ntrailer\n<< /Size {(stream ? 9 : 8)} /Root 1 0 R /Prev {spaces} >>\nstartxref\n{update}\n%%EOF\n"));
+        return (file.Bytes, spaces, original, update);
+    }
+
     /// <summary>Writes a comment of <paramref name="length"/> bytes, its end of line counted, when it is more than none.</summary>
     private static void Gap(HandWrittenFile file, int length)
     {

@@ -5127,12 +5127,13 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
 
         if (padding < 0)
         {
-            // White space and comments fill a trailer's window there and run on past it: what follows them is the guard's to
-            // hide, as a dictionary it cuts is (ADR 34), and is not read. The section is looked for nearby, as one not there
-            // is. A place a search near an offset tries starts at a token, and never gets here.
+            // White space and comments fill a trailer's window there and run on past it: the first token past them is the
+            // guard's to hide, as a dictionary it cuts is (ADR 34), and the section is not read from there. It is looked for
+            // as one not there is: near the offset, where the search may find it past them, or, for the one startxref names,
+            // by rebuilding the index. A place a search near an offset tries starts at a token, and never gets here.
             ReachLimit(
                 PdfLimit.Trailer,
-                $"White space and comments run past {PdfLimitGuard.FormatLength(_guard.Bound(PdfLimit.Trailer))} where a cross-reference section is named; what follows them was not read.",
+                $"White space and comments run past {PdfLimitGuard.FormatLength(_guard.Bound(PdfLimit.Trailer))} where a cross-reference section is named; the section was not read from there.",
                 absolute);
             section.Fault = "holds neither the xref keyword nor an object";
             section.State = XRefSectionState.NotFound;
@@ -5169,9 +5170,10 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// cut, is read on as far as a trailer's window reaches and <see cref="XRefProbeLength"/> bytes past it: a first token
     /// that starts within that window, or where it ends, is read whole enough to tell the keyword from an object's header.
     /// White space and comments that fill the window and run on past it are the guard's (ADR 34), as a dictionary it cuts
-    /// is: the section past them is not read, and the reading reports the guard (<see cref="TryReadXRefSection"/>). The
-    /// windows grow eightfold from <see cref="XRefProbeLength"/> bytes, so that the bytes read come to less than ten times
-    /// the run crossed, or one probe where there is none.
+    /// is: the section is not read from the position, and the reading reports the guard (<see cref="TryReadXRefSection"/>),
+    /// while a search near the position may find it past them. The windows grow eightfold from
+    /// <see cref="XRefProbeLength"/> bytes, so that the bytes read come to less than ten times the run crossed, or one probe
+    /// where there is none.
     /// </remarks>
     /// <param name="absolute">The position, in the file.</param>
     /// <param name="table">Receives whether the first token is the <c>xref</c> keyword; false where there is none to read.</param>

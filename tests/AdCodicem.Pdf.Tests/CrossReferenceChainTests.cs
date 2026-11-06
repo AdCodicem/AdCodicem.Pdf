@@ -4448,6 +4448,31 @@ public class CrossReferenceChainTests
         document.Diagnostics[0].Message.Should().StartWith("White space and comments run past 64 KB where a cross-reference section is named;");
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void A_prev_naming_more_white_space_than_a_lowered_trailer_bound_is_not_read_from_there_and_finds_its_section_past_it(bool stream)
+    {
+        // The update's table names its original, a classic table or a cross-reference stream, through /Prev at the first of
+        // the 257 spaces before it, under a MaxTrailerLength of 256: a byte more than the bound lets the white space before a
+        // section run. The run reaches the guard where it starts, and the section is not read from there, as the message
+        // says; the search near the offset, which reaches 512 bytes past it, finds the section past the run and reads it,
+        // so that object 5 reads as the original gives it and object 7 as the update does (#188, #289).
+        var (file, run, original, _) = NearbyFiles.UpdateNamingTheSpacesBeforeItsOriginal(257, stream);
+        using var document = PdfDocument.Open(file, new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxTrailerLength = 256 } });
+
+        document.Reader.Structure.Sections.Select(section => (section.NamedBy, section.State, section.Kind, section.Offset, section.NamedOffset)).Skip(1).Should().Equal(
+            ("/Prev", XRefSectionState.Relocated, stream ? XRefSectionKind.Stream : XRefSectionKind.Table, original, run));
+        document.Diagnostics.Select(diagnostic => (diagnostic.Code, diagnostic.Position)).Should().Equal(
+            (PdfDiagnosticCodes.LimitTrailer, run),
+            (PdfDiagnosticCodes.XRefOffsetAdjusted, original));
+        document.Diagnostics[0].Message.Should().Be(
+            "White space and comments run past 256 bytes where a cross-reference section is named; the section was not read from there. Raise PdfReaderLimits.MaxTrailerLength to read past it.");
+        Text(document, 5).Should().Be("five");
+        Text(document, 7).Should().Be("new seven");
+        new PdfValidator().Validate(document).Findings.Select(finding => finding.RuleId).Should().Equal(PdfValidationRuleIds.XRefSectionShifted);
+    }
+
     [Fact]
     public void An_xrefstm_naming_the_token_before_white_space_its_table_s_prev_names_past_a_trailer_s_window_is_left_to_no_prev()
     {
