@@ -1283,6 +1283,99 @@ public class CrossReferenceChainTests
     }
 
     [Theory]
+    [InlineData("before the bytes read again")]
+    [InlineData("before the bytes searched")]
+    [InlineData("10 bytes before the word")]
+    public async Task A_line_the_source_gives_short_of_the_place_as_it_is_read_again_declares_nothing_and_the_file_opens(string cut)
+    {
+        // The line before object 6, inside whose endobj the newest table's /Prev names the update's table, is a comment of 700
+        // letters past 6,000 bytes of comment, which holds the word xref some 40 bytes before the place named: the line starts
+        // before the bytes searched near the place, and is read again from 4,096 bytes before them. The file is cut short as
+        // that read is made: before its first byte, before the bytes searched, or 10 bytes before the word. The read was
+        // taken to give every byte asked for: the first two threw out of the opening, the third lexed the end of the bytes
+        // given forever. Bytes given that end at or before the place are all the file holds there: the word declares nothing,
+        // as where its line starts farther back, and the search goes on, to the update's table, which the cut took too; the
+        // section is missing (#281).
+        var (file, _, named) = NearbyFiles.UpdateAfterAStrayLine("%" + new string('a', 700) + " xref see the table below\n", gap: 6000);
+        var word = Encoding.Latin1.GetString(file).IndexOf(" xref see", StringComparison.Ordinal) + 1;
+        var readAgain = named - PdfFileReader.NearbySearchRadius - 1 - 4096;
+        using var source = new CutShortSource(file);
+        source.CutWhenReadAt(readAgain, cut switch
+        {
+            "before the bytes read again" => (int)readAgain - 100,
+            "before the bytes searched" => (int)readAgain + 100,
+            _ => word - 10,
+        });
+
+        var (state, offset, codes) = await Within(() =>
+        {
+            using var document = PdfDocument.Open(source, options: null, ownsSource: false);
+            var section = document.Reader.Structure.Sections[1];
+            return (section.State, section.Offset, document.Diagnostics.Select(diagnostic => diagnostic.Code).ToArray());
+        });
+
+        state.Should().Be(XRefSectionState.NotFound);
+        offset.Should().Be(named);
+        codes.Should().Contain(PdfDiagnosticCodes.XRefSectionMissing);
+    }
+
+    [Fact]
+    public async Task A_source_that_gives_4096_bytes_a_read_finds_the_section_past_the_word_xref_on_a_line_read_again()
+    {
+        // The file of the theory above, with no cut, read through a source that gives at most 4,096 bytes a read, as a source
+        // over a store of blocks may. The line read again from 4,096 bytes before the bytes searched comes back short of the
+        // word, and the reading lexed the end of the bytes given forever. The bytes given are all the file holds there: the
+        // word declares nothing, and the search goes on to the update's table, 65 bytes past the place named, which frees
+        // object 4, as a source that gives every byte asked for finds it (#52, #281).
+        var (file, update, named) = NearbyFiles.UpdateAfterAStrayLine("%" + new string('a', 700) + " xref see the table below\n", gap: 6000);
+
+        var (state, offset, messages, four, repaired) = await Within(() =>
+        {
+            using var document = PdfDocument.Open(new CappedReadSource(file, 4096), options: null, ownsSource: true);
+            var section = document.Reader.Structure.Sections[1];
+            return (
+                section.State,
+                section.Offset,
+                document.Diagnostics.Select(diagnostic => diagnostic.Message).ToArray(),
+                document.GetObject(new PdfObjectId(4)),
+                document.WasRepaired);
+        });
+
+        state.Should().Be(XRefSectionState.Relocated);
+        offset.Should().Be(update);
+        messages.Should().ContainSingle().Which.Should().Be(Invariant($"The cross-reference section /Prev names at offset {named} was found 65 bytes after it."));
+        four.Should().BeSameAs(PdfNull.Instance);
+        repaired.Should().BeFalse();
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(1)]
+    public async Task An_xref_keyword_is_a_section_found_moved_where_the_source_gives_its_first_byte_as_its_line_is_read_again(int past)
+    {
+        // The keyword follows the endobj of object 4, an array of 400 zeros written on one line past a comment of 5,000 bytes,
+        // and the newest table's /Prev names the place 50 bytes before it: the line starts before the bytes searched near the
+        // place, and is read again from 4,096 bytes before them. The file is cut short as that read is made, at the keyword
+        // or one byte past it. Whether a token starts at a place is told by the bytes before it and its first: given, the
+        // keyword is the section found moved, which cannot be read; not given, the bytes given end at the place, which the
+        // reading lexed the end of forever, and the keyword declares nothing, the section missing (#281).
+        var (file, keyword) = NearbyFiles.KeywordPastALongComment("4 0 obj [" + string.Concat(Enumerable.Repeat("0 ", 400)) + "] endobj xref 0 1 bad");
+        var readAgain = keyword - 50 - PdfFileReader.NearbySearchRadius - 1 - 4096;
+        using var source = new CutShortSource(file);
+        source.CutWhenReadAt(readAgain, (int)keyword + past);
+
+        var (state, offset) = await Within(() =>
+        {
+            using var document = PdfDocument.Open(source, options: null, ownsSource: false);
+            var section = document.Reader.Structure.Sections[1];
+            return (section.State, section.Offset);
+        });
+
+        state.Should().Be(past == 1 ? XRefSectionState.Malformed : XRefSectionState.NotFound);
+        offset.Should().Be(past == 1 ? keyword : keyword - 50);
+    }
+
+    [Theory]
     [InlineData("%xref\n")]
     [InlineData("a comment of 700 letters")]
     [InlineData("a string of 700 letters")]
@@ -5521,6 +5614,18 @@ public class CrossReferenceChainTests
     }
 
     private static string Invariant(FormattableString text) => text.ToString(CultureInfo.InvariantCulture);
+
+    /// <summary>
+    /// Gives what <paramref name="read"/> returns, run on a thread of its own, and fails where it has not returned within half
+    /// a minute: a reading that never ends fails the test rather than stalling the run, its thread left to the process.
+    /// </summary>
+    private static async Task<T> Within<T>(Func<T> read)
+    {
+        var reading = Task.Factory.StartNew(read, TestContext.Current.CancellationToken, TaskCreationOptions.LongRunning, TaskScheduler.Default);
+        var first = await Task.WhenAny(reading, Task.Delay(TimeSpan.FromSeconds(30), TestContext.Current.CancellationToken));
+        ReferenceEquals(first, reading).Should().BeTrue("the reading ends, whatever the source gives");
+        return await reading;
+    }
 
     /// <summary>
     /// Gives a file with no header, whose offsets count from its first byte, and where its second table lies: a classic

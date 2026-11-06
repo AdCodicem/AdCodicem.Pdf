@@ -4913,11 +4913,14 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// <remarks>
     /// The line starts past the last end of line before the place, or at the file's start. Where it starts before the bytes
     /// searched, the end of line before it is looked for within <see cref="LineStartSearchLength"/> bytes before them, read
-    /// again with them, and the line is lexed from its start: a comment whose <c>%</c>, or a string whose <c>(</c>, lies
-    /// before the bytes searched is seen. Where none lies within them, and the file starts farther back, the place declares
-    /// nothing, and is dropped as any that holds no section is. A string a line before it opened is not seen, as in an
-    /// object's header (#171). The bytes lexed are those before the place on its line, once for each place that cannot be
-    /// read, which <see cref="MaxRelocationCandidates"/> bounds, and one window more at most for each.
+    /// again with them as far as the source gives them, and the line is lexed from its start: a comment whose <c>%</c>, or a
+    /// string whose <c>(</c>, lies before the bytes searched is seen. Where none lies within them, and the file starts
+    /// farther back, the place declares nothing, and is dropped as any that holds no section is. So is a place the bytes
+    /// given end at or before: a source that gives fewer bytes than asked is at the end of the file there (#52), and a token
+    /// starts at the place only where its first byte is given, which, with the bytes before it, tells whether one does. A
+    /// string a line before it opened is not seen, as in an object's header (#171). The bytes lexed are those before the
+    /// place on its line, once for each place that cannot be read, which <see cref="MaxRelocationCandidates"/> bounds, and
+    /// one window more at most for each.
     /// </remarks>
     /// <param name="span">The bytes searched.</param>
     /// <param name="spanStart">Where <paramref name="span"/> starts in the file.</param>
@@ -4932,11 +4935,18 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
         }
 
         // The bytes searched are read again from where the line may start, to their end, which lies past the place as every
-        // token that holds it does.
+        // token that holds it does — where the source gives every byte asked for. Bytes given that end at or before the place
+        // hold neither the end of line looked for, whole, nor the place: it declares nothing, as past the bound.
         var from = Math.Max(0, spanStart - LineStartSearchLength);
         var before = (int)(spanStart - from);
         using var window = _source.GetWindow(from, before + span.Length);
         var bytes = window.Memory.Span;
+
+        if (bytes.Length <= before + at)
+        {
+            return false;
+        }
+
         var endOfLine = bytes[..before].LastIndexOfAny((byte)'\r', (byte)'\n');
 
         return (endOfLine >= 0 || from == 0) && StartsToken(bytes, endOfLine + 1, before + at);
@@ -4948,16 +4958,17 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// </summary>
     private static bool StartsToken(ReadOnlySpan<byte> span, int lineStart, int at)
     {
-        // The end of the input ends past the place, as every token that holds it does.
+        // The bytes lexed run past the place, as every token that holds it does; the end of the input stops the lexing all
+        // the same, and starts no token, so that no length the bytes come in keeps the loop going (invariant 4).
         var lexer = new PdfLexer(span, lineStart);
         var token = lexer.Read();
 
-        while (token.End <= at)
+        while (token.End <= at && token.Kind != PdfTokenKind.EndOfInput)
         {
             token = lexer.Read();
         }
 
-        return token.Start == at;
+        return token.Kind != PdfTokenKind.EndOfInput && token.Start == at;
     }
 
     /// <summary>

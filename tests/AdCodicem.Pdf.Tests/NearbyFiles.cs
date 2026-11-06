@@ -643,12 +643,12 @@ internal static class NearbyFiles
 
     /// <summary>
     /// A document saved three times, whose newest table names through <c>/Prev</c> a place 2 bytes into the <c>endobj</c> of
-    /// object 6, <c>(six)</c>, which <paramref name="line"/> precedes, past 1,200 bytes of comment, and 60 spaces follow
-    /// before the update's table, at <c>Update</c>, 65 bytes past that place. The first table indexes objects 1 to 4, object
-    /// 4 as <c>(old four)</c>; the update's frees object 4, indexes object 6, and names the first through <c>/Prev</c>; the
-    /// newest indexes object 7, <c>(seven)</c>. The place its <c>/Prev</c> names is at <c>Named</c>.
+    /// object 6, <c>(six)</c>, which <paramref name="line"/> precedes, past <paramref name="gap"/> bytes of comment, and 60
+    /// spaces follow before the update's table, at <c>Update</c>, 65 bytes past that place. The first table indexes objects
+    /// 1 to 4, object 4 as <c>(old four)</c>; the update's frees object 4, indexes object 6, and names the first through
+    /// <c>/Prev</c>; the newest indexes object 7, <c>(seven)</c>. The place its <c>/Prev</c> names is at <c>Named</c>.
     /// </summary>
-    public static (byte[] File, long Update, long Named) UpdateAfterAStrayLine(string line)
+    public static (byte[] File, long Update, long Named) UpdateAfterAStrayLine(string line, int gap = 1200)
     {
         var file = new HandWrittenFile();
         var catalog = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>");
@@ -656,7 +656,7 @@ internal static class NearbyFiles
         var three = file.Object(3, "(three)");
         var four = file.Object(4, "(old four)");
         var oldest = file.Table(5, new() { [1] = catalog, [2] = pages, [3] = three, [4] = four }, "/Size 5 /Root 1 0 R");
-        Gap(file, 1200);
+        Gap(file, gap);
         file.Raw(line);
         var six = file.Object(6, "(six)");
         var named = file.Position - "endobj\n".Length + 2;
@@ -671,6 +671,27 @@ internal static class NearbyFiles
             CultureInfo.InvariantCulture,
             $"xref\n0 1\n0000000000 65535 f \n7 1\n{seven:D10} 00000 n \ntrailer\n<< /Size 8 /Root 1 0 R /Prev {named} >>\nstartxref\n{newest}\n%%EOF\n"));
         return (file.Bytes, update, named);
+    }
+
+    /// <summary>
+    /// A document saved twice, its lines ended by <paramref name="eol"/>, whose first table indexes objects 1 and 2, past
+    /// which a comment of 5,000 bytes, its end of line counted, comes before <paramref name="line"/>, which holds an
+    /// <c>xref</c> keyword, at <c>Keyword</c>, that no table follows; past 1,200 bytes more of comment, the newest table, which
+    /// indexes objects 1 and 2 too, names through <c>/Prev</c> the place 50 bytes before that keyword, where no section is.
+    /// The first table's rows end with a carriage return and a line feed whatever <paramref name="eol"/> is.
+    /// </summary>
+    public static (byte[] File, long Keyword) KeywordPastALongComment(string line, string eol = "\n")
+    {
+        var file = new HandWrittenFile(eol: eol);
+        var catalog = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>");
+        var pages = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>");
+        file.Table(3, new() { [1] = catalog, [2] = pages }, "/Size 3 /Root 1 0 R");
+        file.Raw("%" + new string('-', 5000 - 1 - eol.Length) + eol);
+        var keyword = file.Position + line.IndexOf("xref", StringComparison.Ordinal);
+        file.Raw(line + eol);
+        file.Raw("%" + new string('-', 1200 - 1 - eol.Length) + eol);
+        file.Table(3, new() { [1] = catalog, [2] = pages }, string.Create(CultureInfo.InvariantCulture, $"/Size 3 /Root 1 0 R /Prev {keyword - 50}"));
+        return (file.Bytes, keyword);
     }
 
     /// <summary>
