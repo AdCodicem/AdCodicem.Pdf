@@ -327,8 +327,11 @@ public static class PdfDiagnosticCodes
     public const string LimitXRefSectionCount = "limit.xref-section-count";
 
     /// <summary>
-    /// A trailer, or a cross-reference stream's dictionary, is longer than
-    /// <see cref="Documents.PdfReaderLimits.MaxTrailerLength"/>, and only the part within it was parsed.
+    /// A trailer, or a cross-reference stream's dictionary, measured from its object's header, is longer than
+    /// <see cref="Documents.PdfReaderLimits.MaxTrailerLength"/>, and only the part within it was parsed; or the white space
+    /// and comments an offset that names a cross-reference section falls short of it by run past that bound, and nothing
+    /// past them was read: the section is looked for as one that is not there, near the offset, or, for the one
+    /// <c>startxref</c> names, by rebuilding the index.
     /// </summary>
     public const string LimitTrailer = "limit.trailer";
 

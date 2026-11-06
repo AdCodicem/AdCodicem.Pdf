@@ -92,7 +92,9 @@ any of the moments below: at opening, by a read after it, or as a validation set
 as the scan finds it, and `xref.entry-type-reserved` then says the reader read the row so only until then. A row of a
 reserved type whose number was refused before it was read — by a newer section, below, or by a row of the stream's own
 for the same number — is not read so: it stands for nothing, as every row whose number was refused does, its object is
-looked for by rebuilding the map, and both reports say so. A classic table that holds no subsection, its `trailer`
+looked for by rebuilding the map, and both reports say so; a stream a table's `/XRefStm` read and that table's `/Prev`
+reads again is judged as its first reading read it, what it refused itself no newer section's refusal
+([#156](https://github.com/AdCodicem/AdCodicem.Pdf/issues/156)). A classic table that holds no subsection, its `trailer`
 keyword right after its `xref` keyword, reads as one whose one subsection is `0 0`: it indexes nothing, and nothing is
 rebuilt for it (`xref.section-empty`, [#222](https://github.com/AdCodicem/AdCodicem.Pdf/issues/222)) — unless no
 section of the chain indexes anything, below.
@@ -120,11 +122,13 @@ The map is rebuilt by scanning the whole file, once at most, and never while the
   classic table, one that cannot be read among them, a section the chain reads through `/Prev` or `startxref`, or what
   the table's own `/Prev` reaches too, whatever offset each writes: the same, one in the white space before that
   section, or one a few bytes off where the search near it comes to that section and the `/Prev` keeps its place there,
-  as its own reading does — the `xref` keyword, a stream of `/Type /XRef`, or an object that gives a `/W` and reads
-  there as a section, whatever its type, not a font, a string, or an object that gives a `/W` and does not read as one
-  —, or what the `/XRefStm` read in the stream's place where the `/Prev`'s own search comes to it, which that `/Prev`
-  then reads whole: a classic table, or a stream whose own dictionary gives a `/Prev`, whatever it names, with no other
-  section near — (`xref.hybrid-stream-lost`, [#156](https://github.com/AdCodicem/AdCodicem.Pdf/issues/156)); the
+  as its own reading does, from the object's first token — the `xref` keyword, a stream of `/Type /XRef`, or an object
+  that gives a `/W` and reads there as a section, whatever its type, not a font, a string, or an object that gives a
+  `/W` and does not read as one; a `/Prev` that names what the chain has reached, which ends the chain in a loop, keeps
+  no place, nor does one that names white space running on past `MaxTrailerLength` —, or what the `/XRefStm` read in
+  the stream's place where the `/Prev`'s own search comes to it, which that `/Prev` then reads whole: a classic table,
+  or a stream whose own dictionary gives a `/Prev`, whatever it names, with no other section near —
+  (`xref.hybrid-stream-lost`, [#156](https://github.com/AdCodicem/AdCodicem.Pdf/issues/156)); the
   report on what the `/Prev` reaches too is made before that `/Prev` is read, and says only that the chain looks for it
   there, or that the offset lies outside the file, and a stream the `/Prev` read again is reported once it has, its own
   `/Prev`, where it names no older section, reported as the chain finds it. Where the search near the offset the
@@ -166,30 +170,33 @@ one number twice and refused one of the two rows is not said to have had the oth
 refusal is its own, and its object is left to the rebuild only where no row read before the refused one indexes it.
 Any other section a `/Prev` names that cannot be read ends the chain there.
 
-An object, or a section a `/Prev` or a `/XRefStm` names, that lies a few bytes from where it is said to be is
-found nearby (`xref.offset-adjusted`), and the map is not rebuilt for it: within 512 bytes either side, however near the
-file's start that falls ([#197](https://github.com/AdCodicem/AdCodicem.Pdf/issues/197)), comments between its
-header's tokens included, as a load reads them ([#261](https://github.com/AdCodicem/AdCodicem.Pdf/issues/261)). A
-section is never found where a section the chain reached starts — one it read, or one there that it could not read
-though it declares itself a section —, which is not the one looked for
+An object, or a section a `/Prev` or a `/XRefStm` names, that lies a few bytes from where it is said to be is found
+nearby (`xref.offset-adjusted`), and the map is not rebuilt for it: within 512 bytes either side, however near the
+file's start that falls ([#197](https://github.com/AdCodicem/AdCodicem.Pdf/issues/197)), comments between its header's
+tokens included, as a load reads them ([#261](https://github.com/AdCodicem/AdCodicem.Pdf/issues/261)). A section an
+offset names short of its first token, white space and comments between, is read from that token where it is named, as
+long as they run for no more than `MaxTrailerLength`: white space and comments that run on past it reach that guard,
+nothing past them is read, and the section is looked for nearby as one that is not there
+([Reader limits](reader-limits.md)). A section is never found where a section the chain reached starts — one it read,
+or one there that it could not read though it declares itself a section —, which is not the one looked for
 ([#188](https://github.com/AdCodicem/AdCodicem.Pdf/issues/188)), but for what a table's `/XRefStm` read in the stream's
 place, which that table's `/Prev` takes, reading it whole
 ([#156](https://github.com/AdCodicem/AdCodicem.Pdf/issues/156)); nor is one looked for when what is there declares
 itself a section — an `xref` keyword, or a stream whose dictionary gives `/Type /XRef` — and cannot be read: it is
-reported where it is, any section near it being another
-([#281](https://github.com/AdCodicem/AdCodicem.Pdf/issues/281)). Where the offset holds no section, the search near it,
-nearest first, ends at a place that so declares itself and cannot be read — an `xref` keyword, or the header of a
-stream of `/Type /XRef`, a token a load reads from the start of its line, not the word or such a header in a comment or
-a string there, nor digits a regular character runs into —, as at one it reads: that is the section found moved,
-reported where it was found, rather than passed over for an older section farther off whose rows would stand for its
-lost ones in silence. The line is lexed from its start, read again as far as 4,096 bytes before the bytes searched
-where it starts before them: a place whose line starts farther back declares nothing, and the search goes on past it,
-as past any place that holds no section. A string an earlier line opened is not seen: the word `xref`, or such a header,
-on a line that starts inside one is taken all the same ([#171](https://github.com/AdCodicem/AdCodicem.Pdf/issues/171)).
-An object there that gives a `/W` and another `/Type` and does not read as a section — a CIDFont —, with no section
-near it, is no section, and is reported missing; where `startxref` names one, it holds no section either, and its
-dictionary is no trailer. The section `startxref` names is not looked for nearby: when it is not where `startxref`
-says, the map is rebuilt.
+reported where it is, any section near it being another ([#281](https://github.com/AdCodicem/AdCodicem.Pdf/issues/281)).
+Where the offset holds no section, the search near it, nearest first, ends at a place that so declares itself and cannot
+be read — an `xref` keyword, or the header of a stream of `/Type /XRef`, a token a load reads from the start of its
+line, not the word or such a header in a comment or a string there, nor digits a regular character runs into —, as at
+one it reads: that is the section found moved, reported where it was found, rather than passed over for an older section
+farther off whose rows would stand for its lost ones in silence. The line is lexed from its start, read again as far as
+4,096 bytes before the bytes searched where it starts before them: a place whose line starts farther back declares
+nothing, as does one that the bytes a source gives end at or before
+([#52](https://github.com/AdCodicem/AdCodicem.Pdf/issues/52)), and the search goes on past it, as past any place that
+holds no section. A string an earlier line opened is not seen: the word `xref`, or such a header, on a line that starts
+inside one is taken all the same ([#171](https://github.com/AdCodicem/AdCodicem.Pdf/issues/171)). An object there that
+gives a `/W` and another `/Type` and does not read as a section — a CIDFont —, with no section near it, is no section,
+and is reported missing; where `startxref` names one, it holds no section either, and its dictionary is no trailer. The
+section `startxref` names is not looked for nearby: when it is not where `startxref` says, the map is rebuilt.
 
 A rebuilt map keeps, of each number, the definition `object.redefined` names — the last written directly in the file,
 or, for a number written only inside object streams, the first listed in the object stream read first —, a direct

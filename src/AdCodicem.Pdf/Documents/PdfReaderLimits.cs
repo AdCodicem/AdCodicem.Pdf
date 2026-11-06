@@ -145,8 +145,8 @@ public sealed record PdfReaderLimits
     /// limit is raised. It bounds, apart, the white space and comments an offset that names a cross-reference section falls
     /// short by: the section is read from its first token — its <c>xref</c> keyword, or its stream's object header —, so
     /// that a stream's dictionary is cut only where it alone runs past the bound. White space and comments that run on past
-    /// it reach it too, reported under the same code: what follows them is not read, and the section is looked for near the
-    /// offset, as one that is not there.
+    /// it reach it too, reported under the same code: what follows them is not read, and the section is looked for as one
+    /// that is not there, near the offset, or, for the one <c>startxref</c> names, by rebuilding the index.
     /// </remarks>
     /// <exception cref="ArgumentOutOfRangeException">The value is zero or less.</exception>
     public int MaxTrailerLength { get; init => field = Length(value); } = 64 * 1024;
