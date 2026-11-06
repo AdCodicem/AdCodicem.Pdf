@@ -4559,7 +4559,9 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
         }
         else if (section.RefusedRow is { } refused)
         {
-            // A guard that stopped the section past the row stopped the rows after it too, which its own report says.
+            // A guard that stopped the section past the row stopped the rows after it too, which its own report says. Beside
+            // the rows a newer section refused, those the section refused itself after the one named — another row refused,
+            // a row for a number it gives again — are not said to be kept either.
             said = refused + (noneStands
                 ? (section.CutByLimit
                     ? "; none of the rows read, as far as one of the reader's limits let the section be read, stands, "
@@ -4569,7 +4571,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
                         ? ", the rows after it read as far as one of the reader's limits let the section be read"
                         : ", the rows after it read") +
                     (someRefused
-                        ? ", and the other rows read kept but for those whose numbers a newer section refused; its object is looked for by rebuilding the index where no row read before it indexes it, rather than taken from an older section's row"
+                        ? ", and the other rows read kept" + KeptButFor(section) + "; its object is looked for by rebuilding the index where no row read before it indexes it, rather than taken from an older section's row"
                         : ", and its object is looked for by rebuilding the index where no row read before it indexes it, rather than taken from an older section's row"));
         }
         else

@@ -2832,20 +2832,27 @@ public class CrossReferenceChainTests
 
     [Theory]
     [InlineData("/X", false, "none of the rows read stands, a newer section having refused every number to the older sections' rows, and every object no section read before it indexes is looked for by rebuilding the index", false)]
-    [InlineData("[3 2]", false, "that row was refused, the rows after it read, and the other rows read kept but for those whose numbers a newer section refused; its object is looked for by rebuilding the index where no row read before it indexes it, rather than taken from an older section's row", false)]
+    [InlineData("[3 2]", false, "that row was refused, the rows after it read, and the other rows read kept but for those it refused and those whose numbers a newer section refused; its object is looked for by rebuilding the index where no row read before it indexes it, rather than taken from an older section's row", false)]
     [InlineData("[10 1]", false, "that row alone was refused, the rows after it read, and its object is looked for by rebuilding the index where no row read before it indexes it, rather than taken from an older section's row", true)]
     [InlineData("/X", true, "none of the rows read, as far as one of the reader's limits let the section be read, stands, a newer section having refused every number to the older sections' rows, and every object no section read before it indexes is looked for by rebuilding the index", false)]
-    [InlineData("[3 2]", true, "that row was refused, the rows after it read as far as one of the reader's limits let the section be read, and the other rows read kept but for those whose numbers a newer section refused; its object is looked for by rebuilding the index where no row read before it indexes it, rather than taken from an older section's row", false)]
+    [InlineData("[3 2]", true, "that row was refused, the rows after it read as far as one of the reader's limits let the section be read, and the other rows read kept but for those it refused and those whose numbers a newer section refused; its object is looked for by rebuilding the index where no row read before it indexes it, rather than taken from an older section's row", false)]
     [InlineData("[10 1]", true, "that row alone was refused, the rows after it read as far as one of the reader's limits let the section be read, and its object is looked for by rebuilding the index where no row read before it indexes it, rather than taken from an older section's row", true)]
+    [InlineData("[4 1]", false, "that row was refused, the rows after it read, and the other rows read kept but for those it refused and those whose numbers a newer section refused; its object is looked for by rebuilding the index where no row read before it indexes it, rather than taken from an older section's row", false, "3 2\n{three} 65536 n \n{four} 00000 n \n3 1\n{three} 00000 n \n")]
+    [InlineData("[4 1]", false, "that row was refused, the rows after it read, and the other rows read kept but for those it refused and those whose numbers a newer section refused; its object is looked for by rebuilding the index where no row read before it indexes it, rather than taken from an older section's row", false, "3 2\n{three} 65536 n \n{four} 00000 n \n5 1\n0000000009 65536 n \n", false, 5)]
+    [InlineData("[4 1]", false, "that row was refused, the rows after it read, and the other rows read kept but for those it refused and those whose numbers a newer section refused; its object is looked for by rebuilding the index where no row read before it indexes it, rather than taken from an older section's row", false, "3 2\n{three} 00000 n \n{four} 00000 n \n3 1\n{three} 65536 n \n", true)]
     public void A_table_that_refused_a_row_past_a_lost_stream_says_it_alone_was_refused_only_where_the_others_stand(
-        string index, bool guarded, string said, bool four)
+        string index, bool guarded, string said, bool four, string rows = "3 2\n{three} 65536 n \n{four} 00000 n \n", bool three = false, int? refusedToo = null)
     {
         // The table the lost stream's /Prev names gives object 3 generation 65536, which no entry holds, and object 4 its newer
         // revision: object 3's row was said to be the one refused, the rows after it read, though the lost stream refused
         // every number, or object 4's, and object 4's row did not stand either (#208, #210). Where MaxXRefSectionLength cuts
-        // the free rows after them, the report says how far the rows after it were read, as it does otherwise.
+        // the free rows after them, the report says how far the rows after it were read, as it does otherwise. Past a lost
+        // stream declaring object 4, a row the table refused itself after the one named — a later row for object 3, which
+        // it gives twice, or one giving object 5 generation 65536 — was said to be kept beside the rows the stream refused,
+        // though it did not stand: it is not (#210). Where the row placing object 3 comes first, that row stands, and object
+        // 3 is read through it.
         var free = guarded ? "20 20\n" + string.Concat(Enumerable.Repeat("0000000000 00000 f \n", 20)) : string.Empty;
-        var (file, middle, _) = PartialFiles.PastALostStream(index, "3 2\n{three} 65536 n \n{four} 00000 n \n" + free + "trailer\n<< /Size 40 /Prev {oldest} >>\n");
+        var (file, middle, _) = PartialFiles.PastALostStream(index, rows + free + "trailer\n<< /Size 40 /Prev {oldest} >>\n");
         var row = PdfTemplate.OffsetOf(file, "65536 n") - 11;
 
         using var document = guarded
@@ -2856,9 +2863,14 @@ public class CrossReferenceChainTests
             $"The cross-reference table /Prev names at offset {middle} was read only in part: the row for object 3, at offset {row}, gives it generation 65536, outside 0 to 65535; {said}."));
         document.Reader.Structure.Sections[^1].CutByLimit.Should().Be(guarded);
 
+        if (refusedToo is { } number)
+        {
+            document.Reader.ChainIndex!.TryGet(number, out _).Should().BeFalse();
+        }
+
         if (!guarded)
         {
-            ShouldServeTheNewerRevisions(document, three: false, four);
+            ShouldServeTheNewerRevisions(document, three, four);
         }
     }
 
