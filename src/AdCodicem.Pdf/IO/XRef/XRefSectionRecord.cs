@@ -261,7 +261,8 @@ internal sealed class XRefSectionRecord
     /// <see cref="ReadAs"/> once the chain is read. False for every other naming, and where a guard kept the <c>/Prev</c>
     /// from being read — one that stopped the table, or <see cref="Documents.PdfReaderLimits.MaxXRefSectionCount"/> ending
     /// the chain at what the <c>/Prev</c> names —, or that offset lies outside the file, or where the search near the offset
-    /// the <c>/XRefStm</c> names stopped only where a guard cut what the <c>/Prev</c> names, before it said what it is.
+    /// the <c>/XRefStm</c> names stopped only where a guard cut what the <c>/Prev</c> names, before it said what it is or in a
+    /// value its rows are read with.
     /// </summary>
     public bool NamesWhatPreviousReads { get; set; }
 

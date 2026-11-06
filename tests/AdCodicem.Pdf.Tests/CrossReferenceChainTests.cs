@@ -4196,6 +4196,47 @@ public class CrossReferenceChainTests
         new PdfValidator().Validate(document).Findings.Count(finding => finding.RuleId == PdfValidationRuleIds.XRefHybridStreamWrong).Should().Be(stops ? 1 : 0);
     }
 
+    [Theory]
+    [InlineData("/Type /XRefStream ", false)]
+    [InlineData("", false)]
+    [InlineData("/Type /XRefStream ", true)]
+    [InlineData("", true)]
+    public void An_xrefstm_beside_what_its_table_s_prev_names_again_is_left_to_no_prev_that_loops(string type, bool inWhiteSpace)
+    {
+        // The newest table names stream 4 through /Prev, where it reads as no section, its /W giving a width as a reference
+        // only the middle table places: the /Prev finds the middle table nearby. That table names stream 4 again through
+        // /Prev, a loop, and through /XRefStm a place inside the string of object 8, nearer stream 4 than the table's own
+        // stream — or the spaces before stream 4. The look at stream 4, made with the middle table's rows indexed, read it as a
+        // section, and the /XRefStm's search stopped there, leaving it to the /Prev, which ended the chain in a loop and read
+        // nothing: the table's own stream unread, and the naming reported as the file's, naming what the chain looks for
+        // through that /Prev. A /Prev that names what the chain has reached keeps no place: the /XRefStm's search goes on to
+        // the table's stream, or takes stream 4 where it gives no type, or the /XRefStm reads it where it names it, past the
+        // spaces, and the loop is reported as it was (#156, #188).
+        var (file, stream, named, four, table, _) = HybridFiles.PrevLoopingBesideTheTablesStream(type, inWhiteSpace);
+        using var document = PdfDocument.Open(file);
+
+        var sections = document.Reader.Structure.Sections;
+        sections.Select(section => (section.NamedBy, section.State, section.Offset)).Skip(1).Should().Equal(
+            ("/Prev", XRefSectionState.Relocated, table),
+            inWhiteSpace ? ("/XRefStm", XRefSectionState.Read, named)
+                : ("/XRefStm", XRefSectionState.Relocated, type.Length > 0 ? stream : four));
+        document.Reader.Structure.LoopOffset.Should().Be(four);
+        document.Diagnostics.Select(diagnostic => diagnostic.Code).Should().Equal(
+            inWhiteSpace
+                ? [PdfDiagnosticCodes.XRefOffsetAdjusted, PdfDiagnosticCodes.XRefChainCycle]
+                : [PdfDiagnosticCodes.XRefOffsetAdjusted, PdfDiagnosticCodes.XRefOffsetAdjusted, PdfDiagnosticCodes.XRefChainCycle]);
+
+        if (type.Length > 0 && !inWhiteSpace)
+        {
+            Text(document, 5).Should().Be("five");
+            document.WasRepaired.Should().BeFalse("the table's own stream indexes object 5");
+        }
+
+        var findings = new PdfValidator().Validate(document).Findings.Select(finding => finding.RuleId).ToList();
+        findings.Should().Contain(PdfValidationRuleIds.XRefChainLoop);
+        findings.Should().NotContain(PdfValidationRuleIds.XRefHybridStreamWrong);
+    }
+
     [Fact]
     public void What_the_look_at_a_prev_s_place_reads_indexes_nothing_where_the_chain_ends_before_that_prev()
     {

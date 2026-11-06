@@ -3414,11 +3414,11 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
 
             // What the /XRefStm reaches, and where the section the /Prev names starts: the two links reach one section by the
             // same offset, or by two that name the white space before it, or where the search near the offset the /XRefStm
-            // names finds what the /Prev names.
+            // names finds what the /Prev names — but for a /Prev that names what the chain has reached, which reads nothing.
             var hybridStart = -1L;
             var hybridReached = hybrid >= 0 ? ReachedAt(hybrid, visited, out hybridStart) : -1;
             var previousTable = false;
-            var previousStart = hybrid >= 0 && hybridReached < 0 ? StartOfNamed(previous, out previousTable) : -1;
+            var previousStart = hybrid >= 0 && hybridReached < 0 ? StartOfNamed(previous, visited, out previousTable) : -1;
 
             if (hybrid >= 0 && hybridReached < 0 && (hybrid == previous || (previousStart >= 0 && hybridStart == previousStart)))
             {
@@ -3678,16 +3678,19 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// <summary>
     /// Gives where the section <paramref name="offset"/>, a <c>/Prev</c> the file gives, names starts, past the white space
     /// and comments there (<see cref="StartOf"/>), where the <c>/Prev</c>'s own reading, next, comes to it; -1 where it
-    /// comes to none — no offset, -1, whose position is -1 too; an offset outside the file; or white space and comments that
-    /// run on past a trailer's window, which its reading reads nothing past (<see cref="PaddingAt"/>).
+    /// comes to none — no offset, -1, whose position is -1 too; an offset outside the file; what the chain has reached
+    /// (<see cref="ReachedBefore"/>), where the <c>/Prev</c> ends the chain in a loop, the reached only growing until then;
+    /// or white space and comments that run on past a trailer's window, which its reading reads nothing past
+    /// (<see cref="PaddingAt"/>).
     /// </summary>
     /// <param name="offset">The offset the <c>/Prev</c> gives, as written, or -1.</param>
+    /// <param name="named">The offsets the chain has named so far, as the file writes them.</param>
     /// <param name="table">Receives whether what starts there is the <c>xref</c> keyword, a classic table's.</param>
-    private long StartOfNamed(long offset, out bool table)
+    private long StartOfNamed(long offset, HashSet<long> named, out bool table)
     {
         table = false;
         var position = PositionOf(offset);
-        return IsInFile(position) ? StartOf(position, out table) : -1;
+        return IsInFile(position) && !ReachedBefore(offset, named) ? StartOf(position, out table) : -1;
     }
 
     /// <summary>
@@ -3698,9 +3701,10 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// whatever it is, so long as it gives a <c>/W</c> —: <see cref="KeptPlace.Section"/>. A guard cut it there — its
     /// dictionary before it said what it is, or a value its rows are read with —: <see cref="KeptPlace.Guard"/>, the guard's
     /// to hide. Anything else — an object that gives a <c>/W</c> and does not read as a section, a font, a string, no
-    /// object — keeps no place: <see cref="KeptPlace.None"/>, the <c>/Prev</c> looking for its section nearby. Nor does one
-    /// that names white space and comments running on past a trailer's window, whose reading reads nothing past them, and
-    /// which is not asked of.
+    /// object — keeps no place: <see cref="KeptPlace.None"/>, the <c>/Prev</c> looking for its section nearby. Asked only of
+    /// a <c>/Prev</c> the chain reads next: one that names what the chain has reached ends the chain in a loop, reading
+    /// nothing, and keeps no place, nor does one that names white space and comments running on past a trailer's window,
+    /// whose reading reads nothing past them.
     /// </summary>
     /// <remarks>
     /// Told without indexing anything, as a hybrid table's <c>/XRefStm</c>, whose search near the offset it names comes to
@@ -4761,7 +4765,8 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// <param name="section">The record of the section, which takes what was read where it was found.</param>
     /// <param name="leaveAt">
     /// Where the first token at the offset a hybrid table's <c>/Prev</c> names starts, -1 for none — no offset in the file,
-    /// or white space and comments running on past a trailer's window —, nor for any other link.
+    /// what the chain has reached, where that <c>/Prev</c> ends the chain in a loop and keeps no place, or white space and
+    /// comments running on past a trailer's window —, nor for any other link.
     /// Where the search comes to it, it asks whether that <c>/Prev</c> keeps its place there, as its own reading does
     /// (<see cref="KeepsItsPlace"/>) — told only then, the place it names read only where the search comes to it —: where it
     /// does, the search stops there, as it would take what it found there before any place farther off, and leaves the

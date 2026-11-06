@@ -730,6 +730,50 @@ internal static class HybridFiles
         return (file.Bytes, oldest, runAt, four, stream, at);
     }
 
+    /// <summary>
+    /// A one-page document saved twice, whose middle table's <c>/Prev</c> names what the newest table's <c>/Prev</c> named
+    /// and found moved: object 12, <c>4</c>, and object 5, <c>(five)</c>, lie before cross-reference stream 9, of
+    /// <c>/Type /XRef</c>, at <c>Stream</c>, which indexes object 5; object 8, a string, lies 150 bytes past it, and
+    /// object 4, at <c>Four</c>, right after it — <paramref name="inWhiteSpace"/>, 6 spaces before it —, a stream of
+    /// <paramref name="type"/> — written whole, a space after it, or nothing — whose <c>/W</c> gives its second width as the
+    /// reference <c>12 0 R</c>, which only the middle table places, and whose one row places nothing. The middle table, at
+    /// <c>Table</c>, right after object 4, indexes objects 1 to 3 and object 12, and names object 4 through <c>/Prev</c> and,
+    /// through <c>/XRefStm</c>, at <c>Named</c>, the place 25 bytes into object 8, inside its string — or the first of the 6
+    /// spaces before object 4 —, nearer object 4 than the stream. The newest table, past a long comment, at <c>Newest</c>,
+    /// indexes object 6, <c>(six)</c>, and names object 4 through <c>/Prev</c>, where nothing places object 12 yet: object 4
+    /// reads as no section there, and the middle table is the nearest one.
+    /// </summary>
+    public static (byte[] File, long Stream, long Named, long Four, long Table, long Newest) PrevLoopingBesideTheTablesStream(
+        string type, bool inWhiteSpace)
+    {
+        var file = new HandWrittenFile(version: "1.5");
+        var (catalog, pages, page) = Page(file);
+        var five = file.Object(5, "(five)");
+        var twelve = file.Object(12, "4");
+        file.Raw("%" + new string('-', 900) + "\n");
+        var stream = file.Position;
+        var rows = StreamRows((1, five, 0));
+        file.Object(9, Invariant($"<< /Type /XRef /Size 13 /W [1 4 2] /Index [5 1] /Length {rows.Length} >>\nstream\n{rows}\nendstream"));
+        file.Raw(new string(' ', 150));
+        var eight = file.Object(8, "(" + new string('y', 30) + ")");
+        var named = eight + 25;
+
+        if (inWhiteSpace)
+        {
+            named = file.Position;
+            file.Raw("      ");
+        }
+
+        var four = file.Object(4, Invariant($"<< {type}/Size 13 /W [1 12 0 R 2] /Index [6 1] /Length 7 >>\nstream\n{StreamRows((0, 0, 0))}\nendstream"));
+        var table = file.Position;
+        file.Raw(Invariant($"xref\n0 4\n0000000000 65535 f \n{Row(catalog)}{Row(pages)}{Row(page)}12 1\n{Row(twelve)}trailer\n<< /Size 13 /Root 1 0 R /Prev {four} /XRefStm {named} >>\nstartxref\n{table}\n%%EOF\n"));
+        file.Raw("%" + new string('-', 900) + "\n");
+        var six = file.Object(6, "(six)");
+        var newest = file.Position;
+        file.Raw(Invariant($"xref\n0 1\n0000000000 65535 f \n6 1\n{Row(six)}trailer\n<< /Size 13 /Root 1 0 R /Prev {four} >>\nstartxref\n{newest}\n%%EOF\n"));
+        return (file.Bytes, stream, named, four, table, newest);
+    }
+
     /// <summary>Writes the catalog, the page tree and its page, objects 1 to 3, and gives where each starts.</summary>
     private static (long Catalog, long Pages, long Page) Page(HandWrittenFile file) => (
         file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),
