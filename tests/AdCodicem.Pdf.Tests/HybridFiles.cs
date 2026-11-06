@@ -774,6 +774,41 @@ internal static class HybridFiles
         return (file.Bytes, stream, named, four, table, newest);
     }
 
+    /// <summary>
+    /// The document <see cref="NamingAnObjectBesideTheStream"/> writes, with object 4 written as a stream that gives no type,
+    /// whose <c>/W</c> gives its second width as the reference <c>12 0 R</c>, the <c>/Size</c> 10 and the <c>/Length</c> 6,
+    /// and whose <c>stream</c> keyword ends <paramref name="keywordEnd"/> bytes past its header, a <c>/Pad</c> string making up
+    /// the length, followed by <paramref name="after"/> and 6 bytes of data; the newest table also indexes object 12,
+    /// <c>4</c> after a comment of 3,000 dashes, which <see cref="Documents.PdfReaderLimits.MaxObjectLength"/> lowered below
+    /// that cuts before its value. Object 4 lies at <c>Four</c>, the place the <c>/XRefStm</c> names at <c>Named</c>.
+    /// </summary>
+    public static (byte[] File, long Four, long Named) NamingAStreamWhoseKeywordEndsAt(int keywordEnd, string after)
+    {
+        var file = new HandWrittenFile(version: "1.5");
+        var (catalog, pages, page) = Page(file);
+        var oldSeven = file.Object(7, "(old seven)");
+        var five = file.Object(5, "(five)");
+        var newSeven = file.Object(7, "(new seven)");
+        file.Raw("%" + new string('-', 1200) + "\n");
+        var oldest = file.Position;
+        file.Raw(Invariant($"xref\n0 4\n0000000000 65535 f \n{Row(catalog)}{Row(pages)}{Row(page)}7 1\n{Row(oldSeven)}trailer\n<< /Size 8 /Root 1 0 R >>\nstartxref\n{oldest}\n%%EOF\n"));
+        var stream = file.Position;
+        var rows = StreamRows((1, five, 0), (1, newSeven, 0));
+        file.Object(9, Invariant($"<< /Type /XRef /Size 13 /W [1 4 2] /Index [5 1 7 1] /Length {rows.Length} >>\nstream\n{rows}\nendstream"));
+        file.Raw(new string(' ', (int)(stream + 400 - file.Position)));
+        var eight = file.Object(8, "(" + new string('x', 20) + ")");
+        const string Head = "4 0 obj\n<< /W [1 12 0 R 2] /Size 10 /Length 6 /Pad (";
+        const string Tail = ") >>\nstream";
+        var four = file.Position;
+        file.Raw(Head + new string('-', keywordEnd - Head.Length - Tail.Length) + Tail + after + new string('\u0001', 6) + "\nendstream\nendobj\n");
+        file.Raw("%" + new string('-', 1200) + "\n");
+        var six = file.Object(6, "(six)");
+        var twelve = file.Object(12, "%" + new string('-', 3000) + "\n4");
+        var newest = file.Position;
+        file.Raw(Invariant($"xref\n0 1\n0000000000 65535 f \n6 1\n{Row(six)}12 1\n{Row(twelve)}trailer\n<< /Size 13 /Root 1 0 R /Prev {four} /XRefStm {eight + 20} >>\nstartxref\n{newest}\n%%EOF\n"));
+        return (file.Bytes, four, eight + 20);
+    }
+
     /// <summary>Writes the catalog, the page tree and its page, objects 1 to 3, and gives where each starts.</summary>
     private static (long Catalog, long Pages, long Page) Page(HandWrittenFile file) => (
         file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),

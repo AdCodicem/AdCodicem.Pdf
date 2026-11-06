@@ -4237,6 +4237,46 @@ public class CrossReferenceChainTests
         findings.Should().NotContain(PdfValidationRuleIds.XRefHybridStreamWrong);
     }
 
+    [Theory]
+    [InlineData("X", false)]
+    [InlineData("\n", true)]
+    public void A_stream_whose_data_the_trailer_guard_cuts_beside_a_width_a_guard_cut_leaves_the_prev_s_place_to_the_guard(string after, bool reads)
+    {
+        // The newest table names object 4 through /Prev, and through /XRefStm a place inside the string of object 8, 18 bytes
+        // before it, whose search comes to object 4 first. Object 4's stream keyword ends exactly where MaxTrailerLength,
+        // lowered to 2,048, cuts, a regular byte or an end of line past it, and its /W gives a width as a reference to object
+        // 12, which MaxObjectLength, lowered to 1,024, cuts before its value. The /Prev's reading keeps nothing of data that
+        // starts at the edge of the window a guard stopped at: its section is the guard's, its width unknown, and the look at
+        // the place reads it alike, the naming the guard's, nothing reported of it, nothing rebuilt. Taking the data past the
+        // edge for the stream's own, it would find too few rows for the widths read, a section the /Prev keeps its place at,
+        // and the naming reported as the file's. Past an end of line, the data starts within the window, the stream's own,
+        // and too short for its rows: the /Prev reads the section in part, and the /XRefStm is left to it (#156, #264).
+        var (file, four, named) = HybridFiles.NamingAStreamWhoseKeywordEndsAt(2048, after);
+        var limits = PdfReaderLimits.Default with { MaxObjectLength = 1024, MaxTrailerLength = 2048 };
+        using var document = PdfDocument.Open(file, new PdfReaderOptions { Limits = limits });
+
+        var sections = document.Reader.Structure.Sections;
+        sections.Select(section => (section.NamedBy, section.State, section.Offset)).Skip(1).Take(2).Should().Equal(
+            ("/XRefStm", XRefSectionState.NamedAgain, named),
+            ("/Prev", reads ? XRefSectionState.Read : XRefSectionState.Malformed, four));
+        sections[1].ReadAs.Should().BeSameAs(sections[2]);
+        sections[1].NamesWhatPreviousReads.Should().Be(reads);
+        sections[2].CutByValue.Should().Be(!reads);
+
+        if (reads)
+        {
+            document.Diagnostics.Select(diagnostic => diagnostic.Code).Should().StartWith(
+                [PdfDiagnosticCodes.XRefHybridStreamLost, PdfDiagnosticCodes.XRefSectionUnreadable]);
+            return;
+        }
+
+        sections[1].NamesNoStream.Should().BeNull();
+        document.Diagnostics.Select(diagnostic => diagnostic.Code).Should().Equal(PdfDiagnosticCodes.LimitTrailer, PdfDiagnosticCodes.LimitObject);
+        document.GetObject(new PdfObjectId(7)).Should().BeSameAs(PdfNull.Instance, "what only the sections past the guard index is the guard's");
+        document.WasRepaired.Should().BeFalse();
+        new PdfValidator().Validate(document).Findings.Select(finding => finding.RuleId).Should().NotContain(PdfValidationRuleIds.XRefHybridStreamWrong);
+    }
+
     [Fact]
     public void What_the_look_at_a_prev_s_place_reads_indexes_nothing_where_the_chain_ends_before_that_prev()
     {
