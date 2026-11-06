@@ -673,6 +673,63 @@ internal static class HybridFiles
         return (file.Bytes, table, hybrid);
     }
 
+    /// <summary>
+    /// A one-page document saved twice, whose newest table names through <c>/Prev</c> the first of <paramref name="run"/>
+    /// line feeds before cross-reference stream 4: the oldest table, at <c>Oldest</c>, indexes objects 1 to 3 and object 7,
+    /// <c>(old seven)</c>; the run starts at <c>Run</c>; stream 4, at <c>Four</c>, gives no type, the <c>/W</c>
+    /// <c>[1 4 2]</c>, an <c>/Index</c> whose one row places object 7's new revision, <c>(new seven)</c>, a <c>/Pad</c> string
+    /// of <paramref name="pad"/> dots before them where it is not 0, and names the oldest table through <c>/Prev</c>;
+    /// cross-reference stream 9, of <c>/Type /XRef</c>, at <c>Stream</c>, 150 bytes past object 8, a string, indexes object 5,
+    /// <c>(five)</c>; the newest table, past a long comment, indexes object 6, <c>(six)</c>, and names through
+    /// <c>/XRefStm</c>, at <c>Named</c>, <paramref name="named"/>: <c>"inside a string past object 4"</c>, 25 bytes into
+    /// object 8, written right after object 4, which is then the nearest place to it, the stream next;
+    /// <c>"inside a string before the run"</c>, 25 bytes into object 8, written right before the run, 600 spaces past the
+    /// oldest table, object 4 the nearest place to it and the oldest table and the stream out of reach; <c>"in the run"</c>,
+    /// 7 bytes before object 4; or <c>"the stream"</c>, stream 9's header. But for the second, the oldest table lies within
+    /// reach of a search near the run's start.
+    /// </summary>
+    public static (byte[] File, long Oldest, long Run, long Four, long Stream, long Named) PrevNamingARunBeforeAStream(
+        int run, int pad, string named)
+    {
+        var file = new HandWrittenFile(version: "1.5");
+        var (catalog, pages, page) = Page(file);
+        var oldSeven = file.Object(7, "(old seven)");
+        var five = file.Object(5, "(five)");
+        var newSeven = file.Object(7, "(new seven)");
+        file.Raw("%" + new string('-', 1200) + "\n");
+        var oldest = file.Position;
+        file.Raw(Invariant($"xref\n0 4\n0000000000 65535 f \n{Row(catalog)}{Row(pages)}{Row(page)}7 1\n{Row(oldSeven)}trailer\n<< /Size 8 /Root 1 0 R >>\n"));
+        var before = named == "inside a string before the run";
+
+        if (before)
+        {
+            file.Raw(new string(' ', 600));
+        }
+
+        var eight = before ? file.Object(8, "(" + new string('y', 30) + ")") : -1;
+        var runAt = file.Position;
+        file.Raw(new string('\n', run));
+        var row = StreamRows((1, newSeven, 0));
+        var padding = pad > 0 ? "/Pad (" + new string('.', pad) + ") " : string.Empty;
+        var four = file.Object(4, Invariant($"<< {padding}/Size 10 /W [1 4 2] /Index [7 1] /Prev {oldest} /Length {row.Length} >>\nstream\n{row}\nendstream"));
+        eight = before ? eight : file.Object(8, "(" + new string('y', 30) + ")");
+        file.Raw(new string(' ', 150));
+        var stream = file.Position;
+        var rows = StreamRows((1, five, 0));
+        file.Object(9, Invariant($"<< /Type /XRef /Size 10 /W [1 4 2] /Index [5 1] /Length {rows.Length} >>\nstream\n{rows}\nendstream"));
+        file.Raw("%" + new string('-', 1200) + "\n");
+        var six = file.Object(6, "(six)");
+        var newest = file.Position;
+        var at = named switch
+        {
+            "in the run" => four - 7,
+            "the stream" => stream,
+            _ => eight + 25,
+        };
+        file.Raw(Invariant($"xref\n0 1\n0000000000 65535 f \n6 1\n{Row(six)}trailer\n<< /Size 10 /Root 1 0 R /Prev {runAt} /XRefStm {at} >>\nstartxref\n{newest}\n%%EOF\n"));
+        return (file.Bytes, oldest, runAt, four, stream, at);
+    }
+
     /// <summary>Writes the catalog, the page tree and its page, objects 1 to 3, and gives where each starts.</summary>
     private static (long Catalog, long Pages, long Page) Page(HandWrittenFile file) => (
         file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),

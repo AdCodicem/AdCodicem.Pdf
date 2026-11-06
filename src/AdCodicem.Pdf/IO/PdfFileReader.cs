@@ -41,7 +41,8 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// <summary>
     /// How much of a section is read first to tell a classic table from a cross-reference stream: a read that holds
     /// white space and comments alone, or a first token its edge may cut, is read again eight times larger, as far as a
-    /// trailer's window reaches.
+    /// trailer's window reaches and this many bytes past it, which hold the keyword whole where it starts at the window's
+    /// end (<see cref="PaddingAt"/>).
     /// </summary>
     internal const int XRefProbeLength = 32;
 
@@ -3200,7 +3201,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
                     {
                         { } there when there.Offset == looped => looped + there.Padding,
                         { } moved when moved.NamedOffset == looped => looped,
-                        _ => StartOf(looped),
+                        _ => StartOf(looped, out _),
                     };
                     looped = _sectionsReadAt.Contains(start) ? start : looped;
                 }
@@ -3625,7 +3626,8 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// The offsets named are kept as written: one the chain named and found nothing at, or found its section moved from,
     /// leads nowhere new when named again — a loop, not a place to look for a section again. Where the offset names neither,
     /// and lies in the file, the bytes there are read as far as a section's own probe reads them: one window, grown no
-    /// further than a trailer's, for each offset the chain names, which
+    /// further than a trailer's and the few bytes past it that tell what starts at its end, for each offset the chain names,
+    /// which
     /// <see cref="PdfReaderLimits.MaxXRefSectionCount"/> bounds — the probe the section's own reading there then answers from,
     /// rather than crossing the white space again (<see cref="_paddingProbes"/>).
     /// </remarks>
@@ -3633,7 +3635,8 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// <param name="named">The offsets the chain has named so far, as the file writes them.</param>
     /// <param name="start">
     /// Where the first token past the white space and comments at the position the offset names starts, where that was read
-    /// — the offset named neither, and lies in the file —; -1 otherwise.
+    /// — the offset named neither, and lies in the file —; -1 otherwise, and where the white space and comments there run on
+    /// past a trailer's window, the guard's, through which the chain reaches nothing (<see cref="PaddingAt"/>).
     /// </param>
     /// <returns>
     /// The position the offset names, where the chain named it or a section starts there; where the section it reaches
@@ -3654,21 +3657,29 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
             return -1;
         }
 
-        start = StartOf(position);
+        start = StartOf(position, out _);
         return _sectionsReadAt.Contains(start) ? start : -1;
     }
 
     /// <summary>
     /// Gives where the first token at <paramref name="position"/>, a position in the file, starts: past the white space and
     /// comments there, as a section read there starts (<see cref="PaddingAt"/>), the keyword of a table or the header of a
-    /// stream's object.
+    /// stream's object; -1 where they run on past a trailer's window, which a section read there reads nothing past, and
+    /// the chain reaches nothing through.
     /// </summary>
-    private long StartOf(long position) => position + PaddingAt(position, out _);
+    /// <param name="position">The position, in the file.</param>
+    /// <param name="table">Receives whether the first token is the <c>xref</c> keyword, a classic table's.</param>
+    private long StartOf(long position, out bool table)
+    {
+        var padding = PaddingAt(position, out table);
+        return padding < 0 ? -1 : position + padding;
+    }
 
     /// <summary>
     /// Gives where the section <paramref name="offset"/>, a <c>/Prev</c> the file gives, names starts, past the white space
-    /// and comments there (<see cref="StartOf"/>); -1 when it names none — no offset, -1, whose position is -1 too, or an
-    /// offset outside the file.
+    /// and comments there (<see cref="StartOf"/>), where the <c>/Prev</c>'s own reading, next, comes to it; -1 where it
+    /// comes to none — no offset, -1, whose position is -1 too; an offset outside the file; or white space and comments that
+    /// run on past a trailer's window, which its reading reads nothing past (<see cref="PaddingAt"/>).
     /// </summary>
     /// <param name="offset">The offset the <c>/Prev</c> gives, as written, or -1.</param>
     /// <param name="table">Receives whether what starts there is the <c>xref</c> keyword, a classic table's.</param>
@@ -3676,7 +3687,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     {
         table = false;
         var position = PositionOf(offset);
-        return IsInFile(position) ? position + PaddingAt(position, out table) : -1;
+        return IsInFile(position) ? StartOf(position, out table) : -1;
     }
 
     /// <summary>
@@ -3687,12 +3698,16 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// whatever it is, so long as it gives a <c>/W</c> —: <see cref="KeptPlace.Section"/>. A guard cut it there — its
     /// dictionary before it said what it is, or a value its rows are read with —: <see cref="KeptPlace.Guard"/>, the guard's
     /// to hide. Anything else — an object that gives a <c>/W</c> and does not read as a section, a font, a string, no
-    /// object — keeps no place: <see cref="KeptPlace.None"/>, the <c>/Prev</c> looking for its section nearby.
+    /// object — keeps no place: <see cref="KeptPlace.None"/>, the <c>/Prev</c> looking for its section nearby. Nor does one
+    /// that names white space and comments running on past a trailer's window, whose reading reads nothing past them, and
+    /// which is not asked of.
     /// </summary>
     /// <remarks>
     /// Told without indexing anything, as a hybrid table's <c>/XRefStm</c>, whose search near the offset it names comes to
     /// that place, asks it before the <c>/Prev</c> is read: the object is read as the chain reads one it names as a
-    /// cross-reference stream, its rows aside, and nothing of the reading is kept or reported
+    /// cross-reference stream, its rows aside — from its header, through the windows the <c>/Prev</c>'s own reading opens
+    /// there, past the white space it falls short by, which a trailer's window bounds apart (<see cref="PaddingAt"/>), so
+    /// that the two meet one cut, or none —, and nothing of the reading is kept or reported
     /// (<see cref="TryReadXRefStream"/>'s check alone), the <c>/Prev</c>'s own reading, next, reading it again as itself. At
     /// most once for each hybrid table whose <c>/XRefStm</c> cannot be read where it names, which
     /// <see cref="PdfReaderLimits.MaxXRefSectionCount"/> bounds.
@@ -4745,7 +4760,8 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// <param name="offset">The offset that names the section, as written.</param>
     /// <param name="section">The record of the section, which takes what was read where it was found.</param>
     /// <param name="leaveAt">
-    /// Where the first token at the offset a hybrid table's <c>/Prev</c> names starts, -1 for none, nor for any other link.
+    /// Where the first token at the offset a hybrid table's <c>/Prev</c> names starts, -1 for none — no offset in the file,
+    /// or white space and comments running on past a trailer's window —, nor for any other link.
     /// Where the search comes to it, it asks whether that <c>/Prev</c> keeps its place there, as its own reading does
     /// (<see cref="KeepsItsPlace"/>) — told only then, the place it names read only where the search comes to it —: where it
     /// does, the search stops there, as it would take what it found there before any place farther off, and leaves the
@@ -5029,7 +5045,23 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
             return section.State;
         }
 
-        section.Padding = PaddingAt(absolute, out var table, remember: !candidate);
+        var padding = PaddingAt(absolute, out var table, remember: !candidate);
+
+        if (padding < 0)
+        {
+            // White space and comments fill a trailer's window there and run on past it: what follows them is the guard's to
+            // hide, as a dictionary it cuts is (ADR 34), and is not read. The section is looked for nearby, as one not there
+            // is. A place a search near an offset tries starts at a token, and never gets here.
+            ReachLimit(
+                PdfLimit.Trailer,
+                $"White space and comments run past {PdfLimitGuard.FormatLength(_guard.Bound(PdfLimit.Trailer))} where a cross-reference section is named; what follows them was not read.",
+                absolute);
+            section.Fault = "holds neither the xref keyword nor an object";
+            section.State = XRefSectionState.NotFound;
+            return section.State;
+        }
+
+        section.Padding = padding;
 
         if (table)
         {
@@ -5047,17 +5079,24 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// <summary>
     /// Gives how many bytes of white space and comments lie at <paramref name="absolute"/>, a position in the file, before
     /// the first token there — where a section read there starts, and where the chain reached it (<see cref="StartOf"/>) —,
-    /// and whether that token is the <c>xref</c> keyword, a classic table's.
+    /// and whether that token is the <c>xref</c> keyword, a classic table's; -1 where they run on past a trailer's window,
+    /// which bounds them, the first token past them the guard's.
     /// </summary>
     /// <remarks>
-    /// A probe that holds white space and comments alone, or a first token its edge may cut, is read on as far as a
-    /// trailer's window reaches, past which a stream's header is not looked for either: the keyword is the table's wherever
-    /// within that window the offset falls short of it. A probe that holds no token at all is padding whole. The windows
-    /// grow eightfold from <see cref="XRefProbeLength"/> bytes, so that the bytes read are less than a seventh more than the
-    /// last window holds.
+    /// <see cref="PdfReaderLimits.MaxTrailerLength"/> bounds the white space and comments before a section, and the section
+    /// read from its first token on — a stream's dictionary, through windows that open at its object's header
+    /// (<see cref="TryReadXRefStream"/>) — apart: the section starts where the first token does, however much white space
+    /// the offset falls short by, so that what the chain reads there is what it reached there, and what a check of the place
+    /// reads (<see cref="KeepsItsPlace"/>). A probe that holds white space and comments alone, or a first token its edge may
+    /// cut, is read on as far as a trailer's window reaches and <see cref="XRefProbeLength"/> bytes past it: a first token
+    /// that starts within that window, or where it ends, is read whole enough to tell the keyword from an object's header.
+    /// White space and comments that fill the window and run on past it are the guard's (ADR 34), as a dictionary it cuts
+    /// is: the section past them is not read, and the reading reports the guard (<see cref="TryReadXRefSection"/>). The
+    /// windows grow eightfold from <see cref="XRefProbeLength"/> bytes, so that the bytes read come to less than ten times
+    /// the run crossed, or one probe where there is none.
     /// </remarks>
     /// <param name="absolute">The position, in the file.</param>
-    /// <param name="table">Receives whether the first token is the <c>xref</c> keyword.</param>
+    /// <param name="table">Receives whether the first token is the <c>xref</c> keyword; false where there is none to read.</param>
     /// <param name="remember">
     /// Whether the probe is kept, to answer the position when it is asked of again: not for a place a search near an offset
     /// tries (<see cref="_paddingProbes"/>).
@@ -5076,6 +5115,10 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
             return known.Padding;
         }
 
+        // The white space a trailer's window may hold, and as many bytes past it as tell what starts at its end: the keyword
+        // whole, or the first digit of an object's header.
+        var bound = _guard.Bound(PdfLimit.Trailer);
+        var reach = (int)Math.Min((long)bound + XRefProbeLength, Array.MaxLength);
         var probeLength = XRefProbeLength;
 
         while (true)
@@ -5085,22 +5128,24 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
             var first = lexer.Read();
 
             // A probe that holds white space and comments alone gives the end-of-input token, which starts and ends where the
-            // probe does: it is grown as one whose first token its edge may cut is, and, once it reaches as far as a
-            // trailer's window, is padding whole.
-            if (first.End >= probe.Length && probe.Length == probeLength && probeLength < _guard.Bound(PdfLimit.Trailer))
+            // probe does: it is grown as one whose first token its edge may cut is, as far as the probe reaches.
+            if (first.End >= probe.Length && probe.Length == probeLength && probeLength < reach)
             {
-                probeLength = (int)Math.Min(_guard.Bound(PdfLimit.Trailer), (long)probeLength * 8);
+                probeLength = (int)Math.Min(reach, (long)probeLength * 8);
                 continue;
             }
 
-            table = first.IsKeyword("xref"u8);
+            // A first token past a trailer's window, or none before the probe's end, lies past what the guard lets the reader
+            // cross: the run is the guard's, whatever follows it.
+            var padding = first.Start > bound ? -1 : first.Start;
+            table = padding >= 0 && first.IsKeyword("xref"u8);
 
             if (remember)
             {
-                _paddingProbes = (new PaddingProbe(absolute, first.Start, table), last);
+                _paddingProbes = (new PaddingProbe(absolute, padding, table), last);
             }
 
-            return first.Start;
+            return padding;
         }
     }
 
@@ -5109,7 +5154,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// before the first token, and whether that token is the <c>xref</c> keyword.
     /// </summary>
     /// <param name="Position">The position probed, in the file; -1 for no probe.</param>
-    /// <param name="Padding">The bytes before the first token.</param>
+    /// <param name="Padding">The bytes before the first token; -1 where they run on past a trailer's window.</param>
     /// <param name="Table">Whether the first token is the <c>xref</c> keyword.</param>
     private readonly record struct PaddingProbe(long Position, int Padding, bool Table)
     {
@@ -5749,7 +5794,8 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// section is malformed. Rows that spell an <c>endstream</c> are told from the data's end by the section's own row for
     /// the <c>/Length</c>, when it lies before them: the data is taken again to the length the object it places gives,
     /// where an <c>endstream</c> confirms it (<see cref="RetakeDeferred"/>). <see cref="PdfReaderLimits.MaxTrailerLength"/>
-    /// bounds the dictionary alone.
+    /// bounds the dictionary alone, read from the object's header, and, apart, the white space before it, which the offset
+    /// falls short by (<see cref="PaddingAt"/>).
     /// </para>
     /// <para>
     /// A check (<paramref name="checkOnly"/>) tells only whether the stream reads, as the chain naming it would read it: the
@@ -5764,7 +5810,10 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// </para>
     /// </remarks>
     /// <param name="absolute">Where the stream is looked for, in the file.</param>
-    /// <param name="section">Receives what became of the section.</param>
+    /// <param name="section">
+    /// Receives what became of the section; gives the white space before the first token at <paramref name="absolute"/>,
+    /// past which the stream's object is read (<see cref="PaddingAt"/>).
+    /// </param>
     /// <param name="previous">The offset its <c>/Prev</c> gives, or -1.</param>
     /// <param name="candidate">Whether the position is a place the section may have been moved to.</param>
     /// <param name="checkOnly">Whether the stream is only checked, nothing of it kept (#156).</param>
@@ -5775,7 +5824,10 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
 
         // The first window, of 64 KB, holds the data of all but the largest cross-reference streams. The dictionary is the
         // trailer, and grows its window no further than a trailer may: the data never counts toward it, and a /Length the
-        // chain cannot read has the data searched for its endstream past the window (#174, #220).
+        // chain cannot read has the data searched for its endstream past the window (#174, #220). The windows open where the
+        // first token is, past the white space the offset falls short by, which a trailer's window bounds apart (PaddingAt):
+        // what a check of the place reads, from that token, is what the chain reads there.
+        var at = absolute + section.Padding;
         var guards = _guardsReached;
         PdfObject value;
         int number;
@@ -5789,13 +5841,13 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
         // is only checked, the guard's cut is known and nothing is reported.
         if (checkOnly)
         {
-            objectRead = TryParseUnrecordedAt(absolute, out value, out number, out header, out cutByGuard);
+            objectRead = TryParseUnrecordedAt(at, out value, out number, out header, out cutByGuard);
             syntaxFault = false;
         }
         else
         {
             objectRead = TryParseNumberedAt(
-                absolute,
+                at,
                 AnyObject,
                 PdfLimit.Trailer,
                 out value,

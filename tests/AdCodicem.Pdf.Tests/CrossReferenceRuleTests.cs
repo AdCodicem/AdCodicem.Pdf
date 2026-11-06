@@ -2547,14 +2547,18 @@ public class CrossReferenceRuleTests
     }
 
     [Theory(Timeout = 60_000)]
-    [InlineData(300, false)]
-    [InlineData(70_000, false)]
-    [InlineData(300, true)]
+    [InlineData(300, false, "")]
+    [InlineData(70_000, false, "")]
+    [InlineData(300, true, "")]
+    [InlineData(257, false, "")]
+    [InlineData(270, false, "% a comment past the window's end\n")]
     public async Task A_startxref_naming_more_white_space_than_a_trailer_s_window_before_a_classic_table_reaches_the_guard(
-        int padding, bool throwOnLimit)
+        int padding, bool throwOnLimit, string comment)
     {
-        // The reader reads on past white space for the xref keyword as far as MaxTrailerLength reaches, past which it would
-        // read the same window again and again: the guard is reached, the index rebuilt, or the guard thrown.
+        // The reader reads on past white space and comments for the xref keyword as far as MaxTrailerLength reaches, past
+        // which it would read the same window again and again: past a byte more than the window holds, or a comment that runs
+        // on past its end, the guard is reached, the index rebuilt, or the guard thrown, and the guard's report says what ran
+        // past it, the white space, where it said a dictionary did.
         var file = new HandWrittenFile();
         var rows = new Dictionary<int, long>
         {
@@ -2562,7 +2566,7 @@ public class CrossReferenceRuleTests
             [2] = file.Object(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>"),
             [3] = file.Object(3, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << >> >>"),
         };
-        file.Raw(new string(' ', padding));
+        file.Raw(new string(' ', padding - comment.Length) + comment);
         var table = file.Table(4, rows, "/Size 4 /Root 1 0 R");
         var bytes = Encoding.Latin1.GetBytes(Encoding.Latin1.GetString(file.Bytes)
             .Replace(
@@ -2583,7 +2587,44 @@ public class CrossReferenceRuleTests
         using var document = await Task.Run(() => PdfDocument.Open(bytes, options), TestContext.Current.CancellationToken);
 
         document.Diagnostics.Select(entry => entry.Code).Should().Equal(PdfDiagnosticCodes.LimitTrailer, PdfDiagnosticCodes.XRefRebuilt);
+        document.Diagnostics[0].Position.Should().Be(table - padding);
+        document.Diagnostics[0].Message.Should().Be(string.Create(
+            CultureInfo.InvariantCulture,
+            $"White space and comments run past {(padding > PdfReaderLimits.Default.MaxTrailerLength ? "64 KB" : "256 bytes")} where a cross-reference section is named; what follows them was not read. Raise PdfReaderLimits.MaxTrailerLength to read past it."));
         document.GetObject(new PdfObjectId(3)).AsDictionary().Required().IsOfType(PdfName.Page).Should().BeTrue();
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("% a comment that ends where the window does\n")]
+    public void A_startxref_naming_as_much_white_space_and_comments_as_a_trailer_s_window_holds_reads_the_classic_table_past_them(string comment)
+    {
+        // Startxref names 256 bytes of white space, the last of them a comment or not, before the xref keyword, as many as
+        // MaxTrailerLength lowered to 256 lets a trailer hold. The reader read them through a trailer's window, which found
+        // no token, and took the keyword past them for none: the guard was reached and the index rebuilt. The white space
+        // before a section is bounded by MaxTrailerLength as its dictionary is, apart: the keyword that starts where the
+        // window ends is the table's, which is read, and startxref said to fall short of it.
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>"),
+            [3] = file.Object(3, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << >> >>"),
+        };
+        file.Raw(new string(' ', 256 - comment.Length) + comment);
+        var table = file.Table(4, rows, "/Size 4 /Root 1 0 R");
+        var bytes = Encoding.Latin1.GetBytes(Encoding.Latin1.GetString(file.Bytes)
+            .Replace(
+                string.Create(CultureInfo.InvariantCulture, $"startxref\n{table}\n"),
+                string.Create(CultureInfo.InvariantCulture, $"startxref\n{table - 256}\n"),
+                StringComparison.Ordinal));
+        using var document = PdfDocument.Open(bytes, new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxTrailerLength = 256 } });
+
+        document.Diagnostics.Should().BeEmpty();
+        document.Reader.Structure.Sections.Should().ContainSingle().Which.Padding.Should().Be(256);
+        document.GetObject(new PdfObjectId(3)).AsDictionary().Required().IsOfType(PdfName.Page).Should().BeTrue();
+        Single(new PdfValidator().Validate(document), PdfValidationRuleIds.XRefOffsetImprecise).Message.Should().EndWith(
+            string.Create(CultureInfo.InvariantCulture, $"startxref gives offset {table - 256}, 256 bytes before the xref keyword."));
     }
 
     [Fact]

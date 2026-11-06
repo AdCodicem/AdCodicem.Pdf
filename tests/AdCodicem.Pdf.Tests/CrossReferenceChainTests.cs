@@ -4113,6 +4113,89 @@ public class CrossReferenceChainTests
         new PdfValidator().Validate(document).Findings.Select(finding => finding.RuleId).Should().NotContain(PdfValidationRuleIds.XRefChainLoop);
     }
 
+    [Theory]
+    [InlineData(65_350, false)]
+    [InlineData(65_650, true)]
+    public void A_stream_a_prev_names_through_white_space_meets_the_trailer_guard_only_where_its_own_dictionary_runs_past_it(int pad, bool cut)
+    {
+        // The newest table names stream 4 through /Prev at the first of 200 line feeds before it, and through /XRefStm a place
+        // inside the string of object 8, right before them, whose search comes to stream 4 first, the table's own stream out of
+        // reach. Stream 4's dictionary, about 65,450 bytes, lay within MaxTrailerLength, but not with the line feeds before it,
+        // through which the /Prev's reading opened its window: the look at stream 4 read it whole and left the /XRefStm to the
+        // /Prev, whose reading the guard cut, the naming reported as the file's fault and the index rebuilt as the file
+        // opened. The white space before a section and its dictionary are each bounded by MaxTrailerLength, the section read
+        // from its first token: the /Prev reads stream 4 where the look reads it, as a whole read does, and only a
+        // dictionary that alone runs past the guard, about 65,750 bytes, is cut, for both, the guard's (#156, #264).
+        var (file, oldest, run, four, _, named) = HybridFiles.PrevNamingARunBeforeAStream(200, pad, "inside a string before the run");
+        using var document = PdfDocument.Open(file);
+
+        var sections = document.Reader.Structure.Sections;
+        sections[1].ReadAs.Should().BeSameAs(sections[2]);
+
+        if (cut)
+        {
+            sections.Select(section => (section.NamedBy, section.State, section.Offset, section.Padding)).Skip(1).Should().Equal(
+                ("/XRefStm", XRefSectionState.NamedAgain, named, 0),
+                ("/Prev", XRefSectionState.Malformed, run, 200));
+            sections[2].CutByLimit.Should().BeTrue();
+            sections[1].NamesNoStream.Should().BeNull();
+            var guard = document.Diagnostics.Should().ContainSingle().Which;
+            guard.Code.Should().Be(PdfDiagnosticCodes.LimitTrailer);
+            guard.Position.Should().Be(four, "the window the guard stopped opens at the stream's header");
+            document.GetObject(new PdfObjectId(7)).Should().BeSameAs(PdfNull.Instance, "what only the sections past the guard index is the guard's");
+        }
+        else
+        {
+            sections.Select(section => (section.NamedBy, section.State, section.Offset, section.Padding)).Skip(1).Should().Equal(
+                ("/XRefStm", XRefSectionState.NamedAgain, named, 0),
+                ("/Prev", XRefSectionState.Read, run, 200),
+                ("/Prev", XRefSectionState.Read, oldest, 0));
+            document.Diagnostics.Select(diagnostic => diagnostic.Code).Should().Equal(PdfDiagnosticCodes.XRefHybridStreamLost);
+            Text(document, 7).Should().Be("new seven");
+        }
+
+        document.WasRepaired.Should().BeFalse();
+        new PdfValidator().Validate(document).Findings.Count(finding => finding.RuleId == PdfValidationRuleIds.XRefHybridStreamWrong).Should().Be(cut ? 0 : 1);
+    }
+
+    [Theory]
+    [InlineData(65_536, "inside a string past object 4")]
+    [InlineData(65_530, "inside a string past object 4")]
+    [InlineData(65_536, "the stream")]
+    [InlineData(65_530, "the stream")]
+    [InlineData(65_536, "in the run")]
+    [InlineData(65_530, "in the run")]
+    public void A_prev_naming_as_much_white_space_as_a_trailer_s_window_holds_reads_the_stream_past_it_as_a_whole_read_does(int run, string named)
+    {
+        // The newest table names stream 4 through /Prev at the first of 65,536 line feeds before it, as many bytes as
+        // MaxTrailerLength lets a trailer hold, or 65,530, the stream's header across the window's end; and, through /XRefStm,
+        // a place inside the string of object 8, past stream 4 and nearer it than the table's own stream; that stream; or the
+        // run, 7 bytes before stream 4. The /Prev's reading opened its window at the run, found no object whole in it, and
+        // looked for its section nearby: the oldest table, whose older revision of object 7 was served, while the look at
+        // stream 4, and the positions the chain compares, took stream 4 for what the /Prev reads, leaving the /XRefStm to a
+        // /Prev that never read it, said to name what that /Prev names. The run and the dictionary are each bounded by
+        // MaxTrailerLength: the /Prev reads stream 4 past the run, and the /XRefStm is read, or left to that /Prev, as a read
+        // under a bound of 1 MB reads and leaves them (#156, #188).
+        var (file, oldest, runAt, four, stream, at) = HybridFiles.PrevNamingARunBeforeAStream(run, 0, named);
+        using var document = PdfDocument.Open(file);
+        using var whole = PdfDocument.Open(file, new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxTrailerLength = 1024 * 1024 } });
+
+        var sections = document.Reader.Structure.Sections;
+        var stops = named != "the stream";
+        sections.Select(section => (section.NamedBy, section.State, section.Offset, section.Padding)).Skip(1).Should().Equal(
+            stops ? ("/XRefStm", XRefSectionState.NamedAgain, at, named == "in the run" ? 7 : 0) : ("/XRefStm", XRefSectionState.Read, stream, 0),
+            ("/Prev", XRefSectionState.Read, runAt, run),
+            ("/Prev", XRefSectionState.Read, oldest, 0));
+        sections.Select(section => (section.NamedBy, section.State, section.Offset, section.Padding)).Should().Equal(
+            whole.Reader.Structure.Sections.Select(section => (section.NamedBy, section.State, section.Offset, section.Padding)));
+        document.Diagnostics.Select(diagnostic => diagnostic.Code).Should().Equal(
+            stops ? [PdfDiagnosticCodes.XRefHybridStreamLost] : []);
+        document.Diagnostics.Select(diagnostic => diagnostic.Code).Should().Equal(whole.Diagnostics.Select(diagnostic => diagnostic.Code));
+        Text(document, 7).Should().Be("new seven");
+        document.WasRepaired.Should().BeFalse();
+        new PdfValidator().Validate(document).Findings.Count(finding => finding.RuleId == PdfValidationRuleIds.XRefHybridStreamWrong).Should().Be(stops ? 1 : 0);
+    }
+
     [Fact]
     public void What_the_look_at_a_prev_s_place_reads_indexes_nothing_where_the_chain_ends_before_that_prev()
     {

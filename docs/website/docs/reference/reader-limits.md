@@ -18,7 +18,7 @@ document instead, in [Read or refuse a document that reaches a limit](../guides/
 | `MaxObjectLength` | 16 MB | An object that long, the data of a stream aside, written in the file or held by an object stream: an array of a million references | The object as far as the bound | `limit.object` |
 | `MaxXRefSectionLength` | 64 MB | A classic cross-reference table of more than about 3.3 million entries | The entries within the bound | `limit.xref-section-length` |
 | `MaxXRefSectionCount` | 1,024 | A document saved incrementally more than a thousand times | The newest sections | `limit.xref-section-count` |
-| `MaxTrailerLength` | 64 KB | A trailer that long, or a cross-reference stream's dictionary — its `/Index` grows with every scattered update —, never that stream's data | The trailer as far as the bound | `limit.trailer` |
+| `MaxTrailerLength` | 64 KB | A trailer that long, or a cross-reference stream's dictionary — its `/Index` grows with every scattered update —, never that stream's data, read from the stream's object header; and, counted apart, as much white space and comments as an offset that names a cross-reference section falls short of it by | The trailer as far as the bound; past white space and comments that run on past it, nothing, the section looked for near the offset as one that is not there | `limit.trailer` |
 | `MaxIndexEntries` | 8,388,607 | A document of more objects than ISO 32000-1's Annex C advises; or a cross-reference stream of one-byte rows, of which 256 MB decode from a few hundred bytes | The object numbers indexed first: the newest sections', a rebuild's first | `limit.index-entries` |
 | `MaxFilterChainLength` | 64 | A `/Filter` array naming more filters, `/Crypt` among them: real streams name one to three, and a hostile array of millions costs decoding a few microseconds a filter, and some filters a table of tens of kilobytes, whatever their data | The data as the filters within the bound decoded it; the elements past it are not read | `limit.filter-chain` |
 
@@ -195,10 +195,13 @@ there. Raise PdfReaderLimits.MaxDecodedStreamLength to read past it.
   A stream you build in memory decodes under `PdfReaderLimits.Default`.
 - A classic trailer that ends within the window its cross-reference table was read through is read whole, whatever
   its length. `MaxTrailerLength` bounds how far the reader follows one past that window, and a cross-reference stream's
-  dictionary, not its data: the data of one whose `/Length` the reader cannot read while it reads the chain is searched
-  for its `endstream` in the file, up to the next object the sections read so far place, or the end of the file. Data
-  no `endstream` ends before there makes its section malformed, a fault of the file and not of a guard — unless its
-  `/Length` leads to an object `MaxObjectLength` cuts, which makes the section the guard's, as above.
+  dictionary, read from its object's header, not its data: the data of one whose `/Length` the reader cannot read while
+  it reads the chain is searched for its `endstream` in the file, up to the next object the sections read so far place,
+  or the end of the file. Data no `endstream` ends before there makes its section malformed, a fault of the file and not
+  of a guard — unless its `/Length` leads to an object `MaxObjectLength` cuts, which makes the section the guard's, as
+  above. It bounds, apart, the white space and comments an offset that names a section falls short by, so that a
+  dictionary is cut only where it alone runs past the bound: white space and comments that run on past it reach the
+  guard, and the section is looked for near the offset, nothing past them read.
 - Until the reader decodes streams a piece at a time, a stream that decodes past about 2 GB is cut there, and
   reported, even under `Unbounded`. A stream's data is read in one piece, and data past about 2 GB is read up to
   there, and reported under `limit.stream-length`, even under `Unbounded`.
