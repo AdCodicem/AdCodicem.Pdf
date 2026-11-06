@@ -232,3 +232,64 @@ Round 1 fixes: workflow wf_a2870240-11e (track, R1a-reached, R1b-relocation, R1c
   For status.md 'Commit bodies not rewritten': add 394028c, d63f093, 7c0748b (with e67fef9, b09f981, 5656c64).
   Optional #171 comment (earlier-string limit) left: the user docs and threat model now name it with a #171 link.
   Residual wording (pre-existing): a section refusing two rows of its own, each alone, says 'that row alone'.
+- 2026-11-06: review round 4 launched: wf_ae5066b2-0d3 (task w745low0h), script lot19/lot19-review-r4.js, on b4ab948; six lenses (chain-keep incl. M40/M41, chain-line, sections, headers, validator-tests, docs).
+- 2026-11-06: review round 4 done (wf_ae5066b2-0d3): 27 findings (1 blocker, 2 major, 12 minor after refuters, rest
+  nits; [16] refuted). Findings in r4-findings.md ('######## [n]'), verdicts r4-verified.json.
+
+# Review round 4 (wf_ae5066b2-0d3 on b4ab948): triage
+R4-Q1 [0] (maintainer): a named section's object window opens at the first token PaddingAt found ("Au premier jeton
+  (Recommandé)"): TryParseNumberedAt(absolute + section.Padding) in TryReadXRefStream; white space and dictionary each
+  bounded by MaxTrailerLength; PaddingAt's padding-whole case reports limit.trailer itself (keeps the three startxref
+  white-space rows); the check, StartOfNamed, branch (c), ReachedAt stay and become true; reader-limits.md row, the
+  PaddingAt and KeepsItsPlace remarks restated; rows (a), (b) at run = limit and limit - 6, (c), each failing on b4ab948.
+- [1] previousStart only where the /Prev can come to the place (not ReachedBefore(previous, visited)); rows typed
+  /XRefStream with /W via a reference + loop, untyped and white-space variants; KeepsItsPlace/leaveAt docs.
+- [2] test killing M40/M41 (trailer window ending on 'stream' + a /W width a guard cut); record killed, no debt.
+- [3] blocker: IsTokenOnItsLine returns false when bytes.Length <= before + at; StartsToken stops at EndOfInput and does
+  not count it; tests with CutShortSource rows and a source capped at 4,096 bytes a read, with a bounded wait.
+- [4] CR rows killing both '\r'-dropped mutants (read-back and in-window).
+- [5] nit accepted: the per-place read-back is the cost round 3's [1] named, within MaxRelocationCandidates (remark
+  says so). No change.
+- [6] readAgain carries ReservedRowsRefused/RowsRefusedBefore from the /XRefStm's reading; rows incl. own-duplicate
+  control. [7] RefusedRow arm's someRefused tail uses KeptButFor. [9]/[17] test a reserved row refused by the stream's
+  own earlier row (both orders), chain + rule.
+- [8] _refusedNumbers -> Dictionary<int,int> keyed to a section ordinal; state the cost (MaxIndexEntries remarks,
+  threat-model rows 106/429).
+- [10] no code: comment on #320 (refusals and _indexIncomplete a dropped candidate leaves; correct its 2026-11-04
+  comment: a table whose xref keyword lies in a comment/string on its line is dropped too) — consistent with Q12.
+- [11] PendingEndStream: _readTo = Math.Max; HeaderAt only when _tokenStart >= at else take the keyword; comment
+  :92-93; test through a short-count source (block-limited too); comment on #52 (short counts and this search).
+- [12] HeaderEnding(placed) writes Table(13...) and asserts object 12 placed. [13] Decide's scalar fast paths; two
+  benchmark shapes (waiting keyword + comment lines / white space); benchmark remark; threat-model row 529 figures.
+- [14] concepts/diagnostics.md names #171's obj-line gap and qualifies the sentence. [15]/[20] rewrap (+
+  PdfDiagnosticCodes.cs:50). [18] [19] renames + threat-model citations. [21] comment on #171 (the chain's search near
+  an offset as a fourth reader; regresses vs main). [22] sibling theory: the taken stream's own /Prev a loop, outside
+  the file, not an offset (+ null row). [23] threat-model row 425 'but for'. [24] NamesWhatPreviousReads summary.
+  [25] docs say what the reserved-row messages say. [26] status.md: 2b26d18 under 'Commit bodies not rewritten'.
+- [16] refuted; for status.md #317 record: round 4 saw the ratio past 8 under heavier load (9.07, 9.68, 15.8).
+- 2026-11-06: round 4 fixes launched: wf_170d4322-ba5 (task wtndj6zaz), script lot19/lot19-r4-fixes.js: R4a-window, R4b-line, R4c-sections, R4d-headers, R4e-docs, then R4-track (comments #320, #52, #171) beside R4f-check.
+- 2026-11-06: round 4 fixes done (wf_170d4322-ba5, 7 agents, 0 errors). 22 commits b4ab948..8ba4589, all pushed,
+  footers checked. R4f: build 0 warnings, suite 10,275 (10,272 passed, 3 skipped as before), format clean, 22
+  messages pass, no keys; corpus vs main: one document differs after normalize241 (pdfmaker7-powerpoint-va-cancer
+  loses its false file.size-wrong, #156); branch dump byte-identical to round 3's. Track comments: #320
+  (issuecomment-6694391457), #52 (-6694397059), #171 (-6694401086). Results in r4-fix-result.json.
+  Deviations kept: R4d reads the header eagerly at the token's first byte ('o') instead of HeaderAt only when
+  _tokenStart >= at (matches the memory source in all short-read rows; the guarded variant does not); R4a reports the
+  white-space guard in TryReadXRefSection (PaddingAt is also called by the reached test and KeepsItsPlace) and probes
+  XRefProbeLength past the window so a token at the window's end is read; StartOf/StartOfNamed give -1 past the window;
+  limit.trailer for a stream's dictionary now at its header. R4c: ordinal per reading (TryReadXRefSection entry),
+  int, wrap noted; allocation test. R4b: guard on bytes.Length <= before + at, StartsToken stops at EndOfInput.
+  R3b's 'placed' check was vacuous until fb35341 (no commit body false there).
+  status.md items: 'Commit bodies not rewritten' add 2b26d18 (true only past MaxTrailerLength of the edge until
+  f0d90c8), ea348ce (whole reads only until cfaa90c), 8ccd868 (overclaims; corrected in 056461b). Figures: every-row-
+  refused stream opens with 1.01 GB (1.20 at b4ab948, 0.91 at 19122f0); 100,000 refused rows 6.04 MB (8.45, 4.83);
+  waiting comment lines 87.3 -> 43.5 ms, nested strings 58 ms (~14 ns a byte) the worst shape.
+  Open points triaged:
+  - white space past MaxTrailerLength -> NotFound + nearby search (startxref rebuilt), and a classic table's white
+    space counting toward MaxXRefSectionLength: these are #289 and #295 (M02, placed in batch 27 with #163), behavior
+    as main but the guard's message and the stream's header window. No maintainer question: comment on #289/#295 at
+    the end with what batch 19 changed (R4-Q1 window at first token; limit.trailer worded for white space; probe 32
+    bytes past the window so a keyword at its end is read; #295's two shapes re-measured) and what is left.
+  - ReadTrailerPastRows hang on short windows (pre-existing, main) + StartsToken(long) Span[0]: filed #331 (debt,
+    area: reader, M03, placed with #52). threat-model.md:366 to cite #331 (round 5 fixes or docs).
+  - P02 (Array.MaxLength clamp on the probe's reach, > 2 GB only): file with the batch-wide ADR 53 survivors (M23).

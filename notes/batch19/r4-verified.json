@@ -1,0 +1,245 @@
+[
+ {
+  "n": 0,
+  "lens": "chain-keep",
+  "key": "keep-check-reads-from-the-header-not-where-the-prev-reads",
+  "sev": "major",
+  "verdict": "narrowed",
+  "vsev": "major",
+  "maint": true
+ },
+ {
+  "n": 1,
+  "lens": "chain-keep",
+  "key": "keep-check-says-section-where-the-prev-loops",
+  "sev": "minor",
+  "verdict": "confirmed",
+  "vsev": "minor",
+  "maint": false
+ },
+ {
+  "n": 2,
+  "lens": "chain-keep",
+  "key": "markcutbyguard-in-the-check-has-a-killing-input",
+  "sev": "minor",
+  "verdict": "confirmed",
+  "vsev": "minor",
+  "maint": false
+ },
+ {
+  "n": 3,
+  "lens": "chain-line",
+  "key": "line-readback-short-window-hangs-or-throws",
+  "sev": "blocker",
+  "verdict": "confirmed",
+  "vsev": "blocker",
+  "maint": false
+ },
+ {
+  "n": 4,
+  "lens": "chain-line",
+  "key": "line-test-cr-line-ends-untested",
+  "sev": "minor",
+  "verdict": "narrowed",
+  "vsev": "minor",
+  "maint": false
+ },
+ {
+  "n": 5,
+  "lens": "chain-line",
+  "key": "line-readback-repeated-per-place-in-one-window",
+  "sev": "minor",
+  "verdict": "narrowed",
+  "vsev": "nit",
+  "maint": false
+ },
+ {
+  "n": 6,
+  "lens": "sections",
+  "key": "sections:mirror-reread-counts-own-declared-refusal-as-reserved-refused",
+  "sev": "minor",
+  "verdict": "narrowed",
+  "vsev": "minor",
+  "maint": false
+ },
+ {
+  "n": 7,
+  "lens": "sections",
+  "key": "sections:own-duplicate-still-said-kept-beside-a-newer-refusal",
+  "sev": "nit",
+  "verdict": "confirmed",
+  "vsev": "nit",
+  "maint": false
+ },
+ {
+  "n": 8,
+  "lens": "sections",
+  "key": "sections:refused-numbers-dictionary-allocates-42-percent-more",
+  "sev": "nit",
+  "verdict": "confirmed",
+  "vsev": "minor",
+  "maint": false
+ },
+ {
+  "n": 9,
+  "lens": "sections",
+  "key": "sections:reserved-row-refused-by-own-earlier-row-untested",
+  "sev": "nit",
+  "verdict": "confirmed",
+  "vsev": "nit",
+  "maint": false
+ },
+ {
+  "n": 10,
+  "lens": "sections",
+  "key": "sections:dropped-candidate-leaves-its-refusals",
+  "sev": "nit",
+  "verdict": "confirmed",
+  "vsev": "minor",
+  "maint": false
+ },
+ {
+  "n": 11,
+  "lens": "headers",
+  "key": "headers:pending-short-read-crash-and-reread",
+  "sev": "major",
+  "verdict": "confirmed",
+  "vsev": "major",
+  "maint": false
+ },
+ {
+  "n": 12,
+  "lens": "headers",
+  "key": "headers:placed-check-places-nothing",
+  "sev": "minor",
+  "verdict": "confirmed",
+  "vsev": "minor",
+  "maint": false
+ },
+ {
+  "n": 13,
+  "lens": "headers",
+  "key": "headers:pending-cost-past-documented-max",
+  "sev": "minor",
+  "verdict": "confirmed",
+  "vsev": "minor",
+  "maint": false
+ },
+ {
+  "n": 14,
+  "lens": "headers",
+  "key": "headers:same-place-whether-placed-overclaims",
+  "sev": "nit",
+  "verdict": "narrowed",
+  "vsev": "nit",
+  "maint": false
+ },
+ {
+  "n": 15,
+  "lens": "headers",
+  "key": "headers:test-comment-unwrapped",
+  "sev": "nit",
+  "verdict": "confirmed",
+  "vsev": "nit",
+  "maint": false
+ },
+ {
+  "n": 16,
+  "lens": "validator-tests",
+  "key": "timing-317-past-bound-under-load",
+  "sev": "nit",
+  "verdict": "refuted",
+  "vsev": "none",
+  "maint": false
+ },
+ {
+  "n": 17,
+  "lens": "validator-tests",
+  "key": "stream-own-row-reserved-refusal-untested",
+  "sev": "nit",
+  "verdict": "confirmed",
+  "vsev": "nit",
+  "maint": false
+ },
+ {
+  "n": 18,
+  "lens": "validator-tests",
+  "key": "test-names-omit-glued-letter-row",
+  "sev": "nit",
+  "verdict": "confirmed",
+  "vsev": "nit",
+  "maint": false
+ },
+ {
+  "n": 19,
+  "lens": "validator-tests",
+  "key": "look-test-name-tautological",
+  "sev": "nit",
+  "verdict": "confirmed",
+  "vsev": "nit",
+  "maint": false
+ },
+ {
+  "n": 20,
+  "lens": "validator-tests",
+  "key": "windowedge-comment-wrap",
+  "sev": "nit",
+  "verdict": "confirmed",
+  "vsev": "nit",
+  "maint": false
+ },
+ {
+  "n": 21,
+  "lens": "docs",
+  "key": "docs-171-earlier-string-gap-untracked",
+  "sev": "minor",
+  "verdict": "narrowed",
+  "vsev": "minor",
+  "maint": false
+ },
+ {
+  "n": 22,
+  "lens": "docs",
+  "key": "docs-taken-stream-faulty-prev-held-by-no-test",
+  "sev": "minor",
+  "verdict": "narrowed",
+  "vsev": "minor",
+  "maint": false
+ },
+ {
+  "n": 23,
+  "lens": "docs",
+  "key": "docs-threat-model-425-no-prev-place-exception",
+  "sev": "nit",
+  "verdict": "confirmed",
+  "vsev": "nit",
+  "maint": false
+ },
+ {
+  "n": 24,
+  "lens": "docs",
+  "key": "docs-names-what-previous-reads-omits-value-cut",
+  "sev": "nit",
+  "verdict": "confirmed",
+  "vsev": "nit",
+  "maint": false
+ },
+ {
+  "n": 25,
+  "lens": "docs",
+  "key": "docs-reserved-report-says-which-rows",
+  "sev": "nit",
+  "verdict": "confirmed",
+  "vsev": "nit",
+  "maint": false
+ },
+ {
+  "n": 26,
+  "lens": "docs",
+  "key": "docs-commit-2b26d18-body-overstates",
+  "sev": "nit",
+  "verdict": "confirmed",
+  "vsev": "nit",
+  "maint": false
+ }
+]

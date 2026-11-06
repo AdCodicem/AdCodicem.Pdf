@@ -8,11 +8,11 @@ AdCodicem.Pdf). `git log 21a0298..origin/ccr-6d6c0ee6-dqm4lm-188` gives the comm
 Read first, in full:
 - /tmp/claude-0/-home-user-AdCodicem-Pdf/b5ddd9fc-0507-5e11-8a94-c9e1fedd4860/scratchpad/lot19/decisions.md — every
   maintainer decision (B19-1 to B19-8, Q9 to Q12), the points decided without a question, the debts filed (#320 to
-  #328) and the comments made (#171, #260, #292).
+  #331) and the comments made (#171, #260, #292, #320, #52).
 - /tmp/claude-0/-home-user-AdCodicem-Pdf/b5ddd9fc-0507-5e11-8a94-c9e1fedd4860/scratchpad/lot19/residuals-impl.md —
   the residuals the implementation stages reported and left unfiled. For each one your lens covers, judge it: a
   defect to fix in this batch, a debt to file, or acceptable as is (say why). Do not report a residual already filed
-  as #320 to #328 or as an older open debt unless the code or the docs misstate it.
+  as #320 to #331 or as an older open debt (#289, #295, #52 among them) unless the code or the docs misstate it.
 
 What to look for: defects with a reproducer (a hand-built file, its exact output on the branch, and on main 21a0298
 where it differs) — wrong behavior, a report that is wrong, missing, doubled or depends on read order, a crash, an
