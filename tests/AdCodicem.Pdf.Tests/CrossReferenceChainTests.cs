@@ -4811,6 +4811,7 @@ public class CrossReferenceChainTests
     [InlineData("a reserved row, one row short")]
     [InlineData("a reserved row after a refused one")]
     [InlineData("no row", true)]
+    [InlineData("no row, its /Index holding a reference")]
     public void A_prev_falling_short_of_the_stream_its_xrefstm_read_reads_it_whole_and_the_naming_is_reported(string seven, bool fourRefused = false)
     {
         // The newest table names cross-reference stream 6 through /XRefStm at its header, and through /Prev 7 bytes short of
@@ -4826,7 +4827,13 @@ public class CrossReferenceChainTests
         // number refused before it was read (#221). A reserved row after the stream's own refused row for its number stands
         // for nothing, as at the stream's first reading, and object 7 is read through a rebuild. Where the newest table
         // refused its own row for object 4 first, a newer section refused the stream's row for it, as its first reading found.
+        // Where the stream's /Index holds a reference, which the newest table places, its first reading, read in part, refused
+        // every number to the older sections' rows: the /Prev's record said a section read before it had, where only that
+        // reading of the stream itself did; it says none had, while the oldest table, read after it, has every number refused
+        // before it, and the file is rebuilt as it opens for the catalog, which that table alone indexes, the page found
+        // redefined (#210).
         var (file, oldest, stream, newest) = HybridFiles.PrevFallingShortOfTheStreamBefore(seven, fourRefused: fourRefused);
+        var every = seven == "no row, its /Index holding a reference";
         using var document = PdfDocument.Open(file);
 
         var sections = document.Reader.Structure.Sections;
@@ -4840,24 +4847,39 @@ public class CrossReferenceChainTests
         {
             "no row" when fourRefused => [PdfDiagnosticCodes.XRefSectionUnreadable, PdfDiagnosticCodes.XRefOffsetAdjusted, PdfDiagnosticCodes.XRefHybridStreamLost],
             "no row" => [PdfDiagnosticCodes.XRefOffsetAdjusted, PdfDiagnosticCodes.XRefHybridStreamLost],
+            "no row, its /Index holding a reference" =>
+            [
+                PdfDiagnosticCodes.XRefSectionUnreadable, PdfDiagnosticCodes.XRefOffsetAdjusted, PdfDiagnosticCodes.XRefHybridStreamLost,
+                PdfDiagnosticCodes.XRefRebuilt, PdfDiagnosticCodes.ObjectRedefined,
+            ],
             "a reserved row" => [PdfDiagnosticCodes.XRefEntryReserved, PdfDiagnosticCodes.XRefOffsetAdjusted, PdfDiagnosticCodes.XRefHybridStreamLost],
             _ => [PdfDiagnosticCodes.XRefSectionUnreadable, PdfDiagnosticCodes.XRefEntryReserved, PdfDiagnosticCodes.XRefOffsetAdjusted, PdfDiagnosticCodes.XRefHybridStreamLost],
         };
         document.Diagnostics.Select(diagnostic => diagnostic.Code).Should().Equal(codes);
-        document.Diagnostics[^1].Message.Should().Be(Invariant(
+        document.Diagnostics.Single(diagnostic => diagnostic.Code == PdfDiagnosticCodes.XRefHybridStreamLost).Message.Should().Be(Invariant(
             $"The /XRefStm of the cross-reference table at offset {newest} names offset {stream}, the section its /Prev names too, which the chain read through that /Prev: ISO 32000-1 has it name the cross-reference stream of the table's revision (Table 19). The objects only that stream indexes are looked for by rebuilding the index."));
         var refusedFirst = seven == "a reserved row after a refused one";
         sections[2].ReservedRowsRefused.Should().Be(refusedFirst ? 1 : 0);
         sections[2].RowsRefusedBefore.Should().Be(fourRefused);
+        sections[2].EveryNumberRefusedBefore.Should().BeFalse("what the stream's first reading refused is its own");
+        sections[3].EveryNumberRefusedBefore.Should().Be(every);
+
+        if (every)
+        {
+            document.Diagnostics[0].Message.Should().Be(Invariant(
+                $"The cross-reference stream /XRefStm names at offset {stream} was read only in part: it holds 2 rows where its /Index and /Size declare 3; the rows it holds were kept, and every other object no section read before it indexes is looked for by rebuilding the index, rather than taken from an older section's rows."));
+            document.Reader.ChainIndex!.TryGet(3, out _).Should().BeFalse();
+        }
+
         Text(document, 3).Should().Be("three as the oldest has it");
-        document.WasRepaired.Should().BeFalse();
+        document.WasRepaired.Should().Be(every);
 
         if (refusedFirst)
         {
             Text(document, 7).Should().Be("seven as the oldest has it");
             document.WasRepaired.Should().BeTrue();
         }
-        else if (seven != "no row")
+        else if (!seven.StartsWith("no row", StringComparison.Ordinal))
         {
             document.GetObject(new PdfObjectId(7)).Should().BeSameAs(PdfNull.Instance);
             document.WasRepaired.Should().BeFalse();
@@ -4867,7 +4889,7 @@ public class CrossReferenceChainTests
         findings.Should().NotContain(finding => finding.RuleId == PdfValidationRuleIds.XRefSectionNotFound);
         findings.Should().ContainSingle(finding => finding.RuleId == PdfValidationRuleIds.XRefHybridStreamWrong);
 
-        if (seven == "no row")
+        if (seven.StartsWith("no row", StringComparison.Ordinal))
         {
             findings.Should().NotContain(finding => finding.RuleId == PdfValidationRuleIds.XRefEntryTypeReserved);
             return;
