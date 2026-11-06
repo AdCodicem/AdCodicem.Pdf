@@ -41,9 +41,10 @@ outside a stream's data, and a `%` right where the declared length ends is the d
 window, the reader asks the file for the bytes after the declared length rather than reading the data, reading on as
 far as white space and comments run, and they tell it whether `endobj` follows too. Any other
 stream — its length unconfirmed, or a `/Length` that gives none — is searched once for the first `endstream` after the
-start of its data, which ends it: in the bytes the parser holds, then in the file, up to the next object — the one the
-file's index places as the file wrote it (as the reader rebuilt it when the document opened, if the file wrote none),
-or the first object header, `N G obj`, the file's bytes hold, whichever comes first —, or up to the end of the file.
+start of its data, which ends it, but for one a comment between an object header's tokens holds, below: in the bytes the
+parser holds, then in the file, up to the next object — the one the file's index places as the file wrote it (as the
+reader rebuilt it when the document opened, if the file wrote none), or the first object header, `N G obj`, the file's
+bytes hold, whichever comes first —, or up to the end of the file.
 
 Stopping at the next object keeps a later object's `endstream` from ending this stream, which is what a stretch of
 zeros that erased the end of one and the objects after it would otherwise do, or an object whose entry the index lost.
@@ -54,6 +55,17 @@ load reads them: the line a comment ends is read from its start, as the scan tha
 regular character glued before the number makes no header here, though that scan takes the digits after it for one.
 Neither `xref` nor `trailer` stops a search: the stream of a classic file's last object, which no object follows, is
 searched through the table and the trailer to the end of the file.
+
+A comment between a header's tokens may hold `endstream`, which then ends no data before that header. A first
+`endstream` inside a comment, on a line whose tokens before the comment may begin a header — a run of digits last, or
+none —, waits for what follows its line: only the rest of the comment, white space and comments, and a header's
+generation can lie between it and the `obj` of a header that starts before it. The first token past that line outside a
+comment decides, or the two where the first is a run of digits: an `obj` where the rule above takes a header stops the
+search at that header, which starts before the keyword; anything else leaves the keyword to end the data. Those tokens
+are read through the search's own reads, so that where the reads part the data changes nothing, and no further than the
+search would read without the keyword; a search that can read no further — the document's searches having read as much
+of the file as they may, or a source that gives nothing more — takes the keyword. The data so ends at the same place
+whether the index places the header's object or not.
 
 With no `endstream` before the stop, the object's `endobj` plays its part. A declared length that ends before the stop,
 and that the object's `endobj` follows as an `endstream` would, is kept: the stream lost only its `endstream`. Otherwise,

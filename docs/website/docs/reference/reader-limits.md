@@ -164,7 +164,14 @@ there. Raise PdfReaderLimits.MaxDecodedStreamLength to read past it.
   guard cut it, as the nearest such place a fault of the file keeps from being read is taken for the section too
   ([#281](https://github.com/AdCodicem/AdCodicem.Pdf/issues/281)); a place there that declares another type — a CIDFont, whose `/W` gives
   widths —, or whose dictionary a guard cut before it said what it is, is not taken for the section, and the next is
-  tried. A guard that cut, where the chain names a section, the dictionary of what declares another type cut no section —
+  tried — but for what a hybrid table's `/Prev` names, where the search near the offset its `/XRefStm` names comes to
+  it: a guard that cut it there, before it said what it is or in a value its rows are read with, may hide a section the
+  `/Prev` reads, and the search stops there, the `/XRefStm` the guard's, nothing reported of it and the index not
+  rebuilt for it; an `/XRefStm` that names that offset itself, or the white space before it, names no stream of the
+  table's revision whatever the guard hid, and is reported
+  ([#156](https://github.com/AdCodicem/AdCodicem.Pdf/issues/156),
+  [#264](https://github.com/AdCodicem/AdCodicem.Pdf/issues/264)). A guard that cut, where the chain names a section,
+  the dictionary of what declares another type cut no section —
   a CIDFont's, which read whole no stream data follows —, while one that cut a value of a stream there leaves it the
   section the guard cut, whatever type it gives, as read whole it is the section. What makes a section unreadable whatever
   a value a guard cut holds is the file's fault, as read whole: a value past the cut that no section read so far places, a

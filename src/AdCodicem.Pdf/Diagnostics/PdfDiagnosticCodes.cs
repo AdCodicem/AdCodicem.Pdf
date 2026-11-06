@@ -96,12 +96,14 @@ public static class PdfDiagnosticCodes
     /// a classic table — the table itself, another the chain read, one it reads in the stream's place, its rows taken, or
     /// one that cannot be read, at each table that names it —, a cross-reference stream the chain read through
     /// <c>/Prev</c> or <c>startxref</c>, or what the table's own <c>/Prev</c> reaches too — at the same offset, through the
-    /// white space before that section, or where the search near the offset the <c>/XRefStm</c> names comes to it —, which
-    /// the chain reads through that <c>/Prev</c> rather than in the stream's place, the report saying no more of it than
-    /// the chain knows before that <c>/Prev</c> is read (#156). The
-    /// objects only the table's stream indexes are missing from the index, which is rebuilt by scanning the file when one of
-    /// them is asked for. The report is placed at the offset the <c>/XRefStm</c> names, or at the table when that offset
-    /// lies outside the file.
+    /// white space before that section, or where the search near the offset the <c>/XRefStm</c> names comes to it and
+    /// that <c>/Prev</c> keeps its place there, as its own reading does —, which the chain reads through that
+    /// <c>/Prev</c> rather than in the stream's place, the report saying no more of it than the chain knows before that
+    /// <c>/Prev</c> is read (#156). A search that stopped there only because one of the reader's limits cut what the
+    /// <c>/Prev</c> names, before it said what it is or in a value its rows are read with, is the limit's, and not
+    /// reported (#264). The objects only the table's stream indexes are missing from the index, which is rebuilt by
+    /// scanning the file when one of them is asked for. The report is placed at the offset the <c>/XRefStm</c> names, or
+    /// at the table when that offset lies outside the file.
     /// </summary>
     public const string XRefHybridStreamLost = "xref.hybrid-stream-lost";
 

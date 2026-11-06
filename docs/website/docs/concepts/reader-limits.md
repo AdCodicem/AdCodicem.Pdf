@@ -82,7 +82,12 @@ that is no offset or lies outside the file, one that names the section itself or
 and reads nothing past the guard to do so: such a guard hides no damage that can be seen without reading past it, and
 what the lost sections index is found by rebuilding the index, as in the file read whole. A value that may name a sound
 section — an offset in the file the chain has not reached — stays the guard's, the older sections with it
-([#264](https://github.com/AdCodicem/AdCodicem.Pdf/issues/264)). The `/Prev` of a cross-reference stream at which a
+([#264](https://github.com/AdCodicem/AdCodicem.Pdf/issues/264)). A hybrid table's `/XRefStm` whose offset holds no
+section, and whose search nearby stops at what the table's `/Prev` names because a guard cut it before it said what it
+is, or cut a value its rows are read with — the `/Prev` may read a section there, which the guard hides —, is the
+guard's too: nothing is reported of it, and the index is not rebuilt for it. One that names what the `/Prev` names, at
+that offset or in the white space before it, names no stream of the table's revision whatever the guard hid, and is
+reported, the validator saying the guard hides what is there. The `/Prev` of a cross-reference stream at which a
 guard's cut of a value its rows are read with ends the chain, and a `/Prev` in a trailer a guard cut, are not judged
 yet: a fault they show without reading past the guard goes unreported
 ([#329](https://github.com/AdCodicem/AdCodicem.Pdf/issues/329),

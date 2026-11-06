@@ -5269,12 +5269,6 @@ public class CrossReferenceChainTests
     private static string Invariant(FormattableString text) => text.ToString(CultureInfo.InvariantCulture);
 
     /// <summary>
-    /// Gives a file whose section <c>startxref</c> names, of <paramref name="kind"/>, gives a <c>/Prev</c> that names the end
-    /// of line before it, and where that section starts: an update's table that holds no subsection (#222), a table whose
-    /// last row ends in <c>x</c> (#210), or an update's cross-reference stream whose row for object 3 is of type 7 (#221).
-    /// Each is built once to find where the section lies, then again with its <c>/Prev</c>, which nothing before it moves.
-    /// </summary>
-    /// <summary>
     /// Gives a file with no header, whose offsets count from its first byte, and where its second table lies: a classic
     /// table at offset 0 that indexes the catalog and an empty page tree, written after it, and gives <paramref name="first"/>
     /// in its trailer, <c>{second}</c> standing for the second table's offset; then a table that indexes nothing and gives
@@ -5297,6 +5291,12 @@ public class CrossReferenceChainTests
             $"xref\n0 3\n0000000000 65535 f \n{catalogAt:D10} 00000 n \n{pagesAt:D10} 00000 n \ntrailer\n<< /Size 3 /Root 1 0 R{first.Replace("{second}", Invariant($"{secondAt:D10}"), StringComparison.Ordinal)} >>\n1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n2 0 obj\n<< /Type /Pages /Kids [] /Count 0 >>\nendobj\nxref\n0 1\n0000000000 65535 f \ntrailer\n<< /Size 3 /Root 1 0 R{second} >>\nstartxref\n{(startAtFirst ? 0 : secondAt):D10}\n%%EOF\n"));
     }
 
+    /// <summary>
+    /// Gives a file whose section <c>startxref</c> names, of <paramref name="kind"/>, gives a <c>/Prev</c> that names the end
+    /// of line before it, and where that section starts: an update's table that holds no subsection (#222), a table whose
+    /// last row ends in <c>x</c> (#210), or an update's cross-reference stream whose row for object 3 is of type 7 (#221).
+    /// Each is built once to find where the section lies, then again with its <c>/Prev</c>, which nothing before it moves.
+    /// </summary>
     private static (byte[] File, long At) SectionNamingItsOwnEndOfLine(string kind)
     {
         if (kind == "an empty table")
