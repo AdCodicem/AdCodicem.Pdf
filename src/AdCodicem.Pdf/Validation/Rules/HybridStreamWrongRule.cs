@@ -16,9 +16,11 @@ namespace AdCodicem.Pdf.Validation.Rules;
 /// (ADR 45), as a section that cannot be found is (#156). So does one that names a classic table that cannot be read, whose
 /// own fault is <see cref="PdfValidationRuleIds.XRefSectionMalformed"/>'s, at each naming. What the table's own <c>/Prev</c>
 /// names too is said as the chain found it once it read on: the section it read, or what held no section it could read — or,
-/// past the section count guard that ended the chain there, as the guard hides it. A stream that more than one table
-/// names, as a writer that copies <c>/XRefStm</c> into the next trailer leaves it, is a stream all the same, and not judged
-/// here.
+/// where a limit cut what is there before the reading could tell, or the section count guard ended the chain there, as the
+/// limit hides it. An <c>/XRefStm</c> whose search near the offset it names stopped only where a limit cut what the
+/// <c>/Prev</c> names is the limit's, which the reader left unreported, and is not judged here (#264). A stream that more
+/// than one table names, as a writer that copies <c>/XRefStm</c> into the next trailer leaves it, is a stream all the same,
+/// and not judged here.
 /// </remarks>
 internal sealed class HybridStreamWrongRule : IValidationRule
 {
@@ -39,12 +41,15 @@ internal sealed class HybridStreamWrongRule : IValidationRule
                 continue;
             }
 
-            // What the /Prev names too was looked for after the reader reported the naming, and is said as the chain found it.
+            // What the /Prev names too was looked for after the reader reported the naming, and is said as the chain found it:
+            // what a limit cut there, before the reading could tell, is hidden by it, not found to hold no section.
             if (section is { NamesWhatPreviousReads: true, ReadAs: { } previous })
             {
                 what = previous.State is XRefSectionState.Read or XRefSectionState.Relocated
                     ? "the section its /Prev names too, which the chain read through that /Prev"
-                    : "what its /Prev names too, which holds no section the chain could read";
+                    : previous.CutByLimit
+                        ? "what its /Prev names too, past the limit that cut it there"
+                        : "what its /Prev names too, which holds no section the chain could read";
             }
 
             context.Report(

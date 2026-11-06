@@ -110,8 +110,9 @@ public static class PdfValidationRuleIds
     public const string XRefSubsectionMissing = "xref.subsection-missing";
 
     /// <summary>
-    /// A <c>/Prev</c> of the chain of cross-reference sections names a section the chain has already read, or an offset it
-    /// has already named, and the sections before the loop are out of reach. <see cref="PdfValidationSeverity.Error"/>.
+    /// A <c>/Prev</c> of the chain of cross-reference sections names a section the chain has already read, or one it has
+    /// already reached and could not read though it declares itself one, or an offset it has already named, and the
+    /// sections before the loop are out of reach. <see cref="PdfValidationSeverity.Error"/>.
     /// </summary>
     public const string XRefChainLoop = "xref.chain-loop";
 

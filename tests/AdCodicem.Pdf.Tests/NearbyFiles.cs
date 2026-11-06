@@ -549,10 +549,17 @@ internal static class NearbyFiles
     /// names, the link written only where one is given: the newest's <c>/Prev</c> <paramref name="newestPrev"/> and
     /// <c>/XRefStm</c> <paramref name="newestXRefStm"/>, the middle's <c>/XRefStm</c> <paramref name="middleXRefStm"/>, and
     /// the oldest's <c>/Prev</c> <paramref name="oldestPrev"/> and <c>/XRefStm</c> <paramref name="oldestXRefStm"/>, each
-    /// written in ten digits.
+    /// written in ten digits. With <paramref name="tablesBetween"/>, as many tables stand between the oldest and the middle
+    /// one, each indexing an object of its own, <c>(between)</c>, from object 10 on, and naming the table before it through
+    /// <c>/Prev</c>; the middle one then names the last of them.
     /// </summary>
     public static (byte[] File, long Oldest, long Middle, long Newest) ChainNamingTheSpacesBeforeTheMiddle(
-        int newestPrev, int? newestXRefStm = null, int? middleXRefStm = null, int? oldestPrev = null, int? oldestXRefStm = null)
+        int newestPrev,
+        int? newestXRefStm = null,
+        int? middleXRefStm = null,
+        int? oldestPrev = null,
+        int? oldestXRefStm = null,
+        int tablesBetween = 0)
     {
         var file = new HandWrittenFile();
         var catalog = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>");
@@ -565,17 +572,30 @@ internal static class NearbyFiles
         file.Raw(string.Create(
             CultureInfo.InvariantCulture,
             $"xref\n0 4\n0000000000 65535 f \n{catalog:D10} 00000 n \n{pages:D10} 00000 n \n{three:D10} 00000 n \ntrailer\n<< /Size 4 /Root 1 0 R{(oldestPrev is null ? string.Empty : " /Prev @@@@PREV@@")}{(oldestXRefStm is null ? string.Empty : " /XRefStm @@XREFSTM@")} >>\nstartxref\n{oldest}\n%%EOF\n"));
+        var before = oldest;
+
+        for (var table = 0; table < tablesBetween; table++)
+        {
+            var between = file.Object(10 + table, "(between)");
+            var at = file.Position;
+            file.Raw(string.Create(
+                CultureInfo.InvariantCulture,
+                $"xref\n0 1\n0000000000 65535 f \n{10 + table} 1\n{between:D10} 00000 n \ntrailer\n<< /Size {11 + table} /Root 1 0 R /Prev {before} >>\nstartxref\n{at}\n%%EOF\n"));
+            before = at;
+        }
+
         var four = file.Object(4, "(four)");
         file.Raw("   ");
         var middle = file.Position;
+        var size = tablesBetween > 0 ? 10 + tablesBetween : 5;
         file.Raw(string.Create(
             CultureInfo.InvariantCulture,
-            $"xref\n0 1\n0000000000 65535 f \n4 1\n{four:D10} 00000 n \ntrailer\n<< /Size 5 /Root 1 0 R /Prev {oldest}{Link("XRefStm", middle, middleXRefStm)} >>\nstartxref\n{middle}\n%%EOF\n"));
+            $"xref\n0 1\n0000000000 65535 f \n4 1\n{four:D10} 00000 n \ntrailer\n<< /Size {size} /Root 1 0 R /Prev {before}{Link("XRefStm", middle, middleXRefStm)} >>\nstartxref\n{middle}\n%%EOF\n"));
         var five = file.Object(5, "(five)");
         var newest = file.Position;
         file.Raw(string.Create(
             CultureInfo.InvariantCulture,
-            $"xref\n0 1\n0000000000 65535 f \n5 1\n{five:D10} 00000 n \ntrailer\n<< /Size 6 /Root 1 0 R{Link("Prev", middle, newestPrev)}{Link("XRefStm", middle, newestXRefStm)} >>\nstartxref\n{newest}\n%%EOF\n"));
+            $"xref\n0 1\n0000000000 65535 f \n5 1\n{five:D10} 00000 n \ntrailer\n<< /Size {Math.Max(size, 6)} /Root 1 0 R{Link("Prev", middle, newestPrev)}{Link("XRefStm", middle, newestXRefStm)} >>\nstartxref\n{newest}\n%%EOF\n"));
         var text = Encoding.Latin1.GetString(file.Bytes)
             .Replace("@@@@PREV@@", string.Create(CultureInfo.InvariantCulture, $"{middle - oldestPrev.GetValueOrDefault():D10}"), StringComparison.Ordinal)
             .Replace("@@XREFSTM@", string.Create(CultureInfo.InvariantCulture, $"{middle - oldestXRefStm.GetValueOrDefault():D10}"), StringComparison.Ordinal);
@@ -618,6 +638,38 @@ internal static class NearbyFiles
         file.Raw(string.Create(
             CultureInfo.InvariantCulture,
             $"xref\n0 1\n0000000000 65535 f \n5 1\n{five:D10} 00000 n \ntrailer\n<< /Size 6 /Root 1 0 R /Prev {named} >>\nstartxref\n{newest}\n%%EOF\n"));
+        return (file.Bytes, update, named);
+    }
+
+    /// <summary>
+    /// A document saved three times, whose newest table names through <c>/Prev</c> a place 2 bytes into the <c>endobj</c> of
+    /// object 6, <c>(six)</c>, which <paramref name="line"/> precedes, past 1,200 bytes of comment, and 60 spaces follow
+    /// before the update's table, at <c>Update</c>, 65 bytes past that place. The first table indexes objects 1 to 4, object
+    /// 4 as <c>(old four)</c>; the update's frees object 4, indexes object 6, and names the first through <c>/Prev</c>; the
+    /// newest indexes object 7, <c>(seven)</c>. The place its <c>/Prev</c> names is at <c>Named</c>.
+    /// </summary>
+    public static (byte[] File, long Update, long Named) UpdateAfterAStrayLine(string line)
+    {
+        var file = new HandWrittenFile();
+        var catalog = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>");
+        var pages = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>");
+        var three = file.Object(3, "(three)");
+        var four = file.Object(4, "(old four)");
+        var oldest = file.Table(5, new() { [1] = catalog, [2] = pages, [3] = three, [4] = four }, "/Size 5 /Root 1 0 R");
+        Gap(file, 1200);
+        file.Raw(line);
+        var six = file.Object(6, "(six)");
+        var named = file.Position - "endobj\n".Length + 2;
+        file.Raw(new string(' ', 60));
+        var update = file.Position;
+        file.Raw(string.Create(
+            CultureInfo.InvariantCulture,
+            $"xref\n0 1\n0000000000 65535 f \n4 1\n0000000000 00001 f \n6 1\n{six:D10} 00000 n \ntrailer\n<< /Size 7 /Root 1 0 R /Prev {oldest} >>\nstartxref\n{update}\n%%EOF\n"));
+        var seven = file.Object(7, "(seven)");
+        var newest = file.Position;
+        file.Raw(string.Create(
+            CultureInfo.InvariantCulture,
+            $"xref\n0 1\n0000000000 65535 f \n7 1\n{seven:D10} 00000 n \ntrailer\n<< /Size 8 /Root 1 0 R /Prev {named} >>\nstartxref\n{newest}\n%%EOF\n"));
         return (file.Bytes, update, named);
     }
 

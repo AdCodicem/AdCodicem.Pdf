@@ -788,6 +788,44 @@ public class CrossReferenceRuleTests
     }
 
     [Theory]
+    [InlineData("a comment")]
+    [InlineData("a string")]
+    public void The_word_xref_on_a_line_that_starts_before_the_bytes_searched_near_an_offset_is_no_malformed_section(string holder)
+    {
+        // A /Prev names a place inside an endobj, the line before which, 700 letters long, starts before the bytes searched
+        // near it, and holds the word xref in a comment or a string, nearer than the section it means. Lexed from where the
+        // bytes searched start, the word was taken for a table found moved that cannot be read: an error where a comment
+        // is. The line is lexed from its start, and the section found where it lies, shifted only (#281).
+        var line = holder == "a comment"
+            ? "%" + new string('a', 700) + " xref see the table below\n"
+            : "9 0 obj\n(" + new string('a', 700) + " xref see the table below)\nendobj\n";
+
+        var report = Validate(NearbyFiles.UpdateAfterAStrayLine(line).File);
+
+        report.Findings.Select(finding => finding.RuleId).Should().Contain(PdfValidationRuleIds.XRefSectionShifted)
+            .And.NotContain(PdfValidationRuleIds.XRefSectionMalformed);
+    }
+
+    [Theory]
+    [InlineData("a /Prev", "% 8 0 obj << /Type /XRef >>\n")]
+    [InlineData("a /Prev", "10 0 obj\n(see 8 0 obj << /Type /XRef >> here)\nendobj\n")]
+    [InlineData("a /Prev", "x8 0 obj << /Type /XRef >>\n")]
+    [InlineData("an /XRefStm", "% 8 0 obj << /Type /XRef >>\n")]
+    public void A_stream_header_in_a_comment_or_a_string_near_where_an_offset_names_no_section_is_no_malformed_section(string link, string between)
+    {
+        // A /Prev, or a hybrid table's /XRefStm, names a place inside an endobj, past which a comment or a string holds the
+        // header of an object of /Type /XRef, or such a header a letter runs into, nearer than the section it means. The
+        // header was taken for a stream found moved that cannot be read: an error where a comment is. The section is found
+        // where it lies, and shifted only (#156, #281).
+        var file = link == "a /Prev" ? NearbyFiles.UpdateBehindAStrayWord(between).File : NearbyFiles.HybridBehindAStrayWord(between).File;
+
+        var report = Validate(file);
+
+        report.Findings.Select(finding => finding.RuleId).Should().Contain(PdfValidationRuleIds.XRefSectionShifted)
+            .And.NotContain([PdfValidationRuleIds.XRefSectionMalformed, PdfValidationRuleIds.XRefHybridStreamWrong]);
+    }
+
+    [Theory]
     [InlineData(false)]
     [InlineData(true)]
     public void An_xrefstm_naming_a_table_that_cannot_be_read_is_wrong_at_each_naming_beside_the_table_s_fault(bool twice)
@@ -916,6 +954,29 @@ public class CrossReferenceRuleTests
         finding.Location.Position.Should().Be(section);
         finding.Message.Should().Be(
             $"The /XRefStm of the cross-reference table at offset {section} names offset {named}, {what}, where ISO 32000-1 names the cross-reference stream of the table's revision (Table 19): what only that stream indexes is lost.");
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(1)]
+    public void An_xrefstm_naming_what_its_table_s_prev_names_where_a_limit_cut_it_is_wrong_in_words_that_say_the_limit_hides_it(int shortBy)
+    {
+        // The newest table names object 4, a font whose dictionary holds 70,000 bytes before its /Type, through /Prev, and
+        // through /XRefStm at its header too, or at the space before it. The /XRefStm names what the /Prev names, wrong
+        // whatever MaxTrailerLength hides (#156): the finding said that what the /Prev names holds no section the chain could
+        // read, of a dictionary the limit cut before it said what it is. It says the limit hides it (#264).
+        var (built, _, four, _, newest) = HybridFiles.NamingAnObjectBesideTheStream(
+            "<< /Pad (" + new string('-', 70_000) + ") /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>");
+        var named = PdfTemplate.OffsetOf(built, "8 0 obj\n") + 20;
+        var file = Encoding.Latin1.GetBytes(Encoding.Latin1.GetString(built).Replace(
+            string.Create(CultureInfo.InvariantCulture, $"/XRefStm {named} >>"),
+            string.Create(CultureInfo.InvariantCulture, $"/XRefStm {four - shortBy} >>"),
+            StringComparison.Ordinal));
+        using var document = PdfDocument.Open(file);
+
+        Single(new PdfValidator().Validate(document), PdfValidationRuleIds.XRefHybridStreamWrong).Message.Should().Be(string.Create(
+            CultureInfo.InvariantCulture,
+            $"The /XRefStm of the cross-reference table at offset {newest} names offset {four - shortBy}, what its /Prev names too, past the limit that cut it there, where ISO 32000-1 names the cross-reference stream of the table's revision (Table 19): what only that stream indexes is lost."));
     }
 
     [Fact]

@@ -4513,18 +4513,22 @@ public class HostileInputTests
     }
 
     [Theory]
-    [InlineData(false, 0)]
-    [InlineData(true, 0)]
-    [InlineData(true, 3)]
-    public void A_chain_whose_offsets_name_long_runs_of_white_space_crosses_each_run_once(bool hybrid, int streamShortBy)
+    [InlineData(false, 0, 0)]
+    [InlineData(true, 0, 0)]
+    [InlineData(true, 3, 0)]
+    [InlineData(true, 3, 1)]
+    public void A_chain_whose_offsets_name_long_runs_of_white_space_crosses_each_run_once(bool hybrid, int streamShortBy, int objectsBefore)
     {
         // A hundred tables, each named, by startxref or by the /Prev of the table after it, at the start of the 60,000 spaces
         // before its xref keyword — and, in a hybrid file, each naming through /XRefStm a stream of its own, at its header or
-        // 3 bytes short of it, inside the token before it, where the search near that offset finds it. Where the chain reaches
-        // what an offset names, it crossed the run as far as a trailer's window reaches, then again where it read the section
-        // there, and a hybrid table's /Prev a third time: two or three crossings of 84 KB for each run. Each run is crossed
-        // once, its probe answering each time it is asked of, the /Prev's outlasting its /XRefStm's search (#188): beside the
-        // same file whose offsets name the keywords, a crossing a section at most, and a few bytes more.
+        // 3 bytes short of it, inside the token before it, where the search near that offset finds it; or, with an object
+        // written before the stream, 3 bytes into that object, whose header the search tries before it finds the stream.
+        // Where the chain reaches what an offset names, it crossed the run as far as a trailer's window reaches, then again
+        // where it read the section there, and a hybrid table's /Prev a third time: two or three crossings of 84 KB for each
+        // run — and, where the search tried two places, the places it tried pushed the /Prev's probe out, and the /Prev's run
+        // was crossed again. Each run is crossed once, its probe answering each time it is asked of, the /Prev's outlasting
+        // its /XRefStm's search, however many places that search tries (#188): beside the same file whose offsets name the
+        // keywords, a crossing a section at most, and a few bytes more.
         const int Tables = 100;
         const long Crossing = PdfFileReader.XRefProbeLength + 256 + 2048 + 16384 + 65536;
         var padded = Chain(namesTheRun: true);
@@ -4549,11 +4553,20 @@ public class HostileInputTests
             for (var table = 0; table < Tables; table++)
             {
                 var stream = -1L;
+                var xrefStm = -1L;
 
                 if (hybrid)
                 {
+                    var before = text.Length;
+
+                    for (var objects = 0; objects < objectsBefore; objects++)
+                    {
+                        text.Append(CultureInfo.InvariantCulture, $"{200 + (table * objectsBefore) + objects} 0 obj\nnull\nendobj\n");
+                    }
+
                     // One free row for object 0, in seven bytes.
                     stream = text.Length;
+                    xrefStm = objectsBefore > 0 ? before + streamShortBy : stream - streamShortBy;
                     text.Append(CultureInfo.InvariantCulture, $"{table + 3} 0 obj\n<< /Type /XRef /Size 3 /Index [0 1] /W [1 4 2] /Length 7 >>\nstream\n")
                         .Append("\0\0\0\0\0\u00ff\u00ff\nendstream\nendobj\n");
                 }
@@ -4563,7 +4576,7 @@ public class HostileInputTests
                 var xref = text.Length;
                 text.Append("xref\n0 1\n0000000000 65535 f\r\ntrailer\n<< /Size 3 /Root 1 0 R")
                     .Append(previous < 0 ? string.Empty : string.Create(CultureInfo.InvariantCulture, $" /Prev {previous:D10}"))
-                    .Append(stream < 0 ? string.Empty : string.Create(CultureInfo.InvariantCulture, $" /XRefStm {stream - streamShortBy:D10}"))
+                    .Append(stream < 0 ? string.Empty : string.Create(CultureInfo.InvariantCulture, $" /XRefStm {xrefStm:D10}"))
                     .Append(" >>\n");
                 previous = namesTheRun ? named : xref;
             }
@@ -4587,15 +4600,87 @@ public class HostileInputTests
         }
     }
 
+    [Theory]
+    [InlineData("99999999", false)]
+    [InlineData("99999999", true)]
+    [InlineData("50000", false)]
+    public void A_table_reads_nothing_of_what_its_prev_names_for_an_xrefstm_whose_search_never_comes_there(string xrefStm, bool guard)
+    {
+        // The newest table, of 40 rows, names through /Prev an older section that 100 KB of comment follow, and through
+        // /XRefStm an offset outside the file, or one inside the comment, some 50 KB past the older section: no search runs
+        // near the first, and the one near the second comes nowhere near what the /Prev names. Where the older section is no
+        // classic table, whether the /Prev keeps its place there was told all the same, reading a window of 64 KB at it —
+        // past the guard, where MaxXRefSectionLength cut the newest table's rows, which reads nothing past it (#264). It is
+        // told only where the search comes there: beside the same files without the /XRefStm, the table reads no more where
+        // its /Prev names a cross-reference stream than where it names a classic table, which needs no look, but for a few
+        // bytes the two files' lengths part (#156).
+        var limits = guard ? PdfReaderLimits.Default with { MaxXRefSectionLength = 300 } : PdfReaderLimits.Default;
+        var namingAStream = Read(Build(" /XRefStm " + xrefStm, table: false)) - Read(Build(string.Empty, table: false));
+        var namingATable = Read(Build(" /XRefStm " + xrefStm, table: true)) - Read(Build(string.Empty, table: true));
+
+        namingAStream.Should().BeInRange(
+            namingATable - 1024,
+            namingATable + 1024,
+            "the /XRefStm reads {0:N0} bytes more where the /Prev names a classic table",
+            namingATable);
+
+        static byte[] Build(string xrefStm, bool table)
+        {
+            var file = new HandWrittenFile();
+            var catalog = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>");
+            var pages = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>");
+            var older = table
+                ? file.Table(3, new() { [1] = catalog, [2] = pages }, "/Size 3 /Root 1 0 R")
+                : file.CrossReferenceStream(9, 10, new() { [1] = (1, catalog, 0), [2] = (1, pages, 0) }, "/Root 1 0 R");
+            file.Raw("%" + new string('-', 100 * 1024) + "\n");
+            file.Table(40, new() { [1] = catalog, [2] = pages }, string.Create(CultureInfo.InvariantCulture, $"/Size 40 /Root 1 0 R /Prev {older}{xrefStm}"));
+            return file.Bytes;
+        }
+
+        long Read(byte[] file)
+        {
+            using var source = new StrictCountingSource(file);
+            using var document = PdfDocument.Open(source, new PdfReaderOptions { Limits = limits }, ownsSource: false);
+            return source.BytesRead;
+        }
+    }
+
+    [Theory]
+    [InlineData("a stream 100 KB long that reads")]
+    [InlineData("a dictionary the end of the file cuts")]
+    public void The_look_at_what_a_prev_names_reads_it_through_no_more_windows_than_a_raised_trailer_limit_allows_it(string four)
+    {
+        // The newest table names object 4 through /Prev, and through /XRefStm a place beside it, whose search comes to object
+        // 4 and asks whether the /Prev keeps its place there, reading object 4 as the chain would: a stream that gives a /W
+        // and no /Type, which reads, its data of 100 KB filling the first window read at it, or a dictionary a string the
+        // file never closes runs to the end of the file. Neither is cut by a window's edge, and both are read in one window:
+        // with MaxTrailerLength raised to 1 MB, as many bytes are read as with the default, no larger window read for what
+        // a window full of data holds, nor again for the file's end (#156).
+        var file = four == "a dictionary the end of the file cuts"
+            ? HybridFiles.NamingAnObjectBesideTheStream("<< /Pad (").File
+            : HybridFiles.PrevNamingAStreamBesideTheOldestTable(string.Empty, padding: 100_000).File;
+
+        Read(PdfReaderLimits.Default with { MaxTrailerLength = 1024 * 1024 }).Should().Be(Read(PdfReaderLimits.Default));
+
+        long Read(PdfReaderLimits limits)
+        {
+            using var source = new StrictCountingSource(file);
+            using var document = PdfDocument.Open(source, new PdfReaderOptions { Limits = limits }, ownsSource: false);
+            return source.BytesRead;
+        }
+    }
+
     [Fact]
     public void A_prev_looping_back_through_the_spaces_before_a_table_it_named_there_is_known_without_a_look()
     {
-        // The newest table names the middle one 3 bytes short of it, where the chain reads it; the oldest's /Prev names it
-        // again at that offset, or at its keyword. Either loop is placed where the table starts, known from what the chain
+        // The newest table names the middle one 3 bytes short of it, where the chain reads it; a table between the middle and
+        // the oldest is read next, then the oldest, whose /Prev names the middle again at that offset, or at its keyword. The
+        // chain has read two other places since it crossed the spaces before the middle, which its last probes now answer:
+        // a look at them would cross them again. Either loop is placed where the table starts, known from what the chain
         // read there, without a look at the spaces again: the chain reads not a byte more for the one than for the other
         // (#188).
-        var (repeated, _, _, _) = NearbyFiles.ChainNamingTheSpacesBeforeTheMiddle(3, oldestPrev: 3);
-        var (atKeyword, _, _, _) = NearbyFiles.ChainNamingTheSpacesBeforeTheMiddle(3, oldestPrev: 0);
+        var (repeated, _, _, _) = NearbyFiles.ChainNamingTheSpacesBeforeTheMiddle(3, oldestPrev: 3, tablesBetween: 1);
+        var (atKeyword, _, _, _) = NearbyFiles.ChainNamingTheSpacesBeforeTheMiddle(3, oldestPrev: 0, tablesBetween: 1);
         repeated.Should().HaveCount(atKeyword.Length);
 
         Read(repeated).Should().Be(Read(atKeyword), "the place the chain read a section at is known without a look");

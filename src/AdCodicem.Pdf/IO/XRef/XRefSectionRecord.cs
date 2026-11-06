@@ -222,9 +222,10 @@ internal sealed class XRefSectionRecord
     /// <summary>
     /// Gets the record of what the chain read, or looked for, where an <c>/XRefStm</c> names a position it had reached
     /// before (<see cref="XRefSectionState.NamedAgain"/>) — the first record named or read there —, or, for an
-    /// <c>/XRefStm</c> that names what its own table's <c>/Prev</c> names, the record of the section that <c>/Prev</c> reads
-    /// (#156); null for every other section, and while that <c>/Prev</c> has read nothing — as past a guard that stopped
-    /// the table, where it reads nothing in the file (#264).
+    /// <c>/XRefStm</c> that names what its own table's <c>/Prev</c> names, or whose search near the offset it names stopped
+    /// where a guard cut what that <c>/Prev</c> names, the record of the section that <c>/Prev</c> reads (#156); null for
+    /// every other section, and while that <c>/Prev</c> has read nothing — as past a guard that stopped the table, where it
+    /// reads nothing in the file (#264).
     /// </summary>
     public XRefSectionRecord? ReadAs { get; set; }
 
@@ -234,7 +235,8 @@ internal sealed class XRefSectionRecord
     /// cross-reference table, which one of the reader's limits cut before its first row", "a cross-reference table, which
     /// cannot be read" —, or, where <see cref="Documents.PdfReaderLimits.MaxXRefSectionCount"/>
     /// ended the chain at what the table's <c>/Prev</c> names too, as the guard hides it; null where it names a stream, or
-    /// what the chain could not read but a classic table (#156).
+    /// what the chain could not read but a classic table, and where its search near the offset it names stopped only where a
+    /// guard cut what the table's <c>/Prev</c> names, which is the guard's (#156, #264).
     /// </summary>
     public string? NamesNoStream { get; set; }
 
@@ -247,7 +249,8 @@ internal sealed class XRefSectionRecord
     /// took for the table's own, once the <c>/Prev</c> read it —, and what the <c>/Prev</c> found is known from
     /// <see cref="ReadAs"/> once the chain is read. False for every other naming, and where a guard kept the <c>/Prev</c>
     /// from being read — one that stopped the table, or <see cref="Documents.PdfReaderLimits.MaxXRefSectionCount"/> ending
-    /// the chain at what the <c>/Prev</c> names —, or that offset lies outside the file.
+    /// the chain at what the <c>/Prev</c> names —, or that offset lies outside the file, or where the search near the offset
+    /// the <c>/XRefStm</c> names stopped only where a guard cut what the <c>/Prev</c> names, before it said what it is.
     /// </summary>
     public bool NamesWhatPreviousReads { get; set; }
 

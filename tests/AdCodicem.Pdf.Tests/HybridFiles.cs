@@ -482,6 +482,37 @@ internal static class HybridFiles
     }
 
     /// <summary>
+    /// A one-page document saved twice, whose newest table names through <c>/Prev</c> a cross-reference stream that reads,
+    /// and through <c>/XRefStm</c> a place beside it, nearer it than the oldest table: the oldest table, at <c>Oldest</c>,
+    /// indexes objects 1 to 3 and object 7, <c>(old seven)</c>; object 8, a string, follows it, and object 4, at
+    /// <c>Four</c>, a stream whose dictionary gives <paramref name="type"/> — written whole, a space after it, or nothing —,
+    /// the <c>/W</c> <paramref name="widths"/> and an <c>/Index</c> whose one row places object 7's new revision,
+    /// <c>(new seven)</c>, its data <paramref name="padding"/> bytes longer, and names the oldest table through <c>/Prev</c>;
+    /// the newest table, past a long comment, indexes object 6, <c>(six)</c>, and names object 4 through <c>/Prev</c> and,
+    /// through <c>/XRefStm</c>, the place 20 bytes into object 8, inside its string, at <c>Named</c>, 28 bytes before object
+    /// 4: object 8 is the nearest place to it, then object 4, then the oldest table.
+    /// </summary>
+    public static (byte[] File, long Oldest, long Four, long Named) PrevNamingAStreamBesideTheOldestTable(
+        string type, string widths = "[1 4 2]", int padding = 0)
+    {
+        var file = new HandWrittenFile(version: "1.5");
+        var (catalog, pages, page) = Page(file);
+        var oldSeven = file.Object(7, "(old seven)");
+        var newSeven = file.Object(7, "(new seven)");
+        file.Raw("%" + new string('-', 1200) + "\n");
+        var oldest = file.Position;
+        file.Raw(Invariant($"xref\n0 4\n0000000000 65535 f \n{Row(catalog)}{Row(pages)}{Row(page)}7 1\n{Row(oldSeven)}trailer\n<< /Size 8 /Root 1 0 R >>\nstartxref\n{oldest}\n%%EOF\n"));
+        var eight = file.Object(8, "(" + new string('x', 30) + ")");
+        var rows = StreamRows((1, newSeven, 0)) + new string('-', padding);
+        var four = file.Object(4, Invariant($"<< {type}/Size 10 /W {widths} /Index [7 1] /Prev {oldest} /Length {rows.Length} >>\nstream\n{rows}\nendstream"));
+        file.Raw("%" + new string('-', 1200) + "\n");
+        var six = file.Object(6, "(six)");
+        var newest = file.Position;
+        file.Raw(Invariant($"xref\n0 1\n0000000000 65535 f \n6 1\n{Row(six)}trailer\n<< /Size 10 /Root 1 0 R /Prev {four} /XRefStm {eight + 20} >>\nstartxref\n{newest}\n%%EOF\n"));
+        return (file.Bytes, oldest, four, eight + 20);
+    }
+
+    /// <summary>
     /// A one-page document saved twice, whose newest table writes each offset <paramref name="shift"/> bytes too large: the
     /// first table, at <c>Oldest</c>, indexes objects 1 to 3 and object 7, <c>(old seven)</c>; cross-reference stream 9, at
     /// <c>Stream</c>, right after it, indexes object 5, <c>(five)</c>, and object 7 again, <c>(new seven)</c>; object 6,

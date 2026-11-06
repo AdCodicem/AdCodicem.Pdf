@@ -4116,6 +4116,48 @@ public class GuardCutValueTests
             PdfDiagnosticCodes.XRefSectionMissing, PdfDiagnosticCodes.XRefRebuilt, PdfDiagnosticCodes.LimitObject);
     }
 
+    [Theory]
+    [InlineData("<< /Size 8 /W 5 0 R /Index 10 0 R /Length 0 >>", "6 0 R", false)]
+    [InlineData("<< /W [1 5 0 R 2] /Size 3 /Length 0 >>", "4", true)]
+    public void What_the_look_at_a_prev_s_place_read_through_a_guard_s_cut_is_not_loaded_where_the_chain_ends_before_that_prev(
+        string four, string five, bool keepsItsPlace)
+    {
+        // The newest table, the one section MaxXRefSectionCount lets the chain read, names through /Prev stream 4, which
+        // gives no /Type, and through /XRefStm a place 18 bytes before it, whose search comes to it before the table's own
+        // stream. Object 5, which MaxObjectLength cuts, holds "6 0 R", whole, which stream 4's /W names, its /Index naming
+        // object 10, which nothing places; or the integer 4, cut where it ends, which an element of its /W names, its data
+        // holding none of the 3 rows its /Size declares. Whether the /Prev keeps its place there was told by reading stream
+        // 4 through object 5: the first cannot be read, the file's fault, and keeps none, the search going on to the stream;
+        // the second reads, its rows lacking whatever the cut value holds, and keeps it, the search stopping there. The
+        // guard ends the chain before the /Prev is read: object 5, which only that look read through, is not loaded once the
+        // chain is read, nor its guard reached, and nothing that look read is merged or marked lacking (#156, #263).
+        var file = new HandWrittenFile(version: "1.5");
+        var catalog = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>");
+        var pages = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>");
+        var three = file.Object(3, "(three)");
+        var fiveAt = file.Object(5, five + new string(' ', 1524));
+        var six = file.Object(6, "[1 4 2]");
+        file.Raw("%" + new string('-', 1200) + "\n");
+        var row = "\u0001" + (char)((three >> 24) & 0xFF) + (char)((three >> 16) & 0xFF) + (char)((three >> 8) & 0xFF) + (char)(three & 0xFF) + "\0\0";
+        var stream = file.Object(9, "<< /Type /XRef /Size 11 /W [1 4 2] /Index [3 1] /Length 7 >>\nstream\n" + row + "\nendstream");
+        var eight = file.Object(8, "(" + new string('x', 20) + ")");
+        var fourAt = file.Object(4, four + "\nstream\n\nendstream");
+        file.Raw("%" + new string('-', 1200) + "\n");
+        var newest = file.Position;
+        file.Raw(Invariant(
+            $"xref\n0 3\n0000000000 65535 f \n{catalog:D10} 00000 n \n{pages:D10} 00000 n \n5 2\n{fiveAt:D10} 00000 n \n{six:D10} 00000 n \ntrailer\n<< /Size 11 /Root 1 0 R /Prev {fourAt} /XRefStm {eight + 20} >>\nstartxref\n{newest}\n%%EOF\n"));
+        var options = new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxObjectLength = 1024, MaxXRefSectionCount = 1 } };
+        using var document = PdfDocument.Open(file.Bytes, options);
+
+        var naming = document.Reader.Structure.Sections[1];
+        (naming.State, naming.Offset).Should().Be(keepsItsPlace ? (XRefSectionState.NamedAgain, eight + 20) : (XRefSectionState.Relocated, stream));
+        document.Diagnostics.Select(entry => entry.Code).Should().Equal(
+            keepsItsPlace ? PdfDiagnosticCodes.XRefHybridStreamLost : PdfDiagnosticCodes.XRefOffsetAdjusted,
+            PdfDiagnosticCodes.LimitXRefSectionCount);
+        document.Trailer.ContainsKey(PdfName.W).Should().Be(!keepsItsPlace, "only the dictionary of the stream the chain read is merged into the trailer");
+        document.WasRepaired.Should().BeFalse();
+    }
+
     [Fact]
     public void A_chain_a_guard_ends_at_a_hidden_prev_leaves_unjudged_what_needs_the_whole_chain()
     {
