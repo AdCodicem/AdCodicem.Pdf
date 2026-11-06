@@ -3556,10 +3556,12 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
                         {
                             // A classic table stands in the stream's place, its rows read and its own links left unread
                             // (#263): whether it holds what the table's stream would have is unknown (#156). One a guard cut
-                            // before its first row read none, which the naming says, the guard's own report beside it.
+                            // before its first row read none, which the naming says, the guard's own report beside it; one
+                            // whose first row is no row reached that row before the cut, and its fault is reported beside the
+                            // naming, which keeps the whole read's words.
                             ReportNoStream(
                                 stream,
-                                stream.CutByLimit && stream.HighestNumber < 0
+                                stream.CutByLimit && stream.HighestNumber < 0 && !stream.Incomplete
                                     ? "a cross-reference table, which one of the reader's limits cut before its first row"
                                     : "a cross-reference table, whose rows were read in the stream's place");
                         }

@@ -857,6 +857,8 @@ public class CrossReferenceRuleTests
     [InlineData(false, "{spaces}10 1\n{row:10}\n", "a cross-reference table, whose rows were read in the stream's place")]
     [InlineData(true, "0 1\n0000000000 65535 f \n{spaces}10 1\n{row:10}\n", "a cross-reference table, whose rows were read in the stream's place")]
     [InlineData(false, "0 0\n", "a cross-reference table, whose rows were read in the stream's place")]
+    [InlineData(true, "10 1\njunk junk junk\n{spaces}", "a cross-reference table, whose rows were read in the stream's place")]
+    [InlineData(true, "{spaces}10 1\n{row:10}\njunk\n", "a cross-reference table, which one of the reader's limits cut before its first row")]
     public void An_xrefstm_naming_a_table_a_guard_cuts_before_its_first_row_is_wrong_in_words_that_say_none_of_its_rows_was_read(
         bool guarded, string ten, string what)
     {
@@ -864,7 +866,8 @@ public class CrossReferenceRuleTests
         // MaxXRefSectionLength = 150 cuts before it. The /XRefStm names a table where a stream belongs, an error whatever the
         // guard hid; the finding said the table's rows were read in the stream's place, as read whole, though none was (#156).
         // A table whose first row, object 0's, the guard lets be read, and one read whole that holds no row, keep the words a
-        // whole read gives.
+        // whole read gives; so does one whose first row is no row, which the reading reached before the guard's cut, the
+        // table's own fault reported beside it. A stray word past the rows the guard left unread changes nothing.
         var file = HybridFiles.NamingATableNeverRead(ten: ten.Replace("{spaces}", new string(' ', 300), StringComparison.Ordinal));
         var table = PdfTemplate.OffsetOf(file, "\nxref\n", 2) + 1;
         var update = PdfTemplate.OffsetOf(file, "\nxref\n", 3) + 1;
