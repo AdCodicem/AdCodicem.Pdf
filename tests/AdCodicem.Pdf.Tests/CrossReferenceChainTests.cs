@@ -4214,6 +4214,26 @@ public class CrossReferenceChainTests
         document.Diagnostics[0].Message.Should().StartWith("White space and comments run past 64 KB where a cross-reference section is named;");
     }
 
+    [Fact]
+    public void An_xrefstm_naming_the_token_before_white_space_its_table_s_prev_names_past_a_trailer_s_window_is_left_to_no_prev()
+    {
+        // The newest table names through /XRefStm the bracket that closes an array, and through /Prev the first of the 65,537
+        // line feeds after it, which run past a trailer's window. The /Prev's reading reads nothing past them, the guard's, and
+        // reaches no section through them: it keeps no place, and comes to no start the /XRefStm reaches, so that the
+        // /XRefStm is read where it names, the table's stream found a hundred bytes or so before it, nothing left to the
+        // /Prev, which finds no section near the offset it names but the one the chain read (#156, #188).
+        var (file, stream, bracket) = HybridFiles.NamingTheTokenBeforeARunOfWhiteSpace(65_537);
+        using var document = PdfDocument.Open(file);
+
+        var sections = document.Reader.Structure.Sections;
+        sections.Select(section => (section.NamedBy, section.State, section.Offset, section.NamedOffset)).Skip(1).Take(2).Should().Equal(
+            ("/XRefStm", XRefSectionState.Relocated, stream, bracket),
+            ("/Prev", XRefSectionState.NotFound, bracket + 1, bracket + 1));
+        document.Diagnostics.Select(diagnostic => diagnostic.Code).Should().NotContain(PdfDiagnosticCodes.XRefHybridStreamLost);
+        document.Diagnostics.Should().ContainSingle(diagnostic => diagnostic.Code == PdfDiagnosticCodes.LimitTrailer).Which.Position.Should().Be(bracket + 1);
+        Text(document, 7).Should().Be("seven");
+    }
+
     [Theory]
     [InlineData("/Type /XRefStream ", false)]
     [InlineData("", false)]

@@ -741,6 +741,30 @@ internal static class HybridFiles
     }
 
     /// <summary>
+    /// A one-page document saved twice, whose newest table names through <c>/XRefStm</c>, at <c>Bracket</c>, the
+    /// <c>]</c> that closes the array of object 8, which <paramref name="run"/> line feeds follow before its <c>endobj</c>,
+    /// and through <c>/Prev</c> the first of them, at <c>Bracket + 1</c>: cross-reference stream 9, of <c>/Type /XRef</c>,
+    /// at <c>Stream</c>, which indexes object 7, <c>(seven)</c>, and gives no <c>/Prev</c>, lies just before object 8, within
+    /// reach of a search near either. The newest table, past a long comment, indexes the catalog, the page tree and its
+    /// page.
+    /// </summary>
+    public static (byte[] File, long Stream, long Bracket) NamingTheTokenBeforeARunOfWhiteSpace(int run)
+    {
+        var file = new HandWrittenFile(version: "1.5");
+        var (catalog, pages, page) = Page(file);
+        var seven = file.Object(7, "(seven)");
+        var stream = file.Position;
+        var rows = StreamRows((1, seven, 0));
+        file.Object(9, Invariant($"<< /Type /XRef /Size 10 /W [1 4 2] /Index [7 1] /Length {rows.Length} >>\nstream\n{rows}\nendstream"));
+        var eight = file.Object(8, "[1 2]" + new string('\n', run));
+        var bracket = eight + "8 0 obj\n[1 2".Length;
+        file.Raw("%" + new string('-', 1200) + "\n");
+        var newest = file.Position;
+        file.Raw(Invariant($"xref\n0 4\n0000000000 65535 f \n{Row(catalog)}{Row(pages)}{Row(page)}trailer\n<< /Size 10 /Root 1 0 R /Prev {bracket + 1} /XRefStm {bracket} >>\nstartxref\n{newest}\n%%EOF\n"));
+        return (file.Bytes, stream, bracket);
+    }
+
+    /// <summary>
     /// A one-page document saved twice, whose middle table's <c>/Prev</c> names what the newest table's <c>/Prev</c> named
     /// and found moved: object 12, <c>4</c>, and object 5, <c>(five)</c>, lie before cross-reference stream 9, of
     /// <c>/Type /XRef</c>, at <c>Stream</c>, which indexes object 5; object 8, a string, lies 150 bytes past it, and
