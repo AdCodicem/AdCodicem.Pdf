@@ -117,8 +117,12 @@ internal static class ReservedRowFiles
     /// (#208). The last writes a table, which <c>startxref</c> names, that indexes the catalog and the page tree, then gives
     /// <paramref name="newest"/>, <c>{three}</c> standing for the offset of <c>(new three)</c>, and names the section before
     /// it through <c>/Prev</c>. The <c>/Prev</c> that names stream 7 names it <paramref name="shift"/> bytes past its header.
+    /// Where <paramref name="refusedRowFirst"/> is given, stream 7 gives object 3 two rows instead, each in a subsection of its
+    /// own: one of type 2 naming object stream 0, which no entry holds, and which the stream refuses itself — the first where
+    /// <paramref name="refusedRowFirst"/> says so —, and one of type 7.
     /// </summary>
-    public static (byte[] File, long Middle) PastARefusal(string? lost, int reserved = 1, string newest = "", int shift = 0)
+    public static (byte[] File, long Middle) PastARefusal(
+        string? lost, int reserved = 1, string newest = "", int shift = 0, bool? refusedRowFirst = null)
     {
         var file = new HandWrittenFile(version: "1.5");
         var catalog = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>");
@@ -129,9 +133,14 @@ internal static class ReservedRowFiles
         file.Raw(Invariant($"xref\n0 5\n0000000000 65535 f \n{Row(catalog)}{Row(pages)}{Row(oldThree)}{Row(oldFour)}trailer\n<< /Size 5 >>\n"));
         var three = file.Object(3, "(new three)");
         file.Object(4, "(new four)");
-        var data = Rows(1, [.. Enumerable.Repeat((7UL, 0UL, 0UL), reserved)]);
+        var (data, index) = refusedRowFirst switch
+        {
+            true => (Rows(1, (2, 0, 0), (7, 0, 0)), "3 1 3 1"),
+            false => (Rows(1, (7, 0, 0), (2, 0, 0)), "3 1 3 1"),
+            null => (Rows(1, [.. Enumerable.Repeat((7UL, 0UL, 0UL), reserved)]), Invariant($"3 {reserved}")),
+        };
         var middle = file.Object(7, Invariant(
-            $"<< /Type /XRef /Size 8 /Index [3 {reserved}] /W [1 4 2] /Prev {oldest} /Length {data.Length} >>\nstream\n{data}\nendstream"));
+            $"<< /Type /XRef /Size 8 /Index [{index}] /W [1 4 2] /Prev {oldest} /Length {data.Length} >>\nstream\n{data}\nendstream"));
         var previous = lost is null
             ? middle + shift
             : file.Object(9, Invariant($"<< /Type /XRef /Size 12 /Index {lost} /W [1 -4 2] /Prev {middle + shift} /Length 0 >>\nstream\n\nendstream"));

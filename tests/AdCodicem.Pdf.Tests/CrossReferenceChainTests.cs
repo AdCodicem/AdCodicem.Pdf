@@ -5430,8 +5430,10 @@ public class CrossReferenceChainTests
     [InlineData("[3 1]", 2, "", ": the rows were read so but for those whose numbers were refused before they were read, which stand for nothing and whose objects are looked for by rebuilding the index; no older section's row stands for the objects of the others", 1, "new three")]
     [InlineData("[10 1]", 1, "", ": the row was read so, and no older section's row stands for its object", 0, null)]
     [InlineData(null, 1, "3 1\n{three} 00000 n \n", ": the row was read so, and no older section's row stands for its object", 0, "new three")]
+    [InlineData(null, 1, "", ", but its number was refused before the row was read: it stands for nothing, and its object is looked for by rebuilding the index", 1, "new three", true)]
+    [InlineData(null, 1, "", ": the row was read so, and no older section's row stands for its object", 0, null, false)]
     public void A_row_of_a_reserved_type_whose_number_was_refused_before_it_is_said_to_stand_for_nothing(
-        string? lost, int reserved, string newest, string said, int refused, string? three)
+        string? lost, int reserved, string newest, string said, int refused, string? three, bool? refusedRowFirst = null)
     {
         // A cross-reference stream gives object 3, and object 4 after it, a row of type 7, which ISO 32000-1 reads as a
         // reference to the null object; a newer section refused object 3's number first: a lost stream declaring every
@@ -5439,14 +5441,19 @@ public class CrossReferenceChainTests
         // its object read through a rebuild, though the report said it was read so: it says it stands for nothing, and
         // which of the rows it counts are such (#208, #210, #221). Where the lost stream declares object 10, the row stands,
         // and object 3 reads as null; where the newest table places object 3, that row supersedes it, as any newer row does.
-        var (file, middle) = ReservedRowFiles.PastARefusal(lost, reserved, newest);
+        // Where the stream's own earlier row for object 3, which it refused, refused the number, the row stands for nothing
+        // too, in words that name no newer section, and no newer section is said to have refused it; with the rows the other
+        // way round, the row of type 7 stands, and object 3 reads as null.
+        var (file, middle) = ReservedRowFiles.PastARefusal(lost, reserved, newest, refusedRowFirst: refusedRowFirst);
 
         using var document = PdfDocument.Open(file);
 
         var many = reserved > 1;
         document.Diagnostics.Should().ContainSingle(d => d.Code == PdfDiagnosticCodes.XRefEntryReserved).Which.Message.Should().Be(Invariant(
             $"The cross-reference stream /Prev names at offset {middle} gives {(many ? "2 rows" : "1 row")} a reserved type: the row for object 3 gives it type 7{(many ? ", the first of them" : string.Empty)}. ISO 32000-1 defines types 0, 1 and 2, and reads any other as a reference to the null object (7.5.8.3){said}."));
-        document.Reader.Structure.Sections.Single(s => s.Offset == middle).ReservedRowsRefused.Should().Be(refused);
+        var section = document.Reader.Structure.Sections.Single(s => s.Offset == middle);
+        section.ReservedRowsRefused.Should().Be(refused);
+        section.RowsRefusedBefore.Should().Be(refused > 0 && refusedRowFirst is null);
         var index = document.Reader.ChainIndex!;
         index.TryGet(3, out _).Should().Be(refused == 0);
 

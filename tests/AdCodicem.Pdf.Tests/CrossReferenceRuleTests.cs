@@ -2329,8 +2329,10 @@ public class CrossReferenceRuleTests
     [InlineData("[3 1]", 2, "", "as the reader did until it rebuilt the index by scanning the file, but for the rows whose numbers were refused before they were read; it now reads each object such a row numbers as the rebuild finds it")]
     [InlineData("[10 1]", 1, "", "as the reader did until it rebuilt the index by scanning the file; it now reads each object such a row numbers as the rebuild finds it")]
     [InlineData(null, 1, "3 1\n{three} 00000 n \n", "as the reader does")]
+    [InlineData(null, 1, "", "but the reader did not read the row so, its number refused before it was read: it reads its object as the rebuild finds it", true)]
+    [InlineData(null, 1, "", "as the reader did until it rebuilt the index by scanning the file; it now reads each object such a row numbers as the rebuild finds it", false)]
     public void A_row_of_a_reserved_type_whose_number_was_refused_before_it_is_not_said_to_have_been_read_as_null(
-        string? lost, int reserved, string newest, string reader)
+        string? lost, int reserved, string newest, string reader, bool? refusedRowFirst = null)
     {
         // A cross-reference stream gives object 3, and object 4 after it, a row of type 7; a newer section refused object 3's
         // number before the chain came to it: a lost stream declaring every number, objects 3 and 4, or object 3, or the
@@ -2338,7 +2340,9 @@ public class CrossReferenceRuleTests
         // said it did until it rebuilt the index: it says the reader did not read it so, or which rows it did not read so
         // (#208, #210, #221). Where the lost stream declares object 10, the row stood until the validation rebuilt the index
         // the lost stream left incomplete; where the newest table places object 3, the reader reads the row so, superseded.
-        var (file, middle) = ReservedRowFiles.PastARefusal(lost, reserved, newest);
+        // So it says where the stream's own earlier row for object 3, which it refused, refused the number; with the rows the
+        // other way round, the row stood until the validation rebuilt the index the refused row left incomplete.
+        var (file, middle) = ReservedRowFiles.PastARefusal(lost, reserved, newest, refusedRowFirst: refusedRowFirst);
         var many = reserved > 1;
 
         var finding = Single(Validate(file), PdfValidationRuleIds.XRefEntryTypeReserved);
