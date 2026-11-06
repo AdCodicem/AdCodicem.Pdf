@@ -9,6 +9,6 @@ paused. They hold measurement and review keys and scratchpad paths, which never 
 - `measure/<lens>/summary.md`, their prototype diffs and probes: the measurement on main 21a0298.
 - `impl-result.json`: the implementation stages' reports (21a0298..071f829); `residuals-impl.md`: the residuals they
   left.
-- `r1-findings.md`, `r1-reviewers.json`: review round 1 on 071f829, findings numbered `######## [n]`.
-- `workflows/`: the workflow scripts; `lot19-r1-fixes-*.js` is the run to resume (stage R1c onward).
+- `r1-findings.md`, `r2-findings.md`, `r3-findings.md` and their `*-reviewers.json`, `*-fix-result.json`: review rounds 1 (071f829), 2 (761ce0b) and 3 (19122f0), findings numbered `######## [n]`, and the fixes' reports.
+- `workflows/` and `lot19-*.js`: the workflow scripts. Round 3's fixes are done (b4ab948); round 4 is next.
 - `stage*/`, `track-probe/`: probes the stages wrote.

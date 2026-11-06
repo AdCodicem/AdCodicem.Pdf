@@ -192,3 +192,43 @@ Round 1 fixes: workflow wf_a2870240-11e (track, R1a-reached, R1b-relocation, R1c
   holds'; a table read in part that refused a row of its own still 'the rows read were kept'); comment on #330 the
   trade-off (an /XRefStm passing a /Prev that does not keep its place may find a stream farther off); corpus-
   contributions.md:310 '(batch 19)' (precedent on main) and the unused duplicate [#51] at :750-751 (pre-existing).
+- 2026-11-05: review round 3 launched: wf_46f5fc30-494 (task wgma2wgur), script lot19/lot19-review-r3.js, on 19122f0.
+- 2026-11-06: round 3 stopped by the weekly usage limit (16 refuters failed; 5 reviewers + 2 refuters done); resumed at the maintainer's request (task wy11m56gh): only the 16 refuters rerun.
+
+# Review round 3 (wf_46f5fc30-494 on 19122f0): 18 findings, all confirmed or narrowed (4 major, 9 minor, 5 nit). Findings
+# in r3-findings.md. No maintainer question (none flagged); every fix implements a decision already taken.
+- [0] KeepsItsPlace answers as the /Prev's own reading does: the keyword, /Type /XRef, a dictionary a guard cut before
+  its /Type, and an object giving /W (untyped or of another /Type) only where it READS as a section: a dry read of its
+  rows ('validate only' mode of the row reader, nothing indexed, nothing reported), not a rollback mark (that would
+  settle #320's open choice). If a dry read proves too large, stop and report (maintainer question), do not file.
+- [1] IsTokenOnItsLine lexes from the line's real start: read back through an internal-constant window (e.g. 4 KB,
+  ADR 34 reason: a conforming xref begins its line) to the last end of line; no end of line within it -> the place
+  declares nothing (dropped). Rename the test pinning window-start lexing; docs name only the #171 string limit.
+- [8] the line test applies to a Malformed /Type /XRef stream candidate too (its header's number a token on its line).
+- [10] a stop that came only from a guard cut, the /XRefStm naming a different offset: the naming is the guard's (no
+  hybrid-stream-lost, no Error, index not marked incomplete); same offset: Error worded as the limit's.
+- [2] the look at the /Prev's object made lazily (only when a candidate equals leaveAt); [3][14] a place the search
+  tries is not remembered by the PaddingAt memo; [11] lengthen the test's chain.
+- [4] RowsRefusedBefore only for another section's refusal; [5] reserved-row report under a newer refusal; [15] a
+  section read in part that refused its own row(s): not said kept; [6] HighestNumber < 0 && !Incomplete; [9] the
+  stream-end search when its first endstream lies inside a pending header's comment (B19-7 as written).
+- Nits: [7][16] renames + threat-model citation; [12] chain-loop rule id summary; [13] reword the five texts to the
+  check made (any /Prev the stream's dictionary gives); [17] 5656c64's body: not rewritten (pushed), record in
+  status.md 'Commit bodies not rewritten'.
+- 2026-11-06: round 3 fixes launched: wf_a4863e2b-02c (task w7u1bre9d), script lot19/lot19-r3-fixes.js: R3a-chain, R3b-sections-headers, R3c-docs, R3d-check.
+- 2026-11-06: round 3 fixes done (wf_a4863e2b-02c). R3a 2b26d18 (KeepsItsPlace mirrors the /Prev's reading with a
+  check-only row read that stops at the numbering, no rollback mark; line read back through LineStartSearchLength
+  4,096, internal constant; /Type /XRef candidates under the line test; guard-cut stop with another offset is the
+  guard's, same offset worded as the limit's; [2]'s optional lazy previousStart reverted: no saving outside loops).
+  R3b 4e42737 ea348ce fb79663 8ccd868 (_refusedNumbers -> Dictionary<int, XRefSectionRecord>; reserved rows refused
+  before reading 'stand for nothing', neutral wording; KeptButFor also in ReportLostSection; PendingEndStream reads
+  up to two tokens past the keyword's line). R3c b4ab948 (lazy-reading, diagnostics, validation-rules, the
+  XRefHybridStreamLost summary; stacked <summary> in CrossReferenceChainTests fixed; site built clean). R3d check at
+  b4ab948: build 0 warnings; whole suite 10,223, 0 failed, 3 skipped; format clean; commit rules OK; no keys; corpus
+  byte-identical to round 2's (only #241 rewordings + pdfmaker7's false size-wrong gone).
+  Mutation: R3a 83 (killed incl. tests written; eq M26-28, M34, M36, M62, M81; withdrawn M05-M10); R3b 149 (140
+  killed, 7 eq, 1 removed with dead line, 1 not viable). Open: M40/M41 (MarkCutByGuard in TryParseUnrecordedAt: no
+  input built tells them apart) -> round 4 chain lens tries to build one; else file as debt (ADR 53).
+  For status.md 'Commit bodies not rewritten': add 394028c, d63f093, 7c0748b (with e67fef9, b09f981, 5656c64).
+  Optional #171 comment (earlier-string limit) left: the user docs and threat model now name it with a #171 link.
+  Residual wording (pre-existing): a section refusing two rows of its own, each alone, says 'that row alone'.
