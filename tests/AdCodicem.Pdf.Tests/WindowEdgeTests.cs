@@ -952,9 +952,10 @@ public class WindowEdgeTests
     /// <summary>
     /// Reads object 5, a stream that lost its <c>endstream</c>, whose data is <paramref name="filler"/> bytes and then
     /// <paramref name="header"/>, a header no index places — unless <paramref name="placed"/> says the index places object 12
-    /// where the header's first <c>12</c> starts —, under an object guard of <paramref name="guard"/> bytes or the default:
-    /// what its data ends at — its length, what the report says of it, from the colon on, under its code —, whether the
-    /// reader judges its <c>endobj</c> missing, and whether the validator does, the catalog naming it.
+    /// where the header's first <c>12</c> starts, which then reads as the string its header begins —, under an object guard
+    /// of <paramref name="guard"/> bytes or the default: what its data ends at — its length, what the report says of it,
+    /// from the colon on, under its code —, whether the reader judges its <c>endobj</c> missing, and whether the validator
+    /// does, the catalog naming it.
     /// </summary>
     private static (int Length, string Diagnostic, bool EndObjMissing, bool RuleFires) HeaderEnding(
         string header, int filler, int? guard, bool placed = false)
@@ -974,7 +975,7 @@ public class WindowEdgeTests
 
         file.Raw(LostEndPrefix + new string('A', filler) + header + "\n(twelve)\nendobj\n");
         rows[6] = file.Object(6, "(six)");
-        file.Table(7, rows, "/Size 7 /Root 1 0 R");
+        file.Table(placed ? 13 : 7, rows, placed ? "/Size 13 /Root 1 0 R" : "/Size 7 /Root 1 0 R");
         var options = guard is { } bytes
             ? PdfReaderOptions.Default with { Limits = PdfReaderLimits.Default with { MaxObjectLength = bytes } }
             : PdfReaderOptions.Default;
@@ -984,6 +985,11 @@ public class WindowEdgeTests
         var reported = document.Diagnostics.Single(d => d.Code is PdfDiagnosticCodes.StreamTruncated or PdfDiagnosticCodes.StreamLengthInvalid);
         var message = reported.Message;
         var colon = message.IndexOfAny([':', ';']);
+
+        if (placed)
+        {
+            document.GetObject(new PdfObjectId(12)).Should().BeOfType<PdfString>().Which.ToText().Should().Be("twelve");
+        }
 
         return (
             length,
