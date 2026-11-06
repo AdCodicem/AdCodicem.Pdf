@@ -102,12 +102,29 @@ internal struct PendingEndStream
             switch (_mode)
             {
                 case Mode.Comment:
+                    // An end of line where the comment's text starts, as in a line that holds only %, is taken without a
+                    // search: a run of such lines costs a byte a line, not two searches.
+                    if (bytes[index] is (byte)'\r' or (byte)'\n')
+                    {
+                        index++;
+                        _mode = Mode.Space;
+                        break;
+                    }
+
                     var lineEnd = bytes[index..].IndexOfAny((byte)'\r', (byte)'\n');
                     index = lineEnd < 0 ? bytes.Length : index + lineEnd + 1;
                     _mode = lineEnd < 0 ? Mode.Comment : Mode.Space;
                     break;
 
                 case Mode.Space:
+                    // So is a % right where the white space starts, as each of those lines begins.
+                    if (bytes[index] == (byte)'%')
+                    {
+                        index++;
+                        _mode = Mode.Comment;
+                        break;
+                    }
+
                     var next = bytes[index..].IndexOfAnyExcept(PdfCharacters.Whitespace);
 
                     if (next < 0)

@@ -18,8 +18,12 @@ namespace AdCodicem.Pdf.Benchmarks;
 /// or binary data costs what a search costs; a long token — a keyword, a number, the letters of a string —, a long run of
 /// white space or a hexadecimal string is passed with one search each, each arm of the line's lexer that passes a run
 /// held by a shape of its own; a long line of one-byte tokens, of strings opened one inside the other, or a run of comment
-/// lines is lexed a token at a time, as a load's lexer reads it, which is the most the search costs. Every shape costs time
-/// linear in the data, and allocates nothing for it.
+/// lines is lexed a token at a time, as a load's lexer reads it, which is the most the search costs: strings opened one
+/// inside the other the most of all, about 14 ns a byte on one machine, where text costs about 0.16. A keyword in a comment
+/// that waits for what follows its line reads on through the comment lines or the white space after it, each byte once,
+/// a line that holds only <c>%</c> taken without a search: about a fifth more than the same comment lines cost without
+/// it, and under twice what the same white space does. Every shape costs time linear in the data, and allocates nothing
+/// for it.
 /// </para>
 /// <para>
 /// Each run opens the document, from memory, and reads the stream: the search runs once a document.
@@ -31,6 +35,9 @@ public class StreamEndSearchBenchmarks
     /// <summary>How many bytes the stream's data holds.</summary>
     private const int Size = 4 * 1024 * 1024;
 
+    /// <summary>A line whose comment holds <c>endstream</c>, after a number that may begin a header ending past it.</summary>
+    private const string EndStreamComment = "12 % endstream\n";
+
     private byte[] _document = [];
 
     /// <summary>
@@ -38,7 +45,9 @@ public class StreamEndSearchBenchmarks
     /// <c>o</c>, <c>b</c>, <c>j</c> and <c>e</c>, so that they spell no keyword; one token of letters; one number; one line
     /// of one-byte tokens; a string never closed, its letters ending in <c>%</c> and a line <c>0 obj</c>; strings opened
     /// one inside the other and never closed, ending so too; lines that hold only <c>%</c>; one run of white space; a line
-    /// of one hexadecimal string.
+    /// of one hexadecimal string; and a line <c>12 % endstream</c>, whose keyword waits for what follows its line to say
+    /// whether a header that starts before it ends past it, then lines that hold only <c>%</c>, or one run of white space,
+    /// up to the stream's own <c>endstream</c>, which decides it.
     /// </summary>
     [Params(
         "text-lines",
@@ -50,7 +59,9 @@ public class StreamEndSearchBenchmarks
         "nested-strings",
         "comment-lines",
         "white-space",
-        "hex-string")]
+        "hex-string",
+        "endstream-comment-then-comment-lines",
+        "endstream-comment-then-white-space")]
     public string Shape { get; set; } = "text-lines";
 
     [GlobalSetup]
@@ -68,6 +79,8 @@ public class StreamEndSearchBenchmarks
             "comment-lines" => Repeat("%\n"),
             "white-space" => new string(' ', Size),
             "hex-string" => "<" + new string('A', Size - 2) + ">",
+            "endstream-comment-then-comment-lines" => EndStreamComment + Repeat("%\n")[EndStreamComment.Length..],
+            "endstream-comment-then-white-space" => EndStreamComment + new string(' ', Size - EndStreamComment.Length),
             _ => throw new InvalidOperationException($"No shape {Shape}."),
         };
 
