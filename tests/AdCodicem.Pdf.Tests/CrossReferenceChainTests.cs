@@ -1283,6 +1283,34 @@ public class CrossReferenceChainTests
     }
 
     [Theory]
+    [InlineData("a line that starts before the bytes searched", "\n")]
+    [InlineData("a line that starts before the bytes searched", "\r")]
+    [InlineData("a line that starts in the bytes searched", "\n")]
+    [InlineData("a line that starts in the bytes searched", "\r")]
+    public void An_xref_keyword_past_a_comment_a_line_feed_or_a_lone_carriage_return_ends_is_lexed_from_where_its_line_starts(
+        string line, string eol)
+    {
+        // Past a comment of 5,000 bytes, which a line feed or a lone carriage return ends, as it ends every line of the file
+        // but the first table's rows, the xref keyword follows the endobj of object 4, an array of 400 zeros written on one
+        // line, or a stray endobj on a short line; the newest table's /Prev names the place 50 bytes before it, and no table
+        // follows it. The long line starts more than 512 bytes before that place, and the end of line that ends the comment is
+        // the only one within 4,096 bytes before the bytes searched; the short line starts within them, past that end of
+        // line. Either end of line starts a line, as a load reads it: the keyword is a token there, the section found moved,
+        // which cannot be read (#281).
+        var (file, keyword) = NearbyFiles.KeywordPastALongComment(
+            line == "a line that starts before the bytes searched"
+                ? "4 0 obj [" + string.Concat(Enumerable.Repeat("0 ", 400)) + "] endobj xref 0 1 bad"
+                : "endobj xref 0 1 bad",
+            eol);
+        using var document = PdfDocument.Open(file);
+
+        var found = document.Reader.Structure.Sections[1];
+        found.State.Should().Be(XRefSectionState.Malformed);
+        found.Offset.Should().Be(keyword);
+        document.Diagnostics.Select(diagnostic => diagnostic.Code).Should().StartWith([PdfDiagnosticCodes.XRefOffsetAdjusted, PdfDiagnosticCodes.XRefSectionUnreadable]);
+    }
+
+    [Theory]
     [InlineData("before the bytes read again")]
     [InlineData("before the bytes searched")]
     [InlineData("10 bytes before the word")]
