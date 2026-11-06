@@ -2464,7 +2464,11 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// at each place a number carried into the next read starts: a header that a later read finds to start in a read
     /// before it — comment lines between its tokens, which may hold <c>endobj</c> (#261) — is judged with the tail as it
     /// stood at its start, so that what the data ends at, and whether an <c>endobj</c> was seen before it, does not depend
-    /// on where the reads part the data (<see cref="EndObjTailCopies"/>).
+    /// on where the reads part the data (<see cref="EndObjTailCopies"/>). That holds of windows as large as asked: one a
+    /// source gives short before the end of the file (#52) makes the next start a byte past its own start, repeating less
+    /// of it than the overlap, so that a keyword or a header no window then holds whole, or the end of line before a
+    /// keyword, may be missed, and the search may end elsewhere — but for a keyword in a comment that waits, which is
+    /// decided as whole windows decide it.
     /// </remarks>
     /// <param name="dataStart">Where the data starts in the file.</param>
     /// <param name="buffered">The bytes of the data the parser holds, from its start.</param>

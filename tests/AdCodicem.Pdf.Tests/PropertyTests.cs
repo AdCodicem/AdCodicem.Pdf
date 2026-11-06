@@ -460,6 +460,29 @@ public class PropertyTests
     }
 
     [Fact]
+    public void A_search_decides_an_endstream_in_a_comment_as_one_read_does_however_short_the_reads_after_it_fall()
+    {
+        // A source may give fewer bytes than asked before the end of the file (#52): a read may then end before the one
+        // before it, and the next starts a byte past its start, which may be past a token's first byte. Once a keyword in a
+        // comment waits for what follows its line (#261), that is read from the furthest the reads reached, and whether an
+        // obj would end a header is read at its first byte: however short the reads after the one that found the keyword,
+        // the keyword ends the data, or a header stops the search, where a single read of it all says.
+        var cases =
+            from prefix in Gen.Elements("12 % endstream", "12 0 % endstream", "% endstream", "12 %endstream", "\n12 % endstream")
+            from text in Gen.OneOf(HeaderTexts, HeaderLikeTexts)
+            from first in Gen.Choose(0, 20)
+            from reads in Gen.Choose(0, 30)
+            from sizes in Gen.ArrayOf(Gen.Choose(1, 40), reads)
+            select (Text: prefix + text, Sizes: (int[])[prefix.Length + first, .. sizes]);
+
+        Check.One(Settings.WithMaxTest(10 * Cases), Prop.ForAll(cases.ToArbitrary(), drawn =>
+        {
+            var data = Encoding.Latin1.GetBytes(drawn.Text);
+            EndReadPartly(data, drawn.Sizes).Should().Be(EndReadPartly(data, []), drawn.Text);
+        }));
+    }
+
+    [Fact]
     public void The_rule_for_object_headers_takes_the_header_the_scan_that_rebuilds_an_index_takes()
     {
         // The rule a search for endstream stops at reads comments between a header's tokens as the scan that rebuilds an
@@ -793,7 +816,8 @@ public class PropertyTests
     /// <summary>
     /// Searches <paramref name="data"/>, which starts at <see cref="HeaderDataStart"/>, for where its first <c>endstream</c> ends
     /// it, as a search for one reads a stream's data — in reads of <paramref name="sizes"/> bytes, then one to the end, each
-    /// repeating the last bytes of the one before — and gives where the data ends, or the header that stopped the search.
+    /// repeating the last bytes of the one before, or starting a byte past its start where it is shorter than that — and
+    /// gives where the data ends, or the header that stopped the search.
     /// </summary>
     private static (long Found, long Header) EndReadPartly(byte[] data, int[] sizes)
     {

@@ -756,6 +756,54 @@ public class WindowEdgeTests
     }
 
     [Theory]
+    [InlineData("\nendobj\n12 % endstream\n0 obj", "\n0 ", 10, 4)]
+    [InlineData("\nendobj\n12 % endstream\n% 7 0 obj\n(x)", "% 7 0 obj\n", 10, 4)]
+    [InlineData("\nendobj\n12 % endstream\n0 obj", "\n0 ob", 1, 0)]
+    public void An_endstream_a_comment_between_a_header_s_tokens_holds_is_decided_alike_through_reads_a_source_cuts_short(
+        string header, string upTo, int before, int then)
+    {
+        // As above, through a source whose reads may give fewer bytes than asked before the end of the file (#52). A read
+        // that starts in the data more than the bytes given before the end of the text given, and would reach past that end,
+        // stops there; where a count is given, the read that starts ten bytes before that end gives only that many bytes,
+        // and so ends before the read before it did. Such a read took back what the reads before had reached, and read the
+        // header's generation, or a comment line's text, again as tokens; and reads a byte apart that end inside obj led to
+        // one that starts past obj's first byte, from which the header before it was read back outside the read. The data
+        // ends where whole reads end it. Object 6 is long enough that the file's last 4,096 bytes, which hold its startxref,
+        // lie past the data.
+        const int Filler = 20_000;
+        var file = HeaderFile(header, Filler, padding: PdfFileReader.TailSearchLength);
+        var dataStart = DataStartIn(file);
+        var edge = dataStart + Filler + header.IndexOf(upTo, StringComparison.Ordinal) + upTo.Length;
+        var source = new ShortCountSource(file, (offset, held) =>
+            offset > dataStart && offset < edge - before && offset + held > edge ? (int)(edge - offset)
+            : offset == edge - PdfFileReader.EndStreamSearchOverlap && then > 0 ? then
+            : held);
+
+        HeaderEnding(source, PdfReaderOptions.Default).Should().Be(HeaderEnding(PdfFileSource.FromMemory(file), PdfReaderOptions.Default));
+        source.ShortReads.Should().BePositive();
+    }
+
+    [Theory]
+    [InlineData(512)]
+    [InlineData(1024)]
+    [InlineData(4096)]
+    public void An_endstream_a_comment_between_a_header_s_tokens_holds_is_decided_alike_through_a_source_that_reads_by_blocks(int block)
+    {
+        // As above, through a source whose reads stop at the end of the block they start in, as one over a store of blocks
+        // may (#52), the header's obj two bytes before a block ends: the reads that end there start a byte apart, and the
+        // first past the block's end starts past obj's first byte. The reads at the end of the file, cut short too, leave
+        // the startxref unread, and the index is rebuilt as the document opens, which reads the stream then.
+        const string Header = "\nendobj\n12 % endstream\n0 obj";
+        var obj = DataStartIn(HeaderFile(Header, 0)) + Header.LastIndexOf("obj", StringComparison.Ordinal);
+        var filler = 20_000 + (((block - 2 - ((obj + 20_000) % block)) + block) % block);
+        var file = HeaderFile(Header, filler);
+        var source = new ShortCountSource(file, (offset, held) => (int)Math.Min(held, block - (offset % block)));
+
+        HeaderEnding(source, PdfReaderOptions.Default).Should().Be(HeaderEnding(PdfFileSource.FromMemory(file), PdfReaderOptions.Default));
+        ((obj + filler) % block).Should().Be(block - 2);
+    }
+
+    [Theory]
     [InlineData("\nAAAA % endstream\n0 obj", 8, true)]
     [InlineData("\n/Name % endstream\n12 0 obj", 9, true)]
     [InlineData("\n12 % endstream\n0 0 obj", 6, true)]
@@ -960,26 +1008,21 @@ public class WindowEdgeTests
     private static (int Length, string Diagnostic, bool EndObjMissing, bool RuleFires) HeaderEnding(
         string header, int filler, int? guard, bool placed = false)
     {
-        var file = new HandWrittenFile();
-        var rows = new Dictionary<int, long>
-        {
-            [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R /Metadata 5 0 R >>"),
-            [2] = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"),
-        };
-        rows[ObjectNumber] = file.Position;
-
-        if (placed)
-        {
-            rows[12] = file.Position + LostEndPrefix.Length + filler + header.IndexOf("12", StringComparison.Ordinal);
-        }
-
-        file.Raw(LostEndPrefix + new string('A', filler) + header + "\n(twelve)\nendobj\n");
-        rows[6] = file.Object(6, "(six)");
-        file.Table(placed ? 13 : 7, rows, placed ? "/Size 13 /Root 1 0 R" : "/Size 7 /Root 1 0 R");
         var options = guard is { } bytes
             ? PdfReaderOptions.Default with { Limits = PdfReaderLimits.Default with { MaxObjectLength = bytes } }
             : PdfReaderOptions.Default;
-        using var document = PdfDocument.Open(file.Bytes, options);
+
+        return HeaderEnding(PdfFileSource.FromMemory(HeaderFile(header, filler, placed)), options, placed);
+    }
+
+    /// <summary>
+    /// Reads object 5 of a file <see cref="HeaderFile"/> wrote, through <paramref name="source"/>, under
+    /// <paramref name="options"/>, as <see cref="HeaderEnding(string, int, int?, bool)"/> says, object 12 included.
+    /// </summary>
+    private static (int Length, string Diagnostic, bool EndObjMissing, bool RuleFires) HeaderEnding(
+        PdfFileSource source, PdfReaderOptions options, bool placed = false)
+    {
+        using var document = PdfDocument.Open(source, options, ownsSource: true);
 
         var length = document.GetObject(new PdfObjectId(ObjectNumber)).AsStream().Required().RawLength;
         var reported = document.Diagnostics.Single(d => d.Code is PdfDiagnosticCodes.StreamTruncated or PdfDiagnosticCodes.StreamLengthInvalid);
@@ -997,6 +1040,37 @@ public class WindowEdgeTests
             document.Reader.IsEndObjMissing(ObjectNumber, out _),
             new PdfValidator().Validate(document).Contains(PdfValidationRuleIds.ObjectEndObjMissing));
     }
+
+    /// <summary>
+    /// Writes the file <see cref="HeaderEnding(string, int, int?, bool)"/> reads: object 5, a stream that lost its
+    /// <c>endstream</c>, whose data is <paramref name="filler"/> bytes and then <paramref name="header"/>, then object 6, a
+    /// string of <paramref name="padding"/> bytes, or <c>(six)</c> where that is 0; the index places object 12 where the
+    /// header's first <c>12</c> starts where <paramref name="placed"/> says so.
+    /// </summary>
+    private static byte[] HeaderFile(string header, int filler, bool placed = false, int padding = 0)
+    {
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R /Metadata 5 0 R >>"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"),
+        };
+        rows[ObjectNumber] = file.Position;
+
+        if (placed)
+        {
+            rows[12] = file.Position + LostEndPrefix.Length + filler + header.IndexOf("12", StringComparison.Ordinal);
+        }
+
+        file.Raw(LostEndPrefix + new string('A', filler) + header + "\n(twelve)\nendobj\n");
+        rows[6] = padding > 0 ? file.Padding(6, padding) : file.Object(6, "(six)");
+        file.Table(placed ? 13 : 7, rows, placed ? "/Size 13 /Root 1 0 R" : "/Size 7 /Root 1 0 R");
+        return file.Bytes;
+    }
+
+    /// <summary>Gives where the data of the stream a file <see cref="HeaderFile"/> wrote starts.</summary>
+    private static int DataStartIn(byte[] file) =>
+        Encoding.Latin1.GetString(file).IndexOf(LostEndPrefix, StringComparison.Ordinal) + LostEndPrefix.Length;
 
     private static byte[] Document(string body) =>
         new TestPdfBuilder()
