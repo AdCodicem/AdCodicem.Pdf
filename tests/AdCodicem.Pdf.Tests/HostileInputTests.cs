@@ -4688,7 +4688,7 @@ public class HostileInputTests
     [Theory]
     [InlineData("a stream 100 KB long that reads")]
     [InlineData("a dictionary the end of the file cuts")]
-    public void The_look_at_what_a_prev_names_reads_it_through_no_more_windows_than_a_raised_trailer_limit_allows_it(string four)
+    public void The_look_at_what_a_prev_names_grows_no_window_for_stream_data_or_the_file_s_end_under_a_raised_trailer_limit(string four)
     {
         // The newest table names object 4 through /Prev, and through /XRefStm a place beside it, whose search comes to object
         // 4 and asks whether the /Prev keeps its place there, reading object 4 as the chain would: a stream that gives a /W

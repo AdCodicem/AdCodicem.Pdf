@@ -811,7 +811,7 @@ public class CrossReferenceRuleTests
     [InlineData("a /Prev", "10 0 obj\n(see 8 0 obj << /Type /XRef >> here)\nendobj\n")]
     [InlineData("a /Prev", "x8 0 obj << /Type /XRef >>\n")]
     [InlineData("an /XRefStm", "% 8 0 obj << /Type /XRef >>\n")]
-    public void A_stream_header_in_a_comment_or_a_string_near_where_an_offset_names_no_section_is_no_malformed_section(string link, string between)
+    public void A_stream_header_in_a_comment_a_string_or_behind_a_letter_near_where_an_offset_names_no_section_is_no_malformed_section(string link, string between)
     {
         // A /Prev, or a hybrid table's /XRefStm, names a place inside an endobj, past which a comment or a string holds the
         // header of an object of /Type /XRef, or such a header a letter runs into, nearer than the section it means. The

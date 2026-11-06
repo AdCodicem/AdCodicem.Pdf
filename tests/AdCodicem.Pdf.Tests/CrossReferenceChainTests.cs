@@ -1124,7 +1124,7 @@ public class CrossReferenceChainTests
     [InlineData("% 8 0 obj << /Type /XRef >>\n")]
     [InlineData("10 0 obj\n(see 8 0 obj << /Type /XRef >> here)\nendobj\n")]
     [InlineData("x8 0 obj << /Type /XRef >>\n")]
-    public void The_header_of_a_cross_reference_stream_in_a_comment_or_a_string_near_where_an_offset_names_no_section_is_no_section_found_moved(string between)
+    public void The_header_of_a_cross_reference_stream_in_a_comment_a_string_or_behind_a_letter_near_where_an_offset_names_no_section_is_no_section_found_moved(string between)
     {
         // The update frees object 3, and between where the newest table's /Prev names the update's table and where it is lies
         // a comment or a string holding the header of an object of /Type /XRef, or such a header whose number a letter runs
