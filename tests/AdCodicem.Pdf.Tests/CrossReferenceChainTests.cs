@@ -2342,7 +2342,7 @@ public class CrossReferenceChainTests
     }
 
     [Fact]
-    public void The_table_startxref_names_whose_row_that_is_no_row_the_end_of_the_file_follows_says_its_lost_trailer_names_nothing_more()
+    public void The_table_startxref_names_whose_row_that_is_no_row_the_end_of_the_file_follows_says_what_its_lost_trailer_would_name_is_found_by_a_rebuild()
     {
         // The table startxref names gives the rows of objects 0 to 3, then one that is no row, and the file ends: its trailer is
         // lost, and the report says what it would have named is looked for by rebuilding the index, rather than the rest of
