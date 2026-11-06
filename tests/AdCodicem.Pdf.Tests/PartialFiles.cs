@@ -254,6 +254,60 @@ internal static class PartialFiles
     }
 
     /// <summary>
+    /// A document saved three times. The first revision writes the catalog, an empty page tree and object 3
+    /// <c>(only in the oldest)</c>, and a classic table that indexes them. The second writes object 4, <c>(four)</c>, and
+    /// cross-reference stream 6 at <c>Stream</c>, whose <c>/Index</c> is <paramref name="index"/>, whose <c>/Prev</c> names
+    /// the oldest table but where <paramref name="hybrid"/> says so, and whose data holds the first <paramref name="rows"/>
+    /// of the rows of objects 4 and 6, in fields of 1, 4 and 2 bytes: object 4's places it, or, where
+    /// <paramref name="refused"/> says so, gives it type 2 in object stream 0, which no entry holds, and the stream refuses
+    /// it itself. The third writes object 5, <c>(five)</c>, and object 9, <paramref name="nine"/>, and a classic table at
+    /// <c>Newest</c>, which <c>startxref</c> names, that indexes them — and object 4 first, which it gives generation 65536,
+    /// which no entry holds, refusing it, where <paramref name="fourRefused"/> says so — and names the stream through
+    /// <c>/Prev</c>, or, where <paramref name="hybrid"/> says so, through <c>/XRefStm</c>, and the oldest table through
+    /// <c>/Prev</c>. An <c>/Index</c> that is or holds the reference <c>9 0 R</c> is read through the newest table's row,
+    /// though ISO 32000-1 makes it direct (7.5.8.2).
+    /// </summary>
+    public static (byte[] File, long Stream, long Newest) NumberedThroughAReference(
+        string index, string nine, int rows = 2, bool hybrid = false, bool refused = false, bool fourRefused = false)
+    {
+        var file = new HandWrittenFile(version: "1.5");
+        var catalog = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>");
+        var pages = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>");
+        var three = file.Object(3, "(only in the oldest)");
+        var oldest = file.Position;
+        file.Raw(string.Create(
+            CultureInfo.InvariantCulture,
+            $"xref\n0 4\n0000000000 65535 f \n{Row(catalog)}{Row(pages)}{Row(three)}trailer\n<< /Size 4 /Root 1 0 R >>\n"));
+        var four = file.Object(4, "(four)");
+        var stream = file.Position;
+        var data = new StringBuilder();
+
+        foreach (var (type, offset) in new (int Type, long Offset)[] { (refused ? 2 : 1, refused ? 0 : four), (1, stream) }.Take(rows))
+        {
+            data.Append((char)type)
+                .Append((char)((offset >> 24) & 0xFF)).Append((char)((offset >> 16) & 0xFF))
+                .Append((char)((offset >> 8) & 0xFF)).Append((char)(offset & 0xFF))
+                .Append('\0').Append('\0');
+        }
+
+        var prev = hybrid ? string.Empty : string.Create(CultureInfo.InvariantCulture, $" /Prev {oldest}");
+        file.Object(6, string.Create(
+            CultureInfo.InvariantCulture,
+            $"<< /Type /XRef /Size 10 /W [1 4 2] /Index {index} /Root 1 0 R{prev} /Length {data.Length} >>\nstream\n{data}\nendstream"));
+        var five = file.Object(5, "(five)");
+        var nineAt = file.Object(9, nine);
+        var newest = file.Position;
+        var refusedFour = fourRefused ? string.Create(CultureInfo.InvariantCulture, $"4 1\n{four:D10} 65536 n \n") : string.Empty;
+        var links = hybrid
+            ? string.Create(CultureInfo.InvariantCulture, $"/Prev {oldest} /XRefStm {stream}")
+            : string.Create(CultureInfo.InvariantCulture, $"/Prev {stream}");
+        file.Raw(string.Create(
+            CultureInfo.InvariantCulture,
+            $"xref\n0 1\n0000000000 65535 f \n{refusedFour}5 1\n{Row(five)}9 1\n{Row(nineAt)}trailer\n<< /Size 10 /Root 1 0 R {links} >>\nstartxref\n{newest}\n%%EOF\n"));
+        return (file.Bytes, stream, newest);
+    }
+
+    /// <summary>
     /// The catalog, an empty page tree and object 3 <c>(only in the oldest)</c> in a classic table at <c>Oldest</c>; then a
     /// table, which <c>startxref</c> names and whose <c>/Prev</c> names the oldest, of <paramref name="lost"/> one-row
     /// subsections from 100, every other number when <paramref name="apart"/>, one after the other otherwise, each row ending

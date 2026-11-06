@@ -195,7 +195,7 @@ internal sealed class XRefSectionRecord
     /// of the sections read after it when the chain came to this one — a cross-reference stream whose rows were lost and whose
     /// numbering cannot be read, more ranges lost than are kept apart, a classic table whose rest cannot be known (#208,
     /// #210) —: none of the rows this section reads stands, and its report says so rather than that they were kept. What
-    /// the section refuses once it is read is its own, and does not count, whatever order the reports take.
+    /// the section refuses once it is read is its own, and does not count, though its report follows the refusal.
     /// </summary>
     public bool EveryNumberRefusedBefore { get; init; }
 

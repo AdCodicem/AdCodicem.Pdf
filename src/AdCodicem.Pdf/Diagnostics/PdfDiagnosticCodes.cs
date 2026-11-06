@@ -63,10 +63,13 @@ public static class PdfDiagnosticCodes
     /// row read before it — a newer section's, or the section's own for the same number — indexes it. The rows read were
     /// kept, but for those it refused itself, which the message says without naming them beside the fault it names, and those
     /// whose numbers a newer section refused — none of them, where a newer section refused every number —, and the message
-    /// says which, and what was lost: the objects the lost rows would index, which no older section's row stands for, and
-    /// those only the sections a lost trailer would name index, are missing from the index, rebuilt when one of them is asked
-    /// for. The report is placed at the section, once, one fault in its message: the first that lost rows, else the end of
-    /// the file before its trailer, else the first row it refused, which is not named beside either of the others.
+    /// says which, and what was lost: the objects the lost rows would index, which no older section's row stands for — every
+    /// object neither its rows nor a section read before it index, where the section refused every number: a stream whose
+    /// numbering is written with references, or more than 4,096 ranges lost, its own or once joined with those refused
+    /// before —, and those only the sections a lost trailer would name index, are missing from the index, rebuilt when one
+    /// of them is asked for. The report is placed at the section, once, one fault in its message: the first that lost rows,
+    /// else the end of the file before its trailer, else the first row it refused, which is not named beside either of the
+    /// others.
     /// </summary>
     public const string XRefSectionUnreadable = "xref.section-unreadable";
 

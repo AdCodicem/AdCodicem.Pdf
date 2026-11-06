@@ -3713,10 +3713,16 @@ public class GuardCutValueTests
         section.Fault.Should().Contain(fault);
 
         // Rows the data may hold, read with the cut value, were not read, and none was kept, which the report says, where it
-        // said the rows the stream holds were kept; data that holds none keeps none, which it does not say it kept (#210).
+        // said the rows the stream holds were kept; data that holds none keeps none, which it does not say it kept (#210). An
+        // /Index that holds a reference, which ISO 32000-1 makes direct, leaves the numbers the stream lost unknown: every
+        // number is refused to the older sections' rows, and the report, made once they are, says every object no section read
+        // before it indexes is looked for by rebuilding the index, where it said only those it lacks, or numbers, were (#210).
+        const string Every = "every object no section read before it indexes is looked for by rebuilding the index, rather than taken from an older section's rows.";
+        var every = six.Contains("/Index [5 0 R", StringComparison.Ordinal);
         document.Diagnostics.Single(entry => entry.Code == PdfDiagnosticCodes.XRefSectionUnreadable).Message.Should().EndWith(hidesRows
-            ? "; the rows its data may hold were not read, a value they are read with having been cut by one of the reader's limits, and the objects it numbers are looked for by rebuilding the index where no section read before it indexes them, rather than taken from an older section's rows."
-            : "; the objects whose rows it lacks are looked for by rebuilding the index where no section read before it indexes them, rather than taken from an older section's rows.");
+            ? "; the rows its data may hold were not read, a value they are read with having been cut by one of the reader's limits, and " +
+                (every ? Every : "the objects it numbers are looked for by rebuilding the index where no section read before it indexes them, rather than taken from an older section's rows.")
+            : "; " + (every ? Every : "the objects whose rows it lacks are looked for by rebuilding the index where no section read before it indexes them, rather than taken from an older section's rows."));
         document.WasRepaired.Should().BeTrue();
         document.GetObject(new PdfObjectId(1)).AsDictionary().Required().IsOfType(PdfName.Catalog).Should().BeTrue();
         document.Trailer.Keys.Select(key => key.Value).Order().Should().Equal(wholeKeys);
@@ -3731,21 +3737,36 @@ public class GuardCutValueTests
                 : wholeRules);
     }
 
-    [Fact]
-    public void Rows_a_section_beside_a_value_a_guard_cut_holds_are_kept_read_whole_and_said_unread_under_the_guard()
+    [Theory]
+    [InlineData(
+        "/Size 8",
+        "(eight)",
+        "the objects whose rows it lacks are looked for by rebuilding the index where no section read before it indexes them, rather than taken from an older section's rows",
+        "the objects it numbers are looked for by rebuilding the index where no section read before it indexes them, rather than taken from an older section's rows")]
+    [InlineData(
+        "/Index [0 8 0 R] /Size 8",
+        "8",
+        "every other object no section read before it indexes is looked for by rebuilding the index, rather than taken from an older section's rows",
+        "every object no section read before it indexes is looked for by rebuilding the index, rather than taken from an older section's rows")]
+    public void Rows_a_section_beside_a_value_a_guard_cut_holds_are_kept_read_whole_and_said_unread_under_the_guard(
+        string numbering, string eight, string lacking, string unread)
     {
         // As above, object 6's /W names object 5, [1 1 1], which MaxObjectLength cuts, and its 6 bytes of data hold the rows of
         // objects 0 and 1, of the 8 its /Size declares. Read whole, the stream keeps both rows, which its report says; under
         // the guard, the rows are read with the cut value, the guard's, and none is kept: its report says they were not read,
-        // where it said the rows it holds were kept, as read whole (#210, #263).
+        // where it said the rows it holds were kept, as read whole (#210, #263). Where its /Index holds the reference 8 0 R,
+        // which the newer table places and ISO 32000-1 makes direct, the numbers it lost are not kept apart, and every number
+        // is refused to the older sections' rows: both reports say every object no section read before it indexes is looked
+        // for by rebuilding the index — every other one, beside the rows kept —, where they said only those it lacks, or
+        // those it numbers, were (#210).
         var built = ChainFiles.UnderAnUpdate(
             "/Type /XRef /Size 8 /W [1 4 2] /Length {length}",
             "[1 1 1]" + new string(' ', 1100),
             compressed: false,
             predicted: false,
             placed: true,
-            six: "<< /Type /XRef /W 5 0 R /Size 8 /Length 6 >>\nstream\n{rows}\nendstream",
-            placedToo: new Dictionary<int, string> { [8] = "(eight)" });
+            six: "<< /Type /XRef /W 5 0 R " + numbering + " /Length 6 >>\nstream\n{rows}\nendstream",
+            placedToo: new Dictionary<int, string> { [8] = eight });
         var text = Encoding.Latin1.GetString(built);
         var stream = text.IndexOf("\n7 0 obj", StringComparison.Ordinal) + 1;
         var sixAt = text.IndexOf("\n6 0 obj", StringComparison.Ordinal) + 1;
@@ -3754,14 +3775,12 @@ public class GuardCutValueTests
         var file = Encoding.Latin1.GetBytes(text
             .Replace(Invariant($"/Prev {stream} "), Invariant($"/Prev {sixAt} "), StringComparison.Ordinal)
             .Replace("{rows}", "\0\0\0\u0001" + (char)catalog + "\0", StringComparison.Ordinal));
-        const string Lost = "the objects whose rows it lacks are looked for by rebuilding the index where no section read before it indexes them, rather than taken from an older section's rows.";
-
         using (var whole = PdfDocument.Open(file))
         {
             whole.Reader.ChainIndex!.TryGet(1, out var entry).Should().BeTrue();
             entry.Offset.Should().Be(catalog);
             whole.Diagnostics.Single(diagnostic => diagnostic.Code == PdfDiagnosticCodes.XRefSectionUnreadable).Message.Should().Be(Invariant(
-                $"The cross-reference stream /Prev names at offset {sixAt} was read only in part: it holds 2 rows where its /Index and /Size declare 8; the rows it holds were kept, and {Lost}"));
+                $"The cross-reference stream /Prev names at offset {sixAt} was read only in part: it holds 2 rows where its /Index and /Size declare 8; the rows it holds were kept, and {lacking}."));
         }
 
         using var document = PdfDocument.Open(file, ObjectGuard);
@@ -3771,7 +3790,55 @@ public class GuardCutValueTests
         section.CutByLimit.Should().BeTrue();
         section.RowsLeftToGuard.Should().BeTrue();
         document.Diagnostics.Single(diagnostic => diagnostic.Code == PdfDiagnosticCodes.XRefSectionUnreadable).Message.Should().Be(Invariant(
-            $"The cross-reference stream /Prev names at offset {sixAt} was read only in part: its data, 6 bytes decoded, holds at most 6 of the 8 rows its /Index and /Size declare; the rows its data may hold were not read, a value they are read with having been cut by one of the reader's limits, and the objects it numbers are looked for by rebuilding the index where no section read before it indexes them, rather than taken from an older section's rows."));
+            $"The cross-reference stream /Prev names at offset {sixAt} was read only in part: its data, 6 bytes decoded, holds at most 6 of the 8 rows its /Index and /Size declare; the rows its data may hold were not read, a value they are read with having been cut by one of the reader's limits, and {unread}."));
+    }
+
+    [Fact]
+    public void Rows_a_guard_left_unread_past_a_stream_that_refused_every_number_are_said_to_leave_every_object_to_a_rebuild()
+    {
+        // As above, but the newer table names through /Prev cross-reference stream 10, whose rows cannot be read and whose
+        // /Index is no array: every number is refused to the older sections' rows, and its /Prev, handed on, names object 6
+        // (#208). Read whole, none of object 6's rows stands, which its report says. Under the guard, its rows left unread,
+        // its report said only the objects it numbers were looked for by rebuilding the index, though a newer section had
+        // refused every number: it says every object no section read before it indexes is, as where the stream refused every
+        // number itself (#210).
+        var built = ChainFiles.UnderAnUpdate(
+            "/Type /XRef /Size 8 /W [1 4 2] /Length {length}",
+            "[1 1 1]" + new string(' ', 1100),
+            compressed: false,
+            predicted: false,
+            placed: true,
+            six: "<< /Type /XRef /W 5 0 R /Size 8 /Length 6 >>\nstream\n{rows}\nendstream",
+            placedToo: new Dictionary<int, string>
+            {
+                [10] = "<< /Type /XRef /Size 12 /Index /X /W [1 -4 2] /Prev {six} /Length 0 >>\nstream\n\nendstream",
+            });
+        var text = Encoding.Latin1.GetString(built);
+        var stream = text.IndexOf("\n7 0 obj", StringComparison.Ordinal) + 1;
+        var sixAt = text.IndexOf("\n6 0 obj", StringComparison.Ordinal) + 1;
+        var lost = text.IndexOf("\n10 0 obj", StringComparison.Ordinal) + 1;
+        var catalog = text.IndexOf("1 0 obj", StringComparison.Ordinal);
+        catalog.Should().BeLessThan(256, "a field of one byte places it");
+        var file = Encoding.Latin1.GetBytes(text
+            .Replace(Invariant($"/Prev {stream} "), Invariant($"/Prev {lost} "), StringComparison.Ordinal)
+            .Replace("/Prev {six} ", Invariant($"/Prev {sixAt:D5} "), StringComparison.Ordinal)
+            .Replace("{rows}", "\0\0\0\u0001" + (char)catalog + "\0", StringComparison.Ordinal));
+
+        using (var whole = PdfDocument.Open(file))
+        {
+            whole.Reader.ChainIndex!.TryGet(1, out _).Should().BeFalse("the lost stream refused every number");
+            whole.Diagnostics.Single(diagnostic => diagnostic.Code == PdfDiagnosticCodes.XRefSectionUnreadable && diagnostic.Position == sixAt).Message.Should().Be(Invariant(
+                $"The cross-reference stream /Prev names at offset {sixAt} was read only in part: it holds 2 rows where its /Index and /Size declare 8; none of the rows it holds stands, a newer section having refused every number to the older sections' rows, and every object no section read before it indexes is looked for by rebuilding the index."));
+        }
+
+        using var document = PdfDocument.Open(file, ObjectGuard);
+
+        var section = document.Reader.Structure.Sections[^1];
+        section.Offset.Should().Be(sixAt);
+        section.RowsLeftToGuard.Should().BeTrue();
+        section.EveryNumberRefusedBefore.Should().BeTrue();
+        document.Diagnostics.Single(diagnostic => diagnostic.Code == PdfDiagnosticCodes.XRefSectionUnreadable && diagnostic.Position == sixAt).Message.Should().Be(Invariant(
+            $"The cross-reference stream /Prev names at offset {sixAt} was read only in part: its data, 6 bytes decoded, holds at most 6 of the 8 rows its /Index and /Size declare; the rows its data may hold were not read, a value they are read with having been cut by one of the reader's limits, and every object no section read before it indexes is looked for by rebuilding the index, rather than taken from an older section's rows."));
     }
 
     [Theory]
