@@ -3352,6 +3352,14 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
             if (readAgain)
             {
                 LeaveReadingToPrevious(streamsPlace!, section, sectionsAt);
+
+                // The rows are those the /XRefStm's reading read, and the reader reported them from that reading. What it
+                // refused itself — a row for a number it gives twice, the numbers a stream it read in part declares —, which
+                // the second reading meets as refused before it, is no refusal by a section read before: a row of a reserved
+                // type it read as the null object is not said to stand for nothing, nor a row it refused said to be a newer
+                // section's refusal (#156, #221).
+                section.ReservedRowsRefused = streamsPlace!.ReservedRowsRefused;
+                section.RowsRefusedBefore = streamsPlace.RowsRefusedBefore;
             }
 
             RecordSectionReached(section, sectionsAt);

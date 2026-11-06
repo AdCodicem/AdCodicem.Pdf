@@ -4693,18 +4693,27 @@ public class CrossReferenceChainTests
     }
 
     [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public void A_prev_falling_short_of_the_stream_its_xrefstm_read_reads_it_whole_and_the_naming_is_reported(bool reservedRow)
+    [InlineData("no row")]
+    [InlineData("a reserved row")]
+    [InlineData("a reserved row, one row short")]
+    [InlineData("a reserved row after a refused one")]
+    [InlineData("no row", true)]
+    public void A_prev_falling_short_of_the_stream_its_xrefstm_read_reads_it_whole_and_the_naming_is_reported(string seven, bool fourRefused = false)
     {
         // The newest table names cross-reference stream 6 through /XRefStm at its header, and through /Prev 7 bytes short of
         // it, in the endobj before it; the stream names the oldest table, 1,200 bytes off, through its own /Prev, and gives
-        // object 7 a row of a reserved type, or not. Read as the table's stream, it was passed over by the /Prev's search as
-        // reached, which found nothing else: no report said the /XRefStm named what the /Prev names, the /Prev was said to
-        // name a section neither there nor near it, and the file was rebuilt as it opened. With no other section near, the
-        // /Prev reads the stream whole, its own /Prev with it, and the /XRefStm, which names what the /Prev read, is
-        // reported; what the stream's reading reported is not reported again (#156).
-        var (file, oldest, stream, newest) = HybridFiles.PrevFallingShortOfTheStreamBefore(reservedRow);
+        // object 7 no row, a row of a reserved type, that row short of the rows it declares, or that row after one for object 7
+        // it refused itself. Read as the table's stream, it was passed over by the /Prev's search as reached, which found
+        // nothing else: no report said the /XRefStm named what the /Prev names, the /Prev was said to name a section neither
+        // there nor near it, and the file was rebuilt as it opened. With no other section near, the /Prev reads the stream
+        // whole, its own /Prev with it, and the /XRefStm, which names what the /Prev read, is reported; what the stream's
+        // reading reported is not reported again (#156). What that reading refused itself — the numbers a stream read in part
+        // declares, a row for a number it gives twice —, which the /Prev's reading meets as refused before it, is not taken
+        // for a refusal before: the validation said a reserved row the reader read as the null object was not read so, its
+        // number refused before it was read (#221). A reserved row after the stream's own refused row for its number stands
+        // for nothing, as at the stream's first reading, and object 7 is read through a rebuild. Where the newest table
+        // refused its own row for object 4 first, a newer section refused the stream's row for it, as its first reading found.
+        var (file, oldest, stream, newest) = HybridFiles.PrevFallingShortOfTheStreamBefore(seven, fourRefused: fourRefused);
         using var document = PdfDocument.Open(file);
 
         var sections = document.Reader.Structure.Sections;
@@ -4714,18 +4723,48 @@ public class CrossReferenceChainTests
             ("/Prev", XRefSectionState.Relocated, XRefSectionKind.Stream, stream),
             ("/Prev", XRefSectionState.Read, XRefSectionKind.Table, oldest));
         sections[1].ReadAs.Should().BeSameAs(sections[2]);
-        document.Diagnostics.Select(diagnostic => diagnostic.Code).Should().Equal(
-            reservedRow
-                ? [PdfDiagnosticCodes.XRefEntryReserved, PdfDiagnosticCodes.XRefOffsetAdjusted, PdfDiagnosticCodes.XRefHybridStreamLost]
-                : [PdfDiagnosticCodes.XRefOffsetAdjusted, PdfDiagnosticCodes.XRefHybridStreamLost]);
+        string[] codes = seven switch
+        {
+            "no row" when fourRefused => [PdfDiagnosticCodes.XRefSectionUnreadable, PdfDiagnosticCodes.XRefOffsetAdjusted, PdfDiagnosticCodes.XRefHybridStreamLost],
+            "no row" => [PdfDiagnosticCodes.XRefOffsetAdjusted, PdfDiagnosticCodes.XRefHybridStreamLost],
+            "a reserved row" => [PdfDiagnosticCodes.XRefEntryReserved, PdfDiagnosticCodes.XRefOffsetAdjusted, PdfDiagnosticCodes.XRefHybridStreamLost],
+            _ => [PdfDiagnosticCodes.XRefSectionUnreadable, PdfDiagnosticCodes.XRefEntryReserved, PdfDiagnosticCodes.XRefOffsetAdjusted, PdfDiagnosticCodes.XRefHybridStreamLost],
+        };
+        document.Diagnostics.Select(diagnostic => diagnostic.Code).Should().Equal(codes);
         document.Diagnostics[^1].Message.Should().Be(Invariant(
             $"The /XRefStm of the cross-reference table at offset {newest} names offset {stream}, the section its /Prev names too, which the chain read through that /Prev: ISO 32000-1 has it name the cross-reference stream of the table's revision (Table 19). The objects only that stream indexes are looked for by rebuilding the index."));
+        var refusedFirst = seven == "a reserved row after a refused one";
+        sections[2].ReservedRowsRefused.Should().Be(refusedFirst ? 1 : 0);
+        sections[2].RowsRefusedBefore.Should().Be(fourRefused);
         Text(document, 3).Should().Be("three as the oldest has it");
         document.WasRepaired.Should().BeFalse();
+
+        if (refusedFirst)
+        {
+            Text(document, 7).Should().Be("seven as the oldest has it");
+            document.WasRepaired.Should().BeTrue();
+        }
+        else if (seven != "no row")
+        {
+            document.GetObject(new PdfObjectId(7)).Should().BeSameAs(PdfNull.Instance);
+            document.WasRepaired.Should().BeFalse();
+        }
+
         var findings = new PdfValidator().Validate(document).Findings;
         findings.Should().NotContain(finding => finding.RuleId == PdfValidationRuleIds.XRefSectionNotFound);
         findings.Should().ContainSingle(finding => finding.RuleId == PdfValidationRuleIds.XRefHybridStreamWrong);
-        findings.Count(finding => finding.RuleId == PdfValidationRuleIds.XRefEntryTypeReserved).Should().Be(reservedRow ? 1 : 0);
+
+        if (seven == "no row")
+        {
+            findings.Should().NotContain(finding => finding.RuleId == PdfValidationRuleIds.XRefEntryTypeReserved);
+            return;
+        }
+
+        var reader = refusedFirst
+            ? "but the reader did not read the row so, its number refused before it was read: it reads its object as the rebuild finds it"
+            : "as the reader did until it rebuilt the index by scanning the file; it now reads each object such a row numbers as the rebuild finds it";
+        findings.Should().ContainSingle(finding => finding.RuleId == PdfValidationRuleIds.XRefEntryTypeReserved).Which.Message.Should().Be(Invariant(
+            $"The cross-reference stream at offset {stream} gives 1 row a reserved type: the row for object 7 gives it type 3. ISO 32000-1 defines types 0, 1 and 2, and reads any other as a reference to the null object (7.5.8.3), {reader}."));
     }
 
     [Theory]

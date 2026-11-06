@@ -595,25 +595,37 @@ internal static class HybridFiles
     /// <summary>
     /// A document saved three times, whose newest table names through <c>/Prev</c> the <c>endobj</c> 7 bytes before
     /// cross-reference stream 6, at <c>Stream</c>, and through <c>/XRefStm</c> the stream itself. The stream indexes object 4,
-    /// <c>(four)</c>, and itself — and, with <paramref name="reservedRow"/>, object 7 in a row of type 3 — and names through
-    /// <c>/Prev</c> <paramref name="prev"/>: <c>"the oldest table"</c>, at <c>Oldest</c>, 1,200 bytes before it, out of reach
-    /// of a search near it, which indexes objects 1 to 3, the page among them as <c>(three as the oldest has it)</c>;
-    /// <c>"the stream itself"</c>; <c>"outside the file"</c>, offset 99,999,999; <c>"a string"</c>, <c>(x)</c>; or
-    /// <c>"null"</c>. The newest table indexes object 5, <c>(five)</c>.
+    /// <c>(four)</c>, and itself, then gives object 7 <paramref name="seven"/>: <c>"no row"</c>; <c>"a reserved row"</c>, a row
+    /// of type 3; <c>"a reserved row, one row short"</c>, that row, its <c>/Index</c> declaring object 8 after it, whose row
+    /// its data does not hold; or <c>"a reserved row after a refused one"</c>, a row of type 2 naming object stream 0, which
+    /// no entry holds, then, in a subsection of its own, that row of type 3. It names through <c>/Prev</c>
+    /// <paramref name="prev"/>: <c>"the oldest table"</c>, at <c>Oldest</c>, 1,200 bytes before it, out of reach of a search
+    /// near it, which indexes objects 1 to 3, the page among them as <c>(three as the oldest has it)</c>, and, where the stream
+    /// is one row short or refuses a row, object 7, <c>(seven as the oldest has it)</c>; <c>"the stream itself"</c>;
+    /// <c>"outside the file"</c>, offset 99,999,999; <c>"a string"</c>, <c>(x)</c>; or <c>"null"</c>. The newest table
+    /// indexes object 5, <c>(five)</c>, and, where <paramref name="fourRefused"/> says so, gives object 4 generation 65536
+    /// before it, which no entry holds, so that the stream's row for object 4 does not stand.
     /// </summary>
     public static (byte[] File, long Oldest, long Stream, long Newest) PrevFallingShortOfTheStreamBefore(
-        bool reservedRow = false, string prev = "the oldest table")
+        string seven = "no row", string prev = "the oldest table", bool fourRefused = false)
     {
         var file = new HandWrittenFile(version: "1.5");
         var (catalog, pages, _) = Page(file);
         var oldThree = file.Object(3, "(three as the oldest has it)");
+        var olderSeven = seven is "a reserved row, one row short" or "a reserved row after a refused one";
+        var oldSeven = olderSeven ? Invariant($"7 1\n{Row(file.Object(7, "(seven as the oldest has it)"))}") : string.Empty;
         var oldest = file.Position;
-        file.Raw(Invariant($"xref\n0 4\n0000000000 65535 f \n{Row(catalog)}{Row(pages)}{Row(oldThree)}trailer\n<< /Size 4 /Root 1 0 R >>\nstartxref\n{oldest}\n%%EOF\n"));
+        file.Raw(Invariant($"xref\n0 4\n0000000000 65535 f \n{Row(catalog)}{Row(pages)}{Row(oldThree)}{oldSeven}trailer\n<< /Size {(olderSeven ? 8 : 4)} /Root 1 0 R >>\nstartxref\n{oldest}\n%%EOF\n"));
         file.Raw("%" + new string('-', 1200) + "\n");
         var four = file.Object(4, "(four)");
         var stream = file.Position;
-        var rows = reservedRow ? StreamRows((1, four, 0), (1, stream, 0), (3, 0, 0)) : StreamRows((1, four, 0), (1, stream, 0));
-        var index = reservedRow ? "[4 1 6 2]" : "[4 1 6 1]";
+        var (rows, index, size) = seven switch
+        {
+            "a reserved row" => (StreamRows((1, four, 0), (1, stream, 0), (3, 0, 0)), "[4 1 6 2]", 8),
+            "a reserved row, one row short" => (StreamRows((1, four, 0), (1, stream, 0), (3, 0, 0)), "[4 1 6 3]", 9),
+            "a reserved row after a refused one" => (StreamRows((1, four, 0), (1, stream, 0), (2, 0, 0), (3, 0, 0)), "[4 1 6 2 7 1]", 8),
+            _ => (StreamRows((1, four, 0), (1, stream, 0)), "[4 1 6 1]", 8),
+        };
         var named = prev switch
         {
             "the stream itself" => Invariant($"{stream}"),
@@ -622,10 +634,11 @@ internal static class HybridFiles
             "null" => "null",
             _ => Invariant($"{oldest}"),
         };
-        file.Object(6, Invariant($"<< /Type /XRef /Size 8 /W [1 4 2] /Index {index} /Root 1 0 R /Prev {named} /Length {rows.Length} >>\nstream\n{rows}\nendstream"));
+        file.Object(6, Invariant($"<< /Type /XRef /Size {size} /W [1 4 2] /Index {index} /Root 1 0 R /Prev {named} /Length {rows.Length} >>\nstream\n{rows}\nendstream"));
         var five = file.Object(5, "(five)");
         var newest = file.Position;
-        file.Raw(Invariant($"xref\n0 1\n0000000000 65535 f \n5 1\n{Row(five)}trailer\n<< /Size 8 /Root 1 0 R /Prev {stream - 7} /XRefStm {stream} >>\nstartxref\n{newest}\n%%EOF\n"));
+        var newestRows = fourRefused ? Invariant($"4 2\n{four:D10} 65536 n \n") : "5 1\n";
+        file.Raw(Invariant($"xref\n0 1\n0000000000 65535 f \n{newestRows}{Row(five)}trailer\n<< /Size {size} /Root 1 0 R /Prev {stream - 7} /XRefStm {stream} >>\nstartxref\n{newest}\n%%EOF\n"));
         return (file.Bytes, oldest, stream, newest);
     }
 
