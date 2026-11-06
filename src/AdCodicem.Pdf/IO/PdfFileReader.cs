@@ -5162,18 +5162,21 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// which bounds them, the first token past them the guard's.
     /// </summary>
     /// <remarks>
-    /// <see cref="PdfReaderLimits.MaxTrailerLength"/> bounds the white space and comments before a section, and the section
-    /// read from its first token on — a stream's dictionary, through windows that open at its object's header
-    /// (<see cref="TryReadXRefStream"/>) — apart: the section starts where the first token does, however much white space
-    /// the offset falls short by, so that what the chain reads there is what it reached there, and what a check of the place
-    /// reads (<see cref="KeepsItsPlace"/>). A probe that holds white space and comments alone, or a first token its edge may
-    /// cut, is read on as far as a trailer's window reaches and <see cref="XRefProbeLength"/> bytes past it: a first token
-    /// that starts within that window, or where it ends, is read whole enough to tell the keyword from an object's header.
-    /// White space and comments that fill the window and run on past it are the guard's (ADR 34), as a dictionary it cuts
-    /// is: the section is not read from the position, and the reading reports the guard (<see cref="TryReadXRefSection"/>),
-    /// while a search near the position may find it past them. The windows grow eightfold from
-    /// <see cref="XRefProbeLength"/> bytes, so that the bytes read come to less than ten times the run crossed, or one probe
-    /// where there is none.
+    /// <see cref="PdfReaderLimits.MaxTrailerLength"/> bounds the white space and comments before a section, and a stream's
+    /// dictionary, read through windows that open at its object's header (<see cref="TryReadXRefStream"/>), apart; a classic
+    /// table's windows open at the position, so that the white space before its keyword counts toward
+    /// <see cref="PdfReaderLimits.MaxXRefSectionLength"/> as well (#289). The section starts where the first token does,
+    /// however much white space the offset falls short by, so that what the chain reads there is what it reached there, and
+    /// what a check of the place reads (<see cref="KeepsItsPlace"/>). A probe that holds white space and comments alone, or a
+    /// first token its edge may cut, is read on as far as a trailer's window reaches and <see cref="XRefProbeLength"/> bytes
+    /// past it: a first token that starts within that window, or where it ends, is read whole enough to tell the keyword
+    /// from an object's header. White space and comments that fill the window and run on past it are the guard's (ADR 34),
+    /// as a dictionary it cuts is: the section is not read from the position, and the reading reports the guard
+    /// (<see cref="TryReadXRefSection"/>), while a search near the position may find it past them. The windows grow
+    /// eightfold from <see cref="XRefProbeLength"/> bytes, and only where the first token, or the white space and comments
+    /// before it, reach the last one's edge, so that the bytes read come to less than ten times those from the position to
+    /// that token's end — white space, comments and the token alike, a token the probe's edge cuts counted as far as the
+    /// probe reaches —, and to one probe where that token ends within the first, short of its edge.
     /// </remarks>
     /// <param name="absolute">The position, in the file.</param>
     /// <param name="table">Receives whether the first token is the <c>xref</c> keyword; false where there is none to read.</param>
