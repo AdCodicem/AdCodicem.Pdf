@@ -4569,6 +4569,58 @@ public class CrossReferenceChainTests
         findings.Count(finding => finding.RuleId == PdfValidationRuleIds.XRefEntryTypeReserved).Should().Be(reservedRow ? 1 : 0);
     }
 
+    [Theory]
+    [InlineData("the stream itself")]
+    [InlineData("outside the file")]
+    [InlineData("a string")]
+    [InlineData("null")]
+    public void A_prev_falling_short_of_the_stream_its_xrefstm_read_takes_it_wherever_the_stream_gives_a_prev_and_reports_what_that_prev_names(string prev)
+    {
+        // The file of the test above, whose stream 6 names through its own /Prev the stream itself, offset 99,999,999, a
+        // string, or null. The /Prev's search near the offset it names takes the stream the /XRefStm read in the stream's
+        // place wherever the stream's own dictionary gives a /Prev, whatever that /Prev names: the stream is read whole, the
+        // /XRefStm reported as naming what the /Prev read, and the stream's /Prev reported as the chain finds it — a loop, a
+        // section outside the file, no offset —, the objects only the oldest table indexes found by rebuilding the index. A
+        // /Prev of null is none (7.3.7): the stream, which may be the table's own and hands the chain nothing on, is not
+        // taken, and the /Prev names a section neither there nor near it (#156). The page, object 3, written again as a
+        // string by the oldest revision, is found redefined by the rebuild.
+        var (file, _, stream, newest) = HybridFiles.PrevFallingShortOfTheStreamBefore(prev: prev);
+        using var document = PdfDocument.Open(file);
+
+        var sections = document.Reader.Structure.Sections;
+        var codes = document.Diagnostics.Select(diagnostic => diagnostic.Code).ToList();
+
+        if (prev == "null")
+        {
+            sections.Select(section => (section.NamedBy, section.State, section.Offset)).Should().Equal(
+                ("startxref", XRefSectionState.Read, newest),
+                ("/XRefStm", XRefSectionState.Read, stream),
+                ("/Prev", XRefSectionState.NotFound, stream - 7));
+            codes.Should().Equal(PdfDiagnosticCodes.XRefSectionMissing, PdfDiagnosticCodes.XRefRebuilt, PdfDiagnosticCodes.ObjectRedefined);
+            document.Diagnostics[0].Message.Should().StartWith(Invariant($"The cross-reference section /Prev names at offset {stream - 7} is not there, nor near it;"));
+            return;
+        }
+
+        sections.Select(section => (section.NamedBy, section.State, section.Kind, section.Offset)).Take(3).Should().Equal(
+            ("startxref", XRefSectionState.Read, XRefSectionKind.Table, newest),
+            ("/XRefStm", XRefSectionState.NamedAgain, XRefSectionKind.Unknown, stream),
+            ("/Prev", XRefSectionState.Relocated, XRefSectionKind.Stream, stream));
+        sections[1].ReadAs.Should().BeSameAs(sections[2]);
+        var (fault, message) = prev switch
+        {
+            "the stream itself" => (PdfDiagnosticCodes.XRefChainCycle, Invariant($"The cross-reference chain loops back on itself: the /Prev of the section at offset {stream} names offset {stream}, which the chain has already read.")),
+            "outside the file" => (PdfDiagnosticCodes.XRefSectionMissing, Invariant($"The cross-reference section /Prev names at offset 99999999 lies outside the file, which is {file.Length:N0} bytes long; the objects only it indexes are looked for by rebuilding the index.")),
+            _ => (PdfDiagnosticCodes.XRefSectionMissing, Invariant($"The /Prev of the cross-reference section at offset {stream} is not an offset; the sections it names are looked for by rebuilding the index.")),
+        };
+        codes.Should().Equal(
+            prev == "a string"
+                ? [fault, PdfDiagnosticCodes.XRefOffsetAdjusted, PdfDiagnosticCodes.XRefHybridStreamLost, PdfDiagnosticCodes.XRefRebuilt, PdfDiagnosticCodes.ObjectRedefined]
+                : [PdfDiagnosticCodes.XRefOffsetAdjusted, PdfDiagnosticCodes.XRefHybridStreamLost, fault, PdfDiagnosticCodes.XRefRebuilt, PdfDiagnosticCodes.ObjectRedefined]);
+        document.Diagnostics.Should().ContainSingle(diagnostic => diagnostic.Code == fault).Which.Message.Should().Be(message);
+        document.Diagnostics.Should().ContainSingle(diagnostic => diagnostic.Code == PdfDiagnosticCodes.XRefHybridStreamLost).Which.Message.Should().StartWith(
+            Invariant($"The /XRefStm of the cross-reference table at offset {newest} names offset {stream}, the section its /Prev names too, which the chain read through that /Prev:"));
+    }
+
     [Fact]
     public void Only_the_prev_of_the_table_whose_xrefstm_read_a_stream_reads_it_again()
     {

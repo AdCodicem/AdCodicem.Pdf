@@ -596,11 +596,13 @@ internal static class HybridFiles
     /// A document saved three times, whose newest table names through <c>/Prev</c> the <c>endobj</c> 7 bytes before
     /// cross-reference stream 6, at <c>Stream</c>, and through <c>/XRefStm</c> the stream itself. The stream indexes object 4,
     /// <c>(four)</c>, and itself — and, with <paramref name="reservedRow"/>, object 7 in a row of type 3 — and names through
-    /// <c>/Prev</c> the oldest table, at <c>Oldest</c>, 1,200 bytes before it, out of reach of a search near it, which
-    /// indexes objects 1 to 3, the page among them as <c>(three as the oldest has it)</c>. The newest table indexes object 5,
-    /// <c>(five)</c>.
+    /// <c>/Prev</c> <paramref name="prev"/>: <c>"the oldest table"</c>, at <c>Oldest</c>, 1,200 bytes before it, out of reach
+    /// of a search near it, which indexes objects 1 to 3, the page among them as <c>(three as the oldest has it)</c>;
+    /// <c>"the stream itself"</c>; <c>"outside the file"</c>, offset 99,999,999; <c>"a string"</c>, <c>(x)</c>; or
+    /// <c>"null"</c>. The newest table indexes object 5, <c>(five)</c>.
     /// </summary>
-    public static (byte[] File, long Oldest, long Stream, long Newest) PrevFallingShortOfTheStreamBefore(bool reservedRow = false)
+    public static (byte[] File, long Oldest, long Stream, long Newest) PrevFallingShortOfTheStreamBefore(
+        bool reservedRow = false, string prev = "the oldest table")
     {
         var file = new HandWrittenFile(version: "1.5");
         var (catalog, pages, _) = Page(file);
@@ -612,7 +614,15 @@ internal static class HybridFiles
         var stream = file.Position;
         var rows = reservedRow ? StreamRows((1, four, 0), (1, stream, 0), (3, 0, 0)) : StreamRows((1, four, 0), (1, stream, 0));
         var index = reservedRow ? "[4 1 6 2]" : "[4 1 6 1]";
-        file.Object(6, Invariant($"<< /Type /XRef /Size 8 /W [1 4 2] /Index {index} /Root 1 0 R /Prev {oldest} /Length {rows.Length} >>\nstream\n{rows}\nendstream"));
+        var named = prev switch
+        {
+            "the stream itself" => Invariant($"{stream}"),
+            "outside the file" => "99999999",
+            "a string" => "(x)",
+            "null" => "null",
+            _ => Invariant($"{oldest}"),
+        };
+        file.Object(6, Invariant($"<< /Type /XRef /Size 8 /W [1 4 2] /Index {index} /Root 1 0 R /Prev {named} /Length {rows.Length} >>\nstream\n{rows}\nendstream"));
         var five = file.Object(5, "(five)");
         var newest = file.Position;
         file.Raw(Invariant($"xref\n0 1\n0000000000 65535 f \n5 1\n{Row(five)}trailer\n<< /Size 8 /Root 1 0 R /Prev {stream - 7} /XRefStm {stream} >>\nstartxref\n{newest}\n%%EOF\n"));
