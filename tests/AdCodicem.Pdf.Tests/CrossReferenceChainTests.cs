@@ -5438,9 +5438,10 @@ public class CrossReferenceChainTests
         // A cross-reference stream gives object 3, and object 4 after it, a row of type 7, which ISO 32000-1 reads as a
         // reference to the null object; a newer section refused object 3's number first: a lost stream declaring every
         // number, objects 3 and 4, or object 3, or the newest table's own row for it, refused alone. The row did not stand,
-        // its object read through a rebuild, though the report said it was read so: it says it stands for nothing, and
-        // which of the rows it counts are such (#208, #210, #221). Where the lost stream declares object 10, the row stands,
-        // and object 3 reads as null; where the newest table places object 3, that row supersedes it, as any newer row does.
+        // its object read through a rebuild, though the report said it was read so: it says such rows stand for nothing —
+        // the row, both rows, or, where only object 3's number was refused, those whose numbers were refused, which it
+        // neither names nor counts (#208, #210, #221). Where the lost stream declares object 10, the row stands, and object
+        // 3 reads as null; where the newest table places object 3, that row supersedes it, as any newer row does.
         // Where the stream's own earlier row for object 3, which it refused, refused the number, the row stands for nothing
         // too, in words that name no newer section, and no newer section is said to have refused it; with the rows the other
         // way round, the row of type 7 stands, and object 3 reads as null.

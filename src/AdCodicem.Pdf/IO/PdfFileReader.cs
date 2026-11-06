@@ -4648,8 +4648,9 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// <para>
     /// A row whose number a newer section refused — a row refused alone, a range a stream whose rows were lost declares, every
     /// number —, or a row of the stream's own for the same number refused, is not read as the null object: it stands for
-    /// nothing, as every row whose number was refused does, and the message says so rather than that it was read so, and
-    /// which of the rows it counts are such (#208, #210, #221). A row a newer section's row for the same number supersedes
+    /// nothing, as every row whose number was refused does, and the message says so rather than that it was read so: of the
+    /// row, of all the rows it counts, or, where only some of them are such, of those whose numbers were refused, which it
+    /// neither names nor counts (#208, #210, #221). A row a newer section's row for the same number supersedes
     /// is read so, and stands for nothing older, as every superseded row does.
     /// </para>
     /// </remarks>
