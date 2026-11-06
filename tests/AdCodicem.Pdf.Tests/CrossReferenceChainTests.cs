@@ -4196,6 +4196,24 @@ public class CrossReferenceChainTests
         new PdfValidator().Validate(document).Findings.Count(finding => finding.RuleId == PdfValidationRuleIds.XRefHybridStreamWrong).Should().Be(stops ? 1 : 0);
     }
 
+    [Fact]
+    public void A_prev_naming_more_white_space_than_a_trailer_s_window_reaches_the_guard_where_it_starts_and_is_looked_for_nearby()
+    {
+        // The newest table names stream 4 through /Prev at the first of 65,537 line feeds before it, a byte more than
+        // MaxTrailerLength lets the white space before a section run, and its own stream through /XRefStm. The run reaches the
+        // guard where it starts, in words that say the white space ran past it, and nothing past it is read: the section is
+        // looked for near the offset, as one that is not there, and the oldest table, 147 bytes before it, is found (#188).
+        var (file, oldest, run, _, stream, _) = HybridFiles.PrevNamingARunBeforeAStream(65_537, 0, "the stream");
+        using var document = PdfDocument.Open(file);
+
+        document.Reader.Structure.Sections.Select(section => (section.NamedBy, section.State, section.Offset, section.NamedOffset)).Skip(1).Should().Equal(
+            ("/XRefStm", XRefSectionState.Read, stream, stream),
+            ("/Prev", XRefSectionState.Relocated, oldest, run));
+        document.Diagnostics.Select(diagnostic => diagnostic.Code).Should().Equal(PdfDiagnosticCodes.LimitTrailer, PdfDiagnosticCodes.XRefOffsetAdjusted);
+        document.Diagnostics[0].Position.Should().Be(run);
+        document.Diagnostics[0].Message.Should().StartWith("White space and comments run past 64 KB where a cross-reference section is named;");
+    }
+
     [Theory]
     [InlineData("/Type /XRefStream ", false)]
     [InlineData("", false)]

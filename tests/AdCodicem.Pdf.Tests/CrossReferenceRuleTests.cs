@@ -2587,6 +2587,9 @@ public class CrossReferenceRuleTests
         using var document = await Task.Run(() => PdfDocument.Open(bytes, options), TestContext.Current.CancellationToken);
 
         document.Diagnostics.Select(entry => entry.Code).Should().Equal(PdfDiagnosticCodes.LimitTrailer, PdfDiagnosticCodes.XRefRebuilt);
+        var section = document.Reader.Structure.Sections.Should().ContainSingle().Which;
+        section.State.Should().Be(XRefSectionState.NotFound);
+        section.Fault.Should().Be("holds neither the xref keyword nor an object");
         document.Diagnostics[0].Position.Should().Be(table - padding);
         document.Diagnostics[0].Message.Should().Be(string.Create(
             CultureInfo.InvariantCulture,
