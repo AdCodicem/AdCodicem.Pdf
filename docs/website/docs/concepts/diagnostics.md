@@ -51,8 +51,11 @@ zeros that erased the end of one and the objects after it would otherwise do, or
 Text in a damaged stream's data that reads as an object header stops the search as well: an object number and a
 generation the parser takes, however many zeros lead them, white space between the three tokens, however much, and
 white space, a delimiter, or the start or the end of the search around them. Comments may lie between the tokens, as a
-load reads them: the line a comment ends is read from its start, as the scan that rebuilds a damaged index reads it. A
-regular character glued before the number makes no header here, though that scan takes the digits after it for one.
+load reads them: the line a comment ends is read from its start, as the scan that rebuilds a damaged index reads it —
+but for the line of the `obj` keyword itself, which is read by its digits whatever a comment there holds, as that scan
+reads it, so that `% 5 0 obj` on a line stops the search where a load reads a comment
+([#171](https://github.com/AdCodicem/AdCodicem.Pdf/issues/171)). A regular character glued before the number makes no
+header here, though that scan takes the digits after it for one.
 Neither `xref` nor `trailer` stops a search: the stream of a classic file's last object, which no object follows, is
 searched through the table and the trailer to the end of the file.
 
@@ -62,10 +65,13 @@ none —, waits for what follows its line: only the rest of the comment, white s
 generation can lie between it and the `obj` of a header that starts before it. The first token past that line outside a
 comment decides, or the two where the first is a run of digits: an `obj` where the rule above takes a header stops the
 search at that header, which starts before the keyword; anything else leaves the keyword to end the data. Those tokens
-are read through the search's own reads, so that where the reads part the data changes nothing, and no further than the
-search would read without the keyword; a search that can read no further — the document's searches having read as much
-of the file as they may, or a source that gives nothing more — takes the keyword. The data so ends at the same place
-whether the index places the header's object or not.
+are read through the search's own reads, so that where the reads part the data changes nothing, however short a source
+cuts them ([#52](https://github.com/AdCodicem/AdCodicem.Pdf/issues/52)), and no further than the search would read
+without the keyword; a search that can read no further — the document's searches having read as much of the file as they
+may, or a source that gives nothing more — takes the keyword. The data so ends at the same place whether the index
+places the header's object or not, but where the comment holds, before the keyword, text that the line of an `obj`,
+read by its digits, makes a header (above): past the stream's `endobj`, a line `12 % 5 0 obj endstream` and then
+`0 obj` run the data on to `5 0 obj` where no row places object 12, and leave that `endobj` to end it where one does.
 
 With no `endstream` before the stop, the object's `endobj` plays its part. A declared length that ends before the stop,
 and that the object's `endobj` follows as an `endstream` would, is kept: the stream lost only its `endstream`. Otherwise,
