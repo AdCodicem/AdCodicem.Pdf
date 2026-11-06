@@ -712,11 +712,12 @@ public class WindowEdgeTests
         string header, int past, bool ended)
     {
         // Object 5 lost its endstream, and its data runs to a header no index places whose tokens a comment holding endstream
-        // parts (#261) — the line before it holding a string it leaves open, or not. That endstream, the first of the data, ended it, inside the header, which the data ran into, and the
-        // object's own endobj before the header was judged missing, where a search whose next object is the header, the
-        // index placing it, stopped there. What follows the comment's line is read until it decides the header: the data ends
-        // at the object's own endobj or at the header, the same wherever the window, the first read of the file past it, or a
-        // lower object guard parts the header, and whether the index places the header's object or not.
+        // parts (#261) — the line before it holding a string it leaves open, or not. That endstream, the first of the data,
+        // ended it, inside the header, which the data ran into, and the object's own endobj before the header was judged
+        // missing, where a search whose next object is the header, the index placing it, stopped there. What follows the
+        // comment's line is read until it decides the header: the data ends at the object's own endobj or at the header, the
+        // same wherever the window, the first read of the file past it, or a lower object guard parts the header, and whether
+        // the index places the header's object or not.
         var windowEdge = Window - LostEndPrefix.Length;
         var firstReadEdge = windowEdge - PdfFileReader.EndStreamSearchOverlap + PdfFileReader.EndStreamSearchFirstRead(windowEdge);
         var splits = new List<(int Filler, int? Guard)>();
@@ -821,9 +822,9 @@ public class WindowEdgeTests
         // As above, but nothing after the comment's line ends a header that starts before the endstream: the line's tokens
         // end in a keyword or a name, a second number — which starts a header past the endstream —, a keyword or a string
         // follows the first, an obj a regular byte follows, or the first number is the last token before the end of the
-        // object. An endstream in a string, or one that
-        // is a token, is in no comment, and a header after it starts past it. The endstream, the first of the data, ends it,
-        // wherever the reads part what follows, and its object's endobj is judged by what follows it.
+        // object. An endstream in a string, or one that is a token, is in no comment, and a header after it starts past it.
+        // The endstream, the first of the data, ends it, wherever the reads part what follows, and its object's endobj is
+        // judged by what follows it.
         foreach (var filler in new[] { 100, 20_000, Window - LostEndPrefix.Length - header.Length + 6 })
         {
             var ending = HeaderEnding(header, filler, null);

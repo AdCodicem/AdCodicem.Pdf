@@ -47,27 +47,26 @@ public static class PdfDiagnosticCodes
     /// when nothing near it can be read in its place. A value that leads to an object one of the reader's limits cut is
     /// the limit's: the chain ends there, and nothing is reported of the section. The rows read before the fault, if any,
     /// were kept, but for those it refused itself and those whose numbers a newer section refused — none of them, where a
-    /// newer section refused every number, as the message says —; the objects only the rest indexes are missing from the index, which is rebuilt by
-    /// scanning the file when one of them is asked for. A stream of <c>/Type /XRef</c> whose dictionary was read whole loses
-    /// its rows alone: no older section's row stands for an object it numbers — for any, where its numbering cannot be read
-    /// —, which is missing from the index as the objects only it indexes are; and one that gives a <c>/Prev</c> hands that
-    /// <c>/Prev</c> on, the chain going on to the older sections, as the message says where that <c>/Prev</c> names an
-    /// offset or leads to what one of the reader's limits hides (#208). A classic table an <c>/XRefStm</c> names, past which
-    /// the chain goes on through the table that names it, leaves no older section's row standing for the rest of the
-    /// subsection its fault ended, nor, where what follows the fault cannot be known — a subsection header that is no
-    /// header, a stray token, the end of the file —, for any number its rows do not give (#156). Or the section, the one
-    /// <c>startxref</c> names among them, was read only in part, and kept, the chain going on from it where its trailer was
-    /// read (#207, #210): a row that is no row ended a subsection of a table, a cross-reference stream holds fewer rows than
-    /// it declares, the end of the file cuts a table before its trailer or within its <c>trailer</c> keyword, or a row that
-    /// gives an object in use what no entry can hold was refused alone, its object rebuilt where no row read before it — a
-    /// newer section's, or the section's own for the same number — indexes it. The rows read were kept, but for those it
-    /// refused itself, which the message says without naming them beside the fault it names, and those whose numbers a
-    /// newer section refused — none of them, where a newer section refused every number —, and the message says which, and
-    /// what was lost: the objects the lost rows would index, which no older section's row stands for, and those only the
-    /// sections a lost trailer would name index, are missing from the index, rebuilt when one of them is asked for. The
-    /// report is placed at the section, once, one
-    /// fault in its message: the first that lost rows, else the end of the file before its trailer, else the first row it
-    /// refused, which is not named beside either of the others.
+    /// newer section refused every number, as the message says —; the objects only the rest indexes are missing from the
+    /// index, which is rebuilt by scanning the file when one of them is asked for. A stream of <c>/Type /XRef</c> whose
+    /// dictionary was read whole loses its rows alone: no older section's row stands for an object it numbers — for any,
+    /// where its numbering cannot be read —, which is missing from the index as the objects only it indexes are; and one that
+    /// gives a <c>/Prev</c> hands that <c>/Prev</c> on, the chain going on to the older sections, as the message says where
+    /// that <c>/Prev</c> names an offset or leads to what one of the reader's limits hides (#208). A classic table an
+    /// <c>/XRefStm</c> names, past which the chain goes on through the table that names it, leaves no older section's row
+    /// standing for the rest of the subsection its fault ended, nor, where what follows the fault cannot be known — a
+    /// subsection header that is no header, a stray token, the end of the file —, for any number its rows do not give (#156).
+    /// Or the section, the one <c>startxref</c> names among them, was read only in part, and kept, the chain going on from it
+    /// where its trailer was read (#207, #210): a row that is no row ended a subsection of a table, a cross-reference stream
+    /// holds fewer rows than it declares, the end of the file cuts a table before its trailer or within its <c>trailer</c>
+    /// keyword, or a row that gives an object in use what no entry can hold was refused alone, its object rebuilt where no
+    /// row read before it — a newer section's, or the section's own for the same number — indexes it. The rows read were
+    /// kept, but for those it refused itself, which the message says without naming them beside the fault it names, and those
+    /// whose numbers a newer section refused — none of them, where a newer section refused every number —, and the message
+    /// says which, and what was lost: the objects the lost rows would index, which no older section's row stands for, and
+    /// those only the sections a lost trailer would name index, are missing from the index, rebuilt when one of them is asked
+    /// for. The report is placed at the section, once, one fault in its message: the first that lost rows, else the end of
+    /// the file before its trailer, else the first row it refused, which is not named beside either of the others.
     /// </summary>
     public const string XRefSectionUnreadable = "xref.section-unreadable";
 
