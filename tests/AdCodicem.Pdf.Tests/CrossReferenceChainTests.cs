@@ -2711,11 +2711,11 @@ public class CrossReferenceChainTests
 
     [Theory]
     [InlineData("/X", false, "none of the rows read stands, a newer section having refused every number to the older sections' rows, and every object no section read before it indexes is looked for by rebuilding the index", false)]
-    [InlineData("[3 2]", false, "that row was refused, the rows after it read, and the other rows read kept but for those whose numbers a newer section refused; its object is looked for by rebuilding the index where no section read before it indexes it, rather than taken from an older section's row", false)]
-    [InlineData("[10 1]", false, "that row alone was refused, the rows after it read, and its object is looked for by rebuilding the index where no section read before it indexes it, rather than taken from an older section's row", true)]
+    [InlineData("[3 2]", false, "that row was refused, the rows after it read, and the other rows read kept but for those whose numbers a newer section refused; its object is looked for by rebuilding the index where no row read before it indexes it, rather than taken from an older section's row", false)]
+    [InlineData("[10 1]", false, "that row alone was refused, the rows after it read, and its object is looked for by rebuilding the index where no row read before it indexes it, rather than taken from an older section's row", true)]
     [InlineData("/X", true, "none of the rows read, as far as one of the reader's limits let the section be read, stands, a newer section having refused every number to the older sections' rows, and every object no section read before it indexes is looked for by rebuilding the index", false)]
-    [InlineData("[3 2]", true, "that row was refused, the rows after it read as far as one of the reader's limits let the section be read, and the other rows read kept but for those whose numbers a newer section refused; its object is looked for by rebuilding the index where no section read before it indexes it, rather than taken from an older section's row", false)]
-    [InlineData("[10 1]", true, "that row alone was refused, the rows after it read as far as one of the reader's limits let the section be read, and its object is looked for by rebuilding the index where no section read before it indexes it, rather than taken from an older section's row", true)]
+    [InlineData("[3 2]", true, "that row was refused, the rows after it read as far as one of the reader's limits let the section be read, and the other rows read kept but for those whose numbers a newer section refused; its object is looked for by rebuilding the index where no row read before it indexes it, rather than taken from an older section's row", false)]
+    [InlineData("[10 1]", true, "that row alone was refused, the rows after it read as far as one of the reader's limits let the section be read, and its object is looked for by rebuilding the index where no row read before it indexes it, rather than taken from an older section's row", true)]
     public void A_table_that_refused_a_row_past_a_lost_stream_says_it_alone_was_refused_only_where_the_others_stand(
         string index, bool guarded, string said, bool four)
     {
@@ -2739,6 +2739,135 @@ public class CrossReferenceChainTests
         {
             ShouldServeTheNewerRevisions(document, three: false, four);
         }
+    }
+
+    [Theory]
+    [InlineData(true, false, "three")]
+    [InlineData(false, false, "three")]
+    [InlineData(true, true, "new three")]
+    [InlineData(false, true, "new three")]
+    public void A_table_that_gives_a_number_twice_and_refused_one_of_the_rows_says_no_newer_section_refused_the_other(bool refusedFirst, bool older, string expected)
+    {
+        // The table startxref names gives object 3 twice, one row giving it generation 65536, which no entry holds. With the
+        // refused row first, the other did not stand either, and the report said a newer section had refused it, where there
+        // is none; with the placing row first, that row stands, and the report said the object was looked for by rebuilding
+        // the index. It says the refused row's object is looked for so where no row read before it indexes it, which the
+        // table's own row does in the second order: the object is read through it, an older table's row standing for
+        // nothing either way (#210).
+        var (file, table) = PartialFiles.GivenTwice(refusedFirst, older);
+        var row = PdfTemplate.OffsetOf(file, "65536 n") - 11;
+
+        using var document = PdfDocument.Open(file);
+
+        document.Diagnostics.Should().ContainSingle().Which.Message.Should().Be(Invariant(
+            $"The cross-reference table startxref names at offset {table} was read only in part: the row for object 3, at offset {row}, gives it generation 65536, outside 0 to 65535; that row alone was refused, the rows after it read, and its object is looked for by rebuilding the index where no row read before it indexes it, rather than taken from an older section's row."));
+        document.Reader.Structure.Sections[0].RowsRefusedBefore.Should().BeFalse();
+        document.Reader.ChainIndex!.TryGet(3, out _).Should().Be(!refusedFirst);
+        Text(document, 3).Should().Be(expected);
+        document.WasRepaired.Should().Be(refusedFirst);
+    }
+
+    [Fact]
+    public void A_table_that_refuses_its_row_for_a_number_twice_refuses_the_number_once()
+    {
+        // The table startxref names gives object 3 generation 65536 in two subsections, an older table placing its older
+        // revision: the number is refused once, the second row changing nothing, and the object is read through a rebuild,
+        // no older row standing for it (#210).
+        var (file, table) = PartialFiles.OwnRefusal(
+            "3 2\n{three} 65536 n \n{four} 00000 n \n3 1\n{three} 65536 n \ntrailer\n<< /Size 5 /Root 1 0 R /Prev {oldest} >>\n");
+        var row = PdfTemplate.OffsetOf(file, "65536 n") - 11;
+
+        using var document = PdfDocument.Open(file);
+
+        document.Diagnostics.Should().ContainSingle().Which.Message.Should().Be(Invariant(
+            $"The cross-reference table startxref names at offset {table} was read only in part: the row for object 3, at offset {row}, gives it generation 65536, outside 0 to 65535; that row alone was refused, the rows after it read, and its object is looked for by rebuilding the index where no row read before it indexes it, rather than taken from an older section's row."));
+        ShouldServeTheNewerRevisions(document, three: false, four: true);
+    }
+
+    [Theory]
+    [InlineData("stream holding one row", "it holds 1 row where its /Index and /Size declare 2; the row it holds was refused, and the objects it numbers are looked for by rebuilding the index where no section read before it indexes them, rather than taken from an older section's rows", false)]
+    [InlineData("stream holding two rows", "it holds 2 rows where its /Index and /Size declare 3; the rows it holds were kept but for those it refused, and the objects whose rows it lacks are looked for by rebuilding the index where no section read before it indexes them, rather than taken from an older section's rows", true)]
+    [InlineData("table with a row that is no row", "{fault}; the rows read were kept but for those it refused, and the objects the rest of that subsection numbers are looked for by rebuilding the index where no section read before it indexes them, rather than taken from an older section's rows", true)]
+    public void A_section_read_in_part_does_not_say_it_kept_a_row_it_refused_itself(string shape, string said, bool four)
+    {
+        // The section startxref names refuses its own row for object 3, which gives it generation 65536, and loses rows too:
+        // the stream holds fewer rows than it declares, the table's row for object 5 is no row. The report names the fault
+        // that lost rows, not the refused row, as it does, but said the rows read were kept, the refused one with them, though
+        // no older section's row stood for object 3: it says they were kept but for those it refused, and a stream's one row
+        // that it refused is said to be refused (#210). Object 3 is read through a rebuild.
+        var (file, section) = shape switch
+        {
+            "stream holding one row" => PartialFiles.OwnRefusal(table: null, held: 1, declared: 2),
+            "stream holding two rows" => PartialFiles.OwnRefusal(table: null, held: 2, declared: 3),
+            _ => PartialFiles.OwnRefusal("3 3\n{three} 65536 n \n{four} 00000 n \njunk junk junk\ntrailer\n<< /Size 6 /Root 1 0 R /Prev {oldest} >>\n"),
+        };
+        var kind = shape.StartsWith("stream", StringComparison.Ordinal) ? "stream" : "table";
+        var fault = shape.StartsWith("table", StringComparison.Ordinal)
+            ? Invariant($"the row for object 5, at offset {PdfTemplate.OffsetOf(file, "junk junk junk")}, is not an offset, a generation and n or f")
+            : string.Empty;
+
+        using var document = PdfDocument.Open(file);
+
+        document.Diagnostics.Should().ContainSingle().Which.Message.Should().Be(Invariant(
+            $"The cross-reference {kind} startxref names at offset {section} was read only in part: {said.Replace("{fault}", fault, StringComparison.Ordinal)}."));
+        ShouldServeTheNewerRevisions(document, three: false, four);
+    }
+
+    [Theory]
+    [InlineData("[10 1]", "the rows read were kept but for those it refused")]
+    [InlineData("[4 1]", "the rows read were kept but for those it refused and those whose numbers a newer section refused")]
+    public void A_table_read_in_part_past_a_lost_stream_tells_its_own_refused_rows_from_those_a_newer_section_refused(string index, string kept)
+    {
+        // The table the lost stream's /Prev names refuses its own row for object 3, generation 65536, and its row for object 5
+        // is no row. The lost stream declares object 10, or object 4, whose row the table gives too: the report says the rows
+        // read were kept but for those the table refused, and those whose numbers the lost stream refused where it refused
+        // any (#208, #210).
+        var (file, middle, _) = PartialFiles.PastALostStream(index, "3 3\n{three} 65536 n \n{four} 00000 n \njunk junk junk\ntrailer\n<< /Size 7 /Prev {oldest} >>\n");
+        var row = PdfTemplate.OffsetOf(file, "junk junk junk");
+
+        using var document = PdfDocument.Open(file);
+
+        document.Diagnostics[1].Position.Should().Be(middle);
+        document.Diagnostics[1].Message.Should().Be(Invariant(
+            $"The cross-reference table /Prev names at offset {middle} was read only in part: the row for object 5, at offset {row}, is not an offset, a generation and n or f; {kept}, and the objects the rest of that subsection numbers are looked for by rebuilding the index where no section read before it indexes them, rather than taken from an older section's rows."));
+        ShouldServeTheNewerRevisions(document, three: false, four: index == "[10 1]");
+    }
+
+    [Fact]
+    public void A_table_that_cannot_be_read_does_not_say_it_kept_a_row_it_refused_itself_before_its_fault()
+    {
+        // The table the lost stream's /Prev names refuses its own row for object 3, generation 65536, then runs into a row that
+        // is no row and a stray token: it cannot be read. Its rows read before the fault were said kept, the refused one with
+        // them: they were kept but for those it refused, and object 3 is read through a rebuild (#210).
+        var (file, middle, _) = PartialFiles.PastALostStream("[10 1]", "3 3\n{three} 65536 n \n{four} 00000 n \njunk junk junk\nmore\ntrailer\n<< /Size 7 /Prev {oldest} >>\n");
+        var row = PdfTemplate.OffsetOf(file, "junk junk junk");
+
+        using var document = PdfDocument.Open(file);
+
+        document.Diagnostics[1].Message.Should().Be(Invariant(
+            $"The cross-reference table /Prev names at offset {middle} is there but cannot be read: the row for object 5, at offset {row}, is not an offset, a generation and n or f. The rows read before the fault, if any, were kept but for those it refused; the objects only the rest indexes are looked for by rebuilding the index."));
+        document.Reader.Structure.Sections[^1].State.Should().Be(XRefSectionState.Malformed);
+        ShouldServeTheNewerRevisions(document, three: false, four: true);
+    }
+
+    [Fact]
+    public void A_table_the_end_of_the_file_cuts_does_not_say_it_kept_a_row_it_refused_itself()
+    {
+        // The table /Prev names refuses its own row for object 3, generation 65536, places object 4, and the file ends before its
+        // trailer: the report said the rows read were kept, the refused one with them. It says they were kept but for those
+        // it refused, and object 3, which no row stands for, is read through a rebuild (#207, #210).
+        var file = PdfTemplate.Build(PartialFiles.CutUpdate("3 2\n{off:3} 65536 n \n{row:4}\n"));
+        var cut = PdfTemplate.OffsetOf(file, "\nxref\n", 3) + 1;
+
+        using var document = PdfDocument.Open(file);
+
+        document.Diagnostics.Should().ContainSingle().Which.Message.Should().Be(Invariant(
+            $"The cross-reference table /Prev names at offset {cut} was read only in part: the file ends before its trailer; the rows read were kept but for those it refused, and what only the rest of the table, or the sections its trailer would name, index is looked for by rebuilding the index."));
+        document.Reader.ChainIndex!.TryGet(3, out _).Should().BeFalse();
+        Text(document, 4).Should().Be("object 4");
+        document.WasRepaired.Should().BeFalse();
+        Text(document, 3).Should().Be("object 3");
+        document.WasRepaired.Should().BeTrue();
     }
 
     [Theory]
@@ -3300,7 +3429,7 @@ public class CrossReferenceChainTests
         report.Position.Should().Be(section);
         report.Message.Should().Be(string.Create(
             CultureInfo.InvariantCulture,
-            $"The cross-reference {(stream ? "stream" : "table")} startxref names at offset {section} was read only in part: {fault}; that row alone was refused, the rows after it read, and its object is looked for by rebuilding the index where no section read before it indexes it, rather than taken from an older section's row."));
+            $"The cross-reference {(stream ? "stream" : "table")} startxref names at offset {section} was read only in part: {fault}; that row alone was refused, the rows after it read, and its object is looked for by rebuilding the index where no row read before it indexes it, rather than taken from an older section's row."));
         document.GetObject(new PdfObjectId(4)).Should().BeOfType<PdfString>();
         document.WasRepaired.Should().BeFalse();
         document.GetObject(new PdfObjectId(3)).AsDictionary()!.IsOfType(PdfName.Page).Should().BeTrue();
@@ -3365,7 +3494,7 @@ public class CrossReferenceChainTests
             PdfDiagnosticCodes.XRefSectionUnreadable);
         document.Diagnostics[0].Position.Should().Be(section);
         document.Diagnostics[1].Message.Should().Be(Invariant(
-            $"The cross-reference {(shape.StartsWith("stream", StringComparison.Ordinal) ? "stream" : "table")} startxref names at offset {section} was read only in part: {fault}; that row alone was refused, the rows after it read as far as one of the reader's limits let the section be read, and its object is looked for by rebuilding the index where no section read before it indexes it, rather than taken from an older section's row."));
+            $"The cross-reference {(shape.StartsWith("stream", StringComparison.Ordinal) ? "stream" : "table")} startxref names at offset {section} was read only in part: {fault}; that row alone was refused, the rows after it read as far as one of the reader's limits let the section be read, and its object is looked for by rebuilding the index where no row read before it indexes it, rather than taken from an older section's row."));
         document.Reader.Structure.Sections.Should().ContainSingle().Which.CutByLimit.Should().BeTrue();
     }
 
@@ -4865,6 +4994,70 @@ public class CrossReferenceChainTests
                 $"The cross-reference stream at offset {newer} gives 2 rows a reserved type: the row for object 3 gives it type 3, the first of them. ISO 32000-1 defines types 0, 1 and 2, and reads any other as a reference to the null object (7.5.8.3), as the reader did until it rebuilt the index by scanning the file; it now reads each object such a row numbers as the rebuild finds it."));
         document.WasRepaired.Should().BeTrue();
         document.GetObject(new PdfObjectId(3)).Should().BeOfType<PdfString>().Which.ToText().Should().Be("three");
+    }
+
+    [Theory]
+    [InlineData("/X", 1, "", ", but its number was refused before the row was read: it stands for nothing, and its object is looked for by rebuilding the index", 1, "new three")]
+    [InlineData("[3 1]", 1, "", ", but its number was refused before the row was read: it stands for nothing, and its object is looked for by rebuilding the index", 1, "new three")]
+    [InlineData(null, 1, "3 1\n{three} 65536 n \n", ", but its number was refused before the row was read: it stands for nothing, and its object is looked for by rebuilding the index", 1, "new three")]
+    [InlineData("[3 2]", 2, "", ", but their numbers were refused before the rows were read: they stand for nothing, and their objects are looked for by rebuilding the index", 2, "new three")]
+    [InlineData("[3 1]", 2, "", ": the rows were read so but for those whose numbers were refused before they were read, which stand for nothing and whose objects are looked for by rebuilding the index; no older section's row stands for the objects of the others", 1, "new three")]
+    [InlineData("[10 1]", 1, "", ": the row was read so, and no older section's row stands for its object", 0, null)]
+    [InlineData(null, 1, "3 1\n{three} 00000 n \n", ": the row was read so, and no older section's row stands for its object", 0, "new three")]
+    public void A_row_of_a_reserved_type_whose_number_was_refused_before_it_is_said_to_stand_for_nothing(
+        string? lost, int reserved, string newest, string said, int refused, string? three)
+    {
+        // A cross-reference stream gives object 3, and object 4 after it, a row of type 7, which ISO 32000-1 reads as a
+        // reference to the null object; a newer section refused object 3's number first: a lost stream declaring every
+        // number, objects 3 and 4, or object 3, or the newest table's own row for it, refused alone. The row did not stand,
+        // its object read through a rebuild, though the report said it was read so: it says it stands for nothing, and
+        // which of the rows it counts are such (#208, #210, #221). Where the lost stream declares object 10, the row stands,
+        // and object 3 reads as null; where the newest table places object 3, that row supersedes it, as any newer row does.
+        var (file, middle) = ReservedRowFiles.PastARefusal(lost, reserved, newest);
+
+        using var document = PdfDocument.Open(file);
+
+        var many = reserved > 1;
+        document.Diagnostics.Should().ContainSingle(d => d.Code == PdfDiagnosticCodes.XRefEntryReserved).Which.Message.Should().Be(Invariant(
+            $"The cross-reference stream /Prev names at offset {middle} gives {(many ? "2 rows" : "1 row")} a reserved type: the row for object 3 gives it type 7{(many ? ", the first of them" : string.Empty)}. ISO 32000-1 defines types 0, 1 and 2, and reads any other as a reference to the null object (7.5.8.3){said}."));
+        document.Reader.Structure.Sections.Single(s => s.Offset == middle).ReservedRowsRefused.Should().Be(refused);
+        var index = document.Reader.ChainIndex!;
+        index.TryGet(3, out _).Should().Be(refused == 0);
+
+        if (many && refused == 1)
+        {
+            // Object 4's row, whose number no newer section refused, stands as the null object.
+            index.TryGet(4, out var four).Should().BeTrue();
+            four.Kind.Should().Be(XRefEntryKind.Free);
+        }
+
+        if (three is null)
+        {
+            document.GetObject(new PdfObjectId(3)).Should().BeSameAs(PdfNull.Instance);
+        }
+        else
+        {
+            Text(document, 3).Should().Be(three);
+        }
+
+        document.WasRepaired.Should().Be(refused > 0);
+    }
+
+    [Fact]
+    public void A_row_of_a_reserved_type_whose_number_was_refused_before_it_is_said_to_stand_for_nothing_where_its_stream_was_found_moved()
+    {
+        // As above, the lost stream refusing every number, its /Prev naming the stream four bytes past its header, where the
+        // chain finds it moved: what its rows gave, the row a newer refusal set aside counted, is carried to the section where
+        // it was named, and reported where it was found (#221).
+        var (file, middle) = ReservedRowFiles.PastARefusal("/X", shift: 4);
+
+        using var document = PdfDocument.Open(file);
+
+        var section = document.Reader.Structure.Sections.Single(s => s.Offset == middle);
+        section.State.Should().Be(XRefSectionState.Relocated);
+        section.ReservedRowsRefused.Should().Be(1);
+        document.Diagnostics.Should().ContainSingle(d => d.Code == PdfDiagnosticCodes.XRefEntryReserved).Which.Message.Should().Be(Invariant(
+            $"The cross-reference stream /Prev names at offset {middle + 4}, found at offset {middle}, gives 1 row a reserved type: the row for object 3 gives it type 7. ISO 32000-1 defines types 0, 1 and 2, and reads any other as a reference to the null object (7.5.8.3), but its number was refused before the row was read: it stands for nothing, and its object is looked for by rebuilding the index."));
     }
 
     /// <summary>Where the first object starts: after the header line and the comment of binary bytes.</summary>

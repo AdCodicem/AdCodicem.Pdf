@@ -68,12 +68,22 @@ internal sealed class XRefSectionRecord
     /// Gets the first row of a reserved type the cross-reference stream gives, in words — "the row for object 3 gives it
     /// type 3" —; null when it gives none. ISO 32000-1 (7.5.8.3) defines types 0, 1 and 2, and reads any other as a
     /// reference to the null object, as the reader does: the row stands for its object as a free row does, and no older
-    /// section's row stands for it (#221). It is no cause of the section's being unreadable.
+    /// section's row stands for it (#221), but for one whose number was refused before it was read, which stands for nothing,
+    /// its object looked for by rebuilding the index (<see cref="ReservedRowsRefused"/>). It is no cause of the section's
+    /// being unreadable.
     /// </summary>
     public string? ReservedRow { get; set; }
 
     /// <summary>Gets how many rows of a reserved type the cross-reference stream gives (<see cref="ReservedRow"/>).</summary>
     public long ReservedRows { get; set; }
+
+    /// <summary>
+    /// Gets how many of the rows of a reserved type the cross-reference stream gives stand for nothing, their numbers refused
+    /// before they were read: by a newer section — a row refused alone, a range a stream whose rows were lost declares,
+    /// every number —, or by a row of the stream's own for the same number (#221). Each such object is looked for by
+    /// rebuilding the index, rather than read as the null object.
+    /// </summary>
+    public long ReservedRowsRefused { get; set; }
 
     /// <summary>
     /// Gets a value indicating whether the section's own reading lost rows through the file's fault, the rows before the
@@ -190,10 +200,11 @@ internal sealed class XRefSectionRecord
     public bool EveryNumberRefusedBefore { get; init; }
 
     /// <summary>
-    /// Gets a value indicating whether a row the section read was not indexed, its number refused before the row was read:
+    /// Gets a value indicating whether a row the section read was not indexed, its number refused before the row was read
     /// by a section the chain read before this one — a range of numbers a stream whose rows were lost declares, the rest of a
-    /// subsection a table lost, a row refused alone (#208, #210) —, or, where the section gives a number twice, by its own
-    /// row refused first. Its report says the rows read were kept but for those, rather than all of them.
+    /// subsection a table lost, a row refused alone (#208, #210). Its report says the rows read were kept but for those,
+    /// rather than all of them. Where the section gives a number twice, its own row refused first, the other row does not
+    /// stand either, which is the section's own refusal (<see cref="RefusedRow"/>), not a newer section's.
     /// </summary>
     public bool RowsRefusedBefore { get; set; }
 
@@ -286,6 +297,7 @@ internal sealed class XRefSectionRecord
         RefusedRow = attempt.RefusedRow;
         ReservedRow = attempt.ReservedRow;
         ReservedRows = attempt.ReservedRows;
+        ReservedRowsRefused = attempt.ReservedRowsRefused;
         Incomplete = attempt.Incomplete;
         SubsectionsUnknown = attempt.SubsectionsUnknown;
         RowsHeld = attempt.RowsHeld;

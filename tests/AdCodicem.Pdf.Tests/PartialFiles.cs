@@ -418,6 +418,93 @@ internal static class PartialFiles
         return (file.Bytes, middle, lost);
     }
 
+    /// <summary>
+    /// A document saved twice. The first revision writes the catalog, an empty page tree, objects 3 and 4,
+    /// <c>(old three)</c> and <c>(old four)</c>, and a classic table that indexes them. The second writes them again,
+    /// <c>(new three)</c> and <c>(new four)</c>, and the section at <c>Section</c>, which <c>startxref</c> names: a classic
+    /// table written <paramref name="table"/> after its <c>xref</c> keyword, its trailer included, <c>{three}</c> and
+    /// <c>{four}</c> standing for the offsets of the newer revisions and <c>{oldest}</c> for the oldest table's; or, where
+    /// <paramref name="table"/> is null, cross-reference stream 6, whose <c>/Prev</c> names the oldest table, whose
+    /// <c>/Index</c> declares objects 3 on, <paramref name="declared"/> of them, and whose data holds the first
+    /// <paramref name="held"/> rows of the newer objects 3 and 4, in fields of 1, 4 and 3 bytes: object 3's gives it
+    /// generation 65536, which no entry holds, and the stream refuses it itself.
+    /// </summary>
+    public static (byte[] File, long Section) OwnRefusal(string? table, int held = 0, int declared = 0)
+    {
+        var file = new HandWrittenFile(version: "1.5");
+        var catalog = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>");
+        var pages = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>");
+        var oldThree = file.Object(3, "(old three)");
+        var oldFour = file.Object(4, "(old four)");
+        var oldest = file.Position;
+        file.Raw(string.Create(
+            CultureInfo.InvariantCulture,
+            $"xref\n0 5\n0000000000 65535 f \n{Row(catalog)}{Row(pages)}{Row(oldThree)}{Row(oldFour)}trailer\n<< /Size 5 /Root 1 0 R >>\n"));
+        var three = file.Object(3, "(new three)");
+        var four = file.Object(4, "(new four)");
+        var section = file.Position;
+
+        if (table is not null)
+        {
+            file.Raw("xref\n" + table
+                .Replace("{three}", three.ToString("D10", CultureInfo.InvariantCulture), StringComparison.Ordinal)
+                .Replace("{four}", four.ToString("D10", CultureInfo.InvariantCulture), StringComparison.Ordinal)
+                .Replace("{oldest}", oldest.ToString(CultureInfo.InvariantCulture), StringComparison.Ordinal));
+        }
+        else
+        {
+            var data = new StringBuilder();
+
+            foreach (var (offset, generation) in new (long Offset, int Generation)[] { (three, 65536), (four, 0) }.Take(held))
+            {
+                data.Append((char)1)
+                    .Append((char)((offset >> 24) & 0xFF)).Append((char)((offset >> 16) & 0xFF))
+                    .Append((char)((offset >> 8) & 0xFF)).Append((char)(offset & 0xFF))
+                    .Append((char)((generation >> 16) & 0xFF)).Append((char)((generation >> 8) & 0xFF)).Append((char)(generation & 0xFF));
+            }
+
+            file.Object(6, string.Create(
+                CultureInfo.InvariantCulture,
+                $"<< /Type /XRef /Size 7 /Index [3 {declared}] /W [1 4 3] /Root 1 0 R /Prev {oldest} /Length {data.Length} >>\nstream\n{data}\nendstream"));
+        }
+
+        file.Raw(string.Create(CultureInfo.InvariantCulture, $"startxref\n{section}\n%%EOF\n"));
+        return (file.Bytes, section);
+    }
+
+    /// <summary>
+    /// A document whose table, which <c>startxref</c> names, gives object 3 twice. It writes the catalog, an empty page tree
+    /// and object 3, <c>(three)</c>, then the table, whose first subsection places objects 0 to 3 and whose second gives
+    /// object 3 again; where <paramref name="older"/> says so, object 3 is <c>(old three)</c>, which an older table names
+    /// through its <c>/Prev</c> indexes beside the catalog and the page tree, written again as <c>(new three)</c>, and the
+    /// table gives object 3 alone, in both subsections. One of its two rows for object 3 gives it generation 65536, which no
+    /// entry holds — the first where <paramref name="refusedFirst"/> says so —, and the other places it.
+    /// </summary>
+    public static (byte[] File, long Table) GivenTwice(bool refusedFirst, bool older)
+    {
+        var file = new HandWrittenFile();
+        var catalog = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>");
+        var pages = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>");
+        var three = file.Object(3, older ? "(old three)" : "(three)");
+        var before = string.Create(CultureInfo.InvariantCulture, $"0 4\n0000000000 65535 f \n{Row(catalog)}{Row(pages)}");
+        var prev = string.Empty;
+
+        if (older)
+        {
+            var oldest = file.Position;
+            file.Raw(string.Create(CultureInfo.InvariantCulture, $"xref\n{before}{Row(three)}trailer\n<< /Size 4 /Root 1 0 R >>\n"));
+            three = file.Object(3, "(new three)");
+            before = "3 1\n";
+            prev = string.Create(CultureInfo.InvariantCulture, $" /Prev {oldest}");
+        }
+
+        var refused = string.Create(CultureInfo.InvariantCulture, $"{three:D10} 65536 n \n");
+        var rows = refusedFirst ? refused + "3 1\n" + Row(three) : Row(three) + "3 1\n" + refused;
+        var table = file.Position;
+        file.Raw(string.Create(CultureInfo.InvariantCulture, $"xref\n{before}{rows}trailer\n<< /Size 4 /Root 1 0 R{prev} >>\nstartxref\n{table}\n%%EOF\n"));
+        return (file.Bytes, table);
+    }
+
     /// <summary>Writes a classic table's row placing an object in use at <paramref name="offset"/>.</summary>
     private static string Row(long offset) => string.Create(CultureInfo.InvariantCulture, $"{offset:D10} 00000 n \n");
 

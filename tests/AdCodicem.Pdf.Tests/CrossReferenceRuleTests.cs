@@ -2322,6 +2322,33 @@ public class CrossReferenceRuleTests
         }
     }
 
+    [Theory]
+    [InlineData("/X", 1, "", "but the reader did not read the row so, its number refused before it was read: it reads its object as the rebuild finds it")]
+    [InlineData(null, 1, "3 1\n{three} 65536 n \n", "but the reader did not read the row so, its number refused before it was read: it reads its object as the rebuild finds it")]
+    [InlineData("[3 2]", 2, "", "but the reader did not read the rows so, their numbers refused before they were read: it reads each such object as the rebuild finds it")]
+    [InlineData("[3 1]", 2, "", "as the reader did until it rebuilt the index by scanning the file, but for the rows whose numbers were refused before they were read; it now reads each object such a row numbers as the rebuild finds it")]
+    [InlineData("[10 1]", 1, "", "as the reader did until it rebuilt the index by scanning the file; it now reads each object such a row numbers as the rebuild finds it")]
+    [InlineData(null, 1, "3 1\n{three} 00000 n \n", "as the reader does")]
+    public void A_row_of_a_reserved_type_whose_number_was_refused_before_it_is_not_said_to_have_been_read_as_null(
+        string? lost, int reserved, string newest, string reader)
+    {
+        // A cross-reference stream gives object 3, and object 4 after it, a row of type 7; a newer section refused object 3's
+        // number before the chain came to it: a lost stream declaring every number, objects 3 and 4, or object 3, or the
+        // newest table's own row for it, refused alone. The reader never read the row as the null object, though the finding
+        // said it did until it rebuilt the index: it says the reader did not read it so, or which rows it did not read so
+        // (#208, #210, #221). Where the lost stream declares object 10, the row stood until the validation rebuilt the index
+        // the lost stream left incomplete; where the newest table places object 3, the reader reads the row so, superseded.
+        var (file, middle) = ReservedRowFiles.PastARefusal(lost, reserved, newest);
+        var many = reserved > 1;
+
+        var finding = Single(Validate(file), PdfValidationRuleIds.XRefEntryTypeReserved);
+
+        finding.Location.Position.Should().Be(middle);
+        finding.Message.Should().Be(string.Create(
+            CultureInfo.InvariantCulture,
+            $"The cross-reference stream at offset {middle} gives {(many ? "2 rows" : "1 row")} a reserved type: the row for object 3 gives it type 7{(many ? ", the first of them" : string.Empty)}. ISO 32000-1 defines types 0, 1 and 2, and reads any other as a reference to the null object (7.5.8.3), {reader}."));
+    }
+
     [Fact]
     public void Each_stream_giving_rows_of_a_reserved_type_is_one_finding_its_first_row_named_and_its_rows_counted()
     {

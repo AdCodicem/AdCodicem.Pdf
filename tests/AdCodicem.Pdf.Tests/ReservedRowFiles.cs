@@ -107,6 +107,41 @@ internal static class ReservedRowFiles
     }
 
     /// <summary>
+    /// A document saved three or four times. The first revision writes the catalog, an empty page tree, objects 3 and 4,
+    /// <c>(old three)</c> and <c>(old four)</c>, and a classic table that indexes them. The second writes them again,
+    /// <c>(new three)</c> and <c>(new four)</c>, and cross-reference stream 7 at <c>Middle</c>, whose <c>/Prev</c> names the
+    /// oldest table and whose rows give objects 3 on, <paramref name="reserved"/> of them, type 7. Where
+    /// <paramref name="lost"/> is given, the third writes cross-reference stream 9, of <c>/Index</c> <paramref name="lost"/>,
+    /// whose rows cannot be read — its <c>/W</c> gives a field a negative width — and whose <c>/Prev</c> names stream 7: it
+    /// refuses to the older sections' rows the numbers its <c>/Index</c> declares, or every number where it is no array
+    /// (#208). The last writes a table, which <c>startxref</c> names, that indexes the catalog and the page tree, then gives
+    /// <paramref name="newest"/>, <c>{three}</c> standing for the offset of <c>(new three)</c>, and names the section before
+    /// it through <c>/Prev</c>. The <c>/Prev</c> that names stream 7 names it <paramref name="shift"/> bytes past its header.
+    /// </summary>
+    public static (byte[] File, long Middle) PastARefusal(string? lost, int reserved = 1, string newest = "", int shift = 0)
+    {
+        var file = new HandWrittenFile(version: "1.5");
+        var catalog = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>");
+        var pages = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>");
+        var oldThree = file.Object(3, "(old three)");
+        var oldFour = file.Object(4, "(old four)");
+        var oldest = file.Position;
+        file.Raw(Invariant($"xref\n0 5\n0000000000 65535 f \n{Row(catalog)}{Row(pages)}{Row(oldThree)}{Row(oldFour)}trailer\n<< /Size 5 >>\n"));
+        var three = file.Object(3, "(new three)");
+        file.Object(4, "(new four)");
+        var data = Rows(1, [.. Enumerable.Repeat((7UL, 0UL, 0UL), reserved)]);
+        var middle = file.Object(7, Invariant(
+            $"<< /Type /XRef /Size 8 /Index [3 {reserved}] /W [1 4 2] /Prev {oldest} /Length {data.Length} >>\nstream\n{data}\nendstream"));
+        var previous = lost is null
+            ? middle + shift
+            : file.Object(9, Invariant($"<< /Type /XRef /Size 12 /Index {lost} /W [1 -4 2] /Prev {middle + shift} /Length 0 >>\nstream\n\nendstream"));
+        var at = file.Position;
+        file.Raw(Invariant(
+            $"xref\n0 3\n0000000000 65535 f \n{Row(catalog)}{Row(pages)}{newest.Replace("{three}", Invariant($"{three:D10}"), StringComparison.Ordinal)}trailer\n<< /Size 12 /Root 1 0 R /Prev {previous} >>\nstartxref\n{at}\n%%EOF\n"));
+        return (file.Bytes, middle);
+    }
+
+    /// <summary>
     /// A document indexed by one cross-reference stream, stream 5 at <c>Stream</c>, which <c>startxref</c> names: its row
     /// for object 3 <c>(three)</c> is of type 3, and its row for object 4 <c>(four)</c> places it 900 bytes into the string
     /// of 1,500 letters object 9 holds, which no row indexes — neither where the entry says nor within 512 bytes of it.

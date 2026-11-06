@@ -46,8 +46,8 @@ public static class PdfDiagnosticCodes
     /// section, is the section found moved, reported where it was found (#281); or a stream that only gives a <c>/W</c>,
     /// when nothing near it can be read in its place. A value that leads to an object one of the reader's limits cut is
     /// the limit's: the chain ends there, and nothing is reported of the section. The rows read before the fault, if any,
-    /// were kept, but for those whose numbers a newer section refused — none of them, where a newer section refused every
-    /// number, as the message says —; the objects only the rest indexes are missing from the index, which is rebuilt by
+    /// were kept, but for those it refused itself and those whose numbers a newer section refused — none of them, where a
+    /// newer section refused every number, as the message says —; the objects only the rest indexes are missing from the index, which is rebuilt by
     /// scanning the file when one of them is asked for. A stream of <c>/Type /XRef</c> whose dictionary was read whole loses
     /// its rows alone: no older section's row stands for an object it numbers — for any, where its numbering cannot be read
     /// —, which is missing from the index as the objects only it indexes are; and one that gives a <c>/Prev</c> hands that
@@ -59,7 +59,9 @@ public static class PdfDiagnosticCodes
     /// <c>startxref</c> names among them, was read only in part, and kept, the chain going on from it where its trailer was
     /// read (#207, #210): a row that is no row ended a subsection of a table, a cross-reference stream holds fewer rows than
     /// it declares, the end of the file cuts a table before its trailer or within its <c>trailer</c> keyword, or a row that
-    /// gives an object in use what no entry can hold was refused alone. The rows read were kept, but for those whose numbers a
+    /// gives an object in use what no entry can hold was refused alone, its object rebuilt where no row read before it — a
+    /// newer section's, or the section's own for the same number — indexes it. The rows read were kept, but for those it
+    /// refused itself, which the message says without naming them beside the fault it names, and those whose numbers a
     /// newer section refused — none of them, where a newer section refused every number —, and the message says which, and
     /// what was lost: the objects the lost rows would index, which no older section's row stands for, and those only the
     /// sections a lost trailer would name index, are missing from the index, rebuilt when one of them is asked for. The
@@ -115,8 +117,10 @@ public static class PdfDiagnosticCodes
     /// bytes whose leading bytes are not all zero. ISO 32000-1 (7.5.8.3) defines types 0, 1 and 2, and reads any other as a
     /// reference to the null object, permitting new types to be defined in the future: each such row is read so, its object
     /// indexed as a free one's is, and no older section's row stands for it (#221), until the index is rebuilt for another
-    /// fault, which reads the object as the scan finds it. Reported once for each section, at the section, the first such
-    /// row in the message and the others counted.
+    /// fault, which reads the object as the scan finds it; but for one whose number was refused before it was read — by a
+    /// newer section, or by a row of the stream's own for the same number —, which stands for nothing, its object rebuilt,
+    /// as the message says (#208, #210). Reported once for each section, at the section, the first such row in the message
+    /// and the others counted.
     /// </summary>
     public const string XRefEntryReserved = "xref.entry-reserved";
 

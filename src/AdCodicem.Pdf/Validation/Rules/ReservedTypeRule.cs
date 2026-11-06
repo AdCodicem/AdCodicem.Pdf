@@ -22,7 +22,11 @@ namespace AdCodicem.Pdf.Validation.Rules;
 /// gave: each object such a row numbers reads as the rebuild finds it, which is the object an older revision defines
 /// when the file writes no newer one, and the finding says the reader read the rows so only until it rebuilt the index.
 /// Settled before the first rule, whether the index was rebuilt is known here and stays so, so that the finding reads the
-/// same whatever was read before the validation.
+/// same whatever was read before the validation. A row whose number was refused before it was read — by a newer section, or
+/// by a row of the stream's own for the same number — was never read so: it stood for nothing, its object looked for by
+/// rebuilding the index, which the finding says rather than that the reader read it so
+/// (<see cref="IO.XRef.XRefSectionRecord.ReservedRowsRefused"/>); every such refusal leaves the index to be rebuilt as the
+/// validation settles it.
 /// </remarks>
 internal sealed class ReservedTypeRule : IValidationRule
 {
@@ -43,12 +47,20 @@ internal sealed class ReservedTypeRule : IValidationRule
                 continue;
             }
 
-            var others = section.ReservedRows > 1 ? ", the first of them" : string.Empty;
+            var many = section.ReservedRows > 1;
+            var others = many ? ", the first of them" : string.Empty;
 
-            // A rebuild serves each object as the scan finds it, the row the chain read for it set aside.
-            var reader = context.Document.WasRepaired
-                ? "as the reader did until it rebuilt the index by scanning the file; it now reads each object such a row numbers as the rebuild finds it"
-                : "as the reader does";
+            // A rebuild serves each object as the scan finds it, the row the chain read for it set aside; a row whose number
+            // was refused before it was read was never read so, and its object is the rebuild's from the first.
+            var reader = section.ReservedRowsRefused == section.ReservedRows
+                ? (many
+                    ? "but the reader did not read the rows so, their numbers refused before they were read: it reads each such object as the rebuild finds it"
+                    : "but the reader did not read the row so, its number refused before it was read: it reads its object as the rebuild finds it")
+                : context.Document.WasRepaired
+                    ? (section.ReservedRowsRefused > 0
+                        ? "as the reader did until it rebuilt the index by scanning the file, but for the rows whose numbers were refused before they were read; it now reads each object such a row numbers as the rebuild finds it"
+                        : "as the reader did until it rebuilt the index by scanning the file; it now reads each object such a row numbers as the rebuild finds it")
+                    : "as the reader does";
 
             context.Report(
                 this,
