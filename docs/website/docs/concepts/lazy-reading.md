@@ -206,8 +206,10 @@ farther off whose rows would stand for its lost ones in silence. The line is lex
 nothing, as does one that the bytes a source gives end at or before
 ([#52](https://github.com/AdCodicem/AdCodicem.Pdf/issues/52)), and the search goes on past it, as past any place that
 holds no section. Stream data, or a string, that an earlier line opened is not seen: the word `xref`, or such a header,
-is taken all the same on a line that starts inside a string, and anywhere on a line of stream data, its middle included,
-for the section found moved, the real one farther off left unread
+is taken all the same on a line that starts inside a string, and on a line of stream data wherever that line, lexed
+alone, reads it as a token, its middle included, for the section found moved, the real one farther off left unread; and
+a section there that reads, whole or in part — an attached file's own table, a cross-reference stream the data quotes —,
+is taken whatever its line is, the chain going on through its trailer
 ([#171](https://github.com/AdCodicem/AdCodicem.Pdf/issues/171)). An object there that gives a `/W` and another `/Type`
 and does not read as a section — a CIDFont —, with no section near it, is no section, and is reported missing; where
 `startxref` names one, it holds no section either, and its dictionary is no trailer. The section `startxref` names is
@@ -285,12 +287,15 @@ rebuild's.
 
 ## What it deliberately does not do
 
-Past the index and the catalog, nothing is parsed until something asks for it, and — short of a rebuild, which
-scans the whole file, and of the search for where a damaged stream's data ends, below — stream data is not even read
-from disk. A `PdfStream` holds the offset and length of its bytes; the bytes arrive when you call `GetRawBytes()` or
-`Decode()`, and not before. A test holds this on a document of about 500 KB, nearly all of it one page's content:
-opening it reads less than 200,000 bytes of the file, and reading that content's bytes afterwards reads at least its
-500,000 more.
+Past the index and the catalog, nothing is parsed until something asks for it, and no stream's data is read for that
+stream before it is asked for: a `PdfStream` holds the offset and length of its bytes; the bytes arrive when you call
+`GetRawBytes()` or `Decode()`, and not before. Reads made for something else take in whatever of a stream's data lies
+within their reach, and keep none of it: the searches for the header and for `startxref`, the window an object or a
+section is parsed through, the search near an offset an object, a `/Prev` or an `/XRefStm` names — 512 bytes either
+side, and, for a section, as far as 4,096 bytes back to a line's start, above —, a rebuild's scan of the whole file, and
+the search for where a damaged stream's data ends, below. A test holds this on a document of about 500 KB, nearly all of
+it one page's content: opening it reads less than 200,000 bytes of the file, and reading that content's bytes afterwards
+reads at least its 500,000 more.
 
 Nor are the bytes kept once they have arrived: neither the stream nor the object cache holds them, and each call reads
 them again. A document held in memory — opened from bytes or from a stream — lends them where they lie, without a copy:
