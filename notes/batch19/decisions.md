@@ -544,3 +544,21 @@ Settled without a question (existing principles decide):
 For the maintainer (R7-Q2 refinements): [7]/[29]/[8] first-revision stream (no /Prev by Table 17) deferred -> wrong section, false hybrid-stream-wrong, rebuild, section-not-found; [11] /Prev compared as written (real, reference, offset naming nothing); [30] namings again (kagain, x_again, q_xref_again, q_plain_again; tied to #330/#321).
 - 2026-11-07: before asking, prototype the candidate rules over the round 8 shapes and the 3,000-file differential (workflow lot19-r8-proto).
 - 2026-11-07: prototype workflow launched: wf_0e14da16-684 (task wjt1xo2hx), script lot19-r8-proto.js: harness (r8proto/), variants P1-positional (P1a/P1b for [11]), P1-named-again (PNA-a/PNA-b for [30]), P2-by-xrefstm-stream, P3-prev-target, each with the [13] cut fix and [8] count-once; judge.
+
+# R8 prototypes (wf_0e14da16-684): result
+6 agents, 0 errors. Result in r8-proto-result.json (harness, variants, judge). Harness: r8proto/ (3,210 files, 9,228 blocks; manifest.tsv, ZzProtoDiffTests.cs.txt, classify.py, run_variant.sh; baselines out-main/out-d3ef/out-head, deterministic).
+Worse than main (M/BB/plain); vs d3ef; vs head (worse/better):
+- head 1434 (317/379/738); d3ef 697; -
+- fixes (i)+(ii) only 1388; 650; 40/9
+- P1 positional, /Prev as written 1159 (224/301/634); 416; 237/56
+- P1a (resolved; /Prev naming no offset = no /Prev) 1217; 359; 349/59 -- flips 2 rows unintentionally
+- P1b (resolved; /Prev naming no offset = another offset) 1187 (254/301/632); 386; 287/58
+- PNA-b (P1 + NameAgain deferral) 1165; 422; 243/56. PNA-a (+ take named-again in place) 1164 (q_xref_again only; x_again order-dependent)
+- P2 (by the /XRefStm's stream) 1204, 0 new vs d3ef, but loses kfirst x6, refs/g001618 unfixed
+- P3 (/Prev target) 1326; leaves mother/lref/genA/(c)/outofwindow/cutown as head
+- J1 (judge) = P1b + PNA-b's deferral + fixes: 1193; 392; 293/58. Seven classes 2,224 tests, 2 fail: pad-300 row (fix (i), intended) and offset-zero row (builder writes an impossible shape; rewrite).
+- J2 (positional only where S gives /Prev) rejected: 1248.
+Judge recommends J1. Rule: (1) a stream near the table's /Prev may be the table's own only if it starts at/after S (the stream the /XRefStm read, or the stream it names again); (2) such a stream judged by its /Prev as the chain reads it (real integer, reference resolved through sections already read; no /Prev or the table's /Prev -> deferred; S itself with no /Prev dropped; any other offset incl. none in the file -> nearest-first); (3) a guard-cut dictionary keeps its place, reported as the guard's; (4) each place counts once, retries run past the bound; (5) named-again stream stays passed over (#330 untouched), only arms (1).
+J1 still wrong (measured): p_first x2 (older revision's hidden stream before S, nearer than its table -> chain ends, rebuild, false root-invalid; = main/d3ef, head read whole); g001581/g003714 (S gives no /Prev, first revision's stream taken 451-508 bytes off, middle revisions lost with only offset-adjusted/section-shifted; three baselines rebuild); [7](c) type ~76 seeded + cutown x2 + outofwindow x2 (= main: rebuild + root-invalid #260; head was silent older table); /Prev naming no offset (g002426, prevform f/g/h) = main + hybrid-stream-wrong; x_again, q_xref_again, q_plain_again (#330).
+[12]: on J1 the mayBeOwn initializer mutant leaves all 9,228 blocks identical (only adds window reads): kill it with a counting-source assertion (ordinary object at/after S read through one window).
+[30]: fix the deferral half now (NameAgain sets tablePrevious/streamStart from the named-again stream, +17/-3, only kagain x6 change, read whole like kfirst); file the take-in-place half beside #330/#321 with reproducers; #330 comment (its shape with /Prev a few bytes off reads whole on main).
