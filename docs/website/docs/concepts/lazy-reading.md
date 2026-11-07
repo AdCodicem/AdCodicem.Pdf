@@ -128,14 +128,15 @@ The map is rebuilt by scanning the whole file, once at most, and never while the
   that gives a `/W` and reads there as a section, whatever its type, not a font, a string, or an object that gives a
   `/W` and does not read as one; a `/Prev` that names what the chain has reached, which ends the chain in a loop, keeps
   no place, nor does one that names white space running on past `MaxTrailerLength` —, or what the `/XRefStm` read in the
-  stream's place where the `/Prev`'s own search comes to it, which that `/Prev` then reads whole: a classic table, or a
-  stream whose own dictionary gives a `/Prev`, whatever it names, with no other section near —
-  (`xref.hybrid-stream-lost`, [#156](https://github.com/AdCodicem/AdCodicem.Pdf/issues/156)); the report on what the
-  `/Prev` reaches too is made before that `/Prev` is read, and says only that the chain looks for it there, or that the
-  offset lies outside the file, and a stream the `/Prev` read again is reported once it has, its own `/Prev`, where it
-  names no older section, reported as the chain finds it. Where the search near the offset the `/XRefStm` names stopped
-  at what the `/Prev` names only because one of the reader's limits cut it before it said what it is, or cut a value its
-  rows are read with, the naming is the limit's: nothing is reported of it, and the map is not rebuilt for it
+  stream's place where the `/Prev`'s own search comes to it, which that `/Prev` then reads whole: a classic table where
+  the search comes to it, or a stream where it comes nearest if its own `/Prev` names another offset than the table's,
+  once every other place was if that `/Prev` names the table's, and never if it gives none — (`xref.hybrid-stream-lost`,
+  [#156](https://github.com/AdCodicem/AdCodicem.Pdf/issues/156)); the report on what the `/Prev` reaches too is made
+  before that `/Prev` is read, and says only that the chain looks for it there, or that the offset lies outside the
+  file, and a stream the `/Prev` read again is reported once it has, its own `/Prev`, where it names no older section,
+  reported as the chain finds it. Where the search near the offset the `/XRefStm` names stopped at what the `/Prev`
+  names only because one of the reader's limits cut it before it said what it is, or cut a value its rows are read with,
+  the naming is the limit's: nothing is reported of it, and the map is not rebuilt for it
   ([#264](https://github.com/AdCodicem/AdCodicem.Pdf/issues/264)). A stream an older table names again, as a writer that
   copies `/XRefStm` into the next trailer leaves it, is no such fault, and is read once, whatever offset in the white
   space before its header each table writes;
@@ -190,7 +191,9 @@ offset, and it is looked for nearby as one that is not there, where a search may
 the one `startxref` names ([Reader limits](reader-limits.md)). A section is never found where a section the chain
 reached starts — one it read, or one there that it could not read though it declares itself a section —, which is not
 the one looked for ([#188](https://github.com/AdCodicem/AdCodicem.Pdf/issues/188)), but for what a table's `/XRefStm`
-read in the stream's place, which that table's `/Prev` takes, reading it whole
+read in the stream's place, which that table's `/Prev` takes, reading it whole; where it read a stream, any stream near
+the offset whose own dictionary gives no `/Prev`, or the one the table's names, may be the table's own, and is tried
+once every other place was, nearest first, but never the stream the `/XRefStm` read where it gives none
 ([#156](https://github.com/AdCodicem/AdCodicem.Pdf/issues/156)); nor is one looked for when what is there declares
 itself a section — an `xref` keyword, or a stream whose dictionary gives `/Type /XRef` — and cannot be read: it is
 reported where it is, any section near it being another ([#281](https://github.com/AdCodicem/AdCodicem.Pdf/issues/281)).
