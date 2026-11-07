@@ -1,0 +1,1070 @@
+######## [1] lens=src-texts key=r7src-acceptance-comment-anywhere-on-its-line sev=nit -> verdict=narrowed sev=nit maint=False
+LOCATION: src/AdCodicem.Pdf/IO/PdfFileReader.cs:4940-4942 (the acceptance comment in TryRelocateXRefSection); also IsTokenOnItsLine remark :4989-4991
+CLAIM: The comment a867e66 added says, with no condition, that 'the word xref or such a header in stream data, anywhere on its line, its middle included, is taken for the section found moved (#171)'. That is not true: a '%', '(' or '<' earlier on the same line of stream data opens a comment or a string for the line test, the word is dropped, and the real section is read. The R6a stage's own probe saw this ('A % or a ( on the same line in the stream data hides the word'). The docs stage added the condition to diagnostics.md, validation-rules.md and threat-model row 432 ('wherever its line, lexed alone, reads it as a token'), because 'without that clause the qualifier could be read' wrongly. The src comment never got it. The IsTokenOnItsLine remark has it only in an ambiguous form ('is taken anywhere on its line, its middle included, as a token a load of that line would read there'). The same unconditional 'anywhere on its line' also appears in threat-model.md:460-461, lazy-reading.md:203 and the #171 comment.
+EVIDENCE: Probe ZzR7SrcTests.ZzStreamDataLines, using NearbyFiles.UpdatePastAWordInStreamData(before, word, after) with the newest /Prev 2 bytes past the word. Output: r7src/streamdata-lines.txt.
+Not taken, the real table read:
+- 'Notes.\n100% of ' + xref: s1=(Relocated,Table,off=1765) TAKEN=False 6=null [xref.offset-adjusted@1765]
+- 'see (' + xref + ') tables': (Relocated,off=1763) 6=null
+- 'see <41 ' + xref + ' 42>': (Relocated,off=1756) 6=null
+- 'Example: % 12 0 obj << /Type /XRef ...': (Relocated,off=1789) 6=null
+- inline-image data '\x80(\x81 xref ...' on one line: (Relocated,off=1774) 6=null
+Taken: lf/cr/crlf at the line start and mid-line; '%' or '(' after the word; '%' on an earlier line; a string opened two lines earlier and closed before or after the word (LF and CR); a hex string opened on an earlier line; inline-image data; a header mid-line after CR or CRLF. Each gives (Malformed,Table|Stream,off=word) TAKEN=True repairedAtOpen=True 6="six, freed by the update" [xref.offset-adjusted@word | xref.section-unreadable@word | xref.rebuilt@-1].
+FIX: Comment only. At :4941-4942 write: '... and the word xref or such a header in stream data is taken for the section found moved wherever its line, lexed alone, reads it as a token, its middle included, but not past a %, ( or < that opens a comment or a string before it on that line (#171)'. In the IsTokenOnItsLine remark, replace 'is taken anywhere on its line, its middle included, as a token a load of that line would read there' with 'is taken wherever a load of that line alone reads it as a token, its middle included'. The docs stage can align threat-model.md:460-461 and lazy-reading.md:203 the same way.
+--- REFUTER
+REASON: The behavior reproduces. In stream data, a word that a %, ( or < earlier on its own line puts in a comment or a string, for the lex of that line alone, is not taken, and the real section is read. So the sentence at PdfFileReader.cs:4941-4942, "the word xref or such a header in stream data, anywhere on its line, its middle included, is taken for the section found moved (#171)", read on its own, says more than the code does.
+
+The finding is wider than the evidence, though. The same comment already holds the condition, in two places: the sentence before lists "the word xref or a header in a comment or a string" among the places that are dropped, and the sentence itself starts "Its line is lexed as a load lexes the line's own tokens". So this is a tension inside one comment, not a false comment.
+
+The IsTokenOnItsLine part does not stand. The summary of that same doc comment says plainly "not a word or a header a comment or a string on that line holds". The remark's "as a token a load of that line would read there" limits where the word is taken; it is not ambiguous.
+
+lazy-reading.md also holds the condition in the same paragraph, at :195-196: "not the word or such a header in a comment or a string there". The #171 comment says that IsTokenOnItsLine "lexes the place's line alone". Only the threat model's #171 known-gap entry, at :460-461, states the gap with no condition in the entry itself; the condition is in row 432 of the same file. That overstates a known gap a little, and the gap is the safe side to overstate.
+
+The rest is as the round left it: R6a's probe saw that a % or a ( hides the word, decisions.md records it, and the sibling pages (diagnostics.md:110, validation-rules.md:56, threat-model.md row 432) got the exact clause "wherever its line, lexed alone, reads it as a token". The batch did not make any behavior worse. This is wording only, so it stays a nit.
+
+The finding's proposed wording is itself imprecise. A ( that opens a string closed before the word does not hide it: "see (a) the xref" is taken. A % that the file puts inside a string opened on an earlier line does hide it: "(100\n50%) xref" is not taken. The rule is "lexed alone", not "past a %, ( or <".
+EVIDENCE: My own probe on d3ef236: ZzR7RefAcceptTests.ZzStreamDataLineAccept, built on NearbyFiles.UpdatePastAWordInStreamData with the newest /Prev 2 bytes past the word. Copy at /tmp/claude-0/-home-user-AdCodicem-Pdf/b5ddd9fc-0507-5e11-8a94-c9e1fedd4860/scratchpad/r7ref-ZzR7RefAcceptTests.cs.txt, output at /tmp/claude-0/-home-user-AdCodicem-Pdf/b5ddd9fc-0507-5e11-8a94-c9e1fedd4860/scratchpad/r7ref-accept.txt.
+
+Not taken (the real table is read):
+- pct-before 'Notes.\n100% of '+xref: (Relocated,Table,off=1784), 6=null, [xref.offset-adjusted@1784]
+- paren-before 'see ('+xref+') tables': (Relocated,off=1672), 6=null
+- hex-before 'see <41 '+xref+' 42>': (Relocated,off=1671), 6=null
+- hdr-pct-before 'Example: % 12 0 obj\n<< /Type /XRef ...': (Relocated,off=1830), 6=null
+- pct-in-earlier-string 'Notes (100\n50%) '+xref: (Relocated,off=1785), 6=null
+
+Taken, each giving (Malformed,Table|Stream,off=word), repaired=True, 6="six, freed by the update", [xref.offset-adjusted@word | xref.section-unreadable@word | xref.rebuilt@-1]:
+- ctl-start and ctl-mid
+- hdr-mid
+- pct-after
+- pct-earlier-line
+- str-earlier-line
+- paren-closed-before 'see (a) the '+xref, at 1650
+
+Control: 'text': (Relocated,off=1776), 6=null.
+
+Texts on d3ef236:
+- PdfFileReader.cs:4936-4938 lists "the word xref or a header in a comment or a string" among the places dropped, and :4940 starts "Its line is lexed as a load lexes the line's own tokens".
+- The IsTokenOnItsLine summary (:4976-4979) says "not a word or a header a comment or a string on that line holds".
+- lazy-reading.md:195-196 says "not the word or such a header in a comment or a string there".
+- threat-model.md:460-461, the #171 gap entry, has no condition; row 432 has the "lexed alone" clause.
+
+decisions.md, 'Review round 6 fixes', records the R6a probe: "'%' or '(' on the same line hides the word".
+FIX: A comment-only change; the maintainer has no choice to make. At PdfFileReader.cs:4941-4942, use the sibling pages' wording: "... stream data, or a string, that an earlier line opened is not seen, and the word xref or such a header in stream data is taken for the section found moved wherever its line, lexed alone, reads it as a token, its middle included (#171)."
+
+Leave the IsTokenOnItsLine remark as it is. If it is touched at all, it can read "is taken wherever a load of that line alone reads it as a token, its middle included".
+
+Optionally, the docs stage can write the same clause into the threat model's #171 gap entry at :460-461: "in stream data, wherever its line, lexed alone, reads it as a token, its middle included". lazy-reading.md:203 already has the condition in its paragraph and needs nothing. Do not use the finding's "not past a %, ( or <": a string that closes before the word does not hide it.
+
+######## [2] lens=src-texts key=r7src-carveout-whatever-it-refused-vs-newer-refusal sev=nit -> verdict=confirmed sev=nit maint=False
+LOCATION: src/AdCodicem.Pdf/IO/PdfFileReader.cs:4512-4515 (ReportSectionReadInPart remark); src/AdCodicem.Pdf/Diagnostics/PdfDiagnosticCodes.cs:69-71 (XRefSectionUnreadable summary, public)
+CLAIM: e4130e8's carve-out says that a table startxref or a /Prev names whose rest cannot be known 'says, whatever it refused, that what only the rest of the table, or the sections its trailer would name, index is looked for'. The public summary says the same: 'whose message says, whatever it refused, that ...'. That does not hold when a newer section refused every number before the chain came to the table. The noneStands arm comes first, and the message then says 'none of the rows read stands, a newer section having refused every number ...', with no rest-of-table words. Within the remark, this also clashes with paragraph 3's 'whatever the section lost' for the same shape. Within the summary, it clashes with its own '— none of them, where a newer section refused every number —, and the message says which'. The objects rebuilt are the same either way, so this is wording only.
+EVIDENCE: Probe ZzR7SrcTests.ZzCutTable, output r7src/cut-table.txt. Shape /Prev-behind-refusal: startxref names a table whose /Prev names stream 20 (<< /Type /XRef /Size 21 /Index /X /W [1 4 2] /Prev C /Length 0 >>), whose /Prev names table C. C is cut by the end of the file after N one-row subsections '{100+2i} 1\n0 0 x'. For N=1, 4095, 4096 and 4097: 'S /Prev off=889 Read Table inc=True unk=True' and 'Warning xref.section-unreadable @889: The cross-reference table /Prev names at offset 889 was read only in part: the row for object 100, at offset 924, is not an offset, a generation and n or f; none of the rows read stands, a newer section having refused every number to the older sections' rows, and every object no section read before it indexes is looked for by rebuilding the index.' Object 3 reads 'only in the oldest' after xref.rebuilt. Control: PartialFiles.CutAfterLostSubsections(N, prev) gives the rest-of-table tail at all four counts, under startxref (@289) and under /Prev (@489).
+FIX: In both texts, replace 'whatever it refused' with 'however many ranges it lost' and add the exception. For example: '... says, however many ranges it lost, that what only the rest of the table, or the sections its trailer would name, index is looked for, the same objects, unless a newer section refused every number before the chain came to it, which the message says instead (EveryNumberRefusedBefore)'. The code is unchanged.
+--- REFUTER
+REASON: The finding holds. It is wording only, and the batch wrote the text, in e4130e8 (round 6 [1]/[12]). In the table arm of ReportSectionReadInPart (src/AdCodicem.Pdf/IO/PdfFileReader.cs:4597-4606), noneStands is tested before SubsectionsUnknown. So a table a /Prev names whose rest cannot be known, read after a newer section refused every number, gets the words 'none of the rows read stands, a newer section having refused every number ...'. It never gets the rest-of-table words.
+
+Two texts state the carve-out flatly: the remark (:4511-4514, 'says, whatever it refused, that what only the rest of the table ... index is looked for') and the public XRefSectionUnreadable summary (PdfDiagnosticCodes.cs:69-71, 'whose message says, whatever it refused, that ...'). Both are false for this shape. Inside the remark, this also contradicts paragraph 3 ('Where a newer section refused every number ... every object ... is looked for ..., whatever the section lost'). Inside the summary, it contradicts its own '— none of them, where a newer section refused every number —, and the message says which'.
+
+The rebuild covers the same objects either way: the chain ends at the table, and the noneStands message is true. Only startxref cannot reach the exception, since no section is newer, so it is reachable only under /Prev.
+
+Not known. r6-findings [1]/[12] and their refuter verdicts, decisions.md 'Review round 6' and 'Review round 6 fixes', #171, #289, #295, #331 and #52 never mention the noneStands case. No test pins a cut /Prev table behind a refuse-every-number section. The tests at CrossReferenceChainTests.cs:2926 and :3220 cover tables that end in a trailer.
+
+The finding is not wider than the evidence. The three pages d3ef236 rewrote carry the same flat carve-out, with 'however many ranges it lost' in place of 'whatever it refused', and omit the same exception:
+- lazy-reading.md:167-169
+- diagnostics.md:112 ('says instead, however many ranges it lost, ...', after '— none of them, where it refused every number before the chain came to the section, which the message says —')
+- threat-model.md:434
+
+The fix should cover them too. Otherwise the src texts, once corrected, would disagree with the pages.
+EVIDENCE: My own probe, saved at /tmp/claude-0/-home-user-AdCodicem-Pdf/b5ddd9fc-0507-5e11-8a94-c9e1fedd4860/scratchpad/lot19/r7ref-carve/ZzRefuteCarveTests.cs.txt, run on origin/ccr-6d6c0ee6-dqm4lm-188 at d3ef236. Output: /tmp/claude-0/-home-user-AdCodicem-Pdf/b5ddd9fc-0507-5e11-8a94-c9e1fedd4860/scratchpad/lot19/r7ref-carve/carve.txt.
+
+The file: startxref names a table that indexes nothing and whose /Prev names a refuser. The refuser's /Prev names a table at 80289, which the end of the file cuts after N one-row subsections '{100+2i} 1\n0 0 x', with no trailer. I tried three refusers:
+- (a) a stream '<< /Type /XRef /Size 21 /Index /X /W [1 4 2] /Prev 80289 /Length 0 >>';
+- (b) the same stream with '/Index 21 0 R';
+- (c) a classic table with 4,097 two-number subsections '{50000+3i} 2\n0 0 x', which loses more than 4,096 ranges and has a trailer whose /Prev is 80289.
+
+For every refuser, at N=1 and at N=4097, the cut table's record reads '/Prev off=80289 Read Table inc=True unk=True'. Its report reads:
+
+'Warning xref.section-unreadable @80289: The cross-reference table /Prev names at offset 80289 was read only in part: the row for object 100, at offset 80324, is not an offset, a generation and n or f; none of the rows read stands, a newer section having refused every number to the older sections' rows, and every object no section read before it indexes is looked for by rebuilding the index.'
+
+Then comes xref.rebuilt, and object 3 reads 'only in the oldest'. In (c) the newer table itself says '... every other object no section read before it indexes is looked for ...'.
+
+Control from the reviewer's output, r7src/cut-table.txt: PartialFiles.CutAfterLostSubsections gives the rest-of-table tail at N=1, 4095, 4096 and 4097, under startxref (@289) and under /Prev (@489).
+
+Code: the table arm is 'said = (section.Fault ?? ...) + (noneStands ? "; none of the rows read stands, " + EveryNumberRefused : "; the rows read were kept" + KeptButFor(section) + (section.SubsectionsUnknown ? ... rest-of-table ...'. The probe was removed afterwards, and the worktree is clean.
+FIX: Docs only. The code is unchanged. In all five texts, keep 'however many ranges it lost' and add the exception.
+
+- ReportSectionReadInPart remark (:4511-4514): '... but a table startxref or a /Prev names whose rest cannot be known, at which the chain ends, says, however many ranges it lost, that what only the rest of the table, or the sections its trailer would name, index is looked for: the same objects, no section past it being read — unless a newer section refused every number before the chain came to it, which only a /Prev can name and whose message says so instead (EveryNumberRefusedBefore, below).'
+- XRefSectionUnreadable summary (PdfDiagnosticCodes.cs:69-71): '... whose message says, however many ranges it lost, that what only the rest of the table, or the sections its trailer would name, index is looked for, the same objects, unless a newer section refused every number before the chain came to it, which the message says instead —'.
+- The same clause in lazy-reading.md:167-169, diagnostics.md:112 and threat-model.md:434: 'unless a newer section refused every number before the chain came to it, which its report says instead'.
+
+Optional: add one chain-test row that pins the noneStands words for a /Prev-named cut table behind a stream whose /Index is no array. No maintainer decision is needed.
+
+######## [3] lens=src-texts key=r7src-padding-probes-few-more-within-search-window sev=nit -> verdict=confirmed sev=nit maint=False
+LOCATION: src/AdCodicem.Pdf/IO/PdfFileReader.cs:348-351 (_paddingProbes remark, the [4] fix)
+CLAIM: The remark says a place's probe is 'one window of XRefProbeLength bytes where that token ends short of its edge, and at most a few more within the search's own window where leading zeros carry a header's number past it'. The extra probes are not within the search's own window. They are probes of 256 and 2,048 bytes from the place, and the 2,048-byte one reads up to 1,557 bytes past the window's end. Only the number lies within the window. Also, a number of exactly 32 (or 256) digits ends at the edge rather than past it, and it already grows the probe.
+EVIDENCE: Probe ZzR7SrcTests.ZzCandidateProbe: a recording source logs the reads at the place. A /Prev names 'not a section at all' at 110, and the place is at 131. Output r7src/candidate-probe.txt, search window [-402,622]:
+- digits=1: reads=[32,4154]
+- 31: [32,4184]
+- 32: [32,256,4185]
+- 255: [32,256,4408]
+- 256: [32,256,2048,4409] probeReachEnd=2179 pastWindowBy=1557
+- 480: [32,256,2048,4633] pastWindowBy=1557
+- 900, 1000, 2047, 2048: [] (the obj lies outside the window, so no candidate)
+With the place 273 bytes before the offset at 256 digits: [32,256,2048,4430], pastWindowBy=1263. The last read in each list is the object's own window. Diagnostics are [xref.section-missing@named] in every header row.
+FIX: Comment only. For example: '... one window of XRefProbeLength bytes where that token ends short of its edge, and at most two more, of 256 and 2,048 bytes, where leading zeros carry a header's number to that edge: the number lies within the search's own window, which keeps it under 1,025 bytes, and MaxRelocationCandidates bounds the places'.
+--- REFUTER
+REASON: The finding holds. The remark on _paddingProbes (src/AdCodicem.Pdf/IO/PdfFileReader.cs:347-351) was written in e4130e8 for round 6's [4]. It copies the round 6 refuter's proposed wording. It says a place's probe is "one window of XRefProbeLength bytes where that token ends short of its edge, and at most a few more within the search's own window where leading zeros carry a header's number past it".
+
+Two parts of that are imprecise.
+
+1. "Within the search's own window" is true of the number but not of the probes. The search keeps a place only where the header lies whole inside its window. The window is [absolute-512, absolute+512], so it is at most 1,025 bytes (:4882-4883). The number therefore ends inside the window. But PaddingAt grows its probe eightfold from the place (:5219-5229): 32, then 256, then 2,048 bytes, capped at MaxTrailerLength + 32. The 2,048-byte probe starts at or after the window's start, so it always ends past the window's end. In the probe it ends 1,557 bytes past.
+
+2. Probes grow on `first.End >= probe.Length` (:5229). So a number of exactly 32 or 256 digits, which ends at the probe's edge, already grows the probe. That case is neither "short of its edge" nor "past it". PaddingAt's own remark says it correctly: "reach the last one's edge".
+
+"A few" is at most two in every case. The number stays under 1,025 bytes, so the 2,048-byte probe always holds it, and under a lowered MaxTrailerLength the last probe is capped at the trailer window plus 32.
+
+Nothing here changes behavior or cost. The bound of 2,336 bytes per place and MaxRelocationCandidates still hold, and no report changes. This is a wording imprecision in a private member's remark, not an issue already known (#171, #289, #295, #331 and #52 do not hold it). The brief asks round 7 to check each round 6 fix's text against the code, so it is in scope. Nit.
+
+One narrowing, of the fix and not the claim: the reviewer's suggested text names the probes as "of 256 and 2,048 bytes". Under a lowered MaxTrailerLength they are smaller (32, 256, 288 at MaxTrailerLength 256), so the fix should say "up to".
+EVIDENCE: My own probe, ZzR7RefCand, rebuilt on origin/ccr-6d6c0ee6-dqm4lm-188 at d3ef236 (Release, 0 warnings). Copy at /tmp/claude-0/-home-user-AdCodicem-Pdf/b5ddd9fc-0507-5e11-8a94-c9e1fedd4860/scratchpad/lot19/r7ref-candprobe/ZzR7RefCandTests.cs.txt, output at /tmp/claude-0/-home-user-AdCodicem-Pdf/b5ddd9fc-0507-5e11-8a94-c9e1fedd4860/scratchpad/lot19/r7ref-candprobe/out.txt.
+
+The file: a classic table's /Prev names "not a section at all" at 110. At 131 is `0…07 0 obj 42 endobj`, its number zero-padded to N digits, followed by a 4,000-byte comment. A recording source logs every read at the place. The last read in each list is the object's window. The search window is [0,622].
+
+Default limits:
+- digits=1: reads=[32,4154], probe ends at 163
+- digits=31: [32,4184]
+- digits=32: [32,256,4185], probe ends at 387 (the number ends exactly at the 32-byte edge and still grows the probe)
+- digits=255: [32,256,4408]
+- digits=256: [32,256,2048,4409], number ends at 387 (inside the window), probe ends at 2179, past the window by 1557
+- digits=257: [32,256,2048,4410], past by 1557
+- digits=600 and 1000: [] (the header lies outside the window, so the place is no candidate)
+- diagnostics in every row: [xref.section-missing@110]
+
+MaxTrailerLength 256:
+- digits=32: [32,256,256]
+- digits=256: [32,256,288,256], the last probe capped at 256 + 32 = 288
+
+These match the reviewer's figures (256 digits: [32,256,2048,4409], pastWindowBy=1557) and round 6's [4] refuter (32 digits: [32,256,...]).
+
+Code:
+- :4882-4883: start = max(0, absolute-512); end = absolute + min(512, length-absolute)
+- :5219: reach = bound + XRefProbeLength
+- :5229: `if (first.End >= probe.Length && probe.Length == probeLength && probeLength < reach)` grows the probe eightfold
+- grep shows the phrase "search's own window" only at :349
+FIX: Comment only (no code, no test, no maintainer decision). At src/AdCodicem.Pdf/IO/PdfFileReader.cs:348-350, replace "one window of <see cref="XRefProbeLength"/> bytes where that token ends short of its edge, and at most a few more within the search's own window where leading zeros carry a header's number past it, which <see cref="MaxRelocationCandidates"/> bounds" with "one window of <see cref="XRefProbeLength"/> bytes where that token ends short of its edge, and at most two more, of up to 256 and 2,048 bytes, where leading zeros carry a header's number to that edge or past it: they may read past the search's window, but the number lies within it, under 1,025 bytes, and <see cref="MaxRelocationCandidates"/> bounds the places". The rest of the remark stays as it is: a section found there is reached through _sectionsReadAt, and keeping the probes would push out the hybrid /Prev's probe.
+
+######## [4] lens=src-texts key=r7src-171-comment-uncompressed-only sev=nit -> verdict=narrowed sev=nit maint=False
+LOCATION: GitHub #171 issuecomment-6703927674, the round's 'track' (not in the tree). The src texts it cites, PdfFileReader.cs:4942 and :4989, say 'stream data' and hold.
+CLAIM: The #171 comment says the search takes the word 'in uncompressed stream data'. It also says 'Its reach is narrow: it needs ... uncompressed text holding the word or such a header'. In fact any stream whose raw bytes hold the word is taken. That includes a /FlateDecode stream whose deflate data is a stored block, which is zlib level 0 or an encoder's fallback for data that does not compress: the text lies there verbatim. An embedded file or an object stream compressed that way gives the same freed object, false Error and rebuild. The src texts (IsTokenOnItsLine, the acceptance comment) say 'stream data' without that qualifier, so they are right.
+EVIDENCE: Probe ZzR7SrcTests.ZzCompressedStream, output r7src/compressed.txt. Object 4 is << /Filter /FlateDecode >> with a stored-block zlib payload 'Notes on the file format.\nxref tables list offsets; ...', and the newest /Prev is 2 bytes past the 'xref'.
+- /Type /EmbeddedFile: s1=(Malformed,Table,off=1684) TAKEN=True repairedAtOpen=True 6="six, freed by the update" [xref.offset-adjusted@1684 | xref.section-unreadable@1684 | xref.rebuilt@-1]; decoded4 is the same text.
+- /Type /ObjStm /N 0 /First 0: (Malformed,Table,off=1692) TAKEN=True, the same object 6 and codes.
+FIX: No change in the tree. In the end-of-batch #171 comment, add one line: the search takes the word in any stream whose raw bytes hold it, not only uncompressed ones. A Flate stream stored at level 0 is one, and so is binary data that spells it.
+--- REFUTER
+REASON: The behavior holds. The search reads raw bytes and decodes nothing, so a stream whose filter keeps the text byte for byte is taken the same way an unfiltered one is. I confirmed this with a probe on d3ef236.
+
+I narrowed the claim that the comment is wrong. The #171 comment (issuecomment-6703927674, the 'track' in r6-fix-result.json) says "In uncompressed stream data, such as an embedded file that holds prose" and "uncompressed text holding the word or such a header". A level-0 deflate block is what RFC 1951 calls a "non-compressed block" (BTYPE 00), and RunLength's literal runs are copied as is. Read that way, the comment's words are not false. But "uncompressed stream data" can easily be read as "a stream with no /Filter", which would suggest a /FlateDecode or /RunLengthDecode stream is safe, and it is not. So this is a clarification nit about the end-of-batch comment, not a misstatement in the tree.
+
+This is not a wider path into the behavior. It is the same context, stream data, and the line test still does not see it. Every text in the tree says "stream data" with no qualifier, so they are right. Those are IsTokenOnItsLine's summary and remarks, the acceptance comment in TryRelocateXRefSection, the threat model's #171 row (docs/threat-model.md:432), lazy-reading.md, and the diagnostics and validation-rule rows. The only tree texts that say "uncompressed" describe the test files, which are in fact uncompressed: the NearbyFiles XML docs and the comment on CrossReferenceChainTests' object 4. They also hold.
+
+The case is rare in practice. Ordinary deflate (Optimal) scatters the text into a bitstream, and the reader then reads the file as main does. Only a stored block or a RunLength stream keeps the word verbatim. Binary data spelling it on a line is a chance in about 2^32 per position.
+EVIDENCE: I rebuilt the reviewer's ZzCompressedStream on origin/ccr-6d6c0ee6-dqm4lm-188 at d3ef236 (Release build, 0 warnings) and added controls. The probe is saved at /tmp/claude-0/-home-user-AdCodicem-Pdf/b5ddd9fc-0507-5e11-8a94-c9e1fedd4860/scratchpad/lot19/r7ref-flate/ZzR7RefFlateTests.cs.txt and its output at /tmp/claude-0/-home-user-AdCodicem-Pdf/b5ddd9fc-0507-5e11-8a94-c9e1fedd4860/scratchpad/lot19/r7ref-flate/compressed.txt. The file has the same three revisions as the comment's reproducer 1. Object 4 is a filtered stream, and the newest /Prev points 2 bytes past the 'xref' in its raw bytes.
+- flate-stored (hand-built zlib stored block): s1=(Malformed,Table,off=1684) TAKEN=True repairedAtOpen=True 6="six, freed by the update" [xref.offset-adjusted@1684 | xref.section-unreadable@1684 | xref.rebuilt@-1]. decoded4 is the plain text.
+- flate-stored-objstm (/Type /ObjStm /N 0 /First 0): off=1692 TAKEN=True, with the same object 6 and the same codes.
+- flate-nocompression-api (.NET ZLibStream, CompressionLevel.NoCompression): off=1684 TAKEN=True, with the same object 6 and the same codes.
+- flate-stored-midline ('The xref tables ...'): off=1689 TAKEN=True, with the same object 6 and the same codes.
+- runlength (/RunLengthDecode, one literal run): off=1682 TAKEN=True, with the same object 6 and the same codes.
+- Control flate-optimal (ZLibStream, Optimal): wordIdx=-1, s1=(Relocated,Table,off=1753) TAKEN=False repairedAtOpen=False 6=null [xref.offset-adjusted@1753]. The reader reads it as main does.
+FIX: Nothing to change in the tree. In the end-of-batch comment on #171, replace "uncompressed stream data" and "uncompressed text" with "stream data whose bytes hold the text as written". Add one line saying this covers a stream with no filter and also a filter that stores the text verbatim, such as /FlateDecode at level 0 (a stored deflate block, as .NET's CompressionLevel.NoCompression writes) or /RunLengthDecode's literal runs, while ordinary deflate output does not hold the word. The two pinning tests can stay on unfiltered files: the reader decodes nothing before the line test, so the filter makes no difference to the code path.
+
+######## [5] lens=tests key=stray-word-names-contradicted-by-171-pin sev=nit -> verdict=confirmed sev=nit maint=False
+LOCATION: tests/AdCodicem.Pdf.Tests/CrossReferenceChainTests.cs:1486; tests/AdCodicem.Pdf.Tests/CrossReferenceRuleTests.cs:793; cited in docs/threat-model.md:432 (Held-by column)
+CLAIM: Two test names from the batch's earlier rounds state a general rule: An_object_an_update_frees_stays_free_where_the_word_xref_lies_between_where_its_table_is_named_and_where_it_is (b9de553) and The_word_xref_on_a_line_that_starts_before_the_bytes_searched_near_an_offset_is_no_malformed_section (2b26d18). Every row of both holds the word in a comment or a string. The sibling tests say 'in a comment or a string' in their names, and these two do not. Round 6's own pin, The_word_xref_or_a_cross_reference_stream_s_header_in_stream_data_..._is_taken_for_the_section_found_moved, uses the same words ('the word xref') for the stream-data case, and the texts now document that case (#171). With the word in stream data, both names are false: the freed object does not stay free, and the validator does report xref.section-malformed. The threat model cites both names as evidence in the very row (:432) that now names the stream-data exception, so two texts contradict each other.
+EVIDENCE: Probes saved at /tmp/claude-0/-home-user-AdCodicem-Pdf/b5ddd9fc-0507-5e11-8a94-c9e1fedd4860/scratchpad/r7t/ZzR7PinTests.cs.txt and ZzR7DumpTests.cs.txt (same folder), run on d3ef236.
+
+(1) ZzWordBetweenNamedAndTable. The file is NearbyFiles.UpdatePastAWordInStreamData's shape, with /Prev 1637: 20 bytes before the word at 1657, which lies between that offset and the update's table at 1795. Output (between-head.txt):
+- 'open repaired=True', 'O6=(six, freed by the update)'
+- 'Repair xref.offset-adjusted @1657: ... /Prev names at offset 1637 was found 20 bytes after it.'
+- 'Warning xref.section-unreadable @1657 ... it holds the keyword tables at offset 1662'
+- 'Repair xref.rebuilt'
+The control, with 'text' in place of the word: 'O6=null', 'found 158 bytes after it', no rebuild.
+
+(2) ZzLongLineInStreamData. NearbyFiles.UpdateAfterAStrayLine with '9 0 obj\n<< /Type /EmbeddedFile /Length 725 >>\nstream\n' + 700 letters + ' xref see the table below\nendstream\nendobj\n'. Output (longline.txt):
+- 'repairedAtOpen=True', 'O4="old four"' (object 4 is the one the update freed)
+- offset-adjusted 'found 58 bytes before it', section-unreadable @2276, rebuilt
+- validator findings: 'F xref.section-malformed', 'F xref.section-shifted'
+The same line as a comment: 'O4=null', and the only finding is 'F xref.section-shifted'.
+FIX: Rename both tests to state the qualifier their rows hold: An_object_an_update_frees_stays_free_where_the_word_xref_in_a_comment_or_a_string_lies_between_where_its_table_is_named_and_where_it_is, and The_word_xref_in_a_comment_or_a_string_on_a_line_that_starts_before_the_bytes_searched_near_an_offset_is_no_malformed_section. Update the two citations in docs/threat-model.md:432. No assertion changes.
+--- REFUTER
+REASON: The finding holds, and it is a little wider than stated.
+
+**Where the names come from.** The batch wrote both names: b9de553 named An_object_an_update_frees_stays_free_where_the_word_xref_lies_between_where_its_table_is_named_and_where_it_is, and 2b26d18 named The_word_xref_on_a_line_that_starts_before_the_bytes_searched_near_an_offset_is_no_malformed_section. Neither name exists on main.
+
+**Rows versus names.** Every row of both tests holds the word in a comment or a string that its own line opens. The names claim the behavior wherever the word lies.
+
+**The batch's own vocabulary contradicts them.**
+- The round 6 pin calls the word in stream data "the word xref".
+- threat-model.md:432 says the search takes such a word "outside stream data and strings an earlier line opened", then cites both names as Held by.
+- The sibling tests and the row itself put "in a comment or a string" on the rule. These two names leave that out.
+
+**The probe.** I rebuilt it on d3ef236 with the tests' own builders, not a hand-written copy.
+- In the first test's shape, the word in stream data between the place named and the table brings back the freed object and rebuilds the index.
+- In the rule test's shape, a 700-letter line in stream data gives xref.section-malformed.
+
+**Wider than stated.** The same names were already false for a string an earlier line opened. That is round 4 [21]'s case, documented and commented on #171. My probe reproduces it in both shapes. So the contradiction dates from round 3/4, and round 6 added a second case. No earlier round raised these names. decisions.md and r1 to r6 hold no settlement, and #171 tracks the behavior, not the names.
+
+**Why it is reportable.** The brief allows a report when a text the batch wrote misstates the known case. This is such a text. It is only a wording issue: no assertion is wrong. So: nit.
+EVIDENCE: The probe is saved at /tmp/claude-0/-home-user-AdCodicem-Pdf/b5ddd9fc-0507-5e11-8a94-c9e1fedd4860/scratchpad/r7ref-names/ZzR7NamesRefTests.cs.txt, with its output at /tmp/claude-0/-home-user-AdCodicem-Pdf/b5ddd9fc-0507-5e11-8a94-c9e1fedd4860/scratchpad/r7ref-names/out-head.txt. It was built Release on d3ef236.
+
+(1) NearbyFiles.UpdateBehindAStrayWord(between, deleted: true), the first test's own shape (/Prev 1523):
+- between "%xref\n" (the test's row): 'open repaired=False', 'O3=null', 'xref.offset-adjusted @1534: ... found 11 bytes after it.'
+- between '8 0 obj\n<< /Type /EmbeddedFile /Length 56 >>\nstream\nNotes on the file format.\nxref tables list offsets.\nEnd.\nendstream\nendobj\n': 'open repaired=True', 'O3=(three old)', then:
+  - 'Repair xref.offset-adjusted @1606: ... /Prev names at offset 1523 was found 83 bytes after it.'
+  - 'Warning xref.section-unreadable @1606: ... it holds the keyword tables at offset 1611 ...'
+  - 'Repair xref.rebuilt'
+  - findings: 'F xref.section-malformed', 'F xref.section-shifted'
+- The same with 'see xref tables.' in the middle of the line: 'O3=(three old)', section-unreadable @1610, rebuilt.
+- Control, 'text' in place of 'xref': 'O3=null', 'found 131 bytes after it', no rebuild.
+- A string an earlier line opened, '8 0 obj\n(a string opened here\nxref tables list offsets)\nendobj\n': 'O3=(three old)', section-unreadable @1558, rebuilt, F xref.section-malformed.
+
+(2) NearbyFiles.UpdateAfterAStrayLine(line), the rule test's own shape:
+- 700-letter comment (the test's row): 'O4=null', 'found 65 bytes after it'; the only xref finding is 'F xref.section-shifted'.
+- '9 0 obj\n<< /Type /EmbeddedFile /Length 725 >>\nstream\n' + 700 letters + ' xref see the table below\nendstream\nendobj\n': 'open repaired=True', 'O4=(old four)', then:
+  - 'xref.offset-adjusted @2276: ... found 58 bytes before it.'
+  - 'Warning xref.section-unreadable @2276 ...'
+  - 'Repair xref.rebuilt'
+  - findings: 'F xref.section-malformed', 'F xref.section-shifted'
+- Control, 'text' in the stream data: 'O4=null', found 65 bytes after, only section-shifted.
+- '9 0 obj\n(opened here\n' + 700 letters + ' xref ...)\nendobj\n': 'O4=(old four)', section-unreadable @2244, rebuilt, F xref.section-malformed.
+
+`git log -S` attributes the names to b9de553 and 2b26d18 (batch 19). `git grep` at 21a0298 finds neither name.
+
+threat-model.md:432:
+- states 'a token a load reads from the start of its line, outside stream data and strings an earlier line opened, in which the word or such a header is taken ... ([#171])';
+- then lists both names in Held by, beside The_word_xref_or_a_cross_reference_stream_s_header_in_stream_data_short_of_where_a_prev_names_is_taken_for_the_section_found_moved.
+FIX: Rename the two tests so their names carry the qualifier their rows hold, as the sibling names and row 432 do. No assertion changes. The names to use:
+- CrossReferenceChainTests.cs:1486: An_object_an_update_frees_stays_free_where_the_word_xref_in_a_comment_or_a_string_lies_between_where_its_table_is_named_and_where_it_is
+- CrossReferenceRuleTests.cs:793: The_word_xref_in_a_comment_or_a_string_on_a_line_that_starts_before_the_bytes_searched_near_an_offset_is_no_malformed_section
+
+Update both citations in docs/threat-model.md:432.
+
+Optional: a tighter qualifier would also exclude round 4 [21]'s string an earlier line opened, which the siblings' 'in a comment or a string' still leaves inside the names. For example, '..._in_a_comment_or_a_string_its_line_opens_...' (every row opens its string on the word's line). If used, apply it to the sibling names too, for consistency.
+
+This is not a design choice, and nothing needs filing.
+
+######## [6] lens=tests key=cut-table-theory-misses-a-doubled-report sev=nit -> verdict=narrowed sev=nit maint=False
+LOCATION: tests/AdCodicem.Pdf.Tests/CrossReferenceChainTests.cs:3388 (A_table_the_end_of_the_file_cuts_where_startxref_or_a_prev_names_it_says_what_only_its_rest_indexes_is_looked_for_however_many_ranges_it_lost)
+CLAIM: The new cut-table theory asserts only Diagnostics[0].Message, plus the section record and the rebuild. If the report were made twice, or something were added after it, every row would still pass. Nothing else in the suite covers this shape either: no other test reaches a table that startxref or a /Prev names, cut by the end of the file after more than 4,096 lost ranges. Earlier tests of cut tables pin the count ('..._is_reported_once_...'). The brief asks whether a doubled report would be caught; here it would not.
+EVIDENCE: Dump (cuttable.txt): in all four rows the diagnostics are exactly [xref.section-unreadable, xref.rebuilt], and repairedAtOpen=True.
+
+Mutant (outside ADR 53's catalog, since it narrows a condition, so it is an exactness check and not a survivor): after the Warn in ReportSectionReadInPart, a second identical Warn guarded by 'if (section.SubsectionsUnknown && naming != "/XRefStm" && _rowsLostPast)'. Running CrossReferenceChainTests, CrossReferenceRuleTests, ReaderLimitsTests, GuardCutValueTests and XRefTableTests gave 1,688 total, 0 failed.
+
+With '&& _rowsLostPast' dropped, ten tests fail, among them The_table_startxref_names_whose_row_that_is_no_row_the_end_of_the_file_follows_... and A_table_prev_names_that_the_end_of_the_file_cuts_after_a_row_is_reported_once_.... The new theory's 4,096 rows still pass.
+
+The source was restored afterwards.
+FIX: Assert the whole list, e.g. document.Diagnostics.Select(diagnostic => diagnostic.Code).Should().Equal(PdfDiagnosticCodes.XRefSectionUnreadable, PdfDiagnosticCodes.XRefRebuilt), and keep the exact message check on Diagnostics[0].
+--- REFUTER
+REASON: The facts reproduce. The theory at tests/AdCodicem.Pdf.Tests/CrossReferenceChainTests.cs:3366-3392 checks only Diagnostics[0].Message, the last section's record, object 3 and WasRepaired. It does not pin how many diagnostics there are. Nothing else in the unit suite reaches this shape: PartialFiles.CutAfterLostSubsections has one caller, and no other test cuts a table startxref or a /Prev names after more than 4,096 lost ranges. A second identical report made only past the bound passes the whole unit suite.
+
+Three things narrow the finding:
+
+(1) The test holds what its name says. It also does what round 6's [1]/[12] asked of it: pin the deviation-3 tail. The fix stage showed that giving the table arm back its old form fails exactly its two 4,097 rows.
+
+(2) No code on the branch could double this report. A classic table reports at one call site (PdfFileReader.cs:3420-3422), under !readAgain. readAgain (:3372) is true only for the stream an /XRefStm read, when a /Prev reads it again. In this shape, _rowsLostPast steers nothing that reports:
+- RefuseRowsLost (:4739) refuses every number for `_rowsLostPast || section.SubsectionsUnknown`.
+- The message arm (:4613-4616) tests SubsectionsUnknown before everyRefused.
+So the doubling exists only as code the mutant adds. That is outside ADR 53's catalog: it adds a call and narrows a condition. It is not a survivor.
+
+(3) That call site is held to one report for a cut table a /Prev names: A_table_prev_names_that_the_end_of_the_file_cuts_after_a_row_is_reported_once_... (:2480) asserts ContainSingle and ends with the exact list of codes. The reviewer reports that a version of the mutant without `&& _rowsLostPast` fails ten tests. I did not rerun that.
+
+What is left is an exactness nit: the one theory pinning the shape past the bound would not see an extra or doubled diagnostic. The fix is one line, in the style :2502 already uses. It is not a maintainer decision.
+EVIDENCE: I rebuilt this on origin/ccr-6d6c0ee6-dqm4lm-188 at d3ef236: Release build, 0 warnings, 0 errors.
+
+Probe ZzR7RefCutTableDump, a theory over CutAfterLostSubsections with lost in {4095, 4096, 4097, 5000} and prev in {false, true}. Source: /tmp/claude-0/-home-user-AdCodicem-Pdf/b5ddd9fc-0507-5e11-8a94-c9e1fedd4860/scratchpad/r7ref-ZzR7RefCutTableTests.cs.txt. Output: /tmp/claude-0/-home-user-AdCodicem-Pdf/b5ddd9fc-0507-5e11-8a94-c9e1fedd4860/scratchpad/r7ref-cuttable-dump.txt.
+
+At head, all 8 rows behave alike. Each has repairedAtOpen=True and two diagnostics, both at opening and after reading object 3:
+- 'Warning xref.section-unreadable @289' (startxref) or '@489' (/Prev), whose message ends '... what only the rest of the table, or the sections its trailer would name, index is looked for by rebuilding the index.'
+- 'Repair xref.rebuilt @-1'
+Object 3 reads 'only in the oldest'.
+
+The mutant: after the Warn in ReportSectionReadInPart (PdfFileReader.cs:4647-4650), a second identical Warn under `if (section.SubsectionsUnknown && naming != "/XRefStm" && _rowsLostPast)`.
+- The probe then shows two 'Warning xref.section-unreadable' entries before xref.rebuilt for lost=4097 and lost=5000, under both namings. The 4095 and 4096 rows are unchanged.
+- The whole unit suite (dotnet test --project tests/AdCodicem.Pdf.Tests, Release, --no-build) gave total 7695, failed 0, succeeded 7675, skipped 20. Log: /tmp/claude-0/-home-user-AdCodicem-Pdf/b5ddd9fc-0507-5e11-8a94-c9e1fedd4860/scratchpad/r7ref-cuttable-mutant-suite.txt.
+
+The source was restored (git checkout), the probe removed, and the worktree is clean.
+
+From reading the code:
+- The table report has one call site (:3420-3422), under !readAgain; readAgain (:3372) concerns only the stream an /XRefStm read.
+- RefuseRowsLost (:4739) and the table arm (:4613-4616) give the same result whatever _rowsLostPast holds when SubsectionsUnknown is set.
+- The reported-once test at :2480-2502 already ends with `document.Diagnostics.Select(d => d.Code).Should().Equal(PdfDiagnosticCodes.XRefSectionUnreadable, PdfDiagnosticCodes.XRefRebuilt);`.
+FIX: At the end of the theory at CrossReferenceChainTests.cs:3366-3392, after `document.WasRepaired.Should().BeTrue();`, add the line :2502 uses: `document.Diagnostics.Select(d => d.Code).Should().Equal(PdfDiagnosticCodes.XRefSectionUnreadable, PdfDiagnosticCodes.XRefRebuilt);`. Keep the exact check on Diagnostics[0].Message.
+
+At head, all four rows pass with it: the rebuild runs at opening under both namings, and reading object 3 adds nothing. The mutant above fails the two 4,097 rows. The comment and the name can stay as they are, or the comment can add 'reported once'.
+
+Optionally, give the sibling theory A_table_keeps_the_numbers_its_faults_lost_apart_up_to_4096_ranges_and_refuses_every_number_past_them (:3339) the same list check. It too checks only Diagnostics[0].
+
+It is a test-only change, needs no maintainer choice, and can go in with the round 7 fixes.
+
+######## [7] lens=docs key=tm52-short-reads-of-ten-or-fewer-spend-the-budget-too sev=minor -> verdict=narrowed sev=minor maint=False
+LOCATION: docs/threat-model.md:366-373 (the [#52] Known gaps entry, rewritten by b446b1f)
+CLAIM: The entry gives the budget effect only to short reads of more than ten bytes. It says such a read 'ends the data where whole reads end it, though each read counts the ten bytes it repeats toward ... (`EndStreamSearchPasses`) — about eleven times ... at reads of eleven bytes, twice at twenty —, so that the reads on past its keyword may stop short, its object's `endobj` then unjudged, and a later stream's data be taken without a search'. Of reads of ten bytes or fewer it says only that they 'may miss a keyword ... the data ending later'. But reads of ten bytes or fewer spend the same budget. Each counts every byte it returns and moves the search on one byte, so a run of n-byte reads counts about n times what whole reads count. The same consequences follow even where those reads find the keyword: a later stream's data is taken without a search, and the object's endobj goes unjudged. Read as written, the entry tells someone whose source gives 8-, 9- or 10-byte reads that later streams are safe unless a keyword is missed. That is the gap round 6's [6] found, fixed for one side only. The code is the same as main's here, so only the text understates.
+EVIDENCE: Probe ZzR7BudgetTests (round 6's two-stream probe with more caps), run on d3ef236. Copy: /tmp/claude-0/-home-user-AdCodicem-Pdf/b5ddd9fc-0507-5e11-8a94-c9e1fedd4860/scratchpad/lot19/r7docs/ZzR7BudgetTests.cs.txt; output: r7docs/budget.txt. Only the reads that start in stream 5's data are capped; the keyword's reads are whole.
+(1) Streams 5 and 7 hold 30,000 and 9,000 bytes; the file is 43,559 bytes, budget 174,236. Whole reads: '5: 30000, 7: 9000'.
+- cap 8: 5's search counts 174,858 (x7.99), and 7 reads 9,018: 'the 9018 bytes up to the next object are taken as its data without a search, the document's searches for endstream having read as much of the file as they may'.
+- cap 9: 196,713 (x8.99), the same 9,018 'without a search'.
+- cap 10: 218,568 (x9.99), the same.
+- caps 2 and 5 (x2.00, x4.99): SAME.
+- At 60,000/9,000, caps 8, 9 and 10 give the same 9,018.
+(2) Stream 5 of 20,000 bytes followed by '\nendstream' + 80 spaces + 'foo'. Whole reads: endobj-missing True. Caps 9 and 10 (x8.80, x9.77): endobj-missing False, the endobj unjudged.
+(3) Probe ZzR7WaitTests (r7docs/wait.txt). Stream 5 holds 30,000 'A', then '\n12 % endstream\n0 other\n', with every read in the object capped at 9 or 10. The data ends where whole reads end it (len=30006), but endobj-missing is False where whole reads give True.
+FIX: Reword the entry so the budget clause covers every short read. For example: '... the search for a lost `endstream`, after a read of no more bytes than the ten its reads repeat, may miss a keyword, a header, or the end of line before a keyword that no window then holds whole, an `endstream` in a comment among them, the data ending later; a short read of more ends the data where whole reads end it. Every read counts all it returns toward what the searches may read together (`EndStreamSearchPasses`) and moves the search on past the ten bytes it repeats, one byte at least — about n times what whole reads count at reads of n bytes up to ten, eleven at eleven, twice at twenty —, so that, however long the reads, those on past a keyword may stop short, its object's `endobj` then unjudged, and a later stream's data be taken without a search.' In the end-of-batch #52 comment, give the two-stream reproducer at caps 8 to 12 (30,000/9,000), not only 11 and 12.
+--- REFUTER
+REASON: The finding holds. Three narrowings follow, and none of them changes the fix.
+
+The [#52] entry at docs/threat-model.md:366-373 was written by the batch, in f85a814 and b446b1f. Main's entry says only "taken as the end of the data". The entry splits the endstream search's short reads at ten bytes:
+- Reads of ten or fewer get one consequence only: a missed keyword, header or end of line, with the data ending later.
+- The budget clause ("each read counts the ten bytes it repeats toward ... `EndStreamSearchPasses`", and with it the later stream taken without a search and the `endobj` left unjudged) belongs to "a short read of more" only. For a read of ten bytes or fewer, "the ten bytes it repeats" does not even fit.
+
+The code does not split this way. In SearchEndStream's loop, every read adds all it returns to `_endStreamSearchBytes` (PdfFileReader.cs:2556). The next read then starts `Math.Max(1, span.Length - 10)` bytes on (:2585). So a run of n-byte reads with n of ten or fewer counts n times what whole reads count. That is close to the entry's own maximum of eleven times at eleven bytes. Once the budget is spent, two things happen even where the keyword is found and the data ends where whole reads end it:
+- a later stream's data is taken without a search;
+- NextSignificant returns -1, so the object's `endobj` goes unjudged.
+
+The code here is the same as main's (main :2381 and :2399). The behavior is #52's. Only the batch's text understates it.
+
+This is not round 6's [6] re-reported. [6] only looked at reads of more than ten bytes. Its refuter's wording, which b446b1f implemented as decided, attached the budget clause to reads of more alone. Reads of ten or fewer are a residue no round has raised yet. The issue does not hold it either: #52's comments say nothing of the budget, and the planned end-of-batch comment (decisions.md) covers caps 11 and 12 only.
+
+Narrowings:
+1. The entry does not say that reads of ten or fewer leave later streams "safe". It is silent, and the split invites that reading. Read strictly, the text is not false, so I keep minor rather than major. Minor and not nit, because the entry exists to state this gap, and the split puts the line of the budget effect at the wrong boundary.
+2. Reads of one byte count as whole reads do (x1.00). The extra cost is (n-1) times the stretch read short. With disjoint stretches, the budget is 4 times the file, so in practice only reads of about five bytes or more can spend it by themselves.
+3. A later stream whose data fits in the parser's window is not affected. In my 42,000/500 variant, stream 7 reads 500 at every cap, although caps 6 to 11 overspend the budget.
+
+Not a maintainer decision.
+EVIDENCE: My own probe ran at d3ef236 (origin/ccr-6d6c0ee6-dqm4lm-188, Release build, 0 warnings). It is ZzRefR7ShortBudgetTests, removed from the worktree after the run.
+- Copy: /tmp/claude-0/-home-user-AdCodicem-Pdf/b5ddd9fc-0507-5e11-8a94-c9e1fedd4860/scratchpad/lot19/r7ref-ZzRefR7ShortBudgetTests.cs.txt
+- Output: /tmp/claude-0/-home-user-AdCodicem-Pdf/b5ddd9fc-0507-5e11-8a94-c9e1fedd4860/scratchpad/lot19/r7ref-shortbudget.txt
+- Setup: ShortCountSource caps only the reads that start in [dataStart5, dataStart5 + f5). The reads at the keyword are whole.
+
+(A) Streams 5 and 7 hold 30,000 and 9,000 bytes, each followed by '\nendstream\nendobj'. File 43,463 bytes, budget 173,852.
+- Whole reads: '5=30000 missing5=False 7=9000', searched 21883.
+- Search bytes and multipliers:
+  - cap 1: 21873 (x1.00)
+  - cap 3: 65583 (x3.00)
+  - cap 4: x4.00
+  - cap 5: x4.99
+  - cap 6: x5.99
+  - cap 7: 153003 (x6.99)
+  - cap 12: x5.99
+  - cap 20: x2.00
+- Caps 1 to 7, 12 and 20 give SAME.
+- cap 8: searched 174858 (x7.99). Output: 'DIFF 5=30000 missing5=False 7=9018 || ... stream.length-invalid:The stream declared 9999999 bytes, and no endstream follows its data in the bytes read with its object; the 9018 bytes up to the next object are taken as its data without a search, the document's searches for endstream having read as much of the file as they may.'
+- cap 9 (196713, x8.99), cap 10 (218568, x9.99) and cap 11 (x10.99) give the same DIFF.
+- Stream 5's data is 30000 at every cap: the keyword is found.
+
+(B) One stream of 20,000 bytes, then '\nendstream' + 80 spaces + 'foo\n'. File 24,484 bytes.
+- Whole reads: '5=20000 missing5=True'.
+- cap 9 (x8.80) and cap 10 (x9.77): 'DIFF 5=20000 missing5=False'. The same data end, the endobj unjudged.
+- cap 11: DIFF. Caps 1 to 8, 12 and 20: SAME.
+- With 'endobj' after the 80 spaces, every cap gives SAME.
+
+(C) Streams of 42,000 and 500 bytes. Caps 6 to 11 overspend the budget (203148 to 372405 against 187,852), but the output is SAME at every cap: stream 7 fits in the parser's window.
+
+Code: PdfFileReader.cs:2556 '_endStreamSearchBytes += span.Length;' and :2585 'var next = position + Math.Max(1, span.Length - EndStreamSearchOverlap);'. Main 21a0298 has the same at :2381 and :2399.
+
+Text: `git show b446b1f -- docs/threat-model.md` puts the budget clause after 'A short read of more ends the data where whole reads end it, though ...'. The reads of ten or fewer get only '... may miss a keyword ..., the data ending later.'
+
+#52's two comments mention no budget.
+FIX: Docs only. In docs/threat-model.md's [#52] entry, state the budget clause for every short read, not only for reads of more than ten bytes. For example:
+
+"[#52] A source whose `Read` returns fewer bytes than asked is taken as the end of the data — not everywhere alike: the search for a lost `endstream`, after a read of no more bytes than the ten its reads repeat, may miss a keyword, a header, or the end of line before a keyword that no window then holds whole, an `endstream` in a comment among them, the data ending later; a short read of more ends the data where whole reads end it. Each read counts all it returns toward what the searches may read together (`EndStreamSearchPasses`), and the next starts no more than one byte past it below eleven bytes, ten bytes before its end above: about n times what whole reads count at reads of n bytes up to ten, eleven times at eleven, twice at twenty. So, however long the reads, those on past a keyword may stop short, its object's `endobj` then unjudged, and a later stream's data, longer than the parser holds, be taken without a search. An `endstream` in a comment, once a read has held it whole and it waits, is decided as whole reads decide it, however short the reads after it."
+
+In the end-of-batch #52 comment, give the two-stream reproducer (30,000/9,000) at caps 8 to 11, not only at 11, with 60,000/9,000 at caps 8 to 12. Give the endobj left unjudged at caps 9 to 11.
+
+No code change, and no maintainer decision.
+
+######## [8] lens=docs key=tm171-lazy-anywhere-on-its-line-drops-the-same-line-exception sev=nit -> verdict=confirmed sev=nit maint=False
+LOCATION: docs/threat-model.md:461 (#171 Known gaps entry: 'in stream data, anywhere on its line, its middle included'); docs/website/docs/concepts/lazy-reading.md:203-204 ('and anywhere on a line of stream data, its middle included')
+CLAIM: Two of the round's texts say the word or header in stream data is taken 'anywhere on its line'. A comment, a literal string or a hexadecimal string that the same line opens before it hides it. The XML docs a867e66 wrote ('as a token a load of that line would read there') state that exception, and so do a867e66's body ('unless a comment or a string on that line holds it'), diagnostics.md:110 and validation-rules.md:56 ('wherever its line, lexed alone, reads it as a token'). The threat model's #171 entry has no such qualifier anywhere near it. lazy-reading's general rule ('not the word or such a header in a comment or a string there') comes a sentence earlier, and 'anywhere on a line of stream data' then reads as overriding it. The pages disagree with each other on what the gap covers. de12b13's body has the same 'anywhere on its line' (status.md record).
+EVIDENCE: Probe ZzR7DocsTests.ZzStreamDataLine on d3ef236. Copy: /tmp/claude-0/-home-user-AdCodicem-Pdf/b5ddd9fc-0507-5e11-8a94-c9e1fedd4860/scratchpad/lot19/r7docs/ZzR7DocsTests.cs.txt; output: r7docs/streamdata.txt. It uses NearbyFiles.UpdatePastAWordInStreamData with the /Prev 2 bytes past the word.
+- Taken (section Malformed at the word, repairedAtOpen=True, six='(six, freed by the update)', Error xref.section-malformed): 'Notes...\n' + 'xref'; 'Notes...\nThe ' + 'xref'; '\r' and '\r\n' line ends; 'Notes...\nSee ) ' + 'xref'; 'Example: ' + header.
+- Not taken (section Relocated at the update's table 136 bytes after, repairedAtOpen=False, six=null, only Warning xref.section-shifted): 'Notes...\nSee % ' + 'xref', 'See (' + 'xref', 'See <' + 'xref', 'See /' + 'xref'. With 'Example: % ' + header or 'Example: (' + header, the section is Relocated 186 bytes after.
+FIX: threat-model.md:461: 'in stream data, wherever its line, lexed alone, reads it as a token — its middle included, though not past a `%`, `(` or `<` the line opens before it —'. lazy-reading.md:203-204: '... and on a line of stream data wherever that line, lexed alone, reads it as a token, its middle included, ...'. Record de12b13's 'anywhere on its line' under status.md's 'Commit bodies not rewritten'.
+--- REFUTER
+REASON: The finding holds. On d3ef236 the search near an offset takes the word or header in stream data only where its line, lexed alone, reads it as a token. A `%`, `(` or `<` that the same line opens before it hides it, and so does a `/` that makes it part of a name. Two texts say otherwise:
+- threat-model.md:461 (the #171 Known gaps entry) says the word is taken "in stream data, anywhere on its line, its middle included".
+- lazy-reading.md:203 says it is taken "anywhere on a line of stream data, its middle included".
+
+Read literally, "anywhere" covers the hidden cases too. Other texts the batch wrote state the rule exactly: the threat-model row at :432, diagnostics.md:110 and validation-rules.md:56 ("wherever its line, lexed alone, reads it as a token"), the IsTokenOnItsLine remark at PdfFileReader.cs:4989-4991 ("as a token a load of that line would read there"), and a867e66's body ("unless a comment or a string on that line holds it"). So the pages contradict each other.
+
+The finding goes slightly too far in two places:
+- It says the threat model has no qualifier "anywhere near" the entry. The same document's row at :432, 29 lines above, does have it.
+- On lazy-reading, the general rule ("not the word or such a header in a comment or a string there") comes two sentences before, and "Stream data ... that an earlier line opened is not seen" frames the sentence, so a careful reader can work it out. But "anywhere" sits beside the string case, which carries no such word, and that pairing still reads as a widening specific to stream data.
+
+Either way the text makes the gap look wider than it is, which is harmless for security, so this is a nit, not minor.
+
+Same wording elsewhere:
+- The comment at PdfFileReader.cs:4941-4942, which the finding does not name. In context it is about as qualified as lazy-reading.
+- de12b13's body.
+- The #171 comment round 6 posted ("the word `xref`, anywhere on its line, its middle included").
+
+None of this is in r1 to r6, decisions.md or #171's settled points. Round 6's fix stage recorded that a `%` or `(` on the same line hides the word, and qualified three texts but not these two. Round 6 [14]'s refuter had asked for the 'anywhere on such a line, its middle included' wording, meaning the position in the line, not an override of the line's own comments and strings.
+EVIDENCE: I rebuilt the reviewer's probe on origin/ccr-6d6c0ee6-dqm4lm-188 at d3ef236 and built Release (exit 0).
+- Probe copy: /tmp/claude-0/-home-user-AdCodicem-Pdf/b5ddd9fc-0507-5e11-8a94-c9e1fedd4860/scratchpad/lot19/r7ref-docs171/ZzR7RefDocsTests.cs.txt
+- Output: /tmp/claude-0/-home-user-AdCodicem-Pdf/b5ddd9fc-0507-5e11-8a94-c9e1fedd4860/scratchpad/lot19/r7ref-docs171/streamdata.txt
+
+It matches the reviewer's output line for line. The file is NearbyFiles.UpdatePastAWordInStreamData, with /Prev 2 bytes past the word.
+
+Taken: section Malformed at the word, repairedAtOpen=True, six=(six, freed by the update), offset-adjusted, section-unreadable, rebuilt, Error xref.section-malformed.
+- 'Notes...\n|xref' (at 1657)
+- 'Notes...\nThe |xref' (1661)
+- 'See ) |xref' (1663)
+- the '\r' and '\r\n' line ends
+- 'Example: |header' (Malformed Stream at 1640)
+
+Not taken: section Relocated at the update's table 136 bytes after, repairedAtOpen=False, six=null, only xref.offset-adjusted and Warning xref.section-shifted.
+- 'See % |xref' (Relocated at 1801)
+- 'See (|xref' (1800)
+- 'See <|xref' (1800)
+- 'See /|xref' (1800)
+- 'Example: % |header' and 'Example: (|header' (Relocated at 1830 and 1829, 186 bytes after)
+
+Control: 'text' in the word's place gives Relocated at 1795.
+
+The texts on d3ef236:
+- threat-model.md:460-462: "takes the word `xref`, or the header of a stream that gives `/Type /XRef`, in stream data, anywhere on its line, its middle included".
+- lazy-reading.md:202-203: "is taken all the same on a line that starts inside a string, and anywhere on a line of stream data, its middle included".
+- threat-model.md:432, diagnostics.md:110 and validation-rules.md:56: "outside stream data and strings an earlier line opened, in which the word or such a header is taken wherever its line, lexed alone, reads it as a token".
+- PdfFileReader.cs:4941-4942: "the word xref or such a header in stream data, anywhere on its line, its middle included, is taken".
+- decisions.md, 'Review round 6 fixes': "[14] probes: '%' or '(' on the same line hides the word".
+FIX: Reuse the clause the batch already wrote in diagnostics.md:110, validation-rules.md:56 and threat-model.md:432, rather than the reviewer's list of characters. That list ("not past a `%`, `(` or `<` the line opens before it") leaves out the `/` of a name.
+
+1. threat-model.md:461: change "in stream data, anywhere on its line, its middle included, and on a line that starts inside a string" to "in stream data, wherever its line, lexed alone, reads it as a token, its middle included, and on a line that starts inside a string".
+2. lazy-reading.md:203: change "and anywhere on a line of stream data, its middle included," to "and on a line of stream data wherever that line, lexed alone, reads it as a token, its middle included,".
+3. Optional, for consistency: PdfFileReader.cs:4942: change "in stream data, anywhere on its line, its middle included," to "in stream data, wherever its line, lexed alone, reads it as a token, its middle included,". This is a comment, not behavior.
+4. Optional, at the batch's end: add de12b13 to status.md's 'Commit bodies not rewritten' ("anywhere on its line" leaves out that a comment, a string or a name the line opens before the word hides it; a867e66's body states it). Add one line to the end-of-batch #171 comment saying the same of the round-6 comment's "anywhere on its line".
+
+These are wording changes only. No maintainer decision is needed.
+
+######## [9] lens=docs key=tm171-telling-stream-data-apart-closes-only-part-of-it sev=nit -> verdict=confirmed sev=nit maint=False
+LOCATION: docs/threat-model.md:465-466 (#171 Known gaps entry: 'Telling stream data apart, which this issue asks for, closes it.')
+CLAIM: The sentence before names two contexts the line test does not see: stream data, and a line that starts inside a string an earlier line opened. 'it' therefore reads as the whole gap. Telling stream data apart does not close the string case. The probe below has no stream data at all and is taken just the same. The #171 comment scopes its sentence to 'this case' (stream data), and the 2026-11-06 comment leaves strings to 'whatever this issue decides for headers and keywords inside strings'. R6b's deviation changed 'paying #171 pays it', which was accurate, to this narrower sentence.
+EVIDENCE: Probe ZzR7DocsTests.ZzStreamDataLine, string-body rows (r7docs/streamdata.txt). Object 4 is a direct string, '(Notes on the file format.\nThe xref tables list offsets; ...)', with no stream anywhere near it, and the newest table's /Prev is 2 bytes past the 'xref'. On d3ef236: 'section Malformed Table @1617; repairedAtOpen=True; six=(six, freed by the update)', with 'xref.offset-adjusted@1617: ... was found 2 bytes before it.' and 'xref.section-unreadable@1617: ... it holds the keyword tables at offset 1622 ...', then 'xref.rebuilt'. The one-line control ('The text tables ...') gives 'section Relocated Table @1745; six=null; ... found 126 bytes after it.'
+FIX: Write 'Telling stream data and strings apart, which this issue asks for, closes it.', or restore 'paying this issue pays it'.
+--- REFUTER
+REASON: The finding holds as a nit. Commit de12b13 rewrote the #171 Known gaps entry (docs/threat-model.md:461-466 at d3ef236). It merged two contexts into one sentence: the search near an offset takes the word `xref`, or a /Type /XRef header, "in stream data, anywhere on its line, its middle included, and on a line that starts inside a string an earlier line opened". It then wrote "Telling stream data apart, which this issue asks for, closes it." The only antecedent for "it" is that whole sentence, which includes the string case. The same entry uses "stream data" and "strings" as separate contexts ("lying in stream data, strings, or a comment"), so "stream data" cannot be read as covering strings. Telling stream data apart leaves the string case open. My own probe has no stream in the file at all and still gets the full set of consequences the sentence lists. The string case is already known under #171 (the 2026-11-06 comment, from round 4 [21]), so this is not a new behavior finding. The misstatement is in a text this batch wrote, which the brief says to report. Two other texts are scoped correctly and need no change: the round 6 #171 comment says "Paying this issue pays this case", where the case is stream data, and the task's wording "paying #171 pays it" referred to the stream-data case. One small correction to the finding's narrative: "paying #171 pays it" was wording from the fix task and never appeared in the file. That does not affect the claim. Severity stays nit: the entry's opening and #171 itself name strings, so a reader is not misled about what is broken, only about how much one fix closes.
+EVIDENCE: This is my own probe, ZzRefTm171StrTests.ZzStringNoStream, run on origin/ccr-6d6c0ee6-dqm4lm-188 at d3ef236 (saved in /tmp/claude-0/-home-user-AdCodicem-Pdf/b5ddd9fc-0507-5e11-8a94-c9e1fedd4860/scratchpad/lot19/r7ref-tm171str/, output out.txt). It uses a different shape from the reviewer's probe:
+- The file has three revisions.
+- Object 4 is a dictionary, `<< /Note (Line one of the note.\nSee the xref tables below; they list offsets.\nEnd.) >>`.
+- The file contains no `stream` bytes anywhere (fileHasStreamWord=False).
+- The newest /Prev names 2 bytes past the `xref`.
+
+Output: "section Malformed Table @1626; repairedAtOpen=True; six=(six, freed by the update)". The diagnostics are:
+- "Repair xref.offset-adjusted@1626: ... /Prev names at offset 1628 was found 2 bytes before it."
+- "Warning xref.section-unreadable@1626: ... it holds the keyword tables at offset 1631 ..."
+- "Repair xref.rebuilt"
+
+The validator gives "Error xref.section-malformed at offset 1626 ...".
+
+Two variants give the same result:
+- The word at the start of its line: Malformed Table @1618, six served.
+- A header `12 0 obj << /Type /XRef ... >> endobj` on the string's second line: "Malformed Stream @1605 ... its dictionary is not followed by stream data", six served.
+
+Two controls read the real table and serve nothing freed:
+- The same string on one line: "Relocated Table @1680; repairedAtOpen=False; six=null; ... found 52 bytes after it."
+- `text` in the word's place: same result, Relocated @1680, six=null.
+
+Every consequence the sentence names (unreadable section, Error, real section left unread, freed object served) therefore occurs with no stream data present.
+FIX: In docs/threat-model.md:465-466, replace "Telling stream data apart, which this issue asks for, closes it." with "Telling stream data, and strings an earlier line opened, apart, which this issue asks for, closes it." The simpler alternative is "Paying this issue pays it." Either way, the sentence then covers both contexts its predecessor names. No other text needs a change: lazy-reading.md:202-205 and the IsTokenOnItsLine remarks make no claim about what closes the gap. This is a wording fix, not a design choice.
+
+######## [10] lens=docs key=carve-out-omits-a-newer-section-s-refusal sev=nit -> verdict=confirmed sev=nit maint=False
+LOCATION: docs/website/docs/reference/diagnostics.md:112 ('a table `startxref` or a `/Prev` names whose rest cannot be known, at which the chain ends, says instead, however many ranges it lost, that what only the rest of the table ... index is found so'); docs/website/docs/concepts/lazy-reading.md:167-169; docs/threat-model.md:434; same scope in e4130e8's PdfDiagnosticCodes.XRefSectionUnreadable summary ('whose message says, whatever it refused')
+CLAIM: The carve-out round 6 added is stated without condition. But a table that a /Prev names, which the end of the file cuts, read after a newer section refused every number, does not say what only the rest of the table indexes. It says 'none of the rows read stands, a newer section having refused every number ..., and every object no section read before it indexes is looked for'. The code checks noneStands before the SubsectionsUnknown arm (PdfFileReader.cs:4600-4602). diagnostics.md:112 covers that case in an earlier clause ('none of them, where it refused every number before the chain came to the section'), so the two clauses pull against each other. The objects left to the rebuild are the same either way; only the account of the words is unscoped.
+EVIDENCE: Probe ZzR7CutAfterLostTests on d3ef236. Copy: /tmp/claude-0/-home-user-AdCodicem-Pdf/b5ddd9fc-0507-5e11-8a94-c9e1fedd4860/scratchpad/lot19/r7docs/ZzR7CutAfterLostTests.cs.txt; output: r7docs/cutafterlost.txt. The chain runs from the newest table (startxref via '% startxref N'), through /Prev, to stream 20 (/Index /X), then through its /Prev to a table cut by the end of the file after 1 or 4,097 lost one-row subsections.
+- Without stream 20, ranges 1 and 4097: '... the rows read were kept, and what only the rest of the table, or the sections its trailer would name, index is looked for by rebuilding the index.'
+- With stream 20, ranges 1 and 4097 (sections: '/Prev Read Table @493 noneStands'): 'The cross-reference table /Prev names at offset 493 was read only in part: the row for object 100, at offset 528, is not an offset, a generation and n or f; none of the rows read stands, a newer section having refused every number to the older sections' rows, and every object no section read before it indexes is looked for by rebuilding the index.'
+FIX: Scope the carve-out in each place. In diagnostics.md:112: '... says instead, however many ranges it lost — unless a newer section refused every number before the chain came to it, where none of its rows stands, as above —, that what only the rest of the table ...'. Make the same change in lazy-reading.md:167-169 and threat-model.md:434, and change 'whatever it refused' to 'whatever it refused itself, short of a newer section's refusal of every number' in the XML summary and the ReportSectionReadInPart remark.
+--- REFUTER
+REASON: The finding holds as a nit. Round 6 (d3ef236, and the summary edit in the same range) added a carve-out in five places. Each says that a table startxref or a /Prev names, whose rest cannot be known and at which the chain ends, says "what only the rest of the table, or the sections its trailer would name, index is looked for", however many ranges it lost. None of the five makes an exception for a newer section that refused every number before the chain came to that table.
+
+The code tests that case first. PdfFileReader.cs:4604-4606 puts the noneStands arm ahead of the SubsectionsUnknown arm. So a /Prev-named cut table read after a newer section refused every number says "none of the rows read stands, a newer section having refused every number ..., and every object no section read before it indexes is looked for". It does not say the carve-out's words. That account is the right one: the rebuild then also takes the objects the table's own read rows give, so the carve-out's "the same objects" does not hold there.
+
+The case cannot arise under startxref, which names the newest section, so it is /Prev only.
+
+Each text already holds the correct account in a nearby clause, which keeps this a nit rather than minor:
+- diagnostics.md:112: "none of them, where it refused every number before the chain came to the section".
+- lazy-reading.md: the next sentence, "none at all where every number was ... its report says which of its rows stand".
+- threat-model.md:434: "none, where it refused every number before the chain came to the section".
+- The XrefSectionUnreadable summary: "none of them, where a newer section refused every number".
+- The ReportSectionReadInPart remark: its next paragraph, "Where a newer section refused every number ..., none of them stands ..., whatever the section lost".
+
+But each carve-out is stated without condition, so the two clauses apply to the same shape and describe different words. The sharpest clashes are "whatever it refused" in PdfDiagnosticCodes.cs:70 and the remark at PdfFileReader.cs:4513-4515, against the remark's own "whatever the section lost" a paragraph later.
+
+This is new text from round 6. Neither decisions.md (round 6 [1]/[12], which asked for the carve-out with no condition) nor r1 to r6 nor #171, #289, #295, #331 or #52 holds it. The code is right and only the texts need scoping. It is not a design choice.
+EVIDENCE: My own probe on d3ef236 (origin/ccr-6d6c0ee6-dqm4lm-188), written independently of the reviewer's. Copy: /tmp/claude-0/-home-user-AdCodicem-Pdf/b5ddd9fc-0507-5e11-8a94-c9e1fedd4860/scratchpad/lot19/r7ref-carve/ZzR7RefCarveTests.cs.txt. Output: /tmp/claude-0/-home-user-AdCodicem-Pdf/b5ddd9fc-0507-5e11-8a94-c9e1fedd4860/scratchpad/lot19/r7ref-carve/out.txt.
+
+The file is built as follows:
+- The oldest table indexes objects 1 to 3.
+- A cut table follows it, with a row for object 3, then 1 or 4,097 one-row subsections ending in "0 0 x", then "% startxref N" and EOF.
+- Optionally, a cross-reference stream 20 comes next, whose /Prev names the cut table.
+- The newest table comes last, with /Prev naming stream 20, or the cut table when there is no stream.
+
+Results, the same for 1 and for 4,097 ranges:
+- No stream (sections: startxref Read Table @289, /Prev Read Table @371): "...was read only in part: the row for object 100, at offset 430, is not an offset, a generation and n or f; the rows read were kept, and what only the rest of the table, or the sections its trailer would name, index is looked for by rebuilding the index."
+- Stream with /Index [7 1] and no data (refuses object 7 only): the cut table at @496 gives the same carve-out words, "the rows read were kept, and what only the rest of the table ...".
+- Stream with /Index /X, which refuses every number (sections: startxref Read Table @411, /Prev Malformed Stream @289, /Prev Read Table @493 with EveryNumberRefusedBefore): "The cross-reference table /Prev names at offset 493 was read only in part: the row for object 100, at offset 552, is not an offset, a generation and n or f; none of the rows read stands, a newer section having refused every number to the older sections' rows, and every object no section read before it indexes is looked for by rebuilding the index."
+
+Code: PdfFileReader.cs:4604-4606 reads `said = (section.Fault ?? "the file ends before its trailer") + (noneStands ? "; none of the rows read stands, " + EveryNumberRefused : "; the rows read were kept" + KeptButFor(section) + (section.SubsectionsUnknown ? ...`.
+
+Unconditioned texts at head:
+- diagnostics.md:112: "says instead, however many ranges it lost".
+- lazy-reading.md:167-169: "but for a table ...: its report says, however many ranges it lost".
+- threat-model.md:434: "or, of a table ... that what only the rest ... is looked for so ... however many ranges it lost".
+- PdfDiagnosticCodes.cs:70: "whose message says, whatever it refused".
+- PdfFileReader.cs:4513-4515: "says, whatever it refused". This clashes with :4527-4530, "whatever the section lost".
+
+No test pins this shape for a cut table; CrossReferenceChainTests:2926 pins the noneStands words only for a table whose fault is followed by its trailer. The probe was removed and the worktree is clean.
+FIX: Docs only: scope the carve-out in each of the five places to "short of a newer section's refusal of every number". The wording for each:
+
+- diagnostics.md:112: after "...: the same objects, no section past it being read", add "— unless a newer section refused every number before the chain came to it, where, as above, none of its rows stands and every object no section read before it indexes is found so".
+- lazy-reading.md:167: change "but for a table `startxref` or a `/Prev` names whose rest cannot be known, at which the chain ends:" to "but for a table `startxref` or a `/Prev` names whose rest cannot be known, at which the chain ends, no newer section having refused every number before it:". The next sentence already gives the other case.
+- threat-model.md:434: after "at which the chain ends", insert "no newer section having refused every number before it".
+- PdfDiagnosticCodes.cs:70: change "whose message says, whatever it refused," to "whose message says, whatever it refused itself, short of a newer section's refusal of every number,".
+- PdfFileReader.cs:4513-4514, the ReportSectionReadInPart remark: change "says, whatever it refused," to "says, whatever it refused, unless a newer section refused every number before the chain came to it (below),".
+
+Optionally, add one row to the cut-table theory at CrossReferenceChainTests:3377: a lost /Index /X stream between the newest table and the cut table, asserting the none-stands words, which pins the order of the two arms.
+
+######## [11] lens=docs key=rules-that-fire-on-the-171-decoy-do-not-name-it sev=nit -> verdict=narrowed sev=nit maint=False
+LOCATION: docs/website/docs/reference/validation-rules.md:54 (`xref.section-malformed`, Error) and :57 (`xref.section-shifted`); also docs/website/docs/reference/diagnostics.md:112 (`xref.section-unreadable`)
+CLAIM: de12b13 put the stream-data qualifier in validation-rules.md only in the `xref.section-not-found` row (:56), a rule that does not fire on the #171 decoy. The two rules the validator does lay on such a file are `xref.section-malformed` (an Error, which the #171 comment calls the visible harm) and `xref.section-shifted`. Their rows say 'an `xref` keyword ... found so a few bytes from an offset that holds no section, as the nearest place to it' and give no hint that the 'keyword' may be prose in an embedded file's data, or a line a string opened earlier, with no link to #171. The same holds for diagnostics.md's `xref.section-unreadable` row, against the qualified `xref.offset-adjusted` row (:110). A user who meets the Error looks up row 54 and finds no explanation.
+EVIDENCE: Probe ZzR7DocsTests.ZzStreamDataLine (r7docs/streamdata.txt), /Prev row 'Notes...\n|xref'. The validator's findings: 'Error xref.section-malformed at offset 1657: The cross-reference table at offset 1657 cannot be read: it holds the keyword tables at offset 1662, where a subsection or the trailer should start.' and 'Warning xref.section-shifted at offset 1657: The cross-reference section /Prev names at offset 1659 starts 2 bytes before it, at offset 1657.' No xref.section-not-found. The /XRefStm header row gives the same pair at 1569. grep: '#171' appears in validation-rules.md only in row 56 and its definition.
+FIX: In validation-rules.md:54, after 'as the nearest place to it', add: 'the word or header in stream data, or on a line a string an earlier line opened starts, taken too ([#171])'. Add a pointer to the same in :57 and in diagnostics.md:112's 'one that is the nearest place to an offset holding no section is the section found moved' (for example 'as `xref.offset-adjusted` says, [#171] included').
+--- REFUTER
+REASON: The finding holds for validation-rules.md, but the diagnostics.md part does not, so it is narrowed.
+
+**What holds.** On every #171 decoy (the /Prev and the /XRefStm cases, with the word or with a header), the validator reports these findings and never `xref.section-not-found`:
+- an Error `xref.section-malformed`;
+- a Warning `xref.section-shifted`;
+- in the /XRefStm case with the `xref` word, also an Error `xref.hybrid-stream-wrong`.
+
+de12b13 put the qualifier only where a line test was spelled out ("a token a load reads from the start of its line"): validation-rules.md:56 and diagnostics.md:110. On the validator page that is the one row that never fires on such a file.
+
+The rows that do fire do not lead there:
+- **Row 54** (the Error) describes the decoy as "an `xref` keyword ... found so a few bytes from an offset that holds no section, as the nearest place to it". It does not use row 56's term and has no pointer to it.
+- **Row 57** says "the nearest place to the offset that declares itself a section". That is row 56's term, but nothing links to row 56.
+- **Row 60** sends its unreadable case to "`xref.section-malformed`'s", which is row 54 again.
+
+So a user who looks up the Error finds no hint that it may be prose in an embedded file. The rows are not false, since the reader did take a keyword there, so this is an omission and a nit.
+
+**The decision was carried out.** R6-Q1 asked that the texts name stream data beside strings an earlier line opened, and they do, in the line-test definitions. Before round 6 the reference pages named neither case, so this is a matter of cross-referencing, not a decision left undone.
+
+**Narrowed out: diagnostics.md:112.** For a section found moved, it already says "reported where it was found, after `xref.offset-adjusted`". The reader always reports `xref.offset-adjusted` at the same offset just before `xref.section-unreadable`, and that row (:110) carries the #171 qualifier. A reader of the diagnostics meets the qualified code first and is pointed to it.
+
+**Not a separate edit: row 60.** It points to row 54, so fixing row 54 covers it.
+
+**Not known.** Nothing in r1 to r6 or decisions.md settles where the reference rows point for #171.
+EVIDENCE: I rebuilt the reproducer on d3ef236 with my own probe, which used the committed builders `NearbyFiles.UpdatePastAWordInStreamData` and `HybridPastAWordInStreamData`. The probe is saved at `/tmp/claude-0/-home-user-AdCodicem-Pdf/b5ddd9fc-0507-5e11-8a94-c9e1fedd4860/scratchpad/lot19/r7ref-ZzR7RefDocs171Tests.cs.txt` and its output at `/tmp/claude-0/-home-user-AdCodicem-Pdf/b5ddd9fc-0507-5e11-8a94-c9e1fedd4860/scratchpad/lot19/r7ref-docs171rules.txt`. The xref.* and file.* findings, and the diagnostics, are below.
+
+**prev-xref** (the word at a line start):
+- Diagnostics: `xref.offset-adjusted@1657`, `xref.section-unreadable@1657`, `xref.rebuilt`.
+- `Error xref.section-malformed: The cross-reference table at offset 1657 cannot be read: it holds the keyword tables at offset 1662, where a subsection or the trailer should start.`
+- `Warning xref.section-shifted: The cross-reference section /Prev names at offset 1659 starts 2 bytes before it, at offset 1657.`
+
+**prev-mid** (the word mid-line): the same at 1661.
+
+**prev-hdr** (a quoted header): `Error xref.section-malformed: The cross-reference stream at offset 1640 cannot be read: its dictionary is not followed by stream data.`, plus the Warning `xref.section-shifted`.
+
+**stm-hdr**: `Error xref.section-malformed` and `Warning xref.section-shifted` at 1569.
+
+**stm-xref**:
+- Diagnostics: `xref.offset-adjusted@1569`, `xref.section-unreadable@1569`, `xref.hybrid-stream-lost@1571`.
+- The same Error and Warning as above.
+- `Error xref.hybrid-stream-wrong: The /XRefStm of the cross-reference table at offset 1815 names offset 1571, a cross-reference table, which cannot be read, ...`
+
+No case gives `xref.section-not-found`.
+
+**The pages.**
+- `git diff --word-diff 65306d4 d3ef236` adds the #171 clause only to validation-rules.md:56 and diagnostics.md:110.
+- `grep '#171' validation-rules.md` matches only row 56 and the link definition at :379.
+- Rows 54, 57 and 60 carry no #171 clause and no pointer to row 56.
+- diagnostics.md:112 reads "...is the section found moved, reported where it was found, after `xref.offset-adjusted`, as where it is named", which points to :110.
+FIX: Two edits in docs/website/docs/reference/validation-rules.md; diagnostics.md needs no change.
+
+1. **Row 54.** After "found so a few bytes from an offset that holds no section, as the nearest place to it", insert: "— a place that declares itself a section as `xref.section-not-found` says, the word or a header in stream data, or on a line a string an earlier line opened starts, among them ([#171]) —". This also covers row 60, which sends its unreadable case to this row.
+
+2. **Row 57.** After "the nearest place to the offset that declares itself a section", add "as `xref.section-not-found` says, stream data among them ([#171])".
+
+The `[#171]` link is already defined at :379. Rebuild the site and run the link check. This is not a design choice for the maintainer.
+
+######## [12] lens=docs key=lazy-reading-stream-data-not-read-from-disk sev=nit -> verdict=confirmed sev=nit maint=False
+LOCATION: docs/website/docs/concepts/lazy-reading.md:282-283 (predates the batch; the brief allows it as a nit)
+CLAIM: 'short of a rebuild ... and of the search for where a damaged stream's data ends, below — stream data is not even read from disk.' The search near an offset that names no section, or no object, reads 512 bytes either side, stream data included. Since this batch it also lexes those lines, and the page's own paragraph at :202-208, which round 6 wrote, says it takes a word inside stream data. The page now contradicts itself.
+EVIDENCE: Probe ZzR7ReadsDataTests on d3ef236. Copy: /tmp/claude-0/-home-user-AdCodicem-Pdf/b5ddd9fc-0507-5e11-8a94-c9e1fedd4860/scratchpad/lot19/r7docs/ZzR7ReadsDataTests.cs.txt; output: r7docs/readsdata.txt. It uses NearbyFiles.UpdatePastAWordInStreamData with 'text', the control row. Object 4's data lies at [1631,1777) and the /Prev names 1659. The document opens with WasRepaired=False and with 0 bytes read by the endstream searches. The reads that cover the data include '[1659,+32], [1659,+419]', the probes at the offset inside the data, and '[1146,+932]', the search window 512 bytes either side, beside the tail reads.
+FIX: Add the search to the exceptions: '— short of a rebuild, which scans the whole file, of the search near an offset a section or an object is not at, which reads the 512 bytes either side of it, and of the search for where a damaged stream's data ends, below — stream data is not even read from disk.'
+--- REFUTER
+REASON: The finding holds as a nit. It was already carried as an open point: decisions.md:451 and r6-fix-result.json:107 both say 'may become a nit'. At d3ef236, lazy-reading.md:282-284 says that, short of a rebuild and of the search for where a damaged stream's data ends, 'stream data is not even read from disk'. Round 6 wrote :194-205 on the same page, which says the search near an offset takes the word xref 'anywhere on a line of stream data'. For that, the search has to read the data. So the page contradicts itself. The batch also widened what the search reads: it lexes each line from its start and reads back as far as LineStartSearchLength = 4,096 bytes for it (PdfFileReader.cs:142 and :5013), and main has no such read-back. The sentence itself predates the batch. My own probe shows it is loose more widely than the finding says, and that bears on the fix. Even with no rebuild and no search, opening reads stream data through every bounded window: the file's first and last 4 KB, a classic section's 64 KB window (XRefWindow, already on main) and an object's 8 KB window. If the search is added as just one more exception, the list still looks complete and is still wrong.
+EVIDENCE: I rebuilt the reviewer's probe on d3ef236 (Release, clean build). Output: /tmp/claude-0/-home-user-AdCodicem-Pdf/b5ddd9fc-0507-5e11-8a94-c9e1fedd4860/scratchpad/lot19/r7refute/readsdata.txt. It matches the reviewer's exactly. 'text: data [1631,1777) named 1659; WasRepaired=False; endstream searches read 0; reads over the data at opening: [0,+2078], [0,+2078], [1659,+32], [1659,+419], [1146,+932], [1578,+500], [175,+1903], [9,+2069]; diags xref.offset-adjusted'. That file is only 2,078 bytes, so every window runs to the end of the file. I made a second probe, /tmp/claude-0/-home-user-AdCodicem-Pdf/b5ddd9fc-0507-5e11-8a94-c9e1fedd4860/scratchpad/lot19/r7refute/ZzR7RefBigDataTests.cs.txt, with the same NearbyFiles.UpdatePastAWordInStreamData but a 'before' of 40 KB of text lines. Output: r7refute/bigdata.txt in the same folder. 'text: file 42097; data [1633,41793) named 41675; WasRepaired=False; endstream searches read 0; reads over the data at opening: [0,+4096], [38001,+4096], [41675,+32], [41675,+422], [41162,+935], [175,+41922], [9,+8192]; diags xref.offset-adjusted'. [41162,+935] is the search's window, starting at offset - 513 and clamped at the end of the file. [41675,+32] and [41675,+422] are the reads at the offset that sits inside the data. [175,+41922] is the oldest classic table's XRefWindow, and it covers almost all of the stream's data. [9,+8192] is an object window, and [0,+4096] and [38001,+4096] are the head and tail reads. The 'xref' row rebuilds, so the rebuild exception covers it. Stray probe files were removed from the worktree.
+FIX: This is a wording fix, not a design choice. Recast the sentence so that it no longer reads as a complete list of exceptions. For example: 'Past the index and the catalog, nothing is parsed until something asks for it, and no stream's data is read for its own sake: what opening reads of it is only what a bounded window around something else holds — the file's first and last 4 KB, a section's or an object's window, and the 512 bytes either side of an offset that holds no section or object, each line there lexed from its start, as far as 4,096 bytes back — short of a rebuild, which scans the whole file, and of the search for where a damaged stream's data ends, below.' The reviewer's narrower fix, adding only the search to the exceptions, removes the contradiction with :194-205. The sentence would still be false through the section and object windows.
+
+######## [13] lens=stream-data key=171-comment-reach-understated sev=minor -> verdict=narrowed sev=minor maint=False
+LOCATION: GitHub #171 comment 6703927674 (https://github.com/AdCodicem/AdCodicem.Pdf/issues/171#issuecomment-6703927674): the 'How the search takes it' and 'Its reach is narrow' paragraphs. Not in the repo; the repo texts say only 'stream data' and are right on this point.
+CLAIM: The round's #171 comment says the case 'needs an offset that falls short, uncompressed text holding the word or such a header, and that text nearer the offset than the real section, within 512 bytes'. It also says 'In uncompressed stream data … it therefore takes', 'When a /Prev or an /XRefStm names an offset that falls short of its section', and 'No load ever lexes stream data'. Four of these understate the reach. (1) An offset that overshoots its section is taken the same way. (2) Compressed data is taken too: a FlateDecode stream whose deflate data holds a stored block, which level 0 or NoCompression writes, carries the word verbatim. (3) The real section need not be within reach at all: with none near, the place in stream data is still taken, and the report changes from section-missing to section-unreadable. (4) An object stream's data is lexed by a load, and an uncompressed one is taken like any stream data.
+EVIDENCE: Probe /tmp/claude-0/-home-user-AdCodicem-Pdf/b5ddd9fc-0507-5e11-8a94-c9e1fedd4860/scratchpad/lot19/r7sd/ZzSdProbeTests.cs.txt. Outputs reach-head.txt, reach-main.txt, contexts-head.txt and contexts-main.txt in the same folder.
+(1) Overshoot. Layout: the update's table at 1601, then the newest revision writes the embedded file with 'xref' at 1818 and a 900-byte object 5; the newest /Prev is 1820. Head: 'S /Prev named=1820 off=1818 Malformed Table', 'Repair xref.offset-adjusted @1818: … found 2 bytes before it.', 'Warning xref.section-unreadable @1818', 'Repair xref.rebuilt', 'F Error xref.section-malformed', and 6="six, freed by the update". Main: 'S /Prev named=1820 off=1601 Relocated Table', 'found -219 bytes from there', 6=null. /Prev 1858 and /Prev 1816 (the word 2 bytes after the place) give the same split. Head's control ('text') gives 'found 219 bytes before it' and 6=null.
+(2) Stored deflate block. ZLibStream NoCompression of 'Notes on the file format.\nxref tables…', with /Filter /FlateDecode. Head: 'S /Prev named=1687 off=1685 Malformed Table', section-unreadable @1685, rebuilt, Error section-malformed, 6 served. Main: 'Relocated Table off=1827', 'found 140 bytes from there', 6=null. A quoted /Type /XRef header in the same kind of block gives the same split: head takes it at 1668, main finds the table 190 bytes off.
+(3) No real section within 512 bytes. The word is 512 bytes before the place. Head: 'S /Prev named=2170 off=1658 Malformed Table … section-unreadable @1658 … F Error xref.section-malformed'. Main: 'NotFound … Warning xref.section-missing @2170 … F Error xref.section-not-found'. Both rebuild, and object 6 is served alike. At 513 bytes before, and with the word ending at 513 bytes after, head equals main. At 512 bytes before, and ending at 512 after (k=508), head takes the word.
+(4) Object stream /Type /ObjStm, data '8 0 << /A 1\nxref /B 2 >>'. Head: taken at 1650, 'it holds a name at offset 1655', rebuilt, 6 served. Main: 'found 28 bytes from there', 6=null.
+FIX: Correct it in the batch's end-of-batch comment on #171, beside the planned #289, #295 and #52 comments. Say the place is taken whichever side of its section the offset falls, an overshoot included. Say it is taken in any stream data, compressed data that carries the bytes verbatim included (a Flate stored block), as well as object streams' data, which a load does lex. Say that where no real section lies within 512 bytes, the place is still taken, and the report says section-unreadable and Error section-malformed where main said section-missing and Error section-not-found, with the same rebuild. Drop 'No load ever lexes stream data' or narrow it to 'no load of the objects around it'. No repo text needs to change for this.
+--- REFUTER
+REASON: This mostly holds, with one point narrowed. I rebuilt the files with my own builders (not the reviewer's offsets) and ran them on d3ef236 and on main 21a0298.
+
+What holds:
+(1) The #171 comment says "it needs an offset that falls short". That is false: an offset that overshoots its section is taken the same way. It is no corner case either. A file that lost bytes, for example after a CRLF to LF conversion, has offsets that overshoot, just as added bytes make them fall short. The round 6 refuter's own reach line said "an imprecise offset". The comment narrowed that to "falls short".
+(2) "Uncompressed text" understates it. A FlateDecode stream written with a stored deflate block (zlib level 0) carries the bytes verbatim and is taken too. At level Optimal it is not, so this reach is real but marginal.
+(3) When no real section lies within 512 bytes, the place in stream data is still taken. Main and head rebuild the same way and serve the same objects, so only the report changes: section-missing and Error section-not-found on main become section-unreadable and Error section-malformed on head. The comment's consequences ("leaving the real section a little farther on unread", "main ... read the real section") do not cover this case. The repo texts are generic and stay right: validation-rules.md:56 already says such a place is section-shifted's and section-malformed's rather than section-not-found's, and lazy-reading.md:202-204 and threat-model.md:455 say only "stream data".
+(4) "No load ever lexes stream data" is literally false: an object stream's data is lexed when one of its members is loaded (LoadCompressedObject / GetObjectStream) and when a rebuild expands object streams.
+
+Narrowed: the reviewer would list object streams' data as a wider #171 reach. It is not one. The comment's "uncompressed stream data" already covers an uncompressed object stream. More to the point, round 6 [14] narrowed out object bodies such as '<< /A 1\nxref /B 2 >>' because a load lexes them (R2 [2]'s rule). An object stream's members are lexed by a load in the same way, so that case sits with the accepted object-body class, not with the #171 gap. Only the false sentence needs fixing.
+
+Not known elsewhere: r6-findings [14], decisions.md (round 6 triage, R6-Q1) and the #171 comments name neither the overshoot nor the case with no section in reach, and no correction to comment 6703927674 has been posted.
+
+Severity minor: the text is misleading, it is the issue's own account of the regression it tracks, and its "Its reach is narrow" sentence covers half the cases. No code or repo text is wrong. Paying #171 by telling stream data apart closes every one of these cases, since the mechanism is the same.
+EVIDENCE: My probe: /tmp/claude-0/-home-user-AdCodicem-Pdf/b5ddd9fc-0507-5e11-8a94-c9e1fedd4860/scratchpad/lot19/r7ref-reach/ZzRefReachTests.cs.txt. Outputs: /tmp/claude-0/-home-user-AdCodicem-Pdf/b5ddd9fc-0507-5e11-8a94-c9e1fedd4860/scratchpad/lot19/r7ref-reach/reach-head.txt (d3ef236) and /tmp/claude-0/-home-user-AdCodicem-Pdf/b5ddd9fc-0507-5e11-8a94-c9e1fedd4860/scratchpad/lot19/r7ref-reach/reach-main.txt (21a0298). The data in every case is 'Notes on the file format.\nxref tables list offsets; ...'.
+
+(1) Overshoot. The update's table U is at 1457 and frees object 6. The newest revision writes the embedded file with 'xref' at 1654, then object 5, and its /Prev is 1656.
+- Control with /Prev exactly 1457: reads clean on both trees, 6=null.
+- Head: 'S /Prev named=1656 off=1654 Malformed Table', 'Repair xref.offset-adjusted @1654: ... was found 2 bytes before it.', 'Warning xref.section-unreadable @1654 ... holds the keyword tables at offset 1659', 'Repair xref.rebuilt', 'F Error xref.section-malformed', 6="six, freed by the update", repairedAtOpen=True.
+- Main: 'S /Prev named=1656 off=1457 Relocated Table', 'found -199 bytes from there', 6=null, no rebuild.
+- With 'text' in place of the word, head equals main: found 199 bytes before it.
+
+(2) Stored deflate. Object 4 is /Filter /FlateDecode, ZLibStream NoCompression; its decoded data equals the prose (True).
+- Head: 'S /Prev named=1566 off=1564 Malformed Table', section-unreadable, rebuilt, Error section-malformed, 6 freed object served.
+- Main: 'Relocated Table off=1706', 'found 140 bytes from there', 6=null.
+- The same prose at CompressionLevel.Optimal holds no 'xref' bytes.
+
+(3) Real section 836 bytes past the place named, out of reach.
+- Head: 'S /Prev named=1538 off=1536 Malformed Table', 'Warning xref.section-unreadable @1536', 'Repair xref.rebuilt', 'F Error xref.section-malformed: The cross-reference table at offset 1536 cannot be read'.
+- Main: 'S /Prev named=1538 NotFound', 'Warning xref.section-missing @1538', 'Repair xref.rebuilt', 'F Error xref.section-not-found'.
+- Both serve 6="six, freed by the update". The 'text' control gives main's output on head.
+
+(4) Uncompressed /Type /ObjStm with data '8 0 << /A 1\nxref /B 2 >>'.
+- Head: taken at 1529, 'it holds a name at offset 1534', rebuilt, 6 served.
+- Main: 'found 28 bytes from there', 6=null.
+- This is the same token class as round 6 [14]'s narrowed-out object body '<< /A 1\nxref /B 2 >>', which a load lexes.
+
+Texts:
+- The comment (https://github.com/AdCodicem/AdCodicem.Pdf/issues/171#issuecomment-6703927674, the latest on #171) says: 'names an offset that falls short of its section', 'In uncompressed stream data', 'No load ever lexes stream data', 'leaving the real section a little farther on unread', 'Its reach is narrow: it needs an offset that falls short, uncompressed text holding the word or such a header, and that text nearer the offset than the real section, within 512 bytes'.
+- Round 6 refuter (r6-findings.md [14]): 'it needs an imprecise offset'.
+- Repo: PdfFileReader.cs:4941-4942 and :4989-4991, threat-model.md:455-461, lazy-reading.md:202-204 and diagnostics.md:110 say 'stream data' with no direction and no filter. validation-rules.md:56 states the section-malformed-instead-of-not-found outcome generically. CrossReferenceChainTests.cs:1197 has the same 'No load lexes stream data' sentence, in an embedded-file context.
+FIX: Put the correction in the end-of-batch tracking comment on #171, beside the planned #289, #295 and #52 comments, or edit comment 6703927674.
+- Replace 'names an offset that falls short of its section' with 'names an offset its section does not start at', and 'it needs an offset that falls short' with 'it needs an offset that misses its section, short of it or past it'.
+- Replace 'uncompressed stream data' and 'uncompressed text' with 'stream data whose bytes hold the word or such a header: uncompressed, or a Flate stream written with a stored block (level 0)'.
+- Add that where no real section lies within 512 bytes, the place in stream data is still taken. The rebuild and the objects served are then the same as on main, but the report is xref.section-unreadable and Error xref.section-malformed where main gave xref.section-missing and Error xref.section-not-found.
+- Narrow 'No load ever lexes stream data' to 'No load lexes an embedded file's data'. An object stream's members are lexed by a load, as an object's body is, the class round 6 left as decided. Do not list object streams as a wider #171 reach.
+
+Optional nit, in the repo: give the same narrowing to the test comment at tests/AdCodicem.Pdf.Tests/CrossReferenceChainTests.cs:1197, 'No load lexes stream data' becoming 'No load lexes an embedded file's data'.
+
+No code change and no other repo text change. This is not a design question: R6-Q1's 'document and track' stands, and paying #171 by telling stream data apart closes every case above.
+
+######## [14] lens=stream-data key=171-gap-closed-by-stream-data-alone sev=minor -> verdict=confirmed sev=minor maint=False
+LOCATION: docs/threat-model.md:465-466 (the #171 Known gaps entry)
+CLAIM: The gap names two contexts in one sentence: the word or header taken 'in stream data, anywhere on its line … and on a line that starts inside a string an earlier line opened'. It then says 'Telling stream data apart, which this issue asks for, closes it.' Telling stream data apart closes only the first context. A string an earlier line opened, in an object body, keeps giving section-unreadable, an Error, a rebuild and the freed object. #171 asks for strings to be told apart as well ('lying inside stream data and strings'). R6b's own deviation changed the earlier 'paying #171 pays it', which was true, into the narrower wording, which is not.
+EVIDENCE: I applied a mutant to d3ef236 that tells stream data apart at the search's acceptance (PdfFileReader.cs:4947), then reverted it. It adds '&& !ZzInStreamData(candidate)': in stream data where the last 'stream' keyword followed by CR or LF within the 4,096 bytes before the place is not 'endstream'. Description: /tmp/claude-0/-home-user-AdCodicem-Pdf/b5ddd9fc-0507-5e11-8a94-c9e1fedd4860/scratchpad/lot19/r7sd/stream-data-mutant.txt. Under the mutant (contexts-mutant.txt), every stream-data context goes back to main's result: prose, inline image, binary inline image, Flate stored block and object stream all give 'Relocated Table' and 6=null. The string contexts stay as on head. Object 4 '<< /Notes (Notes on the\nxref tables) >>' gives 'S /Prev named=1612 off=1610 Malformed Table', 6="six, freed by the update" and repairedAtOpen=True. '<< /Notes <4E6F74\nxref 7465> >>' gives 'S /Prev named=1606 off=1604 Malformed Table', 6 served. Main finds the real table 21 and 19 bytes off, with 6=null.
+FIX: Write 'Telling stream data, and strings an earlier line opened, apart, which this issue asks for, closes it', or restore 'Paying #171 pays it'. Optionally pin the string case beside the two stream-data tests, as a row citing #171, since no test holds it today (grep finds none).
+--- REFUTER
+REASON: The finding holds. In docs/threat-model.md:461-466, one sentence names two contexts in which the search near an offset takes the word `xref` or a /Type /XRef header. The first is stream data. The second is a line that starts inside a string an earlier line opened. The entry then says "Telling stream data apart, which this issue asks for, closes it." Here "it" is the whole behavior the sentence describes. Telling stream data apart does nothing for the string context: in an object body, nothing before the place is stream data.
+
+The other texts the batch wrote treat the two contexts as one: IsTokenOnItsLine's summary and remarks, the comment at PdfFileReader.cs:4937-4942, lazy-reading.md:202-205, diagnostics.md:110, validation-rules.md:56 and the threat-model row. So does #171 itself: its body says "lying inside stream data and strings", and its round 4 comment says "Whatever this issue decides for headers and keywords inside strings applies to this search as well." The threat-model sentence therefore overstates what closes the gap, and it contradicts the round 4 comment. The #171 comment round 6 posted says "telling stream data apart … closes it for this search too". That is true there, because that comment speaks only of the stream-data case.
+
+One narrowing. The finding says R6b changed an "earlier" text in the file. That is not quite right: at 65306d4 the entry had no closing sentence. "Paying #171 pays it" was the wording round 6's plan gave (r6-findings.md:602). R6b reported its own wording as a deviation (r6-fix-result.json:97), and decisions.md does not record that deviation as accepted.
+
+The case itself is known: round 4 [21], and #171's comment of 2026-11-06. What is new is only the text that misstates what closes it.
+EVIDENCE: I rebuilt the string context on origin/ccr-6d6c0ee6-dqm4lm-188 at d3ef236. The probe follows NearbyFiles.UpdatePastAWordInStreamData's shape, with object 4's body given and /Prev at the word + 2. Its source is in /tmp/claude-0/-home-user-AdCodicem-Pdf/b5ddd9fc-0507-5e11-8a94-c9e1fedd4860/scratchpad/lot19/r7sd/ZzRefStrGapTests.cs.txt, its output in /tmp/claude-0/-home-user-AdCodicem-Pdf/b5ddd9fc-0507-5e11-8a94-c9e1fedd4860/scratchpad/lot19/r7sd/refute-strgap-head.txt.
+
+Object 4 `<< /Notes (Notes on the\nxref tables) >>` gives repairedAtOpen=True, `S /Prev named=1612 off=1610 Malformed Table` and 6="six, freed by the update". The diagnostics are:
+- `Repair xref.offset-adjusted @1610 … found 2 bytes before it`
+- `Warning xref.section-unreadable @1610 … it holds the keyword tables at offset 1615`
+- `Repair xref.rebuilt`
+
+The validator gives `F Error xref.section-malformed: The cross-reference table at offset 1610 cannot be read …`.
+
+The variants:
+- The word in the middle of the line (`(Notes on the\nThe xref tables)`) gives the same result, at 1614.
+- A hex string (`<4E6F74\nxref 7465>`) gives the same: Malformed at 1604, a rebuild and object 6 served.
+- The same string on one line is the control: `Relocated Table` 21 bytes after, 6=null, no rebuild.
+- `text` in the word's place gives the same as the control.
+
+No stream keyword lies before object 4 in this file, so no test that tells stream data apart can drop this place. The reviewer's mutant output, contexts-mutant.txt (dict-hex-earlier-line and dict-literal-earlier-line still repairedAtOpen=True), agrees.
+
+Grepping the tests for a multi-line string holding the word near an offset finds nothing. CrossReferenceChainTests.cs:1108-1109 and :1495 and CrossReferenceRuleTests.cs:800-801 write the string on one line, so no test pins the string context.
+
+Only threat-model.md:466 makes the closing claim: grepping src, docs and tests for "stream data apart", "closes it" and "pays it" finds no other text that says this.
+FIX: In docs/threat-model.md:465-466, replace "Telling stream data apart, which this issue asks for, closes it." with "Telling stream data, and strings an earlier line opened, apart, which this issue asks for, closes it.". Restoring the planned "Paying #171 pays it." would also do. This is a text fix and needs no design choice.
+
+Optionally, pin the string context beside the two stream-data tests in CrossReferenceChainTests, citing #171. It would hold object 4 `<< /Notes (Notes on the\nxref tables) >>` with /Prev at the word + 2, giving Malformed at the word, a rebuild and object 6 served, and the same string on one line as its control (Relocated, 6 null). No test pins this case today, because round 4 [21] chose docs and a comment only. Whether to add the test is the orchestrator's call, not a correctness requirement.
+
+######## [15] lens=stream-data key=readable-section-in-stream-data-unnamed sev=minor -> verdict=narrowed sev=minor maint=False
+LOCATION: docs/threat-model.md:460-463 (the #171 gap, 'for the section found moved ([#281]), which cannot be read'); src/AdCodicem.Pdf/IO/PdfFileReader.cs:4938-4947 (the acceptance: the line test is asked only of a Malformed place)
+CLAIM: A section in stream data that reads, whole or in part, is taken by the search near an offset on main as on the branch. Examples are an uncompressed embedded PDF's own table, or a quoted cross-reference stream whose data holds fewer rows than it declares. The chain then goes on through that section's trailer: it ends, or follows a quoted /Prev. The freed object is served. The batch's texts name only a place that cannot be read. The #171 comment says telling stream data apart 'closes it for this search too', but the line test, where stream data would be told apart, is never asked of a place that reads or reads in part, so that change leaves this context open. It is pre-existing, not a regression, and only the texts need widening. The maintainer may choose whether it belongs under #171 or in its own debt.
+EVIDENCE: contexts-head.txt and contexts-main.txt; contexts-mutant.txt for the run under the stream-data mutant.
+readable-inner-table: object 4's data is '%PDF-1.4\n%embedded\nxref\n0 1\n0000000000 65535 f \ntrailer\n<< /Size 1 >>…' and the /Prev is 2 bytes past the inner 'xref'. Head: 'S /Prev named=1652 off=1650 Relocated Table', 'xref.offset-adjusted @1650 … found 2 bytes before it', 'xref.rebuilt', 6="six, freed by the update". Main is identical ('found -2 bytes from there'). Both also give 'F Error file.root-invalid' (#260, pre-existing).
+header-with-data-and-prev: the data quotes '12 0 obj\n<< /Type /XRef /Size 13 /W [1 2 1] /Prev 9 /Length 3 >>\nstream\nabc\nendstream'. Head: 'Relocated Stream off=1640', 'xref.section-unreadable … was read only in part: it holds 0 rows where its /Index and /Size declare 13', then the quoted /Prev 9 is followed ('S /Prev named=9 off=175 Relocated Table … found 166 bytes after it'), then a rebuild, and 6 is served. Main: the same two relocations with no report and repairedAtOpen=False, and 6="six, freed by the update" served from the oldest table's row. Under the stream-data mutant both rows are unchanged.
+FIX: Widen the #171 gap with something like: 'A section there that reads, whole or in part — an uncompressed embedded PDF's table, a quoted cross-reference stream — is taken as on main, the chain going on through its trailer'. Say in the #171 end comment that telling stream data apart must also be asked of a place that reads, not only in the line test, for this context to close. If the maintainer prefers, file it as its own debt under M02.
+--- REFUTER
+REASON: The behavior reproduces with my own files on d3ef236 and on main 21a0298. The search near an offset takes a section in uncompressed stream data that reads, whole or in part, and the chain goes on through that section's trailer. When that trailer ends the chain, the update's rows are lost and an object the update freed is served. When it quotes a /Prev, the chain follows it.
+
+The cause is in the code. At PdfFileReader.cs:4944-4947, a Read candidate is accepted before the line test runs; IsTokenOnItsLine is asked only of a Malformed place that was not cut by a value. The candidate quoted cross-reference stream of /Size 13 is read in part and stays Read, so it skips the line test too. The reviewer's mutant shows a stream-data check placed in the line test leaves both rows unchanged.
+
+The narrowing:
+- This is pre-existing. A readable table gives identical output on both trees. In the quoted-stream case the branch does better than main: main serves object 4 as null with no report and no rebuild, while the branch reports section-unreadable, rebuilds, and finds object 4.
+- No text the batch wrote is false. The threat-model #171 entry (docs/threat-model.md:460-466), the code comment (:4938-4942), lazy-reading.md:202-205, diagnostics.md:110 and validation-rules.md:56 each describe the place that cannot be read, and describe it truly.
+- The #171 comment of 2026-11-07 ('Paying this issue pays this case … closes it for this search too') is true of the case it names, which is unreadable decoys.
+
+What holds:
+- These texts are the batch's account of this search in stream data, and they leave this context out.
+- The cure they point to cannot reach it. The comment ties the gap to IsTokenOnItsLine ('does not see stream data') and says the two pinning tests flip when it is paid. A payer who teaches only the line test about stream data would close #171's search case and leave this one open.
+- The context is not tracked anywhere. #171's body and closing criteria name headers and trailers in data, not sections. Its batch-19 comments name only places that cannot be read. Round 6's reviewer saw 'a readable inner table' only as a control 'identical on both trees', and decisions.md settles nothing about it.
+
+This fits the brief's 'wider path into the same behavior that the texts do not name'. Because it is pre-existing and the texts omit it rather than misstate it, it is a tracking and documentation gap, not a regression. It is minor: it is more than wording, since it is the only record a #171 payer would read.
+EVIDENCE: My probe ZzRefRsdTests is saved at /tmp/claude-0/-home-user-AdCodicem-Pdf/b5ddd9fc-0507-5e11-8a94-c9e1fedd4860/scratchpad/lot19/r7ref-rsd/ZzRefRsdTests.cs.txt. Its outputs are /tmp/claude-0/-home-user-AdCodicem-Pdf/b5ddd9fc-0507-5e11-8a94-c9e1fedd4860/scratchpad/lot19/r7ref-rsd/out/rsd-head.txt and /tmp/claude-0/-home-user-AdCodicem-Pdf/b5ddd9fc-0507-5e11-8a94-c9e1fedd4860/scratchpad/lot19/r7ref-rsd/out/rsd-main.txt.
+
+The file has three revisions. Object 4 is an uncompressed /EmbeddedFile /Subtype /application#2Fpdf. The update's table frees object 6. The newest /Prev names a place 2 or 3 bytes past the word in object 4's data.
+
+attached-pdf-table: the data is '%PDF-1.3\n%attached original\nxref\n0 1\n0000000000 65535 f \ntrailer\n<< /Size 1 >>…', with /Prev = word+3.
+- Head:
+  - 'S /Prev named=1792 off=1789 Relocated Table', with no section after it.
+  - 'Repair xref.offset-adjusted @1789: … was found 3 bytes before it.'
+  - 'Repair xref.rebuilt'.
+  - 6="six, freed by the update", repairedAtOpen=True.
+- Main: the same, with the message '… found -3 bytes from there'.
+- Control, 'text' in the word's place: both trees find the update's table 167 bytes after the place named. Object 6 is null and nothing is rebuilt.
+
+attached-pdf-row6: the inner table gives a row '6 1 / 0000000000 00000 n'.
+- Both trees give 'Repair xref.offset-adjusted @133: Object 6 was found 133 bytes …', then xref.rebuilt.
+- 6 is served, and the validator reports 'Warning xref.entry-shifted: The entry of object 6 gives offset 0 …'.
+
+attached-pdf-prev: the inner trailer is '<< /Size 1 /Prev 12 >>'.
+- Both trees: 'S /Prev named=1773 off=1770 Relocated Table', then 'S /Prev named=12 off=175 Relocated Table'.
+- repairedAtOpen=False, 6 is served from the oldest table's row, and object 4 (the embedded file itself) reads as PdfNull with no rebuild.
+- The only findings are section-shifted ×2 and file.size-wrong.
+
+quoted-xref-stream-prev: the data is 'Example:\n12 0 obj\n<< /Type /XRef /Size 13 /W [1 2 1] /Prev 9 /Length 3 >>\nstream\nabc\nendstream\nendobj'.
+- Head:
+  - 'Relocated Stream off=1770'.
+  - 'Warning xref.section-unreadable @1770: … was read only in part: it holds 0 rows where its /Index and /Size declare 13 …'.
+  - The /Prev 9 relocated to 175 '166 bytes after it'.
+  - xref.rebuilt, 6 served, object 4 a PdfStream.
+- Main: the same two relocations with no reader report, repairedAtOpen=False, 6 served from the oldest table's row, and object 4 PdfNull.
+
+So this is pre-existing, and better on the branch. The reviewer's contexts-main.txt, contexts-head.txt and contexts-mutant.txt in /tmp/claude-0/-home-user-AdCodicem-Pdf/b5ddd9fc-0507-5e11-8a94-c9e1fedd4860/scratchpad/lot19/r7sd/ agree.
+
+In the code, src/AdCodicem.Pdf/IO/PdfFileReader.cs:4944 begins the acceptance with 'if (state == XRefSectionState.Read ||', and the line test (:4947) is reached only for Malformed.
+
+In the texts:
+- docs/threat-model.md:460-466 says '… for the section found moved ([#281]), which cannot be read: … Telling stream data apart, which this issue asks for, closes it.'
+- The #171 comment 6703927674 says 'IsTokenOnItsLine lexes the place's line alone … so it does not see stream data' and 'telling stream data apart … closes it for this search too. The two tests then flip.'
+- r6-findings.md [14] says '24 controls, with no decoy or a readable inner table, are identical on both trees', which was seen and not recorded.
+FIX: Change texts and tracking only. No code change in this batch, because the behavior predates the batch and is better on the branch.
+
+1. In docs/threat-model.md's #171 Known-gaps entry, after the sentence ending 'until a rebuild runs', add something like: 'A section there that reads, whole or in part — an uncompressed attached PDF's own table, a cross-reference stream the data quotes — is taken as on main, before any line is lexed, and the chain goes on through its trailer: it ends there, the rows of the section looked for lost and the objects that section frees served, or it follows the /Prev the data quotes.' Then reword the closing to 'Telling stream data apart, asked of every place the search takes, one that reads included, closes it.'
+2. Optionally, add one clause to lazy-reading.md:202-205 and to the code comment at PdfFileReader.cs:4938-4942 saying that a place that reads is taken whatever its line is.
+3. Post a short comment on #171. It should say the search's stream-data case also covers a readable section, which predates the batch and is not reached by IsTokenOnItsLine (Read candidates are accepted first, at PdfFileReader.cs:4944). It should give the attached-PDF table reproducer, and say that closing this search needs the stream-data check on every candidate, not only in the line test. A pinning test is optional.
+
+Where to track it is a tracking choice for the maintainer, not a design question. The recommended home is #171, beside the decided R6-Q1 case. The alternative is its own `debt` issue under M02.
+
+######## [16] lens=stream-data key=171-texts-anywhere-and-older-revision-unqualified sev=nit -> verdict=narrowed sev=nit maint=False
+LOCATION: docs/threat-model.md:461 ('in stream data, anywhere on its line, its middle included') and :464-465 ('where such a header is taken behind an /XRefStm, the older revision an older table's row gives'); docs/website/docs/concepts/lazy-reading.md:203 ('anywhere on a line of stream data'); src/AdCodicem.Pdf/IO/PdfFileReader.cs:4942
+CLAIM: Three texts are unqualified. (a) 'Anywhere on its line': a name (/xref), a hexadecimal string (<xref>), a comment or a string earlier on that line hides the word, which the row at :432 and R6b's own qualifier state ('wherever its line, lexed alone, reads it as a token'). (b) The older revision behind an /XRefStm is served only where the taken header's dictionary refuses no number. A quoted stream whose data follows and whose declared numbers cover the object refuses them, the index is rebuilt at opening, and the new revision is served; the test comment states this condition, the gap does not. (c) 'A few bytes farther off': the real section may be hundreds of bytes away (219 in the overshoot shape), or absent.
+EVIDENCE: contexts-head.txt: 'name-slash-xref' (data 'Notes on the file format.\n/xref tables…') gives 'S /Prev named=1660 off=1796 Relocated Table … found 136 bytes after it', 6=null. 'hex-same-line' ('<xref>') gives '… found 137 bytes after it', 6=null. R6a's probe gave the same for '%' and '(' on the line.
+xrefstm-head.txt: 'header-with-bad-rows' (header plus '/Length 3 >>\nstream\nabc\nendstream') gives repairedAtOpen=True and 3="three new" whatever is read first, with 'section-unreadable … was read only in part: it holds 0 rows where its /Index and /Size declare 13'. Main served 3="three old" when object 3 was read first. The plain header row gives 3="three old" (3 read first) on head, as the gap says.
+FIX: Replace 'anywhere on its line, its middle included' with 'wherever its line, lexed alone, reads it as a token, its middle included' in the gap, lazy-reading.md:203 and the comment at :4942. Qualify the older-revision clause: 'where such a header refuses no number to the older rows — a dictionary no stream data follows —, the older revision an older table's row gives'. Replace 'a few bytes farther off' with 'farther off'.
+--- REFUTER
+REASON: All three points hold as wording nits. Each needs narrowing, and the fix the reviewer proposed for (b) is itself incomplete.
+
+(a) The texts say the word is taken "anywhere on its line". That is false when a `/`, a `<`, a `%` or an open `(` comes earlier on the same line of stream data: in each case the word is not taken, and the search reads the real table, as main does. Only the threat model's [#171] gap (docs/threat-model.md:461) states this with no qualifier inside its own entry. The row at :432, diagnostics.md:110 and validation-rules.md:56 say "wherever its line, lexed alone, reads it as a token". The other two places the reviewer named are qualified in context:
+- the comment at PdfFileReader.cs:4942 says "Its line is lexed as a load lexes the line's own tokens" in the same sentence;
+- lazy-reading.md:203 says "taken all the same", just after "not the word or such a header in a comment or a string there".
+- IsTokenOnItsLine's remark at :4990 is already qualified ("as a token a load of that line would read there").
+The threat model is inconsistent with itself, and the other two would read better in the same words.
+
+(b) Holds, but the reviewer's evidence is off-subject. Its 'header-with-bad-rows' stream is read in part (state Relocated), and main took that place too, and served the older revision itself (3 = "three old" when read first), so the branch is better there. The gap is about a place "which cannot be read". A case that fits the gap: a header whose dictionary is read whole, followed by stream data, whose rows cannot be read (`/W 5`). The branch takes it as Malformed and refuses the numbers it declares (NumbersRefused=True). The index is rebuilt as the document opens, and object 3 is "three new" whatever is read first. Main drops such a place, because it takes a Malformed one only when a guard cut it (CutByLimit).
+
+The reviewer's proposed qualifier, "a dictionary no stream data follows", is not the real condition either. With `/Index [9 4]`, stream data following and the place Malformed and refusing numbers, object 3 read first is still "three old". The real condition is whether the taken header refuses that object's number. The pinning test's comment ("A dictionary no stream data follows refuses no number") is true for its shape.
+
+(c) Holds. The issue's own reproducers put the real section 136 and 186 bytes off, and the search reaches NearbySearchRadius = 512 bytes either side, so "a few bytes" understates it. The "absent" part of the claim is irrelevant: with no real section, nothing is left unread.
+
+Nothing here changes behavior, and the pinning tests hold what they say.
+EVIDENCE: My probe was ZzRefAnywhereTests, run on head d3ef236 with the batch's own builders, NearbyFiles.UpdatePastAWordInStreamData and NearbyFiles.HybridPastAWordInStreamData.
+- Probe: /tmp/claude-0/-home-user-AdCodicem-Pdf/b5ddd9fc-0507-5e11-8a94-c9e1fedd4860/scratchpad/lot19/r7ref-anywhere/ZzRefAnywhereTests.cs.txt
+- Outputs: /tmp/claude-0/-home-user-AdCodicem-Pdf/b5ddd9fc-0507-5e11-8a94-c9e1fedd4860/scratchpad/lot19/r7ref-anywhere/prev-head.txt and /tmp/claude-0/-home-user-AdCodicem-Pdf/b5ddd9fc-0507-5e11-8a94-c9e1fedd4860/scratchpad/lot19/r7ref-anywhere/xrefstm-head.txt
+
+(a) /Prev case, data 'Notes on the file format.\n' followed by:
+- 'xref…' (line-start) and 'The xref…' (mid-line): repairedAtOpen=True, 6="six, freed by the update", '/Prev named=1659 off=1657 Malformed Table'.
+- 'This (file) has xref…' (a string closed earlier on the line): taken the same way, 'off=1673 Malformed Table'.
+- '/xref', '<xref>', '% see xref', 'This file (see xref)': repairedAtOpen=False, 6=null, 'Relocated Table', each 'found 136 bytes after it' or 'found 137 bytes after it'.
+- 'The xrefs' is not taken either (137 bytes after).
+
+(b) /XRefStm case, object 3 read first:
+- Header with no data: 3="three old", 'Malformed Stream refused=False', as the gap says.
+- Header with '/W 5 /Length 3' and stream data: 'Malformed Stream refused=True', 'is there but cannot be read: its /W does not give the widths of three fields', repairedAtOpen=True, 3="three new" in both read orders.
+- The same with '/Index [9 4]': 'Malformed Stream refused=True', repairedAtOpen=False, 3="three old" when 3 is read first, "three new" when 4 is.
+- The reviewer's bad-rows header ('/Length 3', data 'abc'), and one with '/Filter /FlateDecode': 'Relocated Stream', 'was read only in part: it holds 0 rows where its /Index and /Size declare 13', 3="three new".
+- Main's acceptance (21a0298, PdfFileReader.cs:3284-3286) takes a Malformed place only when `attempt.CutByLimit`. The reviewer's main output (r7sd/xrefstm-main.txt) shows main taking the bad-rows header at 1569 and serving 3="three old" when it is read first.
+
+(c) The test files put the update's table 136 bytes past the place named (update=1795, named=1659), and the issue's /XRefStm reproducer puts stream 7 186 bytes past it. NearbySearchRadius = 512 (PdfFileReader.cs:85).
+FIX: Text only; no maintainer decision is needed.
+1. docs/threat-model.md:461: replace "in stream data, anywhere on its line, its middle included" with "in stream data, wherever its line, lexed alone, reads it as a token, its middle included". For consistency (optional), use the same words in lazy-reading.md:203 ("and on a line of stream data wherever that line, lexed alone, reads it as a token, its middle included") and in the comment at PdfFileReader.cs:4942.
+2. docs/threat-model.md:463: replace "the real section a few bytes farther off is left unread" with "the real section farther off, within the 512 bytes searched, is left unread".
+3. docs/threat-model.md:464-465: replace "the older revision an older table's row gives, until a rebuild runs" with "the older revision an older table's row gives of each number the header does not refuse — every number, where no stream data follows its dictionary; one it does not declare, where stream data follows and its rows are lost —, until a rebuild runs". Do not use the reviewer's "a dictionary no stream data follows" as the only condition: the `/Index [9 4]` probe serves the older revision with stream data following.
+Optional: add a row to A_cross_reference_stream_s_header_in_stream_data_short_of_where_an_xrefstm_names_is_taken_for_the_stream_found_moved for the '/W 5' header with stream data (NumbersRefused true, WasRepaired true, 3 = "three new"), so the condition the text states is pinned.
+
+######## [17] lens=stream-data key=lazy-reading-stream-data-not-read sev=nit -> verdict=confirmed sev=nit maint=False
+LOCATION: docs/website/docs/concepts/lazy-reading.md:282-284
+CLAIM: The page says that, short of a rebuild and the search for where a damaged stream's data ends, 'stream data is not even read from disk'. The same page, at :202-206, which the batch rewrote, now says the search near an offset takes words in stream data. That search reads the 512 bytes either side of the offset, and up to 4,096 bytes more back to a line's start; the search near a row reads stream data the same way. The exception list therefore contradicts the page's own paragraph. It predates the batch (main had the 512-byte window), but the batch made the contradiction explicit and widened the read back.
+EVIDENCE: Every 'taken' row in contexts-head.txt (for example 'S /Prev named=1659 off=1657 Malformed Table' at a word inside object 4's /EmbeddedFile data) shows the search reading and lexing stream data at opening, before anything asked for that stream. lazy-reading.md:203 says so ('anywhere on a line of stream data'), while :283 says no stream data is read short of the two named exceptions.
+FIX: Add a third exception: '— short of a rebuild, which scans the whole file, of the searches near an offset a row or a section is named at, which read the bytes either side of it, stream data among them, and of the search for where a damaged stream's data ends, below —'.
+--- REFUTER
+REASON: The finding holds, at nit, and the brief said this sentence could be reported only as a nit with a fix. decisions.md:451 carried it as an open point that "may become a nit". The sentence at lazy-reading.md:282-284 exempts only two things from "stream data is not even read from disk": a rebuild, and the search for where a damaged stream's data ends.
+
+The search near an offset where a section is not reads stream data, and looks at it, just as the exempted endstream search does. It runs at opening, when a /Prev or an /XRefStm misses its section. In the code (PdfFileReader.cs:4882-4887) it reads the 512 bytes either side of the offset and scans them for places. IsTokenOnItsLine (PdfFileReader.cs:5013) reads up to LineStartSearchLength (4,096) bytes more before them, to lex the line from its start, but only for a place that cannot be read and whose line starts before the bytes searched. The page's own text at :202-206, which the batch wrote, says the word is taken "anywhere on a line of stream data". So the page contradicts itself.
+
+The search near a row (PdfFileReader.cs:8155) also reads the 512 bytes either side of a row's offset. In my probe it ran at opening: "Object 5 was found 2 bytes before where the index said".
+
+The problem predates the batch: main 21a0298 had the same 512-byte window (main PdfFileReader.cs:3252-3253). The batch made it worse in two ways. Its own text now states it, and the line read back is new: LineStartSearchLength and IsTokenOnItsLine appear 0 times on main.
+
+The reviewer's proposed fix is incomplete, though. Taken literally, the sentence is already false for a sound file. Every window the reader opens reads whole, `GetWindow` reading min(length, file length − offset) bytes (PdfFileSource.cs:121-137). That covers the 4 KB header search, the 8 KB object windows and the 64 KB table window, and they take in whatever stream data follows. Adding a third exception alone would therefore still leave the sentence false. The text should say what is actually true: no stream's data is looked at until it is asked for, outside the named searches. It is a wording fix, not a design choice.
+EVIDENCE: I rebuilt the evidence at d3ef236 (origin/ccr-6d6c0ee6-dqm4lm-188) with a probe that records every range `PdfFileSource.Read` serves, on a source passed to `PdfDocument.Open(source, null, ownsSource: false)`. The probe is saved at /tmp/claude-0/-home-user-AdCodicem-Pdf/b5ddd9fc-0507-5e11-8a94-c9e1fedd4860/scratchpad/lot19/r7sd/ZzLazyStreamDataProbeTests.cs.txt and its output at /tmp/claude-0/-home-user-AdCodicem-Pdf/b5ddd9fc-0507-5e11-8a94-c9e1fedd4860/scratchpad/lot19/r7sd/lazy-probe.txt.
+
+(1) The search near an offset takes a word in stream data at opening. Built with `NearbyFiles.UpdatePastAWordInStreamData("Notes on the file format.\n", "xref", ...)`:
+`word=xref data=[1631,1777) at=1657 named=1659 update=1795 repaired=True` with diagnostics xref.offset-adjusted @1657, xref.section-unreadable @1657, xref.rebuilt. The section found (offset 1657) lies inside object 4's data [1631,1777), and nothing had asked for object 4. The existing test CrossReferenceChainTests.The_word_xref_or_a_cross_reference_stream_s_header_in_stream_data_short_of_where_a_prev_names_is_taken_for_the_section_found_moved pins the same thing. Its comment says "No load lexes stream data, but the search near the offset lexes the place's line alone".
+
+(2) The search near a row runs at opening. A table row placing object 5 two bytes past its header, behind an uncompressed stream: `repaired=False`, `D xref.offset-adjusted @467: Object 5 was found 2 bytes before where the index said.`
+
+(3) The literal sentence is false for a sound file too. The 500,000-byte content-stream document of Does_not_read_stream_data_until_it_is_asked_for, nothing asked for:
+`sound: len=500434 data=[245,500245) repaired=False total=24779 dataBytesReadAtOpen=11869`
+The reads were [0,4096), [496338,500434), [500263,500295), [500263,500434), [15,8207) and [64,8256). The header search and the 8 KB windows of objects 1 and 2 read 11,869 bytes of the content's data.
+
+On main 21a0298 the 512-byte window was already there (`var start = Math.Max(0, absolute - NearbySearchRadius); var length = (int)Math.Min(NearbySearchRadius * 2, ...)` at main :3252-3253). `grep -c "IsTokenOnItsLine\|LineStartSearchLength"` on main's PdfFileReader.cs gives 0.
+FIX: Reword docs/website/docs/concepts/lazy-reading.md:282-284 so that it says what holds rather than adding one more exception to a claim that is false for every file. Suggested text:
+
+"Past the index and the catalog, nothing is parsed until something asks for it, and no stream's data is read as such. The windows that read an object, a section or the file's ends take in whatever bytes follow, stream data among them: some 12 KB of a 500 KB page's content as a sound file opens. But no stream's data is looked at, short of a rebuild, which scans the whole file; of the searches near an offset a section or an object is named at and not found, which read the 512 bytes either side of it, and up to 4,096 more back to a line's start; and of the search for where a damaged stream's data ends, below."
+
+Keep the existing test sentence after it ("opening it reads less than 200,000 bytes ... at least its 500,000 more"), which is what the paragraph actually holds.
+
+If the maintainer prefers the minimal change, the reviewer's third exception is acceptable, but then also drop "even read from disk" for "read" or "looked at". Otherwise the sentence stays false for a sound file. No code change and no maintainer design decision is needed.
+
+######## [18] lens=issues key=undecodable-xref-stream-rows-read-as-reserved-nulls sev=major -> verdict=narrowed sev=major maint=True
+LOCATION: src/AdCodicem.Pdf/IO/PdfFileReader.cs:6198 (the xref stream's Decode, whose failure is not consulted) and :7343-7356 (the reserved-type arm); src/AdCodicem.Pdf/IO/Filters/PdfFilterPipeline.cs:405-410
+CLAIM: When a cross-reference stream's filter decodes nothing, the reader takes the still-encoded bytes as rows. This happens when Flate data is damaged from its first block (PdfFilterPipeline returns `data` with `failed = true`) and when the filter is one the library does not support. That fallback is older than the batch. Since #221 (01426c1), every such row whose first byte is past 2 reads as the null object: it is indexed as free and stands over older sections' rows and over the on-demand rebuild. A zlib header's first byte, 0x78, is one such byte. Main skipped those rows. So the batch now serves null for objects that main served, either from the older section that defines them or through a rebuild. #221's rule ('a row of a reserved type stands for the null object') is applied to bytes that are no rows. #208/#210's handling of a stream whose data cannot give rows (Malformed, declared numbers refused, /Prev handed on) is not applied to a stream whose data could not be decoded at all. The reports also misdescribe what happened: 'read only in part … the row it holds was kept', 'gives it type 120'.
+EVIDENCE: Probes are uncommitted copies, kept in /tmp/claude-0/-home-user-AdCodicem-Pdf/b5ddd9fc-0507-5e11-8a94-c9e1fedd4860/scratchpad/r7iss/ (ZzIss3ProbeTests.cs, ZzIss6ProbeTests.cs, ZzIss2ProbeTests.cs, with the Dump helper in ZzIssProbeTests.cs). Each was run on d3ef236 and on main 21a0298.
+
+(1) ZzIss221Undecodable. The oldest table gives objects 1 to 3, object 3 being '(three, as the oldest table gives it)'. The update is cross-reference stream 5, `/W [1 4 2] /Index [3 1] /Prev <oldest> /Filter /FlateDecode /Length 7`, data 'xxxxxxx', which startxref names.
+- main: `Warning filter.failed at 404: A Flate stream could not be decoded.` / `obj 3: "three, as the oldest table gives it" repaired=False`, and no finding.
+- head: `Warning filter.failed at 404: …` / `Warning xref.entry-reserved at 286: The cross-reference stream startxref names at offset 286 gives 1 row a reserved type: the row for object 3 gives it type 120. ISO 32000-1 defines types 0, 1 and 2, and reads any other as a reference to the null object (7.5.8.3): the row was read so, and no older section's row stands for its object.` / `obj 3: null repaired=False` / `F Warning xref.entry-type-reserved at offset 286: … as the reader does.`
+- Data 'x\x9cxxxxx' gives the same on both. So does `/Filter /Foo` (`filter.unsupported … decoding stopped there`, then the same null on head and the right object on main). With first byte 0x01, both read a type-1 row (out of range, then a rebuild); that part is older than the batch.
+
+(2) ZzIss221DamagedZlib, a writer-like update. Stream 6 is ZLibStream-compressed, `/Index [4 1 6 1]`, and rewrites object 4 as '(new four)' over the oldest table's '(old four)'.
+- Undamaged, both give `obj 4: "new four"`.
+- With the third byte flipped (78 9C 9C), main gives `filter.failed` then `obj 4: "old four"`. Head gives `filter.failed`, then `Warning xref.entry-reserved at 360: … gives 2 rows a reserved type: the row for object 4 gives it type 120, the first of them …`, then `obj 4: null repaired=False` and `F Warning xref.entry-type-reserved`. Both are wrong, and the batch's own refusal path (B19-2) would give 'new four' through a rebuild.
+
+(3) ZzIss208Data 'flate': a /Prev stream `/Index [4 2] /Filter /FlateDecode`, data 'xxxxxxxxxx'; object 4 is written in the file and only that stream indexes it.
+- main: `obj 4: "only in the stream" repaired=True` (a rebuild).
+- head: `Warning xref.section-unreadable at 1511: … was read only in part: it holds 1 row where its /Index and /Size declare 2; the row it holds was kept, …` plus `xref.entry-reserved … type 120`, and `obj 4: null repaired=False`.
+
+No test covers a cross-reference stream whose data could not be decoded: grep of tests for 'could not be decoded' finds only FilterTests and FilterDamageTests.
+FIX: Treat a cross-reference stream whose filters decoded nothing (a Flate failure before any output, or an unsupported filter) as one whose rows cannot be read. This needs the pipeline's failed state exposed to TryReadXRefStream. Make it Malformed with its own fault ('its data could not be decoded'), refuse every number it declares to older rows (B19-2), and hand its /Prev on (#208). If the maintainer wants to keep the fallback, which serves uncompressed rows written under a wrong /Filter, then at least take no reserved type from data the filters left undecoded: count such a row as one the section lost, so its number is refused rather than read as null. Either way it is a maintainer choice. Add CrossReferenceChainTests rows for the damaged-zlib update, holding object 4 read as '(new four)' through a rebuild, and for the undecodable-row shape, holding object 3 read from the oldest table. Add a CrossReferenceRuleTests row holding xref.section-malformed rather than xref.entry-type-reserved.
+--- REFUTER
+REASON: The finding reproduces with my own hand-built files on d3ef236 and on main 21a0298. No issue or decision covers it. B19-6 (#221) settled what a row of a reserved type means. It did not settle that bytes the filters never decoded count as rows. The #260 comment covers only a section made of real reserved rows. #171, #289, #295, #331 and #52 are unrelated. No test covers a cross-reference stream whose data could not be decoded.
+
+**Why head goes wrong.** When Flate decodes nothing, PdfFilterPipeline (:405-409, and the `if (failed) return given;` in DecodeChain) hands back the encoded bytes with leftEncoded false. An unsupported filter, /Fl included (#250), does the same. TryReadXRefStream (PdfFileReader.cs:6198) then reads those bytes as rows. That fallback predates the batch.
+
+**What the batch changed.** On main, the default arm skipped a row of type past 2. Since 01426c1, ReadXRefStreamRows (:7343-7356) indexes such a row as free and lets no older row stand. The first byte of every zlib stream is 0x78. With /W [1 ...] or [2 ...], the first row of any Flate cross-reference stream that decoded nothing is therefore always "reserved", and so are any later rows whose type byte is past 2. Its number reads as null, where main let the older section or a rebuild answer.
+
+**Narrowed from the finding:**
+- The defect underneath, encoded bytes read as rows, is older than the batch. On both builds, an encoded row whose type byte is 0 already reads as null, and one whose type byte is 1 reads as out of range and triggers a rebuild. The batch's regression is limited to type bytes past 2.
+- In the writer-like update (object 4 rewritten in a damaged zlib stream), main was wrong too: it served the superseded "old four". Head serves null. That shape is differently wrong, not a regression.
+- The clear regressions are the other two shapes. In the first, main served the only definition, which a rebuild also gives. In the second, main rebuilt and served the object.
+- The messages ("the row it holds was kept", "gives it type 120") follow from treating the bytes as rows. They are misleading, not a separate defect.
+
+**What the batch already gets right.** A stream that yields zero rows already takes the batch's own path: read in part, numbers refused, a rebuild. That path serves both objects correctly, so the fix is small.
+EVIDENCE: The probe is my own and uncommitted (copy at /tmp/claude-0/-home-user-AdCodicem-Pdf/b5ddd9fc-0507-5e11-8a94-c9e1fedd4860/scratchpad/r7ref-undec/ZzRefUndecTests.cs.txt). Outputs are in r7ref-undec/out (head d3ef236) and r7ref-undec/out-main (main 21a0298, extracted with git archive).
+
+(1) Oldest table indexes objects 1-3, object 3 being "(three from the oldest table)". startxref names stream 5: `/W [1 4 2] /Index [3 1] /Prev t0 /Filter /FlateDecode /Length 7`, data "xxxxxxx".
+- main: `Warning filter.failed at 396`; `obj 3: "three from the oldest table" repaired=False`; no finding.
+- head: `Warning filter.failed at 396`; `Warning xref.entry-reserved at 278: ... the row for object 3 gives it type 120 ... the row was read so, and no older section's row stands for its object.`; `obj 3: null repaired=False`; `F Warning xref.entry-type-reserved at offset 278`.
+- /Filter /Foo and /Filter /Fl give the same split (`filter.unsupported ... decoding stopped there`, then the three on main and null on head).
+- Controls: data starting with 0x00 gives `obj 3: null` on BOTH builds (older fallback). Data starting with 0x01 gives `xref.entry-out-of-range` plus a rebuild on both. Data of 0 bytes with no filter gives, on head, `xref.section-unreadable ... holds 0 rows where its /Index and /Size declare 1`, then `obj 3: "three from the oldest table" repaired=True`.
+
+(2) A /Prev stream `/Index [4 2] /Filter /FlateDecode` with data "xxxxxxxxxx". Object 4 is written only there, and a newer table names the stream.
+- main: `obj 4: "four, only in the stream" repaired=True`.
+- head: `Warning xref.section-unreadable at 1522: ... was read only in part: it holds 1 row where its /Index and /Size declare 2; the row it holds was kept, ...`, `Warning xref.entry-reserved ... the row for object 4 gives it type 120`, then `obj 4: null repaired=False`.
+- The empty-data control gives `obj 4: "four, only in the stream" repaired=True` on head.
+
+(3) Writer-like update: a ZLibStream stream with `/Index [4 1 6 1]` rewrites object 4. Bytes 78 9C 63 become 78 9C 9C.
+- Undamaged, both builds give "new four".
+- Damaged, main gives `obj 4: "old four"`, which is also wrong. Head gives `xref.entry-reserved ... gives 2 rows a reserved type: the row for object 4 gives it type 120, the first of them`, then `obj 4: null`.
+
+(4) Single-section file whose only zlib stream is damaged.
+- main: `filter.failed`, `xref.rebuilt`, `F Error xref.section-malformed`.
+- head adds `xref.entry-reserved ... 3 rows`, `F Error file.root-invalid ... No object of the file is a catalog.` (the false sentence #260 already tracks, here reached through bytes that are not rows) and `F Warning xref.entry-type-reserved`.
+
+There are no CrossReference*Tests hits for FilterFailed or FilterUnsupported.
+FIX: Stop reading rows from data the filters decoded nothing from. Have PdfFilterPipeline.Decode report, through a new out flag, that the chain decoded nothing: a Flate failure before any output, or an unsupported filter. Do not reuse leftEncoded, which belongs to the guards and would blame a guard for the file's damage.
+
+There are two ways to apply that flag. Choosing between them is the maintainer's call.
+
+(a) Recommended: in TryReadXRefStream, take such data as holding no rows. The existing read-in-part path then reports xref.section-unreadable and xref.section-malformed, refuses the declared numbers to older rows (B19-2) and hands /Prev on (#208). It already does this for empty data, and it serves objects 3 and 4 correctly. Optionally give it its own fault: "its data could not be decoded" rather than "holds 0 rows".
+
+(b) Keep the fallback, which serves raw rows written under a wrong /Filter. But read no reserved type from undecoded data: count such a row as one the section lost, so its number is refused and the rebuild answers.
+
+Either way, add tests:
+- CrossReferenceChainTests rows for shapes (1), (2) and (3). Hold object 3 read from the oldest table, object 4 read through a rebuild in (2), and "new four" through a rebuild in (3).
+- A CrossReferenceRuleTests row holding xref.section-malformed and no xref.entry-type-reserved.
+
+Also bring two places in line:
+- the threat model's cross-reference stream row, which should say which data gives rows;
+- the #260 comment, which should note the single-section shape.
+
+######## [19] lens=issues key=relocate-remarks-omit-stream-data sev=nit -> verdict=confirmed sev=nit maint=False
+LOCATION: src/AdCodicem.Pdf/IO/PdfFileReader.cs:4810-4814 (TryRelocateXRefSection remarks)
+CLAIM: Round 6 (a867e66, R6-Q1) added the stream-data caveat to IsTokenOnItsLine's summary and remarks and to the comment at :4939-4941. TryRelocateXRefSection's own remarks were left out. They still say a place declares itself a section only 'where a load reads it as a token from the start of its line, not a word in a comment or a string there'. A load never lexes stream data, yet the search takes the word xref, or a /Type /XRef header, in uncompressed stream data, even in the middle of its line (#171). So the method's contract overstates what the line test sees.
+EVIDENCE: `grep -n 'of its line, not a word in a comment or a string there' src/AdCodicem.Pdf/IO/PdfFileReader.cs` gives line 4813, and the remark there has no stream-data qualifier. `git show a867e66` touches only :4939-4941 and the IsTokenOnItsLine docs. The behavior the remark overstates is pinned by CrossReferenceChainTests.The_word_xref_or_a_cross_reference_stream_s_header_in_stream_data_short_of_where_a_prev_names_is_taken_for_the_section_found_moved. Its 'xref mid-line' row gives a Malformed section at the word, `xref.offset-adjusted … found 2 bytes before it`, then xref.section-unreadable and xref.rebuilt.
+FIX: After 'where a load reads it as a token from the start of its line', add the same qualifier IsTokenOnItsLine now carries: 'a load of the line's own tokens, stream data and a string an earlier line opened unseen (#171)'. Or point to IsTokenOnItsLine for that limit.
+--- REFUTER
+REASON: The finding holds. At d3ef236, the remarks of TryRelocateXRefSection (PdfFileReader.cs:4810-4814) still say a place that cannot be read declares itself a section "where a load reads it as a token from the start of its line, not a word in a comment or a string there, nor digits a regular byte runs into". Nothing in those remarks (4797-4825) names stream data, or a string an earlier line opened.
+
+The batch wrote that sentence: git blame gives 2b26d183, from 2026-11-06. Round 6's refuter treated this same unqualified phrase as a misstatement in diagnostics.md:110 and validation-rules.md:56 ("a token a load reads from the start of its line" gives "no limit at all"). R6-Q1 decided that "the texts name stream data beside strings an earlier line opened". de12b13 and a867e66 then qualified every sibling text:
+- diagnostics.md:110 and validation-rules.md:56 now add "outside stream data and strings an earlier line opened, in which the word or such a header is taken wherever its line, lexed alone, reads it as a token (#171)";
+- lazy-reading.md:202-205 says the same;
+- threat-model.md:432 says the same;
+- IsTokenOnItsLine's summary and remarks say the same;
+- the method's own body comment at :4940-4942 says the same.
+
+The method's contract remark is the one text left out. Read as written, it says that only a token a real load would lex declares a section. No load lexes stream data, yet the code takes the word there, even in the middle of its line.
+
+This is a nit, not more:
+- it is the XML doc of a private method;
+- its cref to IsTokenOnItsLine leads straight to the qualified text;
+- the body comment of the same method states the limit;
+- the behavior itself is R6-Q1 and tracked under #171.
+
+This is a gap in round 6's fix of a text the batch wrote, which the brief allows to be reported. It is not a re-report of the behavior.
+EVIDENCE: Branch origin/ccr-6d6c0ee6-dqm4lm-188 at d3ef236, built Release with 0 warnings and 0 errors.
+
+The remark:
+- `grep -n "of its line, not a word in a comment or a string there" src/AdCodicem.Pdf/IO/PdfFileReader.cs` gives line 4813.
+- `sed -n 4797,4825p` shows no "stream data" and no "earlier line" anywhere in the remarks.
+- `git blame -L4811,4814` gives 2b26d183 (2026-11-06), so the batch wrote it. Main 21a0298 has no such sentence.
+
+What round 6 changed:
+- `git show a867e66` touches only the comment at :4930-4935 (now :4940-4942) and IsTokenOnItsLine's summary and remarks.
+- `git show de12b13` qualifies diagnostics.md:110, validation-rules.md:56, lazy-reading.md and threat-model.md.
+- `grep "a token a load reads"` on those pages now shows ", outside stream data and strings an earlier line opened, in which the word or such a header is taken wherever its line, lexed alone, reads it as a token (#171)" after each occurrence.
+- r6-findings.md [14]'s refuter listed diagnostics.md:110 and validation-rules.md:56 as misstating because of the bare phrase. decisions.md R6-Q1 says "The texts name stream data beside strings an earlier line opened".
+
+The behavior the remark contradicts:
+- `dotnet test ... --filter-method "*The_word_xref_or_a_cross_reference_stream_s_header_in_stream_data*"` gives 4 total, 4 succeeded.
+- Row ("Notes on the file format.\nThe ", "xref") puts the word in the middle of a line of uncompressed stream data. It asserts:
+  - Sections[1] is (Malformed, Table, named, at), with at being the word;
+  - the diagnostics are [xref.offset-adjusted "found 2 bytes before it", xref.section-unreadable at the word, xref.rebuilt];
+  - object 6, which the update freed, reads "six, freed by the update".
+FIX: In the TryRelocateXRefSection remarks (PdfFileReader.cs:4812-4814), qualify the line test as IsTokenOnItsLine and the reference pages now do. For example, replace "where a load reads it as a token from the start of its line, not a word in a comment or a string there, nor digits a regular byte runs into (<see cref="IsTokenOnItsLine"/>)" with "where a load of the line's own tokens reads it as a token from the start of its line, stream data and a string an earlier line opened unseen, in which the word or such a header is taken anywhere on its line (#171), not a word in a comment or a string there, nor digits a regular byte runs into (<see cref="IsTokenOnItsLine"/>)". Rewrap the paragraph. This covers the string an earlier line opened as well, which the remark has never named either. Only the comment changes, with no test and no maintainer decision. The commit footer is Refs #171.
+
+######## [20] lens=batch key=prev-takes-own-stream-past-the-xrefstm-stream sev=major -> verdict=narrowed sev=major maint=True
+LOCATION: src/AdCodicem.Pdf/IO/PdfFileReader.cs:4892-4904 (TryRelocateXRefSection: takeAt deferral, from 394028c); docs/website/docs/concepts/lazy-reading.md:128-130; tests/AdCodicem.Pdf.Tests/HybridFiles.cs:612 (PrevFallingShortOfTheStreamBefore has no own stream for the newest revision)
+CLAIM: Take a hybrid table whose /XRefStm names the previous revision's cross-reference stream and whose /Prev falls a few bytes off that same stream. This is the batch's own PrevFallingShortOfTheStreamBefore shape, a /Prev and an /XRefStm naming the same section. Now give the update the cross-reference stream of its own that a real hybrid writer writes, named by nothing. Its /Prev search then puts the stream the /XRefStm read behind every other candidate, and takes the update's own stream instead, which lies within 512 bytes. That stream gives no /Prev, so the chain ends there. The older revisions go unread and the index is rebuilt as the document opens. The rebuild serves an object the first update freed, and the validator adds a false Error file.root-invalid (#260's message). Main relocated the /Prev to the stream 7 bytes off, read the whole chain and served the freed object as null. The rule's own reason for passing over the /XRefStm's stream ('it may be the table's own, which need not give a /Prev') is not applied to the candidate it takes: a stream near the table that gives no /Prev, which here is the table's own stream. The docs state the rule ('with no other section near') but not this consequence. This is a regression since 394028c (round 2's [1]).
+EVIDENCE: File (1,968 bytes, LF; generator /tmp/claude-0/-home-user-AdCodicem-Pdf/b5ddd9fc-0507-5e11-8a94-c9e1fedd4860/scratchpad/lot19/r7bat/minX2.py, file genX2/x0_n11.pdf): '%PDF-1.7\n%âãÏÓ\n1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n2 0 obj\n<< /Type /Pages /Kids [] /Count 0 >>\nendobj\n3 0 obj\n(three old)\nendobj\n5 0 obj\n(five, freed by the first update)\nendobj\nxref\n0 4\n0000000000 65535 f \n0000000015 00000 n \n0000000064 00000 n \n0000000116 00000 n \n5 1\n0000000143 00000 n \ntrailer\n<< /Size 12 /Root 1 0 R >>\n' + '%' + 1200x'-' + '\n' + '3 0 obj\n(three new)\nendobj\n10 0 obj\n<< /Type /XRef /Size 12 /W [1 3 1] /Index [3 1 5 1 10 1] /Root 1 0 R /Prev 192 /Length 15 >>\nstream\n' + rows (1 3@1542 0)(0 0 1)(1 10@1569 0) + '\nendstream\nendobj\n4 0 obj\n(four)\nendobj\n11 0 obj\n<< /Type /XRef /Size 12 /W [1 3 1] /Index [4 1] /Length 5 >>\nstream\n' + row (1 4@1711 0) + '\nendstream\nendobj\nxref\n0 1\n0000000000 65535 f \n11 1\n0000001733 00000 n \ntrailer\n<< /Size 12 /Root 1 0 R /Prev 1562 /XRefStm 1569 >>\nstartxref\n1833\n%%EOF\n'. Stream 10 is at 1569, stream 11 (the update's own) at 1733, and the newest table at 1833.
+MAIN 21a0298, default limits, objects 1-5 ascending and descending (same result): 'OPEN repaired=False'; 3=(three new), 4=null, 5=null; 'Repair xref.offset-adjusted at 1569: The cross-reference section /Prev names at offset 1562 was found 7 bytes from there.'; validator: 'Warning xref.section-shifted at offset 1569'.
+HEAD d3ef236 (same in both orders): 'OPEN repaired=False after: repaired=True'; 3=(three new), 4=(four), 5=(five, freed by the first update); 'Repair xref.offset-adjusted at 1733: The cross-reference section /Prev names at offset 1562 was found 171 bytes after it.', 'Repair xref.rebuilt', 'Information object.redefined ... object 3'; validator: 'Error file.root-invalid at object 1 0: The trailer's /Root names object 1 0, which the file does not hold. No object of the file is a catalog.' and 'Warning xref.section-shifted at offset 1733 ... starts 171 bytes after it'.
+Variant with /Prev 32 bytes past the stream's start (1601): main finds it 32 bytes before; head again takes stream 11 at 132 bytes after, with the same rebuild, freed object 5 served and Error. With the update's own stream moved more than 512 bytes away (genX/x3), head reads correctly. Without the 1,200-byte pad (genX/x0, oldest table within reach), head again takes stream 11 at +132.
+FIX: This is a design choice for the maintainer, since it qualifies round 2's [1] and the round 3 wording. Recommended fix: when the stream the table's /XRefStm read gives a /Prev, do not pass it over for a not-reached cross-reference stream candidate that gives none. That candidate is at best the table's own stream, which, as the rule itself says, need not give a /Prev and hands the chain nothing on. So try the /XRefStm's stream in its nearest-first place against such candidates, or pass over a stream with no /Prev that lies between that stream and the table. Add a row to the PrevFallingShortOfTheStreamBefore family where the newest revision has a cross-reference stream of its own, named by nothing and within 512 bytes. The row should assert that stream 6 is read whole, no rebuild, object 5 null and no file.root-invalid. Reword lazy-reading.md:128-130, the TryRelocateXRefSection remarks at :4823 and :4846, and threat-model.md:432 to the rule chosen. If the maintainer keeps the rule, the docs should instead say that a stream giving no /Prev near the offset, the table's own among them, is taken first and ends the chain.
+--- REFUTER
+REASON: The regression holds. I built the file myself in C#, and it came out byte-identical to genX2/x0_n11.pdf. On the branch head, the /Prev's search moves the stream the table's /XRefStm read to the end of its list (PdfFileReader.cs:4892-4904, from 394028c). It then takes the update's own stream 11, which nothing names, 171 bytes after the offset. That stream gives no /Prev, so the chain ends there. The oldest table is never read, the index is rebuilt as the document opens, and the validator gives a false Error file.root-invalid. Main 21a0298 takes stream 10, 7 bytes off, and reads the whole chain with no repair. It is not known: R2a recorded the 'tried last' order as a deviation (r2-fix-result.json) and round 3 [13] worded it ('no other place near holds one'). No round built a case where the section taken in its place cuts the chain, and no open debt holds one (#330 and #321 are other shapes).
+
+It is narrowed on four points.
+(1) Serving the freed object 5 does not come from the moved stream. With that ordering removed, the file reads through branch (c): hybrid-stream-lost, Error hybrid-stream-wrong, and the index marked incomplete, as B19-5 decides. Asking for object 4, which only the unnamed stream 11 holds, then rebuilds the index, and object 5 asked after it reads 'five, freed'. The head's own far row, which the finding calls correct, does the same. What does come from the ordering is this:
+- the chain cut short, with the older revisions unread;
+- the rebuild at opening;
+- the false file.root-invalid;
+- offset-adjusted and section-shifted naming the wrong section;
+- no branch (c) report.
+(2) The proposed fix is incomplete. Give stream 11 a /Prev copying the table's (1562). The head still takes it, reports chain-cycle, rebuilds at opening, and the validator gives Error xref.chain-loop. Main reads that file whole too.
+(3) Moving the stream to the end is a deliberate trade-off. Take shape A: the /XRefStm names the table's own stream, which gives a /Prev pointing inside itself, as the table's /Prev does, and the previous table lies 132 bytes before. The head reads it whole. Main loops and rebuilds at opening. A mutant that keeps a stream giving a /Prev in its nearest-first place falls back to main's behavior there. So the rule is the maintainer's choice.
+(4) No test pins the ordering. That mutant passes the whole unit suite: 7,675 passed, 0 failed.
+
+A side note: with the oldest table within reach, the moved stream also loses to that table. genX/x3 reports 'found 207 bytes before it' about a stream 32 bytes away. The objects served are still right.
+EVIDENCE: My probe: /tmp/claude-0/-home-user-AdCodicem-Pdf/b5ddd9fc-0507-5e11-8a94-c9e1fedd4860/scratchpad/r7x2-ZzR7X2OwnStreamTests.cs.txt. Outputs: r7x2-out-head.txt, r7x2-out-main.txt, r7x2-out-mut.txt, r7x2-self-head.txt, r7x2-self-main.txt, r7x2-self-mut.txt and r7x2-files-head.txt, all in the same scratchpad folder. My file has length 1968, t0=192, s1=1569, x2=1733, t2=1833; `cmp` with genX2/x0_n11.pdf finds it identical.
+
+Head d3ef236, the finding's file:
+- The /Prev, named 1562, is relocated to 1733 as a Stream. Report: 'Repair xref.offset-adjusted @1733 ... found 171 bytes after it', then xref.rebuilt and object.redefined.
+- repairedAtOpen=True. Objects: 4="four", and 5="five, freed by the first update" in both orders.
+- Findings: 'Error file.root-invalid object 1 0: ... which the file does not hold. No object of the file is a catalog.' and 'Warning xref.section-shifted offset 1733 ... 171 bytes after it'.
+- The +32 variant gives the same at 1733 (+132). genX/x0 (no pad, +32) is taken at 531, with the rebuild at opening.
+
+Main 21a0298:
+- The /Prev is relocated to 1569 as a Stream, then the table at 192 is read. Report: 'found 7 bytes from there'. No repair. Objects 4=null and 5=null.
+- Findings: section-shifted at 1569 and two file.size-wrong.
+
+Own-prev variant (stream 11 also gives /Prev 1562):
+- Head: relocated to 1733, xref.chain-cycle @1562, xref.rebuilt, and 'Error xref.chain-loop offset 1733'.
+- Main: reads every section, no repair.
+
+Mutant without the ordering, finding's file: the /Prev is relocated to 1569, then the table at 192 is read, with no repair at opening and 'Error xref.hybrid-stream-wrong offset 1833'. In ascending order, 4="four" and 5="five, freed..." (the rebuild comes on the miss). The head's far row gives exactly the same.
+
+Shape A (/XRefStm 1619 names its own stream, table /Prev 1631, previous table at 1499):
+- Head, with and without the stream's own /Prev: relocated to the table at 1499 ('132 bytes before it'), then 143 read, no repair, 3="three middle".
+- Main, both cases: relocated to 1619 ('-12 bytes'), then rebuilt, plus chain-cycle in the /Prev case.
+- Mutant, /Prev case: hybrid-stream-lost, chain-cycle, rebuilt.
+
+Whole unit suite with the mutant: 7,675 succeeded, 0 failed, 20 skipped.
+
+genX/x3 on head: relocated to the table at 192, 'found 207 bytes before it' (stream 10 is at 367, the /Prev names 399). Objects 4 and 5 are null.
+FIX: This is the maintainer's choice: R2a recorded the 'tried last' order as a deviation and round 3 worded it into the texts. Recommended: tell a stream that may be the table's own by its own /Prev, not by whether the /XRefStm read it.
+
+- A stream whose dictionary gives no /Prev, or a /Prev naming the offset the table's /Prev names, may be the table's own. It is tried after every other place: the stream the /XRefStm read is dropped when it gives no /Prev, as now, and any other candidate stream is moved to the end.
+- The stream the /XRefStm read keeps its nearest-first place when its /Prev names another offset.
+
+That reads all three shapes whole: shape A with or without the stream's /Prev, the finding's shape, and the own-prev variant.
+
+Tests:
+- Add rows to the PrevFallingShortOfTheStreamBefore family: the newest revision's own /Type /XRef stream, named by nothing and within 512 bytes, once with no /Prev and once with the table's /Prev.
+- Each row asserts:
+  - the /Prev relocated to stream 6 at 7 bytes;
+  - the oldest table read;
+  - no repair at opening;
+  - the branch (c) report;
+  - no file.root-invalid and no chain-loop;
+  - object 5 null when asked before object 4.
+- Add a row holding shape A with the stream's /Prev, which today no test pins.
+
+Docs: reword these to the rule chosen:
+- lazy-reading.md:128-130;
+- the PdfFileReader.cs remarks at :4823 and :4846, and the comment at :4892-4896;
+- threat-model.md:430;
+- diagnostics.md:115.
+
+If the maintainer keeps the rule, those texts should instead say what follows from it. Any other section within reach is taken before the stream the /XRefStm read, whatever their distances. That includes the table's own stream named by nothing, which ends the chain when it gives no /Prev, or loops when it gives the table's own /Prev. The older revisions are then left to a rebuild, which happens at opening when the catalog is among them.
+
+######## [21] lens=batch key=lazy-reading-stream-data-not-read sev=nit -> verdict=narrowed sev=nit maint=False
+LOCATION: docs/website/docs/concepts/lazy-reading.md:282-284
+CLAIM: The page says that, short of a rebuild and the search for where a damaged stream's data ends, 'stream data is not even read from disk'. The same page at :198-204 says the search near an offset reads its line again as far as 4,096 bytes before the bytes searched, and takes the word xref anywhere on a line of stream data. That read-back is new in the batch. So the two passages of one page now disagree: the search near a /Prev or /XRefStm offset reads, and interprets, stream data. The sentence predates the batch, which widened the gap.
+EVIDENCE: Counting source over /tmp/claude-0/-home-user-AdCodicem-Pdf/b5ddd9fc-0507-5e11-8a94-c9e1fedd4860/scratchpad/lot19/r7bat/count1.pdf (generator mkcount.py). The file has an embedded-file stream whose data, bytes 376 to 6395, is 6,000 'a' then ' xref' on one line. The newest /Prev names 6379, 2 bytes past that word, and the update's table is at 6413. Opening only: head d3ef236 reads 'total 28207, stream data bytes read 24796 of 6019', main reads 'total 23301, stream data bytes read 20170 of 6019'. Both report 'xref.offset-adjusted at 6413 ... found 34 bytes after it'. The extra 4,626 bytes are the line read-back. Main already reads this range through overlapping windows, so the sentence was loose before the batch.
+FIX: Name the search among the exceptions, for example: 'short of a rebuild, which scans the whole file, the search for where a damaged stream's data ends, below, and the search near an offset a /Prev or an /XRefStm names, which reads 512 bytes either side and as far as 4,096 bytes before them to find a line's start, above — the data of a stream is not read from disk to be parsed'. Alternatively, link :198-204.
+--- REFUTER
+REASON: The finding holds as a nit, and it is one the brief allowed for. Since round 6's fix (d3ef236), lazy-reading.md:198-204 says the search near an offset reads back as far as 4,096 bytes before the bytes it searches, and takes the word `xref` anywhere on a line of stream data. Lines 282-284 say that, apart from a rebuild and the search for where a damaged stream's data ends, stream data is not even read from disk. The same page now contradicts itself. The read-back (IsTokenOnItsLine, LineStartSearchLength = 4096, PdfFileReader.cs:142 and :5013) is new in the batch. The finding's numbers reproduce exactly.
+
+It is narrowed on two counts. First, the claim that the batch widened the gap is marginal. The sentence was already false on main for every file, valid ones included. Several reads take in stream bytes in passing: the header search (4,096 bytes at offset 0), the tail search for `startxref` (the last 4,096 bytes), the 8 KB window the catalog is parsed through, and the 64 KB window of a classic section. Opening a valid 500 KB file reads 15,733 bytes of its content stream's data on both main and head. In the damaged file, main already reads the stream's data in full twice while opening, and the batch adds one read of about 4.6 KB.
+
+Second, the proposed fix only adds the search near an offset as one more exception. That still leaves the sentence false for the header search, the tail search and the object and section windows on any file. The sentence should say what it means: nothing reads a stream's data for that stream before GetRawBytes()/Decode(), and nothing keeps or decodes it. The 200,000-byte figure in the test that follows already allows for those in-passing reads.
+
+This is not a design choice, only wording. It is not already filed: decisions.md:451 carries it as an open point for round 7 that 'may become a nit'.
+EVIDENCE: Rebuilt on d3ef236 (this worktree) and on a scratch worktree of main 21a0298. I used the reviewer's CountSource (Count.cs) with per-read logging added, under /tmp/claude-0/-home-user-AdCodicem-Pdf/b5ddd9fc-0507-5e11-8a94-c9e1fedd4860/scratchpad/r7ref-lazyread/.
+
+1) count1.pdf, regenerated with mkcount.py (stream data at 376..6395, `xref` word at 6377, /Prev names 6379, table at 6413):
+- HEAD: 'after open: total 28207, stream data bytes read 24796 of 6019; repaired False', then 'Repair xref.offset-adjusted at 6413: ... found 34 bytes after it.'
+- MAIN: 'total 23301, stream data bytes read 20170 of 6019', then the same report ('found 34 bytes from there').
+- Read logs: both read 0+4096, 2579+4096, 6379/6377 candidates, 175+6500 (the older table's window, which covers all of the stream) and 9+6666 (the catalog's window, which also covers all of it). Main's search window is 5867+808 and head's is 5866+809. The one read only head makes is 'read 1770 +4905', the line read-back of 4,096 bytes before 5866. That is the +4,626 bytes.
+
+2) valid.pdf, built by mkvalid.py: a classic file with catalog, pages and page, then a content stream of 500,000 bytes at 238..500238, opened only:
+- HEAD and MAIN alike: 'total 16582, stream data bytes read 15733 of 500000; repaired False'.
+- The reads are 0+4096 (header search), 496326+4096 (tail search), 500256+32/+166 and 9+8192 (the catalog's InitialObjectWindow, 8 KB). So valid files already read stream data from disk at opening, before the batch and unchanged by it.
+
+3) `git diff 65306d4 d3ef236 -- docs/website/docs/concepts/lazy-reading.md`: the 'anywhere on a line of stream data' wording at :202-204 is the round 6 fix's. Lines 282-284 are unchanged since main (main's line 175).
+FIX: Rewrite lazy-reading.md:282-284 to state what is true, rather than listing exceptions. For example: 'Past the index and the catalog, nothing is parsed until something asks for it, and nothing reads a stream's data for that stream before it is asked for. A `PdfStream` holds the offset and length of its bytes; the bytes arrive when you call `GetRawBytes()` or `Decode()`, and not before. Reads made for something else take in whatever of a stream's data lies within their reach, and keep none of it. These are the searches for the header and for `startxref`, the window an object or a section is parsed through, the search near an offset an object, a `/Prev` or an `/XRefStm` names (512 bytes either side, and as far as 4,096 bytes before them to find a line's start, above), a rebuild's scan of the whole file, and the search for where a damaged stream's data ends, below.' Keep the test sentence that follows unchanged: its 'less than 200,000 bytes' already allows for those reads. The reviewer's version, which adds only the search near an offset, is not enough. It would still be false for the header search, the tail search and the catalog's window on any file.

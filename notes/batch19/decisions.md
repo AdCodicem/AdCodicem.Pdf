@@ -452,3 +452,67 @@ Settled:
 - status.md additions: 'Commit bodies not rewritten' add 8692234 ('keeps its words' false for the cut-table shape), f0d90c8, 8ba4589 (already listed).
 - #52 end comment: two-stream reproducer (43,559 bytes; 30,000/9,000 at cap 11; 60,000/9,000 at caps 11-12), endobj unjudged at cap 11; correct 'one byte past the short one's start' to reads <= 10 bytes.
 - Worktrees cleaned (23 removed). Local = origin = d3ef236.
+- 2026-11-07: review round 7 launched: wf_08ed9f52-eed (task wrq95q3zu), script lot19-review-r7.js, range 65306d4..d3ef236, six lenses: src-texts, tests, docs, stream-data, issues (each closed issue paid completely), batch.
+
+# Review round 7 (wf_08ed9f52-eed on d3ef236): triage
+27 agents, 0 errors. 21 findings, none refuted:
+- major: [18] (narrowed, maintainer), [20] (narrowed, maintainer);
+- minor: [7] (narrowed), [13] (narrowed), [14], [15] (narrowed; tracking choice);
+- nits: [1] [2] [3] [4] [5] [6] [8] [9] [10] [11] [12] [16] [17] [19] [21].
+Files: r7-findings.md, r7-verified.json, r7-reviewers.json, r7-raw.json.
+- [18] major, regression vs main through #221 (01426c1): an xref stream whose filters decoded nothing (Flate failing
+  before any output, an unsupported filter, /Fl) has its encoded bytes read as rows (pre-existing fallback); since #221
+  a row of type > 2 (zlib's 0x78) reads as null and no older row stands -> null where main served the older section's
+  object or a rebuild. Messages 'gives it type 120', 'the row it holds was kept'. Writer-like damaged update: main served
+  'old four' (wrong too), head null. Single-section damaged stream: head adds entry-reserved x3 and file.root-invalid.
+  Empty data already takes the read-in-part path and serves right. -> R7-Q1.
+- [20] major, regression vs main since 394028c (round 2 [1], 'tried last'): hybrid table with /XRefStm naming the
+  previous revision's stream and /Prev 7 bytes off it, plus the update's own xref stream named by nothing within 512
+  bytes: head takes the own stream (no /Prev) -> chain ends, rebuild at opening, freed object 5 served (via rebuild),
+  false Error file.root-invalid. Own-prev variant: chain-cycle + Error chain-loop. Main read the chain whole. Shape A
+  (/XRefStm names the table's own stream with a /Prev inside itself) is why the rule exists: head reads whole, main loops.
+  No test pins the ordering (mutant passes 7,675). -> R7-Q2.
+- [15] minor, pre-existing: a section in stream data that reads (whole or in part) is accepted before the line test
+  (PdfFileReader.cs:4944); chain goes through its trailer (ends, or follows a quoted /Prev). Texts name only unreadable
+  places; closing #171 needs the stream-data check on every candidate. -> R7-Q3 (tracking: #171 or own debt).
+- R7-Q1 (maintainer, 2026-11-07): [18] 'Sans rangées' as recommended. An xref stream whose filters decoded nothing (a
+  Flate failure before any output, an unsupported filter) holds no rows: Malformed with its own fault ('its data could
+  not be decoded'), its declared numbers refused to older rows (B19-2), its /Prev handed on (#208); the rebuild serves.
+  Expose the failure through a new flag of the filter pipeline, not leftEncoded (the guards'). The fallback reading raw
+  rows under a wrong /Filter goes (the rebuild catches them).
+- R7-Q2 (maintainer, 2026-11-07): [20] 'Juger au /Prev' as recommended. A candidate stream that may be the table's own
+  is told by its own /Prev: one whose dictionary gives no /Prev, or a /Prev naming the offset the table's /Prev names,
+  is tried after every other place (the /XRefStm's stream dropped when it gives no /Prev, as now; any other such
+  candidate moved to the end); the stream the /XRefStm read keeps its nearest-first place when its /Prev names another
+  offset. Tests: the finding's shape (own stream no /Prev), the own-prev variant, shape A with the stream's /Prev.
+- R7-Q3 (maintainer, 2026-11-07): [15] under #171 as recommended: widen the threat-model #171 entry (a readable section
+  in stream data is taken before any line test; chain goes through its trailer); comment on #171 with the reproducer;
+  closing needs the stream-data check on every candidate. No code change.
+Settled without a question (texts and tests):
+- [1]/[8]/[16a]/[19]: 'anywhere on its line' -> 'wherever its line, lexed alone, reads it as a token, its middle
+  included' (threat-model #171 entry, lazy-reading :203, the acceptance comment :4942, IsTokenOnItsLine remark if
+  touched); TryRelocateXRefSection remarks :4810-4814 name stream data and a string an earlier line opened (#171).
+- [2]/[10]: carve-out in five places (ReportSectionReadInPart remark, XRefSectionUnreadable summary, diagnostics.md
+  :112, lazy-reading :167, threat-model :434): 'however many ranges it lost' + 'unless a newer section refused every
+  number before the chain came to it, which its message says instead'.
+- [3]: _paddingProbes remark: 'at most two more, of up to 256 and 2,048 bytes, where leading zeros carry a header's
+  number to that edge or past it: they may read past the search's window, but the number lies within it'.
+- [4]/[13]: the #171 end-of-batch comment corrects: offset that misses (short or past); stream data whose bytes hold
+  the text as written (no filter, Flate stored block, RunLength literal runs); with no real section within 512 bytes
+  the place is still taken (section-unreadable + Error section-malformed instead of section-missing + section-not-found,
+  same rebuild); 'No load lexes an embedded file's data' (object streams' members are lexed, class of object bodies).
+  Optional test comment CrossReferenceChainTests :1197 'No load lexes an embedded file's data'.
+- [5]: rename the two tests (…_where_the_word_xref_in_a_comment_or_a_string_lies_between_…, The_word_xref_in_a_comment_
+  or_a_string_on_a_line_that_starts_before_…) + threat-model :432 citations.
+- [6]: the cut-table theory pins the code list (XRefSectionUnreadable, XRefRebuilt); optional same for :3339 sibling.
+- [7]: threat-model #52: budget clause for every short read (about n times at n ≤ 10, eleven at eleven, twice at
+  twenty). #52 end comment: two-stream reproducer at caps 8 to 11 (60,000/9,000 at 8 to 12), endobj unjudged 9 to 11.
+- [9]/[14]: threat-model :465-466 'Telling stream data, and strings an earlier line opened, apart, which this issue
+  asks for, closes it' — and with [15] 'asked of every place the search takes, one that reads included'. Optional pin
+  of the string context (object body string opened on an earlier line) citing #171: do it (cheap, symmetric).
+- [11]: validation-rules.md rows 54 (section-malformed) and 57 (section-shifted) name the #171 contexts.
+- [12]/[17]/[21]: lazy-reading.md:282-284 rewritten to state what holds (no stream's data read for its own sake;
+  windows read whatever lies in reach; searches named; rebuild; endstream search).
+- [16b]: threat-model :464-465 older revision only for each number the header does not refuse; [16c] 'farther off,
+  within the 512 bytes searched'.
+- 2026-11-07: round 7 fixes launched: wf_5cf097f0-910 (task wnvtfthsg), script lot19-r7-fixes.js: R7a-undecoded (R7-Q1), R7b-own-stream (R7-Q2), R7c-texts, R7d-docs, then R7-track (#171 comment edited + new comment) beside R7f-check.
