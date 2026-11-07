@@ -1,0 +1,290 @@
+[
+ {
+  "n": 1,
+  "lens": "undecoded",
+  "key": "undecoded-drop-loses-parse-reports",
+  "sev": "major",
+  "verdict": "confirmed",
+  "vsev": "major",
+  "maint": false
+ },
+ {
+  "n": 2,
+  "lens": "undecoded",
+  "key": "raw-deflate-garbage-rows",
+  "sev": "major",
+  "verdict": "narrowed",
+  "vsev": "nit",
+  "maint": false
+ },
+ {
+  "n": 3,
+  "lens": "undecoded",
+  "key": "guard-cut-size-index-hides-undecoded",
+  "sev": "major",
+  "verdict": "narrowed",
+  "vsev": "major",
+  "maint": false
+ },
+ {
+  "n": 4,
+  "lens": "undecoded",
+  "key": "check-decodes-typed-stream",
+  "sev": "minor",
+  "verdict": "confirmed",
+  "vsev": "minor",
+  "maint": false
+ },
+ {
+  "n": 5,
+  "lens": "undecoded",
+  "key": "m09-not-equivalent",
+  "sev": "minor",
+  "verdict": "confirmed",
+  "vsev": "minor",
+  "maint": false
+ },
+ {
+  "n": 6,
+  "lens": "undecoded",
+  "key": "undecoded-list-omits-names-none",
+  "sev": "nit",
+  "verdict": "confirmed",
+  "vsev": "nit",
+  "maint": false
+ },
+ {
+  "n": 7,
+  "lens": "own-stream",
+  "key": "first-revision-stream-deferred",
+  "sev": "major",
+  "verdict": "narrowed",
+  "vsev": "major",
+  "maint": true
+ },
+ {
+  "n": 8,
+  "lens": "own-stream",
+  "key": "deferred-stream-budget",
+  "sev": "major",
+  "verdict": "confirmed",
+  "vsev": "major",
+  "maint": false
+ },
+ {
+  "n": 9,
+  "lens": "own-stream",
+  "key": "cut-dictionary-passed-over",
+  "sev": "major",
+  "verdict": "narrowed",
+  "vsev": "major",
+  "maint": true
+ },
+ {
+  "n": 10,
+  "lens": "own-stream",
+  "key": "undecodable-xrefstm-stream-leaves-own-taken",
+  "sev": "major",
+  "verdict": "refuted",
+  "vsev": "none",
+  "maint": false
+ },
+ {
+  "n": 11,
+  "lens": "own-stream",
+  "key": "prev-compared-as-written-loops",
+  "sev": "minor",
+  "verdict": "narrowed",
+  "vsev": "minor",
+  "maint": true
+ },
+ {
+  "n": 12,
+  "lens": "own-stream",
+  "key": "maybeown-initializer-survivor",
+  "sev": "minor",
+  "verdict": "narrowed",
+  "vsev": "nit",
+  "maint": false
+ },
+ {
+  "n": 13,
+  "lens": "src-texts",
+  "key": "guard-hidden-prev-decides-in-silence",
+  "sev": "major",
+  "verdict": "confirmed",
+  "vsev": "major",
+  "maint": false
+ },
+ {
+  "n": 14,
+  "lens": "src-texts",
+  "key": "undecoded-rollback-drops-the-places-own-reports",
+  "sev": "minor",
+  "verdict": "confirmed",
+  "vsev": "major",
+  "maint": false
+ },
+ {
+  "n": 15,
+  "lens": "src-texts",
+  "key": "undecoded-cases-misnamed",
+  "sev": "minor",
+  "verdict": "narrowed",
+  "vsev": "nit",
+  "maint": false
+ },
+ {
+  "n": 16,
+  "lens": "src-texts",
+  "key": "plain-dictionary-passed-over-as-own-stream",
+  "sev": "nit",
+  "verdict": "narrowed",
+  "vsev": "nit",
+  "maint": false
+ },
+ {
+  "n": 17,
+  "lens": "src-texts",
+  "key": "passed-over-window-not-64kb",
+  "sev": "nit",
+  "verdict": "confirmed",
+  "vsev": "nit",
+  "maint": false
+ },
+ {
+  "n": 18,
+  "lens": "src-texts",
+  "key": "near-prev-header-guard-reported",
+  "sev": "nit",
+  "verdict": "confirmed",
+  "vsev": "nit",
+  "maint": false
+ },
+ {
+  "n": 19,
+  "lens": "tests",
+  "key": "guard-undecoded-theory-does-not-pin-its-guard",
+  "sev": "nit",
+  "verdict": "narrowed",
+  "vsev": "nit",
+  "maint": false
+ },
+ {
+  "n": 20,
+  "lens": "tests",
+  "key": "guard-undecoded-theory-comment-misstates-the-old-reading",
+  "sev": "nit",
+  "verdict": "refuted",
+  "vsev": "none",
+  "maint": false
+ },
+ {
+  "n": 21,
+  "lens": "tests",
+  "key": "may-be-own-theory-codes-not-exact",
+  "sev": "nit",
+  "verdict": "narrowed",
+  "vsev": "nit",
+  "maint": false
+ },
+ {
+  "n": 22,
+  "lens": "tests",
+  "key": "builder-summaries-wrap-and-scope",
+  "sev": "nit",
+  "verdict": "confirmed",
+  "vsev": "nit",
+  "maint": false
+ },
+ {
+  "n": 23,
+  "lens": "docs",
+  "key": "tm442-untyped-undecoded-stream-older-rows-serve",
+  "sev": "minor",
+  "verdict": "confirmed",
+  "vsev": "minor",
+  "maint": false
+ },
+ {
+  "n": 24,
+  "lens": "docs",
+  "key": "diag-undecoded-unreadable-code-under-startxref",
+  "sev": "nit",
+  "verdict": "confirmed",
+  "vsev": "nit",
+  "maint": false
+ },
+ {
+  "n": 25,
+  "lens": "docs",
+  "key": "decodes-nothing-vs-decodes-to-nothing-and-unknown-filter-in-bound",
+  "sev": "nit",
+  "verdict": "narrowed",
+  "vsev": "nit",
+  "maint": false
+ },
+ {
+  "n": 26,
+  "lens": "docs",
+  "key": "deferred-streams-order-unstated-in-tm432-and-diag115",
+  "sev": "nit",
+  "verdict": "narrowed",
+  "vsev": "nit",
+  "maint": false
+ },
+ {
+  "n": 27,
+  "lens": "docs",
+  "key": "lazy-reading-120-decoded-whole-omits-partial-decode",
+  "sev": "nit",
+  "verdict": "narrowed",
+  "vsev": "nit",
+  "maint": false
+ },
+ {
+  "n": 28,
+  "lens": "docs",
+  "key": "commit-bodies-record-092b772-253f179",
+  "sev": "nit",
+  "verdict": "confirmed",
+  "vsev": "nit",
+  "maint": false
+ },
+ {
+  "n": 29,
+  "lens": "batch",
+  "key": "oldest-stream-deferred-behind-tables-own-stream",
+  "sev": "major",
+  "verdict": "narrowed",
+  "vsev": "major",
+  "maint": true
+ },
+ {
+  "n": 30,
+  "lens": "batch",
+  "key": "deferral-skipped-when-xrefstm-names-a-stream-again",
+  "sev": "major",
+  "verdict": "narrowed",
+  "vsev": "major",
+  "maint": true
+ },
+ {
+  "n": 31,
+  "lens": "batch",
+  "key": "undecoded-causes-named-in-part",
+  "sev": "nit",
+  "verdict": "confirmed",
+  "vsev": "nit",
+  "maint": false
+ },
+ {
+  "n": 32,
+  "lens": "batch",
+  "key": "issue-329-now-judged-for-undecodable-data",
+  "sev": "nit",
+  "verdict": "refuted",
+  "vsev": "none",
+  "maint": false
+ }
+]
