@@ -3742,14 +3742,19 @@ public class GuardCutValueTests
     [InlineData("/W 5 0 R /Size 8", "[1 4 2]", "/Foo")]
     [InlineData("/W 5 0 R /Size 0", "[1 4 2]", "/FlateDecode")]
     [InlineData("/W [1 4 2] /Index [5 0 R 8]", "0", "/FlateDecode")]
+    [InlineData("/W [1 4 2] /Size 5 0 R", "8", "/Foo")]
+    [InlineData("/W [1 4 2] /Size 5 0 R", "8", "/FlateDecode")]
+    [InlineData("/W [1 4 2] /Index 5 0 R", "[0 8]", "/Foo")]
     public void A_section_whose_filters_decode_nothing_of_its_data_whatever_a_value_a_guard_cut_holds_cannot_be_read_as_read_whole(
         string values, string five, string filter)
     {
-        // As above, object 6's /W, or the first number of its /Index, names object 5, which MaxObjectLength cuts, and its
-        // data, xxxxxxx, is what its filter decodes nothing of. The data holds no row whatever the cut value holds, as a whole
-        // read finds: the stream cannot be read, the file's fault, under the guard as read whole. The encoded bytes were taken
-        // for the data decoded, which held at most one row of the eight the stream declares, and the section was the guard's,
-        // its rows said left unread — or, declaring none, it was the guard's, whatever its data (#221, #263).
+        // As above, object 6's /W, its /Size, its /Index, or the first number of its /Index, names object 5, which
+        // MaxObjectLength cuts, and its data, xxxxxxx, is what its filter decodes nothing of. The data holds no row whatever
+        // the cut value holds, as a whole read finds: the stream cannot be read, the file's fault, under the guard as read
+        // whole. The encoded bytes were taken for the data decoded, which held at most one row of the eight the stream
+        // declares, and the section was the guard's, its rows said left unread — or, declaring none, it was the guard's,
+        // whatever its data —; and where the guard cut its /Size or its whole /Index, the section was the guard's before its
+        // data was looked at, the file's fault blamed on the guard (#221, #263).
         var built = ChainFiles.UnderAnUpdate(
             "/Type /XRef /Size 8 /W [1 4 2] /Length {length}",
             five + new string(' ', 1100),

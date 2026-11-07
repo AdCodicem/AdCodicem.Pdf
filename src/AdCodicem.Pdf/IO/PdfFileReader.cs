@@ -6791,11 +6791,12 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// <summary>
     /// Says what makes a cross-reference stream unreadable whatever the values a guard cut hold, as a whole read says it:
     /// the widths its <c>/W</c> gives, then how it numbers its rows, as far as the values read say, then, for
-    /// <paramref name="stream"/>, whether its data can hold the rows they declare — none, where its filters decode nothing
-    /// of it (#221) —, judged where the <c>/Index</c> or <c>/Size</c> it numbers them with was read. A value a guard cut, or
-    /// an element of one, says nothing, nor does what depends on it — the <c>/Size</c> an <c>/Index</c> so cut may stand
-    /// beside —; an <c>/Index</c> that holds no pairs is wrong whatever its elements hold. Null when nothing read is wrong:
-    /// the section is then the guard's.
+    /// <paramref name="stream"/>, whether its data can hold the rows they declare, judged where the <c>/Index</c> or
+    /// <c>/Size</c> it numbers them with was read — and whether its filters decode anything of it, data they decode nothing
+    /// of holding no row whatever the counts declare, judged whatever <c>/Index</c> or <c>/Size</c> a guard cut (#221). A
+    /// value a guard cut, or an element of one, says nothing, nor does what depends on it — the <c>/Size</c> an
+    /// <c>/Index</c> so cut may stand beside —; an <c>/Index</c> that holds no pairs is wrong whatever its elements hold.
+    /// Null when nothing read is wrong: the section is then the guard's.
     /// </summary>
     /// <remarks>
     /// <see cref="UnreadValue"/> followed every value read here, and found none that no section read so far places: a value
@@ -6853,16 +6854,18 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
             }
         }
 
+        // Data its filters decode nothing of holds no row whatever the counts declare: the section cannot be read, whatever an
+        // /Index or a /Size a guard cut holds, as a whole read finds (#221).
         if (Unread(dictionary, PdfName.Index, out var index, out _) is not null)
         {
-            return null;
+            return UndecodedFault(stream);
         }
 
         if (index is null or PdfNull)
         {
             if (Unread(dictionary, PdfName.Size, out var size, out _) is not null)
             {
-                return null;
+                return UndecodedFault(stream);
             }
 
             if (NumberingFault(null, null, size?.AsInteger(), out _) is { } sizeFault)
@@ -6906,8 +6909,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
             }
         }
 
-        // Data its filters decode nothing of holds no row, whatever the counts declare, though they declare none: the section
-        // cannot be read, as a whole read finds (#221).
+        // Data its filters decode nothing of holds no row, whatever the counts declare, though they declare none (#221).
         var undecoded = false;
 
         if (stream is null || RowsHeldAtMost(stream, Math.Max(row, 1), out undecoded) is not { } most || declared <= most.Rows)
@@ -6919,6 +6921,24 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
         return string.Create(
             CultureInfo.InvariantCulture,
             $"its data, {most.Length:N0} {(most.Length == 1 ? "byte" : "bytes")} decoded, holds at most {most.Rows:N0} of the {declared:N0}{(exact ? string.Empty : " or more")} {(declared == 1 && exact ? "row" : "rows")} its /Index and /Size declare");
+    }
+
+    /// <summary>
+    /// Gives <see cref="DataUndecoded"/> where the filters of cross-reference stream <paramref name="stream"/>, written
+    /// direct, decode nothing of its data, which then holds no row, whatever the values a guard cut hold (#221); null
+    /// otherwise, and for no stream.
+    /// </summary>
+    /// <param name="stream">The stream, whose data's extent is the file's, or null when it is not.</param>
+    private static string? UndecodedFault(PdfStream? stream)
+    {
+        if (stream is null)
+        {
+            return null;
+        }
+
+        // How many rows the data holds says nothing here: only whether it holds any.
+        _ = RowsHeldAtMost(stream, 1, out var undecoded);
+        return undecoded ? DataUndecoded : null;
     }
 
     /// <summary>
