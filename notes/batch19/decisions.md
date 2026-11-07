@@ -435,3 +435,20 @@ Settled:
   Timing tests stable idle and under load.
 - R6-Q1 (maintainer, 2026-11-07): [14] document and track under #171, as recommended. No code change. The texts name stream data beside strings an earlier line opened; a test pins the behavior citing #171; a comment on #171 gives the reproducers.
 - 2026-11-07: round 6 fixes launched: wf_cf83bb0a-d9e (task wzgbeykjn), script lot19/lot19-r6-fixes.js: R6a-src (source texts + tests [9] [10] [11] [8] [14] gap test, cut-table row), R6b-docs (pages [6] [7] [1]/[12] [2] [3] [14]), then R6-track (#171 comment) beside R6f-check.
+
+# Review round 6 fixes (wf_cf83bb0a-d9e): result
+- 2026-11-07: done. 7 commits 65306d4..d3ef236, footers ok (grep -qx):
+  a867e66 docs (IsTokenOnItsLine / stream data, Refs #171); e4130e8 docs (remarks [3][4][5][7][13][1/12], Refs #156 #289 #52 #261 #210);
+  2ff7781 test (two #171 pinning tests: /Prev 4 rows, /XRefStm 2 rows; builders NearbyFiles.UpdatePastAWordInStreamData, HybridPastAWordInStreamData);
+  4778af4 test ([9] readAgain true side Fact + HybridFiles.PrevFallingShortOfTheStreamBeforeALostStream; cut-table theory 4 rows 4,096/4,097 x startxref/Prev + PartialFiles.CutAfterLostSubsections; [10] rename; [11],[8] texts);
+  b446b1f docs ([6][7] #52 entry, [3] #47 cost note); de12b13 docs ([14] threat-model gap + row, diagnostics :110, validation-rules :56, lazy-reading :202-208);
+  d3ef236 docs ([1]/[12] carve-out, [2] split, [9] citation).
+- K2 (readAgain copy replaced with false) KILLED by exactly 1 failure: the new [9] Fact. Cut-table old form (naming=="/XRefStm" || _rowsLostPast) killed by the 2 rows at 4,097.
+- [14] probes: '%' or '(' on the same line hides the word; a string opened on an earlier line does not; /XRefStm with xref word -> every number refused, rebuild at opening serves new; header decoy -> older revision read first (ascending).
+- [6] probe: cap 11 counts x10.99; 43,559-byte file streams 30,000/9,000: stream 7 taken without a search at cap 11 (9,018 vs 9,000); 60,000/9,000 caps 11-12; endobj unjudged at cap 11 with 80 spaces + 'foo'.
+- R6f on d3ef236: build 0/0; unit 10,310 total / 10,307 passed / 3 skipped / 0 failed; format ok; site 269 pages ok; msgs 7/7 ok; keys 0 in round 6, batch 9 = round 5 (false positives); linkcheck ok; 1,158 / 310 citations exist; corpus: branch dump byte-identical to r5f (761,206 bytes), main identical; one document differs after normalizing (pdfmaker7 loses false file.size-wrong).
+- #171 comment posted: https://github.com/AdCodicem/AdCodicem.Pdf/issues/171#issuecomment-6703927674
+- Open points carried: lazy-reading.md:285 'stream data is not even read from disk' (pre-existing; the search near an offset reads 512 bytes either side, stream data included) -> known for round 7, may become a nit; status.md:2391 cites a missing test name (historical record, pre-existing, leave); [#51] duplicate in corpus-contributions.md (pre-existing).
+- status.md additions: 'Commit bodies not rewritten' add 8692234 ('keeps its words' false for the cut-table shape), f0d90c8, 8ba4589 (already listed).
+- #52 end comment: two-stream reproducer (43,559 bytes; 30,000/9,000 at cap 11; 60,000/9,000 at caps 11-12), endobj unjudged at cap 11; correct 'one byte past the short one's start' to reads <= 10 bytes.
+- Worktrees cleaned (23 removed). Local = origin = d3ef236.
