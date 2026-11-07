@@ -547,6 +547,188 @@ public class CrossReferenceChainTests
     }
 
     [Theory]
+    [InlineData("/FlateDecode", PdfDiagnosticCodes.FilterFailed)]
+    [InlineData("/Foo", PdfDiagnosticCodes.FilterUnsupported)]
+    [InlineData("/Fl", PdfDiagnosticCodes.FilterUnsupported)]
+    public void A_cross_reference_stream_whose_filters_decode_nothing_of_its_data_hands_its_prev_on_to_the_older_sections(
+        string filter, string decoding)
+    {
+        // The middle of three revisions is a stream of /Type /XRef whose 21 bytes of data, xxxxxxxxxxxxxxxxxxxxx, its filter
+        // decodes nothing of: Flate data corrupt before its first byte decodes, a filter the library does not know, or /Fl, an
+        // abbreviation it does not read in a stream's /Filter (#250). The encoded bytes were read as the stream's rows, the
+        // first byte of each, 120, a reserved type: objects 4 and 7 read as the null object, no older row standing for them
+        // (#221). The data holds no row, and the stream cannot be read, as one whose /W no row can be read with: the chain
+        // goes on through its /Prev, the numbers it declares refused to the older sections' rows, and objects 4 and 7, which
+        // its rows alone index in their last revisions, are found by rebuilding the index (#208). What decoding met is
+        // reported once, beside the section.
+        var (file, oldest, stream, newest) = LostStreamFiles.ThreeRevisions(
+            "/Type /XRef /Size 9 /Index [4 2 7 1] /W [1 4 2] /Filter " + filter, written: new string('x', 21));
+
+        using var document = PdfDocument.Open(file);
+
+        document.Diagnostics.Select(diagnostic => diagnostic.Code).Should().Equal(decoding, PdfDiagnosticCodes.XRefSectionUnreadable);
+        document.Diagnostics[1].Message.Should().Be(string.Create(
+            CultureInfo.InvariantCulture,
+            $"The cross-reference stream /Prev names at offset {stream} is there but cannot be read: its data could not be decoded. The chain goes on through its /Prev; the objects it numbers that no section read before it indexes are looked for by rebuilding the index, rather than taken from an older section's rows."));
+
+        var sections = document.Reader.Structure.Sections;
+        sections.Select(section => (section.Offset, section.State)).Should().Equal(
+            (newest, XRefSectionState.Read), (stream, XRefSectionState.Malformed), (oldest, XRefSectionState.Read));
+        sections[1].PreviousHandedOn.Should().BeTrue();
+        sections[1].Fault.Should().Be("its data could not be decoded");
+        Text(document, 3).Should().Be("only in the oldest");
+        Text(document, 8).Should().Be("old eight");
+        document.WasRepaired.Should().BeFalse("the oldest table indexes the catalog and objects 3 and 8");
+        Text(document, 4).Should().Be("only in the stream");
+        Text(document, 7).Should().Be("new seven");
+        document.WasRepaired.Should().BeTrue();
+        document.Diagnostics.Select(diagnostic => diagnostic.Code).Should().NotContain(PdfDiagnosticCodes.XRefEntryReserved);
+    }
+
+    [Fact]
+    public void A_cross_reference_stream_found_moved_whose_filters_decode_nothing_of_its_data_is_reported_where_it_was_found()
+    {
+        // The same file, the newest table's /Prev naming a place 3 bytes into the stream's header, where nothing is: the
+        // search near it finds the stream, which declares itself a section, the nearest place, and cannot be read. Its
+        // encoded bytes were read as rows, the stream taken for the section found moved, and objects 4 and 7 read as the
+        // null object (#221). The stream is the section found moved, reported where it was found, what its decoding met
+        // beside it, and the chain goes on through its /Prev, its numbers refused to the older sections' rows (#208, #281).
+        var (file, oldest, stream, newest) = LostStreamFiles.ThreeRevisions(
+            "/Type /XRef /Size 9 /Index [4 2 7 1] /W [1 4 2] /Filter /FlateDecode", written: new string('x', 21), namedShortBy: -3);
+
+        using var document = PdfDocument.Open(file);
+
+        document.Diagnostics.Select(diagnostic => diagnostic.Code).Should().Equal(
+            PdfDiagnosticCodes.FilterFailed, PdfDiagnosticCodes.XRefOffsetAdjusted, PdfDiagnosticCodes.XRefSectionUnreadable);
+        document.Diagnostics[2].Message.Should().StartWith(string.Create(
+            CultureInfo.InvariantCulture,
+            $"The cross-reference stream /Prev names at offset {stream + 3}, found at offset {stream}, is there but cannot be read: its data could not be decoded. The chain goes on through its /Prev;"));
+        document.Reader.Structure.Sections.Select(section => (section.Offset, section.State)).Should().Equal(
+            (newest, XRefSectionState.Read), (stream, XRefSectionState.Malformed), (oldest, XRefSectionState.Read));
+        Text(document, 3).Should().Be("only in the oldest");
+        document.WasRepaired.Should().BeFalse();
+        Text(document, 4).Should().Be("only in the stream");
+        Text(document, 7).Should().Be("new seven");
+        document.WasRepaired.Should().BeTrue();
+    }
+
+    [Theory]
+    [InlineData("/FlateDecode", "xxxxxxx", PdfDiagnosticCodes.FilterFailed)]
+    [InlineData("/Foo", "xxxxxxx", PdfDiagnosticCodes.FilterUnsupported)]
+    [InlineData("/Fl", "xxxxxxx", PdfDiagnosticCodes.FilterUnsupported)]
+    [InlineData("[/ASCIIHexDecode /FlateDecode]", "78787878787878>", PdfDiagnosticCodes.FilterFailed)]
+    [InlineData("[/ASCIIHexDecode /Foo]", "78787878787878>", PdfDiagnosticCodes.FilterUnsupported)]
+    public void A_cross_reference_stream_startxref_names_whose_filters_decode_nothing_of_its_data_leaves_the_file_to_a_rebuild(
+        string filter, string data, string decoding)
+    {
+        // startxref names a stream of /Type /XRef that numbers object 3 alone, over the oldest table, which writes object 3
+        // too. Its filters decode nothing of its data, the bytes xxxxxxx: a filter that does not run or Flate data corrupt
+        // before its first byte decodes, alone or past ASCIIHex, which decoded. The bytes were read as the stream's row,
+        // whose first byte, 120, is a reserved type: object 3 read as the null object, no older row standing for it (#221).
+        // The data holds no row, and the stream cannot be read: the file is rebuilt as it opens, as where startxref names any
+        // section that cannot be read, object 3 found where the oldest table places it, and the validator says what made the
+        // stream unreadable. What decoding met is reported once.
+        var (file, _, stream) = UndecodedStreamFiles.OverAnOlderTable(filter, data);
+
+        using var document = PdfDocument.Open(file);
+
+        document.Reader.Structure.Sections.Select(section => (section.Offset, section.State, section.Fault)).Should().Equal(
+            (stream, XRefSectionState.Malformed, "its data could not be decoded"));
+        document.Diagnostics.Select(diagnostic => diagnostic.Code).Should().Equal(decoding, PdfDiagnosticCodes.XRefRebuilt);
+        Text(document, 3).Should().Be("three, as the oldest table gives it");
+
+        var finding = new PdfValidator().Validate(document).Findings.Should().ContainSingle().Which;
+        finding.RuleId.Should().Be(PdfValidationRuleIds.XRefSectionMalformed);
+        finding.Message.Should().Be(string.Create(
+            CultureInfo.InvariantCulture, $"The cross-reference stream at offset {stream} cannot be read: its data could not be decoded."));
+    }
+
+    [Fact]
+    public void A_cross_reference_stream_under_no_filter_gives_its_data_as_rows_whatever_its_bytes()
+    {
+        // The same file, the stream giving no /Filter, its 7 bytes of data a zero, then xxxxxx: what it holds is its row as
+        // written, a free row for object 3, which reads as the null object, the oldest table's row for it standing for
+        // nothing. Only data that filters decode nothing of holds no rows (#221).
+        var (file, _, _) = UndecodedStreamFiles.OverAnOlderTable(string.Empty, "\0xxxxxx");
+
+        using var document = PdfDocument.Open(file);
+
+        document.Diagnostics.Should().BeEmpty();
+        document.GetObject(new PdfObjectId(3)).Should().BeSameAs(PdfNull.Instance);
+        document.WasRepaired.Should().BeFalse();
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData(2)]
+    public void A_writer_s_update_in_zlib_data_serves_the_new_revision_of_what_it_rewrites_whether_or_not_its_rows_decode(int? damagedAt)
+    {
+        // A writer's update rewrites object 4 and indexes it in a cross-reference stream of zlib data, which startxref names
+        // over the oldest table. Sound, the data decodes to the update's rows. Damaged at its third byte, the first of the
+        // deflate data, it decodes to nothing: its zlib header's first byte, 120, was read as a row's type, a reserved one,
+        // and object 4 as the null object, no older row standing for it (#221) — and where reserved rows were passed over,
+        // the oldest table's row served object 4's older revision. The data holds no row, the file is rebuilt as it opens, and
+        // the rebuild, which keeps the last definition the file writes, serves the new revision.
+        var (file, _, _) = UndecodedStreamFiles.UpdateInZlibData(damagedAt);
+
+        using var document = PdfDocument.Open(file);
+
+        Text(document, 4).Should().Be("new four");
+        document.WasRepaired.Should().Be(damagedAt is not null);
+        document.Diagnostics.Select(diagnostic => diagnostic.Code).Should().Equal(
+            damagedAt is null ? [] : [PdfDiagnosticCodes.FilterFailed, PdfDiagnosticCodes.XRefRebuilt, PdfDiagnosticCodes.ObjectRedefined]);
+    }
+
+    [Fact]
+    public void A_file_whose_only_cross_reference_stream_decodes_to_nothing_is_rebuilt_and_its_catalog_found()
+    {
+        // The file's one cross-reference stream, which startxref names, holds zlib data damaged at its third byte, which
+        // decodes to nothing, and the file has no trailer keyword. The encoded bytes were read as rows, three of a reserved
+        // type, and the validator said no object of the file is a catalog, though the rebuild found one (#260). The data holds
+        // no row, the file is rebuilt as it opens, and the rebuild finds the catalog, the stream's dictionary, which alone
+        // gave /Root, read as no trailer: the validator says only what made the stream unreadable.
+        var (file, stream) = UndecodedStreamFiles.AloneInDamagedZlibData();
+
+        using var document = PdfDocument.Open(file);
+
+        document.Diagnostics.Select(diagnostic => diagnostic.Code).Should().Equal(
+            PdfDiagnosticCodes.FilterFailed, PdfDiagnosticCodes.XRefRebuilt, PdfDiagnosticCodes.TrailerRootRecovered);
+        document.WasRepaired.Should().BeTrue();
+        document.GetObject(new PdfObjectId(1)).AsDictionary().Required().IsOfType(PdfName.Catalog).Should().BeTrue();
+
+        var finding = new PdfValidator().Validate(document).Findings.Should().ContainSingle().Which;
+        finding.RuleId.Should().Be(PdfValidationRuleIds.XRefSectionMalformed);
+        finding.Location.Position.Should().Be(stream);
+    }
+
+    [Theory]
+    [InlineData("/XRefStm", "filter.failed xref.section-unreadable")]
+    [InlineData("/Prev and /XRefStm", "xref.hybrid-stream-lost filter.failed xref.section-unreadable")]
+    [InlineData("/XRefStm then /Prev", "filter.failed xref.section-unreadable xref.chain-cycle xref.rebuilt object.redefined")]
+    public void What_decoding_a_cross_reference_stream_to_nothing_met_is_reported_once_whatever_names_the_stream(string naming, string codes)
+    {
+        // A hybrid file's update writes object 3 again and indexes it in a cross-reference stream whose Flate data decodes to
+        // nothing, named through /XRefStm, through the /Prev and the /XRefStm of one table, or through the /XRefStm of the
+        // newest table and the /Prev of the one before it. The encoded bytes were read as the stream's row, of a reserved type,
+        // and object 3 read as the null object (#221). The data holds no row: the stream is reported once, where the chain
+        // first reads it — beside the naming its table's /XRefStm makes of the offset its /Prev names, or before a /Prev that
+        // names it again ends the chain in a loop (#156) —, the numbers it declares are refused to the older sections' rows,
+        // and the rebuild serves object 3's new revision. What decoding met is reported once.
+        var (file, stream) = UndecodedStreamFiles.NamedByTables(naming);
+
+        using var document = PdfDocument.Open(file);
+
+        string.Join(' ', document.Diagnostics.Select(diagnostic => diagnostic.Code)).Should().Be(codes);
+        document.Diagnostics.Single(diagnostic => diagnostic.Code == PdfDiagnosticCodes.XRefSectionUnreadable).Message.Should().StartWith(
+            string.Create(
+                CultureInfo.InvariantCulture,
+                $"The cross-reference stream {(naming == "/Prev and /XRefStm" ? "/Prev" : "/XRefStm")} names at offset {stream} is there but cannot be read: its data could not be decoded."));
+        Text(document, 3).Should().Be("new three");
+        document.WasRepaired.Should().BeTrue();
+        document.Diagnostics.Count(diagnostic => diagnostic.Code == PdfDiagnosticCodes.FilterFailed).Should().Be(1);
+    }
+
+    [Theory]
     [InlineData(7)]
     [InlineData(3, 7)]
     [InlineData(8, 7)]
@@ -4746,6 +4928,33 @@ public class CrossReferenceChainTests
             ("/Prev", XRefSectionState.Read, oldest));
         sections[1].ReadAs.Should().BeSameAs(sections[2]);
         document.Reader.Structure.LoopOffset.Should().Be(-1);
+    }
+
+    [Theory]
+    [InlineData("/Foo", PdfDiagnosticCodes.FilterUnsupported)]
+    [InlineData("/FlateDecode", PdfDiagnosticCodes.FilterFailed)]
+    public void An_xrefstm_goes_on_past_its_table_s_prev_where_the_prev_names_a_stream_of_no_type_whose_filters_decode_nothing_of_it(
+        string filter, string decoding)
+    {
+        // The same file, whose object 4 gives no /Type and a filter that decodes nothing of its data, its row as written: an
+        // object that gives only a /W and cannot be read, as data that holds no rows cannot, is no section where it is named,
+        // and the /Prev looks for its section nearby (#221, #263). The look at the /Prev's place decodes the data as the
+        // /Prev's reading does, and the /Prev keeps no place there: the /XRefStm's search goes on past object 4, to the oldest
+        // table, which it reads in the stream's place, and the /Prev, whose own search comes there, reads it whole. The
+        // encoded bytes were taken for object 4's row, the /XRefStm's search stopping there. What the look's decoding met is
+        // dropped with it, and so is what the search's reading of object 4 met: the /Prev's own reading reports it, once.
+        var (file, oldest, four, named) = HybridFiles.PrevNamingAStreamBesideTheOldestTable(string.Empty, filter: filter);
+        using var document = PdfDocument.Open(file);
+
+        var sections = document.Reader.Structure.Sections;
+        sections.Select(section => (section.NamedBy, section.State, section.Offset)).Skip(1).Should().Equal(
+            ("/XRefStm", XRefSectionState.NamedAgain, named),
+            ("/Prev", XRefSectionState.Relocated, oldest));
+        sections[1].ReadAs.Should().BeSameAs(sections[2]);
+        sections[2].NamedOffset.Should().Be(four);
+        document.Diagnostics.Select(diagnostic => diagnostic.Code).Should().Equal(
+            PdfDiagnosticCodes.XRefOffsetAdjusted, PdfDiagnosticCodes.XRefHybridStreamLost, decoding, PdfDiagnosticCodes.XRefOffsetAdjusted);
+        document.Diagnostics[2].Position.Should().BeGreaterThan(four);
     }
 
     [Theory]

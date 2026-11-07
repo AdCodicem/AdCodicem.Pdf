@@ -40,22 +40,23 @@ public static class PdfDiagnosticCodes
     /// it is named but cannot be read — a stray token among a table's rows or in place of its trailer, a subsection
     /// numbering objects past 2,147,483,647, a table the end of the file cuts before its first row, within its
     /// <c>trailer</c> keyword too, a cross-reference stream whose <c>/W</c>, <c>/Index</c>, <c>/Size</c> or data cannot give
-    /// rows, or whose <c>/Length</c> no section read before it places and whose data no <c>endstream</c> ends before the
-    /// next object or the end of the file —: an <c>xref</c> keyword, or a stream whose dictionary gives
-    /// <c>/Type /XRef</c>, for which no section near it is taken, and which, the nearest place to an offset that holds no
-    /// section, is the section found moved, reported where it was found (#281); or a stream that only gives a <c>/W</c>,
-    /// when nothing near it can be read in its place. A value that leads to an object one of the reader's limits cut is
-    /// the limit's: the chain ends there, and nothing is reported of the section. The rows read before the fault, if any,
-    /// were kept, but for those it refused itself and those whose numbers a newer section refused — none of them, where a
-    /// newer section refused every number, as the message says —; the objects only the rest indexes are missing from the
-    /// index, which is rebuilt by scanning the file when one of them is asked for. A stream of <c>/Type /XRef</c> whose
-    /// dictionary was read whole loses its rows alone: no older section's row stands for an object it numbers — for any,
-    /// where its numbering cannot be read —, which is missing from the index as the objects only it indexes are; and one that
-    /// gives a <c>/Prev</c> hands that <c>/Prev</c> on, the chain going on to the older sections, as the message says where
-    /// that <c>/Prev</c> names an offset or leads to what one of the reader's limits hides (#208). A classic table an
-    /// <c>/XRefStm</c> names, past which the chain goes on through the table that names it, leaves no older section's row
-    /// standing for the rest of the subsection its fault ended, nor, where what follows the fault cannot be known — a
-    /// subsection header that is no header, a stray token, the end of the file —, for any number its rows do not give (#156).
+    /// rows, data its filters decode nothing of among them (#221), or whose <c>/Length</c> no section read before it places
+    /// and whose data no <c>endstream</c> ends before the next object or the end of the file —: an <c>xref</c> keyword, or
+    /// a stream whose dictionary gives <c>/Type /XRef</c>, for which no section near it is taken, and which, the nearest
+    /// place to an offset that holds no section, is the section found moved, reported where it was found (#281); or a
+    /// stream that only gives a <c>/W</c>, when nothing near it can be read in its place. A value that leads to an object
+    /// one of the reader's limits cut is the limit's: the chain ends there, and nothing is reported of the section. The
+    /// rows read before the fault, if any, were kept, but for those it refused itself and those whose numbers a newer
+    /// section refused — none of them, where a newer section refused every number, as the message says —; the objects only
+    /// the rest indexes are missing from the index, which is rebuilt by scanning the file when one of them is asked for. A
+    /// stream of <c>/Type /XRef</c> whose dictionary was read whole loses its rows alone: no older section's row stands for
+    /// an object it numbers — for any, where its numbering cannot be read —, which is missing from the index as the objects
+    /// only it indexes are; and one that gives a <c>/Prev</c> hands that <c>/Prev</c> on, the chain going on to the older
+    /// sections, as the message says where that <c>/Prev</c> names an offset or leads to what one of the reader's limits
+    /// hides (#208). A classic table an <c>/XRefStm</c> names, past which the chain goes on through the table that names
+    /// it, leaves no older section's row standing for the rest of the subsection its fault ended, nor, where what follows
+    /// the fault cannot be known — a subsection header that is no header, a stray token, the end of the file —, for any
+    /// number its rows do not give (#156).
     /// Or the section, the one <c>startxref</c> names among them, was read only in part, and kept, the chain going on from it
     /// where its trailer was read (#207, #210): a row that is no row ended a subsection of a table, a cross-reference stream
     /// holds fewer rows than it declares, the end of the file cuts a table before its trailer or within its <c>trailer</c>
@@ -277,7 +278,8 @@ public static class PdfDiagnosticCodes
     /// zlib header or checksum, an end marker missing after a whole unit or ending on a <c>~</c>, or the <c>&lt;~</c>
     /// PostScript writes, is reported as a repair. The message says which; for a Flate stream turned corrupt, a byte that
     /// encodes nothing, an ASCII85 group past four bytes and a <c>~</c> something other than <c>&gt;</c> follows, it says at
-    /// which byte of the filter's data the first lies.
+    /// which byte of the filter's data the first lies. A cross-reference stream whose Flate data nothing could decode holds
+    /// no rows: the section cannot be read (#221).
     /// </summary>
     public const string FilterFailed = "filter.failed";
 
@@ -291,7 +293,8 @@ public static class PdfDiagnosticCodes
     /// <summary>
     /// A filter named by the file is not supported, and decoding stopped there: the data is what the filters before
     /// it decoded, or the stream's own when it is the first. A <c>/Filter</c> entry that is neither a name nor an
-    /// array leaves the data as the stream holds it.
+    /// array leaves the data as the stream holds it. A cross-reference stream whose data is so left, some of it still to
+    /// decode, holds no rows: the section cannot be read (#221).
     /// </summary>
     public const string FilterUnsupported = "filter.unsupported";
 

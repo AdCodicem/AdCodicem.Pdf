@@ -3744,12 +3744,13 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// <remarks>
     /// Told without indexing anything, as a hybrid table's <c>/XRefStm</c>, whose search near the offset it names comes to
     /// that place, asks it before the <c>/Prev</c> is read: the object is read as the chain reads one it names as a
-    /// cross-reference stream, its rows aside — from its header, through the windows the <c>/Prev</c>'s own reading opens
-    /// there, past the white space it falls short by, which a trailer's window bounds apart (<see cref="PaddingAt"/>), so
-    /// that the two meet one cut, or none —, and nothing of the reading is kept or reported
+    /// cross-reference stream, its data decoded and its rows aside — from its header, through the windows the
+    /// <c>/Prev</c>'s own reading opens there, past the white space it falls short by, which a trailer's window bounds apart
+    /// (<see cref="PaddingAt"/>), so that the two meet one cut, or none —, and nothing of the reading is kept or reported
     /// (<see cref="TryReadXRefStream"/>'s check alone), the <c>/Prev</c>'s own reading, next, reading it again as itself. At
     /// most once for each hybrid table whose <c>/XRefStm</c> cannot be read where it names, which
-    /// <see cref="PdfReaderLimits.MaxXRefSectionCount"/> bounds.
+    /// <see cref="PdfReaderLimits.MaxXRefSectionCount"/> bounds: one decoding more of the stream, within
+    /// <see cref="PdfReaderLimits.MaxDecodedStreamLength"/>, where the object reads that far.
     /// </remarks>
     /// <param name="start">Where the first token at the offset the <c>/Prev</c> names starts, in the file.</param>
     /// <param name="table">Whether that token is the <c>xref</c> keyword.</param>
@@ -4929,6 +4930,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
 
             var attempt = new XRefSectionRecord(section.NamedBy, candidate, section.NamedFrom);
             var readThrough = _chainValuesCut?.Count ?? 0;
+            var reports = _diagnostics.GetMarkWithDecodingReports();
             var state = TryReadXRefSection(candidate, attempt, out previous, out hybrid, candidate: true);
 
             // A section that cannot be read is the section all the same where what is there declared itself one — the xref
@@ -4964,6 +4966,14 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
             }
 
             ForgetReadThrough(readThrough);
+
+            // A stream whose filters decode nothing of its data is read that far, and dropped where it declares no section:
+            // what the decoding reported goes with it, a reading of that stream meeting it again, and a guard its reading
+            // reached stands (#221). At most MaxRelocationCandidates marks are taken over the document.
+            if (attempt.Fault == DataUndecoded)
+            {
+                _diagnostics.RollBackBesideLimits(reports);
+            }
         }
 
         previous = -1;
@@ -5900,11 +5910,20 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// object is read as <see cref="TryParseUnrecordedAt"/> reads it, and the same faults are looked for — what the object
     /// declares, a guard's cut of its dictionary, its stream data, a <c>/Length</c> the chain cannot read whose data ends
     /// nowhere, a value its rows are read with that no section read so far places or a guard cut, a fault beside that cut,
-    /// <c>/W</c>, <c>/Index</c> and <c>/Size</c> —, and the record says what the reading found, but nothing is indexed,
-    /// refused, reported or recorded, and nothing past the numbering is read: decoding the data and reading the rows make
-    /// no section unreadable — rows the data lacks, or that a guard on decoding cut, leave it read in part —, and the check
-    /// gives <see cref="XRefSectionState.Read"/> there. What a value it read through a guard's cut leads to is the caller's
-    /// to forget (<see cref="ForgetReadThrough"/>).
+    /// <c>/W</c>, <c>/Index</c> and <c>/Size</c>, then data its filters decode nothing of —, and the record says what the
+    /// reading found, but nothing is indexed, refused, reported or recorded: the data is decoded as the reading first decodes
+    /// it, what the decoding reports dropped, and no row is read. Reading the rows makes no section unreadable — rows the
+    /// data lacks, or that a guard on decoding cut, leave it read in part —, and the check gives
+    /// <see cref="XRefSectionState.Read"/> there. What a value it read through a guard's cut leads to is the caller's to
+    /// forget (<see cref="ForgetReadThrough"/>).
+    /// </para>
+    /// <para>
+    /// Data the filters decode nothing of — left at a filter the library does not know, or at an element of <c>/Filter</c>
+    /// that names none, or by a filter that could decode none of what it was given, Flate data corrupt before its first byte
+    /// decodes — holds none of the rows, whatever its bytes would read as, and the section cannot be read: its fault is the
+    /// file's, the decoding's report standing beside it, and a <c>/Prev</c> its dictionary gives may name the older sections
+    /// all the same (#208, #221). Data a filter decoded part of before a fault holds the rows that part does, the section
+    /// read in part where it lacks some (#210); data an image filter leaves is read as the rows it holds.
     /// </para>
     /// </remarks>
     /// <param name="absolute">Where the stream is looked for, in the file.</param>
@@ -6149,10 +6168,23 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
             return XRefSectionState.Malformed;
         }
 
-        // Nothing past here makes the section unreadable: what the data decodes to, and the rows it holds, read it whole or
-        // in part. A check reads neither.
+        // Past here, only data the filters decode nothing of makes the section unreadable, as the reading finds once it decodes
+        // it: what else the data decodes to, and the rows it holds, read it whole or in part. A check decodes the data as the
+        // reading first does, to tell, and drops what the decoding reports, which a reading of the stream meets again; it
+        // reads no row.
         if (checkOnly)
         {
+            var decodingChecked = _diagnostics.GetMarkWithDecodingReports();
+            _ = Filters.PdfFilterPipeline.Decode(
+                xrefStream, _diagnostics, endHidden: false, reachedBefore: false, out _, out _, out var undecodedData);
+            _diagnostics.RollBack(decodingChecked);
+
+            if (undecodedData)
+            {
+                section.Fault = DataUndecoded;
+                return XRefSectionState.Malformed;
+            }
+
             return XRefSectionState.Read;
         }
 
@@ -6195,7 +6227,19 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
 
         while (true)
         {
-            var decoded = Filters.PdfFilterPipeline.Decode(xrefStream, _diagnostics, endHidden, reachedBefore, out var leftEncoded, out var cut);
+            var decoded = Filters.PdfFilterPipeline.Decode(
+                xrefStream, _diagnostics, endHidden, reachedBefore, out var leftEncoded, out var cut, out var undecoded);
+
+            // Data the filters decoded nothing of — left at a filter the library does not know, or by one that could decode
+            // none of what it was given — is not what the stream decodes to, and holds none of its rows, whatever its bytes
+            // would read as: the section cannot be read, the fault the file's, and what the decoding reported stands beside
+            // it. Its rows are lost, as a stream's whose /W no row can be read with, and its /Prev may name the older sections
+            // all the same (#208, #221). A filter that decoded part of its data gives the rows that part holds.
+            if (undecoded)
+            {
+                section.Fault = DataUndecoded;
+                return XRefSectionState.Malformed;
+            }
 
             // Data the guard on filters left encoded holds none of the section's rows: the section is cut before its first.
             data = leftEncoded ? default : decoded.Span;
@@ -6244,7 +6288,8 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
                 if (whole is null && numbered && row > 0)
                 {
                     var again = _diagnostics.GetMarkWithDecodingReports();
-                    var undone = Filters.PdfFilterPipeline.Decode(xrefStream, _diagnostics, endHidden: true, reachedBefore: false, out var leftAgain, out var reached);
+                    var undone = Filters.PdfFilterPipeline.Decode(
+                        xrefStream, _diagnostics, endHidden: true, reachedBefore: false, out var leftAgain, out var reached, out _);
 
                     if (!leftAgain)
                     {
@@ -6626,10 +6671,11 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// <summary>
     /// Says what makes a cross-reference stream unreadable whatever the values a guard cut hold, as a whole read says it:
     /// the widths its <c>/W</c> gives, then how it numbers its rows, as far as the values read say, then, for
-    /// <paramref name="stream"/>, whether its data can hold the rows they declare. A value a guard cut, or an element of
-    /// one, says nothing, nor does what depends on it — the <c>/Size</c> an <c>/Index</c> so cut may stand beside —; an
-    /// <c>/Index</c> that holds no pairs is wrong whatever its elements hold. Null when nothing read is wrong: the section is
-    /// then the guard's.
+    /// <paramref name="stream"/>, whether its data can hold the rows they declare — none, where its filters decode nothing
+    /// of it (#221) —, judged where the <c>/Index</c> or <c>/Size</c> it numbers them with was read. A value a guard cut, or
+    /// an element of one, says nothing, nor does what depends on it — the <c>/Size</c> an <c>/Index</c> so cut may stand
+    /// beside —; an <c>/Index</c> that holds no pairs is wrong whatever its elements hold. Null when nothing read is wrong:
+    /// the section is then the guard's.
     /// </summary>
     /// <remarks>
     /// <see cref="UnreadValue"/> followed every value read here, and found none that no section read so far places: a value
@@ -6740,9 +6786,13 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
             }
         }
 
-        if (stream is null || declared <= 0 || RowsHeldAtMost(stream, Math.Max(row, 1)) is not { } most || declared <= most.Rows)
+        // Data its filters decode nothing of holds no row, whatever the counts declare, though they declare none: the section
+        // cannot be read, as a whole read finds (#221).
+        var undecoded = false;
+
+        if (stream is null || RowsHeldAtMost(stream, Math.Max(row, 1), out undecoded) is not { } most || declared <= most.Rows)
         {
-            return null;
+            return undecoded ? DataUndecoded : null;
         }
 
         held = most.Rows;
@@ -6757,15 +6807,23 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// it whole; null otherwise: a value of them a reference holds is read as the chain reads one, and its decoding is what
     /// the section's reading does.
     /// </summary>
-    private static (long Rows, int Length)? RowsHeldAtMost(PdfStream stream, long row)
+    /// <param name="stream">The stream, whose data's extent is the file's.</param>
+    /// <param name="row">The fewest bytes a row may hold.</param>
+    /// <param name="undecoded">
+    /// Whether its filters, written direct, decode nothing of the data, which then holds no row (#221); null is given then.
+    /// </param>
+    private static (long Rows, int Length)? RowsHeldAtMost(PdfStream stream, long row, out bool undecoded)
     {
+        undecoded = false;
+
         if (!IsWrittenDirect(stream.Dictionary.GetRaw(PdfName.Filter)) || !IsWrittenDirect(stream.Dictionary.GetRaw(PdfName.DecodeParms)))
         {
             return null;
         }
 
-        var decoded = Filters.PdfFilterPipeline.Decode(stream, diagnostics: null, endHidden: false, reachedBefore: false, out var leftEncoded, out var cut);
-        return leftEncoded || cut ? null : (decoded.Length / row, decoded.Length);
+        var decoded = Filters.PdfFilterPipeline.Decode(
+            stream, diagnostics: null, endHidden: false, reachedBefore: false, out var leftEncoded, out var cut, out undecoded);
+        return leftEncoded || cut || undecoded ? null : (decoded.Length / row, decoded.Length);
     }
 
     /// <summary>
@@ -6846,6 +6904,12 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
 
     /// <summary>The fault of a <c>/W</c> whose widths are all 0.</summary>
     private const string NoRowBytes = "its /W gives rows of no bytes";
+
+    /// <summary>
+    /// The fault of data the filters decode nothing of: left at a filter the library does not know, or by one that could
+    /// decode none of what it was given (#221).
+    /// </summary>
+    private const string DataUndecoded = "its data could not be decoded";
 
     /// <summary>Says what is wrong with a width a <c>/W</c> gives, or null when nothing is.</summary>
     /// <param name="width">The width, when it is an integer.</param>

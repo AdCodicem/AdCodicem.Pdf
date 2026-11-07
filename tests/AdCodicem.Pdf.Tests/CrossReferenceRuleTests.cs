@@ -2266,6 +2266,28 @@ public class CrossReferenceRuleTests
     }
 
     [Theory]
+    [InlineData("/FlateDecode")]
+    [InlineData("/Foo")]
+    public void A_cross_reference_stream_whose_filters_decode_nothing_of_its_data_is_malformed_and_gives_no_row_of_a_reserved_type(string filter)
+    {
+        // The middle of three revisions is a stream of /Type /XRef whose data, xxxxxxxxxxxxxxxxxxxxx, its filter decodes
+        // nothing of. The encoded bytes were taken for its rows, whose first byte, 120, is a reserved type, and the finding
+        // said they were read as the null object, as the reader did. The data holds no row: the stream cannot be read, an
+        // Error, as one whose /W no row can be read with, and it gives no row of any type (#221).
+        var (file, _, stream, _) = LostStreamFiles.ThreeRevisions(
+            "/Type /XRef /Size 9 /Index [4 2 7 1] /W [1 4 2] /Filter " + filter, written: new string('x', 21));
+        var report = Validate(file);
+
+        var finding = report.Findings.Should().ContainSingle().Which;
+        finding.RuleId.Should().Be(PdfValidationRuleIds.XRefSectionMalformed);
+        finding.Severity.Should().Be(PdfValidationSeverity.Error);
+        finding.Location.Position.Should().Be(stream);
+        finding.Message.Should().Be(string.Create(
+            CultureInfo.InvariantCulture, $"The cross-reference stream at offset {stream} cannot be read: its data could not be decoded."));
+        report.Findings.Select(each => each.RuleId).Should().NotContain(PdfValidationRuleIds.XRefEntryTypeReserved);
+    }
+
+    [Theory]
     [InlineData(true, "new three")]
     [InlineData(false, "three")]
     public void A_row_of_a_reserved_type_in_an_index_rebuilt_at_opening_is_said_to_be_read_so_only_until_the_rebuild(bool newer, string expected)

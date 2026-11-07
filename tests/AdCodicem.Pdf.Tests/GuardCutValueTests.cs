@@ -3738,6 +3738,52 @@ public class GuardCutValueTests
     }
 
     [Theory]
+    [InlineData("/W 5 0 R /Size 8", "[1 4 2]", "/FlateDecode")]
+    [InlineData("/W 5 0 R /Size 8", "[1 4 2]", "/Foo")]
+    [InlineData("/W 5 0 R /Size 0", "[1 4 2]", "/FlateDecode")]
+    [InlineData("/W [1 4 2] /Index [5 0 R 8]", "0", "/FlateDecode")]
+    public void A_section_whose_filters_decode_nothing_of_its_data_whatever_a_value_a_guard_cut_holds_cannot_be_read_as_read_whole(
+        string values, string five, string filter)
+    {
+        // As above, object 6's /W, or the first number of its /Index, names object 5, which MaxObjectLength cuts, and its
+        // data, xxxxxxx, is what its filter decodes nothing of. The data holds no row whatever the cut value holds, as a whole
+        // read finds: the stream cannot be read, the file's fault, under the guard as read whole. The encoded bytes were taken
+        // for the data decoded, which held at most one row of the eight the stream declares, and the section was the guard's,
+        // its rows said left unread — or, declaring none, it was the guard's, whatever its data (#221, #263).
+        var built = ChainFiles.UnderAnUpdate(
+            "/Type /XRef /Size 8 /W [1 4 2] /Length {length}",
+            five + new string(' ', 1100),
+            compressed: false,
+            predicted: false,
+            placed: true,
+            six: "<< /Type /XRef " + values + " /Filter " + filter + " /Length 7 >>\nstream\nxxxxxxx\nendstream",
+            placedToo: new Dictionary<int, string> { [8] = "(eight)" });
+        var text = Encoding.Latin1.GetString(built);
+        var stream = text.IndexOf("\n7 0 obj", StringComparison.Ordinal) + 1;
+        var sixAt = text.IndexOf("\n6 0 obj", StringComparison.Ordinal) + 1;
+        var file = Encoding.Latin1.GetBytes(text.Replace(Invariant($"/Prev {stream} "), Invariant($"/Prev {sixAt} "), StringComparison.Ordinal));
+        string[] wholeCodes;
+
+        using (var whole = PdfDocument.Open(file))
+        {
+            var read = whole.Reader.Structure.Sections[^1];
+            read.State.Should().Be(XRefSectionState.Malformed);
+            read.Fault.Should().Be("its data could not be decoded");
+            wholeCodes = [.. whole.Diagnostics.Select(entry => entry.Code)];
+        }
+
+        using var document = PdfDocument.Open(file, ObjectGuard);
+
+        var section = document.Reader.Structure.Sections[^1];
+        section.Offset.Should().Be(sixAt);
+        section.State.Should().Be(XRefSectionState.Malformed);
+        section.CutByLimit.Should().BeFalse();
+        section.Fault.Should().Be("its data could not be decoded");
+        document.Diagnostics.Select(entry => entry.Code).Where(code => code != PdfDiagnosticCodes.LimitObject).Should().Equal(wholeCodes);
+        document.GetObject(new PdfObjectId(8)).Should().BeOfType<PdfString>().Which.ToText().Should().Be("eight");
+    }
+
+    [Theory]
     [InlineData(
         "/Size 8",
         "(eight)",

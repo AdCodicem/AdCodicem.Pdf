@@ -20,7 +20,8 @@ internal static class LostStreamFiles
     /// comment, the second writes object 4 <c>(only in the stream)</c>, object 7 again, <c>(new seven)</c>, and
     /// cross-reference stream 5 at <c>Stream</c>, whose dictionary holds <paramref name="entries"/>, <c>/Root 1 0 R</c>, the
     /// <c>/Prev</c> <paramref name="prev"/> writes and the <c>/Length</c> of its data: the rows of objects 4, 5 and 7, in
-    /// fields of 1, 4 and 2 bytes, whatever <c>/W</c> the entries give. Past <paramref name="after"/> bytes of comment, the
+    /// fields of 1, 4 and 2 bytes, whatever <c>/W</c> the entries give, or <paramref name="written"/> when it is given.
+    /// Past <paramref name="after"/> bytes of comment, the
     /// third writes object 6 <c>(only in the newest)</c>, and object 9 as <paramref name="nine"/> when one is given, and a
     /// classic table at <c>Newest</c> that indexes them and names the stream through <c>/Prev</c>.
     /// </summary>
@@ -38,6 +39,7 @@ internal static class LostStreamFiles
     /// How many bytes short of the stream's header the newest table's <c>/Prev</c> names it, in the end of line before it.
     /// </param>
     /// <param name="oldestTrailer">What the oldest table's trailer gives besides its <c>/Size</c> and <c>/Root</c>.</param>
+    /// <param name="written">The stream's data, one byte to a character, in place of its rows; the rows when null.</param>
     public static (byte[] File, long Oldest, long Stream, long Newest) ThreeRevisions(
         string entries = Unreadable,
         string? prev = null,
@@ -47,7 +49,8 @@ internal static class LostStreamFiles
         bool data = true,
         int shift = 0,
         int namedShortBy = 0,
-        string oldestTrailer = "")
+        string oldestTrailer = "",
+        string? written = null)
     {
         var file = new HandWrittenFile(version: "1.5");
         var catalog = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>");
@@ -64,7 +67,7 @@ internal static class LostStreamFiles
         var four = file.Object(4, "(only in the stream)");
         var newSeven = file.Object(7, "(new seven)");
         var stream = file.Position;
-        var rows = StreamRows((1, four, 0), (1, stream, 0), (1, newSeven, 0));
+        var rows = written ?? StreamRows((1, four, 0), (1, stream, 0), (1, newSeven, 0));
         var named = prev switch
         {
             null => string.Create(CultureInfo.InvariantCulture, $" /Prev {oldest}"),
