@@ -1291,12 +1291,12 @@ public class CrossReferenceChainTests
         string line, string eol)
     {
         // Past a comment of 5,000 bytes, which a line feed or a lone carriage return ends, as it ends every line of the file
-        // but the first table's rows, the xref keyword follows the endobj of object 4, an array of 400 zeros written on one
-        // line, or a stray endobj on a short line; the newest table's /Prev names the place 50 bytes before it, and no table
-        // follows it. The long line starts more than 512 bytes before that place, and the end of line that ends the comment is
-        // the only one within 4,096 bytes before the bytes searched; the short line starts within them, past that end of
-        // line. Either end of line starts a line, as a load reads it: the keyword is a token there, the section found moved,
-        // which cannot be read (#281).
+        // but, where it is a carriage return, the tables' rows, which a carriage return and a line feed end, the xref keyword
+        // follows the endobj of object 4, an array of 400 zeros written on one line, or a stray endobj on a short line; the
+        // newest table's /Prev names the place 50 bytes before it, and no table follows it. The long line starts more than 512
+        // bytes before that place, and the end of line that ends the comment is the only one within 4,096 bytes before the
+        // bytes searched; the short line starts within them, past that end of line. Either end of line starts a line, as a
+        // load reads it: the keyword is a token there, the section found moved, which cannot be read (#281).
         var (file, keyword) = NearbyFiles.KeywordPastALongComment(
             line == "a line that starts before the bytes searched"
                 ? "4 0 obj [" + string.Concat(Enumerable.Repeat("0 ", 400)) + "] endobj xref 0 1 bad"

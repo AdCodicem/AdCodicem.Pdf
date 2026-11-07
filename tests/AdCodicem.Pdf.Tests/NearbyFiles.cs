@@ -678,7 +678,8 @@ internal static class NearbyFiles
     /// which a comment of 5,000 bytes, its end of line counted, comes before <paramref name="line"/>, which holds an
     /// <c>xref</c> keyword, at <c>Keyword</c>, that no table follows; past 1,200 bytes more of comment, the newest table, which
     /// indexes objects 1 and 2 too, names through <c>/Prev</c> the place 50 bytes before that keyword, where no section is.
-    /// The first table's rows end with a carriage return and a line feed whatever <paramref name="eol"/> is.
+    /// Both tables' rows end with a space and a line feed where <paramref name="eol"/> is a line feed, and with a carriage
+    /// return and a line feed otherwise.
     /// </summary>
     public static (byte[] File, long Keyword) KeywordPastALongComment(string line, string eol = "\n")
     {
