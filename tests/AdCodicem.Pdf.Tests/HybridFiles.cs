@@ -487,14 +487,15 @@ internal static class HybridFiles
     /// indexes objects 1 to 3 and object 7, <c>(old seven)</c>; object 8, a string, follows it, and object 4, at
     /// <c>Four</c>, a stream whose dictionary gives <paramref name="type"/> — written whole, a space after it, or nothing —,
     /// the <c>/W</c> <paramref name="widths"/> and an <c>/Index</c> whose one row places object 7's new revision,
-    /// <c>(new seven)</c>, its data <paramref name="padding"/> bytes longer, names the oldest table through <c>/Prev</c>, and
-    /// gives the <c>/Filter</c> <paramref name="filter"/>, none when empty; the newest table, past a long comment, indexes
-    /// object 6, <c>(six)</c>, and names object 4 through <c>/Prev</c> and, through <c>/XRefStm</c>, the place 20 bytes into
-    /// object 8, inside its string, at <c>Named</c>, 28 bytes before object 4: object 8 is the nearest place to it, then
-    /// object 4, then the oldest table.
+    /// <c>(new seven)</c>, its data <paramref name="padding"/> bytes longer, names the oldest table through <c>/Prev</c>,
+    /// gives the <c>/Filter</c> <paramref name="filter"/>, none when empty, and the <c>/Length</c>
+    /// <paramref name="length"/>, the data's own where none is given; the newest table, past a long comment, indexes object
+    /// 6, <c>(six)</c>, and names object 4 through <c>/Prev</c> and, through <c>/XRefStm</c>, the place 20 bytes into object
+    /// 8, inside its string, at <c>Named</c>, 28 bytes before object 4: object 8 is the nearest place to it, then object 4,
+    /// then the oldest table.
     /// </summary>
     public static (byte[] File, long Oldest, long Four, long Named) PrevNamingAStreamBesideTheOldestTable(
-        string type, string widths = "[1 4 2]", int padding = 0, string filter = "")
+        string type, string widths = "[1 4 2]", int padding = 0, string filter = "", int? length = null)
     {
         var file = new HandWrittenFile(version: "1.5");
         var (catalog, pages, page) = Page(file);
@@ -506,7 +507,7 @@ internal static class HybridFiles
         var eight = file.Object(8, "(" + new string('x', 30) + ")");
         var rows = StreamRows((1, newSeven, 0)) + new string('-', padding);
         var filtered = filter.Length == 0 ? string.Empty : " /Filter " + filter;
-        var four = file.Object(4, Invariant($"<< {type}/Size 10 /W {widths} /Index [7 1] /Prev {oldest}{filtered} /Length {rows.Length} >>\nstream\n{rows}\nendstream"));
+        var four = file.Object(4, Invariant($"<< {type}/Size 10 /W {widths} /Index [7 1] /Prev {oldest}{filtered} /Length {length ?? rows.Length} >>\nstream\n{rows}\nendstream"));
         file.Raw("%" + new string('-', 1200) + "\n");
         var six = file.Object(6, "(six)");
         var newest = file.Position;

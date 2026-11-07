@@ -1,3 +1,4 @@
+using AdCodicem.Pdf.Diagnostics;
 using AdCodicem.Pdf.Objects;
 
 namespace AdCodicem.Pdf.IO.XRef;
@@ -154,6 +155,15 @@ internal sealed class XRefSectionRecord
     /// <c>endstream</c>, and the search tries it again once every other place was (#156).
     /// </summary>
     public bool MayBeTablesOwn { get; set; }
+
+    /// <summary>
+    /// Gets where the document's diagnostics stood, with the reports decodings had moved into them, just before the data of
+    /// a cross-reference stream was decoded at a place the section may have been moved to, where its filters decoded nothing
+    /// of it; null otherwise. A place that declares no section is dropped, and what that decoding reported goes with it, the
+    /// diagnostics rolled back to this mark beside the guards it reached: what reading the stream's dictionary reported
+    /// stands, as for any place dropped (#221).
+    /// </summary>
+    public PdfDiagnosticsMark? UndecodedReports { get; set; }
 
     /// <summary>
     /// Gets a value indicating whether the stream's dictionary gives a <c>/Type</c> that names another type than

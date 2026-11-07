@@ -634,6 +634,8 @@ public class CrossReferenceChainTests
 
         document.Reader.Structure.Sections.Select(section => (section.Offset, section.State, section.Fault)).Should().Equal(
             (stream, XRefSectionState.Malformed, "its data could not be decoded"));
+        document.Reader.Structure.Sections[0].UndecodedReports.Should().BeNull(
+            "what the decoding reported stands beside a section the chain names, and no mark is kept to drop it");
         document.Diagnostics.Select(diagnostic => diagnostic.Code).Should().Equal(decoding, PdfDiagnosticCodes.XRefRebuilt);
         Text(document, 3).Should().Be("three, as the oldest table gives it");
 
@@ -5066,7 +5068,8 @@ public class CrossReferenceChainTests
         // /Prev's reading does, and the /Prev keeps no place there: the /XRefStm's search goes on past object 4, to the oldest
         // table, which it reads in the stream's place, and the /Prev, whose own search comes there, reads it whole. The
         // encoded bytes were taken for object 4's row, the /XRefStm's search stopping there. What the look's decoding met is
-        // dropped with it, and so is what the search's reading of object 4 met: the /Prev's own reading reports it, once.
+        // dropped with it, and so is what the search's decoding of object 4 met, which drops the place: the /Prev's own
+        // reading, decoding it again, reports it, once.
         var (file, oldest, four, named) = HybridFiles.PrevNamingAStreamBesideTheOldestTable(string.Empty, filter: filter);
         using var document = PdfDocument.Open(file);
 
@@ -5079,6 +5082,40 @@ public class CrossReferenceChainTests
         document.Diagnostics.Select(diagnostic => diagnostic.Code).Should().Equal(
             PdfDiagnosticCodes.XRefOffsetAdjusted, PdfDiagnosticCodes.XRefHybridStreamLost, decoding, PdfDiagnosticCodes.XRefOffsetAdjusted);
         document.Diagnostics[2].Position.Should().BeGreaterThan(four);
+    }
+
+    [Theory]
+    [InlineData("[1 4 2] ]", "/Foo", null, PdfDiagnosticCodes.SyntaxUnexpectedToken, PdfDiagnosticCodes.FilterUnsupported)]
+    [InlineData("[1 -4 2] ]", "", null, PdfDiagnosticCodes.SyntaxUnexpectedToken, null)]
+    [InlineData("[1 4 2] /W [1 4 2]", "/Foo", null, PdfDiagnosticCodes.SyntaxKeyRepeated, PdfDiagnosticCodes.FilterUnsupported)]
+    [InlineData("[1 4 2] /W [1 4 2]", "/FlateDecode", null, PdfDiagnosticCodes.SyntaxKeyRepeated, PdfDiagnosticCodes.FilterFailed)]
+    [InlineData("[1 4 2]", "/Foo", 3, PdfDiagnosticCodes.StreamLengthInvalid, PdfDiagnosticCodes.FilterUnsupported)]
+    [InlineData("[1 -4 2]", "", 3, PdfDiagnosticCodes.StreamLengthInvalid, null)]
+    public void A_stream_of_no_type_the_search_near_an_offset_drops_keeps_what_reading_its_dictionary_reported_once_whatever_made_it_unreadable(
+        string widths, string filter, int? length, string reported, string? decoding)
+    {
+        // The same file, whose object 4 gives no /Type, and in its dictionary a stray ], or the key /W twice, or a /Length of
+        // 3 over its 7 bytes of data: an object that gives only a /W, which cannot be read, its filter decoding nothing of its
+        // data or one of its widths negative. The /XRefStm's search reads it, and drops it, a place that declares no section,
+        // what reading its dictionary reported standing, once, as for any place dropped: a reading of object 4 meeting the
+        // fault again does not make the report again. Where its data could not be decoded, every report its reading made was
+        // dropped with it, and the fault in its dictionary was reported nowhere, though object 4 is served. Only what its
+        // decoding reported goes with the place, which the /Prev's own reading, decoding it again, reports once (#221).
+        var (file, oldest, four, _) = HybridFiles.PrevNamingAStreamBesideTheOldestTable(
+            string.Empty, widths: widths, filter: filter, length: length);
+        using var document = PdfDocument.Open(file);
+
+        document.Reader.Structure.Sections[^1].Should().Match<XRefSectionRecord>(section =>
+            section.NamedBy == "/Prev" && section.State == XRefSectionState.Relocated && section.Offset == oldest);
+        document.Diagnostics.Select(diagnostic => diagnostic.Code).Should().Equal(
+            decoding is null
+                ? [reported, PdfDiagnosticCodes.XRefOffsetAdjusted, PdfDiagnosticCodes.XRefHybridStreamLost, PdfDiagnosticCodes.XRefOffsetAdjusted]
+                : [reported, PdfDiagnosticCodes.XRefOffsetAdjusted, PdfDiagnosticCodes.XRefHybridStreamLost, decoding, PdfDiagnosticCodes.XRefOffsetAdjusted]);
+        document.Diagnostics[0].Position.Should().BeGreaterThan(four);
+
+        document.GetObject(new PdfObjectId(4)).Should().BeOfType<PdfStream>();
+        document.Diagnostics.Count(diagnostic => diagnostic.Code == reported).Should().Be(1);
+        document.Diagnostics.Count(diagnostic => diagnostic.Code == decoding).Should().Be(decoding is null ? 0 : 1);
     }
 
     [Theory]

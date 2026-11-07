@@ -4964,7 +4964,6 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
 
             var attempt = new XRefSectionRecord(section.NamedBy, candidate, section.NamedFrom);
             var readThrough = _chainValuesCut?.Count ?? 0;
-            var reports = _diagnostics.GetMarkWithDecodingReports();
             var state = TryReadXRefSection(candidate, attempt, out previous, out hybrid, candidate: true, passOver);
 
             // A section that cannot be read is the section all the same where what is there declared itself one — the xref
@@ -5005,11 +5004,12 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
             ForgetReadThrough(readThrough);
 
             // A stream whose filters decode nothing of its data is read that far, and dropped where it declares no section:
-            // what the decoding reported goes with it, a reading of that stream meeting it again, and a guard its reading
-            // reached stands (#221). At most MaxRelocationCandidates marks are taken over the document.
-            if (attempt.Fault == DataUndecoded)
+            // what its decoding reported goes with it, a reading of that stream meeting it again, and a guard the decoding
+            // reached stands. What reading its dictionary reported stands too, as for any place dropped: a reading of that
+            // stream meeting it again would not make it again (#221).
+            if (attempt.UndecodedReports is { } decoding)
             {
-                _diagnostics.RollBackBesideLimits(reports);
+                _diagnostics.RollBackBesideLimits(decoding);
             }
 
             // A stream that may be the table's own was read no further than its object, and left nothing but a search for its
@@ -5974,8 +5974,11 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// that names none, or by a filter that could decode none of what it was given, Flate data corrupt before its first byte
     /// decodes — holds none of the rows, whatever its bytes would read as, and the section cannot be read: its fault is the
     /// file's, the decoding's report standing beside it, and a <c>/Prev</c> its dictionary gives may name the older sections
-    /// all the same (#208, #221). Data a filter decoded part of before a fault holds the rows that part does, the section
-    /// read in part where it lacks some (#210); data an image filter leaves is read as the rows it holds.
+    /// all the same (#208, #221). At a place the section may have been moved to, where the object gives only a <c>/W</c>
+    /// and so declares no section, the place is dropped, and what the decoding reported goes with it
+    /// (<see cref="XRefSectionRecord.UndecodedReports"/>), what reading the dictionary reported standing. Data a filter
+    /// decoded part of before a fault holds the rows that part does, the section read in part where it lacks some (#210);
+    /// data an image filter leaves is read as the rows it holds.
     /// </para>
     /// </remarks>
     /// <param name="absolute">Where the stream is looked for, in the file.</param>
@@ -6271,8 +6274,11 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
             }
         }
 
-        // What a decoding reports of data taken again is dropped with it, and may be met again.
-        var decoding = deferred is null ? _diagnostics.GetMark() : _diagnostics.GetMarkWithDecodingReports();
+        // What a decoding reports of data taken again is dropped with it, and may be met again. So is what it reports of data
+        // the filters decode nothing of at a place the section may have been moved to, where the place declares no section
+        // (TryRelocateXRefSection): the mark taken for it, one for each place read that far, which MaxRelocationCandidates
+        // bounds, holds the decodings' reports.
+        var decoding = deferred is null && !candidate ? _diagnostics.GetMark() : _diagnostics.GetMarkWithDecodingReports();
         Span<int> fieldWidths = stackalloc int[3];
         ReadOnlySpan<byte> data;
         bool decodedWhole;
@@ -6302,11 +6308,13 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
             // Data the filters decoded nothing of — left at a filter the library does not know, or by one that could decode
             // none of what it was given — is not what the stream decodes to, and holds none of its rows, whatever its bytes
             // would read as: the section cannot be read, the fault the file's, and what the decoding reported stands beside
-            // it. Its rows are lost, as a stream's whose /W no row can be read with, and its /Prev may name the older sections
-            // all the same (#208, #221). A filter that decoded part of its data gives the rows that part holds.
+            // it, but at a place the section may have been moved to that is dropped. Its rows are lost, as a stream's whose /W
+            // no row can be read with, and its /Prev may name the older sections all the same (#208, #221). A filter that
+            // decoded part of its data gives the rows that part holds.
             if (undecoded)
             {
                 section.Fault = DataUndecoded;
+                section.UndecodedReports = candidate ? decoding : null;
                 return XRefSectionState.Malformed;
             }
 
