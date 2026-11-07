@@ -785,6 +785,42 @@ public class WindowEdgeTests
     }
 
     [Theory]
+    [InlineData("\n", 11)]
+    [InlineData("\n", 12)]
+    [InlineData("\n", 40)]
+    [InlineData("\r\n", 11)]
+    [InlineData("\r\n", 12)]
+    [InlineData("\r\n", 40)]
+    public void An_endstream_past_the_window_ends_the_data_alike_through_reads_a_source_cuts_short_to_more_bytes_than_the_overlap(
+        string endOfLine, int cap)
+    {
+        // Object 5 declares a length past the file, and its endstream, which a line feed or a carriage return and a line
+        // feed precede, lies past the window, through a source whose reads that start in the data give at most cap bytes,
+        // before the end of the file (#52). A read of more bytes than the overlap, short or not, makes the next repeat the
+        // overlap whole, so the read that first holds the keyword whole holds the end of line before it too: the data ends
+        // where whole reads end it, wherever the reads fall about the keyword. One of no more bytes than the overlap repeats
+        // less of it, and what then follows is short reads' to settle (#52), not held here: reads of 10 bytes leave the
+        // carriage return of the pair in the data, reads of 9 the line feed as well, and reads shorter than the keyword miss
+        // it, the data then running to the object's endobj. Object 6 is long enough that the file's last 4,096 bytes, which
+        // hold its startxref, lie past the reads cut short.
+        var header = endOfLine + "endstream\nendobj\n12 0 obj";
+        var windowEdge = Window - LostEndPrefix.Length;
+
+        for (var filler = windowEdge + 30; filler < windowEdge + 60; filler++)
+        {
+            var file = HeaderFile(header, filler, padding: PdfFileReader.TailSearchLength);
+            var dataStart = DataStartIn(file);
+            var source = new ShortCountSource(file, (offset, held) =>
+                offset > dataStart && offset < dataStart + filler + header.Length ? Math.Min(held, cap) : held);
+            var whole = HeaderEnding(PdfFileSource.FromMemory(file), PdfReaderOptions.Default);
+
+            HeaderEnding(source, PdfReaderOptions.Default).Should().Be(whole, "the filler is {0} bytes", filler);
+            whole.Length.Should().Be(filler, "the filler is {0} bytes", filler);
+            source.ShortReads.Should().BePositive("the filler is {0} bytes", filler);
+        }
+    }
+
+    [Theory]
     [InlineData(512)]
     [InlineData(1024)]
     [InlineData(4096)]
