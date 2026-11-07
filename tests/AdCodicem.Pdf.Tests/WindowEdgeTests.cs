@@ -801,8 +801,9 @@ public class WindowEdgeTests
         // where whole reads end it, wherever the reads fall about the keyword. One of no more bytes than the overlap repeats
         // less of it, and what then follows is short reads' to settle (#52), not held here: reads of 10 bytes leave the
         // carriage return of the pair in the data, reads of 9 the line feed as well, and reads shorter than the keyword miss
-        // it, the data then running to the object's endobj. Object 6 is long enough that the file's last 4,096 bytes, which
-        // hold its startxref, lie past the reads cut short.
+        // it, the data then running to the object's endobj, or, in reads of fewer than four bytes, which never hold obj and
+        // the byte after it, past the next object's header to that object's endobj, which the reader takes for its own.
+        // Object 6 is long enough that the file's last 4,096 bytes, which hold its startxref, lie past the reads cut short.
         var header = endOfLine + "endstream\nendobj\n12 0 obj";
         var windowEdge = Window - LostEndPrefix.Length;
 

@@ -2816,7 +2816,7 @@ public class CrossReferenceChainTests
     [InlineData(1, true, false, "1 row where its /Index and /Size declare 3; the row it holds was refused, and every object no section read before it indexes is looked for by rebuilding the index, rather than taken from an older section's rows")]
     [InlineData(1, false, true, "1 row where its /Index and /Size declare 3; the row it holds does not stand, a newer section having refused its number, and every object no section read before it indexes is looked for by rebuilding the index, rather than taken from an older section's rows")]
     [InlineData(0, false, false, "0 rows where its /Index and /Size declare 3; every object no section read before it indexes is looked for by rebuilding the index, rather than taken from an older section's rows")]
-    public void A_stream_read_in_part_whose_numbering_holds_a_reference_says_every_object_is_looked_for_whatever_rows_it_holds(
+    public void A_stream_read_in_part_whose_numbering_holds_a_reference_says_every_object_but_a_row_it_kept_is_looked_for_whatever_rows_it_holds(
         int rows, bool refused, bool fourRefused, string said)
     {
         // As above, through /Prev, the stream holding object 4's row alone, or none. The row places object 4; or gives it type
@@ -3361,6 +3361,35 @@ public class CrossReferenceChainTests
             ? "; the rows read were kept, and every other object no section read before it indexes is looked for by rebuilding the index, rather than taken from an older section's rows."
             : "; the rows read were kept, and the objects the rest of that subsection numbers are looked for by rebuilding the index where no section read before it indexes them, rather than taken from an older section's rows.");
         document.WasRepaired.Should().Be(every, "the catalog is the oldest table's alone");
+    }
+
+    [Theory]
+    [InlineData(4096, false)]
+    [InlineData(4097, false)]
+    [InlineData(4096, true)]
+    [InlineData(4097, true)]
+    public void A_table_the_end_of_the_file_cuts_where_startxref_or_a_prev_names_it_says_what_only_its_rest_indexes_is_looked_for_however_many_ranges_it_lost(
+        int lost, bool prev)
+    {
+        // The table startxref names, or the one a /Prev names, loses every other number from 100, a one-row subsection whose
+        // row ends in x, 4,096 or 4,097 times, and the end of the file then cuts it before its trailer: its rest cannot be
+        // known, every number is refused whatever the count, and the chain ends there. Past the 4,096 ranges kept apart, as
+        // within them, the report says that what only the rest of the table, or the sections its trailer would name, index
+        // is looked for by rebuilding the index: the same objects as every other one no section read before it indexes, no
+        // section past it being read. Object 3, which only the oldest table indexes, is read after the rebuild that the
+        // catalog, the oldest table's too, sets off as the document opens (#210).
+        var (file, cut) = PartialFiles.CutAfterLostSubsections(lost, prev);
+        var naming = prev ? "/Prev" : "startxref";
+
+        using var document = PdfDocument.Open(file);
+
+        var last = document.Reader.Structure.Sections[^1];
+        (last.NamedBy, last.Offset, last.Incomplete, last.SubsectionsUnknown).Should().Be((naming, cut, true, true));
+        document.Diagnostics[0].Message.Should().Be(Invariant(
+            $"The cross-reference table {naming} names at offset {cut} was read only in part: the row for object 100, at offset {cut + 35}, is not an offset, a generation and n or f; the rows read were kept, and what only the rest of the table, or the sections its trailer would name, index is looked for by rebuilding the index."));
+        document.Reader.ChainIndex!.TryGet(3, out _).Should().BeFalse();
+        Text(document, 3).Should().Be("only in the oldest");
+        document.WasRepaired.Should().BeTrue();
     }
 
     [Theory]
@@ -5001,6 +5030,33 @@ public class CrossReferenceChainTests
             : "as the reader did until it rebuilt the index by scanning the file; it now reads each object such a row numbers as the rebuild finds it";
         findings.Should().ContainSingle(finding => finding.RuleId == PdfValidationRuleIds.XRefEntryTypeReserved).Which.Message.Should().Be(Invariant(
             $"The cross-reference stream at offset {stream} gives 1 row a reserved type: the row for object 7 gives it type 3. ISO 32000-1 defines types 0, 1 and 2, and reads any other as a reference to the null object (7.5.8.3), {reader}."));
+    }
+
+    [Fact]
+    public void A_stream_a_prev_reads_again_where_its_xrefstm_read_it_is_recorded_as_read_after_a_newer_section_refused_every_number()
+    {
+        // As above, object 7 given no row, but the hybrid table is named through /Prev by stream 20, a newer cross-reference
+        // stream whose /Index is no array, which the newest table names through /Prev in turn: stream 20 cannot be read,
+        // hands its /Prev on, and refuses every number to the older sections' rows before the hybrid table's /XRefStm reads
+        // stream 6. The /Prev that reads stream 6 again takes from that first reading what the sections read before it
+        // refused: every number, and with them its rows, whatever the stream refused itself (#156, #210).
+        var (file, oldest, stream, hybrid, lost, newest) = HybridFiles.PrevFallingShortOfTheStreamBeforeALostStream();
+        using var document = PdfDocument.Open(file);
+
+        var sections = document.Reader.Structure.Sections;
+        sections.Select(section => (section.NamedBy, section.State, section.Kind, section.Offset)).Should().Equal(
+            ("startxref", XRefSectionState.Read, XRefSectionKind.Table, newest),
+            ("/Prev", XRefSectionState.Malformed, XRefSectionKind.Stream, lost),
+            ("/Prev", XRefSectionState.Read, XRefSectionKind.Table, hybrid),
+            ("/XRefStm", XRefSectionState.NamedAgain, XRefSectionKind.Unknown, stream),
+            ("/Prev", XRefSectionState.Relocated, XRefSectionKind.Stream, stream),
+            ("/Prev", XRefSectionState.Read, XRefSectionKind.Table, oldest));
+        sections[3].ReadAs.Should().BeSameAs(sections[4]);
+        sections[4].EveryNumberRefusedBefore.Should().BeTrue("stream 20 refused every number before the /XRefStm read stream 6");
+        sections[4].RowsRefusedBefore.Should().BeTrue();
+        document.Diagnostics.Select(diagnostic => diagnostic.Code).Should().Equal(
+            PdfDiagnosticCodes.XRefSectionUnreadable, PdfDiagnosticCodes.XRefOffsetAdjusted, PdfDiagnosticCodes.XRefHybridStreamLost,
+            PdfDiagnosticCodes.XRefRebuilt, PdfDiagnosticCodes.ObjectRedefined);
     }
 
     [Theory]

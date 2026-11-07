@@ -348,6 +348,42 @@ internal static class PartialFiles
     }
 
     /// <summary>
+    /// The catalog, an empty page tree and object 3 <c>(only in the oldest)</c> in a classic table; then a table, at
+    /// <c>Cut</c>, of object 0's free row and <paramref name="lost"/> one-row subsections from 100, every other number, each
+    /// row ending in <c>x</c>, which the end of the file cuts before its trailer. The file ends with a comment that holds
+    /// <c>startxref</c>, which the search for it finds, and the offset of that table, or, with <paramref name="prev"/>, of a
+    /// table written before it, which indexes nothing and names it through <c>/Prev</c>.
+    /// </summary>
+    public static (byte[] File, long Cut) CutAfterLostSubsections(int lost, bool prev)
+    {
+        var file = new HandWrittenFile();
+        var catalog = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>");
+        var pages = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>");
+        var three = file.Object(3, "(only in the oldest)");
+        file.Table(4, new Dictionary<int, long> { [1] = catalog, [2] = pages, [3] = three }, "/Size 4 /Root 1 0 R");
+        var named = file.Position;
+
+        if (prev)
+        {
+            // The table startxref names comes first, and names the cut table through /Prev, written past a comment that
+            // brings it to an offset known in advance.
+            var head = string.Create(CultureInfo.InvariantCulture, $"xref\n0 1\n0000000000 65535 f \ntrailer\n<< /Size 4 /Root 1 0 R /Prev {named + 200} >>\n");
+            file.Raw(head + "%" + new string('-', 200 - head.Length - 2) + "\n");
+        }
+
+        var cut = file.Position;
+        var rows = new StringBuilder();
+
+        for (var i = 0; i < lost; i++)
+        {
+            rows.Append(CultureInfo.InvariantCulture, $"{100 + (2 * i)} 1\n0 0 x\n");
+        }
+
+        file.Raw(string.Create(CultureInfo.InvariantCulture, $"xref\n0 1\n0000000000 65535 f \n{rows}% startxref {named}\n%%EOF\n"));
+        return (file.Bytes, cut);
+    }
+
+    /// <summary>
     /// A document saved twice. The first revision writes the catalog, an empty page tree, object 3
     /// <c>(only in the oldest)</c>, object 5 <c>(old five)</c>, object 6 <c>(old six)</c> and object 7 <c>(old seven)</c>, and
     /// a classic table at <c>Oldest</c> that indexes them. The second writes object 6 again, <c>(new six)</c>, and a hybrid

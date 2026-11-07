@@ -602,12 +602,12 @@ internal static class HybridFiles
     /// reference"</c>, its <c>/Index</c> declaring object 7 all the same through <c>[4 1 6 9 0 R]</c>, object 9 holding 2,
     /// which the newest table places, so that the stream holds 2 of the 3 rows it declares. It names through <c>/Prev</c>
     /// <paramref name="prev"/>: <c>"the oldest table"</c>, at <c>Oldest</c>, 1,200 bytes before it, out of reach of a search
-    /// near it, which indexes objects 1 to 3, the page among them as <c>(three as the oldest has it)</c>, and, where the stream
-    /// is one row short or refuses a row, object 7, <c>(seven as the oldest has it)</c>; <c>"the stream itself"</c>;
-    /// <c>"outside the file"</c>, offset 99,999,999; <c>"a string"</c>, <c>(x)</c>; or <c>"null"</c>. The newest table
-    /// indexes object 5, <c>(five)</c>, object 9 where the stream's <c>/Index</c> refers to it, and, where
-    /// <paramref name="fourRefused"/> says so, gives object 4 generation 65536 before them, which no entry holds, so that the
-    /// stream's row for object 4 does not stand.
+    /// near it, which indexes objects 1 to 3, the page among them as <c>(three as the oldest has it)</c>, and, for
+    /// <c>"a reserved row, one row short"</c> and <c>"a reserved row after a refused one"</c>, object 7,
+    /// <c>(seven as the oldest has it)</c>; <c>"the stream itself"</c>; <c>"outside the file"</c>, offset 99,999,999;
+    /// <c>"a string"</c>, <c>(x)</c>; or <c>"null"</c>. The newest table indexes object 5, <c>(five)</c>, object 9 where the
+    /// stream's <c>/Index</c> refers to it, and, where <paramref name="fourRefused"/> says so, gives object 4 generation
+    /// 65536 before them, which no entry holds, so that the stream's row for object 4 does not stand.
     /// </summary>
     public static (byte[] File, long Oldest, long Stream, long Newest) PrevFallingShortOfTheStreamBefore(
         string seven = "no row", string prev = "the oldest table", bool fourRefused = false)
@@ -645,6 +645,23 @@ internal static class HybridFiles
         var newestRows = fourRefused ? Invariant($"4 2\n{four:D10} 65536 n \n") : "5 1\n";
         file.Raw(Invariant($"xref\n0 1\n0000000000 65535 f \n{newestRows}{Row(five)}{nine}trailer\n<< /Size {size} /Root 1 0 R /Prev {stream - 7} /XRefStm {stream} >>\nstartxref\n{newest}\n%%EOF\n"));
         return (file.Bytes, oldest, stream, newest);
+    }
+
+    /// <summary>
+    /// The document <see cref="PrevFallingShortOfTheStreamBefore"/> writes, object 7 given no row, saved twice more:
+    /// cross-reference stream 20, at <c>Lost</c>, whose <c>/Index</c> is no array, which holds no row and names through
+    /// <c>/Prev</c> that document's newest table, the hybrid one, at <c>Hybrid</c>; then a classic table, at <c>Newest</c>,
+    /// which indexes nothing and names stream 20 through <c>/Prev</c>.
+    /// </summary>
+    public static (byte[] File, long Oldest, long Stream, long Hybrid, long Lost, long Newest) PrevFallingShortOfTheStreamBeforeALostStream()
+    {
+        var (bytes, oldest, stream, hybrid) = PrevFallingShortOfTheStreamBefore();
+        var text = new StringBuilder(Encoding.Latin1.GetString(bytes));
+        var lost = text.Length;
+        text.Append(Invariant($"20 0 obj\n<< /Type /XRef /Size 21 /Index /X /W [1 4 2] /Root 1 0 R /Prev {hybrid} /Length 0 >>\nstream\n\nendstream\nendobj\n"));
+        var newest = text.Length;
+        text.Append(Invariant($"xref\n0 1\n0000000000 65535 f \ntrailer\n<< /Size 21 /Root 1 0 R /Prev {lost} >>\nstartxref\n{newest}\n%%EOF\n"));
+        return (Encoding.Latin1.GetBytes(text.ToString()), oldest, stream, hybrid, lost, newest);
     }
 
     /// <summary>
