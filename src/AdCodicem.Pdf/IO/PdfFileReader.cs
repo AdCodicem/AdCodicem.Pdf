@@ -4976,9 +4976,11 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// farther back, the place declares nothing, and is dropped as any that holds no section is. So is a place the bytes
     /// given end at or before: a source that gives fewer bytes than asked is at the end of the file there (#52), and a token
     /// starts at the place only where its first byte is given, which, with the bytes before it, tells whether one does. A
-    /// string a line before it opened is not seen, as in an object's header (#171). The bytes lexed are those before the
-    /// place on its line, once for each place that cannot be read, which <see cref="MaxRelocationCandidates"/> bounds, and
-    /// one window more at most for each.
+    /// string a line before it opened is not seen, as in an object's header (#171). The bytes lexed run from the line's
+    /// start to the end of the first token that ends past the place — through the comment that holds it and the white space
+    /// and comments after it, or to the end of the string that holds it —, within the bytes searched and those read back
+    /// before them: at most <see cref="LineStartSearchLength"/> bytes more than the bytes searched, once for each place
+    /// that cannot be read, which <see cref="MaxRelocationCandidates"/> bounds, and one window more read at most for each.
     /// </remarks>
     /// <param name="span">The bytes searched.</param>
     /// <param name="spanStart">Where <paramref name="span"/> starts in the file.</param>
@@ -4993,8 +4995,9 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
         }
 
         // The bytes searched are read again from where the line may start, to their end, which lies past the place as every
-        // token that holds it does — where the source gives every byte asked for. Bytes given that end at or before the place
-        // hold neither the end of line looked for, whole, nor the place: it declares nothing, as past the bound.
+        // token that holds it does — where the source gives every byte asked for. Bytes given that end at or before the
+        // place do not hold its first byte, whatever they hold of the stretch the end of line is looked for in: it declares
+        // nothing, as past the bound.
         var from = Math.Max(0, spanStart - LineStartSearchLength);
         var before = (int)(spanStart - from);
         using var window = _source.GetWindow(from, before + span.Length);
