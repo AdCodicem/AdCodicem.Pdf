@@ -197,11 +197,13 @@ farther off whose rows would stand for its lost ones in silence. The line is lex
 4,096 bytes before the bytes searched where it starts before them: a place whose line starts farther back declares
 nothing, as does one that the bytes a source gives end at or before
 ([#52](https://github.com/AdCodicem/AdCodicem.Pdf/issues/52)), and the search goes on past it, as past any place that
-holds no section. A string an earlier line opened is not seen: the word `xref`, or such a header, on a line that starts
-inside one is taken all the same ([#171](https://github.com/AdCodicem/AdCodicem.Pdf/issues/171)). An object there that
-gives a `/W` and another `/Type` and does not read as a section — a CIDFont —, with no section near it, is no section,
-and is reported missing; where `startxref` names one, it holds no section either, and its dictionary is no trailer. The
-section `startxref` names is not looked for nearby: when it is not where `startxref` says, the map is rebuilt.
+holds no section. Stream data, or a string, that an earlier line opened is not seen: the word `xref`, or such a header,
+is taken all the same on a line that starts inside a string, and anywhere on a line of stream data, its middle included,
+for the section found moved, the real one farther off left unread
+([#171](https://github.com/AdCodicem/AdCodicem.Pdf/issues/171)). An object there that gives a `/W` and another `/Type`
+and does not read as a section — a CIDFont —, with no section near it, is no section, and is reported missing; where
+`startxref` names one, it holds no section either, and its dictionary is no trailer. The section `startxref` names is
+not looked for nearby: when it is not where `startxref` says, the map is rebuilt.
 
 A rebuilt map keeps, of each number, the definition `object.redefined` names — the last written directly in the file,
 or, for a number written only inside object streams, the first listed in the object stream read first —, a direct
