@@ -127,7 +127,9 @@ there. Raise PdfReaderLimits.MaxDecodedStreamLength to read past it.
 
   What comes back is still encoded by the filters past the bound, and is no part of what the stream decodes to. A
   cross-reference stream or an object stream the reader meets so is read as one a guard cut before its data: its rows,
-  or its objects, are unknown until you raise the limit, as what any limit leaves out is.
+  or its objects, are unknown until you raise the limit, as what any limit leaves out is. But a cross-reference stream
+  whose Flate filter within the bound decodes nothing cannot be read whatever the limit, the file's fault rather than
+  the guard's ([#221](https://github.com/AdCodicem/AdCodicem.Pdf/issues/221)).
 
 - A value a stream is read with that leads to an object a guard cut, or left out of the index — its `/Length`,
   `/Filter` or `/DecodeParms`, a value of a filter's parameters, directly or through a chain of references — is the

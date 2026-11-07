@@ -134,17 +134,18 @@ nothing proves is.
 
 ## Damaged stream data
 
-Damaged stream data decodes as far as it goes, and what decoded is kept, with a report. A Flate stream whose
-tail was lost, as a file cut short or a producer that stopped writing leaves it, is a warning: what decoded
-before the end is all there is. A Flate stream that lost only the zlib checksum after its last block decoded
-whole, unchecked, and is a repair, as a stream with no zlib header at all is. A Flate stream that turns
-corrupt is a warning too: decoding stops at the fault, and what decoded before the byte the fault lies in is
-kept; what that one byte decoded ahead of the fault can be lost with it, though no stream in the project's test
-corpus lost any. The report says at which byte of the encoded data the fault was found and how many bytes were
-kept, and does not vouch for them: the damage may lie before the point where decoding found it, since damaged
-data can go on decoding, wrongly, for a while. A stream in which nothing decodes before that byte is left
-encoded, and reported as one that could not be decoded. Finding what decoded before a fault reads the stream's
-data again, the last few kilobytes before the fault a byte at a time; a sound stream is read once.
+Damaged stream data decodes as far as it goes, and what decoded is kept, with a report. A Flate stream whose tail was
+lost, as a file cut short or a producer that stopped writing leaves it, is a warning: what decoded before the end is all
+there is. A Flate stream that lost only the zlib checksum after its last block decoded whole, unchecked, and is a
+repair, as a stream with no zlib header at all is. A Flate stream that turns corrupt is a warning too: decoding stops at
+the fault, and what decoded before the byte the fault lies in is kept; what that one byte decoded ahead of the fault can
+be lost with it, though no stream in the project's test corpus lost any. The report says at which byte of the encoded
+data the fault was found and how many bytes were kept, and does not vouch for them: the damage may lie before the point
+where decoding found it, since damaged data can go on decoding, wrongly, for a while. A stream in which nothing decodes
+before that byte is left encoded, and reported as one that could not be decoded; a cross-reference stream so left holds
+no rows, and its section cannot be read ([#221](https://github.com/AdCodicem/AdCodicem.Pdf/issues/221)). Finding what
+decoded before a fault reads the stream's data again, the last few kilobytes before the fault a byte at a time; a sound
+stream is read once.
 
 A Flate stream that decodes to its end, but whose zlib checksum disagrees with what it decoded to, is a
 warning of its own, `filter.checksum-mismatch`: all of its data is kept, as other readers keep it, and some of
