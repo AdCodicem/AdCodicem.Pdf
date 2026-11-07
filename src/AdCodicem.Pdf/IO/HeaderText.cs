@@ -247,11 +247,14 @@ internal ref struct HeaderText
     }
 
     /// <summary>
-    /// Gives where the object header that ends with the <c>obj</c> at <paramref name="keyword"/> in the read starts in the
-    /// file, as <see cref="FindHeader"/> takes one, or -1 when it takes none there: the token <c>obj</c>, which white space
-    /// or a delimiter follows, or the end of the search (<see cref="PendingEndStream"/>).
+    /// Gives where an object header would start in the file, as <see cref="FindHeader"/> takes one, were the token that
+    /// starts at <paramref name="tokenStart"/> in the read <c>obj</c>, ended by white space, a delimiter or the end of the
+    /// search; or -1 where the rule takes no header there. Only the bytes before <paramref name="tokenStart"/> are read:
+    /// whether the token is <c>obj</c>, and what ends it, is the caller's to tell — <see cref="PendingEndStream"/> reads
+    /// this at the token's first byte, while the read still holds the bytes before it, and keeps it only once the token
+    /// proves to be <c>obj</c>.
     /// </summary>
-    public readonly long HeaderAt(int keyword) => TryFindStart(keyword, out var start) ? start : -1;
+    public readonly long HeaderAt(int tokenStart) => TryFindStart(tokenStart, out var start) ? start : -1;
 
     /// <summary>
     /// Determines whether the byte at <paramref name="index"/> in the read, where an <c>endstream</c> starts, lies inside a
