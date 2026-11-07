@@ -3748,13 +3748,15 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// <remarks>
     /// Told without indexing anything, as a hybrid table's <c>/XRefStm</c>, whose search near the offset it names comes to
     /// that place, asks it before the <c>/Prev</c> is read: the object is read as the chain reads one it names as a
-    /// cross-reference stream, its data decoded and its rows aside — from its header, through the windows the
-    /// <c>/Prev</c>'s own reading opens there, past the white space it falls short by, which a trailer's window bounds apart
-    /// (<see cref="PaddingAt"/>), so that the two meet one cut, or none —, and nothing of the reading is kept or reported
+    /// cross-reference stream, its rows aside, and its data decoded where it gives no <c>/Type /XRef</c>, a stream of that
+    /// type keeping its place whatever its data holds — from its header, through the windows the <c>/Prev</c>'s own reading
+    /// opens there, past the white space it falls short by, which a trailer's window bounds apart (<see cref="PaddingAt"/>),
+    /// so that the two meet one cut, or none —, and nothing of the reading is kept or reported
     /// (<see cref="TryReadXRefStream"/>'s check alone), the <c>/Prev</c>'s own reading, next, reading it again as itself. At
     /// most once for each hybrid table whose <c>/XRefStm</c> cannot be read where it names, which
     /// <see cref="PdfReaderLimits.MaxXRefSectionCount"/> bounds: one decoding more of the stream, within
-    /// <see cref="PdfReaderLimits.MaxDecodedStreamLength"/>, where the object reads that far.
+    /// <see cref="PdfReaderLimits.MaxDecodedStreamLength"/>, where the object gives no <c>/Type /XRef</c> and reads that
+    /// far.
     /// </remarks>
     /// <param name="start">Where the first token at the offset the <c>/Prev</c> names starts, in the file.</param>
     /// <param name="table">Whether that token is the <c>xref</c> keyword.</param>
@@ -5966,7 +5968,9 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// reading found, but nothing is indexed, refused, reported or recorded: the data is decoded as the reading first decodes
     /// it, what the decoding reports dropped, and no row is read. Reading the rows makes no section unreadable — rows the
     /// data lacks, or that a guard on decoding cut, leave it read in part —, and the check gives
-    /// <see cref="XRefSectionState.Read"/> there. What a value it read through a guard's cut leads to is the caller's to
+    /// <see cref="XRefSectionState.Read"/> there. The data of a stream of <c>/Type /XRef</c> is not decoded, the check
+    /// giving <see cref="XRefSectionState.Read"/> once its numbering is read: such a stream keeps its place whatever its
+    /// data holds (<see cref="KeepsItsPlace"/>). What a value it read through a guard's cut leads to is the caller's to
     /// forget (<see cref="ForgetReadThrough"/>).
     /// </para>
     /// <para>
@@ -6243,9 +6247,15 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
         // Past here, only data the filters decode nothing of makes the section unreadable, as the reading finds once it decodes
         // it: what else the data decodes to, and the rows it holds, read it whole or in part. A check decodes the data as the
         // reading first does, to tell, and drops what the decoding reports, which a reading of the stream meets again; it
-        // reads no row.
+        // reads no row. A stream of /Type /XRef keeps its place whatever its data holds (KeepsItsPlace): its data is not
+        // decoded.
         if (checkOnly)
         {
+            if (section.TypedXRef)
+            {
+                return XRefSectionState.Read;
+            }
+
             var decodingChecked = _diagnostics.GetMarkWithDecodingReports();
             _ = Filters.PdfFilterPipeline.Decode(
                 xrefStream, _diagnostics, endHidden: false, reachedBefore: false, out _, out _, out var undecodedData);

@@ -4710,6 +4710,34 @@ public class HostileInputTests
         }
     }
 
+    [Theory]
+    [InlineData("/Type /XRef ", 1)]
+    [InlineData("", 2)]
+    public void The_look_at_what_a_prev_names_reads_a_stream_s_data_only_where_the_data_decides_whether_the_prev_keeps_its_place(
+        string type, int reads)
+    {
+        // The newest table names object 4 through /Prev, and through /XRefStm a place beside it, whose search comes to object
+        // 4 and asks whether the /Prev keeps its place there: a stream that reads, its data of 100 KB, which gives /Type /XRef
+        // or no /Type. A stream of /Type /XRef keeps the /Prev's place whatever its data holds: the look decodes none of it,
+        // and the /Prev's own reading, next, reads it once. Where the stream gives only a /W, whether its filters decode
+        // anything of its data tells whether it reads as a section there: the look decodes it, and the /Prev's own reading
+        // reads it again. Every decoding reads the data whole, from its first byte (#156, #221).
+        var (file, _, four, _) = HybridFiles.PrevNamingAStreamBesideTheOldestTable(type, padding: 100_000);
+        var data = Encoding.Latin1.GetString(file).IndexOf("stream\n", (int)four, StringComparison.Ordinal) + "stream\n".Length;
+        using var source = new WindowLoggingSource(file);
+
+        using (var document = PdfDocument.Open(source, options: null, ownsSource: false))
+        {
+            document.Reader.Structure.Sections.Select(section => (section.NamedBy, section.State)).Should().Equal(
+                ("startxref", XRefSectionState.Read),
+                ("/XRefStm", XRefSectionState.NamedAgain),
+                ("/Prev", XRefSectionState.Read),
+                ("/Prev", XRefSectionState.Read));
+        }
+
+        source.Windows.Count(window => window.Offset == data).Should().Be(reads);
+    }
+
     [Fact]
     public void A_prev_looping_back_through_the_spaces_before_a_table_it_named_there_is_known_without_a_look()
     {
