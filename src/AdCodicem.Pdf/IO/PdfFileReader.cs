@@ -346,8 +346,9 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// wherever it is asked for again: two are kept, nothing more, and what is read is what a reading that asked once read.
     /// The places a search near an offset tries are not kept, however many it tries: each starts at a token — a keyword, an
     /// object's header —, whose probe crosses no white space: one window of <see cref="XRefProbeLength"/> bytes where that
-    /// token ends short of its edge, and at most a few more within the search's own window where leading zeros carry a
-    /// header's number past it, which <see cref="MaxRelocationCandidates"/> bounds. A section found there is reached through
+    /// token ends short of its edge, and at most two more, of up to 256 and 2,048 bytes, where leading zeros carry a
+    /// header's number to the last one's edge or past it: they may read past the search's window, but the number lies
+    /// within it, and <see cref="MaxRelocationCandidates"/> bounds the places. A section found there is reached through
     /// <see cref="_sectionsReadAt"/>, not asked of again; kept, they would push out the probe of a hybrid table's
     /// <c>/Prev</c>, taken before its <c>/XRefStm</c>'s search, and the chain would cross that run again (#188).
     /// </remarks>
@@ -4509,20 +4510,21 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// </para>
     /// <para>
     /// The numbers whose rows were lost are refused as a lost stream's are, once what the section names is judged
-    /// (<see cref="RefuseRowsLost"/>): a newer revision of an object may lie in a lost row, which an older section's row would
-    /// stand for in silence. The section is reported once they are, and the message says what that refusal leaves to a
-    /// rebuild: every object the sections read before do not index, where it refused every number — a stream whose
-    /// numbering is written with references, which ISO 32000-1 makes direct, or ranges lost past
-    /// <see cref="MaxRefusedRanges"/>, the section's own or once joined with those refused before (#210) —; but a table
-    /// <c>startxref</c> or a <c>/Prev</c> names whose rest cannot be known, at which the chain ends, says, whatever it
-    /// refused, that what only the rest of the table, or the sections its trailer would name, index is looked for: the same
-    /// objects, no section past it being read. A table the end of the file cuts loses its trailer too, and with it the
-    /// older sections that trailer would name: the chain ends there, where <c>startxref</c> or a <c>/Prev</c> names it. One
-    /// an <c>/XRefStm</c> names, whose trailer's links are not followed either (#263), leaves the chain going on through the
-    /// table that names it, and what the rest of it held cannot be known: every number but those its rows give is refused
-    /// (#156). The message agrees with the count of rows a stream holds: the row it holds, or none (#241). A table whose
-    /// fault is followed by the end of the file loses its trailer as one the end of the file cuts does, which the message
-    /// says.
+    /// (<see cref="RefuseRowsLost"/>): a newer revision of an object may lie in a lost row, which an older section's row
+    /// would stand for in silence. The section is reported once they are, and the message says what that refusal leaves to a
+    /// rebuild: every object the sections read before do not index, where it refused every number — a stream whose numbering
+    /// is written with references, which ISO 32000-1 makes direct, or ranges lost past <see cref="MaxRefusedRanges"/>, the
+    /// section's own or once joined with those refused before (#210) —; but a table <c>startxref</c> or a <c>/Prev</c> names
+    /// whose rest cannot be known, at which the chain ends, says, however many ranges it lost, that what only the rest of
+    /// the table, or the sections its trailer would name, index is looked for: the same objects, no section past it being
+    /// read — unless a newer section refused every number before the chain came to it, which only a <c>/Prev</c> can name
+    /// and whose message says so instead (<see cref="XRefSectionRecord.EveryNumberRefusedBefore"/>, below). A table the end
+    /// of the file cuts loses its trailer too, and with it the older sections that trailer would name: the chain ends there,
+    /// where <c>startxref</c> or a <c>/Prev</c> names it. One an <c>/XRefStm</c> names, whose trailer's links are not
+    /// followed either (#263), leaves the chain going on through the table that names it, and what the rest of it held
+    /// cannot be known: every number but those its rows give is refused (#156). The message agrees with the count of rows a
+    /// stream holds: the row it holds, or none (#241). A table whose fault is followed by the end of the file loses its
+    /// trailer as one the end of the file cuts does, which the message says.
     /// </para>
     /// <para>
     /// The rows read are said kept but for those the section refused itself and those whose numbers a newer section refused,
@@ -4603,8 +4605,9 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
             // read in part lost rows to a row that is no row, or to the end of the file: the rest of the subsection the fault
             // ended is all the first loses where the next subsection or the trailer follows; where the end of the file cuts the
             // table, after a fault too, the trailer is lost, and with it the sections it would name. One whose rest cannot be
-            // known ends the chain where startxref or a /Prev names it, whatever it refused: what only that rest, or the
-            // sections its trailer would name, index is the rebuild's.
+            // known ends the chain where startxref or a /Prev names it, however many ranges it lost: what only that rest, or
+            // the sections its trailer would name, index is the rebuild's, which the message says unless a newer section
+            // refused every number before the chain came to the table, which it says instead.
             said = (section.Fault ?? "the file ends before its trailer") + (noneStands
                 ? "; none of the rows read stands, " + EveryNumberRefused
                 : "; the rows read were kept" + KeptButFor(section) + (section.SubsectionsUnknown
@@ -4806,15 +4809,18 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// <remarks>
     /// The search spans <see cref="NearbySearchRadius"/> bytes either side, as an object's does — a place counts where what
     /// starts there lies whole within them, however near the file's start the offset falls (#197) —, and tries at most
-    /// <see cref="MaxRelocationCandidates"/> places in all, over the whole document: each is read through a window
-    /// of up to 64 KB, the file chooses how many headers lie near a section, and a chain can name a section for
-    /// each of its <see cref="PdfReaderLimits.MaxXRefSectionCount"/> links. Found, the section's record takes what
-    /// was read there — a section that cannot be read too, which is not found to be read, and which the chain reports where
-    /// it was found, as where it is named —; not found, it keeps what the named offset held. A place is a guess: a table's
-    /// <c>xref</c> keyword, or an object that declares a cross-reference stream and no other type. One that cannot be read is
-    /// the section all the same, the search ending there, where it declared itself one — the keyword, or the header of an
-    /// object that gives <c>/Type /XRef</c>, before a fault or a guard's cut, where a load reads it as a token from the start
-    /// of its line, not a word in a comment or a string there, nor digits a regular byte runs into
+    /// <see cref="MaxRelocationCandidates"/> places in all, over the whole document: each is read through a window of up to
+    /// 64 KB, the file chooses how many headers lie near a section, and a chain can name a section for each of its
+    /// <see cref="PdfReaderLimits.MaxXRefSectionCount"/> links. Found, the section's record takes what was read there — a
+    /// section that cannot be read too, which is not found to be read, and which the chain reports where it was found, as
+    /// where it is named —; not found, it keeps what the named offset held. A place is a guess: a table's <c>xref</c>
+    /// keyword, or an object that declares a cross-reference stream and no other type. One that reads, whole or in part, is
+    /// taken whatever its line is — in stream data too, an attached file's own table or a cross-reference stream the data
+    /// quotes, the chain going on through its trailer (#171). One that cannot be read is the section all the same, the
+    /// search ending there, where it declared itself one — the keyword, or the header of an object that gives
+    /// <c>/Type /XRef</c>, before a fault or a guard's cut, a token a load reads from the start of its line, outside stream
+    /// data and strings an earlier line opened, in which the word or such a header is taken wherever its line, lexed alone,
+    /// reads it as a token (#171), not a word in a comment or a string there, nor digits a regular byte runs into
     /// (<see cref="IsTokenOnItsLine"/>) —, as at the offset named, so that no older section farther off stands for its lost
     /// rows in silence (#281), or where a value it is read with led to an object a guard cut (#263). An object that only
     /// gives a <c>/W</c>, or a dictionary a guard cut before it said what it is, may be anything, and is dropped, the search
@@ -4827,8 +4833,8 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// with it (#156). Where that is a cross-reference stream, a stream near the offset may be the table's own, which the
     /// <c>/Prev</c> does not mean, told by its own <c>/Prev</c> as its dictionary writes it (<see cref="MayBeTablesOwn"/>):
     /// one that gives none, or gives the offset the table's <c>/Prev</c> names, hands the chain nothing on, or back to that
-    /// offset, and is tried once every other place was, nearest first — never, for the stream the <c>/XRefStm</c> read, where
-    /// it gives none —; one whose <c>/Prev</c> names another offset is tried where it comes nearest, the stream the
+    /// offset, and is tried once every other place was, nearest first — never, for the stream the <c>/XRefStm</c> read,
+    /// where it gives none —; one whose <c>/Prev</c> names another offset is tried where it comes nearest, the stream the
     /// <c>/XRefStm</c> read among them. A stream taken whose <c>/Prev</c> names no older section is read whole all the same,
     /// and its <c>/Prev</c> reported as the chain finds it: a loop, an offset outside the file, or no offset. To tell, the
     /// search reads nothing it would not read trying the place: the dictionary of the stream the <c>/XRefStm</c> read is the
@@ -4969,7 +4975,10 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
             // before it said, the word xref or a header in a comment or a string, or digits a regular byte runs into — may be
             // anything, and is dropped as any other is, with what it read through. Its line is lexed as a load lexes the
             // line's own tokens: stream data, or a string, that an earlier line opened is not seen, and the word xref or such
-            // a header in stream data, anywhere on its line, its middle included, is taken for the section found moved (#171).
+            // a header in stream data is taken for the section found moved wherever its line, lexed alone, reads it as a
+            // token, its middle included (#171). A place that reads, whole or in part, is taken before any line is lexed,
+            // whatever its line is — an attached file's own table, or a cross-reference stream the data quotes, in stream
+            // data among them —, and the chain goes on through its trailer (#171).
             if (state == XRefSectionState.Read ||
                 (state == XRefSectionState.Malformed &&
                     (attempt.CutByValue ||
@@ -5033,12 +5042,14 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// given end at or before: a source that gives fewer bytes than asked is at the end of the file there (#52), and a token
     /// starts at the place only where its first byte is given, which, with the bytes before it, tells whether one does.
     /// Stream data, or a string, that an earlier line opened is not seen, as in an object's header (#171): in stream data,
-    /// the word <c>xref</c>, or the header of an object of <c>/Type /XRef</c>, is taken anywhere on its line, its middle
-    /// included, as a token a load of that line would read there. The bytes lexed run from the line's start to the end of
-    /// the first token that ends past the place — through the comment that holds it and the white space and comments after
-    /// it, or to the end of the string that holds it —, within the bytes searched and those read back before them: at most
-    /// <see cref="LineStartSearchLength"/> bytes more than the bytes searched, once for each place that cannot be read,
-    /// which <see cref="MaxRelocationCandidates"/> bounds, and one window more read at most for each.
+    /// the word <c>xref</c>, or the header of an object of <c>/Type /XRef</c>, is taken wherever a load of that line alone
+    /// reads it as a token, its middle included. It is asked only of a place that cannot be read: one that reads, whole or
+    /// in part, is taken before any line is lexed, whatever its line is, in stream data too (#171). The bytes lexed run from
+    /// the line's start to the end of the first token that ends past the place — through the comment that holds it and the
+    /// white space and comments after it, or to the end of the string that holds it —, within the bytes searched and those
+    /// read back before them: at most <see cref="LineStartSearchLength"/> bytes more than the bytes searched, once for each
+    /// place that cannot be read, which <see cref="MaxRelocationCandidates"/> bounds, and one window more read at most for
+    /// each.
     /// </remarks>
     /// <param name="span">The bytes searched.</param>
     /// <param name="spanStart">Where <paramref name="span"/> starts in the file.</param>
