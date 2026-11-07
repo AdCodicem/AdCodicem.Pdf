@@ -739,7 +739,22 @@ internal static class NearbyFiles
     /// 6, <c>(six, freed by the update)</c>; past 1,200 bytes of comment, the update's indexes object 4, frees object 6 and
     /// names the first through <c>/Prev</c>; the newest indexes object 5, <c>(five)</c>. The place named is at <c>Named</c>.
     /// </summary>
-    public static (byte[] File, long Word, long Named, long Update) UpdatePastAWordInStreamData(string before, string word, string after)
+    public static (byte[] File, long Word, long Named, long Update) UpdatePastAWordInStreamData(string before, string word, string after) =>
+        UpdatePastAWord(before, word, after, inStreamData: true);
+
+    /// <summary>
+    /// The same document, whose object 4 is no stream: its body, which the update writes before its table, is
+    /// <paramref name="before"/>, <paramref name="word"/>, which starts at <c>Word</c>, and <paramref name="after"/>, and the
+    /// newest table's <c>/Prev</c> names the place 2 bytes past where the word starts, at <c>Named</c>.
+    /// </summary>
+    public static (byte[] File, long Word, long Named, long Update) UpdatePastAWordInAnObject(string before, string word, string after) =>
+        UpdatePastAWord(before, word, after, inStreamData: false);
+
+    /// <summary>
+    /// Writes the document <see cref="UpdatePastAWordInStreamData"/> and <see cref="UpdatePastAWordInAnObject"/> describe,
+    /// object 4 an embedded file whose data holds the word, or an object whose body does.
+    /// </summary>
+    private static (byte[] File, long Word, long Named, long Update) UpdatePastAWord(string before, string word, string after, bool inStreamData)
     {
         var file = new HandWrittenFile();
         var catalog = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>");
@@ -748,7 +763,7 @@ internal static class NearbyFiles
         var six = file.Object(6, "(six, freed by the update)");
         var oldest = file.Table(7, new() { [1] = catalog, [2] = pages, [3] = three, [6] = six }, "/Size 7 /Root 1 0 R");
         Gap(file, 1200);
-        var (four, at) = EmbeddedFile(file, 4, before, word, after);
+        var (four, at) = inStreamData ? EmbeddedFile(file, 4, before, word, after) : Body(file, 4, before, word, after);
         var update = file.Position;
         file.Raw(string.Create(
             CultureInfo.InvariantCulture,
@@ -801,6 +816,16 @@ internal static class NearbyFiles
         var dictionary = string.Create(CultureInfo.InvariantCulture, $"<< /Type /EmbeddedFile /Length {data.Length} >>\nstream\n");
         var header = file.Object(number, dictionary + data + "\nendstream");
         return (header, header + string.Create(CultureInfo.InvariantCulture, $"{number} 0 obj\n").Length + dictionary.Length + before.Length);
+    }
+
+    /// <summary>
+    /// Writes object <paramref name="number"/>, whose body is <paramref name="before"/>, <paramref name="word"/> and
+    /// <paramref name="after"/>, and gives where its header starts and where the word does.
+    /// </summary>
+    private static (long Header, long Word) Body(HandWrittenFile file, int number, string before, string word, string after)
+    {
+        var header = file.Object(number, before + word + after);
+        return (header, header + string.Create(CultureInfo.InvariantCulture, $"{number} 0 obj\n").Length + before.Length);
     }
 
     /// <summary>

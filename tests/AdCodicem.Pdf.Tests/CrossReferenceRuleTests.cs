@@ -790,7 +790,7 @@ public class CrossReferenceRuleTests
     [Theory]
     [InlineData("a comment")]
     [InlineData("a string")]
-    public void The_word_xref_on_a_line_that_starts_before_the_bytes_searched_near_an_offset_is_no_malformed_section(string holder)
+    public void The_word_xref_in_a_comment_or_a_string_on_a_line_that_starts_before_the_bytes_searched_near_an_offset_is_no_malformed_section(string holder)
     {
         // A /Prev names a place inside an endobj, the line before which, 700 letters long, starts before the bytes searched
         // near it, and holds the word xref in a comment or a string, nearer than the section it means. Lexed from where the

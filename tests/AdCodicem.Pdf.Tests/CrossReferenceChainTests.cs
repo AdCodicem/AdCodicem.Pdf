@@ -1376,12 +1376,12 @@ public class CrossReferenceChainTests
     {
         // Object 4, an embedded file the update writes uncompressed, holds in its data the word xref, at the start of a line
         // or in its middle, or the header and dictionary of an object of /Type /XRef, and the newest table's /Prev names the
-        // place 2 bytes past where it starts, short of the update's table. No load lexes stream data, but the search near the
-        // offset lexes the place's line alone, from its start, and sees no stream data an earlier line opened (#171): the word,
-        // or the header, is a token there, taken for the section found moved, which cannot be read and ends the search, the
-        // update's table left unread. The chain ends there, and the index is rebuilt as the document opens, for the catalog,
-        // which only the first table indexes: object 6, which the update freed, is read as the rebuild finds it. With no such
-        // word in the data, the search goes on to the update's table, and object 6 is free.
+        // place 2 bytes past where it starts, short of the update's table. No load lexes an embedded file's data, but the
+        // search near the offset lexes the place's line alone, from its start, and sees no stream data an earlier line opened
+        // (#171): the word, or the header, is a token there, taken for the section found moved, which cannot be read and ends
+        // the search, the update's table left unread. The chain ends there, and the index is rebuilt as the document opens,
+        // for the catalog, which only the first table indexes: object 6, which the update freed, is read as the rebuild finds
+        // it. With no such word in the data, the search goes on to the update's table, and object 6 is free.
         var (file, at, named, update) = NearbyFiles.UpdatePastAWordInStreamData(before, word, StreamDataAfterTheWord);
         using var document = PdfDocument.Open(file);
 
@@ -1440,6 +1440,124 @@ public class CrossReferenceChainTests
         document.WasRepaired.Should().BeFalse();
         document.Diagnostics.Select(diagnostic => (diagnostic.Code, diagnostic.Position)).Should().Equal(
             (PdfDiagnosticCodes.XRefOffsetAdjusted, at), (PdfDiagnosticCodes.XRefSectionUnreadable, at));
+    }
+
+    [Theory]
+    [InlineData("<< /Notes (Notes on the\n", "xref", true)]
+    [InlineData("<< /Notes (Notes on the\nThe ", "xref", true)]
+    [InlineData("<< /Notes (Example:\n", "12 0 obj << /Type /XRef /Size 13 /W [1 2 1] >> endobj", true)]
+    [InlineData("<< /Notes (Notes on the ", "xref", false)]
+    public void The_word_xref_or_a_cross_reference_stream_s_header_in_a_string_short_of_where_a_prev_names_is_taken_for_the_section_found_moved_only_where_an_earlier_line_opened_the_string(
+        string before, string word, bool taken)
+    {
+        // Object 4, which the update writes, is a dictionary whose string holds the word xref, at the start of a line or in
+        // its middle, or the header and dictionary of an object of /Type /XRef, and the newest table's /Prev names the place
+        // 2 bytes past where it starts, short of the update's table. A load lexes the string whole, but the search near the
+        // offset lexes the place's line alone, from its start, and sees no string an earlier line opened (#171): the word, or
+        // the header, is a token there, taken for the section found moved, which cannot be read and ends the search, the
+        // update's table left unread. The chain ends there, and the index is rebuilt as the document opens, for the catalog,
+        // which only the first table indexes: object 6, which the update freed, is read as the rebuild finds it. With the
+        // string opened on the word's own line, the word is in it, the search goes on to the update's table, and object 6
+        // is free.
+        var (file, at, named, update) = NearbyFiles.UpdatePastAWordInAnObject(before, word, " tables) >>");
+        using var document = PdfDocument.Open(file);
+
+        var found = document.Reader.Structure.Sections[1];
+
+        if (!taken)
+        {
+            (found.State, found.Offset).Should().Be((XRefSectionState.Relocated, update));
+            document.Diagnostics.Should().ContainSingle().Which.Message.Should().Be(Invariant(
+                $"The cross-reference section /Prev names at offset {named} was found {update - named} bytes after it."));
+            document.GetObject(new PdfObjectId(6)).Should().BeSameAs(PdfNull.Instance);
+            document.WasRepaired.Should().BeFalse();
+            return;
+        }
+
+        (found.State, found.Kind, found.NamedOffset, found.Offset).Should().Be(
+            (XRefSectionState.Malformed, word == "xref" ? XRefSectionKind.Table : XRefSectionKind.Stream, named, at));
+        document.WasRepaired.Should().BeTrue("the catalog is the first table's alone");
+        document.Diagnostics.Select(diagnostic => diagnostic.Code).Should().Equal(
+            PdfDiagnosticCodes.XRefOffsetAdjusted, PdfDiagnosticCodes.XRefSectionUnreadable, PdfDiagnosticCodes.XRefRebuilt);
+        document.Diagnostics[0].Message.Should().Be(Invariant($"The cross-reference section /Prev names at offset {named} was found 2 bytes before it."));
+        document.Diagnostics[1].Position.Should().Be(at);
+        Text(document, 6).Should().Be("six, freed by the update");
+    }
+
+    [Theory]
+    [InlineData("an attached file's own table")]
+    [InlineData("an attached file's own table giving a /Prev")]
+    [InlineData("a cross-reference stream the data quotes, read in part")]
+    public void A_section_in_stream_data_that_reads_short_of_where_a_prev_names_is_taken_and_the_chain_goes_on_through_its_trailer(string quoted)
+    {
+        // Object 4, an embedded file the update writes uncompressed, holds in its data an attached file whose own table
+        // reads — its trailer naming no older section, or a /Prev near the first table —, or a cross-reference stream it
+        // quotes, whose data holds fewer rows than it declares and whose /Prev lies near the first table too; the newest
+        // table's /Prev names the place 2 bytes past where it starts, short of the update's table. A place that reads, whole
+        // or in part, is taken before any line is lexed, whatever its line is: it is the section found moved, and the chain
+        // goes on through its trailer, the update's table left unread; telling stream data apart would have to be asked of
+        // such a place too (#171). The chain ends at the attached table, and the index is rebuilt as the document opens,
+        // for the catalog, which only the first table indexes; or it goes on to the first table, found near the /Prev the
+        // data gives, and object 4, which only the update's table indexes, is null — but where the stream read in part
+        // refuses the numbers it declares, the catalog's among them, and the rebuild that follows finds it. Object 6, which
+        // the update freed, is read whichever way: as the rebuild finds it, or as the first table's row gives it.
+        var (before, word, after, kind) = quoted switch
+        {
+            "an attached file's own table" => (
+                "%PDF-1.3\n%attached original\n",
+                "xref",
+                "\n0 1\n0000000000 65535 f \ntrailer\n<< /Size 1 >>\nstartxref\n28\n%%EOF\n",
+                XRefSectionKind.Table),
+            "an attached file's own table giving a /Prev" => (
+                "%PDF-1.3\n",
+                "xref",
+                "\n0 1\n0000000000 65535 f \ntrailer\n<< /Size 1 /Prev 12 >>\n%%EOF\n",
+                XRefSectionKind.Table),
+            _ => (
+                "Example:\n",
+                "12 0 obj",
+                "\n<< /Type /XRef /Size 13 /W [1 2 1] /Prev 9 /Length 3 >>\nstream\nabc\nendstream\nendobj\n",
+                XRefSectionKind.Stream),
+        };
+        var (file, at, named, update) = NearbyFiles.UpdatePastAWordInStreamData(before, word, after);
+        var first = PdfTemplate.OffsetOf(file, "xref");
+        using var document = PdfDocument.Open(file);
+
+        var sections = document.Reader.Structure.Sections;
+        (sections[1].State, sections[1].Kind, sections[1].NamedOffset, sections[1].Offset).Should().Be(
+            (XRefSectionState.Relocated, kind, named, at));
+        sections.Should().NotContain(section => section.Offset == update, "the update's table is never read");
+        document.Diagnostics[0].Message.Should().Be(Invariant($"The cross-reference section /Prev names at offset {named} was found 2 bytes before it."));
+        Text(document, 6).Should().Be("six, freed by the update");
+
+        switch (quoted)
+        {
+            case "an attached file's own table":
+                sections.Should().HaveCount(2);
+                document.Diagnostics.Select(diagnostic => diagnostic.Code).Should().Equal(
+                    PdfDiagnosticCodes.XRefOffsetAdjusted, PdfDiagnosticCodes.XRefRebuilt);
+                document.WasRepaired.Should().BeTrue("the catalog is the first table's alone");
+                document.GetObject(new PdfObjectId(4)).Should().BeOfType<PdfStream>();
+                break;
+            case "an attached file's own table giving a /Prev":
+                (sections.Count, sections[2].State, sections[2].Offset).Should().Be((3, XRefSectionState.Relocated, first));
+                document.Diagnostics.Select(diagnostic => diagnostic.Code).Should().Equal(
+                    PdfDiagnosticCodes.XRefOffsetAdjusted, PdfDiagnosticCodes.XRefOffsetAdjusted);
+                document.WasRepaired.Should().BeFalse();
+                document.GetObject(new PdfObjectId(4)).Should().BeSameAs(PdfNull.Instance);
+                break;
+            default:
+                (sections.Count, sections[1].Incomplete, sections[2].State, sections[2].Offset).Should().Be(
+                    (3, true, XRefSectionState.Relocated, first));
+                document.Diagnostics.Select(diagnostic => diagnostic.Code).Should().Equal(
+                    PdfDiagnosticCodes.XRefOffsetAdjusted,
+                    PdfDiagnosticCodes.XRefSectionUnreadable,
+                    PdfDiagnosticCodes.XRefOffsetAdjusted,
+                    PdfDiagnosticCodes.XRefRebuilt);
+                document.WasRepaired.Should().BeTrue("the stream refused the numbers it declares, the catalog's among them");
+                document.GetObject(new PdfObjectId(4)).Should().BeOfType<PdfStream>();
+                break;
+        }
     }
 
     [Fact]
@@ -1665,7 +1783,7 @@ public class CrossReferenceChainTests
     [InlineData("%xref\n")]
     [InlineData("a comment of 700 letters")]
     [InlineData("a string of 700 letters")]
-    public void An_object_an_update_frees_stays_free_where_the_word_xref_lies_between_where_its_table_is_named_and_where_it_is(string between)
+    public void An_object_an_update_frees_stays_free_where_the_word_xref_in_a_comment_or_a_string_lies_between_where_its_table_is_named_and_where_it_is(string between)
     {
         // The update frees object 3, or object 4, and a comment holding the word xref lies between where the newest table's
         // /Prev names the update's table and where it is — or, on a line of 700 letters that starts before the bytes searched
@@ -3543,6 +3661,10 @@ public class CrossReferenceChainTests
             ? "; the rows read were kept, and every other object no section read before it indexes is looked for by rebuilding the index, rather than taken from an older section's rows."
             : "; the rows read were kept, and the objects the rest of that subsection numbers are looked for by rebuilding the index where no section read before it indexes them, rather than taken from an older section's rows.");
         document.WasRepaired.Should().Be(every, "the catalog is the oldest table's alone");
+        document.Diagnostics.Select(diagnostic => diagnostic.Code).Should().Equal(
+            every
+                ? [PdfDiagnosticCodes.XRefSectionUnreadable, PdfDiagnosticCodes.XRefRebuilt]
+                : [PdfDiagnosticCodes.XRefSectionUnreadable]);
     }
 
     [Theory]
@@ -3559,7 +3681,7 @@ public class CrossReferenceChainTests
         // within them, the report says that what only the rest of the table, or the sections its trailer would name, index
         // is looked for by rebuilding the index: the same objects as every other one no section read before it indexes, no
         // section past it being read. Object 3, which only the oldest table indexes, is read after the rebuild that the
-        // catalog, the oldest table's too, sets off as the document opens (#210).
+        // catalog, the oldest table's too, sets off as the document opens, and the table is reported once (#210).
         var (file, cut) = PartialFiles.CutAfterLostSubsections(lost, prev);
         var naming = prev ? "/Prev" : "startxref";
 
@@ -3572,6 +3694,8 @@ public class CrossReferenceChainTests
         document.Reader.ChainIndex!.TryGet(3, out _).Should().BeFalse();
         Text(document, 3).Should().Be("only in the oldest");
         document.WasRepaired.Should().BeTrue();
+        document.Diagnostics.Select(diagnostic => diagnostic.Code).Should().Equal(
+            PdfDiagnosticCodes.XRefSectionUnreadable, PdfDiagnosticCodes.XRefRebuilt);
     }
 
     [Theory]
