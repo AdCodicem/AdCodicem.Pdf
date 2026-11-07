@@ -164,13 +164,15 @@ direct, or lost numbers that make more than 4,096 ranges, counted once those of 
 joined, a table's own each joined as it is lost to the last one lost where the two meet, one that meets only an earlier
 one kept apart —, no older section's row stands for any number that no section read before it gives, and the report on
 the section that refused them says so, a section read only in part included, which is reported once it refused what it
-lost. A section the chain reads after such a refusal keeps none of its rows whose numbers were refused, and none at all
-where every number was; where it was read only in part, or cannot be read, its report says which of its rows stand,
-rather than that they were kept — not those it refused itself, though only its first fault is named, and, of a stream
-that holds one row and refused it, that the row was refused. A section that gives one number twice and refused one of
-the two rows is not said to have had the other refused by a newer section: the refusal is its own, and its object is
-left to the rebuild only where no row read before the refused one indexes it. Any other section a `/Prev` names that
-cannot be read ends the chain there.
+lost — but for a table `startxref` or a `/Prev` names whose rest cannot be known, at which the chain ends: its report
+says, however many ranges it lost, that what only the rest of the table, or the sections its trailer would name, index
+is looked for, the same objects, no section past it being read. A section the chain reads after such a refusal keeps
+none of its rows whose numbers were refused, and none at all where every number was; where it was read only in part, or
+cannot be read, its report says which of its rows stand, rather than that they were kept — not those it refused itself,
+though only its first fault is named, and, of a stream that holds one row and refused it, that the row was refused. A
+section that gives one number twice and refused one of the two rows is not said to have had the other refused by a newer
+section: the refusal is its own, and its object is left to the rebuild only where no row read before the refused one
+indexes it. Any other section a `/Prev` names that cannot be read ends the chain there.
 
 An object, or a section a `/Prev` or a `/XRefStm` names, that lies a few bytes from where it is said to be is found
 nearby (`xref.offset-adjusted`), and the map is not rebuilt for it: within 512 bytes either side, however near the
