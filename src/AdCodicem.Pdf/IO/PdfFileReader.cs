@@ -4930,7 +4930,9 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
             // over for an older section farther off, whose rows would stand for its lost ones in silence. A value cut is a
             // guard's cut. A place that said nothing of what it is — an object that gives only a /W, a dictionary a guard cut
             // before it said, the word xref or a header in a comment or a string, or digits a regular byte runs into — may be
-            // anything, and is dropped as any other is, with what it read through.
+            // anything, and is dropped as any other is, with what it read through. Its line is lexed as a load lexes the
+            // line's own tokens: stream data, or a string, that an earlier line opened is not seen, and the word xref or such
+            // a header in stream data, anywhere on its line, its middle included, is taken for the section found moved (#171).
             if (state == XRefSectionState.Read ||
                 (state == XRefSectionState.Malformed &&
                     (attempt.CutByValue ||
@@ -4964,9 +4966,10 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
 
     /// <summary>
     /// Determines whether a token starts at <paramref name="at"/> in <paramref name="span"/>, the line it lies in lexed from
-    /// its start as a load reads it: the <c>xref</c> a place the search near an offset tried starts with is a table's keyword
-    /// there, and the number an object's header starts with is that header's, either of which declares a section — not a
-    /// word or a header a comment or a string on that line holds, nor digits a regular byte before them runs into (#281).
+    /// its start as a load of the line's own tokens reads it, stream data and a string a line before it opened unseen: the
+    /// <c>xref</c> a place the search near an offset tried starts with is a table's keyword there, and the number an object's
+    /// header starts with is that header's, either of which declares a section — not a word or a header a comment or a
+    /// string on that line holds, nor digits a regular byte before them runs into (#281).
     /// </summary>
     /// <remarks>
     /// The line starts past the last end of line before the place, or at the file's start. Where it starts before the bytes
@@ -4975,12 +4978,14 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// string whose <c>(</c>, lies before the bytes searched is seen. Where none lies within them, and the file starts
     /// farther back, the place declares nothing, and is dropped as any that holds no section is. So is a place the bytes
     /// given end at or before: a source that gives fewer bytes than asked is at the end of the file there (#52), and a token
-    /// starts at the place only where its first byte is given, which, with the bytes before it, tells whether one does. A
-    /// string a line before it opened is not seen, as in an object's header (#171). The bytes lexed run from the line's
-    /// start to the end of the first token that ends past the place — through the comment that holds it and the white space
-    /// and comments after it, or to the end of the string that holds it —, within the bytes searched and those read back
-    /// before them: at most <see cref="LineStartSearchLength"/> bytes more than the bytes searched, once for each place
-    /// that cannot be read, which <see cref="MaxRelocationCandidates"/> bounds, and one window more read at most for each.
+    /// starts at the place only where its first byte is given, which, with the bytes before it, tells whether one does.
+    /// Stream data, or a string, that an earlier line opened is not seen, as in an object's header (#171): in stream data,
+    /// the word <c>xref</c>, or the header of an object of <c>/Type /XRef</c>, is taken anywhere on its line, its middle
+    /// included, as a token a load of that line would read there. The bytes lexed run from the line's start to the end of
+    /// the first token that ends past the place — through the comment that holds it and the white space and comments after
+    /// it, or to the end of the string that holds it —, within the bytes searched and those read back before them: at most
+    /// <see cref="LineStartSearchLength"/> bytes more than the bytes searched, once for each place that cannot be read,
+    /// which <see cref="MaxRelocationCandidates"/> bounds, and one window more read at most for each.
     /// </remarks>
     /// <param name="span">The bytes searched.</param>
     /// <param name="spanStart">Where <paramref name="span"/> starts in the file.</param>
