@@ -86,15 +86,17 @@ section — an offset in the file the chain has not reached — stays the guard'
 section, and whose search nearby stops at what the table's `/Prev` names because a guard cut it before it said what it
 is, or cut a value its rows are read with — the `/Prev` may read a section there, which the guard hides —, is the
 guard's too: nothing is reported of it, and the index is not rebuilt for it. Wherever the chain names a section, a
-stream's dictionary is measured from its object's header, the white space and comments the offset falls short by
-bounded apart, so that that search and the `/Prev`'s own reading meet one cut or none; white space and comments that run
-on past `MaxTrailerLength` reach the guard themselves, nothing past them is read, and the section is looked for as one
-that is not there, near the offset or, for the one `startxref` names, by rebuilding the index — a `/Prev` that names
-them keeps no place for the search to stop at. An `/XRefStm`
-that names what the `/Prev` names, at that offset or in the white space before it, names no stream of the table's
-revision whatever the guard hid, and is reported, the validator saying the guard hides what is there. The `/Prev` of a
-cross-reference stream at which a guard's cut of a value its rows are read with ends the chain, and a `/Prev` in a
-trailer a guard cut, are not judged yet: a fault they show without reading past the guard goes unreported
+table or a stream, `MaxTrailerLength` bounds apart the white space and comments the offset falls short by: a stream's
+dictionary is measured from its object's header, so that that search and the `/Prev`'s own reading meet one cut or
+none, while a classic table's window opens at the offset, the white space before its `xref` keyword counting toward
+`MaxXRefSectionLength` as well ([#289](https://github.com/AdCodicem/AdCodicem.Pdf/issues/289)). White space and
+comments that run on past `MaxTrailerLength` reach the guard themselves: the section is not read from that offset, and
+is looked for as one that is not there — near the offset, where a search may find it past them, or, for the one
+`startxref` names, by rebuilding the index —, and a `/Prev` that names them keeps no place for the search to stop at.
+An `/XRefStm` that names what the `/Prev` names, at that offset or in the white space before it, names no stream of the
+table's revision whatever the guard hid, and is reported, the validator saying the guard hides what is there. The
+`/Prev` of a cross-reference stream at which a guard's cut of a value its rows are read with ends the chain, and a
+`/Prev` in a trailer a guard cut, are not judged yet: a fault they show without reading past the guard goes unreported
 ([#329](https://github.com/AdCodicem/AdCodicem.Pdf/issues/329),
 [#328](https://github.com/AdCodicem/AdCodicem.Pdf/issues/328)).
 

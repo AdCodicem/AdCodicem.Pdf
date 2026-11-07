@@ -176,13 +176,16 @@ An object, or a section a `/Prev` or a `/XRefStm` names, that lies a few bytes f
 nearby (`xref.offset-adjusted`), and the map is not rebuilt for it: within 512 bytes either side, however near the
 file's start that falls ([#197](https://github.com/AdCodicem/AdCodicem.Pdf/issues/197)), comments between its header's
 tokens included, as a load reads them ([#261](https://github.com/AdCodicem/AdCodicem.Pdf/issues/261)). A section an
-offset names short of its first token, white space and comments between, is read from that token where it is named, as
-long as they run for no more than `MaxTrailerLength`: white space and comments that run on past it reach that guard,
-nothing past them is read, and the section is looked for nearby as one that is not there
-([Reader limits](reader-limits.md)). A section is never found where a section the chain reached starts — one it read,
-or one there that it could not read though it declares itself a section —, which is not the one looked for
-([#188](https://github.com/AdCodicem/AdCodicem.Pdf/issues/188)), but for what a table's `/XRefStm` read in the stream's
-place, which that table's `/Prev` takes, reading it whole
+offset names short of its first token, white space and comments between, is read where it is named — a cross-reference
+stream from its object's header, a classic table through a window that opens at the offset, so that the white space
+before its `xref` keyword counts toward `MaxXRefSectionLength` as well
+([#289](https://github.com/AdCodicem/AdCodicem.Pdf/issues/289)) —, as long as they run for no more than
+`MaxTrailerLength`: white space and comments that run on past it reach that guard, the section is not read from that
+offset, and it is looked for nearby as one that is not there, where a search may find it past them, the map rebuilt for
+the one `startxref` names ([Reader limits](reader-limits.md)). A section is never found where a section the chain
+reached starts — one it read, or one there that it could not read though it declares itself a section —, which is not
+the one looked for ([#188](https://github.com/AdCodicem/AdCodicem.Pdf/issues/188)), but for what a table's `/XRefStm`
+read in the stream's place, which that table's `/Prev` takes, reading it whole
 ([#156](https://github.com/AdCodicem/AdCodicem.Pdf/issues/156)); nor is one looked for when what is there declares
 itself a section — an `xref` keyword, or a stream whose dictionary gives `/Type /XRef` — and cannot be read: it is
 reported where it is, any section near it being another ([#281](https://github.com/AdCodicem/AdCodicem.Pdf/issues/281)).
