@@ -380,3 +380,58 @@ Files: r5-findings.md ('######## [n]'), r5-verified.json, r5-reviewers.json. No 
   - Corpus vs main: only pdfmaker7 (file.size-wrong gone), as in round 4.
   - Branch dump byte-identical to round 4's.
 - Open for the end of the batch: the #289 comment adds the LimitXRefSectionLength summary and message ('runs past' when white space fills the window, pre-existing on main), and may cite the probe-cost figures.
+- 2026-11-07: review round 6 launched: wf_aab3e6f6-540 (task w1wd2dslv), script lot19/lot19-review-r6.js, six lenses (sections, window, short-reads, tests, docs, batch differential) over 8ba4589..65306d4.
+
+# Review round 6 (wf_aab3e6f6-540 on 65306d4): triage
+20 agents, 0 errors. 14 findings, none refuted:
+- major: [14] (narrowed);
+- minor: [6] (narrowed);
+- nits: [1], [2], [3], [4], [5], [7], [8], [9] (narrowed from minor), [10], [11], [12], [13].
+Files: r6-findings.md ('######## [n]'), r6-verified.json, r6-reviewers.json.
+Settled:
+- [14] major, regression vs main since 0353e24 (R1-Q1), not new in round 5. The search near an offset takes 'xref' or a
+  /Type /XRef header inside uncompressed stream data (anywhere on its line, its middle included) as the section found
+  moved, Malformed. The reader then gives section-unreadable, an Error section-malformed and a rebuild, serving a freed
+  object or an older revision (/XRefStm). Main read the real section.
+  Object bodies ('[ 1 2\nxref 3 ]') are narrowed out: a load lexes them, as R2 [2] decided.
+  The read-order dependence in h00002 is B19-1's path, not the search's.
+  Precedent: round 4 [21], strings an earlier line opened (docs + #171 comment).
+  -> maintainer question R6-Q1.
+- [6] minor, docs: the threat-model #52 clause 'a read of more, short or not, leaves the search as whole reads leave it'
+  is false, because each read counts the ten bytes it repeats toward EndStreamSearchPasses (11x at 11-byte reads). The
+  data end of that search holds, but its endobj judgment and later searches may stop sooner. Reword per the refuter.
+  The #52 end comment may add the two-stream budget reproducer and correct 'one byte past the short one's start'.
+- [1]/[12] nit, docs: the 4,096-ranges clause carve-out for a startxref or /Prev table at the chain's end whose rest
+  cannot be known (rest-of-table tail, the same objects). Where: diagnostics.md:112, threat-model.md:431, the
+  ReportSectionReadInPart remark, the XRefSectionUnreadable summary (+ verb 'indexes'), lazy-reading.md:166 (also the
+  deviation-6 clause). Optional: a chain row with 4,097 lost one-row subsections cut by EOF under startxref (pins the
+  deviation-3 tail).
+- [2] nit, docs: diagnostics.md:112 states the split the code makes ('every object where a stream holds no row, its one
+  row was refused or does not stand, or a guard left its rows unread'). No test rename for this one.
+- [3] nit: the PaddingAt cost sentence and threat-model #47 note give the two cases as alternatives (one probe where
+  the token ends within the first, short of its edge; otherwise less than ten times).
+- [4] nit: the _paddingProbes remark (:347-348): a header whose number carries leading zeros past the edge grows the
+  probe within the search's window, bounded by MaxRelocationCandidates.
+- [5] nit: rewrap the ReachedAt remark (:3660-3662), the lone 'which'.
+- [7] nit: the SearchEndStream remark (:2470-2471) and threat-model #52: the waiting-comment exception holds once a
+  window has held the keyword whole (and, optional, row 541 says 'the reads after it').
+- [8] nit: the WindowEdgeTests comment (:803-804), caps 1-3 run past object 12's header to its endobj.
+- [9] nit: pin the true half of the readAgain copy (newer stream /Index no array before the hybrid; Sections[4]
+  EveryNumberRefusedBefore and RowsRefusedBefore true; diagnostics list). Kills K2 (call-site replacement with false).
+- [10] nit: rename ..._says_every_object_is_looked_for_whatever_rows_it_holds to
+  ..._says_every_object_but_a_row_it_kept_is_looked_for_whatever_rows_it_holds; threat-model.md:431 citation.
+- [11] nit: the HybridFiles.PrevFallingShortOfTheStreamBefore summary names the two shapes that index object 7.
+- [13] nit: the StartOfNamed (:3709-3711) and KeepsItsPlace (:3733-3734) summaries say the reading from the offset
+  comes to no start past the run, though its search near the offset may find the section past it. StartOf unchanged.
+- status.md 'Commit bodies not rewritten' += 8692234 ('keeps its words' is false for the >4,096 cut-table shape; 'every
+  object where the stream kept no row' is the RowsHeld split).
+- End-of-batch #289 comment adds:
+  - f02393: under MaxTrailerLength 256, a /Prev naming the first of 511 spaces before a table below offset 512 gives
+    section-missing + Error section-not-found + a rebuild. Main found it through its 1,024-byte window (#197's
+    intended fix); under default limits it reads with offset-imprecise only.
+  - the probe-cost figures.
+- Batch lens: no throw or hang; doubled reports 26 on main, 0 on head; silent older revisions 51 -> 14 (all
+  pre-existing). Read-order differences only through rebuilds (documented). Valid variants add nothing over main.
+  Timing tests stable idle and under load.
+- R6-Q1 (maintainer, 2026-11-07): [14] document and track under #171, as recommended. No code change. The texts name stream data beside strings an earlier line opened; a test pins the behavior citing #171; a comment on #171 gives the reproducers.
+- 2026-11-07: round 6 fixes launched: wf_cf83bb0a-d9e (task wzgbeykjn), script lot19/lot19-r6-fixes.js: R6a-src (source texts + tests [9] [10] [11] [8] [14] gap test, cut-table row), R6b-docs (pages [6] [7] [1]/[12] [2] [3] [14]), then R6-track (#171 comment) beside R6f-check.
