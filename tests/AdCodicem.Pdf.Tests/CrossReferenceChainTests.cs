@@ -663,7 +663,7 @@ public class CrossReferenceChainTests
     [Theory]
     [InlineData(null)]
     [InlineData(2)]
-    public void A_writer_s_update_in_zlib_data_serves_the_new_revision_of_what_it_rewrites_whether_or_not_its_rows_decode(int? damagedAt)
+    public void A_writer_s_update_in_zlib_data_serves_the_new_revision_of_what_it_rewrites_whether_its_data_decodes_whole_or_nothing_of_it_decodes(int? damagedAt)
     {
         // A writer's update rewrites object 4 and indexes it in a cross-reference stream of zlib data, which startxref names
         // over the oldest table. Sound, the data decodes to the update's rows. Damaged at its third byte, the first of the

@@ -1241,17 +1241,21 @@ public class FilterTests
     [InlineData("a /Filter that is neither a name nor an array", "5", "abc", true, "abc")]
     [InlineData("Flate that decodes a stored block, then meets a block of the reserved type", "/FlateDecode", "{stored}", false, "Hello")]
     [InlineData("ASCIIHex that decodes to nothing, then an unsupported filter", "[/ASCIIHexDecode /Foo]", ">", false, "")]
+    [InlineData("LZW whose first code it has not defined", "/LZWDecode", "\u0096\u0000", false, "")]
+    [InlineData("ASCIIHex whose bytes encode nothing", "/ASCIIHexDecode", "zzzzzz>", false, "")]
     [InlineData("an image filter", "/DCTDecode", "abc", false, "abc")]
     [InlineData("sound Flate", "/FlateDecode", "{sound}", false, FlateText)]
     [InlineData("no filter", "", "abc", false, "abc")]
     public void Data_is_said_undecoded_only_where_a_filter_the_library_cannot_run_or_one_decoding_none_of_it_is_left_some(
         string shape, string filter, string data, bool undecoded, string decoded)
     {
-        // What comes back from a filter the library does not know, or from one that could decode none of the data it was
-        // given, is the data as the filters before it left it, not what the stream decodes to: a reader of a cross-reference
-        // stream's rows reads none from it (#221). Flate that decoded part of its data before a fault gives that part, a
-        // filter left no data decodes it to none, as every filter does, and an image filter leaves the image on purpose:
-        // none of them is said undecoded. No guard ended any of these decodings.
+        // What comes back from a filter the library does not know, from an element of /Filter that names none or a /Filter
+        // that is neither a name nor an array, or from Flate data corrupt before its first byte decodes, the one fault of a
+        // filter that leaves the data as it was given, is the data as the filters before it left it, not what the stream
+        // decodes to: a reader of a cross-reference stream's rows reads none from it (#221). Flate that decoded part of its
+        // data before a fault gives that part; LZW whose first code it has not defined, and ASCIIHex whose bytes encode
+        // nothing, decode none of their data, and give none, as a filter left no data does; and an image filter leaves the
+        // image on purpose: none of them is said undecoded. No guard ended any of these decodings.
         var bytes = data switch
         {
             // A zlib header, a stored block that is not the last, of the five bytes of Hello, then a block of type 3.
