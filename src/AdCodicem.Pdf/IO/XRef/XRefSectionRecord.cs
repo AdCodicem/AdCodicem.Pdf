@@ -147,6 +147,15 @@ internal sealed class XRefSectionRecord
     public bool TypedXRef { get; set; }
 
     /// <summary>
+    /// Gets a value indicating whether the place, which the search near the offset a hybrid table's <c>/Prev</c> names tried
+    /// where the table's <c>/XRefStm</c> read a cross-reference stream, holds a cross-reference stream that may be that
+    /// table's own — its dictionary gives no <c>/Prev</c>, or the offset the table's names —: read no further than its
+    /// object, its data neither decoded nor read as rows, it left nothing of its reading but a search for its
+    /// <c>endstream</c>, and the search tries it again once every other place was (#156).
+    /// </summary>
+    public bool MayBeTablesOwn { get; set; }
+
+    /// <summary>
     /// Gets a value indicating whether the stream's dictionary gives a <c>/Type</c> that names another type than
     /// <c>/XRef</c> — a CIDFont's, whose <c>/W</c> gives its glyphs' widths —: what is there said it is something else, and
     /// is the section only where the chain names it and it reads as one, or a guard cut a value it is read with (#263):
