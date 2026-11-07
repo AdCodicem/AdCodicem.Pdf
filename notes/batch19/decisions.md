@@ -293,3 +293,90 @@ R4-Q1 [0] (maintainer): a named section's object window opens at the first token
   - ReadTrailerPastRows hang on short windows (pre-existing, main) + StartsToken(long) Span[0]: filed #331 (debt,
     area: reader, M03, placed with #52). threat-model.md:366 to cite #331 (round 5 fixes or docs).
   - P02 (Array.MaxLength clamp on the probe's reach, > 2 GB only): file with the batch-wide ADR 53 survivors (M23).
+- 2026-11-06: #331 filed (ReadTrailerPastRows short-window hang, M03, placed with #52). Notes pushed to -wip (980cd2c). Review round 5 launched: wf_48083bc4-1e9 (task wqyaj1vax), script lot19/lot19-review-r5.js, range b4ab948..8ba4589, six lenses (window, line, sections, headers, validator-tests, docs) + a refuter per finding.
+
+# Review round 5 (wf_48083bc4-1e9 on 8ba4589): triage
+24 agents, 0 errors. 18 findings: no blocker, no major; minors [1] (narrowed), [7], [14], [15] (narrowed), [16];
+nits [2] (narrowed from minor), [3], [4], [5], [6], [8], [9], [10], [12], [13], [17], [18]; [11] refuted.
+Files: r5-findings.md ('######## [n]'), r5-verified.json, r5-reviewers.json. No maintainer question.
+- [1] no code (root #289, batch 27): an /XRefStm whose own white space reached the guard is looked for nearby and
+  batch 19's code then gives (a) the stop at the /Prev's place -> hybrid-stream-lost + hybrid-stream-wrong Error,
+  (b) a table read in the stream's place -> chain-cycle + chain-loop Error beside hybrid-stream-wrong (B2 layout),
+  where main gave a section-shifted Warning but served object 5 null and object 7's old revision (head serves the
+  right objects). (C) refuted (the Error is the file's under any bound). Correction of round 4's triage line:
+  'behavior as main' holds for startxref and /Prev, not for an /XRefStm. End-of-batch #289 comment: these
+  consequences + close criteria widened to HybridStreamWrongRule, ChainLoopRule and xref.hybrid-stream-lost
+  standing down, rows (A) and (B2).
+- [2] nit: the white-space guard's message and texts say 'what follows them was not read'; false where
+  MaxTrailerLength < ~512 (NearbySearchRadius) and the nearby search reads past the run. Reword to 'the section was
+  not read from there' (message, PdfReaderLimits remark, reader-limits.md:91, lazy-reading.md:179,
+  diagnostics.md:141, code comment :5102-5104, PaddingAt remark), pinned message in CrossReferenceRuleTests, a chain
+  row (bound 256, /Prev naming the first of 257 spaces: limit.trailer, offset-adjusted, Relocated, 5 and 7 read).
+  (b) refuted.
+- [3]/[13]/[17] nit (one change): PaddingAt's cost remark: less than ten times the bytes from the position to the
+  first token's end (white space, comments and the token, a token its edge cuts as far as the probe reaches), one
+  probe where that token ends within the first. Do not restore 'a seventh more'. threat-model.md:463 aligned
+  (main's wording, optional, do it).
+- [4] no change (the docs' rule holds measured from the window; the proposed rewording would be off by one). The
+  file's-first-line case one byte farther: accepted, reads a section rather than dropping one.
+- [5] nit: IsTokenOnItsLine remark (bytes lexed run to the end of the first token past the place, within the bytes
+  searched and read back) and the comment at :4968-4969 (bytes ending at or before the place lack its first byte).
+- [6] nit: NearbyFiles.cs:681 summary and CrossReferenceChainTests.cs:1293-1294 comment, refuter's wording.
+- [7] minor: ReportSectionReadInPart (and ReportReservedRows) moved after RefuseRowsLost at both call sites; where
+  the section's own refusal refused every number (a stream /Index holding or being a reference; ranges merged past
+  MaxRefusedRanges) and not EveryNumberRefusedBefore, the tail says 'every other object no section read before it
+  indexes is looked for by rebuilding the index, rather than taken from an older section's rows'; keep the
+  SubsectionsUnknown tail of a table startxref or a /Prev names (4 pinned assertions); rows E2, F1, E5 + /XRefStm
+  path (V10), controls E1, E4; diagnostics.md:112 in-part list, lazy-reading.md:162. ADR 53.
+- [8] nit: EveryNumberRefusedBefore settable and carried in readAgain beside the two copies; comment list; row
+  asserting sections[2] false and the oldest true (kills the drop-the-copy mutant).
+- [9]/[16] minor (one change): SearchEndStream remark (holds of windows of more than EndStreamSearchOverlap bytes,
+  short or not; one of no more ... byte past its start), StreamEnds.cs:110-111, PendingEndStream.cs:27-29;
+  PropertyTests.cs:466 stays; optional WindowEdgeTests theory pinning caps 11+ match memory for LF and CRLF.
+- [10] nit: HeaderText.HeaderAt summary (reads only the bytes before; whether the token is obj is the caller's).
+- [12]/[15] minor (docs only, within #289/#295's placement): 'read from its first token' holds for a stream only; a
+  classic table's window opens at the offset named, its white space counting toward MaxXRefSectionLength ([#289]):
+  PdfReaderLimits.cs:145-148, threat-model.md:429, lazy-reading.md:176-177, diagnostics.md:141 (white-space clause
+  for any named section, table or stream); optional MaxXRefSectionLength rows (reader-limits.md:19,
+  threat-model.md:104). Keep threat-model.md:105, reader-limits.md:21, :204-207.
+- [14] minor: threat-model.md #52 gap split: the hang under a new [#331] entry (+ StartsToken(long) on an empty
+  window), link definition.
+- [18] status.md 'Commit bodies not rewritten': f0d90c8 ('looked for nearby as before' holds for a /Prev or an
+  /XRefStm; startxref's section is rebuilt) and 8ba4589 (before it the LimitTrailer summary said nothing of white
+  space; only the MaxTrailerLength remarks and reader-limits.md said 'near the offset').
+- Open points: #295 end comment adds the cost measured (one naming through a 65,530-byte run reads 343,127 bytes,
+  84,854 at 60,000, the table's windows re-reading the run; 7.1 MB at MaxTrailerLength 1 MB with a 1,048,574 run;
+  bounded by MaxXRefSectionCount). #52 end comment may add: a /Type /XRef stream's header among the places a 4,096-byte
+  cap drops (read whole: Malformed found moved; capped: NotFound, section-missing). R4c M11 recorded killed in its
+  viable form (keep ++_sectionReadings, every Ordinal 0: 2 rows fail). Validator lens: the batch improves two guard
+  cases vs main (256 spaces at a bound of 256 reads with offset-imprecise only; a /Prev naming them read in place).
+- 2026-11-06: round 5 fixes launched: wf_e4c461ab-9b4 (task wdhxvbzfr), script lot19/lot19-r5-fixes.js: R5a-sections ([7] report after refusal, [8] carry EveryNumberRefusedBefore), R5b-window ([2] guard message, [3]/[13]/[17] PaddingAt cost remark, [15] src remarks), R5c-remarks ([5] [6] [9]/[16] [10]), R5d-docs ([12] [14] [15] pages, #331 entry), then R5f-check.
+- 2026-11-06: container restarted during R5a (wf_e4c461ab-9b4 lost, nothing pushed, R5a's worktree clean); the 24 round 5 review worktrees and R5a's removed; round 5 fixes relaunched: wf_56d89d35-9d1 (task wfzb1xcws).
+
+# Review round 5 fixes (wf_56d89d35-9d1): result
+
+- 8ba4589..65306d4, 11 commits, all footers checked:
+  - R5a: 8692234 [7], ea32a78 [8], f3c78d4 (docs for the widened guard arm).
+  - R5b: bd70ef5 [2], a2c5ed4 [3]/[13]/[17]/[15].
+  - R5c: f85a814 [9]/[16], 4b2dcaf [5], b3540ba [10], c57c9ef (WindowEdgeTests caps 11/12/40), cdcf461 [6].
+  - R5d: 65306d4 [14]/[12]/[15]/[2] pages.
+  - R5f: no commit.
+- Deviations accepted:
+  - 'every object' tail where the stream kept no row (matches ReportLostSection).
+  - The guard-left-unread arm also tests _everyNumberRefused.
+  - The table arm split: SubsectionsUnknown and '/XRefStm' give every other; the rest-of-table tail otherwise. A startxref or /Prev table that both lost more than 4,096 ranges and has unknown subsections now uses the rest-of-table tail.
+  - 'short of its edge' in the PaddingAt cost sentence.
+  - The StreamEnds wording names the window of the file.
+  - HeaderAt parameter renamed tokenStart.
+  - reference/reader-limits.md :21 and :206 reworded under [2].
+  - The limit.xref-section-length row in reference/diagnostics.md:139 gains the #289 clause.
+- Mutants:
+  - R5a: 34 mutants, 33 killed, 1 not viable (CS8510), 0 survivors.
+  - R5b: 3 mutants on the message line, all killed.
+  - R5c and R5d: no code.
+- Probe cost measured (R5b): worst 9.14x at 2,044 spaces + xref (64/7). The cap gives 84,288 / 65,568 = 1.286.
+- R5f:
+  - build 0/0; suite 10,299 / 10,296 passed / 3 skipped / 0 failed; format clean; msgs OK; keys: 0 new; links OK.
+  - Corpus vs main: only pdfmaker7 (file.size-wrong gone), as in round 4.
+  - Branch dump byte-identical to round 4's.
+- Open for the end of the batch: the #289 comment adds the LimitXRefSectionLength summary and message ('runs past' when white space fills the window, pre-existing on main), and may cite the probe-cost figures.

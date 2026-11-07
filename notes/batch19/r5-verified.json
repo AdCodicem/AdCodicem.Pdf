@@ -1,0 +1,164 @@
+[
+ {
+  "n": 1,
+  "lens": "window",
+  "key": "ws-guard-feeds-hybrid-and-loop-errors",
+  "sev": "minor",
+  "verdict": "narrowed",
+  "vsev": "minor",
+  "maint": false
+ },
+ {
+  "n": 2,
+  "lens": "window",
+  "key": "ws-guard-message-says-what-follows-unread",
+  "sev": "minor",
+  "verdict": "narrowed",
+  "vsev": "nit",
+  "maint": false
+ },
+ {
+  "n": 3,
+  "lens": "window",
+  "key": "probe-cost-remark-overclaims",
+  "sev": "nit",
+  "verdict": "narrowed",
+  "vsev": "nit",
+  "maint": false
+ },
+ {
+  "n": 4,
+  "lens": "line",
+  "key": "line-docs-line-start-off-by-one",
+  "sev": "nit",
+  "verdict": "narrowed",
+  "vsev": "nit",
+  "maint": false
+ },
+ {
+  "n": 5,
+  "lens": "line",
+  "key": "line-remark-lexing-cost-and-short-window-comment",
+  "sev": "nit",
+  "verdict": "narrowed",
+  "vsev": "nit",
+  "maint": false
+ },
+ {
+  "n": 6,
+  "lens": "line",
+  "key": "line-test-texts-row-endings",
+  "sev": "nit",
+  "verdict": "narrowed",
+  "vsev": "nit",
+  "maint": false
+ },
+ {
+  "n": 7,
+  "lens": "sections",
+  "key": "inpart-report-understates-every-number-refusal",
+  "sev": "minor",
+  "verdict": "confirmed",
+  "vsev": "minor",
+  "maint": false
+ },
+ {
+  "n": 8,
+  "lens": "sections",
+  "key": "read-again-keeps-every-number-refused-before",
+  "sev": "nit",
+  "verdict": "confirmed",
+  "vsev": "nit",
+  "maint": false
+ },
+ {
+  "n": 9,
+  "lens": "headers",
+  "key": "headers:short-read-remarks-say-every-short-read-steps-a-byte",
+  "sev": "nit",
+  "verdict": "narrowed",
+  "vsev": "nit",
+  "maint": false
+ },
+ {
+  "n": 10,
+  "lens": "headers",
+  "key": "headers:headerat-summary-predates-the-eager-call",
+  "sev": "nit",
+  "verdict": "confirmed",
+  "vsev": "nit",
+  "maint": false
+ },
+ {
+  "n": 11,
+  "lens": "validator-tests",
+  "key": "test-name-reads-whole-vs-rows-read-in-part",
+  "sev": "nit",
+  "verdict": "refuted",
+  "vsev": "none",
+  "maint": false
+ },
+ {
+  "n": 12,
+  "lens": "validator-tests",
+  "key": "limit-trailer-row-ties-white-space-guard-to-streams",
+  "sev": "nit",
+  "verdict": "confirmed",
+  "vsev": "nit",
+  "maint": false
+ },
+ {
+  "n": 13,
+  "lens": "validator-tests",
+  "key": "paddingat-cost-remark-ten-times",
+  "sev": "nit",
+  "verdict": "narrowed",
+  "vsev": "nit",
+  "maint": false
+ },
+ {
+  "n": 14,
+  "lens": "docs",
+  "key": "tm-52-gap-no-331",
+  "sev": "minor",
+  "verdict": "confirmed",
+  "vsev": "minor",
+  "maint": false
+ },
+ {
+  "n": 15,
+  "lens": "docs",
+  "key": "classic-table-white-space-not-apart",
+  "sev": "minor",
+  "verdict": "narrowed",
+  "vsev": "minor",
+  "maint": false
+ },
+ {
+  "n": 16,
+  "lens": "docs",
+  "key": "endstream-short-read-remarks-overbroad",
+  "sev": "minor",
+  "verdict": "confirmed",
+  "vsev": "minor",
+  "maint": false
+ },
+ {
+  "n": 17,
+  "lens": "docs",
+  "key": "paddingat-cost-ratio",
+  "sev": "nit",
+  "verdict": "confirmed",
+  "vsev": "nit",
+  "maint": false
+ },
+ {
+  "n": 18,
+  "lens": "docs",
+  "key": "commit-bodies-false-f0d90c8-8ba4589",
+  "sev": "nit",
+  "verdict": "confirmed",
+  "vsev": "nit",
+  "maint": false
+ }
+]
