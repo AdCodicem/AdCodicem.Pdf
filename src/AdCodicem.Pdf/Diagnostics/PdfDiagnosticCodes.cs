@@ -278,8 +278,8 @@ public static class PdfDiagnosticCodes
     /// zlib header or checksum, an end marker missing after a whole unit or ending on a <c>~</c>, or the <c>&lt;~</c>
     /// PostScript writes, is reported as a repair. The message says which; for a Flate stream turned corrupt, a byte that
     /// encodes nothing, an ASCII85 group past four bytes and a <c>~</c> something other than <c>&gt;</c> follows, it says at
-    /// which byte of the filter's data the first lies. A cross-reference stream whose Flate data nothing could decode holds
-    /// no rows: the section cannot be read (#221).
+    /// which byte of the filter's data the first lies. A cross-reference stream whose Flate data is so left, corrupt before
+    /// its first byte decodes, holds no rows: the section cannot be read (#221).
     /// </summary>
     public const string FilterFailed = "filter.failed";
 

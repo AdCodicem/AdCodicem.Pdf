@@ -5974,15 +5974,16 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// forget (<see cref="ForgetReadThrough"/>).
     /// </para>
     /// <para>
-    /// Data the filters decode nothing of — left at a filter the library does not know, or at an element of <c>/Filter</c>
-    /// that names none, or by a filter that could decode none of what it was given, Flate data corrupt before its first byte
-    /// decodes — holds none of the rows, whatever its bytes would read as, and the section cannot be read: its fault is the
-    /// file's, the decoding's report standing beside it, and a <c>/Prev</c> its dictionary gives may name the older sections
-    /// all the same (#208, #221). At a place the section may have been moved to, where the object gives only a <c>/W</c>
-    /// and so declares no section, the place is dropped, and what the decoding reported goes with it
-    /// (<see cref="XRefSectionRecord.UndecodedReports"/>), what reading the dictionary reported standing. Data a filter
-    /// decoded part of before a fault holds the rows that part does, the section read in part where it lacks some (#210);
-    /// data an image filter leaves is read as the rows it holds.
+    /// Data the filters decode nothing of — left at a filter the library does not know, at an element of <c>/Filter</c>
+    /// that names none or at a <c>/Filter</c> that is neither a name nor an array, or by Flate data corrupt before its first
+    /// byte decodes, the one fault of a filter that leaves the data as it was given — holds none of the rows, whatever its
+    /// bytes would read as, and the section cannot be read: its fault is the file's, the decoding's report standing beside
+    /// it, and a <c>/Prev</c> its dictionary gives may name the older sections all the same (#208, #221). At a place the
+    /// section may have been moved to, where the object gives only a <c>/W</c> and so declares no section, the place is
+    /// dropped, and what the decoding reported goes with it (<see cref="XRefSectionRecord.UndecodedReports"/>), what reading
+    /// the dictionary reported standing. Data any other filter decodes holds the rows it does — what a filter decoded of its
+    /// data before a fault, or the nothing LZW whose first code is undefined decodes to —, the section read in part where it
+    /// lacks some (#210); data an image filter leaves is read as the rows it holds.
     /// </para>
     /// </remarks>
     /// <param name="absolute">Where the stream is looked for, in the file.</param>
@@ -6315,12 +6316,13 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
             var decoded = Filters.PdfFilterPipeline.Decode(
                 xrefStream, _diagnostics, endHidden, reachedBefore, out var leftEncoded, out var cut, out var undecoded);
 
-            // Data the filters decoded nothing of — left at a filter the library does not know, or by one that could decode
-            // none of what it was given — is not what the stream decodes to, and holds none of its rows, whatever its bytes
-            // would read as: the section cannot be read, the fault the file's, and what the decoding reported stands beside
-            // it, but at a place the section may have been moved to that is dropped. Its rows are lost, as a stream's whose /W
-            // no row can be read with, and its /Prev may name the older sections all the same (#208, #221). A filter that
-            // decoded part of its data gives the rows that part holds.
+            // Data the filters decoded nothing of — left at a filter the library does not know, at an element of /Filter that
+            // names none or at a /Filter that is neither a name nor an array, or by Flate data corrupt before its first byte
+            // decodes — is not what the stream decodes to, and holds none of its rows, whatever its bytes would read as: the
+            // section cannot be read, the fault the file's, and what the decoding reported stands beside it, but at a place
+            // the section may have been moved to that is dropped. Its rows are lost, as a stream's whose /W no row can be read
+            // with, and its /Prev may name the older sections all the same (#208, #221). Any other filter gives what it
+            // decoded, part of its data or none of it, and the data holds the rows it holds, read in part where it lacks some.
             if (undecoded)
             {
                 section.Fault = DataUndecoded;
@@ -7056,8 +7058,9 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     private const string NoRowBytes = "its /W gives rows of no bytes";
 
     /// <summary>
-    /// The fault of data the filters decode nothing of: left at a filter the library does not know, or by one that could
-    /// decode none of what it was given (#221).
+    /// The fault of data the filters decode nothing of: left at a filter the library does not know, at an element of
+    /// <c>/Filter</c> that names none or at a <c>/Filter</c> that is neither a name nor an array, or by Flate data corrupt
+    /// before its first byte decodes (#221).
     /// </summary>
     private const string DataUndecoded = "its data could not be decoded";
 

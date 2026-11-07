@@ -90,12 +90,13 @@ internal static class PdfFilterPipeline
     /// <param name="undecoded">
     /// Whether what comes back is not what the stream's filters decode it to, though no guard ended decoding: a filter the
     /// library does not know, an element of <c>/Filter</c> that names no filter, or a <c>/Filter</c> that is neither a name
-    /// nor an array, was left data to decode, or a filter could decode none of the data it was given — Flate data corrupt
-    /// before its first byte decodes —, with filters before it that decoded the data or none. What comes back is then the
-    /// data as the filters before that one left it, which a reader of the rows the stream decodes to cannot read as such
-    /// (#221). A filter that decoded part of its data before a fault gives what it decoded, which this does not say, and so
-    /// does a filter given no data, which decodes it to none; an image filter leaves the image on purpose, which this does
-    /// not say either; a guard that ended decoding is <paramref name="leftEncoded"/>'s.
+    /// nor an array, was left data to decode, or Flate data was corrupt before its first byte decodes — the one fault of a
+    /// filter that leaves the data as it was given —, with filters before it that decoded the data or none. What comes
+    /// back is then the data as the filters before that one left it, which a reader of the rows the stream decodes to cannot
+    /// read as such (#221). A filter that decoded part of its data before a fault gives what it decoded, and any other
+    /// filter that decodes none of its data — LZW whose first code is undefined, ASCIIHex or ASCII85 data that encodes
+    /// nothing —, or is given none, gives none: this says neither; an image filter leaves the image on purpose, which this
+    /// does not say either; a guard that ended decoding is <paramref name="leftEncoded"/>'s.
     /// </param>
     /// <exception cref="PdfLimitExceededException">
     /// Decoding reaches one of its document's guards, and the document was opened to throw when it does.
@@ -292,8 +293,9 @@ internal static class PdfFilterPipeline
         leftEncoded = chain.End is FilterChainEnd.Limit or FilterChainEnd.Guard;
         cutByGuard = stream.Data.CutByGuard || limitReported || endCut;
 
-        // A filter the library does not know, or an element that names none, leaves the data as the filters before it decoded
-        // it, but for none, which every filter decodes to none. An image filter leaves the image it encodes, on purpose.
+        // A filter the library does not know, an element that names none, or a /Filter that is neither a name nor an array,
+        // leaves the data as the filters before it decoded it, but for none, which every filter decodes to none. An image
+        // filter leaves the image it encodes, on purpose.
         undecoded = !data.IsEmpty && chain.End is FilterChainEnd.Unsupported or FilterChainEnd.NotAName or FilterChainEnd.NotAFilterEntry;
         return data;
     }
