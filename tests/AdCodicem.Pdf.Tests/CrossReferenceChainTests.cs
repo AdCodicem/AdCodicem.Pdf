@@ -1184,6 +1184,82 @@ public class CrossReferenceChainTests
         document.Diagnostics.Select(diagnostic => diagnostic.Code).Should().StartWith([PdfDiagnosticCodes.XRefOffsetAdjusted, PdfDiagnosticCodes.XRefSectionUnreadable]);
     }
 
+    [Theory]
+    [InlineData("Notes on the file format.\n", "xref")]
+    [InlineData("Notes on the file format.\nThe ", "xref")]
+    [InlineData("Example:\n", "12 0 obj\n<< /Type /XRef /Size 13 /W [1 2 1] >>\nendobj\n")]
+    [InlineData("Notes on the file format.\n", "text")]
+    public void The_word_xref_or_a_cross_reference_stream_s_header_in_stream_data_short_of_where_a_prev_names_is_taken_for_the_section_found_moved(
+        string before, string word)
+    {
+        // Object 4, an embedded file the update writes uncompressed, holds in its data the word xref, at the start of a line
+        // or in its middle, or the header and dictionary of an object of /Type /XRef, and the newest table's /Prev names the
+        // place 2 bytes past where it starts, short of the update's table. No load lexes stream data, but the search near the
+        // offset lexes the place's line alone, from its start, and sees no stream data an earlier line opened (#171): the word,
+        // or the header, is a token there, taken for the section found moved, which cannot be read and ends the search, the
+        // update's table left unread. The chain ends there, and the index is rebuilt as the document opens, for the catalog,
+        // which only the first table indexes: object 6, which the update freed, is read as the rebuild finds it. With no such
+        // word in the data, the search goes on to the update's table, and object 6 is free.
+        var (file, at, named, update) = NearbyFiles.UpdatePastAWordInStreamData(before, word, StreamDataAfterTheWord);
+        using var document = PdfDocument.Open(file);
+
+        var found = document.Reader.Structure.Sections[1];
+
+        if (word == "text")
+        {
+            (found.State, found.Offset).Should().Be((XRefSectionState.Relocated, update));
+            document.Diagnostics.Should().ContainSingle().Which.Message.Should().Be(Invariant(
+                $"The cross-reference section /Prev names at offset {named} was found {update - named} bytes after it."));
+            document.GetObject(new PdfObjectId(6)).Should().BeSameAs(PdfNull.Instance);
+            document.WasRepaired.Should().BeFalse();
+            return;
+        }
+
+        (found.State, found.Kind, found.NamedOffset, found.Offset).Should().Be(
+            (XRefSectionState.Malformed, word == "xref" ? XRefSectionKind.Table : XRefSectionKind.Stream, named, at));
+        document.WasRepaired.Should().BeTrue("the catalog is the first table's alone");
+        document.Diagnostics.Select(diagnostic => diagnostic.Code).Should().Equal(
+            PdfDiagnosticCodes.XRefOffsetAdjusted, PdfDiagnosticCodes.XRefSectionUnreadable, PdfDiagnosticCodes.XRefRebuilt);
+        document.Diagnostics[0].Message.Should().Be(Invariant($"The cross-reference section /Prev names at offset {named} was found 2 bytes before it."));
+        document.Diagnostics[1].Position.Should().Be(at);
+        Text(document, 6).Should().Be("six, freed by the update");
+    }
+
+    [Theory]
+    [InlineData("12 0 obj\n<< /Type /XRef /Size 13 /W [1 2 1] >>\nendobj\n")]
+    [InlineData("text")]
+    public void A_cross_reference_stream_s_header_in_stream_data_short_of_where_an_xrefstm_names_is_taken_for_the_stream_found_moved(string word)
+    {
+        // As above, through the /XRefStm of the update's table, which falls short of the update's cross-reference stream, 2
+        // bytes past where the header and dictionary of an object of /Type /XRef start in the data of the embedded file the
+        // update writes before it: the header is taken for the stream found moved, which cannot be read (#171). A dictionary
+        // no stream data follows refuses no number to the older sections' rows: the first table's row for object 3, which the
+        // update wrote again, stands, and object 3, read before anything sets a rebuild off, is read as the first revision
+        // wrote it. With no header in the data, the search goes on to the stream, and object 3 reads as the update wrote it.
+        var (file, at, named, stream) = NearbyFiles.HybridPastAWordInStreamData("Example:\n", word, StreamDataAfterTheWord);
+        using var document = PdfDocument.Open(file);
+
+        var found = document.Reader.Structure.Sections[1];
+        found.NamedBy.Should().Be("/XRefStm");
+
+        if (word == "text")
+        {
+            (found.State, found.Kind, found.Offset).Should().Be((XRefSectionState.Relocated, XRefSectionKind.Stream, stream));
+            document.Diagnostics.Should().ContainSingle().Which.Message.Should().Be(Invariant(
+                $"The cross-reference section /XRefStm names at offset {named} was found {stream - named} bytes after it."));
+            Text(document, 3).Should().Be("three new");
+            document.WasRepaired.Should().BeFalse();
+            return;
+        }
+
+        (found.State, found.Kind, found.NamedOffset, found.Offset, found.NumbersRefused).Should().Be(
+            (XRefSectionState.Malformed, XRefSectionKind.Stream, named, at, false));
+        Text(document, 3).Should().Be("three old");
+        document.WasRepaired.Should().BeFalse();
+        document.Diagnostics.Select(diagnostic => (diagnostic.Code, diagnostic.Position)).Should().Equal(
+            (PdfDiagnosticCodes.XRefOffsetAdjusted, at), (PdfDiagnosticCodes.XRefSectionUnreadable, at));
+    }
+
     [Fact]
     public void An_xref_keyword_on_a_line_that_starts_before_the_bytes_searched_is_lexed_from_the_line_s_start()
     {
@@ -5660,6 +5736,14 @@ public class CrossReferenceChainTests
         %%EOF
 
         """;
+
+    /// <summary>
+    /// What follows the word, or the header, in the data of the embedded file that
+    /// <see cref="NearbyFiles.UpdatePastAWordInStreamData"/> and <see cref="NearbyFiles.HybridPastAWordInStreamData"/> write:
+    /// the rest of a line of notes, a line more and a comment, which put the section past the data farther from the place
+    /// named than the word is, within the search near it.
+    /// </summary>
+    private static readonly string StreamDataAfterTheWord = " tables list offsets; see section 7.5.4.\nEnd of notes.\n%" + new string('x', 60);
 
     private enum Offset
     {

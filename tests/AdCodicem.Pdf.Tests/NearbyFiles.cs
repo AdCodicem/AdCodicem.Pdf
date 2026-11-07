@@ -732,6 +732,78 @@ internal static class NearbyFiles
     }
 
     /// <summary>
+    /// A document saved three times, whose newest table names through <c>/Prev</c> a place 2 bytes past where
+    /// <paramref name="word"/> starts, at <c>Word</c>, in the data of object 4, an uncompressed embedded file the update
+    /// writes before its table, at <c>Update</c>: the data is <paramref name="before"/>, the word and
+    /// <paramref name="after"/>. The first table indexes the catalog, an empty page tree, object 3, <c>(three)</c>, and object
+    /// 6, <c>(six, freed by the update)</c>; past 1,200 bytes of comment, the update's indexes object 4, frees object 6 and
+    /// names the first through <c>/Prev</c>; the newest indexes object 5, <c>(five)</c>. The place named is at <c>Named</c>.
+    /// </summary>
+    public static (byte[] File, long Word, long Named, long Update) UpdatePastAWordInStreamData(string before, string word, string after)
+    {
+        var file = new HandWrittenFile();
+        var catalog = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>");
+        var pages = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>");
+        var three = file.Object(3, "(three)");
+        var six = file.Object(6, "(six, freed by the update)");
+        var oldest = file.Table(7, new() { [1] = catalog, [2] = pages, [3] = three, [6] = six }, "/Size 7 /Root 1 0 R");
+        Gap(file, 1200);
+        var (four, at) = EmbeddedFile(file, 4, before, word, after);
+        var update = file.Position;
+        file.Raw(string.Create(
+            CultureInfo.InvariantCulture,
+            $"xref\n0 1\n0000000000 65535 f \n4 1\n{four:D10} 00000 n \n6 1\n0000000000 00001 f \ntrailer\n<< /Size 7 /Root 1 0 R /Prev {oldest} >>\nstartxref\n{update}\n%%EOF\n"));
+        var five = file.Object(5, "(five)");
+        var newest = file.Position;
+        file.Raw(string.Create(
+            CultureInfo.InvariantCulture,
+            $"xref\n0 1\n0000000000 65535 f \n5 1\n{five:D10} 00000 n \ntrailer\n<< /Size 7 /Root 1 0 R /Prev {at + 2} >>\nstartxref\n{newest}\n%%EOF\n"));
+        return (file.Bytes, at, at + 2, update);
+    }
+
+    /// <summary>
+    /// A document saved twice: the first table indexes the catalog, an empty page tree and object 3, <c>(three old)</c>;
+    /// past 1,200 bytes of comment, the update writes object 3 again, <c>(three new)</c>, then object 4, an uncompressed
+    /// embedded file whose data is <paramref name="before"/>, <paramref name="word"/>, which starts at <c>Word</c>, and
+    /// <paramref name="after"/>, then cross-reference stream 7, at <c>Stream</c>, which indexes objects 3 and 4; the update's
+    /// classic table indexes nothing, and names the first through <c>/Prev</c> and, through <c>/XRefStm</c>, a place 2 bytes
+    /// past where the word starts, at <c>Named</c>.
+    /// </summary>
+    public static (byte[] File, long Word, long Named, long Stream) HybridPastAWordInStreamData(string before, string word, string after)
+    {
+        var file = new HandWrittenFile(version: "1.5");
+        var catalog = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>");
+        var pages = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>");
+        var three = file.Object(3, "(three old)");
+        var oldest = file.Table(4, new() { [1] = catalog, [2] = pages, [3] = three }, "/Size 4 /Root 1 0 R");
+        Gap(file, 1200);
+        var newThree = file.Object(3, "(three new)");
+        var (four, at) = EmbeddedFile(file, 4, before, word, after);
+        var stream = file.Position;
+        var rows = StreamRows((1, newThree, 0), (1, four, 0));
+        file.Object(7, string.Create(
+            CultureInfo.InvariantCulture,
+            $"<< /Type /XRef /Size 8 /W [1 4 2] /Index [3 2] /Length {rows.Length} >>\nstream\n{rows}\nendstream"));
+        var update = file.Position;
+        file.Raw(string.Create(
+            CultureInfo.InvariantCulture,
+            $"xref\n0 1\n0000000000 65535 f \ntrailer\n<< /Size 8 /Root 1 0 R /Prev {oldest} /XRefStm {at + 2} >>\nstartxref\n{update}\n%%EOF\n"));
+        return (file.Bytes, at, at + 2, stream);
+    }
+
+    /// <summary>
+    /// Writes object <paramref name="number"/>, an uncompressed embedded file whose data is <paramref name="before"/>,
+    /// <paramref name="word"/> and <paramref name="after"/>, and gives where its header starts and where the word does.
+    /// </summary>
+    private static (long Header, long Word) EmbeddedFile(HandWrittenFile file, int number, string before, string word, string after)
+    {
+        var data = before + word + after;
+        var dictionary = string.Create(CultureInfo.InvariantCulture, $"<< /Type /EmbeddedFile /Length {data.Length} >>\nstream\n");
+        var header = file.Object(number, dictionary + data + "\nendstream");
+        return (header, header + string.Create(CultureInfo.InvariantCulture, $"{number} 0 obj\n").Length + dictionary.Length + before.Length);
+    }
+
+    /// <summary>
     /// A document saved twice, whose first section, at <c>Original</c>, lies past <paramref name="run"/> spaces, the first
     /// of them at <c>Run</c>: a classic table or, with <paramref name="stream"/>, cross-reference stream 8, which indexes
     /// the catalog, the page tree, object 5, <c>(five)</c>, and object 7, <c>(old seven)</c>. The update's table, at
