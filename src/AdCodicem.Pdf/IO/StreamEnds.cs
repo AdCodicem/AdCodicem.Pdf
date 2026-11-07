@@ -108,7 +108,8 @@ internal static class StreamEnds
     /// <remarks>
     /// <para>
     /// The overlap between reads puts the end-of-line before a keyword first seen in a read inside it, unless the keyword
-    /// starts the data or the read before was one a source gave short (#52). A cross-reference stream whose
+    /// starts the data or the read before was a window of the file that held no more bytes than the overlap, which only a
+    /// source that gives fewer bytes than asked may lend before the end of the file (#52). A cross-reference stream whose
     /// <c>/Length</c> the chain could not read is searched as <paramref name="deferred"/>: its rows may spell a header,
     /// and may end in a carriage return, so neither stops nor trims it (#220).
     /// </para>

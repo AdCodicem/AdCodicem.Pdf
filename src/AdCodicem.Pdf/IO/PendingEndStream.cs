@@ -25,11 +25,12 @@ namespace AdCodicem.Pdf.IO;
 /// reading stands, whatever the lines hold, and whether an <c>obj</c> would end a header is read where the token's first
 /// byte is, from the bytes before it, rather than in the read that ends the token, which may no longer hold them. So the
 /// decision does not depend on where the reads part the data, however short a source cuts them: a read that gives fewer
-/// bytes than asked (#52) may end before the one before it, which reads nothing again, and makes the next start a byte
-/// past its own start, which may be past the token's. What is read is bounded by what the search would read without the
-/// keyword, up to its next object or the end of the file, each byte once; a search that reads no further — past its
-/// budget, or at a source with nothing more to give — takes the keyword. None of this is a guard (ADR 34): it reads only
-/// a stream whose <c>endstream</c> does not follow its declared length, and stops where the search does.
+/// bytes than asked (#52) may end before the one before it, which reads nothing again, and one of no more bytes than the
+/// overlap makes the next start a byte past its own start, which may be past the token's. What is read is bounded by
+/// what the search would read without the keyword, up to its next object or the end of the file, each byte once; a
+/// search that reads no further — past its budget, or at a source with nothing more to give — takes the keyword. None of
+/// this is a guard (ADR 34): it reads only a stream whose <c>endstream</c> does not follow its declared length, and
+/// stops where the search does.
 /// </para>
 /// </remarks>
 internal struct PendingEndStream

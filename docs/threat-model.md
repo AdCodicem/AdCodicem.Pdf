@@ -365,10 +365,11 @@ Known gaps:
   keep invariant 2.
 - [#52] A source whose `Read` returns fewer bytes than asked is taken as the end of the data — not everywhere alike:
   the search for a classic table's trailer past the rows a guard left unread reads one window again, without end,
-  where the source gives it 32 bytes or fewer before the file's end, as the library's own `FileSource` does for a
-  file that shrinks while it is open; and the search for a lost `endstream` may miss a keyword, a header, or the end
-  of line before a keyword that no window then holds whole, the data ending later, while an `endstream` in a comment
-  that waits is decided as whole reads decide it.
+  where the source gives it 32 bytes or fewer before the file's end, as the library's own `FileSource` does for a file
+  that shrinks while it is open; and the search for a lost `endstream`, after a read of no more bytes than the ten its
+  reads repeat, may miss a keyword, a header, or the end of line before a keyword that no window then holds whole, the
+  data ending later, while a read of more, short or not, leaves the search as whole reads leave it, and an `endstream`
+  in a comment that waits is decided as whole reads decide it.
 - [#191] A reference resolves through the reader, not the document: the reader refuses once the document is disposed,
   but which source a reference carries, and what M03's change set will show through it, is still to settle.
 
