@@ -345,9 +345,11 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// The file's bytes and the trailer's bound do not change while the reader reads it, so that a probe's answer stands
     /// wherever it is asked for again: two are kept, nothing more, and what is read is what a reading that asked once read.
     /// The places a search near an offset tries are not kept, however many it tries: each starts at a token — a keyword, an
-    /// object's header —, whose probe is one window of <see cref="XRefProbeLength"/> bytes, and a section found there is
-    /// reached through <see cref="_sectionsReadAt"/>, not asked of again; kept, they would push out the probe of a hybrid
-    /// table's <c>/Prev</c>, taken before its <c>/XRefStm</c>'s search, and the chain would cross that run again (#188).
+    /// object's header —, whose probe crosses no white space: one window of <see cref="XRefProbeLength"/> bytes where that
+    /// token ends short of its edge, and at most a few more within the search's own window where leading zeros carry a
+    /// header's number past it, which <see cref="MaxRelocationCandidates"/> bounds. A section found there is reached through
+    /// <see cref="_sectionsReadAt"/>, not asked of again; kept, they would push out the probe of a hybrid table's
+    /// <c>/Prev</c>, taken before its <c>/XRefStm</c>'s search, and the chain would cross that run again (#188).
     /// </remarks>
     private (PaddingProbe Last, PaddingProbe Before) _paddingProbes = (PaddingProbe.None, PaddingProbe.None);
 
@@ -2467,8 +2469,9 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// on where the reads part the data (<see cref="EndObjTailCopies"/>). That holds of windows of more than
     /// <see cref="EndStreamSearchOverlap"/> bytes, short or not: one of no more, which a source may give short before the
     /// end of the file (#52), makes the next start a byte past its own start, repeating less of it than the overlap, so
-    /// that a keyword or a header no window then holds whole, or the end of line before a keyword, may be missed, and the
-    /// search may end elsewhere — but for a keyword in a comment that waits, which is decided as whole windows decide it.
+    /// that a keyword or a header no window then holds whole, or the end of line before a keyword, may be missed, a keyword
+    /// in a comment among them, and the search may end elsewhere; but once a window has held a keyword in a comment whole
+    /// and it waits, it is decided as whole windows decide it, however short the reads after it.
     /// </remarks>
     /// <param name="dataStart">Where the data starts in the file.</param>
     /// <param name="buffered">The bytes of the data the parser holds, from its start.</param>
@@ -3658,9 +3661,8 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// leads nowhere new when named again — a loop, not a place to look for a section again. Where the offset names neither,
     /// and lies in the file, the bytes there are read as far as a section's own probe reads them: one window, grown no
     /// further than a trailer's and the few bytes past it that tell what starts at its end, for each offset the chain names,
-    /// which
-    /// <see cref="PdfReaderLimits.MaxXRefSectionCount"/> bounds — the probe the section's own reading there then answers from,
-    /// rather than crossing the white space again (<see cref="_paddingProbes"/>).
+    /// which <see cref="PdfReaderLimits.MaxXRefSectionCount"/> bounds — the probe the section's own reading there then
+    /// answers from, rather than crossing the white space again (<see cref="_paddingProbes"/>).
     /// </remarks>
     /// <param name="offset">The offset a <c>/Prev</c> or an <c>/XRefStm</c> gives, not negative.</param>
     /// <param name="named">The offsets the chain has named so far, as the file writes them.</param>
@@ -3711,8 +3713,9 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// and comments there (<see cref="StartOf"/>), where the <c>/Prev</c>'s own reading, next, comes to it; -1 where it
     /// comes to none — no offset, -1, whose position is -1 too; an offset outside the file; what the chain has reached
     /// (<see cref="ReachedBefore"/>), where the <c>/Prev</c> ends the chain in a loop, the reached only growing until then;
-    /// or white space and comments that run on past a trailer's window, which its reading reads nothing past
-    /// (<see cref="PaddingAt"/>).
+    /// or white space and comments that run on past a trailer's window, past which its reading from the offset comes to no
+    /// start (<see cref="PaddingAt"/>), the section not being read from there, though its search near the offset may find
+    /// the section past them.
     /// </summary>
     /// <param name="offset">The offset the <c>/Prev</c> gives, as written, or -1.</param>
     /// <param name="named">The offsets the chain has named so far, as the file writes them.</param>
@@ -3735,7 +3738,8 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// object — keeps no place: <see cref="KeptPlace.None"/>, the <c>/Prev</c> looking for its section nearby. Asked only of
     /// a <c>/Prev</c> the chain reads next: one that names what the chain has reached ends the chain in a loop, reading
     /// nothing, and keeps no place, nor does one that names white space and comments running on past a trailer's window,
-    /// whose reading reads nothing past them.
+    /// whose reading from the offset comes to no start past them, the section not being read from there, though its search
+    /// near the offset may find the section past them.
     /// </summary>
     /// <remarks>
     /// Told without indexing anything, as a hybrid table's <c>/XRefStm</c>, whose search near the offset it names comes to
@@ -4505,13 +4509,16 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// stand for in silence. The section is reported once they are, and the message says what that refusal leaves to a
     /// rebuild: every object the sections read before do not index, where it refused every number — a stream whose
     /// numbering is written with references, which ISO 32000-1 makes direct, or ranges lost past
-    /// <see cref="MaxRefusedRanges"/>, the section's own or once joined with those refused before (#210). A table the end of
-    /// the file cuts loses its trailer too, and with it the older sections that trailer would name: the chain ends there,
-    /// where <c>startxref</c> or a <c>/Prev</c> names it. One an <c>/XRefStm</c> names, whose trailer's links are not
-    /// followed either (#263), leaves the chain going on through the table that names it, and what the rest of it held
-    /// cannot be known: every number but those its rows give is refused (#156). The message agrees with the count of rows a
-    /// stream holds: the row it holds, or none (#241). A table whose fault is followed by the end of the file loses its
-    /// trailer as one the end of the file cuts does, which the message says.
+    /// <see cref="MaxRefusedRanges"/>, the section's own or once joined with those refused before (#210) —; but a table
+    /// <c>startxref</c> or a <c>/Prev</c> names whose rest cannot be known, at which the chain ends, says, whatever it
+    /// refused, that what only the rest of the table, or the sections its trailer would name, index is looked for: the same
+    /// objects, no section past it being read. A table the end of the file cuts loses its trailer too, and with it the
+    /// older sections that trailer would name: the chain ends there, where <c>startxref</c> or a <c>/Prev</c> names it. One
+    /// an <c>/XRefStm</c> names, whose trailer's links are not followed either (#263), leaves the chain going on through the
+    /// table that names it, and what the rest of it held cannot be known: every number but those its rows give is refused
+    /// (#156). The message agrees with the count of rows a stream holds: the row it holds, or none (#241). A table whose
+    /// fault is followed by the end of the file loses its trailer as one the end of the file cuts does, which the message
+    /// says.
     /// </para>
     /// <para>
     /// The rows read are said kept but for those the section refused itself and those whose numbers a newer section refused,
@@ -5182,9 +5189,9 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// as a dictionary it cuts is: the section is not read from the position, and the reading reports the guard
     /// (<see cref="TryReadXRefSection"/>), while a search near the position may find it past them. The windows grow
     /// eightfold from <see cref="XRefProbeLength"/> bytes, and only where the first token, or the white space and comments
-    /// before it, reach the last one's edge, so that the bytes read come to less than ten times those from the position to
-    /// that token's end — white space, comments and the token alike, a token the probe's edge cuts counted as far as the
-    /// probe reaches —, and to one probe where that token ends within the first, short of its edge.
+    /// before it, reach the last one's edge, so that the bytes read come to one probe where that token ends within the
+    /// first, short of its edge, and otherwise to less than ten times those from the position to that token's end — white
+    /// space, comments and the token alike, a token the probe's edge cuts counted as far as the probe reaches.
     /// </remarks>
     /// <param name="absolute">The position, in the file.</param>
     /// <param name="table">Receives whether the first token is the <c>xref</c> keyword; false where there is none to read.</param>

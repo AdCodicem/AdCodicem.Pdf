@@ -64,10 +64,13 @@ public static class PdfDiagnosticCodes
     /// kept, but for those it refused itself, which the message says without naming them beside the fault it names, and those
     /// whose numbers a newer section refused — none of them, where a newer section refused every number —, and the message
     /// says which, and what was lost: the objects the lost rows would index, which no older section's row stands for — every
-    /// object neither its rows nor a section read before it index, where the section refused every number: a stream whose
+    /// object neither its rows nor a section read before it indexes, where the section refused every number: a stream whose
     /// numbering is written with references, or more than 4,096 ranges lost, its own or once joined with those refused
-    /// before —, and those only the sections a lost trailer would name index, are missing from the index, rebuilt when one
-    /// of them is asked for. The report is placed at the section, once, one fault in its message: the first that lost rows,
+    /// before, which the message says, but for a table <c>startxref</c> or a <c>/Prev</c> names whose rest cannot be known,
+    /// at which the chain ends, whose message says, whatever it refused, that what only the rest of the table, or the
+    /// sections its trailer would name, index is looked for, the same objects —, and those only the sections a lost trailer
+    /// would name index, are missing from the index, rebuilt when one of them is asked for. The report is placed at the
+    /// section, once, one fault in its message: the first that lost rows,
     /// else the end of the file before its trailer, else the first row it refused, which is not named beside either of the
     /// others.
     /// </summary>
