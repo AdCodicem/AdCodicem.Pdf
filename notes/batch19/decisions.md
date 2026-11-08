@@ -883,3 +883,24 @@ Refuted: [5]. Records for status.md: 220eab4's sentence on a guard met again (tr
   the texts say it plainly (the Warning withheld throughout the document once that guard is reached, even where the
   search near the offset finds the section whole past the run, which only a MaxTrailerLength under the search's 512
   bytes allows); rows pin shapes A and B ([15], [19]); #289's closing noted as what may bring shape A's Warning back.
+
+# Review round 11 fixes, part 1 (wf_47fb1f52-837, Windows): result
+
+Pushed 79c6a7f..fdd5a71 (fast-forward), 9 commits, messages checked, no review key in the diff.
+- R11a: 9b9fb90 fix (HeaderTokenStart: the line test at a signed header's first sign at both sites, the take still
+  at the digit, the passed-over record at the sign; NumberEnd skips a whole run of signs; NumberRunsInto's sign arm
+  maps a candidate past an all-signs range from a '+' at streamStart, streamStart >= spanStart guarding both arms);
+  45255ce test (the streamSign '+' row, the only killer of the all-signs mutant); 406026b docs. 48 new pinning rows
+  fail on 79c6a7f. Unit suite at 9b9fb90: 10,700, 10,697 passed, 3 skipped. ADR 53: 51 mutants, 45 killed, 6
+  equivalent (R04, R09, S09=R06, B05, E02=E06, E02 slice), 0 open; N1/N2 killed by the 195/105/109 rows.
+  Edge left open (NumberRunsInto remark): a stream an /XRefStm read from the first sign of a run of 2+ signs that
+  starts before the window's lead byte, digit opening the bytes searched, is read twice; to mention on #327.
+- R11b: 1f0a412, 331e666 tests ([11] main path and cut-value path, [12]/[7] capacities 1, 2, 8); a0e94ca docs
+  (RollBackBesideLimits scoped); 20131ce test + 4fd95f2 docs ([4], six rows incl. a '-' of the run); fdd5a71 docs
+  ([23]). Rollback swaps killed (8 and 3 failures). No ADR 53 run owed (documentation only in src/).
+- status.md records added by part 1: 2b26d18's line test dropped signed typed headers until 9b9fb90; R10b's ADR 53
+  record (B05, S09, E02 not equivalent as reasoned, re-judged equivalent on the new NumberEnd; N1/N2 missing, now
+  killed); R11a's record 51/45/6; 220eab4's guard-met-again sentence holds only where the document holds the report
+  and the decoding made fewer reports than the capacity before it; daca13c's summary scoped in a0e94ca; 2be5c44's
+  'reads the same dictionary and data from there' false where the digits read 0.
+Part 2 launched: wf_629fa085-d7b (R11c guard flag, R11d pages, tracking, R11f check).
