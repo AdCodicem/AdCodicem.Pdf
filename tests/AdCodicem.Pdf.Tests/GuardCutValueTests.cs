@@ -3792,6 +3792,45 @@ public class GuardCutValueTests
     }
 
     [Theory]
+    [InlineData("/W [1 4 2] /Size 5 0 R", "8", "its /Size is the reference 5 0 R, which one of the reader's limits cut")]
+    [InlineData("/W [1 4 2] /Index 5 0 R", "[0 8]", "its /Index is the reference 5 0 R, which one of the reader's limits cut")]
+    public void A_section_whose_length_waits_for_the_chain_is_the_guard_s_where_the_guard_cut_its_size_or_index_whatever_its_filters_decode(
+        string values, string five, string fault)
+    {
+        // As above, but object 6's /Length is the reference 2 0 R, which only stream 7 places, the /Prev naming object 6 in
+        // its stead: the length waits for the chain, and the data, taken up to its endstream, is not data whose extent the
+        // file gives. Read whole, the stream cannot be read, its filter decoding nothing of its data, the file's fault. Under
+        // the guard, which cut its /Size or its whole /Index, whether its filters decode anything of data whose extent is not
+        // the file's is not judged: the section is the guard's, the cut value hiding whether its rows are, and the guard is
+        // reached once the chain is read (#221, #263).
+        var built = ChainFiles.UnderAnUpdate(
+            "/Type /XRef /Size 8 /W [1 4 2] /Length {length}",
+            five + new string(' ', 1100),
+            compressed: false,
+            predicted: false,
+            placed: true,
+            six: "<< /Type /XRef " + values + " /Filter /Foo /Length 2 0 R >>\nstream\nxxxxxxx\nendstream");
+        var text = Encoding.Latin1.GetString(built);
+        var stream = text.IndexOf("\n7 0 obj", StringComparison.Ordinal) + 1;
+        var sixAt = text.IndexOf("\n6 0 obj", StringComparison.Ordinal) + 1;
+        var file = Encoding.Latin1.GetBytes(text.Replace(Invariant($"/Prev {stream} "), Invariant($"/Prev {sixAt} "), StringComparison.Ordinal));
+
+        using (var whole = PdfDocument.Open(file))
+        {
+            whole.Reader.Structure.Sections[^1].Should().Match<XRefSectionRecord>(read =>
+                read.Offset == sixAt && read.State == XRefSectionState.Malformed && !read.CutByLimit && read.Fault == "its data could not be decoded");
+            whole.Diagnostics.Select(entry => entry.Code).Should().Equal(
+                PdfDiagnosticCodes.FilterUnsupported, PdfDiagnosticCodes.XRefSectionUnreadable, PdfDiagnosticCodes.XRefRebuilt, PdfDiagnosticCodes.StreamLengthInvalid);
+        }
+
+        using var document = PdfDocument.Open(file, ObjectGuard);
+
+        document.Reader.Structure.Sections[^1].Should().Match<XRefSectionRecord>(section =>
+            section.Offset == sixAt && section.State == XRefSectionState.Malformed && section.CutByLimit && section.Fault == fault);
+        document.Diagnostics.Select(entry => entry.Code).Should().Equal(PdfDiagnosticCodes.LimitObject);
+    }
+
+    [Theory]
     [InlineData("/W 5 0 R /Size 8", "[1 4 2]", "/Foo")]
     [InlineData("/W 5 0 R /Size 8", "[1 4 2]", "/FlateDecode")]
     [InlineData("/W [1 5 0 R 2] /Size 8", "4", "/Foo")]

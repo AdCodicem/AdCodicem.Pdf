@@ -1246,7 +1246,7 @@ public class FilterTests
     [InlineData("an image filter", "/DCTDecode", "abc", false, "abc")]
     [InlineData("sound Flate", "/FlateDecode", "{sound}", false, FlateText)]
     [InlineData("no filter", "", "abc", false, "abc")]
-    public void Data_is_said_undecoded_only_where_a_filter_the_library_cannot_run_or_one_decoding_none_of_it_is_left_some(
+    public void Data_is_said_undecoded_only_where_a_filter_the_library_cannot_run_is_left_some_or_flate_data_is_corrupt_before_its_first_byte(
         string shape, string filter, string data, bool undecoded, string decoded)
     {
         // What comes back from a filter the library does not know, from an element of /Filter that names none or a /Filter
