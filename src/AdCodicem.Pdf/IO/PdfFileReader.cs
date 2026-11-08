@@ -616,9 +616,11 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
 
     /// <summary>
     /// The cross-reference streams the search near the offset a hybrid table's <c>/Prev</c> names passed over as possibly
-    /// that table's own and never came back to, another section taken first: where each starts, the offset the
-    /// <c>/Prev</c> names, and the table. Null while there is none. Each the chain has not read once it is read to its end
-    /// is reported then (<see cref="ReportStreamsPassedOver"/>).
+    /// that table's own and never came back to, another section taken first, that declare themselves one — the dictionary
+    /// gives <c>/Type /XRef</c>, and the header is a token a load reads from the start of its line —: where each starts, the
+    /// offset the <c>/Prev</c> names, and the table. Null while there is none. Each the chain has not reached is reported
+    /// once the chain is read, but where one of the reader's limits stopped the chain or cut what it reached
+    /// (<see cref="ReportStreamsPassedOver"/>).
     /// </summary>
     /// <remarks>
     /// As many as the places passed over, which <see cref="MaxRelocationCandidates"/> counts, and let go once the chain is
@@ -3682,16 +3684,23 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
 
     /// <summary>
     /// Reports each cross-reference stream the search near the offset a hybrid table's <c>/Prev</c> names passed over as
-    /// possibly that table's own, another section taken first, which the chain, read to its end, has not read
-    /// (<see cref="_streamsPassedOver"/>): it may hold that table's rows, which the index then lacks (#156).
+    /// possibly that table's own, another section taken first, that declares itself one — its dictionary gives
+    /// <c>/Type /XRef</c>, and its header is a token a load reads from the start of its line — and that the chain has not
+    /// reached (<see cref="_streamsPassedOver"/>): it may hold that table's rows, which the index then lacks (#156). None is
+    /// reported where one of the reader's limits stopped the chain, or cut what it reached: the limit's report stands for
+    /// what it left unread (ADR 34).
     /// </summary>
     /// <remarks>
-    /// Told here, once the chain is read, and nowhere sooner: a link of an older section that names the stream, read after
-    /// the search, reads it, and the chain reports it as it finds it, if at all; one the search came back to was read, taken
-    /// or dropped as holding no section. What it costs is a look at the positions the chain read at: nothing is read to
-    /// report it, the stream's dictionary having been parsed in the search's window when it was passed over. Reported once
-    /// for each stream, at the stream, however many searches passed over it; the index is not left incomplete for it, nor
-    /// is anything looked for in its place: whether it is the table's own is unknown, and no link names it.
+    /// Told here, once the chain is read, and nowhere sooner: a link of an older section that reaches the stream, where it
+    /// is named or found moved, reads it or reports it as it finds it — read, read in part, or there and unreadable, a
+    /// guard's cut among it —; one the search came back to was read, taken or dropped as holding no section. A limit that
+    /// stopped the chain — the number of its sections, rows it cut or an index it filled, a trailer or a value it cut — may
+    /// hide the link that names the stream, as an older table's <c>/XRefStm</c> or <c>/Prev</c> may name any offset: what
+    /// lies past the guard is the guard's, unknown rather than missing (#264). What it costs is a look at the records of the
+    /// sections the chain reached: nothing is read to report it, the stream's dictionary having been parsed in the search's
+    /// window when it was passed over, and its line lexed there when the search took another section. Reported once for
+    /// each stream, at the stream, however many searches passed over it; the index is not left incomplete for it, nor is
+    /// anything looked for in its place: whether it is the table's own is unknown, and no link the chain read reaches it.
     /// </remarks>
     private void ReportStreamsPassedOver()
     {
@@ -3700,11 +3709,29 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
             return;
         }
 
-        var reported = new HashSet<long>(SeededComparer.Instance);
+        // A limit that stopped the chain, or cut a section it reached, may hide the link that names a stream passed over, and
+        // leaves what lies past it to its own report: each marks the chain cut by a guard, or the index full (ADR 34).
+        if (_cutByGuard || _indexFullAt >= 0)
+        {
+            return;
+        }
+
+        // Not reported: where a section the chain reached starts — read there, found moved there, or there and not read, for
+        // a fault or a guard's cut, whether a link named it there or a search found it —, which the chain reported as it
+        // found it; and a stream reported already.
+        var told = new HashSet<long>(SeededComparer.Instance);
+
+        foreach (var section in _structure.Sections)
+        {
+            if (section.State is XRefSectionState.Read or XRefSectionState.Relocated or XRefSectionState.Malformed)
+            {
+                told.Add(section.Offset + section.Padding);
+            }
+        }
 
         foreach (var (at, named, table) in passedOver)
         {
-            if (_sectionsReadAt.Contains(at) || !reported.Add(at))
+            if (!told.Add(at))
             {
                 continue;
             }
@@ -3713,7 +3740,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
                 PdfDiagnosticCodes.XRefStreamPassedOver,
                 string.Create(
                     CultureInfo.InvariantCulture,
-                    $"The cross-reference stream at offset {at}, near offset {named}, which the /Prev of the cross-reference table at offset {table} names, gives no /Prev, or one that names that offset too, as that table's own stream may: the search near that offset took another section first, and the chain did not read the stream. If it is that table's own stream, the objects only it indexes are missing from the index."),
+                    $"The cross-reference stream at offset {at}, near offset {named}, which the /Prev of the cross-reference table at offset {table} names, gives no /Prev, or one that names that offset too, as that table's own stream may: the search near that offset took another section first, and the chain did not read the stream. If it is that table's own stream, the index the chain read lacks the objects only it indexes, which only a rebuild of the index for another cause finds."),
                 at);
         }
     }
@@ -4906,7 +4933,9 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// (<see cref="IsTokenOnItsLine"/>) —, as at the offset named, so that no older section farther off stands for its
     /// lost rows in silence (#281), or where a value it is read with led to an object a guard cut (#263). An object
     /// that only gives a <c>/W</c>, or a dictionary a guard cut before it said what it is, may be anything, and is
-    /// dropped, the search going on to the next place. Two kinds of place are passed over, and count toward no limit:
+    /// dropped, the search going on to the next place — near the offset a hybrid table's <c>/Prev</c> names, such an
+    /// object that may be the table's own, as below, is passed over first, and is not reported where the search takes
+    /// another section before it comes back to it. Two kinds of place are passed over, and count toward no limit:
     /// where the section was named, which holds no section that reads; and every place where a section the chain
     /// reached starts — read where it was named, or found moved, or lost there though it declares itself one —, which
     /// holds that section, not the one looked for: taken, it would be read again, in a loop the file does not have, and
@@ -4938,9 +4967,13 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// at its first reading: read again when the search comes back to it, through windows that grow from 64 KB up to
     /// <see cref="PdfReaderLimits.MaxTrailerLength"/> as a stream's dictionary is read, it is not counted again, and is
     /// tried even once the bound stops new places, so that places are read at most twice as many times as the bound.
-    /// One the search does not come back to, another section taken first, is reported once the chain is read, where the
-    /// chain has not read it (<see cref="ReportStreamsPassedOver"/>). The search is never asked for a section that is
-    /// there and cannot be read (<see cref="DeclaresItselfASection"/>): what is near it is another.
+    /// One the search does not come back to, another section taken first, is reported once the chain is read, where it
+    /// declares itself a section, as a place that cannot be read is taken only where it does — its dictionary gives
+    /// <c>/Type /XRef</c>, and its header is a token a load reads from the start of its line —, where the chain has not
+    /// reached it, and where none of the reader's limits stopped the chain or cut what it reached
+    /// (<see cref="ReportStreamsPassedOver"/>): an object that gives only a <c>/W</c>, or a header a comment or a string on
+    /// its line holds, is not, whether it reads or not. The search is never asked for a section that is there and cannot
+    /// be read (<see cref="DeclaresItselfASection"/>): what is near it is another.
     /// </remarks>
     /// <param name="offset">The offset that names the section, as written.</param>
     /// <param name="section">The record of the section, which takes what was read where it was found.</param>
@@ -5034,6 +5067,10 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
         // that was not counted yet.
         var uncountedAt = -1;
 
+        // The places passed over whose dictionary gives /Type /XRef, which may be reported where the search does not come
+        // back to them; null while there is none.
+        List<long>? typedPassedOver = null;
+
         for (var i = 0; i < candidates.Count; i++)
         {
             var candidate = candidates[i];
@@ -5108,7 +5145,10 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
             // a header in stream data is taken for the section found moved wherever its line, lexed alone, reads it as a
             // token, its middle included (#171). A place that reads, whole or in part, is taken before any line is lexed,
             // whatever its line is — an attached file's own table, or a cross-reference stream the data quotes, in stream
-            // data among them —, and the chain goes on through its trailer (#171).
+            // data among them —, and the chain goes on through its trailer (#171). Near the offset a hybrid table's /Prev
+            // names, a cross-reference stream the data quotes may be passed over as the table's own all the same: where the
+            // search takes another section first, one that gives /Type /XRef, its header a token its line reads, lexed
+            // alone, is reported as a stream passed over, at a place that holds no section of the file (#171).
             if (state == XRefSectionState.Read ||
                 (state == XRefSectionState.Malformed &&
                     (attempt.CutByValue ||
@@ -5124,11 +5164,21 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
                     candidate);
 
                 // The streams passed over that the search does not come back to, past this place among those put back, are
-                // reported once the chain is read, where it has not read them (ReportStreamsPassedOver): the stream the
-                // /XRefStm read, put back unread among them, is one the chain read where it starts, and is not reported.
+                // reported once the chain is read, where it has not reached them (ReportStreamsPassedOver) — those that
+                // declare themselves a section, as a place the search takes though it cannot be read does: the dictionary
+                // gives /Type /XRef, and the header is a token a load reads from the start of its line, which the window,
+                // still open, tells. An object that gives only a /W, or a header a comment or a string on its line holds,
+                // says nothing of what it is, whether it reads or not, and is not reported. The stream the /XRefStm read,
+                // put back unread among them, is one the chain read where it starts, and is not recorded.
                 for (var back = Math.Max(i + 1, inWindow); back < candidates.Count; back++)
                 {
-                    (_streamsPassedOver ??= []).Add((candidates[back], absolute, section.NamedFrom));
+                    var passed = candidates[back];
+
+                    if (typedPassedOver?.Contains(passed) == true &&
+                        IsTokenOnItsLine(window.Memory.Span, start - lead, (int)(passed - (start - lead))))
+                    {
+                        (_streamsPassedOver ??= []).Add((passed, absolute, section.NamedFrom));
+                    }
                 }
 
                 if (state == XRefSectionState.Read)
@@ -5153,10 +5203,16 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
 
             // A stream that may be the table's own was read no further than its object, and left nothing but a search for its
             // endstream: it is tried again once every other place was, read again, and not counted again toward
-            // MaxRelocationCandidates.
+            // MaxRelocationCandidates. Whether its dictionary gives /Type /XRef is kept, for where the search takes another
+            // section first.
             if (attempt.MayBeTablesOwn)
             {
                 candidates.Add(candidate);
+
+                if (attempt.TypedXRef)
+                {
+                    (typedPassedOver ??= []).Add(candidate);
+                }
             }
         }
 
@@ -5182,13 +5238,14 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// starts at the place only where its first byte is given, which, with the bytes before it, tells whether one does.
     /// Stream data, or a string, that an earlier line opened is not seen, as in an object's header (#171): in stream data,
     /// the word <c>xref</c>, or the header of an object of <c>/Type /XRef</c>, is taken wherever a load of that line alone
-    /// reads it as a token, its middle included. It is asked only of a place that cannot be read: one that reads, whole or
-    /// in part, is taken before any line is lexed, whatever its line is, in stream data too (#171). The bytes lexed run from
-    /// the line's start to the end of the first token that ends past the place — through the comment that holds it and the
+    /// reads it as a token, its middle included. It is asked only of a place that cannot be read, and of a stream of
+    /// <c>/Type /XRef</c> passed over as possibly a hybrid table's own that the search does not come back to, which is
+    /// reported only where it declares itself so (<see cref="ReportStreamsPassedOver"/>): one that reads, whole or in part,
+    /// is taken before any line is lexed, whatever its line is, in stream data too (#171). The bytes lexed run from the
+    /// line's start to the end of the first token that ends past the place — through the comment that holds it and the
     /// white space and comments after it, or to the end of the string that holds it —, within the bytes searched and those
     /// read back before them: at most <see cref="LineStartSearchLength"/> bytes more than the bytes searched, once for each
-    /// place that cannot be read, which <see cref="MaxRelocationCandidates"/> bounds, and one window more read at most for
-    /// each.
+    /// such place, which <see cref="MaxRelocationCandidates"/> bounds, and one window more read at most for each.
     /// </remarks>
     /// <param name="span">The bytes searched.</param>
     /// <param name="spanStart">Where <paramref name="span"/> starts in the file.</param>
@@ -6169,7 +6226,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
             // Near the offset a hybrid table's /Prev names, a cross-reference stream that may be that table's own, its
             // dictionary read whole and told by its own /Prev, is not kept either: the reading stops at the object, and the
             // search passes over it, to try it again once every other place was (TryRelocateXRefSection).
-            var passedOver = false;
+            PdfDictionary? passedOver = null;
             objectRead = tablePrevious >= 0
                 ? TryParseNearHybridPrev(at, tablePrevious, out value, out number, out header, out syntaxFault, out passedOver)
                 : TryParseNumberedAt(
@@ -6183,9 +6240,12 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
                     XRefWindow,
                     candidate ? DeclaresOnlyCrossReferenceStream : null);
 
-            if (passedOver)
+            if (passedOver is not null)
             {
+                // Whether it declares itself a section is kept with it: the search reports it, where it does not come back
+                // to it, only if it does (TryRelocateXRefSection).
                 section.MayBeTablesOwn = true;
+                section.TypedXRef = passedOver.IsOfType(PdfName.XRef);
                 return XRefSectionState.NotFound;
             }
 
@@ -6698,12 +6758,13 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// <param name="header">Where the object's header starts.</param>
     /// <param name="syntaxFault">Whether the reading kept met a fault of the syntax.</param>
     /// <param name="passedOver">
-    /// Whether what is there is a cross-reference stream, its dictionary read whole, that may be the table's own.
+    /// The dictionary of what is there, where it is a cross-reference stream, its dictionary read whole, that may be the
+    /// table's own; null otherwise.
     /// </param>
     private bool TryParseNearHybridPrev(
-        long at, long tablePrevious, out PdfObject value, out int number, out long header, out bool syntaxFault, out bool passedOver)
+        long at, long tablePrevious, out PdfObject value, out int number, out long header, out bool syntaxFault, out PdfDictionary? passedOver)
     {
-        var mayBeOwn = false;
+        PdfDictionary? mayBeOwn = null;
         var read = TryParseNumberedAt(
             at,
             AnyObject,
@@ -6720,8 +6781,8 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
                     return false;
                 }
 
-                mayBeOwn = parsed is PdfStream && MayBeTablesOwn(parsed, tablePrevious);
-                return !mayBeOwn;
+                mayBeOwn = parsed is PdfStream stream && MayBeTablesOwn(parsed, tablePrevious) ? stream.Dictionary : null;
+                return mayBeOwn is null;
             });
         passedOver = mayBeOwn;
         return read;

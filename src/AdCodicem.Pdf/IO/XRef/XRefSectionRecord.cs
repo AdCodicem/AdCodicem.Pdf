@@ -154,7 +154,9 @@ internal sealed class XRefSectionRecord
     /// whole, gives no <c>/Prev</c>, or the offset the table's names, as the chain reads it —: read no further than its
     /// object, its data neither decoded nor read as rows, it left nothing of its reading but a search for its
     /// <c>endstream</c> and, where its <c>/Prev</c> is a reference, the objects read where it leads, as any value the
-    /// chain reads; the search tries it again once every other place was, uncounted (#156).
+    /// chain reads; the search tries it again once every other place was, uncounted (#156). Whether its dictionary gives
+    /// <c>/Type /XRef</c> is kept (<see cref="TypedXRef"/>): only such a stream, its header a token a load reads from the
+    /// start of its line, is reported where the search takes another section before it comes back to it.
     /// </summary>
     public bool MayBeTablesOwn { get; set; }
 
