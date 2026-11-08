@@ -6667,41 +6667,63 @@ public class CrossReferenceChainTests
     [InlineData("/Prev", 11, 3, "[1 4 2]", "+-11 0 %c\nobj")]
     [InlineData("/XRefStm", 11, 1, "[1 -4 2]", "++11 0 %c\nobj")]
     [InlineData("/Prev", 11, 2, "[1 -4 2]", "+-11 0 %c\nobj")]
+    [InlineData("/XRefStm", 20, 1, "[1 4 2]", "", 0)]
+    [InlineData("/Prev", 20, 1, "[1 4 2]", "", 0)]
+    [InlineData("/Prev", 100, 2, "[1 4 2]", "", 0)]
+    [InlineData("/Prev", 20, 1, "[1 -4 2]", "", 0)]
+    [InlineData("/XRefStm", 11, 1, "[1 4 2]", "+-11 0 obj", 2)]
+    [InlineData("/Prev", 11, 1, "[1 4 2]", "+-11 0 %c\nobj", 0)]
     public void A_stream_passed_over_near_a_hybrid_table_s_prev_that_an_older_section_names_at_its_header_or_inside_its_object_number_is_reported_as_the_chain_finds_it_not_as_passed_over(
-        string oldestNames, int ownNumber, int into, string ownWidths, string ownHeader)
+        string oldestNames, int ownNumber, int into, string ownWidths, string ownHeader, int foundMovedAt = -1)
     {
-        // As above, the search near the table's /Prev passes over stream 11, written as object 11, 111, 195, 105 or 109,
-        // which gives no /Prev, and takes stream 6, whose /Prev names the oldest table; its number is written with a sign or
-        // a run of signs that starts with a +, and a comment parts its header's tokens, where the row says so. The oldest
-        // table names stream 11 through /XRefStm or /Prev, at its header, or 1 to 3 bytes past its start, inside its object
-        // number, at a sign of that run or a digit: read from there, it is the same stream, the same dictionary and data,
-        // and the chain reads it — whole, or, where its /W gives a field a negative width, there and unreadable, which the
-        // chain reports. The stream passed over is told by its data, as the stream an /XRefStm read is: named inside its
-        // number, it was reported a second time, as a stream the chain did not read, its objects said to be missing from
-        // the index, though object 10, which only it indexes, was read from it — named at a second sign or past it, it still
-        // was, the number taken to end at that sign (#156).
+        // As above, the search near the table's /Prev passes over stream 11, written as object 11, 111, 195, 105, 109, 20
+        // or 100, which gives no /Prev, and takes stream 6, whose /Prev names the oldest table; its number is written with
+        // a sign or a run of signs that starts with a +, and a comment parts its header's tokens, where the row says so.
+        // The oldest table names stream 11 through /XRefStm or /Prev, at its header, or 1 to 3 bytes past its start, inside
+        // its object number, at a sign of that run or a digit: read from there, it is the same stream, the same dictionary
+        // and data, and the chain reads it — whole, or, where its /W gives a field a negative width, there and unreadable,
+        // which the chain reports. Where what is read from there is no object's header — digits that read 0, as the 0 of 20
+        // or the second 0 of 100, or the - of a run of signs —, nothing is read there, and the search near that place finds
+        // the stream moved, at its first digit, or at its first sign where a comment parts its header's tokens, which the
+        // chain reports, and reads it there as above. The stream passed over is told by its data, as the stream an /XRefStm
+        // read is: named inside its number, it was reported a second time, as a stream the chain did not read, its objects
+        // said to be missing from the index, though object 10, which only it indexes, was read from it — named at a second
+        // sign or past it, it still was, the number taken to end at that sign (#156).
         var (file, _, _, own, _) = HybridFiles.PrevFallingShortOfTheStreamBeforeTheTablesOwn(
             "nothing", shortOfOwn: true, "the oldest table", oldestNames, ownWidths, into: into, ownNumber: ownNumber,
             ownHeader: ownHeader.Length > 0 ? ownHeader : null);
         var readable = ownWidths == "[1 4 2]";
+        var moved = foundMovedAt >= 0;
+        var at = own + (moved ? foundMovedAt : into);
         using var document = PdfDocument.Open(file);
 
         document.Reader.Structure.Sections[^1].Should().Match<XRefSectionRecord>(
-            section => section.NamedBy == oldestNames && section.Kind == XRefSectionKind.Stream && section.Offset == own + into &&
-                section.Padding == 0 && section.State == (readable ? XRefSectionState.Read : XRefSectionState.Malformed));
-        document.Diagnostics.Select(diagnostic => diagnostic.Code).Should().Equal(
-            readable
-                ? [PdfDiagnosticCodes.XRefOffsetAdjusted, PdfDiagnosticCodes.XRefHybridStreamLost]
-                : [PdfDiagnosticCodes.XRefOffsetAdjusted, PdfDiagnosticCodes.XRefHybridStreamLost, PdfDiagnosticCodes.XRefSectionUnreadable]);
+            section => section.NamedBy == oldestNames && section.Kind == XRefSectionKind.Stream && section.Offset == at &&
+                section.Padding == 0 &&
+                section.State == (!readable ? XRefSectionState.Malformed : moved ? XRefSectionState.Relocated : XRefSectionState.Read));
+        List<string> codes = [PdfDiagnosticCodes.XRefOffsetAdjusted, PdfDiagnosticCodes.XRefHybridStreamLost];
+
+        if (moved)
+        {
+            codes.Add(PdfDiagnosticCodes.XRefOffsetAdjusted);
+        }
+
+        if (!readable)
+        {
+            codes.Add(PdfDiagnosticCodes.XRefSectionUnreadable);
+        }
+
+        document.Diagnostics.Select(diagnostic => diagnostic.Code).Should().Equal(codes);
 
         if (readable)
         {
             Text(document, 10).Should().Be("ten");
             document.WasRepaired.Should().BeFalse();
         }
-        else
+
+        if (!readable || moved)
         {
-            document.Diagnostics[^1].Position.Should().Be(own + into);
+            document.Diagnostics[^1].Position.Should().Be(at);
         }
     }
 
