@@ -3784,7 +3784,10 @@ public class GuardCutValueTests
         section.State.Should().Be(XRefSectionState.Malformed);
         section.CutByLimit.Should().BeFalse();
         section.Fault.Should().Be("its data could not be decoded");
-        document.Diagnostics.Select(entry => entry.Code).Where(code => code != PdfDiagnosticCodes.LimitObject).Should().Equal(wholeCodes);
+
+        // The guard is reached once, where the rebuild the file's fault asks for loads object 5, past what a whole read
+        // reports: the section's reading reports no limit of its own.
+        document.Diagnostics.Select(entry => entry.Code).Should().Equal([.. wholeCodes, PdfDiagnosticCodes.LimitObject]);
         document.GetObject(new PdfObjectId(8)).Should().BeOfType<PdfString>().Which.ToText().Should().Be("eight");
     }
 

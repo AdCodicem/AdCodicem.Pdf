@@ -4711,6 +4711,27 @@ public class HostileInputTests
     }
 
     [Fact]
+    public void The_search_near_a_hybrid_table_s_prev_tries_an_object_past_the_stream_its_xrefstm_read_once()
+    {
+        // The newest table's /XRefStm reads stream 6, which gives no /Prev, and its /Prev falls 7 bytes short of stream 6. The
+        // search near that offset tries objects 5 and 10, past stream 6, which declare no cross-reference stream, then passes
+        // over stream 11, which may be the table's own, and takes it once every other place was. Only a stream that may be the
+        // table's own is put back, and tried again: object 5 is tried once, the probe of its header read once, and dropped
+        // (#156).
+        var (file, _, stream, own, _) = HybridFiles.PrevFallingShortOfTheStreamBeforeTheTablesOwn("nothing", shortOfOwn: false, streamPrev: "nothing");
+        var five = Encoding.Latin1.GetString(file).IndexOf("5 0 obj", (int)stream, StringComparison.Ordinal);
+        using var source = new WindowLoggingSource(file);
+
+        using (var document = PdfDocument.Open(source, options: null, ownsSource: false))
+        {
+            document.Reader.Structure.Sections[^1].Should().Match<XRefSectionRecord>(
+                section => section.NamedBy == "/Prev" && section.State == XRefSectionState.Relocated && section.Offset == own);
+        }
+
+        source.Windows.Count(window => window.Offset == five && window.Length == PdfFileReader.XRefProbeLength).Should().Be(1);
+    }
+
+    [Fact]
     public void The_search_near_a_hybrid_table_s_prev_tries_once_a_header_that_starts_before_where_its_xrefstm_read_a_stream()
     {
         // The newest table's /XRefStm names a place 1 byte into stream 13's object number, from which the stream reads as

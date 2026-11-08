@@ -18,12 +18,12 @@ internal static class LostStreamFiles
     /// <c>(only in the oldest)</c>, object 7 <c>(old seven)</c> and object 8 <c>(old eight)</c>, and a classic table at
     /// <c>Oldest</c> that indexes them in two subsections, 0 to 3 and 7 to 8. Past <paramref name="before"/> bytes of
     /// comment, the second writes object 4 <c>(only in the stream)</c>, object 7 again, <c>(new seven)</c>, and
-    /// cross-reference stream 5 at <c>Stream</c>, whose dictionary holds <paramref name="entries"/>, <c>/Root 1 0 R</c>, the
-    /// <c>/Prev</c> <paramref name="prev"/> writes and the <c>/Length</c> of its data: the rows of objects 4, 5 and 7, in
-    /// fields of 1, 4 and 2 bytes, whatever <c>/W</c> the entries give, or <paramref name="written"/> when it is given.
-    /// Past <paramref name="after"/> bytes of comment, the
-    /// third writes object 6 <c>(only in the newest)</c>, and object 9 as <paramref name="nine"/> when one is given, and a
-    /// classic table at <c>Newest</c> that indexes them and names the stream through <c>/Prev</c>.
+    /// cross-reference stream 5 at <c>Stream</c>, whose dictionary holds <paramref name="entries"/>,
+    /// <c>/Root 1 0 R</c>, the <c>/Prev</c> <paramref name="prev"/> writes and the <c>/Length</c> of its data: the rows
+    /// of objects 4, 5 and 7, in fields of 1, 4 and 2 bytes, whatever <c>/W</c> the entries give, or
+    /// <paramref name="written"/> when it is given. Past <paramref name="after"/> bytes of comment, the third writes
+    /// object 6 <c>(only in the newest)</c>, and object 9 as <paramref name="nine"/> when one is given, and a classic
+    /// table at <c>Newest</c> that indexes them and names the stream through <c>/Prev</c>.
     /// </summary>
     /// <param name="entries">The stream's dictionary, but for its <c>/Root</c>, <c>/Prev</c> and <c>/Length</c>.</param>
     /// <param name="prev">

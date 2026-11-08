@@ -7,7 +7,8 @@ namespace AdCodicem.Pdf.Tests;
 /// <summary>
 /// Files whose cross-reference streams give data their filters decode nothing of: a filter the library does not know,
 /// or Flate data corrupt before its first byte decodes. Such data holds none of the section's rows, whatever its bytes
-/// would read as (#221). Offsets are counted from the header, which starts the file.
+/// would read as (#221). The same files, with a stream under no filter or with sound zlib data, set them against.
+/// Offsets are counted from the header, which starts the file.
 /// </summary>
 internal static class UndecodedStreamFiles
 {
