@@ -120,17 +120,19 @@ public static class PdfDiagnosticCodes
     /// section near that offset, which the search took first; the chain did not reach the stream, at its header or inside
     /// its object number, from which a reading reads the same stream (#156). Only a stream that declares itself one is
     /// reported: its dictionary gives <c>/Type /XRef</c>, and its header is a token a load reads from the start of its line,
-    /// not in a comment or a string there. Nothing is reported where one of the reader's limits left part of the chain
-    /// unread — the number of its sections, a section it cut before the section said what it is, rows, a trailer, an object
-    /// a value the rows or a link are read with leads to, or an index it filled —, or where white space and comments at an
-    /// offset the chain names run past <see cref="Documents.PdfReaderLimits.MaxTrailerLength"/>, which turned the reading
-    /// of the section there into the search near the offset: the limit's report stands for what it left unread, or for
-    /// what that search passed over or did not find (#289). A cut that leaves nothing unread — data past a stream's last
-    /// row, an object past a whole reference it holds — leaves the report made. Nor is anything reported where the chain
-    /// indexed nothing: the whole file is rebuilt then, which reads every object. Its rows, if it is the table's own
-    /// stream, are not in the index the chain read: the objects only it indexes are missing from it, and the report leaves
-    /// the index as it is, rebuilding nothing for them — only a rebuild for another cause, which scans the file, finds
-    /// them. The report is placed at the stream, once, however many searches passed over it.
+    /// not in a comment or a string there. A header whose object number is written with a run of signs that starts with a
+    /// <c>+</c>, which a load reads as its first sign, is such a token from that sign, where the stream is said to start;
+    /// one a <c>-</c> starts is no object's header (#327). Nothing is reported where one of the reader's limits left part
+    /// of the chain unread — the number of its sections, a section it cut before the section said what it is, rows, a
+    /// trailer, an object a value the rows or a link are read with leads to, or an index it filled —, or where white space
+    /// and comments at an offset the chain names run past <see cref="Documents.PdfReaderLimits.MaxTrailerLength"/>, which
+    /// turned the reading of the section there into the search near the offset: the limit's report stands for what it
+    /// left unread, or for what that search passed over or did not find (#289). A cut that leaves nothing unread — data
+    /// past a stream's last row, an object past a whole reference it holds — leaves the report made. Nor is anything
+    /// reported where the chain indexed nothing: the whole file is rebuilt then, which reads every object. Its rows, if it
+    /// is the table's own stream, are not in the index the chain read: the objects only it indexes are missing from it,
+    /// and the report leaves the index as it is, rebuilding nothing for them — only a rebuild for another cause, which
+    /// scans the file, finds them. The report is placed at the stream, once, however many searches passed over it.
     /// </summary>
     public const string XRefStreamPassedOver = "xref.stream-passed-over";
 

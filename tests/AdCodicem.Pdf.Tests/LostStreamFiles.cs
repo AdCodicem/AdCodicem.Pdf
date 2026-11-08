@@ -18,7 +18,8 @@ internal static class LostStreamFiles
     /// <c>(only in the oldest)</c>, object 7 <c>(old seven)</c> and object 8 <c>(old eight)</c>, and a classic table at
     /// <c>Oldest</c> that indexes them in two subsections, 0 to 3 and 7 to 8. Past <paramref name="before"/> bytes of
     /// comment, the second writes object 4 <c>(only in the stream)</c>, object 7 again, <c>(new seven)</c>, and
-    /// cross-reference stream 5 at <c>Stream</c>, whose dictionary holds <paramref name="entries"/>,
+    /// cross-reference stream 5 at <c>Stream</c>, its header written <paramref name="header"/> where one is given and
+    /// <c>5 0 obj</c> otherwise, whose dictionary holds <paramref name="entries"/>,
     /// <c>/Root 1 0 R</c>, the <c>/Prev</c> <paramref name="prev"/> writes and the <c>/Length</c> of its data: the rows
     /// of objects 4, 5 and 7, in fields of 1, 4 and 2 bytes, whatever <c>/W</c> the entries give, or
     /// <paramref name="written"/> when it is given. Past <paramref name="after"/> bytes of comment, the third writes
@@ -36,10 +37,12 @@ internal static class LostStreamFiles
     /// <param name="data">Whether stream data follows the stream's dictionary: object 5 is the dictionary alone otherwise.</param>
     /// <param name="shift">How many bytes past object 3's header the oldest table's row for it places it.</param>
     /// <param name="namedShortBy">
-    /// How many bytes short of the stream's header the newest table's <c>/Prev</c> names it, in the end of line before it.
+    /// How many bytes short of the stream's header the newest table's <c>/Prev</c> names it — 1 for the end of line before
+    /// it —, or, where it is negative, how many bytes past the header's first byte.
     /// </param>
     /// <param name="oldestTrailer">What the oldest table's trailer gives besides its <c>/Size</c> and <c>/Root</c>.</param>
     /// <param name="written">The stream's data, one byte to a character, in place of its rows; the rows when null.</param>
+    /// <param name="header">The stream's header, <c>5 0 obj</c> when null.</param>
     public static (byte[] File, long Oldest, long Stream, long Newest) ThreeRevisions(
         string entries = Unreadable,
         string? prev = null,
@@ -50,7 +53,8 @@ internal static class LostStreamFiles
         int shift = 0,
         int namedShortBy = 0,
         string oldestTrailer = "",
-        string? written = null)
+        string? written = null,
+        string? header = null)
     {
         var file = new HandWrittenFile(version: "1.5");
         var catalog = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>");
@@ -76,9 +80,18 @@ internal static class LostStreamFiles
                 .Replace("{oldest}", oldest.ToString(CultureInfo.InvariantCulture), StringComparison.Ordinal)
                 .Replace("{stream}", stream.ToString(CultureInfo.InvariantCulture), StringComparison.Ordinal),
         };
-        file.Object(5, data
+        var body = data
             ? string.Create(CultureInfo.InvariantCulture, $"<< {entries} /Root 1 0 R{named} /Length {rows.Length} >>\nstream\n{rows}\nendstream")
-            : string.Create(CultureInfo.InvariantCulture, $"<< {entries} /Root 1 0 R{named} >>"));
+            : string.Create(CultureInfo.InvariantCulture, $"<< {entries} /Root 1 0 R{named} >>");
+
+        if (header is null)
+        {
+            file.Object(5, body);
+        }
+        else
+        {
+            file.Raw(header + "\n" + body + "\nendobj\n");
+        }
         file.Raw(string.Create(CultureInfo.InvariantCulture, $"startxref\n{stream}\n%%EOF\n"));
         Gap(file, after);
 

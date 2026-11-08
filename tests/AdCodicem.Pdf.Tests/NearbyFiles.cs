@@ -255,13 +255,15 @@ internal static class NearbyFiles
     /// <c>(four)</c>, and <paramref name="gap"/> bytes of comment, alone indexes object 4 and names the first through
     /// <c>/Prev</c>, and cannot be read: a classic table holding a stray name, <c>/Bad 1</c>, before its first subsection,
     /// or cross-reference stream 6, whose <c>/W</c> gives a name for a width, and which gives <c>/Type /XRef</c> unless
-    /// <paramref name="untyped"/>. With no gap it lies within 512 bytes of the first. The third, a classic table past
+    /// <paramref name="untyped"/>, its number written after <paramref name="sign"/>, the signs it is written with if any —
+    /// <c>Second</c> is where the stream's number or the table's keyword starts. With no gap it lies within 512 bytes of
+    /// the first. The third, a classic table past
     /// <paramref name="after"/> bytes of comment, indexes nothing and names the second through <c>/Prev</c>,
     /// <paramref name="shortBy"/> bytes short of it: 7 bytes short lies in the <c>endobj</c> of object 4, or in the comment
     /// before the second, where no section starts. With no comment after it, the third lies within 512 bytes of the second.
     /// </summary>
     public static (byte[] File, long First, long Second) MalformedUpdateNearItsOriginal(
-        bool streams, int gap, int shortBy = 0, int after = 1200, bool untyped = false)
+        bool streams, int gap, int shortBy = 0, int after = 1200, bool untyped = false, string sign = "")
     {
         var file = new HandWrittenFile(version: streams ? "1.5" : "1.7");
         var catalog = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>");
@@ -285,6 +287,12 @@ internal static class NearbyFiles
 
         var four = file.Object(4, "(four)");
         Gap(file, gap);
+
+        if (streams)
+        {
+            file.Raw(sign);
+        }
+
         var second = file.Position;
 
         if (streams)
@@ -603,6 +611,38 @@ internal static class NearbyFiles
 
         static string Link(string key, long middle, int? shortBy) =>
             shortBy is { } bytes ? string.Create(CultureInfo.InvariantCulture, $" /{key} {middle - bytes:D10}") : string.Empty;
+    }
+
+    /// <summary>
+    /// A document saved three times. The first table indexes the catalog, an empty page tree and object 3,
+    /// <c>(three)</c>. Past a comment of 1,200 bytes, the update writes, at <c>Header</c>, a line that holds
+    /// <paramref name="header"/> and a dictionary of <c>/Type /XRef</c> that no stream data follows; then a comment of
+    /// 1,200 bytes, object 4, <c>(four)</c>, and its table, which indexes object 4 and names the first through
+    /// <c>/Prev</c>. The newest table indexes nothing, and names through <c>/Prev</c> the place <paramref name="past"/>
+    /// bytes past <c>Header</c>, at <c>Named</c>, inside the comment, where no section starts: no section lies within 512
+    /// bytes of it, and the bytes searched near it start 512 bytes before it, the window holding the byte before them.
+    /// </summary>
+    public static (byte[] File, long Header, long Named) StrayHeaderBeforeTheBytesSearched(string header, int past)
+    {
+        var file = new HandWrittenFile();
+        var catalog = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>");
+        var pages = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>");
+        var three = file.Object(3, "(three)");
+        var oldest = file.Table(4, new() { [1] = catalog, [2] = pages, [3] = three }, "/Size 4 /Root 1 0 R");
+        Gap(file, 1200);
+        var at = file.Position;
+        file.Raw(header + " << /Type /XRef >>\n");
+        Gap(file, 1200);
+        var four = file.Object(4, "(four)");
+        var update = file.Position;
+        file.Raw(string.Create(
+            CultureInfo.InvariantCulture,
+            $"xref\n0 1\n0000000000 65535 f \n4 1\n{four:D10} 00000 n \ntrailer\n<< /Size 5 /Root 1 0 R /Prev {oldest} >>\nstartxref\n{update}\n%%EOF\n"));
+        var newest = file.Position;
+        file.Raw(string.Create(
+            CultureInfo.InvariantCulture,
+            $"xref\n0 1\n0000000000 65535 f \ntrailer\n<< /Size 5 /Root 1 0 R /Prev {at + past} >>\nstartxref\n{newest}\n%%EOF\n"));
+        return (file.Bytes, at, at + past);
     }
 
     /// <summary>
