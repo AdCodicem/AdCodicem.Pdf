@@ -3710,8 +3710,8 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
         }
 
         // A limit that stopped the chain, or cut a section it reached, may hide the link that names a stream passed over, and
-        // leaves what lies past it to its own report: each marks the chain cut by a guard, or the index full (ADR 34).
-        if (_cutByGuard || _indexFullAt >= 0)
+        // leaves what lies past it to its own report: each marks the chain cut by a guard, or filling the index (ADR 34).
+        if (ChainStoppedByGuard)
         {
             return;
         }
