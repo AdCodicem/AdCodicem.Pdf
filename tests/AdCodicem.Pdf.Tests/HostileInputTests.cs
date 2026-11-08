@@ -4710,6 +4710,29 @@ public class HostileInputTests
         }
     }
 
+    [Fact]
+    public void The_search_near_a_hybrid_table_s_prev_tries_once_a_header_that_starts_before_where_its_xrefstm_read_a_stream()
+    {
+        // The newest table's /XRefStm names a place 1 byte into stream 13's object number, from which the stream reads as
+        // object 3, and its /Prev falls 7 bytes short of the stream's header, which starts 1 byte before where that reading
+        // started. A place before the stream the /XRefStm read is no stream of the table's own revision: the stream's header
+        // keeps its nearest-first place, whatever its /Prev, and is read there once, and taken, where a stream that may be
+        // the table's own would have been passed over and read again (#156).
+        var (file, stream, newest) = HybridFiles.NamingAStreamOneByteIntoItsNumber();
+        using var source = new WindowLoggingSource(file);
+
+        using (var document = PdfDocument.Open(source, options: null, ownsSource: false))
+        {
+            document.Reader.Structure.Sections.Select(section => (section.NamedBy, section.State, section.Kind, section.Offset)).Should().Equal(
+                ("startxref", XRefSectionState.Read, XRefSectionKind.Table, newest),
+                ("/XRefStm", XRefSectionState.Read, XRefSectionKind.Stream, stream + 1),
+                ("/Prev", XRefSectionState.Relocated, XRefSectionKind.Stream, stream));
+            document.WasRepaired.Should().BeFalse();
+        }
+
+        source.Windows.Count(window => window.Offset == stream && window.Length == PdfFileReader.XRefProbeLength).Should().Be(1);
+    }
+
     [Theory]
     [InlineData("/Type /XRef ", 1)]
     [InlineData("", 2)]

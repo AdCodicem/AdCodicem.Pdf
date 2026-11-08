@@ -255,6 +255,7 @@
               "xref.section-empty",
               "xref.chain-cycle",
               "xref.hybrid-stream-lost",
+              "xref.stream-passed-over",
               "xref.entry-out-of-range",
               "xref.entry-reserved",
               "stream.length-invalid",
