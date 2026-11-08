@@ -715,7 +715,9 @@ internal static class HybridFiles
     /// <summary>
     /// The document <see cref="PrevFallingShortOfTheStreamBefore"/> writes, object 7 given no row, with object 8,
     /// <c>(eight, which stream 6 frees)</c>, which the oldest table, at <c>Oldest</c>, indexes and stream 6, at
-    /// <c>Stream</c>, gives a free row, and with the cross-reference stream of the newest revision's own, which nothing names:
+    /// <c>Stream</c>, gives a free row — stream 6's number written after <paramref name="streamSign"/>, the signs it is
+    /// written with if any, from whose first byte its row and the newest table's <c>/XRefStm</c> name it —, and with the
+    /// cross-reference stream of the newest revision's own, which nothing names:
     /// stream 11, at <c>Own</c>, written after object 5 and object 10, <c>(ten)</c>, which only it indexes. Stream 11 gives
     /// through <c>/Prev</c> <paramref name="ownPrev"/>, and stream 6 <paramref name="streamPrev"/>: <c>"nothing"</c>;
     /// <c>"the table's /Prev"</c>, the offset the newest table's <c>/Prev</c> names, written in ten digits in stream 6; or
@@ -731,9 +733,9 @@ internal static class HybridFiles
     /// otherwise, its header written <paramref name="ownHeader"/> where one is given — that number written with signs,
     /// or a comment parting its tokens — and <c>N 0 obj</c> otherwise, and its dictionary and the newest table's trailer
     /// give a <c>/Size</c> one past the highest object number. Its dictionary starts with <paramref name="ownEntries"/>,
-    /// <c>/Type /XRef</c> unless it says otherwise, and gives
-    /// <paramref name="ownWidths"/> as its <c>/W</c>; where that is <c>12 0 R</c>, object 12, <c>[1 4 2]</c> and 1,100
-    /// spaces, follows the comment of 600 dashes, and the newest table indexes it.
+    /// <c>/Type /XRef</c> unless it says otherwise, and gives <paramref name="ownWidths"/> as its <c>/W</c>; where that
+    /// is <c>12 0 R</c>, object 12, <c>[1 4 2]</c> and 1,100 spaces, follows the comment of 600 dashes, and the newest
+    /// table indexes it.
     /// </summary>
     public static (byte[] File, long Oldest, long Stream, long Own, long Newest) PrevFallingShortOfTheStreamBeforeTheTablesOwn(
         string ownPrev,
@@ -744,7 +746,8 @@ internal static class HybridFiles
         string ownEntries = "/Type /XRef ",
         int into = 0,
         int ownNumber = 11,
-        string? ownHeader = null)
+        string? ownHeader = null,
+        string streamSign = "")
     {
         var file = new HandWrittenFile(version: "1.5");
         var (catalog, pages, _) = Page(file);
@@ -772,6 +775,7 @@ internal static class HybridFiles
             "the oldest table" => Invariant($"/Prev {oldest} "),
             _ => string.Empty,
         };
+        file.Raw(streamSign);
         file.Object(6, Invariant($"<< /Type /XRef /Size 9 /W [1 4 2] /Index [4 1 6 1 8 1] /Root 1 0 R {streamNames}/Length {rows.Length} >>\nstream\n{rows}\nendstream"));
         var five = file.Object(5, "(five)");
         var ten = file.Object(10, "(ten)");

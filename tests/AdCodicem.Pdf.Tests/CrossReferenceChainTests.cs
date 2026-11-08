@@ -6550,15 +6550,21 @@ public class CrossReferenceChainTests
         Text(document, 10).Should().Be("ten");
     }
 
-    [Fact]
-    public void A_stream_the_search_near_a_hybrid_table_s_prev_comes_back_to_and_takes_is_not_reported_as_passed_over_though_it_cannot_be_read()
+    [Theory]
+    [InlineData("")]
+    [InlineData("+")]
+    public void A_stream_the_search_near_a_hybrid_table_s_prev_comes_back_to_and_takes_is_not_reported_as_passed_over_though_it_cannot_be_read(
+        string streamSign)
     {
         // As in the tests above, the table's /Prev falls 7 bytes short of stream 11, which nothing names and which gives no
         // /Prev, and stream 6, which the /XRefStm read, gives none either: the search passes over stream 11 as possibly the
         // table's own, and comes back to it once no other place holds a section. Its /W gives a field a negative width: it is
         // taken, where it declared itself a section, and the chain ends there, its rows lost, which the chain reports. A
-        // stream the search came back to and took is no stream it passed over (#156).
-        var (file, _, _, own, _) = HybridFiles.PrevFallingShortOfTheStreamBeforeTheTablesOwn("nothing", shortOfOwn: true, "nothing", ownWidths: "[1 -4 2]");
+        // stream the search came back to and took is no stream it passed over (#156). Stream 6's number is written with a
+        // sign where the row says so, the /XRefStm reading it from that sign: only its own header, past the sign, is told as
+        // that stream, and the places past it are tried as they are (#156, #188).
+        var (file, _, _, own, _) = HybridFiles.PrevFallingShortOfTheStreamBeforeTheTablesOwn(
+            "nothing", shortOfOwn: true, "nothing", ownWidths: "[1 -4 2]", streamSign: streamSign);
         using var document = PdfDocument.Open(file);
 
         document.Reader.Structure.Sections[^1].Should().Match<XRefSectionRecord>(
