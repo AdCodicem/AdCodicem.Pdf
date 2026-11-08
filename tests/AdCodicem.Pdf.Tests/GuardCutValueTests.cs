@@ -3914,6 +3914,25 @@ public class GuardCutValueTests
     }
 
     [Theory]
+    [InlineData("")]
+    [InlineData("/Type /XRef ")]
+    public void A_guard_reached_decoding_a_stream_beside_a_value_a_guard_cut_is_reported_once_whatever_the_look_at_the_prev_s_place_drops(string type)
+    {
+        // As above, object 4's /W the reference 9 0 R, which MaxObjectLength cuts, and its data, 107 bytes its filter decodes
+        // nothing of, past what MaxStreamLength at 50 bytes reads. The cut of the data is reported once for the stream, where
+        // the data is first read: by the look at the /Prev's place, which decodes a stream of no type and drops the rest of
+        // what that decoding met, the guard standing, or by the /Prev's own reading of a stream of /Type /XRef, which the
+        // look does not decode. Dropped with the rest, the guard's report was made by no later reading, the cut known.
+        var (file, _, _, _) = HybridFiles.PrevNamingAStreamBesideTheOldestTable(type, padding: 100, filter: "/Foo", cut: "/W");
+        using var document = PdfDocument.Open(file, new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxObjectLength = 1024, MaxStreamLength = 50 } });
+
+        document.Diagnostics.Select(entry => entry.Code).Should().Equal(
+            type.Length > 0
+                ? [PdfDiagnosticCodes.XRefHybridStreamLost, PdfDiagnosticCodes.LimitStreamLength, PdfDiagnosticCodes.FilterUnsupported, PdfDiagnosticCodes.XRefSectionUnreadable]
+                : [PdfDiagnosticCodes.LimitStreamLength, PdfDiagnosticCodes.XRefOffsetAdjusted, PdfDiagnosticCodes.XRefHybridStreamLost, PdfDiagnosticCodes.FilterUnsupported, PdfDiagnosticCodes.XRefOffsetAdjusted]);
+    }
+
+    [Theory]
     [InlineData(
         "/Size 8",
         "(eight)",

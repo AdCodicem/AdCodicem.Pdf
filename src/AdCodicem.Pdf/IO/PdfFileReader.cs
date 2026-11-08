@@ -3861,10 +3861,10 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// cross-reference stream, its rows aside, and its data decoded where it gives no <c>/Type /XRef</c>, a stream of that
     /// type keeping its place whatever its data holds — from its header, through the windows the <c>/Prev</c>'s own reading
     /// opens there, past the white space it falls short by, which a trailer's window bounds apart (<see cref="PaddingAt"/>),
-    /// so that the two meet one cut, or none —, and nothing of the reading is kept or reported
-    /// (<see cref="TryReadXRefStream"/>'s check alone), the <c>/Prev</c>'s own reading, next, reading it again as itself. At
-    /// most once for each hybrid table whose <c>/XRefStm</c> cannot be read where it names, which
-    /// <see cref="PdfReaderLimits.MaxXRefSectionCount"/> bounds: one decoding more of the stream, within
+    /// so that the two meet one cut, or none —, and nothing of the reading is kept or reported, but for a guard its decoding
+    /// beside a value a guard cut reached (<see cref="TryReadXRefStream"/>'s check alone), the <c>/Prev</c>'s own reading,
+    /// next, reading it again as itself. At most once for each hybrid table whose <c>/XRefStm</c> cannot be read where it
+    /// names, which <see cref="PdfReaderLimits.MaxXRefSectionCount"/> bounds: one decoding more of the stream, within
     /// <see cref="PdfReaderLimits.MaxDecodedStreamLength"/>, where the object gives no <c>/Type /XRef</c> and reads that
     /// far.
     /// </remarks>
@@ -6222,7 +6222,8 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// nowhere, a value its rows are read with that no section read so far places or a guard cut, a fault beside that cut,
     /// <c>/W</c>, <c>/Index</c> and <c>/Size</c>, then data its filters decode nothing of —, and the record says what the
     /// reading found, but nothing is indexed, refused, reported or recorded: the data is decoded as the reading first decodes
-    /// it, what the decoding reports dropped, and no row is read. Reading the rows makes no section unreadable — rows the
+    /// it, what the decoding reports dropped — but for a guard it reached beside a value a guard cut, which stands, as no
+    /// later reading reports it —, and no row is read. Reading the rows makes no section unreadable — rows the
     /// data lacks, or that a guard on decoding cut, leave it read in part —, and the check gives
     /// <see cref="XRefSectionState.Read"/> there. The data of a stream of <c>/Type /XRef</c> is not decoded, the check
     /// giving <see cref="XRefSectionState.Read"/> once its numbering is read, and judging beside a value a guard cut only
@@ -6418,10 +6419,11 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
             // FaultBesideCut decodes data whose extent the file gives, to tell whether its filters decode anything of it, and
             // that decoding reports into the document's diagnostics, as the reading below does. A check gives it no stream of
             // /Type /XRef, which keeps its place whatever its data holds (KeepsItsPlace), and drops what the decoding of any
-            // other reported, as it does below. At a place the section may have been moved to, where the data holds no row,
-            // what the decoding reported goes with the place where the search drops it (TryRelocateXRefSection). The mark,
-            // taken once for a check and once for each place read that far, which MaxRelocationCandidates bounds, holds the
-            // decodings' reports.
+            // other reported, but for a guard it reached, which stands, as at a place dropped: the cut MaxStreamLength makes of
+            // the data is reported once for the stream, where its data is first read (ReachStreamLength), and no later reading
+            // reports it. At a place the section may have been moved to, where the data holds no row, what the decoding
+            // reported goes with the place where the search drops it (TryRelocateXRefSection). The mark, taken once for a
+            // check and once for each place read that far, which MaxRelocationCandidates bounds, holds the decodings' reports.
             var judged = deferred is null && !xrefStream.Data.CutByGuard && !xrefStream.Data.EndHidden &&
                 !(checkOnly && section.TypedXRef)
                 ? xrefStream
@@ -6431,7 +6433,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
 
             if (checkOnly)
             {
-                _diagnostics.RollBack(besideCut);
+                _diagnostics.RollBackBesideLimits(besideCut);
             }
 
             if (file is not null)
