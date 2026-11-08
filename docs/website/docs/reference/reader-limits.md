@@ -118,7 +118,9 @@ there. Raise PdfReaderLimits.MaxDecodedStreamLength to read past it.
 - A stream whose `/Filter` array names more filters than `MaxFilterChainLength` decodes through the first of them only,
   and comes back as they decoded it, as at a filter the library does not know; the elements past the bound are not
   read, so an image filter there is not seen, and `HasImageFilter` says false. It is reported as the bound on decoded
-  data is — a Flate filter within it that decodes nothing ends decoding first, reported as `filter.failed` alone:
+  data is — a filter within it the library does not know, an element within it that names none, or a Flate filter within
+  it whose data is corrupt before its first byte decodes, ends decoding first, reported as `filter.unsupported` or
+  `filter.failed` alone:
 
   ```text
   Warning limit.filter-chain at 1904: The /Filter entry names more than 64 filters; decoding stopped after the first
@@ -128,8 +130,9 @@ there. Raise PdfReaderLimits.MaxDecodedStreamLength to read past it.
   What comes back is still encoded by the filters past the bound, and is no part of what the stream decodes to. A
   cross-reference stream or an object stream the reader meets so is read as one a guard cut before its data: its rows,
   or its objects, are unknown until you raise the limit, as what any limit leaves out is. But a cross-reference stream
-  whose Flate filter within the bound decodes nothing cannot be read whatever the limit, the file's fault rather than
-  the guard's ([#221](https://github.com/AdCodicem/AdCodicem.Pdf/issues/221)).
+  whose filters within the bound decode nothing of its data — a filter the library does not know or an element that
+  names none, or Flate data corrupt before its first byte decodes, ending decoding there — cannot be read whatever the
+  limit, the file's fault rather than the guard's ([#221](https://github.com/AdCodicem/AdCodicem.Pdf/issues/221)).
 
 - A value a stream is read with that leads to an object a guard cut, or left out of the index — its `/Length`,
   `/Filter` or `/DecodeParms`, a value of a filter's parameters, directly or through a chain of references — is the
@@ -186,17 +189,22 @@ there. Raise PdfReaderLimits.MaxDecodedStreamLength to read past it.
   rows numbered wrongly — an `/Index` that holds no pairs, a subsection whose elements are no integers, whose first
   number or count is below 0, or that numbers past the object numbers, by both its elements or by the one read whatever
   the cut one holds, a `/Size` with no `/Index` that gives no count —, as far as the values read, written direct or
-  through references, say. Data whose length the file gives, its filters written direct, decoded whole, that holds fewer
-  rows than the counts read declare however few bytes the widths read leave a row lacks them whatever the cut hides: the
-  section is read as read whole, lacking rows, its trailer merged and the index rebuilt, and the object the guard cut is
-  loaded once the chain is read, which reaches the guard. The rows the data may hold at the fewest bytes a row may take,
-  read with the cut value, are the guard's: the chain ends at the section, as where rows a guard cut, and the validator
-  says it unchecked; the chain goes on only past data that holds none. The rows a cross-reference stream's data lacks,
-  where its `/Length` so leads and its data was taken to the first `endstream`, are the guard's too, unless what follows
-  that `endstream` proves it the stream's own, as above: they are then the file's to lack, and the index is rebuilt. An
-  object the chain read through a reference the cut left whole is loaded once the chain is read only for a value it
-  keeps, or for what the offset a section is named at holds, which is read as a load reads it, its reports kept: not for
-  a place near there it guessed the section was moved to and dropped as none.
+  through references, say. Data whose length the file gives that its filters, written direct, decode nothing of — a
+  filter the library does not know, an element of `/Filter` that names none, a `/Filter` that is neither a name nor an
+  array, Flate data corrupt before its first byte decodes — makes the section unreadable too, whatever `/W`, `/Index` or
+  `/Size` the guard cut: it holds no row whatever the counts declare, and the fault is the file's, as read whole
+  ([#221](https://github.com/AdCodicem/AdCodicem.Pdf/issues/221)). Data whose length the file gives, its filters written
+  direct, decoded whole, that holds fewer rows than the counts read declare however few bytes the widths read leave a
+  row lacks them whatever the cut hides: the section is read as read whole, lacking rows, its trailer merged and the
+  index rebuilt, and the object the guard cut is loaded once the chain is read, which reaches the guard. The rows the
+  data may hold at the fewest bytes a row may take, read with the cut value, are the guard's: the chain ends at the
+  section, as where rows a guard cut, and the validator says it unchecked; the chain goes on only past data that holds
+  none. The rows a cross-reference stream's data lacks, where its `/Length` so leads and its data was taken to the first
+  `endstream`, are the guard's too, unless what follows that `endstream` proves it the stream's own, as above: they are
+  then the file's to lack, and the index is rebuilt. An object the chain read through a reference the cut left whole is
+  loaded once the chain is read only for a value it keeps, or for what the offset a section is named at holds, which is
+  read as a load reads it, its reports kept: not for a place near there it guessed the section was moved to and dropped
+  as none.
 - A stream read from a document decodes under **that document's** limits, however long after opening you decode it.
   A stream you build in memory decodes under `PdfReaderLimits.Default`.
 - A classic trailer that ends within the window its cross-reference table was read through is read whole, whatever

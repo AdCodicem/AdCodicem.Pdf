@@ -111,14 +111,16 @@ The map is rebuilt by scanning the whole file, once at most, and never while the
   (`xref.section-unreadable`), a value its rows need written as such a reference, or a `/Length` so written, or that
   leads through references to an object no section read before places, whose data no `endstream` ends before the next
   object or the end of the file, or data a stream's filters decode nothing of — left at a filter the library does not
-  know, or by Flate data corrupt before its first byte decodes —, which holds no row whatever its bytes would read as
+  know, at an element of `/Filter` that names none or at a `/Filter` that is neither a name nor an array, or by Flate
+  data corrupt before its first byte decodes —, which holds no row whatever its bytes would read as
   ([#221](https://github.com/AdCodicem/AdCodicem.Pdf/issues/221)), among the causes; a section is read only in part, and
   kept (`xref.section-unreadable` too, its message saying it `was read only in part`): a row of a classic table cannot
   be read, which ends its subsection, a row gives an object in use what no entry can hold — a generation past 65,535, an
   offset of 2⁶³ or more, an object stream that is no object number, an index past 2,147,483,647, a field wider than 8
-  bytes whose leading bytes are not all zero —, which refuses that row alone, a cross-reference stream whose data the
-  reader decoded whole holds fewer rows than it declares, or the end of the file cuts a table before its trailer, or
-  within its `trailer` keyword, once it read a row ([#207](https://github.com/AdCodicem/AdCodicem.Pdf/issues/207),
+  bytes whose leading bytes are not all zero —, which refuses that row alone, a cross-reference stream whose data no
+  guard cut — decoded to its end, or as far as a filter decoded it before a fault — holds fewer rows than it declares,
+  or the end of the file cuts a table before its trailer, or within its `trailer` keyword, once it read a row
+  ([#207](https://github.com/AdCodicem/AdCodicem.Pdf/issues/207),
   [#210](https://github.com/AdCodicem/AdCodicem.Pdf/issues/210)); a `/Prev` loops back on the chain
   (`xref.chain-cycle`); or a hybrid file's table names through `/XRefStm` no cross-reference stream of its revision — a
   classic table, one that cannot be read among them, a section the chain reads through `/Prev` or `startxref`, or what
