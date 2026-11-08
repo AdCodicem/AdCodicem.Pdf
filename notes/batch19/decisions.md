@@ -619,3 +619,15 @@ Tracking / records:
 - R9-Q2 (maintainer, 2026-11-08): 'En-têtes typés' as recommended ([30]): xref.stream-passed-over names only a place that declares itself (/Type /XRef, a header that is a token on its own line); no extra read. A readable /W-only stream and a readable commented header lose the Warning. Rows: comment header with no /Size, same-line string header with no /Size, unreadable /W-only stream, readable /W-only stream, readable commented header (no Warning, another section taken); a typed header on its line, unreadable, keeps it.
 - 2026-11-08: round 9 fixes launched: wf_756885b9-080 (task wp860qqzb), script lot19-r9-fixes.js: R9a-passed-over, R9b-own-stream, R9c-undecoded, R9d-docs (sequential, each pushed), then R9-track (#332 body, new debt for the older stream before S, #171 comment) and R9f-check one after the other.
 - 2026-11-08: round 9 fixes stopped at the maintainer's request before any change (R9a had only read and probed; no diff, no commit; branch still at da2b06f). Work moves to the maintainer's Windows PC: RESUME.md and PROMPT-fr.md on the -wip branch.
+- 2026-11-08 (Windows PC, maintainer's machine): resumed from RESUME.md. Work tree mirroring the cloud scratchpad at
+  the session scratchpad's cloud/ folder (r9probes and harness unpacked, notes copied to cloud/lot19). Windows
+  adaptations: run_variant.sh (R=, main-checkout guard, python, English build output), classify.py manifest default,
+  corpus-run.sh rewritten (args: out dir, main tree, branch tree, runs), check_msgs.py accepts the footer without the
+  cloud's session URL (this machine's commits carry Refs + Co-Authored-By only). Remote corpus fetched (242 documents;
+  the cloud had 235); worktrees get it as hard links (cp -al), never a junction: git worktree remove empties a
+  junction's target (checked). Baselines reproduced on Windows: the own-stream differential of da2b06f is
+  byte-identical to out-r8f.txt; the corpus dump of da2b06f equals the cloud's on the 403 shared documents (410 here,
+  F and D diff 0) and is round 8's corpus reference on this machine.
+- 2026-11-08: round 9 fixes launched on Windows: wf_0143276c-659 (task wd37fspau), script lot19-r9-fixes-win (the cloud
+  script with Windows paths, gh CLI for the tracking): R9a, R9b, R9c, R9d (sequential, each pushed), then R9-track and
+  R9f one after the other.
