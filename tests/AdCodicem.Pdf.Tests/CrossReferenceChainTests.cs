@@ -6759,10 +6759,10 @@ public class CrossReferenceChainTests
         // 9, which gives no /Prev either: the search passes over it as possibly the table's own, the stream the /XRefStm read
         // with it, and takes the oldest table. Object 9 was reported as a cross-reference stream passed over whatever it is: a
         // header a comment or a string holds on its line, which says nothing of a section, or a stream that gives only a /W,
-        // which may be anything, readable or not — places the search drops where it cannot read them, and where it takes them
-        // too only once they read. Only a place that declares itself a cross-reference stream, as one the search takes though
-        // it cannot be read does — its dictionary gives /Type /XRef, and its header is a token its line reads —, is reported
-        // (#156, #171).
+        // which may be anything, readable or not — places the search drops where a fault of the file keeps them from being
+        // read, and takes where they read. Only a place that declares itself a cross-reference stream, as one the search
+        // takes though a fault of the file keeps it from being read does — its dictionary gives /Type /XRef, and its header is
+        // a token its line reads —, is reported (#156, #171).
         var (file, oldest, stream, at, newest) = HybridFiles.PrevFallingShortOfAPlacePastTheStream(place);
         using var document = PdfDocument.Open(file);
 

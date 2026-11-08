@@ -139,11 +139,14 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     private const int MaxRelocationCandidates = 32;
 
     /// <summary>
-    /// How far before the bytes searched near an offset the end of line that starts a place's line is looked for, to tell
-    /// a place that cannot be read and starts with a token from one a comment or a string holds
-    /// (<see cref="IsTokenOnItsLine"/>): where none lies within them, the place declares no section. Not a guard a valid
-    /// file can reach (ADR 34): the search runs only near an offset that names no section, and a valid file's sections are
-    /// where its chain names them.
+    /// How far before the bytes searched near an offset the end of line that starts a place's line is looked for, read with
+    /// those bytes again where the line starts before them, to tell a place that starts with a token from one a comment or
+    /// a string holds (<see cref="IsTokenOnItsLine"/>): a place that cannot be read, which declares a section only where it
+    /// starts with such a token, and a cross-reference stream passed over near a hybrid table's <c>/Prev</c>, which is
+    /// reported only where its header is one (<see cref="ReportStreamsPassedOver"/>). Where no end of line lies within
+    /// them, and the file starts farther back, the place declares no section, and the stream is not reported. Not a guard
+    /// a valid file can reach (ADR 34): the search runs only near an offset that names no section, and a valid file's
+    /// sections are where its chain names them.
     /// </summary>
     private const int LineStartSearchLength = 4096;
 
@@ -3727,11 +3730,14 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// the section names left unread — the guard's, though the section is looked for as one that is not there (#289). A cut
     /// that leaves nothing unread — data past a stream's last row, an object past a whole reference it holds — hides no
     /// link, and leaves the report made. What it costs is a look at the records of the sections the chain reached, and at as
-    /// many positions as the header's object number has bytes for each stream: nothing is read to report it, the stream's
-    /// dictionary having been parsed in the search's window when it was passed over, and its line lexed and its number's
-    /// digits scanned there when the search took another section. Reported once for each stream, at the stream, however
-    /// many searches passed over it; the index is not left incomplete for it, nor is anything looked for in its place:
-    /// whether it is the table's own is unknown, and no link the chain read reaches it.
+    /// many positions as the header's object number has bytes for each stream: nothing is read here, and no stream is read
+    /// to report it, its dictionary having been parsed in the search's window when it was passed over, and its number's
+    /// digits scanned there when the search took another section, as its line was lexed — in that window, or, where the
+    /// line starts before the bytes searched, in those bytes read again with as many as <see cref="LineStartSearchLength"/>
+    /// bytes before them, one window more for each such stream (<see cref="IsTokenOnItsLine"/>), a line that starts
+    /// farther back declaring nothing, and the stream then not reported. Reported once for each stream, at the stream,
+    /// however many searches passed over it; the index is not left incomplete for it, nor is anything looked for in its
+    /// place: whether it is the table's own is unknown, and no link the chain read reaches it.
     /// </remarks>
     private void ReportStreamsPassedOver()
     {
@@ -5035,13 +5041,13 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// <see cref="KeepsItsPlace"/> makes once for each hybrid table, and where it does, the section is left to that
     /// <c>/Prev</c>, as with places to spare; where a nearer place is left unread, the bound stops the search before it.
     /// One the search does not come back to, another section taken first, is reported once the chain is read, where it
-    /// declares itself a section, as a place that cannot be read is taken only where it does — its dictionary gives
-    /// <c>/Type /XRef</c>, and its header is a token a load reads from the start of its line —, where the chain has not
-    /// reached it, at its header or inside its object number, and where none of the reader's limits left part of the chain
-    /// unread, nor white space past a trailer's window turned the chain's reading of a section it names into a search
-    /// (<see cref="ReportStreamsPassedOver"/>): an object that gives only a <c>/W</c>, or a header a comment or a string on
-    /// its line holds, is not, whether it reads or not. The search is never asked for a section that is there and cannot be
-    /// read (<see cref="DeclaresItselfASection"/>): what is near it is another.
+    /// declares itself a section, as a place a fault of the file keeps from being read is taken only where it does — its
+    /// dictionary gives <c>/Type /XRef</c>, and its header is a token a load reads from the start of its line —, where the
+    /// chain has not reached it, at its header or inside its object number, and where none of the reader's limits left
+    /// part of the chain unread, nor white space past a trailer's window turned the chain's reading of a section it names
+    /// into a search (<see cref="ReportStreamsPassedOver"/>): an object that gives only a <c>/W</c>, or a header a comment
+    /// or a string on its line holds, is not, whether it reads or not. The search is never asked for a section that is
+    /// there and cannot be read (<see cref="DeclaresItselfASection"/>): what is near it is another.
     /// </remarks>
     /// <param name="offset">The offset that names the section, as written.</param>
     /// <param name="section">The record of the section, which takes what was read where it was found.</param>
@@ -5262,13 +5268,15 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
 
                 // The streams passed over that the search does not come back to, past this place among those put back, are
                 // reported once the chain is read, where it has not reached them (ReportStreamsPassedOver) — those that
-                // declare themselves a section, as a place the search takes though it cannot be read does: the dictionary
-                // gives /Type /XRef, and the header is a token a load reads from the start of its line, which the window,
-                // still open, tells. An object that gives only a /W, or a header a comment or a string on its line holds,
-                // says nothing of what it is, whether it reads or not, and is not reported. The stream the /XRefStm read,
-                // put back unread among them, is one the chain read where it starts, and is not recorded. Where each
-                // header's object number ends is kept with it, told in the window too: a link of an older section that
-                // names a place inside that number reaches the same stream.
+                // declare themselves a section, as a place the search takes though a fault of the file keeps it from being
+                // read does: the dictionary gives /Type /XRef, and the header is a token a load reads from the start of its
+                // line, which the window, still open, tells — or, where the line starts before the bytes searched, those
+                // bytes read again with as many as LineStartSearchLength bytes before them tell, one window more for each
+                // such stream, no stream read (IsTokenOnItsLine). An object that gives only a /W, or a header a comment or a
+                // string on its line holds, says nothing of what it is, whether it reads or not, and is not reported. The
+                // stream the /XRefStm read, put back unread among them, is one the chain read where it starts, and is not
+                // recorded. Where each header's object number ends is kept with it, told in the window too: a link of an
+                // older section that names a place inside that number reaches the same stream.
                 for (var back = Math.Max(i + 1, inWindow); back < candidates.Count; back++)
                 {
                     var passed = candidates[back];
@@ -5878,8 +5886,11 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
                     return true;
                 }
 
-                // A table the guard cut is kept, the guard's, whatever the index holds: its keyword declared it a section
-                // before the cut (ADR 34), and what its trailer names is judged as a whole read judges it (#264).
+                // A table the guard cut is kept, its rows read as far as the guard let them, the guard's, whatever the index
+                // holds (ADR 34), and what its trailer names is judged as a whole read judges it (#264). At the offset a link
+                // names, its keyword is the table's own; a place the search near an offset tries is read so too, and taken as
+                // any place that reads, whole or in part, is, whatever its line — its keyword in a comment or a string there
+                // among them, which declares nothing (#171).
                 return true;
             }
 
