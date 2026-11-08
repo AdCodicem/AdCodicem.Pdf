@@ -153,7 +153,7 @@ internal sealed class XRefSectionRecord
     /// cross-reference stream that may be that table's own — it starts no sooner than that stream, and its dictionary, read
     /// whole, gives no <c>/Prev</c>, or the offset the table's names, as the chain reads it —: read no further than its
     /// object, its data neither decoded nor read as rows, it left nothing of its reading but a search for its
-    /// <c>endstream</c> and, where its <c>/Prev</c> is a reference, the object read where it leads, as any value the
+    /// <c>endstream</c> and, where its <c>/Prev</c> is a reference, the objects read where it leads, as any value the
     /// chain reads; the search tries it again once every other place was, uncounted (#156).
     /// </summary>
     public bool MayBeTablesOwn { get; set; }

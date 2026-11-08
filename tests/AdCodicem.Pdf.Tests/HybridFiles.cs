@@ -867,7 +867,9 @@ internal static class HybridFiles
     /// stream names through <c>/Prev</c> <paramref name="ownPrev"/>: <c>"nothing"</c>; <c>"the table's /Prev"</c>, the
     /// place the table's names; <c>"the table's /Prev, as a real"</c>, that place written as a real with no fractional
     /// part; <c>"the table's /Prev, through a reference"</c>, object 20, which holds that place and which the newest
-    /// table indexes, written after the stream; <c>"outside the file"</c>, offset 99,999,999,999; <c>"a name"</c>,
+    /// table indexes, written after the stream; <c>"the table's /Prev, through two references"</c>, object 20, which
+    /// holds <c>21 0 R</c>, object 21 holding that place, both indexed by the newest table and written after the
+    /// stream; <c>"outside the file"</c>, offset 99,999,999,999; <c>"a negative offset"</c>, -1; <c>"a name"</c>,
     /// <c>/Nowhere</c>; or <c>"the table before"</c>, the table before the newest, at <c>Previous</c>, written before
     /// object 4, within reach of a search near that place, which indexes object 3 as
     /// <c>(three as the middle revision has it)</c> and names through <c>/Prev</c> the oldest table, at <c>Oldest</c>,
@@ -891,15 +893,26 @@ internal static class HybridFiles
         {
             "the table's /Prev" => Invariant($"/Prev {stream + 12} "),
             "the table's /Prev, as a real" => Invariant($"/Prev {stream + 12}.0 "),
-            "the table's /Prev, through a reference" => "/Prev 20 0 R ",
+            "the table's /Prev, through a reference" or "the table's /Prev, through two references" => "/Prev 20 0 R ",
             "outside the file" => "/Prev 99999999999 ",
+            "a negative offset" => "/Prev -1 ",
             "a name" => "/Prev /Nowhere ",
             "the table before" => Invariant($"/Prev {previous} "),
             _ => string.Empty,
         };
-        var size = ownPrev == "the table's /Prev, through a reference" ? 21 : 7;
+        var size = ownPrev switch
+        {
+            "the table's /Prev, through a reference" => 21,
+            "the table's /Prev, through two references" => 22,
+            _ => 7,
+        };
         file.Object(6, Invariant($"<< /Type /XRef /Size {size} /W [1 4 2] /Index [4 1 6 1] /Root 1 0 R {prev}/Length {rows.Length} >>\nstream\n{rows}\nendstream"));
-        var twenty = size == 21 ? Invariant($"20 1\n{Row(file.Object(20, Invariant($"{stream + 12}")))}") : string.Empty;
+        var twenty = size switch
+        {
+            21 => Invariant($"20 1\n{Row(file.Object(20, Invariant($"{stream + 12}")))}"),
+            22 => Invariant($"20 2\n{Row(file.Object(20, "21 0 R"))}{Row(file.Object(21, Invariant($"{stream + 12}")))}"),
+            _ => string.Empty,
+        };
         var newest = file.Position;
         file.Raw(Invariant($"xref\n0 1\n0000000000 65535 f \n6 1\n{Row(stream)}{twenty}trailer\n<< /Size {size} /Root 1 0 R /Prev {stream + 12} /XRefStm {stream} >>\nstartxref\n{newest}\n%%EOF\n"));
         return (file.Bytes, oldest, previous, stream, newest);

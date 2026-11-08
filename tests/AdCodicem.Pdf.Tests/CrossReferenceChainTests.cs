@@ -5605,6 +5605,7 @@ public class CrossReferenceChainTests
     [InlineData("the table's /Prev")]
     [InlineData("the table's /Prev, as a real")]
     [InlineData("the table's /Prev, through a reference")]
+    [InlineData("the table's /Prev, through two references")]
     [InlineData("nothing")]
     [InlineData("the table before")]
     public void A_prev_falling_inside_the_stream_its_xrefstm_read_takes_it_only_where_the_stream_s_own_prev_names_another_offset(string ownPrev)
@@ -5614,8 +5615,9 @@ public class CrossReferenceChainTests
         // The stream may be the table's own where its own /Prev names the place the table's names, or nothing: it hands the
         // chain back to that place, or nothing on, and the search tries it once every other place was, or never, taking the
         // table before, which reads the chain whole. Its /Prev is read as the chain reads it: written as a real with no
-        // fractional part, or as a reference to an object the newest table places, it names that place all the same, where
-        // as written it read as another offset and the stream was taken, the chain looping back to that place. One whose
+        // fractional part, or as a reference to an object the newest table places — that object holding the place, or a
+        // reference to another that does, which the chain reads through —, it names that place all the same, where as
+        // written it read as another offset and the stream was taken, the chain looping back to that place. One whose
         // /Prev names another offset is a section the /Prev can mean, taken where it comes nearest, before the table farther
         // off: read whole, the /XRefStm reported as naming what the /Prev read, the chain goes on through the stream's own
         // /Prev, here the table before (#156).
@@ -5656,11 +5658,13 @@ public class CrossReferenceChainTests
 
     [Theory]
     [InlineData("outside the file")]
+    [InlineData("a negative offset")]
     [InlineData("a name")]
     public void A_prev_falling_inside_the_stream_its_xrefstm_read_takes_it_where_the_stream_s_own_prev_names_no_offset_in_the_file(string ownPrev)
     {
-        // As above, the stream giving through its own /Prev an offset past the file's end, or a name: no offset in the file,
-        // which counts as another offset than the table's, the stream no stream that may be the table's own. It is a section
+        // As above, the stream giving through its own /Prev an offset past the file's end, -1, or a name: no offset in the
+        // file, which counts as another offset than the table's, the stream no stream that may be the table's own — -1 no
+        // more than any, though it is the number the reader gives a /Prev that is not there. It is a section
         // the /Prev can mean, taken where it comes nearest, before the table farther off, and read whole, the /XRefStm
         // reported as naming what the /Prev read; its own /Prev is reported as the chain finds it, the older sections looked
         // for by rebuilding the index, here as the document opens, the catalog being the oldest table's (#156).
@@ -5674,7 +5678,7 @@ public class CrossReferenceChainTests
             ("/Prev", XRefSectionState.Relocated, XRefSectionKind.Stream, stream));
         sections[3].Should().Match<XRefSectionRecord>(section => section.NamedBy == "/Prev" && section.State == XRefSectionState.NotFound);
         document.Diagnostics.Select(diagnostic => diagnostic.Code).Should().Equal(
-            ownPrev == "a name"
+            ownPrev != "outside the file"
                 ?
                 [
                     PdfDiagnosticCodes.XRefSectionMissing, PdfDiagnosticCodes.XRefOffsetAdjusted, PdfDiagnosticCodes.XRefHybridStreamLost,

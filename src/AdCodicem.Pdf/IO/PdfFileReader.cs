@@ -4930,12 +4930,12 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// the cut may hide: where it declared itself a section before the cut, it is the section found moved, and the
     /// guard's, as any such place is (ADR 34). A stream taken whose <c>/Prev</c> names no older section is read whole
     /// all the same, and its <c>/Prev</c> reported as the chain finds it: a loop, an offset outside the file, or no
-    /// offset. To tell, the search reads nothing it would not read trying the place, but the object a <c>/Prev</c>
-    /// written as a reference leads to, once at most, nothing loaded or reported: the dictionary of the stream the
-    /// <c>/XRefStm</c> read is the one that reading kept, and another place's is the one its reading parses first, the
-    /// reading stopping at the object and keeping nothing where the stream may be the table's own, a search for its
-    /// <c>endstream</c> aside. A place so passed over counts once toward <see cref="MaxRelocationCandidates"/>, at its
-    /// first reading: read again when the search comes back to it, through windows that grow from 64 KB up to
+    /// offset. To tell, the search reads nothing it would not read trying the place, but the objects a <c>/Prev</c>
+    /// written as a reference leads to, as the chain reads them, nothing loaded or reported: the dictionary of the
+    /// stream the <c>/XRefStm</c> read is the one that reading kept, and another place's is the one its reading parses
+    /// first, the reading stopping at the object and keeping nothing where the stream may be the table's own, a search
+    /// for its <c>endstream</c> aside. A place so passed over counts once toward <see cref="MaxRelocationCandidates"/>,
+    /// at its first reading: read again when the search comes back to it, through windows that grow from 64 KB up to
     /// <see cref="PdfReaderLimits.MaxTrailerLength"/> as a stream's dictionary is read, it is not counted again, and is
     /// tried even once the bound stops new places, so that places are read at most twice as many times as the bound.
     /// One the search does not come back to, another section taken first, is reported once the chain is read, where the
@@ -6685,7 +6685,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// may be the table's own (<see cref="MayBeTablesOwn"/>), which <paramref name="passedOver"/> says. A dictionary a guard
     /// cut, which says nothing of a <c>/Prev</c> past the cut, is kept, and the guard reached as
     /// <see cref="TryParseNumberedAt"/> reaches it. What the test refuses leaves nothing of its reading — a search for its
-    /// <c>endstream</c> aside, kept as every search is, nothing it met is reported or recorded, but for the object a
+    /// <c>endstream</c> aside, kept as every search is, nothing it met is reported or recorded, but for the objects a
     /// <c>/Prev</c> written as a reference leads to, read as any value the chain reads (<see cref="ReadWithoutLoading"/>),
     /// what it read past a guard forgotten with the place (<see cref="ForgetReadThrough"/>) —, and a stream's data is
     /// neither decoded nor read as rows. A header the window cuts, which reads no object to test, reaches the guard as at
@@ -7253,13 +7253,15 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     private const long StreamPreviousNoOffset = -2;
 
     /// <summary>
-    /// Reads the offset a cross-reference stream's <c>/Prev</c> gives as the chain reads it (<see cref="ReadSectionOffset"/>),
-    /// nothing reported or loaded: a real with no fractional part as its integer, and a reference as what a section already
-    /// read places there (<see cref="ReadWithoutLoading"/>), read once at most, however often it is asked for.
-    /// <see cref="NoStreamPrevious"/> where the dictionary gives none, or null; <see cref="StreamPreviousNoOffset"/> where
-    /// what it gives reads as no offset in the file — no integer, a reference that leads to no object a section read places
-    /// where it can be read, or to another reference, which only a load would read through, a negative offset, one past
-    /// the file's end —: a <c>/Prev</c> all the same, which the chain reports as it finds it where it takes the stream.
+    /// Reads the offset a cross-reference stream's <c>/Prev</c> gives as the chain reads it
+    /// (<see cref="ReadSectionOffset"/>), nothing reported or loaded: a real with no fractional part as its integer, and a
+    /// reference as what a section already read places there (<see cref="ReadWithoutLoading"/>) — through each object a
+    /// reference that object holds leads to, as many as a reference is resolved through
+    /// (<see cref="PdfReference.MaxChainLength"/>), each read so while the chain is read —, what is read kept as the chain
+    /// keeps it, for the stream's own reading to find. <see cref="NoStreamPrevious"/> where the dictionary gives none, or
+    /// null; <see cref="StreamPreviousNoOffset"/> where what it gives reads as no offset in the file — no integer, a
+    /// reference that leads to no object a section read places where it can be read, a negative offset, one past the file's
+    /// end —: a <c>/Prev</c> all the same, which the chain reports as it finds it where it takes the stream.
     /// </summary>
     /// <param name="value">The stream, or its dictionary; null for none, which gives no <c>/Prev</c>.</param>
     private long StreamPrevious(PdfObject? value)
@@ -7271,11 +7273,11 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
             return NoStreamPrevious;
         }
 
-        // A negative offset names a position before the file's start, as given (PositionOf).
+        // Read as the chain reads it: an object that is itself a reference is resolved, through GetObject, which reads
+        // without loading while the chain is read. A negative offset names a position before the file's start, as given
+        // (PositionOf).
         var read = given is PdfReference reference ? ReadWithoutLoading(reference.Id) : given;
-        return read is not PdfReference && read.AsInteger() is { } offset && IsInFile(PositionOf(offset))
-            ? offset
-            : StreamPreviousNoOffset;
+        return read.AsInteger() is { } offset && IsInFile(PositionOf(offset)) ? offset : StreamPreviousNoOffset;
     }
 
     /// <summary>
