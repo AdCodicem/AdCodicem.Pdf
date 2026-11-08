@@ -7010,6 +7010,90 @@ public class CrossReferenceChainTests
     }
 
     [Theory]
+    [InlineData("stream 6", "spaces", true, "/XRef", 1, "missing", false)]
+    [InlineData("stream 6", "spaces", true, "/XRef", 2, "missing", false)]
+    [InlineData("stream 6", "spaces", true, "/XRef", 3, "missing", false)]
+    [InlineData("stream 6", "spaces", true, "/XRef", 4, "missing", false)]
+    [InlineData("a table", "spaces", true, "/XRef", 1, "missing", false)]
+    [InlineData("a table", "spaces", true, "/XRef", 2, "missing", false)]
+    [InlineData("a table", "spaces", true, "/XRef", 3, "missing", false)]
+    [InlineData("a table", "spaces", true, "/XRef", 4, "missing", false)]
+    [InlineData("stream 6", "a string", true, "/XRef", 1, "missing", false)]
+    [InlineData("stream 6", "a string", true, "/XRef", 2, "missing", false)]
+    [InlineData("stream 6", "a string", true, "/XRef", 3, "missing", false)]
+    [InlineData("stream 6", "a string", true, "/XRef", 4, "missing", false)]
+    [InlineData("stream 6", "spaces", false, "/XRef", 2, "missing", false)]
+    [InlineData("a table", "spaces", false, "/XRef", 4, "missing", false)]
+    [InlineData("a table", "spaces", false, "/Catalog", 1, "missing", false)]
+    [InlineData("stream 6", "spaces", true, "/XRef", 0, "read", false)]
+    [InlineData("a table", "spaces", true, "/XRef", 0, "read", false)]
+    [InlineData("stream 6", "a string", true, "/XRef", 0, "read", false)]
+    [InlineData("stream 6", "spaces", false, "/XRef", 0, "read", true)]
+    [InlineData("a table", "spaces", false, "/XRef", 0, "read", true)]
+    [InlineData("stream 6", "spaces", true, "/XRef", -3, "cut", false)]
+    [InlineData("stream 6", "spaces", true, "/XRef", 5, "cut", false)]
+    [InlineData("a table", "spaces", false, "/XRef", -3, "cut", false)]
+    [InlineData("a table", "spaces", false, "/XRef", 5, "cut", false)]
+    [InlineData("stream 6", "spaces", false, "/Catalog", 2, "missing", true)]
+    [InlineData("stream 6", "spaces", false, "/Catalog", 12, "missing", true)]
+    [InlineData("a table", "spaces", false, "/Catalog", 2, "missing", true)]
+    [InlineData("stream 6", "spaces", false, "/X", 0, "read", true)]
+    [InlineData("stream 6", "spaces", false, "/X", 0, "missing", true, false)]
+    public void A_stream_passed_over_near_a_hybrid_table_s_prev_is_reported_where_no_link_the_chain_read_reaches_it_and_no_guard_cut_a_section_the_chain_names_before_its_type_is_known_not_to_be_xref(
+        string near, string padding, bool oldestNamesOwn, string type, int window, string oldestRead, bool reported, bool data = true)
+    {
+        // The search near the newest table's /Prev passes stream 11 over as possibly that table's own, and takes stream 6, or
+        // a table, nearer the /Prev; its /Prev names stream 7, the oldest section, whose /Prev names stream 11 — or nothing.
+        // Read whole, the chain reads stream 7 and, through its /Prev, stream 11: nothing is reported of it, but where stream
+        // 7 names nothing, and no link the chain read reaches it. Where MaxTrailerLength, lowered, cuts stream 7's dictionary
+        // inside the name its /Type gives, the parser keeps the name as far as it read it — the empty name, X, XR or XRe —,
+        // and stream 7 reads as an object of another type, the section as missing: its /Prev, past the cut, is a link the
+        // guard may have hidden, and stream 11 was reported as a stream the chain did not read, the guard's cut laid on the
+        // file. Nothing is reported of it now, whatever stream 7 names, as where the guard cuts the dictionary before its
+        // /Type, or past a /Type /XRef read whole, which leaves the section the guard's, the chain stopped there (ADR 34).
+        // The section missing, which the guard's cut makes, stays as #279 leaves it. A name the cut leaves that XRef does not
+        // begin with — the C of /Catalog, or /Catalog whole — hides no such link, and the report stands; so it does where no
+        // guard is reached and the name is X: stream 7 is read as the section whole (#263), and a dictionary of that type
+        // alone, no data following it, is no section. Object 8, right before stream 7, opens on the same padding: the search
+        // near stream 7 tries it, its /XObject cut at its X, as a place the section may have been moved to, a guess, which
+        // hides no link the chain names (#156, #289).
+        var (file, typeAt, oldest, _, own, taken, _) = HybridFiles.PassingOverAStreamAnOlderStreamWithAPaddedTypeNames(
+            near, oldestNamesOwn, type, padding, data);
+        var limits = window == 0 ? PdfReaderLimits.Default : PdfReaderLimits.Default with { MaxTrailerLength = typeAt + window };
+        using var document = PdfDocument.Open(file, new PdfReaderOptions { Limits = limits });
+        var expected = new List<(string Code, long Position)> { (PdfDiagnosticCodes.XRefOffsetAdjusted, taken) };
+
+        if (near == "stream 6")
+        {
+            expected.Add((PdfDiagnosticCodes.XRefHybridStreamLost, taken));
+        }
+
+        if (window != 0)
+        {
+            expected.Add((PdfDiagnosticCodes.LimitTrailer, oldest));
+        }
+
+        if (oldestRead == "missing")
+        {
+            expected.Add((PdfDiagnosticCodes.XRefSectionMissing, oldest));
+        }
+
+        if (reported)
+        {
+            expected.Add((PdfDiagnosticCodes.XRefStreamPassedOver, own));
+        }
+
+        document.Diagnostics.Select(diagnostic => (diagnostic.Code, diagnostic.Position)).Should().Equal(expected);
+        document.Reader.Structure.Sections.Single(section => section.Offset == oldest).State.Should().Be(oldestRead switch
+        {
+            "read" => XRefSectionState.Read,
+            "cut" => XRefSectionState.Malformed,
+            _ => XRefSectionState.NotFound,
+        });
+        document.Reader.ChainStoppedByGuard.Should().Be(oldestRead == "cut");
+    }
+
+    [Theory]
     [InlineData("a header in a comment", false, "9 0 obj")]
     [InlineData("a header in a string", false, "9 0 obj")]
     [InlineData("a stream of no type", false, "9 0 obj")]

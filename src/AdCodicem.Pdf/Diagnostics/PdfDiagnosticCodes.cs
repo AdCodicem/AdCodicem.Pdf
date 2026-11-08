@@ -126,15 +126,21 @@ public static class PdfDiagnosticCodes
     /// where the stream is said to start; one a <c>-</c> starts is no object's header (#327). Nothing is reported where one
     /// of the reader's limits left part of the chain unread — the number of its sections, a section it cut before the
     /// section said what it is, rows, a trailer, an object a value the rows or a link are read with leads to, or an index
-    /// it filled —, or where white space and comments at an offset the chain names run past
-    /// <see cref="Documents.PdfReaderLimits.MaxTrailerLength"/>, which turned the reading of the section there into the
-    /// search near the offset: the limit's report stands for what it left unread, or for what that search passed over or
-    /// did not find (#289). A cut that leaves nothing unread — data past a stream's last row, an object past a whole
-    /// reference it holds — leaves the report made. Nor is anything reported where the chain indexed nothing: the whole
-    /// file is rebuilt then, which reads every object. Its rows, if it is the table's own stream, are not in the index the
-    /// chain read: the objects only it indexes are missing from it, and the report leaves the index as it is, rebuilding
-    /// nothing for them — only a rebuild for another cause, which scans the file, finds them. The report is placed at the
-    /// stream, once, however many searches passed over it.
+    /// it filled —, the limit's report standing for what it left unread. Nor is anything reported anywhere in the document
+    /// where <see cref="Documents.PdfReaderLimits.MaxTrailerLength"/> may have hidden a link the chain would have followed:
+    /// where it cut a dictionary at an offset the chain names inside the name its <c>/Type</c> gives, which the parser
+    /// keeps as far as it read it, and which <c>XRef</c> begins with — the empty name, <c>X</c>, <c>XR</c> or
+    /// <c>XRe</c> —, the object then read as one of another type and its <c>/Prev</c> left unread (#279); or where white
+    /// space and comments at an offset the chain names run past it, which turned the reading of the section there into the
+    /// search near the offset. That search may take a section other than the one past them, and the reader cannot tell
+    /// which without reading past the guard: once that guard is reached, no stream passed over is reported, even where the
+    /// search finds the section whole past the white space, which only a <c>MaxTrailerLength</c> under the 512 bytes the
+    /// search reaches past the offset allows (#289). A cut that leaves nothing unread — data past a stream's last row, an
+    /// object past a whole reference it holds — leaves the report made. Nor is anything reported where the chain indexed
+    /// nothing: the whole file is rebuilt then, which reads every object. Its rows, if it is the table's own stream, are not
+    /// in the index the chain read: the objects only it indexes are missing from it, and the report leaves the index as it
+    /// is, rebuilding nothing for them — only a rebuild for another cause, which scans the file, finds them. The report is
+    /// placed at the stream, once, however many searches passed over it.
     /// </summary>
     public const string XRefStreamPassedOver = "xref.stream-passed-over";
 
