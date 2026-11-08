@@ -1,0 +1,281 @@
+[
+ {
+  "n": 1,
+  "lens": "own-stream",
+  "key": "passed-over-lost-section-false",
+  "sev": "major",
+  "verdict": "confirmed",
+  "vsev": "major",
+  "maint": false
+ },
+ {
+  "n": 2,
+  "lens": "own-stream",
+  "key": "passed-over-under-guard",
+  "sev": "major",
+  "verdict": "narrowed",
+  "vsev": "major",
+  "maint": false
+ },
+ {
+  "n": 3,
+  "lens": "own-stream",
+  "key": "passed-over-message-after-rebuild",
+  "sev": "minor",
+  "verdict": "confirmed",
+  "vsev": "minor",
+  "maint": false
+ },
+ {
+  "n": 4,
+  "lens": "own-stream",
+  "key": "s-judgment-leaves-guard",
+  "sev": "minor",
+  "verdict": "confirmed",
+  "vsev": "minor",
+  "maint": false
+ },
+ {
+  "n": 5,
+  "lens": "own-stream",
+  "key": "h3-not-equivalent",
+  "sev": "minor",
+  "verdict": "confirmed",
+  "vsev": "minor",
+  "maint": false
+ },
+ {
+  "n": 6,
+  "lens": "own-stream",
+  "key": "passed-over-in-stream-data",
+  "sev": "minor",
+  "verdict": "narrowed",
+  "vsev": "minor",
+  "maint": false
+ },
+ {
+  "n": 7,
+  "lens": "undecoded",
+  "key": "undecoded-cut-path-report-stands",
+  "sev": "major",
+  "verdict": "narrowed",
+  "vsev": "minor",
+  "maint": false
+ },
+ {
+  "n": 8,
+  "lens": "undecoded",
+  "key": "check-decodes-typed-stream-beside-cut",
+  "sev": "minor",
+  "verdict": "narrowed",
+  "vsev": "minor",
+  "maint": false
+ },
+ {
+  "n": 9,
+  "lens": "undecoded",
+  "key": "tm440-leaves-nothing-of-its-reading",
+  "sev": "minor",
+  "verdict": "confirmed",
+  "vsev": "minor",
+  "maint": false
+ },
+ {
+  "n": 10,
+  "lens": "src-texts",
+  "key": "passed-over-doubled-where-a-later-search-took-the-stream",
+  "sev": "major",
+  "verdict": "narrowed",
+  "vsev": "minor",
+  "maint": false
+ },
+ {
+  "n": 11,
+  "lens": "src-texts",
+  "key": "passed-over-warning-depends-on-a-guard",
+  "sev": "major",
+  "verdict": "confirmed",
+  "vsev": "major",
+  "maint": false
+ },
+ {
+  "n": 12,
+  "lens": "src-texts",
+  "key": "check-decodes-typed-xref-stream-under-a-cut-value",
+  "sev": "minor",
+  "verdict": "narrowed",
+  "vsev": "minor",
+  "maint": false
+ },
+ {
+  "n": 13,
+  "lens": "src-texts",
+  "key": "bound-still-asks-the-place-the-prev-names",
+  "sev": "minor",
+  "verdict": "narrowed",
+  "vsev": "minor",
+  "maint": false
+ },
+ {
+  "n": 14,
+  "lens": "src-texts",
+  "key": "threat-model-440-leaves-nothing-of-its-reading",
+  "sev": "nit",
+  "verdict": "narrowed",
+  "vsev": "nit",
+  "maint": false
+ },
+ {
+  "n": 15,
+  "lens": "tests",
+  "key": "passed-over-empty-chain-untested",
+  "sev": "minor",
+  "verdict": "confirmed",
+  "vsev": "minor",
+  "maint": false
+ },
+ {
+  "n": 16,
+  "lens": "tests",
+  "key": "s-boundary-premise-false-in-its-own-file",
+  "sev": "minor",
+  "verdict": "narrowed",
+  "vsev": "minor",
+  "maint": false
+ },
+ {
+  "n": 17,
+  "lens": "tests",
+  "key": "undecodedfault-null-branch-uncovered",
+  "sev": "minor",
+  "verdict": "confirmed",
+  "vsev": "minor",
+  "maint": false
+ },
+ {
+  "n": 18,
+  "lens": "tests",
+  "key": "count-instead-of-sequence",
+  "sev": "nit",
+  "verdict": "narrowed",
+  "vsev": "nit",
+  "maint": false
+ },
+ {
+  "n": 19,
+  "lens": "tests",
+  "key": "place-test-name-vs-passed-over-row",
+  "sev": "nit",
+  "verdict": "narrowed",
+  "vsev": "nit",
+  "maint": false
+ },
+ {
+  "n": 20,
+  "lens": "tests",
+  "key": "filter-test-name-vs-new-rows",
+  "sev": "nit",
+  "verdict": "confirmed",
+  "vsev": "nit",
+  "maint": false
+ },
+ {
+  "n": 21,
+  "lens": "tests",
+  "key": "count-once-comment-object-4",
+  "sev": "nit",
+  "verdict": "confirmed",
+  "vsev": "nit",
+  "maint": false
+ },
+ {
+  "n": 22,
+  "lens": "docs",
+  "key": "older-stream-gap-drops-no-prev",
+  "sev": "minor",
+  "verdict": "narrowed",
+  "vsev": "minor",
+  "maint": false
+ },
+ {
+  "n": 23,
+  "lens": "docs",
+  "key": "places-bound-row-overstates",
+  "sev": "minor",
+  "verdict": "narrowed",
+  "vsev": "minor",
+  "maint": false
+ },
+ {
+  "n": 24,
+  "lens": "docs",
+  "key": "tm440-guess-leaves-reports",
+  "sev": "minor",
+  "verdict": "confirmed",
+  "vsev": "minor",
+  "maint": false
+ },
+ {
+  "n": 25,
+  "lens": "docs",
+  "key": "debt-332-not-in-known-gaps",
+  "sev": "minor",
+  "verdict": "confirmed",
+  "vsev": "minor",
+  "maint": false
+ },
+ {
+  "n": 26,
+  "lens": "docs",
+  "key": "issue332-shape1-reported-claim",
+  "sev": "nit",
+  "verdict": "confirmed",
+  "vsev": "nit",
+  "maint": false
+ },
+ {
+  "n": 27,
+  "lens": "docs",
+  "key": "tm616-empty-chain-read-in-part",
+  "sev": "nit",
+  "verdict": "confirmed",
+  "vsev": "nit",
+  "maint": false
+ },
+ {
+  "n": 28,
+  "lens": "docs",
+  "key": "commit-d8e67de-body",
+  "sev": "nit",
+  "verdict": "narrowed",
+  "vsev": "nit",
+  "maint": false
+ },
+ {
+  "n": 29,
+  "lens": "batch",
+  "key": "older-stream-before-S-ends-chain-in-silence",
+  "sev": "major",
+  "verdict": "narrowed",
+  "vsev": "minor",
+  "maint": false
+ },
+ {
+  "n": 30,
+  "lens": "batch",
+  "key": "passed-over-warning-names-a-comment-header-a-stream",
+  "sev": "minor",
+  "verdict": "narrowed",
+  "vsev": "minor",
+  "maint": false
+ },
+ {
+  "n": 31,
+  "lens": "batch",
+  "key": "passed-over-warning-false-after-rebuild-at-opening",
+  "sev": "minor",
+  "verdict": "refuted",
+  "vsev": "none",
+  "maint": false
+ }
+]
