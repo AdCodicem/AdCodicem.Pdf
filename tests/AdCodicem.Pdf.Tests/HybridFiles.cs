@@ -492,7 +492,8 @@ internal static class HybridFiles
     /// <c>Four</c>, a stream whose dictionary gives <paramref name="type"/> — written whole, a space after it, or nothing —,
     /// the <c>/W</c> <paramref name="widths"/> and an <c>/Index</c> whose one row places object 7's new revision,
     /// <c>(new seven)</c>, its data <paramref name="padding"/> dashes longer, written Flate-encoded where
-    /// <paramref name="deflated"/> is set, names the oldest table through <c>/Prev</c>, gives the <c>/Filter</c>
+    /// <paramref name="deflated"/> is set, then ASCIIHex-encoded <paramref name="hexed"/> times, each encoding ending with
+    /// its <c>&gt;</c> end marker, names the oldest table through <c>/Prev</c>, gives the <c>/Filter</c>
     /// <paramref name="filter"/>, none when empty, and the <c>/Length</c> <paramref name="length"/>, the length of the data
     /// as written where none is given; the newest table, past a long comment, indexes object
     /// 6, <c>(six)</c>, and names object 4 through <c>/Prev</c> and, through <c>/XRefStm</c>, the place 20 bytes into object
@@ -503,7 +504,7 @@ internal static class HybridFiles
     /// <see cref="Documents.PdfReaderLimits.MaxObjectLength"/> at 1 KB cuts it.
     /// </summary>
     public static (byte[] File, long Oldest, long Four, long Named) PrevNamingAStreamBesideTheOldestTable(
-        string type, string widths = "[1 4 2]", int padding = 0, string filter = "", int? length = null, string? cut = null, bool deflated = false)
+        string type, string widths = "[1 4 2]", int padding = 0, string filter = "", int? length = null, string? cut = null, bool deflated = false, int hexed = 0)
     {
         var file = new HandWrittenFile(version: "1.5");
         var (catalog, pages, page) = Page(file);
@@ -515,6 +516,12 @@ internal static class HybridFiles
         var eight = file.Object(8, "(" + new string('x', 30) + ")");
         var rows = StreamRows((1, newSeven, 0)) + new string('-', padding);
         var data = deflated ? Deflate(rows) : rows;
+
+        for (var encoding = 0; encoding < hexed; encoding++)
+        {
+            data = Convert.ToHexString(Encoding.Latin1.GetBytes(data)) + ">";
+        }
+
         var filtered = filter.Length == 0 ? string.Empty : " /Filter " + filter;
         (string numbering, string? value) = cut switch
         {

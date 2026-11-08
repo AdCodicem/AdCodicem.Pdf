@@ -3944,6 +3944,69 @@ public class GuardCutValueTests
     }
 
     [Theory]
+    [InlineData("", PdfDiagnosticCodes.LimitDecodedStream, new[] { PdfDiagnosticCodes.LimitDecodedStream, PdfDiagnosticCodes.XRefHybridStreamLost })]
+    [InlineData("/Type /XRef ", PdfDiagnosticCodes.LimitDecodedStream, new[] { PdfDiagnosticCodes.XRefHybridStreamLost, PdfDiagnosticCodes.LimitDecodedStream })]
+    [InlineData("", PdfDiagnosticCodes.LimitFilterChain, new[] { PdfDiagnosticCodes.LimitFilterChain, PdfDiagnosticCodes.XRefHybridStreamLost, PdfDiagnosticCodes.XRefRebuilt, PdfDiagnosticCodes.ObjectRedefined })]
+    [InlineData("/Type /XRef ", PdfDiagnosticCodes.LimitFilterChain, new[] { PdfDiagnosticCodes.XRefHybridStreamLost, PdfDiagnosticCodes.LimitFilterChain, PdfDiagnosticCodes.XRefRebuilt, PdfDiagnosticCodes.ObjectRedefined })]
+    public void A_guard_reached_decoding_the_data_of_a_stream_a_prev_names_is_reported_once_where_the_data_is_first_decoded(
+        string type, string guard, string[] codes)
+    {
+        // As above, object 4, a stream of /Type /XRef or of no type, every value of it read, and its data its row and 4,000
+        // dashes Flate-encoded, which decode past what MaxDecodedStreamLength at 1,000 bytes decodes, or its row and 100
+        // dashes ASCIIHex-encoded twice, under two /ASCIIHexDecode filters, one more than MaxFilterChainLength at 1 lets
+        // run. The guard decoding the data reaches is reported once for the stream, where the data is first decoded: by the
+        // look at the /Prev's place, which decodes a stream of no type and drops the rest of what that decoding met, the
+        // guard standing, ahead of the /XRefStm's own report; or by the /Prev's own reading of a stream of /Type /XRef,
+        // which the look does not decode. Dropped with the rest, the guard was reported by the /Prev's reading, after the
+        // /XRefStm's report. Where the second filter is not run, the stream's rows are taken as a guard's cut, the chain
+        // ends at the stream, and the catalog, which only the oldest table indexes, is found by rebuilding the index as the
+        // document opens. Decoded again once the document is open, the data stops where it did, and the guard is not
+        // reported twice (#221, #263).
+        var flate = guard == PdfDiagnosticCodes.LimitDecodedStream;
+        var (file, _, _, _) = flate
+            ? HybridFiles.PrevNamingAStreamBesideTheOldestTable(type, padding: 4000, filter: "/FlateDecode", deflated: true)
+            : HybridFiles.PrevNamingAStreamBesideTheOldestTable(type, padding: 100, filter: "[/ASCIIHexDecode /ASCIIHexDecode]", hexed: 2);
+        var limits = flate
+            ? PdfReaderLimits.Default with { MaxDecodedStreamLength = 1000 }
+            : PdfReaderLimits.Default with { MaxFilterChainLength = 1 };
+        using var document = PdfDocument.Open(file, new PdfReaderOptions { Limits = limits });
+
+        document.Diagnostics.Select(entry => entry.Code).Should().Equal(codes);
+        document.GetObject(new PdfObjectId(4)).AsStream().Required().Decode().Length.Should().Be(flate ? 1000 : 215);
+        document.Diagnostics.Count(entry => entry.Code == guard).Should().Be(1);
+    }
+
+    [Theory]
+    [InlineData("", PdfDiagnosticCodes.LimitDecodedStream, "/W", 3, new[] { PdfDiagnosticCodes.LimitDecodedStream, PdfDiagnosticCodes.LimitObject })]
+    [InlineData("/Type /XRef ", PdfDiagnosticCodes.LimitDecodedStream, "/W", 2, new[] { PdfDiagnosticCodes.XRefHybridStreamLost, PdfDiagnosticCodes.LimitDecodedStream, PdfDiagnosticCodes.LimitObject, PdfDiagnosticCodes.XRefRebuilt, PdfDiagnosticCodes.ObjectRedefined })]
+    [InlineData("", PdfDiagnosticCodes.LimitFilterChain, "/Size", 3, new[] { PdfDiagnosticCodes.LimitFilterChain, PdfDiagnosticCodes.LimitObject })]
+    [InlineData("/Type /XRef ", PdfDiagnosticCodes.LimitFilterChain, "/Size", 2, new[] { PdfDiagnosticCodes.XRefHybridStreamLost, PdfDiagnosticCodes.LimitFilterChain, PdfDiagnosticCodes.LimitObject, PdfDiagnosticCodes.XRefRebuilt, PdfDiagnosticCodes.ObjectRedefined })]
+    public void A_guard_reached_decoding_the_data_of_a_stream_a_prev_names_beside_a_value_a_guard_cut_is_reported_where_the_data_is_first_decoded_and_counted_at_each_decoding(
+        string type, string guard, string cut, int reached, string[] codes)
+    {
+        // As above, but object 4's /W or /Size is written as the reference 9 0 R, which MaxObjectLength cuts. Beside the
+        // cut value, the data is decoded to tell whether its filters decode anything of it, and the guard that decoding
+        // reaches is reported where the data is first decoded: by the look at the /Prev's place for a stream of no type,
+        // the rest of what the look met dropped and the guard standing, met again by the /Prev's own reading — the place is
+        // the guard's, and the naming with it —; or by the /Prev's own reading of a stream of /Type /XRef, which the look
+        // does not decode, after the /XRefStm's report. Each decoding that meets the guard counts it reached, beside the
+        // cut of object 9: three guards reached for a stream of no type, two for one of /Type /XRef. Dropped with the rest,
+        // the guard was reported by the /Prev's reading in the same place, nothing reported between, but the look's meeting
+        // of it went uncounted (#221, #263).
+        var flate = guard == PdfDiagnosticCodes.LimitDecodedStream;
+        var (file, _, _, _) = flate
+            ? HybridFiles.PrevNamingAStreamBesideTheOldestTable(type, padding: 4000, filter: "/FlateDecode", cut: cut, deflated: true)
+            : HybridFiles.PrevNamingAStreamBesideTheOldestTable(type, padding: 100, filter: "[/ASCIIHexDecode /ASCIIHexDecode]", cut: cut, hexed: 2);
+        var limits = flate
+            ? PdfReaderLimits.Default with { MaxObjectLength = 1024, MaxDecodedStreamLength = 1000 }
+            : PdfReaderLimits.Default with { MaxObjectLength = 1024, MaxFilterChainLength = 1 };
+        using var document = PdfDocument.Open(file, new PdfReaderOptions { Limits = limits });
+
+        document.Diagnostics.Select(entry => entry.Code).Should().Equal(codes);
+        document.Diagnostics.LimitsReached.Should().Be(reached);
+    }
+
+    [Theory]
     [InlineData("/Size")]
     [InlineData(null)]
     public void A_guard_reached_again_decoding_a_stream_a_prev_names_counts_no_entry_left_out_where_the_diagnostics_have_room(string? cut)
