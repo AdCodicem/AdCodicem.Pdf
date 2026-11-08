@@ -6924,7 +6924,7 @@ public class CrossReferenceChainTests
         // (#289), and nothing is reported of the stream (#156, ADR 34) — even where the oldest table names nothing, which
         // the chain read whole finds, and reports. A run the guard does not cut, or one of 400 spaces, within the search's
         // reach, past which it finds stream 12 moved, leaves stream 12 read.
-        var (file, _, own, runAt, older, _, _) = HybridFiles.PassingOverAStreamAnOlderTableNamesPastWhiteSpace(runBefore, run, oldestNamesOwn);
+        var (file, _, own, runAt, older, _, _, _) = HybridFiles.PassingOverAStreamAnOlderTableNamesPastWhiteSpace(runBefore, run, oldestNamesOwn);
         var limits = maxTrailerLength > 0 ? PdfReaderLimits.Default with { MaxTrailerLength = maxTrailerLength } : PdfReaderLimits.Default;
         using var document = PdfDocument.Open(file, new PdfReaderOptions { Limits = limits });
         var cut = maxTrailerLength > 0 && run > maxTrailerLength;
@@ -6943,6 +6943,67 @@ public class CrossReferenceChainTests
         if (cut)
         {
             document.Diagnostics[1].Position.Should().Be(runAt);
+        }
+
+        document.WasRepaired.Should().BeFalse();
+    }
+
+    [Theory]
+    [InlineData(false, false, 300, 256)]
+    [InlineData(false, false, 400, 256)]
+    [InlineData(true, true, 300, 256)]
+    [InlineData(false, false, 300, 0)]
+    [InlineData(false, false, 400, 0)]
+    [InlineData(true, true, 300, 0)]
+    public void A_stream_passed_over_near_a_hybrid_table_s_prev_is_reported_nowhere_once_white_space_past_the_trailer_guard_turned_a_reading_into_the_search_whatever_section_it_finds(
+        bool unnamedTable, bool oldestNamesOwn, int run, int maxTrailerLength)
+    {
+        // As above, the search near the newest table's /Prev passes stream 12 over and takes the table past the comment,
+        // whose /Prev names the first of 300 or 400 spaces before the oldest table, which names nothing — or, past a table no
+        // link names written right before the run, names stream 12 through /XRefStm. Read whole, the chain crosses the run
+        // and reads the oldest table: stream 12, which no link reaches, is reported, or is read through that /XRefStm. Where
+        // MaxTrailerLength, lowered to 256, cuts the run, the section is not read from there, and the search near the offset,
+        // which reaches 512 bytes, takes a table: the oldest, past the run, read whole, which hides nothing, or the table no
+        // link names, before the run, which hides the link that names stream 12, object 5 reading as null. The reader cannot
+        // tell the two apart without reading past the guard: the search may take a section other than the one past the run,
+        // and the link that names the stream is then the guard's to hide. So once that guard is reached no stream passed
+        // over is reported anywhere in the document, even where the search takes the section past the run and reads it
+        // whole, and the report the file makes read whole is withheld with the rest (#156, #289, ADR 34).
+        var (file, _, own, runAt, older, unnamed, oldest, _) = HybridFiles.PassingOverAStreamAnOlderTableNamesPastWhiteSpace(
+            "the oldest table", run, oldestNamesOwn, unnamedTable);
+        var limits = maxTrailerLength > 0 ? PdfReaderLimits.Default with { MaxTrailerLength = maxTrailerLength } : PdfReaderLimits.Default;
+        using var document = PdfDocument.Open(file, new PdfReaderOptions { Limits = limits });
+
+        if (maxTrailerLength > 0)
+        {
+            var taken = unnamedTable ? unnamed : oldest;
+            document.Reader.Structure.Sections.Select(section => (section.NamedBy, section.State, section.Offset)).Skip(3).Should().Equal(
+                ("/Prev", XRefSectionState.Relocated, taken));
+            document.Diagnostics.Select(diagnostic => (diagnostic.Code, diagnostic.Position)).Should().Equal(
+                (PdfDiagnosticCodes.XRefOffsetAdjusted, older), (PdfDiagnosticCodes.LimitTrailer, runAt), (PdfDiagnosticCodes.XRefOffsetAdjusted, taken));
+            document.Diagnostics[2].Message.Should().Be(unnamedTable
+                ? string.Create(CultureInfo.InvariantCulture, $"The cross-reference section /Prev names at offset {runAt} was found {runAt - unnamed} bytes before it.")
+                : string.Create(CultureInfo.InvariantCulture, $"The cross-reference section /Prev names at offset {runAt} was found {run} bytes after it."));
+        }
+        else
+        {
+            document.Reader.Structure.Sections.Select(section => (section.NamedBy, section.State, section.Offset)).Skip(3).Should().Equal(
+                unnamedTable
+                    ? [("/Prev", XRefSectionState.Read, runAt), ("/XRefStm", XRefSectionState.Read, own)]
+                    : [("/Prev", XRefSectionState.Read, runAt)]);
+            document.Diagnostics.Select(diagnostic => (diagnostic.Code, diagnostic.Position)).Should().Equal(
+                unnamedTable
+                    ? [(PdfDiagnosticCodes.XRefOffsetAdjusted, older)]
+                    : [(PdfDiagnosticCodes.XRefOffsetAdjusted, older), (PdfDiagnosticCodes.XRefStreamPassedOver, own)]);
+        }
+
+        if (unnamedTable && maxTrailerLength > 0)
+        {
+            document.GetObject(new PdfObjectId(5)).Should().BeSameAs(PdfNull.Instance);
+        }
+        else
+        {
+            Text(document, 5).Should().Be("five");
         }
 
         document.WasRepaired.Should().BeFalse();

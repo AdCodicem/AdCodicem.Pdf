@@ -1855,15 +1855,17 @@ internal static class HybridFiles
     /// spaces, at <c>Run</c>, which start its line —, which a comment of dashes follows. The table past the comment, at
     /// <c>Older</c>, indexes objects 1 to 3, and names through <c>/Prev</c> the oldest table, at <c>Oldest</c> — or, where
     /// <paramref name="runBefore"/> is <c>"the oldest table"</c>, the first of <paramref name="run"/> spaces, at
-    /// <c>Run</c>, written between the two —. The oldest table indexes object 5, and names through <c>/XRefStm</c> stream
-    /// 12, or the first space of the run before it, where <paramref name="oldestNamesOwn"/> says so, and nothing otherwise.
-    /// The newest table, at <c>Newest</c>, indexes nothing, and names through <c>/XRefStm</c> stream 11 and through
-    /// <c>/Prev</c> the place 200 bytes past the start of stream 12, inside the comment, 240 bytes before the table past
-    /// it: a search near that place comes to stream 12, which lies past stream 11 and may be the newest table's own, and to
-    /// the table past the comment.
+    /// <c>Run</c>, written between the two —. Where <paramref name="unnamedTable"/> says so, a table that indexes nothing
+    /// and gives no <c>/Prev</c>, at <c>Unnamed</c>, which no link names, follows the table past the comment right away, and
+    /// what that table's <c>/Prev</c> names follows it in its place; <c>Unnamed</c> is -1 otherwise. The oldest table
+    /// indexes object 5, and names through <c>/XRefStm</c> stream 12, or the first space of the run before it, where
+    /// <paramref name="oldestNamesOwn"/> says so, and nothing otherwise. The newest table, at <c>Newest</c>, indexes
+    /// nothing, and names through <c>/XRefStm</c> stream 11 and through <c>/Prev</c> the place 200 bytes past the start of
+    /// stream 12, inside the comment, 240 bytes before the table past it: a search near that place comes to stream 12,
+    /// which lies past stream 11 and may be the newest table's own, and to the table past the comment.
     /// </summary>
-    public static (byte[] File, long Stream, long Own, long Run, long Older, long Oldest, long Newest) PassingOverAStreamAnOlderTableNamesPastWhiteSpace(
-        string runBefore, int run, bool oldestNamesOwn = true)
+    public static (byte[] File, long Stream, long Own, long Run, long Older, long Unnamed, long Oldest, long Newest) PassingOverAStreamAnOlderTableNamesPastWhiteSpace(
+        string runBefore, int run, bool oldestNamesOwn = true, bool unnamedTable = false)
     {
         var file = new HandWrittenFile(version: "1.5");
         var (catalog, pages, page) = Page(file);
@@ -1885,12 +1887,16 @@ internal static class HybridFiles
         var named = own + 200;
         file.Raw("%" + new string('-', (int)(named + 240 - file.Position - 2)) + "\n");
 
-        // The older table's /Prev, written in ten digits, names what follows the table: the run, or the oldest table.
+        // The older table's /Prev, written in ten digits, names what follows the table, past the table no link names where
+        // there is one: the run, or the oldest table.
         var older = file.Position;
         string Older(long previous) => Invariant(
             $"xref\n0 4\n0000000000 65535 f \n{Row(catalog)}{Row(pages)}{Row(page)}trailer\n<< /Size 13 /Root 1 0 R /Prev {previous:D10} >>\n");
-        var past = older + Older(0).Length;
+        var unnamed = unnamedTable ? "xref\n0 1\n0000000000 65535 f \ntrailer\n<< /Size 13 >>\n" : string.Empty;
+        var past = older + Older(0).Length + unnamed.Length;
         file.Raw(Older(past));
+        var unnamedAt = unnamedTable ? file.Position : -1;
+        file.Raw(unnamed);
 
         if (runBefore == "the oldest table")
         {
@@ -1903,7 +1909,7 @@ internal static class HybridFiles
         file.Raw(Invariant($"xref\n0 1\n0000000000 65535 f \n5 1\n{Row(five)}trailer\n<< /Size 13 {link}>>\n"));
         var newest = file.Position;
         file.Raw(Invariant($"xref\n0 1\n0000000000 65535 f \ntrailer\n<< /Size 13 /Root 1 0 R /Prev {named} /XRefStm {stream} >>\nstartxref\n{newest}\n%%EOF\n"));
-        return (file.Bytes, stream, own, runAt, older, oldest, newest);
+        return (file.Bytes, stream, own, runAt, older, unnamedAt, oldest, newest);
     }
 
     /// <summary>
