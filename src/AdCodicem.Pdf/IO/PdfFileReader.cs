@@ -625,7 +625,8 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// gives <c>/Type /XRef</c>, and the header is a token a load reads from the start of its line —: where each starts,
     /// where its header's object number ends, the offset the <c>/Prev</c> names, and the table. Null while there is none.
     /// Each the chain has not reached, at its header or inside its object number, is reported once the chain is read, but
-    /// where one of the reader's limits stopped the chain or cut what it reached (<see cref="ReportStreamsPassedOver"/>).
+    /// where one of the reader's limits left part of the chain unread, or white space past a trailer's window turned the
+    /// chain's reading of a section it names into a search (<see cref="ReportStreamsPassedOver"/>).
     /// </summary>
     /// <remarks>
     /// As many as the places passed over, which <see cref="MaxRelocationCandidates"/> counts, and let go once the chain is
@@ -650,6 +651,17 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// the reader's, not damage in the file, and the index is not rebuilt for it (ADR 34).
     /// </summary>
     private bool _cutByGuard;
+
+    /// <summary>
+    /// Whether white space and comments ran on past <see cref="PdfReaderLimits.MaxTrailerLength"/> where the chain names a
+    /// section, which was not read from there (<see cref="TryReadXRefSection"/>): the reading of that link turned into the
+    /// search near the offset, which may pass over a stream the reading would not have come to, and may find nothing, what
+    /// the section names left unread. Only <see cref="ReportStreamsPassedOver"/> reads it, which reports no stream passed
+    /// over where it is set: the guard's report stands for what the search passed over or left unread (ADR 34). The
+    /// section is looked for all the same as one that is not there — found moved past the white space, or missing and the
+    /// index rebuilt —, and the chain is not taken for one a guard cut (#289).
+    /// </summary>
+    private bool _whiteSpacePastGuard;
 
     /// <summary>
     /// Whether the index as last built had no room for a number it lacks, <see cref="PdfReaderLimits.MaxIndexEntries"/>
@@ -3693,8 +3705,11 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// possibly that table's own, another section taken first, that declares itself one — its dictionary gives
     /// <c>/Type /XRef</c>, and its header is a token a load reads from the start of its line — and that the chain has not
     /// reached, at its header or inside its object number (<see cref="_streamsPassedOver"/>): it may hold that table's rows,
-    /// which the index then lacks (#156). None is reported where one of the reader's limits stopped the chain, or cut what
-    /// it reached: the limit's report stands for what it left unread (ADR 34).
+    /// which the index then lacks (#156). None is reported where one of the reader's limits left part of the chain unread,
+    /// or where white space and comments at an offset the chain names run past <see cref="PdfReaderLimits.MaxTrailerLength"/>,
+    /// which turned the reading of the section there into the search near the offset (<see cref="_whiteSpacePastGuard"/>):
+    /// the limit's report stands for what it left unread, or for what that search passed over or did not find (ADR 34).
+    /// Nor is it asked where the chain indexed nothing, the whole file then rebuilt.
     /// </summary>
     /// <remarks>
     /// Told here, once the chain is read, and nowhere sooner: a link of an older section that reaches the stream, where it
@@ -3703,15 +3718,20 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// told by its data, not by the byte a reading of it started at, as the search tells the stream an <c>/XRefStm</c> read
     /// (<see cref="NumberRunsInto"/>): a link that names a place inside its header's object number, past its first byte,
     /// reads the same dictionary and the same data from there, and reaches that stream as one that names its header does. A
-    /// limit that stopped the chain — the number of its sections, rows it cut or an index it filled, a trailer or a value it
-    /// cut — may hide the link that names the stream, as an older table's <c>/XRefStm</c> or <c>/Prev</c> may name any
-    /// offset: what lies past the guard is the guard's, unknown rather than missing (#264). What it costs is a look at the
-    /// records of the sections the chain reached, and at as many positions as the header's object number has bytes for each
-    /// stream: nothing is read to report it, the stream's dictionary having been parsed in the search's window when it was
-    /// passed over, and its line lexed and its number's digits scanned there when the search took another section. Reported
-    /// once for each stream, at the stream, however many searches passed over it; the index is not left incomplete for it,
-    /// nor is anything looked for in its place: whether it is the table's own is unknown, and no link the chain read reaches
-    /// it.
+    /// limit that left part of the chain unread — the number of its sections, a section it cut before the section said what
+    /// it is, rows it cut or an index it filled, a trailer it cut, an object it cut that a value the rows or a link are read
+    /// with leads to — may hide the link that names the stream, as an older table's <c>/XRefStm</c> or <c>/Prev</c> may name
+    /// any offset: what lies past the guard is the guard's, unknown rather than missing (#264). So may white space and
+    /// comments past a trailer's window where the chain names a section, which is not read from there: the search near the
+    /// offset stands for that reading, and may pass over a stream the reading would not have come to, or find nothing, what
+    /// the section names left unread — the guard's, though the section is looked for as one that is not there (#289). A cut
+    /// that leaves nothing unread — data past a stream's last row, an object past a whole reference it holds — hides no
+    /// link, and leaves the report made. What it costs is a look at the records of the sections the chain reached, and at as
+    /// many positions as the header's object number has bytes for each stream: nothing is read to report it, the stream's
+    /// dictionary having been parsed in the search's window when it was passed over, and its line lexed and its number's
+    /// digits scanned there when the search took another section. Reported once for each stream, at the stream, however
+    /// many searches passed over it; the index is not left incomplete for it, nor is anything looked for in its place:
+    /// whether it is the table's own is unknown, and no link the chain read reaches it.
     /// </remarks>
     private void ReportStreamsPassedOver()
     {
@@ -3720,9 +3740,13 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
             return;
         }
 
-        // A limit that stopped the chain, or cut a section it reached, may hide the link that names a stream passed over, and
-        // leaves what lies past it to its own report: each marks the chain cut by a guard, or filling the index (ADR 34).
-        if (ChainStoppedByGuard)
+        // A limit that left part of the chain unread may hide the link that names a stream passed over, and leaves what lies
+        // past it to its own report: each marks the chain cut by a guard, or filling the index. White space past a trailer's
+        // window where the chain names a section, which turned the reading of that link into a search, may hide it too, or
+        // have made the search that passed the stream over: it is marked apart, the chain not taken for one a guard cut
+        // (#289). A cut that left nothing unread marks neither — data past a stream's last row, an object past a whole
+        // reference it holds —, and the report is made (ADR 34).
+        if (ChainStoppedByGuard || _whiteSpacePastGuard)
         {
             return;
         }
@@ -5013,10 +5037,11 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// One the search does not come back to, another section taken first, is reported once the chain is read, where it
     /// declares itself a section, as a place that cannot be read is taken only where it does — its dictionary gives
     /// <c>/Type /XRef</c>, and its header is a token a load reads from the start of its line —, where the chain has not
-    /// reached it, at its header or inside its object number, and where none of the reader's limits stopped the chain or
-    /// cut what it reached (<see cref="ReportStreamsPassedOver"/>): an object that gives only a <c>/W</c>, or a header a
-    /// comment or a string on its line holds, is not, whether it reads or not. The search is never asked for a section
-    /// that is there and cannot be read (<see cref="DeclaresItselfASection"/>): what is near it is another.
+    /// reached it, at its header or inside its object number, and where none of the reader's limits left part of the chain
+    /// unread, nor white space past a trailer's window turned the chain's reading of a section it names into a search
+    /// (<see cref="ReportStreamsPassedOver"/>): an object that gives only a <c>/W</c>, or a header a comment or a string on
+    /// its line holds, is not, whether it reads or not. The search is never asked for a section that is there and cannot be
+    /// read (<see cref="DeclaresItselfASection"/>): what is near it is another.
     /// </remarks>
     /// <param name="offset">The offset that names the section, as written.</param>
     /// <param name="section">The record of the section, which takes what was read where it was found.</param>
@@ -5519,11 +5544,14 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
             // White space and comments fill a trailer's window there and run on past it: the first token past them is the
             // guard's to hide, as a dictionary it cuts is (ADR 34), and the section is not read from there. It is looked for
             // as one not there is: near the offset, where the search may find it past them, or, for the one startxref names,
-            // by rebuilding the index. A place a search near an offset tries starts at a token, and never gets here.
+            // by rebuilding the index. A place a search near an offset tries starts at a token, and never gets here: the
+            // offset is one the chain names. What that search passes over, or what the section names past the guard, is
+            // the guard's, and no stream passed over is reported (ReportStreamsPassedOver).
             ReachLimit(
                 PdfLimit.Trailer,
                 $"White space and comments run past {PdfLimitGuard.FormatLength(_guard.Bound(PdfLimit.Trailer))} where a cross-reference section is named; the section was not read from there.",
                 absolute);
+            _whiteSpacePastGuard = true;
             section.Fault = "holds neither the xref keyword nor an object";
             section.State = XRefSectionState.NotFound;
             return section.State;

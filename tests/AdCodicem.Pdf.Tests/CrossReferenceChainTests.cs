@@ -6668,6 +6668,84 @@ public class CrossReferenceChainTests
     }
 
     [Theory]
+    [InlineData(300, 256)]
+    [InlineData(440, 256)]
+    [InlineData(300, 0)]
+    [InlineData(440, 0)]
+    [InlineData(0, 256)]
+    public void A_stream_passed_over_near_a_hybrid_table_s_prev_is_left_to_the_trailer_guard_where_white_space_past_it_turned_the_prev_s_reading_into_the_search(
+        int run, int maxTrailerLength)
+    {
+        // The newest table's /Prev names the first of 300 or 440 spaces before the oldest table, and its /XRefStm stream 11,
+        // past which stream 12, of /Type /XRef and no /Prev, may be the table's own. Read whole, the /Prev crosses the spaces
+        // and reads the oldest table where it is named: no search runs, and nothing is passed over. Where MaxTrailerLength,
+        // lowered to 256, cuts the white space, the section is not read from there, and the search near the offset passes
+        // stream 12 over and takes the oldest table past the run: stream 12 was reported as a stream the chain did not read,
+        // a report only the guard made, laid on the file. The limit's report stands for what the search passed over, and
+        // nothing is reported of the stream (#156, #289, ADR 34). With no run, the /Prev names the table itself.
+        var (file, runAt, oldest, stream, _, newest) = HybridFiles.PrevNamingWhiteSpaceBeforeTheOldestTable(run);
+        var limits = maxTrailerLength > 0 ? PdfReaderLimits.Default with { MaxTrailerLength = maxTrailerLength } : PdfReaderLimits.Default;
+        using var document = PdfDocument.Open(file, new PdfReaderOptions { Limits = limits });
+        var cut = maxTrailerLength > 0 && run > maxTrailerLength;
+
+        document.Reader.Structure.Sections.Select(section => (section.NamedBy, section.State, section.Kind, section.Offset)).Should().Equal(
+            ("startxref", XRefSectionState.Read, XRefSectionKind.Table, newest),
+            ("/XRefStm", XRefSectionState.Read, XRefSectionKind.Stream, stream),
+            ("/Prev", cut ? XRefSectionState.Relocated : XRefSectionState.Read, XRefSectionKind.Table, cut ? oldest : runAt));
+        document.Diagnostics.Select(diagnostic => diagnostic.Code).Should().Equal(
+            cut ? [PdfDiagnosticCodes.LimitTrailer, PdfDiagnosticCodes.XRefOffsetAdjusted] : []);
+        document.WasRepaired.Should().BeFalse();
+    }
+
+    [Theory]
+    [InlineData("the oldest table", true, 1000, 512)]
+    [InlineData("the oldest table", false, 1000, 512)]
+    [InlineData("the stream", true, 700, 256)]
+    [InlineData("the oldest table", true, 1000, 0)]
+    [InlineData("the oldest table", false, 1000, 0)]
+    [InlineData("the oldest table", true, 0, 512)]
+    [InlineData("the oldest table", true, 200, 512)]
+    [InlineData("the stream", true, 700, 0)]
+    [InlineData("the stream", true, 400, 256)]
+    public void A_stream_passed_over_near_a_hybrid_table_s_prev_is_left_to_the_trailer_guard_where_white_space_past_it_keeps_what_an_older_link_names_unread(
+        string runBefore, bool oldestNamesOwn, int run, int maxTrailerLength)
+    {
+        // The newest table's /Prev falls inside a comment near stream 12, of /Type /XRef and no /Prev, which may be the
+        // table's own: the search near it passes stream 12 over and takes the table past the comment. That table's /Prev
+        // names the first of a run of spaces before the oldest table, whose /XRefStm names stream 12 — or names the oldest
+        // table, whose /XRefStm names the first of a run of spaces before stream 12. Read whole, the chain crosses the run,
+        // and reads stream 12 through that /XRefStm: nothing is reported of it. Where MaxTrailerLength cuts a run of 1,000
+        // or 700 spaces, the section is not read from there, and the search near the offset finds nothing within 512 bytes:
+        // the link that names stream 12 is the guard's to hide, and stream 12 was reported as a stream the chain did not
+        // read, the guard's cut laid on the file. The limit's report stands for it, beside the section reported missing
+        // (#289), and nothing is reported of the stream (#156, ADR 34) — even where the oldest table names nothing, which
+        // the chain read whole finds, and reports. A run the guard does not cut, or one of 400 spaces, within the search's
+        // reach, past which it finds stream 12 moved, leaves stream 12 read.
+        var (file, _, own, runAt, older, _, _) = HybridFiles.PassingOverAStreamAnOlderTableNamesPastWhiteSpace(runBefore, run, oldestNamesOwn);
+        var limits = maxTrailerLength > 0 ? PdfReaderLimits.Default with { MaxTrailerLength = maxTrailerLength } : PdfReaderLimits.Default;
+        using var document = PdfDocument.Open(file, new PdfReaderOptions { Limits = limits });
+        var cut = maxTrailerLength > 0 && run > maxTrailerLength;
+
+        document.Diagnostics.Select(diagnostic => diagnostic.Code).Should().Equal(
+            !cut
+                ? oldestNamesOwn
+                    ? [PdfDiagnosticCodes.XRefOffsetAdjusted]
+                    : [PdfDiagnosticCodes.XRefOffsetAdjusted, PdfDiagnosticCodes.XRefStreamPassedOver]
+                : run < 512
+                    ? [PdfDiagnosticCodes.XRefOffsetAdjusted, PdfDiagnosticCodes.LimitTrailer, PdfDiagnosticCodes.XRefOffsetAdjusted]
+                    : [PdfDiagnosticCodes.XRefOffsetAdjusted, PdfDiagnosticCodes.LimitTrailer, PdfDiagnosticCodes.XRefSectionMissing]);
+        document.Diagnostics[0].Position.Should().Be(older);
+        document.Diagnostics[^1].Position.Should().Be(!cut ? (oldestNamesOwn ? older : own) : run < 512 ? own : runAt);
+
+        if (cut)
+        {
+            document.Diagnostics[1].Position.Should().Be(runAt);
+        }
+
+        document.WasRepaired.Should().BeFalse();
+    }
+
+    [Theory]
     [InlineData("a header in a comment", false)]
     [InlineData("a header in a string", false)]
     [InlineData("a stream of no type", false)]
