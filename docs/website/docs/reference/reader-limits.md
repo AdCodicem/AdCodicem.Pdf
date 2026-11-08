@@ -18,7 +18,7 @@ document instead, in [Read or refuse a document that reaches a limit](../guides/
 | `MaxObjectLength` | 16 MB | An object that long, the data of a stream aside, written in the file or held by an object stream: an array of a million references | The object as far as the bound | `limit.object` |
 | `MaxXRefSectionLength` | 64 MB | A classic cross-reference table of more than about 3.3 million entries, measured from where it is read, the white space and comments an offset that names it falls short by included ([#289](https://github.com/AdCodicem/AdCodicem.Pdf/issues/289)) | The entries within the bound | `limit.xref-section-length` |
 | `MaxXRefSectionCount` | 1,024 | A document saved incrementally more than a thousand times | The newest sections | `limit.xref-section-count` |
-| `MaxTrailerLength` | 64 KB | A trailer that long, or a cross-reference stream's dictionary — its `/Index` grows with every scattered update —, never that stream's data, read from the stream's object header; and, counted apart, as much white space and comments as an offset that names a cross-reference section falls short of it by | The trailer as far as the bound, the chain ending there — near the offset a hybrid table's `/Prev` names too, where a stream whose dictionary it cut keeps its place in the search, whatever `/Prev` the cut may hide ([#156](https://github.com/AdCodicem/AdCodicem.Pdf/issues/156)) —; past white space and comments that run on past it, nothing read from that offset, the section looked for as one that is not there: near the offset, where a search may find it past them, or, for the one `startxref` names, by rebuilding the index | `limit.trailer` |
+| `MaxTrailerLength` | 64 KB | A trailer that long, or a cross-reference stream's dictionary — its `/Index` grows with every scattered update —, never that stream's data, read from the stream's object header; and, counted apart, as much white space and comments as an offset that names a cross-reference section falls short of it by | The trailer as far as the bound, the chain ending there — near the offset a hybrid table's `/Prev` names too, where a stream whose dictionary it cut keeps its place in the search, whatever `/Prev` the cut may hide ([#156](https://github.com/AdCodicem/AdCodicem.Pdf/issues/156)) —; past white space and comments that run on past it, nothing read from that offset, the section looked for as one that is not there: near the offset, where a search may find it past them, or, for the one `startxref` names, by rebuilding the index, and no cross-reference stream a search passed over reported as one the chain did not reach (`xref.stream-passed-over`) ([#289](https://github.com/AdCodicem/AdCodicem.Pdf/issues/289)) | `limit.trailer` |
 | `MaxIndexEntries` | 8,388,607 | A document of more objects than ISO 32000-1's Annex C advises; or a cross-reference stream of one-byte rows, of which 256 MB decode from a few hundred bytes | The object numbers indexed first: the newest sections', a rebuild's first | `limit.index-entries` |
 | `MaxFilterChainLength` | 64 | A `/Filter` array naming more filters, `/Crypt` among them: real streams name one to three, and a hostile array of millions costs decoding a few microseconds a filter, and some filters a table of tens of kilobytes, whatever their data | The data as the filters within the bound decoded it; the elements past it are not read | `limit.filter-chain` |
 
@@ -195,23 +195,28 @@ there. Raise PdfReaderLimits.MaxDecodedStreamLength to read past it.
   filter the library does not know, an element of `/Filter` that names none, a `/Filter` that is neither a name nor an
   array, Flate data corrupt before its first byte decodes — makes the section unreadable too, whatever `/W`, `/Index` or
   `/Size` the guard cut: it holds no row whatever the counts declare, and the fault is the file's, as read whole
-  ([#221](https://github.com/AdCodicem/AdCodicem.Pdf/issues/221)). To tell whether they do, the data is decoded beside
-  the cut, whatever value the guard cut: `MaxDecodedStreamLength` may be reached there, reported before the guard that
-  cut the value, which is reported once the chain is read, and thrown by `Open` in its place under `ThrowOnLimit`. The
-  look at what a hybrid table's `/Prev` names, made for its `/XRefStm`, decodes no stream of `/Type /XRef` to tell, such
-  a stream keeping its place whatever its data holds: that `/Prev`'s own reading decodes it. Data whose length the file
-  gives, its filters written direct, decoded whole, that holds fewer rows than the counts read declare however few bytes
-  the widths read leave a row lacks them whatever the cut hides: the section is read as read whole, lacking rows, its
-  trailer merged and the index rebuilt, and the object the guard cut is loaded once the chain is read, which reaches the
-  guard. The rows the data may hold at the fewest bytes a row may take, read with the cut value, are the guard's: the
-  chain ends at the section, as where rows a guard cut, and the validator says it unchecked; the chain goes on only past
-  data that holds none. The rows a cross-reference stream's data lacks, where its `/Length` so leads and its data was
-  taken to the first `endstream`, are the guard's too, unless what follows that `endstream` proves it the stream's own,
-  as above: they are then the file's to lack, and the index is rebuilt. An object the chain read through a reference the
-  cut left whole is loaded once the chain is read only for a value it keeps, or for what the offset a section is named
-  at holds, which is read as a load reads it, its reports kept: not for a place near there it guessed the section was
-  moved to and dropped as none, nor for the `/Prev` of the stream a hybrid table's `/XRefStm` read, which the search
-  near the offset that table's `/Prev` names reads to tell that stream's place, where it does not take the stream.
+  ([#221](https://github.com/AdCodicem/AdCodicem.Pdf/issues/221)). To tell whether they do, the data is read and
+  decoded beside the cut, whatever value the guard cut: a guard that reading or decoding it meets — `MaxStreamLength`,
+  `MaxFilterChainLength`, `MaxDecodedStreamLength` — may be reached there, reported before the guard that cut the
+  value, which is reported once the chain is read, and thrown by `Open` in its place under `ThrowOnLimit`. The look at
+  what a hybrid table's `/Prev` names, made for its `/XRefStm`, decodes no stream of `/Type /XRef` to tell, such a
+  stream keeping its place whatever its data holds: that `/Prev`'s own reading decodes it. It decodes a stream of no
+  type, beside a cut value or with every value read, and drops what that decoding reports but a guard it reaches, which
+  is reported there, once — ahead of what the `/XRefStm`'s search reports, and not again by the `/Prev`'s own reading
+  of the stream, nor by a later read of its data — and thrown by `Open` there under `ThrowOnLimit`. Data whose length
+  the file gives, its filters written direct, decoded whole, that holds fewer rows than the counts read declare however
+  few bytes the widths read leave a row lacks them whatever the cut hides: the section is read as read whole, lacking
+  rows, its trailer merged and the index rebuilt, and the object the guard cut is loaded once the chain is read, which
+  reaches the guard. The rows the data may hold at the fewest bytes a row may take, read with the cut value, are the
+  guard's: the chain ends at the section, as where rows a guard cut, and the validator says it unchecked; the chain goes
+  on only past data that holds none. The rows a cross-reference stream's data lacks, where its `/Length` so leads and
+  its data was taken to the first `endstream`, are the guard's too, unless what follows that `endstream` proves it the
+  stream's own, as above: they are then the file's to lack, and the index is rebuilt. An object the chain read through a
+  reference the cut left whole is loaded once the chain is read only for a value it keeps, or for what the offset a
+  section is named at holds, which is read as a load reads it, its reports kept: not for a place near there it guessed
+  the section was moved to and dropped as none, nor for the `/Prev` of the stream a hybrid table's `/XRefStm` read,
+  which the search near the offset that table's `/Prev` names reads to tell that stream's place, where it does not take
+  the stream.
 - A stream read from a document decodes under **that document's** limits, however long after opening you decode it.
   A stream you build in memory decodes under `PdfReaderLimits.Default`.
 - A classic trailer that ends within the window its cross-reference table was read through is read whole, whatever
@@ -223,7 +228,10 @@ there. Raise PdfReaderLimits.MaxDecodedStreamLength to read past it.
   above. It bounds, apart, the white space and comments an offset that names a section falls short by, so that a
   dictionary is cut only where it alone runs past the bound: white space and comments that run on past it reach the
   guard, the section is not read from that offset, and it is looked for as one that is not there — near the offset,
-  where a search may find it past them, or, for the one `startxref` names, by rebuilding the index.
+  where a search may find it past them, or, for the one `startxref` names, by rebuilding the index. What that search
+  passes over, or what the section would have named, is the guard's: no cross-reference stream passed over near a
+  hybrid table's `/Prev` is then reported as one the chain did not reach
+  ([#289](https://github.com/AdCodicem/AdCodicem.Pdf/issues/289)).
 - Until the reader decodes streams a piece at a time, a stream that decodes past about 2 GB is cut there, and
   reported, even under `Unbounded`. A stream's data is read in one piece, and data past about 2 GB is read up to
   there, and reported under `limit.stream-length`, even under `Unbounded`.

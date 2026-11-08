@@ -199,23 +199,30 @@ one a newer table's `/XRefStm` read, which is never taken in its place
 [#332](https://github.com/AdCodicem/AdCodicem.Pdf/issues/332)), a stream near the offset may be the table's own, which
 nothing names, but only one that starts no sooner than that stream — told by its data, whatever byte of its header the
 `/XRefStm` names, so that where it names a place inside the stream's object number, the header that starts before that
-place is the stream itself —: under updates appended to the file, a revision's own stream lies past every older
-revision's sections, and a stream before it — a first revision's, which gives no `/Prev`, or an older revision's — is
-tried where it comes nearest, whatever its `/Prev`. Of the streams that start there or past it, one whose dictionary,
-read whole, gives no `/Prev`, or the one the table's names — read as the chain reads it, a real with no fractional part
-as its integer, a reference through what a section already read places there, one that gives no offset in the file as
-another offset —, is tried once every other place was, nearest first, but never the stream the `/XRefStm` read where it
-gives none; a dictionary one of the reader's limits cut, whose `/Prev` the cut may hide, is tried where it comes
-nearest, the section found moved and the limit's where it declared itself one before the cut. Such a stream passed over
-for another section, which the chain does not reach, is reported once the chain is read (`xref.stream-passed-over`), the
-map left as it is: if it is the table's own, the map the chain read lacks what only it indexes, found only by a rebuild
-for another cause. It is reported only where it declares itself a cross-reference stream — its dictionary gives
-`/Type /XRef`, and its header is a token a load reads from the start of its line —, as a place that cannot be read is
-taken only where it does: not an object that only gives a `/W`, nor a header a comment or a string on its line holds,
-whether it reads or not. A stream the chain reaches — an older section names it, or a later search finds it moved — is
-reported as the chain finds it, read or not; and where one of the reader's limits stopped the chain or cut what it
-reached, which may hide the link that names the stream, the limit's report stands for it, and nothing is said of the
-stream. Four cases fall short: an older revision's stream before the one the `/XRefStm` read, nearer than its own table,
+place is the stream itself, and where it names the `+` the number is written with, so is the header found at the digit
+past it —: under updates appended to the file, a revision's own stream lies past every older revision's sections, and a
+stream before it — a first revision's, which gives no `/Prev`, or an older revision's — is tried where it comes
+nearest, whatever its `/Prev`. Of the streams that start there or past it, one whose dictionary, read whole, gives no
+`/Prev`, or the one the table's names — read as the chain reads it, a real with no fractional part as its integer, a
+reference through what a section already read places there, one that gives no offset in the file as another offset —,
+is tried once every other place was, nearest first, but never the stream the `/XRefStm` read where it gives none; a
+dictionary one of the reader's limits cut, whose `/Prev` the cut may hide, is tried where it comes nearest, the section
+found moved and the limit's where it declared itself one before the cut. Such a stream passed over for another section,
+which the chain does not reach, at its header or inside its object number, is reported once the chain is read
+(`xref.stream-passed-over`), the map left as it is: if it is the table's own, the map the chain read lacks what only it
+indexes, found only by a rebuild for another cause. It is reported only where it declares itself a cross-reference
+stream — its dictionary gives `/Type /XRef`, and its header is a token a load reads from the start of its line —, as a
+place a fault of the file keeps from being read is taken only where it does: not an object that only gives a `/W`, nor
+a header a comment or a string on its line holds, whether it reads or not. A stream the chain reaches — a section names
+it, or a later search finds it moved —, at its header or inside its object number, from which a reading reads the same
+stream, is reported as the chain finds it, read or not. Where one of the reader's limits left part of the chain unread
+— the number of its sections, a section it cut before the section said what it is, rows, a trailer, an object a value
+the rows or a link are read with leads to, or the map it filled —, which may hide the link that names the stream, or
+where white space and comments at an offset the chain names run past `MaxTrailerLength`, which turns the reading of
+the section there into the search near the offset ([#289](https://github.com/AdCodicem/AdCodicem.Pdf/issues/289)), the
+limit's report stands for what it left unread, or for what that search passed over or did not find, and nothing is said
+of the stream; a cut that leaves nothing unread — data past a stream's last row, an object past a whole reference it
+holds — leaves the report made. Four cases fall short: an older revision's stream before the one the `/XRefStm` read, nearer than its own table,
 is taken, and where it gives no `/Prev` the chain ends there, what only the sections it skips index reading as null, or
 as the older revision the stream gives, nothing reported of it but the section found moved — unless the catalog is among
 it: the map is then rebuilt as the document opens, which finds it, and the validator says the file holds no catalog
