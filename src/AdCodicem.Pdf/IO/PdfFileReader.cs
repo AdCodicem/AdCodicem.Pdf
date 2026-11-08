@@ -129,7 +129,11 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// once, at its first reading. Real files miss by a few bytes, with the section the nearest candidate; a file packed
     /// with object headers there, or with sections that all miss, gets no more attempts. A place passed over as possibly a
     /// hybrid table's own stream, tried again once every other place near it was, is not counted again, and is tried even
-    /// once the bound stops new places: the places are read at most twice as many times as the bound. Not a guard a valid
+    /// once the bound stops new places: the places are tried at most twice as many times as the bound. The stream a hybrid
+    /// table's <c>/XRefStm</c> read, put back unread, is counted where it is read, and the bound may stop it. Past the
+    /// bound, the place a hybrid table's <c>/Prev</c> names, where it is the nearest place not yet read, is still asked
+    /// whether that <c>/Prev</c> keeps its place there, in the look <see cref="KeepsItsPlace"/> makes once for each hybrid
+    /// table, beside the places tried, and the section is left to that <c>/Prev</c> where it does. Not a guard a valid
     /// file can reach: a valid file's sections are where its chain names them.
     /// </summary>
     private const int MaxRelocationCandidates = 32;
@@ -4971,8 +4975,12 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// be the table's own, a search for its <c>endstream</c> aside. A place so passed over counts once toward
     /// <see cref="MaxRelocationCandidates"/>, at its first reading: read again when the search comes back to it, through
     /// windows that grow from 64 KB up to <see cref="PdfReaderLimits.MaxTrailerLength"/> as a stream's dictionary is read,
-    /// it is not counted again, and is tried even once the bound stops new places, so that places are read at most twice
-    /// as many times as the bound.
+    /// it is not counted again, and is tried even once the bound stops new places, so that the places tried stay within
+    /// twice the bound; the stream the <c>/XRefStm</c> read, put back unread, is counted where it is read, and the bound
+    /// may stop it. Past the bound, the place a hybrid table's <c>/Prev</c> names is still asked whether that
+    /// <c>/Prev</c> keeps its place there, where it is the nearest place not yet read, in the look
+    /// <see cref="KeepsItsPlace"/> makes once for each hybrid table, and where it does, the section is left to that
+    /// <c>/Prev</c>, as with places to spare; where a nearer place is left unread, the bound stops the search before it.
     /// One the search does not come back to, another section taken first, is reported once the chain is read, where it
     /// declares itself a section, as a place that cannot be read is taken only where it does — its dictionary gives
     /// <c>/Type /XRef</c>, and its header is a token a load reads from the start of its line —, where the chain has not
@@ -5139,10 +5147,14 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
             }
 
             // Each place counts once, at its first reading: a place passed over and put back is tried again uncounted, even
-            // once the bound stops new places, a place already counted, so that the places read stay within twice the bound;
-            // the stream the /XRefStm read, put back unread, is counted where it is read. Once the bound is reached, the places
-            // the window holds that were not read are left, and the search goes on to those put back. What the /Prev of the
-            // stream the /XRefStm read led to, judged above, is forgotten with the place the bound leaves.
+            // once the bound stops new places, a place already counted, so that the places tried stay within twice the bound;
+            // the stream the /XRefStm read, put back unread, is counted where it is read, and the bound may stop it. Once the
+            // bound is reached, the places the window holds that were not read are left, and the search goes on to those put
+            // back — but for the place a hybrid table's /Prev names, asked above, before the bound, where it is the nearest
+            // place not yet read: whether that /Prev keeps its place there is told as with places to spare, in the look
+            // KeepsItsPlace makes once for each hybrid table, and where it does, the section is left to that /Prev there.
+            // Where a nearer place is left unread, the bound stops the search before it. What the /Prev of the stream the
+            // /XRefStm read led to, judged above, is forgotten with the place the bound leaves.
             if (!retry || i == uncountedAt)
             {
                 if (_relocationCandidatesTried >= MaxRelocationCandidates)
