@@ -683,3 +683,6 @@ reports in r9-fix-result.json.
 - Commit bodies not rewritten (status.md): 5de20b7 and da0e157 false beside a cut value until 68a55fa; 68a55fa's 'so
   that it reports nothing' holds of its diff, a guard reached standing since e157359; e3d0c99 was pushed while the
   check used RollBack.
+- 2026-11-08: review round 10 launched: wf_90e4d823-0f8 (task w4r3r7jr8), script lot19-review-r10.js, range
+  da2b06f..c2a2aaa, lenses own-stream, undecoded, src-texts, tests, docs, batch, a refuter per finding; eight agents at
+  a time, two dotnet processes each; brief review-brief-win.md (Windows paths, gh CLI, the relaxed resource rule).
