@@ -6778,6 +6778,34 @@ public class CrossReferenceChainTests
     }
 
     [Theory]
+    [InlineData(600, false, true)]
+    [InlineData(600, true, true)]
+    [InlineData(5000, false, false)]
+    public void A_stream_passed_over_near_a_hybrid_table_s_prev_is_reported_only_where_its_line_starts_within_the_reach_of_the_line_test(
+        int lead, bool lineBroken, bool reported)
+    {
+        // As above, the table's /Prev falls 20 bytes into object 9, of /Type /XRef, which gives no /Prev: the search passes
+        // it over as possibly the table's own, and takes the oldest table. Its header follows object 8 on a line that starts
+        // 600 bytes before it, before the bytes the search reads: the line test reads those again with as many as 4,096
+        // bytes before them, lexes the line from its start, and finds the header a token there, which is reported. An end
+        // of line before the header starts its line within the bytes searched, reported alike. A line that starts more than
+        // 4,096 bytes before them declares nothing, as for a place that cannot be read, and object 9 is not reported (#156,
+        // #171).
+        var (file, oldest, stream, at, newest) = HybridFiles.PrevFallingInsideAStreamOnALongLine(lead, lineBroken);
+        using var document = PdfDocument.Open(file);
+
+        document.Reader.Structure.Sections.Select(section => (section.NamedBy, section.State, section.Kind, section.Offset)).Should().Equal(
+            ("startxref", XRefSectionState.Read, XRefSectionKind.Table, newest),
+            ("/XRefStm", XRefSectionState.Read, XRefSectionKind.Stream, stream),
+            ("/Prev", XRefSectionState.Relocated, XRefSectionKind.Table, oldest));
+        document.Diagnostics.Select(diagnostic => diagnostic.Code).Should().Equal(
+            reported ? [PdfDiagnosticCodes.XRefOffsetAdjusted, PdfDiagnosticCodes.XRefStreamPassedOver] : [PdfDiagnosticCodes.XRefOffsetAdjusted]);
+        document.Diagnostics[^1].Position.Should().Be(reported ? at : oldest);
+        Text(document, 5).Should().Be("old five");
+        document.WasRepaired.Should().BeFalse();
+    }
+
+    [Theory]
     [InlineData("a header in a comment")]
     [InlineData("a header in a string")]
     [InlineData("a stream of no type")]

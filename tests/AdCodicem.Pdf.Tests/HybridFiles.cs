@@ -903,6 +903,39 @@ internal static class HybridFiles
     }
 
     /// <summary>
+    /// A one-page document saved twice. The update writes object 4, <c>(four)</c>, and its stream, stream 21, at
+    /// <c>Stream</c>, which indexes it and itself and gives no <c>/Prev</c>; then a line that starts with object 8, a
+    /// string of <paramref name="lead"/> <c>x</c>, followed by a space — or by an end of line, where
+    /// <paramref name="lineBroken"/> says so, the next line starting at object 9 —, and holds the header of object 9, at
+    /// <c>Place</c>, a stream of <c>/Type /XRef</c> that gives <c>/W [1 1 1]</c> and no <c>/Size</c>, its data three bytes;
+    /// then a comment, object 5, <c>(old five)</c>, and the oldest table, at <c>Oldest</c>, which indexes the first three
+    /// objects and object 5, within 512 bytes of object 9. The update's table, at <c>Newest</c>, indexes stream 21, and
+    /// names it through <c>/XRefStm</c>, and through <c>/Prev</c> the place 20 bytes past <c>Place</c>: a search near it
+    /// comes to object 9, which lies past stream 21 and may be the table's own, then to the oldest table. Where
+    /// <paramref name="lead"/> is 600 or more, and the line is not broken, the line starts before the bytes that search
+    /// reads; where it is 5,000, more than 4,096 bytes before them.
+    /// </summary>
+    public static (byte[] File, long Oldest, long Stream, long Place, long Newest) PrevFallingInsideAStreamOnALongLine(int lead, bool lineBroken)
+    {
+        var file = new HandWrittenFile(version: "1.5");
+        var (catalog, pages, page) = Page(file);
+        var four = file.Object(4, "(four)");
+        var stream = file.Position;
+        var rows = StreamRows((1, four, 0), (1, stream, 0));
+        file.Object(21, Invariant($"<< /Type /XRef /Size 22 /W [1 4 2] /Index [4 1 21 1] /Length {rows.Length} >>\nstream\n{rows}\nendstream"));
+        var line = "8 0 obj (" + new string('x', lead) + ") endobj" + (lineBroken ? "\n" : " ");
+        var at = file.Position + line.Length;
+        file.Raw(line + "9 0 obj << /Type /XRef /W [1 1 1] /Length 3 >> stream\n\u0000\u0000\u0000\nendstream\nendobj\n");
+        file.Raw("%" + new string('-', 40) + "\n");
+        var oldFive = file.Object(5, "(old five)");
+        var oldest = file.Position;
+        file.Raw(Invariant($"xref\n0 4\n0000000000 65535 f \n{Row(catalog)}{Row(pages)}{Row(page)}5 1\n{Row(oldFive)}trailer\n<< /Size 22 /Root 1 0 R >>\nstartxref\n{oldest}\n%%EOF\n"));
+        var newest = file.Position;
+        file.Raw(Invariant($"xref\n0 1\n0000000000 65535 f \n21 1\n{Row(stream)}trailer\n<< /Size 22 /Root 1 0 R /Prev {at + 20} /XRefStm {stream} >>\nstartxref\n{newest}\n%%EOF\n"));
+        return (file.Bytes, oldest, stream, at, newest);
+    }
+
+    /// <summary>
     /// A document saved four times, each revision but the last a hybrid file's. The first writes the catalog, an empty page
     /// tree and object 7, <c>(seven)</c>, its stream, stream 9, at <c>First</c>, which indexes object 7 and itself, and
     /// its table, which indexes the catalog and the page tree and names stream 9 through <c>/XRefStm</c>. Past a comment of
