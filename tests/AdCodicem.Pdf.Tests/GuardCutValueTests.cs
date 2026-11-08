@@ -3914,22 +3914,33 @@ public class GuardCutValueTests
     }
 
     [Theory]
-    [InlineData("")]
-    [InlineData("/Type /XRef ")]
-    public void A_guard_reached_decoding_a_stream_beside_a_value_a_guard_cut_is_reported_once_whatever_the_look_at_the_prev_s_place_drops(string type)
+    [InlineData("", "/Foo", "/W", 50, new[] { PdfDiagnosticCodes.LimitStreamLength, PdfDiagnosticCodes.XRefOffsetAdjusted, PdfDiagnosticCodes.XRefHybridStreamLost, PdfDiagnosticCodes.FilterUnsupported, PdfDiagnosticCodes.XRefOffsetAdjusted })]
+    [InlineData("/Type /XRef ", "/Foo", "/W", 50, new[] { PdfDiagnosticCodes.XRefHybridStreamLost, PdfDiagnosticCodes.LimitStreamLength, PdfDiagnosticCodes.FilterUnsupported, PdfDiagnosticCodes.XRefSectionUnreadable })]
+    [InlineData("", "/Foo", null, 50, new[] { PdfDiagnosticCodes.LimitStreamLength, PdfDiagnosticCodes.XRefOffsetAdjusted, PdfDiagnosticCodes.XRefHybridStreamLost, PdfDiagnosticCodes.FilterUnsupported, PdfDiagnosticCodes.XRefOffsetAdjusted })]
+    [InlineData("/Type /XRef ", "/Foo", null, 50, new[] { PdfDiagnosticCodes.XRefHybridStreamLost, PdfDiagnosticCodes.LimitStreamLength, PdfDiagnosticCodes.FilterUnsupported, PdfDiagnosticCodes.XRefSectionUnreadable })]
+    [InlineData("", "", null, 50, new[] { PdfDiagnosticCodes.LimitStreamLength, PdfDiagnosticCodes.XRefHybridStreamLost })]
+    [InlineData("/Type /XRef ", "", null, 50, new[] { PdfDiagnosticCodes.XRefHybridStreamLost, PdfDiagnosticCodes.LimitStreamLength })]
+    [InlineData("", "", null, 5, new[] { PdfDiagnosticCodes.LimitStreamLength, PdfDiagnosticCodes.XRefHybridStreamLost, PdfDiagnosticCodes.XRefRebuilt, PdfDiagnosticCodes.ObjectRedefined })]
+    [InlineData("/Type /XRef ", "", null, 5, new[] { PdfDiagnosticCodes.XRefHybridStreamLost, PdfDiagnosticCodes.LimitStreamLength, PdfDiagnosticCodes.XRefRebuilt, PdfDiagnosticCodes.ObjectRedefined })]
+    public void A_guard_reached_decoding_a_stream_a_prev_names_is_reported_once_whatever_the_look_at_the_prev_s_place_drops(
+        string type, string filter, string? cut, int maxStreamLength, string[] codes)
     {
-        // As above, object 4's /W the reference 9 0 R, which MaxObjectLength cuts, and its data, 107 bytes its filter decodes
-        // nothing of, past what MaxStreamLength at 50 bytes reads. The cut of the data is reported once for the stream, where
-        // the data is first read: by the look at the /Prev's place, which decodes a stream of no type and drops the rest of
-        // what that decoding met, the guard standing, or by the /Prev's own reading of a stream of /Type /XRef, which the
-        // look does not decode. Dropped with the rest, the guard's report was made by no later reading, the cut known.
-        var (file, _, _, _) = HybridFiles.PrevNamingAStreamBesideTheOldestTable(type, padding: 100, filter: "/Foo", cut: "/W");
-        using var document = PdfDocument.Open(file, new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxObjectLength = 1024, MaxStreamLength = 50 } });
+        // As above, object 4, a stream of /Type /XRef or of no type, its /W written direct or as the reference 9 0 R, which
+        // MaxObjectLength cuts, and its data, 107 bytes its filter decodes nothing of or that no filter encodes, past what
+        // MaxStreamLength at 50 or 5 bytes reads. The cut of the data is reported once for the stream, where the data is first
+        // read: by the look at the /Prev's place, which decodes a stream of no type, beside a cut value or not, and drops the
+        // rest of what that decoding met, the guard standing, or by the /Prev's own reading of a stream of /Type /XRef, which
+        // the look does not decode. Dropped with the rest, the guard's report was made by no later reading, the cut known.
+        // Under MaxStreamLength at 5 bytes, the cut leaves no whole row, the chain ends at the stream, and the catalog, which
+        // only the oldest table indexes, is found by rebuilding the index as the document opens: the guard unreported, the
+        // rebuild was laid on the file. Read again once the document is open, the data is cut where it was, and the guard is
+        // not reported twice (#221, #263).
+        var (file, _, _, _) = HybridFiles.PrevNamingAStreamBesideTheOldestTable(type, padding: 100, filter: filter, cut: cut);
+        using var document = PdfDocument.Open(file, new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxObjectLength = 1024, MaxStreamLength = maxStreamLength } });
 
-        document.Diagnostics.Select(entry => entry.Code).Should().Equal(
-            type.Length > 0
-                ? [PdfDiagnosticCodes.XRefHybridStreamLost, PdfDiagnosticCodes.LimitStreamLength, PdfDiagnosticCodes.FilterUnsupported, PdfDiagnosticCodes.XRefSectionUnreadable]
-                : [PdfDiagnosticCodes.LimitStreamLength, PdfDiagnosticCodes.XRefOffsetAdjusted, PdfDiagnosticCodes.XRefHybridStreamLost, PdfDiagnosticCodes.FilterUnsupported, PdfDiagnosticCodes.XRefOffsetAdjusted]);
+        document.Diagnostics.Select(entry => entry.Code).Should().Equal(codes);
+        document.GetObject(new PdfObjectId(4)).AsStream().Required().GetRawBytes().Length.Should().Be(maxStreamLength);
+        document.Diagnostics.Count(entry => entry.Code == PdfDiagnosticCodes.LimitStreamLength).Should().Be(1);
     }
 
     [Theory]
