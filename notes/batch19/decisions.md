@@ -635,3 +635,51 @@ Tracking / records:
   timing, budget, allocation and memory tests); the batch moved to the PC because it is more powerful. R9a ran under
   the old rule (3 commits, 8b31ebf, 74a7668, ee33070, pushed); the workflow was stopped as R9b started and resumed
   (task w15wh0wcg, same run id, R9a cached) with the relaxed rule for R9b onward.
+
+# Review round 9 fixes (wf_0143276c-659, Windows): result
+6 agents, 0 errors, 3h38 after the resume (R9a 1h10 before it). Head c2a2aaa, 13 commits da2b06f..c2a2aaa, all pushed;
+reports in r9-fix-result.json.
+- R9a (8b31ebf fix, 74a7668 test, ee33070 refactor): xref.stream-passed-over not made at a place the chain's records
+  hold as Read, Relocated or Malformed ([1]/[10]: a check of the records, not a new set; _sectionsReadAt unchanged), nor
+  where ChainStoppedByGuard or a guard cut what the chain reached ([2]/[11]; ee33070 swaps `_cutByGuard ||
+  _indexFullAt >= 0` for the equal ChainStoppedByGuard, killing survivor A4), and recorded only for a /Type /XRef
+  header that is a token on its line (R9-Q2; IsTokenOnItsLine while the window is open, no extra read). Message's last
+  sentence reworded ([3]). S put back unread is no longer recorded at all (same output). Alone, the comment and string
+  headers and the unreadable /W-only stream are dropped; the readable /W-only stream and comment header are taken.
+- R9b (9823992 fix, df6b1fb docs, f8550c7 test, ee0c231 docs): S told by its data (R9-Q1) through NumberRunsInto, the
+  digit run of a header found before S running into S (vectorized, in the open window, no read, no allocation); a
+  candidate told as S is mapped to S's start: dropped (no /Prev), deferred (the table's), or tried as S where S's /Prev
+  names another offset (NamedAgain, hybrid-stream-lost, Error hybrid-stream-wrong; da2b06f read the stream twice and
+  reported nothing). Deviation to judge: HybridFiles.NamingAStreamOneByteIntoItsNumber (no older section within reach,
+  no /Prev) now reads as its exact naming (section-missing, rebuilt when a missing object is asked), not as 012e13d
+  (which read the stream twice as two sections); the refuter's shapes with an older section within reach read whole.
+  [4] one read-through mark per iteration, forgotten in the takeAt and bound continues. [5] the 32-object row kills
+  'var read = given;'. [13]/[23] sibling theory (into=28). [22]/[29] two known-gap tests. ADR 53: 15 mutants, 13
+  killed, 2 equivalent (M07, M11: `<`/`<=` at the S boundary).
+- R9c (68a55fa fix, 44db26a test, e3d0c99 docs, e157359 fix): a dropped candidate's decoding beside a cut value is rolled
+  back (UndecodedReports mark) [7]; the check no longer decodes a typed stream beside a cut value, and for an untyped
+  one rolls back with RollBackBesideLimits (e157359: plain RollBack, pushed in 68a55fa, dropped a guard's
+  limit.stream-length no later reading makes, an invariant 12 regression fixed one commit later). Premise of round 8
+  corrected in the summaries: RowsHeldAtMost and UndecodedFault report into the document (PdfFilterPipeline.Decode:
+  diagnostics ??= guard.DocumentDiagnostics). [17] coverage theory, [20] rename.
+- R9d (b55738a docs) and R9f (c2a2aaa docs): the pages for every finding; #333 cited at threat-model 432 (both places),
+  its Known gaps entry and link, lazy-reading, and the two test comments.
+- R9-track: #333 opened (an older revision's stream nearer a hybrid /Prev than its own table is taken; labels debt,
+  area: reader, area: validation; M02); #332 body item 1 corrected, figures re-checked on b55738a; #171 comment
+  6721367913 (a quoted typed stream at or after S passed over and reported).
+- R9f check on c2a2aaa: build 0 warnings; suite 10,565 / 0 failed / 3 skipped; format clean; 13 messages pass; no key;
+  links and citations clean; site 269 pages, 0 warnings; timing, budget, allocation and memory groups 3 runs each,
+  alone, all pass; corpus vs main: only pdfmaker7-powerpoint-va-cancer after #241's 1,072 rewordings; branch dump
+  unchanged from round 8; own-stream differential = R9a's = R9b's, 162 blocks against round 8, all R9a's; worse
+  counts 1,193 / 392 / 293 unchanged.
+- Open points for round 10 to judge: (a) the check's main-path decode (TryReadXRefStream, decodingChecked, RollBack)
+  drops a MaxStreamLength report nothing makes again (HybridFiles.PrevNamingAStreamBesideTheOldestTable("", padding:
+  100, filter: "/Foo") under MaxStreamLength 50: no limit.stream-length). It comes from 092b772, a commit of this batch
+  (2026-11-07), so it is the batch's, not main's: a fix here unless main loses the report too; (b) PaddingAt's
+  limit.trailer does not set the chain's guard flag, so the Warning is still made where that guard hid the link
+  (#289's class); (c) a relocation candidate dropped after a guard cut it can withhold the Warning (#320's class); (d)
+  validation-rules.md row 48 ('A value the reader does not read') beside the hybrid stream's own /Prev, read only to
+  tell S; (e) the NamingAStreamOneByteIntoItsNumber deviation above.
+- Commit bodies not rewritten (status.md): 5de20b7 and da0e157 false beside a cut value until 68a55fa; 68a55fa's 'so
+  that it reports nothing' holds of its diff, a guard reached standing since e157359; e3d0c99 was pushed while the
+  check used RollBack.
