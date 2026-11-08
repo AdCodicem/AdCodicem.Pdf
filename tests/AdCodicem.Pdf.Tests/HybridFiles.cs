@@ -724,12 +724,14 @@ internal static class HybridFiles
     /// and through <c>/Prev</c> the <c>endobj</c> 7 bytes before stream 6 — or, where <paramref name="shortOfOwn"/> says so,
     /// the one 7 bytes before stream 11 —: both streams lie within reach of a search near it, stream 11 the last place there.
     /// The oldest table names through <paramref name="oldestNames"/>: <c>"nothing"</c>; <c>"/XRefStm"</c> or
-    /// <c>"/Prev"</c>, stream 11; <c>"/Prev, 5 bytes short"</c>, the place 5 bytes before stream 11, inside the
-    /// <c>endobj</c> before it, stream 11 the nearest place to it; or <c>"/Prev, 1 byte short"</c>, the end of line after
-    /// that <c>endobj</c>, which a reading there crosses to stream 11. Stream 11's dictionary starts with
-    /// <paramref name="ownEntries"/>, <c>/Type /XRef</c> unless it says otherwise, and gives <paramref name="ownWidths"/> as
-    /// its <c>/W</c>; where that is <c>12 0 R</c>, object 12, <c>[1 4 2]</c> and 1,100 spaces, follows the comment of 600
-    /// dashes, and the newest table indexes it.
+    /// <c>"/Prev"</c>, stream 11, at its header, or <paramref name="into"/> bytes past its start, inside its object number;
+    /// <c>"/Prev, 5 bytes short"</c>, the place 5 bytes before stream 11, inside the <c>endobj</c> before it, stream 11 the
+    /// nearest place to it; or <c>"/Prev, 1 byte short"</c>, the end of line after that <c>endobj</c>, which a reading
+    /// there crosses to stream 11. Stream 11 is written as object <paramref name="ownNumber"/>, 11 unless it says
+    /// otherwise, and its dictionary and the newest table's trailer give a <c>/Size</c> one past the highest object
+    /// number. Its dictionary starts with <paramref name="ownEntries"/>, <c>/Type /XRef</c> unless it says otherwise, and gives
+    /// <paramref name="ownWidths"/> as its <c>/W</c>; where that is <c>12 0 R</c>, object 12, <c>[1 4 2]</c> and 1,100
+    /// spaces, follows the comment of 600 dashes, and the newest table indexes it.
     /// </summary>
     public static (byte[] File, long Oldest, long Stream, long Own, long Newest) PrevFallingShortOfTheStreamBeforeTheTablesOwn(
         string ownPrev,
@@ -737,7 +739,9 @@ internal static class HybridFiles
         string streamPrev = "the oldest table",
         string oldestNames = "nothing",
         string ownWidths = "[1 4 2]",
-        string ownEntries = "/Type /XRef ")
+        string ownEntries = "/Type /XRef ",
+        int into = 0,
+        int ownNumber = 11)
     {
         var file = new HandWrittenFile(version: "1.5");
         var (catalog, pages, _) = Page(file);
@@ -778,17 +782,33 @@ internal static class HybridFiles
             _ => string.Empty,
         };
         var twelve = ownWidths == "12 0 R";
-        var size = twelve ? 13 : 12;
-        file.Object(11, Invariant($"<< {ownEntries}/Size {size} /W {ownWidths} /Index [10 1] /Root 1 0 R {ownNames}/Length {ownRows.Length} >>\nstream\n{ownRows}\nendstream"));
+        var size = Math.Max(ownNumber, twelve ? 12 : 11) + 1;
+        file.Object(ownNumber, Invariant($"<< {ownEntries}/Size {size} /W {ownWidths} /Index [10 1] /Root 1 0 R {ownNames}/Length {ownRows.Length} >>\nstream\n{ownRows}\nendstream"));
         file.Raw("%" + new string('-', 600) + "\n");
         var twelveRow = twelve ? Invariant($"12 1\n{Row(file.Object(12, "[1 4 2]" + new string(' ', 1100)))}") : string.Empty;
         var newest = file.Position;
-        file.Raw(Invariant($"xref\n0 1\n0000000000 65535 f \n5 1\n{Row(five)}11 1\n{Row(own)}{twelveRow}trailer\n<< /Size {size} /Root 1 0 R /Prev {named} /XRefStm {stream} >>\nstartxref\n{newest}\n%%EOF\n"));
+        file.Raw(Invariant($"xref\n0 1\n0000000000 65535 f \n5 1\n{Row(five)}{ownNumber} 1\n{Row(own)}{twelveRow}trailer\n<< /Size {size} /Root 1 0 R /Prev {named} /XRefStm {stream} >>\nstartxref\n{newest}\n%%EOF\n"));
         var text = Encoding.Latin1.GetString(file.Bytes)
             .Replace("@@@NAMED@@", Invariant($"{named:D10}"), StringComparison.Ordinal)
-            .Replace("@@@@OWN@@@", Invariant($"{own:D10}"), StringComparison.Ordinal)
+            .Replace("@@@@OWN@@@", Invariant($"{own + into:D10}"), StringComparison.Ordinal)
             .Replace("@@@SHORT@@", Invariant($"{own - (oldestNames == "/Prev, 1 byte short" ? 1 : 5):D10}"), StringComparison.Ordinal);
         return (Encoding.Latin1.GetBytes(text), oldest, stream, own, newest);
+    }
+
+    /// <summary>
+    /// The document <see cref="PrevFallingShortOfTheStreamBeforeTheTablesOwn"/> writes, its newest table's <c>/Prev</c>
+    /// falling 7 bytes short of stream 11, which gives no <c>/Prev</c>, saved once more: a newer table, at <c>Newer</c>,
+    /// indexes nothing, and names through <c>/Prev</c> the table before it, at <c>Newest</c>, and through
+    /// <c>/XRefStm</c> stream 11, at its header, or <paramref name="into"/> bytes past its start, inside its object number:
+    /// a reading of stream 11 there comes before the search near the place the table before names through <c>/Prev</c>.
+    /// </summary>
+    public static (byte[] File, long Oldest, long Stream, long Own, long Newest, long Newer) NamingTheTablesOwnStreamFromANewerTable(int into)
+    {
+        var (bytes, oldest, stream, own, newest) = PrevFallingShortOfTheStreamBeforeTheTablesOwn("nothing", shortOfOwn: true);
+        var text = new StringBuilder(Encoding.Latin1.GetString(bytes));
+        var newer = text.Length;
+        text.Append(Invariant($"xref\n0 1\n0000000000 65535 f \ntrailer\n<< /Size 12 /Root 1 0 R /Prev {newest} /XRefStm {own + into} >>\nstartxref\n{newer}\n%%EOF\n"));
+        return (Encoding.Latin1.GetBytes(text.ToString()), oldest, stream, own, newest, newer);
     }
 
     /// <summary>
@@ -1454,15 +1474,17 @@ internal static class HybridFiles
     /// stream 13, at <c>Stream</c>, right after it, which indexes object 4 and itself — and the first three objects too
     /// where <paramref name="catalogInStream"/> — and gives through <c>/Prev</c>
     /// <paramref name="streamPrev"/>: <c>"nothing"</c>; <c>"the table's /Prev"</c>, the place the table's names; or
-    /// <c>"the oldest table"</c>. Past a comment of 600 dashes, its table, at <c>Newest</c>, indexes nothing, and names
-    /// through <c>/Prev</c> the place 7 bytes before the stream, inside the <c>endobj</c> before it, and through
-    /// <c>/XRefStm</c> the stream's header where not <paramref name="insideItsNumber"/>, or the place 1 byte into the
-    /// stream's object number, its digit 3, where the stream reads as object 3: a search near the place the <c>/Prev</c>
-    /// names comes to the stream's header, where the <c>/XRefStm</c> names it or 1 byte before, and to the oldest table
-    /// farther off, within reach.
+    /// <c>"the oldest table"</c>. The stream's header is written <paramref name="header"/>: <c>13 0 obj</c> unless it says
+    /// otherwise — <c>+13 0 obj</c>, its number written with a sign, or <c>+13 0 %c</c> and <c>obj</c> on the next line, a
+    /// comment parting its tokens as well. Past a comment of 600 dashes, its table, at <c>Newest</c>, indexes nothing, and
+    /// names through <c>/Prev</c> the place 7 bytes before the stream, inside the <c>endobj</c> before it, and through
+    /// <c>/XRefStm</c> the place <paramref name="into"/> bytes past the start of the stream's header: the header's first
+    /// byte, at 0, a digit 1 or a sign; or a place past it, inside the object number, from which the stream reads as object
+    /// 13 or 3. A search near the place the <c>/Prev</c> names comes to the stream's header — at the digit past its sign,
+    /// where no comment parts its tokens —, and to the oldest table farther off, within reach.
     /// </summary>
     public static (byte[] File, long Oldest, long Stream, long Newest) NamingTheUpdatesStreamAtOrInsideItsNumber(
-        bool insideItsNumber, string streamPrev, bool catalogInStream)
+        int into, string streamPrev, bool catalogInStream, string header = "13 0 obj")
     {
         var file = new HandWrittenFile(version: "1.5");
         var (catalog, pages, page) = Page(file);
@@ -1480,10 +1502,10 @@ internal static class HybridFiles
             "the oldest table" => Invariant($"/Prev {oldest} "),
             _ => string.Empty,
         };
-        file.Object(13, Invariant($"<< /Type /XRef /Size 14 /W [1 4 2] /Index {(catalogInStream ? "[1 4 13 1]" : "[4 1 13 1]")} /Root 1 0 R {prev}/Length {rows.Length} >>\nstream\n{rows}\nendstream"));
+        file.Raw(Invariant($"{header}\n<< /Type /XRef /Size 14 /W [1 4 2] /Index {(catalogInStream ? "[1 4 13 1]" : "[4 1 13 1]")} /Root 1 0 R {prev}/Length {rows.Length} >>\nstream\n{rows}\nendstream\nendobj\n"));
         file.Raw("%" + new string('-', 600) + "\n");
         var newest = file.Position;
-        file.Raw(Invariant($"xref\n0 1\n0000000000 65535 f \ntrailer\n<< /Size 14 /Root 1 0 R /Prev {stream - 7} /XRefStm {(insideItsNumber ? stream + 1 : stream)} >>\nstartxref\n{newest}\n%%EOF\n"));
+        file.Raw(Invariant($"xref\n0 1\n0000000000 65535 f \ntrailer\n<< /Size 14 /Root 1 0 R /Prev {stream - 7} /XRefStm {stream + into} >>\nstartxref\n{newest}\n%%EOF\n"));
         return (file.Bytes, oldest, stream, newest);
     }
 

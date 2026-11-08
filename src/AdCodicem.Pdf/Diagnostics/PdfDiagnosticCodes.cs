@@ -117,13 +117,14 @@ public static class PdfDiagnosticCodes
     /// A cross-reference stream near the offset a hybrid file's table names through <c>/Prev</c>, where that offset holds
     /// no section, may be that table's own — its dictionary gives no <c>/Prev</c>, or the offset the table's names, and it
     /// starts no sooner than the stream the table's <c>/XRefStm</c> read, or names again —, and was passed over for another
-    /// section near that offset, which the search took first; the chain did not reach the stream (#156). Only a stream that
-    /// declares itself one is reported: its dictionary gives <c>/Type /XRef</c>, and its header is a token a load reads from
-    /// the start of its line, not in a comment or a string there. Nothing is reported where one of the reader's limits
-    /// stopped the chain, or cut what it reached: the limit's report stands for what it left unread. Its rows, if it is the
-    /// table's own stream, are not in the index the chain read: the objects only it indexes are missing from it, and the
-    /// report leaves the index as it is, rebuilding nothing for them — only a rebuild for another cause, which scans the
-    /// file, finds them. The report is placed at the stream, once, however many searches passed over it.
+    /// section near that offset, which the search took first; the chain did not reach the stream, at its header or inside
+    /// its object number, from which a reading reads the same stream (#156). Only a stream that declares itself one is
+    /// reported: its dictionary gives <c>/Type /XRef</c>, and its header is a token a load reads from the start of its line,
+    /// not in a comment or a string there. Nothing is reported where one of the reader's limits stopped the chain, or cut
+    /// what it reached: the limit's report stands for what it left unread. Its rows, if it is the table's own stream, are
+    /// not in the index the chain read: the objects only it indexes are missing from it, and the report leaves the index as
+    /// it is, rebuilding nothing for them — only a rebuild for another cause, which scans the file, finds them. The report
+    /// is placed at the stream, once, however many searches passed over it.
     /// </summary>
     public const string XRefStreamPassedOver = "xref.stream-passed-over";
 

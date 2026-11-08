@@ -5124,19 +5124,24 @@ public class CrossReferenceChainTests
     }
 
     [Theory]
-    [InlineData("/Prev 0 /XRefStm 4", "", "/XRefStm NamedAgain 4, /Prev Read 0")]
-    [InlineData("/Prev 999999 /XRefStm 4", "", "/XRefStm Relocated 0, /Prev NotFound 999999")]
-    [InlineData("/Prev 0", " /Prev 5", "/Prev Read 0, /Prev NotFound 5")]
-    public void A_section_at_the_file_s_first_byte_is_a_place_like_any_other(string newest, string first, string expected)
+    [InlineData("/Prev 0 /XRefStm 4", "", "9", "/XRefStm NamedAgain 4, /Prev Read 0")]
+    [InlineData("/Prev 999999 /XRefStm 4", "", "9", "/XRefStm Relocated 0, /Prev NotFound 999999")]
+    [InlineData("/Prev 0", " /Prev 5", "9", "/Prev Read 0, /Prev NotFound 5")]
+    [InlineData("/Prev 5 /XRefStm 0", "", "9", "/XRefStm Read 0, /Prev NotFound 5")]
+    [InlineData("/Prev 5 /XRefStm 0", "", "+9", "/XRefStm Read 0, /Prev NotFound 5")]
+    public void A_section_at_the_file_s_first_byte_is_a_place_like_any_other(string newest, string first, string number, string expected)
     {
-        // A file without a header, whose first byte starts cross-reference stream 9, which indexes the catalog and gives
-        // <first>; the newest table, after it, gives <newest>, an /XRefStm 4 bytes into the stream's header. A /Prev that
-        // names offset 0 keeps its place there, and the /XRefStm's search stops at it, leaving it to the /Prev; one that names
-        // no place in the file leaves the search to go on, and the /XRefStm finds the stream there, moved. Read, the stream
-        // is passed over by the search near a /Prev that names a place inside it, as any section the chain read is (#156).
+        // A file without a header, whose first byte starts cross-reference stream 9, its number written <number>, which
+        // indexes the catalog and gives <first>; the newest table, after it, gives <newest>, an /XRefStm 4 bytes into the
+        // stream's header, or at its first byte. A /Prev that names offset 0 keeps its place there, and the /XRefStm's search
+        // stops at it, leaving it to the /Prev; one that names no place in the file leaves the search to go on, and the
+        // /XRefStm finds the stream there, moved. Read, the stream is passed over by the search near a /Prev that names a
+        // place inside it, as any section the chain read is (#156) — its header too where the /XRefStm read it from the sign
+        // its number is written with, which the walk back from obj finds at the digit past it: told by its data, it is the
+        // stream that reading started at the file's first byte, rather than another stream the search would take there.
         var text = new StringBuilder();
         var rows = new string('\0', 14);
-        var stream = Invariant($"9 0 obj\n<< /Type /XRef /Size 10 /W [1 4 2] /Index [1 2] /Length 14{first} >>\nstream\n{rows}\nendstream\nendobj\n");
+        var stream = Invariant($"{number} 0 obj\n<< /Type /XRef /Size 10 /W [1 4 2] /Index [1 2] /Length 14{first} >>\nstream\n{rows}\nendstream\nendobj\n");
         var one = stream.Length;
         var catalog = "1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n";
         var two = one + catalog.Length;
@@ -5738,8 +5743,64 @@ public class CrossReferenceChainTests
         // taken where its /Prev names the oldest table, read whole, the /XRefStm reported as naming what the /Prev read and
         // the chain going on through the stream. It is no stream before the one the /XRefStm read, taken where it comes
         // nearest, which ended the chain there, the oldest table unread, or looped back to the place the /Prev names (#156).
-        var (file, oldest, stream, newest) = HybridFiles.NamingTheUpdatesStreamAtOrInsideItsNumber(insideItsNumber, streamPrev, catalogInStream);
+        var (file, oldest, stream, newest) = HybridFiles.NamingTheUpdatesStreamAtOrInsideItsNumber(insideItsNumber ? 1 : 0, streamPrev, catalogInStream);
         var named = insideItsNumber ? stream + 1 : stream;
+        var taken = streamPrev == "the oldest table";
+        using var document = PdfDocument.Open(file);
+
+        document.Reader.Structure.Sections.Select(section => (section.NamedBy, section.State, section.Kind, section.Offset)).Should().Equal(
+            taken
+                ?
+                [
+                    ("startxref", XRefSectionState.Read, XRefSectionKind.Table, newest),
+                    ("/XRefStm", XRefSectionState.NamedAgain, XRefSectionKind.Unknown, named),
+                    ("/Prev", XRefSectionState.Relocated, XRefSectionKind.Stream, named),
+                    ("/Prev", XRefSectionState.Read, XRefSectionKind.Table, oldest),
+                ]
+                :
+                [
+                    ("startxref", XRefSectionState.Read, XRefSectionKind.Table, newest),
+                    ("/XRefStm", XRefSectionState.Read, XRefSectionKind.Stream, named),
+                    ("/Prev", XRefSectionState.Relocated, XRefSectionKind.Table, oldest),
+                ]);
+        document.Diagnostics.Select(diagnostic => diagnostic.Code).Should().Equal(
+            taken ? [PdfDiagnosticCodes.XRefOffsetAdjusted, PdfDiagnosticCodes.XRefHybridStreamLost] : [PdfDiagnosticCodes.XRefOffsetAdjusted]);
+        document.Diagnostics[0].Message.Should().Be(
+            taken
+                ? Invariant($"The cross-reference section /Prev names at offset {stream - 7} was found {named - stream + 7} bytes after it.")
+                : Invariant($"The cross-reference section /Prev names at offset {stream - 7} was found {stream - 7 - oldest} bytes before it."));
+        Text(document, 4).Should().Be("four");
+        Text(document, 5).Should().Be("old five");
+        document.WasRepaired.Should().BeFalse();
+
+        new PdfValidator().Validate(document).Findings.Where(finding => finding.Severity == PdfValidationSeverity.Error).Select(finding => finding.RuleId)
+            .Should().Equal(taken ? [PdfValidationRuleIds.XRefHybridStreamWrong] : []);
+    }
+
+    [Theory]
+    [InlineData("+13 0 obj", 0, "the oldest table")]
+    [InlineData("+13 0 obj", 1, "the oldest table")]
+    [InlineData("+13 0 obj", 0, "nothing")]
+    [InlineData("+13 0 %c\nobj", 1, "nothing")]
+    [InlineData("+13 0 %c\nobj", 2, "nothing")]
+    [InlineData("+13 0 %c\nobj", 1, "the oldest table")]
+    [InlineData("+13 0 %c\nobj", 0, "nothing")]
+    [InlineData("13 0 %c\nobj", 1, "nothing")]
+    public void The_stream_a_hybrid_table_s_xrefstm_read_is_told_near_its_prev_alike_whether_its_number_is_written_with_a_sign_or_not(
+        string header, int into, string streamPrev)
+    {
+        // As above, the update's table names its own stream through /XRefStm and a place 7 bytes before it through /Prev, the
+        // oldest table within reach; the stream's object number is written with a sign, and a comment parts its header's
+        // tokens where the row says so. The walk back from obj takes the number's digits and stops at the sign, so that the
+        // header the search finds starts at the digit past it, one byte past where a reading from the sign starts; a header
+        // whose tokens a comment parts is lexed from its line's start, and starts at the sign. Either is the stream the
+        // /XRefStm read, told by its data as where no sign is written: where the /XRefStm named the sign, the header found
+        // past it was tried as another stream, and taken where its /Prev names the oldest table, the stream read twice and
+        // the naming never reported; where it named a digit, the header found at the sign before it was taken for a stream
+        // before the one the /XRefStm read, the chain ending there where it gives no /Prev, the index rebuilt as the document
+        // opened and the validator saying the file holds no catalog (#156).
+        var (file, oldest, stream, newest) = HybridFiles.NamingTheUpdatesStreamAtOrInsideItsNumber(into, streamPrev, catalogInStream: false, header);
+        var named = stream + into;
         var taken = streamPrev == "the oldest table";
         using var document = PdfDocument.Open(file);
 
@@ -6417,6 +6478,75 @@ public class CrossReferenceChainTests
             document.Diagnostics.Single(diagnostic => diagnostic.Code == PdfDiagnosticCodes.XRefSectionUnreadable).Position
                 .Should().Be(document.Reader.Structure.Sections[^1].Offset);
         }
+    }
+
+    [Theory]
+    [InlineData("/XRefStm", 11, 1, "[1 4 2]")]
+    [InlineData("/Prev", 11, 1, "[1 4 2]")]
+    [InlineData("/XRefStm", 111, 2, "[1 4 2]")]
+    [InlineData("/XRefStm", 111, 1, "[1 4 2]")]
+    [InlineData("/XRefStm", 11, 1, "[1 -4 2]")]
+    [InlineData("/Prev", 11, 1, "[1 -4 2]")]
+    [InlineData("/XRefStm", 11, 0, "[1 4 2]")]
+    [InlineData("/Prev", 11, 0, "[1 -4 2]")]
+    [InlineData("/XRefStm", 111, 0, "[1 4 2]")]
+    public void A_stream_passed_over_near_a_hybrid_table_s_prev_that_an_older_section_names_at_its_header_or_inside_its_object_number_is_reported_as_the_chain_finds_it_not_as_passed_over(
+        string oldestNames, int ownNumber, int into, string ownWidths)
+    {
+        // As above, the search near the table's /Prev passes over stream 11, written as object 11 or 111, which gives no
+        // /Prev, and takes stream 6, whose /Prev names the oldest table. The oldest table names stream 11 through /XRefStm or
+        // /Prev, at its header, or 1 or 2 bytes past its start, inside its object number: read from there, it is the same
+        // stream, the same dictionary and data, and the chain reads it — whole, or, where its /W gives a field a negative
+        // width, there and unreadable, which the chain reports. The stream passed over is told by its data, as the stream an
+        // /XRefStm read is: named inside its number, it was reported a second time, as a stream the chain did not read, its
+        // objects said to be missing from the index, though object 10, which only it indexes, was read from it (#156).
+        var (file, _, _, own, _) = HybridFiles.PrevFallingShortOfTheStreamBeforeTheTablesOwn(
+            "nothing", shortOfOwn: true, "the oldest table", oldestNames, ownWidths, into: into, ownNumber: ownNumber);
+        var readable = ownWidths == "[1 4 2]";
+        using var document = PdfDocument.Open(file);
+
+        document.Reader.Structure.Sections[^1].Should().Match<XRefSectionRecord>(
+            section => section.NamedBy == oldestNames && section.Kind == XRefSectionKind.Stream && section.Offset == own + into &&
+                section.Padding == 0 && section.State == (readable ? XRefSectionState.Read : XRefSectionState.Malformed));
+        document.Diagnostics.Select(diagnostic => diagnostic.Code).Should().Equal(
+            readable
+                ? [PdfDiagnosticCodes.XRefOffsetAdjusted, PdfDiagnosticCodes.XRefHybridStreamLost]
+                : [PdfDiagnosticCodes.XRefOffsetAdjusted, PdfDiagnosticCodes.XRefHybridStreamLost, PdfDiagnosticCodes.XRefSectionUnreadable]);
+
+        if (readable)
+        {
+            Text(document, 10).Should().Be("ten");
+            document.WasRepaired.Should().BeFalse();
+        }
+        else
+        {
+            document.Diagnostics[^1].Position.Should().Be(own + into);
+        }
+    }
+
+    [Theory]
+    [InlineData(1)]
+    [InlineData(0)]
+    public void A_stream_passed_over_near_a_hybrid_table_s_prev_that_a_newer_table_s_xrefstm_read_at_its_header_or_inside_its_object_number_is_not_reported_as_passed_over(int into)
+    {
+        // As above, the search near the table's /Prev passes over stream 11, which gives no /Prev, and takes stream 6, whose
+        // /Prev names the oldest table. A newer table names stream 11 through /XRefStm, at its header or 1 byte past its
+        // start, inside its object number: the chain read it there, whole, before the search came to its header. Named
+        // inside its number, it is the same stream, told by its data, and was reported as a stream the chain did not read,
+        // its objects said to be missing from the index, though object 10, which only it indexes, was read from it (#156).
+        var (file, oldest, stream, own, newest, newer) = HybridFiles.NamingTheTablesOwnStreamFromANewerTable(into);
+        using var document = PdfDocument.Open(file);
+
+        document.Reader.Structure.Sections.Select(section => (section.NamedBy, section.State, section.Kind, section.Offset)).Should().Equal(
+            ("startxref", XRefSectionState.Read, XRefSectionKind.Table, newer),
+            ("/XRefStm", XRefSectionState.Read, XRefSectionKind.Stream, own + into),
+            ("/Prev", XRefSectionState.Read, XRefSectionKind.Table, newest),
+            ("/XRefStm", XRefSectionState.NamedAgain, XRefSectionKind.Unknown, stream),
+            ("/Prev", XRefSectionState.Relocated, XRefSectionKind.Stream, stream),
+            ("/Prev", XRefSectionState.Read, XRefSectionKind.Table, oldest));
+        document.Diagnostics.Select(diagnostic => diagnostic.Code).Should().Equal(PdfDiagnosticCodes.XRefOffsetAdjusted, PdfDiagnosticCodes.XRefHybridStreamLost);
+        Text(document, 10).Should().Be("ten");
+        document.WasRepaired.Should().BeFalse();
     }
 
     [Theory]
