@@ -5712,14 +5712,15 @@ public class CrossReferenceChainTests
     [Theory]
     [InlineData("stream 11")]
     [InlineData("an outline item")]
-    public void A_place_the_search_near_a_hybrid_table_s_prev_passes_over_or_finds_no_section_at_leaves_nothing_of_its_reading(string near)
+    public void A_place_the_search_near_a_hybrid_table_s_prev_passes_over_or_finds_no_section_at_reports_nothing_its_reading_met(string near)
     {
         // Near the offset the table's /Prev names, the search comes first to stream 11, which may be the table's own and is
         // passed over, or to an outline item, an object of another type whose dictionary gives a /Prev, which holds no
         // section: a fault of the syntax in its dictionary. The search takes stream 6 beyond it, which the /XRefStm read in
         // the stream's place, and nothing of the place's reading is reported or recorded: the fault lies in nothing the
         // chain reads, as it did where stream 11 was taken instead (#156). Stream 11, which the chain then never reads, is
-        // reported once it is read, as a stream that may hold the table's own rows, its dictionary parsed already.
+        // reported once the chain is read, as a stream passed over that may hold the table's own rows, its dictionary parsed
+        // already.
         var (file, oldest, stream, at, newest) = HybridFiles.PrevFallingShortOfAPlaceBesideTheStream(near, "/Junk } ");
         using var document = PdfDocument.Open(file);
 
@@ -5940,8 +5941,11 @@ public class CrossReferenceChainTests
             ("startxref", XRefSectionState.Read, XRefSectionKind.Table, newest),
             ("/XRefStm", XRefSectionState.Read, XRefSectionKind.Stream, stream),
             ("/Prev", XRefSectionState.Relocated, XRefSectionKind.Stream, at));
-        document.Diagnostics[0].Should().Match<PdfDiagnostic>(diagnostic => diagnostic.Code == PdfDiagnosticCodes.XRefOffsetAdjusted && diagnostic.Position == at);
-        document.Diagnostics.Should().ContainSingle(diagnostic => diagnostic.Code == PdfDiagnosticCodes.XRefRebuilt);
+        document.Diagnostics.Select(diagnostic => diagnostic.Code).Should().Equal(
+            near == "a middle revision's stream"
+                ? [PdfDiagnosticCodes.XRefOffsetAdjusted, PdfDiagnosticCodes.XRefRebuilt]
+                : [PdfDiagnosticCodes.XRefOffsetAdjusted, PdfDiagnosticCodes.XRefRebuilt, PdfDiagnosticCodes.ObjectRedefined]);
+        document.Diagnostics[0].Position.Should().Be(at);
         document.WasRepaired.Should().BeTrue();
         Text(document, 4).Should().Be("four");
 
@@ -6022,12 +6026,13 @@ public class CrossReferenceChainTests
         // The update's own stream, stream 11, which nothing names and which gives no /Prev, lies 5 bytes past the offset its
         // table's /Prev names; stream 6, which the /XRefStm read, gives no /Prev, and no other place near holds a section. The
         // search passes over stream 11 as possibly the table's own, and tries every other place first: objects of one null
-        // each, 28 or 32 within its reach, and objects 4, 5 and 10; or these 3 alone, a newer table's search having tried 28
-        // places already. Each place counts toward the 32 the reader allows a document, and the retry of stream 11 counted
-        // again: the bound stopped the search first, the section was reported missing, the index rebuilt as the document
-        // opened, and object 8, which stream 6 frees, served as the oldest table writes it. A place passed over counts once,
-        // at its first reading, and its retry runs once the bound stops new places, the places of the window left untried
-        // where it stops them first: stream 11 is taken, which places the catalog, and object 8 reads as null (#156).
+        // each, 28 or 32 within its reach, and objects 5 and 10, with object 4 where the window still reaches it, beside 28 of
+        // them; or objects 4, 5 and 10 alone, a newer table's search having tried 28 places already. Each place counts toward
+        // the 32 the reader allows a document, and the retry of stream 11 counted again: the bound stopped the search first,
+        // the section was reported missing, the index rebuilt as the document opened, and object 8, which stream 6 frees,
+        // served as the oldest table writes it. A place passed over counts once, at its first reading, and its retry runs
+        // once the bound stops new places, the places of the window left untried where it stops them first: stream 11 is
+        // taken, which places the catalog, and object 8 reads as null (#156).
         var (file, stream, own, hybrid, newest) = HybridFiles.PrevFallingShortOfTheTablesOwnStreamAmongObjects(objects, spent);
         using var document = PdfDocument.Open(file);
 
@@ -6092,7 +6097,9 @@ public class CrossReferenceChainTests
 
         document.Reader.Structure.Sections[^1].Should().Match<XRefSectionRecord>(
             section => section.NamedBy == "/Prev" && section.State == XRefSectionState.Relocated && section.Offset == own && section.NamedFrom == hybrid);
-        document.Diagnostics.Should().NotContain(diagnostic => diagnostic.Code == PdfDiagnosticCodes.XRefStreamPassedOver);
+        document.Diagnostics.Select(diagnostic => diagnostic.Code).Should().Equal(
+            PdfDiagnosticCodes.XRefSectionUnreadable, PdfDiagnosticCodes.XRefOffsetAdjusted, PdfDiagnosticCodes.XRefRebuilt, PdfDiagnosticCodes.ObjectRedefined);
+        document.Diagnostics[1].Position.Should().Be(own);
     }
 
     [Fact]
@@ -6131,7 +6138,14 @@ public class CrossReferenceChainTests
 
         document.Reader.Structure.Sections.Should().ContainSingle(section => section.NamedBy == "/XRefStm").Which.State
             .Should().Be(spent > 0 ? XRefSectionState.NotFound : XRefSectionState.NamedAgain);
-        document.Diagnostics.Count(diagnostic => diagnostic.Code == PdfDiagnosticCodes.XRefSectionMissing).Should().Be(spent > 0 ? 1 : 0);
+        document.Diagnostics.Select(diagnostic => diagnostic.Code).Should().Equal(
+            spent > 0
+                ?
+                [
+                    PdfDiagnosticCodes.XRefOffsetAdjusted, PdfDiagnosticCodes.XRefSectionMissing, PdfDiagnosticCodes.LimitTrailer,
+                    PdfDiagnosticCodes.XRefRebuilt, PdfDiagnosticCodes.ObjectRedefined,
+                ]
+                : [PdfDiagnosticCodes.LimitTrailer]);
     }
 
     [Fact]
@@ -6168,8 +6182,9 @@ public class CrossReferenceChainTests
 
         document.Reader.Structure.Sections[^1].Should().Match<XRefSectionRecord>(
             section => section.NamedBy == "/Prev" && section.State == XRefSectionState.Malformed && section.Offset == own);
-        document.Diagnostics.Should().ContainSingle(diagnostic => diagnostic.Code == PdfDiagnosticCodes.XRefSectionUnreadable).Which.Position.Should().Be(own);
-        document.Diagnostics.Should().NotContain(diagnostic => diagnostic.Code == PdfDiagnosticCodes.XRefStreamPassedOver);
+        document.Diagnostics.Select(diagnostic => diagnostic.Code).Should().Equal(
+            PdfDiagnosticCodes.XRefOffsetAdjusted, PdfDiagnosticCodes.XRefSectionUnreadable, PdfDiagnosticCodes.XRefRebuilt, PdfDiagnosticCodes.ObjectRedefined);
+        document.Diagnostics[1].Position.Should().Be(own);
     }
 
     [Theory]
@@ -6387,6 +6402,66 @@ public class CrossReferenceChainTests
         document.WasRepaired.Should().BeFalse();
     }
 
+    [Theory]
+    [InlineData("a header in a comment")]
+    [InlineData("a header in a string")]
+    [InlineData("a stream of no type")]
+    [InlineData("a readable stream of no type")]
+    [InlineData("a readable header in a comment")]
+    [InlineData("a header on its line")]
+    [InlineData("a readable header on its line")]
+    public void A_place_near_a_hybrid_table_s_prev_that_no_other_section_stands_beside_is_taken_only_where_it_reads_or_declares_itself_a_section(string place)
+    {
+        // As above, the oldest table out of the search's reach: the search comes back to object 9 once no other place holds
+        // a section, and takes it where it reads, whatever its line is, or where it declares itself a cross-reference stream
+        // though it cannot be read; it drops a header a comment or a string holds on its line, and a stream that gives only a
+        // /W, where they cannot be read, and the section is reported missing (#171, #281).
+        var (file, _, _, at, _) = HybridFiles.PrevFallingShortOfAPlacePastTheStream(place, alone: true);
+        var reads = place.StartsWith("a readable", StringComparison.Ordinal);
+        var taken = reads || place == "a header on its line";
+        using var document = PdfDocument.Open(file);
+
+        document.Reader.Structure.Sections[^1].Should().Match<XRefSectionRecord>(
+            section => section.NamedBy == "/Prev" && section.NamedOffset == at - 20 &&
+                (taken
+                    ? section.Offset == at && section.Kind == XRefSectionKind.Stream &&
+                        section.State == (reads ? XRefSectionState.Relocated : XRefSectionState.Malformed)
+                    : section.State == XRefSectionState.NotFound));
+        document.Diagnostics.Select(diagnostic => diagnostic.Code).Should().Equal(
+            reads
+                ? [PdfDiagnosticCodes.XRefOffsetAdjusted, PdfDiagnosticCodes.XRefRebuilt]
+                : taken
+                    ? [PdfDiagnosticCodes.StreamTruncated, PdfDiagnosticCodes.XRefOffsetAdjusted, PdfDiagnosticCodes.XRefSectionUnreadable, PdfDiagnosticCodes.XRefRebuilt]
+                    : [PdfDiagnosticCodes.StreamTruncated, PdfDiagnosticCodes.XRefSectionMissing, PdfDiagnosticCodes.XRefRebuilt]);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void A_stream_passed_over_near_a_hybrid_table_s_prev_is_reported_only_where_the_chain_gave_the_index_an_entry(bool oldestFreeRow)
+    {
+        // As above, the search near the table's /Prev passes over stream 11, and takes the oldest table, every section of
+        // the chain indexing nothing — or the oldest giving the row that heads the free list. A chain that indexed nothing
+        // leaves the whole file to a rebuild, which reads every object, stream 11's among them: nothing is reported of the
+        // stream passed over then (#156).
+        var (file, oldest, own, _) = HybridFiles.PrevFallingShortOfTheTablesOwnStreamInAChainOfEmptySections(oldestFreeRow);
+        using var document = PdfDocument.Open(file);
+
+        document.Reader.Structure.Sections[^1].Should().Match<XRefSectionRecord>(
+            section => section.NamedBy == "/Prev" && section.State == XRefSectionState.Relocated && section.Offset == oldest);
+        document.Diagnostics.Select(diagnostic => diagnostic.Code).Should().Equal(
+            oldestFreeRow
+                ? [PdfDiagnosticCodes.XRefOffsetAdjusted, PdfDiagnosticCodes.XRefStreamPassedOver, PdfDiagnosticCodes.XRefRebuilt]
+                : [PdfDiagnosticCodes.XRefOffsetAdjusted, PdfDiagnosticCodes.XRefRebuilt]);
+
+        if (oldestFreeRow)
+        {
+            document.Diagnostics[1].Position.Should().Be(own);
+        }
+
+        document.WasRepaired.Should().BeTrue();
+    }
+
     [Fact]
     public void A_stream_two_searches_near_hybrid_tables_prevs_pass_over_is_reported_once()
     {
@@ -6431,8 +6506,19 @@ public class CrossReferenceChainTests
         var taken = spent > 0 ? own : stream;
         document.Reader.Structure.Sections.Should().ContainSingle(section => section.NamedBy == "/Prev" && section.NamedOffset == stream - 7)
             .Which.Should().Match<XRefSectionRecord>(section => section.State == XRefSectionState.Relocated && section.Offset == taken);
-        document.Diagnostics.Count(diagnostic => diagnostic.Code == PdfDiagnosticCodes.XRefChainCycle).Should().Be(spent > 0 ? 0 : 1);
-        document.Diagnostics.Count(diagnostic => diagnostic.Code == PdfDiagnosticCodes.XRefStreamPassedOver).Should().Be(spent > 0 ? 0 : 1);
+        document.Diagnostics.Select(diagnostic => diagnostic.Code).Should().Equal(
+            spent > 0
+                ? [PdfDiagnosticCodes.XRefOffsetAdjusted, PdfDiagnosticCodes.XRefOffsetAdjusted, PdfDiagnosticCodes.XRefRebuilt, PdfDiagnosticCodes.ObjectRedefined]
+                :
+                [
+                    PdfDiagnosticCodes.XRefOffsetAdjusted, PdfDiagnosticCodes.XRefHybridStreamLost, PdfDiagnosticCodes.XRefChainCycle,
+                    PdfDiagnosticCodes.XRefStreamPassedOver, PdfDiagnosticCodes.XRefRebuilt, PdfDiagnosticCodes.ObjectRedefined,
+                ]);
+
+        if (spent == 0)
+        {
+            document.Diagnostics[3].Position.Should().Be(own);
+        }
     }
 
     [Fact]

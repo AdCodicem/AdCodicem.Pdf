@@ -909,6 +909,37 @@ internal static class HybridFiles
     }
 
     /// <summary>
+    /// A document saved twice whose sections index nothing. Past a comment of 1,200 dashes after the catalog and an empty
+    /// page tree, the oldest table, at <c>Oldest</c>, gives the subsection <c>0 0</c>, or, where
+    /// <paramref name="oldestFreeRow"/> says so, the row that heads the free list. The update writes object 4,
+    /// <c>(four)</c>, cross-reference stream 6, at <c>Stream</c>, of <c>/Index [4 0]</c> and no data, object 10,
+    /// <c>(ten)</c>, and the cross-reference stream of its own revision, stream 11, at <c>Own</c>, which nothing names,
+    /// gives no <c>/Prev</c>, and has <c>/Index [10 0]</c> and no data; then, past a comment of 600 dashes, its table, at
+    /// <c>Newest</c>, which gives the subsection <c>0 0</c>, and names stream 6 through <c>/XRefStm</c> and, through
+    /// <c>/Prev</c>, the place 7 bytes before stream 11: a search near it comes to stream 11 first, then to stream 6 and
+    /// the oldest table.
+    /// </summary>
+    public static (byte[] File, long Oldest, long Own, long Newest) PrevFallingShortOfTheTablesOwnStreamInAChainOfEmptySections(bool oldestFreeRow)
+    {
+        var file = new HandWrittenFile(version: "1.5");
+        file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>");
+        file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>");
+        file.Raw("%" + new string('-', 1200) + "\n");
+        var oldest = file.Position;
+        file.Raw(oldestFreeRow ? "xref\n0 1\n0000000000 65535 f \ntrailer\n<< /Size 3 /Root 1 0 R >>\n" : "xref\n0 0\ntrailer\n<< /Size 3 /Root 1 0 R >>\n");
+        file.Object(4, "(four)");
+        var stream = file.Position;
+        file.Object(6, "<< /Type /XRef /Size 7 /W [1 4 2] /Index [4 0] /Root 1 0 R /Length 0 >>\nstream\n\nendstream");
+        file.Object(10, "(ten)");
+        var own = file.Position;
+        file.Object(11, "<< /Type /XRef /Size 12 /W [1 4 2] /Index [10 0] /Root 1 0 R /Length 0 >>\nstream\n\nendstream");
+        file.Raw("%" + new string('-', 600) + "\n");
+        var newest = file.Position;
+        file.Raw(Invariant($"xref\n0 0\ntrailer\n<< /Size 12 /Root 1 0 R /Prev {own - 7} /XRefStm {stream} >>\nstartxref\n{newest}\n%%EOF\n"));
+        return (file.Bytes, oldest, own, newest);
+    }
+
+    /// <summary>
     /// A one-page document saved twice, whose newest table, at <c>Newest</c>, indexes nothing, names through <c>/Prev</c>
     /// the place 3 bytes before the oldest table, at <c>Oldest</c>, inside the <c>endobj</c> before it, and through
     /// <c>/XRefStm</c> the place 12 bytes into object 6, inside its string, at <c>Named</c>. Objects 6 and 7, strings, lie
