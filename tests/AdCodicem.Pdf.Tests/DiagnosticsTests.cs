@@ -248,10 +248,11 @@ public class DiagnosticsTests
     [Fact]
     public void Rolling_back_beside_the_guards_of_full_diagnostics_counts_left_out_only_the_guards_reports_the_capacity_dropped()
     {
-        // As above, but the diagnostics are full once the first decoding's guard is kept. The second decoding meets that guard
-        // again, its report held and not made, a fault beside it and a guard of its own, whose reports the capacity drops.
-        // Rolled back beside the guards, the fault is no longer counted, the new guard's report is, left out still, and the
-        // guard met again is counted reached alone: the capacity left out no report of it.
+        // As above, but the diagnostics, which hold three entries, are filled once the first decoding's guard is kept: two
+        // entries take the room it leaves. The second decoding meets that guard again, its report held and not made, a
+        // fault beside it and a guard of its own, whose reports the capacity drops. Rolled back beside the guards, the
+        // fault is no longer counted, the new guard's report is, left out still, and the guard met again is counted reached
+        // alone: the capacity left out no report of it.
         var target = new PdfDiagnostics { Capacity = 3 };
         var decodings = target.Decodings;
         var first = target.GetMarkWithDecodingReports();

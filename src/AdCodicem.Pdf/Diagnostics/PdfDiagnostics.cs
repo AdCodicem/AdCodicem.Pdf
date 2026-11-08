@@ -156,9 +156,12 @@ public sealed class PdfDiagnostics : IReadOnlyList<PdfDiagnostic>
     /// staying counted in <see cref="LimitsReached"/>, and the reports of guards the capacity left out counted as left out
     /// still, but no other entry it left out: what a reading met beside a guard it is to make again is met again, and the
     /// guard stands. A guard a decoding reached again, whose report a decoding moved in already, is counted reached with no
-    /// report (<see cref="MoveDecodingReportsTo"/>), which the capacity did not leave out. The reports decodings moved in
-    /// that the mark recorded are held again, with the guards' kept, so that a decoding that meets one again does not report
-    /// it twice.
+    /// report (<see cref="MoveDecodingReportsTo"/>), and not as left out, unless that decoding made as many reports as the
+    /// capacity before the guard: a decoding holds no more (<see cref="Decodings"/>), and the guard's report it dropped is
+    /// counted left out, as any report is. A guard whose report the capacity left out has no report held: a decoding that
+    /// meets it again reports it anew, counted left out again where there is still no room for it. The reports decodings
+    /// moved in that the mark recorded are held again, with the guards' kept, so that a decoding that meets one again does
+    /// not report it twice.
     /// </summary>
     internal void RollBackBesideLimits(PdfDiagnosticsMark mark)
     {
