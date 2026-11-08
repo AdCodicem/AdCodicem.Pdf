@@ -3721,19 +3721,19 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// is named or found moved, reads it or reports it as it finds it — read, read in part, or there and unreadable, a
     /// guard's cut among it —; one the search came back to was read, taken or dropped as holding no section. The stream is
     /// told by its data, not by the byte a reading of it started at, as the search tells the stream an <c>/XRefStm</c> read
-    /// (<see cref="NumberRunsInto"/>): a link that names a place inside its header's object number, past its first byte —
+    /// (<see cref="NumberRunsInto"/>): a link that names a place inside its header's object number past its first byte —
     /// the first sign of the run of signs the number is written with, where that run starts with a <c>+</c>, as the
-    /// header's token does (<see cref="HeaderTokenStart"/>), or its first digit —, reads the same dictionary and the same
-    /// data from there, and reaches that stream as one that names its header does. A limit that left part of the chain
-    /// unread — the number of its sections, a section it cut before the section said what it is, rows it cut or an index
-    /// it filled, a trailer it cut, an object it cut that a value the rows or a link are read with leads to — may hide the
-    /// link that names the stream, as an older table's <c>/XRefStm</c> or <c>/Prev</c> may name any offset: what lies past
-    /// the guard is the guard's, unknown rather than missing (#264). So may white space and comments past a trailer's
-    /// window where the chain names a section, which is not read from there: the search near the offset stands for that
-    /// reading, and may pass over a stream the reading would not have come to, or find nothing, what the section names
-    /// left unread — the guard's, though the section is looked for as one that is not there (#289). A cut that leaves
-    /// nothing unread — data past a stream's last row, an object past a whole reference it holds — hides no link, and
-    /// leaves the report made. What it costs is a look at the records of the sections the chain reached, and at as many
+    /// header's token does (<see cref="HeaderTokenStart"/>), or its first digit — and reads a header there reads the same
+    /// dictionary and the same data, and reaches that stream as one that names its header does. A limit that left part of
+    /// the chain unread — the number of its sections, a section it cut before the section said what it is, rows it cut or
+    /// an index it filled, a trailer it cut, an object it cut that a value the rows or a link are read with leads to — may
+    /// hide the link that names the stream, as an older table's <c>/XRefStm</c> or <c>/Prev</c> may name any offset: what
+    /// lies past the guard is the guard's, unknown rather than missing (#264). So may white space and comments past a
+    /// trailer's window where the chain names a section, which is not read from there: the search near the offset stands
+    /// for that reading, and may pass over a stream the reading would not have come to, or find nothing, what the section
+    /// names left unread — the guard's, though the section is looked for as one that is not there (#289). A cut that
+    /// leaves nothing unread — data past a stream's last row, an object past a whole reference it holds — hides no link,
+    /// and leaves the report made. What it costs is a look at the records of the sections the chain reached, and at as many
     /// positions as the header's object number has bytes for each stream: nothing is read here, and no stream is read to
     /// report it, its dictionary having been parsed in the search's window when it was passed over, and its number's signs
     /// and digits scanned there when the search took another section, as its line was lexed — in that window, or, where the
