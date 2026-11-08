@@ -2821,8 +2821,9 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
 
     /// <summary>
     /// Forgets the objects read through since <see cref="_chainValuesCut"/> held <paramref name="mark"/> of them, which a
-    /// place the section may have been moved to, and that the search does not take, led to: nothing of its reading is kept,
-    /// and a value the chain keeps that leads to one of them reads it anew, for it to be loaded once the chain is read.
+    /// place the section may have been moved to, and that the search does not take, led to: what the place read through is
+    /// not kept, and a value the chain keeps that leads to one of them reads it anew, for it to be loaded once the chain is
+    /// read. What the place's reading reported is not this method's to drop (<see cref="TryRelocateXRefSection"/>).
     /// </summary>
     private void ForgetReadThrough(int mark)
     {
@@ -6273,9 +6274,13 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
         bool objectRead;
         bool cutByGuard;
 
-        // A place the section may have been moved to is a guess: what is there and is no section leaves nothing of its
-        // reading, not even a guard its dictionary reached. Where the chain names a section, the guard is reported; where it
-        // is only checked, the guard's cut is known and nothing is reported.
+        // A place the section may have been moved to is a guess: what is there and does not declare itself a cross-reference
+        // stream — an object of another /Type, one that gives neither /Type /XRef nor a /W, or no dictionary — leaves nothing
+        // of its reading, not even a guard its dictionary reached. One that does is kept as read: where the search drops it
+        // later — an object that gives only a /W and cannot be read, among others —, what it read through goes with it, and
+        // so does what decoding its data reported, but for a guard the decoding reached, while what reading its dictionary
+        // reported stands, once, a guard that cut the dictionary among it (TryRelocateXRefSection). Where the chain names a
+        // section, the guard is reported; where it is only checked, the guard's cut is known and nothing is reported.
         if (checkOnly)
         {
             objectRead = TryParseUnrecordedAt(at, out value, out number, out header, out cutByGuard);
