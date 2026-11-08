@@ -1849,17 +1849,18 @@ internal static class HybridFiles
 
     /// <summary>
     /// A one-page document saved three times. Objects 4, <c>(four)</c>, and 5, <c>(five)</c>, follow the first three, then
-    /// two cross-reference streams that index object 4 and themselves and give no <c>/Prev</c>, each of <c>/Type /XRef</c>,
-    /// its header beginning its line: stream 11, at <c>Stream</c>, and stream 12, at <c>Own</c> — past
-    /// <paramref name="run"/> spaces, at <c>Run</c>, where <paramref name="runBefore"/> is <c>"the stream"</c> —, which a
-    /// comment of dashes follows. The table past the comment, at <c>Older</c>, indexes objects 1 to 3, and names through
-    /// <c>/Prev</c> the oldest table, at <c>Oldest</c> — or, where <paramref name="runBefore"/> is
-    /// <c>"the oldest table"</c>, the first of <paramref name="run"/> spaces, at <c>Run</c>, written between the two —.
-    /// The oldest table indexes object 5, and names through <c>/XRefStm</c> stream 12, or the first space of the run before
-    /// it, where <paramref name="oldestNamesOwn"/> says so, and nothing otherwise. The newest table, at <c>Newest</c>,
-    /// indexes nothing, and names through <c>/XRefStm</c> stream 11 and through <c>/Prev</c> the place 200 bytes past the
-    /// start of stream 12, inside the comment, 240 bytes before the table past it: a search near that place comes to
-    /// stream 12, which lies past stream 11 and may be the newest table's own, and to the table past the comment.
+    /// two cross-reference streams that index object 4 and themselves and give no <c>/Prev</c>, each of <c>/Type /XRef</c>:
+    /// stream 11, at <c>Stream</c>, its header beginning its line, and stream 12, at <c>Own</c>, right after it, its header
+    /// beginning its line too — or, where <paramref name="runBefore"/> is <c>"the stream"</c>, past <paramref name="run"/>
+    /// spaces, at <c>Run</c>, which start its line —, which a comment of dashes follows. The table past the comment, at
+    /// <c>Older</c>, indexes objects 1 to 3, and names through <c>/Prev</c> the oldest table, at <c>Oldest</c> — or, where
+    /// <paramref name="runBefore"/> is <c>"the oldest table"</c>, the first of <paramref name="run"/> spaces, at
+    /// <c>Run</c>, written between the two —. The oldest table indexes object 5, and names through <c>/XRefStm</c> stream
+    /// 12, or the first space of the run before it, where <paramref name="oldestNamesOwn"/> says so, and nothing otherwise.
+    /// The newest table, at <c>Newest</c>, indexes nothing, and names through <c>/XRefStm</c> stream 11 and through
+    /// <c>/Prev</c> the place 200 bytes past the start of stream 12, inside the comment, 240 bytes before the table past
+    /// it: a search near that place comes to stream 12, which lies past stream 11 and may be the newest table's own, and to
+    /// the table past the comment.
     /// </summary>
     public static (byte[] File, long Stream, long Own, long Run, long Older, long Oldest, long Newest) PassingOverAStreamAnOlderTableNamesPastWhiteSpace(
         string runBefore, int run, bool oldestNamesOwn = true)
