@@ -3724,24 +3724,27 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// (<see cref="NumberRunsInto"/>): a link that names a place inside its header's object number past its first byte —
     /// the first sign of the run of signs the number is written with, where that run starts with a <c>+</c>, as the
     /// header's token does (<see cref="HeaderTokenStart"/>), or its first digit — and reads a header there reads the same
-    /// dictionary and the same data, and reaches that stream as one that names its header does. A limit that left part of
-    /// the chain unread — the number of its sections, a section it cut before the section said what it is, rows it cut or
-    /// an index it filled, a trailer it cut, an object it cut that a value the rows or a link are read with leads to — may
-    /// hide the link that names the stream, as an older table's <c>/XRefStm</c> or <c>/Prev</c> may name any offset: what
-    /// lies past the guard is the guard's, unknown rather than missing (#264). So may white space and comments past a
-    /// trailer's window where the chain names a section, which is not read from there: the search near the offset stands
-    /// for that reading, and may pass over a stream the reading would not have come to, or find nothing, what the section
-    /// names left unread — the guard's, though the section is looked for as one that is not there (#289). A cut that
-    /// leaves nothing unread — data past a stream's last row, an object past a whole reference it holds — hides no link,
-    /// and leaves the report made. What it costs is a look at the records of the sections the chain reached, and at as many
-    /// positions as the header's object number has bytes for each stream: nothing is read here, and no stream is read to
-    /// report it, its dictionary having been parsed in the search's window when it was passed over, and its number's signs
-    /// and digits scanned there when the search took another section, as its line was lexed — in that window, or, where the
-    /// line starts before the bytes searched, in those bytes read again with as many as <see cref="LineStartSearchLength"/>
-    /// bytes before them, one window more for each such stream (<see cref="IsTokenOnItsLine"/>), a line that starts
-    /// farther back declaring nothing, and the stream then not reported. Reported once for each stream, at the stream,
-    /// however many searches passed over it; the index is not left incomplete for it, nor is anything looked for in its
-    /// place: whether it is the table's own is unknown, and no link the chain read reaches it.
+    /// dictionary and the same data, and reaches that stream as one that names its header does; one that reads none there —
+    /// digits that read 0, as the 0 of a number 20, or a <c>-</c> of that run — reads no object, and the search near that
+    /// place finds the stream moved, its record starting at its first digit, or at its first sign where a comment parts the
+    /// header's tokens: the stream is reached all the same. A limit that left part of the chain unread — the number of its
+    /// sections, a section it cut before the section said what it is, rows it cut or an index it filled, a trailer it cut,
+    /// an object it cut that a value the rows or a link are read with leads to — may hide the link that names the stream,
+    /// as an older table's <c>/XRefStm</c> or <c>/Prev</c> may name any offset: what lies past the guard is the guard's,
+    /// unknown rather than missing (#264). So may white space and comments past a trailer's window where the chain names a
+    /// section, which is not read from there: the search near the offset stands for that reading, and may pass over a
+    /// stream the reading would not have come to, or find nothing, what the section names left unread — the guard's, though
+    /// the section is looked for as one that is not there (#289). A cut that leaves nothing unread — data past a stream's
+    /// last row, an object past a whole reference it holds — hides no link, and leaves the report made. What it costs is a
+    /// look at the records of the sections the chain reached, and at as many positions as the header's object number has
+    /// bytes for each stream: nothing is read here, and no stream is read to report it, its dictionary having been parsed
+    /// in the search's window when it was passed over, and its number's signs and digits scanned there when the search took
+    /// another section, as its line was lexed — in that window, or, where the line starts before the bytes searched, in
+    /// those bytes read again with as many as <see cref="LineStartSearchLength"/> bytes before them, one window more for
+    /// each such stream (<see cref="IsTokenOnItsLine"/>), a line that starts farther back declaring nothing, and the stream
+    /// then not reported. Reported once for each stream, at the stream, however many searches passed over it; the index is
+    /// not left incomplete for it, nor is anything looked for in its place: whether it is the table's own is unknown, and
+    /// no link the chain read reaches it.
     /// </remarks>
     private void ReportStreamsPassedOver()
     {
