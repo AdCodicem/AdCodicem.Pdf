@@ -475,15 +475,22 @@ Known gaps:
   quotes that starts no sooner than the stream the table's `/XRefStm` read, or names again, gives `/Type /XRef`, its
   header a token its line, lexed alone, reads, and gives no `/Prev`, or the table's, may be the table's own, and is
   tried last: where another place reads first, it is passed over and reported as `xref.stream-passed-over`, at a place
-  that holds no section of the file. Telling stream data, and strings an earlier line opened, apart, asked of every
-  place the search tries, one that reads and one it passes over included, closes it. A rebuild takes the bytes `trailer`
-  anywhere — in stream data, a comment, a string, the end of a name — for a trailer's keyword: it merges every key the
-  parse gives of the dictionary after them, not only the keys a trailer defines, and notes a reference after them, even
-  in a valid entry such as `/Mytrailer 5 0 R`. A stream nested in that dictionary, within the nesting the parser
-  follows, ends the parse, the key that holds it and the keys after it not merged, which is noted; nested deeper, the
-  container it lies in or follows is skipped as too deep ([#163]), and a `stream` keyword left after it is a stray token
-  to the container around it, a key a dictionary refuses or an element an array reads as null: what follows it is read
-  on as that container's keys or elements, and merged.
+  that holds no section of the file. A table the search tries whose `xref` keyword a comment or a string on its line
+  holds, which declares nothing, is taken as any place that reads is, whole or as far as `MaxXRefSectionLength` lets it,
+  as `main` takes it: near an `/XRefStm`, read in the stream's place, the naming is reported as `xref.hybrid-stream-lost`
+  and found an error, the stream farther off, within the 512 bytes searched, left unread; and where a guard cut its
+  rows, a run of rows a whole read finds unreadable and drops, the guard's cut becomes that error, laid on the file.
+  Telling stream data, and strings an earlier line opened, apart, asked of every place the search tries, one that reads
+  and one it passes over included, and asking every place it takes — one that reads, whole or in part, and one a guard
+  cut included — for a keyword or a header that is a token a load reads from the start of its line, as a place that
+  cannot be read is asked, close it. A rebuild takes the bytes `trailer` anywhere — in stream data, a comment, a string,
+  the end of a name — for a trailer's keyword: it merges every key the parse gives of the dictionary after them, not
+  only the keys a trailer defines, and notes a reference after them, even in a valid entry such as `/Mytrailer 5 0 R`.
+  A stream nested in that dictionary, within the nesting the parser follows, ends the parse, the key that holds it and
+  the keys after it not merged, which is noted; nested deeper, the container it lies in or follows is skipped as too
+  deep ([#163]), and a `stream` keyword left after it is a stray token to the container around it, a key a dictionary
+  refuses or an element an array reads as null: what follows it is read on as that container's keys or elements, and
+  merged.
 - [#47] Each section is read through a window of up to 64 KB, whatever its size; and the probe that looks for a
   classic table's `xref` keyword past white space an offset falls short by reads again from the offset as it grows,
   eight times larger each time up to `MaxTrailerLength` and 32 bytes past it, and only where the first token, or the

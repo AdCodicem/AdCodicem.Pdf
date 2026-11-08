@@ -254,11 +254,14 @@ a section there that reads, whole or in part — an attached file's own table, a
 is taken whatever its line is, the chain going on through its trailer, while near the offset a hybrid table's `/Prev`
 names, a quoted cross-reference stream that starts no sooner than the stream the table's `/XRefStm` read, gives
 `/Type /XRef`, its header a token its line, lexed alone, reads, and gives no `/Prev`, or the table's, may be passed over
-as the table's own and reported as `xref.stream-passed-over`, at a place that holds no section
-([#171](https://github.com/AdCodicem/AdCodicem.Pdf/issues/171)). An object there that gives a `/W` and another `/Type`
-and does not read as a section — a CIDFont —, with no section near it, is no section, and is reported missing; where
-`startxref` names one, it holds no section either, and its dictionary is no trailer. The section `startxref` names is
-not looked for nearby: when it is not where `startxref` says, the map is rebuilt.
+as the table's own and reported as `xref.stream-passed-over`, at a place that holds no section. Nor is the line of a
+place that reads lexed: a table whose `xref` keyword a comment or a string on its line holds, which declares nothing, is
+taken where it reads, whole or as far as `MaxXRefSectionLength` lets it — near an `/XRefStm`, read in the stream's
+place, the stream farther off left unread —, though, where the guard cut its rows, a whole read may find them
+unreadable and drop it ([#171](https://github.com/AdCodicem/AdCodicem.Pdf/issues/171)). An object there that gives a
+`/W` and another `/Type` and does not read as a section — a CIDFont —, with no section near it, is no section, and is
+reported missing; where `startxref` names one, it holds no section either, and its dictionary is no trailer. The
+section `startxref` names is not looked for nearby: when it is not where `startxref` says, the map is rebuilt.
 
 A rebuilt map keeps, of each number, the definition `object.redefined` names — the last written directly in the file,
 or, for a number written only inside object streams, the first listed in the object stream read first —, a direct
