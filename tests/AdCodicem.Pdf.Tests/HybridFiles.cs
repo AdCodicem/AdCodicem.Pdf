@@ -495,10 +495,13 @@ internal static class HybridFiles
     /// <paramref name="length"/>, the data's own where none is given; the newest table, past a long comment, indexes object
     /// 6, <c>(six)</c>, and names object 4 through <c>/Prev</c> and, through <c>/XRefStm</c>, the place 20 bytes into object
     /// 8, inside its string, at <c>Named</c>, 28 bytes before object 4: object 8 is the nearest place to it, then object 4,
-    /// then the oldest table.
+    /// then the oldest table. Where <paramref name="cut"/> names object 4's <c>/Size</c>, <c>/W</c> or <c>/Index</c>, that
+    /// value is written as the reference <c>9 0 R</c> — the <c>/Size</c> with no <c>/Index</c> beside it, its one row then
+    /// object 0's —, and object 9, past object 6, holds it, followed by 1,100 spaces: the newest table indexes it, and
+    /// <see cref="Documents.PdfReaderLimits.MaxObjectLength"/> at 1 KB cuts it.
     /// </summary>
     public static (byte[] File, long Oldest, long Four, long Named) PrevNamingAStreamBesideTheOldestTable(
-        string type, string widths = "[1 4 2]", int padding = 0, string filter = "", int? length = null)
+        string type, string widths = "[1 4 2]", int padding = 0, string filter = "", int? length = null, string? cut = null)
     {
         var file = new HandWrittenFile(version: "1.5");
         var (catalog, pages, page) = Page(file);
@@ -510,11 +513,20 @@ internal static class HybridFiles
         var eight = file.Object(8, "(" + new string('x', 30) + ")");
         var rows = StreamRows((1, newSeven, 0)) + new string('-', padding);
         var filtered = filter.Length == 0 ? string.Empty : " /Filter " + filter;
-        var four = file.Object(4, Invariant($"<< {type}/Size 10 /W {widths} /Index [7 1] /Prev {oldest}{filtered} /Length {length ?? rows.Length} >>\nstream\n{rows}\nendstream"));
+        (string numbering, string? value) = cut switch
+        {
+            null => (Invariant($"/Size 10 /W {widths} /Index [7 1]"), null),
+            "/Size" => (Invariant($"/Size 9 0 R /W {widths}"), "10"),
+            "/W" => ("/Size 10 /W 9 0 R /Index [7 1]", widths),
+            "/Index" => (Invariant($"/Size 10 /W {widths} /Index 9 0 R"), "[7 1]"),
+            _ => throw new ArgumentOutOfRangeException(nameof(cut), cut, "No such key."),
+        };
+        var four = file.Object(4, Invariant($"<< {type}{numbering} /Prev {oldest}{filtered} /Length {length ?? rows.Length} >>\nstream\n{rows}\nendstream"));
         file.Raw("%" + new string('-', 1200) + "\n");
         var six = file.Object(6, "(six)");
+        var nine = value is null ? string.Empty : "9 1\n" + Row(file.Object(9, value + new string(' ', 1100)));
         var newest = file.Position;
-        file.Raw(Invariant($"xref\n0 1\n0000000000 65535 f \n6 1\n{Row(six)}trailer\n<< /Size 10 /Root 1 0 R /Prev {four} /XRefStm {eight + 20} >>\nstartxref\n{newest}\n%%EOF\n"));
+        file.Raw(Invariant($"xref\n0 1\n0000000000 65535 f \n6 1\n{Row(six)}{nine}trailer\n<< /Size 10 /Root 1 0 R /Prev {four} /XRefStm {eight + 20} >>\nstartxref\n{newest}\n%%EOF\n"));
         return (file.Bytes, oldest, four, eight + 20);
     }
 

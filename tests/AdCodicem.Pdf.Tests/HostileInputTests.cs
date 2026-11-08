@@ -4756,28 +4756,36 @@ public class HostileInputTests
     }
 
     [Theory]
-    [InlineData("/Type /XRef ", 1)]
-    [InlineData("", 2)]
+    [InlineData("/Type /XRef ", null, 1)]
+    [InlineData("", null, 2)]
+    [InlineData("/Type /XRef ", "/Size", 1)]
+    [InlineData("/Type /XRef ", "/W", 1)]
+    [InlineData("/Type /XRef ", "/Index", 1)]
+    [InlineData("", "/Size", 2)]
     public void The_look_at_what_a_prev_names_reads_a_stream_s_data_only_where_the_data_decides_whether_the_prev_keeps_its_place(
-        string type, int reads)
+        string type, string? cut, int reads)
     {
         // The newest table names object 4 through /Prev, and through /XRefStm a place beside it, whose search comes to object
         // 4 and asks whether the /Prev keeps its place there: a stream that reads, its data of 100 KB, which gives /Type /XRef
         // or no /Type. A stream of /Type /XRef keeps the /Prev's place whatever its data holds: the look decodes none of it,
         // and the /Prev's own reading, next, reads it once. Where the stream gives only a /W, whether its filters decode
         // anything of its data tells whether it reads as a section there: the look decodes it, and the /Prev's own reading
-        // reads it again. Every decoding reads the data whole, from its first byte (#156, #221).
-        var (file, _, four, _) = HybridFiles.PrevNamingAStreamBesideTheOldestTable(type, padding: 100_000);
+        // reads it again. Every decoding reads the data whole, from its first byte. So it goes where the stream's /Size, /W
+        // or /Index is the reference 9 0 R, which MaxObjectLength cuts, the /Prev's own reading then ending the chain at the
+        // guard's section. The look decoded a stream of /Type /XRef beside the cut value, to tell whether its data holds any
+        // row, which tells nothing of the place it keeps: the data was read twice (#156, #221, #263).
+        var (file, _, four, _) = HybridFiles.PrevNamingAStreamBesideTheOldestTable(type, padding: 100_000, cut: cut);
         var data = Encoding.Latin1.GetString(file).IndexOf("stream\n", (int)four, StringComparison.Ordinal) + "stream\n".Length;
+        var options = cut is null ? null : new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxObjectLength = 1024 } };
+        (string, XRefSectionState)[] sections = cut is null
+            ? [("startxref", XRefSectionState.Read), ("/XRefStm", XRefSectionState.NamedAgain), ("/Prev", XRefSectionState.Read), ("/Prev", XRefSectionState.Read)]
+            : [("startxref", XRefSectionState.Read), ("/XRefStm", XRefSectionState.NamedAgain), ("/Prev", XRefSectionState.Malformed)];
         using var source = new WindowLoggingSource(file);
 
-        using (var document = PdfDocument.Open(source, options: null, ownsSource: false))
+        using (var document = PdfDocument.Open(source, options, ownsSource: false))
         {
-            document.Reader.Structure.Sections.Select(section => (section.NamedBy, section.State)).Should().Equal(
-                ("startxref", XRefSectionState.Read),
-                ("/XRefStm", XRefSectionState.NamedAgain),
-                ("/Prev", XRefSectionState.Read),
-                ("/Prev", XRefSectionState.Read));
+            document.Reader.Structure.Sections.Select(section => (section.NamedBy, section.State)).Should().Equal(sections);
+            document.Reader.Structure.Sections[^1].CutByLimit.Should().Be(cut is not null);
         }
 
         source.Windows.Count(window => window.Offset == data).Should().Be(reads);

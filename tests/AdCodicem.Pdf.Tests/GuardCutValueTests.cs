@@ -3792,6 +3792,89 @@ public class GuardCutValueTests
     }
 
     [Theory]
+    [InlineData("/W 5 0 R /Size 8", "[1 4 2]", "/Foo")]
+    [InlineData("/W 5 0 R /Size 8", "[1 4 2]", "/FlateDecode")]
+    [InlineData("/W [1 5 0 R 2] /Size 8", "4", "/Foo")]
+    [InlineData("/W [1 5 0 R 2] /Size 8", "4", "/FlateDecode")]
+    [InlineData("/W [1 4 2] /Size 5 0 R", "8", "/Foo")]
+    [InlineData("/W [1 4 2] /Size 5 0 R", "8", "/FlateDecode")]
+    [InlineData("/W [1 4 2] /Index 5 0 R", "[0 8]", "/Foo")]
+    [InlineData("/W [1 4 2] /Index 5 0 R", "[0 8]", "/FlateDecode")]
+    [InlineData("/W [1 4 2] /Size 8", "8", "/Foo")]
+    public void A_stream_of_no_type_the_search_near_an_offset_drops_leaves_nothing_its_decoding_reported_whatever_value_of_it_a_guard_cut(
+        string values, string five, string filter)
+    {
+        // As above, but object 6 gives no /Type, and the newer table's /Prev names a place 2 bytes into its header: the search
+        // near that place tries object 6, which gives only a /W and cannot be read, its filter decoding nothing of its data,
+        // drops it, a place that declares no section, and takes stream 7, found moved. Object 6's /W, an element of its /W,
+        // its /Size or its whole /Index names object 5, which MaxObjectLength cuts — or none does. What decoding object 6's
+        // data reported goes with the place, under the guard as read whole. Where the guard cut a value, the data is decoded
+        // beside it, to tell whether its filters decode anything of it, and what that decoding reported stood, though the
+        // place was dropped and a whole read reports nothing of it (#221, #263).
+        var built = ChainFiles.UnderAnUpdate(
+            "/Type /XRef /Size 8 /W [1 4 2] /Length {length}",
+            five + new string(' ', 1100),
+            compressed: false,
+            predicted: false,
+            placed: true,
+            six: "<< " + values + " /Filter " + filter + " /Length 7 >>\nstream\nxxxxxxx\nendstream");
+        var text = Encoding.Latin1.GetString(built);
+        var stream = text.IndexOf("\n7 0 obj", StringComparison.Ordinal) + 1;
+        var sixAt = text.IndexOf("\n6 0 obj", StringComparison.Ordinal) + 1;
+        var file = Encoding.Latin1.GetBytes(text.Replace(Invariant($"/Prev {stream} "), Invariant($"/Prev {sixAt + 2} "), StringComparison.Ordinal));
+
+        using (var whole = PdfDocument.Open(file))
+        {
+            whole.Reader.Structure.Sections[^1].Should().Match<XRefSectionRecord>(read =>
+                read.NamedBy == "/Prev" && read.State == XRefSectionState.Relocated && read.Offset == stream);
+            whole.Diagnostics.Select(entry => entry.Code).Should().Equal(PdfDiagnosticCodes.XRefOffsetAdjusted);
+        }
+
+        using var document = PdfDocument.Open(file, ObjectGuard);
+
+        document.Reader.Structure.Sections[^1].Should().Match<XRefSectionRecord>(section =>
+            section.NamedBy == "/Prev" && section.State == XRefSectionState.Relocated && section.Offset == stream);
+        document.Diagnostics.Select(entry => entry.Code).Should().Equal(PdfDiagnosticCodes.XRefOffsetAdjusted);
+    }
+
+    [Theory]
+    [InlineData("/Type /XRef ", "/Size", true)]
+    [InlineData("/Type /XRef ", "/W", false)]
+    [InlineData("/Type /XRef ", "/Index", true)]
+    [InlineData("", "/Size", false)]
+    [InlineData("", "/W", false)]
+    [InlineData("", "/Index", false)]
+    public void What_decoding_a_stream_beside_a_value_a_guard_cut_meets_is_reported_where_the_whole_read_reports_it_whatever_the_look_at_the_prev_s_place_decoded(
+        string type, string cut, bool rebuilt)
+    {
+        // The newest table names object 4 through /Prev, and through /XRefStm a place beside it, whose search comes to object
+        // 4 and asks whether the /Prev keeps its place there. Object 4, a stream of /Type /XRef or of no type whose filter
+        // decodes nothing of its data, writes its /Size, its /W or its /Index as the reference 9 0 R, which MaxObjectLength
+        // cuts. The look decodes nothing of a stream of /Type /XRef, which keeps the /Prev's place whatever its data holds,
+        // and drops what decoding any other met; so does the search, which tries such a stream next and drops it. What the
+        // decoding met is reported where the whole read reports it: by the /Prev's own reading of object 4. The look, and
+        // the search, reported it before the /XRefStm's own report, under the guard alone (#156, #221). A stream of /Type
+        // /XRef that cannot be read, numbering its rows with a /Size, or an /Index the reference 9 0 R holds, refuses every
+        // number to the oldest table's rows, the catalog's among them: the index is rebuilt at opening, and the rebuild,
+        // loading every object it finds, reaches the guard at object 9 before it reports object 7 defined twice.
+        var (file, _, _, _) = HybridFiles.PrevNamingAStreamBesideTheOldestTable(type, filter: "/Foo", cut: cut);
+        string[] codes = type.Length > 0
+            ? [PdfDiagnosticCodes.XRefHybridStreamLost, PdfDiagnosticCodes.FilterUnsupported, PdfDiagnosticCodes.XRefSectionUnreadable]
+            : [PdfDiagnosticCodes.XRefOffsetAdjusted, PdfDiagnosticCodes.XRefHybridStreamLost, PdfDiagnosticCodes.FilterUnsupported, PdfDiagnosticCodes.XRefOffsetAdjusted];
+
+        using (var whole = PdfDocument.Open(file))
+        {
+            whole.Diagnostics.Select(entry => entry.Code).Should().Equal(
+                rebuilt ? [.. codes, PdfDiagnosticCodes.XRefRebuilt, PdfDiagnosticCodes.ObjectRedefined] : codes);
+        }
+
+        using var document = PdfDocument.Open(file, ObjectGuard);
+
+        document.Diagnostics.Select(entry => entry.Code).Should().Equal(
+            rebuilt ? [.. codes, PdfDiagnosticCodes.XRefRebuilt, PdfDiagnosticCodes.LimitObject, PdfDiagnosticCodes.ObjectRedefined] : codes);
+    }
+
+    [Theory]
     [InlineData(
         "/Size 8",
         "(eight)",

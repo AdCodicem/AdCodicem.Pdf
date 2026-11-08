@@ -6224,9 +6224,9 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// it, what the decoding reports dropped, and no row is read. Reading the rows makes no section unreadable — rows the
     /// data lacks, or that a guard on decoding cut, leave it read in part —, and the check gives
     /// <see cref="XRefSectionState.Read"/> there. The data of a stream of <c>/Type /XRef</c> is not decoded, the check
-    /// giving <see cref="XRefSectionState.Read"/> once its numbering is read: such a stream keeps its place whatever its
-    /// data holds (<see cref="KeepsItsPlace"/>). What a value it read through a guard's cut leads to is the caller's to
-    /// forget (<see cref="ForgetReadThrough"/>).
+    /// giving <see cref="XRefSectionState.Read"/> once its numbering is read, and judging beside a value a guard cut only
+    /// what the values read give: such a stream keeps its place whatever its data holds (<see cref="KeepsItsPlace"/>). What
+    /// a value it read through a guard's cut leads to is the caller's to forget (<see cref="ForgetReadThrough"/>).
     /// </para>
     /// <para>
     /// Data the filters decode nothing of — left at a filter the library does not know, at an element of <c>/Filter</c>
@@ -6410,12 +6410,32 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
                 return XRefSectionState.Malformed;
             }
 
-            if (FaultBesideCut(dictionary, deferred is null && !xrefStream.Data.CutByGuard && !xrefStream.Data.EndHidden ? xrefStream : null, out var holds) is { } file)
+            // FaultBesideCut decodes data whose extent the file gives, to tell whether its filters decode anything of it, and
+            // that decoding reports into the document's diagnostics, as the reading below does. A check gives it no stream of
+            // /Type /XRef, which keeps its place whatever its data holds (KeepsItsPlace), and drops what the decoding of any
+            // other reported, as it does below. At a place the section may have been moved to, where the data holds no row,
+            // what the decoding reported goes with the place where the search drops it (TryRelocateXRefSection). The mark,
+            // taken once for a check and once for each place read that far, which MaxRelocationCandidates bounds, holds the
+            // decodings' reports.
+            var judged = deferred is null && !xrefStream.Data.CutByGuard && !xrefStream.Data.EndHidden &&
+                !(checkOnly && section.TypedXRef)
+                ? xrefStream
+                : null;
+            var besideCut = candidate || checkOnly ? _diagnostics.GetMarkWithDecodingReports() : default;
+            var file = FaultBesideCut(dictionary, judged, out var holds);
+
+            if (checkOnly)
+            {
+                _diagnostics.RollBack(besideCut);
+            }
+
+            if (file is not null)
             {
                 section.Fault = file;
 
                 if (holds is not { } rows)
                 {
+                    section.UndecodedReports = candidate && file == DataUndecoded ? besideCut : null;
                     return XRefSectionState.Malformed;
                 }
 
@@ -7205,7 +7225,8 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// <summary>
     /// Gives <see cref="DataUndecoded"/> where the filters of cross-reference stream <paramref name="stream"/>, written
     /// direct, decode nothing of its data, which then holds no row, whatever the values a guard cut hold (#221); null
-    /// otherwise, and for no stream.
+    /// otherwise, and for no stream. The data is decoded to tell (<see cref="RowsHeldAtMost"/>), and what the decoding
+    /// meets is reported into the document's diagnostics, which the caller rolls back where it is to keep nothing of it.
     /// </summary>
     /// <param name="stream">The stream, whose data's extent is the file's, or null when it is not.</param>
     private static string? UndecodedFault(PdfStream? stream)
@@ -7224,7 +7245,9 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// Gives how many rows of <paramref name="row"/> bytes or more the data of cross-reference stream
     /// <paramref name="stream"/> holds at most, and how long it decodes to, when its filters are written direct and decode
     /// it whole; null otherwise: a value of them a reference holds is read as the chain reads one, and its decoding is what
-    /// the section's reading does.
+    /// the section's reading does. The decoding is given no diagnostics of its own, and reports what it meets into those of
+    /// the stream's document, as any decoding of the stream does: the caller rolls them back where it is to keep nothing of
+    /// it (<see cref="TryReadXRefStream"/>).
     /// </summary>
     /// <param name="stream">The stream, whose data's extent is the file's.</param>
     /// <param name="row">The fewest bytes a row may hold.</param>
