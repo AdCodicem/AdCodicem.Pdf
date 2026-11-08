@@ -27,7 +27,8 @@ ADR 34), a severity against ADR 45, a test that does not hold what its name says
 that depends on load or machine, a member not covered, documentation (XML docs, remarks, docs/, the site) that
 misstates the code, a measurement key or review key written in src/ tests/ docs/ (S1..S10 as shape names, B19-, P1b,
 P2, b2t, c9b, A-prime, N-DUP, N-TND, R1-..., bracketed finding numbers, mutant ids, probe or generator names, 'decoy',
-'reviewer', 'refuter', 'prototype', 'variant', 'judge'), British spelling, a commit message rule broken. Also judge
+'reviewer', 'refuter', 'prototype', 'variant', 'judge' as the review role — 'judged' as the validator's or reader's
+own verb is the pages' established term and stays), British spelling, a commit message rule broken. Also judge
 whether each decision was implemented as decided.
 
 Environment: Windows 11, 16 cores, 32 GB. Your shell tool is Git Bash (POSIX); PowerShell is also available. `python3`
@@ -35,9 +36,9 @@ is a Store stub: use `python` (`python -I` for scripts reading generated files).
 in each shell so build output reads 'Warning(s)'. Git Bash has no setsid. If the harness refuses `bash <script>` or a
 `timeout -k` construct, use the Python drivers in W/lot19/tools: corpus_run.py (OUTDIR MAINTREE BRANCHTREE [RUNS]),
 diff_run.py (WORKTREE NAME [--no-build]: the own-stream differential, W/r8proto), common.py, tdo.ps1, timing.ps1; read
-each one's head first. A Release build of da2b06f (round 8's head) is at W/base-da2b06f: copy a probe into its
-tests/AdCodicem.Pdf.Tests, build and run there, delete the probe after, never commit there (one agent at a time may
-build it: if its obj folder is locked, add your own worktree at da2b06f instead).
+each one's head first. For the previous round's head c2a2aaa (or round 8's da2b06f), add your own worktree under
+W/r11wip (`git worktree add <dir> c2a2aaa`), build and run there, and remove it when done (its remote corpus copy
+first); W/base-da2b06f is a shared Release build of da2b06f, one agent at a time.
 
 Rules:
 - Work in your own git worktree (the Workflow gave you one). `git fetch origin ccr-6d6c0ee6-dqm4lm-188` then
@@ -49,7 +50,7 @@ Rules:
   finish and before removing any worktree you added.
 - Build Release (`dotnet build AdCodicem.Pdf.slnx -c Release -m:4`). Probes are uncommitted test files Zz*.cs in
   tests/AdCodicem.Pdf.Tests, run with `dotnet test --project tests/AdCodicem.Pdf.Tests/AdCodicem.Pdf.Tests.csproj -c
-  Release --no-build -- --filter-method "*ZzName*"`. For main's output, `git worktree add <dir under W/r10wip> 21a0298`
+  Release --no-build -- --filter-method "*ZzName*"`. For main's output, `git worktree add <dir under W/r11wip> 21a0298`
   and build there; remove it when done (its remote corpus copy first).
 - RESOURCE RULE (the maintainer's, on this PC): dotnet builds and tests may run in parallel, across agents and within
   yours (mutants in separate worktrees, a probe on main beside one on the branch), up to two dotnet processes of yours
@@ -65,4 +66,4 @@ Rules:
   claim, an uncovered member, a cost that is bounded but avoidable), nit (wording, style).
 - Return findings as structured output only (no report files). Every finding: a short key, its severity, file:line on
   the branch head, the claim, the evidence (the reproducer's exact output), and the fix you propose. Keep your probes
-  and generators under W/r10wip/<your label>/ so the fix stage can reuse them, and name their paths in the evidence.
+  and generators under W/r11wip/<your label>/ so the fix stage can reuse them, and name their paths in the evidence.

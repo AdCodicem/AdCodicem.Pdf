@@ -4,95 +4,30 @@ This is the handoff from the cloud session that ran batch 19 of M02's step 4. It
 request so that the work can resume on the maintainer's Windows PC. These notes hold review keys, probe names and
 scratchpad paths. **None of that may go into src/, tests/ or docs/.**
 
-## 1. Where things stand
+## 1. Where things stand (updated 2026-11-08, Windows session)
 
 - **Batch.** Batch 19 of M02's step 4 pays #156, #188, #197, #207, #208, #210, #221, #222, #241, #261, #264, #281
   and #317. It started from `main` at 21a0298.
-- **Branch.** `ccr-6d6c0ee6-dqm4lm-188` is at **da2b06f**, pushed and clean. No pull request exists yet.
-  - Implementation: 21a0298..071f829.
-  - Review rounds 1 to 8 fixed: 071f829..da2b06f. Each round's ranges are in `decisions.md`.
-- **WIP branch.** `ccr-6d6c0ee6-dqm4lm-188-wip` holds only these notes, in `notes/batch19/`. Its commits are
-  `wip: ... [skip ci]`. It is never merged.
-- **Review round 9 is done** (wf_a01bab38-4ae, on da2b06f).
-  - It made 31 findings: 3 major, 19 minor, 8 nit, and 1 refuted ([31]).
-  - They are in `r9-findings.md`, numbered `######## [n]`, each with the reviewer's claim, evidence and fix, then
-    the refuter's verdict, reason, evidence and fix. `python3 showf.py r9-findings.md 6000 <n...>` prints them.
-  - Also there: `r9-verified.json` (one line per finding), `r9-reviewers.json` and `r9-raw.json`.
-- **The triage is written.** See `decisions.md`, section *Review round 9 (wf_a01bab38-4ae on da2b06f): triage*. It
-  is the mandate for the round 9 fixes.
-- **The maintainer answered both round 9 questions**, each as recommended. The answers are at the end of
-  `decisions.md`.
-  - **R9-Q1, "Le traiter comme S".** A candidate before S whose stream data starts where S's does *is* S. It is
-    dropped where it gives no /Prev, and deferred where it gives the table's. This restores 012e13d's whole reading
-    for an /XRefStm that lands inside its own stream's object number.
-  - **R9-Q2, "En-têtes typés".** `xref.stream-passed-over` names only a place that declares itself: /Type /XRef,
-    with a header that is a token on its own line. It costs no extra read.
-- **The round 9 fixes were launched, then stopped before they changed anything.** The run was wf_756885b9-080 with
-  script `lot19-r9-fixes.js`. Its first stage, R9a, had only read and probed: it left no diff and no commit, and
-  nothing was pushed after da2b06f. **The round 9 fixes are entirely still to do.**
+- **Branch.** `ccr-6d6c0ee6-dqm4lm-188` is at **79c6a7f**, pushed and clean. No pull request exists yet.
+  - Implementation: 21a0298..071f829. Review rounds 1 to 10 fixed: 071f829..79c6a7f (ranges in `decisions.md`).
+- **WIP branch.** `ccr-6d6c0ee6-dqm4lm-188-wip` holds only these notes, in `notes/batch19/`. It is never merged.
+- **Rounds 9 and 10 are reviewed, triaged and fixed** on the PC (decisions.md: *Review round 9 fixes*, *Review round
+  10 (wf_90e4d823-0f8 on c2a2aaa): triage*, *Review round 10 fixes (wf_ed26b797-484, Windows): result*). Round 10's
+  check on 79c6a7f is green (suite 10,622, site, corpus, differential unchanged).
+- **Next: review round 11** on c2a2aaa..79c6a7f, script `lot19-review-r11.js` (modeled on `lot19-review-r10.js`).
 
 ## 2. What remains, in order
 
-1. **Round 9 fixes.** `lot19-r9-fixes.js` holds the full brief for each stage. Run them in order:
-   1. **R9a: the passed-over Warning.**
-      - [1]/[10]: no Warning for a stream the chain reached and reported unreadable.
-      - [2]/[11]: no Warning where a guard ended the chain, or cut what the chain reached (ADR 34, #264).
-      - [30]: as R9-Q2 decides.
-      - [3]: reword the message.
-      - [15]: test for an empty chain.
-      - [18]: assert exact code lists.
-      - [19] and [21]: nits.
-      - [6]: the source comment.
-   2. **R9b: the search near a hybrid /Prev.**
-      - [16]: as R9-Q1 decides.
-      - [4]: forget what judging S reads through.
-      - [5]: H3 is not equivalent; add the row with a chain of 32 objects.
-      - [13]/[23]: the bound's exception in the comments, plus an into=28 row.
-      - [22]/[29]: rows that pin the known gaps.
-   3. **R9c: undecoded data and the /Prev check.**
-      - [7]: the candidate's FaultBesideCut decoding is rolled back.
-      - [8]/[12]: the check gives a typed stream no decoding, and rolls an untyped one back.
-      - [17]: cover the line by test.
-      - [20]: rename the test.
-      - [9]/[14]/[24]: the source comments.
-   4. **R9d: the pages.** Every open point the stages above leave, and findings [2]/[11], [1]/[10], [3], [6],
-      [9]/[14]/[24], [13]/[23], [15], [16], [19], [20], [22]/[29], [25], [27] and [30]. Also R8's open point at
-      `concepts/reader-limits.md:119-120`, and the R8a consequence on MaxDecodedStreamLength.
-   5. **R9-track, on GitHub.**
-      - Correct item 1 of the #332 body.
-      - Open a new `debt` issue (area: reader, M02) for an older revision's stream before S. Taken, it either ends
-        the chain or leads past its own table in silence. The first revision's stream can also be taken about 500
-        bytes off.
-      - Comment on #171 about a quoted stream that is passed over.
-   6. **R9f: the check.**
-      - Build and test: build with 0 warnings, the whole unit suite with the remote corpus linked, and format.
-      - Commit and text hygiene: commit rules, a grep for keys, links, and test citations.
-      - The site build.
-      - Timing, budget and allocation tests, three times each.
-      - The corpus diff against main and against round 8's dump.
-      - The own-stream differential, against round 8's check run (`out-r8f.txt`).
-2. **Review round 10.** Model it on `lot19-review-r9.js`:
-   - six lenses: own-stream, undecoded, src-texts, tests, docs, batch;
-   - one refuter per finding;
-   - no cap for memory on the PC (the cloud's 4 agents at a time no longer applies).
-
-   Then triage it in `decisions.md`, put any design question to the maintainer, and fix. **Repeat review rounds
-   until a round has no blocker, major or minor finding.**
-3. **The batch-wide ADR 53 step.** Run the mutation catalog over every src/ line the batch changes.
-4. **Verification.**
-   - Coverage: aim at 100 % of the patch, as Codecov counts it.
-   - Integration tests, twice. They need Docker.
-   - The corpus diff, main against branch.
-   - Benchmarks.
-   - The site: `docs/website`, `npm ci && npm run build`.
-   - The Remote corpus workflow, run on the branch.
-   - The .NET 11 compatibility island (`tests/Compat/global.json`).
-5. **`docs/status.md`.** Write the journal entry and tick the milestone checklist. Do not edit it before then. The
-   records are listed in section 4.
-6. **End-of-batch GitHub comments:** #289, #295, #52, and optionally #260. Their content is gathered in
-   `decisions.md`; search it for "#289 comment", "#295" and "#52 end comment".
-7. **The pull request.** Its subject is a `fix!:` conventional title. Its body says
-   `Closes #156, #188, #197, #207, #208, #210, #221, #222, #241, #261, #264, #281, #317`. Then offer to watch it.
+1. **Review rounds** until one has no blocker, major or minor finding: triage each in `decisions.md`, ask the
+   maintainer any design question, fix (model: `lot19-r10-fixes-win.js`).
+2. **The batch-wide ADR 53 step.** Run the mutation catalog over every src/ line the batch changes.
+3. **Verification.** Coverage at 100 % of the patch (Codecov's count); integration tests twice (Docker); the corpus
+   diff; benchmarks, alone; the site; the Remote corpus workflow on the branch; the .NET 11 compatibility island.
+4. **`docs/status.md`.** The journal entry and the milestone checklist; the records in section 4 and in
+   `decisions.md` (search "status.md").
+5. **End-of-batch GitHub comments:** #289, #295, #52, and optionally #260 (search `decisions.md`).
+6. **The pull request.** A `fix!:` title; body `Closes #156, #188, #197, #207, #208, #210, #221, #222, #241, #261,
+   #264, #281, #317`. Never merged.
 
 ## 3. Standing rules (the maintainer's, on top of CLAUDE.md)
 
@@ -146,7 +81,11 @@ scratchpad paths. **None of that may go into src/, tests/ or docs/.**
   R9c, this also applied in the /Prev check to a typed stream.
 - Item 18's PR #318 merged on 2026-11-03. The other records are gathered in `decisions.md`; search it for
   "status.md".
-- **Debts filed by the batch:** #320 to #332, plus the one R9-track opens.
+- **Added by rounds 9 and 10** (see decisions.md's two *fixes: result* sections): 68a55fa / e157359 / e3d0c99;
+  092b772 false for a guard until 42ca0bb; e157359 + 68a55fa counted a held guard as left out until daca13c; b55738a
+  false for the white-space guard until 5395eed; R9b's M11 reason (re-judged S09) and NumberRunsInto remark premise
+  until 2be5c44; 9823992's 'judgement'.
+- **Debts filed by the batch:** #320 to #333.
 
 ## 5. The files here, and running them on Windows
 

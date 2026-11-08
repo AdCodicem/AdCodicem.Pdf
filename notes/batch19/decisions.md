@@ -768,3 +768,45 @@ b55738a's body false for the white-space guard until [5]'s fix.
   check guard + suppressed count + the trailer-window mutant, R10b told by its data (report, sign), R10c white-space
   guard flag + passed-over texts + line-test theory, R10d pages (sequential, each pushed), then R10-track (#332, #289,
   #171 comments) and R10f check one after the other. Tools: diff_run.py --vs, timing.ps1 -Out.
+
+# Review round 10 fixes (wf_ed26b797-484, Windows): result
+6 agents, 0 errors, 3h47. Head 79c6a7f, 11 commits c2a2aaa..79c6a7f, all pushed; reports in r10-fix-result.json.
+- R10a (42ca0bb fix, daca13c fix, 97b09a8 test): the check's main-path decode rolls back with RollBackBesideLimits
+  ([1]/[4]/[11]/[13], open point (a)): a guard any decoding of the check reaches stands, reported once where the data
+  is first read; GuardCutValueTests theory renamed (..._a_prev_names_...), 8 rows, 3 fail on c2a2aaa. [14]: the
+  refuter's exact fix, PdfDiagnostics._limitsSuppressed raised in Add's full branch for a limit.* code, carried by
+  PdfDiagnosticsMark.LimitsSuppressed, restored by RollBack, moved as a delta by MoveTo/MoveTo<T>/MoveDecodingReportsTo;
+  RollBackBesideLimits sets _suppressed = mark.Suppressed + _limitsSuppressed - mark.LimitsSuppressed. [15]: filter rows
+  kill R9c's M03. ADR 53: 21 mutants, 20 killed, 1 equivalent (R9c's M05, reason rewritten: EndHidden is never true
+  while the chain is read); R9c's corrected record: 31, 26 killed, 4 equivalent (M20, M26, M27, M05), 1 not viable.
+- R10b (2be5c44 fix): [3]/[8]/[17] each passed-over place records its number's end (NumberEnd); the report counts it
+  reached where a Read, Relocated or Malformed record starts within [place, number end) (StartsWithin); [20] NumberEnd
+  skips the header's first byte unconditionally, NumberRunsInto maps a candidate at streamStart+1 when the byte at
+  streamStart is '+', guarded by streamStart >= 0. ADR 53: 42 runs, 4 not viable replaced, 32 killed, 6 equivalent
+  (B05, B08, S05 = M07, S09 = M11 with its reason corrected: S can be a '+', S17, E02).
+- R10c (5395eed fix, a10df33 test, a7be8b1 docs): [5]/[9]/[21] _whiteSpacePastGuard set in TryReadXRefSection's
+  padding branch, read only by ReportStreamsPassedOver (`ChainStoppedByGuard || _whiteSpacePastGuard`); it withholds
+  every passed-over report of the document, like ChainStoppedByGuard; texts state the code's rule
+  (PdfDiagnosticCodes.XRefStreamPassedOver). [18] line-test theory kills the spanStart+1 survivor. [6]/[19], [7], [22]
+  comments. ADR 53: 14 runs, 4 not viable replaced, 10 killed.
+- R10d (220eab4, a49ad89, c840119, 79c6a7f docs): threat model rows 432/434/439/554 and the #171 known gap (closing
+  widened); diagnostics.md rows 115/116/142; reader-limits (reference and concepts); lazy-reading; validation-rules
+  rows 48/60 and the FileTrailerValueWrong summary; the builder's comment ([2]); ADR 46 'judgment' ([12]).
+- R10-track: comments #332 6724664195 (the reached test by byte at :5180, header vs one byte in), #289 6724664402
+  (the white-space flag), #171 6724664613 (a commented table taken under a guard or read whole); bodies in r10track/.
+- R10f check on 79c6a7f: build 0 warnings; suite 10,622 / 0 failed / 3 skipped; format clean; 11 messages pass; no
+  key added; links and citations clean (335 / 1,243); site 269 pages, 0 warnings; timing, budget, allocation, memory,
+  hostile 3 runs each alone, all pass; corpus vs main: only pdfmaker7-powerpoint-va-cancer after #241's 1,072
+  rewordings; branch dump byte-identical to round 9's; own-stream differential byte-identical to r9f, worse counts
+  1,193 / 392 / 293 unchanged (no harness block reaches the round's shapes; stages confirmed on hand-built ones).
+- Decided without a question: 'judge'/'judged' as the validator's and reader's own verb stays (32 uses in
+  validation-rules.md on main); the ban covers the review role word only.
+- Open points for round 11: (a) the white-space flag withholds every passed-over report of the document, not only
+  near the link it hid; (b) a typed stream whose header number has a sign, found by the walk at its first digit, is
+  never recorded as passed over (not a token on its line, R9-Q2) while the same header parted by a comment is found at
+  the sign and can be; (c) the #332 reached test by byte (:5180), commented on #332.
+- Records for status.md: 092b772's body false for a guard until 42ca0bb; e157359 + 68a55fa counted a held guard as
+  left out until daca13c; b55738a's body false for the white-space guard until 5395eed; R9b's M11 reason false (S can
+  be '+'), re-judged S09; R9b's NumberRunsInto remark premise false for the digit walk until 2be5c44; 9823992's
+  'judgement'.
+- 2026-11-08: review round 11 launched: wf_556f39fe-f5c (task wbpunv29e) on c2a2aaa..79c6a7f, 7 lenses (own-stream, diagnostics, undecoded, src-texts, tests, docs, batch), a refuter per finding; brief review-brief-win.md (r11wip, 'judged' allowed as the validator's verb).
