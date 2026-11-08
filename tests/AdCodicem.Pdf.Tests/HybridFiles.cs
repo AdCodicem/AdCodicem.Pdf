@@ -1581,12 +1581,12 @@ internal static class HybridFiles
     /// <c>(three as the oldest has it)</c>, and a classic table, at <c>Oldest</c>, that indexes them; then, where not
     /// <paramref name="oldestWithinReach"/>, a comment of 700 bytes. The update writes object 4, <c>(four)</c>, and the
     /// cross-reference stream of its own revision, stream 6, at <c>Stream</c>, which indexes object 4, itself and objects
-    /// 20 and 21, and gives <c>/Prev 20 0 R</c>; object 20, which holds <c>21 0 R</c> and a comment of 1,100 bytes, which
-    /// <c>MaxObjectLength</c> 1,024 cuts after the reference, whole; and object 21, which holds the place 7 bytes before
-    /// the stream, where <paramref name="streamPrev"/> is <c>"the table's /Prev"</c>, or the oldest table's offset,
-    /// where it is <c>"the oldest table"</c>. Its table, at <c>Newest</c>, indexes nothing, and names the stream through
-    /// <c>/XRefStm</c> and the place 7 bytes before it, inside the <c>endobj</c> before it, through <c>/Prev</c>: a
-    /// search near that place comes to the stream, and to the oldest table farther off where it lies within reach.
+    /// 20 and 21, and gives <c>/Prev 20 0 R</c>; object 20, which holds <c>21 0 R</c> and a comment of 1,100 equals
+    /// signs, which <c>MaxObjectLength</c> 1,024 cuts after the reference, whole; and object 21, which holds the place 7
+    /// bytes before the stream, where <paramref name="streamPrev"/> is <c>"the table's /Prev"</c>, or the oldest table's
+    /// offset, where it is <c>"the oldest table"</c>. Its table, at <c>Newest</c>, indexes nothing, and names the stream
+    /// through <c>/XRefStm</c> and the place 7 bytes before it, inside the <c>endobj</c> before it, through <c>/Prev</c>:
+    /// a search near that place comes to the stream, and to the oldest table farther off where it lies within reach.
     /// </summary>
     public static (byte[] File, long Oldest, long Stream, long Newest) PrevFallingShortOfAStreamWhosePrevLeadsThroughALongObject(
         bool oldestWithinReach, string streamPrev)
