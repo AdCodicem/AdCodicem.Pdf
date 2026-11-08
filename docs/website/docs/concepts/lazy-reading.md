@@ -221,13 +221,14 @@ as the older revision the stream gives, nothing reported of it but the section f
 it: the map is then rebuilt as the document opens, which finds it, and the validator says the file holds no catalog
 ([#260](https://github.com/AdCodicem/AdCodicem.Pdf/issues/260)) —; where it gives a `/Prev`, the chain goes on through
 it, its own revision's table unread, what only that table indexes reading as null, nothing reported of it but the
-section found moved, and nothing rebuilt; where the stream the `/XRefStm` read gives no `/Prev` and every stream past it
-gives none, or the table's, a first revision's stream may be taken farther off, the revisions between lost, nothing
-reported of them but the section found moved and the streams passed over; that stream, where its `/Prev` gives no offset
-in the file, is taken, that `/Prev` then found missing and the `/XRefStm` said to name what the `/Prev` read
-([#156](https://github.com/AdCodicem/AdCodicem.Pdf/issues/156)); and a `/Prev` a few bytes off a stream a newer table's
-`/XRefStm` read never takes it: the table's own stream past it is taken where there is one, the chain ending there, and
-otherwise the section is reported missing a few bytes from that stream
+section found moved, and nothing rebuilt ([#333](https://github.com/AdCodicem/AdCodicem.Pdf/issues/333)); where the
+stream the `/XRefStm` read gives no `/Prev` and every stream past it gives none, or the table's, a first revision's
+stream may be taken farther off, the revisions between lost, nothing reported of them but the section found moved and
+the streams passed over ([#333](https://github.com/AdCodicem/AdCodicem.Pdf/issues/333)); that stream, where its `/Prev`
+gives no offset in the file, is taken, that `/Prev` then found missing and the `/XRefStm` said to name what the `/Prev`
+read ([#156](https://github.com/AdCodicem/AdCodicem.Pdf/issues/156)); and a `/Prev` a few bytes off a stream a newer
+table's `/XRefStm` read never takes it: the table's own stream past it is taken where there is one, the chain ending
+there, and otherwise the section is reported missing a few bytes from that stream
 ([#332](https://github.com/AdCodicem/AdCodicem.Pdf/issues/332)). Nor is a section looked for nearby when what is there
 declares itself one — an `xref` keyword, or a stream whose dictionary gives `/Type /XRef` — and cannot be read: it is
 reported where it is, any section near it being another ([#281](https://github.com/AdCodicem/AdCodicem.Pdf/issues/281)).

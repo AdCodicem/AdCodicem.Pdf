@@ -6052,7 +6052,7 @@ public class CrossReferenceChainTests
         // The stream lies before the one the /XRefStm read, and is taken where it comes nearest, whatever its /Prev: the
         // chain goes on through it to the oldest table, its own table left unread. What only that table indexes, object 7,
         // reads as null, nothing reported of it but the section found moved, the index neither left incomplete nor rebuilt,
-        // as before the rule. A known gap of telling the table's own stream by where it lies, which a debt tracks (#156).
+        // as before the rule. A known gap of telling the table's own stream by where it lies, which #333 tracks (#156).
         var (file, oldest, older, _, stream, newest) = HybridFiles.PrevFallingShortOfAnOlderRevisionsStream(olderGivesPrev: true);
         using var document = PdfDocument.Open(file);
 
@@ -6077,7 +6077,7 @@ public class CrossReferenceChainTests
         // alone indexing object 5. The stream lies before the one the /XRefStm read, and is taken where it comes nearest:
         // the chain ends there, the first revision's table unread. The catalog is found, and nothing is rebuilt: object 5
         // reads as null, nothing reported of it but the section found moved, and the validator finds no error, only the
-        // section shifted. A known gap of telling the table's own stream by where it lies, which a debt tracks; where the
+        // section shifted. A known gap of telling the table's own stream by where it lies, which #333 tracks; where the
         // catalog is the skipped table's alone, the index is rebuilt instead, as the theory above holds (#156, #260).
         var (file, first, _, stream, newest) = HybridFiles.PrevFallingShortOfAFirstHybridRevisionsStream();
         using var document = PdfDocument.Open(file);
