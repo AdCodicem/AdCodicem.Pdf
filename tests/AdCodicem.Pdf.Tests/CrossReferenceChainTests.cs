@@ -5710,6 +5710,88 @@ public class CrossReferenceChainTests
     }
 
     [Theory]
+    [InlineData(true, "nothing", false)]
+    [InlineData(false, "nothing", false)]
+    [InlineData(true, "nothing", true)]
+    [InlineData(false, "nothing", true)]
+    [InlineData(true, "the table's /Prev", true)]
+    [InlineData(false, "the table's /Prev", true)]
+    [InlineData(true, "the oldest table", true)]
+    [InlineData(false, "the oldest table", true)]
+    public void The_stream_a_hybrid_table_s_xrefstm_read_is_told_near_its_prev_alike_whether_named_at_its_header_or_inside_its_number(
+        bool insideItsNumber, string streamPrev, bool catalogInStream)
+    {
+        // The update's table names its own stream through /XRefStm, at its header or 1 byte into its object number, from
+        // which the stream reads as object 3, and through /Prev a place 7 bytes before the stream's header; the oldest table,
+        // which alone indexes object 5, and the catalog too where the stream does not, lies within reach. The stream the
+        // /XRefStm read is told by its data, not by the byte its reading started at: the header 1 byte before that byte,
+        // whose number runs on into it, is that stream's, and is told as that stream is — passed over where it gives no
+        // /Prev, put back where its /Prev names the table's, the search taking the oldest table, which reads the chain whole;
+        // taken where its /Prev names the oldest table, read whole, the /XRefStm reported as naming what the /Prev read and
+        // the chain going on through the stream. It is no stream before the one the /XRefStm read, taken where it comes
+        // nearest, which ended the chain there, the oldest table unread, or looped back to the place the /Prev names (#156).
+        var (file, oldest, stream, newest) = HybridFiles.NamingTheUpdatesStreamAtOrInsideItsNumber(insideItsNumber, streamPrev, catalogInStream);
+        var named = insideItsNumber ? stream + 1 : stream;
+        var taken = streamPrev == "the oldest table";
+        using var document = PdfDocument.Open(file);
+
+        document.Reader.Structure.Sections.Select(section => (section.NamedBy, section.State, section.Kind, section.Offset)).Should().Equal(
+            taken
+                ?
+                [
+                    ("startxref", XRefSectionState.Read, XRefSectionKind.Table, newest),
+                    ("/XRefStm", XRefSectionState.NamedAgain, XRefSectionKind.Unknown, named),
+                    ("/Prev", XRefSectionState.Relocated, XRefSectionKind.Stream, named),
+                    ("/Prev", XRefSectionState.Read, XRefSectionKind.Table, oldest),
+                ]
+                :
+                [
+                    ("startxref", XRefSectionState.Read, XRefSectionKind.Table, newest),
+                    ("/XRefStm", XRefSectionState.Read, XRefSectionKind.Stream, named),
+                    ("/Prev", XRefSectionState.Relocated, XRefSectionKind.Table, oldest),
+                ]);
+        document.Diagnostics.Select(diagnostic => diagnostic.Code).Should().Equal(
+            taken ? [PdfDiagnosticCodes.XRefOffsetAdjusted, PdfDiagnosticCodes.XRefHybridStreamLost] : [PdfDiagnosticCodes.XRefOffsetAdjusted]);
+        document.Diagnostics[0].Message.Should().Be(
+            taken
+                ? Invariant($"The cross-reference section /Prev names at offset {stream - 7} was found {named - stream + 7} bytes after it.")
+                : Invariant($"The cross-reference section /Prev names at offset {stream - 7} was found {stream - 7 - oldest} bytes before it."));
+        Text(document, 4).Should().Be("four");
+        Text(document, 5).Should().Be("old five");
+        document.WasRepaired.Should().BeFalse();
+
+        new PdfValidator().Validate(document).Findings.Where(finding => finding.Severity == PdfValidationSeverity.Error).Select(finding => finding.RuleId)
+            .Should().Equal(taken ? [PdfValidationRuleIds.XRefHybridStreamWrong] : []);
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void The_stream_a_table_s_xrefstm_names_again_is_told_near_its_prev_alike_whether_named_at_its_header_or_inside_its_number(bool insideItsNumber)
+    {
+        // The newest table's /XRefStm reads the middle revision's stream, at its header or 1 byte into its object number, and
+        // the middle table's /XRefStm names it again; the middle table's /Prev falls 7 bytes short of the stream's header,
+        // and the oldest table, which alone indexes object 5, lies within reach. The stream named again is not taken, a
+        // section the chain reached (#330), and is told by its data: the header 1 byte before where its reading started is
+        // that stream's, passed over with it, and the search takes the oldest table, which reads the chain whole. It is no
+        // stream before the one named again, taken where it comes nearest, which ended the chain there, object 5 lost (#156).
+        var (file, oldest, stream, middle, newest) = HybridFiles.NamingTheUpdatesStreamAgainAtOrInsideItsNumber(insideItsNumber);
+        var named = insideItsNumber ? stream + 1 : stream;
+        using var document = PdfDocument.Open(file);
+
+        document.Reader.Structure.Sections.Select(section => (section.NamedBy, section.State, section.Kind, section.Offset)).Should().Equal(
+            ("startxref", XRefSectionState.Read, XRefSectionKind.Table, newest),
+            ("/XRefStm", XRefSectionState.Read, XRefSectionKind.Stream, named),
+            ("/Prev", XRefSectionState.Read, XRefSectionKind.Table, middle),
+            ("/XRefStm", XRefSectionState.NamedAgain, XRefSectionKind.Unknown, named),
+            ("/Prev", XRefSectionState.Relocated, XRefSectionKind.Table, oldest));
+        document.Diagnostics.Select(diagnostic => diagnostic.Code).Should().Equal(PdfDiagnosticCodes.XRefOffsetAdjusted);
+        document.Diagnostics[0].Message.Should().Be(Invariant($"The cross-reference section /Prev names at offset {stream - 7} was found {stream - 7 - oldest} bytes before it."));
+        Text(document, 5).Should().Be("old five");
+        document.WasRepaired.Should().BeFalse();
+    }
+
+    [Theory]
     [InlineData("stream 11")]
     [InlineData("an outline item")]
     public void A_place_the_search_near_a_hybrid_table_s_prev_passes_over_or_finds_no_section_at_reports_nothing_its_reading_met(string near)

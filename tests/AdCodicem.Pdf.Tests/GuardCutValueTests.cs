@@ -4279,6 +4279,72 @@ public class GuardCutValueTests
         document.WasRepaired.Should().BeFalse();
     }
 
+    [Theory]
+    [InlineData(true, "the table's /Prev", false)]
+    [InlineData(false, "the table's /Prev", true)]
+    [InlineData(true, "the oldest table", true)]
+    public void What_the_prev_of_the_stream_an_xrefstm_read_leads_to_through_a_guard_s_cut_is_loaded_at_opening_only_where_the_search_takes_that_stream(
+        bool oldestWithinReach, string streamPrev, bool taken)
+    {
+        // The newest table's /XRefStm reads stream 6, and its /Prev falls 7 bytes short of it. Stream 6 gives /Prev 20 0 R:
+        // object 20, which MaxObjectLength cuts after "21 0 R", whole, is read through to object 21, which holds the place the
+        // table's /Prev names, or the oldest table's offset, to tell whether the stream may be the table's own. Where it may
+        // be, the search puts it back, and takes the oldest table, within reach: the chain never follows the stream's /Prev,
+        // and object 20, read through only to tell, is not loaded once the chain is read, nor its guard reached, as for any
+        // place the search does not take. Where the oldest table lies out of reach, the search comes back to the stream and
+        // takes it, the chain following its /Prev back to the place the table's names, a loop; where that /Prev names the
+        // oldest table, the stream is taken where it comes nearest, and the chain follows it there: object 20 is loaded once
+        // the chain is read, the guard reported, or thrown (#156, #263).
+        var (file, oldest, stream, _) = HybridFiles.PrevFallingShortOfAStreamWhosePrevLeadsThroughALongObject(oldestWithinReach, streamPrev);
+        string[] codes = (oldestWithinReach, taken) switch
+        {
+            (true, false) => [PdfDiagnosticCodes.XRefOffsetAdjusted],
+            (false, _) =>
+            [
+                PdfDiagnosticCodes.XRefOffsetAdjusted, PdfDiagnosticCodes.XRefHybridStreamLost, PdfDiagnosticCodes.XRefChainCycle,
+                PdfDiagnosticCodes.LimitObject, PdfDiagnosticCodes.XRefRebuilt,
+            ],
+            _ => [PdfDiagnosticCodes.XRefOffsetAdjusted, PdfDiagnosticCodes.XRefHybridStreamLost, PdfDiagnosticCodes.LimitObject],
+        };
+
+        using (var document = PdfDocument.Open(file, ObjectGuard))
+        {
+            document.Reader.Structure.Sections[2].Should().Match<XRefSectionRecord>(
+                section => section.NamedBy == "/Prev" && section.State == XRefSectionState.Relocated && section.Offset == (taken ? stream : oldest));
+            document.Diagnostics.Select(entry => entry.Code).Should().Equal(codes);
+        }
+
+        var opening = () => PdfDocument.Open(file, ObjectGuard with { ThrowOnLimit = true }).Dispose();
+
+        if (taken)
+        {
+            opening.Should().Throw<PdfLimitExceededException>().Which.LimitName.Should().Be(nameof(PdfReaderLimits.MaxObjectLength));
+        }
+        else
+        {
+            opening.Should().NotThrow();
+        }
+    }
+
+    [Fact]
+    public void What_the_prev_of_the_stream_an_xrefstm_read_leads_to_through_a_guard_s_cut_is_left_to_the_rebuild_where_the_bound_stops_that_stream()
+    {
+        // As above, stream 6's /Prev leading through object 20 to the oldest table: the stream is no stream that may be the
+        // table's own, and the nearest place. A newer table's search spent the 32 places the reader allows a document: the
+        // bound stops the search at the stream, which it does not take, and the section the /Prev names is reported missing.
+        // Object 20, read through only to tell, is not loaded once the chain is read: the index is rebuilt, as read whole,
+        // and the rebuild, which reads object 20, reaches the guard (#263).
+        var (built, _, _, newest) = HybridFiles.PrevFallingShortOfAStreamWhosePrevLeadsThroughALongObject(oldestWithinReach: true, "the oldest table");
+        var (file, _) = HybridFiles.UnderPlacesSpent(built, newest, 32);
+        using var whole = PdfDocument.Open(file);
+        using var document = PdfDocument.Open(file, ObjectGuard);
+
+        whole.Diagnostics.Select(entry => entry.Code).Should().Equal(
+            PdfDiagnosticCodes.XRefOffsetAdjusted, PdfDiagnosticCodes.XRefSectionMissing, PdfDiagnosticCodes.XRefRebuilt);
+        document.Diagnostics.Select(entry => entry.Code).Should().Equal(
+            PdfDiagnosticCodes.XRefOffsetAdjusted, PdfDiagnosticCodes.XRefSectionMissing, PdfDiagnosticCodes.XRefRebuilt, PdfDiagnosticCodes.LimitObject);
+    }
+
     [Fact]
     public void A_chain_a_guard_ends_at_a_hidden_prev_leaves_unjudged_what_needs_the_whole_chain()
     {

@@ -4732,13 +4732,14 @@ public class HostileInputTests
     }
 
     [Fact]
-    public void The_search_near_a_hybrid_table_s_prev_tries_once_a_header_that_starts_before_where_its_xrefstm_read_a_stream()
+    public void The_search_near_a_hybrid_table_s_prev_reads_nothing_at_the_header_of_the_stream_its_xrefstm_read_from_inside_its_number()
     {
         // The newest table's /XRefStm names a place 1 byte into stream 13's object number, from which the stream reads as
         // object 3, and its /Prev falls 7 bytes short of the stream's header, which starts 1 byte before where that reading
-        // started. A place before the stream the /XRefStm read is no stream of the table's own revision: the stream's header
-        // keeps its nearest-first place, whatever its /Prev, and is read there once, and taken, where a stream that may be
-        // the table's own would have been passed over and read again (#156).
+        // started. The stream gives no /Prev. The header's number runs on into where that reading started: it is the stream
+        // the /XRefStm read, told by the dictionary that reading kept, and passed over as that stream is where it gives no
+        // /Prev, its header not even probed, rather than taken as a stream before it. No other section lies within reach:
+        // the section the /Prev names is missing, as where the /XRefStm names the stream's header itself (#156).
         var (file, stream, newest) = HybridFiles.NamingAStreamOneByteIntoItsNumber();
         using var source = new WindowLoggingSource(file);
 
@@ -4747,11 +4748,11 @@ public class HostileInputTests
             document.Reader.Structure.Sections.Select(section => (section.NamedBy, section.State, section.Kind, section.Offset)).Should().Equal(
                 ("startxref", XRefSectionState.Read, XRefSectionKind.Table, newest),
                 ("/XRefStm", XRefSectionState.Read, XRefSectionKind.Stream, stream + 1),
-                ("/Prev", XRefSectionState.Relocated, XRefSectionKind.Stream, stream));
-            document.WasRepaired.Should().BeFalse();
+                ("/Prev", XRefSectionState.NotFound, XRefSectionKind.Unknown, stream - 7));
+            document.Diagnostics.Select(diagnostic => diagnostic.Code).Should().Equal(PdfDiagnosticCodes.XRefSectionMissing);
         }
 
-        source.Windows.Count(window => window.Offset == stream && window.Length == PdfFileReader.XRefProbeLength).Should().Be(1);
+        source.Windows.Count(window => window.Offset == stream && window.Length == PdfFileReader.XRefProbeLength).Should().Be(0);
     }
 
     [Theory]

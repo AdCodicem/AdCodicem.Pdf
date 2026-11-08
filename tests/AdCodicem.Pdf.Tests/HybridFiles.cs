@@ -1385,6 +1385,122 @@ internal static class HybridFiles
     }
 
     /// <summary>
+    /// A one-page document saved twice. The oldest table, at <c>Oldest</c>, indexes the first three objects and object 5,
+    /// <c>(old five)</c>. The update writes object 4, <c>(four)</c>, and the cross-reference stream of its own revision,
+    /// stream 13, at <c>Stream</c>, right after it, which indexes object 4 and itself — and the first three objects too
+    /// where <paramref name="catalogInStream"/> — and gives through <c>/Prev</c>
+    /// <paramref name="streamPrev"/>: <c>"nothing"</c>; <c>"the table's /Prev"</c>, the place the table's names; or
+    /// <c>"the oldest table"</c>. Past a comment of 600 dashes, its table, at <c>Newest</c>, indexes nothing, and names
+    /// through <c>/Prev</c> the place 7 bytes before the stream, inside the <c>endobj</c> before it, and through
+    /// <c>/XRefStm</c> the stream's header where not <paramref name="insideItsNumber"/>, or the place 1 byte into the
+    /// stream's object number, its digit 3, where the stream reads as object 3: a search near the place the <c>/Prev</c>
+    /// names comes to the stream's header, where the <c>/XRefStm</c> names it or 1 byte before, and to the oldest table
+    /// farther off, within reach.
+    /// </summary>
+    public static (byte[] File, long Oldest, long Stream, long Newest) NamingTheUpdatesStreamAtOrInsideItsNumber(
+        bool insideItsNumber, string streamPrev, bool catalogInStream)
+    {
+        var file = new HandWrittenFile(version: "1.5");
+        var (catalog, pages, page) = Page(file);
+        var five = file.Object(5, "(old five)");
+        var oldest = file.Position;
+        file.Raw(Invariant($"xref\n0 4\n0000000000 65535 f \n{Row(catalog)}{Row(pages)}{Row(page)}5 1\n{Row(five)}trailer\n<< /Size 6 /Root 1 0 R >>\nstartxref\n{oldest}\n%%EOF\n"));
+        var four = file.Object(4, "(four)");
+        var stream = file.Position;
+        var rows = catalogInStream
+            ? StreamRows((1, catalog, 0), (1, pages, 0), (1, page, 0), (1, four, 0), (1, stream, 0))
+            : StreamRows((1, four, 0), (1, stream, 0));
+        var prev = streamPrev switch
+        {
+            "the table's /Prev" => Invariant($"/Prev {stream - 7} "),
+            "the oldest table" => Invariant($"/Prev {oldest} "),
+            _ => string.Empty,
+        };
+        file.Object(13, Invariant($"<< /Type /XRef /Size 14 /W [1 4 2] /Index {(catalogInStream ? "[1 4 13 1]" : "[4 1 13 1]")} /Root 1 0 R {prev}/Length {rows.Length} >>\nstream\n{rows}\nendstream"));
+        file.Raw("%" + new string('-', 600) + "\n");
+        var newest = file.Position;
+        file.Raw(Invariant($"xref\n0 1\n0000000000 65535 f \ntrailer\n<< /Size 14 /Root 1 0 R /Prev {stream - 7} /XRefStm {(insideItsNumber ? stream + 1 : stream)} >>\nstartxref\n{newest}\n%%EOF\n"));
+        return (file.Bytes, oldest, stream, newest);
+    }
+
+    /// <summary>
+    /// A one-page document saved three times, whose writer copies <c>/XRefStm</c> into the next trailer. The oldest table,
+    /// at <c>Oldest</c>, indexes the first three objects and object 5, <c>(old five)</c>. The second revision writes
+    /// object 4, <c>(four)</c>, and the cross-reference stream of its own revision, stream 13, at <c>Stream</c>, right
+    /// after it, which indexes the first four objects and itself and gives no <c>/Prev</c>, then its table, at
+    /// <c>Middle</c>, which indexes nothing, and names through <c>/Prev</c> the place 7 bytes before the stream, inside the
+    /// <c>endobj</c> before it, and through <c>/XRefStm</c> the stream's header where not
+    /// <paramref name="insideItsNumber"/>, or the place 1 byte into the stream's object number, its digit 3, where the
+    /// stream reads as object 3. Past a comment of 600 dashes, the newest table, at <c>Newest</c>, indexes nothing, names
+    /// the middle table through <c>/Prev</c>, and through <c>/XRefStm</c> the place the middle table's names: the newest
+    /// table's <c>/XRefStm</c> reads the stream, and the middle table's names it again. A search near the place the middle
+    /// table's <c>/Prev</c> names comes to the stream's header, and to the oldest table farther off, within reach.
+    /// </summary>
+    public static (byte[] File, long Oldest, long Stream, long Middle, long Newest) NamingTheUpdatesStreamAgainAtOrInsideItsNumber(
+        bool insideItsNumber)
+    {
+        var file = new HandWrittenFile(version: "1.5");
+        var (catalog, pages, page) = Page(file);
+        var five = file.Object(5, "(old five)");
+        var oldest = file.Position;
+        file.Raw(Invariant($"xref\n0 4\n0000000000 65535 f \n{Row(catalog)}{Row(pages)}{Row(page)}5 1\n{Row(five)}trailer\n<< /Size 6 /Root 1 0 R >>\nstartxref\n{oldest}\n%%EOF\n"));
+        var four = file.Object(4, "(four)");
+        var stream = file.Position;
+        var rows = StreamRows((1, catalog, 0), (1, pages, 0), (1, page, 0), (1, four, 0), (1, stream, 0));
+        file.Object(13, Invariant($"<< /Type /XRef /Size 14 /W [1 4 2] /Index [1 4 13 1] /Root 1 0 R /Length {rows.Length} >>\nstream\n{rows}\nendstream"));
+        var named = insideItsNumber ? stream + 1 : stream;
+        var middle = file.Position;
+        file.Raw(Invariant($"xref\n0 1\n0000000000 65535 f \ntrailer\n<< /Size 14 /Root 1 0 R /Prev {stream - 7} /XRefStm {named} >>\nstartxref\n{middle}\n%%EOF\n"));
+        file.Raw("%" + new string('-', 600) + "\n");
+        var newest = file.Position;
+        file.Raw(Invariant($"xref\n0 1\n0000000000 65535 f \ntrailer\n<< /Size 14 /Root 1 0 R /Prev {middle} /XRefStm {named} >>\nstartxref\n{newest}\n%%EOF\n"));
+        return (file.Bytes, oldest, stream, middle, newest);
+    }
+
+    /// <summary>
+    /// A document saved twice. The first revision writes the catalog, an empty page tree and object 3,
+    /// <c>(three as the oldest has it)</c>, and a classic table, at <c>Oldest</c>, that indexes them; then, where not
+    /// <paramref name="oldestWithinReach"/>, a comment of 700 bytes. The update writes object 4, <c>(four)</c>, and the
+    /// cross-reference stream of its own revision, stream 6, at <c>Stream</c>, which indexes object 4, itself and objects
+    /// 20 and 21, and gives <c>/Prev 20 0 R</c>; object 20, which holds <c>21 0 R</c> and a comment of 1,100 bytes, which
+    /// <c>MaxObjectLength</c> 1,024 cuts after the reference, whole; and object 21, which holds the place 7 bytes before
+    /// the stream, where <paramref name="streamPrev"/> is <c>"the table's /Prev"</c>, or the oldest table's offset,
+    /// where it is <c>"the oldest table"</c>. Its table, at <c>Newest</c>, indexes nothing, and names the stream through
+    /// <c>/XRefStm</c> and the place 7 bytes before it, inside the <c>endobj</c> before it, through <c>/Prev</c>: a
+    /// search near that place comes to the stream, and to the oldest table farther off where it lies within reach.
+    /// </summary>
+    public static (byte[] File, long Oldest, long Stream, long Newest) PrevFallingShortOfAStreamWhosePrevLeadsThroughALongObject(
+        bool oldestWithinReach, string streamPrev)
+    {
+        var file = new HandWrittenFile(version: "1.5");
+        var catalog = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>");
+        var pages = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>");
+        var three = file.Object(3, "(three as the oldest has it)");
+        var oldest = file.Position;
+        file.Raw(Invariant($"xref\n0 4\n0000000000 65535 f \n{Row(catalog)}{Row(pages)}{Row(three)}trailer\n<< /Size 4 /Root 1 0 R >>\nstartxref\n{oldest}\n%%EOF\n"));
+        file.Raw(oldestWithinReach ? string.Empty : "%" + new string('-', 698) + "\n");
+        var four = file.Object(4, "(four)");
+        var stream = file.Position;
+
+        // Where objects 20 and 21 start is known before the stream is written: its rows have a fixed width.
+        var twenty = "21 0 R\n%" + new string('=', 1100);
+        string Body(long twentyAt, long twentyOneAt)
+        {
+            var rows = StreamRows((1, four, 0), (1, stream, 0), (1, twentyAt, 0), (1, twentyOneAt, 0));
+            return Invariant($"<< /Type /XRef /Size 22 /W [1 4 2] /Index [4 1 6 1 20 2] /Root 1 0 R /Prev 20 0 R /Length {rows.Length} >>\nstream\n{rows}\nendstream");
+        }
+
+        var twentyStart = stream + Invariant($"6 0 obj\n{Body(0, 0)}\nendobj\n").Length;
+        var twentyOneStart = twentyStart + Invariant($"20 0 obj\n{twenty}\nendobj\n").Length;
+        file.Object(6, Body(twentyStart, twentyOneStart));
+        file.Object(20, twenty);
+        file.Object(21, Invariant($"{(streamPrev == "the oldest table" ? oldest : stream - 7)}"));
+        var newest = file.Position;
+        file.Raw(Invariant($"xref\n0 1\n0000000000 65535 f \ntrailer\n<< /Size 22 /Root 1 0 R /Prev {stream - 7} /XRefStm {stream} >>\nstartxref\n{newest}\n%%EOF\n"));
+        return (file.Bytes, oldest, stream, newest);
+    }
+
+    /// <summary>
     /// <paramref name="file"/>, whose newest table lies at <paramref name="newest"/>, saved once more:
     /// <paramref name="spent"/> less one objects of one null each, numbered from 70, past it, and a table, at
     /// <c>Newest</c>, which indexes nothing and names through <c>/Prev</c> the place among them halfway, within reach
