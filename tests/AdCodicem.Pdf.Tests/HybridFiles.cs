@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.IO.Compression;
 using System.Text;
 
 namespace AdCodicem.Pdf.Tests;
@@ -490,9 +491,10 @@ internal static class HybridFiles
     /// indexes objects 1 to 3 and object 7, <c>(old seven)</c>; object 8, a string, follows it, and object 4, at
     /// <c>Four</c>, a stream whose dictionary gives <paramref name="type"/> — written whole, a space after it, or nothing —,
     /// the <c>/W</c> <paramref name="widths"/> and an <c>/Index</c> whose one row places object 7's new revision,
-    /// <c>(new seven)</c>, its data <paramref name="padding"/> bytes longer, names the oldest table through <c>/Prev</c>,
-    /// gives the <c>/Filter</c> <paramref name="filter"/>, none when empty, and the <c>/Length</c>
-    /// <paramref name="length"/>, the data's own where none is given; the newest table, past a long comment, indexes object
+    /// <c>(new seven)</c>, its data <paramref name="padding"/> dashes longer, written Flate-encoded where
+    /// <paramref name="deflated"/> is set, names the oldest table through <c>/Prev</c>, gives the <c>/Filter</c>
+    /// <paramref name="filter"/>, none when empty, and the <c>/Length</c> <paramref name="length"/>, the length of the data
+    /// as written where none is given; the newest table, past a long comment, indexes object
     /// 6, <c>(six)</c>, and names object 4 through <c>/Prev</c> and, through <c>/XRefStm</c>, the place 20 bytes into object
     /// 8, inside its string, at <c>Named</c>, 28 bytes before object 4: object 8 is the nearest place to it, then object 4,
     /// then the oldest table. Where <paramref name="cut"/> names object 4's <c>/Size</c>, <c>/W</c> or <c>/Index</c>, that
@@ -501,7 +503,7 @@ internal static class HybridFiles
     /// <see cref="Documents.PdfReaderLimits.MaxObjectLength"/> at 1 KB cuts it.
     /// </summary>
     public static (byte[] File, long Oldest, long Four, long Named) PrevNamingAStreamBesideTheOldestTable(
-        string type, string widths = "[1 4 2]", int padding = 0, string filter = "", int? length = null, string? cut = null)
+        string type, string widths = "[1 4 2]", int padding = 0, string filter = "", int? length = null, string? cut = null, bool deflated = false)
     {
         var file = new HandWrittenFile(version: "1.5");
         var (catalog, pages, page) = Page(file);
@@ -512,6 +514,7 @@ internal static class HybridFiles
         file.Raw(Invariant($"xref\n0 4\n0000000000 65535 f \n{Row(catalog)}{Row(pages)}{Row(page)}7 1\n{Row(oldSeven)}trailer\n<< /Size 8 /Root 1 0 R >>\nstartxref\n{oldest}\n%%EOF\n"));
         var eight = file.Object(8, "(" + new string('x', 30) + ")");
         var rows = StreamRows((1, newSeven, 0)) + new string('-', padding);
+        var data = deflated ? Deflate(rows) : rows;
         var filtered = filter.Length == 0 ? string.Empty : " /Filter " + filter;
         (string numbering, string? value) = cut switch
         {
@@ -521,7 +524,7 @@ internal static class HybridFiles
             "/Index" => (Invariant($"/Size 10 /W {widths} /Index 9 0 R"), "[7 1]"),
             _ => throw new ArgumentOutOfRangeException(nameof(cut), cut, "No such key."),
         };
-        var four = file.Object(4, Invariant($"<< {type}{numbering} /Prev {oldest}{filtered} /Length {length ?? rows.Length} >>\nstream\n{rows}\nendstream"));
+        var four = file.Object(4, Invariant($"<< {type}{numbering} /Prev {oldest}{filtered} /Length {length ?? data.Length} >>\nstream\n{data}\nendstream"));
         file.Raw("%" + new string('-', 1200) + "\n");
         var six = file.Object(6, "(six)");
         var nine = value is null ? string.Empty : "9 1\n" + Row(file.Object(9, value + new string(' ', 1100)));
@@ -1781,6 +1784,19 @@ internal static class HybridFiles
 
     /// <summary>Writes a classic table's row placing an object in use at <paramref name="offset"/>.</summary>
     private static string Row(long offset) => Invariant($"{offset:D10} 00000 n \n");
+
+    /// <summary>Compresses <paramref name="text"/>, one byte to a character, into Flate data, one byte to a character.</summary>
+    private static string Deflate(string text)
+    {
+        using var output = new MemoryStream();
+
+        using (var zlib = new ZLibStream(output, CompressionLevel.Optimal, leaveOpen: true))
+        {
+            zlib.Write(Encoding.Latin1.GetBytes(text));
+        }
+
+        return Encoding.Latin1.GetString(output.ToArray());
+    }
 
     /// <summary>Writes cross-reference stream rows in fields of 1, 4 and 2 bytes, one byte to a character.</summary>
     private static string StreamRows(params (int Type, long Field2, int Field3)[] rows)

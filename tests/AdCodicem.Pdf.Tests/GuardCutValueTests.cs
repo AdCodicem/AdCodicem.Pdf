@@ -3944,6 +3944,31 @@ public class GuardCutValueTests
     }
 
     [Theory]
+    [InlineData("/Size")]
+    [InlineData(null)]
+    public void A_guard_reached_again_decoding_a_stream_a_prev_names_counts_no_entry_left_out_where_the_diagnostics_have_room(string? cut)
+    {
+        // As above, object 4, a stream of no type, its /Size written direct or as the reference 9 0 R, which MaxObjectLength
+        // cuts, and its data Flate-encoded: it decodes to its row and 4,000 dashes, past what MaxDecodedStreamLength at 1,000
+        // bytes decodes, and its second filter, /Foo, is one the library does not know, so that its filters decode nothing of
+        // it. The look at the /Prev's place decodes the data and keeps the guard it reached; the search near the /XRefStm's
+        // offset tries object 4 next and decodes the data again, meeting the guard again, whose report the document holds,
+        // and drops the place, an object that only gives a /W and cannot be read. The guard met again is counted reached, and
+        // nothing was left out. Taken for a report the capacity dropped, it was counted as an entry left out, with room to
+        // spare, once the place was dropped (#144, #221).
+        var (file, _, _, _) = HybridFiles.PrevNamingAStreamBesideTheOldestTable(string.Empty, padding: 4000, filter: "[/FlateDecode /Foo]", cut: cut, deflated: true);
+        using var document = PdfDocument.Open(file, new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxObjectLength = 1024, MaxDecodedStreamLength = 1000 } });
+
+        document.Diagnostics.Select(entry => entry.Code).Should().Equal(
+            PdfDiagnosticCodes.LimitDecodedStream,
+            PdfDiagnosticCodes.XRefOffsetAdjusted,
+            PdfDiagnosticCodes.XRefHybridStreamLost,
+            PdfDiagnosticCodes.FilterUnsupported,
+            PdfDiagnosticCodes.XRefOffsetAdjusted);
+        document.Diagnostics.SuppressedCount.Should().Be(0);
+    }
+
+    [Theory]
     [InlineData(
         "/Size 8",
         "(eight)",

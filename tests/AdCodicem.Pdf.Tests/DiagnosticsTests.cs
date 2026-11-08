@@ -221,6 +221,142 @@ public class DiagnosticsTests
     }
 
     [Fact]
+    public void Rolling_back_beside_the_guards_counts_nothing_left_out_for_a_guard_a_decoding_met_again_whose_report_is_held()
+    {
+        // A decoding reached a guard beside a fault, and was rolled back beside the guards: the guard's report stands, held
+        // as moved in. A second decoding met both again, and was rolled back beside the guards in its turn: the guard met
+        // again is counted reached, its report not made again, and the diagnostics, with room to spare, left nothing out.
+        // It was counted left out, a guard reached with no report taken for one the capacity dropped (#144).
+        var target = new PdfDiagnostics();
+        var decodings = target.Decodings;
+
+        for (var decoding = 0; decoding < 2; decoding++)
+        {
+            var mark = target.GetMarkWithDecodingReports();
+            var decoded = decodings.GetMark();
+            decodings.ReachLimit(PdfDiagnosticCodes.LimitDecodedStream, "The decoding's guard.", 7);
+            decodings.Warn(PdfDiagnosticCodes.FilterUnsupported, "Met beside the decoding's guard.", 7);
+            decodings.MoveDecodingReportsTo(target, decoded);
+            target.RollBackBesideLimits(mark);
+        }
+
+        target.Select(d => d.Message).Should().Equal("The decoding's guard.");
+        target.LimitsReached.Should().Be(2);
+        target.SuppressedCount.Should().Be(0);
+    }
+
+    [Fact]
+    public void Rolling_back_beside_the_guards_of_full_diagnostics_counts_left_out_only_the_guards_reports_the_capacity_dropped()
+    {
+        // As above, but the diagnostics are full once the first decoding's guard is kept. The second decoding meets that guard
+        // again, its report held and not made, a fault beside it and a guard of its own, whose reports the capacity drops.
+        // Rolled back beside the guards, the fault is no longer counted, the new guard's report is, left out still, and the
+        // guard met again is counted reached alone: the capacity left out no report of it.
+        var target = new PdfDiagnostics { Capacity = 3 };
+        var decodings = target.Decodings;
+        var first = target.GetMarkWithDecodingReports();
+        var decoded = decodings.GetMark();
+        decodings.ReachLimit(PdfDiagnosticCodes.LimitDecodedStream, "The decoding's guard.", 7);
+        decodings.MoveDecodingReportsTo(target, decoded);
+        target.RollBackBesideLimits(first);
+        target.Warn("kept", "Fills the diagnostics.");
+        target.Warn("kept", "Fills the diagnostics.");
+
+        var again = target.GetMarkWithDecodingReports();
+        decoded = decodings.GetMark();
+        decodings.ReachLimit(PdfDiagnosticCodes.LimitDecodedStream, "The decoding's guard.", 7);
+        decodings.Warn(PdfDiagnosticCodes.FilterUnsupported, "Met beside the decoding's guard.", 7);
+        decodings.ReachLimit(PdfDiagnosticCodes.LimitFilterChain, "Another guard.", 7);
+        decodings.MoveDecodingReportsTo(target, decoded);
+        target.SuppressedCount.Should().Be(2);
+        target.RollBackBesideLimits(again);
+
+        target.Select(d => d.Message).Should().Equal("The decoding's guard.", "Fills the diagnostics.", "Fills the diagnostics.");
+        target.LimitsReached.Should().Be(3);
+        target.SuppressedCount.Should().Be(1);
+    }
+
+    [Theory]
+    [InlineData("reached here")]
+    [InlineData("moved in")]
+    [InlineData("moved in through what a filter keeps")]
+    [InlineData("moved in by a decoding")]
+    public void A_guard_s_report_the_capacity_left_out_stays_counted_left_out_through_a_rollback_beside_the_guards_however_it_came(string came)
+    {
+        // Diagnostics that keep nothing leave the guard's report out where it is made: here, or where it is moved from, which
+        // left out another guard's report before what it moves, and keeps that one. Two faults are left out beside it. Rolled
+        // back beside the guards, the faults are no longer counted, and the guard's report is, once, whichever way it came in.
+        var target = new PdfDiagnostics { Capacity = 0 };
+        var mark = target.GetMark();
+
+        if (came == "reached here")
+        {
+            target.ReachLimit(PdfDiagnosticCodes.LimitObject, "Left out.", 9);
+        }
+        else
+        {
+            var from = came == "moved in by a decoding" ? target.Decodings : new PdfDiagnostics { Capacity = 0 };
+            from.ReachLimit(PdfDiagnosticCodes.LimitObject, "Left out before what is moved.", 3);
+            var moved = from.GetMark();
+            from.ReachLimit(PdfDiagnosticCodes.LimitObject, "Left out.", 9);
+
+            switch (came)
+            {
+                case "moved in":
+                    from.MoveTo(target, moved);
+                    break;
+                case "moved in through what a filter keeps":
+                    from.MoveTo(target, moved, 0, static (_, _) => true);
+                    break;
+                default:
+                    from.MoveDecodingReportsTo(target, moved);
+                    break;
+            }
+        }
+
+        target.Warn("dropped", "Left out beside the guard.");
+        target.Warn("dropped", "Left out beside the guard too.");
+        target.SuppressedCount.Should().Be(3);
+        target.RollBackBesideLimits(mark);
+
+        target.LimitsReached.Should().Be(1);
+        target.SuppressedCount.Should().Be(1);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void A_guard_s_report_the_capacity_left_out_before_a_mark_stays_counted_once_through_a_rollback_beside_the_guards_to_it(bool decodingReports)
+    {
+        // The guard's report was left out before the mark, a fault after it: rolled back to the mark, beside the guards, the
+        // diagnostics count the guard's report alone, and once.
+        var target = new PdfDiagnostics { Capacity = 0 };
+        target.ReachLimit(PdfDiagnosticCodes.LimitObject, "Left out before the mark.", 9);
+        var mark = decodingReports ? target.GetMarkWithDecodingReports() : target.GetMark();
+        target.Warn("dropped", "Left out after the mark.");
+        target.RollBackBesideLimits(mark);
+
+        target.LimitsReached.Should().Be(1);
+        target.SuppressedCount.Should().Be(1);
+    }
+
+    [Fact]
+    public void A_guard_s_report_a_rollback_dropped_is_counted_left_out_by_no_rollback_beside_the_guards_after_it()
+    {
+        // A parse reached a guard whose report the capacity left out, and was dropped whole: the guard is no longer counted,
+        // reached or left out, when what came after an earlier mark is rolled back beside the guards.
+        var target = new PdfDiagnostics { Capacity = 0 };
+        var outer = target.GetMark();
+        var parse = target.GetMark();
+        target.ReachLimit(PdfDiagnosticCodes.LimitObject, "Dropped with its parse.", 9);
+        target.RollBack(parse);
+        target.RollBackBesideLimits(outer);
+
+        target.LimitsReached.Should().Be(0);
+        target.SuppressedCount.Should().Be(0);
+    }
+
+    [Fact]
     public void A_nested_mark_keeps_or_drops_only_what_came_after_it()
     {
         // A nested load parses while an outer parse holds entries of its own: it moves or drops its own,

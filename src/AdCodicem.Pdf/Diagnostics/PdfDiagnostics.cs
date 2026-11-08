@@ -25,6 +25,13 @@ public sealed class PdfDiagnostics : IReadOnlyList<PdfDiagnostic>
     private int _limits;
 
     /// <summary>
+    /// How many of the entries <see cref="Capacity"/> dropped were guards' <c>limit.*</c> reports, each copy counted as
+    /// <see cref="SuppressedCount"/> counts it, so that a rollback that keeps the guards counts these, and no other, as left
+    /// out still (<see cref="RollBackBesideLimits"/>).
+    /// </summary>
+    private int _limitsSuppressed;
+
+    /// <summary>
     /// The reports decoding a stream moved into this instance, each with how many copies of it this instance holds, so that a
     /// stream decoded again adds none it holds already (#144); null until a decoding reports. They are entries held, so
     /// they are at most <see cref="Capacity"/>.
@@ -87,6 +94,12 @@ public sealed class PdfDiagnostics : IReadOnlyList<PdfDiagnostic>
         if (_entries.Count >= Capacity)
         {
             _suppressed++;
+
+            if (code.StartsWith("limit.", StringComparison.Ordinal))
+            {
+                _limitsSuppressed++;
+            }
+
             return;
         }
 
@@ -113,7 +126,7 @@ public sealed class PdfDiagnostics : IReadOnlyList<PdfDiagnostic>
     /// still holds as moved in the reports decodings moved in since: a mark of an instance decodings report into is taken
     /// by <see cref="GetMarkWithDecodingReports"/>.
     /// </summary>
-    internal PdfDiagnosticsMark GetMark() => new(_entries.Count, _suppressed, _limits);
+    internal PdfDiagnosticsMark GetMark() => new(_entries.Count, _suppressed, _limits, _limitsSuppressed);
 
     /// <summary>
     /// Records where the entries stand, and which of them decodings of streams moved in: rolled back to, this instance
@@ -121,7 +134,7 @@ public sealed class PdfDiagnostics : IReadOnlyList<PdfDiagnostic>
     /// it records, so it is taken where it is rare, not in a loop.
     /// </summary>
     internal PdfDiagnosticsMark GetMarkWithDecodingReports() =>
-        new(_entries.Count, _suppressed, _limits, new Dictionary<PdfDiagnostic, int>(_decodingReports ?? []));
+        new(_entries.Count, _suppressed, _limits, _limitsSuppressed, new Dictionary<PdfDiagnostic, int>(_decodingReports ?? []));
 
     /// <summary>Drops every entry recorded since <paramref name="mark"/>, suppressed ones and guards reached included.</summary>
     internal void RollBack(PdfDiagnosticsMark mark)
@@ -129,6 +142,7 @@ public sealed class PdfDiagnostics : IReadOnlyList<PdfDiagnostic>
         _entries.RemoveRange(mark.Count, _entries.Count - mark.Count);
         _suppressed = mark.Suppressed;
         _limits = mark.Limits;
+        _limitsSuppressed = mark.LimitsSuppressed;
 
         // Copied: the mark keeps what it recorded, whatever this instance holds next.
         if (mark.DecodingReports is { } held)
@@ -138,10 +152,13 @@ public sealed class PdfDiagnostics : IReadOnlyList<PdfDiagnostic>
     }
 
     /// <summary>
-    /// Drops every entry recorded since <paramref name="mark"/> but the guards reached, their <c>limit.*</c> reports and
-    /// their count standing, and those the capacity left out counted as left out still: what a reading met beside a guard
-    /// it is to make again is met again, and the guard stands. The reports decodings moved in that the mark recorded are
-    /// held again, with the guards' kept, so that a decoding that meets one again does not report it twice.
+    /// Drops every entry recorded since <paramref name="mark"/> but the guards' <c>limit.*</c> reports, every guard reached
+    /// staying counted in <see cref="LimitsReached"/>, and the reports of guards the capacity left out counted as left out
+    /// still, but no other entry it left out: what a reading met beside a guard it is to make again is met again, and the
+    /// guard stands. A guard a decoding reached again, whose report a decoding moved in already, is counted reached with no
+    /// report (<see cref="MoveDecodingReportsTo"/>), which the capacity did not leave out. The reports decodings moved in
+    /// that the mark recorded are held again, with the guards' kept, so that a decoding that meets one again does not report
+    /// it twice.
     /// </summary>
     internal void RollBackBesideLimits(PdfDiagnosticsMark mark)
     {
@@ -165,10 +182,10 @@ public sealed class PdfDiagnostics : IReadOnlyList<PdfDiagnostic>
             }
         }
 
-        // Every guard reached since the mark was reported once, kept as an entry or left out by the capacity.
-        var limitsLeftOut = Math.Max(0, _limits - mark.Limits - (kept - mark.Count));
+        // What the capacity left out since the mark stays counted only for the guards' reports, which are counted apart: a
+        // guard reached since is counted in _limits whether its report was kept, left out, or held already and not made.
         _entries.RemoveRange(kept, _entries.Count - kept);
-        _suppressed = mark.Suppressed + limitsLeftOut;
+        _suppressed = mark.Suppressed + _limitsSuppressed - mark.LimitsSuppressed;
 
         if (held is not null)
         {
@@ -190,6 +207,7 @@ public sealed class PdfDiagnostics : IReadOnlyList<PdfDiagnostic>
 
         target._suppressed += _suppressed - mark.Suppressed;
         target._limits += _limits - mark.Limits;
+        target._limitsSuppressed += _limitsSuppressed - mark.LimitsSuppressed;
         RollBack(mark);
     }
 
@@ -216,6 +234,7 @@ public sealed class PdfDiagnostics : IReadOnlyList<PdfDiagnostic>
 
         target._suppressed += _suppressed - mark.Suppressed;
         target._limits += _limits - mark.Limits;
+        target._limitsSuppressed += _limitsSuppressed - mark.LimitsSuppressed;
         RollBack(mark);
     }
 
@@ -262,6 +281,7 @@ public sealed class PdfDiagnostics : IReadOnlyList<PdfDiagnostic>
 
         target._suppressed += _suppressed - mark.Suppressed;
         target._limits += _limits - mark.Limits;
+        target._limitsSuppressed += _limitsSuppressed - mark.LimitsSuppressed;
         RollBack(mark);
     }
 
