@@ -117,8 +117,9 @@ whose data decodes to itself never runs out of it: a `/Filter` array of millions
 hold in a file of a few hundred kilobytes, cost seconds on every decode, more for filters that never run out of data.
 `MaxFilterChainLength` bounds how many filters a stream's data passes through, 64 by default: decoding stops before the
 first past it, as at a filter the library does not know, and nothing past it is read. Data a filter decodes to nothing
-ends decoding too, since every filter after it would decode nothing to nothing. Of the filters it read, decoding keeps
-less than the `/Filter` array holds: nothing for a name the array holds itself.
+ends decoding too, since every filter after it would decode nothing to nothing; the filters after it are read all the
+same, and one the library does not know, or an element that names none, is still reported as `filter.unsupported`. Of
+the filters it read, decoding keeps less than the `/Filter` array holds: nothing for a name the array holds itself.
 
 A filter's parameters can name an object, and that object can sit in an object stream that has to be decoded first,
 whose own parameters can name another. A stream therefore reads its filters and every parameter they need before it

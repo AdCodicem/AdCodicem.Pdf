@@ -195,25 +195,40 @@ reached starts — one it read, or one there that it could not read though it de
 the one looked for ([#188](https://github.com/AdCodicem/AdCodicem.Pdf/issues/188)), but for what a table's `/XRefStm`
 read in the stream's place, which that table's `/Prev` takes, reading it whole. Where it read a stream, or names again
 one a newer table's `/XRefStm` read, which is never taken in its place
-([#330](https://github.com/AdCodicem/AdCodicem.Pdf/issues/330)), a stream near the offset may be the table's own, which
-nothing names, but only one that starts no sooner than that stream: under updates appended to the file, a revision's own
-stream lies past every older revision's sections, and a stream before it — a first revision's, which gives no `/Prev`,
-or an older revision's — is tried where it comes nearest, whatever its `/Prev`. Of the streams that start there or past
-it, one whose dictionary, read whole, gives no `/Prev`, or the one the table's names — read as the chain reads it, a
-real with no fractional part as its integer, a reference through what a section already read places there, one that
-gives no offset in the file as another offset —, is tried once every other place was, nearest first, but never the
-stream the `/XRefStm` read where it gives none; a dictionary one of the reader's limits cut, whose `/Prev` the cut may
-hide, is tried where it comes nearest, the section found moved and the limit's where it declared itself one before the
-cut. Such a stream passed over for another section, which the chain then never reads, is reported once the chain is read
-(`xref.stream-passed-over`), the map left as it is: if it is the table's own, what only it indexes is missing, found
-only by a rebuild for another cause. Three cases fall short: an older revision's stream before the one the `/XRefStm`
-read, nearer than its own table, is taken, and the chain ends there, the map rebuilt as the document opens and the
-validator saying the file holds no catalog ([#260](https://github.com/AdCodicem/AdCodicem.Pdf/issues/260)); where the
-stream the `/XRefStm` read gives no `/Prev` and every stream past it gives none, or the table's, a first revision's
-stream may be taken farther off, the revisions between lost, nothing reported of them but the section found moved and
-the streams passed over; and that stream, where its `/Prev` gives no offset in the file, is taken, that `/Prev` then
-found missing and the `/XRefStm` said to name what the `/Prev` read
-([#156](https://github.com/AdCodicem/AdCodicem.Pdf/issues/156)). Nor is a section looked for nearby when what is there
+([#330](https://github.com/AdCodicem/AdCodicem.Pdf/issues/330),
+[#332](https://github.com/AdCodicem/AdCodicem.Pdf/issues/332)), a stream near the offset may be the table's own, which
+nothing names, but only one that starts no sooner than that stream — told by its data, whatever byte of its header the
+`/XRefStm` names, so that where it names a place inside the stream's object number, the header that starts before that
+place is the stream itself —: under updates appended to the file, a revision's own stream lies past every older
+revision's sections, and a stream before it — a first revision's, which gives no `/Prev`, or an older revision's — is
+tried where it comes nearest, whatever its `/Prev`. Of the streams that start there or past it, one whose dictionary,
+read whole, gives no `/Prev`, or the one the table's names — read as the chain reads it, a real with no fractional part
+as its integer, a reference through what a section already read places there, one that gives no offset in the file as
+another offset —, is tried once every other place was, nearest first, but never the stream the `/XRefStm` read where it
+gives none; a dictionary one of the reader's limits cut, whose `/Prev` the cut may hide, is tried where it comes
+nearest, the section found moved and the limit's where it declared itself one before the cut. Such a stream passed over
+for another section, which the chain does not reach, is reported once the chain is read (`xref.stream-passed-over`), the
+map left as it is: if it is the table's own, the map the chain read lacks what only it indexes, found only by a rebuild
+for another cause. It is reported only where it declares itself a cross-reference stream — its dictionary gives
+`/Type /XRef`, and its header is a token a load reads from the start of its line —, as a place that cannot be read is
+taken only where it does: not an object that only gives a `/W`, nor a header a comment or a string on its line holds,
+whether it reads or not. A stream the chain reaches — an older section names it, or a later search finds it moved — is
+reported as the chain finds it, read or not; and where one of the reader's limits stopped the chain or cut what it
+reached, which may hide the link that names the stream, the limit's report stands for it, and nothing is said of the
+stream. Four cases fall short: an older revision's stream before the one the `/XRefStm` read, nearer than its own table,
+is taken, and where it gives no `/Prev` the chain ends there, what only the sections it skips index reading as null, or
+as the older revision the stream gives, nothing reported of it but the section found moved — unless the catalog is among
+it: the map is then rebuilt as the document opens, which finds it, and the validator says the file holds no catalog
+([#260](https://github.com/AdCodicem/AdCodicem.Pdf/issues/260)) —; where it gives a `/Prev`, the chain goes on through
+it, its own revision's table unread, what only that table indexes reading as null, nothing reported of it but the
+section found moved, and nothing rebuilt; where the stream the `/XRefStm` read gives no `/Prev` and every stream past it
+gives none, or the table's, a first revision's stream may be taken farther off, the revisions between lost, nothing
+reported of them but the section found moved and the streams passed over; that stream, where its `/Prev` gives no offset
+in the file, is taken, that `/Prev` then found missing and the `/XRefStm` said to name what the `/Prev` read
+([#156](https://github.com/AdCodicem/AdCodicem.Pdf/issues/156)); and a `/Prev` a few bytes off a stream a newer table's
+`/XRefStm` read never takes it: the table's own stream past it is taken where there is one, the chain ending there, and
+otherwise the section is reported missing a few bytes from that stream
+([#332](https://github.com/AdCodicem/AdCodicem.Pdf/issues/332)). Nor is a section looked for nearby when what is there
 declares itself one — an `xref` keyword, or a stream whose dictionary gives `/Type /XRef` — and cannot be read: it is
 reported where it is, any section near it being another ([#281](https://github.com/AdCodicem/AdCodicem.Pdf/issues/281)).
 Where the offset holds no section, the search near it, nearest first, ends at a place that so declares itself and cannot
@@ -228,7 +243,10 @@ holds no section. Stream data, or a string, that an earlier line opened is not s
 is taken all the same on a line that starts inside a string, and on a line of stream data wherever that line, lexed
 alone, reads it as a token, its middle included, for the section found moved, the real one farther off left unread; and
 a section there that reads, whole or in part — an attached file's own table, a cross-reference stream the data quotes —,
-is taken whatever its line is, the chain going on through its trailer
+is taken whatever its line is, the chain going on through its trailer, while near the offset a hybrid table's `/Prev`
+names, a quoted cross-reference stream that starts no sooner than the stream the table's `/XRefStm` read, gives
+`/Type /XRef`, its header a token its line, lexed alone, reads, and gives no `/Prev`, or the table's, may be passed over
+as the table's own and reported as `xref.stream-passed-over`, at a place that holds no section
 ([#171](https://github.com/AdCodicem/AdCodicem.Pdf/issues/171)). An object there that gives a `/W` and another `/Type`
 and does not read as a section — a CIDFont —, with no section near it, is no section, and is reported missing; where
 `startxref` names one, it holds no section either, and its dictionary is no trailer. The section `startxref` names is
