@@ -810,3 +810,76 @@ b55738a's body false for the white-space guard until [5]'s fix.
   be '+'), re-judged S09; R9b's NumberRunsInto remark premise false for the digit walk until 2be5c44; 9823992's
   'judgement'.
 - 2026-11-08: review round 11 launched: wf_556f39fe-f5c (task wbpunv29e) on c2a2aaa..79c6a7f, 7 lenses (own-stream, diagnostics, undecoded, src-texts, tests, docs, batch), a refuter per finding; brief review-brief-win.md (r11wip, 'judged' allowed as the validator's verb).
+
+# Review round 11 (wf_556f39fe-f5c on 79c6a7f): triage
+31 agents, 0 errors, 1h16. 24 findings (r11-findings.md, '## n.', showf10.py): 1 major, 15 minor, 7 nit, 1 refuted.
+Fix in this batch, code (stage R11a, signed headers; applies R1-Q1, R9-Q2, R9-Q1 and ADR 34, no new decision):
+- [24] (major, confirmed; batch regression from 2b26d18 meeting #327's digit-only walk, worse than main): an
+  unreadable /Type /XRef stream written '+14 0 obj' is dropped by the search near an offset (the line test asked at
+  the walk's digit, where no token starts), the next section farther off taken, the revision's objects served from an
+  older one or null, nothing reported. [21] (minor, wider): the same split drops a '+9 0 obj' stream a guard's cut
+  of its dictionary left alone, section-missing and a rebuild (a guard's cut blamed on the file), where main takes it
+  as the guard's. [3]/[6]/[16]/[21] (open point (b)): such a stream is never recorded as passed over.
+  Decision (the fix shape, without a question): ask the line test at the header's token start: where a run of signs
+  that starts with '+' ends at the walk's first digit, within the bytes searched, the token starts at that run's first
+  byte. Both line-test sites share one private helper: the take of a place that cannot be read (keep reading and
+  relocating at the digit, as main) and the passed-over record (record the place at the token start, NumberEnd from
+  it, so StartsWithin covers readings at a sign or a digit). A run that starts with '-' declares nothing (#327's
+  closing: '-4 0 obj' is no header). The walk itself, the scan and the search near a row stay #327's. Rows: [24]'s
+  generator (W/r11wip/verify-signed-header-unreadable-xref-stream-dropped-silently: the /FooDecode and Flate files at
+  two distances, the older-table form; '-11' stays dropped; readable signed controls), [21]'s guard row ('+9 0 obj'
+  cut by MaxTrailerLength after /Type /XRef, alone: taken as the guard's, no section-missing, no rebuild), the
+  passed-over rows ('+9 0 obj' reported at the sign; '-9 0 obj' not; '+9 0 %c\nobj' and '9 0 obj' as before). Each
+  pinning row fails on 79c6a7f.
+- [14]/[20] (minor, confirmed; R9-Q1 and round 10's [20] left unimplemented for a run of signs, worse than main in
+  the comment-path direction): PdfNumberParser reads a run of signs, the first deciding. NumberEnd skips the whole run
+  of '+'/'-' past the header's first byte; NumberRunsInto maps a candidate past streamStart where the byte at
+  streamStart is '+', every byte of [streamStart, candidate) is a sign, and streamStart >= spanStart (prototypes:
+  W/r11wip/verify-sign-run-escapes-number-end/prototype-fix.diff, verify-sign-run-escapes-told-by-data/proto.diff).
+  Rows from both findings (S '++13 0 %c\nobj' at into 1-3 with /Prev nothing, the oldest table, the table's; '+-13';
+  '++13 0 obj' and '+++13 0 obj' at the first signs; a passed-over '++11 0 %c\nobj' / '+-11 0 %c\nobj' named inside
+  its number: no Warning, one section-unreadable when unreadable).
+- [17] (minor, narrowed): N1/N2 (NumberEnd's digit range '0'..'8' and '1'..'9') survive: rows with numbers holding a
+  0 and a 9 past the first digit (105, 195, 109) on the inside-its-number theory and the sign theory. B05, S09, E02
+  re-judged on the new NumberEnd (their reason fails for a run of signs). R1/R2 outside the catalog, killed by the
+  signed passed-over rows. R10b's ADR 53 record corrected in status.md.
+Fix in this batch, tests and texts (stage R11b):
+- [11] (minor): the check's decoding guards' position unpinned: MaxDecodedStreamLength rows (untyped [limit.decoded-
+  stream, xref.hybrid-stream-lost], typed twin) and a MaxFilterChainLength row (hex option on the builder); check the
+  cut-value path's RollBackBesideLimits(besideCut) for the same gap; cite in threat-model 432 in place of the test
+  that cannot tell the order.
+- [12]/[7] (minor): 'never as an entry the capacity left out' overstated: qualify PdfDiagnostics' RollBackBesideLimits
+  summary (a guard's report a decoding's own capacity dropped stays counted left out); pin the document case
+  (DiagnosticCapacity 2: the guard held, each decoding counted left out; 8: 0). Page text in R11d.
+- [4] (nit): 'reads the same stream' from inside the number is false where the digits from there read 0: the
+  ReportStreamsPassedOver remark and PdfDiagnosticCodes; a row (number 20 named at its 0).
+- [13] (nit) DiagnosticsTests comment; [23] (nit) PassingOverAStreamAnOlderTableNamesPastWhiteSpace summary.
+To the maintainer (R11-Q1): open point (a), [1]/[15]/[19]: the white-space flag withholds every passed-over report
+  of the document, also where (MaxTrailerLength under the search's 512 bytes) the guarded search finds the section past
+  the run and reads it whole, hiding nothing. Options: keep the document-wide reach, texts saying it and rows pinning
+  shapes A and B ([15], [19]), #289's closing to revisit; or narrow it ([1]: withhold the records the guarded search
+  adds always, and every record only where that search did not take the first token past the run).
+Then (stage R11c, after the answer): [2] (minor, narrowed): a /Type value MaxTrailerLength parts ('/', '/X', '/XR',
+  '/XRe') at a chain-named offset reads as another type, NotFound with no cut, its /Prev unread, and the Warning made
+  where the guard hid the link: set the guard flag there too (a dictionary the guard cut whose /Type name is a strict
+  prefix of XRef), widened and renamed, beside ChainStoppedByGuard; section-missing and section-not-found stay #279's;
+  comment on #279. The white-space scope per R11-Q1.
+Pages (R11d): [10] reader-limits.md:205 (after what reading a nearer place it tried and dropped reported, ahead of the
+  /XRefStm's own report); [12]/[7] threat-model 561; [4] pages; [14]/[20] 'the run of signs the number is written
+  with' (lazy-reading 199-203, threat-model 432/434, diagnostics 115, validation-rules 60); open point (b)'s texts
+  now true; the #327 known gap (the search near an offset asks the line test at a signed header's sign); [8] rewrap
+  two lines; [2] and R11-Q1 texts.
+Tracking: #327 comment (the line test at the sign, what stays #327's); #332 follow-up cross-referenced on #330 ([18]:
+  the sentence 'the one place left' is false: Q9's byte notion also in ReachedAt and the branch (c) test at :3507;
+  three reproducers, as main; ask that #330/#332's decision say whether these checks tell a section by its data);
+  edit comment 6724664613 on #171 in place ([9]: main's wording); #279 comment ([2]); debt issue for [22]
+  (SeededComparerTests' IL reading under Windows dynamic coverage, pre-existing on main; read the assembly image).
+Refuted: [5]. Records for status.md: 220eab4's sentence on a guard met again (true only where the document holds its
+  report); 2be5c44's 'reads the same dictionary and data from there' (false where the digits read 0); R10b's ADR 53
+  record (B05, S09, E02 not equivalent as reasoned; N1/N2 missing).
+- 2026-11-08: round 11 fixes part 1 launched: wf_47fb1f52-837 (task wrd624dh0), lot19-r11-fixes-win-1.js: R11a signed
+  headers (line test at the token start, a run of signs, N1/N2), R11b check guard rows, diagnostics count, texts.
+- R11-Q1 (maintainer, 2026-11-08): "Portée document (Recommandé)": keep the white-space flag's document-wide reach;
+  the texts say it plainly (the Warning withheld throughout the document once that guard is reached, even where the
+  search near the offset finds the section whole past the run, which only a MaxTrailerLength under the search's 512
+  bytes allows); rows pin shapes A and B ([15], [19]); #289's closing noted as what may bring shape A's Warning back.
