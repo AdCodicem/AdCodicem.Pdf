@@ -74,7 +74,7 @@ scratchpad paths. **None of that may go into src/, tests/ or docs/.**
 2. **Review round 10.** Model it on `lot19-review-r9.js`:
    - six lenses: own-stream, undecoded, src-texts, tests, docs, batch;
    - one refuter per finding;
-   - at most 4 agents at a time.
+   - no cap for memory on the PC (the cloud's 4 agents at a time no longer applies).
 
    Then triage it in `decisions.md`, put any design question to the maintainer, and fix. **Repeat review rounds
    until a round has no blocker, major or minor finding.**
@@ -119,9 +119,11 @@ scratchpad paths. **None of that may go into src/, tests/ or docs/.**
   - the words reviewer, refuter, prototype and variant.
 
   Name behaviors in plain words.
-- **Processes.** One dotnet build or test process at a time per agent. In the 16 GB cloud container, parallel runs
-  exhausted memory twice. A PC may allow more, but keep mutation runs one at a time. Kill a process by PID. Never use
-  a `pkill` pattern that appears on the same command line.
+- **Processes.** On the maintainer's PC (16 cores, 32 GB), dotnet builds and tests may run in parallel: mutants in
+  parallel worktrees, the suite beside a corpus dump, review agents building side by side (maintainer, 2026-11-08).
+  The one exception: a benchmark run, or a timing, budget, allocation or memory test, runs alone. Never two builds
+  in the same worktree at once. In the 16 GB cloud container, parallel runs exhausted memory twice: there, one
+  process at a time. Kill a process by PID. Never use a `pkill` pattern that appears on the same command line.
 - **ADR 53.** Each code change runs the first-order catalog over its changed src/ lines. Every survivor is killed by
   a test, classed equivalent with a reason, or filed as debt.
 

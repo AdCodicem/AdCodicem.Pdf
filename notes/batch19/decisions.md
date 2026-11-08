@@ -631,3 +631,7 @@ Tracking / records:
 - 2026-11-08: round 9 fixes launched on Windows: wf_0143276c-659 (task wd37fspau), script lot19-r9-fixes-win (the cloud
   script with Windows paths, gh CLI for the tracking): R9a, R9b, R9c, R9d (sequential, each pushed), then R9-track and
   R9f one after the other.
+- 2026-11-08, maintainer: the rule of one dotnet build or test process at a time holds only for benchmarks (and the
+  timing, budget, allocation and memory tests); the batch moved to the PC because it is more powerful. R9a ran under
+  the old rule (3 commits, 8b31ebf, 74a7668, ee33070, pushed); the workflow was stopped as R9b started and resumed
+  (task w15wh0wcg, same run id, R9a cached) with the relaxed rule for R9b onward.
