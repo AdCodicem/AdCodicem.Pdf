@@ -18,7 +18,7 @@ document instead, in [Read or refuse a document that reaches a limit](../guides/
 | `MaxObjectLength` | 16 MB | An object that long, the data of a stream aside, written in the file or held by an object stream: an array of a million references | The object as far as the bound | `limit.object` |
 | `MaxXRefSectionLength` | 64 MB | A classic cross-reference table of more than about 3.3 million entries, measured from where it is read, the white space and comments an offset that names it falls short by included ([#289](https://github.com/AdCodicem/AdCodicem.Pdf/issues/289)) | The entries within the bound | `limit.xref-section-length` |
 | `MaxXRefSectionCount` | 1,024 | A document saved incrementally more than a thousand times | The newest sections | `limit.xref-section-count` |
-| `MaxTrailerLength` | 64 KB | A trailer that long, or a cross-reference stream's dictionary — its `/Index` grows with every scattered update —, never that stream's data, read from the stream's object header; and, counted apart, as much white space and comments as an offset that names a cross-reference section falls short of it by | The trailer as far as the bound; past white space and comments that run on past it, nothing read from that offset, the section looked for as one that is not there: near the offset, where a search may find it past them, or, for the one `startxref` names, by rebuilding the index | `limit.trailer` |
+| `MaxTrailerLength` | 64 KB | A trailer that long, or a cross-reference stream's dictionary — its `/Index` grows with every scattered update —, never that stream's data, read from the stream's object header; and, counted apart, as much white space and comments as an offset that names a cross-reference section falls short of it by | The trailer as far as the bound, the chain ending there — near the offset a hybrid table's `/Prev` names too, where a stream whose dictionary it cut keeps its place in the search, whatever `/Prev` the cut may hide ([#156](https://github.com/AdCodicem/AdCodicem.Pdf/issues/156)) —; past white space and comments that run on past it, nothing read from that offset, the section looked for as one that is not there: near the offset, where a search may find it past them, or, for the one `startxref` names, by rebuilding the index | `limit.trailer` |
 | `MaxIndexEntries` | 8,388,607 | A document of more objects than ISO 32000-1's Annex C advises; or a cross-reference stream of one-byte rows, of which 256 MB decode from a few hundred bytes | The object numbers indexed first: the newest sections', a rebuild's first | `limit.index-entries` |
 | `MaxFilterChainLength` | 64 | A `/Filter` array naming more filters, `/Crypt` among them: real streams name one to three, and a hostile array of millions costs decoding a few microseconds a filter, and some filters a table of tens of kilobytes, whatever their data | The data as the filters within the bound decoded it; the elements past it are not read | `limit.filter-chain` |
 
@@ -174,27 +174,29 @@ there. Raise PdfReaderLimits.MaxDecodedStreamLength to read past it.
   rebuilt for it; an `/XRefStm` that names that offset itself, or the white space before it, names no stream of the
   table's revision whatever the guard hid, and is reported
   ([#156](https://github.com/AdCodicem/AdCodicem.Pdf/issues/156),
-  [#264](https://github.com/AdCodicem/AdCodicem.Pdf/issues/264)). A guard that cut, where the chain names a section,
-  the dictionary of what declares another type cut no section —
-  a CIDFont's, which read whole no stream data follows —, while one that cut a value of a stream there leaves it the
-  section the guard cut, whatever type it gives, as read whole it is the section. What makes a section unreadable whatever
-  a value a guard cut holds is the file's fault, as read whole: a value past the cut that no section read so far places, a
-  `/W` that gives no three widths or none past 0, rows numbered wrongly — an `/Index` that holds no pairs, a
-  subsection whose elements are no integers, whose first number or count is below 0, or that numbers past the object
-  numbers, by both its elements or by the one read whatever the cut one holds, a `/Size` with no `/Index` that gives no
-  count —, as far as
-  the values read, written direct or through references, say. Data whose length the file gives, its filters written
-  direct, decoded whole, that holds fewer rows than the counts read declare however few bytes the widths read leave a
-  row lacks them whatever the cut hides: the section is read as read whole, lacking rows, its trailer merged and the
-  index rebuilt, and the object the guard cut is loaded once the chain is read, which reaches the guard. The rows the
-  data may hold at the fewest bytes a row may take, read with the cut value, are the guard's: the chain ends at the
-  section, as where rows a guard cut, and the validator says it unchecked; the chain goes on only past data that holds
-  none. The rows a cross-reference stream's data lacks,
+  [#264](https://github.com/AdCodicem/AdCodicem.Pdf/issues/264)). Near the offset a hybrid table's `/Prev` names, a
+  cross-reference stream that may be the table's own, told by its own `/Prev`, is tried last, if at all, but not one
+  whose dictionary a guard cut, which may hide that `/Prev`: it keeps its nearest-first place, the section found moved
+  and the guard's where it declared itself one before the cut, the guard reported at its header, or thrown by `Open`
+  ([#156](https://github.com/AdCodicem/AdCodicem.Pdf/issues/156)). A guard that cut, where the chain names a section,
+  the dictionary of what declares another type cut no section — a CIDFont's, which read whole no stream data follows —,
+  while one that cut a value of a stream there leaves it the section the guard cut, whatever type it gives, as read
+  whole it is the section. What makes a section unreadable whatever a value a guard cut holds is the file's fault, as
+  read whole: a value past the cut that no section read so far places, a `/W` that gives no three widths or none past 0,
+  rows numbered wrongly — an `/Index` that holds no pairs, a subsection whose elements are no integers, whose first
+  number or count is below 0, or that numbers past the object numbers, by both its elements or by the one read whatever
+  the cut one holds, a `/Size` with no `/Index` that gives no count —, as far as the values read, written direct or
+  through references, say. Data whose length the file gives, its filters written direct, decoded whole, that holds fewer
+  rows than the counts read declare however few bytes the widths read leave a row lacks them whatever the cut hides: the
+  section is read as read whole, lacking rows, its trailer merged and the index rebuilt, and the object the guard cut is
+  loaded once the chain is read, which reaches the guard. The rows the data may hold at the fewest bytes a row may take,
+  read with the cut value, are the guard's: the chain ends at the section, as where rows a guard cut, and the validator
+  says it unchecked; the chain goes on only past data that holds none. The rows a cross-reference stream's data lacks,
   where its `/Length` so leads and its data was taken to the first `endstream`, are the guard's too, unless what follows
   that `endstream` proves it the stream's own, as above: they are then the file's to lack, and the index is rebuilt. An
   object the chain read through a reference the cut left whole is loaded once the chain is read only for a value it
-  keeps, or for what the offset a section is named at holds, which is read as a load reads it, its reports kept: not
-  for a place near there it guessed the section was moved to and dropped as none.
+  keeps, or for what the offset a section is named at holds, which is read as a load reads it, its reports kept: not for
+  a place near there it guessed the section was moved to and dropped as none.
 - A stream read from a document decodes under **that document's** limits, however long after opening you decode it.
   A stream you build in memory decodes under `PdfReaderLimits.Default`.
 - A classic trailer that ends within the window its cross-reference table was read through is read whole, whatever
@@ -249,6 +251,7 @@ the documents producers write. They are not options:
 | Nesting of arrays and dictionaries | 128 levels | Real documents nest a handful of levels; the bound keeps a hostile file from exhausting the stack |
 | A reference that resolves to another reference | followed 32 times | Producers write the object itself; the bound breaks a chain that loops |
 | Searches for a stream's `endstream` | four times the file's length, for a document's searches together | A valid stream's `endstream` follows its declared length: the file is read past the bytes an object is parsed through only for the data of a cross-reference stream whose `/Length` the chain cannot read, for the data of a stream whose `/Length` a guard cut or left out of the index, and for white space and comments after a declared length that run past a first read — about twice the file, three times over the white space a cross-reference stream's search takes as data that its length, once read, is read on through —, and the proof that an `endstream` found under a hidden `/Length` is the stream's own reads 48 or 64 bytes past each, once, and the white space it crosses once more at most, about three times the file in all. Past the bound, a stream whose `endstream` the bytes read with its object do not show is not searched for further, and its report says so — or, where a guard hid its `/Length`, its data up to the next object is the guard's, `CutByGuard`, nothing reported |
+| Places tried near a cross-reference section that is not where the chain names it | 32 a document, within 512 bytes either side of the offset, each counted once | A valid file's sections are where its chain names them, and a file that misses one misses by a few bytes, the section the nearest place; each place is read as a section is, through a window of 64 KB first, and a hostile file may write a header every few bytes near each offset its chain names. A cross-reference stream passed over as possibly a hybrid table's own, tried again once every other place was, is not counted again, and is tried even once the 32 are spent, so that places are read 64 times a document at most. Once the 32 are spent, no new place is tried: a section not found by then is reported missing, and what only it indexes is found by rebuilding the index when it is asked for |
 | Objects loaded while loading another | 64 | An indirect `/Length` leads to an integer, and a stream resolves its filters and the parameters they read before decoding any of its data: no level holds decoded data while the next loads |
 | Object numbers | up to 2,147,483,647 | An object's number is an `int`, and ISO 32000-1's Annex C advises at most 8,388,607 indirect objects. A number past it is refused where it is read — a header, a reference, a subsection, a row, an object stream's header —, never narrowed to one that would name another object. An object is numbered from 1; 0 names the head of the free list, where a reference, a subsection or a row may give it |
 | An object stream's members | each read to the next one's start, the last to the end of the decoded data | ISO 32000-1 (7.5.7) has a header list its objects by increasing offset, so that each lies before the next one starts: a pair whose offset is not past the one before it, or whose object would start past the data, ends the header there, as a stray token does, and the objects listed before it are read. A member past `MaxObjectLength` is that limit's |
