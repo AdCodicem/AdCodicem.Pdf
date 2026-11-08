@@ -686,3 +686,81 @@ reports in r9-fix-result.json.
 - 2026-11-08: review round 10 launched: wf_90e4d823-0f8 (task w4r3r7jr8), script lot19-review-r10.js, range
   da2b06f..c2a2aaa, lenses own-stream, undecoded, src-texts, tests, docs, batch, a refuter per finding; eight agents at
   a time, two dotnet processes each; brief review-brief-win.md (Windows paths, gh CLI, the relaxed resource rule).
+
+# Review round 10 (wf_90e4d823-0f8 on c2a2aaa): triage
+28 agents, 0 errors, 1h17. 22 findings (r10-findings.md, '## n. key'; r10-verified.json), 20 once the duplicates are
+merged: 5 major ([1]=[4]=[11]=[13], [14], [3]=[8]=[17]), 9 minor, 6 nit after the refuters; none refuted, no refuter
+asked for the maintainer. No maintainer question: each fix applies a decision already taken (invariant 12 and ADR 34,
+R9-Q1, round 9's [2]/[11] rule) or is a text, a test or a record.
+Fix (code):
+- [1]/[4]/[11]/[13] (major, open point (a), a regression of 092b772, main reports the guard): the check's main-path
+  decode of an untyped stream rolls back with plain RollBack and drops limit.stream-length, which _limitsReached keeps
+  any later reading from making again (a guard reached, never reported; under MaxStreamLength 5 the cut rows are
+  rebuilt and blamed on the file). RollBackBesideLimits at :6549, as e157359 did beside a cut value. Texts: the
+  KeepsItsPlace remark, TryReadXRefStream's check paragraph, the comment at :6534-6538 and the one at :6419-6426, and
+  threat-model 432: a guard any decoding of the check reached stands. Rows (fail on c2a2aaa): untyped no filter under
+  MaxStreamLength 50 and 5, untyped /Foo under 50, exact lists, guard once; typed rows as controls.
+- [14] (major, a regression of e157359 + 68a55fa): RollBackBesideLimits counts a guard a repeated decoding reached
+  again (counted in _limits, no entry, MoveDecodingReportsTo) as left out by the capacity: SuppressedCount 1 with room
+  to spare. Exact fix in PdfDiagnostics: count the limit.* reports the capacity dropped (carried by the mark, restored
+  by RollBack, carried by both MoveTo overloads and MoveDecodingReportsTo), used as what was left out; rewrite the
+  comment 'Every guard reached since the mark was reported once' and the summary. Unit tests (room, and a full record)
+  and the cut-/Size [/FlateDecode /Foo] row under MaxObjectLength 1024 + MaxDecodedStreamLength 1000 with
+  SuppressedCount 0, plus the same with no cut once [1] lands.
+- [3]/[8]/[17] (major, from 9a07bb9, 8b31ebf did not cover it): xref.stream-passed-over at a stream the chain read
+  from inside its object number (an older /XRefStm or /Prev naming header+k, a newer /XRefStm read before the search):
+  ReportStreamsPassedOver tells a reached stream by its start byte. Apply R9-Q1 to the report: record with each place
+  passed over where its object number's digits end (the window is open; NumberRunsInto's scan, no read), and count it
+  reached where a Read, Relocated or Malformed record starts in [at, digitsEnd). Rows: oldest /XRefStm and /Prev at
+  own+1, a three-digit number at own+2, a newer /XRefStm at own+1 with no /Prev; unreadable (/W [1 -4 2]) rows give
+  one section-unreadable and no Warning; exact controls. The search's byte-based reached test (:5118) is main's and
+  #332's: comment on #332 with the newer-/XRefStm shape.
+- [20] (minor; the comment-path direction is worse than main, a consequence of #261 with R9-Q1): S read from a '+'
+  sign is not told. NumberRunsInto: (a) scan digits past one leading '+' at the candidate (the comment path's header
+  starts at its token, sign included); (b) also map candidate == streamStart + 1 where the byte at streamStart is '+'.
+  Rows: '+17 0 obj' at into=0 with S's /Prev the oldest table (NamedAgain, hybrid-stream-lost, Error
+  hybrid-stream-wrong, as '17 0 obj'); '+17 0 %c\nobj' at into=1 and 2, S giving no /Prev (Relocated Table 229, no
+  rebuild, as main). Remark at :5265-5280 (the walk takes the whole digit run and does not look at the byte before
+  it; the comment path takes the token start), lazy-reading:200; M07/M11 re-judged, M11's reason corrected.
+- [5]/[9]/[21] (minor, open point (b), #289's class): white space past MaxTrailerLength where the chain names a
+  section (PaddingAt's limit.trailer, TryReadXRefSection's padding<0 branch) sets no guard flag, so the Warning is made
+  where only the guard turned the reading into a search or hid the naming link. Apply round 9's [2]/[11] rule: a
+  dedicated flag set there for a chain-named offset (candidates never reach it), tested in ReportStreamsPassedOver
+  beside ChainStoppedByGuard; NOT _cutByGuard (it drives the rebuild, IndexStoppedByGuard and the validator, which stay
+  #289's). Rows: the refuters' b1/b4 at MaxTrailerLength 256 and the hid-the-link shape at 512 give no Warning (limit
+  reports kept), default limits unchanged, controls. Texts: state the code's rule everywhere the sentence 'stopped the
+  chain, or cut what it reached' stands (PdfDiagnosticCodes:122-123, :626-628, :3695-3697, :3718-3719 which is false,
+  :4987-4988, diagnostics.md:116, lazy-reading:215-217, threat-model 432): nothing is reported where a limit left part
+  of the chain unread or turned the chain's reading into a search; a cut that hides nothing (data past a stream's last
+  row, an object past a whole reference it holds) leaves the report made. reader-limits.md:55-61 is right as it is.
+  Comment on #289.
+Fix (tests):
+- [15] (minor) M03 is not equivalent (the trailer window marks the data cut with a direct /Length): a filter parameter
+  on HybridFiles.NamingAStreamWhoseKeywordEndsAt and rows "/Filter /Foo " and "/Filter /FlateDecode " on
+  A_stream_whose_data_the_trailer_guard_cuts_beside_a_width_a_guard_cut_leaves_the_prev_s_place_to_the_guard; R9c's
+  ADR 53 record: M03 killed, 4 equivalents (M20, M26, M27, M05), M05's reason rewritten without the false premise.
+- [18] (nit) survivor spanStart+1 at :5219 outside the catalog as written: a sibling theory with its own builder (the
+  header's line starting before the bytes searched: Warning; line broken: control; line starting past
+  LineStartSearchLength: no Warning, the bound).
+Fix (texts):
+- [6]/[19] (minor/nit) the line test reads one window back where the header's line starts before the bytes searched:
+  :3705-3707, :5209-5213, the LineStartSearchLength summary :141-147, threat-model 432. Record: R9-Q2's 'no extra read'
+  means no stream is read.
+- [7] (nit) 'as a place that cannot be read is taken only where it does': but for one a guard's cut of a value it is
+  read with keeps from being read (#263), in :4985-4987, :5208-5209, diagnostics.md:116, lazy-reading:213-214,
+  threat-model 432 and the CrossReferenceChainTests comment at :6548-6551.
+- [10] (minor, open point (d)) validation-rules.md:48: S's own /Prev gets a sentence of its own (read only to tell
+  that stream's place, judged as written); PdfValidationRuleIds.FileTrailerValueWrong summary (:76-77) likewise.
+- [16] (minor) reader-limits.md:198-200: every guard the decoding beside the cut meets (MaxStreamLength,
+  MaxFilterChainLength, MaxDecodedStreamLength); same in the status.md record.
+- [22] (minor, narrowed; main takes the same run, the take of a place that reads is documented): the comment at
+  :5799-5800 ('its keyword declared it a section before the cut') is false for a keyword in a comment or string.
+  Correct it; no code change. Tracking: comment on #171 (a table a guard cut, and one read whole, whose keyword a
+  comment holds, taken near an /XRefStm, then hybrid-stream-lost and Error hybrid-stream-wrong); widen its closing to
+  the line test asked of every place the search takes, one that reads or a guard cut included. Open point (c): R9a's
+  example is taken, not dropped; no route found where a candidate is dropped after setting _cutByGuard.
+- [2] (nit) HybridFiles.cs:1526 'a comment of 1,100 equals signs'.
+- [12] (nit) 9823992's body writes 'judgement': record in status.md; docs/adr/0046 :103 'judgement' (main's) corrected.
+- Open point (e), the NamingAStreamOneByteIntoItsNumber deviation: no finding challenged it; accepted (R9-Q1).
+Records for status.md: 092b772's body (the check drops the decoding's reports) false for a guard until [1]'s fix;
+b55738a's body false for the white-space guard until [5]'s fix.
