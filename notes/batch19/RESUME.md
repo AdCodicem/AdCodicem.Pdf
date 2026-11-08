@@ -1,23 +1,49 @@
-# Resuming batch 19 (paused 2026-11-08)
+# Resuming batch 19 (paused 2026-11-08, again late that day)
 
 This is the handoff from the cloud session that ran batch 19 of M02's step 4. It was stopped at the maintainer's
 request so that the work can resume on the maintainer's Windows PC. These notes hold review keys, probe names and
 scratchpad paths. **None of that may go into src/, tests/ or docs/.**
 
-## 1. Where things stand (updated 2026-11-08, Windows session)
+## 1. Where things stand (updated 2026-11-08 late, Windows session, paused at the maintainer's request)
 
 - **Batch.** Batch 19 of M02's step 4 pays #156, #188, #197, #207, #208, #210, #221, #222, #241, #261, #264, #281
   and #317. It started from `main` at 21a0298.
-- **Branch.** `ccr-6d6c0ee6-dqm4lm-188` is at **79c6a7f**, pushed and clean. No pull request exists yet.
+- **Branch.** `ccr-6d6c0ee6-dqm4lm-188` is at **7b1de15**, pushed and clean. No pull request exists yet.
   - Implementation: 21a0298..071f829. Review rounds 1 to 10 fixed: 071f829..79c6a7f (ranges in `decisions.md`).
+  - Round 11 fixes so far: 79c6a7f..fdd5a71 (part 1, R11a and R11b, complete and checked) and fdd5a71..7b1de15
+    (part 2's R11c, **incomplete**: 5fb9444 test, 7b1de15 fix).
 - **WIP branch.** `ccr-6d6c0ee6-dqm4lm-188-wip` holds only these notes, in `notes/batch19/`. It is never merged.
-- **Rounds 9 and 10 are reviewed, triaged and fixed** on the PC (decisions.md: *Review round 9 fixes*, *Review round
-  10 (wf_90e4d823-0f8 on c2a2aaa): triage*, *Review round 10 fixes (wf_ed26b797-484, Windows): result*). Round 10's
-  check on 79c6a7f is green (suite 10,622, site, corpus, differential unchanged).
-- **Next: review round 11** on c2a2aaa..79c6a7f, script `lot19-review-r11.js` (modeled on `lot19-review-r10.js`).
+- **Round 11** (wf_556f39fe-f5c on 79c6a7f) is reviewed and triaged (`decisions.md`, *Review round 11 ...: triage*,
+  R11-Q1 answered "document scope"). 24 findings, `r11-findings.md`.
+- **Part 1** (wf_47fb1f52-837): result in `r11-fix1-result.json` and `decisions.md` (*Review round 11 fixes, part 1*).
+- **Part 2** (wf_629fa085-d7b, `lot19-r11-fixes-win-2.js`) was **stopped by the maintainer during R11c's ADR 53
+  step**. No agent of that run completed, so a `resumeFromRunId` replays nothing and would redo R11c from scratch.
+  What R11c left, all under the scratchpad's `cloud/r11wip/`:
+  - pushed: 5fb9444 (rows for the white-space guard's document-wide hold, shapes A and B) and 7b1de15 (the parted
+    /Type sets the flag, renamed `_guardMayHideLink`; texts in src/ for both cases);
+  - `r11c-diffrun.log`: the differential run is identical to r10f and r11a (9,228 blocks);
+  - `R11c-corpus/corpus-branch-1.txt`: the corpus run on 7b1de15 is done, **not yet compared** (vs main and vs
+    `r10f/corpus-branch-1.txt`);
+  - `r11c-mut/summary.txt`, `run.py`, `logs/`: ADR 53 over 7b1de15's lines. 24 mutants: 17 killed, 3 not viable
+    (M07, M08, M20; M20b killed), **4 survived the whole suite: M01, M11, M13, M14** (`run.py` says what each
+    changes). Each must be killed by a row or classed equivalent with a reason;
+  - `r11c-probes/`: before/after probes of the parted /Type and the white-space reach.
+  - R11c returned no report: its tests_added, deviations and open points (pages for R11d) are only in its commits'
+    bodies and in the probes.
+- **Where the outputs are.** The Windows scratchpad
+  `C:/Users/clemm/AppData/Local/Temp/claude/7278f9d03177d71e/898783fc-049f-469a-ab79-dfd299ad558e/scratchpad`
+  (W = its `cloud/`, SP = `cloud/lot19`) holds every round's outputs, scripts and tools as long as Temp is not
+  cleaned. R11c's outputs and round 10's corpus baseline are also in `r11c-left.tar.gz` here.
+- All workflow worktrees were removed on pause (none held uncommitted work; the remote corpus copy was hard links,
+  unlinked first; the maintainer's 242 remote files are intact).
 
 ## 2. What remains, in order
 
+0. **Finish round 11's part 2.** Edit `lot19-r11-fixes-win-2.js` (scratchpad copy; a copy is here) so R11c's prompt
+   says 5fb9444 and 7b1de15 are pushed and its remaining work is: settle M01, M11, M13, M14 (kill or class
+   equivalent), compare the corpus run, write its report (tests_added, deviations, open points for R11d); then run
+   R11d (pages), tracking and R11f (check) unchanged. Launch it fresh (no resume: nothing is cached). Then record
+   the result in `decisions.md`, and launch review round 12 on 79c6a7f..head (model: `lot19-review-r11.js`).
 1. **Review rounds** until one has no blocker, major or minor finding: triage each in `decisions.md`, ask the
    maintainer any design question, fix (model: `lot19-r10-fixes-win.js`).
 2. **The batch-wide ADR 53 step.** Run the mutation catalog over every src/ line the batch changes.

@@ -904,3 +904,11 @@ Pushed 79c6a7f..fdd5a71 (fast-forward), 9 commits, messages checked, no review k
   and the decoding made fewer reports than the capacity before it; daca13c's summary scoped in a0e94ca; 2be5c44's
   'reads the same dictionary and data from there' false where the digits read 0.
 Part 2 launched: wf_629fa085-d7b (R11c guard flag, R11d pages, tracking, R11f check).
+
+# Paused at the maintainer's request during part 2 (wf_629fa085-d7b stopped)
+
+R11c had pushed 5fb9444 (test) and 7b1de15 (fix) and was settling ADR 53: 24 mutants, 17 killed, 3 not viable, 4
+survived the whole suite (M01, M11, M13, M14; r11wip/r11c-mut/run.py and summary.txt). Differential identical to
+r10f and r11a (9,228). Corpus run on 7b1de15 done, not compared. No agent of the run completed: nothing to resume
+from cache. Next: rerun part 2 with R11c's prompt narrowed to the survivors, the corpus comparison and its report,
+then R11d, tracking, R11f. Branch head 7b1de15. Worktrees removed; build nodes the agents left were stopped by PID.
