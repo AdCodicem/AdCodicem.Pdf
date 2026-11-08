@@ -1743,13 +1743,14 @@ internal static class HybridFiles
 
     /// <summary>
     /// The document <see cref="NamingAnObjectBesideTheStream"/> writes, with object 4 written as a stream that gives no type,
-    /// whose <c>/W</c> gives its second width as the reference <c>12 0 R</c>, the <c>/Size</c> 10 and the <c>/Length</c> 6,
-    /// and whose <c>stream</c> keyword ends <paramref name="keywordEnd"/> bytes past its header, a <c>/Pad</c> string making up
-    /// the length, followed by <paramref name="after"/> and 6 bytes of data; the newest table also indexes object 12,
-    /// <c>4</c> after a comment of 3,000 dashes, which <see cref="Documents.PdfReaderLimits.MaxObjectLength"/> lowered below
-    /// that cuts before its value. Object 4 lies at <c>Four</c>, the place the <c>/XRefStm</c> names at <c>Named</c>.
+    /// whose <c>/W</c> gives its second width as the reference <c>12 0 R</c>, the <c>/Size</c> 10, the <c>/Length</c> 6 and
+    /// <paramref name="filter"/>, nothing when empty, and whose <c>stream</c> keyword ends <paramref name="keywordEnd"/> bytes
+    /// past its header, a <c>/Pad</c> string making up the length, followed by <paramref name="after"/> and 6 bytes of data;
+    /// the newest table also indexes object 12, <c>4</c> after a comment of 3,000 dashes, which
+    /// <see cref="Documents.PdfReaderLimits.MaxObjectLength"/> lowered below that cuts before its value. Object 4 lies at
+    /// <c>Four</c>, the place the <c>/XRefStm</c> names at <c>Named</c>.
     /// </summary>
-    public static (byte[] File, long Four, long Named) NamingAStreamWhoseKeywordEndsAt(int keywordEnd, string after)
+    public static (byte[] File, long Four, long Named) NamingAStreamWhoseKeywordEndsAt(int keywordEnd, string after, string filter = "")
     {
         var file = new HandWrittenFile(version: "1.5");
         var (catalog, pages, page) = Page(file);
@@ -1764,10 +1765,10 @@ internal static class HybridFiles
         file.Object(9, Invariant($"<< /Type /XRef /Size 13 /W [1 4 2] /Index [5 1 7 1] /Length {rows.Length} >>\nstream\n{rows}\nendstream"));
         file.Raw(new string(' ', (int)(stream + 400 - file.Position)));
         var eight = file.Object(8, "(" + new string('x', 20) + ")");
-        const string Head = "4 0 obj\n<< /W [1 12 0 R 2] /Size 10 /Length 6 /Pad (";
+        var head = "4 0 obj\n<< /W [1 12 0 R 2] /Size 10 /Length 6 " + filter + "/Pad (";
         const string Tail = ") >>\nstream";
         var four = file.Position;
-        file.Raw(Head + new string('-', keywordEnd - Head.Length - Tail.Length) + Tail + after + new string('\u0001', 6) + "\nendstream\nendobj\n");
+        file.Raw(head + new string('-', keywordEnd - head.Length - Tail.Length) + Tail + after + new string('\u0001', 6) + "\nendstream\nendobj\n");
         file.Raw("%" + new string('-', 1200) + "\n");
         var six = file.Object(6, "(six)");
         var twelve = file.Object(12, "%" + new string('-', 3000) + "\n4");

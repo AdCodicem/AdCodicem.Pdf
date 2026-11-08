@@ -4948,9 +4948,11 @@ public class CrossReferenceChainTests
     }
 
     [Theory]
-    [InlineData("X", false)]
-    [InlineData("\n", true)]
-    public void A_stream_whose_data_the_trailer_guard_cuts_beside_a_width_a_guard_cut_leaves_the_prev_s_place_to_the_guard(string after, bool reads)
+    [InlineData("X", false, "")]
+    [InlineData("X", false, "/Filter /Foo ")]
+    [InlineData("X", false, "/Filter /FlateDecode ")]
+    [InlineData("\n", true, "")]
+    public void A_stream_whose_data_the_trailer_guard_cuts_beside_a_width_a_guard_cut_leaves_the_prev_s_place_to_the_guard(string after, bool reads, string filter)
     {
         // The newest table names object 4 through /Prev, and through /XRefStm a place inside the string of object 8, 18 bytes
         // before it, whose search comes to object 4 first. Object 4's stream keyword ends exactly where MaxTrailerLength,
@@ -4959,9 +4961,12 @@ public class CrossReferenceChainTests
         // starts at the edge of the window a guard stopped at: its section is the guard's, its width unknown, and the look at
         // the place reads it alike, the naming the guard's, nothing reported of it, nothing rebuilt. Taking the data past the
         // edge for the stream's own, it would find too few rows for the widths read, a section the /Prev keeps its place at,
-        // and the naming reported as the file's. Past an end of line, the data starts within the window, the stream's own,
-        // and too short for its rows: the /Prev reads the section in part, and the /XRefStm is left to it (#156, #264).
-        var (file, four, named) = HybridFiles.NamingAStreamWhoseKeywordEndsAt(2048, after);
+        // and the naming reported as the file's. Data the window's edge cut is not decoded to judge the section either, even
+        // under a filter that decodes nothing of it, an unknown one or Flate whose data is corrupt from its first byte: told
+        // undecoded, the section would be the file's to lose, the guard that cut object 12 unreported. Past an end of line,
+        // the data starts within the window, the stream's own, and too short for its rows: the /Prev reads the section in
+        // part, and the /XRefStm is left to it (#156, #221, #264).
+        var (file, four, named) = HybridFiles.NamingAStreamWhoseKeywordEndsAt(2048, after, filter);
         var limits = PdfReaderLimits.Default with { MaxObjectLength = 1024, MaxTrailerLength = 2048 };
         using var document = PdfDocument.Open(file, new PdfReaderOptions { Limits = limits });
 
