@@ -1,9 +1,9 @@
 """Own-stream differential driver, the steps of r8proto/run_variant.sh in Python (shell scripts cannot be run here).
 
-usage: python diff_run.py WORKTREE NAME [--no-build]
+usage: python diff_run.py WORKTREE NAME [--no-build] [--vs=r10a,r10b]
 Copies the probe in as tests/AdCodicem.Pdf.Tests/ZzProtoDiffTests.cs, builds the solution in Release (unless --no-build),
-runs the probe twice (the outputs must be byte-identical), classifies against the three baselines and against round 8's
-check run and the last stage's run, and deletes the probe again.
+runs the probe twice (the outputs must be byte-identical), classifies against the three baselines, round 8's and round 9's
+check runs (out-r8f, out-r9f) and the runs --vs names, and deletes the probe again.
 """
 import filecmp
 import os
@@ -53,7 +53,9 @@ os.replace(f'{R}/out-{name}.run1.txt', f'{R}/out-{name}.txt')
 os.remove(f'{R}/out-{name}.run2.txt')
 blocks = sum(1 for line in open(f'{R}/out-{name}.txt', encoding='utf-8') if line.startswith('=== '))
 print(f'blocks: {blocks} (deterministic over two runs)')
-for base in ('main', 'd3ef', 'head', 'r8f', 'r9b'):
+extra = [a[5:] for a in sys.argv if a.startswith('--vs=')]
+bases = ['main', 'd3ef', 'head', 'r8f', 'r9f'] + [b for a in extra for b in a.split(',') if b]
+for base in bases:
     with open(f'{R}/cls-{name}-vs-{base}.txt', 'w', encoding='utf-8') as handle:
         subprocess.run([sys.executable, '-I', f'{R}/classify.py', f'{R}/out-{name}.txt', f'{R}/out-{base}.txt', '--manifest',
                         f'{R}/manifest.tsv', '--tsv', f'{R}/cls-{name}-vs-{base}.tsv'], stdout=handle, check=True)

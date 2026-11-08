@@ -2,6 +2,7 @@
 import re
 import sys
 
+sys.stdout.reconfigure(encoding='utf-8')
 text = open(sys.argv[1], encoding='utf-8').read()
 cap = int(sys.argv[2])
 parts = re.split(r'(?m)^(?=## \d+\. )', text)

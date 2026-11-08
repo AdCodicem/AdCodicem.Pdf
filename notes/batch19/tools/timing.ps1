@@ -1,6 +1,9 @@
+param([string]$Out = 'C:\Users\clemm\AppData\Local\Temp\claude\7278f9d03177d71e\898783fc-049f-469a-ab79-dfd299ad558e\scratchpad\cloud\r9f')
 # Runs the timing, budget, allocation and memory groups three times each, one run at a time, from the current worktree.
+# usage: pwsh -File timing.ps1 [-Out <folder>] (default: the r9f folder).
 $env:DOTNET_CLI_UI_LANGUAGE = 'en-US'
-$out = 'C:\Users\clemm\AppData\Local\Temp\claude\7278f9d03177d71e\898783fc-049f-469a-ab79-dfd299ad558e\scratchpad\cloud\r9f'
+$out = $Out
+New-Item -ItemType Directory -Force $out | Out-Null
 $groups = [ordered]@{
     'timing'  = @('--filter-class', '*ReaderTimingTests')
     'budget'  = @('--filter-method', '*budget*', '--filter-method', '*Budget*')

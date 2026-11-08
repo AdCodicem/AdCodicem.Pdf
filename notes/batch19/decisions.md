@@ -764,3 +764,7 @@ Fix (texts):
 - Open point (e), the NamingAStreamOneByteIntoItsNumber deviation: no finding challenged it; accepted (R9-Q1).
 Records for status.md: 092b772's body (the check drops the decoding's reports) false for a guard until [1]'s fix;
 b55738a's body false for the white-space guard until [5]'s fix.
+- 2026-11-08: round 10 fixes launched: wf_ed26b797-484 (task wffzwi3dl), script lot19-r10-fixes-win.js: R10a
+  check guard + suppressed count + the trailer-window mutant, R10b told by its data (report, sign), R10c white-space
+  guard flag + passed-over texts + line-test theory, R10d pages (sequential, each pushed), then R10-track (#332, #289,
+  #171 comments) and R10f check one after the other. Tools: diff_run.py --vs, timing.ps1 -Out.
