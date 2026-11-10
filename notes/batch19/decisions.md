@@ -1080,3 +1080,10 @@ Full result in r12-fix2-result.json.
   comment above the reached test assigns it to #332; no page names it. Proposed one-line widening: look the digits up
   at the first non-sign byte past the candidate. Put to the maintainer as R13-Q0.
 - Commit bodies not rewritten: 5880c0b, 305c1fb and 78885bf describe the flag's reach before 9e20161.
+
+R13-Q0 (maintainer, 2026-11-10): "Corriger avant le round 13 (Recommandé)". The comment-path shape is fixed in the batch
+before round 13: the reached test looks the digits up at the first non-sign byte past the candidate; rows for the
+readable and lost forms, oldest table in and out of reach, '-+5' read at its '+'; the src comment above the reached test
+no longer gives the case to #332; a short follow-up on #327.
+- 2026-11-10: R13-Q0 fix launched: wf_16c95c5b-c85 (task wy7gd4xh1), lot19-r13-q0-win.js, from 69731a2. Round 13 follows on
+  its head.
