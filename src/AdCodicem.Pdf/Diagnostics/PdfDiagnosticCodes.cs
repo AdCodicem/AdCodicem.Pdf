@@ -128,14 +128,19 @@ public static class PdfDiagnosticCodes
     /// section said what it is, rows, a trailer, an object a value the rows or a link are read with leads to, or an index
     /// it filled —, the limit's report standing for what it left unread. Nor is anything reported anywhere in the
     /// document where <see cref="Documents.PdfReaderLimits.MaxTrailerLength"/> may have hidden a link the chain would
-    /// have followed: where it cut a dictionary at an offset the chain names whose <c>/Type</c> gives a name
-    /// <c>XRef</c> begins with and that is shorter — the empty name, <c>X</c>, <c>XR</c> or <c>XRe</c> —, which may be
-    /// what the cut left of <c>/XRef</c>, the parser keeping a name as far as it read it, and is not told from such a
-    /// name written whole, the cut past it: the object is then read as one of another type, its <c>/Prev</c> left
-    /// unread (#279); or where white space and comments at an offset the chain names run past it, which turned the
-    /// reading of the section there into the search near the offset. That search may take a section other than the one
-    /// past them, and the reader cannot tell which without reading past the guard: once that guard is reached, no
-    /// stream passed over is reported, even where the search finds the section whole past the white space, which only a
+    /// have followed, or cut what would end it: where it cut a dictionary at an offset the chain names, whatever its
+    /// <c>/Type</c>, the parser keeping the dictionary as far as it read it and the object then read as one of another
+    /// type (#279). At an offset a <c>/Prev</c> or <c>startxref</c> names, where any <c>/W</c> makes a stream of any
+    /// <c>/Type</c> the section (#263), the cut may have hidden one — <c>/XRef</c> parted, inside the name or inside a
+    /// <c>#xx</c> escape, a stream of another <c>/Type</c> that gives a <c>/W</c>, a <c>/Type</c> given twice whose later
+    /// value is <c>/XRef</c> —, the object's <c>/Prev</c> not followed, wherever it lies; at one an <c>/XRefStm</c> names,
+    /// whose stream's <c>/Prev</c> the chain never follows, the cut is what would end the chain, as a guard's cut of that
+    /// stream does (#264). The reader cannot tell what the cut hid without reading past the guard: a dictionary of another
+    /// type cut where it gives no <c>/W</c> withholds the report too. Nor is anything reported anywhere in the document
+    /// where white space and comments at an offset the chain names run past that limit, which turned the reading of the
+    /// section there into the search near the offset. That search may take a section other than the one past them, and
+    /// the reader cannot tell which without reading past the guard: once that guard is reached, no stream passed over is
+    /// reported, even where the search finds the section whole past the white space, which only a
     /// <c>MaxTrailerLength</c> under the 512 bytes the search reaches past the offset allows (#289). A cut that leaves
     /// nothing unread — data past a stream's last row, an object past a whole reference it holds — leaves the report
     /// made. Nor is anything reported where the chain indexed nothing: the whole file is rebuilt then, which reads
