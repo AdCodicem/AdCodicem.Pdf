@@ -5279,18 +5279,24 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
             // Where the section was named holds no section that reads, and a place where a section the chain reached starts —
             // read there, found moved there, or there and not read though it declares itself one — holds that section, not the
             // one looked for: both are passed over, but for what the table's /XRefStm read in the stream's place, which is
-            // taken (#188, #156). A header the walk back from obj found at its digit, its number written with a run of signs,
-            // is the header a reading that started at a + of that run read, the signs before that + aside, as a load reads a
-            // run of signs as one, the first deciding: the place is passed over where the digits of a stream the chain reached
-            // start there, as its reading lexed them (_sectionDigitsAt) — wherever the run starts, before the bytes searched
-            // too, and whatever sign starts it, a - among them, from which no reading reads a header —, a stream the chain
-            // could not read among them, which nothing above tells by its data (#327). A section the chain reached that starts
-            // at a sign is such a stream, its digits recorded with it (RecordSectionReached). A section the chain reached past
-            // where the place starts, inside its number — past its first digit, or past the first sign of a header the walk
-            // lexed from its line's start — is not looked for, the stream above aside: the header found before it is tried
-            // as a place of its own (#332).
+            // taken (#188, #156). A header whose number is written with a run of signs is the header a reading that started at
+            // a + of that run, or at the digit past it, read, the signs before that + aside, as a load reads a run of signs as
+            // one, the first deciding. The walk back from obj finds it at that digit — wherever the run starts, before the
+            // bytes searched too, and whatever sign starts it, a - among them, from which no reading reads a header —, or at
+            // the run's first sign where it lexed the line the number is on, which holds a %: the place is passed over where
+            // the digits of a stream the chain reached start past the place's own run of signs, at the place where it has
+            // none, as that reading lexed them (DigitsPastSigns, _sectionDigitsAt), a stream the chain could not read among
+            // them, which nothing above tells by its data (#327). A section the chain reached that starts at a sign is such a
+            // stream, its digits recorded with it (RecordSectionReached). The place is one the search found, within the bytes
+            // searched, its run of signs ending within them: where the reading of the stream an /XRefStm read started, which
+            // may lie before them and stands for a header found above, is that stream's start, taken or reached, and told
+            // before any digits are looked for. A section the chain reached inside the digits of the place's number, past the
+            // first, is not looked for, the stream above aside: the header found before it is tried as a place of its own
+            // (#332).
             if (candidate == absolute ||
-                (candidate != takeAt && (_sectionsReadAt.Contains(candidate) || _sectionDigitsAt.Contains(candidate))))
+                (candidate != takeAt &&
+                    (_sectionsReadAt.Contains(candidate) ||
+                        _sectionDigitsAt.Contains(DigitsPastSigns(window.Memory.Span, start - lead, candidate)))))
             {
                 continue;
             }
@@ -5517,6 +5523,30 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
         var rest = span[(int)(at - spanStart + 1)..];
         var signs = rest.IndexOfAnyExcept((byte)'+', (byte)'-');
         return at + 1 + signs + rest[signs..].IndexOfAnyExceptInRange((byte)'0', (byte)'9');
+    }
+
+    /// <summary>
+    /// Gives where the digits start past the run of signs the place the search near an offset found at <paramref name="at"/>
+    /// starts with, as a load reads a number: the first byte at or past the place that is no sign — the place itself where
+    /// it is none, a header the walk back from <c>obj</c> found at its digit, or the keyword <c>xref</c> (#327).
+    /// </summary>
+    /// <remarks>
+    /// A header found where the walk lexed the line its number is on, which an end of line ends before <c>obj</c> and which
+    /// holds a <c>%</c>, starts where the lexer's token does, at the first sign of the run its number is written with
+    /// (<see cref="TryReadHeaderBackwards"/>): a reading that started at a later sign of that run, or at the digit past it,
+    /// read the same header, and found its digits where this look does, as for a header found at its digit
+    /// (<see cref="XRefSectionRecord.DigitsAt"/>). The look ends within the bytes searched, which hold every place found
+    /// whole, its number with it; where they held nothing but signs from the place to their end, the place would be given
+    /// as it is. No digits of a stream's number start at a sign, nor at the <c>x</c> of <c>xref</c>: the position tells
+    /// nothing there. A look at the bytes of the place, in the window: nothing is read for it, nor allocated.
+    /// </remarks>
+    /// <param name="span">The bytes searched, and the byte before them where the window holds one.</param>
+    /// <param name="spanStart">Where <paramref name="span"/> starts in the file.</param>
+    /// <param name="at">Where the place starts in the file, within the bytes searched.</param>
+    private static long DigitsPastSigns(ReadOnlySpan<byte> span, long spanStart, long at)
+    {
+        var signs = span[(int)(at - spanStart)..].IndexOfAnyExcept((byte)'+', (byte)'-');
+        return signs < 0 ? at : at + signs;
     }
 
     /// <summary>
