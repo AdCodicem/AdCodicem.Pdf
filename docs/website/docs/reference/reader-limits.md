@@ -18,7 +18,7 @@ document instead, in [Read or refuse a document that reaches a limit](../guides/
 | `MaxObjectLength` | 16 MB | An object that long, the data of a stream aside, written in the file or held by an object stream: an array of a million references | The object as far as the bound | `limit.object` |
 | `MaxXRefSectionLength` | 64 MB | A classic cross-reference table of more than about 3.3 million entries, measured from where it is read, the white space and comments an offset that names it falls short by included ([#289](https://github.com/AdCodicem/AdCodicem.Pdf/issues/289)) | The entries within the bound | `limit.xref-section-length` |
 | `MaxXRefSectionCount` | 1,024 | A document saved incrementally more than a thousand times | The newest sections | `limit.xref-section-count` |
-| `MaxTrailerLength` | 64 KB | A trailer that long, or a cross-reference stream's dictionary — its `/Index` grows with every scattered update —, never that stream's data, read from the stream's object header; and, counted apart, as much white space and comments as an offset that names a cross-reference section falls short of it by | The trailer as far as the bound, the chain ending there — near the offset a hybrid table's `/Prev` names too, where a stream whose dictionary it cut keeps its place in the search, whatever `/Prev` the cut may hide ([#156](https://github.com/AdCodicem/AdCodicem.Pdf/issues/156)) —; past white space and comments that run on past it, nothing read from that offset, the section looked for as one that is not there: near the offset, where a search may find it past them, or, for the one `startxref` names, by rebuilding the index, and no cross-reference stream passed over anywhere in the document reported as one the chain did not reach (`xref.stream-passed-over`), even where the search finds the section whole past them ([#289](https://github.com/AdCodicem/AdCodicem.Pdf/issues/289)); nor wherever it cuts the reading at an offset the chain names, whatever it cuts, that the reading does not take for a section it cut — a dictionary, whatever its `/Type`, the object read as one of another type, or the object's header, its number or its generation running on past it or a comment between its tokens, no object read ([#289](https://github.com/AdCodicem/AdCodicem.Pdf/issues/289)) —: where a `/Prev` or `startxref` names it, any `/W` makes a stream of any `/Type` the section ([#263](https://github.com/AdCodicem/AdCodicem.Pdf/issues/263)), and the cut may have hidden one, its `/Prev` not followed, wherever it lies; where an `/XRefStm` names it, the cut is what would end the chain there ([#264](https://github.com/AdCodicem/AdCodicem.Pdf/issues/264)). A dictionary whose `/Type` is no name, cut before its `/W`, is a section it cut, the chain ending there ([#279](https://github.com/AdCodicem/AdCodicem.Pdf/issues/279)) | `limit.trailer` |
+| `MaxTrailerLength` | 64 KB | A trailer that long, or a cross-reference stream's dictionary — its `/Index` grows with every scattered update —, never that stream's data, read from the stream's object header; and, counted apart, as much white space and comments as an offset that names a cross-reference section falls short of it by | The trailer as far as the bound, the chain ending there — near the offset a hybrid table's `/Prev` names too, where a stream whose dictionary it cut keeps its place in the search, whatever `/Prev` the cut may hide ([#156](https://github.com/AdCodicem/AdCodicem.Pdf/issues/156)) —, but for the trailer of a classic table an `/XRefStm` names, whose links the chain never follows ([#263](https://github.com/AdCodicem/AdCodicem.Pdf/issues/263)), the chain going on through the table that names it; past white space and comments that run on past it, nothing read from that offset, the section looked for as one that is not there: near the offset, where a search may find it past them, or, for the one `startxref` names, by rebuilding the index, and no cross-reference stream passed over anywhere in the document reported as one the chain did not reach (`xref.stream-passed-over`), even where the search finds the section whole past them ([#289](https://github.com/AdCodicem/AdCodicem.Pdf/issues/289)); nor wherever it cuts the reading at an offset the chain names, whatever it cuts, that the reading does not take for a section it cut — a dictionary, whatever its `/Type`, the object read as one of another type, or the object's header, its number, its generation or its `obj` keyword running on past it or white space or a comment between its tokens, or a token where no header starts, no object read ([#289](https://github.com/AdCodicem/AdCodicem.Pdf/issues/289)) —: where a `/Prev` or `startxref` names it, any `/W` makes a stream of any `/Type` the section ([#263](https://github.com/AdCodicem/AdCodicem.Pdf/issues/263)), and the cut may have hidden one, its `/Prev` not followed, wherever it lies; where an `/XRefStm` names it, the cut is what would end the chain there ([#264](https://github.com/AdCodicem/AdCodicem.Pdf/issues/264)). A dictionary whose `/Type` is no name, cut before its `/W`, is a section it cut, the chain ending there ([#279](https://github.com/AdCodicem/AdCodicem.Pdf/issues/279)) | `limit.trailer` |
 | `MaxIndexEntries` | 8,388,607 | A document of more objects than ISO 32000-1's Annex C advises; or a cross-reference stream of one-byte rows, of which 256 MB decode from a few hundred bytes | The object numbers indexed first: the newest sections', a rebuild's first | `limit.index-entries` |
 | `MaxFilterChainLength` | 64 | A `/Filter` array naming more filters, `/Crypt` among them: real streams name one to three, and a hostile array of millions costs decoding a few microseconds a filter, and some filters a table of tens of kilobytes, whatever their data | The data as the filters within the bound decoded it; the elements past it are not read | `limit.filter-chain` |
 
@@ -65,8 +65,9 @@ there. Raise PdfReaderLimits.MaxDecodedStreamLength to read past it.
   ([#289](https://github.com/AdCodicem/AdCodicem.Pdf/issues/289)), or wherever it cuts the reading at such an offset,
   whatever it cuts, that the reading does not take for a section it cut — a dictionary, whatever its `/Type`, the
   object read as one of another type ([#279](https://github.com/AdCodicem/AdCodicem.Pdf/issues/279)), or the object's
-  header, its number or its generation running on past it or a comment between its tokens, no object read —: where a
-  `/Prev` or `startxref` names it, any `/W` makes a stream of any `/Type` the section
+  header, its number, its generation or its `obj` keyword running on past it or white space or a comment between its
+  tokens, or a token where no header starts, no object read —: where a `/Prev` or `startxref` names it, any `/W` makes a
+  stream of any `/Type` the section
   ([#263](https://github.com/AdCodicem/AdCodicem.Pdf/issues/263)), and the cut may have hidden one — `/XRef` parted, a
   stream of another `/Type` that gives a `/W`, a `/Type` given twice, the whole dictionary past a header the cut parted
   —, its `/Prev` not followed, wherever it lies; where an `/XRefStm` names it, the cut is what would end the chain there
@@ -75,11 +76,13 @@ there. Raise PdfReaderLimits.MaxDecodedStreamLength to read past it.
   `/W`, or a token no header starts, among them. When the trailer's
   `/Root` names an object so left out, the catalog reads as null too: the reader does not
   look for another among the objects it indexed, which would be another object than the one `/Root` names. A classic table cut by its length, or whose rows run past a full index, keeps its trailer: the document's
-  catalog, encryption and identity. The chain ends at such a cut, and at a section whose trailer a limit cut: a `/Prev`,
-  an `/XRefStm` or a `/Root` past the cut is unknown, and no older section stands for it. What the section the chain
-  ends at names is still judged, as far as the cut lets it be, and nothing past the cut is read: a `/Prev` or an
-  `/XRefStm` — of a section whose rows a limit cut or filled the index at, or of a hybrid table whose stream a limit so
-  stopped — that can name no section whatever the cut hides is reported as a whole read reports it, under
+  catalog, encryption and identity. The chain ends at such a cut, and at a section whose trailer a limit cut — but for a
+  classic table an `/XRefStm` names, whose links the chain never follows
+  ([#263](https://github.com/AdCodicem/AdCodicem.Pdf/issues/263)), the chain going on through the table that names it —:
+  a `/Prev`, an `/XRefStm` or a `/Root` past the cut is unknown, and no older section stands for it. What the section
+  the chain ends at names is still judged, as far as the cut lets it be, and nothing past the cut is read: a `/Prev` or
+  an `/XRefStm` — of a section whose rows a limit cut or filled the index at, or of a hybrid table whose stream a limit
+  so stopped — that can name no section whatever the cut hides is reported as a whole read reports it, under
   `xref.section-missing`, `xref.chain-cycle` or `xref.hybrid-stream-lost`, and what only the sections it should have named
   index is found by rebuilding the index when you ask for it
   ([#264](https://github.com/AdCodicem/AdCodicem.Pdf/issues/264)). Such a value is no offset — a reference to a free
@@ -253,20 +256,20 @@ there. Raise PdfReaderLimits.MaxDecodedStreamLength to read past it.
   reaches past the offset allows ([#289](https://github.com/AdCodicem/AdCodicem.Pdf/issues/289)). Nor is one wherever
   it cuts the reading at an offset the chain names, whatever it cuts, that the reading does not take for a section it
   cut: a dictionary, whatever its `/Type`, which the parser keeps as far as it read it, the object read as one of
-  another type ([#279](https://github.com/AdCodicem/AdCodicem.Pdf/issues/279)); or the object's header — its number or
-  its generation running on past it, or a comment between its tokens — or a token where no header starts, which leaves
-  no object read; the section looked for as one that is not there either way. Where a `/Prev`
-  or `startxref` names the offset, any `/W` makes a stream of any `/Type` the section
+  another type ([#279](https://github.com/AdCodicem/AdCodicem.Pdf/issues/279)); or the object's header — its number, its
+  generation or its `obj` keyword running on past it, or white space or a comment between its tokens — or a token where
+  no header starts, which leaves no object read; the section looked for as one that is not there either way. Where a
+  `/Prev` or `startxref` names the offset, any `/W` makes a stream of any `/Type` the section
   ([#263](https://github.com/AdCodicem/AdCodicem.Pdf/issues/263)), and the cut may have hidden one — `/XRef` parted,
   inside the name or inside a `#xx` escape, a stream of another `/Type` that gives a `/W`, a `/Type` given twice whose
   later value is `/XRef`, the whole dictionary past a header the cut parted —, its `/Prev` not followed, wherever it
-  lies, before the cut or past it; where an `/XRefStm`
-  names it, whose stream's `/Prev` the chain never follows, the cut is what would end the chain there, as its cut of
-  that stream does ([#264](https://github.com/AdCodicem/AdCodicem.Pdf/issues/264)). Which, the reader cannot tell
-  without reading past the guard, and it withholds the report even where the cut hid nothing, a dictionary of another
-  type that gives no `/W`, or a token no header starts, among them. A dictionary whose `/Type` is no name, which says nothing of what it is, declares
-  a section only through a `/W`: cut before it, it is a section the guard cut, as one cut before its `/Type` is, the
-  chain ending there and nothing reported missing.
+  lies, before the cut or past it; where an `/XRefStm` names it, whose stream's `/Prev` the chain never follows, the cut
+  is what would end the chain there, as its cut of that stream does
+  ([#264](https://github.com/AdCodicem/AdCodicem.Pdf/issues/264)). Which, the reader cannot tell without reading past
+  the guard, and it withholds the report even where the cut hid nothing, a dictionary of another type that gives no
+  `/W`, or a token no header starts, among them. A dictionary whose `/Type` is no name, which says nothing of what it
+  is, declares a section only through a `/W`: cut before it, it is a section the guard cut, as one cut before its
+  `/Type` is, the chain ending there and nothing reported missing.
 - Until the reader decodes streams a piece at a time, a stream that decodes past about 2 GB is cut there, and
   reported, even under `Unbounded`. A stream's data is read in one piece, and data past about 2 GB is read up to
   there, and reported under `limit.stream-length`, even under `Unbounded`.
