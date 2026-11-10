@@ -597,9 +597,9 @@ internal static class HybridFiles
     /// to the second of two <c>endstream</c> keywords. Its data, the row of object 7's new revision and 4,000 dashes,
     /// Flate-encoded and then ASCIIHex-encoded with no <c>&gt;</c> end marker, is followed by an end of line, a first
     /// <c>endstream</c>, an end of line and <c>zz qq</c>, which the <c>/Length</c> takes in. The newest table indexes
-    /// object 4 too.
+    /// object 4 too, and its trailer gives its <c>/Size</c> <paramref name="sizeGivenAgain"/> times more, first.
     /// </summary>
-    public static (byte[] File, long Four) PrevNamingAStreamWhoseLengthOnlyTheOldestTablePlaces()
+    public static (byte[] File, long Four) PrevNamingAStreamWhoseLengthOnlyTheOldestTablePlaces(int sizeGivenAgain = 0)
     {
         var file = new HandWrittenFile(version: "1.5");
         var (catalog, pages, page) = Page(file);
@@ -616,7 +616,8 @@ internal static class HybridFiles
         file.Raw("%" + new string('-', 1200) + "\n");
         var six = file.Object(6, "(six)");
         var newest = file.Position;
-        file.Raw(Invariant($"xref\n0 1\n0000000000 65535 f \n4 1\n{Row(four)}6 1\n{Row(six)}trailer\n<< /Size 10 /Root 1 0 R /Prev {four} /XRefStm {eight + 20} >>\nstartxref\n{newest}\n%%EOF\n"));
+        var sizes = string.Concat(Enumerable.Repeat("/Size 10 ", sizeGivenAgain));
+        file.Raw(Invariant($"xref\n0 1\n0000000000 65535 f \n4 1\n{Row(four)}6 1\n{Row(six)}trailer\n<< {sizes}/Size 10 /Root 1 0 R /Prev {four} /XRefStm {eight + 20} >>\nstartxref\n{newest}\n%%EOF\n"));
         return (file.Bytes, four);
     }
 

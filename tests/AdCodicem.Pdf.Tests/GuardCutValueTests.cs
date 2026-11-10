@@ -4097,11 +4097,12 @@ public class GuardCutValueTests
     }
 
     [Theory]
-    [InlineData(8, 0, 0, new[] { PdfDiagnosticCodes.LimitDecodedStream, PdfDiagnosticCodes.XRefOffsetAdjusted, PdfDiagnosticCodes.XRefHybridStreamLost, PdfDiagnosticCodes.FilterFailed, PdfDiagnosticCodes.FilterFailed, PdfDiagnosticCodes.FilterUnsupported, PdfDiagnosticCodes.XRefOffsetAdjusted })]
-    [InlineData(2, 6, 4, new[] { PdfDiagnosticCodes.LimitDecodedStream, PdfDiagnosticCodes.XRefOffsetAdjusted })]
-    [InlineData(1, 8, 4, new[] { PdfDiagnosticCodes.XRefOffsetAdjusted })]
-    public void A_guard_a_decoding_meets_again_is_counted_left_out_only_where_that_decoding_made_as_many_reports_as_the_capacity_before_it(
-        int capacity, int leftOut, int leftOutByEachDecoding, string[] codes)
+    [InlineData(8, 0, 0, 0, new[] { PdfDiagnosticCodes.LimitDecodedStream, PdfDiagnosticCodes.XRefOffsetAdjusted, PdfDiagnosticCodes.XRefHybridStreamLost, PdfDiagnosticCodes.FilterFailed, PdfDiagnosticCodes.FilterFailed, PdfDiagnosticCodes.FilterUnsupported, PdfDiagnosticCodes.XRefOffsetAdjusted })]
+    [InlineData(2, 0, 6, 4, new[] { PdfDiagnosticCodes.LimitDecodedStream, PdfDiagnosticCodes.XRefOffsetAdjusted })]
+    [InlineData(1, 0, 8, 4, new[] { PdfDiagnosticCodes.XRefOffsetAdjusted })]
+    [InlineData(4, 3, 8, 4, new[] { PdfDiagnosticCodes.SyntaxKeyRepeated, PdfDiagnosticCodes.SyntaxKeyRepeated, PdfDiagnosticCodes.SyntaxKeyRepeated, PdfDiagnosticCodes.XRefOffsetAdjusted })]
+    public void A_guard_a_decoding_meets_again_is_counted_left_out_where_its_document_never_held_its_report_or_that_decoding_made_as_many_reports_as_the_capacity_before_it(
+        int capacity, int sizeGivenAgain, int leftOut, int leftOutByEachDecoding, string[] codes)
     {
         // Object 4, a stream of no type whose data decodes past what MaxDecodedStreamLength at 1,000 bytes decodes, and
         // whose last filter, /Foo, is one the library does not know, is decoded three times as the document opens: by the
@@ -4111,11 +4112,19 @@ public class GuardCutValueTests
         // the letters past it, nine of which are no hex digits. A decoding holds no more reports than the capacity, and the
         // guard follows one fault of the hex data, or two: the first decoding moved the guard's report in where the
         // capacity is 2 or more, and each decoding that made as many reports as the capacity before the guard dropped it,
-        // counted among the reports left out as any report is, though the document holds it. Each decoding of object 4 once
-        // the document is open reaches the guard again, counted reached: under a capacity of 8, which holds every report,
-        // nothing is left out; under 2, the two faults find the document full and the guard and /Foo find that decoding's
-        // own reports filling it; under 1, the guard's report was never held (#144).
-        var (file, _) = HybridFiles.PrevNamingAStreamWhoseLengthOnlyTheOldestTablePlaces();
+        // counted among the reports left out as any report is, though the document holds it; and where the document never
+        // held the guard's report, a decoding that meets the guard again counts it left out whatever it made before it. Each
+        // decoding of object 4 once the document is open reaches the guard again, counted reached: under a capacity of 8,
+        // which holds every report, nothing is left out; under 2, the two faults find the document full and the guard and
+        // /Foo find that decoding's own reports filling it; under 1, the first decoding's one report is the fault before the
+        // guard, so that the guard's report was never held, and each decoding counts it left out for that, as for its own
+        // fault before the guard, which fills its capacity too. Under 4, the newest trailer gives its /Size three times more:
+        // the three repeated keys leave the document room for one report, which the first decoding's fault before the guard
+        // takes, so that the guard's report was never held; that fault dropped with the rest of what the look met, the
+        // section found moved then fills the document. Each
+        // decoding once the document is open, whose two faults before the guard are fewer than the capacity, holds its four
+        // reports, the guard's among them, finds the document full and counts all four left out (#144).
+        var (file, _) = HybridFiles.PrevNamingAStreamWhoseLengthOnlyTheOldestTablePlaces(sizeGivenAgain);
         using var document = PdfDocument.Open(file, new PdfReaderOptions
         {
             Limits = PdfReaderLimits.Default with { MaxDecodedStreamLength = 1000 },
