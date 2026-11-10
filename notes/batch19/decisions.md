@@ -1157,3 +1157,20 @@ review. Then the batch-wide ADR 53 step.
   defensive branch, IsTokenOnItsLine's at < 0) are expected to survive.
 - Decision: run with --stop-on-fail (ADR 53 asks each mutant's fate, not its failure count), 4 lanes of 2 workers,
   driven directly by a shell queue rather than by agents; settle stage by a workflow afterwards.
+
+## 2026-11-10: stopped at the maintainer's request ("Arrête toi proprement, on reprendra plus tard")
+
+- Batch-wide ADR 53 run (W/adr53/lanes.sh, 27 shards, 4 lanes of 2 workers, --stop-on-fail, head 19a2296) stopped
+  about 5 minutes in. Every process killed by PID (lanes sh, xargs, the four run.py trees with their test processes);
+  worktrees W/adr53/w01-1 to w05-2 removed (corpus links first) and pruned; the maintainer's remote corpus intact
+  (242 files). Summaries: shard 01 144/144 lines but 136 of them BUILD ERROR (build rc=3221225794, 0xC0000142
+  STATUS_DLL_INIT_FAILED, "(0s)"), 11 KILLED overall, 1 NOT VIABLE; shards 02-05 have 1, 1, 2, 0 lines.
+- OPEN before resuming: diagnose the 0xC0000142 build failures (they started under the background shell with 8
+  workers; the inventory's own timing runs at 8 workers did not show them). Suspects: desktop heap exhaustion from many
+  console processes, or the detached background shell. Try one shard alone first. BUILD ERROR lines are retried on a
+  rerun, so resuming is `sh W/adr53/lanes.sh` (done ids are skipped); delete lanes.log first.
+- Draft workflow wf_6f5695af-be0 (status.md, M02 checklist, end-of-batch comments; no commit, no post) stopped before
+  any output; resume with its scriptPath and resumeFromRunId, or relaunch it after the ADR 53 run.
+- Next, in order: the ADR 53 run, then a settle stage (survivors killed by tests, equivalents classed, a batch-wide
+  survivor debt with G2b, G5, P02 and the two unreachable defensive sites), full verification, status.md, end-of-batch
+  comments (#289, #295, #52, optionally #260), the fix! PR (never merged).
