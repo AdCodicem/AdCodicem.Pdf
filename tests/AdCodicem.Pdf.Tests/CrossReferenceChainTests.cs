@@ -887,6 +887,135 @@ public class CrossReferenceChainTests
     }
 
     [Theory]
+    [InlineData("++5 0 %c\nobj", 1, true, true)]
+    [InlineData("++5 0 %c\nobj", 2, true, true)]
+    [InlineData("+5 0 %c\nobj", 1, true, true)]
+    [InlineData("+-+5 0 %c\nobj", 2, true, true)]
+    [InlineData("++5 0 %c\nobj", 1, true, false)]
+    [InlineData("++5 0 %c\nobj", 2, true, false)]
+    [InlineData("+5 0 %c\nobj", 1, true, false)]
+    [InlineData("++5 0 %c\nobj", 1, false, true)]
+    [InlineData("++5 0 %c\nobj", 2, false, true)]
+    [InlineData("+5 0 %c\nobj", 1, false, true)]
+    [InlineData("++5 0 %c\nobj", 1, false, false)]
+    [InlineData("++5 0 %c\nobj", 2, false, false)]
+    [InlineData("+5 0 %c\nobj", 1, false, false)]
+    [InlineData("++5 0 %c\nobj", 0, true, true)]
+    [InlineData("+5 0 %c\nobj", 0, true, true)]
+    [InlineData("++5 0 %c\nobj", 0, true, false)]
+    [InlineData("+5 0 %c\nobj", 0, true, false)]
+    [InlineData("++5 0 %c\nobj", 0, false, true)]
+    [InlineData("+5 0 %c\nobj", 0, false, true)]
+    [InlineData("++5 0 %c\nobj", 0, false, false)]
+    [InlineData("+5 0 %c\nobj", 0, false, false)]
+    [InlineData("++5 0 obj", 1, true, true)]
+    [InlineData("++5 0 obj", 2, true, true)]
+    [InlineData("+5 0 obj", 1, true, true)]
+    [InlineData("+-+5 0 obj", 2, true, true)]
+    [InlineData("++5 0 obj", 1, true, false)]
+    [InlineData("++5 0 obj", 2, true, false)]
+    [InlineData("+5 0 obj", 1, true, false)]
+    [InlineData("++5 0 obj", 1, false, true)]
+    [InlineData("++5 0 obj", 2, false, true)]
+    [InlineData("+5 0 obj", 1, false, true)]
+    [InlineData("++5 0 obj", 1, false, false)]
+    [InlineData("++5 0 obj", 2, false, false)]
+    [InlineData("+5 0 obj", 1, false, false)]
+    public void A_cross_reference_stream_a_prev_reaches_at_a_sign_or_the_digit_of_its_number_reads_the_same_whether_or_not_a_comment_ends_the_line_its_number_is_on(
+        string header, int into, bool inReach, bool readable)
+    {
+        // The newest table's /Prev names the stream at its header's first sign, at a later sign of the run of signs its number
+        // is written with, or at the digit past the run, from each of which a load reads the same object; the stream reads, or
+        // its /W gives a field a negative width, and its own /Prev names a place 30 bytes past the header's first byte, inside
+        // its dictionary, the oldest table within reach — or 512 bytes past it, the oldest table out of reach, the bytes the
+        // search near that place looks at starting at that sign. Where a comment ends the line the number is on, the walk back
+        // from obj lexes that line from its start and finds the header at the run's first sign, where the lexer's token
+        // starts, not at its digit: a stream the chain reached at a later sign or at the digit was neither where a section
+        // the chain reached starts nor where its digits start, and was taken a second time, found moved, reported unreadable
+        // twice where it cannot be read, and its /Prev, read again, reported as a loop the file does not have, the index
+        // rebuilt as the document opened. The digits past the place's run of signs are where that reading found them: the
+        // place is passed over as reached, and the stream reads as where no comment is on that line and the header is found
+        // at its digit — the oldest table found moved, or the section its /Prev names missing and the index rebuilt as the
+        // document opens (#188, #327).
+        var entries = readable ? "/Type /XRef /Size 9 /Index [4 2 7 1] /W [1 4 2]" : LostStreamFiles.Unreadable;
+        var before = inReach ? 0 : 1200;
+        var past = inReach ? 30 : PdfFileReader.NearbySearchRadius;
+        var at = LostStreamFiles.ThreeRevisions(entries, before: before, header: header).Stream;
+        var (file, oldest, stream, newest) = LostStreamFiles.ThreeRevisions(
+            entries, prev: (at + past).ToString(CultureInfo.InvariantCulture), before: before, namedShortBy: -into, header: header);
+        var named = stream + into;
+        var missing = stream + past;
+        using var document = PdfDocument.Open(file);
+
+        document.Reader.Structure.Sections.Select(section => (section.State, section.Kind, section.Offset)).Should().Equal(
+            (XRefSectionState.Read, XRefSectionKind.Table, newest),
+            (readable ? XRefSectionState.Read : XRefSectionState.Malformed, XRefSectionKind.Stream, named),
+            inReach ? (XRefSectionState.Relocated, XRefSectionKind.Table, oldest) : (XRefSectionState.NotFound, XRefSectionKind.Unknown, missing));
+        (string Code, long Position)[] onward = inReach
+            ? [(PdfDiagnosticCodes.XRefOffsetAdjusted, oldest)]
+            : [(PdfDiagnosticCodes.XRefSectionMissing, missing), (PdfDiagnosticCodes.XRefRebuilt, -1L), (PdfDiagnosticCodes.ObjectRedefined, -1L)];
+        document.Diagnostics.Select(diagnostic => (diagnostic.Code, diagnostic.Position)).Should().Equal(
+            readable ? onward : [(PdfDiagnosticCodes.XRefSectionUnreadable, named), .. onward]);
+        document.WasRepaired.Should().Be(!inReach);
+        Text(document, 3).Should().Be("only in the oldest");
+        Text(document, 4).Should().Be("only in the stream");
+        Text(document, 7).Should().Be("new seven");
+
+        (string RuleId, long? Position)[] findings = inReach ? [] : [(PdfValidationRuleIds.XRefSectionNotFound, missing)];
+        new PdfValidator().Validate(document).Findings.Where(finding => finding.Severity == PdfValidationSeverity.Error)
+            .Select(finding => (finding.RuleId, finding.Location.Position)).Should().Equal(
+                readable ? findings : [(PdfValidationRuleIds.XRefSectionMalformed, named), .. findings]);
+    }
+
+    [Theory]
+    [InlineData(true, true)]
+    [InlineData(true, false)]
+    [InlineData(false, true)]
+    [InlineData(false, false)]
+    public void A_cross_reference_stream_a_prev_reaches_at_the_plus_past_the_minus_its_number_starts_with_is_not_taken_again_where_a_comment_ends_the_line_its_number_is_on(
+        bool inReach, bool readable)
+    {
+        // The stream's header is written -+5 0 obj, a comment ending the line its number is on, and the newest table's /Prev
+        // names it at its +, from which a load reads object 5; its own /Prev names a place 30 or 512 bytes past the header's
+        // first byte, the oldest table within reach or out of it, as above. The walk back from obj lexes the line from its
+        // start, as a load reads it: -+5 is -5, no object's number, and no header is found there. The search near that place
+        // goes on to what else lies within reach — the oldest table, found moved, or nothing, the section its /Prev names
+        // missing and the index rebuilt as the document opens —, as where no comment is on that line and the header, found
+        // at its digit, is passed over as the stream the chain reached. The stream's own row for object 5 names its -, where
+        // no header is found either, and the validator reports that entry broken (#188, #327).
+        var entries = readable ? "/Type /XRef /Size 9 /Index [4 2 7 1] /W [1 4 2]" : LostStreamFiles.Unreadable;
+        var before = inReach ? 0 : 1200;
+        var past = inReach ? 30 : PdfFileReader.NearbySearchRadius;
+        var at = LostStreamFiles.ThreeRevisions(entries, before: before, header: "-+5 0 %c\nobj").Stream;
+        var (file, oldest, stream, newest) = LostStreamFiles.ThreeRevisions(
+            entries, prev: (at + past).ToString(CultureInfo.InvariantCulture), before: before, namedShortBy: -1, header: "-+5 0 %c\nobj");
+        var named = stream + 1;
+        var missing = stream + past;
+        using var document = PdfDocument.Open(file);
+
+        document.Reader.Structure.Sections.Select(section => (section.State, section.Kind, section.Offset)).Should().Equal(
+            (XRefSectionState.Read, XRefSectionKind.Table, newest),
+            (readable ? XRefSectionState.Read : XRefSectionState.Malformed, XRefSectionKind.Stream, named),
+            inReach ? (XRefSectionState.Relocated, XRefSectionKind.Table, oldest) : (XRefSectionState.NotFound, XRefSectionKind.Unknown, missing));
+        (string Code, long Position)[] onward = inReach
+            ? [(PdfDiagnosticCodes.XRefOffsetAdjusted, oldest)]
+            : [(PdfDiagnosticCodes.XRefSectionMissing, missing), (PdfDiagnosticCodes.XRefRebuilt, -1L), (PdfDiagnosticCodes.ObjectRedefined, -1L)];
+        document.Diagnostics.Select(diagnostic => (diagnostic.Code, diagnostic.Position)).Should().Equal(
+            readable ? onward : [(PdfDiagnosticCodes.XRefSectionUnreadable, named), .. onward]);
+        document.WasRepaired.Should().Be(!inReach);
+        Text(document, 3).Should().Be("only in the oldest");
+        Text(document, 4).Should().Be("only in the stream");
+        Text(document, 7).Should().Be("new seven");
+
+        (string RuleId, long? Position)[] findings = inReach ? [] : [(PdfValidationRuleIds.XRefSectionNotFound, missing)];
+        new PdfValidator().Validate(document).Findings.Where(finding => finding.Severity == PdfValidationSeverity.Error)
+            .Select(finding => (finding.RuleId, finding.Location.Position)).Should().Equal(
+                readable
+                    ? [.. findings, (PdfValidationRuleIds.XRefEntryBroken, stream)]
+                    : [(PdfValidationRuleIds.XRefSectionMalformed, named), .. findings]);
+    }
+
+    [Theory]
     [InlineData("/FlateDecode", "xxxxxxx", PdfDiagnosticCodes.FilterFailed)]
     [InlineData("/Foo", "xxxxxxx", PdfDiagnosticCodes.FilterUnsupported)]
     [InlineData("/Fl", "xxxxxxx", PdfDiagnosticCodes.FilterUnsupported)]
