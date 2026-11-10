@@ -1563,14 +1563,21 @@ public class CrossReferenceChainTests
         // starts with a +, a header a load reads. No stream data follows its dictionary: it is the section found moved,
         // which cannot be read, and ends the search, as it ends it where an offset names it (#281). The walk back from obj
         // finds a signed header at its first digit, where it is read and found: its line was asked there whether a token
-        // starts, though the lexer's token starts at the sign, and it was dropped for the update's table (#327).
+        // starts, though the lexer's token starts at the sign, and it was dropped for the update's table (#327). It gives
+        // no /Prev, and the chain ends there, the update's table and the first unread: the index is rebuilt as the document
+        // opens, and finds object 3 written twice.
         var (file, update, _) = NearbyFiles.UpdateBehindAStrayWord(between);
         using var document = PdfDocument.Open(file);
 
         var found = document.Reader.Structure.Sections[1];
-        found.State.Should().Be(XRefSectionState.Malformed);
         found.Offset.Should().Be(update - between.Length + at);
-        document.Diagnostics.Select(diagnostic => diagnostic.Code).Should().StartWith([PdfDiagnosticCodes.XRefOffsetAdjusted, PdfDiagnosticCodes.XRefSectionUnreadable]);
+        document.Reader.Structure.Sections.Select(section => (section.NamedBy, section.State, section.Kind, section.Offset)).Skip(1).Should().Equal(
+            ("/Prev", XRefSectionState.Malformed, XRefSectionKind.Stream, found.Offset));
+        document.Diagnostics.Select(diagnostic => (diagnostic.Code, diagnostic.Position)).Should().Equal(
+            (PdfDiagnosticCodes.XRefOffsetAdjusted, found.Offset),
+            (PdfDiagnosticCodes.XRefSectionUnreadable, found.Offset),
+            (PdfDiagnosticCodes.XRefRebuilt, -1L),
+            (PdfDiagnosticCodes.ObjectRedefined, -1L));
     }
 
     [Theory]
