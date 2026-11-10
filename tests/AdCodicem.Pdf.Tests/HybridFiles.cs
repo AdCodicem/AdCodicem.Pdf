@@ -530,7 +530,8 @@ internal static class HybridFiles
     /// A one-page document saved twice, whose newest table names through <c>/Prev</c> a cross-reference stream that reads,
     /// and through <c>/XRefStm</c> a place beside it, nearer it than the oldest table: the oldest table, at <c>Oldest</c>,
     /// indexes objects 1 to 3 and object 7, <c>(old seven)</c>; object 8, a string, follows it, and object 4, at
-    /// <c>Four</c>, a stream whose dictionary gives <paramref name="type"/> — written whole, a space after it, or nothing —,
+    /// <c>Four</c>, a stream whose dictionary begins with <paramref name="type"/> — entries written whole, a space after
+    /// them, a <c>/Type</c> or a key given twice, or nothing —, then gives
     /// the <c>/W</c> <paramref name="widths"/> and an <c>/Index</c> whose one row places object 7's new revision,
     /// <c>(new seven)</c>, its data <paramref name="padding"/> dashes longer, written Flate-encoded where
     /// <paramref name="deflated"/> is set, then ASCIIHex-encoded <paramref name="hexed"/> times, each encoding ending with
@@ -539,13 +540,18 @@ internal static class HybridFiles
     /// as written where none is given; the newest table, past a long comment, indexes object
     /// 6, <c>(six)</c>, and names object 4 through <c>/Prev</c> and, through <c>/XRefStm</c>, the place 20 bytes into object
     /// 8, inside its string, at <c>Named</c>, 28 bytes before object 4: object 8 is the nearest place to it, then object 4,
-    /// then the oldest table. Where <paramref name="cut"/> names object 4's <c>/Size</c>, <c>/W</c> or <c>/Index</c>, that
+    /// then the oldest table. Where <paramref name="eightAStream"/> is set, object 8 is instead a stream that gives
+    /// <c>/Size 10</c>, <c>/W [1 4 2]</c>, <c>/Index [7 1]</c>, the key <c>/A</c> twice and the <c>/Filter /Foo</c>, and no
+    /// <c>/Type</c>, its data four bytes, and <c>Named</c>, 20 bytes into it, lies inside its dictionary: object 8, an
+    /// object that only gives a <c>/W</c> and cannot be read, is still the nearest place to it, then object 4, then the
+    /// oldest table. Where <paramref name="cut"/> names object 4's <c>/Size</c>, <c>/W</c> or <c>/Index</c>, that
     /// value is written as the reference <c>9 0 R</c> — the <c>/Size</c> with no <c>/Index</c> beside it, its one row then
     /// object 0's —, and object 9, past object 6, holds it, followed by 1,100 spaces: the newest table indexes it, and
     /// <see cref="Documents.PdfReaderLimits.MaxObjectLength"/> at 1 KB cuts it.
     /// </summary>
     public static (byte[] File, long Oldest, long Four, long Named) PrevNamingAStreamBesideTheOldestTable(
-        string type, string widths = "[1 4 2]", int padding = 0, string filter = "", int? length = null, string? cut = null, bool deflated = false, int hexed = 0)
+        string type, string widths = "[1 4 2]", int padding = 0, string filter = "", int? length = null, string? cut = null, bool deflated = false, int hexed = 0,
+        bool eightAStream = false)
     {
         var file = new HandWrittenFile(version: "1.5");
         var (catalog, pages, page) = Page(file);
@@ -554,7 +560,9 @@ internal static class HybridFiles
         file.Raw("%" + new string('-', 1200) + "\n");
         var oldest = file.Position;
         file.Raw(Invariant($"xref\n0 4\n0000000000 65535 f \n{Row(catalog)}{Row(pages)}{Row(page)}7 1\n{Row(oldSeven)}trailer\n<< /Size 8 /Root 1 0 R >>\nstartxref\n{oldest}\n%%EOF\n"));
-        var eight = file.Object(8, "(" + new string('x', 30) + ")");
+        var eight = file.Object(8, eightAStream
+            ? "<< /Size 10 /W [1 4 2] /Index [7 1] /A 1 /A 2 /Filter /Foo /Length 4 >>\nstream\nwxyz\nendstream"
+            : "(" + new string('x', 30) + ")");
         var rows = StreamRows((1, newSeven, 0)) + new string('-', padding);
         var data = deflated ? Deflate(rows) : rows;
 
