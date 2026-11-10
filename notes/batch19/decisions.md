@@ -1134,3 +1134,26 @@ review. Then the batch-wide ADR 53 step.
   lot19-final-adr53inv.js. The inventory reuses a stage record only where the replacement, the killing test and the
   code the site flows into are unchanged at the head; equivalents, survivors and not-viable are re-run. The run itself
   is launched after reading the inventory's counts and estimate.
+
+## Final pass and batch-wide ADR 53 inventory (wf_189428e4-7ea, Windows): result
+
+- Final pass, head 19a2296 (fast-forward from dfb03fc): d26df72 test (Refs #188, #327), cd17a9a docs and 19a2296 docs
+  (Refs #156, #188, #263, #279, #289, #327). check_msgs OK (93-95), grep_keys and widegrep clean (checked again here).
+  Whole unit suite 11,052: 11,049 passed, 3 skipped, 0 failed. Site 269 pages, 0 warnings. src changes are comments
+  and XML docs only, so no ADR 53 is owed for the pass itself; patch coverage and the corpus differential are expected
+  unchanged from R13a (checked in the full verification).
+- Tests: a six-row theory on a section at the file's first byte found after another found moved (kills X1 and X2),
+  and rows '+++13 0 obj' 515 and '++++13 0 obj' 516 in the named-again theory (kill N8). R12b's tally stands as the
+  round 13 triage set it: 33 viable, 25 killed, 6 equivalent (U1 U2 U3 T1 D3 N9), 2 surviving (G2b, G5), 3 not
+  viable. (N8, X1 and X2, once classed equivalent, are now killed by these tests.)
+- #332 comment posted: https://github.com/AdCodicem/AdCodicem.Pdf/issues/332#issuecomment-6779617033 (the
+  candidate == leaveAt comparison also decides; widening it alone makes every signed file read as its plain twin).
+- Findings 1, 5, 23 refuted (1 and 5 are #332's). Finding 17: record 69731a2 under "Commit bodies not rewritten"
+  (entry and two rows changed, not three).
+- Inventory at 19a2296: 1,746 changed code lines, 2,171 sites, 3,751 catalog mutants; 15 covered by a valid record
+  (R13a 13, R12b 2); 3,736 to run (224 expected not viable, rebuilt to confirm); 27 shards. 529 stage records read,
+  388 refused with reasons (W/adr53/records-refused-19a2296.txt). Throughput peaks at 8 workers (12 slower).
+  Estimate: 8.3 h with full failure counts, 5.6 h with --stop-on-fail. Two sites no test reaches (TryParseUnrecordedAt's
+  defensive branch, IsTokenOnItsLine's at < 0) are expected to survive.
+- Decision: run with --stop-on-fail (ADR 53 asks each mutant's fate, not its failure count), 4 lanes of 2 workers,
+  driven directly by a shell queue rather than by agents; settle stage by a workflow afterwards.
