@@ -324,9 +324,11 @@ internal sealed class XRefSectionRecord
     /// <summary>
     /// Gets where the digits of a cross-reference stream's object number start, in the file: past the run of signs its
     /// header is written with, where it is, as the reading of its header lexed them, and where the header starts otherwise
-    /// (#327). The search near the offset a hybrid table's <c>/Prev</c> names finds a header written <c>++13 0 obj</c> at
-    /// its digit, and tells it by this position as the stream the table's <c>/XRefStm</c> read, or names again, from a
-    /// sign of that run, however few of those signs its window holds. -1 for a classic table.
+    /// (#327). The search near an offset finds a header written <c>++13 0 obj</c> or <c>-+13 0 obj</c> at its digit, and
+    /// tells it by this position as a stream the chain reached from a <c>+</c> of that run, wherever the run starts — near
+    /// the offset a hybrid table's <c>/Prev</c> names, as the stream the table's <c>/XRefStm</c> read, or names again,
+    /// however few of those signs its window holds. -1 for a classic table, and for a section whose header was not read
+    /// as a cross-reference stream's.
     /// </summary>
     public long DigitsAt { get; set; } = -1;
 

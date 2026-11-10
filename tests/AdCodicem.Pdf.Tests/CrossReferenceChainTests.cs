@@ -787,10 +787,10 @@ public class CrossReferenceChainTests
         // The newest table's /Prev names the stream at its header's first byte, or at the second sign of the run of signs its
         // number is written with; the stream cannot be read, and its own /Prev names the place 512 bytes past the header's
         // first byte, so that the bytes the search near that place looks at start at that byte, the oldest table out of
-        // reach. A run of signs that starts there lies within the bytes searched: the header found at its digit is the one
-        // the chain reached at a sign of that run, passed over, and the stream's /Prev names a section that is not there,
-        // the index rebuilt as the document opens. It is not taken a second time, reported unreadable twice and its /Prev
-        // read again as a loop (#188, #327).
+        // reach, the run of signs that starts there within the bytes searched. The header found at its digit is the one the
+        // chain reached at a sign of that run, its digits starting there: passed over, and the stream's /Prev names a
+        // section that is not there, the index rebuilt as the document opens. It is not taken a second time, reported
+        // unreadable twice and its /Prev read again as a loop (#188, #327).
         var at = LostStreamFiles.ThreeRevisions(before: 1200, header: header).Stream;
         var (file, _, stream, newest) = LostStreamFiles.ThreeRevisions(
             prev: (at + PdfFileReader.NearbySearchRadius).ToString(CultureInfo.InvariantCulture), namedShortBy: -into, header: header);
@@ -6378,9 +6378,9 @@ public class CrossReferenceChainTests
         // declares itself a section, and the chain had reached the stream at that sign or at a sign past it, not at the
         // digit: the stream was taken a second time, found moved there, reported unreadable twice, one or two bytes apart,
         // the oldest table left unread and, where the stream gives no /Prev, the index rebuilt as the document opened,
-        // object 5 served from the oldest revision though the newest table frees it. A section the chain reached anywhere
-        // from the header's first sign to that digit is the header's: the place is passed over as reached, as where no sign
-        // is written, and the oldest table is taken (#188, #327).
+        // object 5 served from the oldest revision though the newest table frees it. A section the chain reached at a sign
+        // of the run, its digits starting at that digit, is the header's: the place is passed over as reached, as where no
+        // sign is written, and the oldest table is taken (#188, #327).
         var (file, oldest, stream, newest) = HybridFiles.NamingTheUpdatesStreamAtOrInsideItsNumber(
             into, streamPrev, catalogInStream: false, header, widths: widths, filter: filter, prevFrom: prevPast, fiveFreed: true);
         var named = stream + into;

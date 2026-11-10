@@ -191,9 +191,9 @@ before its `xref` keyword counts toward `MaxXRefSectionLength` as well
 `MaxTrailerLength`: white space and comments that run on past it reach that guard, the section is not read from that
 offset, and it is looked for nearby as one that is not there, where a search may find it past them, the map rebuilt for
 the one `startxref` names ([Reader limits](reader-limits.md)). A section is never found where a section the chain
-reached starts — one it read, or one there that it could not read though it declares itself a section, a header whose
-number is written with a run of signs that starts with a `+` starting at that run's first sign where the bytes searched
-hold it ([#327](https://github.com/AdCodicem/AdCodicem.Pdf/issues/327)) —, which is not the one looked for
+reached starts — one it read, or one there that it could not read though it declares itself a section, and a stream it
+reached from a `+` of the run of signs its number is written with found at its digit too, wherever the run starts
+([#327](https://github.com/AdCodicem/AdCodicem.Pdf/issues/327)) —, which is not the one looked for
 ([#188](https://github.com/AdCodicem/AdCodicem.Pdf/issues/188)), but for what a table's `/XRefStm`
 read in the stream's place, which that table's `/Prev` takes, reading it whole. Where it read a stream, or names again
 one a newer table's `/XRefStm` read, which is never taken in its place
