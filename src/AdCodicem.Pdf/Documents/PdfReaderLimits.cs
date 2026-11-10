@@ -143,14 +143,16 @@ public sealed record PdfReaderLimits
     /// <c>endstream</c> in the file, up to the next object or the end of the file. A value above
     /// <see cref="Array.MaxLength"/> is taken as that length. Reaching it reports
     /// <see cref="Diagnostics.PdfDiagnosticCodes.LimitTrailer"/>, and ends the cross-reference chain at the section cut: an
-    /// older section, or a key, past the cut is unknown, and what only older sections index reads as null until the
-    /// limit is raised. It bounds, apart, the white space and comments an offset that names a cross-reference section falls
-    /// short by: a cross-reference stream is read from its object's header, so that its dictionary is cut only where it
-    /// alone runs past the bound, while a classic table's windows open at the offset named, so that the white space before
-    /// its <c>xref</c> keyword counts toward <see cref="MaxXRefSectionLength"/> as well (#289). White space and comments that
-    /// run on past the bound reach it too, reported under the same code: the section is not read from that offset, and is
-    /// looked for as one that is not there — near the offset, where a search may find it past them, or, for the one
-    /// <c>startxref</c> names, by rebuilding the index.
+    /// older section, or a key, past the cut is unknown, and what only older sections index reads as null until the limit
+    /// is raised — but for the trailer of a classic table an <c>/XRefStm</c> names, whose links the chain never follows
+    /// (#263), the chain going on through the table that names it. It bounds, apart, the white space and comments an offset
+    /// that names a cross-reference section falls short by: a cross-reference stream is read from its object's header, so
+    /// that its dictionary is cut only where it alone runs past the bound, while a classic table's windows open at the
+    /// offset named, so that the white space before its <c>xref</c> keyword counts toward
+    /// <see cref="MaxXRefSectionLength"/> as well (#289). White space and comments that run on past the bound reach it too,
+    /// reported under the same code: the section is not read from that offset, and is looked for as one that is not there —
+    /// near the offset, where a search may find it past them, or, for the one <c>startxref</c> names, by rebuilding the
+    /// index.
     /// </remarks>
     /// <exception cref="ArgumentOutOfRangeException">The value is zero or less.</exception>
     public int MaxTrailerLength { get; init => field = Length(value); } = 64 * 1024;

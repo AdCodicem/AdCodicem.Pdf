@@ -17,10 +17,12 @@ public static class PdfDiagnosticCodes
 
     /// <summary>
     /// An object, or a cross-reference section the chain names, was not at the offset the file claimed, and was
-    /// found nearby — a section never where a section the chain reached starts, nor near one that is there and cannot be
-    /// read. Where the offset holds no section, the nearest place near it that declares itself one — an <c>xref</c>
-    /// keyword, a stream whose dictionary gives <c>/Type /XRef</c> — is the section found moved though it cannot be read,
-    /// which <see cref="XRefSectionUnreadable"/> then reports where it was found (#281).
+    /// found nearby — a section never where a section the chain reached starts, nor at a header whose digits, past its
+    /// own signs, are where those of a stream the chain reached start (#327), but for what a hybrid table's
+    /// <c>/XRefStm</c> read in the stream's place, which that table's <c>/Prev</c> takes, reading it whole (#156); nor near
+    /// one that is there and cannot be read. Where the offset holds no section, the nearest place near it that declares
+    /// itself one — an <c>xref</c> keyword, a stream whose dictionary gives <c>/Type /XRef</c> — is the section found
+    /// moved though it cannot be read, which <see cref="XRefSectionUnreadable"/> then reports where it was found (#281).
     /// </summary>
     public const string XRefOffsetAdjusted = "xref.offset-adjusted";
 
@@ -126,30 +128,33 @@ public static class PdfDiagnosticCodes
     /// where the stream is said to start; one a <c>-</c> starts is no object's header (#327). Nothing is reported where one
     /// of the reader's limits left part of the chain unread — the number of its sections, a section it cut before the
     /// section said what it is, rows, a trailer, an object a value the rows or a link are read with leads to, or an index
-    /// it filled —, the limit's report standing for what it left unread. Nor is anything reported anywhere in the
-    /// document where <see cref="Documents.PdfReaderLimits.MaxTrailerLength"/> may have hidden a link the chain would
-    /// have followed, or cut what would end it: wherever it cut the reading at an offset the chain names, whatever it cut
-    /// — a dictionary, whatever its <c>/Type</c>, the parser keeping it as far as it read it and the object then read as
-    /// one of another type (#279), or the object's header, its number or its generation running on past the limit or a
-    /// comment between its tokens, or a token where no header starts, no object then read (#289). At an offset a
-    /// <c>/Prev</c> or <c>startxref</c> names, where any <c>/W</c> makes a stream of any <c>/Type</c> the section (#263),
-    /// the cut may have hidden one — <c>/XRef</c> parted, inside the name or inside a <c>#xx</c> escape, a stream of
-    /// another <c>/Type</c> that gives a <c>/W</c>, a <c>/Type</c> given twice whose later value is <c>/XRef</c>, the whole
-    /// dictionary past a header the cut parted —, the object's <c>/Prev</c> not followed, wherever it lies; at one an
-    /// <c>/XRefStm</c> names, whose stream's <c>/Prev</c> the chain never follows, the cut is what would end the chain, as
-    /// a guard's cut of that stream does (#264). The reader cannot tell what the cut hid without reading past the guard: a
-    /// dictionary of another type cut where it gives no <c>/W</c>, or a token no header starts, withholds the report too.
-    /// Nor is anything reported anywhere in the document where white space and comments at an offset the chain names run
-    /// past that limit, which turned the reading of the section there into the search near the offset. That search may
-    /// take a section other than the one past them, and the reader cannot tell which without reading past the guard: once
-    /// that guard is reached, no stream passed over is reported, even where the search finds the section whole past the
-    /// white space, which only a <c>MaxTrailerLength</c> under the 512 bytes the search reaches past the offset allows
-    /// (#289). A cut that leaves nothing unread — data past a stream's last row, an object past a whole reference it holds
-    /// — leaves the report made. Nor is anything reported where the chain indexed nothing: the whole file is rebuilt then,
-    /// which reads every object. Its rows, if it is the table's own stream, are not in the index the chain read: the
-    /// objects only it indexes are missing from it, and the report leaves the index as it is, rebuilding nothing for them
-    /// — only a rebuild for another cause, which scans the file, finds them. The report is placed at the stream, once,
-    /// however many searches passed over it.
+    /// it filled —, the limit's report standing for what it left unread. Nor is anything reported anywhere in the document
+    /// where <see cref="Documents.PdfReaderLimits.MaxTrailerLength"/> may have hidden a link the chain would have followed,
+    /// or cut what would end it: wherever it cut the reading at an offset the chain names, whatever it cut, that the
+    /// reading does not take for a section the guard cut — a dictionary, whatever its <c>/Type</c>, the parser keeping it
+    /// as far as it read it and the object then read as one of another type (#279), or the object's header, its number, its
+    /// generation or its <c>obj</c> keyword running on past the limit or white space or a comment between its tokens, or a
+    /// token where no header starts, no object then read (#289); where the reading takes it for the guard's section, the
+    /// chain's own cut withholds the reports already. At an offset a <c>/Prev</c> or <c>startxref</c> names, where any
+    /// <c>/W</c> makes a stream of any <c>/Type</c> the section (#263), the cut may have hidden one — <c>/XRef</c> parted,
+    /// inside the name or inside a <c>#xx</c> escape, a stream of another <c>/Type</c> that gives a <c>/W</c>, a
+    /// <c>/Type</c> given twice whose later value is <c>/XRef</c>, the whole dictionary past a header the cut parted —, the
+    /// object's <c>/Prev</c> not followed, wherever it lies; at one an <c>/XRefStm</c> names, whose stream's <c>/Prev</c>
+    /// the chain never follows, the cut is what would end the chain, as a guard's cut of that stream does (#264). The
+    /// reader cannot tell what the cut hid without reading past the guard: a dictionary of another type cut where it gives
+    /// no <c>/W</c>, or a token no header starts, withholds the report too. Nor is anything reported anywhere in the
+    /// document where white space and comments at an offset the chain names run past that limit, which turned the reading
+    /// of the section there into the search near the offset. That search may take a section other than the one past them,
+    /// and the reader cannot tell which without reading past the guard: once that guard is reached, no stream passed over
+    /// is reported, even where the search finds the section whole past the white space, which only a
+    /// <c>MaxTrailerLength</c> under the 512 bytes the search reaches past the offset allows (#289). A cut that leaves
+    /// nothing unread — data past a stream's last row, an object past a whole reference it holds — leaves the report made,
+    /// and so does the cut of the trailer of a classic table an <c>/XRefStm</c> names, whose links the chain never follows
+    /// (#263): it hides no link the chain follows and ends nothing, the chain going on through the table that names it. Nor
+    /// is anything reported where the chain indexed nothing: the whole file is rebuilt then, which reads every object. Its
+    /// rows, if it is the table's own stream, are not in the index the chain read: the objects only it indexes are missing
+    /// from it, and the report leaves the index as it is, rebuilding nothing for them — only a rebuild for another cause,
+    /// which scans the file, finds them. The report is placed at the stream, once, however many searches passed over it.
     /// </summary>
     public const string XRefStreamPassedOver = "xref.stream-passed-over";
 
