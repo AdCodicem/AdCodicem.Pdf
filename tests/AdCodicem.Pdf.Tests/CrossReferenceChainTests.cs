@@ -4908,6 +4908,8 @@ public class CrossReferenceChainTests
     [InlineData("a font whose dictionary a guard cuts", 0, true)]
     [InlineData("a font whose dictionary a guard cuts", 1024 * 1024, false)]
     [InlineData("a font whose dictionary a lowered guard cuts", 1024, true)]
+    [InlineData("a dictionary whose type is no name that a lowered guard cuts before its /W", 1024, true)]
+    [InlineData("a font whose type a lowered guard reads before its cut", 1024, false)]
     [InlineData("a stream of no type", 0, false)]
     [InlineData("a dictionary of no type", 0, false)]
     [InlineData("a dictionary of no type", 1024, false)]
@@ -4920,20 +4922,25 @@ public class CrossReferenceChainTests
         // The newest table names object 4 through /Prev, and through /XRefStm a place 30 bytes before it, whose search comes
         // to object 4 before the stream. Object 4 is a font whose dictionary holds 70,000 bytes before its /Type, which
         // MaxTrailerLength cuts before the /Type unless it is raised, or 2,000 bytes, which MaxTrailerLength lowered to 1,024
-        // cuts; a stream of 70,000 bytes whose dictionary gives no /Type; a dictionary read whole that gives none either,
-        // within MaxTrailerLength lowered to 1,024 too; a dictionary a string the file never closes runs to the end of the
-        // file, which MaxTrailerLength lowered to the bytes from object 4 to that end (-1) reaches; or an object that gives a
-        // /W and no /Type and does not read as a section — a border's dictionary, a stream whose /W gives a negative width —,
-        // which the search stopped at, as at a section the /Prev would read, leaving the stream unread and an older revision
-        // of object 7 served. The /Prev keeps its place where a guard cut what is there before it said what it is, the
-        // guard's, and the /XRefStm's search stops there, leaving it to the /Prev, the naming the guard's too: no report, the
-        // index not left incomplete, where the naming was reported, as if the file were at fault, and what only the stream
-        // indexes found by rebuilding the index. Anywhere else, the end of the file included, the /Prev looks for its own
+        // cuts; a dictionary whose /Type gives a string, then 2,000 bytes before a /W, which that guard cuts before the /W; a
+        // font whose /Type is read before that guard cuts it; a stream of 70,000 bytes whose dictionary gives no /Type; a
+        // dictionary read whole that gives none either, within MaxTrailerLength lowered to 1,024 too; a dictionary a string
+        // the file never closes runs to the end of the file, which MaxTrailerLength lowered to the bytes from object 4 to
+        // that end (-1) reaches; or an object that gives a /W and no /Type and does not read as a section — a border's
+        // dictionary, a stream whose /W gives a negative width —, which the search stopped at, as at a section the /Prev
+        // would read, leaving the stream unread and an older revision of object 7 served. The /Prev keeps its place where a
+        // guard cut what is there before it said what it is — before its /Type, or before the /W of a dictionary whose /Type
+        // is no name, which declares nothing —, the guard's, and the /XRefStm's search stops there, leaving it to the /Prev,
+        // the naming the guard's too: no report, the index not left incomplete, where the naming was reported, as if the
+        // file were at fault, and what only the stream indexes found by rebuilding the index. Anywhere else — the end of the
+        // file, and a dictionary a guard cut past a /Type that names another type, among it —, the /Prev looks for its own
         // section nearby, and the search goes on to the stream (#156, #264).
         var body = four switch
         {
             "a font whose dictionary a guard cuts" => "<< /Pad (" + new string('-', 70_000) + ") /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
             "a font whose dictionary a lowered guard cuts" => "<< /Pad (" + new string('-', 2_000) + ") /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
+            "a dictionary whose type is no name that a lowered guard cuts before its /W" => "<< /Type (Font) /Pad (" + new string('-', 2_000) + ") /W [1 4 2] >>",
+            "a font whose type a lowered guard reads before its cut" => "<< /Type /Font /Pad (" + new string('-', 2_000) + ") /Subtype /Type1 /BaseFont /Helvetica >>",
             "a stream of no type" => "<< /Length 70000 >>\nstream\n" + new string('-', 70_000) + "\nendstream",
             "a dictionary of no type" => "<< /Pad (none) >>",
             "a dictionary of no type that gives a /W" => "<< /W 1 /S /S >>",
@@ -7518,6 +7525,20 @@ public class CrossReferenceChainTests
     [InlineData("stream 6", "spaces", false, "/Catalog", 2, "missing", false)]
     [InlineData("stream 6", "spaces", false, "/Catalog", 12, "missing", false)]
     [InlineData("a table", "spaces", false, "/Catalog", 2, "missing", false)]
+    [InlineData("stream 6", "spaces", true, "/Catalog", 2, "missing", false)]
+    [InlineData("stream 6", "spaces", true, "/Catalog", 9, "missing", false)]
+    [InlineData("stream 6", "spaces", true, "/Catalog", 28, "missing", false)]
+    [InlineData("stream 6", "spaces", true, "/Catalog", 62, "missing", false)]
+    [InlineData("a table", "spaces", true, "/ObjStm", 27, "missing", false)]
+    [InlineData("stream 6", "spaces", true, "/Foo /Type /XRef", 2, "missing", false)]
+    [InlineData("stream 6", "spaces", true, "/Foo /Type /XRef", 11, "missing", false)]
+    [InlineData("stream 6", "spaces", true, "/X#52ef", 3, "missing", false)]
+    [InlineData("stream 6", "spaces", true, "/X#52ef", 4, "missing", false)]
+    [InlineData("stream 6", "spaces", true, "/#58Ref", 2, "missing", false)]
+    [InlineData("stream 6", "spaces", true, "/#58Ref", 3, "missing", false)]
+    [InlineData("stream 6", "spaces", true, "/Catalog", 0, "read", false)]
+    [InlineData("stream 6", "spaces", true, "/X#52ef", 0, "read", false)]
+    [InlineData("stream 6", "spaces", true, "/X#52ef", 5, "missing", false)]
     [InlineData("stream 6", "spaces", false, "/X", 0, "read", true)]
     [InlineData("stream 6", "spaces", false, "/X", 0, "missing", true, false)]
     [InlineData("stream 6", "spaces", false, "/X", 12, "missing", false)]
@@ -7579,6 +7600,169 @@ public class CrossReferenceChainTests
             _ => XRefSectionState.NotFound,
         });
         document.Reader.ChainStoppedByGuard.Should().Be(oldestRead == "cut");
+    }
+
+    [Theory]
+    [InlineData("stream 6", true, "5", 10)]
+    [InlineData("stream 6", true, "5", 13)]
+    [InlineData("stream 6", false, "5", 10)]
+    [InlineData("stream 6", false, "5", 13)]
+    [InlineData("a table", true, "5", 10)]
+    [InlineData("a table", true, "5", 13)]
+    [InlineData("a table", false, "5", 10)]
+    [InlineData("a table", false, "5", 13)]
+    [InlineData("stream 6", true, "(XRef)", 15)]
+    [InlineData("stream 6", true, "(XRef)", 18)]
+    [InlineData("stream 6", false, "(XRef)", 15)]
+    [InlineData("stream 6", false, "(XRef)", 18)]
+    [InlineData("a table", true, "(XRef)", 15)]
+    [InlineData("a table", true, "(XRef)", 18)]
+    [InlineData("a table", false, "(XRef)", 15)]
+    [InlineData("a table", false, "(XRef)", 18)]
+    [InlineData("stream 6", true, "[/XRef]", 16)]
+    [InlineData("stream 6", true, "[/XRef]", 19)]
+    [InlineData("stream 6", false, "[/XRef]", 16)]
+    [InlineData("stream 6", false, "[/XRef]", 19)]
+    [InlineData("a table", true, "[/XRef]", 16)]
+    [InlineData("a table", true, "[/XRef]", 19)]
+    [InlineData("a table", false, "[/XRef]", 16)]
+    [InlineData("a table", false, "[/XRef]", 19)]
+    [InlineData("stream 6", true, "true", 13)]
+    [InlineData("stream 6", true, "true", 16)]
+    [InlineData("stream 6", false, "true", 13)]
+    [InlineData("stream 6", false, "true", 16)]
+    [InlineData("a table", true, "true", 13)]
+    [InlineData("a table", true, "true", 16)]
+    [InlineData("a table", false, "true", 13)]
+    [InlineData("a table", false, "true", 16)]
+    [InlineData("stream 6", true, "<< >>", 14)]
+    [InlineData("stream 6", true, "<< >>", 17)]
+    [InlineData("stream 6", false, "<< >>", 14)]
+    [InlineData("stream 6", false, "<< >>", 17)]
+    [InlineData("a table", true, "<< >>", 14)]
+    [InlineData("a table", true, "<< >>", 17)]
+    [InlineData("a table", false, "<< >>", 14)]
+    [InlineData("a table", false, "<< >>", 17)]
+    [InlineData("stream 6", true, "5", 0)]
+    [InlineData("a table", false, "5", 0)]
+    [InlineData("stream 6", true, "(XRef)", 0)]
+    [InlineData("stream 6", true, "5", 22)]
+    [InlineData("a table", false, "<< >>", 26)]
+    [InlineData("stream 6", true, "null", 13)]
+    [InlineData("a table", false, "null", 16)]
+    public void A_stream_whose_type_is_no_name_is_the_section_where_the_chain_names_it_and_the_guard_s_wherever_a_trailer_guard_cut_its_dictionary(
+        string near, bool oldestNamesOwn, string type, int window)
+    {
+        // As above, the search near the newest table's /Prev takes stream 6, or a table, whose /Prev names stream 7, the
+        // oldest section, whose /Prev names stream 11 — or nothing. Stream 7's /Type gives a value that is no name — an
+        // integer, a string, an array, a boolean, a dictionary, or null —: such a /Type declares nothing, wherever the reader
+        // asks what a dictionary declares, and stream 7 is a cross-reference stream through its /W alone, read whole as the
+        // section, its /Prev followed. Where MaxTrailerLength, lowered, cut its dictionary past that value and before its /W
+        // was read — past /Size, or past the key /W, its value cut —, the dictionary was taken for one of another type: the
+        // section missing, the guard's cut laid on the file, its /Prev not followed and stream 11 reported, where past the
+        // /W the same cut left the section the guard's. The dictionary has not said what it is before its /W, the one thing
+        // that may make it a section, which the cut may have hidden: the section is the guard's wherever the cut fell, as one
+        // cut before its /Type is, and as with null, which is no /Type at all — reported under the guard's code alone, the
+        // chain stopped there, nothing reported missing and no stream passed over (ADR 34).
+        var (file, typeAt, oldest, _, own, taken, _) = HybridFiles.PassingOverAStreamAnOlderStreamWithAPaddedTypeNames(
+            near, oldestNamesOwn, type);
+        var limits = window == 0 ? PdfReaderLimits.Default : PdfReaderLimits.Default with { MaxTrailerLength = typeAt + window };
+        using var document = PdfDocument.Open(file, new PdfReaderOptions { Limits = limits });
+        var expected = new List<(string Code, long Position)> { (PdfDiagnosticCodes.XRefOffsetAdjusted, taken) };
+
+        if (near == "stream 6")
+        {
+            expected.Add((PdfDiagnosticCodes.XRefHybridStreamLost, taken));
+        }
+
+        var sections = document.Reader.Structure.Sections;
+
+        if (window == 0)
+        {
+            if (!oldestNamesOwn)
+            {
+                expected.Add((PdfDiagnosticCodes.XRefStreamPassedOver, own));
+            }
+
+            sections.Single(section => section.Offset == oldest).State.Should().Be(XRefSectionState.Read);
+            sections.Select(section => (section.NamedBy, section.State, section.Offset)).Last().Should().Be(
+                oldestNamesOwn ? ("/Prev", XRefSectionState.Read, own) : ("/Prev", XRefSectionState.Read, oldest));
+        }
+        else
+        {
+            expected.Add((PdfDiagnosticCodes.LimitTrailer, oldest));
+            sections.Select(section => (section.NamedBy, section.State, section.CutByLimit, section.Offset)).Last().Should().Be(
+                ("/Prev", XRefSectionState.Malformed, true, oldest));
+        }
+
+        document.Diagnostics.Select(diagnostic => (diagnostic.Code, diagnostic.Position)).Should().Equal(expected);
+        document.Reader.ChainStoppedByGuard.Should().Be(window != 0);
+    }
+
+    [Theory]
+    [InlineData("/XRef", 0, "read")]
+    [InlineData("/XRef", 1, "missing")]
+    [InlineData("/XRef", 2, "missing")]
+    [InlineData("/XRef", 3, "missing")]
+    [InlineData("/XRef", 4, "missing")]
+    [InlineData("/XRef", -3, "cut")]
+    [InlineData("/XRef", 5, "cut")]
+    [InlineData("/Catalog", 0, "read")]
+    [InlineData("/Catalog", 2, "missing")]
+    [InlineData("5", 3, "cut")]
+    public void A_stream_passed_over_near_a_hybrid_table_s_prev_is_reported_where_no_trailer_guard_cut_the_dictionary_of_the_stream_an_older_table_s_xrefstm_names(
+        string type, int window, string nineRead)
+    {
+        // The newest table's /Prev names a place inside a comment of dashes, whose search passes stream 12 over as possibly
+        // that table's own and takes the table past the comment: no link the chain reads names stream 12, which is reported.
+        // That table's /XRefStm names stream 9, its /Prev the oldest table, which alone indexes object 5; read whole, stream 9
+        // is the section, of /Type /XRef, or /Catalog, which its /W makes one where it reads (#263). The chain never
+        // follows the /Prev of a stream an /XRefStm names: what MaxTrailerLength, lowered, cuts of stream 9's dictionary
+        // hides no link the chain would follow. Its cut is what would end the chain there all the same, as it does where it
+        // falls before stream 9's /Type, or past a /Type /XRef read whole, or past a /Type that is no name, which declares
+        // nothing — the guard's, the chain stopped, the oldest table unread and object 5 null (#264) —, and as #279's closing
+        // would read a cut that leaves stream 9 a dictionary of another type: one whose /Type is a name XRef begins with, or
+        // the C of /Catalog. There stream 9 is not a cross-reference stream, the /XRefStm names a section missing, and the
+        // chain goes on through the table's /Prev: no stream passed over is reported anywhere in the document, as where the
+        // guard's cut ends the chain (#156, ADR 34). The dashes at the place the newest table's /Prev names make one token,
+        // which the lowered guard cuts too, where no header starts, the guard reported first.
+        var (file, typeAt, _, own, named, older, oldest, nine, _) = HybridFiles.PassingOverAStreamAnOlderTableNamesBesideAPaddedStreamItsXRefStmNames(type);
+        var limits = window == 0 ? PdfReaderLimits.Default : PdfReaderLimits.Default with { MaxTrailerLength = typeAt + window };
+        using var document = PdfDocument.Open(file, new PdfReaderOptions { Limits = limits });
+
+        var sections = document.Reader.Structure.Sections;
+
+        switch (nineRead)
+        {
+            case "read":
+                sections.Select(section => (section.NamedBy, section.State, section.Offset)).Skip(3).Should().Equal(
+                    ("/XRefStm", XRefSectionState.Read, nine), ("/Prev", XRefSectionState.Read, oldest));
+                document.Diagnostics.Select(diagnostic => (diagnostic.Code, diagnostic.Position)).Should().Equal(
+                    (PdfDiagnosticCodes.XRefOffsetAdjusted, older), (PdfDiagnosticCodes.XRefStreamPassedOver, own));
+                Text(document, 5).Should().Be("five");
+                break;
+
+            case "missing":
+                sections.Select(section => (section.NamedBy, section.State, section.Offset)).Skip(3).Should().Equal(
+                    ("/XRefStm", XRefSectionState.NotFound, nine), ("/Prev", XRefSectionState.Read, oldest));
+                document.Diagnostics.Select(diagnostic => (diagnostic.Code, diagnostic.Position)).Should().Equal(
+                    (PdfDiagnosticCodes.LimitTrailer, named),
+                    (PdfDiagnosticCodes.XRefOffsetAdjusted, older),
+                    (PdfDiagnosticCodes.LimitTrailer, nine),
+                    (PdfDiagnosticCodes.XRefSectionMissing, nine));
+                Text(document, 5).Should().Be("five");
+                break;
+
+            default:
+                sections.Select(section => (section.NamedBy, section.State, section.CutByLimit, section.Offset)).Skip(3).Should().Equal(
+                    ("/XRefStm", XRefSectionState.Malformed, true, nine));
+                document.Diagnostics.Select(diagnostic => (diagnostic.Code, diagnostic.Position)).Should().Equal(
+                    (PdfDiagnosticCodes.LimitTrailer, named), (PdfDiagnosticCodes.XRefOffsetAdjusted, older), (PdfDiagnosticCodes.LimitTrailer, nine));
+                document.GetObject(new PdfObjectId(5)).Should().BeSameAs(PdfNull.Instance);
+                break;
+        }
+
+        document.Reader.ChainStoppedByGuard.Should().Be(nineRead == "cut");
     }
 
     [Theory]
