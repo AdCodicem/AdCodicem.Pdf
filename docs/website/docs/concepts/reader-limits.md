@@ -95,13 +95,15 @@ comments that run on past `MaxTrailerLength` reach the guard themselves: the sec
 is looked for as one that is not there — near the offset, where a search may find it past them, or, for the one
 `startxref` names, by rebuilding the index —, and a `/Prev` that names them keeps no place for the search to stop at.
 What that search passes over, or what the section would have named, is the guard's, and so is which section the search
-takes, the one past them or another, which the reader cannot tell without reading past the guard: no cross-reference
-stream passed over near a hybrid table's `/Prev` is then reported as one the chain did not reach, anywhere in the
-document, even where the search finds the section whole past the white space. Nor is one where `MaxTrailerLength` cuts
-a dictionary at an offset the chain names, whatever its `/Type`, that the reading does not take for a section it cut:
-the cut may have hidden the `/Prev` of a section, which any `/W` makes the dictionary there, or be what would end the
-chain, where an `/XRefStm` names the offset ([#279](https://github.com/AdCodicem/AdCodicem.Pdf/issues/279)). An
-`/XRefStm` that names what the `/Prev`
+takes, the one past them or another, which the reader cannot tell without reading past the guard. Wherever
+`MaxTrailerLength` cuts the reading at an offset the chain names, whatever it cuts — white space and comments, which
+turn that reading into the search, a dictionary, whatever its `/Type`, that the reading does not take for a section it
+cut, or the object's header, its number or its generation running on past the guard or a comment between its tokens —,
+no cross-reference stream passed over near a hybrid table's `/Prev` is reported as one the chain did not reach,
+anywhere in the document: the cut may have hidden the `/Prev` of a section, which any `/W` makes the dictionary there,
+or be what would end the chain, where an `/XRefStm` names the offset, and the reader cannot tell without reading past
+the guard, even where the search finds the section whole past the white space, or where the cut hid nothing
+([#279](https://github.com/AdCodicem/AdCodicem.Pdf/issues/279)). An `/XRefStm` that names what the `/Prev`
 names, at that offset or in the white space before it, names no stream of the table's revision whatever the guard hid,
 and is reported, the validator saying the guard hides what is there. The `/Prev` of a cross-reference stream at which a
 guard's cut of a value its rows are read with ends the chain, and a `/Prev` in a trailer a guard cut, are not judged

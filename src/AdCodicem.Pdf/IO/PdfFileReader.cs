@@ -678,21 +678,24 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// would not have come to, or find nothing, what the section names left unread (#289). Which, the reader cannot tell
     /// without reading past the guard: the flag is set even where the search finds the section whole past them, which only
     /// a bound under the 512 bytes the search reaches past the offset allows (<see cref="NearbySearchRadius"/>). Set too
-    /// wherever the guard cut a dictionary at an offset the chain names, whatever its <c>/Type</c>
-    /// (<see cref="TryReadXRefStream"/>): where the reading takes it for the guard's section, the chain's own cut marks it
-    /// already; where it does not, the parser keeps the dictionary as far as it read it (#279), the object reads as one of
-    /// another type, which holds no section, and what lay past the cut is unknown. Where a <c>/Prev</c> or
+    /// wherever the guard cut the reading at an offset the chain names, whatever it cut (<see cref="TryReadXRefStream"/>):
+    /// a dictionary, whatever its <c>/Type</c>; the object's header — its number or its generation running on past the
+    /// guard, or a comment between its tokens —; or a token where no header starts. Where the reading takes what is there
+    /// for the guard's section, the chain's own cut marks it already; where it does not, what is there reads as an object
+    /// of another type, which holds no section, the parser keeping a dictionary as far as it read it (#279), or as no
+    /// object at all, a header the cut parted (#289), and what lay past the cut is unknown. Where a <c>/Prev</c> or
     /// <c>startxref</c> names the offset, any <c>/W</c> makes a stream of any <c>/Type</c> the section there (#263), and
     /// the cut may have hidden one, the object's <c>/Prev</c> a link the chain would follow, not followed wherever it lies,
     /// past the cut or before it: <c>/XRef</c> parted, inside the name or inside a <c>#xx</c> escape, a stream of another
-    /// <c>/Type</c> that gives a <c>/W</c>, or a <c>/Type</c> given twice whose later <c>/XRef</c> lies past the cut.
-    /// Where an <c>/XRefStm</c> names it, the chain never follows that stream's <c>/Prev</c>, and the cut hides no link the
-    /// chain follows, but it is what would end the chain there, as the guard's cut of that stream does (#264), the reading
-    /// #279's closing gives it. Which, the reader cannot tell without reading past the guard: the flag is set even where
-    /// the cut hid nothing, a dictionary of another type that gives no <c>/W</c> among them. Only
-    /// <see cref="ReportStreamsPassedOver"/> reads it, which then reports no stream passed over anywhere in the document
-    /// (ADR 34). Neither takes the chain for one a guard cut: what the reading finds there is reported as the file's — the
-    /// section found moved, or missing and the index rebuilt —, as #279 and #289 leave it.
+    /// <c>/Type</c> that gives a <c>/W</c>, a <c>/Type</c> given twice whose later <c>/XRef</c> lies past the cut, or the
+    /// whole dictionary past a header the cut parted. Where an <c>/XRefStm</c> names it, the chain never follows that
+    /// stream's <c>/Prev</c>, and the cut hides no link the chain follows, but it is what would end the chain there, as the
+    /// guard's cut of that stream does (#264), the reading #279's closing gives it. Which, the reader cannot tell without
+    /// reading past the guard: the flag is set even where the cut hid nothing, a dictionary of another type that gives no
+    /// <c>/W</c>, or a token no header starts, among them. Only <see cref="ReportStreamsPassedOver"/> reads it, which then
+    /// reports no stream passed over anywhere in the document (ADR 34). Neither takes the chain for one a guard cut: what
+    /// the reading finds there is reported as the file's — the section found moved, or missing and the index rebuilt —, as
+    /// #279 and #289 leave it.
     /// </summary>
     private bool _guardMayHideLink;
 
@@ -3744,9 +3747,10 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// nor anywhere in the document where <see cref="PdfReaderLimits.MaxTrailerLength"/> may have hidden a link the
     /// chain would have followed, or cut what would end it (<see cref="_guardMayHideLink"/>): where white space and
     /// comments at an offset the chain names run past it, which turned the reading of the section there into the search
-    /// near the offset, whatever section that search takes, the one past them read whole among them; or where it cut a
-    /// dictionary at such an offset, whatever its <c>/Type</c>, which then reads as one of another type, its
-    /// <c>/Prev</c> not followed (ADR 34). Nor is it asked where the chain indexed nothing, the whole file then rebuilt.
+    /// near the offset, whatever section that search takes, the one past them read whole among them; or wherever it cut
+    /// the reading at such an offset, whatever it cut — a dictionary, whatever its <c>/Type</c>, which then reads as one of
+    /// another type, its <c>/Prev</c> not followed, or the object's header, which leaves no object read (ADR 34). Nor is
+    /// it asked where the chain indexed nothing, the whole file then rebuilt.
     /// </summary>
     /// <remarks>
     /// Told here, once the chain is read, and nowhere sooner: a link of an older section that reaches the stream, where it
@@ -3765,17 +3769,20 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// it cut before the section said what it is, rows it cut or an index it filled, a trailer it cut, an object it cut
     /// that a value the rows or a link are read with leads to — may hide the link that names the stream, as an older
     /// table's <c>/XRefStm</c> or <c>/Prev</c> may name any offset: what lies past the guard is the guard's, unknown rather
-    /// than missing (#264). So may a trailer's window that cuts a dictionary at an offset a <c>/Prev</c> or
-    /// <c>startxref</c> names, whatever its <c>/Type</c>: the parser keeps the dictionary as far as it read it, and the
-    /// object is read as one of another type, as #279 leaves it, its <c>/Prev</c> not followed, wherever it lies, past the
-    /// cut or before it; but any <c>/W</c> makes a stream of any <c>/Type</c> the section there (#263), and the cut may
-    /// have hidden one — <c>/XRef</c> parted, inside the name or inside a <c>#xx</c> escape, a stream of another
-    /// <c>/Type</c> that gives a <c>/W</c> past the cut, or a <c>/Type</c> given twice whose later <c>/XRef</c> lies past
-    /// it. Where an <c>/XRefStm</c> names the offset, the chain never follows that stream's <c>/Prev</c>, and the cut hides
-    /// no link the chain follows, but it is what would end the chain there, as the guard's cut of that stream does (#264),
-    /// the reading #279's closing gives it: the reports are withheld alike. The reader cannot tell what the cut hid without
-    /// reading past the guard, and withholds them even where it hid nothing, a dictionary of another type that gives no
-    /// <c>/W</c> among them; where the reading takes the dictionary for the guard's section, the chain's own cut withholds
+    /// than missing (#264). So may a trailer's window that cuts the reading at an offset a <c>/Prev</c> or
+    /// <c>startxref</c> names, whatever it cuts: a dictionary, whatever its <c>/Type</c>, which the parser keeps as far as
+    /// it read it, the object read as one of another type, as #279 leaves it, its <c>/Prev</c> not followed, wherever it
+    /// lies, past the cut or before it; or the object's header — its number or its generation running on past the window,
+    /// or a comment between its tokens —, or a token where no header starts, which leaves no object read, the section
+    /// looked for as one not there, as #289 leaves it. Any <c>/W</c> makes a stream of any <c>/Type</c> the section there
+    /// (#263), and the cut may have hidden one — <c>/XRef</c> parted, inside the name or inside a <c>#xx</c> escape, a
+    /// stream of another <c>/Type</c> that gives a <c>/W</c> past the cut, a <c>/Type</c> given twice whose later
+    /// <c>/XRef</c> lies past it, or the whole dictionary past a header the cut parted. Where an <c>/XRefStm</c> names the
+    /// offset, the chain never follows that stream's <c>/Prev</c>, and the cut hides no link the chain follows, but it is
+    /// what would end the chain there, as the guard's cut of that stream does (#264), the reading #279's closing gives it:
+    /// the reports are withheld alike. The reader cannot tell what the cut hid without reading past the guard, and
+    /// withholds them even where it hid nothing, a dictionary of another type that gives no <c>/W</c>, or a token no header
+    /// starts, among them; where the reading takes what is there for the guard's section, the chain's own cut withholds
     /// them already. So may white space and comments past a trailer's window where the chain names a section, which is not
     /// read from there: the search near the offset stands for that reading, and may take a section other than the one past
     /// them, pass over a stream the reading would not have come to, or find nothing, what the section names left unread —
@@ -3807,7 +3814,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
         // too where the chain is not taken for one a guard cut, which is marked apart: white space past it where the chain
         // names a section, which turned the reading of that link into a search, whatever section the search takes — the one
         // past the white space, or another, which the reader cannot tell apart without reading past the guard —, or its
-        // cut of a dictionary at an offset the chain names, whatever its /Type, which may hide a /Prev the chain would
+        // cut of the reading at an offset the chain names, whatever it cut, which may hide a /Prev the chain would
         // follow, or, where an /XRefStm names it, is what would end the chain there (#264, #279, #289). Either withholds
         // every report of the document. A cut that left nothing unread marks neither — data past a stream's last row, an
         // object past a whole reference it holds —, and the report is made (ADR 34).
@@ -5129,8 +5136,8 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// first sign where its number is written with a run of signs that starts with a <c>+</c>, where it is reported —,
     /// where the chain has not reached it, at its header or inside its object number, and where none of the reader's
     /// limits left part of the chain unread, nor may have hidden a link the chain would have followed, as white space
-    /// past a trailer's window that turned the chain's reading of a section it names into a search may, or a cut of a
-    /// dictionary at an offset the chain names, whatever its <c>/Type</c> (<see cref="ReportStreamsPassedOver"/>):
+    /// past a trailer's window that turned the chain's reading of a section it names into a search may, or a cut of the
+    /// reading at an offset the chain names, whatever it cut (<see cref="ReportStreamsPassedOver"/>):
     /// an object that gives only a <c>/W</c>, or a header a comment or a string on its line holds, is not, whether it
     /// reads or not. The search is never asked for a section that is there and cannot be read
     /// (<see cref="DeclaresItselfASection"/>): what is near it is another.
@@ -5801,7 +5808,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// first token its edge may cut, is read on as far as a trailer's window reaches and <see cref="XRefProbeLength"/> bytes
     /// past it: a first token that starts within that window, or where it ends, is read whole enough to tell the keyword
     /// from an object's header. White space and comments that fill the window and run on past it are the guard's (ADR 34),
-    /// as a dictionary it cuts is: the section is not read from the position, and the reading reports the guard
+    /// as whatever else it cuts there is: the section is not read from the position, and the reading reports the guard
     /// (<see cref="TryReadXRefSection"/>), while a search near the position may find it past them. The windows grow
     /// eightfold from <see cref="XRefProbeLength"/> bytes, and only where the first token, or the white space and comments
     /// before it, reach the last one's edge, so that the bytes read come to one probe where that token ends within the

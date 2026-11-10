@@ -226,15 +226,18 @@ limits left part of the chain unread — the number of its sections, a section i
 rows, a trailer, an object a value the rows or a link are read with leads to, or the map it filled —, which may hide the
 link that names the stream, the limit's report stands for what it left unread, and nothing is said of the stream. Nor
 is anything said of any stream passed over in the document where `MaxTrailerLength` may have hidden a link the chain
-would have followed, or cut what would end it: where it cut a dictionary at an offset the chain names, whatever its
-`/Type`, which the reading does not take for a section the guard cut, the object then read as one of another type
-([#279](https://github.com/AdCodicem/AdCodicem.Pdf/issues/279)). Where a `/Prev` or `startxref` names the offset, any
+would have followed, or cut what would end it: wherever it cut the reading at an offset the chain names, whatever it
+cut, which the reading does not take for a section the guard cut — a dictionary, whatever its `/Type`, the object then
+read as one of another type ([#279](https://github.com/AdCodicem/AdCodicem.Pdf/issues/279)), or the object's header,
+its number or its generation running on past the bound or a comment between its tokens, no object then read
+([#289](https://github.com/AdCodicem/AdCodicem.Pdf/issues/289)). Where a `/Prev` or `startxref` names the offset, any
 `/W` makes a stream of any `/Type` the section ([#263](https://github.com/AdCodicem/AdCodicem.Pdf/issues/263)), and
-the cut may have hidden one — `/XRef` parted, a stream of another `/Type` that gives a `/W`, a `/Type` given twice —,
-its `/Prev` not followed, wherever it lies; where an `/XRefStm` names it, the cut is what would end the chain there, as
-a guard's cut of that stream does ([#264](https://github.com/AdCodicem/AdCodicem.Pdf/issues/264)). The reader cannot
-tell what the cut hid without reading past the guard, and says nothing even where it hid nothing, a dictionary of
-another type that gives no `/W` among them. Nor is anything said of a stream passed over anywhere in the
+the cut may have hidden one — `/XRef` parted, a stream of another `/Type` that gives a `/W`, a `/Type` given twice, the
+whole dictionary past a header the cut parted —, its `/Prev` not followed, wherever it lies; where an `/XRefStm` names
+it, the cut is what would end the chain there, as a guard's cut of that stream does
+([#264](https://github.com/AdCodicem/AdCodicem.Pdf/issues/264)). The reader cannot tell what the cut hid without
+reading past the guard, and says nothing even where it hid nothing, a dictionary of another type that gives no `/W`, or
+a token no header starts, among them. Nor is anything said of a stream passed over anywhere in the
 document where white space and comments at an offset the chain names run past that limit, which turns the reading of
 the section there into the search near the offset ([#289](https://github.com/AdCodicem/AdCodicem.Pdf/issues/289)).
 That search may take a section other than the one past them, which the reader cannot tell without reading past the guard: once that guard is reached,
