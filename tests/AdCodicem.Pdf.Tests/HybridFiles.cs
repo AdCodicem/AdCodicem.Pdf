@@ -818,8 +818,9 @@ internal static class HybridFiles
     /// <c>"/Prev, 5 bytes short"</c>, the place 5 bytes before stream 11, inside the <c>endobj</c> before it, stream 11 the
     /// nearest place to it; or <c>"/Prev, 1 byte short"</c>, the end of line after that <c>endobj</c>, which a reading
     /// there crosses to stream 11. Stream 11 is written as object <paramref name="ownNumber"/>, 11 unless it says
-    /// otherwise, its header written <paramref name="ownHeader"/> where one is given — that number written with signs,
-    /// or a comment parting its tokens — and <c>N 0 obj</c> otherwise, and its dictionary and the newest table's trailer
+    /// otherwise, its header written <paramref name="ownHeader"/> where one is given — that number written with signs, a
+    /// comment parting its tokens, or a string before the header on its line, which <c>Own</c> is then the start of — and
+    /// <c>N 0 obj</c> otherwise, and its dictionary and the newest table's trailer
     /// give a <c>/Size</c> one past the highest object number. Its dictionary starts with <paramref name="ownEntries"/>,
     /// <c>/Type /XRef</c> unless it says otherwise, and gives <paramref name="ownWidths"/> as its <c>/W</c>; where that
     /// is <c>12 0 R</c>, object 12, <c>[1 4 2]</c> and 1,100 spaces, follows the comment of 600 dashes, and the newest
@@ -965,14 +966,15 @@ internal static class HybridFiles
     /// <c>/Type /XRef</c> and no <c>/Size</c>, its data running to the end of the file; <c>"a header in a string"</c>, the
     /// same in a string that object 8 opens on that line; <c>"a stream of no type"</c>, a stream that gives only that
     /// <c>/W</c>, its header beginning its line, and no <c>/Size</c>; <c>"a header on its line"</c>, a stream of
-    /// <c>/Type /XRef</c> and no <c>/Size</c>, its header beginning its line; or, where it reads, <c>"a readable header in a
-    /// comment"</c>, <c>"a readable stream of no type"</c> and <c>"a readable header on its line"</c>, which give
-    /// <c>/Index [9 1]</c>, <c>/Size 10</c> and the one row of 3 bytes their data holds, freeing object 9; or <c>"a long
-    /// header on its line"</c>, the readable one whose dictionary writes, right after its <c>/Type /XRef</c>, a
-    /// <c>/Pad</c> of 300 bytes. A header on its line, readable or not, is written <paramref name="header"/>,
-    /// <c>9 0 obj</c> unless it says otherwise, and starts at <c>Place</c>; the comment line of <c>"a header in a
-    /// comment"</c> runs on by <paramref name="runOn"/> dashes before its end of line. Then comes the update's table, at
-    /// <c>Newest</c>, which indexes stream 21, and names it through
+    /// <c>/Type /XRef</c> and no <c>/Size</c>, its header beginning its line, or written behind a string there, as below;
+    /// or, where it reads, <c>"a readable header in a comment"</c>, <c>"a readable stream of no type"</c> and <c>"a
+    /// readable header on its line"</c>, which give <c>/Index [9 1]</c>, <c>/Size 10</c> and the one row of 3 bytes their
+    /// data holds, freeing object 9; or <c>"a long header on its line"</c>, the readable one whose dictionary writes, right
+    /// after its <c>/Type /XRef</c>, a <c>/Pad</c> of 300 bytes. A header on its line, readable or not, is written
+    /// <paramref name="header"/>, <c>9 0 obj</c> unless it says otherwise — behind a string on its line where that writes
+    /// one, which <c>Place</c> is then the start of —, and starts at <c>Place</c> otherwise; the comment line of <c>"a
+    /// header in a comment"</c> runs on by <paramref name="runOn"/> dashes before its end of line. Then comes the update's
+    /// table, at <c>Newest</c>, which indexes stream 21, and names it through
     /// <c>/XRefStm</c>, and through <c>/Prev</c> the place 20 bytes before <c>Place</c>: a search near it comes to the place
     /// first, then to stream 21, then to the oldest table — but where <paramref name="alone"/> says so, a comment of 700
     /// dashes before the update leaves the oldest table out of its reach.
@@ -1662,7 +1664,8 @@ internal static class HybridFiles
     /// header's first byte, at 0, a digit or a sign; or a place past it, a sign of the run its number is written with or
     /// a place inside the object number, from which the stream reads as an object whose number the bytes from there give,
     /// 13 or 3 for <c>13 0 obj</c>. A search near the place the <c>/Prev</c> names comes to the stream's header — at the
-    /// digit past its signs, where no comment parts its tokens —, and to the oldest table farther off, within reach.
+    /// digit past its signs, or at its first sign where the line its number is on, which an end of line ends before
+    /// <c>obj</c>, holds a <c>%</c> —, and to the oldest table farther off, within reach.
     /// </summary>
     public static (byte[] File, long Oldest, long Stream, long Newest) NamingTheUpdatesStreamAtOrInsideItsNumber(
         int into,

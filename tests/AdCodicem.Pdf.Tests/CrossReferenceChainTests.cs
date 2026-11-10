@@ -1621,6 +1621,104 @@ public class CrossReferenceChainTests
     }
 
     [Theory]
+    [InlineData("+5 0 obj", 512, "readable")]
+    [InlineData("+5 0 obj", 513, "readable")]
+    [InlineData("++5 0 obj", 513, "readable")]
+    [InlineData("++5 0 obj", 514, "readable")]
+    [InlineData("+5 0 obj", 512, "unreadable")]
+    [InlineData("+5 0 obj", 513, "unreadable")]
+    [InlineData("++5 0 obj", 513, "unreadable")]
+    [InlineData("++5 0 obj", 514, "unreadable")]
+    [InlineData("+5 0 obj", 512, "cut")]
+    [InlineData("+5 0 obj", 513, "cut")]
+    [InlineData("++5 0 obj", 514, "cut")]
+    public void A_signed_header_near_where_a_prev_names_no_section_is_read_at_its_digit_and_taken_where_it_reads_or_its_first_sign_lies_within_the_bytes_searched(
+        string header, int past, string stream)
+    {
+        // The newest table's /Prev names a place 512 to 514 bytes past the first byte of stream 5's header, in the comment
+        // that follows the stream, its number written with a sign or a run of signs that starts with a +: the stream reads,
+        // its /W gives a field a negative width, or its dictionary writes a /Pad that MaxTrailerLength 160 cuts. The bytes
+        // the search near that place looks at start 512 bytes before it, at the header's first sign, at a sign past it, or
+        // at its digit, the window holding the byte before them. The walk back from obj finds the header at its digit,
+        // within the bytes searched, whether or not its first sign lies within them, and the header is read there: a stream
+        // that reads is taken, found moved, and the chain goes on through its /Prev to the oldest table. Where its first
+        // sign lies within the bytes searched, the header is a token from that sign, as a load reads it, and declares
+        // itself a section: the stream that cannot be read is the section found moved, handing its /Prev on, and the one a
+        // guard cut is the guard's, the chain ending there. Where it lies before them — in the one byte the window holds
+        // before them, or farther back —, the header declares nothing: neither the stream that cannot be read nor
+        // the one a guard cut is taken, the section is reported missing and the index rebuilt as the document opens, the
+        // guard reached in reading the cut one standing. Under the lowered bound, the dashes of the comment at the place
+        // named are cut too, and reported first (#197, #208, #281, #327).
+        var entries = stream switch
+        {
+            "readable" => "/Type /XRef /Size 9 /Index [4 2 7 1] /W [1 4 2]",
+            "unreadable" => LostStreamFiles.Unreadable,
+            _ => "/Type /XRef /Pad (" + new string('x', 200) + ") /Size 9 /Index [4 2 7 1] /W [1 4 2]",
+        };
+        var (file, oldest, at, newest) = LostStreamFiles.ThreeRevisions(entries, namedShortBy: -past, header: header);
+        var named = at + past;
+        var digit = at + header.AsSpan().IndexOfAnyInRange('0', '9');
+        var within = past == 512;
+        var limits = stream == "cut" ? PdfReaderLimits.Default with { MaxTrailerLength = 160 } : PdfReaderLimits.Default;
+        using var document = PdfDocument.Open(file, new PdfReaderOptions { Limits = limits });
+        var expected = new List<(string Code, long Position)>();
+
+        if (stream == "cut")
+        {
+            expected.Add((PdfDiagnosticCodes.LimitTrailer, named));
+            expected.Add((PdfDiagnosticCodes.LimitTrailer, digit));
+        }
+
+        if (stream == "readable" || within)
+        {
+            expected.Add((PdfDiagnosticCodes.XRefOffsetAdjusted, digit));
+
+            if (stream == "unreadable")
+            {
+                expected.Add((PdfDiagnosticCodes.XRefSectionUnreadable, digit));
+            }
+
+            document.Reader.Structure.Sections.Select(section => (section.State, section.Kind, section.Offset, section.CutByLimit)).Should().Equal(
+                stream == "cut"
+                    ?
+                    [
+                        (XRefSectionState.Read, XRefSectionKind.Table, newest, false),
+                        (XRefSectionState.Malformed, XRefSectionKind.Stream, digit, true),
+                    ]
+                    :
+                    [
+                        (XRefSectionState.Read, XRefSectionKind.Table, newest, false),
+                        (stream == "readable" ? XRefSectionState.Relocated : XRefSectionState.Malformed, XRefSectionKind.Stream, digit, false),
+                        (XRefSectionState.Read, XRefSectionKind.Table, oldest, false),
+                    ]);
+            document.Diagnostics.Select(diagnostic => (diagnostic.Code, diagnostic.Position)).Should().Equal(expected);
+            document.Diagnostics.Single(diagnostic => diagnostic.Code == PdfDiagnosticCodes.XRefOffsetAdjusted).Message.Should().Be(
+                Invariant($"The cross-reference section /Prev names at offset {named} was found {named - digit} bytes before it."));
+            document.WasRepaired.Should().BeFalse();
+            document.Reader.ChainStoppedByGuard.Should().Be(stream == "cut");
+        }
+        else
+        {
+            expected.Add((PdfDiagnosticCodes.XRefSectionMissing, named));
+            expected.Add((PdfDiagnosticCodes.XRefRebuilt, -1L));
+            expected.Add((PdfDiagnosticCodes.ObjectRedefined, -1L));
+
+            document.Reader.Structure.Sections.Select(section => (section.State, section.Kind, section.Offset)).Should().Equal(
+                (XRefSectionState.Read, XRefSectionKind.Table, newest),
+                (XRefSectionState.NotFound, XRefSectionKind.Unknown, named));
+            document.Diagnostics.Select(diagnostic => (diagnostic.Code, diagnostic.Position)).Should().Equal(expected);
+            document.WasRepaired.Should().BeTrue();
+        }
+
+        if (stream != "cut")
+        {
+            Text(document, 3).Should().Be("only in the oldest");
+            Text(document, 4).Should().Be("only in the stream");
+            Text(document, 7).Should().Be("new seven");
+        }
+    }
+
+    [Theory]
     [InlineData("Notes on the file format.\n", "xref")]
     [InlineData("Notes on the file format.\nThe ", "xref")]
     [InlineData("Example:\n", "12 0 obj\n<< /Type /XRef /Size 13 /W [1 2 1] >>\nendobj\n")]
@@ -6107,7 +6205,9 @@ public class CrossReferenceChainTests
         // three digits, 0 or 9 among those past its first —, and a comment parts its header's tokens where the row says so.
         // A load reads a run of signs as it reads one, the first deciding. The walk back from obj takes the number's digits
         // and stops at the sign, so that the header the search finds starts at the digit past the signs, past where a reading
-        // from a + starts; a header whose tokens a comment parts is lexed from its line's start, and starts at its first sign.
+        // from a + starts; where the line its number is on, which an end of line ends before obj, holds a % — the comment
+        // that ends that line in these rows —, the walk lexes that line from its start, and the header starts at its first
+        // sign.
         // Either is the stream the /XRefStm read, told by its data as where no sign is written: where the /XRefStm named a
         // sign, the header found past it was tried as another stream, and taken where its /Prev names the oldest table, the
         // stream read twice and the naming never reported; where it named a digit, or a sign past the first, the header
@@ -7201,22 +7301,29 @@ public class CrossReferenceChainTests
     [InlineData("/Prev", 20, 1, "[1 -4 2]", "", 0)]
     [InlineData("/XRefStm", 11, 1, "[1 4 2]", "+-11 0 obj", 2)]
     [InlineData("/Prev", 11, 1, "[1 4 2]", "+-11 0 %c\nobj", 0)]
+    [InlineData("/XRefStm", 11, 1, "[1 4 2]", "+-11 0\n%c\nobj", 2)]
+    [InlineData("/Prev", 11, 1, "[1 4 2]", "+-11 0\n%c\nobj", 2)]
+    [InlineData("/XRefStm", 11, 5, "[1 4 2]", "(%) +-11 0\nobj", 4)]
+    [InlineData("/Prev", 11, 5, "[1 4 2]", "(%) +-11 0\nobj", 4)]
     public void A_stream_passed_over_near_a_hybrid_table_s_prev_that_an_older_section_names_at_its_header_or_inside_its_object_number_is_reported_as_the_chain_finds_it_not_as_passed_over(
         string oldestNames, int ownNumber, int into, string ownWidths, string ownHeader, int foundMovedAt = -1)
     {
         // As above, the search near the table's /Prev passes over stream 11, written as object 11, 111, 195, 105, 109, 20
         // or 100, which gives no /Prev, and takes stream 6, whose /Prev names the oldest table; its number is written with
-        // a sign or a run of signs that starts with a +, and a comment parts its header's tokens, where the row says so.
-        // The oldest table names stream 11 through /XRefStm or /Prev, at its header, or 1 to 3 bytes past its start, inside
-        // its object number, at a sign of that run or a digit: read from there, it is the same stream, the same dictionary
-        // and data, and the chain reads it — whole, or, where its /W gives a field a negative width, there and unreadable,
-        // which the chain reports. Where what is read from there is no object's header — digits that read 0, as the 0 of 20
-        // or the second 0 of 100, or the - of a run of signs —, nothing is read there, and the search near that place finds
-        // the stream moved, at its first digit, or at its first sign where a comment parts its header's tokens, which the
-        // chain reports, and reads it there as above. The stream passed over is told by its data, as the stream an /XRefStm
-        // read is: named inside its number, it was reported a second time, as a stream the chain did not read, its objects
-        // said to be missing from the index, though object 10, which only it indexes, was read from it — named at a second
-        // sign or past it, it still was, the number taken to end at that sign (#156).
+        // a sign or a run of signs that starts with a +, a comment parts its header's tokens, or a string that holds a %
+        // comes before it on its line, where the row says so. The oldest table names stream 11 through /XRefStm or /Prev,
+        // at its header, or 1 to 3 bytes past its header's start, inside its object number, at a sign of that run or a
+        // digit: read from there, it is the same stream, the same dictionary and data, and the chain reads it — whole, or,
+        // where its /W gives a field a negative width, there and unreadable, which the chain reports. Where what is read
+        // from there is no object's header — digits that read 0, as the 0 of 20 or the second 0 of 100, or the - of a run
+        // of signs —, nothing is read there, and the search near that place finds the stream moved, which the chain
+        // reports, and reads it there as above: at its first digit, or, where the line its number is on, which an end of
+        // line ends before obj, holds a % — a comment that ends that line, or one a string holds —, at its first sign, the
+        // walk back from obj lexing that line, not where a comment lies on a line of its own. The stream passed over is
+        // told by its data, as the stream an /XRefStm read is: named inside its number, it was reported a second time, as a
+        // stream the chain did not read, its objects said to be missing from the index, though object 10, which only it
+        // indexes, was read from it — named at a second sign or past it, it still was, the number taken to end at that sign
+        // (#156).
         var (file, _, _, own, _) = HybridFiles.PrevFallingShortOfTheStreamBeforeTheTablesOwn(
             "nothing", shortOfOwn: true, "the oldest table", oldestNames, ownWidths, into: into, ownNumber: ownNumber,
             ownHeader: ownHeader.Length > 0 ? ownHeader : null);
@@ -7823,6 +7930,7 @@ public class CrossReferenceChainTests
     [InlineData("a header on its line", true, "++9 0 obj")]
     [InlineData("a header on its line", true, "+-9 0 obj")]
     [InlineData("a header on its line", true, "+9 0 %c\nobj")]
+    [InlineData("a header on its line", true, "+9 0\n%c\nobj")]
     [InlineData("a readable header on its line", true, "+9 0 obj")]
     [InlineData("a header on its line", false, "-9 0 obj")]
     [InlineData("a header on its line", false, "-+9 0 obj")]
@@ -7838,9 +7946,11 @@ public class CrossReferenceChainTests
         // read, and takes where they read. Only a place that declares itself a cross-reference stream, as one the search
         // takes though a fault of the file keeps it from being read does — its dictionary gives /Type /XRef, and its header is
         // a token its line reads —, is reported (#156, #171). A header whose number is written with a sign or a run of signs
-        // that starts with a +, which a load reads as object 9, is such a token from its first sign, and is reported there;
-        // found by the walk back from obj at its digit, where no token starts, it was not reported unless a comment parted
-        // its tokens. One a - starts gives no object's number, and is not (#327).
+        // that starts with a +, which a load reads as object 9, is such a token from its first sign, and is reported there,
+        // wherever the walk back from obj found it: at its digit, or, where the line its number is on, which an end of line
+        // ends before obj, holds a % — a comment that ends that line —, at that sign, the walk lexing that line. Found at its
+        // digit, where no token starts, it was not reported, as where the comment lies on a line of its own. One a - starts
+        // gives no object's number, and is not (#327).
         var (file, oldest, stream, at, newest) = HybridFiles.PrevFallingShortOfAPlacePastTheStream(place, header: header, runOn: runOn);
         using var document = PdfDocument.Open(file);
 
@@ -7957,18 +8067,23 @@ public class CrossReferenceChainTests
     [InlineData("++9 0 obj", 2)]
     [InlineData("+-9 0 obj", 2)]
     [InlineData("+9 0 %c\nobj", 0)]
+    [InlineData("+9 0\n%c\nobj", 1)]
+    [InlineData("(%) +9 0\nobj", 4)]
     [InlineData("-9 0 obj", -1)]
     [InlineData("-+9 0 obj", -1)]
     public void A_header_near_a_hybrid_table_s_prev_whose_number_is_written_with_signs_declares_itself_a_section_where_they_start_with_a_plus(
         string header, int found)
     {
         // As above, object 9 alone near the place the table's /Prev names, a stream of /Type /XRef that cannot be read, its
-        // number written with a sign or a run of signs. A load reads a run that starts with a + as object 9's number: the
-        // header is a token from its first sign, and declares itself a section. The walk back from obj finds it at its
-        // digit, where it is taken, as the walk found it, and reported unreadable; asked there whether a token starts, its
-        // line said none did, and the section was reported missing, though the file holds it near where it is named. A
-        // header whose tokens a comment parts is found at its sign, and was taken. A run that starts with a - makes no
-        // object's number, and the section is missing (#281, #327).
+        // number written with a sign or a run of signs, behind a string that holds a % on its line where the row says so. A
+        // load reads a run that starts with a + as object 9's number: the header is a token from its first sign, and
+        // declares itself a section. The walk back from obj finds it at its digit, where it is taken, as the walk found it,
+        // and reported unreadable; asked there whether a token starts, its line said none did, and the section was reported
+        // missing, though the file holds it near where it is named. Where the line its number is on, which an end of line
+        // ends before obj, holds a % — a comment that ends that line, or one a string holds —, the walk lexes that line and
+        // finds the header at its sign, where it was taken already; a comment on a line of its own leaves the number's line
+        // to the walk's digits. A run that starts with a - makes no object's number, and the section is missing (#281,
+        // #327).
         var (file, _, _, at, _) = HybridFiles.PrevFallingShortOfAPlacePastTheStream("a header on its line", alone: true, header: header);
         using var document = PdfDocument.Open(file);
 
@@ -7988,6 +8103,8 @@ public class CrossReferenceChainTests
     [InlineData("+9 0 obj", 1)]
     [InlineData("++9 0 obj", 2)]
     [InlineData("+9 0 %c\nobj", 0)]
+    [InlineData("+9 0\n%c\nobj", 1)]
+    [InlineData("(%) +9 0\nobj", 4)]
     public void A_stream_alone_near_a_hybrid_table_s_prev_whose_dictionary_a_guard_cut_is_the_guard_s_whether_a_plus_sign_starts_its_number_or_not(
         string header, int found)
     {
@@ -7996,7 +8113,9 @@ public class CrossReferenceChainTests
         // and is the section found moved, the guard's, the chain ending there for it, nothing rebuilt. Written with a sign or
         // a run of signs that starts with a +, its header is a token from that sign, as a load reads it: found at its digit
         // by the walk back from obj, it was asked there whether a token starts, and dropped, the section reported missing
-        // and the index rebuilt — a guard's cut laid on the file (#281, #327, ADR 34).
+        // and the index rebuilt — a guard's cut laid on the file. It is found at its sign where the line its number is on,
+        // which an end of line ends before obj, holds a %, a comment's or a string's, and at its digit where a comment lies
+        // on a line of its own, and is the guard's either way (#281, #327, ADR 34).
         var (file, _, _, at, _) = HybridFiles.PrevFallingShortOfAPlacePastTheStream("a long header on its line", alone: true, header: header);
         using var document = PdfDocument.Open(file, new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxTrailerLength = 160 } });
 
