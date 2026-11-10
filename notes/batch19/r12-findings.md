@@ -1,0 +1,1453 @@
+# Review round 12 (wf_5b03e982-2f6): findings and refuter verdicts
+
+## 1. parted-type-escaped-xref-not-withheld — minor → confirmed minor (src-texts)
+Location: src/AdCodicem.Pdf/IO/PdfFileReader.cs:7606 (MayBePartedXRef). The same enumeration is at :669 and :7603, in PdfDiagnosticCodes.cs:132, and in the pages: diagnostics.md:116 and :142, lazy-reading.md:228, reference/reader-limits.md:66 and :247, threat-model.md:425, :439 and :446
+
+Claim: The texts say a MaxTrailerLength cut can leave only these names of /XRef: the empty name, X, XR or XRe. They also say nothing is reported anywhere in the document where MaxTrailerLength may have hidden a link the chain would have followed. Both are false for /XRef written with # escapes (ISO 32000-1, 7.3.5). The library reads /X#52ef, /XR#65f, /XRe#66, /#58Ref and /X#52#65#66 as /XRef at default limits. When the cut falls inside an escape, PdfStringDecoder.DecodeName keeps the incomplete escape as its bytes, which leaves X#, X#5, XR#, XR#6, XRe#, XRe#6, # or #5. MayBePartedXRef rejects all of these, so the flag is not set. Stream 7 then reads as an object of another type, the section is reported missing, and xref.stream-passed-over is made for stream 11 although stream 7's hidden /Prev names it. That puts the guard's cut on the file (ADR 34), the very shape round 11's [2] and 7b1de15 were meant to cover. Nothing changed since 79c6a7f, because the flag only withholds reports. Main has no passed-over Warning.
+
+Evidence: Probe: ZzEscapedTypeParted in W/r12wip/src-texts/ZzR12SrcTexts.cs.txt. Output: W/r12wip/src-texts/head-escaped.txt. Builder: HybridFiles.PassingOverAStreamAnOlderStreamWithAPaddedTypeNames("stream 6", oldestNamesOwn: true, type, "spaces"), read with MaxTrailerLength = TypeAt + window. Results on 1cd2216:
+- /XRef at windows 1-4 ('/', '/X', '/XR', '/XRe'): [xref.offset-adjusted@1944, xref.hybrid-stream-lost@1944, limit.trailer@358, xref.section-missing@358], with no Warning.
+- /X#52ef at default limits: the oldest section is read, with no Warning. At window 2 ('/X') and window 5 ('/X#52', which reads as XR), nothing is reported.
+- /X#52ef at window 3 ('/X#') and window 4 ('/X#5'): [xref.offset-adjusted@1946, xref.hybrid-stream-lost@1946, limit.trailer@358, xref.section-missing@358, xref.stream-passed-over@2125], with '/Prev NotFound Unknown off=358'.
+- The same Warning at 2125 appears for /XR#65f at windows 4-5, /XRe#66 at 5-6 and /#58Ref at 2-3 ('/#', '/#5'), and at 2129 for /X#52#65#66 at windows 3, 4, 6, 7, 9 and 10.
+- With oldestNamesOwn false the same rows report it too.
+- ThrowOnLimit throws PdfLimitExceededException at open (head-throwcap.txt), so the defect holds under the default options, with a capacity of 5 or more.
+
+Fix: In MayBePartedXRef, drop a trailing incomplete escape (a '#', or a '#' followed by one hex digit, which DecodeName keeps as bytes) before the prefix test. A sounder alternative is for the parser to say that the name token reached the window's edge, which is what #279's closing gives. Add rows: /X#52ef at TypeAt+3 and +4, and /#58Ref at +2 and +3, each with oldestNamesOwn true and false and no Warning. Keep the controls: /X#52ef at +5 and at default limits. Widen the enumeration in the XML docs and the pages to 'or such a name followed by an escape the cut left incomplete'. If this is not fixed now, file it under #279 and qualify 'anywhere ... may have hidden a link' in the texts.
+
+Verdict: The finding holds. I rebuilt it with a probe of my own on 1cd2216, and it reproduces in all four shapes the committed builder writes: stream 6 or a table near the /Prev, with padding of spaces or of a /Pad string.
+
+The cause is in the code. PdfObjectParser.ReadName (:1465) decodes through PdfStringDecoder.DecodeName, which keeps a '#' that two hex digits do not follow as the byte it is. At the window's edge, AtWindowEdge holds back syntax.name-escape-invalid, so the parser knows the escape was cut there. MayBePartedXRef (PdfFileReader.cs:7606) then tests "XRef".StartsWith(value) on 'X#', 'X#5', '#', '#5', 'XR#', 'XR#6', 'XRe#' or 'XRe#6'. Every one of these fails, so _guardMayHideLink stays false and ReportStreamsPassedOver (:3783) makes the Warning.
+
+The one wrong report is Warning xref.stream-passed-over for stream 11, which default limits reach through stream 7's /Prev. That /Prev is past the cut, so the guard's cut is laid on the file (ADR 34). This is round 11's [2] again, through a name spelling 7b1de15 did not cover. ISO 32000-1 7.3.5 allows the spelling: any regular character may be written as #xx, and the reader reads /X#52ef whole as /XRef.
+
+It is not known or accepted elsewhere:
+- decisions.md, r1 to r11 and residuals-impl.md never mention an escaped /Type.
+- #279's comment of 2026-11-10 lists only '/', '/X', '/XR' and '/XRe'.
+- The accepted list covers only the four names, written whole or parted.
+
+It is worse than main, which has no xref.stream-passed-over code at all (grep of 21a0298's PdfDiagnosticCodes is empty). It is not worse than 79c6a7f: 7b1de15 only withholds the report, and these names miss it.
+
+The texts misstate it. PdfDiagnosticCodes.cs:128-129, diagnostics.md:116 and lazy-reading.md:226 promise that nothing is reported anywhere where MaxTrailerLength may have hidden a link the chain would have followed. The field's summary (PdfFileReader.cs:660) says the same. The test comment CrossReferenceChainTests.cs:7056-7057 says a name the cut leaves that XRef does not begin with 'hides no such link'. 'X#' falsifies each of them.
+
+Narrowings:
+1. With oldestNamesOwn false the Warning is true: no link names stream 11. Those rows only show the rule's withholding missing, as the plain /XRef rows have it. They are not a second wrong report.
+2. A cut inside an escape leaves a window of 1 or 2 bytes per escape. It needs an escaped /Type /XRef and a lowered MaxTrailerLength, or a dictionary past the default 64 KB with its /Type at the boundary. It also needs the passed-over shape.
+3. Under ThrowOnLimit, opening throws at limit.trailer, so the report needs ThrowOnLimit false, the default. Under a DiagnosticCapacity under 5 the Warning drops off the list.
+
+It is minor, as [2] was: one Warning beside limit.trailer, on top of section-missing and the Error that main already lays on the file (#279's class).
+
+Verdict evidence: Probe: W/r12wip/verify-parted-type-escaped-xref-not-withheld/ZzVerifyEscParted.cs.txt, my own, built on the committed HybridFiles.PassingOverAStreamAnOlderStreamWithAPaddedTypeNames (types /XRef, /X#52ef, /#58Ref, /X#52#65#66, plus /X# and /X#5 written whole; near stream 6 or a table; padding spaces or a string; oldestNamesOwn true and false; MaxTrailerLength = TypeAt + w). Outputs: head-run.txt (440 rows), head-table.txt (summary) and head-throw.txt. Run on 1cd2216 in my worktree, which is clean again.
+
+Near stream 6, padding spaces, oldestNamesOwn true:
+- /XRef: default gives no Warning. w=1..4 ('/', '/X', '/XR', '/XRe') give '[/Prev NotFound Unknown 358] | xref.offset-adjusted@1944, xref.hybrid-stream-lost@1944, limit.trailer@358, xref.section-missing@358', with no Warning. w=0 and w=5..6 give 'Malformed ... cut', stopped=True.
+- /X#52ef: default gives '[/Prev Read Stream 358] [/Prev Read Stream 2125]', no Warning. w=2 ('/X'), w=5 ('/X#52', read as XR) and w=6 have no Warning; w=7..8 give 'Malformed Stream 358 cut'.
+- /X#52ef at w=3 ('/X#') and w=4 ('/X#5'): '[/Prev NotFound Unknown 358] | xref.offset-adjusted@1946, xref.hybrid-stream-lost@1946, limit.trailer@358, xref.section-missing@358, xref.stream-passed-over@2125 | stopped=False'. The message reads: 'The cross-reference stream at offset 2125, near offset 2120, which the /Prev of the cross-reference table at offset 2942 names, gives no /Prev, or one that names that offset too, ... the chain did not read the stream.' Stream 7's /Prev, past the cut, names 2125.
+- /#58Ref: the Warning at 2125 at w=2 ('/#') and w=3 ('/#5'); none at w=4..6 ('/#58' = X, XR, XRe).
+- /X#52#65#66: the Warning at 2129 at w=3, 4, 6, 7, 9 and 10; none at w=5 and w=8.
+- The same windows give the Warning near a table and with the string padding, for both values of oldestNamesOwn. With false, the Warning is true: nothing names stream 11.
+- /X# written whole: the Warning at w=3 and at w=4 ('/X# ', the cut past the name), unlike /X written whole, which withholds it.
+
+head-throw.txt:
+- ThrowOnLimit: 'EXC PdfLimitExceededException: The dictionary of the object read as a cross-reference stream runs past 139 bytes'.
+- DiagnosticCapacity: 3 and 4 do not hold the Warning; 5 holds it.
+
+Code:
+- PdfFileReader.cs:7606, MayBePartedXRef: type.Value.Length < 4 && "XRef".StartsWith(type.Value).
+- :6528-6532 is the only place that sets the flag.
+- PdfStringDecoder.cs:161-205 keeps an incomplete escape as its bytes.
+- PdfObjectParser.cs:1467 holds back the escape report at the window's edge.
+- Main 21a0298 has no 'passed-over' code (grep exit 1).
+fix: Recommended for this batch, following round 11's [2] precedent (7b1de15):
+
+1. In MayBePartedXRef, drop a trailing escape the cut left incomplete before the prefix test. That is a final '#', or a '#' followed by one hex digit, both of which DecodeName keeps as bytes:
+   ```
+   var v = type.Value.AsSpan();
+   if (v is [.., '#']) v = v[..^1];
+   else if (v is [.., '#', var h] && char.IsAsciiHexDigit(h)) v = v[..^2];
+   return v.Length < 4 && "XRef".AsSpan().StartsWith(v, StringComparison.Ordinal);
+   ```
+   /X#23 written whole, the cut past it, then withholds too. That matches the accepted rule that the reader does not tell /X whole from /X parted.
+
+2. Add rows to A_stream_passed_over_near_a_hybrid_table_s_prev_is_reported_... :
+   - /X#52ef at TypeAt+3 and +4, and /#58Ref at +2 and +3: NotFound, section-missing kept (#279), no Warning. Run them with oldestNamesOwn true and false, near stream 6 and near a table.
+   - Controls: /X#52ef at default (read whole, no Warning), at +5 (withheld already) and at +7 (Malformed, cut, chain stopped).
+   - The '#' arm is killed by +3 and the '#h' arm by +4 (ADR 53).
+
+3. Widen the enumeration 'the empty name, X, XR or XRe' to add 'or such a name followed by an escape the cut left incomplete'. The places:
+   - PdfFileReader.cs: the field summary (:660-669), the comment at :6520 and MayBePartedXRef's summary (:7603).
+   - PdfDiagnosticCodes.cs:132.
+   - diagnostics.md:116 and :142, lazy-reading.md:228, reader-limits.md:66 and :247.
+   - threat-model.md:425, :439 and :446.
+   - The test comment at CrossReferenceChainTests.cs:7056-7057 ('A name the cut leaves that XRef does not begin with ... hides no such link').
+
+4. Comment on #279 with the escaped shape, so that its closing rows include a /Type parted inside an escape. Dropping a token that reaches the edge settles it too.
+
+Fallback, if the triage leaves the code: comment on #279 and qualify each 'anywhere ... where MaxTrailerLength may have hidden a link' clause with this exception. The triage can choose without the maintainer.
+needs_maintainer: False
+
+## 2. nonname-type-cut-before-w-reported — minor → confirmed minor (src-texts)
+Location: src/AdCodicem.Pdf/IO/PdfFileReader.cs:6537 (`!cut.ContainsKey(PdfName.Type)`), with its comment at :6539-6543. The text is PdfDiagnosticCodes.cs:126-131
+
+Claim: PdfDiagnosticCodes.XRefStreamPassedOver says nothing is reported where a limit cut 'a section ... before the section said what it is'. Round 11 added that nothing is reported anywhere in the document where MaxTrailerLength may have hidden a link the chain would have followed. A dictionary whose /Type is not a name (5, (XRef), [/XRef], true) is a cross-reference stream exactly where it gives a /W (DeclaresCrossReferenceStream). At default limits, stream 7 written that way is read as the section, and its /Prev reaches stream 11. When MaxTrailerLength cuts it after the /Type and before the /W, the guard test at :6537 sees a /Type and takes the object for one of another type. The section is reported missing and later rebuilt, and xref.stream-passed-over is made for stream 11 although the hidden /Prev names it. MayBePartedXRef needs a PdfName, so the flag is not set either. Main's :3999 has the same condition (section-missing, but no passed-over code). The Warning is this batch's addition.
+
+Evidence: Probe: ZzNonNameTypeCut in W/r12wip/src-texts/ZzR12SrcTexts.cs.txt. Output: W/r12wip/src-texts/head-nonname.txt. Same builder as the previous finding, with type set to a non-name value and oldestNamesOwn true. Results:
+- type=5 at default limits: '/Prev Read Stream off=358', [xref.offset-adjusted@1940, xref.hybrid-stream-lost@1940].
+- type=5 at windows 1, 2, 5 and 9 ('5' through '5 /Size 9'): '/Prev NotFound Unknown off=358', [.., limit.trailer@358, xref.section-missing@358, xref.stream-passed-over@2119], chainStopped=False.
+- type=5 at window 21 (past the /W): 'Malformed Stream cut=True', chainStopped=True.
+- The same Warning appears for (XRef) at windows 5-14 (at 2124), [/XRef] at 6-15 (at 2125) and true at 4-12 (at 2122).
+- null behaves like no /Type: the chain stops as the guard's.
+- ThrowOnLimit throws at open (head-throwcap.txt).
+
+Fix: At :6537, test `cut.GetRaw(PdfName.Type) is not PdfName` instead. That covers no /Type and a /Type that is no name, which declares a section only through a /W that may lie past the cut. The cut is then the guard's (CutByLimit, chain stopped), as the texts' 'a section it cut before the section said what it is' already says (ADR 34). Update the comment at :6539. Add rows for 5, (XRef), [/XRef] and true cut before the /W, with controls past the /W and at default limits. If changing main's section-missing reading needs the maintainer, the minimal fix is to set _guardMayHideLink there, file the section-missing with #279, and qualify the text.
+
+Verdict: The finding holds on 1cd2216, and its scope is right. At an offset the chain names, DeclaresCrossReferenceStream takes any dictionary that gives a /W as the section. So a stream whose /Type is not a name (5, (XRef), [/XRef], true, << >>) is read at default limits, and its /Prev is followed. The rest of the reader treats a /Type that is not a name as no type declared: DeclaresOnlyCrossReferenceStream accepts it beside a /W, TypedOther is false for it, NoSectionWhereAnotherType keeps it as a cross-reference stream, and the R11c comment at :6527 already says this for places the search tries.
+
+Only the test at :6537 differs. `!cut.ContainsKey(PdfName.Type)` counts such a /Type as the dictionary having said what it is. So a MaxTrailerLength cut between that value and the end of the /W is filed with 'another type': NotFound, cut=False, ChainStoppedByGuard false. The /Prev past the cut goes unread, and MayBePartedXRef needs a PdfName, so _guardMayHideLink stays false. The reader then makes Warning xref.stream-passed-over for the stream that hidden /Prev names. The same object cut after its /W is already the guard's (Malformed, cut, chain stopped), so the reading changes depending on whether the window ends before or after the /W.
+
+This breaks PdfDiagnosticCodes.XRefStreamPassedOver (:126-131) and the ReportStreamsPassedOver remark (:3742). Both say 'Nothing is reported where one of the reader's limits left part of the chain unread', with 'a section it cut before the section said what it is' in the list. It also makes the comment at :6539-6543 incomplete: it names arrays, dictionaries of another type and dictionaries read whole, and a /Type that is not a name is none of these.
+
+What the batch adds:
+- **New:** only the Warning. Main has no passed-over code (`git grep XRefStreamPassedOver 21a0298` finds nothing), and main's :3999 has the same ContainsKey test, so section-missing is main's.
+- **Accepted items:** none covers it. #279 is about tokens a cut parts, and here the value is whole. R11-Q1 and the R11c rows cover the empty name, X, XR and XRe only.
+
+Why minor and not major: it is one Warning more, beside limit.trailer and main's section-missing. It needs an invalid /Type, plus a lowered MaxTrailerLength or a 64 KB dictionary. The window is wider than round 11's [2], though: any cut between the value and the end of the /W, not just 4 bytes. This is the same class and the same severity as round 11's [2].
+
+Open point (c) is not touched: places the search tries still drop such an object before its guard counts.
+
+A note outside this finding's scope: a whole name of another type (/Catalog, /Font) with a /W is also read as the section at default limits (#263), and its /Prev is followed. Cut anywhere, before or after the /W, it gives section-missing and the Warning even where its /Prev was hidden. That is #263's settled reading ('the cut takes it for none'), which R11c kept on purpose. The comment at CrossReferenceChainTests.cs:7056-7057 ('/Catalog whole — hides no such link') holds only under that reading, since its rows have stream 7 name nothing.
+
+Verdict evidence: Reproduced on origin/ccr-6d6c0ee6-dqm4lm-188 at 1cd2216 with a probe of my own: W/r12wip/verify-nonname-type-cut-before-w-reported/ZzR12VerifyNonName.cs.txt (ZzVerifyNonNameCut). It uses HybridFiles.PassingOverAStreamAnOlderStreamWithAPaddedTypeNames and covers 9 types × near stream 6 or a table × oldestNamesOwn true/false × 5 windows. Outputs are head-nonname.txt, summarized in head-summary.txt by summarize.py, all in the same folder.
+
+Type 5, near stream 6, stream 7 naming stream 11:
+- **Default:** 'sec /Prev Read Stream off=358', 'sec /Prev Read Stream off=2119'. Codes: xref.offset-adjusted@1940, xref.hybrid-stream-lost@1940. chainStopped=False.
+- **Window 146, holding '/Type 5 /Size 9 ' (before the /W), and window 149 (inside the /W):** 'sec /Prev NotFound Unknown off=358 cut=False'. Codes: xref.offset-adjusted@1940, xref.hybrid-stream-lost@1940, limit.trailer@358, xref.section-missing@358, xref.stream-passed-over@2119. chainStopped=False.
+- **Window 157, past the /W:** 'sec /Prev Malformed Stream off=358 cut=True'. Codes: ..., limit.trailer@358 only. chainStopped=True.
+- **Key cut, window 133:** Malformed/cut, chain stopped.
+
+The same pattern ('NotFound SM PO go' before and inside the /W; 'Malformed/cut stop' for the key cut and past the /W) holds for:
+- the types (XRef), [/XRef], true and << >>;
+- both nears (the table case reports at 3131);
+- oldestNamesOwn false, where the default control already makes the Warning.
+
+Controls:
+- **null:** read as no /Type, giving Malformed/cut at every cut.
+- **/XRef whole:** Malformed/cut.
+- **/Catalog and /Font:** 'NotFound SM PO go' at every cut, after the /W included. This is #263's reading, outside the finding.
+
+Fix prototype (fix-prototype.diff): `cut.GetRaw(PdfName.Type) is not PdfName` at :6537. Output: fix-nonname.txt and fix-summary.txt. `diff head-summary.txt fix-summary.txt` changes exactly the 40 rows of the 5 non-name types cut before or inside the /W, to 'Malformed/cut -- -- stop'. Every other row is unchanged.
+
+With the prototype applied:
+- the CrossReference*, ReaderLimits*, GuardCut*, Hybrid*, Validat* and Rule* classes give 4,184 passed and 0 failed;
+- the whole unit project gives 8,066 total, 8,046 passed, 20 skipped (the remote corpus is absent in my worktree) and 0 failed.
+
+The worktree was reverted to a clean 1cd2216.
+fix: At PdfFileReader.cs:6537, replace `!cut.ContainsKey(PdfName.Type)` with `cut.GetRaw(PdfName.Type) is not PdfName`. A dictionary with no /Type, or with a /Type that is not a name, has not said what it is: it declares a section only through a /W the cut may hide. It then becomes the guard's (CutByLimit, Malformed, chain stopped), as the same object cut past its /W already is, and as ADR 34 and the texts' 'a section it cut before the section said what it is' want. KeepsItsPlace then also gives KeptPlace.Guard at a /Prev's place, which matches.
+
+Texts to bring in line:
+- the comment at :6539-6543 (name the /Type that is not a name);
+- threat-model.md:446, where 'no /Type yet' should become 'no /Type that is a name yet';
+- diagnostics.md:116 and PdfDiagnosticCodes:126-131, only if they define the phrase.
+
+Rows for A_stream_passed_over_near_a_hybrid_table_s_prev_... or a sibling theory:
+- 5, (XRef), [/XRef], true and << >>, cut before and inside the /W, oldestNamesOwn true and false, both nears: Malformed, cut, limit.trailer alone, no section-missing, no Warning, chain stopped.
+- Controls: default (read, its /Prev followed) and past the /W (cut, unchanged); null, read as no /Type; /Catalog whole, unchanged (#263).
+- Each pinning row should fail on 1cd2216 (the prototype shows 40 rows change). Run ADR 53's catalog on the changed condition.
+
+Alternative if the batch should not change main's section-missing: where cutByGuard is true, the chain names the offset and the /Type is not a name, set _guardMayHideLink. That withholds only the Warning; file the section-missing as debt beside #279 and qualify the texts. Neither option is a new decision, since both apply ADR 34 and R11c's rule. The /Catalog and /Font observation, if pursued, is #263's to reopen, not this fix's.
+needs_maintainer: False
+
+## 3. comment-parts-sign-position-misstated — minor → confirmed minor (src-texts)
+Location: src/AdCodicem.Pdf/IO/PdfFileReader.cs:3740 (ReportStreamsPassedOver remark). Also :5197 (the relocation comment), :5394-5396 (NumberRunsInto remark) and :5453-5454 (HeaderTokenStart remark). In the pages: diagnostics.md:110 and :116, threat-model.md:439 and :441
+
+Claim: The texts say a signed header is found, taken and relocated at its first digit, or at its first sign 'where a comment parts the header's tokens'. NumberRunsInto adds that such a header 'is lexed from its line's start, and starts where the lexer's token does'. diagnostics.md:110 says that where no comment parts its tokens, it is found and reported at its first digit. In the code, the walk lexes a line only when it enters that line through an end of line and the line holds a '%'. A comment on a line of its own, or after the generation on a line below the number, parts the tokens but leaves the number's line to the digit walk. Such a header is found, relocated and reported at its first digit. The behavior is correct, because HeaderTokenStart asks the line test at the sign; only the texts misplace the reported offset.
+
+Evidence: Probe: ZzCommentPartsSigned in W/r12wip/src-texts/ZzR12SrcTexts.cs.txt. Output: W/r12wip/src-texts/head-comment.txt.
+Take case: LostStreamFiles.ThreeRevisions("/Type /XRef /Size 9 /Index [4 2 7 1] /W [1 4 2] /Filter /Foo", before: 0, namedShortBy: 12, written: 21 x, header), with the stream at 450:
+- '+5 0 %c\nobj': '/Prev Malformed Stream off=450' (the sign), [filter.unsupported@569, xref.offset-adjusted@450, xref.section-unreadable@450].
+- '+5 0\nobj' with the comment on its own line ('+5 0\n%c\nobj'): off=451, [.., xref.offset-adjusted@451, xref.section-unreadable@451], 'found 13 bytes after it'.
+- '+5\n0 %c\nobj': 451. '++5 0\n%c\nobj': 452 (the digit). '+5 %c\n0 obj': 450.
+Case named inside the number: PrevFallingShortOfTheStreamBeforeTheTablesOwn named at the '-' (into: 1) through /Prev:
+- '+-11 0 %c\nobj': '/Prev Relocated Stream off=1889' (own, the sign).
+- '+-11 0\n%c\nobj' and '+-11\n0 %c\nobj': off=1891 (the digit), 'found 1 byte after it'.
+The same results hold through /XRefStm (1892 against 1894).
+
+Fix: Replace 'where a comment parts the header's tokens' with 'where a comment ends the line its number is on' (the walk lexes the number's line only there). Do this at the four src places and in diagnostics.md:110 and :116 and threat-model.md:439 and :441. Add a row pinning '+5 0\n%c\nobj', taken and reported at its digit, beside the existing '+9 0 %c\nobj' row.
+
+Verdict: The finding holds, and the gap is a little wider than the reviewer says. A signed header is found, taken and reported at its first sign only when the walk back from obj lexes the line its number is on. TryReadHeaderBackwards (PdfFileReader.cs:9218-9233) does that only in one case: the white space after that line holds an end of line, and the line holds a '%'. Whether a comment parts the header's tokens does not decide it.
+
+It is wrong in both directions:
+- '+5 0\n%c\nobj' and '+5\n0 %c\nobj' have a comment between their tokens, yet are found at the digit. The texts say the first sign.
+- '(%) +5 0\nobj' has no comment at all, only a '%' inside a string on the number's line, yet is found and reported at the sign. diagnostics.md:110 ("where no comment parts its tokens, it is found, and reported, at its first digit") and threat-model.md:441 ("found at its first digit where no comment parts its tokens") say the digit.
+
+The behavior itself is right. HeaderTokenStart asks the line test at the sign, and being taken at the digit is #327's and accepted. Only the texts misplace the reported offset, so this is a misleading text: minor.
+
+Not known before. No round's findings, no decision and no #327 comment holds this case: the #327 comment repeats 'at the sign where a comment parts the tokens', and no test row pins a comment on a line of its own. The reviewer's proposed wording ('where a comment ends the line its number is on') still gets the string case wrong. The same phrase also appears in test comments the finding does not list.
+
+Verdict evidence: Branch head 1cd2216, Release build. Probe: W/r12wip/verify-comment-parts-sign-position-misstated/ZzVerifyCommentParts.cs.txt. Output: head-take.txt in the same folder. W = C:/Users/clemm/AppData/Local/Temp/claude/7278f9d03177d71e/898783fc-049f-469a-ab79-dfd299ad558e/scratchpad/cloud.
+
+Setup: LostStreamFiles.ThreeRevisions("/Type /XRef /Size 9 /Index [4 2 7 1] /W [1 4 2] /Filter /Foo", before: 0, namedShortBy: 12, written: 21 x, header). The stream's header starts at 450, and /Prev names 438. Each case is the '/Prev Malformed Stream off=' value, then the offsets of the reports:
+- '+5 0 %c\nobj': 450 (the sign). offset-adjusted@450, 'found 12 bytes after it'.
+- '+5 0\n%c\nobj': 451 (the digit). offset-adjusted@451 and section-unreadable@451, 'found 13 bytes after it'.
+- '+5\n0 %c\nobj': 451 (the digit).
+- '+5 %c\n0 obj': 450 (the sign).
+- '+5 0 obj': 451 (the digit).
+- '(%) +5 0\nobj' (sign at 454, digit at 455): 454, the sign, with no comment anywhere. offset-adjusted@454, section-unreadable@454, 'found 16 bytes after it'.
+- Controls '(x) +5 0\nobj' and '(%) +5 0 obj': 455, the digit.
+- '%c\n+5 0\nobj' (sign at 453): 454, the digit.
+
+The reviewer's output head-comment.txt (W/r12wip/src-texts) agrees for the inside-the-number case:
+- named at the '-' of '+-11 0 %c\nobj': Relocated at 1889 (the sign);
+- '+-11 0\n%c\nobj' and '+-11\n0 %c\nobj': 1891 (the digit), 'found 1 byte after it'.
+
+At 79c6a7f the passed-over record asked the line test at the place found (git show 79c6a7f, line 5285). So the historical clause 'never reported unless a comment parted its tokens' (threat-model.md:439, CrossReferenceChainTests.cs:7126) was imprecise in the same way: '+11 0\n%c\nobj' was found at its digit and was not reported either.
+
+The comment at TryReadHeaderBackwards (:9166-9172) states the real rule correctly: 'a line that holds a % is read as a load reads it, lexed forward from its start'.
+fix: Replace the comment condition with the walk's real one, at every place the phrase appears. Suggested wording: 'at its first sign where the line its number is on, which an end of line ends before obj, holds a % (a comment that ends it, or a string's), the walk then lexing that line; at its first digit otherwise'. Avoid 'where a comment ends the line its number is on': it gets '(%) +5 0\nobj' wrong.
+
+Places:
+- src: PdfFileReader.cs:3740-3741 (ReportStreamsPassedOver remark), :5197 (the relocation comment), :5394-5396 (NumberRunsInto remark), :5453-5454 (HeaderTokenStart remark).
+- pages: diagnostics.md:110 ('where no comment parts its tokens') and :116; threat-model.md:439 (both 'where a comment parts the header's tokens' and the historical 'unless a comment parted its tokens') and :441 ('where no comment parts its tokens').
+- test comments carrying the general claim: CrossReferenceChainTests.cs:5940, :6687, :7126, :7218. HybridFiles.cs:1581 describes only its own rows and can stay.
+
+Add rows beside the existing '+9 0 %c\nobj' / '+-11 0 %c\nobj' rows:
+- '+9 0\n%c\nobj', taken and reported at its digit;
+- '(%) +9 0\nobj', taken and reported at its sign. This could be left out if the texts say only 'a % on that line'.
+
+This is a text-only change, so no ADR 53 run is owed. It is not a design choice for the maintainer.
+needs_maintainer: False
+
+## 4. prev-past-the-cut-overstated — nit → confirmed nit (src-texts)
+Location: src/AdCodicem.Pdf/IO/PdfFileReader.cs:671 (_guardMayHideLink doc). Also :3747-3748 (ReportStreamsPassedOver remark) and :6522-6523 (comment at the assignment). In the pages: diagnostics.md:116 and :142, reference/reader-limits.md:21, threat-model.md:439 and :446
+
+Claim: The texts give the reason a parted /Type may hide a link as 'its /Prev past the cut unread'. When /Prev comes before /Type in the dictionary, the /Prev lies before the cut and is parsed. The chain does not follow it only because the object reads as another type. The flag is set anyway, which is correct, so the stated reason is narrower than the rule the code applies. PdfDiagnosticCodes' 'its /Prev left unread' is closer.
+
+Evidence: Probe: ZzPrevBeforeParted in W/r12wip/src-texts/ZzR12SrcTexts.cs.txt. Output: W/r12wip/src-texts/head-prevfirst.txt. Stream 7 is rewritten with '/Prev 0000002123 ' moved before '/Type /XRef' (same length, so no offset moves), with MaxTrailerLength = TypeAt + 17 + window:
+- Windows 1-4: '/Prev NotFound Unknown off=358', [xref.offset-adjusted@1944, xref.hybrid-stream-lost@1944, limit.trailer@358, xref.section-missing@358], with no Warning.
+- Window 5: 'Malformed Stream cut=True', chainStopped=True.
+- Default limits: stream 7 is read, and then stream 11 through its /Prev.
+
+Fix: Say 'its /Prev, wherever it lies, not followed' (or 'left unread by the chain'), in place of 'past the cut', in the three src places and the pages.
+
+Verdict: The finding holds. It is new text from this round, and it is slightly wider than the reviewer found. The parser keeps every entry it read before the cut (#279). So when /Prev is written before /Type, it is parsed, and the chain does not follow it only because the dictionary reads as another type. ISO 32000 sets no key order, and qpdf writes dictionary keys sorted (/Index, /Prev, /Size, /Type, /W), so /Prev before /Type is a common layout. The code sets _guardMayHideLink without looking at /Prev at all (cutByGuard plus a /Type that MayBePartedXRef accepts), which is correct. Only the reason the texts give, '/Prev past the cut unread', is too narrow: in that layout the /Prev is neither past the cut nor unread. The rule each text states is still correct, which keeps this at nit. Nothing already holds this: #279's comment says 'the /Prev the cut left unread' about its own shape, where /Prev follows /Type, and decisions.md, r11-findings.md, r11-fix2-result.json and residuals-impl.md never discuss /Prev before /Type. The wording came in with 7b1de15, 1c1d270 and 1cd2216, so main does not have it. The reviewer listed some of the places but missed lazy-reading.md:229, reader-limits.md:67 and :249, and threat-model.md:426.
+
+Verdict evidence: Rebuilt on origin/ccr-6d6c0ee6-dqm4lm-188 at 1cd2216 (Release, DOTNET_GCHeapHardLimit set). Probe: W/r12wip/verify-prev-past-the-cut-overstated/ZzVerifyPrevFirst.cs.txt. Outputs: branch-parser.txt and branch-prevfirst.txt in the same folder.
+(1) The parser, given a cut (endsData: false), keeps /Prev:
+'<< /Prev 0000002123 /Type /XRe' -> PdfDictionary truncated=True [/Prev=2123] [/Type=/XRe]
+The same holds for '/X' and '/'.
+(2) HybridFiles.PassingOverAStreamAnOlderStreamWithAPaddedTypeNames("stream 6", true), with stream 7's keys in three layouts: as built, /Prev first (the reviewer's shape), and sorted as qpdf writes them ('/Index [1 3 8 1] /Prev 0000002123 /Size 9 /Type /XRef /W [1 4 2] ', same length). MaxTrailerLength = value offset + k. Results are the same in all three layouts:
+- default: '/Prev Read Stream off=358', then '/Prev Read Stream off=2123'.
+- k=1..4 ('/Type /' to '/Type /XRe'): '/Prev NotFound Unknown off=358 cut=False', with [xref.offset-adjusted@1944, xref.hybrid-stream-lost@1944, limit.trailer@358, xref.section-missing@358] and chainStopped=False. Offset 2123 is never read, although in the /Prev-first and sorted layouts its /Prev sits before the cut and was parsed.
+- k=0: 'Malformed Unknown cut=True', chainStopped=True.
+- k=5: 'Malformed Stream cut=True', chainStopped=True.
+Texts saying '/Prev past the cut unread' (or 'hidden the /Prev past it'): PdfFileReader.cs:671 (_guardMayHideLink), :3746-3748 (ReportStreamsPassedOver remarks), :6523 (comment at the assignment); diagnostics.md:116 and :142; reader-limits.md:21, :67 and :249; lazy-reading.md:229; threat-model.md:426, :439 and :446. PdfDiagnosticCodes.cs:134-135 ('its /Prev left unread') and PdfFileReader.cs:3727 ('its /Prev unread') can be read as 'not followed by the chain'.
+fix: A wording change, no maintainer decision needed. In each place, replace 'its /Prev past the cut unread' with 'its /Prev not followed, whether the cut left it unread or it came before the cut'. A shorter form: 'its /Prev, read before the cut or not, left unfollowed'. In threat-model.md:446, write 'hidden the /Prev past it' as 'hidden its /Prev, which the chain does not follow, wherever it lies'. The places: PdfFileReader.cs:671, :3747-3748 and :6523; diagnostics.md:116 and :142; reader-limits.md:21, :67 and :249; lazy-reading.md:229; threat-model.md:426, :439 and :446. Optionally, in PdfDiagnosticCodes.cs:135 and PdfFileReader.cs:3727, make 'left unread'/'unread' into 'not followed' to match. A test is optional: a row of the 7b1de15 theory with /Prev written before /Type, holding that no Warning is made there either.
+needs_maintainer: False
+
+## 5. escaped-xref-parted-mid-escape-keeps-warning — minor → confirmed minor (guard-flag (7b1de15, 5fb9444, )
+Location: src/AdCodicem.Pdf/IO/PdfFileReader.cs:7606 (MayBePartedXRef). Texts that list only 'the empty name, X, XR or XRe': PdfDiagnosticCodes.cs:130-134, PdfFileReader.cs:664-672, :3724-3727, :3745-3749, :6520-6527, docs/website/docs/reference/diagnostics.md:116 and :142, concepts/lazy-reading.md:226-230, reference/reader-limits.md:62-67 and :243-249, docs/threat-model.md:425-427 and :446
+
+Claim: R11c's flag misses an /XRef written with #-escapes and cut inside an escape. PdfStringDecoder.DecodeName keeps an escape that the window's edge left incomplete as the bytes it reads, with no report because the token is at the edge. So '/X#52ef' cut at '/X#' or '/X#5' reads as the name 'X#' or 'X#5'; likewise '/#58Ref' gives '#' or '#5', '/XR#65f' gives 'XR#' or 'XR#6', and '/XRe#66' gives 'XRe#' or 'XRe#6'. XRef does not begin with any of these, so MayBePartedXRef is false and no flag is set. The section reads as NotFound and its /Prev goes unread. xref.stream-passed-over is then made for the stream that this /Prev reaches at default limits: the guard's cut is laid on the file, which is the case round 11's [2] fix set out to close. A cut at '/X#52', which decodes to XR, does set the flag. The texts say the empty name, X, XR or XRe are what the cut may leave of /XRef, and that list is incomplete.
+
+Evidence: Probe W/r12wip/guard-flag/ZzGfTargeted.cs.txt (ZzGfEscapes), on head's HybridFiles.PassingOverAStreamAnOlderStreamWithAPaddedTypeNames(near, true, type). Output: W/r12wip/guard-flag/targeted-escapes.txt. Shape '/X#52ef', near 'stream 6': typeAt=136, oldest=358, own=2125, taken=1946.
+- Default: 'sec: startxref Read 2942 | /XRefStm NamedAgain 1946 | /Prev Relocated 1946 | /Prev Read 358 | /Prev Read 2125', diag 'xref.offset-adjusted@1946, xref.hybrid-stream-lost@1946'.
+- MaxTrailerLength TypeAt+3 ('/X#') and TypeAt+4 ('/X#5'): '/Prev NotFound 358', diag 'xref.offset-adjusted@1946, xref.hybrid-stream-lost@1946, limit.trailer@358, xref.section-missing@358, xref.stream-passed-over@2125', rules 'Error:xref.section-not-found, Warning:xref.section-shifted, Error:xref.hybrid-stream-wrong'.
+- TypeAt+2 ('/X') and TypeAt+5 ('/X#52'): the same, without the Warning.
+Same result for '/#58Ref' at +2 and +3, '/XR#65f' at +4 and +5, '/XRe#66' at +5 and +6, and for near 'a table' (Warning at 3137).
+Differential with seed 202611100949 (W/r12wip/guard-flag/diff/guardmade-head.txt): on 1cd2216 these windows make the Warning where the default block does not, for /X#52ef, /#58Ref, /XR#65f, /XRe#66 and /X#52e#66 (which also fails at '/X#52e#' and '/X#52e#6'). 79c6a7f makes the same Warnings; main has no such code.
+Prototype W/r12wip/guard-flag/proto-fixA-escapes.diff (strip a trailing '#' or '#h' before the prefix test): CrossReferenceChainTests 788/788 pass. Over the 6,982 blocks the only change is xref.stream-passed-over withheld in 110 blocks (diff/out-fixa.txt against diff/out-head.txt), and targeted-fixa-escapes.txt has no Warning left.
+
+Fix: In MayBePartedXRef, drop an escape the cut may have parted before the prefix test: a trailing '#', or '#' followed by one hexadecimal digit. These are the bytes DecodeName keeps as written for an incomplete escape (prototype proto-fixA-escapes.diff). Add rows to the parted-type theory with type '/X#52ef' at windows 3 and 4 and '/#58Ref' at windows 2 and 3 (no Warning; they fail on 1cd2216), and keep '/X#52ef' at 2 and 5 as controls. Say 'or a #xx escape the cut parted inside one of them' wherever the texts list 'the empty name, X, XR or XRe'. The wider condition in the next finding also covers this case.
+
+Verdict: The finding holds. I rebuilt it on 1cd2216 with a probe of my own, and the mechanism matches the code. When the window's edge cuts a name inside a #xx escape, PdfStringDecoder.DecodeName (PdfStringDecoder.cs:161-207) keeps the '#' and any hex digit after it as plain bytes. PdfObjectParser.ReadName (:1463-1478) makes no report for this, because the token is at the window edge (AtWindowEdge). So '/X#52ef' cut after '/X#' or '/X#5' reads as the name 'X#' or 'X#5'. MayBePartedXRef (PdfFileReader.cs:7606-7607) asks whether XRef begins with that name, which it does not. So the flag at :6528-6532 is never set. The section reads as NotFound, not cut, and ChainStoppedByGuard stays false. Its /Prev lies past the cut and goes unread. ReportStreamsPassedOver then makes xref.stream-passed-over for stream 11. At default limits the chain reads that stream through the very /Prev the cut hid. This is round 11's [2]: a guard's cut blamed on the file, which R11c was meant to close. The brief accepts the parted /Type case only with the Warning withheld. Here the Warning is made, so the accepted item does not cover this case. No earlier round's findings or result files hold it (I grepped for escaped spellings). #279's round 11 comment lists only '/', '/X', '/XR' and '/XRe' as what the cut leaves, so its measured shapes miss this case too.
+
+Three limits on its scope, none of which removes it:
+(1) It is no worse than 79c6a7f. That commit has no MayBePartedXRef (git grep finds none), so every parted /Type made the Warning there. main has no xref.stream-passed-over code at all. The section-missing, the rebuild and Error xref.section-not-found are #279's class, which main shares. The batch's only new consequence is the one Warning, as in [2].
+(2) The file must write /XRef with #xx escapes of regular characters. ISO 32000 7.3.5 allows this, but files rarely do it. Each escape opens two windows (after the '#', and after the first hex digit). They open only under a lowered MaxTrailerLength, or in a dictionary over 64 KB whose /Type falls at that edge.
+(3) The texts state the coded rule correctly ('a name XRef begins with and that is shorter'). What is wrong is that they present the empty name, X, XR and XRe as what the cut may leave of /XRef, and that list is incomplete. The general clause in PdfDiagnosticCodes.cs:126-127 ('a section it cut before the section said what it is') also fails for this case, as it did for [2].
+
+The severity stays minor, as for [2]: one Warning beside limit.trailer, on top of an Error that main already lays on the file.
+
+Verdict evidence: Probe: W/r12wip/verify-escaped-xref-parted-mid-escape-keeps-warning/ZzVerifyEscPart.cs.txt (my own, run as tests/AdCodicem.Pdf.Tests/ZzVerifyEscPart.cs, now removed). It builds files with head's HybridFiles.PassingOverAStreamAnOlderStreamWithAPaddedTypeNames(near, true, type, padding). It covers both paddings ('spaces' and 'a string'), both nears ('stream 6' and 'a table'), and the types /XRef, /X, /X#52ef, /#58Ref, /XR#65f, /XRe#66 and /#58#52#65#66, at every window TypeAt+0 to TypeAt+len+1. Output on 1cd2216: head-1cd2216.txt, with 64 lines that carry the Warning.
+
+Example: spaces, near stream 6, /X#52ef (typeAt=136, oldest=358, own=2125, taken=1946).
+- Default: 'startxref Read 2942 | /XRefStm NamedAgain 1946 | /Prev Relocated 1946 | /Prev Read 358 | /Prev Read 2125 || xref.offset-adjusted@1946, xref.hybrid-stream-lost@1946'. Stream 11 is reached through stream 7's /Prev.
+- k=3 '/X#' and k=4 '/X#5': '... /Prev NotFound 358 || xref.offset-adjusted@1946, xref.hybrid-stream-lost@1946, limit.trailer@358, xref.section-missing@358, xref.stream-passed-over@2125 || stopped=False', and the rules 'Error:xref.section-not-found, Warning:xref.section-shifted, Error:xref.hybrid-stream-wrong'. No syntax.name-escape-invalid is reported.
+- k=1, 2, 5 ('/X#52', which decodes to XR) and 6: the same, but without the Warning.
+- k=7 and 8: 'Malformed 358 cut', stopped=True.
+
+Near a table, the Warning falls at 3137 for k=3 and 4. The other spellings make the Warning at:
+- /#58Ref: k=2 and 3;
+- /XR#65f: k=4 and 5;
+- /XRe#66: k=5 and 6;
+- /#58#52#65#66: k=2, 3, 5, 6, 8, 9, 11 and 12.
+Every one of these appears with both paddings and both nears.
+
+Prototype: W/r12wip/guard-flag/proto-fixA-escapes.diff, which drops a trailing '#' or '#h' before the prefix test. I applied it, rebuilt and ran the probe (protoA.txt): 0 Warnings. Compared with diff --strip-trailing-cr, the output is identical to head's with the Warnings removed. The parted-type theory A_stream_passed_over_near_a_hybrid_table_s_prev_is_reported_where_no_link_the_chain_read_reaches_it_and_no_guard_cut_a_section_the_chain_names_before_its_type_is_known_not_to_be_xref and my probe: 31/31 pass. The prototype was then reverted. 79c6a7f has no MayBePartedXRef (git grep shows none; 7b1de15 added it), and 21a0298 has no stream-passed-over code (git grep counts 0).
+fix: Extend the decided rule in this batch (round 11's [2]: withhold wherever the cut may have parted /XRef). This needs no new maintainer decision.
+
+Code: in MayBePartedXRef (PdfFileReader.cs:7606), before the prefix test, drop a trailing '#', or a '#' followed by one hexadecimal digit. These are exactly the bytes DecodeName keeps for an escape the window's edge left incomplete, and only the name's end can be cut. The prototype proto-fixA-escapes.diff does this. A whole /X# or /X#5 with the cut past it then withholds too. That is the same not-told-apart class 508047e accepted for /X.
+
+Tests: add rows to the parted-type theory:
+- '/X#52ef' at windows 3 and 4, and '/#58Ref' at 2 and 3: no Warning. They fail on 1cd2216.
+- Controls with no Warning, for the record: '/X#52ef' at 5 ('/X#52', which decodes to XR) and at 2.
+- For ADR 53's hex-digit and trailing-'#' arms, a whole '/X#g' with the cut past it: still reported, which kills a dropped IsAsciiHexDigit.
+
+Texts: wherever the list 'the empty name, X, XR or XRe' appears, add 'or one of these followed by what the cut left of a #xx escape, a number sign or a number sign and one hexadecimal digit'. Those places are:
+- PdfDiagnosticCodes.cs:130-134;
+- PdfFileReader.cs:664-672, :3724-3727, :3745-3749, :6520-6527 and :7601-7603;
+- diagnostics.md:116 and :142;
+- lazy-reading.md:226-230;
+- reader-limits.md:62-67 and :243-249;
+- threat-model.md:425-427 and :446.
+
+Tracking: add the escaped shape to #279's closing rows, since its round 11 comment lists only '/', '/X', '/XR' and '/XRe'. If #279 drops a name that reaches the edge, it closes this case too. If #279 keeps the name but reads it as the guard's, only for a prefix of XRef, the escaped case would stay open.
+
+The wider withholding the reviewer's sibling finding proposes (any cut dictionary at a chain-named offset) also covers this case, but that one is a design choice for the maintainer. The narrow fix stands on its own.
+needs_maintainer: False
+
+## 6. flag-misses-cut-before-w-of-other-type-or-non-name-type — minor → narrowed minor (guard-flag (7b1de15, 5fb9444, )
+Location: tests/AdCodicem.Pdf.Tests/CrossReferenceChainTests.cs:7056-7058 (claims 'the C of /Catalog, or /Catalog whole — hides no such link'); src/AdCodicem.Pdf/IO/PdfFileReader.cs:6528-6532 (the flag's condition), :660-672 (flag doc: 'reads as one of another type, which holds no section'), :6537 (main's '!cut.ContainsKey(PdfName.Type)')
+
+Claim: At an offset the chain names, DeclaresCrossReferenceStream accepts any /W, whatever the /Type. #263 reads a typed stream with a /W as the section where it reads, and the test comment itself says a /Type /X stream read whole is the section. So when MaxTrailerLength cuts the dictionary past its /Type but before its /W, the guard may hide the very link the chain follows at default limits. Three kinds of /Type hit this: a name XRef does not begin with (/Catalog, /ObjStm, /XRefStm or /XRefX whole, '/x#52ef'), a /Type that is not a name ((XRef), [/XRef], 5), and a /Type given twice whose later /XRef lies past the cut (the earlier value is kept). In each case the flag is not set and xref.stream-passed-over is made beside limit.trailer, though default limits read the section and reach the stream through its /Prev. For a named other type this follows #263's 'the cut takes it for none' (PdfFileReader.cs:6567-6570, the limit.trailer row), but the test comment's reason ('hides no such link') is false. Every /Catalog row of the theory has oldestNamesOwn false, so none exposes it. For a non-name /Type, the reader's own rule (DeclaresOnlyCrossReferenceStream) says such a /Type declares nothing, yet the section is read as 'not a cross-reference stream'. The section-missing and Error parts are main's (same condition at main PdfFileReader.cs:3999); the Warning is new in this batch.
+
+Evidence: Probe W/r12wip/guard-flag/ZzGfTargeted.cs.txt (ZzGfOtherTypes). Output: W/r12wip/guard-flag/targeted-othertypes.txt.
+- '/Catalog', oldestNamesOwn True: default gives 'sec: ... /Prev Relocated 1947 | /Prev Read 358 | /Prev Read 2126', diag 'xref.offset-adjusted@1947, xref.hybrid-stream-lost@1947'. MaxTrailerLength TypeAt+2 ('/C'), +8 ('/Catalog'), +9, +17 and +20 ('/Catalog /Size 9 /W ') give '/Prev NotFound 358', diag '..., limit.trailer@358, xref.section-missing@358, xref.stream-passed-over@2126', rules 'Error:xref.section-not-found, ...'.
+- '(XRef)': default 'Read 358 | Read 2124'; +2 to +18 give NotFound with Warning@2124. '/ObjStm' behaves the same.
+- Differential, seed 202611100949 (W/r12wip/guard-flag/diff/guardmade-head.txt): p0027 ('/Foo /Type /XRef') reads 358 and 2134 at default; at trailer146, where the second /Type's value is cut and /Foo is kept, it gives NotFound 358 and Warning@2134. p0010 is a five-section chain (newest, table, stream 7 /Catalog, table Z, own): default reads 1779, 228 and 4553; trailer144 gives NotFound 1779, xref.section-missing and Warning@4553. 83 such classes remain after the escape fix.
+- Prototype W/r12wip/guard-flag/proto-fixAB-any-cut-dictionary.diff ('!candidate && cutByGuard && value is PdfDictionary' sets the flag): no Warning the guard causes is left anywhere in the differential (guardmade lists none). It withholds the Warning in 1,164 blocks and changes nothing else. Only the three /Catalog rows of the parted-type theory (oldestNamesOwn false, windows 2 and 12) flip (chain-fixab.log: 785/788).
+
+Fix: Either (preferred; it widens R11c's decided shape, so put it to the maintainer if the triage does not take it under round 9's 'may hide a link' rule): set the flag for every dictionary a guard cut at an offset the chain names, which the reading does not take as the guard's section. This is 'if (!candidate && cutByGuard && value is PdfDictionary)'; MayBePartedXRef then goes, and the escape finding is covered too. Flip the three /Catalog rows, add rows with oldestNamesOwn true for /Catalog, (XRef) and a /Type given twice, and say in the texts 'a dictionary it cut there that it does not take for its section'. Or: keep the prefix rule, and (1) correct the test comment and the flag doc. The Warning stands because #263 takes a cut dictionary of another type for no section, even though read whole with its /W it would be the section, and not because no link is hidden. Pin that with a /Catalog row with oldestNamesOwn true. (2) Treat a non-name /Type as not yet said: 'cut.GetRaw(PdfName.Type) is not PdfName' at :6537 gives the guard's reading, or at least set the flag there.
+
+Verdict: The finding holds. I rebuilt it on 1cd2216 with my own sweep, which tries every MaxTrailerLength window over stream 7's dictionary for eight /Type values.
+
+**The core claim.** At an offset the chain names, DeclaresCrossReferenceStream (PdfFileReader.cs:7294) takes any stream that has a /W, whatever its /Type. NoSectionWhereAnotherType (:4656, #263) says such a stream "is the section when it reads as one". So at default limits, a /Type /Catalog or /ObjStm stream 7 that has a /W is read as the section, and its /Prev reaches stream 11. When MaxTrailerLength cuts that dictionary, the reading takes it for none: the :6537 condition, which main has at :3999, and :6567-6570 (#263). The flag at :6528 is set only for names XRef begins with (MayBePartedXRef). So xref.stream-passed-over is made beside limit.trailer for a stream that default limits reach, through a link the guard hid.
+
+That Warning breaks round 9's [2]/[11] rule ("not made where a guard ... may hide a link ... a trailer cut hiding a link"). It also contradicts the reason the batch's own #279 comment gives for withholding /X ("default limits read stream 7 as a section, so the /Prev the cut hides is a link the chain follows"), which holds for any /Type. The test comment at CrossReferenceChainTests.cs:7056-7058 ("the C of /Catalog, or /Catalog whole — hides no such link") is therefore false. Every /Catalog row of the theory has oldestNamesOwn false, so none of them shows it.
+
+**Not accepted or filed elsewhere.**
+- The brief accepts only the parted-prefix shape (section-missing, Error and rebuild kept, Warning withheld).
+- #279 is about parted tokens, and its closing does not cover a /Type written whole.
+- #263 is closed, and it settles the section state, not this new Warning.
+- main has no xref.stream-passed-over at all (`git grep` on 21a0298 finds none), so the Warning is the batch's. Section-missing, Error and rebuild are main's condition.
+
+**Narrowed and adjusted:**
+1. For a named other type, the window is wider than "past /Type, before /W". The Warning is made from the type's second byte to the dictionary's end. That includes windows that hold /W [1 4 2] and even the '/Prev 0000002126' that names the stream reported, because #263 takes a cut dictionary of another type, its data hidden, for no section.
+2. For a /Type that is not a name, the window is exactly from the value to the start of /W's value. Past that, DeclaresOnlyCrossReferenceStream makes the section the guard's. This part has the same cause (:6537, main's condition) as the sibling finding nonname-type-cut-before-w-reported and should be merged with it.
+3. A /Type given twice: the parser keeps the last value ("the last value given is kept"), so the stream reads as /Type /XRef at default. The cut leaves only the earlier /Foo. The claim holds as worded only in that the later value lies past the cut.
+4. The flag's doc at :660-672 describes the prefix rule as coded and is not false. The texts that misstate the code are:
+   - the test comment;
+   - the general clause in PdfDiagnosticCodes.cs:126-129, in ReportStreamsPassedOver's remark at :3741-3745 ("a trailer it cut ... may hide the link"), in lazy-reading.md:222-226 and in diagnostics.md:116. Each says nothing is reported where a limit cut a trailer and left part of the chain unread.
+
+**Severity.** Minor, the same class and weight as round 11's [2]. It is one Warning blaming the file for a guard's cut, on top of main's section-missing, Error and rebuild. The shape is pathological: a stream typed other than /XRef (or with a non-name or repeated /Type) carrying a /W at a chain-named offset, with MaxTrailerLength lowered or a dictionary past 64 KB. Two texts are also false.
+
+Verdict evidence: Probe: W/r12wip/verify-flag-misses-cut-before-w-of-other-type-or-non-name-type/ZzVerifyGfOther.cs.txt (ZzVgfSweep, ZzVgfDuplicateKey). It uses HybridFiles.PassingOverAStreamAnOlderStreamWithAPaddedTypeNames and runs each window from MaxTrailerLength typeAt+1 to past '>>'. Outputs are head-sweep.txt, head-summary.txt (made by summarize.py) and head-dupkey.txt in the same folder. Run at 1cd2216, Release.
+
+**/Catalog, near stream 6, oldestNamesOwn True**
+- Default: s7=Read. Diagnostics xref.offset-adjusted@1947, xref.hybrid-stream-lost@1947. o10=ten. No Warning.
+- +1 '/': NotFound, no Warning (the flag works).
+- +2 '/C' to +75 '/Catalog /Size 9 /W [1 4 2] /Index [1 3 8 1] /Prev 0000002126 /Length 28 >>': s7=NotFound stop=0, fault 'holds object 7, which is not a cross-reference stream'. Diagnostics ..., limit.trailer@358, xref.section-missing@358, xref.stream-passed-over@2126; rep=1. Rules: Error:xref.section-not-found.
+- /ObjStm gives the same from +2 to +74. Near 'a table', /Catalog gives the same with the Warning at 3138.
+
+**/Type values that are not names**
+- (XRef): +1 '(' to +18 '(XRef) /Size 9 /W ' give NotFound and Warning@2124. +19 '(XRef) /Size 9 /W [' onward gives Malformed/cut, stop=1, no Warning.
+- [/XRef] behaves the same from +1 to +19, and 5 from +1 to +13.
+
+**/Type given twice ('/Foo /Type /XRef')**
+- At default, obj7 /Type is /XRef and syntax.key-repeated@499 is reported; no Warning when oldestNamesOwn is True.
+- +2 '/F' to +11 '/Foo /Type ': NotFound, Warning@2134.
+- +12 to +15 (a parted second value): flag set, no Warning.
+- +16 onward: Malformed/cut.
+
+**Control /X:** +1 to +69 give NotFound with no Warning, as 508047e intends.
+
+**Code facts**
+- `git grep stream-passed-over 21a0298 -- src` finds nothing.
+- main's PdfFileReader.cs:3999 has the same `!cut.ContainsKey(PdfName.Type)` test as :6537.
+
+**Prototype:** the reviewer's proto-fixAB-any-cut-dictionary.diff (`!candidate && cutByGuard && value is PdfDictionary`), applied in my worktree and reverted after.
+- Sweep (fix/head-sweep.txt, fix/fix-summary.txt): no Warning in any guarded window. The Warning remains only at default where oldestNamesOwn is False, as before.
+- CrossReferenceChainTests: 785 passed, 3 failed. The failures are the three /Catalog oldestNamesOwn-false rows (stream 6 at windows 2 and 12, a table at window 2).
+- The worktree is left clean, and no remote corpus was copied.
+fix: Code, applying round 9's [2]/[11] rule and ADR 34:
+- At PdfFileReader.cs:6528, set _guardMayHideLink for every dictionary a guard cut at an offset the chain names: `if (!candidate && cutByGuard && value is PdfDictionary)`. Drop MayBePartedXRef.
+- Why: at such an offset any /W makes a stream of any /Type the section (#263). So a cut dictionary the reading does not take as the guard's may hide a /Prev that the chain follows at default limits. Where the section is the guard's, ChainStoppedByGuard already holds and the flag adds nothing.
+- Cost: a dictionary of another type cut past its '>>' with no /W hides nothing, yet it still withholds the Warning across the document. This matches R11-Q1's document-wide 'may hide' reach.
+- This also covers, for the Warning only, the sibling findings: a non-name /Type and an escaped or parted name.
+
+Tests:
+- Flip the three /Catalog rows with oldestNamesOwn false to reported false.
+- Add rows with oldestNamesOwn true, each expecting no Warning and limit.trailer kept:
+  - /Catalog at windows 2, 9, 28 (past /W) and 62 (past the /Prev);
+  - (XRef) and 5 before /W;
+  - '/Foo /Type /XRef' at 2 and 11.
+- Keep the default rows unchanged.
+
+Texts: say "a dictionary it cut at an offset the chain names that is not read as the guard's" in place of the prefix wording or the 'hides no such link' reason, in:
+- the test comment at :7046-7062;
+- the flag's doc at :659-676 and the comment at :6520-6527;
+- PdfDiagnosticCodes.XRefStreamPassedOver :129-135;
+- ReportStreamsPassedOver's summary and remark at :3721-3749;
+- lazy-reading.md:226-230, diagnostics.md:116, reader-limits.md:66 and :246, threat-model.md:425-427;
+- the control sentence of the batch's #279 comment.
+
+Related: merge this with nonname-type-cut-before-w-reported. Its change to the section state (`cut.GetRaw(PdfName.Type) is not PdfName` at :6537, the guard's reading) alters main's behavior and is optional here.
+
+If the triage keeps the prefix rule instead:
+- correct the test comment and the rule texts. The Warning stands because #263 takes a cut dictionary of another type, or one with a repeated or non-name /Type, for no section, even though read whole with its /W it is the section and its /Prev is followed. It does not stand because no link is hidden.
+- pin that with a /Catalog row with oldestNamesOwn true.
+
+That leaves a Warning that goes against round 9's rule, so it would be the maintainer's call. The recommended fix needs no new decision.
+needs_maintainer: False
+
+## 7. cut-value-guard-position-observable-unpinned — minor → narrowed nit (guards-diagnostics: 1f0a412, 3)
+Location: tests/AdCodicem.Pdf.Tests/GuardCutValueTests.cs:3984 (and src/AdCodicem.Pdf/IO/PdfFileReader.cs:6653; R11b's [11] deviation; 1f0a412's body)
+
+Claim: R11b's deviation and 1f0a412's body both say the same thing about the cut-value path: the /Prev's own reading meets the guard next with nothing reported between, so the report lands in the same place whichever rollback the look makes. That is why the cut-value theory pins only LimitsReached and the code list of rows built without a dictionary fault. The premise is false. The /Prev's own reading reports what reading object 4's dictionary meets before it decodes beside the cut. With plain RollBack(besideCut) at the check's cut-value path, the guard moves after that report. reader-limits.md:208-215 and threat-model.md:439 promise the guard at the look, ahead of later reports, but no row checks that order on this path. The swap is still killed, by LimitsReached alone.
+
+Evidence: Generator W/r12wip/guards-diagnostics/ZzGdGenTests.cs.txt; reader ZzGdReadTests.cs.txt; outputs in W/r12wip/guards-diagnostics/files (W = C:/Users/clemm/AppData/Local/Temp/claude/7278f9d03177d71e/898783fc-049f-469a-ab79-dfd299ad558e/scratchpad/cloud).
+The file k_flate_cutw.pdf is HybridFiles.PrevNamingAStreamBesideTheOldestTable("/Q 1 /Q 2 ", padding: 4000, filter: "/FlateDecode", cut: "/W", deflated: true), a repeated key in object 4's dictionary. It is read under MaxObjectLength 1024 and MaxDecodedStreamLength 1000.
+- 1cd2216 (read-head.txt) and 79c6a7f (read-79c.txt): 'open [limit.decoded-stream@1780, syntax.key-repeated@1691, limit.object@3054] C=3 S=0 L=3'.
+- 79c6a7f with `_diagnostics.RollBack(besideCut);` at its :6530, the same line as head :6653 (read-79c-swapcut.txt): 'open [syntax.key-repeated@1691, limit.decoded-stream@1780, limit.object@3054] C=3 S=0 L=2'.
+- main (read-main.txt): '[syntax.key-repeated@1691, limit.decoded-stream@1780, xref.offset-adjusted@1675, limit.object@3054]'.
+The theory's rows have no dictionary report, so their code order is the same under the swap.
+
+Fix: Add the row to the cut-value theory, or as a sibling: object 4 untyped, type argument "/Q 1 /Q 2 ", /W cut, /FlateDecode deflated, MaxObjectLength 1024 and MaxDecodedStreamLength 1000. Exact codes: [limit.decoded-stream, syntax.key-repeated, limit.object], LimitsReached 3. It fails under the swap on the order as well as the count. Record in status.md that 1f0a412's sentence ('nothing reported between, so the report stands in the same place whichever rollback the look makes') holds only where the /Prev's own reading reports nothing before it decodes.
+
+Verdict: The behavior reproduces exactly, and so does the gap: no row puts a report between the look and the guard on the cut-value path. But the finding is wider than its evidence in three places.
+
+(1) The false general premise is R11b's stage deviation, which lives outside the repository: "there is no position gap for the decoding guards there", "no order gap exists on that path". The repository texts are scoped. 1f0a412's body says "A second theory reads the same streams beside a value MaxObjectLength cut: there the /Prev's own reading meets the guard next, with nothing reported between". "The same streams" are the builder's streams, whose dictionaries have no fault. The comment at GuardCutValueTests.cs:3994 speaks of the same files. Both are true for what they describe, so no status.md record of a false commit body is owed.
+
+(2) "The swap is still killed, by LimitsReached alone" is inaccurate. Under the swap, GuardCutValueTests gives 3 failures. One of them is the cut-value MaxStreamLength row (type "", "/Foo", cut "/W", 50), which fails on its code list: limit.stream-length is gone.
+
+(3) No first-order mutant at :6653 survives. RollBackBesideLimits keeps a guard's report and its count together. RollBack drops both. Removing the call keeps both. So LimitsReached 3 implies the look's report stood. The main-path order rows, together with DiagnosticsTests, pin that RollBackBesideLimits keeps the report.
+
+What remains: the order reader-limits.md:211-214 and threat-model.md:439 promise for a decoding guard beside a cut value holds on head, and the suite holds it, but only indirectly. No row shows it where it differs from the order after a swap. That is worth one cheap row, not a defect.
+
+Verdict evidence: V = C:/Users/clemm/AppData/Local/Temp/claude/7278f9d03177d71e/898783fc-049f-469a-ab79-dfd299ad558e/scratchpad/cloud/r12wip/verify-cut-value-guard-position-observable-unpinned. The probe is V/ZzVcvTests.cs.txt (facts ZzVcv, ZzVcvProposedRow, ZzVcvProposedRowOrderOnly). Built Release at 1cd2216 in my worktree, 0 warnings.
+
+Head (V/out-head.txt). Every row is PrevNamingAStreamBesideTheOldestTable under MaxObjectLength 1024, with MaxDecodedStreamLength 1000 (Flate rows) or MaxFilterChainLength 1 (hex rows).
+- The theory's untyped /W row: [limit.decoded-stream@1770, limit.object@3044] L=3.
+- rep-u-flate-W ("/Q 1 /Q 2 ", /FlateDecode, cut /W): [limit.decoded-stream@1780, syntax.key-repeated@1691, limit.object@3054] L=3, identical to the reviewer's output.
+- The same shape holds for the /Size and /Index cuts and for both hex rows. For example, rep-u-hex-Size gives [limit.filter-chain@1794, syntax.key-repeated@1691, limit.object@3466] L=3.
+- Typed control rep-t-flate-W: [xref.hybrid-stream-lost, syntax.key-repeated@1703, limit.decoded-stream@1792, limit.object, xref.rebuilt, object.redefined]. The look does not decode a typed stream, as the pages say.
+
+Swap: `_diagnostics.RollBack(besideCut);` at PdfFileReader.cs:6653 (V/swap.diff, V/out-swap.txt).
+- Each repeated-key row reorders: [syntax.key-repeated@1691, limit.decoded-stream@1780, limit.object@3054] L=2.
+- Under DiagnosticCapacity 1, the swap keeps [syntax.key-repeated] where head keeps [limit.decoded-stream].
+- The theory's rows keep their order, and only L changes (3 to 2).
+- ZzVcvProposedRow and ZzVcvProposedRowOrderOnly pass on head. Under the swap both fail on order: '{"syntax.key-repeated", "limit.decoded-stream", "limit.object"} differs at index 0'.
+
+The existing GuardCutValueTests class under the swap: 382 tests, 3 failed.
+- The theory's untyped rows (limit.filter-chain /Size; limit.decoded-stream /W), on LimitsReached.
+- A_guard_reached_decoding_a_stream_a_prev_names_is_reported_once_whatever_the_look_at_the_prev_s_place_drops(type "", filter "/Foo", cut "/W", 50), on its code list: '... contains 1 item(s) less', the limit.stream-length report lost.
+- A_guard_reached_again (cut /Size) passes under the swap. There the search near the /XRefStm decodes object 4 first, so it cannot tell the order.
+
+Worktree restored (src unchanged, probe removed).
+fix: Optional, tests only, no source change. Add the reviewer's row, as a sibling of the cut-value theory or as rows of a theory that takes the dictionary's text:
+- Object 4 untyped with the type argument "/Q 1 /Q 2 ", /FlateDecode, deflated, padding 4000, cut "/W", under MaxObjectLength 1024 and MaxDecodedStreamLength 1000. Exact codes [limit.decoded-stream, syntax.key-repeated, limit.object], LimitsReached 3.
+- Optionally its MaxFilterChainLength twin: "[/ASCIIHexDecode /ASCIIHexDecode]", hexed 2, padding 100, cut "/Size", MaxFilterChainLength 1. Exact codes [limit.filter-chain, syntax.key-repeated, limit.object], LimitsReached 3.
+
+Both pass on head and fail under the RollBack swap at :6653 on order alone. The new row's comment should say that the /Prev's own reading reports the repeated key before it decodes beside the cut, so the look's guard stands ahead of it, and that dropped with the rest, the guard came after it. Leave the existing comment at :3994 as is (it describes its own files), or add "where that reading reports nothing before it decodes".
+
+No status.md record of a false commit body is owed: 1f0a412's sentence is scoped to the theory's streams and true for them. Record only, in the batch's notes, that R11b's deviation generalized it to the whole path wrongly. Not a maintainer's choice.
+needs_maintainer: False
+
+## 8. capacity-theory-name-only-where-false — minor → confirmed minor (guards-diagnostics: 1f0a412, 3)
+Location: tests/AdCodicem.Pdf.Tests/GuardCutValueTests.cs:4038 (cited at docs/threat-model.md:572)
+
+Claim: The test name A_guard_a_decoding_meets_again_is_counted_left_out_only_where_that_decoding_made_as_many_reports_as_the_capacity_before_it states a necessary condition the code does not keep. Take a guard whose report the capacity left out, because the document was full when it was first met. It is counted left out again at every later meeting, whatever that decoding made before it. a0e94ca's RollBackBesideLimits summary and the #144 row both say so. The theory's own capacity-1 row is such a guard ('the guard's report was never held'). It satisfies the name only because its decoding also happens to make one report before the guard. The 'only where' holds just for a guard whose report the document holds, which the name leaves out.
+
+Evidence: File u_flate_rep2.pdf: HybridFiles.PrevNamingAStreamBesideTheOldestTable("", padding: 4000, filter: "/FlateDecode", deflated: true), with the newest trailer's /Size written twice more, so two syntax.key-repeated reports come before anything else. Generator and reader as in the first finding; output files/read-head.txt. Read under MaxDecodedStreamLength 1000.
+- DiagnosticCapacity 2: 'open [syntax.key-repeated@3119, syntax.key-repeated@3128] C=2 S=3 L=2 | dec1 ... S=8 L=3 | dec2 ... S=9 L=4'.
+- The same file at capacity 1000: 'dec2 ... C=6 S=0 L=4'. The second Decode() adds no entry, and LimitsReached goes up by 1, so that decoding makes the guard's report and nothing else.
+Under capacity 2, then, each decoding of object 4 makes 0 reports before the guard, yet each counts the guard left out (S 8 to 9). At open, S=3 is the guard at the look, xref.hybrid-stream-lost, and the guard again at the /Prev's own reading, which also had nothing before it. 79c6a7f gives the identical line.
+
+Fix: Scope the name to a guard whose report its document holds, for example A_guard_whose_report_its_document_holds_is_counted_left_out_again_only_where_the_decoding_that_meets_it_made_as_many_reports_as_the_capacity_before_it. Move the capacity-1 row under a name saying a guard never held is counted left out at each meeting, or add the u_flate_rep2 row there, capacity 2, SuppressedCount 3 and then +1 per Decode(). Update the citation in threat-model.md:572.
+
+Verdict: The finding holds. The name of the theory at tests/AdCodicem.Pdf.Tests/GuardCutValueTests.cs:4038 is "A_guard_a_decoding_meets_again_is_counted_left_out_only_where_that_decoding_made_as_many_reports_as_the_capacity_before_it". Its "only where" states a necessary condition, and the code keeps that condition only for a guard whose report the document holds.
+
+When the document never held the guard's report, MoveDecodingReportsTo finds no held copy, so it adds the report again. Add's full branch then counts it in _suppressed and _limitsSuppressed at every meeting, whatever that decoding made before the guard. a0e94ca's RollBackBesideLimits summary and the #144 row (threat-model.md:572) both state this rule correctly. Only the test name drops the scope "where its document holds its report". That is the same overstatement round 11's [7] and [12] removed from the row, and decisions.md's record keeps the scope ("holds only where the document holds the report and the decoding made fewer reports than the capacity before it").
+
+The theory's capacity-1 row is a guard that was never held (the test comment says so; heldByDecodings is empty). It satisfies the name only by coincidence: each decoding once the document is open makes two faults before the guard and holds one, so "as many as the capacity" is met. The claim says "one report"; it is two made and one held. That is an imprecision, not a flaw.
+
+I reproduced the reviewer's shape, and also a stronger counterexample on the test's own builder: there the decoding makes fewer reports than the capacity before the guard and drops none of its own, yet the guard is counted left out at each meeting. Behavior is main's. Only PdfDiagnostics' doc comment changed since 79c6a7f. The test and its name are new in 331e666, so this is not a regression. It is a misleading text that the batch wrote, not filed and not accepted. It is minor, as round 11 rated the same overstatement in the row: no behavior is wrong.
+
+Verdict evidence: Rebuilt on origin/ccr-6d6c0ee6-dqm4lm-188 at 1cd2216: Release build of the test project, 0 Warning(s). Probe: C:/Users/clemm/AppData/Local/Temp/claude/7278f9d03177d71e/898783fc-049f-469a-ab79-dfd299ad558e/scratchpad/cloud/r12wip/verify-capacity-theory-name-only-where-false/ZzVerifyCapNameTests.cs.txt. It builds the files in-process and writes them as .pdf in the same folder. It opens each under MaxDecodedStreamLength 1000, decodes object 4 three times, and prints Count, SuppressedCount, LimitsReached, plus the private _limitsSuppressed (guardsLeftOut) and the document's _decodingReports (heldByDecodings), both read by reflection. Output: out-head.txt in the same folder. The probe was removed from the worktree afterward; the worktree is clean.
+
+- The reviewer's shape. u_flate_rep2 is HybridFiles.PrevNamingAStreamBesideTheOldestTable("", padding: 4000, filter: "/FlateDecode", deflated: true) with the newest trailer's /Size written twice more.
+  - cap=2: open 'C=2 S=3 L=2 guardsLeftOut=2 heldByDecodings=[]'; then dec1 'S=8 L=3 guardsLeftOut=3', dec2 'S=9 L=4 guardsLeftOut=4', dec3 'S=10 L=5 guardsLeftOut=5'.
+  - cap=1000: each decode adds nothing but L+1 (C=6 S=0, L 3/4/5). Each decoding therefore makes no report before the guard, and the guard is still counted left out at every meeting. This matches the reviewer's read-head.txt line 195.
+  - Control, cap=3 (the guard held, 'heldByDecodings=[limit.decoded-stream@1772x1]'): guardsLeftOut stays 0 through three decodes.
+- The test's own builder (PrevNamingAStreamWhoseLengthOnlyTheOldestTablePlaces). Its decoding makes FF, FF, then the guard, then FU, so the guard comes after two reports.
+  - lenonly_rep3, three extra /Size, cap=4: open '[syntax.key-repeated x3, xref.offset-adjusted] C=4 S=8 L=3 guardsLeftOut=3 heldByDecodings=[]'; then dec1 'S=12 L=4 guardsLeftOut=4', dec2 'S=16 L=5 guardsLeftOut=5', dec3 'S=20 L=6 guardsLeftOut=6'. The decoding made 2 reports before the guard, fewer than 4. It holds all 4 of its reports and drops none, yet the guard is counted left out each time (S +4 = all four, the guard's included).
+  - lenonly_rep2, cap=3: likewise guardsLeftOut 3→4→5→6, with 2 reports before the guard, fewer than 3.
+- The theory's rows. cap=8: guardsLeftOut 0 throughout. cap=2: guard held (x1), guardsLeftOut 1→2→3→4, the decoding's own capacity dropping it. cap=1: 'heldByDecodings=[]', guardsLeftOut 3→4→5→6, never held.
+- Code: PdfDiagnostics.cs Add (:94-101), MoveDecodingReportsTo (:257-284: a copy beyond held is added; target full counts it), RollBackBesideLimits summary (:158-164).
+- `git diff 79c6a7f 1cd2216 -- src/AdCodicem.Pdf/Diagnostics/PdfDiagnostics.cs` changes only that summary. The theory comes from 331e666.
+fix: This is a text change in the test name and its citation, not a design choice. The preferred fix keeps the three rows and states the rule exactly. Rename the theory to, for example, A_guard_a_decoding_meets_again_is_counted_left_out_where_its_document_never_held_its_report_or_that_decoding_made_as_many_reports_as_the_capacity_before_it, and update the citation in docs/threat-model.md:572.
+
+To hold the never-held arm apart from the decoding's own capacity, add a row on the same builder: the newest trailer's /Size written three times more, at DiagnosticCapacity 4. Expected codes are [syntax.key-repeated x3, xref.offset-adjusted], SuppressedCount 8, LimitsReached 3. Each Decode() then adds 4 to SuppressedCount (the decoding holds all four of its reports, the guard's included, and the full document drops them) and 1 to LimitsReached. The cap-1 row alone cannot tell the two arms apart.
+
+The alternative is the reviewer's: scope the name to a guard whose report its document holds, and move the cap-1 row (plus the row above) under a second test named for a guard never held being counted left out at each meeting.
+
+In the test comment, say that under 1 the guard is counted left out at each meeting because its report was never held, not because of the decoding's own reports. No src/ change, so no ADR 53 run is owed.
+needs_maintainer: False
+
+## 9. look-decodes-other-type-too-page — minor → confirmed minor (guards-diagnostics: 1f0a412, 3)
+Location: docs/website/docs/reference/reader-limits.md:210
+
+Claim: The page says the look at a hybrid /Prev's place 'decodes no stream of /Type /XRef to tell ... It decodes a stream of no type'. The check decodes every stream that gives no /Type /XRef (PdfFileReader.cs:6645 `!(checkOnly && section.TypedXRef)` and :6759 `if (section.TypedXRef) return Read`). That includes a stream of another /Type that gives a /W, which the chain reads as the section at a place it names. A guard reached on such a stream is reported at the look, ahead of the /XRefStm's report, and Open throws it there under ThrowOnLimit. The page suggests the opposite: such a stream is left to the /Prev's reading, after that report, as a /Type /XRef stream is. threat-model.md:439 ('decoded only where it gives no /Type /XRef') and the KeepsItsPlace remark state it right.
+
+Evidence: Files written by ZzGdGenTests.cs.txt with type "/Type /Foo ", results in files/read-head.txt.
+- o_flate (PrevNamingAStreamBesideTheOldestTable("/Type /Foo ", padding: 4000, filter: "/FlateDecode", deflated: true)), MaxDecodedStreamLength 1000: 'open [limit.decoded-stream@1783, xref.hybrid-stream-lost@1647]'; under ThrowOnLimit 'OPEN EX PdfLimitExceededException limit.decoded-stream@1783'.
+- Untyped u_flate, same order: '[limit.decoded-stream@1772, xref.hybrid-stream-lost@1647]'.
+- Typed control t_flate: '[xref.hybrid-stream-lost@1647, limit.decoded-stream@1784]'.
+- o_raw under MaxStreamLength 50: '[limit.stream-length@1764, xref.hybrid-stream-lost@1647]'.
+- o_hexhex under MaxFilterChainLength 1: '[limit.filter-chain@1805, xref.hybrid-stream-lost@1647, xref.rebuilt@-1, object.redefined@-1]'.
+79c6a7f is byte-identical (read-79c.txt).
+
+Fix: Write 'It decodes a stream that gives no /Type /XRef — of no type, or of another type that gives a /W —, beside a cut value or with every value read, ...'. Optionally add a "/Type /Foo " row to A_guard_reached_decoding_the_data_of_a_stream_a_prev_names_is_reported_once_where_the_data_is_first_decoded, with exact codes [limit.decoded-stream, xref.hybrid-stream-lost].
+
+Verdict: The finding holds. When the search near the place named by a hybrid table's /XRefStm reaches the place that table's /Prev names, it checks whether that /Prev keeps its place there; call this the look. The look decodes every stream that does not give /Type /XRef. That includes a stream of another type that gives a /W: /Type /Foo, /Type /ObjStm, and a CIDFont's stream with a /W. These streams behave exactly like an untyped one, with every value read and beside a cut /W alike. A decoding guard is reported at the look, ahead of the /XRefStm's own xref.hybrid-stream-lost, and Open throws it there under ThrowOnLimit.
+
+reader-limits.md:208-210 contrasts only two cases: "decodes no stream of /Type /XRef" and "It decodes a stream of no type". That leaves out a case the page itself sets up at 181 and 194-196, where a stream of another type with a /W is the section at a place the chain names. Other texts state it correctly: the code (PdfFileReader.cs:6645 `!(checkOnly && section.TypedXRef)`, :6759 `if (section.TypedXRef) return Read`), the KeepsItsPlace remark ("its data decoded where it gives no /Type /XRef"), the comments at :6639-6641 and :6752-6756, and threat-model.md:439 ("decoded only where it gives no /Type /XRef").
+
+The sentence was introduced in this batch by 220eab4, which is an ancestor of 79c6a7f, and round 11 did not change it. Neither the code nor the text moved between 79c6a7f and 1cd2216 here. No earlier round reported it: the findings, decisions.md and the round 11 results hold nothing on it. It is not on the brief's accepted list.
+
+One point in the claim is too strong. The page does not say that such a stream is left to the /Prev's own reading; it omits the case. The omission still misstates the look's scope on the reference page for guards. It changes the reported order (the guard before or after xref.hybrid-stream-lost) and which reading throws. Under ThrowOnLimit the user sees the same exception code either way, so this is minor, not major.
+
+Verdict evidence: I wrote my own probe at C:/Users/clemm/AppData/Local/Temp/claude/7278f9d03177d71e/898783fc-049f-469a-ab79-dfd299ad558e/scratchpad/cloud/r12wip/verify-look-decodes-other-type-too-page/ZzLookOtherTypeTests.cs.txt. It uses HybridFiles.PrevNamingAStreamBesideTheOldestTable with type '', '/Type /XRef ', '/Type /Foo ', '/Type /ObjStm ' and '/Type /Font /Subtype /CIDFontType2 '. Each type runs under three guards: Flate with padding 4000 under MaxDecodedStreamLength 1000; two /ASCIIHexDecode under MaxFilterChainLength 1; raw data under MaxStreamLength 50. Each runs with cut null and with cut /W (MaxObjectLength 1024), without and with ThrowOnLimit. Output on 1cd2216 is in the same folder, head.txt. Every case gives four=1675 and named=1647.
+
+With every value read:
+- '/Type /Foo ', decoded: open [limit.decoded-stream@1783, xref.hybrid-stream-lost@1647]; throw-open EX limit.decoded-stream@1783.
+- '/Type /Foo ', chain: [limit.filter-chain@1805, xref.hybrid-stream-lost@1647, xref.rebuilt@-1, object.redefined@-1].
+- '/Type /Foo ', length: [limit.stream-length@1763, xref.hybrid-stream-lost@1647].
+- '/Type /ObjStm ', decoded: [limit.decoded-stream@1786, xref.hybrid-stream-lost@1647].
+- CIDFont, decoded: [limit.decoded-stream@1807, xref.hybrid-stream-lost@1647].
+- Untyped, decoded: [limit.decoded-stream@1772, xref.hybrid-stream-lost@1647].
+- '/Type /XRef ' only, decoded: [xref.hybrid-stream-lost@1647, limit.decoded-stream@1784]. Chain: [xref.hybrid-stream-lost@1647, limit.filter-chain@1806, ...].
+
+Beside a cut /W:
+- '/Type /Foo ', decoded: [limit.decoded-stream@1781, limit.object@3055]. Untyped gives the same shape: [limit.decoded-stream@1770, limit.object@3044].
+- '/Type /XRef ': [xref.hybrid-stream-lost@1647, limit.decoded-stream@1782, limit.object@3056, xref.rebuilt@-1, object.redefined@-1].
+
+These results match the reviewer's o_flate, o_raw and o_hexhex lines exactly. The page text is the same at 79c6a7f: 220eab4 is an ancestor, and `git diff 79c6a7f 1cd2216` touches neither the check path nor this sentence. I removed the probe from the worktree, which is clean.
+fix: Text change only, no code change and no maintainer decision. In docs/website/docs/reference/reader-limits.md:209-210, replace "It decodes a stream of no type, beside a cut value or with every value read, ..." with "It decodes any other stream — of no type, or of another type that reads there as a section —, beside a cut value or with every value read, ...". The rest of the sentence stays as it is. An alternative wording, closer to threat-model.md:439: "It decodes a stream that gives no /Type /XRef, whatever other type it gives or none, ...".
+
+Optional: add a "/Type /Foo " row to GuardCutValueTests.A_guard_reached_decoding_the_data_of_a_stream_a_prev_names_is_reported_once_where_the_data_is_first_decoded. The LimitDecodedStream row expects exactly [limit.decoded-stream, xref.hybrid-stream-lost]. The LimitFilterChain row expects [limit.filter-chain, xref.hybrid-stream-lost, xref.rebuilt, object.redefined]. Each test comment ("which decodes a stream of no type") then says "or of another type". No first-order mutant needs this row, because the check path has no TypedOther branch, so it only pins the text.
+needs_maintainer: False
+
+## 10. xrefstm-offset-parted-type-hides-no-link — minor → narrowed nit (docs)
+Location: docs/website/docs/reference/diagnostics.md:116 (the same reason is given at diagnostics.md:142, concepts/lazy-reading.md:226-230, reference/reader-limits.md:21, :61-68 and :241-251, threat-model.md:421-428 and :446, and in the src texts of _guardMayHideLink, PdfFileReader.cs:660-677, at the assignment PdfFileReader.cs:6520-6532 and in PdfDiagnosticCodes.XRefStreamPassedOver)
+
+Claim: Every text gives one reason for withholding every xref.stream-passed-over in the document when a parted /Type is found 'at an offset the chain names': MaxTrailerLength 'may have hidden a link the chain would have followed', 'its /Prev past the cut unread'. The flag (`!candidate && cutByGuard && ... MayBePartedXRef`) is also set when the parted dictionary is read where an /XRefStm names it. The chain never follows the /Prev of a stream an /XRefStm names, so at that offset the guard can hide no link. Yet a Warning the file makes at default limits, which 79c6a7f still made under the same guard, is now withheld for the whole document. The stated reason does not hold there, and the reach is wider than the texts say.
+
+Evidence: Generator: C:/Users/clemm/AppData/Local/Temp/claude/7278f9d03177d71e/898783fc-049f-469a-ab79-dfd299ad558e/scratchpad/cloud/r12wip/docs/gdocs/gen.py. Probe: .../r12wip/docs/ZzR12DocsProbe.cs, run with .../r12wip/docs/run.py; spec in specdocs.txt. Outputs: out-docs-head.txt, out-docs-main.txt, out-docs-r10f.txt.
+(1) Control, stm-prev.pdf: a hybrid table whose /XRefStm stream 11 gives /Prev to a table that alone indexes object 5. Head and main give the same sections: startxref 548 Table Read; /XRefStm 423 Stream Read; /Prev 203 Table Read. Object 5 reads null and nothing is reported, so that stream's /Prev is never read.
+(2) stm-parted.pdf is the #289 comment's shape A without the run of spaces. The older table becomes hybrid: its /XRefStm names stream 9, whose dictionary opens on 120 spaces.
+- Head, default limits: /XRefStm 1641 is read as a stream, and 'Warning xref.stream-passed-over at 362: The cross-reference stream at offset 362, near offset 562, which the /Prev of the cross-reference table at offset 1873 names, ...' is made.
+- Head, MaxTrailerLength 138 (parts /XRef at stream 9): the reports are [limit.trailer at 562, xref.offset-adjusted at 802, limit.trailer at 1641, 'Warning xref.section-missing at 1641: The cross-reference section /XRefStm names at offset 1641 is not there, nor near it; ...']. No xref.stream-passed-over. The validator gives 'Error xref.section-not-found at offset 1641: ... the offset holds object 9, which is not a cross-reference stream.'
+- 79c6a7f at 138 gives the same list plus 'Warning xref.stream-passed-over at 362'.
+- Under 141 (/XRef whole, then cut), the chain stops at the cut, as documented.
+
+Fix: Preferred: narrow the flag to an offset a /Prev names, adding the reading's naming (section.NamedBy is not /XRefStm) to the condition at PdfFileReader.cs:6528. Add stm-parted.pdf under MaxTrailerLength 138 as a row expecting the Warning at 362, as at default limits; that row fails on 1cd2216. Otherwise, if the document-wide reach at an /XRefStm's offset is kept, every text should say an offset an /XRefStm names sets the flag too, though the chain never follows that stream's /Prev.
+
+Verdict: The reproducer holds, but only part of the claim does. That part: at an offset an /XRefStm names, the reason the texts give is false. They say the guard may have hidden a link the chain would have followed, the stream's /Prev past the cut left unread. The comment at the assignment (PdfFileReader.cs:6519-6520) says it outright: "Where the chain names the offset, that /Prev is a link the guard may have hidden". At an /XRefStm offset, though, the chain never follows that stream's /Prev: :3588 reads it with `out _`, and `offset = previous` takes the table's own /Prev. With the /Type parted, the chain goes on through the table's /Prev and leaves no link unread.
+
+Two parts are refuted.
+(1) "The reach is wider than the texts say." It is not. Every text says "an offset the chain names", and in the code's and the pages' vocabulary that includes an /XRefStm's offset. The white-space flag is set by the same TryReadXRefSection, with candidate false, at /XRefStm offsets, and it is described in the same words. diagnostics.md:142 says "Wherever the chain names a section, a table or a stream".
+(2) The withheld Warning is the consequence the brief lists as accepted: "the parted /Type at a chain-named offset read as another type, with section-missing, Error section-not-found and the rebuild (#279), only the Warning withheld". All three reports are made at 1641. Nor is it worse than what is accepted. In the windows on either side (cut before /Type, and /XRef whole but cut), a guard's cut of the stream an /XRefStm names ends the chain (#264; :3687-3696, then the break at :3260). Both commits withhold the Warning there. The Warning 79c6a7f made at 137-140 was the exception inside that run, and #279's closing (reading the dictionary as the guard's cut) withholds it there too.
+
+The proposed code fix (limit the flag to offsets a /Prev names) would bring the Warning back in a 4-byte window that the windows on both sides withhold, reverse an accepted consequence, and pin a reading that #279 will change. The behavior is accepted and the reach is stated correctly; only the reason is wrong, in one case. Round 11's [4] (a sentence false in one case) was rated nit, and this is rated the same.
+
+Verdict evidence: Probe files are in C:/Users/clemm/AppData/Local/Temp/claude/7278f9d03177d71e/898783fc-049f-469a-ab79-dfd299ad558e/scratchpad/cloud/r12wip/verify-xrefstm-offset-parted-type-hides-no-link/:
+- gen.py is the reviewer's generator; its stm-parted.pdf is byte-identical to the reviewer's (cmp).
+- ZzR12VerifyStmParted.cs is the probe, spec.txt the spec, run.py runs it.
+- out-head.txt is the output on 1cd2216; out-79.txt on 79c6a7f (own worktree, built with 0 warnings, then removed).
+
+stm-parted.pdf: the older table at 802 is hybrid. Its /XRefStm names stream 9 at 1641, whose /Type value starts after 120 spaces. Its /Prev names 963.
+
+1cd2216, MaxTrailerLength 137, 138, 139, 140 (/Type parted to '/', '/X', '/XR', '/XRe'):
+- Sections: '/XRefStm named=1641 NotFound Unknown cut=False', '/Prev named=963 Read Table'. chainStopped=False.
+- Objects: 5="five", 12=Stream.
+- Reports: limit.trailer at 562 and at 1641, xref.offset-adjusted at 802, 'Warning xref.section-missing at 1641'. No xref.stream-passed-over.
+- Validator: 'Error xref.section-not-found at offset 1641 ... holds object 9, which is not a cross-reference stream'.
+
+79c6a7f at the same four windows: identical, plus 'Warning xref.stream-passed-over at 362: The cross-reference stream at offset 362, near offset 562, which the /Prev of the cross-reference table at offset 1873 names, ...'. The diff between the two outputs is these four lines and nothing else.
+
+Both commits at the neighboring windows:
+- 133 and 136 (cut before /Type): '/XRefStm named=1641 Malformed Unknown cut=True'.
+- 141 (/XRef whole, then cut): '/XRefStm named=1641 Malformed Stream cut=True'.
+- In all three, chainStopped=True, /Prev 963 is not read, object 5 is null, and there is no Warning.
+
+Default limits: '/XRefStm 1641 Read Stream', '/Prev 963 Read', and the Warning at 362 on both commits.
+
+Control stm-prev.pdf, on both commits: the /Prev of the /XRefStm stream (to the table that alone indexes object 5) is never followed: 5=null, and no section is read there.
+
+Untested: R11c's theory (CrossReferenceChainTests.cs:7043) uses only an oldest stream that a /Prev names. No test covers a parted /Type at an offset an /XRefStm names.
+fix: Change the texts only; no code change. Keep the stated reach ("an offset the chain names") and give the reason according to what named the offset. Suggested wording: "which may be what the cut left of /XRef — a section the guard cut, at which the chain would end (#264): where a /Prev or startxref names it, its /Prev past the cut unread; where an /XRefStm names it, whose stream's /Prev the chain never follows, the chain goes on through the table's /Prev, and the reports are withheld as they are where the guard's cut ends the chain there, the reading #279's closing gives it".
+
+Where to change it:
+- PdfFileReader.cs: _guardMayHideLink's summary (:660-677; its first sentence, "may have hidden a link the chain would have followed", needs the same scoping), the comment at the assignment (:6513-6521, "Where the chain names the offset, that /Prev is a link the guard may have hidden"), and ReportStreamsPassedOver's summary and remark (:3718-3727, :3750-3755).
+- PdfDiagnosticCodes.XRefStreamPassedOver (:130-135).
+- diagnostics.md:116 and :142.
+- lazy-reading.md:226-230.
+- reader-limits.md:21, :61-68 and :245-251.
+- threat-model.md:421-428 and :446.
+
+Add a row that pins the reach at an /XRefStm's offset: stm-parted.pdf at windows TypeAt+1 to TypeAt+4 gives no Warning, the /XRefStm NotFound and /Prev 963 read; the controls at TypeAt-3 and TypeAt+5 give the chain stopped.
+
+I would not limit the flag to offsets a /Prev names, as the finding prefers. That would bring back a Warning in a 4-byte window that both neighboring windows withhold (the chain stopped there), reverse a consequence the brief lists as accepted, and pin a reading that #279's closing will change.
+needs_maintainer: False
+
+## 11. tm-279-gap-startxref-case — nit → confirmed nit (docs)
+Location: docs/threat-model.md:421-424 (the #279 Known gap); also diagnostics.md:142 ('the section looked for nearby so too')
+
+Claim: The new #279 text says a /Type parted 'at an offset the chain names' is 'looked for nearby as one that is not there, and where nothing near it is taken it is reported missing, xref.section-not-found an error the validator lays on the file, what only it indexes found by rebuilding the index when it is asked for'. At the offset startxref names this is not what happens: there is no search nearby, nothing is reported missing, the index is rebuilt as the document opens, and the Error laid on the file is file.startxref-wrong. Where the cut leaves /XRef whole, no Error is laid there at all.
+
+Evidence: st-parted.pdf, from .../r12wip/docs/gdocs/gen.py: one revision, startxref names stream 7, whose /Type value starts 136 bytes past its header. Output in out-docs-head.txt.
+- MaxTrailerLength 138: sections [startxref 203 NotFound]. Reports: 'Warning limit.trailer at 203: ...', 'Repair xref.rebuilt: ...', 'Repair trailer.root-recovered: The trailer's /Root does not lead to a document catalog; the catalog was found as object 1.' Validator: 'Error file.startxref-wrong at offset 460: startxref gives offset 203, which holds object 7, which is not a cross-reference stream.' No xref.section-missing and no xref.section-not-found.
+- MaxTrailerLength 141: Malformed and cut, the same three reports, no Error.
+- main at 138 matches head (out-docs-main.txt).
+
+Fix: threat-model.md: '... at an offset a /Prev or an /XRefStm names ... reported missing, xref.section-not-found an error the validator lays on the file ...; at the one startxref names, the index is rebuilt as the document opens and the validator gives file.startxref-wrong'. diagnostics.md:142: '... the section looked for nearby so too, or, for the one startxref names, the index rebuilt'.
+
+Verdict: The finding holds. I rebuilt it on 1cd2216 with files of my own.
+
+The new #279 Known gap text (threat-model.md:421-424, added by R11d in 1cd2216; 79c6a7f has only the general sentence) says a parted /Type "at an offset the chain names" is looked for nearby, reported missing, given xref.section-not-found, and rebuilt lazily. That is true at an offset a /Prev or an /XRefStm names. At the offset startxref names, it is false:
+- no search runs near it: PdfFileReader.cs:3389-3396, `if (sections == 1) { NoSectionWhereAnotherType(section); return false; }`, the same as main's :3010;
+- no xref.section-missing is made;
+- the whole index is rebuilt as the document opens;
+- the validator's Error is file.startxref-wrong, not xref.section-not-found.
+
+The pages count startxref among the offsets "the chain names". The white-space sentences carve it out: diagnostics.md:142 and threat-model.md:446 ("the index rebuilt for the one `startxref` names"), reader-limits.md:21, and the code's own remark at PdfFileReader.cs:5658-5661. So the #279 text is missing that carve-out.
+
+Three qualifications:
+1. diagnostics.md:142's "the section looked for nearby so too" extends main's CIDFont sentence just before it ("the section is looked for nearby, the chain going on"). That sentence already lacked the startxref carve-out on main (21a0298), and it is just as inexact there. The new clause inherits the omission.
+2. The same "looked for nearby" also appears in two passed-over sentences: diagnostics.md:116 and reader-limits.md:247. Their effect holds anyway: at startxref the chain indexes nothing, the whole file is rebuilt, and no stream passed over is ever reported. Threat-model 439 and 446 say "looked for as one that is not there", which the white-space remark defines to cover startxref. Those two are accurate.
+3. The finding's aside, "where the cut leaves /XRef whole, no Error is laid there at all", is true but is no misstatement. No text says a cut past a whole /XRef gives an Error: it is the guard's cut, Malformed and CutByLimit.
+
+Severity: nit. Nothing in the code is wrong. The text gives the /Prev and /XRefStm consequence for all three naming sites. The consequence at startxref is the same in kind (an Error laid on the file, and a rebuild), and diagnostics.md:112 states the general startxref rule. It shows only under a lowered MaxTrailerLength, or a 64 KB dictionary with its /Type at the boundary. Tracking note: #279's comment lists closing rows for /Prev shapes only. Its closing would also turn the startxref case into the guard's, removing file.startxref-wrong (compare MaxTrailerLength 127 below). That row is worth adding there.
+
+Verdict evidence: Generator: C:/Users/clemm/AppData/Local/Temp/claude/7278f9d03177d71e/898783fc-049f-469a-ab79-dfd299ad558e/scratchpad/cloud/r12wip/verify-tm-279-gap-startxref-case/gen.py. It writes my own shapes: stream 7's dictionary opens with a /Pad string, and its /Type value starts 122 bytes past its header. It also writes spec.txt, a sweep of MaxTrailerLength from 120 to 129.
+
+Probe: ZzR12VerifyTm279.cs.txt in the same folder (run as tests/AdCodicem.Pdf.Tests/ZzR12VerifyTm279.cs, now removed from the worktree). Output: out-head.txt in the same folder. Branch origin/ccr-6d6c0ee6-dqm4lm-188 at 1cd2216, Release build, 0 warnings.
+
+sx-pad.pdf (one revision; startxref names stream 7):
+- MaxTrailerLength 123 to 126 (window ends after '/', '/X', '/XR', '/XRe'):
+  - section: 'S startxref named=209 NotFound Unknown cut=False', repaired-at-open=True;
+  - reports: 'Warning limit.trailer at 209', 'Repair xref.rebuilt', 'Repair trailer.root-recovered';
+  - validator: 'Error file.startxref-wrong at offset 459: startxref gives offset 209, which holds object 7, which is not a cross-reference stream.';
+  - no xref.section-missing, no xref.section-not-found.
+- 120 to 122 (/Type key absent or with no value): 'Malformed Unknown cut=True', rebuilt at open, no Error.
+- 127 to 129 (/XRef whole): 'Malformed Stream cut=True', rebuilt at open, no Error.
+
+sx-prev.pdf (stream 7 at 306, its /Prev past the cut naming a table that alone indexes object 5): 123 to 126 give the same reports, then 'Error file.startxref-wrong at offset 559'. Object 5 is found, because the rebuild ran at open.
+
+sx-near.pdf (a whole stream 8 indexing every object, 273 bytes past stream 7):
+- 124: 'S startxref named=231 NotFound', 'limit.trailer at 231', 'Repair xref.rebuilt', 'Error file.startxref-wrong at offset 653';
+- no xref.offset-adjusted: stream 8 is not taken.
+
+Controls, the same stream named by a newest table's /Prev:
+- prev-near.pdf at 123 to 126: 'S /Prev named=231 Relocated Stream at=504', 'Repair xref.offset-adjusted at 504: ... found 273 bytes after it.' The search near a /Prev takes stream 8 at the same distance.
+- prev-pad.pdf at 123 to 126: 'Warning xref.section-missing at 209: ... is not there, nor near it', 'Repair xref.rebuilt' (lazily), 'Error xref.section-not-found at offset 209'. The text holds for /Prev.
+
+Main (21a0298): not rebuilt. The finding claims no difference, and main's first-section path is the same 'if (sections == 1) return false;' (PdfFileReader.cs:3010). The reviewer's out-docs-main.txt shows the same output at MaxTrailerLength 138. #279's body and the round 11 comment (6762402379), fetched into i279.md, name only /Prev shapes. Neither decisions.md nor r1 to r11 holds the startxref case.
+fix: Text only, in this batch. No maintainer decision is needed: the reader's behavior and the white-space sentences already settle the rule.
+- threat-model.md:421-424: '... at an offset the chain names reads as another type, though the cut may have parted `/XRef`: at an offset a `/Prev` or an `/XRefStm` names, the section is looked for nearby as one that is not there, and where nothing near it is taken it is reported missing, `xref.section-not-found` an error the validator lays on the file, what only it indexes found by rebuilding the index when it is asked for; at the one `startxref` names, the index is rebuilt as the document opens, and the validator gives `file.startxref-wrong`.'
+- diagnostics.md:142: fix main's CIDFont sentence and the new clause together, for example '... and the section is looked for nearby, the chain going on, or, for the one `startxref` names, the index rebuilt, ...' and '... the section looked for so too'.
+- Optionally, in diagnostics.md:116 and reader-limits.md:247, write 'looked for as one that is not there' in place of 'looked for nearby as one that is not there', the wording threat-model 439 and 446 use.
+- Tracking: add a startxref row to #279's closing (sx-pad.pdf at MaxTrailerLength 123 to 126: today NotFound, rebuilt at open, Error file.startxref-wrong; once #279 is settled, the guard's reading, as at 127: Malformed and cut, rebuilt at open, no Error).
+needs_maintainer: False
+
+## 12. lazy-reading-found-moved-at-its-header — nit → narrowed nit (docs)
+Location: docs/website/docs/concepts/lazy-reading.md:222
+
+Claim: The page says a reading inside a passed-over stream's number that reads no header leads to 'the search near that place finds the stream moved, at its header'. For a header written with a run of signs and no comment, the search finds and reports it at its first digit, not where the header starts. diagnostics.md:116, threat-model.md:446 and the XML remark say 'at its first digit, or at its first sign where a comment parts the header's tokens'. This is the one positional claim the concept page makes on signed headers, and it disagrees with the reference page (open point (b)).
+
+Evidence: - CrossReferenceChainTests row ("/XRefStm", 11, 1, "[1 4 2]", "+-11 0 obj", foundMovedAt 2): the stream is found moved at own+2, the digit, where its header starts at own. The theory passes on 1cd2216 (33 of 33; the test computes `at = own + (moved ? foundMovedAt : into)`, CrossReferenceChainTests.cs:6697).
+- The same search on the #327 shape: g327 near-read-plus.pdf ('+11 0 obj', sign at 516) gives 'Repair xref.offset-adjusted at 517'. .../r12wip/docs/gminus near-read-plusc.pdf ('+11 0 %c' then 'obj') is found at 516, the sign. Outputs: .../r12wip/docs/out-327-head.txt and out-minus-head.txt.
+
+Fix: Drop ', at its header', or write ', at its first digit, or at its first sign where a comment parts its tokens', as diagnostics.md:116 does.
+
+Verdict: The finding holds, but only for a signed header whose tokens no comment parts. In that one shape the concept page names the wrong place. lazy-reading.md:222 is new in 1cd2216 (R11d, which wrote the pages for round 11's [4]). It says that where a reading from inside the number reads no header, 'the search near that place finds the stream moved, at its header'. The page defines a signed header in the same paragraph, at :215-217: 'a token a load reads from the start of its line, from its first sign where its number is written with a run of signs that starts with a `+`, where the stream is then reported'. The paragraph also says 'at its header or inside its object number', and the test rows read 'at its header' as own+0. So in the page's own terms the header starts at the '+'. The code finds a signed header at its first digit, unless a comment parts its tokens, and only then at its first sign. diagnostics.md:116, the threat model, the ReportStreamsPassedOver remark and the theory's own comment all say this. For an unsigned header ('20 0 obj' read at its 0) and for a signed header a comment parts, 'at its header' is accurate. The misstatement covers only a signed header with no comment. The finding said 'a run of signs', but this includes a run of one '+'. R11d's deviation 5 chose not to give a signed header's place on the concept page, and it was about the take clause. :222 still gives a place, and for that shape it is the wrong one. decisions.md does not record that deviation as accepted: it is open point (b). The reference page is right and the shape is hostile and narrow, so this is a nit, not minor. The reviewer's g327 evidence (near-read-plus.pdf at 517) is about the take clause, not :222. My own probe reproduces the claim about :222.
+
+Verdict evidence: Rebuilt on origin/ccr-6d6c0ee6-dqm4lm-188 at 1cd2216 (build: 0 warnings). The probe is ZzR12VerifyFoundMovedAt (7 rows, all pass), using HybridFiles.PrevFallingShortOfTheStreamBeforeTheTablesOwn, where own is the stream's first byte. Probe: C:/Users/clemm/AppData/Local/Temp/claude/7278f9d03177d71e/898783fc-049f-469a-ab79-dfd299ad558e/scratchpad/cloud/r12wip/verify-lazy-reading-found-moved-at-its-header/ZzR12VerifyFoundMovedAt.cs. Output: .../verify-lazy-reading-found-moved-at-its-header/out-head.txt. Output for each row:
+- '+-11 0 obj', /XRefStm at own+1 (the '-'): 'S /XRefStm Relocated Stream at=1894 (own+2)' and 'Repair xref.offset-adjusted pos=1894: ... names at offset 1893 was found 1 byte after it'. This is the first digit, not the '+' at own=1892.
+- The same file through /Prev: Relocated at own+2 (1891).
+- '++-11 0 obj' at own+2: own+3. '+--11 0 obj' at own+2 via /Prev: own+3. Both are the first digit.
+- '+-11 0 %c\nobj' at own+1, through /XRefStm and through /Prev: Relocated at own+0, the sign.
+- '20 0 obj' at own+1: own+0, where the header's start is its first digit.
+The committed theory row ("/XRefStm", 11, 1, "[1 4 2]", "+-11 0 obj", 2) at CrossReferenceChainTests.cs:6674 asserts own+2. Its comment at :6688-6689 says 'at its first digit, or at its first sign where a comment parts its header's tokens', as diagnostics.md:116 does. lazy-reading.md:215-217 places the signed header's start at its first sign. git show 79c6a7f has no 'finds the stream moved' sentence, so 1cd2216 introduced it.
+fix: In docs/website/docs/concepts/lazy-reading.md:222, drop ', at its header' so the clause ends 'the search near that place finds the stream moved.' This matches R11d's choice to leave a signed header's exact place to the reference pages, and it is true for every shape. If the page should keep a place, write ', at its first digit, or at its first sign where a comment parts its tokens' instead, as diagnostics.md:116 does. Either change fits the open point (b) decision and is a pages-only commit (docs:). No code or test change.
+needs_maintainer: False
+
+## 13. c327-edge-omits-branch-error — nit → narrowed nit (docs)
+Location: GitHub comment 6762391491 on #327, paragraph 'An edge the batch leaves'
+
+Claim: The paragraph gives main's 'Error xref.chain-loop' and the two 513 files' 'Error xref.section-not-found', but not the branch's validator finding on edge-2-514.pdf. There the branch gives 'Error file.root-invalid ... No object of the file is a catalog', while the rebuilt index serves object 1, the catalog. This is the #260 shape: the stream read a second time gives no /Prev, so the chain ends there. The comparison with main is left incomplete. The objects served are the same as edge-2-513 and as main, so this is an omission, not a misstatement of what is served.
+
+Evidence: Generator .../r11track/g327/gen.py, copied to .../r12wip/docs/g327; output in .../r12wip/docs/out-327-head.txt.
+- Branch, edge-2-514.pdf: sections [startxref 2188 Table; /XRefStm 1457 Stream Read; /Prev 1971 Relocated Stream at=1459]. Reports: 'Repair xref.offset-adjusted at 1459: ... found 512 bytes before it.' and 'Repair xref.rebuilt'. Objects: 1=Dictionary, 2=Dictionary, 4="four", 13=Stream. Validator: 'Error file.root-invalid at object 1 0: The trailer's /Root names object 1 0, which the file does not hold. No object of the file is a catalog.' and 'Warning xref.section-shifted at offset 1459'.
+- main (out-327-main.txt): xref.chain-cycle, a rebuild, and Error xref.chain-loop at offset 2188, with the same objects.
+
+Fix: Add one line on #327, for example: 'edge-2-514.pdf also gives the validator's Error file.root-invalid, as #260's shape does.' Or record it with the batch's status.md entry. Bodies already posted are not rewritten.
+
+Verdict: The omission holds. The edge paragraph of comment 6762391491 (unedited since 08:12:11Z) gives a validator Error for every file it describes except the branch's edge-2-514.pdf: Error xref.section-not-found for the two 513 files and Error xref.chain-loop for main. For edge-2-514.pdf it shows only the Repair line and says the index is rebuilt. The comment gives validator Errors elsewhere too: section-malformed for near-foo-plus, and main's file.root-invalid on passed-*. So this gap breaks its own pattern. The comment makes no false statement, its closing bullet ('edge-2-514.pdf reads as edge-2-513.pdf') already targets the right outcome, and the objects served match edge-2-513 and main. It is a nit.
+
+I narrow two points.
+(1) Calling it 'the #260 shape' is loose. What #260 holds is only the last sentence, 'No object of the file is a catalog': a rebuild found the catalog, while CatalogFoundAs is 0 in both the structure and the reader. The Error itself follows RootInvalidRule's design. The rule judges /Root against the index the chain gave, and that index lacks object 1 because the chain read stream 13 twice and stopped (rootUsable=False). In the 513 files rootUsable=True, so the rule stays silent.
+(2) The unstated consequence is somewhat more than an omitted line. On edge-2-514.pdf the validator blames /Root, with #260's false sentence, and reports the /Prev only as a Warning (section-shifted, 512 bytes). The 513 files' Error names the real fault, the missing section. This is still within the accepted 'read twice' edge, and main also gives an Error. So the batch did not make it worse than main, and severity stays nit.
+
+Verdict evidence: The generator is W/r12wip/verify-c327-edge-omits-branch-error/gen_edge.py, rewritten from the comment's gen.py. Its edge-2-514, edge-2-513 and edge-1-513 files are byte-identical to the reviewer's W/r12wip/docs/g327. It also writes 0-, 1-, 2-512 and 3-515 variants. The probe is ZzVerifyC327Edge.cs.txt in the same folder; it reads each file twice, and both reads were identical.
+
+Branch 1cd2216 (out-head.txt), edge-2-514.pdf:
+- Sections: startxref Read Table 2188; /XRefStm Read Stream 1457; /Prev named=1971 Relocated Stream at=1459.
+- At opening: rootUsable=False, catalogFoundAs 0 in both the structure and the reader.
+- Diagnostics: 'Repair xref.offset-adjusted at 1459: ... found 512 bytes before it.' and 'Repair xref.rebuilt'.
+- Catalog is /Type /Catalog. Objects: 1=Dictionary(/Type /Catalog), 2=Dictionary(/Type /Pages), 4="four", 13=Stream.
+- Validator: 'Error file.root-invalid at object 1 0: The trailer's /Root names object 1 0, which the file does not hold. No object of the file is a catalog.' and 'Warning xref.section-shifted at offset 1459'.
+- edge-3-515.pdf (+++13, the first sign also before the window) gives the same at 1460.
+
+The 513 files, plus 0-513, 0-514, 1-514 and 2-512: rootUsable=True, 'Warning xref.section-missing', xref.rebuilt, and only 'Error xref.section-not-found'.
+
+main 21a0298 (out-main.txt, built in a removed worktree), edge-2-514.pdf:
+- /Prev Relocated Table at 2188.
+- Diagnostics: xref.offset-adjusted, xref.chain-cycle, xref.rebuilt.
+- The same objects.
+- Validator: Warning file.size-wrong, Warning xref.section-shifted at 2188, 'Error xref.chain-loop at offset 2188'.
+
+The comment's edge paragraph (lines 146-152 of its body) has no 'root-invalid'. #327 has only this one comment. #260's comments hold the false sentence for other shapes, not this one.
+fix: Tracking only; no code change. Edit comment 6762391491's edge paragraph in place, as #171's comment was edited in round 11, or post a one-line follow-up on #327. Text after 'reads stream 13 a second time' and its Repair line: "The validator then gives Warning xref.section-shifted at offset 1459 and Error file.root-invalid at object 1 0. The chain, having read stream 13 twice, indexes no catalog. The Error's last sentence, 'No object of the file is a catalog', is #260's false one: the rebuild at opening serves object 1, the catalog. edge-2-513.pdf and edge-1-513.pdf give Error xref.section-not-found instead." If the maintainer prefers not to touch posted comments, note the same in batch 19's docs/status.md entry. No design choice is involved.
+needs_maintainer: False
+
+## 14. i336-line-reference — nit → confirmed nit (docs)
+Location: Issue #336 body, '## Reproduced': 'src/AdCodicem.Pdf/Validation/ArlingtonWalk.cs:85 at 1cd2216'
+
+Claim: The body cites line 85 as where ArlingtonWalk passes SeededComparer.Instance to the Dictionary<int, byte> the failing assertion names. Line 85 is `private readonly Queue<Work> _queue = new();`; the dictionary is on line 86, both at 1cd2216 and at main. Every other figure in the body reproduces.
+
+Evidence: - `git show 1cd2216:src/AdCodicem.Pdf/Validation/ArlingtonWalk.cs`: 85 is `private readonly Queue<Work> _queue = new();`, 86 is `private readonly Dictionary<int, byte> _numbers = new(SeededComparer.Instance);`. main 21a0298 also has it at line 86.
+- The rest reproduces on both commits with .../r11track/cov/cov.py (outputs in .../r12wip/docs/cov): two-cov total 356, failed 1, with the message 'Expected violations to be empty because a hash table keyed by numbers takes SeededComparer.Instance, but found at least one item {"AdCodicem.Pdf.Validation.ArlingtonWalk..ctor: Dictionary`2<Int32, Byte>..ctor"}.'; two-nocov 356 of 356; seeded-cov 203 of 203.
+- `dotnet --version` gives 10.0.403. :2662, :2675 and :3117 are right; :823 is the [Fact] line of the cited test.
+
+Fix: Edit the citation to ArlingtonWalk.cs:86.
+
+Verdict: The finding holds. Issue #336's body says that `src/AdCodicem.Pdf/Validation/ArlingtonWalk.cs:85` at 1cd2216 is the line where ArlingtonWalk passes SeededComparer.Instance. Line 85 is `private readonly Queue<Work> _queue = new();`, which passes no comparer. The `Dictionary<int, byte>` the failing assertion names is on line 86. That is true at 1cd2216, at 79c6a7f and at main 21a0298. The mistake was made when the issue body was drafted: round 11's finding (lot19/r11-findings.md:1240) cites ArlingtonWalk.cs:86 correctly, but the drafted body r11track/bodies/debt.md:19, posted as r11track/posted-336.md:19, says :85. The other line references in the body are correct at 1cd2216: SeededComparerTests.cs:2662 is TablesBuilt, :2675 is the GetMethodBody()?.GetILAsByteArray() call, :3117 is WithoutProbes, and :823 is the [Fact] attribute of The_reading_of_the_compiled_library_reads_through_the_probes_code_coverage_puts, whose signature is on :824. No committed text cites ArlingtonWalk.cs:<line>: a grep of the worktree finds none. The error is limited to the GitHub issue body, and it changes nothing in what the issue diagnoses or proposes, so it stays a nit.
+
+Verdict evidence: `git show <commit>:src/AdCodicem.Pdf/Validation/ArlingtonWalk.cs`, lines 85-86, gives the same two lines at 1cd2216 (= origin/ccr-6d6c0ee6-dqm4lm-188), 79c6a7f and 21a0298:
+85:     private readonly Queue<Work> _queue = new();
+86:     private readonly Dictionary<int, byte> _numbers = new(SeededComparer.Instance);
+`gh issue view 336 -R AdCodicem/AdCodicem.Pdf --json body` gives: "`ArlingtonWalk` does pass `SeededComparer.Instance` there (`src/AdCodicem.Pdf/Validation/ArlingtonWalk.cs:85` at `1cd2216`)."
+SeededComparerTests.cs at 1cd2216: 2662 `public static IEnumerable<(MethodBase Method, MemberInfo Built)> TablesBuilt(...)`, 2675 `if (method.GetMethodBody()?.GetILAsByteArray() is not { } il)`, 3117 `private static List<...> WithoutProbes(`, 823 `[Fact]` (824 is the test's signature).
+Round 11's finding r11-findings.md:1240 says "(ArlingtonWalk.cs:86)"; the drafted bodies r11track/bodies/debt.md:19 and r11track/posted-336.md:19 say :85.
+The excerpts are recorded in C:/Users/clemm/AppData/Local/Temp/claude/7278f9d03177d71e/898783fc-049f-469a-ab79-dfd299ad558e/scratchpad/cloud/r12wip/verify-i336-line-reference/lines.txt. I did not re-run the coverage tests: the finding is only about the line number, and the reviewer's run in r12wip/docs/cov reproduces the rest.
+fix: In the fix stage, edit #336's body to change `src/AdCodicem.Pdf/Validation/ArlingtonWalk.cs:85` to `:86` (`gh issue edit 336 -R AdCodicem/AdCodicem.Pdf --body-file <corrected r11track/posted-336.md>`), and make the same correction in r11track/bodies/debt.md so the draft matches the posted body. No code or committed document changes.
+needs_maintainer: False
+
+## 15. tm-439-nearer-place-clause-unpinned — nit → confirmed nit (docs)
+Location: docs/threat-model.md:439 (the #156 row's mitigation cell and its evidence citations); same clause in reference/reader-limits.md:212-215
+
+Claim: R11d added a clause: the guard the look at a /Prev's place reaches is reported 'after what reading a nearer place the search tried and dropped reported, which stands'. The row cites GuardCutValueTests.A_guard_reached_decoding_the_data_of_a_stream_a_prev_names_is_reported_once_where_the_data_is_first_decoded and its sibling for the order, but neither builds a nearer place that the search drops before the /Prev's place. No cited test holds the clause. It is true: my probe shows the order and the ThrowOnLimit throw.
+
+Evidence: Probe: .../r12wip/docs/vcga/ZzR12VcgaTests.cs, round 11's verify probe widened with an ASCIIHex-encoded object 4 and MaxDecodedStreamLength 50. Output: .../r12wip/docs/vcga/out-head.txt; files in vcga/files.
+- keyrep_untyped_ahx, mdsl=50: [syntax.key-repeated @1676, limit.decoded-stream @1836, xref.hybrid-stream-lost @1647]. Decoding object 4 again adds no second limit.decoded-stream. ThrowOnLimit throws 'MaxDecodedStreamLength limit.decoded-stream @1836'.
+- keyrep_untyped_raw, msl=50: [syntax.key-repeated @1676, limit.stream-length @1812, xref.hybrid-stream-lost @1647].
+- keyrep_untyped_foo, mdsl=50: [syntax.key-repeated, xref.offset-adjusted @1459, xref.hybrid-stream-lost, filter.unsupported, xref.offset-adjusted].
+
+Fix: Add a row to the cited decoding-guard theory whose nearest place to the /XRefStm's offset is a /W-only stream with a repeated key (round 11's keyrep shape). It should expect [syntax.key-repeated, limit.decoded-stream, xref.hybrid-stream-lost], or name such a test in the row.
+
+Verdict: The finding holds, and the gap is slightly wider than claimed. R11d (1cd2216) added the clause 'reported there, once, after what reading a nearer place the search tried and dropped reported, which stands, ahead of the /XRefStm's own report and of what the search reports past that place' to docs/threat-model.md:439. Round 11's triage only said the row 'already says it rightly' (r11-fix2-result.json:73); R11d added the clause on its own initiative. The same text is in reader-limits.md:212-215. The clause is true: I rebuilt it with my own builder and got the same order the reviewer and round 11's verifier saw.
+
+No test holds it, cited or not:
+- None of the four cited GuardCutValueTests theories (3886, 3925, 3951, 3984) puts a dropped nearer place before object 4. Object 8 in HybridFiles.PrevNamingAStreamBesideTheOldestTable is a 30-byte string that reports nothing.
+- A scan of every expected code list in tests/AdCodicem.Pdf.Tests finds no sequence [other code, limit.stream-length / decoded-stream / filter-chain, xref.hybrid-stream-lost].
+- Two mutants, each confirmed active on the probe, survive the whole unit suite. The first drops what the nearer places reported when the search reaches the /Prev's place (breaks 'which stands' on this path). The second moves the look's guard ahead of those reports (breaks 'after').
+
+The threat model defines Held by as 'the test that fails if the defense goes', so this clause has no holder. I keep it at nit rather than minor for three reasons: the text is true, the order follows from the nearest-first sort (KeepsItsPlace is asked only when the loop reaches leaveAt), and round 11's [10] (minor) was settled as a page fix, with the refuter's 'optionally pin the order' row not taken. The maintainer may read it as minor because of the Held by definition. It is not an ADR 53 survivor: R11d changed only docs, and neither mutant is in the first-order catalog.
+
+Verdict evidence: The probe is my own builder, separate from the reviewer's: W/r12wip/verify-tm-439-nearer-place-clause-unpinned/ZzR12NearerTests.cs.txt (W = C:/Users/clemm/AppData/Local/Temp/claude/7278f9d03177d71e/898783fc-049f-469a-ab79-dfd299ad558e/scratchpad/cloud). The files are in files/ and the output on 1cd2216 is in out-head.txt.
+
+The file:
+- Object 8 is at 1627, the nearest place to the /XRefStm offset 1647.
+- Shape 'dup': object 8 is `<< /Size 10 /W [1 4 2] /Index [7 1] /A 1 /A 2 /Filter /Foo /Length 4 >>` with data 'wxyz'. It cannot be read, so the search drops it.
+- Shape 'dup2': the same, with two keys each written twice.
+- Object 4 is untyped and is what the /Prev names. Its data is raw (107 bytes), Flate (row plus 4,000 dashes) or ASCIIHex encoded twice.
+
+On 1cd2216:
+- dup_raw, MaxStreamLength=50: [syntax.key-repeated@1676, limit.stream-length@1813, xref.hybrid-stream-lost@1647]. ThrowOnLimit throws MaxStreamLength.
+- dup_flate, MaxDecodedStreamLength=1000: [syntax.key-repeated@1676, limit.decoded-stream@1833, xref.hybrid-stream-lost@1647]. LimitsReached is 3 after Decode(), and there is one report. ThrowOnLimit throws MaxDecodedStreamLength.
+- dup_hex2, MaxFilterChainLength=1: [syntax.key-repeated@1676, limit.filter-chain@1855, xref.hybrid-stream-lost@1647, xref.rebuilt, object.redefined].
+- dup2 gives the same order with both key-repeated reports first.
+- Control 'none' (object 8 a string): [limit.stream-length@1752, xref.hybrid-stream-lost@1647].
+
+Test gap:
+- The mutants are in mutants-AB.diff in the same folder, switched by ZZMUT, with a mark taken before the candidate loop of TryRelocateXRefSection.
+- A: RollBackBesideLimits(searchMark) before KeepsItsPlace. dup_raw at 50 gives [limit.stream-length, xref.hybrid-stream-lost] (out-mutA.txt).
+- B: moves what KeepsItsPlace added to searchMark. dup_raw at 50 gives [limit.stream-length, syntax.key-repeated, xref.hybrid-stream-lost] (out-mutB.txt).
+- Full tests/AdCodicem.Pdf.Tests suite under each mutant: total 8,066, failed 0, succeeded 8,046, skipped 20. The 20 skips are remote-corpus rows, since the worktree has no remote copy. Logs: suite-mutA.log, suite-mutB.log. Probe output captured during each suite run (out-suiteA-probe.txt, out-suiteB-probe.txt) confirms the mutant was active.
+
+The worktree is restored and no probe is left in tests/.
+fix: Pin the order, and cite the test in threat-model.md:439.
+
+1. Give HybridFiles.PrevNamingAStreamBesideTheOldestTable an optional body for object 8. By default it stays the 30-x string; the alternative is an untyped stream `<< /Size 10 /W [1 4 2] /Index [7 1] /A 1 /A 2 /Filter /Foo /Length 4 >>`, which the search tries first and drops. The /XRefStm still names eight + 20.
+
+2. Add rows to A_guard_reached_decoding_the_data_of_a_stream_a_prev_names_is_reported_once_where_the_data_is_first_decoded, or a sibling theory with a name stating the behavior, expecting:
+   - untyped Flate under MaxDecodedStreamLength 1000: [syntax.key-repeated, limit.decoded-stream, xref.hybrid-stream-lost];
+   - typed twin: [syntax.key-repeated, xref.hybrid-stream-lost, limit.decoded-stream];
+   - optionally the MaxStreamLength 50 raw and MaxFilterChainLength 1 forms: [syntax.key-repeated, limit.stream-length, xref.hybrid-stream-lost] and [syntax.key-repeated, limit.filter-chain, xref.hybrid-stream-lost, xref.rebuilt, object.redefined].
+
+   Both mutants in mutants-AB.diff fail the untyped row.
+
+3. Add the new name to row 439's Held by cell.
+
+Not a design choice for the maintainer. The text is right, so no doc change is needed beyond the citation.
+needs_maintainer: False
+
+## 16. signed-header-reached-at-its-sign-taken-again-at-its-digit — major → narrowed minor (signed-headers (9b9fb90, 45255)
+Location: src/AdCodicem.Pdf/IO/PdfFileReader.cs:5214 (the search's reached test `_sectionsReadAt.Contains(candidate)`), with :5297-5300 (the line test at HeaderTokenStart, 9b9fb90); texts docs/website/docs/concepts/lazy-reading.md:193-194, docs/website/docs/reference/diagnostics.md:110, docs/threat-model.md:441
+
+Claim: 9b9fb90 reopens #188 for '+'-signed headers. Take an unreadable /Type /XRef stream written '+11 0 obj' that the chain has already reached at its first byte, the sign (the header's proper offset), through an /XRefStm or a /Prev. A later search near an offset finds the same stream at its digit, where the walk back from obj stops. The reached test compares that digit with the byte the earlier reading started at, the sign, and misses it. The line test is now asked at the token start, which passes, so the stream is taken as the section found moved. It is reported twice, as two sections one byte apart, and the section actually in reach is never read. Where the stream's /Prev leads back, a false chain loop is reported too. On 79c6a7f the line test at the digit dropped this place by accident, so the signed file read exactly as its unsigned twin does on all three builds. The texts say a section is never found where a section the chain reached starts, which is now false for such a stream. The readable twin already had the same root on 79c6a7f and on main: the search found it again at its digit and looped, while the unsigned twin did not.
+
+Evidence: W/r12wip/signed-headers/set2/files/viaprev_p_foo_d30.pdf (gen2.py, family viaprev). Layout: the oldest table at 218 (objects 1-3 and 5 '(old five)'); object 4; stream 11 at 388 written '+11 0 obj', with /Type /XRef /Filter /FooDecode /Index [4 1 11 1] and /Prev 418 (30 bytes past its sign); object 6; the newest table at 573, which startxref names, with /Prev 388.
+
+On 1cd2216:
+- Sections: '/Prev 388 Stream Malformed' and '/Prev 418 -> 389 Stream Malformed'.
+- Diagnostics: 'Warning xref.section-unreadable at 388', then 'Repair xref.offset-adjusted at 389: The cross-reference section /Prev names at offset 418 was found 29 bytes before it.', 'Warning xref.section-unreadable at 389', 'Warning xref.chain-cycle at 418: ... the /Prev of the section at offset 389 names offset 418, where the chain has already reached a section it could not read.', and xref.rebuilt at opening.
+- Validator: 'Error xref.section-malformed offset 388', 'Error xref.section-malformed offset 389', 'Error xref.chain-loop offset 389'.
+
+On 79c6a7f, and for the unsigned twin viaprev_u_foo_d30.pdf on 1cd2216: '/Prev 418 -> 218 Table Relocated', 'Repair xref.offset-adjusted at 218', and one Error section-malformed at 388. main also loops there (no #188 defense).
+
+Hybrid form, set1/files/told_p_k0_d30_near_own_foo.pdf: the /XRefStm names stream 13 at its sign 388, and the /Prev is 418. On 1cd2216: '/XRefStm 388 Stream Malformed', '/Prev 418 -> 389 Stream Malformed', section-unreadable at 388 and at 389, two Error section-malformed, and the index rebuilt at opening. On 79c6a7f and for told_u_k0_*: /Prev -> 218 Table Relocated.
+
+Scale (count_f1.py): 92 blocks give the doubled report on 1cd2216 and not on 79c6a7f (72 told, 8 seeded 949, 6 toldg, 6 viaprev), with ++ and +- headers among them. A further 108 are the readings started at a later sign or digit of the token, #332's by-byte class, which the unsigned twins named inside their number also double.
+
+Prototype W/r12wip/signed-headers/f1-prototype-fix.diff skips a place whose HeaderTokenStart is in _sectionsReadAt:
+- all 92 blocks read as the unsigned twins;
+- the readable loops self_p_ok_d30 and viaprev_p_ok_d30, which chain-cycle with Error chain-loop on head, 79c6a7f and main alike, read cleanly too (24 blocks);
+- set3 is byte-identical;
+- CrossReferenceChainTests, CrossReferenceRuleTests and HostileInputTests: 1,557 passed (fix-chain.log).
+
+The same split also defeats the hybrid test `hybridStart == previousStart`, the #332 by-byte class. Example: seed949_067, where the /XRefStm finds '+-13' moved at its digit 2194 and the /Prev names its sign 2192, gives two section-unreadable and two Errors on head, where 79c6a7f dropped the place.
+
+Fix: In TryRelocateXRefSection's reached test, also skip a place whose header token (start - lead + HeaderTokenStart(...)) is where a section the chain reached starts, as in the prototype, keeping the takeAt exception. Add rows, with unsigned twins as controls:
+- an unreadable '+11' and '++11' stream reached at its first sign through /XRefStm and through /Prev, the oldest table within reach: /Prev Relocated to the table, one section-unreadable, one Error section-malformed, no chain-cycle;
+- the readable twins.
+Note in #332 that readings started at a later sign or digit of the token, and the hybridStart == previousStart test, stay #332's by-byte class, now reached by unreadable signed streams as well. The texts then hold as written.
+
+Verdict: The finding reproduces with my own generator, built independently of the reviewer's, on 1cd2216, 79c6a7f and main 21a0298. 9b9fb90 introduced it, so it is a regression against 79c6a7f. The cause:
+- The reached test at PdfFileReader.cs:5214 compares the walk's digit with the byte where the chain's reading started, the sign.
+- The line test now runs at HeaderTokenStart (:5293-5300), and it passes.
+- So an unreadable '+'-signed /Type /XRef stream the chain reached at its sign is taken again at its digit.
+It holds in two shapes. Through /Prev, the result is doubled section-unreadable, a phantom section one byte off, a false chain-cycle, the index rebuilt at opening, and the validator's Error chain-loop plus two Error section-malformed. Through an /XRefStm whose reading is Malformed, the result is doubled section-unreadable and section-malformed and a rebuild at opening. NumberRunsInto does not cover that second shape: readInStreamsPlace stays null for a Malformed /XRefStm reading (:3641-3655), so streamStart is -1.
+No issue holds it as stated. #332 frames the by-byte class as a link naming a place inside the number; here every link names the header exactly. #327's comment and its Known-gaps entry say only that the sign is looked at by the two line tests.
+It is narrower than claimed in four ways:
+1. Only the reports change. Every object is served as on 79c6a7f and as in the unsigned twin, also with an orphan object 5 that no section indexes, written after the stream.
+2. Against main it is no new outcome. main takes the same stream again in every twin, signed or not: it loops via /Prev and reads the stream twice in the hybrid. The head adds only a duplicate section-unreadable Warning and a duplicate Error section-malformed.
+3. The claim's sentence about the readable twin is half wrong: on main the unsigned readable twin loops too. The readable signed loop (head, 79c6a7f and main alike) is an older residual of #188 for signed headers, not this batch's regression.
+4. The texts are not false at the byte level. diagnostics.md:110 itself says such a header 'is found, and reported, at its first digit', and 383 is not where a reached section starts. What the texts overstate is #188's promise (threat-model.md:441, 'taking it was a loop and a shift the file does not have'), and the #327 Known-gaps entry (threat-model.md:511) omits the case.
+Severity is minor, following this batch's precedent. Round 11's [21] and [14] and round 10's [20] were all report-only signed-header shapes, rated minor; [24] was rated major because it served wrong objects silently. A single '+' is legal under ISO 32000 7.3.3 but exotic. On the brief's literal scale, a false chain-loop Error is a wrong report, which would make it major.
+
+Verdict evidence: Probe directory: W/r12wip/verify-signed-header-reached-at-its-sign-taken-again-at-its-digit/, where W = C:/Users/clemm/AppData/Local/Temp/claude/7278f9d03177d71e/898783fc-049f-469a-ab79-dfd299ad558e/scratchpad/cloud. It holds vgen.py (my generator), files/ and files2/ (the orphan variant), show.py, out-head.txt, out-79.txt, out-main.txt, out-fix.txt, out-o-*.txt and suite-fix.log. The probe test was an uncommitted ZzVsrTests.cs, since removed.
+
+The files (generated by vgen.py):
+- viaprev_<h>_<foo|ok>_d30.pdf: the oldest table at 212 (objects 1-3, and 5 '(old five)'); object 4; stream 11 at 382 under header h, with /Index [4 1 11 1], /Prev 412, and /Filter /FooDecode in foo; object 6; the newest table, which startxref names, with /Prev 382.
+- hyb_*: the same stream as 13 with no /Prev, and the newest table hybrid, /XRefStm 382 /Prev 412.
+
+viaprev_p_foo ('+11 0 obj'):
+- 1cd2216: S '/Prev 382 -> 382 Stream Malformed', '/Prev 412 -> 383 Stream Malformed'; D section-unreadable@382, offset-adjusted@383 '...found 29 bytes before it', section-unreadable@383, 'Warning xref.chain-cycle @412', xref.rebuilt at opening; F Error section-malformed at 382, Error section-malformed at 383, Error chain-loop at 383.
+- 79c6a7f, and the unsigned twin on head: '/Prev 412 -> 212 Table Relocated', one section-unreadable, rebuilt only on access, one Error section-malformed.
+- main: '/Prev 382 Read', '/Prev 412 -> 383 Relocated', chain-cycle, rebuilt, Error chain-loop. The unsigned twin on main loops the same way, at 382.
+- '++11' gives the same at 384. '-11' declares nothing on head and 79c6a7f alike.
+
+hyb_p_foo and hyb_pp_foo:
+- head: '/XRefStm 382 Stream Malformed', '/Prev 412 -> 383 (384) Stream Malformed', two section-unreadable, rebuilt at opening, two Error section-malformed.
+- 79c6a7f, and hyb_u_foo on head: /Prev -> 212 Table Relocated, one Error.
+- main: read twice, rebuilt, Error file.root-invalid.
+- hyb_p_ok on head: clean, because NumberRunsInto maps the digit to the read stream.
+
+Readable twins:
+- viaprev_p_ok and viaprev_pp_ok loop with Error chain-loop on head and 79c6a7f.
+- On main every viaprev twin loops, signed or not.
+
+Objects:
+- foo files: head and 79c6a7f give identical O lines.
+- Orphan variant (files2, out-o-*): foo files identical on both. viaprev_p_ok serves 5='orphan five' on head and 79c6a7f, against 'old five' for the unsigned twin. That loop predates this batch and matches main, which serves 'orphan five' for every twin.
+
+Prototype (W/r12wip/signed-headers/f1-prototype-fix.diff), applied to 1cd2216:
+- Every signed file reads as its unsigned twin. viaprev_p_foo: '/Prev 412 -> 212 Table Relocated', one section-unreadable, one Error. The readable loops are gone.
+- Unit suite AdCodicem.Pdf.Tests: total 8066, failed 0, skipped 20 (remote corpus not linked). No existing test pins the doubled behavior.
+fix: Fix it in this batch; it needs no maintainer decision. The reached test at PdfFileReader.cs:5214 should also skip a place whose header token starts where a section the chain reached starts. That token start is start - lead + HeaderTokenStart(window.Memory.Span, lead, (int)(candidate - (start - lead))). Keep the `candidate != takeAt` exception, as the prototype f1-prototype-fix.diff does. This applies #188's rule with R11a's own token-start notion (#327).
+
+Rows for CrossReferenceChainTests (generator vgen.py):
+- viaprev and hybrid, the /XRefStm's reading Malformed;
+- headers '+11' and '++11', each with /FooDecode;
+- '11 0 obj' controls and '-11' controls.
+Expected for the unreadable rows: /Prev relocated to the oldest table, one section-unreadable, one Error section-malformed, no chain-cycle. Expected for the readable rows: the same table taken, no loop.
+
+Also run ADR 53 on the new disjunct. The texts then hold as written. Optionally, the #327 comment or the threat model's #327 entry can say that the reached test also asks at the token start.
+
+Note on #332 that readings started at a later sign or digit of the token, and the `hybridStart == previousStart` test, stay #332's by-byte class.
+needs_maintainer: False
+
+## 17. window-edge-stream-read-twice-serves-objects-null-silently — major → narrowed minor (signed-headers (9b9fb90, 45255)
+Location: src/AdCodicem.Pdf/IO/PdfFileReader.cs:5408-5413 (NumberRunsInto, `streamStart >= spanStart`) and its remark :5399-5402; docs/threat-model.md:439 and :511; docs/website/docs/concepts/lazy-reading.md:200-203; docs/website/docs/reference/diagnostics.md:115
+
+Claim: Open point (a). The window-edge case does more than the NumberRunsInto remark and the #327 comment say ('read twice, Relocated at S+2'; 'The index is rebuilt as the document opens in all three'). Where the stream the /XRefStm read holds the catalog, nothing triggers a rebuild. The objects that only an older section out of the search's reach indexes are then served as null. The only report is a Repair xref.offset-adjusted, and the validator finds no Error. The twin one byte further, whose window holds the run's first sign, reports section-missing, rebuilds and serves them. main, which takes the newest table, also rebuilds and serves them. The pages state the rule with no edge: 'whatever byte of its header the /XRefStm read it from ... where it names a + of the run ..., so is the header found at the digit past the run'.
+
+Evidence: W/r12wip/signed-headers/set1/files/edge_pp_k0_j2_post700_seven.pdf (gen.py, family edge; 2,611 bytes). Layout: the oldest table at 241 indexes 1-3, 5 '(old five)' and 7 '(seven)'; 1,200 dashes; stream 13 at 1637 written '++13 0 obj', with /Type /XRef /Index [1 4 13 1] (catalog, pages, page, four, itself) and no /Prev; 700 dashes; the newest table at 2489, with /Prev 2151 (514 bytes past the first sign) and /XRefStm 1637. The bytes searched therefore start at the digit 1639, and the window holds only the second sign.
+
+On 1cd2216 (and 79c6a7f):
+- '/Prev 2151 -> 1639 Stream Relocated';
+- the only diagnostic is 'Repair xref.offset-adjusted at 1639: The cross-reference section /Prev names at offset 2151 was found 512 bytes before it.';
+- WasRepaired False after reading every object in both orders;
+- 'O 5 null', 'O 7 null';
+- validator: Warning xref.section-shifted only, no Error.
+
+Twin edge_pp_k0_j1_post700_seven.pdf (/Prev 2150): 'Warning xref.section-missing at 2150', rebuild, 5 '"old five"', 7 '"seven"', and Error section-not-found.
+
+main on the j2 file: '/Prev -> 2489 Table Relocated', xref.chain-cycle, rebuild, 5 and 7 served, Error chain-loop.
+
+The same null objects appear for edge_pm_k0_j2, edge_ppp_k0_j2, edge_ppp_k0_j3 and edge_ppp_k1_j3. The unsigned and '+13' twins at every window start give section-missing and serve 5 and 7.
+
+Fix: Tell the stream by its data across the window's edge.
+- Option 1: keep, with the record of what the /XRefStm read, where its header's digits start (the parser read the number there), and map a candidate equal to that position.
+- Option 2: where streamStart < start - 1, read the window from streamStart, bounded as IsTokenOnItsLine's look-back is.
+Add the j2 file as a row (section-missing, objects served). Failing a fix, file the edge and name it in threat-model.md:511, with this consequence, and qualify threat-model.md:439, lazy-reading.md:200-203 and diagnostics.md:115.
+
+Verdict: The reproducer holds byte for byte. I rebuilt it with my own generator, which gives the same layout (S=1637, oldest table 241, newest 2489).
+
+At the window edge the stream the /XRefStm read is taken a second time as the /Prev's section. It gives no /Prev, so the chain ends there. Where that stream indexes the catalog, nothing triggers a rebuild, and objects 5 and 7, which only the out-of-reach oldest table indexes, are served null. The twin one byte nearer and main both serve them.
+
+That is a worse consequence than the texts state. The #327 comment says "The index is rebuilt as the document opens in all three". That is true only because its edge files leave the catalog to the oldest table. The pages also state the told-by-its-data rule with no edge: lazy-reading.md:200-203, diagnostics.md:115, and threat-model.md:439 ("where it names a + of that run, the header found at the digit past the run is that stream too"). On open point (b), leaving the edge out of threat-model.md:511 is therefore wrong. So the item is not refuted as accepted.
+
+Narrowed on three points:
+- **Not silent.** The open gives Repair xref.offset-adjusted, and the validator gives Warning xref.section-shifted. Both are misleading, since they say the section was found moved, but they are there.
+- **The window.** The file needs a header written with two or more signs. The /XRefStm must read from a sign two or more bytes before the window's lead byte, with j in [k+2, run]: pp/pm k0 j2, ppp k0 j2-3, ppp k1 j3. The stream must give no /Prev (with /Prev naming the oldest table, every object is served), the older sections must lie out of reach, and the stream must index the catalog. Without the catalog, a rebuild follows with a false Error file.root-invalid, which the #327 comment does not mention either.
+- **Minor, not major.** #327's closing already requires "edge-2-514.pdf reads as edge-2-513.pdf". The consequence class matches round 11's [14]/[20], rated minor, which carried the same latent object loss. It also matches the "middle revisions lost, only a section-moved report" that the maintainer accepted with R8-Q1.
+
+I did not rerun 79c6a7f.
+
+Verdict evidence: **Files.** My own generator and probe are under W/r12wip/verify-window-edge-stream-read-twice-serves-objects-null-silently/:
+- gen.py writes set/ (624 files, manifest.tsv);
+- ZzVweTests.cs is the probe;
+- run.py drives it;
+- summ.py summarizes;
+- out-head.txt (1cd2216) and out-main.txt (21a0298, from my own worktree, since removed) hold the outputs.
+
+**1cd2216, e_pp_k0_j2_cat_own_post700** (/Prev 2151, /XRefStm 1637):
+```
+S /Prev 2151 1639 Stream Relocated
+D Repair xref.offset-adjusted 1639 'The cross-reference section /Prev names at offset 2151 was found 512 bytes before it.'
+O asc 1=dict 2=dict 3=dict 4="four" 5=null 7=null 13=stream; desc the same
+R open/asc/desc False
+F Warning xref.section-shifted offset 1639; F Warning page-tree.resources-missing; no Error
+```
+
+**Twin e_pp_k0_j1_cat_own_post700** (/Prev 2150):
+```
+S /Prev 2150 2150 Unknown NotFound
+D Warning xref.section-missing
+A Repair xref.rebuilt
+5="old five" 7="seven"
+F Error xref.section-not-found
+```
+
+**main on the j2 file:**
+```
+/Prev 2151 -> 2489 Table Relocated
+D Repair xref.offset-adjusted, Warning xref.chain-cycle
+A Repair xref.rebuilt
+5="old five" 7="seven"
+E xref.chain-loop
+```
+
+**The same null outcome on 1cd2216** (prev Stream Relocated, 5=null, 7=null, rep=False, D=xref.offset-adjusted only, no Error):
+- e_pm_k0_j2;
+- e_ppp_k0_j2 and e_ppp_k0_j3 (Relocated at 1640);
+- e_ppp_k1_j3.
+
+**Every other case on 1cd2216** gives section-missing, a rebuild, 5 and 7 served, and Error section-not-found:
+- unsigned and '+13': every j and k;
+- signed headers: every j outside [k+2, run].
+
+**Controls:**
+- **nocat_own j2**: offset-adjusted plus xref.rebuilt at opening, 5 and 7 served, and a false Error file.root-invalid. This is the #327 comment's own layout: its gen.py edge() indexes only objects 4 and 13 in stream 13.
+- **cat_sprev j2**: Relocated, then the oldest table read, everything served.
+- **post40**: the /Prev lies outside the file, giving section-missing.
+
+**Code.** NumberRunsInto (PdfFileReader.cs:5408-5413) returns false when streamStart < spanStart (start - lead). The candidate at S+2 then stays apart from takeAt, is passed over as possibly the table's own and put back, and is retried and taken, since nothing else is in reach.
+fix: **Option A: fix the code.** This applies the decided rules (R9-Q1, #156's told-by-its-data, R11a's run of signs) and needs no new decision.
+- When the /XRefStm reads its stream, record where that header's number's digits start, where the load lexed the run of signs. A new field on XRefSectionRecord holds it; nothing is read for it.
+- In NumberRunsInto, map a candidate equal to that position to streamStart, whatever the window holds. The streamStart >= spanStart guard then stays for the inside-the-number arm only.
+- Add rows: e_pp_k0_j2_cat_own_post700, e_pm_k0_j2 and e_ppp_k1_j3. Each should give section-missing, a rebuild, 5 and 7 served, and Error section-not-found, as its j1 twin does.
+- Add the nocat j2 row: section-missing instead of the false file.root-invalid.
+- Run ADR 53 on the new arm.
+- Then drop the edge sentence from NumberRunsInto's remark.
+
+**Option B: texts only, if the batch leaves the code.**
+- Qualify lazy-reading.md:200-203, diagnostics.md:115 and threat-model.md:439: the header at the digit past the run is told as that stream only where the window holds the run's first sign.
+- Add the edge to threat-model.md:511's #327 Known gaps entry, with its consequence. The stream is taken a second time where nothing nearer reads, and the chain ends there where it gives no /Prev. The older sections out of reach go unread, with no rebuild where the stream indexes the catalog, and only xref.offset-adjusted and xref.section-shifted are reported. Elsewhere the result is a rebuild with a false file.root-invalid.
+- Extend NumberRunsInto's remark with the same consequence.
+- Post a follow-up comment on #327. It should carry the cat row (5 and 7 null, no rebuild, where main serves them) and the nocat row's false root-invalid, and say that 'rebuilt in all three' holds only for the comment's layout.
+needs_maintainer: False
+
+## 18. threat-model-441-header-whose-run-of-signs-the-window-cuts-is-a-candidate — minor → confirmed minor (signed-headers (9b9fb90, 45255)
+Location: docs/threat-model.md:441
+
+Claim: 1cd2216 (R11d) added 'or the run of signs it is written with' to 'the byte before the window is read, so that neither the end of a startxref nor a header whose number, or the run of signs it is written with, the window's start cuts is one'. That is false. Such a header is a candidate, because the walk finds its first digit inside the bytes searched. Readable, it is taken and read at that digit (#327's walk), unlike a header whose digits the window cuts. Unreadable, it is dropped. Cut by a guard, it reaches the guard first and is then dropped.
+
+Evidence: W/r12wip/signed-headers/set3/files/win_pp_j1_ok.pdf (gen3.py): header '++11 0 obj' at 1219, /Prev 1732, so the bytes searched start at 1220 and the first sign is the byte before the window.
+- Readable, on 1cd2216: '/Prev 1732 -> 1221 Stream Relocated', the chain going on to 386 and 218, objects of revision 2 served, no Error. win_p_j1_ok and win_pp_j2_ok read the same way.
+- Unsigned twin win_u_j1_ok, whose digits the window cuts: 'xref.section-missing at 1732', rebuild, Error section-not-found.
+- Unreadable (win_pp_j1_foo): section-missing.
+- Guard (win_pp_j1_pad, trailer100): 'limit.trailer at 1221' and then section-missing, rebuild, Error section-not-found.
+79c6a7f gives the same results. The behavior is #327's; only the text is new and wrong.
+
+Fix: Say what the code does. A header whose digits the window's start cuts is no candidate. One whose run of signs alone it cuts is found at its first digit and read there (#327), and declares nothing where it cannot be read, a guard reached in reading it standing. Or drop the added clause.
+
+Verdict: The finding holds. 1cd2216 added the clause, and the behavior it contradicts is #327's and unchanged since main, so this is a new misstatement in a page, not a behavior defect. The sentence at docs/threat-model.md:441 says a candidate 'starts inside them: the byte before the window is read, so that neither the end of a startxref nor a header whose number, or the run of signs it is written with, the window's start cuts is one'. That is true of a header whose digits the window's start cuts: TryReadHeaderBackwards gives a headerStart below 'from', and FindSectionCandidates skips it. It is false of a header whose run of signs lies before the bytes searched, or that the window's start cuts. The walk stops at the first digit without looking at the byte before it, so that digit is inside the bytes searched and the header is a candidate. It spends an attempt and is read. Readable, it is taken and Relocated at the digit, and the chain goes on through its /Prev. Unreadable, HeaderTokenStart returns the digit (first < from), the line test fails, and the place is dropped. Cut by a guard, the guard's limit.trailer at the digit stands and the place is then dropped. A header the text calls no candidate would leave none of these traces.
+R11d's own deviation note (r11-fix2-result.json) says it based the clause on A_header_that_cannot_be_read_is_a_section_found_moved_only_where_its_token_starts_within_the_bytes_searched. That test pins only the unreadable case, and its comment and HeaderTokenStart's remark keep to 'declares nothing'. The threat-model sentence is about being a candidate at all, so it widened the claim to readable places. It also contradicts the #327 comment posted in the same round, whose edge-2-514 file has a header whose first sign lies before the window read a second time at its digit, 1459.
+None of this is accepted or filed. The brief accepts the behavior ('the walk finds a signed header at its digit, so the take reads and relocates there', and the window-edge case), not this text. Open point (b) is about lazy-reading.md and the #327 Known gaps entry, not row 441. decisions.md does not record this deviation as accepted.
+
+Verdict evidence: The reproducer is my own: W/r12wip/verify-threat-model-441-header-whose-run-of-signs-the-window-cuts-is-a-candidate/gen.py (python -I gen.py files) writes 63 files. Each has revision 2's /Type /XRef stream under a header H at S=1156, rows for 4, 6 and 11, and a /Prev to revision 1's table. Revision 3's table has /Prev S+J+512, so the bytes searched start at S+J and the window holds S+J-1. Modes: ok, foo (/Filter /FooDecode), and pad (a 200-byte /Pad, read under MaxTrailerLength 100). The probe is ZzRunCutTests.cs.txt in the same folder, and the output, run on 1cd2216 (a Release build in my worktree), is out-head.txt there.
+- p_j1_ok ('+11 0 obj', bytes searched from the digit 1157, '+' the byte before): 'S /Prev 1669 -> 1157 Stream Relocated', then 383 and 218 Read, one diagnostic 'xref.offset-adjusted @1157 ... found 512 bytes before it', objects 4/5/6/7 = new four/five/six/seven, not repaired.
+- pp_j1_ok ('++11 0 obj', bytes searched from the second '+' at 1157): '/Prev 1669 -> 1158 Stream Relocated', the same chain.
+- pp_j2_ok (bytes searched from the digit 1158, both signs before): '/Prev 1670 -> 1158 Stream Relocated'.
+- The unsigned twin u_j1_ok ('11 0 obj', bytes searched from 1157, cutting the digits): 'S /Prev 1669 -> 1669 Unknown NotFound', 'xref.section-missing @1669', 'xref.rebuilt'.
+- Unreadable p_j1_foo, pp_j1_foo and pp_j2_foo: NotFound, section-missing, rebuild.
+- The guard cases p_j1_pad, pp_j1_pad and pp_j2_pad (trailer100): 'Warning limit.trailer @1157' (or @1158, the digit), then section-missing and rebuild. u_j1_pad has no limit.trailer at the stream, only the one at the named offset that every pad file has.
+- The control cases where the run lies within the bytes searched (p_j0, pp_j0, pp_j-1) are taken at the digit, as the text expects.
+The code agrees: FindSectionCandidates adds 'start + headerStart' when headerStart >= from, and TryReadHeaderBackwards's headerStart is the first digit. HeaderTokenStart returns 'at' when first < from. 9b9fb90 left the take of a readable place untouched; it only changed the line test's argument, so 79c6a7f gives the same results (I checked this from the diff and did not rebuild it). The #327 comment (6762391491) says the same of edge-2-514: 'the window holds one byte more, the second sign: the first sign lies before it ... reads stream 13 a second time'.
+fix: Fix the text; no design choice is involved. At docs/threat-model.md:441, restore 79c6a7f's wording: '... nor a header whose number the window's start cuts is one ([#171])'. Then say what happens to a cut run of signs where the same row explains how a signed header declares itself ('but for digits a run of signs that starts with a `+` runs into, a header a load reads from that first sign ...'). Add there, for example: 'a run whose first sign lies within the bytes searched — a header whose first sign lies before them, the window's start cutting its run or falling at its digit, is still found at that digit and read there, taken where it reads, and declares nothing where it cannot be read, a guard reached in reading it standing ([#197], [#327])'. Optionally add the window-edge case already in NumberRunsInto's remark: a stream the /XRefStm read from such a run's first sign is read a second time. Alternatively, drop the added clause and leave the cut run to HeaderTokenStart's remark. In either case, cite beside A_header_that_cannot_be_read_..._within_the_bytes_searched only what that test pins, the unreadable case. If the readable case is to be pinned too, add a row to it, or a test like pp_j1_ok: taken at the digit, Relocated, the chain going on.
+needs_maintainer: False
+
+## 19. lazy-reading-222-found-moved-at-its-header — nit → confirmed nit (signed-headers (9b9fb90, 45255)
+Location: docs/website/docs/concepts/lazy-reading.md:222
+
+Claim: Open point (b). Where a link inside a signed number reads no header there, the search finds the stream moved 'at its header'. It is found at its first digit, or at its first sign where a comment parts the tokens, which is what diagnostics.md:116 says. The concept page reads as the header's first byte.
+
+Evidence: W/r12wip/signed-headers/set1/files/passedlink_pm_ok_k1.pdf: header '+-9 0 obj' at 523, named by the oldest table's /XRefStm at 524 (the '-'). On 1cd2216: '/XRefStm 524 -> 525 Stream Relocated' with 'xref.offset-adjusted at 525', the digit, not 523.
+
+Fix: Write 'finds the stream moved, at its first digit, or at its first sign where a comment parts its tokens', as diagnostics.md:116 does.
+
+Verdict: The finding holds as a nit. docs/website/docs/concepts/lazy-reading.md:222 says that where a link inside the number reads no header (the 0 of a 20, or a '-' of the run of signs), the search near that place "finds the stream moved, at its header". Three lines earlier, :215 defines a signed header as "a token a load reads ... from its first sign where its number is written with a run of signs that starts with a `+`". Read that way, the stream is found at the first sign. The code finds it at the first digit, or at the first sign only where a comment parts the header's tokens. That is what diagnostics.md:116 and the reader's remark at src/AdCodicem.Pdf/IO/PdfFileReader.cs:3740 say. The page itself also says at :203 "the header found at the digit past the run", so it disagrees with itself on where a signed header starts. Reached through the '-', the digit is inside the number token a load reads from the sign: that is the very case the sentence sets apart from 'at its header'. The text was added in this batch (1cd2216, R11d). Main has no signed-header clause, so nothing here is worse than main in behavior. The behavior itself (the walk finds a signed header at its digit, and the take reads and relocates there) is accepted under #327. Only the page's wording is at fault. R11d's deviation note covers leaving the location out of the take clause (:213-217). It does not cover this clause, which states a location. Nothing in decisions.md accepts that deviation, and the brief lists it as open point (b). On (b): leaving the detail to the reference pages is defensible, but stating 'at its header' here is not.
+
+Verdict evidence: My own independent reproducer is under W/r12wip/verify-lazy-reading-222-found-moved-at-its-header/. gen.py builds a one-revision file with objects 1-3 in a classic table and object 4 indexed only by cross-reference stream 9 under header H at offset 422. The table's /XRefStm (or /Prev) names 422+K. The probe is ZzR12VerifyAtItsHeaderTests.cs.txt, the output head.txt, the build build-head.log. Results on 1cd2216 (Release, 0 warnings):
+- '+-9 0 obj', /XRefStm 423 (the '-'): 'S /XRefStm Relocated Stream at=424', 'xref.offset-adjusted pos=424: ... names at offset 423 was found 1 byte after it'. That is the digit, not 422. Object 4 = "only in the stream".
+- '++-9 0 obj' or '+--9 0 obj', named 424: Relocated at 425, the digit.
+- '+-9 0 %c\nobj' or '+-9 %c\n0 obj', named 423: Relocated at 422, the first sign.
+- '20 0 obj', named 423: Relocated at 422, the first digit, which is the header's start.
+- The /Prev family gives the same positions.
+These match the reviewer's passedlink_pm_ok_k1.pdf ('/XRefStm 524 -> 525 Relocated', header at 523).
+The texts:
+- lazy-reading.md:222: '... or a `-` of the run of signs —, the search near that place finds the stream moved, at its header.'
+- lazy-reading.md:215: 'from its first sign where its number is written with a run of signs that starts with a `+`'.
+- lazy-reading.md:203: 'the header found at the digit past the run'.
+- diagnostics.md:116: 'finds the stream moved, at its first digit, or at its first sign where a comment parts the header's tokens'.
+fix: At lazy-reading.md:222, replace 'finds the stream moved, at its header.' with 'finds the stream moved, at its first digit, or at its first sign where a comment parts the header's tokens.' This matches diagnostics.md:116 and PdfFileReader.cs:3740 (rewrap the paragraph). Caveat: another round-12 finding (comment-parts-sign-position-misstated) questions the comment exception's wording. In its probes, a comment on its own line between the tokens gives the digit, and a '%' in a string on the number's line gives the sign. If that finding changes diagnostics.md:116, use the same corrected wording here. A lighter alternative, in line with R11d's choice for the take clause: drop ', at its header' and keep 'finds the stream moved, and the stream is reached all the same', leaving the location to diagnostics.md. This is not a design choice for the maintainer.
+needs_maintainer: False
+
+## 20. parted-type-theory-name-false-for-x-written-whole — minor → narrowed nit (tests)
+Location: tests/AdCodicem.Pdf.Tests/CrossReferenceChainTests.cs:7043 (row at :7042, added by 508047e)
+
+Claim: The theory's name says a passed-over stream is reported wherever no link the chain read reaches it and no guard cut a chain-named section before its type is known not to be xref. Row ("stream 6", "spaces", false, "/X", 12, "missing", false) meets both conditions and still expects no report. Stream 7 names nothing, so no link reaches stream 11. The guard cut stream 7 twelve bytes past the type's first byte, past the whole name /X, which a space ends, so the type is known to be X and not XRef. The behavior itself is accepted (508047e: the reader does not tell /X written whole from /XRef parted). It is the name that states the opposite of what this row pins. Threat-model rows 432 and 439 cite that name.
+
+Evidence: Builder dump (W/r12wip/tests/dump/builders.txt, block 'PaddedType stream 6 spaces /X data=False', typeAt=136): window 4 = [7 0 obj\n<<<120sp>/Type /X /] and window 5 = [7 0 obj\n<<<120sp>/Type /X /S], so window 12 holds '/Type /X /Size 9 /'. On 1cd2216 the row passes, expecting exactly [(xref.offset-adjusted, taken), (xref.hybrid-stream-lost, taken), (limit.trailer, oldest), (xref.section-missing, oldest)] with no xref.stream-passed-over (res/head.xml: 1200 run, 0 failed). On 79c6a7f, with round 11's tests, it is one of the 16 parted-type rows that fail, because the Warning is made there (W/r12wip/tests/b79-fails.txt). Compare the sibling row ("stream 6", "spaces", false, "/Catalog", 12, "missing", true): the same cut past a whole name, and the stream is reported. Every other row agrees with the name: window -3 cuts before the type, window 5 cuts with the type known to be XRef, and windows 1 to 4 cut inside the name.
+
+Fix: Take the /X 12 row out into a theory or fact of its own whose name states the conservative rule, e.g. A_stream_passed_over_near_a_hybrid_table_s_prev_is_reported_nowhere_where_a_trailer_guard_cut_a_section_the_chain_names_whose_type_is_a_name_xref_begins_with_wherever_the_cut_fell. The cited theory's name and its other 29 rows then hold as they are. Cite the new test beside it at threat-model 432 and 439.
+
+Verdict: The substance holds, but only as a nit. The theory name at tests/AdCodicem.Pdf.Tests/CrossReferenceChainTests.cs:7043 says the stream is reported where no guard cut a chain-named section "before its type is known not to be xref". In plain reading that names a place in the bytes: whether the cut fell before or after the bytes that tell the name is not XRef. 7b1de15 wrote this name together with its src texts ("inside the name its /Type gives"). 1c1d270 found those src texts false for a name written whole and changed them to "wherever the cut fell" (status.md record). It left the test name alone. The ("stream 6", "spaces", false, "/X", 12) row from 508047e breaks the plain reading. The window holds "/X /Size 9 /", so the space after X has been read and the type is X. No link reaches stream 11, and nothing is reported.
+
+Why narrowed:
+(1) There is a second reading. If "known" means what the reader knows, the name holds for every row. The test's own comment uses that sense ("is not told from /XRef parted"). Both the threat-model text next to the citations and the src texts state the rule correctly ("the reader does not tell such a name from one written whole, the cut past it"). So the name is misleading, not a misstatement of the behavior. The behavior itself is accepted (508047e, brief).
+(2) Every earlier round rated a theory name that a row contradicts as a nit, for example r9 [19] place-test-name-vs-passed-over-row and [20] filter-test-name-vs-new-rows, plus checksum-theory-name-zero-row and stray-word-names-contradicted-by-171-pin.
+(3) The citations are at docs/threat-model.md:439 and :446 on 1cd2216, not 432 and 439. Those are the only citations; grep finds none in src, other pages or status.md.
+
+The /X 12 row is the only row that contradicts the name. The other /X rows are window 0 and have no cut. Windows 1 to 4 are all /XRef, parted inside the name.
+
+Verdict evidence: The probe is the uncommitted ZzPartedTypeNameProbe on 1cd2216, built on HybridFiles.PassingOverAStreamAnOlderStreamWithAPaddedTypeNames("stream 6", false, type, "spaces", data: true). 10 of 10 rows ran. The probe and its output are in C:/Users/clemm/AppData/Local/Temp/claude/7278f9d03177d71e/898783fc-049f-469a-ab79-dfd299ad558e/scratchpad/cloud/r12wip/verify-parted-type-theory-name-false-for-x-written-whole/ (ZzPartedTypeNameProbe.cs, probe-out.txt). TypeAt is 136 and oldest is 358.
+
+- /X, window 12, holds [/X /Size 9 /]: Repair xref.offset-adjusted @1924, Warning xref.hybrid-stream-lost @1924, Warning limit.trailer @358, Warning xref.section-missing @358. No xref.stream-passed-over. Oldest NotFound, stopped=False.
+- /X, windows 3 [/X ] and 4 [/X /], where the space after X is read: same list, no passed-over report.
+- /X, window 2 [/X]: same list.
+- /X, window 0: ...offset-adjusted, hybrid-stream-lost, Warning xref.stream-passed-over @2103. Oldest Read.
+- /Catalog 12 [/Catalog /Si] and /Catalog 2 [/C]: ...limit.trailer, section-missing, Warning xref.stream-passed-over @2109.
+- Controls I added: /XO 12 [/XO /Size 9 ] and /XRefX 12 [/XRefX /Size] are both reported (@2104, @2107). /XRef 12 is Malformed, stopped=True, not reported.
+
+So the reader tests the name (a name XRef begins with and that is shorter), not where the cut fell. A window that has read past the end of a whole /X gives what a parted /XRef gives.
+
+On 79c6a7f the /X 12 row is one of the 16 rows that fail, because the Warning was made there. Both r11-fix2-result.json and the reviewer's b79-fails.txt say so.
+
+1c1d270's commit body says the earlier texts claimed "inside the name its /Type gives", and that the reader "tests the name ... wherever the cut fell: it does not tell a name the cut parted from one written so". The test name still speaks of where the cut fell.
+
+grep shows the name in docs/threat-model.md:439 and :446 only. In those rows, the text next to the citation already says "the reader does not tell such a name from one written whole, the cut past it".
+fix: Wording only, test and pages. Not a question for the maintainer.
+
+Rename the theory to the rule as coded, so that all 30 rows, the /X 12 row included, hold without a split. For example: A_stream_passed_over_near_a_hybrid_table_s_prev_is_reported_where_no_link_the_chain_read_reaches_it_and_no_trailer_guard_cut_a_section_the_chain_names_whose_type_is_unread_xref_or_a_name_xref_begins_with.
+- window -3 is "unread";
+- the /XRef window 5 row is "xref";
+- the /X 12 row and windows 1 to 4 are "a name xref begins with", wherever the cut fell;
+- /Catalog and the uncut /X rows are reported.
+
+Update the two citations at docs/threat-model.md:439 and :446.
+
+The reviewer's split also works: move the /X 12 row into a test of its own whose name states the conservative rule, cited beside the theory at :439 and :446. It costs a second test for one row.
+
+Optional, in the same commit: the builder summary at tests/AdCodicem.Pdf.Tests/HybridFiles.cs:1918 (508047e) says a window of TypeAt + k bytes "holds the first k bytes of that name". For /X at k = 12 the window holds more than the name. Write "the first k bytes from the name's first byte" instead.
+needs_maintainer: False
+
+## 21. batch-patch-comment-past-window-branch-uncovered — minor → confirmed minor (tests)
+Location: src/AdCodicem.Pdf/IO/PdfFileReader.cs:5550 (IsTokenOnItsLine); also :3968, :4013, :4015, :4041, :4043 and src/AdCodicem.Pdf/Validation/Rules/SizeWrongRule.cs:71
+
+Claim: Codecov-style patch coverage, measured with the CI command (--coverage, cobertura) in my worktree at 1cd2216: round 11 (79c6a7f..1cd2216) covers 26/26 changed code lines, 100%. The batch (21a0298..1cd2216) covers 1435/1442, 99.51%, with 2 misses and 5 partials. One partial is reachable by a file that no test builds: IsTokenOnItsLine's `token.Kind != PdfTokenKind.EndOfInput` false arm at :5550. A header in a comment whose line runs past the end of the window the search reads leaves the lexer at EndOfInput. The others: :4013/:4015 (`offset < 0 || offset >= _source.Length` in TryParseUnrecordedAt) and :4041/:4043 (`if (!read) return false`) are defensive. KeepsItsPlace is asked only of a candidate the search found inside the file, a header the walk validated or an xref keyword (which returns earlier), and a header the window could cut needs a MaxTrailerLength under the 7 bytes of any header, which nothing reads under. They stay. :3968 (`_chainValuesCut?.Count ?? 0` in KeepsItsPlace) is reachable only if a value read through a guard's cut earlier in the chain left the list non-null when a later hybrid table's look runs, because ForgetReadThrough empties the list but keeps it. I built no such input. SizeWrongRule.cs:71 (`section?.HighestNumber ?? -1`) is 1/2 although line 70's pattern on the same `section` is 6/6, its null arm included. The untaken arm looks like one the lowering of `?.` then `??` adds, which stays partial by CLAUDE.md. Round 11's tests lens saw the same lines on 79c6a7f (at 3940/3985/3987/4013/4015/5445 there) and reported none of them.
+
+Evidence: Run: dotnet test ... -- --coverage --coverage-output-format cobertura --results-directory W/r12wip/tests/cov-head (10,754 total, 2 failed: the known #336 SeededComparerTests failure, and a 20 s wall-clock bound on the remote cairo-firefox-objstm-index-overflow document, see checked_and_sound). Then `python -I W/r12wip/tests/tools/cov_patch.py cov-head/coverage.cobertura.xml <worktree> 21a0298 1cd2216` printed: 'src/AdCodicem.Pdf/IO/PdfFileReader.cs: 900 code lines changed, misses [4015, 4043], partials [(3968, '50% (1/2)'), (4013, '50% (2/4)'), (4041, '50% (1/2)'), (5550, '50% (1/2)')]', 'SizeWrongRule.cs: 16 code lines changed, ... partials [(71, '50% (1/2)')]' and 'patch: 1435/1442 = 99.51%'. With 79c6a7f as the base: 'patch: 26/26 = 100.00%'. Reachability of :5550: probe ZzR12CodesTests.ZzCommentRunningPastTheWindow (W/r12wip/tests/probes/ZzR12CodesTests.cs.txt) takes HybridFiles.PrevFallingShortOfAPlacePastTheStream("a header in a comment"), runs the comment on by 700 dashes and fixes startxref. Under --coverage alone (cov-zz2/zz2.cobertura.xml) line 5550 is '100% (2/2)'. The document reads as it does without the dashes: 'dashes 700 => xref.offset-adjusted@229 / sections: startxref Read 1280 | /XRefStm Read 419 | /Prev Relocated 229' (dump/comment-window.txt). Defensive :4043: probe ZzZeroHeaderAtPrevPlace writes '0 0 obj' over object 4's header at the /Prev's place (HybridFiles.NamingAnObjectBesideTheStream). It is not a candidate: '0 0 obj => xref.offset-adjusted@1649, xref.offset-adjusted@1481', and :4043 stays at 0 hits (cov-zz/zz.cobertura.xml).
+
+Fix: Add a row to A_place_passed_over_near_a_hybrid_table_s_prev_is_reported_only_where_it_declares_itself_a_cross_reference_stream: "a header in a comment" whose line runs past the bytes searched, not reported. This is a place option on PrevFallingShortOfAPlacePastTheStream that writes the dashes before the end of line. For :3968, either build a chain whose looks meet the list non-null (a cut value read before a hybrid table's look) or record why none can. The defensive lines and SizeWrongRule:71 stay as they are.
+
+Verdict: The claim holds and is wider than stated. I reran the measurement myself on 1cd2216. A partial at :5550 is uncovered and reachable by a file, as claimed. The reviewer called :4041/:4043 defensive, which is wrong: a header that a comment parts (the batch's #261 walk finds such headers) and that runs past MaxTrailerLength reaches them. The reviewer built no input for :3968; I built one. Its non-null arm is reachable and does real work: the mutant `var readThrough = 0;` makes opening throw, and the whole suite never reaches that arm. Only :4013/:4015 are truly defensive: TryParseUnrecordedAt is called only from KeepsItsPlace's check, on a place the search found inside the file. I did not re-check SizeWrongRule.cs:71 at the IL level. Line 70 takes its null arm (6/6), so the untaken arm at :71 plausibly comes from how the compiler lowers `?.` then `??`, and leaving it is in line with CLAUDE.md. No decision, debt or accepted item already holds these gaps. Round 11's tests lens saw the same lines and reported none. The precedent is round 9's [17]: an uncovered branch in the patch was confirmed minor and fixed with a coverage-only test. The project's aim is 100% of the patch, and every member is to be covered through a document wherever one can reach it. The behavior is not wrong anywhere, so this is a test gap: minor.
+
+Verdict evidence: All probes and outputs are under W/r12wip/verify-batch-patch-comment-past-window-branch-uncovered/ (W = C:/Users/clemm/AppData/Local/Temp/claude/7278f9d03177d71e/898783fc-049f-469a-ab79-dfd299ad558e/scratchpad/cloud).
+
+(1) Coverage, rerun independently. Detached origin/ccr-6d6c0ee6-dqm4lm-188 (1cd2216), with the remote corpus hard-linked. Release build: 0 warnings. Ran the CI command (`-- --coverage --coverage-output-format cobertura`), output in cov/coverage.cobertura.xml. Result: 10,754 total, 2 failed. One is #336 SeededComparerTests. The other is the 20 s wall-clock bound on cairo-firefox-objstm-index-overflow (23.8 s under load). Scored with the reviewer's cov_patch.py (patch-batch.txt):
+- PdfFileReader.cs: 900 code lines changed, misses [4015, 4043], partials [(3968, 1/2), (4013, 2/4), (4041, 1/2), (5550, 1/2)]
+- SizeWrongRule.cs: partials [(71, 1/2)]
+- patch: 1435/1442 = 99.51%
+- With base 79c6a7f: 26/26 = 100.00%
+These are identical to the reviewer's figures. Round 11's own coverage file (W/r11wip/tests/coverage.cobertura.xml, on 79c6a7f) shows the same gaps at 3940/3985/3987/4013/4015/5445.
+
+(2) Probe ZzVerifyCovTests.cs.txt, run under coverage with `--filter-method *ZzVerify*`. Output in cov-zz/zz.cobertura.xml, line hits in probe-lines.txt: 3968 2/2, 4041 2/2, 4043 hits 1, 5550 2/2; 4013 stays 2/4 and 4015 stays 0.
+
+- P1 (:5550). My own copy of the "a header in a comment" layout. The comment line runs on by runOn dashes before its end of line, which ends past the window at 1028. Output (out/p1-comment.txt) is the same for every runOn of 0, 400, 480, 520 and 800:
+  - diagnostics: xref.offset-adjusted@229
+  - sections: startxref Read | /XRefStm Read Stream 419 | /Prev Relocated Table 229
+  So the lexer reaching EndOfInput changes no outcome. This is consistent with R4b classing the conjunct as equivalent; the row would be for coverage only.
+
+- P2 (:4041/:4043). The NamingAnObjectBesideTheStream layout, with object 4, a font at the place the /Prev names, written `4 0 %<300 dashes>\nobj`. Run with MaxTrailerLength 160 (out/p2-parted.txt):
+  - diagnostics: limit.trailer@1891, xref.offset-adjusted@1649, xref.offset-adjusted@1481
+  - sections: /XRefStm Relocated Stream 1649 | /Prev Relocated Table 1481
+  The check's window cuts the header, so TryReadIndirectObject returns false. MaxTrailerLength 400 and unbounded give no limit.trailer.
+
+- P3 (:3968). The same layout under a newer hybrid revision. Its stream's /W is `11 0 R`, and object 11 is `12 0 R` + 1,100 spaces, cut by MaxObjectLength 1024 (out/p3-readthrough.txt):
+  - diagnostics: xref.offset-adjusted@1649, xref.offset-adjusted@1481, limit.object@3318
+  - sections: startxref Read | /XRefStm Read 4492 | /Prev Read 3184 | /XRefStm Relocated 1649 | /Prev Relocated 1481
+  With the mutant `var readThrough = 0;` at :3968, opening throws `ArgumentOutOfRangeException: Non-negative number required (count)` at List.RemoveRange in ForgetReadThrough, called from TryRelocateXRefSection (out-mut3968/failure.txt). The source was reverted afterwards.
+
+(3) Side observation, outside this finding and present on main too. P4 (out/p4-parted-xref.txt, out-main/): when object 4 is a /Type /XRef stream that frees object 3, and its parted header is cut by MaxTrailerLength 160:
+- branch: limit.trailer@1891, /Prev Relocated to the oldest table, object 3 served as the page dictionary (null when read whole)
+- main 21a0298: the same object 3, through a rebuild
+This is a guard-cut section read past, a neighbor of #289. It is not this batch's regression, but a row should not pin it as intended.
+fix: Add three coverage tests and leave the rest as it is.
+
+1. :5550. Add a `runOn` option to HybridFiles.PrevFallingShortOfAPlacePastTheStream that writes N dashes before the comment line's end of line. Add a row to A_place_passed_over_near_a_hybrid_table_s_prev_is_reported_only_where_it_declares_itself_a_cross_reference_stream: "a header in a comment" with runOn 480, which ends the line past the window the search reads. Expected: not reported, sections and diagnostics as for the short comment. Record it in the ADR 53 notes as coverage-only: the EndOfInput conjunct is R4b's equivalent.
+
+2. :4041/:4043. Correct the classification: they are not defensive. Add a builder option that writes object 4's header parted by a comment (`4 0 %<300 dashes>\nobj`). Add a row next to An_xrefstm_whose_table_s_prev_names_no_section_goes_on_past_what_that_prev_names_to_the_stream: a font, MaxTrailerLength 160. Expected: [limit.trailer@four, xref.offset-adjusted@stream, xref.offset-adjusted@oldest], the /XRefStm Relocated to the stream, the /Prev Relocated to the oldest table. Use a font, not a /Type /XRef stream: that case reads past the guard's cut (as main does), and either a comment on #289 or a new debt should record it rather than a row pinning it.
+
+3. :3968. Add a GuardCutValueTests row:
+   - A newer hybrid revision whose stream's /W names an object that MaxObjectLength cuts after a whole reference, over a table whose /XRefStm search reaches its /Prev's place.
+   - Expected: [xref.offset-adjusted, xref.offset-adjusted, limit.object@object 11], and a throw under ThrowOnLimit.
+   - It kills `readThrough = 0`, which throws at open.
+
+:4013/:4015 stay as defensive branches, and SizeWrongRule:71 stays partial. No maintainer decision is needed.
+needs_maintainer: False
+
+## 22. signed-stray-header-rows-assert-a-prefix — nit → narrowed nit (tests)
+Location: tests/AdCodicem.Pdf.Tests/CrossReferenceChainTests.cs:1450 (rows added at :1433-1435)
+
+Claim: Round 11 added three signed rows ('+8', '++8', '+-8') to The_header_of_a_cross_reference_stream_a_load_reads_near_where_an_offset_names_no_section_is_the_section_found_moved. Like the theory's older rows, they assert only that the codes start with [xref.offset-adjusted, xref.section-unreadable], with no positions. A doubled section-unreadable, or any report misplaced after the first two, would pass. The new theories beside it in this round (A_header_that_cannot_be_read_..., the hybrid sign theories) assert exact sequences.
+
+Evidence: Probe ZzR12CodesTests.ZzStrayWordCodes on 1cd2216 (dump/stray-codes.txt): '+8 0 obj << /Type /XRef >>\n => xref.offset-adjusted@1535, xref.section-unreadable@1535, xref.rebuilt@-1, object.redefined@-1 | update 1561 section1 Malformed@1535'. '++8' and '+-8' give the same four codes at 1536, and so do the two older rows (at 1534 and 1541).
+
+Fix: Assert the whole sequence for all five rows: Equal((OffsetAdjusted, found.Offset), (SectionUnreadable, found.Offset), (XRefRebuilt, -1), (ObjectRedefined, -1)) on (Code, Position).
+
+Verdict: The finding's facts reproduce at 1cd2216, but the gap is narrower than stated.
+
+What holds: The_header_of_a_cross_reference_stream_a_load_reads_near_where_an_offset_names_no_section_is_the_section_found_moved (tests/AdCodicem.Pdf.Tests/CrossReferenceChainTests.cs:1430-1451) checks only that the codes start with [xref.offset-adjusted, xref.section-unreadable]. It pins no diagnostic position and does not pin the code list or the section list. A doubled section-unreadable, or a stray report after the first two, would pass all five rows.
+
+Four things narrow it:
+
+(1) The pattern is not new in round 11. 2b26d18 (round 3's fix) added the theory and its StartWith with the two older rows. 9b9fb90 only added three rows under the same assertion.
+
+(2) The rows hold what the name says. They check found.State Malformed and found.Offset at the digit. R11a's report (r11-fix1-result.json, tests_added[5]) says the three signed rows fail on 79c6a7f, where the header was dropped and the section Relocated to the update's table.
+
+(3) No code on the branch can double these reports. section-unreadable for a section that cannot be read comes from one Warn in the report method (src/AdCodicem.Pdf/IO/PdfFileReader.cs:4643-4646). R11a's ADR 53 pass left no open survivor: 51 mutants, 45 killed, 6 equivalent, all of them on NumberEnd, NumberRunsInto and StartsWithin, not on the report count.
+
+(4) The signed take path is already pinned exactly by its siblings in the same round:
+- A_cross_reference_stream_found_moved_whose_filters_decode_nothing_..._whether_a_plus_sign_starts_its_number_or_not (:623) pins the codes, Diagnostics[2].Position and the section list for +5, ++5 and +-5.
+- A_section_that_cannot_be_read_nearest_to_where_its_offset_names_none_is_found_moved_not_passed_over (:1274) pins the codes and both positions for +, ++ and +-.
+- A_header_that_cannot_be_read_is_a_section_found_moved_only_where_its_token_starts_within_the_bytes_searched (:1458) pins the codes for '+8 0 obj' and '++8 0 obj' with no stream data after the dictionary, which is this fixture's fault.
+
+So the gap is limited to this fixture: a stray header whose take ends the search before the update's table. What is left is an exactness nit, settled the same way as round 7 [6], round 8 [21] and round 9 [18]: narrowed to a nit and fixed by pinning the code list (decisions.md:507, :542, :601). The reviewer's premise that the new sibling theories pin exact sequences holds for codes. A_header_that_cannot_be_read pins Diagnostics[0]'s message, which carries the distance, but not Diagnostics[1].Position. This is not a maintainer decision.
+
+Verdict evidence: Built origin/ccr-6d6c0ee6-dqm4lm-188 at 1cd2216 in Release: 0 warnings, 0 errors.
+
+Probe ZzR12RefPrefixDump (source W/r12wip/verify-signed-stray-header-rows-assert-a-prefix/ZzR12RefPrefixTests.cs, output W/r12wip/verify-signed-stray-header-rows-assert-a-prefix/out-1cd2216.txt, where W = C:/Users/clemm/AppData/Local/Temp/claude/7278f9d03177d71e/898783fc-049f-469a-ab79-dfd299ad558e/scratchpad/cloud). It runs the theory's five rows over NearbyFiles.UpdateBehindAStrayWord(between), dumps every diagnostic and section, and asserts the reviewer's proposed Equal on (Code, Position). 5 of 5 passed.
+
+Each row gives exactly 4 diagnostics at opening, and the sections are startxref Read Table, then /Prev Malformed Stream at the found offset:
+- '+8': Repair xref.offset-adjusted@1535 ('...at offset 1529 was found 6 bytes after it.'); Warning xref.section-unreadable@1535 ('...found at offset 1535, is there but cannot be read: its dictionary is not followed by stream data...'); Repair xref.rebuilt@-1; Information object.redefined@-1 (object 3). Sections: startxref Read Table@1721; /Prev Malformed Stream@1535.
+- '++8' and '+-8': the same four codes at 1536 ('7 bytes after').
+- '8 % c': the same at 1534.
+- 'endobj 8': the same at 1541.
+This matches the reviewer's dump.
+
+From the code:
+- The theory at :1450 has `Should().StartWith([XRefOffsetAdjusted, XRefSectionUnreadable])`.
+- git blame attributes the theory body and the two older rows to 2b26d183 and rows :1433-1435 to 9b9fb907.
+- PdfFileReader.cs:4643-4646 is the one Warn for a section found but unreadable.
+- Sibling exact pins: :646-655 (+5, ++5, +-5: Equal codes, Diagnostics[2].Position == found, the section list), :1290-1303 (+, ++, +-: Equal codes, Diagnostics[0] and [1] Position == second), :1480-1482 (+8, ++8: Equal codes).
+
+The probe was removed from the worktree afterwards (git status clean).
+fix: At CrossReferenceChainTests.cs:1450, replace the StartWith with the reviewer's exact form for all five rows: `document.Diagnostics.Select(diagnostic => (diagnostic.Code, diagnostic.Position)).Should().Equal((PdfDiagnosticCodes.XRefOffsetAdjusted, found.Offset), (PdfDiagnosticCodes.XRefSectionUnreadable, found.Offset), (PdfDiagnosticCodes.XRefRebuilt, -1L), (PdfDiagnosticCodes.ObjectRedefined, -1L));`. It passes all five rows at 1cd2216 (probe above).
+
+Optionally, also pin that the take ends the search, which the comment states: `document.Reader.Structure.Sections.Select(s => (s.State, s.Offset)).Skip(1).Should().Equal((XRefSectionState.Malformed, found.Offset))`.
+
+This is a test-only change with no maintainer decision. Record it with the round's fixes, as for round 7 [6], round 8 [21] and round 9 [18].
+needs_maintainer: False
+
+## 23. lost-own-stream-read-again-at-its-digit — major → narrowed major (batch: the whole batch 21a0298)
+Location: src/AdCodicem.Pdf/IO/PdfFileReader.cs:5214 (the reached test, by byte), :5171-5173 (S taken only from a stream the /XRefStm read whole), :3641-3644 (a lost S is recorded at its first byte only); 9b9fb90's take site :5296-5300 makes it reachable
+
+Claim: A hybrid table's /XRefStm names its own stream S at its first byte, S is written '+13 0 obj' or '++13 0 obj', and S cannot be read (/FooDecode, or /W [1 -4 2]). The table's /Prev falls a few bytes past S's header. The /Prev's search finds S again at its digit, which the walk back from obj gives. A lost S sets no streamRead/streamStart, so NumberRunsInto never tells it. _sectionsReadAt holds only the sign's byte, so the digit is not counted reached. Since 9b9fb90 the line test passes at the sign, so the search takes S again as the /Prev's section found moved. Result: two section-unreadable Warnings and two Error section-malformed findings for one stream, one byte apart, a false section-shifted Warning, and the older table within reach is never read. 79c6a7f dropped that digit and took the older table, with one report. The unsigned analog, an /XRefStm one byte into '13 0 obj', already doubled at 79c6a7f. main read S twice and reported no unreadable section. This is #332's byte test, with a worse consequence than the one #332 states ('read twice and nothing reported').
+
+Evidence: Generator W12/tools/hand_lost.py, files in W12/hl. Outputs W12/hl/out-{branch,r10f,main}.txt (probe W12/probe-*, config D). Files are 720 bytes: oldest table at 229 (objects 1-3, 4 'old four'); S at 420 '+13 0 obj', /Filter /FooDecode, indexing 4, 6, 13, no /Prev; newest table '/Prev 450 /XRefStm 420'.
+
+l_p_i0_p30_none_foo_n13.pdf on 1cd2216:
+  Warning xref.section-unreadable at 420: The cross-reference stream /XRefStm names at offset 420 is there but cannot be read: its data could not be decoded. ...
+  Repair xref.offset-adjusted at 421: The cross-reference section /Prev names at offset 450 was found 29 bytes before it.
+  Warning xref.section-unreadable at 421: The cross-reference stream /Prev names at offset 450, found at offset 421, is there but cannot be read ...
+  Repair xref.rebuilt (at opening)
+  F Error xref.section-malformed at offset 420
+  F Error xref.section-malformed at offset 421
+  F Warning xref.section-shifted at offset 421
+
+On 79c6a7f: one section-unreadable at 420, 'Repair xref.offset-adjusted at 229: ... found 221 bytes before it', one Error at 420; the index is rebuilt on load.
+On main: offset-adjusted at 421, a rebuild, a false Error file.root-invalid.
+Objects 4, 6 and 7 are right everywhere.
+
+Other variants:
+- _badw_ (/W [1 -4 2]), _oldest_ (S /Prev 229), ++13 at i0, and /XRefStm one byte into the number (l_p_i2, l_pp_i3) double the same way on 1cd2216, and do not double on 79c6a7f.
+- l_plain_i1 doubles on both 79c6a7f and 1cd2216.
+- Readable controls (_none_none, _oldest_none) are told as S and read once.
+- In the differential, f02394_n1019 (D) shows it inside a six-revision chain: Error section-malformed at 3987 and 3988.
+
+Fix: In TryRelocateXRefSection, count a candidate as reached where the start of a section the chain reached, read or lost, lies in [HeaderTokenStart(candidate), NumberEnd), the rule StartsWithin already applies to passed-over records. Alternatively, pass the start of the /XRefStm's lost stream to NumberRunsInto as a reached start, so its header found at the digit is passed over. Rows: the hl shapes above (unsigned one byte in, signed at the sign or one byte in; /FooDecode and /W [1 -4 2]), each giving one section-unreadable and taking the table at 229, with readable controls. If not fixed here, add the reproducer to #332 as a consequence of its byte test.
+
+Verdict: The finding reproduces exactly on 1cd2216, and it is a regression of 9b9fb90 against 79c6a7f. The setup: a lost stream S, written '+13 0 obj' or '++13 0 obj', is read by the /XRefStm at a '+' of its run of signs (the first sign, which is the header's token start, or a later sign). That reading puts only the sign's byte in _sectionsReadAt. A lost S sets no takeAt or streamStart, so NumberRunsInto never maps the walk's digit back to the sign, and the reached test at :5214 misses it. Since 9b9fb90 the line test passes at the sign, so the /Prev's search takes S again at its digit as the section found moved. 79c6a7f dropped that digit by accident and took the oldest table, which is what the unsigned header named at its first byte still gets on 1cd2216.
+
+Why it is not known or accepted:
+- #327 accepts only that the walk reads and relocates at the digit. Its round-11 comment says the sign is asked by "the two questions above" (the line test and the passed-over record). It does not say that a reached section named at its sign is taken again.
+- #332's subject is a reading inside the number, rather than at the header. Here the /XRefStm names the header's own token start, which R11a defines as the header.
+- The texts say the opposite of the code: the TryRelocateXRefSection remark (:5031-5037, every place where a section the chain reached starts, lost there though it declares itself one, is passed over), threat-model.md:441 ("is no candidate") and diagnostics.md:110 ("never found where the chain read one").
+- The batch already decided to tell a stream read at a '+' by its data (round 10 [20], round 11 [14]/[20] (iii)), but only for the stream the /XRefStm read whole.
+
+Narrowed on two counts:
+- The new regression is the sign case only: hp_i0, hpp_i0 and hpp_i1. A reading inside the digits doubles the same way unsigned at 79c6a7f already (hu_i1), and hp_i2 now merely matches it. That part is #332's byte test, with a lost-stream consequence #332 does not state, so it is a comment on #332 rather than a fix here.
+- Against main, the objects served are the same. main reports nothing about S being unreadable, and gives a false Error file.root-invalid in the no-/Prev form.
+
+Consequence beyond the doubled reports: in the no-/Prev form the index is now rebuilt as the document opens, so an object the newest table frees is served from the oldest revision even when it is asked first. 79c6a7f served null there until a number S declares was asked.
+
+Major per the brief's rubric: doubled Warning and validator Error, a false section-shifted Warning, the older table within reach left unread, and the batch's reached rule not implemented for a header that starts at its sign. Another lens's refuter (verify-signed-header-reached-at-its-sign-taken-again-at-its-digit) shows the same root cause without a hybrid table: a lost S reached through a /Prev at its sign gives a second unreadable report, a second Error and an xref.chain-cycle. So the fix belongs in the reached test, not only in what the /XRefStm passes.
+
+Verdict evidence: Everything is under W/r12wip/verify-lost-own-stream-read-again-at-its-digit.
+
+**Generator and probe**
+- gen.py writes files/ (144 files). Layout: the oldest table at 229 (objects 1-3, 4 'old four'); objects 4 'new four' and 6; S at 420, /Type /XRef, indexing 4, 6 and 13, header h ∈ {u '13 0 obj', p '+13 0 obj', pp '++13 0 obj', m '-13 0 obj'}; object 7; the newest table with /XRefStm S+i and /Prev S+30 or S+7. S has /Prev none or 229, and is /FooDecode, /W [1 -4 2] or readable.
+- gen2.py writes files2/: the same files, with object 5 'old five' in the oldest table, freed by the newest table.
+- Probe ZzLostOwnProbe.cs, run on 1cd2216, 79c6a7f and 21a0298 (worktrees since removed). Outputs out-{head,79,main}.txt and out2*.txt; summaries in sum-*.txt and cmp.txt (python -I cmp.py .).
+
+**hp_i0_p30_none_foo.pdf on 1cd2216**
+```
+S /XRefStm 420 -> 420+0 Stream Malformed | S /Prev 450 -> 421+0 Stream Malformed
+D Warning xref.section-unreadable at 420: The cross-reference stream /XRefStm names at offset 420 is there but cannot be read: its data could not be decoded. ...
+D Repair xref.offset-adjusted at 421: The cross-reference section /Prev names at offset 450 was found 29 bytes before it.
+D Warning xref.section-unreadable at 421: The cross-reference stream /Prev names at offset 450, found at offset 421, is there but cannot be read ...
+D Repair xref.rebuilt (at opening)
+F Error xref.section-malformed at offset 420
+F Error xref.section-malformed at offset 421
+F Warning xref.section-shifted at offset 421
+```
+
+**The same file on 79c6a7f**
+```
+/Prev 450 -> 229+0 Table Relocated
+one section-unreadable at 420
+Repair xref.offset-adjusted at 229: ... found 221 bytes before it.
+one Error at 420; section-shifted at 229
+```
+The rebuild comes on load.
+
+**The same file on main**
+- /XRefStm reads as Read, /Prev 450 -> 421 Relocated, a rebuild.
+- `F Error file.root-invalid`, `F Warning xref.section-shifted at offset 421`.
+- No unreadable report.
+
+**Breadth (cmp.txt)**
+- 1cd2216 differs from 79c6a7f in 34 files. All are lost forms of hp_i0, hp_i2, hpp_i0 and hpp_i1 (foo and badw, S /Prev none or 229, /Prev +30 or +7), plus 2 intended readable hpp_i0_old_ok rows (round 11 [14]/[20]).
+- hu_i0 and hp_i1 give one report on both.
+- hu_i1 (unsigned, one byte into the number) doubles on both 79c6a7f and 1cd2216, which is #332's byte test.
+- Objects 1-14 are identical across all three heads in gen.py's files.
+
+**Freed object (gen2, object 5 asked first, ZZ_FIRST=5)**
+- fp_i0, fpp_i0, fpp_i1 and fp_i2, no-/Prev form: 1cd2216 gives `FIRST 5="old five" repaired=True`; 79c6a7f gives `5=null repaired=False`; main gives `"old five"`.
+
+**Prototype (proto-fix.diff)**
+The reached test becomes `candidate != takeAt && StartsWithin(_sectionsReadAt, start - lead + HeaderTokenStart(window.Memory.Span, lead, (int)(candidate - (start - lead))), candidate + 1)`.
+- Every sign row reads as on 79c6a7f (sum-fix.txt: identical to 79c6a7f in 134 of 144).
+- The rows left are hp_i2 (inside the digits, still doubling, the same as hu_i1) and the intended hpp_i0_old_ok.
+- Unit suite with the prototype: 8,066 total, 0 failed, 20 skipped, remote corpus not linked (suite-fix.log). No existing test pins the doubled shape.
+- Reverted afterwards.
+fix: Fix it in this batch, at the reached test of TryRelocateXRefSection (PdfFileReader.cs:5214).
+
+**The code change**
+Count a candidate reached where a start the chain reached, read or lost, lies anywhere from the header's token start to its first digit: `candidate != takeAt && StartsWithin(_sectionsReadAt, start - lead + HeaderTokenStart(window.Memory.Span, lead, (int)(candidate - (start - lead))), candidate + 1)`, as in proto-fix.diff.
+- This applies R11a's decided token start ("a header whose number is written with a run of signs that starts with a + is a token from its first sign") to the third place that looks at a header's start.
+- It covers a reading at any '+' of the run, as NumberRunsInto's sign arm already does for the stream the /XRefStm read.
+- It also covers a lost S reached through a /Prev at its sign (the duplicate lens's viaprev shape).
+- It decides nothing for #332.
+
+Passing only the /XRefStm's lost stream to NumberRunsInto, the finding's alternative, would leave the /Prev route open. The finding's wider rule, [HeaderTokenStart, NumberEnd), would also cover readings inside the digits. That is #332/#330's pending maintainer decision (by its data or by the byte), so it should not be taken here.
+
+**Rows** (each fails on 1cd2216)
+- '+13 0 obj' named at 420, and '++13 0 obj' named at 420 and at 421: /FooDecode and /W [1 -4 2], S /Prev none or the oldest table, /Prev S+30 and S+7. Each gives one xref.section-unreadable at the /XRefStm's offset, the table at 229 taken (offset-adjusted at 229), and one Error xref.section-malformed.
+- The no-/Prev form with an object the newest table frees, asked first: null, nothing rebuilt.
+- The /Prev-route twin: a lost '+11 0 obj' read through a /Prev at its sign, its own /Prev 30 bytes on. No second report, no chain-cycle.
+- Controls: '13 0 obj' at its first byte, '+13 0 obj' at its digit, the readable forms, and '-13 0 obj'.
+
+**Texts and records**
+- Say it in the TryRelocateXRefSection remark (:5031-5037, :5195-5212), threat-model.md:441, diagnostics.md:110, HeaderTokenStart's summary (now asked by the reached test too), and the #327 Known gaps entry. The #327 comment's "the two questions" becomes three.
+- Run ADR 53's mutants over the changed line.
+
+**Tracking**
+Comment on #332 with the lost-stream consequence of its byte test. hu_i1 (S '13 0 obj' lost, /XRefStm 421, /Prev 450) gives two section-unreadable Warnings and two Errors on 79c6a7f and 1cd2216. hp_i2 now does the same. The decision there should cover lost streams too.
+
+This finding duplicates the other lens's signed-header-reached-at-its-sign-taken-again-at-its-digit: settle both with one fix.
+needs_maintainer: False
+
+## 24. told-by-data-stated-without-the-window-edge — nit → confirmed nit (batch: the whole batch 21a0298)
+Location: docs/website/docs/concepts/lazy-reading.md:200-203; docs/website/docs/reference/diagnostics.md:115; docs/website/docs/reference/validation-rules.md:60; docs/threat-model.md:439 (cell 2) and the #327 Known gaps entry at :511-517
+
+Claim: Four pages say the stream the /XRefStm read is told by its data 'whatever byte of its header the /XRefStm read it from', so that a header found at the digit past a '+' run is that stream. They state no exception. The code does not tell it where the run has two or more signs and starts before the window's lead byte while its digit opens the bytes searched. That edge is in NumberRunsInto's remark and on #327, but not in the threat model's #327 Known gaps entry (R11d's deviation), so these sentences overstate the code. This is open point (b).
+
+Evidence: W12/tools/hand_edge.py, files in W12/he, outputs W12/he/out-{branch,main}.txt. e_pp_514_none_n_n13.pdf ('++13 0 obj' at 1525, /XRefStm 1525, newest /Prev 2039) on 1cd2216:
+  Repair xref.offset-adjusted at 1527: The cross-reference section /Prev names at offset 2039 was found 512 bytes before it.
+  Repair xref.rebuilt
+  F Error file.root-invalid at object 1 0 ... No object of the file is a catalog. (object 1 is served as the catalog: #260)
+  F Warning xref.section-shifted at offset 1527
+The told twin e_pp_513_none_n gives 'xref.section-missing at 2038' and Error section-not-found. The same edge appears for '+-13' at past 514 and '+++13' at 514 and 515 (offset-adjusted at 1527 and 1528).
+
+Fix: Add one sentence to the #327 Known gaps entry: a stream an /XRefStm read from the first of two or more signs that start before the byte the search's window holds before the bytes searched is not told from its header found at the digit, and is read again there. Qualify the four sentences with '(but for #327's window edge)', or point them to that entry.
+
+Verdict: The finding holds. Each of the four pages states the told-by-data rule for a '+' of the run with no exception. lazy-reading.md:200-203 adds 'whatever byte of its header the /XRefStm read it from'. diagnostics.md:115, validation-rules.md:60 and threat-model.md:439 cell 2 state it flatly. threat-model.md:441 is a fifth place: 'that stream's own header, where the /XRefStm names ... a + of the run ..., the header then found at the digit past the run, is that stream, nothing read at it'.
+
+The code does not tell the header in one case. NumberRunsInto gets the window with its one lead byte (span start = start - lead) and requires streamStart >= that start. A reading that began at a '+' lying before the lead byte is therefore not told, while the header's digit lies inside the bytes searched. The header is then tried as a stream of its own and read a second time. This is the same 'read twice and the naming unreported' outcome that threat-model.md:439 lists as already mitigated ('or as one past it, taken where its /Prev names another offset, the stream read twice and the naming unreported').
+
+Only NumberRunsInto's remark and the #327 comment (6762391491) state the edge. The #327 Known gaps entry (threat-model.md:511-517) and row 439's own known-gaps list do not. On open point (b): leaving it out of the threat model was wrong. The edge is a consequence of #327 (the walk finds a signed header at its digit), and #327's closing would remove it, so the #327 entry is its home.
+
+It is a known shape that the brief accepts, and its outcome is not judged here. It is reported only because the texts misstate it, as the brief allows.
+
+The evidence is wider than the claim:
+- '+++13' at 514, where the digit is the second byte searched and not the first, is not told either.
+- An /XRefStm that names the second '+' of '+++13' (S+1), with the bytes searched starting at the digit, is not told.
+So the exception is any '+' of the run that lies before the byte the window holds ahead of the bytes searched, the header's digit within them. It is not only 'the first of two or more signs, the digit opening the bytes searched'. Only lazy-reading has the 'whatever byte' wording. The other pages overstate the same way without it.
+
+Nit, as round 11's [4] was: a universal statement in the texts, false for one narrow hostile shape. It needs an invalid header (ISO 32000-1 allows one sign at most), a hybrid /Prev placed exactly so, and no other section the search prefers. The code already documents it. Not worse than main, which takes the newest table instead (#188 loop).
+
+Verdict evidence: Branch 1cd2216, my worktree, Release build with 0 warnings.
+
+Files and generators, under W/r12wip/verify-told-by-data-stated-without-the-window-edge/:
+- gen.py, my own rewrite of the shape, writes files/.
+- gen_into.py writes files2/: the /XRefStm names S+1.
+- The probe is ZzWindowEdgeToldProbeTests.cs.txt, which dumps sections, diagnostics and xref/file findings.
+- Outputs: out-branch.txt and out-branch-into1.txt.
+
+Shape: S = 1525, stream 13 of /Type /XRef. The newest table has /XRefStm S and /Prev S+past. The search reads from /Prev-512, and the window holds one byte before that.
+
+Sections, then codes:
+- w_pp_513_none ('++13', bytes searched from 1526, lead byte 1525 = S), told: /XRefStm Read Stream at=1525; /Prev named=2038 NotFound. Codes: xref.section-missing, xref.rebuilt, Error xref.section-not-found.
+- w_pp_514_none (bytes searched from 1527 = digit, lead byte 1526), not told: /XRefStm Read Stream at=1525; /Prev named=2039 Relocated Stream at=1527. Codes: xref.offset-adjusted ('found 512 bytes before it'), xref.rebuilt, Error file.root-invalid ('No object of the file is a catalog.'), Warning xref.section-shifted at 1527.
+- w_pp_513_oldest, told: /XRefStm NamedAgain at=1525; /Prev Relocated Stream at=1525; /Prev Read Table at=137. Codes: offset-adjusted, xref.hybrid-stream-lost, section-shifted, Error xref.hybrid-stream-wrong.
+- w_pp_514_oldest, not told: /XRefStm Read Stream at=1525; /Prev Relocated Stream at=1527; /Prev Read Table at=137. Codes: offset-adjusted and section-shifted only. The stream is read twice and the naming is unreported.
+- w_pp_514_tables: Relocated Stream at=1527, chain-cycle, rebuilt, Error chain-loop, no hybrid-stream-wrong. Its told twin w_pp_513_tables reports NamedAgain, hybrid-stream-lost and hybrid-stream-wrong.
+
+The same not-told outcome appears for:
+- w_pm_514_* ('+-13', Relocated at 1527);
+- w_ppp_514_* and w_ppp_515_* ('+++13', Relocated at 1528; at 514 the digit is the second byte searched);
+- i1_ppp_515_* (the /XRefStm names S+1 = 1526, bytes searched from 1528, lead byte 1527; Relocated Stream at=1528, offset-adjusted, plus rebuilt and file.root-invalid for 'none').
+
+A single '+' is always told: w_p_513 gives NamedAgain or NotFound. i1_pp_514 (named S+1, lead byte = S+1) is told too.
+
+Code: PdfFileReader.cs NumberRunsInto ('streamStart >= spanStart && ...'), called as NumberRunsInto(window.Memory.Span, start - lead, candidate, streamStart), at about :5207. Its remark: 'a reading that started farther back is not told from such a header, which is tried as a stream of its own.'
+
+Texts with no exception: lazy-reading.md:200-203, diagnostics.md:115, validation-rules.md:60, threat-model.md:439 (cell 2, which also lists 'the stream read twice and the naming unreported' as fixed) and :441. The #327 Known gaps entry at :511-517 omits the edge. r11-fix2-result.json records R11d's deviation, which left it to the #327 comment.
+fix: Texts only, no code change.
+
+1. Threat model, #327 Known gaps entry (threat-model.md:511-517). Add one sentence: "The search tells the stream an /XRefStm read from a + of such a run from the header it finds at the digit past the run only where the window holds the signs between them; it holds one byte before the bytes searched. A reading that started at a + farther back is not told: the header is tried as a stream of its own and taken where it may be the table's own, the stream read twice and the naming unreported, or the chain ending there and the index rebuilt as the document opens, the validator saying the file holds no catalog." Optionally add a pointer to it from row 439's 'known gaps' list.
+
+2. The told-by-data sentences: lazy-reading.md:200-203, diagnostics.md:115, validation-rules.md:60, threat-model.md:439 (cell 2) and :441. Qualify the '+' clause with "where the search's window holds the run (#327)", or end it with a pointer to that Known gaps entry. On lazy-reading.md, also drop or qualify 'whatever byte of its header the /XRefStm read it from', which is the strongest wording.
+
+3. Optionally, in the XML summary at PdfFileReader.cs:5040-5043 and the comment at :5195-5201, add "but where the window does not hold the run (NumberRunsInto)". Their cref already leads to the remark that states the edge.
+
+Not a maintainer decision. Telling the header at the window edge, by reading back past the lead byte, is a code change that belongs to #327's closing, not to this batch.
+needs_maintainer: False
+
+## 25. 279-comment-signed-header-variant — nit → refuted none (batch: the whole batch 21a0298)
+Location: GitHub #279, comment 6762402379, 'Where it is read'
+
+Claim: The comment says that at an offset the chain names, a /Type the guard parted reads as another type, and that 'what it does next is the file's: the search near the offset, then xref.section-missing and a rebuild'. That fails for a header whose number is written with a '+', named at its sign, when the cut falls at '/XRe'. The search finds the same stream at its digit, its window one byte later now holds /XRef whole, and it is taken as the guard's. The reader gives a second limit.trailer, xref.offset-adjusted 'found 1 byte after it', the validator a false Warning xref.section-shifted (the header starts at the named byte) and checked-in-part. Nothing is rebuilt and objects past the cut read null. main does the same (#327's walk at the digit). #279's closing (the guard's reading) should cover this shape.
+
+Evidence: W12/tools/hand_parted.py run with VALUE_AT=134 (files W12/hp4, outputs W12/hp4/out-{branch,main}.txt, config T138 = MaxTrailerLength 138). parted-plus-first_n7.pdf ('+7 0 obj' at 203, /Type value 134 bytes past the sign, table /Prev 203), branch and main alike: 'limit.trailer at 203; limit.trailer at 204; xref.offset-adjusted at 204' and validator 'Warning xref.section-shifted at offset 204; Information xref.checked-in-part at offset 204'; object 1 null. The unsigned control parted-plain-first gives limit.trailer + section-missing + rebuilt + Error section-not-found, as the comment says. With VALUE_AT=136 (W12/hp), so /X or /XR from the sign, the signed headers also give section-missing. Same pattern in the differential: f00128_n62 T256 (offset-adjusted at 2851, '1 byte after').
+
+Fix: Tracking only, no code change: a follow-up comment on #279 with this reproducer. A '+' header named at its sign and cut at /XRe is relocated to its digit and read as the guard's, with a false section-shifted Warning, as on main. #279's closing row should expect no relocation report there.
+
+Verdict: The facts reproduce exactly, and main at 21a0298 gives the same output. But the shape is two filed debts working together, not a new defect, and the #279 comment does not misstate it.
+
+What happens on the signed header:
+- At the offset the chain names (the sign), #279's parted /Type makes the read NotFound and not cut. That is the comment's mechanism, and it holds here.
+- The chain then takes the file's route, the search near the offset, as the comment says.
+- The search finds the same object at its digit, by #327's walk. Its window now ends one byte further into the dictionary and holds /XRef whole.
+- The take is R11a's take of a place that cannot be read (Malformed, TypedXRef, IsTokenOnItsLine asked at HeaderTokenStart, PdfFileReader.cs:5293-5302). Its relocation is reported at the digit.
+- The brief lists exactly this as accepted and #327's: "the walk finds a signed header at its digit, so the take reads and relocates there". The #327 comment (6762391491) says the same under 'What stays this issue's' ("read, relocated and reported there"). Its near-pad-plus row already records that a '+' stream a guard cut, found by the search at its digit, is the guard's there with a relocation, "as main reads both".
+
+So the relocation report 1 byte after and the validator's section-shifted Warning are #327's stated consequence of relocating at the digit. The second limit.trailer is the same object read twice: once at the sign, once by the search at the digit.
+
+It is not worse than what the comment describes:
+- The outcome is the guard's reading that #279's closing asks for. The chain ends there, nothing is rebuilt, and objects 1 to 3, indexed only by stream 7, read null. They read null under 136, 141 and 142 too.
+- No wrong object is served.
+- The output is identical to main except for #241's wording of the message.
+
+The comment does not misstate it:
+- Its sentence describes the route ("the search near the offset"). The reports it lists after that are the ones its measured shapes give, where the search finds nothing else in reach.
+- The same comment shows main's search taking something else (the table at 460, #188). So it does not claim that section-missing always follows.
+- Every line the comment quotes is accurate. Its line references (:6537, :6528-6532, :3783) match 1cd2216.
+
+No closing row is missing:
+- #279's rule, read as the guard's at the named offset, whether the parted name is dropped or kept, makes the read at the sign the guard's. No search runs, so no relocation either. The finding itself concedes the closing covers the shape.
+- #327's first closing would find the header at its sign, the offset already tried. The search would then drop it, as for the unsigned header.
+
+This is a narrow combination: a signed object number, a MaxTrailerLength chosen so the window ends inside /XRef by exactly as many bytes as there are signs (one byte for '+', two for '++'), and a /Prev naming the sign.
+
+Verdict evidence: I rebuilt it with my own C# probe, independent of the reviewer's generator: W/r12wip/verify-279-comment-signed-header-variant/ZzR12V279Signed.cs. It writes files/*.pdf and its outputs are out-branch.txt (1cd2216) and out-main.txt (21a0298, built in a temporary worktree, since removed). The files use the #279 comment's plain chain: 120 spaces open stream 7's dictionary and the table gives /Prev 203. I swept MaxTrailerLength over 133, 136 to 143 and 145.
+
+plus-sign.pdf ('+7 0 obj' at 203, /Type value 137 bytes past the sign) under T141, the sign's window ending at '/XRe' and the digit's holding '/XRef'. The branch gives:
+- Warning limit.trailer at 203
+- Warning limit.trailer at 204
+- Repair xref.offset-adjusted at 204: 'The cross-reference section /Prev names at offset 203 was found 1 byte after it.'
+- F Warning xref.section-shifted at offset 204
+- F Information xref.checked-in-part at offset 204
+- Objects 1 to 3 null, repaired=False.
+
+main gives the same lines, the only difference being 'was found 1 bytes from there.' (#241's wording).
+
+Other rows:
+- plus-sign under T138 to T140: section-missing at 203, rebuilt, Error section-not-found, as the comment says.
+- plusplus-sign.pdf: the same relocation at 205, '2 bytes after', under T141 and T142. Branch equal to main.
+- plain-sign under T141 and T142: limit.trailer at 203 alone, objects 1 to 3 null. So null objects are the guard's reading, not something the sign adds.
+
+Elsewhere:
+- The take is the Malformed and TypedXRef arm with the line test at HeaderTokenStart (PdfFileReader.cs:5293-5302 at 1cd2216).
+- The #327 comment 6762391491 ('What stays this issue's': 'a signed header is found at its first digit, so it is read, relocated and reported there'; near-pad-plus is the guard's at its digit, 'as main reads both').
+- The brief's accepted list ('the take reads and relocates there').
+- decisions.md, 'Review round 11 fixes, part 2' (the #279 comment's scope: section-missing and section-not-found stay #279's).
+fix: None needed. If the maintainer wants this combination on record, the row belongs with #327's closing rows, since the read again at the digit is #327's. It can also be one sentence the next time #279 or #327 is touched: under #279's closing the read at the sign is the guard's, so no search runs and no relocation is reported. A new comment on #279 now is not needed.
+needs_maintainer: False

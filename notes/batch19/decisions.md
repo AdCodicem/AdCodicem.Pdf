@@ -942,3 +942,65 @@ Pushed 7b1de15..1cd2216 (fast-forward); round 11 fixes are 79c6a7f..1cd2216, 14 
 Orphaned MSBuild nodes left by the agents (parents gone) stopped by PID after the run.
 Round 12 review launched: lot19-review-r12.js on 79c6a7f..1cd2216 (7 lenses: signed-headers, guard-flag,
 guards-diagnostics, src-texts, tests, docs, batch), brief updated (r12wip, base 79c6a7f, #336, R11-Q1).
+
+# Review round 12 (wf_5b03e982-2f6, Windows): triage
+
+25 findings, 25 verdicts (r12-findings.md, r12-verified.json): 1 major, 13 minor, 10 nit, 1 refuted. Numbers below are
+r12-findings.md's.
+Fix in this batch, code:
+- [23]+[16] (major as [23] rates it; [16] narrowed to minor, same root): 9b9fb90 regression. A '+'-signed header the
+  chain reached (read or lost) at its sign is taken again at its digit by a later search: the reached test at :5214
+  compares the digit with the sign. Hybrid (a lost own stream) and /Prev shapes: doubled section-unreadable and Error
+  section-malformed, a false section-shifted, a false chain-cycle/chain-loop via /Prev, the older table in reach unread,
+  a rebuild at opening (a freed object served from the oldest revision). Fix: the reached test counts a candidate
+  reached where a start the chain reached lies in [HeaderTokenStart, candidate] (StartsWithin, takeAt exception kept;
+  [23]'s proto-fix.diff, 134/144 identical to 79c6a7f, suite green). Readings inside the digits stay #332's (comment
+  on #332: the lost-stream consequence, hu_i1/hp_i2). Rows from both verdicts; texts (TryRelocateXRefSection remark,
+  HeaderTokenStart summary, threat-model 441, diagnostics 110, #327 known gap: three questions ask the sign now).
+- [2] (minor) + [6]'s non-name part: a /Type that is no name, cut before its /W, read as another type: :6537 becomes
+  `cut.GetRaw(PdfName.Type) is not PdfName` (the reader's own rule: such a /Type declares nothing; ADR 34), the guard's
+  reading, chain stopped. Rows 5, (XRef), [/XRef], true, << >> before/inside/past the /W; null and /Catalog controls.
+- [1]+[5] (minor) escaped /XRef parted inside an escape ('/X#', '/X#5', '/#', ...): the flag missed. And [6] (minor,
+  narrowed): a cut dictionary of another /Type with a /W (#263: the section where it reads), or a /Type given twice,
+  at a chain-named offset: the Warning made though default limits follow its /Prev; the test comment's 'hides no such
+  link' false. Scope -> R12-Q1.
+- [17] (minor, narrowed) + [24] (nit): the window-edge read-twice case serves objects only an out-of-reach older
+  section indexes as null, with no rebuild, where the stream holds the catalog (only offset-adjusted and section-
+  shifted reported); 'rebuilt in all three' true only for the #327 comment's layout; five pages state the told-by-data
+  rule with no edge. -> R12-Q2.
+Fix in this batch, tests:
+- [21] (minor): patch 1435/1442: rows for :5550 (comment line running past the window, coverage only, R4b's equivalent
+  conjunct), :4041/:4043 (a comment-parted header cut by MaxTrailerLength 160: not defensive), :3968 (a cut value read
+  earlier in the chain, kills `readThrough = 0`, which throws at open). :4013/:4015 defensive, SizeWrongRule:71 a
+  lowering arm. P4 (a /Type /XRef stream's parted header cut by MaxTrailerLength read past, as main): comment on #289.
+- [8] (minor): capacity theory name ('only where') -> where its document never held the report or the decoding made
+  as many reports as the capacity before it; the lenonly_rep3 row (capacity 4); threat-model 572 citation.
+- [15] (nit): the nearer-place order clause (threat-model 439, reader-limits 212-215) held by no test; two mutants
+  survive the suite: object 8 option on PrevNamingAStreamBesideTheOldestTable, rows untyped and typed; cite.
+- [7] (nit): the cut-value path's order row ("/Q 1 /Q 2 ", flate, cut /W): fails under RollBack(besideCut).
+- [22] (nit): exact (Code, Position) pin for the five stray-header rows; [20] (nit): rename the parted-type theory to
+  the rule as coded (unread, xref, or a name xref begins with), threat-model 439/446 citations (with R12-Q1's outcome).
+- [9] optional "/Type /Foo " row with the page fix.
+Fix in this batch, texts:
+- [3] (minor): 'where a comment parts the header's tokens' -> where the line its number is on, which an end of line
+  ends before obj, holds a % (src 3740, 5197, 5394, 5453; diagnostics 110, 116; threat-model 439, 441; test comments
+  5940, 6687, 7126, 7218); rows '+9 0\n%c\nobj' (digit) and '(%) +9 0\nobj' (sign).
+- [18] (minor): threat-model 441's 'or the run of signs it is written with' is false: restore 79c6a7f's wording and
+  say a header whose first sign lies before the bytes searched is found at its digit, read there, declares nothing
+  where it cannot be read; cite only what the test pins (optionally a readable row).
+- [9] (minor): reader-limits 210: the look decodes any stream that gives no /Type /XRef.
+- [4] (nit): '/Prev past the cut unread' -> '/Prev not followed, wherever it lies' (all places [4]'s verdict lists).
+- [10] (nit, narrowed): at an /XRefStm's offset the reason is not a hidden link: the texts give the reason by what
+  named the offset (behavior kept, accepted; no code change); a row pinning the reach at an /XRefStm's offset.
+- [11] (nit): threat-model #279 gap and diagnostics 142: the startxref case (rebuilt at opening, file.startxref-wrong).
+- [12]/[19] (nit): lazy-reading 222 'at its header': drop it (place left to the reference pages).
+Tracking: [14] #336 body :85 -> :86; [13] #327 follow-up (edge-2-514's Error file.root-invalid, or the edge fixed per
+  R12-Q2); #279 comment (escaped shape, startxref row, non-name /Type per the fixes); #332 comment ([23]); #289 ([21] P4).
+Refuted: [25] (two filed debts, #279 and #327, together; the comment does not misstate it).
+- R12-Q1 (maintainer, 2026-11-10): "Tout dictionnaire coupé (Recommandé)": the guard flag is set for every dictionary a
+  guard cut at an offset the chain names that the reading does not take for the guard's section, whatever its /Type
+  (round 9's [2]/[11] rule; covers [1], [5], [6] and [2]'s Warning); MayBePartedXRef goes; the three /Catalog rows
+  with oldestNamesOwn false flip; R11-Q1's document-wide reach kept. [2]'s state change (:6537) stays in the fix.
+- R12-Q2 (maintainer, 2026-11-10): "Corriger dans le lot (Recommandé)": record, when the /XRefStm reads its stream,
+  where its header's digits start; NumberRunsInto tells a candidate there as that stream whatever the window holds;
+  the edge sentence goes from NumberRunsInto's remark; [24]'s texts then hold; #327 follow-up says the edge is fixed.
