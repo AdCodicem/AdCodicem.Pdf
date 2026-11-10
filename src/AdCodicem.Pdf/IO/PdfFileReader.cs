@@ -4009,15 +4009,21 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// <param name="value">The object read, as far as the window let it be.</param>
     /// <param name="foundNumber">The number of the object found.</param>
     /// <param name="headerAt">Where in the file the object read starts, past the white space and comments before it.</param>
+    /// <param name="digitsAt">
+    /// Where in the file the digits of the object's number start, past the run of signs it is written with, where it is
+    /// (<see cref="PdfObjectParser.HeaderDigits"/>); <paramref name="headerAt"/> otherwise.
+    /// </param>
     /// <param name="cut">
     /// Whether the guard's window cut what was read, where <see cref="TryParseNumberedAt"/> reaches the guard.
     /// </param>
     /// <returns>Whether an object starts there, whole or cut.</returns>
-    private bool TryParseUnrecordedAt(long offset, out PdfObject value, out int foundNumber, out long headerAt, out bool cut)
+    private bool TryParseUnrecordedAt(
+        long offset, out PdfObject value, out int foundNumber, out long headerAt, out long digitsAt, out bool cut)
     {
         value = PdfNull.Instance;
         foundNumber = 0;
         headerAt = offset;
+        digitsAt = offset;
         cut = false;
 
         if (offset < 0 || offset >= _source.Length)
@@ -4063,6 +4069,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
                 value = parsed;
                 foundNumber = found.Number;
                 headerAt = offset + parser.HeaderStart;
+                digitsAt = offset + parser.HeaderDigits;
                 return true;
             }
         }
@@ -5184,6 +5191,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
         var streamRead = readInStreamsPlace is { Kind: XRefSectionKind.Stream } ? readInStreamsPlace : streamNamedAgain;
         var tablePrevious = streamRead is not null ? offset : -1;
         var streamStart = streamRead is { } read ? read.Offset + read.Padding : -1;
+        var streamDigits = streamRead?.DigitsAt ?? -1;
         var inWindow = candidates.Count;
 
         // Where the stream the /XRefStm read is put back unread, past the places the window holds: the one place put back
@@ -5210,10 +5218,13 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
             // — a digit, or the first sign of the run a header whose tokens a comment parts starts at —, at a sign of that run
             // or a digit, and the stream's own header, whose number runs on into that place, starts before it; where it names
             // a + of the run of signs the number is written with, the header the walk back from obj finds starts at the digit
-            // past the run. What follows that number is the same bytes for both — the dictionary, the data —: the header is
-            // that stream's, told as that stream is, from where its reading started, rather than as another stream before it
-            // or past it.
-            if (NumberRunsInto(window.Memory.Span, start - lead, candidate, streamStart))
+            // past the run, where that reading found the digits, however few of those signs the window holds. What follows
+            // that number is the same bytes for both — the dictionary, the data —: the header is that stream's, told as
+            // that stream is, from where its reading started, rather than as another stream before it or past it. That
+            // start may lie before the bytes the window holds: the look for a section the chain reached takes it as it is,
+            // the stream reached there, and the line test, which no window answers there, has it declare nothing
+            // (HeaderTokenStart, IsTokenOnItsLine).
+            if (NumberRunsInto(window.Memory.Span, start - lead, candidate, streamStart, streamDigits))
             {
                 candidate = streamStart;
             }
@@ -5411,34 +5422,38 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// stream whose reading started at <paramref name="streamStart"/>, what follows its object number — the generation, the
     /// dictionary, the data — being the same bytes for both (#156): its number runs on into where that reading started,
     /// inside the number, past its first byte; or that reading started at a <c>+</c> of the run of signs the number is
-    /// written with, and the header starts past it, signs alone between them.
+    /// written with, and the header starts at the digits past it, where that reading found them
+    /// (<paramref name="streamDigits"/>).
     /// </summary>
     /// <remarks>
-    /// A look at the bytes of the header's number, in the bytes searched, which the window holds: nothing is read for it.
     /// No header the search finds starts inside a run of digits. The walk back from <c>obj</c> takes the whole run of the
     /// number's digits, back to the first byte that is not one, and does not look at that byte — a sign, the end of a
     /// keyword such as <c>endobj</c>, any regular byte —: the header <c>+17 0 obj</c> starts at its digit 1, one byte past
     /// the sign a reading of it starts at, and <c>++17 0 obj</c> two bytes past, a load reading a run of signs as it reads
-    /// one, the first deciding. A header whose tokens a comment parts is lexed from its line's start, and starts where the
-    /// lexer's token does, its run of signs included (<see cref="TryReadHeaderBackwards"/>): the number runs on through the
-    /// signs and the digits past its first byte (<see cref="NumberEnd"/>), and the keyword <c>xref</c>, which holds neither
-    /// past its first byte, runs into nothing. A reading that starts at a <c>-</c> reads a negative number, no object's
-    /// header, and no stream: a reading of the stream that started in its run of signs started at a <c>+</c>, and a header
-    /// found where that reading started is that stream's as it is. Every header found lies whole within the bytes searched
-    /// (<see cref="FindSectionCandidates"/>), so that its digits end within them; the signs between where a reading started
-    /// and a header found past it are looked at only where the window holds them all, as it holds the byte before the bytes
-    /// searched: a reading that started farther back is not told from such a header, which is tried as a stream of its own.
+    /// one, the first deciding; a reading that starts at a <c>-</c> reads a negative number, no object's header, and no
+    /// stream. The reading of the stream lexed its number, and kept where the digits past the run of signs start, where
+    /// the number starts if it has none (<see cref="XRefSectionRecord.DigitsAt"/>): a header found there is that
+    /// stream's, whether or not the window holds the signs before it — as where the reading started at a sign before the
+    /// byte the window holds ahead of the bytes searched, the digits within them —, told by a comparison, nothing read for
+    /// it. A header found before where the reading started is told by a look at the bytes of its number, in the bytes
+    /// searched, which the window holds, nothing read for it either: the number runs on from the header's first byte
+    /// through the signs and the digits past it (<see cref="NumberEnd"/>) — a header whose tokens a comment parts is lexed
+    /// from its line's start, and starts where the lexer's token does, its run of signs included
+    /// (<see cref="TryReadHeaderBackwards"/>) —, and the keyword <c>xref</c>, which holds neither past its first byte,
+    /// runs into nothing. Every header found lies whole within the bytes searched (<see cref="FindSectionCandidates"/>),
+    /// so that its digits end within them.
     /// </remarks>
     /// <param name="span">The bytes searched.</param>
     /// <param name="spanStart">Where <paramref name="span"/> starts in the file.</param>
     /// <param name="candidate">Where the header starts in the file, within the bytes searched.</param>
     /// <param name="streamStart">Where the reading of the stream started in the file, -1 for none.</param>
-    private static bool NumberRunsInto(ReadOnlySpan<byte> span, long spanStart, long candidate, long streamStart) =>
-        streamStart >= spanStart &&
-        (candidate < streamStart
-            ? NumberEnd(span, spanStart, candidate) > streamStart
-            : span[(int)(streamStart - spanStart)] == (byte)'+' &&
-                !span[(int)(streamStart - spanStart)..(int)(candidate - spanStart)].ContainsAnyExcept((byte)'+', (byte)'-'));
+    /// <param name="streamDigits">
+    /// Where the digits of the stream's object number start in the file, past the run of signs it is written with, if any,
+    /// as its reading lexed them; -1 for none.
+    /// </param>
+    private static bool NumberRunsInto(
+        ReadOnlySpan<byte> span, long spanStart, long candidate, long streamStart, long streamDigits) =>
+        candidate == streamDigits || (candidate < streamStart && NumberEnd(span, spanStart, candidate) > streamStart);
 
     /// <summary>
     /// Gives where the object number of the header the search near an offset found at <paramref name="at"/> ends, read as
@@ -5538,6 +5553,14 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// </param>
     private bool IsTokenOnItsLine(ReadOnlySpan<byte> span, long spanStart, int at)
     {
+        // A place before the bytes the window holds — the stream an /XRefStm read from a sign, whose header the search
+        // found at the digits past a run of signs the window does not hold (NumberRunsInto) — is not lexed: it declares
+        // nothing, as a header whose number starts before the bytes searched counts for nothing (#197).
+        if (at < 0)
+        {
+            return false;
+        }
+
         var lineStart = span[..at].LastIndexOfAny((byte)'\r', (byte)'\n') + 1;
 
         if (lineStart > 0 || spanStart == 0)
@@ -6172,7 +6195,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
 
         section.TrailerPosition = found;
         var guards = _guardsReached;
-        _ = TryParseNumberedAt(found + TrailerKeyword.Length, DirectObject, PdfLimit.Trailer, out var value, out _, out _, out var syntaxFault);
+        _ = TryParseNumberedAt(found + TrailerKeyword.Length, DirectObject, PdfLimit.Trailer, out var value, out _, out _, out _, out var syntaxFault);
 
         if (_guardsReached != guards)
         {
@@ -6262,7 +6285,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
         // The trailer starts inside the window, so inside the file as long as the source's length holds;
         // where nothing can be parsed the value is null, and anything that is not a dictionary is no trailer.
         var guards = _guardsReached;
-        _ = TryParseNumberedAt(absolute + position, DirectObject, PdfLimit.Trailer, out var value, out _, out _, out var syntaxFault);
+        _ = TryParseNumberedAt(absolute + position, DirectObject, PdfLimit.Trailer, out var value, out _, out _, out _, out var syntaxFault);
 
         if (_guardsReached != guards)
         {
@@ -6504,6 +6527,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
         PdfObject value;
         int number;
         long header;
+        long digits;
         bool syntaxFault;
         bool objectRead;
         bool cutByGuard;
@@ -6517,7 +6541,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
         // section, the guard is reported; where it is only checked, the guard's cut is known and nothing is reported.
         if (checkOnly)
         {
-            objectRead = TryParseUnrecordedAt(at, out value, out number, out header, out cutByGuard);
+            objectRead = TryParseUnrecordedAt(at, out value, out number, out header, out digits, out cutByGuard);
             syntaxFault = false;
         }
         else
@@ -6527,7 +6551,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
             // search passes over it, to try it again once every other place was (TryRelocateXRefSection).
             PdfDictionary? passedOver = null;
             objectRead = tablePrevious >= 0
-                ? TryParseNearHybridPrev(at, tablePrevious, out value, out number, out header, out syntaxFault, out passedOver)
+                ? TryParseNearHybridPrev(at, tablePrevious, out value, out number, out header, out digits, out syntaxFault, out passedOver)
                 : TryParseNumberedAt(
                     at,
                     AnyObject,
@@ -6535,6 +6559,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
                     out value,
                     out number,
                     out header,
+                    out digits,
                     out syntaxFault,
                     XRefWindow,
                     candidate ? DeclaresOnlyCrossReferenceStream : null);
@@ -6591,8 +6616,12 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
         section.Kind = XRefSectionKind.Stream;
         section.StreamObjectNumber = number;
 
-        // The header lies where the object read starts, past however much white space the offset falls short by.
+        // The header lies where the object read starts, past however much white space the offset falls short by, and the
+        // digits of its number past the run of signs it is written with, if any, as the reading lexed them: a search near an
+        // offset tells the header it finds there as this stream, however few of those signs its window holds
+        // (NumberRunsInto).
         section.Padding = (int)(header - absolute);
+        section.DigitsAt = digits;
         section.TrailerPosition = absolute;
         section.TypedXRef = dictionary.IsOfType(PdfName.XRef);
         section.TypedOther = !section.TypedXRef && dictionary.GetRaw(PdfName.Type) is PdfName;
@@ -7094,13 +7123,21 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// <param name="value">The object read, where it is kept.</param>
     /// <param name="number">The number of the object found, kept or not.</param>
     /// <param name="header">Where the object's header starts.</param>
+    /// <param name="digits">Where the digits of the object's number start, past any run of signs it is written with.</param>
     /// <param name="syntaxFault">Whether the reading kept met a fault of the syntax.</param>
     /// <param name="passedOver">
     /// The dictionary of what is there, where it is a cross-reference stream, its dictionary read whole, that may be the
     /// table's own; null otherwise.
     /// </param>
     private bool TryParseNearHybridPrev(
-        long at, long tablePrevious, out PdfObject value, out int number, out long header, out bool syntaxFault, out PdfDictionary? passedOver)
+        long at,
+        long tablePrevious,
+        out PdfObject value,
+        out int number,
+        out long header,
+        out long digits,
+        out bool syntaxFault,
+        out PdfDictionary? passedOver)
     {
         PdfDictionary? mayBeOwn = null;
         var read = TryParseNumberedAt(
@@ -7110,6 +7147,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
             out value,
             out number,
             out header,
+            out digits,
             out syntaxFault,
             XRefWindow,
             parsed =>
@@ -8568,7 +8606,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// past its end. Returns false when nothing with that number is there.
     /// </summary>
     private bool TryParseObjectAt(int number, long offset, out PdfObject value, long recordedAt = RecordedAnywhere) =>
-        TryParseNumberedAt(offset, number, PdfLimit.Object, out value, out _, out _, out _, recordedAt: recordedAt);
+        TryParseNumberedAt(offset, number, PdfLimit.Object, out value, out _, out _, out _, out _, recordedAt: recordedAt);
 
     /// <summary>
     /// Parses what starts at an exact offset — object <paramref name="number"/>, any object for
@@ -8591,6 +8629,10 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// <param name="value">The object read.</param>
     /// <param name="foundNumber">The number of the object found, even when <paramref name="keep"/> refuses it.</param>
     /// <param name="headerAt">Where in the file the object read starts, past the white space and comments before it.</param>
+    /// <param name="digitsAt">
+    /// Where in the file the digits of the object's number start, past the run of signs it is written with, where it is
+    /// (<see cref="PdfObjectParser.HeaderDigits"/>); <paramref name="headerAt"/> otherwise, and for a direct object.
+    /// </param>
     /// <param name="syntaxFault">
     /// Whether the reading kept met a fault of the syntax, or may have, the pending diagnostics full: reported now or
     /// already, by an earlier reading of the same bytes.
@@ -8613,6 +8655,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
         out PdfObject value,
         out int foundNumber,
         out long headerAt,
+        out long digitsAt,
         out bool syntaxFault,
         int initialWindow = InitialObjectWindow,
         Func<PdfObject, bool>? keep = null,
@@ -8621,6 +8664,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
         value = PdfNull.Instance;
         foundNumber = 0;
         headerAt = offset;
+        digitsAt = offset;
         syntaxFault = false;
 
         if (offset < 0 || offset >= _source.Length)
@@ -8727,6 +8771,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
                 RecordStreamLength(noted ? number : DirectObject, foundNumber, parsed, lengthFault);
                 value = parsed;
                 headerAt = offset + parser.HeaderStart;
+                digitsAt = offset + parser.HeaderDigits;
                 return true;
             }
         }

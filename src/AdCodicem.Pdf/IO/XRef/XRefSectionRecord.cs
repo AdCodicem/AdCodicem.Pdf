@@ -321,6 +321,15 @@ internal sealed class XRefSectionRecord
     /// </summary>
     public int Padding { get; set; }
 
+    /// <summary>
+    /// Gets where the digits of a cross-reference stream's object number start, in the file: past the run of signs its
+    /// header is written with, where it is, as the reading of its header lexed them, and where the header starts otherwise
+    /// (#327). The search near the offset a hybrid table's <c>/Prev</c> names finds a header written <c>++13 0 obj</c> at
+    /// its digit, and tells it by this position as the stream the table's <c>/XRefStm</c> read, or names again, from a
+    /// sign of that run, however few of those signs its window holds. -1 for a classic table.
+    /// </summary>
+    public long DigitsAt { get; set; } = -1;
+
     /// <summary>Takes what a successful attempt at another offset read, the section having been relocated there.</summary>
     public void RelocateTo(XRefSectionRecord attempt)
     {
@@ -351,5 +360,6 @@ internal sealed class XRefSectionRecord
         StreamObjectNumber = attempt.StreamObjectNumber;
         HighestNumber = attempt.HighestNumber;
         Padding = attempt.Padding;
+        DigitsAt = attempt.DigitsAt;
     }
 }

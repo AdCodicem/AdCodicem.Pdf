@@ -139,6 +139,12 @@ internal ref struct PdfObjectParser
     /// <summary>Where the header of the last indirect object <see cref="TryReadIndirectObject"/> read starts, in the buffer.</summary>
     private int _headerStart;
 
+    /// <summary>
+    /// Where the digits of the object number of the last indirect object <see cref="TryReadIndirectObject"/> read start, in
+    /// the buffer (<see cref="HeaderDigits"/>).
+    /// </summary>
+    private int _headerDigits;
+
     /// <summary>Creates a parser over <paramref name="memory"/>.</summary>
     /// <param name="memory">The bytes to parse.</param>
     /// <param name="baseOffset">Where the bytes start in the file.</param>
@@ -252,6 +258,14 @@ internal ref struct PdfObjectParser
     /// <summary>Gets where the header of the last indirect object <see cref="TryReadIndirectObject"/> read starts, in the buffer.</summary>
     public readonly int HeaderStart => _headerStart;
 
+    /// <summary>
+    /// Gets where the digits of the object number of the last indirect object <see cref="TryReadIndirectObject"/> read
+    /// start, in the buffer: past the run of signs the number is written with, which the lexer reads with the number as one
+    /// token, the first sign deciding — <c>++14 0 obj</c> is object 14, its digits two bytes past its header's start —,
+    /// and where the header starts otherwise (#327).
+    /// </summary>
+    public readonly int HeaderDigits => _headerDigits;
+
     /// <summary>Gets what followed the value of the last indirect object <see cref="TryReadIndirectObject"/> read.</summary>
     public readonly EndObjState EndObj => _endObj;
 
@@ -338,6 +352,9 @@ internal ref struct PdfObjectParser
         id = new PdfObjectId((int)number.Integer, (int)generation.Integer);
         _objectNumber = id.Number;
         _headerStart = number.Start;
+
+        // The number is an integer past 0: its token holds a digit past the signs it may start with.
+        _headerDigits = number.Start + _memory.Span[number.Start..number.End].IndexOfAnyExcept((byte)'+', (byte)'-');
         _headerAt = -1;
         _headerUndecided = false;
         _lookAheadCut = false;
