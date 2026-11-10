@@ -1004,3 +1004,44 @@ Refuted: [25] (two filed debts, #279 and #327, together; the comment does not mi
 - R12-Q2 (maintainer, 2026-11-10): "Corriger dans le lot (Recommandé)": record, when the /XRefStm reads its stream,
   where its header's digits start; NumberRunsInto tells a candidate there as that stream whatever the window holds;
   the edge sentence goes from NumberRunsInto's remark; [24]'s texts then hold; #327 follow-up says the edge is fixed.
+- 2026-11-10: round 12 fixes launched: wf_0e45cee6-ec5 (task w8a1nj8r0), lot19-r12-fixes-win.js: R12a reached test, R12b
+  window edge, R12c guard flag and the /Type that is no name, R12d tests, R12e texts; R12-track; R12f check.
+
+# Review round 12 fixes (wf_0e45cee6-ec5, Windows): result
+
+Pushed 1cd2216..dadde18 (fast-forward, 19 commits); messages checked (19 OK), no key (grep_keys 0 over the round diff).
+- R12a: 6b32490 fix (reached test from HeaderTokenStart to the digit), 589aeb3 / 107be5b tests (54 rows of new theories,
+  33 signed rows fail on 1cd2216, controls pass on both), 0578bcb docs. ADR 53: 18 mutants, 14 killed; B2 (bound
+  candidate + 2: a section reached at a number's second digit, #332's class), F2 / H4 ('-+5 0 obj' read at its +, or a
+  run reaching the byte before the window), H2 (that window edge) survive: the code loops there as main does (chain-cycle,
+  rebuild at opening), the mutants would not -> open (see R12-Q3).
+- R12b: 86dca9e fix (PdfObjectParser.HeaderDigits, XRefSectionRecord.DigitsAt kept for every stream record;
+  NumberRunsInto = candidate == streamDigits || inside-the-number arm; IsTokenOnItsLine 'at < 0' guard), 8a3036d tests,
+  c7c91db docs. ADR 53: 33 viable, 22 killed, 9 equivalent (U1 U2 U3 T1 D3 N8 N9 X1 X2, reasons in the report), G2b / G5
+  (the defensive before-the-span guard) survive: no input reaches it -> batch-wide survivor debt.
+- R12c: 305c1fb fix (flag `!candidate && cutByGuard && value is PdfDictionary`, MayBePartedXRef gone; cut test
+  `cut.GetRaw(PdfName.Type) is not PdfName`), 2ecd2d8 / 5880c0b tests, 78885bf docs. ADR 53: 17 viable, 16 killed,
+  C1 equivalent; R1 / R2 record mutants killed. Open: a guard's cut that leaves no dictionary at a chain-named offset
+  (an object number run past MaxTrailerLength, '000..0007 0 obj', bound 200) sets no flag: the batch's Warning
+  xref.stream-passed-over is made for the stream the hidden /Prev reaches, beside limit.trailer -> R12-Q4.
+- R12d: a3f865a, c229f1a, d6d7e00, 8622244 tests, c5ee310 docs; no src change. Mutants A / B (mutants-AB.diff) and
+  RollBack(besideCut) and readThrough = 0 killed. Patch coverage 1444/1449 (99.65 %): 4044/4046 defensive, 5580/5582
+  R12b's guard, SizeWrongRule:71 a lowering arm.
+- R12e: d60acb4 test, 44f0001 / dadde18 docs; src comments only. #327 Known gaps entry rewritten (three questions at
+  the sign, the two edges left, the /XRefStm stream told whatever the window holds).
+- R12-track: comments on #332 (6769965753), #327 (6769966469), #279 (6769967146), #289 (6769967743, [21] P4 as #289's
+  rule), #336 body :85 -> :86. Bodies in W/r12track.
+- R12f on dadde18: build 0 warnings; suite 10,960 / 10,957 / 3 skipped / 0 failed; format clean; timing 25, budget 14,
+  allocation 20, memory 19, hostile 261, three runs each alone, all pass; site 269 pages, docfx 0 warnings; links and
+  cites clean (315 / 1,252); corpus vs main: only pdfmaker7-powerpoint-va-cancer-database-course (#156), branch dump
+  byte-identical to r11f; differential byte-identical to r11f (9,228; worse 1,193 / 392 / 293). No dotnet process
+  left alive.
+- R12-Q3 (maintainer, 2026-11-10): "Corriger dans le lot (Recommandé)": the reached test also tells a candidate equal to
+  where the digits of a stream section the chain read start (XRefSectionRecord.DigitsAt, kept since R12b), so '-+5 0
+  obj' read at its + and a run of signs whose first sign lies before the bytes searched are passed over, not read again
+  in a loop; F2 / H2 / H4 killed by rows pinning no loop (or settled anew on the final code); #327's Known gaps entry
+  and the pages lose the two edges; a #327 follow-up.
+- R12-Q4 (maintainer, 2026-11-10): "Toute coupe nommée (Recommandé)": the guard flag is set wherever a trailer guard
+  cut the reading at an offset the chain names, whatever it cut (dictionary, object header, comment); the dashes row
+  flips to withholding; section-missing there stays #279 / #289's; texts and pages say it; a #279 / #289 follow-up.
+- 2026-11-10: round 12 follow-up fixes launched: wf_71243c16-d30 (task wil2pt3nn), lot19-r12-fixes2-win.js: R12g edges (R12-Q3), R12h any guard cut (R12-Q4); R12-track2; R12i check (logs W/r12i).
