@@ -912,3 +912,8 @@ survived the whole suite (M01, M11, M13, M14; r11wip/r11c-mut/run.py and summary
 r10f and r11a (9,228). Corpus run on 7b1de15 done, not compared. No agent of the run completed: nothing to resume
 from cache. Next: rerun part 2 with R11c's prompt narrowed to the survivors, the corpus comparison and its report,
 then R11d, tracking, R11f. Branch head 7b1de15. Worktrees removed; build nodes the agents left were stopped by PID.
+
+Resumed 2026-11-10: part 2 relaunched as wf_80857910-389 (script copied to the new session scratchpad
+C:/Users/clemm/AppData/Local/Temp/claude/bc4976e88c6ca0c5/898783fc-049f-469a-ab79-dfd299ad558e/scratchpad, since the
+old one is no longer readable as a scriptPath; W unchanged). R11c prompt prefixed with a resume block: build on
+5fb9444 and 7b1de15, settle M01, M11, M13, M14, compare the corpus, return the full report.
