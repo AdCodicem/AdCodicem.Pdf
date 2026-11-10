@@ -191,8 +191,10 @@ before its `xref` keyword counts toward `MaxXRefSectionLength` as well
 `MaxTrailerLength`: white space and comments that run on past it reach that guard, the section is not read from that
 offset, and it is looked for nearby as one that is not there, where a search may find it past them, the map rebuilt for
 the one `startxref` names ([Reader limits](reader-limits.md)). A section is never found where a section the chain
-reached starts — one it read, or one there that it could not read though it declares itself a section —, which is not
-the one looked for ([#188](https://github.com/AdCodicem/AdCodicem.Pdf/issues/188)), but for what a table's `/XRefStm`
+reached starts — one it read, or one there that it could not read though it declares itself a section, a header whose
+number is written with a run of signs that starts with a `+` starting at that run's first sign where the bytes searched
+hold it ([#327](https://github.com/AdCodicem/AdCodicem.Pdf/issues/327)) —, which is not the one looked for
+([#188](https://github.com/AdCodicem/AdCodicem.Pdf/issues/188)), but for what a table's `/XRefStm`
 read in the stream's place, which that table's `/Prev` takes, reading it whole. Where it read a stream, or names again
 one a newer table's `/XRefStm` read, which is never taken in its place
 ([#330](https://github.com/AdCodicem/AdCodicem.Pdf/issues/330),
@@ -219,18 +221,23 @@ is taken only where it does: not an object that only gives a `/W`, nor a header 
 whether it reads or not. A stream the chain reaches — a section names it, or a later search finds it moved —, at its
 header or inside its object number, is reported as the chain finds it, read or not: a reading from inside the number
 reads the same stream where it reads a header there, and where it reads none — digits that read 0, as from the 0 of a
-number 20, or a `-` of the run of signs —, the search near that place finds the stream moved, at its header. Where one
-of the reader's limits left part of the chain unread — the number of its sections, a section it cut before the section
-said what it is, rows, a trailer, an object a value the rows or a link are read with leads to, or the map it filled —,
-which may hide the link that names the stream, the limit's report stands for what it left unread, and nothing is said of
-the stream. Nor is anything said of any stream passed over in the document where `MaxTrailerLength` may have hidden a
-link the chain would have followed: where it cut a dictionary at an offset the chain names whose `/Type` gives a name
-`XRef` begins with and that is shorter — the empty name, `X`, `XR` or `XRe` —, which may be what the cut left of
-`/XRef`, its `/Prev` past the cut unread, though the object is read as one of another type, and is not told from such a
-name written whole, the cut past it ([#279](https://github.com/AdCodicem/AdCodicem.Pdf/issues/279)); or where white
-space and comments at an offset the chain names run past it, which turns the reading of the section there into the
-search near the offset ([#289](https://github.com/AdCodicem/AdCodicem.Pdf/issues/289)). That search may take a section
-other than the one past them, which the reader cannot tell without reading past the guard: once that guard is reached,
+number 20, or a `-` of the run of signs —, the search near that place finds the stream moved. Where one of the reader's
+limits left part of the chain unread — the number of its sections, a section it cut before the section said what it is,
+rows, a trailer, an object a value the rows or a link are read with leads to, or the map it filled —, which may hide the
+link that names the stream, the limit's report stands for what it left unread, and nothing is said of the stream. Nor
+is anything said of any stream passed over in the document where `MaxTrailerLength` may have hidden a link the chain
+would have followed, or cut what would end it: where it cut a dictionary at an offset the chain names, whatever its
+`/Type`, which the reading does not take for a section the guard cut, the object then read as one of another type
+([#279](https://github.com/AdCodicem/AdCodicem.Pdf/issues/279)). Where a `/Prev` or `startxref` names the offset, any
+`/W` makes a stream of any `/Type` the section ([#263](https://github.com/AdCodicem/AdCodicem.Pdf/issues/263)), and
+the cut may have hidden one — `/XRef` parted, a stream of another `/Type` that gives a `/W`, a `/Type` given twice —,
+its `/Prev` not followed, wherever it lies; where an `/XRefStm` names it, the cut is what would end the chain there, as
+a guard's cut of that stream does ([#264](https://github.com/AdCodicem/AdCodicem.Pdf/issues/264)). The reader cannot
+tell what the cut hid without reading past the guard, and says nothing even where it hid nothing, a dictionary of
+another type that gives no `/W` among them. Nor is anything said of a stream passed over anywhere in the
+document where white space and comments at an offset the chain names run past that limit, which turns the reading of
+the section there into the search near the offset ([#289](https://github.com/AdCodicem/AdCodicem.Pdf/issues/289)).
+That search may take a section other than the one past them, which the reader cannot tell without reading past the guard: once that guard is reached,
 nothing is said of a stream passed over even where the search finds the section whole past the white space, which only a
 `MaxTrailerLength` under the 512 bytes the search reaches allows. A cut that leaves nothing unread — data past a
 stream's last row, an object past a whole reference it holds — leaves the report made. Four cases fall short: an older
@@ -255,7 +262,8 @@ Where the offset holds no section, the search near it, nearest first, ends at a 
 be read — an `xref` keyword, or the header of a stream of `/Type /XRef`, a token a load reads from the start of its
 line, not the word or such a header in a comment or a string there, nor digits a regular character runs into, a header
 whose number is written with a run of signs that starts with a `+` counting from its first sign, as a load reads it,
-and one a `-` starts declaring nothing ([#327](https://github.com/AdCodicem/AdCodicem.Pdf/issues/327)) —, as at one it
+where that sign lies within the bytes searched, and one a `-` starts declaring nothing
+([#327](https://github.com/AdCodicem/AdCodicem.Pdf/issues/327)) —, as at one it
 reads: that is the section found moved, reported where it was found, rather than passed over for an older section
 farther off whose rows would stand for its lost ones in silence. The line is lexed from its start, read again as far as
 4,096 bytes before the bytes searched where it starts before them: a place whose line starts farther back declares

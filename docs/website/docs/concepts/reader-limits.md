@@ -97,7 +97,11 @@ is looked for as one that is not there — near the offset, where a search may f
 What that search passes over, or what the section would have named, is the guard's, and so is which section the search
 takes, the one past them or another, which the reader cannot tell without reading past the guard: no cross-reference
 stream passed over near a hybrid table's `/Prev` is then reported as one the chain did not reach, anywhere in the
-document, even where the search finds the section whole past the white space. An `/XRefStm` that names what the `/Prev`
+document, even where the search finds the section whole past the white space. Nor is one where `MaxTrailerLength` cuts
+a dictionary at an offset the chain names, whatever its `/Type`, that the reading does not take for a section it cut:
+the cut may have hidden the `/Prev` of a section, which any `/W` makes the dictionary there, or be what would end the
+chain, where an `/XRefStm` names the offset ([#279](https://github.com/AdCodicem/AdCodicem.Pdf/issues/279)). An
+`/XRefStm` that names what the `/Prev`
 names, at that offset or in the white space before it, names no stream of the table's revision whatever the guard hid,
 and is reported, the validator saying the guard hides what is there. The `/Prev` of a cross-reference stream at which a
 guard's cut of a value its rows are read with ends the chain, and a `/Prev` in a trailer a guard cut, are not judged
