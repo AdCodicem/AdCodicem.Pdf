@@ -689,21 +689,25 @@ public class CrossReferenceChainTests
     [InlineData("++5 0 obj", 0, "")]
     [InlineData("++5 0 obj", 1, "/Foo")]
     [InlineData("++5 0 obj", 1, "")]
+    [InlineData("-+5 0 obj", 1, "/Foo")]
+    [InlineData("-+5 0 obj", 1, "")]
     [InlineData("5 0 obj", 0, "/Foo")]
     [InlineData("5 0 obj", 0, "")]
     public void A_cross_reference_stream_a_prev_reaches_at_its_header_or_a_sign_of_its_number_and_cannot_read_is_not_taken_again_where_its_own_prev_names_a_place_inside_it(
         string header, int into, string filter)
     {
         // The newest table's /Prev names the stream at the first byte of its header, or at the second sign of the run of signs
-        // its number is written with, from which a load reads the same object; the stream cannot be read, a filter the library
-        // cannot run or a negative width leaving its rows unread, and its own /Prev, which the chain goes on through, names a
-        // place 30 bytes past the header's first byte, inside its dictionary, the oldest table within reach. The search near
-        // that place finds the stream's header again at the digit past its signs, where the walk back from obj stops. Where a
-        // + starts the run, the chain had reached the stream at that sign or at a sign past it: the stream was taken a second
-        // time, found moved, reported unreadable twice, and its /Prev, read again, reported as a loop, the oldest table never
-        // read and the index rebuilt as the document opened. A section the chain reached anywhere from the header's first sign
-        // to that digit is the header's: the place is passed over as reached, as where no sign is written, and the oldest
-        // table is taken, its rows standing for what the stream does not number (#188, #208, #327).
+        // its number is written with, from which a load reads the same object — at the + of -+5, past the - a load reads no
+        // header from —; the stream cannot be read, a filter the library cannot run or a negative width leaving its rows
+        // unread, and its own /Prev, which the chain goes on through, names a place 30 bytes past the header's first byte,
+        // inside its dictionary, the oldest table within reach. The search near that place finds the stream's header again at
+        // the digit past its signs, where the walk back from obj stops. Where a + starts the run, the chain had reached the
+        // stream at that sign or at a sign past it: the stream was taken a second time, found moved, reported unreadable
+        // twice, and its /Prev, read again, reported as a loop, the oldest table never read and the index rebuilt as the
+        // document opened. A section the chain reached at a sign of the run, its digits starting at that digit, is the
+        // header's: the place is passed over as reached, as where no sign is written, and the oldest table is taken, its rows
+        // standing for what the stream does not number. Where a - starts the run, the line test, asked at the digit, found the
+        // header declaring nothing, and the oldest table was taken all the same (#188, #208, #327).
         var entries = filter.Length > 0 ? "/Type /XRef /Size 9 /Index [4 2 7 1] /W [1 4 2] /Filter " + filter : LostStreamFiles.Unreadable;
         var written = filter.Length > 0 ? new string('x', 21) : null;
         var at = LostStreamFiles.ThreeRevisions(entries, before: 0, written: written, header: header).Stream;
@@ -741,16 +745,18 @@ public class CrossReferenceChainTests
     [InlineData("+5 0 obj", 0)]
     [InlineData("++5 0 obj", 0)]
     [InlineData("++5 0 obj", 1)]
+    [InlineData("-+5 0 obj", 1)]
+    [InlineData("-++5 0 obj", 2)]
     [InlineData("5 0 obj", 0)]
     public void A_cross_reference_stream_a_prev_read_at_its_header_or_a_sign_of_its_number_is_not_read_again_where_its_own_prev_names_a_place_inside_it(
         string header, int into)
     {
-        // The same file, the stream read whole. Where a + starts the run of signs its number is written with, the search near
-        // the place its /Prev names took its header, found at the digit past the signs, for a section the chain had not
-        // reached, and read it again, its /Prev naming that place once more, a loop the file does not have reported and the
-        // oldest table never read, the index rebuilt as the document opened. The header is the stream the chain read, from its
-        // first sign or a sign past it: passed over as reached, as where no sign is written, and the oldest table is taken
-        // (#188, #327).
+        // The same file, the stream read whole. Where a + starts the run of signs its number is written with, or a - starts it
+        // and the chain read the stream from a + past it, the search near the place its /Prev names took its header, found at
+        // the digit past the signs, for a section the chain had not reached, and read it again, its /Prev naming that place
+        // once more, a loop the file does not have reported and the oldest table never read, the index rebuilt as the
+        // document opened. The header is the stream the chain read, from a sign of that run, its digits starting at the digit
+        // the search finds: passed over as reached, as where no sign is written, and the oldest table is taken (#188, #327).
         const string Readable = "/Type /XRef /Size 9 /Index [4 2 7 1] /W [1 4 2]";
         var at = LostStreamFiles.ThreeRevisions(Readable, before: 0, header: header).Stream;
         var (file, oldest, stream, newest) = LostStreamFiles.ThreeRevisions(
@@ -803,6 +809,81 @@ public class CrossReferenceChainTests
             (PdfDiagnosticCodes.ObjectRedefined, -1L));
         Text(document, 3).Should().Be("only in the oldest");
         Text(document, 7).Should().Be("new seven");
+    }
+
+    [Theory]
+    [InlineData("+5 0 obj", 0, 512, true)]
+    [InlineData("+5 0 obj", 0, 513, true)]
+    [InlineData("+5 0 obj", 0, 514, true)]
+    [InlineData("++5 0 obj", 0, 513, true)]
+    [InlineData("++5 0 obj", 0, 514, true)]
+    [InlineData("++5 0 obj", 1, 513, true)]
+    [InlineData("++5 0 obj", 1, 514, true)]
+    [InlineData("+++5 0 obj", 0, 513, true)]
+    [InlineData("+++5 0 obj", 0, 514, true)]
+    [InlineData("+++5 0 obj", 0, 515, true)]
+    [InlineData("+++5 0 obj", 2, 515, true)]
+    [InlineData("+-5 0 obj", 0, 513, true)]
+    [InlineData("-+5 0 obj", 1, 512, true)]
+    [InlineData("-+5 0 obj", 1, 513, true)]
+    [InlineData("5 0 obj", 0, 512, true)]
+    [InlineData("+5 0 obj", 0, 513, false)]
+    [InlineData("++5 0 obj", 1, 514, false)]
+    [InlineData("+++5 0 obj", 0, 515, false)]
+    [InlineData("-+5 0 obj", 1, 513, false)]
+    public void A_cross_reference_stream_a_prev_reaches_at_its_header_or_a_sign_of_its_number_is_not_taken_again_however_few_of_its_signs_the_bytes_searched_near_its_own_prev_hold(
+        string header, int into, int past, bool readable)
+    {
+        // The newest table's /Prev names the stream at its header's first byte, or at a later sign of the run of signs its
+        // number is written with, from which a load reads the same object — at the + of -+5, past the - a load reads no header
+        // from —; the stream reads, or its /W gives a field a negative width, and its own /Prev names the place 512 to 515 bytes
+        // past the header's first byte, the oldest table out of reach. The bytes the search near that place looks at start
+        // 512 bytes before it: at the header's first sign, at a later sign, or at its digit, the window holding the byte
+        // before them — or past the digit, where no header is found. The walk back from obj finds the header at its digit,
+        // and where the run's first sign lay before the bytes searched, or a - started it, the search looked for a section
+        // the chain reached at the digit alone: a stream the chain had read from a + of the run was read again there, its
+        // /Prev naming the place once more, a loop the file does not have reported and the index rebuilt as the document
+        // opened; one it could not read was dropped there, declaring nothing. The chain read that header, its digits starting
+        // at that digit, wherever its run of signs starts and whatever sign starts it: the place is passed over as reached,
+        // and the stream's /Prev names a section that is not there, the index rebuilt as the document opens, as where the
+        // bytes searched hold every sign (#188, #327).
+        var entries = readable ? "/Type /XRef /Size 9 /Index [4 2 7 1] /W [1 4 2]" : LostStreamFiles.Unreadable;
+        var at = LostStreamFiles.ThreeRevisions(entries, header: header).Stream;
+        var (file, _, stream, newest) = LostStreamFiles.ThreeRevisions(
+            entries, prev: (at + past).ToString(CultureInfo.InvariantCulture), namedShortBy: -into, header: header);
+        var named = stream + into;
+        var missing = stream + past;
+        using var document = PdfDocument.Open(file);
+
+        document.Reader.Structure.Sections.Select(section => (section.State, section.Kind, section.Offset)).Should().Equal(
+            (XRefSectionState.Read, XRefSectionKind.Table, newest),
+            (readable ? XRefSectionState.Read : XRefSectionState.Malformed, XRefSectionKind.Stream, named),
+            (XRefSectionState.NotFound, XRefSectionKind.Unknown, missing));
+        document.Diagnostics.Select(diagnostic => (diagnostic.Code, diagnostic.Position)).Should().Equal(
+            readable
+                ?
+                [
+                    (PdfDiagnosticCodes.XRefSectionMissing, missing),
+                    (PdfDiagnosticCodes.XRefRebuilt, -1L),
+                    (PdfDiagnosticCodes.ObjectRedefined, -1L),
+                ]
+                :
+                [
+                    (PdfDiagnosticCodes.XRefSectionUnreadable, named),
+                    (PdfDiagnosticCodes.XRefSectionMissing, missing),
+                    (PdfDiagnosticCodes.XRefRebuilt, -1L),
+                    (PdfDiagnosticCodes.ObjectRedefined, -1L),
+                ]);
+        document.WasRepaired.Should().BeTrue();
+        Text(document, 3).Should().Be("only in the oldest");
+        Text(document, 4).Should().Be("only in the stream");
+        Text(document, 7).Should().Be("new seven");
+
+        new PdfValidator().Validate(document).Findings.Where(finding => finding.Severity == PdfValidationSeverity.Error)
+            .Select(finding => (finding.RuleId, finding.Location.Position)).Should().Equal(
+                readable
+                    ? [(PdfValidationRuleIds.XRefSectionNotFound, missing)]
+                    : [(PdfValidationRuleIds.XRefSectionMalformed, named), (PdfValidationRuleIds.XRefSectionNotFound, missing)]);
     }
 
     [Theory]
