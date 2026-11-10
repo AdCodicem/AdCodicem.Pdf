@@ -3743,40 +3743,42 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// header's token does (<see cref="HeaderTokenStart"/>), or its first digit — and reads a header there reads the same
     /// dictionary and the same data, and reaches that stream as one that names its header does; one that reads none there —
     /// digits that read 0, as the 0 of a number 20, or a <c>-</c> of that run — reads no object, and the search near that
-    /// place finds the stream moved, its record starting at its first digit, or at its first sign where a comment parts the
-    /// header's tokens: the stream is reached all the same. A limit that left part of the chain unread — the number of its
-    /// sections, a section it cut before the section said what it is, rows it cut or an index it filled, a trailer it cut,
-    /// an object it cut that a value the rows or a link are read with leads to — may hide the link that names the stream,
-    /// as an older table's <c>/XRefStm</c> or <c>/Prev</c> may name any offset: what lies past the guard is the guard's,
-    /// unknown rather than missing (#264). So may a trailer's window that cuts a dictionary at an offset a <c>/Prev</c> or
+    /// place finds the stream moved, its record starting at its first digit, or at its first sign where the line its number
+    /// is on, which an end of line ends before <c>obj</c>, holds a <c>%</c> — a comment that ends that line, or one a
+    /// string holds —, the walk back from <c>obj</c> then lexing that line (<see cref="TryReadHeaderBackwards"/>): the
+    /// stream is reached all the same. A limit that left part of the chain unread — the number of its sections, a section
+    /// it cut before the section said what it is, rows it cut or an index it filled, a trailer it cut, an object it cut
+    /// that a value the rows or a link are read with leads to — may hide the link that names the stream, as an older
+    /// table's <c>/XRefStm</c> or <c>/Prev</c> may name any offset: what lies past the guard is the guard's, unknown rather
+    /// than missing (#264). So may a trailer's window that cuts a dictionary at an offset a <c>/Prev</c> or
     /// <c>startxref</c> names, whatever its <c>/Type</c>: the parser keeps the dictionary as far as it read it, and the
-    /// object is read as one of another type, as #279 leaves it, its <c>/Prev</c> not followed, wherever it lies, past
-    /// the cut or before it; but any <c>/W</c> makes a stream of any <c>/Type</c> the section there (#263), and the cut
-    /// may have hidden one — <c>/XRef</c> parted, inside the name or inside a <c>#xx</c> escape, a stream of another
+    /// object is read as one of another type, as #279 leaves it, its <c>/Prev</c> not followed, wherever it lies, past the
+    /// cut or before it; but any <c>/W</c> makes a stream of any <c>/Type</c> the section there (#263), and the cut may
+    /// have hidden one — <c>/XRef</c> parted, inside the name or inside a <c>#xx</c> escape, a stream of another
     /// <c>/Type</c> that gives a <c>/W</c> past the cut, or a <c>/Type</c> given twice whose later <c>/XRef</c> lies past
-    /// it. Where an <c>/XRefStm</c> names the offset, the chain never follows that stream's <c>/Prev</c>, and the cut
-    /// hides no link the chain follows, but it is what would end the chain there, as the guard's cut of that stream does
-    /// (#264), the reading #279's closing gives it: the reports are withheld alike. The reader cannot tell what the cut
-    /// hid without reading past the guard, and withholds them even where it hid nothing, a dictionary of another type that
-    /// gives no <c>/W</c> among them; where the reading takes the dictionary for the guard's section, the chain's own cut
-    /// withholds them already. So may white space and comments past a trailer's window where the chain names a section, which is
-    /// not read from there: the search near the offset stands for that reading, and may take a section other than the
-    /// one past them, pass over a stream the reading would not have come to, or find nothing, what the section names
-    /// left unread — the guard's, though the section is looked for as one that is not there (#289). Which, the reader
-    /// cannot tell without reading past the guard: once that guard is reached, no stream passed over anywhere in the
-    /// document is reported, even where the search finds the section whole past the white space, which only a
-    /// <see cref="PdfReaderLimits.MaxTrailerLength"/> under the 512 bytes the search reaches past the offset allows. A
-    /// cut that leaves nothing unread — data past a stream's last row, an object past a whole reference it holds — hides
-    /// no link, and leaves the report made. What it costs is a look at the records of the sections the chain reached,
-    /// and at as many positions as the header's object number has bytes for each stream: nothing is read here, and no
-    /// stream is read to report it, its dictionary having been parsed in the search's window when it was passed over,
-    /// and its number's signs and digits scanned there when the search took another section, as its line was lexed — in
-    /// that window, or, where the line starts before the bytes searched, in those bytes read again with as many as
+    /// it. Where an <c>/XRefStm</c> names the offset, the chain never follows that stream's <c>/Prev</c>, and the cut hides
+    /// no link the chain follows, but it is what would end the chain there, as the guard's cut of that stream does (#264),
+    /// the reading #279's closing gives it: the reports are withheld alike. The reader cannot tell what the cut hid without
+    /// reading past the guard, and withholds them even where it hid nothing, a dictionary of another type that gives no
+    /// <c>/W</c> among them; where the reading takes the dictionary for the guard's section, the chain's own cut withholds
+    /// them already. So may white space and comments past a trailer's window where the chain names a section, which is not
+    /// read from there: the search near the offset stands for that reading, and may take a section other than the one past
+    /// them, pass over a stream the reading would not have come to, or find nothing, what the section names left unread —
+    /// the guard's, though the section is looked for as one that is not there (#289). Which, the reader cannot tell without
+    /// reading past the guard: once that guard is reached, no stream passed over anywhere in the document is reported, even
+    /// where the search finds the section whole past the white space, which only a
+    /// <see cref="PdfReaderLimits.MaxTrailerLength"/> under the 512 bytes the search reaches past the offset allows. A cut
+    /// that leaves nothing unread — data past a stream's last row, an object past a whole reference it holds — hides no
+    /// link, and leaves the report made. What it costs is a look at the records of the sections the chain reached, and at
+    /// as many positions as the header's object number has bytes for each stream: nothing is read here, and no stream is
+    /// read to report it, its dictionary having been parsed in the search's window when it was passed over, and its
+    /// number's signs and digits scanned there when the search took another section, as its line was lexed — in that
+    /// window, or, where the line starts before the bytes searched, in those bytes read again with as many as
     /// <see cref="LineStartSearchLength"/> bytes before them, one window more for each such stream
     /// (<see cref="IsTokenOnItsLine"/>), a line that starts farther back declaring nothing, and the stream then not
-    /// reported. Reported once for each stream, at the stream, however many searches passed over it; the index is not
-    /// left incomplete for it, nor is anything looked for in its place: whether it is the table's own is unknown, and no
-    /// link the chain read reaches it.
+    /// reported. Reported once for each stream, at the stream, however many searches passed over it; the index is not left
+    /// incomplete for it, nor is anything looked for in its place: whether it is the table's own is unknown, and no link
+    /// the chain read reaches it.
     /// </remarks>
     private void ReportStreamsPassedOver()
     {
@@ -5230,8 +5232,9 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
 
             // The stream the /XRefStm read, or names again, is told by its data, not by the byte its reading started at: where
             // the /XRefStm names a place inside that stream's object number, the reading starts past the number's first byte
-            // — a digit, or the first sign of the run a header whose tokens a comment parts starts at —, at a sign of that run
-            // or a digit, and the stream's own header, whose number runs on into that place, starts before it; where it names
+            // — a digit, or the first sign of the run the number is written with, where the line it is on, which an end of
+            // line ends before obj, holds a %, the walk back from obj then lexing that line —, at a sign of that run or a
+            // digit, and the stream's own header, whose number runs on into that place, starts before it; where it names
             // a + of the run of signs the number is written with, the header the walk back from obj finds starts at the digit
             // past the run, where that reading found the digits, however few of those signs the window holds. What follows
             // that number is the same bytes for both — the dictionary, the data —: the header is that stream's, told as
@@ -5452,8 +5455,9 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// byte the window holds ahead of the bytes searched, the digits within them —, told by a comparison, nothing read for
     /// it. A header found before where the reading started is told by a look at the bytes of its number, in the bytes
     /// searched, which the window holds, nothing read for it either: the number runs on from the header's first byte
-    /// through the signs and the digits past it (<see cref="NumberEnd"/>) — a header whose tokens a comment parts is lexed
-    /// from its line's start, and starts where the lexer's token does, its run of signs included
+    /// through the signs and the digits past it (<see cref="NumberEnd"/>) — a header found where the line its number is
+    /// on, which an end of line ends before <c>obj</c>, holds a <c>%</c>, a comment's or a string's, is lexed from that
+    /// line's start, and starts where the lexer's token does, its run of signs included
     /// (<see cref="TryReadHeaderBackwards"/>) —, and the keyword <c>xref</c>, which holds neither past its first byte,
     /// runs into nothing. Every header found lies whole within the bytes searched (<see cref="FindSectionCandidates"/>),
     /// so that its digits end within them.
@@ -5502,22 +5506,23 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// </summary>
     /// <remarks>
     /// The walk back from <c>obj</c> takes the digits of a header's number, and stops at the first byte that is not one, a
-    /// sign among them (<see cref="TryReadHeaderBackwards"/>): the header <c>+14 0 obj</c> is found at its digit 1, though a
-    /// load reads object 14 from the sign, and reads a run of signs as it reads one, the first deciding — <c>++14</c> and
+    /// sign among them (<see cref="TryReadHeaderBackwards"/>): the header <c>+14 0 obj</c> is found at its digit 1, though
+    /// a load reads object 14 from the sign, and reads a run of signs as it reads one, the first deciding — <c>++14</c> and
     /// <c>+-14</c> are 14 too. Asked at that digit, the line test would find the token starting before it, and the header
     /// declaring nothing; asked here, it finds the token a load reads, the header a token on its line where it is one
     /// (<see cref="IsTokenOnItsLine"/>). So a reading that started at that sign, or at a sign past it, read that header:
-    /// the place is passed over as reached where a section the chain reached starts anywhere from here to the digit, not
-    /// at the digit alone (<see cref="TryRelocateXRefSection"/>), and a stream the search passes over there is recorded
-    /// here (<see cref="ReportStreamsPassedOver"/>). A run that starts with a <c>-</c> gives a negative number, no
-    /// object's, and its place is given as it is, where no token starts: it declares nothing. So does a run that does not
-    /// lie within the bytes searched, which the window holds the byte before to tell, as a header whose number starts
-    /// before them counts for nothing (#197). A place where the lexer starts a token — the keyword <c>xref</c>, or the
-    /// first sign of a header whose tokens a comment parts — has no sign before it, and is given as it is. Where the place
-    /// is given as it is, a section the chain reached is looked for at the place alone. The place may be where the reading
-    /// of the stream an <c>/XRefStm</c> read started, which a header found at the digits past a run of signs stands for
-    /// (<see cref="NumberRunsInto"/>): where that lies before the window, nothing is looked at, and it is given as it is.
-    /// A look at the bytes before the place, in the window: nothing is read for it, nor allocated.
+    /// the place is passed over as reached where a section the chain reached starts anywhere from here to the digit, not at
+    /// the digit alone (<see cref="TryRelocateXRefSection"/>), and a stream the search passes over there is recorded here
+    /// (<see cref="ReportStreamsPassedOver"/>). A run that starts with a <c>-</c> gives a negative number, no object's, and
+    /// its place is given as it is, where no token starts: it declares nothing. So does a run that does not lie within the
+    /// bytes searched, which the window holds the byte before to tell, as a header whose number starts before them counts
+    /// for nothing (#197). A place where the lexer starts a token — the keyword <c>xref</c>, or the first sign of a header
+    /// found where the walk lexed the line its number is on, which an end of line ends before <c>obj</c> and which holds a
+    /// <c>%</c> — has no sign before it, and is given as it is. Where the place is given as it is, a section the chain
+    /// reached is looked for at the place alone. The place may be where the reading of the stream an <c>/XRefStm</c> read
+    /// started, which a header found at the digits past a run of signs stands for (<see cref="NumberRunsInto"/>): where
+    /// that lies before the window, nothing is looked at, and it is given as it is. A look at the bytes before the place,
+    /// in the window: nothing is read for it, nor allocated.
     /// </remarks>
     /// <param name="span">The bytes searched, and the byte before them where the window holds one.</param>
     /// <param name="from">Where the bytes searched start in <paramref name="span"/>.</param>
