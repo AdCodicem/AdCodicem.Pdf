@@ -131,6 +131,26 @@ public class ParserTests
     }
 
     [Theory]
+    [InlineData("7 0 obj\nnull\nendobj\n", 0, 0, 7)]
+    [InlineData("  007 0 obj\nnull\nendobj\n", 2, 2, 7)]
+    [InlineData("% a note\n+14 0 obj\nnull\nendobj\n", 9, 10, 14)]
+    [InlineData("++14 0 obj\nnull\nendobj\n", 0, 2, 14)]
+    [InlineData("+-+-014 0 obj\nnull\nendobj\n", 0, 4, 14)]
+    public void Gives_where_an_object_header_starts_and_where_the_digits_of_its_number_start_past_the_signs_it_is_written_with(
+        string text, int start, int digits, int number)
+    {
+        // The lexer reads a run of signs with the number as one token, the first sign deciding: the header starts at the
+        // first sign, and the number's digits, leading zeros among them, past the run (#327).
+        var parser = new PdfObjectParser(Encoding.ASCII.GetBytes(text));
+
+        parser.TryReadIndirectObject(out var id, out _).Should().BeTrue();
+
+        id.Should().Be(new PdfObjectId(number));
+        parser.HeaderStart.Should().Be(start);
+        parser.HeaderDigits.Should().Be(digits);
+    }
+
+    [Theory]
     [InlineData("0 0 obj\nnull\nendobj\n")]
     [InlineData("3000000000 0 obj\nnull\nendobj\n")]
     [InlineData("7 -1 obj\nnull\nendobj\n")]

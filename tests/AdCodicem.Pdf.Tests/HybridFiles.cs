@@ -1625,17 +1625,21 @@ internal static class HybridFiles
     /// A one-page document saved three times, whose writer copies <c>/XRefStm</c> into the next trailer. The oldest table,
     /// at <c>Oldest</c>, indexes the first three objects and object 5, <c>(old five)</c>. The second revision writes
     /// object 4, <c>(four)</c>, and the cross-reference stream of its own revision, stream 13, at <c>Stream</c>, right
-    /// after it, which indexes the first four objects and itself and gives no <c>/Prev</c>, then its table, at
-    /// <c>Middle</c>, which indexes nothing, and names through <c>/Prev</c> the place 7 bytes before the stream, inside the
-    /// <c>endobj</c> before it, and through <c>/XRefStm</c> the stream's header where not
-    /// <paramref name="insideItsNumber"/>, or the place 1 byte into the stream's object number, its digit 3, where the
-    /// stream reads as object 3. Past a comment of 600 dashes, the newest table, at <c>Newest</c>, indexes nothing, names
-    /// the middle table through <c>/Prev</c>, and through <c>/XRefStm</c> the place the middle table's names: the newest
-    /// table's <c>/XRefStm</c> reads the stream, and the middle table's names it again. A search near the place the middle
-    /// table's <c>/Prev</c> names comes to the stream's header, and to the oldest table farther off, within reach.
+    /// after it, which indexes the first four objects and itself and gives no <c>/Prev</c>, its header written
+    /// <paramref name="header"/>, <c>13 0 obj</c> where none is given — such as <c>++13 0 obj</c>, its number written with
+    /// a run of signs —, then its table, at <c>Middle</c>, which indexes nothing, and names through <c>/Prev</c> the place
+    /// <paramref name="prevFrom"/> bytes past the start of the stream's header, or before it where that is negative — 7
+    /// bytes before it, inside the <c>endobj</c> before it, unless it says otherwise —, and through <c>/XRefStm</c> the
+    /// stream's header where not <paramref name="insideItsNumber"/>, or the place 1 byte into it: the digit 3 of
+    /// <c>13 0 obj</c>, from which the stream reads as object 3, or the second sign of a run of signs, from which it reads
+    /// as object 13. Past a comment of 600 dashes, the newest table, at
+    /// <c>Newest</c>, indexes nothing, names the middle table through <c>/Prev</c>, and through <c>/XRefStm</c> the place
+    /// the middle table's names: the newest table's <c>/XRefStm</c> reads the stream, and the middle table's names it again.
+    /// A search near the place the middle table's <c>/Prev</c> names comes to the stream's header — at the digit past its
+    /// signs —, and, where that place lies 7 bytes before the stream, to the oldest table farther off, within reach.
     /// </summary>
     public static (byte[] File, long Oldest, long Stream, long Middle, long Newest) NamingTheUpdatesStreamAgainAtOrInsideItsNumber(
-        bool insideItsNumber)
+        bool insideItsNumber, string header = "13 0 obj", int prevFrom = -7)
     {
         var file = new HandWrittenFile(version: "1.5");
         var (catalog, pages, page) = Page(file);
@@ -1645,10 +1649,10 @@ internal static class HybridFiles
         var four = file.Object(4, "(four)");
         var stream = file.Position;
         var rows = StreamRows((1, catalog, 0), (1, pages, 0), (1, page, 0), (1, four, 0), (1, stream, 0));
-        file.Object(13, Invariant($"<< /Type /XRef /Size 14 /W [1 4 2] /Index [1 4 13 1] /Root 1 0 R /Length {rows.Length} >>\nstream\n{rows}\nendstream"));
+        file.Raw(Invariant($"{header}\n<< /Type /XRef /Size 14 /W [1 4 2] /Index [1 4 13 1] /Root 1 0 R /Length {rows.Length} >>\nstream\n{rows}\nendstream\nendobj\n"));
         var named = insideItsNumber ? stream + 1 : stream;
         var middle = file.Position;
-        file.Raw(Invariant($"xref\n0 1\n0000000000 65535 f \ntrailer\n<< /Size 14 /Root 1 0 R /Prev {stream - 7} /XRefStm {named} >>\nstartxref\n{middle}\n%%EOF\n"));
+        file.Raw(Invariant($"xref\n0 1\n0000000000 65535 f \ntrailer\n<< /Size 14 /Root 1 0 R /Prev {stream + prevFrom} /XRefStm {named} >>\nstartxref\n{middle}\n%%EOF\n"));
         file.Raw("%" + new string('-', 600) + "\n");
         var newest = file.Position;
         file.Raw(Invariant($"xref\n0 1\n0000000000 65535 f \ntrailer\n<< /Size 14 /Root 1 0 R /Prev {middle} /XRefStm {named} >>\nstartxref\n{newest}\n%%EOF\n"));

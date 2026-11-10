@@ -6258,6 +6258,172 @@ public class CrossReferenceChainTests
     }
 
     [Theory]
+    [InlineData("++13 0 obj", 0, 514, true)]
+    [InlineData("++13 0 obj", 0, 513, true)]
+    [InlineData("+-13 0 obj", 0, 514, true)]
+    [InlineData("+-13 0 obj", 0, 513, true)]
+    [InlineData("+++13 0 obj", 0, 514, true)]
+    [InlineData("+++13 0 obj", 0, 515, true)]
+    [InlineData("+++13 0 obj", 0, 513, true)]
+    [InlineData("+++13 0 obj", 1, 515, true)]
+    [InlineData("+++13 0 obj", 1, 514, true)]
+    [InlineData("++13 0 obj", 0, 514, false)]
+    [InlineData("++13 0 obj", 0, 513, false)]
+    [InlineData("+++13 0 obj", 1, 515, false)]
+    public void The_stream_a_hybrid_table_s_xrefstm_read_from_a_sign_and_that_gives_no_prev_is_not_taken_again_near_its_prev_however_few_of_its_signs_the_window_holds(
+        string header, int into, int prevFrom, bool catalogInStream)
+    {
+        // The update's table names its own stream through /XRefStm at a sign of the run of signs its number is written with,
+        // and through /Prev a place 513 to 515 bytes past the stream's first byte, in the comment past the stream: the bytes
+        // the search near that place reads start at a sign of the run or at the digit past it, the window holding one byte
+        // before them, and the oldest table, which alone indexes object 5, and the catalog too where the stream does not,
+        // lies out of reach. The stream gives no /Prev. The header the search finds at the digit is the stream the /XRefStm
+        // read, told by where that reading found the digits, whatever signs the window holds: passed over, as any section
+        // the chain reached is, the /Prev's section missing and object 5 found by rebuilding the index. Where the window did
+        // not hold the sign the reading started at, the header was tried as a stream of its own and taken, found moved, the
+        // chain ending there: where the stream indexes the catalog, nothing rebuilt the index, and object 5 read as null,
+        // only the section found moved reported; elsewhere the index was rebuilt as the document opened, the validator
+        // saying the file holds no catalog (#156, #327).
+        var (file, _, stream, newest) = HybridFiles.NamingTheUpdatesStreamAtOrInsideItsNumber(
+            into, "nothing", catalogInStream, header, prevFrom: prevFrom);
+        var named = stream + into;
+        var previous = stream + prevFrom;
+        using var document = PdfDocument.Open(file);
+
+        document.Reader.Structure.Sections.Select(section => (section.NamedBy, section.State, section.Kind, section.Offset)).Should().Equal(
+            ("startxref", XRefSectionState.Read, XRefSectionKind.Table, newest),
+            ("/XRefStm", XRefSectionState.Read, XRefSectionKind.Stream, named),
+            ("/Prev", XRefSectionState.NotFound, XRefSectionKind.Unknown, previous));
+        document.Diagnostics.Select(diagnostic => (diagnostic.Code, diagnostic.Position)).Should().Equal(
+            catalogInStream
+                ? [(PdfDiagnosticCodes.XRefSectionMissing, previous)]
+                : [(PdfDiagnosticCodes.XRefSectionMissing, previous), (PdfDiagnosticCodes.XRefRebuilt, -1L)]);
+        document.WasRepaired.Should().Be(!catalogInStream);
+        Text(document, 4).Should().Be("four");
+        Text(document, 5).Should().Be("old five");
+        document.WasRepaired.Should().BeTrue();
+        document.Diagnostics.Select(diagnostic => diagnostic.Code).Should().Equal(PdfDiagnosticCodes.XRefSectionMissing, PdfDiagnosticCodes.XRefRebuilt);
+
+        using var validated = PdfDocument.Open(file);
+        new PdfValidator().Validate(validated).Findings.Where(finding => finding.Severity == PdfValidationSeverity.Error)
+            .Select(finding => (finding.RuleId, finding.Location.Position)).Should().Equal((PdfValidationRuleIds.XRefSectionNotFound, previous));
+    }
+
+    [Theory]
+    [InlineData("++13 0 obj", 0, 514, "the oldest table")]
+    [InlineData("++13 0 obj", 0, 513, "the oldest table")]
+    [InlineData("+-13 0 obj", 0, 514, "the oldest table")]
+    [InlineData("+++13 0 obj", 0, 515, "the oldest table")]
+    [InlineData("+++13 0 obj", 1, 515, "the oldest table")]
+    [InlineData("+++13 0 obj", 1, 514, "the oldest table")]
+    [InlineData("++13 0 obj", 0, 514, "the table's /Prev")]
+    [InlineData("++13 0 obj", 0, 513, "the table's /Prev")]
+    [InlineData("+++13 0 obj", 0, 514, "the table's /Prev")]
+    [InlineData("+++13 0 obj", 1, 515, "the table's /Prev")]
+    public void The_stream_a_hybrid_table_s_xrefstm_read_from_a_sign_and_whose_prev_names_an_offset_is_read_as_named_again_near_its_prev_however_few_of_its_signs_the_window_holds(
+        string header, int into, int prevFrom, string streamPrev)
+    {
+        // The same file, the stream indexing the catalog and giving through /Prev the oldest table's offset, or the place the
+        // table's /Prev names. The header the search finds at the digit is the stream the /XRefStm read, told by where that
+        // reading found the digits, whatever signs the window holds: taken, found moved where the /XRefStm read it, and read
+        // whole, the /XRefStm reported as naming what the /Prev read — and the chain going on through the stream to the
+        // oldest table, or looping back to the place the /Prev names. Where the window did not hold the sign the reading
+        // started at, the header was taken as a stream of its own, found moved at the digit, the stream read twice and the
+        // naming never reported (#156, #327).
+        var (file, oldest, stream, newest) = HybridFiles.NamingTheUpdatesStreamAtOrInsideItsNumber(
+            into, streamPrev, catalogInStream: true, header, prevFrom: prevFrom);
+        var named = stream + into;
+        var previous = stream + prevFrom;
+        var loop = streamPrev == "the table's /Prev";
+        using var document = PdfDocument.Open(file);
+
+        document.Reader.Structure.Sections.Select(section => (section.NamedBy, section.State, section.Kind, section.Offset)).Should().Equal(
+            loop
+                ?
+                [
+                    ("startxref", XRefSectionState.Read, XRefSectionKind.Table, newest),
+                    ("/XRefStm", XRefSectionState.NamedAgain, XRefSectionKind.Unknown, named),
+                    ("/Prev", XRefSectionState.Relocated, XRefSectionKind.Stream, named),
+                ]
+                :
+                [
+                    ("startxref", XRefSectionState.Read, XRefSectionKind.Table, newest),
+                    ("/XRefStm", XRefSectionState.NamedAgain, XRefSectionKind.Unknown, named),
+                    ("/Prev", XRefSectionState.Relocated, XRefSectionKind.Stream, named),
+                    ("/Prev", XRefSectionState.Read, XRefSectionKind.Table, oldest),
+                ]);
+        document.Diagnostics.Select(diagnostic => (diagnostic.Code, diagnostic.Position)).Should().Equal(
+            loop
+                ?
+                [
+                    (PdfDiagnosticCodes.XRefOffsetAdjusted, named), (PdfDiagnosticCodes.XRefHybridStreamLost, named),
+                    (PdfDiagnosticCodes.XRefChainCycle, previous),
+                ]
+                : [(PdfDiagnosticCodes.XRefOffsetAdjusted, named), (PdfDiagnosticCodes.XRefHybridStreamLost, named)]);
+        document.Diagnostics[0].Message.Should().Be(
+            Invariant($"The cross-reference section /Prev names at offset {previous} was found {previous - named} bytes before it."));
+        Text(document, 4).Should().Be("four");
+        document.WasRepaired.Should().BeFalse();
+        Text(document, 5).Should().Be("old five");
+        document.WasRepaired.Should().Be(loop);
+
+        using var validated = PdfDocument.Open(file);
+        new PdfValidator().Validate(validated).Findings.Where(finding => finding.Severity == PdfValidationSeverity.Error)
+            .Select(finding => (finding.RuleId, finding.Location.Position)).Should().Equal(
+                loop
+                    ? [(PdfValidationRuleIds.XRefChainLoop, named), (PdfValidationRuleIds.XRefHybridStreamWrong, newest)]
+                    : [(PdfValidationRuleIds.XRefHybridStreamWrong, newest)]);
+    }
+
+    [Theory]
+    [InlineData("++13 0 obj", 0, 514, "/FooDecode", "[1 4 2]")]
+    [InlineData("++13 0 obj", 0, 514, "", "[1 -4 2]")]
+    [InlineData("++13 0 obj", 0, 513, "", "[1 -4 2]")]
+    [InlineData("+++13 0 obj", 0, 515, "", "[1 -4 2]")]
+    [InlineData("+++13 0 obj", 1, 515, "/FooDecode", "[1 4 2]")]
+    public void A_hybrid_table_s_own_stream_read_from_a_sign_that_cannot_be_read_is_reported_once_however_few_of_its_signs_the_window_near_its_prev_holds(
+        string header, int into, int prevFrom, string filter, string widths)
+    {
+        // The same file, the stream giving no /Prev and its rows left unread, by a filter the library cannot run or a negative
+        // width: the /XRefStm reports it where it names it. The header the search near the place the /Prev names finds at the
+        // digit past the signs is that stream, which the chain reached and could not read; the bytes searched start at a
+        // later sign of the run or at the digit, so that the run does not lie within them, and the header, asked about at
+        // the digit, where no token starts, declares nothing: it is dropped, the /Prev's section missing, and the stream is
+        // reported once (#327).
+        var (file, _, stream, newest) = HybridFiles.NamingTheUpdatesStreamAtOrInsideItsNumber(
+            into, "nothing", catalogInStream: true, header, widths: widths, filter: filter, prevFrom: prevFrom);
+        var named = stream + into;
+        var previous = stream + prevFrom;
+        var data = stream + file.AsSpan((int)stream).IndexOf("\nstream\n"u8) + 8;
+        using var document = PdfDocument.Open(file);
+
+        document.Reader.Structure.Sections.Select(section => (section.NamedBy, section.State, section.Kind, section.Offset)).Should().Equal(
+            ("startxref", XRefSectionState.Read, XRefSectionKind.Table, newest),
+            ("/XRefStm", XRefSectionState.Malformed, XRefSectionKind.Stream, named),
+            ("/Prev", XRefSectionState.NotFound, XRefSectionKind.Unknown, previous));
+        document.Diagnostics.Select(diagnostic => (diagnostic.Code, diagnostic.Position)).Should().Equal(
+            filter.Length > 0
+                ?
+                [
+                    (PdfDiagnosticCodes.FilterUnsupported, data), (PdfDiagnosticCodes.XRefSectionUnreadable, named),
+                    (PdfDiagnosticCodes.XRefSectionMissing, previous), (PdfDiagnosticCodes.XRefRebuilt, -1L),
+                ]
+                :
+                [
+                    (PdfDiagnosticCodes.XRefSectionUnreadable, named), (PdfDiagnosticCodes.XRefSectionMissing, previous),
+                    (PdfDiagnosticCodes.XRefRebuilt, -1L),
+                ]);
+        document.WasRepaired.Should().BeTrue();
+        Text(document, 4).Should().Be("four");
+        Text(document, 5).Should().Be("old five");
+
+        using var validated = PdfDocument.Open(file);
+        new PdfValidator().Validate(validated).Findings.Where(finding => finding.Severity == PdfValidationSeverity.Error)
+            .Select(finding => (finding.RuleId, finding.Location.Position)).Should().Equal(
+                (PdfValidationRuleIds.XRefSectionMalformed, named), (PdfValidationRuleIds.XRefSectionNotFound, previous));
+    }
+
+    [Theory]
     [InlineData(true)]
     [InlineData(false)]
     public void The_stream_a_table_s_xrefstm_names_again_is_told_near_its_prev_alike_whether_named_at_its_header_or_inside_its_number(bool insideItsNumber)
@@ -6282,6 +6448,45 @@ public class CrossReferenceChainTests
         document.Diagnostics[0].Message.Should().Be(Invariant($"The cross-reference section /Prev names at offset {stream - 7} was found {stream - 7 - oldest} bytes before it."));
         Text(document, 5).Should().Be("old five");
         document.WasRepaired.Should().BeFalse();
+    }
+
+    [Theory]
+    [InlineData("++13 0 obj", false, 514)]
+    [InlineData("++13 0 obj", false, 513)]
+    [InlineData("+-13 0 obj", false, 514)]
+    [InlineData("+++13 0 obj", false, 515)]
+    [InlineData("+++13 0 obj", true, 515)]
+    [InlineData("+++13 0 obj", true, 514)]
+    public void The_stream_a_table_s_xrefstm_names_again_from_a_sign_is_not_taken_near_its_prev_however_few_of_its_signs_the_window_holds(
+        string header, bool atSecondSign, int prevFrom)
+    {
+        // The newest table's /XRefStm reads the middle revision's stream, written with a run of signs, at its first sign or
+        // its second, and the middle table's /XRefStm names it again; the middle table's /Prev names a place 513 to 515 bytes
+        // past the stream's first byte, so that the bytes the search near it reads start at a sign of the run or at the digit
+        // past it, and the oldest table, which alone indexes object 5, lies out of reach. The header the search finds at the
+        // digit is the stream named again, told by where its reading found the digits, whatever signs the window holds: not
+        // taken, a section the chain reached (#330), the /Prev's section missing and object 5 found by rebuilding the index.
+        // Where the window did not hold the sign the reading started at, the header was taken as a stream of its own, found
+        // moved, the chain ending there, nothing rebuilding the index, and object 5 read as null (#156, #327).
+        var (file, _, stream, middle, newest) = HybridFiles.NamingTheUpdatesStreamAgainAtOrInsideItsNumber(atSecondSign, header, prevFrom);
+        var named = atSecondSign ? stream + 1 : stream;
+        var previous = stream + prevFrom;
+        using var document = PdfDocument.Open(file);
+
+        document.Reader.Structure.Sections.Select(section => (section.NamedBy, section.State, section.Kind, section.Offset)).Should().Equal(
+            ("startxref", XRefSectionState.Read, XRefSectionKind.Table, newest),
+            ("/XRefStm", XRefSectionState.Read, XRefSectionKind.Stream, named),
+            ("/Prev", XRefSectionState.Read, XRefSectionKind.Table, middle),
+            ("/XRefStm", XRefSectionState.NamedAgain, XRefSectionKind.Unknown, named),
+            ("/Prev", XRefSectionState.NotFound, XRefSectionKind.Unknown, previous));
+        document.Diagnostics.Select(diagnostic => (diagnostic.Code, diagnostic.Position)).Should().Equal((PdfDiagnosticCodes.XRefSectionMissing, previous));
+        document.WasRepaired.Should().BeFalse();
+        Text(document, 5).Should().Be("old five");
+        document.WasRepaired.Should().BeTrue();
+
+        using var validated = PdfDocument.Open(file);
+        new PdfValidator().Validate(validated).Findings.Where(finding => finding.Severity == PdfValidationSeverity.Error)
+            .Select(finding => (finding.RuleId, finding.Location.Position)).Should().Equal((PdfValidationRuleIds.XRefSectionNotFound, previous));
     }
 
     [Theory]
