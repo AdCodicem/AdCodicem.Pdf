@@ -1019,15 +1019,17 @@ internal static class HybridFiles
 
     /// <summary>
     /// A one-page document saved twice. The oldest table, at <c>Oldest</c>, indexes the first three objects and object 5,
-    /// <c>(old five)</c>. The update writes object 4, <c>(four)</c>; object 13, at <c>Padded</c>, a dictionary that gives
-    /// <c>/W [1 1 1]</c> and no <c>/Type</c>, then a <c>/Pad</c> string of 100 bytes; stream 21, at <c>Stream</c>, which
-    /// indexes object 4 and itself and gives no <c>/Prev</c>; then, at <c>Place</c>, the header of object 9, which begins
-    /// its line, a stream of <c>/Type /XRef</c> that gives <c>/W [1 1 1]</c>, no <c>/Size</c> and no <c>/Prev</c>, its data
-    /// running to the end of the file. The update's table, at <c>Newest</c>, indexes stream 21, and names it through
-    /// <c>/XRefStm</c>, and through <c>/Prev</c> the place 20 bytes before <c>Place</c>: a search near it comes to the place
-    /// first, then to stream 21, then to object 13 and object 4, then to the oldest table.
+    /// <c>(old five)</c>. The update writes object 4, <c>(four)</c>; object 13, at <c>Padded</c>, its header written
+    /// <paramref name="header"/>, a dictionary that gives <c>/W [1 1 1]</c> and no <c>/Type</c>, then a <c>/Pad</c> string
+    /// of 100 bytes; stream 21, at <c>Stream</c>, which indexes object 4 and itself and gives no <c>/Prev</c>; then, at
+    /// <c>Place</c>, the header of object 9, which begins its line, a stream of <c>/Type /XRef</c> that gives
+    /// <c>/W [1 1 1]</c>, no <c>/Size</c> and no <c>/Prev</c>, its data running to the end of the file. The update's table,
+    /// at <c>Newest</c>, indexes stream 21, and names it through <c>/XRefStm</c>, and through <c>/Prev</c> the place 20
+    /// bytes before <c>Place</c>: a search near it comes to the place first, then to stream 21, then to object 13 and
+    /// object 4, then to the oldest table.
     /// </summary>
-    public static (byte[] File, long Oldest, long Padded, long Stream, long Place, long Newest) PrevFallingShortOfAPlacePastAPaddedDictionaryAndTheStream()
+    public static (byte[] File, long Oldest, long Padded, long Stream, long Place, long Newest) PrevFallingShortOfAPlacePastAPaddedDictionaryAndTheStream(
+        string header = "13 0 obj")
     {
         var file = new HandWrittenFile(version: "1.5");
         var (catalog, pages, page) = Page(file);
@@ -1035,7 +1037,8 @@ internal static class HybridFiles
         var oldest = file.Position;
         file.Raw(Invariant($"xref\n0 4\n0000000000 65535 f \n{Row(catalog)}{Row(pages)}{Row(page)}5 1\n{Row(oldFive)}trailer\n<< /Size 22 /Root 1 0 R >>\nstartxref\n{oldest}\n%%EOF\n"));
         var four = file.Object(4, "(four)");
-        var padded = file.Object(13, "<< /W [1 1 1] /Pad (" + new string('x', 100) + ") >>");
+        var padded = file.Position;
+        file.Raw(header + "\n<< /W [1 1 1] /Pad (" + new string('x', 100) + ") >>\nendobj\n");
         var stream = file.Position;
         var rows = StreamRows((1, four, 0), (1, stream, 0));
         file.Object(21, Invariant($"<< /Type /XRef /Size 22 /W [1 4 2] /Index [4 1 21 1] /Length {rows.Length} >>\nstream\n{rows}\nendstream"));
@@ -2014,27 +2017,30 @@ internal static class HybridFiles
     }
 
     /// <summary>
-    /// A one-page document saved three times, whose oldest section is cross-reference stream 7, at <c>Oldest</c>, which
-    /// indexes objects 1 to 3 and object 8: its dictionary opens on 120 spaces — or, where <paramref name="padding"/> is
-    /// <c>"a string"</c>, on as many bytes of a <c>/Pad</c> string — before its <c>/Type</c>, followed by what
-    /// <paramref name="type"/> writes — a name, a value that is no name, or a name then <c>/Type</c> and another, the key
-    /// given twice —, its first byte <c>TypeAt</c> bytes past the stream's header, so that a trailer's window of
-    /// <c>TypeAt + k</c> bytes holds the first <c>k</c> bytes from that first byte; and it names stream 11 through
-    /// <c>/Prev</c> where <paramref name="oldestNamesOwn"/> says so, and nothing otherwise. Where <paramref name="data"/> is
-    /// false, no stream data follows that dictionary, and object 7 is the dictionary alone. Object 8, right before it, a
-    /// dictionary of <c>/Type /XObject</c>, opens on the same padding, its <c>/Type</c>'s value as far past its header. A
-    /// long comment follows stream 7, then object 4, <c>(four)</c>, and cross-reference stream 6, of <c>/Type /XRef</c>, at
-    /// <c>Stream</c>, which indexes object 4 and itself and names stream 7 through <c>/Prev</c> — or, where
-    /// <paramref name="near"/> is <c>"a table"</c>, gives no <c>/Prev</c>, and a classic table past a comment, which
-    /// indexes object 9, <c>(nine)</c>, names stream 7 through <c>/Prev</c> in its place —. Objects 5, <c>(five)</c>, and
-    /// 10, <c>(ten)</c>, follow, then stream 11, of <c>/Type /XRef</c>, at <c>Own</c>, which indexes object 10 and gives no
+    /// A one-page document saved three times, whose oldest section is cross-reference stream 7, at <c>Oldest</c>, its
+    /// header written <paramref name="header"/>, which indexes objects 1 to 3 and object 8: its dictionary opens on 120
+    /// spaces — or, where <paramref name="padding"/> is <c>"a string"</c>, on as many bytes of a <c>/Pad</c> string —
+    /// before its <c>/Type</c>, followed by what <paramref name="type"/> writes — a name, a value that is no name, or a name
+    /// then <c>/Type</c> and another, the key given twice —, its first byte <c>TypeAt</c> bytes past the stream's header,
+    /// so that a trailer's window of <c>TypeAt + k</c> bytes holds the first <c>k</c> bytes from that first byte; and it
+    /// names stream 11 through <c>/Prev</c> where <paramref name="oldestNamesOwn"/> says so, and nothing otherwise. Where
+    /// <paramref name="data"/> is false, no stream data follows that dictionary, and object 7 is the dictionary alone.
+    /// Object 8, right before it, a dictionary of <c>/Type /XObject</c>, opens on the same padding, its <c>/Type</c>'s value
+    /// as far past its header. Where <paramref name="near"/> is <c>"nothing"</c>, stream 7, which then gives
+    /// <c>/Root</c> and no <c>/Prev</c>, is the file's one section, which <c>startxref</c> names, at <c>Newest</c>, and
+    /// nothing else follows it: <c>Stream</c>, <c>Own</c> and <c>Near</c> are -1. Otherwise a long comment follows stream
+    /// 7, then object 4, <c>(four)</c>, and cross-reference stream 6, of <c>/Type /XRef</c>, at <c>Stream</c>, which
+    /// indexes object 4 and itself and names stream 7 through <c>/Prev</c> — or, where <paramref name="near"/> is
+    /// <c>"a table"</c>, gives no <c>/Prev</c>, and a classic table past a comment, which indexes object 9,
+    /// <c>(nine)</c>, names stream 7 through <c>/Prev</c> in its place —. Objects 5, <c>(five)</c>, and 10,
+    /// <c>(ten)</c>, follow, then stream 11, of <c>/Type /XRef</c>, at <c>Own</c>, which indexes object 10 and gives no
     /// <c>/Prev</c>, and, past a comment, the newest table, at <c>Newest</c>, which indexes objects 1 to 3, 5 and 11, and
     /// names stream 6 through <c>/XRefStm</c> and through <c>/Prev</c> the place 5 bytes before stream 11 — 4 where a table
     /// is near —: a search near that place passes stream 11 over as possibly that table's own, and takes what lies 140 to
     /// 180 bytes before it, stream 6 or the table, at <c>Near</c>.
     /// </summary>
     public static (byte[] File, int TypeAt, long Oldest, long Stream, long Own, long Near, long Newest) PassingOverAStreamAnOlderStreamWithAPaddedTypeNames(
-        string near, bool oldestNamesOwn, string type = "/XRef", string padding = "spaces", bool data = true)
+        string near, bool oldestNamesOwn, string type = "/XRef", string padding = "spaces", bool data = true, string header = "7 0 obj")
     {
         var file = new HandWrittenFile(version: "1.5");
         var (catalog, pages, page) = Page(file);
@@ -2042,12 +2048,20 @@ internal static class HybridFiles
         var eight = file.Object(8, "<<" + pad + "/Type /XObject >>");
         var oldest = file.Position;
         var oldestRows = StreamRows((1, catalog, 0), (1, pages, 0), (1, page, 0), (1, eight, 0));
-        var head = "7 0 obj\n<<" + pad + "/Type ";
+        var head = header + "\n<<" + pad + "/Type ";
 
         // Stream 7's /Prev, written in ten digits, names stream 11, whose place is known once it is written: a stand-in of
         // ten characters is replaced then.
         var link = oldestNamesOwn ? "/Prev @@@@OWN@@@ " : string.Empty;
         var body = data ? Invariant($"\nstream\n{oldestRows}\nendstream") : string.Empty;
+
+        if (near == "nothing")
+        {
+            file.Raw(head + Invariant($"{type} /Size 9 /W [1 4 2] /Index [1 3 8 1] /Root 1 0 R /Length {oldestRows.Length} >>{body}\nendobj\n"));
+            file.Raw(Invariant($"startxref\n{oldest}\n%%EOF\n"));
+            return (file.Bytes, head.Length, oldest, -1, -1, -1, oldest);
+        }
+
         file.Raw(head + Invariant($"{type} /Size 9 /W [1 4 2] /Index [1 3 8 1] {link}/Length {oldestRows.Length} >>{body}\nendobj\n"));
         file.Raw("%" + new string('=', 1300) + "\n");
         var four = file.Object(4, "(four)");
@@ -2084,16 +2098,18 @@ internal static class HybridFiles
     /// 11, at <c>Stream</c>, and stream 12, at <c>Own</c>, right after it, which a comment of dashes follows. The table past
     /// the comment, at <c>Older</c>, indexes objects 1 to 3, and names through <c>/Prev</c> the oldest table, at
     /// <c>Oldest</c>, which indexes object 5 and names nothing, and through <c>/XRefStm</c> cross-reference stream 9, at
-    /// <c>Nine</c>, past the oldest table and a comment of 600 equals signs: stream 9 indexes object 4 and itself, gives no
-    /// <c>/Prev</c>, and its dictionary opens on 120 spaces before its <c>/Type</c>, which gives <paramref name="type"/>, the
-    /// value's first byte <c>TypeAt</c> bytes past the stream's header, so that a trailer's window of <c>TypeAt + k</c>
-    /// bytes holds the first <c>k</c> bytes from that first byte. The newest table, at <c>Newest</c>, indexes nothing, and
-    /// names through <c>/XRefStm</c> stream 11 and through <c>/Prev</c> the place 200 bytes past the start of stream 12, at
-    /// <c>Named</c>, inside the comment, 240 bytes before the table past it: a search near that place passes stream 12 over
-    /// as possibly the newest table's own, and takes the table past the comment, and no link names stream 12.
+    /// <c>Nine</c>, past the oldest table and a comment of 600 equals signs: stream 9, its header written
+    /// <paramref name="header"/>, indexes object 4 and itself, gives no <c>/Prev</c>, and its dictionary opens on 120
+    /// spaces before its <c>/Type</c>, which gives <paramref name="type"/>, the value's first byte <c>TypeAt</c> bytes past
+    /// the stream's header, so that a trailer's window of <c>TypeAt + k</c> bytes holds the first <c>k</c> bytes from that
+    /// first byte. The newest table, at <c>Newest</c>, indexes nothing, and names through <c>/XRefStm</c> stream 11 and
+    /// through <c>/Prev</c> the place 200 bytes past the start of stream 12, at <c>Named</c>, inside the comment, whose
+    /// dashes run on from there to the end of its line, 240 bytes before the table past it: a search near that place
+    /// passes stream 12 over as possibly the newest table's own, and takes the table past the comment, and no link names
+    /// stream 12.
     /// </summary>
     public static (byte[] File, int TypeAt, long Stream, long Own, long Named, long Older, long Oldest, long Nine, long Newest) PassingOverAStreamAnOlderTableNamesBesideAPaddedStreamItsXRefStmNames(
-        string type = "/XRef")
+        string type = "/XRef", string header = "9 0 obj")
     {
         var file = new HandWrittenFile(version: "1.5");
         var (catalog, pages, page) = Page(file);
@@ -2117,7 +2133,7 @@ internal static class HybridFiles
         file.Raw("%" + new string('=', 600) + "\n");
         var nine = file.Position;
         var nineRows = StreamRows((1, four, 0), (1, nine, 0));
-        var head = "9 0 obj\n<<" + new string(' ', 120) + "/Type ";
+        var head = header + "\n<<" + new string(' ', 120) + "/Type ";
         file.Raw(head + Invariant($"{type} /Size 13 /W [1 4 2] /Index [4 1 9 1] /Length {nineRows.Length} >>\nstream\n{nineRows}\nendstream\nendobj\n"));
         var newest = file.Position;
         file.Raw(Invariant($"xref\n0 1\n0000000000 65535 f \ntrailer\n<< /Size 13 /Root 1 0 R /Prev {named} /XRefStm {stream} >>\nstartxref\n{newest}\n%%EOF\n"));
