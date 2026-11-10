@@ -1917,7 +1917,7 @@ internal static class HybridFiles
     /// indexes objects 1 to 3 and object 8: its dictionary opens on 120 spaces — or, where <paramref name="padding"/> is
     /// <c>"a string"</c>, on as many bytes of a <c>/Pad</c> string — before its <c>/Type</c>, which gives
     /// <paramref name="type"/>, the value's first byte <c>TypeAt</c> bytes past the stream's header, so that a trailer's
-    /// window of <c>TypeAt + 1</c> to <c>TypeAt + 4</c> bytes ends inside that name; and it names stream 11 through
+    /// window of <c>TypeAt + k</c> bytes holds the first <c>k</c> bytes of that name; and it names stream 11 through
     /// <c>/Prev</c> where <paramref name="oldestNamesOwn"/> says so, and nothing otherwise. Where <paramref name="data"/> is
     /// false, no stream data follows that dictionary, and object 7 is the dictionary alone. Object 8, right before it, a
     /// dictionary of <c>/Type /XObject</c>, opens on the same padding, its <c>/Type</c>'s value as far past its header. A

@@ -7039,6 +7039,7 @@ public class CrossReferenceChainTests
     [InlineData("a table", "spaces", false, "/Catalog", 2, "missing", true)]
     [InlineData("stream 6", "spaces", false, "/X", 0, "read", true)]
     [InlineData("stream 6", "spaces", false, "/X", 0, "missing", true, false)]
+    [InlineData("stream 6", "spaces", false, "/X", 12, "missing", false)]
     public void A_stream_passed_over_near_a_hybrid_table_s_prev_is_reported_where_no_link_the_chain_read_reaches_it_and_no_guard_cut_a_section_the_chain_names_before_its_type_is_known_not_to_be_xref(
         string near, string padding, bool oldestNamesOwn, string type, int window, string oldestRead, bool reported, bool data = true)
     {
@@ -7051,12 +7052,14 @@ public class CrossReferenceChainTests
         // guard may have hidden, and stream 11 was reported as a stream the chain did not read, the guard's cut laid on the
         // file. Nothing is reported of it now, whatever stream 7 names, as where the guard cuts the dictionary before its
         // /Type, or past a /Type /XRef read whole, which leaves the section the guard's, the chain stopped there (ADR 34).
-        // The section missing, which the guard's cut makes, stays as #279 leaves it. A name the cut leaves that XRef does not
-        // begin with — the C of /Catalog, or /Catalog whole — hides no such link, and the report stands; so it does where no
-        // guard is reached and the name is X: stream 7 is read as the section whole (#263), and a dictionary of that type
-        // alone, no data following it, is no section. Object 8, right before stream 7, opens on the same padding: the search
-        // near stream 7 tries it, its /XObject cut at its X, as a place the section may have been moved to, a guess, which
-        // hides no link the chain names (#156, #289).
+        // The section missing, which the guard's cut makes, stays as #279 leaves it. A /Type /X written whole, the cut
+        // past it, is not told from /XRef parted, and nothing is reported either. A name the cut leaves that XRef does
+        // not begin with — the C of /Catalog, or /Catalog whole — hides no such link, and the report stands; so it does
+        // where no guard is reached and the name is X: stream 7 is read as the section whole (#263), and a dictionary
+        // of that type alone, no data following it, is no section. Object 8, right before stream 7, opens on the same
+        // padding: the search near stream 7 tries it, its /XObject cut as stream 7's /Type is — at its X where the C of
+        // /Catalog is left —, as a place the section may have been moved to, a guess, which hides no link the chain
+        // names: an object there that declares another type is dropped before its guard is counted (#156, #289).
         var (file, typeAt, oldest, _, own, taken, _) = HybridFiles.PassingOverAStreamAnOlderStreamWithAPaddedTypeNames(
             near, oldestNamesOwn, type, padding, data);
         var limits = window == 0 ? PdfReaderLimits.Default : PdfReaderLimits.Default with { MaxTrailerLength = typeAt + window };
