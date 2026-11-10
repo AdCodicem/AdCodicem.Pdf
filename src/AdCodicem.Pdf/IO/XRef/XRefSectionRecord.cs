@@ -327,8 +327,10 @@ internal sealed class XRefSectionRecord
     /// (#327). The search near an offset finds a header written <c>++13 0 obj</c> or <c>-+13 0 obj</c> at its digit, and
     /// tells it by this position as a stream the chain reached from a <c>+</c> of that run, wherever the run starts — near
     /// the offset a hybrid table's <c>/Prev</c> names, as the stream the table's <c>/XRefStm</c> read, or names again,
-    /// however few of those signs its window holds. -1 for a classic table, and for a section whose header was not read
-    /// as a cross-reference stream's.
+    /// however few of those signs its window holds. One it finds at the run's first sign, where the line its number is on
+    /// holds a <c>%</c>, it tells as a section the chain reached, from a later sign of the run or from its digit, by this
+    /// position past the run. -1 for a classic table, and for a section whose header was not read as a cross-reference
+    /// stream's.
     /// </summary>
     public long DigitsAt { get; set; } = -1;
 

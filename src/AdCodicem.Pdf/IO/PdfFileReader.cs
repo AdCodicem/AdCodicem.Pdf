@@ -349,8 +349,10 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// as its reading lexed them (<see cref="XRefSectionRecord.DigitsAt"/>): past the run of signs the number is written
     /// with, where it is, and where the header starts otherwise — beside each start <see cref="_sectionsReadAt"/> holds
     /// for a stream, and -1 for a classic table, which no place equals. The search near an offset finds a header written
-    /// <c>-+5 0 obj</c> or <c>++5 0 obj</c> at its digit, wherever the run of signs before it starts, and a reading from a
-    /// <c>+</c> of that run read the same header: it tells the header as that section by this position (#327).
+    /// <c>-+5 0 obj</c> or <c>++5 0 obj</c> at its digit, wherever the run of signs before it starts — or the second at
+    /// the run's first sign, where the line its number is on holds a <c>%</c> —, and a reading from a <c>+</c> of that
+    /// run, or from the digit past it, read the same header: it tells the header as that section by this position,
+    /// looked up past the run of signs the place it found starts with (<see cref="DigitsPastSigns"/>, #327).
     /// </summary>
     /// <remarks>
     /// One entry for each start <see cref="_sectionsReadAt"/> takes, and let go with them once the chain is read.
@@ -5088,16 +5090,19 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// passed over first, and is not reported where the search takes another section before it comes back to it. Two
     /// kinds of place are passed over, and count toward no limit: where the section was named, which holds no section
     /// that reads; and every place where a section the chain reached starts — read where it was named, or found moved,
-    /// or lost there though it declares itself one; for a header the walk back from <c>obj</c> finds at its digit, past
-    /// a run of signs, where the digits of a stream the chain reached from a <c>+</c> of that run start, as its reading
-    /// lexed them, wherever the run starts and whatever sign starts it (<see cref="_sectionDigitsAt"/>, #327) —, which
-    /// holds that section, not the one looked for: taken, it would be read again, in a loop the file does not have, and
-    /// what only the section looked for indexes would be lost in silence (#188) — but for what the same table's
+    /// or lost there though it declares itself one; for a header whose number is written with a run of signs, where the
+    /// digits of a stream the chain reached from a <c>+</c> of that run, or from the digit past it, start past the signs
+    /// of the place, as its reading lexed them, the header found at its digit by the walk back from <c>obj</c>, wherever
+    /// the run starts and whatever sign starts it, or at the run's first sign where the walk lexed the line the number is
+    /// on, which holds a <c>%</c> (<see cref="DigitsPastSigns"/>, <see cref="_sectionDigitsAt"/>, #327) —, which holds
+    /// that section, not the one looked for: taken, it would be read again, in a loop the file does not have, and what
+    /// only the section looked for indexes would be lost in silence (#188) — but for what the same table's
     /// <c>/XRefStm</c> read in the stream's place, which a <c>/Prev</c>'s search takes: both links of the table reach it,
-    /// and the <c>/Prev</c> reads it whole, its links with it (#156). Where that is a cross-reference stream — or where the table's <c>/XRefStm</c> names again a
-    /// stream a newer table's <c>/XRefStm</c> read, which stays passed over as reached (#330) —, a stream near the
-    /// offset may be the table's own, which the <c>/Prev</c> does not mean (<see cref="MayBeTablesOwn"/>), but only one
-    /// that starts no sooner than that stream, which is told by its data, not by the byte its reading started at —
+    /// and the <c>/Prev</c> reads it whole, its links with it (#156). Where that is a cross-reference stream — or where
+    /// the table's <c>/XRefStm</c> names again a stream a newer table's <c>/XRefStm</c> read, which stays passed over as
+    /// reached (#330) —, a stream near the offset may be the table's own, which the <c>/Prev</c> does not mean
+    /// (<see cref="MayBeTablesOwn"/>), but only one that starts no sooner than that stream, which is told by its data,
+    /// not by the byte its reading started at —
     /// where the <c>/XRefStm</c> names a place inside its object number, its own header starts before that byte, and
     /// where it names a <c>+</c> of the run of signs the number is written with, the header the walk back from
     /// <c>obj</c> finds starts at the digit past the run, that stream too (<see cref="NumberRunsInto"/>) —: under updates
@@ -5555,7 +5560,8 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// lying within the bytes searched, its first sign, from which a load reads the header's object number; the place
     /// itself otherwise (#327). The search asks it in two places: the line test, and the record of a stream it passes
     /// over. Whether the chain reached the header found at the place is told by where the digits of the streams it
-    /// reached start (<see cref="_sectionDigitsAt"/>), not by this token's start.
+    /// reached start, looked up past the run of signs the place starts with (<see cref="DigitsPastSigns"/>,
+    /// <see cref="_sectionDigitsAt"/>), not by this token's start.
     /// </summary>
     /// <remarks>
     /// The walk back from <c>obj</c> takes the digits of a header's number, and stops at the first byte that is not one, a
@@ -5569,12 +5575,13 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// bytes searched, which the window holds the byte before to tell, as a header whose number starts before them counts
     /// for nothing (#197). A place where the lexer starts a token — the keyword <c>xref</c>, or the first sign of a header
     /// found where the walk lexed the line its number is on, which an end of line ends before <c>obj</c> and which holds a
-    /// <c>%</c> — has no sign before it, and is given as it is. A reading that started at a <c>+</c> of either run, and
-    /// read the header there, reached it all the same: the search tells it by where that reading found the digits, wherever
-    /// the run starts and whatever sign starts it (<see cref="TryRelocateXRefSection"/>). The place may be where the
-    /// reading of the stream an <c>/XRefStm</c> read started, which a header found at the digits past a run of signs
-    /// stands for (<see cref="NumberRunsInto"/>): where that lies before the window, nothing is looked at, and it is given
-    /// as it is. A look at the bytes before the place, in the window: nothing is read for it, nor allocated.
+    /// <c>%</c> — has no sign before it, and is given as it is. A reading that started at a <c>+</c> of either run, or at
+    /// the digit past it, and read the header there, reached it all the same: the search tells it by where that reading
+    /// found the digits, past the signs of the place, wherever the run starts and whatever sign starts it
+    /// (<see cref="TryRelocateXRefSection"/>). The place may be where the reading of the stream an <c>/XRefStm</c> read
+    /// started, which a header found at the digits past a run of signs stands for (<see cref="NumberRunsInto"/>): where
+    /// that lies before the window, nothing is looked at, and it is given as it is. A look at the bytes before the place,
+    /// in the window: nothing is read for it, nor allocated.
     /// </remarks>
     /// <param name="span">The bytes searched, and the byte before them where the window holds one.</param>
     /// <param name="from">Where the bytes searched start in <paramref name="span"/>.</param>
