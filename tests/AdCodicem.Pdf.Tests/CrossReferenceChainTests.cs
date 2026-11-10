@@ -7515,32 +7515,36 @@ public class CrossReferenceChainTests
     [InlineData("stream 6", "spaces", true, "/XRef", 5, "cut", false)]
     [InlineData("a table", "spaces", false, "/XRef", -3, "cut", false)]
     [InlineData("a table", "spaces", false, "/XRef", 5, "cut", false)]
-    [InlineData("stream 6", "spaces", false, "/Catalog", 2, "missing", true)]
-    [InlineData("stream 6", "spaces", false, "/Catalog", 12, "missing", true)]
-    [InlineData("a table", "spaces", false, "/Catalog", 2, "missing", true)]
+    [InlineData("stream 6", "spaces", false, "/Catalog", 2, "missing", false)]
+    [InlineData("stream 6", "spaces", false, "/Catalog", 12, "missing", false)]
+    [InlineData("a table", "spaces", false, "/Catalog", 2, "missing", false)]
     [InlineData("stream 6", "spaces", false, "/X", 0, "read", true)]
     [InlineData("stream 6", "spaces", false, "/X", 0, "missing", true, false)]
     [InlineData("stream 6", "spaces", false, "/X", 12, "missing", false)]
-    public void A_stream_passed_over_near_a_hybrid_table_s_prev_is_reported_where_no_link_the_chain_read_reaches_it_and_no_guard_cut_a_section_the_chain_names_before_its_type_is_known_not_to_be_xref(
+    public void A_stream_passed_over_near_a_hybrid_table_s_prev_is_reported_where_no_link_the_chain_read_reaches_it_and_no_trailer_guard_cut_a_dictionary_at_an_offset_the_chain_names(
         string near, string padding, bool oldestNamesOwn, string type, int window, string oldestRead, bool reported, bool data = true)
     {
         // The search near the newest table's /Prev passes stream 11 over as possibly that table's own, and takes stream 6, or
         // a table, nearer the /Prev; its /Prev names stream 7, the oldest section, whose /Prev names stream 11 — or nothing.
         // Read whole, the chain reads stream 7 and, through its /Prev, stream 11: nothing is reported of it, but where stream
         // 7 names nothing, and no link the chain read reaches it. Where MaxTrailerLength, lowered, cuts stream 7's dictionary
-        // inside the name its /Type gives, the parser keeps the name as far as it read it — the empty name, X, XR or XRe —,
-        // and stream 7 reads as an object of another type, the section as missing: its /Prev, past the cut, is a link the
-        // guard may have hidden, and stream 11 was reported as a stream the chain did not read, the guard's cut laid on the
-        // file. Nothing is reported of it now, whatever stream 7 names, as where the guard cuts the dictionary before its
-        // /Type, or past a /Type /XRef read whole, which leaves the section the guard's, the chain stopped there (ADR 34).
-        // The section missing, which the guard's cut makes, stays as #279 leaves it. A /Type /X written whole, the cut
-        // past it, is not told from /XRef parted, and nothing is reported either. A name the cut leaves that XRef does
-        // not begin with — the C of /Catalog, or /Catalog whole — hides no such link, and the report stands; so it does
-        // where no guard is reached and the name is X: stream 7 is read as the section whole (#263), and a dictionary
-        // of that type alone, no data following it, is no section. Object 8, right before stream 7, opens on the same
-        // padding: the search near stream 7 tries it, its /XObject cut as stream 7's /Type is — at its X where the C of
-        // /Catalog is left —, as a place the section may have been moved to, a guess, which hides no link the chain
-        // names: an object there that declares another type is dropped before its guard is counted (#156, #289).
+        // at or past the first byte its /Type gives, the parser keeps the dictionary as far as it read it, and stream 7 reads
+        // as an object of another type, the section as missing, its /Prev not followed, wherever it lies — past the cut, or
+        // before it and read (#279). What lay past the cut is unknown: the empty name, X, XR or XRe may be /XRef parted,
+        // inside the name or, written /X#52ef or /#58Ref, inside a #xx escape; /Catalog or /ObjStm may be a stream whose /W,
+        // past the cut or before it, makes it the section where it reads whole (#263), the cut leaving it missing either way;
+        // and the /Foo of a /Type given twice may stand for the /XRef past the cut, the later value kept where the key is
+        // read twice. So may /X written whole, the cut past it, which the reader does not tell from /XRef parted. Stream 11
+        // was reported where the cut left a name XRef does not begin with, the guard's cut laid on the file where stream 7's
+        // /Prev names it. Nothing is reported of it now, whatever the cut left and whatever stream 7 names, as where the
+        // guard cuts the dictionary before its /Type, or past a /Type /XRef read whole, which leaves the section the guard's,
+        // the chain stopped there (ADR 34). The section missing, which the guard's cut makes, stays as #279 leaves it. Where
+        // no guard is reached, the report stands where no link reaches stream 11, the name X included: stream 7 is read as
+        // the section whole (#263), and a dictionary of that type alone, no data following it, is no section. Object 8,
+        // right before stream 7, opens on the same padding: the search near stream 7 tries it, its /XObject cut as stream
+        // 7's /Type is — at its X where the C of /Catalog is left —, as a place the section may have been moved to, a guess,
+        // which hides no link the chain names: an object there that declares another type is dropped before its guard is
+        // counted (#156, #289).
         var (file, typeAt, oldest, _, own, taken, _) = HybridFiles.PassingOverAStreamAnOlderStreamWithAPaddedTypeNames(
             near, oldestNamesOwn, type, padding, data);
         var limits = window == 0 ? PdfReaderLimits.Default : PdfReaderLimits.Default with { MaxTrailerLength = typeAt + window };

@@ -6452,12 +6452,14 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// <c>/Type</c> at a place the section may have been moved to — and cannot be read is a malformed section; any
     /// other object there, or none, is no section at all, and a guard that cut the dictionary of what declares another
     /// type cut no section, though one that cut a value of a stream with a <c>/W</c> where the chain names the section
-    /// leaves it the section, as read whole — a place it may have been moved to takes no stream of another type. What
-    /// makes it unreadable whatever a value a guard cut holds is the file's fault, as read whole
-    /// (<see cref="FaultBesideCut"/>). At a place the section may have been moved to (<paramref name="candidate"/>),
-    /// nothing such an object's reading met is reported or recorded — its search for an <c>endstream</c> aside, which is
-    /// kept as every search is —: it was read as a section, through a section's window, and is read as itself when
-    /// something asks for it.
+    /// leaves it the section, as read whole — a place it may have been moved to takes no stream of another type. Where the
+    /// chain names the section, a guard that cut the dictionary before it declared anything — before its <c>/Type</c>, or
+    /// before the <c>/W</c> of one whose <c>/Type</c> is no name, which declares nothing — cut what may be the section,
+    /// which is the guard's (ADR 34). What makes it unreadable whatever a value a guard cut holds is the file's fault, as
+    /// read whole (<see cref="FaultBesideCut"/>). At a place the section may have been moved to
+    /// (<paramref name="candidate"/>), nothing such an object's reading met is reported or recorded — its search for an
+    /// <c>endstream</c> aside, which is kept as every search is —: it was read as a section, through a section's window,
+    /// and is read as itself when something asks for it.
     /// </para>
     /// <para>
     /// ISO 32000-1 (7.5.8.2) makes the values of this dictionary direct, the elements of <c>/W</c> and <c>/Index</c>
@@ -6582,16 +6584,21 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
 
             cutByGuard = _guardsReached != guards;
 
-            // A guard that cut the dictionary inside the name its /Type gives leaves the name as far as it was read
-            // (#279): one XRef begins with and is shorter may be /XRef parted — or written so, the cut past it, which
-            // is not told apart —, though the object then reads as one of another type, which holds no section, its
-            // /Prev past the cut unread. Where the chain names the offset, that /Prev is a link the guard may have
-            // hidden, and no stream passed over is reported (ReportStreamsPassedOver); what is there is read as written
-            // all the same, until #279 settles it. A place the search tries is a guess, and what the guard cut there
-            // hides no link the chain names: an object there that declares another type is dropped before its guard is
-            // counted, and none is kept but one that gives /Type /XRef, or a /Type that is not a name.
-            if (!candidate && cutByGuard && value is PdfDictionary { } parted && parted.GetRaw(PdfName.Type) is PdfName type &&
-                MayBePartedXRef(type))
+            // A guard that cut the dictionary at an offset the chain names leaves the object as far as it was read (#279),
+            // and what lay past the cut is unknown. Where a /Prev or startxref names the offset, any /W makes a stream of
+            // any /Type the section there (#263): the cut may have hidden a /Prev the chain would follow — /XRef parted,
+            // inside the name or inside a #xx escape, a stream of another /Type that gives a /W past the cut, a /Type
+            // given twice whose later /XRef lies past it —, and the object, read as one of another type, has its /Prev
+            // not followed, wherever it lies. Where an /XRefStm names the offset, the chain never follows that stream's
+            // /Prev, but the guard's cut is what would end the chain there (#264), as #279's closing reads it. Either
+            // way no stream passed over is reported anywhere in the document (ReportStreamsPassedOver), whatever /Type
+            // the cut left: the reader cannot tell which without reading past the guard (ADR 34), and a dictionary of
+            // another type cut where it gives no /W withholds the reports too. What is there is read as written all the
+            // same, until #279 settles it; where the reading takes it for the guard's section, the chain's own cut
+            // withholds them already. A place the search tries is a guess, and what the guard cut there hides no link
+            // the chain names: an object there that declares another type is dropped before its guard is counted, and
+            // none is kept but one that gives /Type /XRef, or a /Type that is not a name.
+            if (!candidate && cutByGuard && value is PdfDictionary)
             {
                 _guardMayHideLink = true;
             }
@@ -6599,13 +6606,16 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
 
         if (!objectRead || !(candidate ? DeclaresOnlyCrossReferenceStream(value) : DeclaresCrossReferenceStream(value)))
         {
-            if (!candidate && cutByGuard && value is PdfDictionary { } cut && !cut.ContainsKey(PdfName.Type))
+            if (!candidate && cutByGuard && value is PdfDictionary { } cut && cut.GetRaw(PdfName.Type) is not PdfName)
             {
                 // A dictionary MaxTrailerLength cut before it said what it is may be the section's: unknown, and the
-                // guard's, which says so (ADR 34), rather than a section missing. An array, a dictionary of another type,
-                // or a stream whose dictionary was read whole is no cross-reference stream, cut or not: a dictionary whose
-                // /Type the cut parted among them, its name read as far as it was read until #279 settles it — where that
-                // name may be /XRef parted, the cut withholds only the report of streams passed over, as set above.
+                // guard's, which says so (ADR 34), rather than a section missing. One whose /Type is no name has not said
+                // it either: such a /Type declares nothing, as everywhere the reader asks what a dictionary declares, and
+                // the dictionary declares a section only through a /W, which the cut may have hidden
+                // (DeclaresOnlyCrossReferenceStream). An array, a dictionary whose /Type names another type, or a stream
+                // whose dictionary was read whole is no cross-reference stream, cut or not — a /Type the cut parted among
+                // them, its name read as far as it was read until #279 settles it —: where a guard cut such a dictionary,
+                // the cut withholds only the report of streams passed over, as set above.
                 section.CutByLimit = true;
                 section.Fault = string.Create(
                     CultureInfo.InvariantCulture,
@@ -7674,15 +7684,6 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     private static bool DeclaresOnlyCrossReferenceStream(PdfObject value) =>
         (value is PdfStream stream ? stream.Dictionary : value as PdfDictionary) is { } dictionary &&
         (dictionary.IsOfType(PdfName.XRef) || (dictionary.ContainsKey(PdfName.W) && dictionary.GetRaw(PdfName.Type) is not PdfName));
-
-    /// <summary>
-    /// Determines whether <paramref name="type"/>, the name the <c>/Type</c> of a dictionary one of the reader's guards cut
-    /// gives, may be <c>/XRef</c> parted by the cut: a name <c>XRef</c> begins with and that is shorter — the empty name,
-    /// <c>X</c>, <c>XR</c> or <c>XRe</c> —, which the parser keeps as far as it read it (#279).
-    /// </summary>
-    /// <param name="type">The name the dictionary's <c>/Type</c> gives.</param>
-    private static bool MayBePartedXRef(PdfName type) =>
-        type.Value.Length < PdfName.XRef.Value.Length && PdfName.XRef.Value.StartsWith(type.Value, StringComparison.Ordinal);
 
     /// <summary>
     /// Determines whether a cross-reference stream near the offset a hybrid table's <c>/Prev</c> names, starting no sooner
