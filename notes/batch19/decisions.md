@@ -1051,3 +1051,32 @@ Pushed 1cd2216..dadde18 (fast-forward, 19 commits); messages checked (19 OK), no
   minor that needs a behavior change is filed as debt (or put to the maintainer). Cap: round 14 at the latest; a blocker
   or major still standing after round 14 goes to the maintainer rather than to round 15. Then the batch-wide ADR 53 step,
   the full check, docs/status.md, the closing comments and the PR, as before.
+
+# Review round 12 follow-up fixes (wf_71243c16-d30, Windows): result
+
+Head 69731a2, six commits past dadde18, all pushed as fast-forwards; check_msgs passes all six, grep_keys finds none.
+Full result in r12-fix2-result.json.
+
+- R12g-edges (R12-Q3): 13e5021 fix, b711d56 test, a7bcdc6 docs (Refs #188, #327). `_sectionDigitsAt` records each
+  reached section's DigitsAt beside `_sectionsReadAt`; the reached test is `candidate == absolute || (candidate != takeAt
+  && (_sectionsReadAt.Contains(candidate) || _sectionDigitsAt.Contains(candidate)))`; the HeaderTokenStart range is gone
+  from it (subsumed: every section reached at a sign is a stream whose digits were lexed). ADR 53: 21 mutants, 19 killed,
+  2 equivalent (C1/C2, Clear and TrimExcess: memory release only, the chain is read once per reader). R12a's B2/F2/H2/H4
+  no longer apply; F2/H2/H4's edges pinned by 14 rows failing on dadde18; B2's class (reached at a second digit) is #332's.
+- R12h-guard-cut (R12-Q4): 9e20161 fix, 28d6080 test, 69731a2 docs (Refs #156, #279, #289). The flag is
+  `!candidate && cutByGuard`. ADR 53: 8 mutants G1-G8, all killed. Header-cut theory added; dashes row flipped and its
+  theory renamed; startxref rows are controls.
+- R12-track2: comments posted on #327, #289, #279 (URLs in the result); nothing on #332. The tracking agent ran one
+  `git fetch` in the maintainer's checkout (refs only, allowed).
+- R12i-check at 69731a2: build 0 warnings; suite 11,006 / 11,003 / 3 skipped / 0 failed; format clean; page tests
+  100/100; site 269 pages, 0 warnings; links and cites clean (threat model 315 / 1,254); timing groups x3 alone all pass;
+  patch coverage 1,446 / 1,451 (99.66 %; uncovered: TryParseUnrecordedAt defensive branch, IsTokenOnItsLine `at < 0`,
+  SizeWrongRule:71 lowering arm); corpus vs main only #156's known document; branch dump and differential (9,228 blocks)
+  byte-identical to r12f. Coverage command on Windows: #336 and one hostile timing row under load, both pass alone.
+- Open: the comment-path shape, a regression against main. '++5 0 %c\nobj' (a % on the number's line) is lexed from
+  its line's start and found at its first sign; a stream the chain reached at its second sign is not told there and is
+  read again: chain-cycle, rebuild, Error chain-loop (c-pp-i1-ok.pdf; main reads the chain whole, Relocated Table, no
+  rebuild; confirmed in r12wip/r12g-probe/dump-main.txt and dump-head.txt). Lost form: section-unreadable twice. The src
+  comment above the reached test assigns it to #332; no page names it. Proposed one-line widening: look the digits up
+  at the first non-sign byte past the candidate. Put to the maintainer as R13-Q0.
+- Commit bodies not rewritten: 5880c0b, 305c1fb and 78885bf describe the flag's reach before 9e20161.
