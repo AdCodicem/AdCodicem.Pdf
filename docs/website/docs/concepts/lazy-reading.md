@@ -198,34 +198,46 @@ one a newer table's `/XRefStm` read, which is never taken in its place
 ([#330](https://github.com/AdCodicem/AdCodicem.Pdf/issues/330),
 [#332](https://github.com/AdCodicem/AdCodicem.Pdf/issues/332)), a stream near the offset may be the table's own, which
 nothing names, but only one that starts no sooner than that stream — told by its data, whatever byte of its header the
-`/XRefStm` names, so that where it names a place inside the stream's object number, the header that starts before that
-place is the stream itself, and where it names the `+` the number is written with, so is the header found at the digit
-past it —: under updates appended to the file, a revision's own stream lies past every older revision's sections, and a
-stream before it — a first revision's, which gives no `/Prev`, or an older revision's — is tried where it comes
-nearest, whatever its `/Prev`. Of the streams that start there or past it, one whose dictionary, read whole, gives no
-`/Prev`, or the one the table's names — read as the chain reads it, a real with no fractional part as its integer, a
-reference through what a section already read places there, one that gives no offset in the file as another offset —,
-is tried once every other place was, nearest first, but never the stream the `/XRefStm` read where it gives none; a
-dictionary one of the reader's limits cut, whose `/Prev` the cut may hide, is tried where it comes nearest, the section
-found moved and the limit's where it declared itself one before the cut. Such a stream passed over for another section,
-which the chain does not reach, at its header or inside its object number, is reported once the chain is read
-(`xref.stream-passed-over`), the map left as it is: if it is the table's own, the map the chain read lacks what only it
-indexes, found only by a rebuild for another cause. It is reported only where it declares itself a cross-reference
-stream — its dictionary gives `/Type /XRef`, and its header is a token a load reads from the start of its line —, as a
-place a fault of the file keeps from being read is taken only where it does: not an object that only gives a `/W`, nor
-a header a comment or a string on its line holds, whether it reads or not. A stream the chain reaches — a section names
-it, or a later search finds it moved —, at its header or inside its object number, from which a reading reads the same
-stream, is reported as the chain finds it, read or not. Where one of the reader's limits left part of the chain unread
-— the number of its sections, a section it cut before the section said what it is, rows, a trailer, an object a value
-the rows or a link are read with leads to, or the map it filled —, which may hide the link that names the stream, or
-where white space and comments at an offset the chain names run past `MaxTrailerLength`, which turns the reading of
-the section there into the search near the offset ([#289](https://github.com/AdCodicem/AdCodicem.Pdf/issues/289)), the
-limit's report stands for what it left unread, or for what that search passed over or did not find, and nothing is said
-of the stream; a cut that leaves nothing unread — data past a stream's last row, an object past a whole reference it
-holds — leaves the report made. Four cases fall short: an older revision's stream before the one the `/XRefStm` read, nearer than its own table,
-is taken, and where it gives no `/Prev` the chain ends there, what only the sections it skips index reading as null, or
-as the older revision the stream gives, nothing reported of it but the section found moved — unless the catalog is among
-it: the map is then rebuilt as the document opens, which finds it, and the validator says the file holds no catalog
+`/XRefStm` read it from, so that where it names a place inside the stream's object number, the header that starts before
+that place is the stream itself, and where it names a `+` of the run of signs the number is written with, so is the
+header found at the digit past the run —: under updates appended to the file, a revision's own stream lies past every
+older revision's sections, and a stream before it — a first revision's, which gives no `/Prev`, or an older revision's —
+is tried where it comes nearest, whatever its `/Prev`. Of the streams that start there or past it, one whose dictionary,
+read whole, gives no `/Prev`, or the one the table's names — read as the chain reads it, a real with no fractional part
+as its integer, a reference through what a section already read places there, one that gives no offset in the file as
+another offset —, is tried once every other place was, nearest first, but never the stream the `/XRefStm` read where it
+gives none; a dictionary one of the reader's limits cut, whose `/Prev` the cut may hide, is tried where it comes
+nearest, the section found moved and the limit's where it declared itself one before the cut. Such a stream passed over
+for another section, which the chain does not reach, at its header or inside its object number, is reported once the
+chain is read (`xref.stream-passed-over`), the map left as it is: if it is the table's own, the map the chain read lacks
+what only it indexes, found only by a rebuild for another cause. It is reported only where it declares itself a
+cross-reference stream — its dictionary gives `/Type /XRef`, and its header is a token a load reads from the start of
+its line, from its first sign where its number is written with a run of signs that starts with a `+`, where the stream
+is then reported, one a `-` starts being no object's header
+([#327](https://github.com/AdCodicem/AdCodicem.Pdf/issues/327)) —, as a place a fault of the file keeps from being read
+is taken only where it does: not an object that only gives a `/W`, nor a header a comment or a string on its line holds,
+whether it reads or not. A stream the chain reaches — a section names it, or a later search finds it moved —, at its
+header or inside its object number, is reported as the chain finds it, read or not: a reading from inside the number
+reads the same stream where it reads a header there, and where it reads none — digits that read 0, as from the 0 of a
+number 20, or a `-` of the run of signs —, the search near that place finds the stream moved, at its header. Where one
+of the reader's limits left part of the chain unread — the number of its sections, a section it cut before the section
+said what it is, rows, a trailer, an object a value the rows or a link are read with leads to, or the map it filled —,
+which may hide the link that names the stream, the limit's report stands for what it left unread, and nothing is said of
+the stream. Nor is anything said of any stream passed over in the document where `MaxTrailerLength` may have hidden a
+link the chain would have followed: where it cut a dictionary at an offset the chain names whose `/Type` gives a name
+`XRef` begins with and that is shorter — the empty name, `X`, `XR` or `XRe` —, which may be what the cut left of
+`/XRef`, its `/Prev` past the cut unread, though the object is read as one of another type, and is not told from such a
+name written whole, the cut past it ([#279](https://github.com/AdCodicem/AdCodicem.Pdf/issues/279)); or where white
+space and comments at an offset the chain names run past it, which turns the reading of the section there into the
+search near the offset ([#289](https://github.com/AdCodicem/AdCodicem.Pdf/issues/289)). That search may take a section
+other than the one past them, which the reader cannot tell without reading past the guard: once that guard is reached,
+nothing is said of a stream passed over even where the search finds the section whole past the white space, which only a
+`MaxTrailerLength` under the 512 bytes the search reaches allows. A cut that leaves nothing unread — data past a
+stream's last row, an object past a whole reference it holds — leaves the report made. Four cases fall short: an older
+revision's stream before the one the `/XRefStm` read, nearer than its own table, is taken, and where it gives no `/Prev`
+the chain ends there, what only the sections it skips index reading as null, or as the older revision the stream gives,
+nothing reported of it but the section found moved — unless the catalog is among it: the map is then rebuilt as the
+document opens, which finds it, and the validator says the file holds no catalog
 ([#260](https://github.com/AdCodicem/AdCodicem.Pdf/issues/260)) —; where it gives a `/Prev`, the chain goes on through
 it, its own revision's table unread, what only that table indexes reading as null, nothing reported of it but the
 section found moved, and nothing rebuilt ([#333](https://github.com/AdCodicem/AdCodicem.Pdf/issues/333)); where the
@@ -241,8 +253,10 @@ declares itself one — an `xref` keyword, or a stream whose dictionary gives `/
 reported where it is, any section near it being another ([#281](https://github.com/AdCodicem/AdCodicem.Pdf/issues/281)).
 Where the offset holds no section, the search near it, nearest first, ends at a place that so declares itself and cannot
 be read — an `xref` keyword, or the header of a stream of `/Type /XRef`, a token a load reads from the start of its
-line, not the word or such a header in a comment or a string there, nor digits a regular character runs into —, as at
-one it reads: that is the section found moved, reported where it was found, rather than passed over for an older section
+line, not the word or such a header in a comment or a string there, nor digits a regular character runs into, a header
+whose number is written with a run of signs that starts with a `+` counting from its first sign, as a load reads it,
+and one a `-` starts declaring nothing ([#327](https://github.com/AdCodicem/AdCodicem.Pdf/issues/327)) —, as at one it
+reads: that is the section found moved, reported where it was found, rather than passed over for an older section
 farther off whose rows would stand for its lost ones in silence. The line is lexed from its start, read again as far as
 4,096 bytes before the bytes searched where it starts before them: a place whose line starts farther back declares
 nothing, as does one that the bytes a source gives end at or before
