@@ -771,6 +771,41 @@ public class CrossReferenceChainTests
     }
 
     [Theory]
+    [InlineData("+5 0 obj", 0)]
+    [InlineData("++5 0 obj", 0)]
+    [InlineData("++5 0 obj", 1)]
+    [InlineData("5 0 obj", 0)]
+    public void A_cross_reference_stream_a_prev_reaches_at_a_sign_of_its_number_is_not_taken_again_where_the_bytes_searched_start_at_its_first_sign(
+        string header, int into)
+    {
+        // The newest table's /Prev names the stream at its header's first byte, or at the second sign of the run of signs its
+        // number is written with; the stream cannot be read, and its own /Prev names the place 512 bytes past the header's
+        // first byte, so that the bytes the search near that place looks at start at that byte, the oldest table out of
+        // reach. A run of signs that starts there lies within the bytes searched: the header found at its digit is the one
+        // the chain reached at a sign of that run, passed over, and the stream's /Prev names a section that is not there,
+        // the index rebuilt as the document opens. It is not taken a second time, reported unreadable twice and its /Prev
+        // read again as a loop (#188, #327).
+        var at = LostStreamFiles.ThreeRevisions(before: 1200, header: header).Stream;
+        var (file, _, stream, newest) = LostStreamFiles.ThreeRevisions(
+            prev: (at + PdfFileReader.NearbySearchRadius).ToString(CultureInfo.InvariantCulture), namedShortBy: -into, header: header);
+        var named = stream + into;
+        var missing = stream + PdfFileReader.NearbySearchRadius;
+        using var document = PdfDocument.Open(file);
+
+        document.Reader.Structure.Sections.Select(section => (section.State, section.Kind, section.Offset)).Should().Equal(
+            (XRefSectionState.Read, XRefSectionKind.Table, newest),
+            (XRefSectionState.Malformed, XRefSectionKind.Stream, named),
+            (XRefSectionState.NotFound, XRefSectionKind.Unknown, missing));
+        document.Diagnostics.Select(diagnostic => (diagnostic.Code, diagnostic.Position)).Should().Equal(
+            (PdfDiagnosticCodes.XRefSectionUnreadable, named),
+            (PdfDiagnosticCodes.XRefSectionMissing, missing),
+            (PdfDiagnosticCodes.XRefRebuilt, -1L),
+            (PdfDiagnosticCodes.ObjectRedefined, -1L));
+        Text(document, 3).Should().Be("only in the oldest");
+        Text(document, 7).Should().Be("new seven");
+    }
+
+    [Theory]
     [InlineData("/FlateDecode", "xxxxxxx", PdfDiagnosticCodes.FilterFailed)]
     [InlineData("/Foo", "xxxxxxx", PdfDiagnosticCodes.FilterUnsupported)]
     [InlineData("/Fl", "xxxxxxx", PdfDiagnosticCodes.FilterUnsupported)]
