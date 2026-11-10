@@ -1045,3 +1045,9 @@ Pushed 1cd2216..dadde18 (fast-forward, 19 commits); messages checked (19 OK), no
   cut the reading at an offset the chain names, whatever it cut (dictionary, object header, comment); the dashes row
   flips to withholding; section-missing there stays #279 / #289's; texts and pages say it; a #279 / #289 follow-up.
 - 2026-11-10: round 12 follow-up fixes launched: wf_71243c16-d30 (task wil2pt3nn), lot19-r12-fixes2-win.js: R12g edges (R12-Q3), R12h any guard cut (R12-Q4); R12-track2; R12i check (logs W/r12i).
+- Stopping rule amended (maintainer, 2026-11-10, "Oui on applique le levier 1 dès ce lot"): the review loop ends at the
+  first round in which no blocker or major survives refutation (no longer "no blocker, major or minor"). That round's
+  confirmed minors and nits get one final pass, with no further review round: a text or a test is fixed in that pass; a
+  minor that needs a behavior change is filed as debt (or put to the maintainer). Cap: round 14 at the latest; a blocker
+  or major still standing after round 14 goes to the maintainer rather than to round 15. Then the batch-wide ADR 53 step,
+  the full check, docs/status.md, the closing comments and the PR, as before.
