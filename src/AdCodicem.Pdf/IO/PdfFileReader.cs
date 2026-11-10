@@ -5211,7 +5211,12 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
             // its /Prev.
             var passOver = !retry && candidate >= streamStart ? tablePrevious : -1;
 
-            if (candidate == absolute || (candidate != takeAt && _sectionsReadAt.Contains(candidate)))
+            if (candidate == absolute ||
+                (candidate != takeAt &&
+                    StartsWithin(
+                        _sectionsReadAt,
+                        start - lead + HeaderTokenStart(window.Memory.Span, lead, (int)(candidate - (start - lead))),
+                        candidate + 1)))
             {
                 continue;
             }
