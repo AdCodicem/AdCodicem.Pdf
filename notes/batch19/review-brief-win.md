@@ -12,8 +12,8 @@ same layout: read any cloud path a note, a finding or a script names under W. Th
 the maintainer's checkout above.
 
 Read first, in full:
-- W/lot19/decisions.md — every maintainer decision (B19-1 to B19-8, Q9 to Q12, R1-Q1 to R9-Q2), the points decided
-  without a question, the debts filed (#320 to #333), the comments made, and each round's triage and fix result.
+- W/lot19/decisions.md — every maintainer decision (B19-1 to B19-8, Q9 to Q12, R1-Q1 to R9-Q2, R11-Q1), the points decided
+  without a question, the debts filed (#320 to #333, and #336), the comments made, and each round's triage and fix result.
 - W/lot19/residuals-impl.md — the residuals the implementation stages reported and left unfiled. For each one your
   lens covers, judge it: a defect to fix in this batch, a debt to file, or acceptable as is (say why). Do not report a
   residual already filed as #320 to #333 or as an older open debt (#289, #295, #52 among them) unless the code or the
@@ -36,8 +36,8 @@ is a Store stub: use `python` (`python -I` for scripts reading generated files).
 in each shell so build output reads 'Warning(s)'. Git Bash has no setsid. If the harness refuses `bash <script>` or a
 `timeout -k` construct, use the Python drivers in W/lot19/tools: corpus_run.py (OUTDIR MAINTREE BRANCHTREE [RUNS]),
 diff_run.py (WORKTREE NAME [--no-build]: the own-stream differential, W/r8proto), common.py, tdo.ps1, timing.ps1; read
-each one's head first. For the previous round's head c2a2aaa (or round 8's da2b06f), add your own worktree under
-W/r11wip (`git worktree add <dir> c2a2aaa`), build and run there, and remove it when done (its remote corpus copy
+each one's head first. For the previous round's head 79c6a7f (or round 8's da2b06f), add your own worktree under
+W/r12wip (`git worktree add <dir> 79c6a7f`), build and run there, and remove it when done (its remote corpus copy
 first); W/base-da2b06f is a shared Release build of da2b06f, one agent at a time.
 
 Rules:
@@ -50,7 +50,7 @@ Rules:
   finish and before removing any worktree you added.
 - Build Release (`dotnet build AdCodicem.Pdf.slnx -c Release -m:4`). Probes are uncommitted test files Zz*.cs in
   tests/AdCodicem.Pdf.Tests, run with `dotnet test --project tests/AdCodicem.Pdf.Tests/AdCodicem.Pdf.Tests.csproj -c
-  Release --no-build -- --filter-method "*ZzName*"`. For main's output, `git worktree add <dir under W/r11wip> 21a0298`
+  Release --no-build -- --filter-method "*ZzName*"`. For main's output, `git worktree add <dir under W/r12wip> 21a0298`
   and build there; remove it when done (its remote corpus copy first).
 - RESOURCE RULE (the maintainer's, on this PC): dotnet builds and tests may run in parallel, across agents and within
   yours (mutants in separate worktrees, a probe on main beside one on the branch), up to two dotnet processes of yours
@@ -66,4 +66,4 @@ Rules:
   claim, an uncovered member, a cost that is bounded but avoidable), nit (wording, style).
 - Return findings as structured output only (no report files). Every finding: a short key, its severity, file:line on
   the branch head, the claim, the evidence (the reproducer's exact output), and the fix you propose. Keep your probes
-  and generators under W/r11wip/<your label>/ so the fix stage can reuse them, and name their paths in the evidence.
+  and generators under W/r12wip/<your label>/ so the fix stage can reuse them, and name their paths in the evidence.

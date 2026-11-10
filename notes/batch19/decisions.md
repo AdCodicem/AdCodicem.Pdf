@@ -917,3 +917,28 @@ Resumed 2026-11-10: part 2 relaunched as wf_80857910-389 (script copied to the n
 C:/Users/clemm/AppData/Local/Temp/claude/bc4976e88c6ca0c5/898783fc-049f-469a-ab79-dfd299ad558e/scratchpad, since the
 old one is no longer readable as a scriptPath; W unchanged). R11c prompt prefixed with a resume block: build on
 5fb9444 and 7b1de15, settle M01, M11, M13, M14, compare the corpus, return the full report.
+
+# Review round 11 fixes, part 2 (wf_80857910-389, Windows): result
+
+Pushed 7b1de15..1cd2216 (fast-forward); round 11 fixes are 79c6a7f..1cd2216, 14 commits, messages checked, no key.
+- R11c: 5fb9444 test and 7b1de15 fix (from the stopped run), 508047e test (a /Type /X written whole with the cut
+  past it withholds the Warning too: the reader cannot tell it from /XRef parted), 1c1d270 docs (the src texts say
+  the rule as coded: a type XRef begins with, wherever the cut fell). ADR 53: 25 runs, 18 killed, 3 not viable
+  (M07, M08, M20; M20b killed), 4 equivalent: M01 (a place the search tries passes a keep test requiring a cross-
+  reference stream before its guard is counted, so its value is never a parted name; '!candidate' kept as defensive),
+  M11, M13, M14 (each adds only a whole /XRef, which a guard's cut at a chain-named offset makes Malformed CutByLimit,
+  ChainStoppedByGuard already withholding). Suite 10,754 / 10,751 / 3 skipped. 16 rows fail on 79c6a7f.
+- R11d: 1cd2216 docs, the pages for signed headers, the guard flag's reach (R11-Q1), the parted /Type, the decoding
+  guards' order and the #144 row's scope. Site 269 pages, docfx 0 warnings.
+- Tracking: comments posted on #327 (6762391491, with the window-edge case), #332 (6762396088), #330 (6762401914),
+  #279 (6762402379), #289 (6762402877); debt #336 filed (SeededComparerTests under coverage on Windows). The #171
+  comment edit (6724664613, main's wording) was blocked for the agent; applied in the main session, read back equal.
+- R11f check on 1cd2216: build 0 warnings; suite 10,754 total, 10,751 passed, 3 skipped; format clean; timing,
+  budget, alloc, memory, hostile 3 runs each alone, all pass; links and citations clean (335 / 1,253); corpus dump
+  byte-identical to round 10's (vs main only pdfmaker7-powerpoint-va-cancer-database-course, #156); differential
+  byte-identical to r10f (9,228; worse 1,193 / 392 / 293).
+- status.md records: R11c's ADR 53 record; 7b1de15's src texts said 'inside the name its /Type gives' until
+  1c1d270; the R11f check figures; R11d pages only.
+Orphaned MSBuild nodes left by the agents (parents gone) stopped by PID after the run.
+Round 12 review launched: lot19-review-r12.js on 79c6a7f..1cd2216 (7 lenses: signed-headers, guard-flag,
+guards-diagnostics, src-texts, tests, docs, batch), brief updated (r12wip, base 79c6a7f, #336, R11-Q1).
