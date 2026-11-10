@@ -965,6 +965,35 @@ internal static class HybridFiles
     }
 
     /// <summary>
+    /// A one-page document saved twice. The oldest table, at <c>Oldest</c>, indexes the first three objects and object 5,
+    /// <c>(old five)</c>. The update writes object 4, <c>(four)</c>; object 13, at <c>Padded</c>, a dictionary that gives
+    /// <c>/W [1 1 1]</c> and no <c>/Type</c>, then a <c>/Pad</c> string of 100 bytes; stream 21, at <c>Stream</c>, which
+    /// indexes object 4 and itself and gives no <c>/Prev</c>; then, at <c>Place</c>, the header of object 9, which begins
+    /// its line, a stream of <c>/Type /XRef</c> that gives <c>/W [1 1 1]</c>, no <c>/Size</c> and no <c>/Prev</c>, its data
+    /// running to the end of the file. The update's table, at <c>Newest</c>, indexes stream 21, and names it through
+    /// <c>/XRefStm</c>, and through <c>/Prev</c> the place 20 bytes before <c>Place</c>: a search near it comes to the place
+    /// first, then to stream 21, then to object 13 and object 4, then to the oldest table.
+    /// </summary>
+    public static (byte[] File, long Oldest, long Padded, long Stream, long Place, long Newest) PrevFallingShortOfAPlacePastAPaddedDictionaryAndTheStream()
+    {
+        var file = new HandWrittenFile(version: "1.5");
+        var (catalog, pages, page) = Page(file);
+        var oldFive = file.Object(5, "(old five)");
+        var oldest = file.Position;
+        file.Raw(Invariant($"xref\n0 4\n0000000000 65535 f \n{Row(catalog)}{Row(pages)}{Row(page)}5 1\n{Row(oldFive)}trailer\n<< /Size 22 /Root 1 0 R >>\nstartxref\n{oldest}\n%%EOF\n"));
+        var four = file.Object(4, "(four)");
+        var padded = file.Object(13, "<< /W [1 1 1] /Pad (" + new string('x', 100) + ") >>");
+        var stream = file.Position;
+        var rows = StreamRows((1, four, 0), (1, stream, 0));
+        file.Object(21, Invariant($"<< /Type /XRef /Size 22 /W [1 4 2] /Index [4 1 21 1] /Length {rows.Length} >>\nstream\n{rows}\nendstream"));
+        var place = file.Position;
+        file.Raw("9 0 obj << /Type /XRef /W [1 1 1] >> stream\n");
+        var newest = file.Position;
+        file.Raw(Invariant($"xref\n0 1\n0000000000 65535 f \n21 1\n{Row(stream)}trailer\n<< /Size 22 /Root 1 0 R /Prev {place - 20} /XRefStm {stream} >>\nstartxref\n{newest}\n%%EOF\n"));
+        return (file.Bytes, oldest, padded, stream, place, newest);
+    }
+
+    /// <summary>
     /// A one-page document saved twice. The update writes object 4, <c>(four)</c>, and its stream, stream 21, at
     /// <c>Stream</c>, which indexes it and itself and gives no <c>/Prev</c>; then a line that starts with object 8, a
     /// string of <paramref name="lead"/> <c>x</c>, followed by a space — or by an end of line, where

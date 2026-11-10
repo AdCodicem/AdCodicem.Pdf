@@ -7710,6 +7710,7 @@ public class CrossReferenceChainTests
     [InlineData("/Catalog", 0, "read")]
     [InlineData("/Catalog", 2, "missing")]
     [InlineData("5", 3, "cut")]
+    [InlineData("/XRef", 80, "read")]
     public void A_stream_passed_over_near_a_hybrid_table_s_prev_is_reported_where_no_trailer_guard_cut_the_dictionary_of_the_stream_an_older_table_s_xrefstm_names(
         string type, int window, string nineRead)
     {
@@ -7725,7 +7726,9 @@ public class CrossReferenceChainTests
         // the C of /Catalog. There stream 9 is not a cross-reference stream, the /XRefStm names a section missing, and the
         // chain goes on through the table's /Prev: no stream passed over is reported anywhere in the document, as where the
         // guard's cut ends the chain (#156, ADR 34). The dashes at the place the newest table's /Prev names make one token,
-        // which the lowered guard cuts too, where no header starts, the guard reported first.
+        // which the lowered guard cuts too, the guard reported first: no header starts there, and where the guard, lowered
+        // less, cuts that token alone, stream 9 is read whole and the report stands — the cut leaves no dictionary, and
+        // withholds nothing.
         var (file, typeAt, _, own, named, older, oldest, nine, _) = HybridFiles.PassingOverAStreamAnOlderTableNamesBesideAPaddedStreamItsXRefStmNames(type);
         var limits = window == 0 ? PdfReaderLimits.Default : PdfReaderLimits.Default with { MaxTrailerLength = typeAt + window };
         using var document = PdfDocument.Open(file, new PdfReaderOptions { Limits = limits });
@@ -7738,7 +7741,9 @@ public class CrossReferenceChainTests
                 sections.Select(section => (section.NamedBy, section.State, section.Offset)).Skip(3).Should().Equal(
                     ("/XRefStm", XRefSectionState.Read, nine), ("/Prev", XRefSectionState.Read, oldest));
                 document.Diagnostics.Select(diagnostic => (diagnostic.Code, diagnostic.Position)).Should().Equal(
-                    (PdfDiagnosticCodes.XRefOffsetAdjusted, older), (PdfDiagnosticCodes.XRefStreamPassedOver, own));
+                    window == 0
+                        ? [(PdfDiagnosticCodes.XRefOffsetAdjusted, older), (PdfDiagnosticCodes.XRefStreamPassedOver, own)]
+                        : [(PdfDiagnosticCodes.LimitTrailer, named), (PdfDiagnosticCodes.XRefOffsetAdjusted, older), (PdfDiagnosticCodes.XRefStreamPassedOver, own)]);
                 Text(document, 5).Should().Be("five");
                 break;
 
@@ -7804,6 +7809,42 @@ public class CrossReferenceChainTests
         document.Diagnostics.Select(diagnostic => diagnostic.Code).Should().Equal(
             reported ? [PdfDiagnosticCodes.XRefOffsetAdjusted, PdfDiagnosticCodes.XRefStreamPassedOver] : [PdfDiagnosticCodes.XRefOffsetAdjusted]);
         document.Diagnostics[^1].Position.Should().Be(reported ? at : oldest);
+        Text(document, 5).Should().Be("old five");
+        document.WasRepaired.Should().BeFalse();
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(100)]
+    public void A_stream_passed_over_near_a_hybrid_table_s_prev_is_reported_beside_a_place_the_search_drops_whether_or_not_a_trailer_guard_cut_its_dictionary(
+        int maxTrailerLength)
+    {
+        // Past the stream the table's /XRefStm read, the table's /Prev falls 20 bytes short of object 9, of /Type /XRef, which
+        // gives no /Prev: the search passes it over as possibly the table's own, the stream the /XRefStm read with it, and
+        // tries object 13 next, before that stream, a dictionary that gives a /W and no /Type, then a /Pad string: read whole,
+        // or cut inside the string by MaxTrailerLength lowered to 100, the guard reported, it gives only a /W, says nothing of
+        // what it is, and is dropped. The search takes the oldest table, and object 9, which no link the chain read reaches,
+        // is reported. A place the search tries is a guess: what the guard cut there hides no link the chain names, and
+        // withholds nothing, as a guard's cut of a dictionary at an offset the chain names does (#156, ADR 34).
+        var (file, oldest, padded, stream, place, newest) = HybridFiles.PrevFallingShortOfAPlacePastAPaddedDictionaryAndTheStream();
+        var limits = maxTrailerLength == 0 ? PdfReaderLimits.Default : PdfReaderLimits.Default with { MaxTrailerLength = maxTrailerLength };
+        using var document = PdfDocument.Open(file, new PdfReaderOptions { Limits = limits });
+        var expected = new List<(string Code, long Position)>();
+
+        if (maxTrailerLength != 0)
+        {
+            expected.Add((PdfDiagnosticCodes.LimitTrailer, padded));
+        }
+
+        expected.Add((PdfDiagnosticCodes.XRefOffsetAdjusted, oldest));
+        expected.Add((PdfDiagnosticCodes.XRefStreamPassedOver, place));
+
+        document.Reader.Structure.Sections.Select(section => (section.NamedBy, section.State, section.Offset)).Should().Equal(
+            ("startxref", XRefSectionState.Read, newest),
+            ("/XRefStm", XRefSectionState.Read, stream),
+            ("/Prev", XRefSectionState.Relocated, oldest));
+        document.Diagnostics.Select(diagnostic => (diagnostic.Code, diagnostic.Position)).Should().Equal(expected);
+        document.Reader.ChainStoppedByGuard.Should().BeFalse();
         Text(document, 5).Should().Be("old five");
         document.WasRepaired.Should().BeFalse();
     }
