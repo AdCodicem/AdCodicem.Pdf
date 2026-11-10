@@ -1105,3 +1105,28 @@ grep_keys finds none. Full report in r13a-result.json.
   1,456 / 1,462 (99.59 %; new partial: DigitsPastSigns' defensive arm). #327 comment 6776569954.
 - Windows coverage-run flakes: SeededComparerTests' IL check flagged ArlingtonWalk..ctor once (passes alone).
 - 2026-11-10: round 13 launched on dfb03fc with lot19-review-r13.js (brief updated for R13a and r13a-result.json).
+
+# Review round 13 (wf_40e79506-059 on dfb03fc): triage
+
+29 agents, 0 errors. 23 findings (r13-findings.md, r13-result.json): no blocker; two majors, both refuted as #332's
+([1] leave-at-told-by-byte, [5] signed-header-at-prev-escapes-keeps-its-place: the /XRefStm's search finds a signed
+header at its digit while the hybrid table's /Prev names its sign, compared by byte at `candidate == leaveAt`; #332's
+pair.pdf, not worse than main, no text misstates it); [23] refuted (the threat-model cell's two clauses hold).
+Minors and nits confirmed or narrowed, all text or test (no behavior change):
+- [2] N8 not equivalent (a '+++13' row at 515 kills it); [3]=[6]=[13] X1 killed since R12g by the first-byte rows, X2
+  not equivalent (a row with a section found moved before a table at byte 0 kills it). R12b's tally becomes 33 viable,
+  25 killed, 6 equivalent (U1 U2 U3 T1 D3 N9), 2 surviving (G2b, G5), 3 not viable.
+- [4]=[8]=[22] ReachedAt's summary states R12a's removed range; [7] a classic table an /XRefStm names whose trailer a
+  guard cut keeps the Warning (right, #263): texts to say so; [9] XRefOffsetAdjusted's summary lacks the #156 exception
+  and the digits clause; [10] sign-run texts take a '-' for a '+'; [11] header-cut enumeration omits white space
+  between tokens; [12] cut-dictionary texts lack the guard-section qualifier; [14] HybridFiles naming summary says the
+  oldest table is always in reach; [15] a blank line after a brace in GuardCutValueTests; [16] threat-model :449 and
+  the #327 entry: a run before the window or a '-' run with a % on the line is not found at all; [17] 69731a2's body
+  says three rows (two changed): add to 'Commit bodies not rewritten'; [18] three overlong page lines; [19]
+  diagnostics.md:142 'the guard cut no section either'; [20] the #279 entry's closing sentence; [21] concepts
+  reader-limits garbled clause and cut lists.
+- Tracking: a line on #332 that `candidate == leaveAt` (TryRelocateXRefSection) decides pair.pdf as well as
+  `hybridStart == previousStart`, and the readable form reads the stream twice with no hybrid-stream-lost, as main.
+Under the amended stopping rule the review loop ends here: one final pass fixes these texts and tests with no further
+review. Then the batch-wide ADR 53 step.
+- Commit bodies not rewritten: add 69731a2 (says the threat model's entry and three rows; it changed two).
