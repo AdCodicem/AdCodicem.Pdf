@@ -457,11 +457,12 @@ internal static class HybridFiles
     /// <paramref name="prevShortBy"/> bytes before object 4, in the spaces before it, and through <c>/XRefStm</c> the place
     /// <paramref name="xrefStmInto"/> bytes into object 8: 20 bytes in, inside its string, object 8 is the nearest place to
     /// it, then object 4, then the stream; 28 bytes in, still inside its string, object 4, 22 bytes off, is nearer than
-    /// object 8. A long comment keeps the newest table more than 512 bytes from what each link names, whatever object 4's
-    /// length.
+    /// object 8. Where <paramref name="partedBy"/> is given, a comment of as many dashes parts object 4's header after its
+    /// generation, <c>obj</c> beginning the next line. A long comment keeps the newest table more than 512 bytes from what
+    /// each link names, whatever object 4's length.
     /// </summary>
     public static (byte[] File, long Oldest, long Four, long Stream, long Newest) NamingAnObjectBesideTheStream(
-        string four, int prevShortBy = 0, int xrefStmInto = 20)
+        string four, int prevShortBy = 0, int xrefStmInto = 20, int partedBy = 0)
     {
         var file = new HandWrittenFile(version: "1.5");
         var (catalog, pages, page) = Page(file);
@@ -477,12 +478,52 @@ internal static class HybridFiles
         file.Raw(new string(' ', (int)(oldest + 360 - file.Position)));
         var eight = file.Object(8, "(" + new string('x', 20) + ")");
         file.Raw(new string(' ', (int)(oldest + 410 - file.Position)));
-        var fourAt = file.Object(4, four);
+        var fourAt = file.Position;
+
+        if (partedBy > 0)
+        {
+            file.Raw("4 0 %" + new string('-', partedBy) + "\nobj\n" + four + "\nendobj\n");
+        }
+        else
+        {
+            file.Object(4, four);
+        }
+
         file.Raw("%" + new string('-', 1200) + "\n");
         var six = file.Object(6, "(six)");
         var newest = file.Position;
         file.Raw(Invariant($"xref\n0 1\n0000000000 65535 f \n6 1\n{Row(six)}trailer\n<< /Size 10 /Root 1 0 R /Prev {fourAt - prevShortBy} /XRefStm {eight + xrefStmInto} >>\nstartxref\n{newest}\n%%EOF\n"));
         return (file.Bytes, oldest, fourAt, stream, newest);
+    }
+
+    /// <summary>
+    /// <paramref name="file"/>, whose newest table lies at <paramref name="newest"/>, saved once more as a hybrid file:
+    /// object 11, at <c>Eleven</c>, the reference <c>12 0 R</c> followed by 1,100 spaces, which
+    /// <see cref="Documents.PdfReaderLimits.MaxObjectLength"/> at 1 KB cuts past the whole reference; object 12,
+    /// <c>[1 4 2]</c>; object 13, <c>(thirteen)</c>; cross-reference stream 14, at <c>Stream</c>, whose <c>/W</c> is
+    /// <c>11 0 R</c> and which indexes object 13 and itself; and a table, at <c>Newest</c>, which indexes objects 11 and 12
+    /// and names stream 14 through <c>/XRefStm</c> and the table at <paramref name="newest"/> through <c>/Prev</c>.
+    /// </summary>
+    public static (byte[] File, long Eleven, long Stream, long Newest) UnderAStreamWhoseWidthsACutObjectLeadsTo(byte[] file, long newest)
+    {
+        var text = new StringBuilder(Encoding.Latin1.GetString(file));
+
+        long WriteObject(int number, string body)
+        {
+            var at = (long)text.Length;
+            text.Append(Invariant($"{number} 0 obj\n{body}\nendobj\n"));
+            return at;
+        }
+
+        var eleven = WriteObject(11, "12 0 R" + new string(' ', 1100));
+        var twelve = WriteObject(12, "[1 4 2]");
+        var thirteen = WriteObject(13, "(thirteen)");
+        var stream = (long)text.Length;
+        var rows = StreamRows((1, thirteen, 0), (1, stream, 0));
+        WriteObject(14, Invariant($"<< /Type /XRef /Size 15 /W 11 0 R /Index [13 1 14 1] /Length {rows.Length} >>\nstream\n{rows}\nendstream"));
+        var updated = (long)text.Length;
+        text.Append(Invariant($"xref\n0 1\n0000000000 65535 f \n11 2\n{Row(eleven)}{Row(twelve)}trailer\n<< /Size 15 /Root 1 0 R /Prev {newest} /XRefStm {stream} >>\nstartxref\n{updated}\n%%EOF\n"));
+        return (Encoding.Latin1.GetBytes(text.ToString()), eleven, stream, updated);
     }
 
     /// <summary>
@@ -920,14 +961,15 @@ internal static class HybridFiles
     /// <c>/Index [9 1]</c>, <c>/Size 10</c> and the one row of 3 bytes their data holds, freeing object 9; or <c>"a long
     /// header on its line"</c>, the readable one whose dictionary writes, right after its <c>/Type /XRef</c>, a
     /// <c>/Pad</c> of 300 bytes. A header on its line, readable or not, is written <paramref name="header"/>,
-    /// <c>9 0 obj</c> unless it says otherwise, and starts at <c>Place</c>. Then comes the update's table, at
+    /// <c>9 0 obj</c> unless it says otherwise, and starts at <c>Place</c>; the comment line of <c>"a header in a
+    /// comment"</c> runs on by <paramref name="runOn"/> dashes before its end of line. Then comes the update's table, at
     /// <c>Newest</c>, which indexes stream 21, and names it through
     /// <c>/XRefStm</c>, and through <c>/Prev</c> the place 20 bytes before <c>Place</c>: a search near it comes to the place
     /// first, then to stream 21, then to the oldest table — but where <paramref name="alone"/> says so, a comment of 700
     /// dashes before the update leaves the oldest table out of its reach.
     /// </summary>
     public static (byte[] File, long Oldest, long Stream, long Place, long Newest) PrevFallingShortOfAPlacePastTheStream(
-        string place, bool alone = false, string header = "9 0 obj")
+        string place, bool alone = false, string header = "9 0 obj", int runOn = 0)
     {
         var file = new HandWrittenFile(version: "1.5");
         var (catalog, pages, page) = Page(file);
@@ -949,7 +991,7 @@ internal static class HybridFiles
         var line = file.Position;
         var (at, written) = place switch
         {
-            "a header in a comment" => (line + 2, "% 9 0 obj << /Type /XRef /W [1 1 1] >> stream\n"),
+            "a header in a comment" => (line + 2, "% 9 0 obj << /Type /XRef /W [1 1 1] >> stream" + new string('-', runOn) + "\n"),
             "a header in a string" => (line + 9, "8 0 obj\n(9 0 obj << /Type /XRef /W [1 1 1] >> stream)\nendobj\n"),
             "a stream of no type" => (line, "9 0 obj << /W [1 1 1] >> stream\n"),
             "a header on its line" => (line, header + " << /Type /XRef /W [1 1 1] >> stream\n"),

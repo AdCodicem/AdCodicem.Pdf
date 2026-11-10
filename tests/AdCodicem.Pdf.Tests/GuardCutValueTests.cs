@@ -4559,6 +4559,39 @@ public class GuardCutValueTests
         document.WasRepaired.Should().BeFalse();
     }
 
+    [Fact]
+    public void What_the_chain_read_through_a_guard_s_cut_before_the_look_at_a_prev_s_place_is_loaded_once_the_chain_is_read_whatever_that_look_forgets()
+    {
+        // A hybrid file's table names through /Prev object 4, a font, and through /XRefStm a place inside the string of
+        // object 8, 30 bytes before it, whose search comes to the font and asks whether the /Prev keeps its place there. A
+        // newer revision, a hybrid file's too, reads first: its stream's /W names object 11, which MaxObjectLength cuts after
+        // "12 0 R", whole, read through to object 12, [1 4 2]. The look at the /Prev's place forgets what it read through a
+        // guard's cut, and only that: object 11, which the chain read through before it, is loaded once the chain is read,
+        // the guard reported at object 11, or thrown at opening under ThrowOnLimit. The font keeps no place, the search goes
+        // on to the older stream, and the /Prev finds the oldest table nearby (#156, #263).
+        var (older, oldest, _, olderStream, olderTable) = HybridFiles.NamingAnObjectBesideTheStream("<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>");
+        var (file, eleven, stream, newest) = HybridFiles.UnderAStreamWhoseWidthsACutObjectLeadsTo(older, olderTable);
+
+        using (var document = PdfDocument.Open(file, ObjectGuard))
+        {
+
+            document.Reader.Structure.Sections.Select(section => (section.NamedBy, section.State, section.Offset)).Should().Equal(
+                ("startxref", XRefSectionState.Read, newest),
+                ("/XRefStm", XRefSectionState.Read, stream),
+                ("/Prev", XRefSectionState.Read, olderTable),
+                ("/XRefStm", XRefSectionState.Relocated, olderStream),
+                ("/Prev", XRefSectionState.Relocated, oldest));
+            document.Diagnostics.Select(entry => (entry.Code, entry.Position)).Should().Equal(
+                (PdfDiagnosticCodes.XRefOffsetAdjusted, olderStream),
+                (PdfDiagnosticCodes.XRefOffsetAdjusted, oldest),
+                (PdfDiagnosticCodes.LimitObject, eleven));
+            document.WasRepaired.Should().BeFalse();
+        }
+
+        var opening = () => PdfDocument.Open(file, ObjectGuard with { ThrowOnLimit = true }).Dispose();
+        opening.Should().Throw<PdfLimitExceededException>().Which.LimitName.Should().Be(nameof(PdfReaderLimits.MaxObjectLength));
+    }
+
     [Theory]
     [InlineData(true, "the table's /Prev", false)]
     [InlineData(false, "the table's /Prev", true)]

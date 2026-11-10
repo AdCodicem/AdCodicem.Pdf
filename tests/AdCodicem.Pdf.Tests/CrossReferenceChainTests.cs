@@ -4905,6 +4905,39 @@ public class CrossReferenceChainTests
     }
 
     [Theory]
+    [InlineData(160)]
+    [InlineData(400)]
+    [InlineData(0)]
+    public void An_xrefstm_goes_on_past_its_table_s_prev_to_the_stream_where_that_prev_names_a_font_whose_header_a_comment_parts_whether_or_not_a_trailer_guard_cuts_it(
+        int maxTrailerLength)
+    {
+        // As above, the newest table names object 4 through /Prev, a font, and through /XRefStm a place inside the string of
+        // object 8, 30 bytes before it. A comment of 300 dashes parts object 4's header after its generation, obj beginning
+        // the next line, a header a load reads (#261). The look at the /Prev's place reads object 4 through the windows the
+        // /Prev's own reading opens there: MaxTrailerLength lowered to 160 bytes cuts the header before obj, and no object
+        // starts there for the look; raised to 400 bytes, or left as it is, the header is read whole, and the object is a
+        // font. Either way the /Prev keeps no place there, and the /XRefStm's search goes on past object 4 to the stream; the
+        // /Prev looks for its own section nearby and finds the oldest table. The guard's cut of the header is reported at
+        // object 4, once (#156, #261).
+        var (file, oldest, four, stream, newest) = HybridFiles.NamingAnObjectBesideTheStream(
+            "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>", partedBy: 300);
+        var limits = maxTrailerLength == 0 ? PdfReaderLimits.Default : PdfReaderLimits.Default with { MaxTrailerLength = maxTrailerLength };
+        using var document = PdfDocument.Open(file, new PdfReaderOptions { Limits = limits });
+
+        document.Reader.Structure.Sections.Select(section => (section.NamedBy, section.State, section.Offset)).Should().Equal(
+            ("startxref", XRefSectionState.Read, newest),
+            ("/XRefStm", XRefSectionState.Relocated, stream),
+            ("/Prev", XRefSectionState.Relocated, oldest));
+        document.Diagnostics.Select(diagnostic => (diagnostic.Code, diagnostic.Position)).Should().Equal(
+            maxTrailerLength == 160
+                ? [(PdfDiagnosticCodes.LimitTrailer, four), (PdfDiagnosticCodes.XRefOffsetAdjusted, stream), (PdfDiagnosticCodes.XRefOffsetAdjusted, oldest)]
+                : [(PdfDiagnosticCodes.XRefOffsetAdjusted, stream), (PdfDiagnosticCodes.XRefOffsetAdjusted, oldest)]);
+        Text(document, 7).Should().Be("new seven");
+        Text(document, 5).Should().Be("five");
+        document.WasRepaired.Should().BeFalse();
+    }
+
+    [Theory]
     [InlineData("a font whose dictionary a guard cuts", 0, true)]
     [InlineData("a font whose dictionary a guard cuts", 1024 * 1024, false)]
     [InlineData("a font whose dictionary a lowered guard cuts", 1024, true)]
@@ -7772,6 +7805,7 @@ public class CrossReferenceChainTests
 
     [Theory]
     [InlineData("a header in a comment", false, "9 0 obj")]
+    [InlineData("a header in a comment", false, "9 0 obj", 480)]
     [InlineData("a header in a string", false, "9 0 obj")]
     [InlineData("a stream of no type", false, "9 0 obj")]
     [InlineData("a readable stream of no type", false, "9 0 obj")]
@@ -7786,12 +7820,13 @@ public class CrossReferenceChainTests
     [InlineData("a header on its line", false, "-9 0 obj")]
     [InlineData("a header on its line", false, "-+9 0 obj")]
     public void A_place_passed_over_near_a_hybrid_table_s_prev_is_reported_only_where_it_declares_itself_a_cross_reference_stream(
-        string place, bool reported, string header)
+        string place, bool reported, string header, int runOn = 0)
     {
         // Past the stream the table's /XRefStm read, which gives no /Prev, the table's /Prev falls 20 bytes short of object
         // 9, which gives no /Prev either: the search passes over it as possibly the table's own, the stream the /XRefStm read
         // with it, and takes the oldest table. Object 9 was reported as a cross-reference stream passed over whatever it is: a
-        // header a comment or a string holds on its line, which says nothing of a section, or a stream that gives only a /W,
+        // header a comment or a string holds on its line — the comment running on past the bytes the search reads, or not —,
+        // which says nothing of a section, or a stream that gives only a /W,
         // which may be anything, readable or not — places the search drops where a fault of the file keeps them from being
         // read, and takes where they read. Only a place that declares itself a cross-reference stream, as one the search
         // takes though a fault of the file keeps it from being read does — its dictionary gives /Type /XRef, and its header is
@@ -7799,7 +7834,7 @@ public class CrossReferenceChainTests
         // that starts with a +, which a load reads as object 9, is such a token from its first sign, and is reported there;
         // found by the walk back from obj at its digit, where no token starts, it was not reported unless a comment parted
         // its tokens. One a - starts gives no object's number, and is not (#327).
-        var (file, oldest, stream, at, newest) = HybridFiles.PrevFallingShortOfAPlacePastTheStream(place, header: header);
+        var (file, oldest, stream, at, newest) = HybridFiles.PrevFallingShortOfAPlacePastTheStream(place, header: header, runOn: runOn);
         using var document = PdfDocument.Open(file);
 
         document.Reader.Structure.Sections.Select(section => (section.NamedBy, section.State, section.Kind, section.Offset)).Should().Equal(
