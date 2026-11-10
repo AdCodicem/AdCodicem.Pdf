@@ -3823,8 +3823,9 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// </summary>
     /// <remarks>
     /// A look at each position between the two, which lie within the bytes the search found the header in: the bytes of
-    /// its object number, or the run of signs it is written with and the digit past it. Nothing is read for it, nor
-    /// allocated.
+    /// its object number, or the run of signs it is written with and the digit past it — or, where the header stands for
+    /// the stream an <c>/XRefStm</c> read from a sign the window does not hold (<see cref="NumberRunsInto"/>), the one
+    /// position that reading started at. Nothing is read for it, nor allocated.
     /// </remarks>
     /// <param name="starts">Where each section the chain reached starts.</param>
     /// <param name="from">Where the header's token starts (<see cref="HeaderTokenStart"/>).</param>
@@ -5499,12 +5500,17 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// lie within the bytes searched, which the window holds the byte before to tell, as a header whose number starts
     /// before them counts for nothing (#197). A place where the lexer starts a token — the keyword <c>xref</c>, or the
     /// first sign of a header whose tokens a comment parts — has no sign before it, and is given as it is. Where the place
-    /// is given as it is, a section the chain reached is looked for at the place alone. A look at the bytes before the
-    /// place, in the window: nothing is read for it, nor allocated.
+    /// is given as it is, a section the chain reached is looked for at the place alone. The place may be where the reading
+    /// of the stream an <c>/XRefStm</c> read started, which a header found at the digits past a run of signs stands for
+    /// (<see cref="NumberRunsInto"/>): where that lies before the window, nothing is looked at, and it is given as it is.
+    /// A look at the bytes before the place, in the window: nothing is read for it, nor allocated.
     /// </remarks>
     /// <param name="span">The bytes searched, and the byte before them where the window holds one.</param>
     /// <param name="from">Where the bytes searched start in <paramref name="span"/>.</param>
-    /// <param name="at">Where the place starts in <paramref name="span"/>, within the bytes searched.</param>
+    /// <param name="at">
+    /// Where the place starts in <paramref name="span"/>, within the bytes searched, or before <paramref name="span"/>, where
+    /// it stands for the reading of the stream an <c>/XRefStm</c> read and the window does not hold where it started.
+    /// </param>
     private static int HeaderTokenStart(ReadOnlySpan<byte> span, int from, int at)
     {
         var first = at;
@@ -5549,7 +5555,8 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// <param name="span">The bytes searched.</param>
     /// <param name="spanStart">Where <paramref name="span"/> starts in the file.</param>
     /// <param name="at">
-    /// Where the token a load reads the place from starts in <paramref name="span"/> (<see cref="HeaderTokenStart"/>).
+    /// Where the token a load reads the place from starts in <paramref name="span"/> (<see cref="HeaderTokenStart"/>);
+    /// negative where it lies before <paramref name="span"/>, which declares nothing.
     /// </param>
     private bool IsTokenOnItsLine(ReadOnlySpan<byte> span, long spanStart, int at)
     {
