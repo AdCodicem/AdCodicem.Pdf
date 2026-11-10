@@ -5763,6 +5763,74 @@ public class CrossReferenceChainTests
             Invariant($"\u0001{(char)((offset >> 24) & 0xFF)}{(char)((offset >> 16) & 0xFF)}{(char)((offset >> 8) & 0xFF)}{(char)(offset & 0xFF)}\0\0");
     }
 
+    [Theory]
+    [InlineData("9 0 obj", "13 0 obj", "/XRefStm")]
+    [InlineData("xref", "13 0 obj", "/XRefStm")]
+    [InlineData("9 0 obj", "13 0 obj", "/Prev")]
+    [InlineData("xref", "13 0 obj", "/Prev")]
+    [InlineData("9 0 obj", "xref", "/Prev")]
+    [InlineData("xref", "xref", "/Prev")]
+    public void A_section_at_the_file_s_first_byte_is_found_near_an_offset_once_the_chain_has_found_another_section_moved(
+        string first, string middle, string naming)
+    {
+        // A file without a header, whose first byte starts <first>, cross-reference stream 9 or a classic table, which
+        // indexes the catalog and the page tree; past 1,200 dashes, object 3 and <middle>, cross-reference stream 13 or a
+        // classic table, which indexes object 3; past 600 dashes, the newest table, which names the middle section through
+        // <naming>, 3 bytes short of it, inside the endobj before it. Offset 4, inside the first section's first line, is
+        // named by the newest table's /Prev where its /XRefStm names the middle section, and by the middle section's /Prev
+        // otherwise. The middle section is found moved, and recorded where it lies — a stream with where the digits of its
+        // number start, a table with no digits at all —: the search near offset 4 comes to the section at the file's first
+        // byte, where no section the chain reached starts, nor the digits of a stream it reached, and takes it, found
+        // moved, rather than passing over a place the chain never reached (#188, #327).
+        var text = new StringBuilder();
+        var catalog = "1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n";
+        var one = First(0, 0).Length;
+        text.Append(First(one, one + catalog.Length)).Append(catalog);
+        text.Append("2 0 obj\n<< /Type /Pages /Kids [] /Count 0 >>\nendobj\n");
+        text.Append('%').Append('-', 1200).Append('\n');
+        var three = text.Length;
+        text.Append("3 0 obj\n(three)\nendobj\n");
+        var found = text.Length;
+        var own = naming == "/Prev" ? " /Prev 4" : string.Empty;
+        text.Append(middle == "xref"
+            ? Invariant($"xref\n0 1\n0000000000 65535 f \n3 1\n{three:D10} 00000 n \ntrailer\n<< /Size 14{own} >>\n")
+            : Stream(13, three, found, own));
+        text.Append('%').Append('-', 600).Append('\n');
+        var newest = text.Length;
+        var links = naming == "/Prev" ? Invariant($"/Prev {found - 3}") : Invariant($"/Prev 4 /XRefStm {found - 3}");
+        text.Append(Invariant($"xref\n0 1\n0000000000 65535 f \ntrailer\n<< /Size 14 /Root 1 0 R {links} >>\n"));
+        text.Append(Invariant($"startxref\n{newest}\n%%EOF\n"));
+        using var document = PdfDocument.Open(Encoding.Latin1.GetBytes(text.ToString()));
+
+        document.Reader.Structure.Sections.Select(section => (section.NamedBy, section.State, section.Offset)).Should().Equal(
+            ("startxref", XRefSectionState.Read, (long)newest),
+            (naming, XRefSectionState.Relocated, (long)found),
+            ("/Prev", XRefSectionState.Relocated, 0L));
+        document.Diagnostics.Select(diagnostic => (diagnostic.Code, diagnostic.Position)).Should().Equal(
+            (PdfDiagnosticCodes.HeaderMissing, 0L),
+            (PdfDiagnosticCodes.XRefOffsetAdjusted, (long)found),
+            (PdfDiagnosticCodes.XRefOffsetAdjusted, 0L));
+        document.WasRepaired.Should().BeFalse();
+        document.GetObject(new PdfObjectId(2)).Should().BeOfType<PdfDictionary>();
+        Text(document, 3).Should().Be("three");
+        document.WasRepaired.Should().BeFalse();
+
+        // The section at the file's first byte, which indexes objects 1 and 2, at <at> and <next>: a classic table, its
+        // trailer with it, or cross-reference stream 9.
+        string First(int at, int next) => first == "xref"
+            ? Invariant($"xref\n0 3\n0000000000 65535 f \n{at:D10} 00000 n \n{next:D10} 00000 n \ntrailer\n<< /Size 14 >>\n")
+            : Stream(9, at, next, string.Empty);
+
+        // Cross-reference stream <number>, which indexes the object at <at> and the one at <next> — objects 1 and 2 for
+        // stream 9, object 3 and itself for stream 13 —, and gives <own>.
+        static string Stream(int number, int at, int next, string own) =>
+            Invariant($"{number} 0 obj\n<< /Type /XRef /Size 14 /W [1 4 2] /Index {(number == 9 ? "[1 2]" : "[3 1 13 1]")} /Length 14{own} >>\n")
+            + Invariant($"stream\n{StreamRow(at)}{StreamRow(next)}\nendstream\nendobj\n");
+
+        static string StreamRow(int offset) =>
+            Invariant($"\u0001{(char)((offset >> 24) & 0xFF)}{(char)((offset >> 16) & 0xFF)}{(char)((offset >> 8) & 0xFF)}{(char)(offset & 0xFF)}\0\0");
+    }
+
     [Fact]
     public void A_prev_naming_a_dictionary_a_file_cut_short_as_it_opens_ends_keeps_no_place_there()
     {
@@ -6676,17 +6744,21 @@ public class CrossReferenceChainTests
     [InlineData("++13 0 obj", 0, 514, "the table's /Prev")]
     [InlineData("++13 0 obj", 0, 513, "the table's /Prev")]
     [InlineData("+++13 0 obj", 0, 514, "the table's /Prev")]
+    [InlineData("+++13 0 obj", 0, 515, "the table's /Prev")]
+    [InlineData("++++13 0 obj", 0, 516, "the table's /Prev")]
     [InlineData("+++13 0 obj", 1, 515, "the table's /Prev")]
     public void The_stream_a_hybrid_table_s_xrefstm_read_from_a_sign_and_whose_prev_names_an_offset_is_read_as_named_again_near_its_prev_however_few_of_its_signs_the_window_holds(
         string header, int into, int prevFrom, string streamPrev)
     {
         // The same file, the stream indexing the catalog and giving through /Prev the oldest table's offset, or the place the
-        // table's /Prev names. The header the search finds at the digit is the stream the /XRefStm read, told by where that
-        // reading found the digits, whatever signs the window holds: taken, found moved where the /XRefStm read it, and read
-        // whole, the /XRefStm reported as naming what the /Prev read — and the chain going on through the stream to the
-        // oldest table, or looping back to the place the /Prev names. Where the window did not hold the sign the reading
-        // started at, the header was taken as a stream of its own, found moved at the digit, the stream read twice and the
-        // naming never reported (#156, #327).
+        // table's /Prev names — its number written with up to four signs, and that place up to 516 bytes past the stream's
+        // first byte, so that the sign the /XRefStm's reading started at is the byte the window holds ahead of the bytes
+        // searched, or lies up to three bytes before it. The header the search finds at the digit is the stream the /XRefStm
+        // read, told by where that reading found the digits, whatever signs the window holds: taken, found moved where the
+        // /XRefStm read it, and read whole, the /XRefStm reported as naming what the /Prev read — and the chain going on
+        // through the stream to the oldest table, or looping back to the place the /Prev names. Where the window did not
+        // hold the sign the reading started at, the header was taken as a stream of its own, found moved at the digit, the
+        // stream read twice and the naming never reported (#156, #327).
         var (file, oldest, stream, newest) = HybridFiles.NamingTheUpdatesStreamAtOrInsideItsNumber(
             into, streamPrev, catalogInStream: true, header, prevFrom: prevFrom);
         var named = stream + into;

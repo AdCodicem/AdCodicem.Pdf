@@ -1668,7 +1668,8 @@ internal static class HybridFiles
     /// a place inside the object number, from which the stream reads as an object whose number the bytes from there give,
     /// 13 or 3 for <c>13 0 obj</c>. A search near the place the <c>/Prev</c> names comes to the stream's header — at the
     /// digit past its signs, or at its first sign where the line its number is on, which an end of line ends before
-    /// <c>obj</c>, holds a <c>%</c> —, and to the oldest table farther off, within reach.
+    /// <c>obj</c>, holds a <c>%</c> —, and, where that place lies 7 bytes before the header or 7 or 30 bytes past it, to
+    /// the oldest table farther off, within reach; 513 to 516 bytes past the header, the oldest table lies out of reach.
     /// </summary>
     public static (byte[] File, long Oldest, long Stream, long Newest) NamingTheUpdatesStreamAtOrInsideItsNumber(
         int into,

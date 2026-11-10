@@ -4648,7 +4648,6 @@ public class GuardCutValueTests
 
         using (var document = PdfDocument.Open(file, ObjectGuard))
         {
-
             document.Reader.Structure.Sections.Select(section => (section.NamedBy, section.State, section.Offset)).Should().Equal(
                 ("startxref", XRefSectionState.Read, newest),
                 ("/XRefStm", XRefSectionState.Read, stream),
