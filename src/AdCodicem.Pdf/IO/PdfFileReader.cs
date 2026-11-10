@@ -345,6 +345,19 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     private readonly HashSet<long> _sectionsReadAt = new(SeededComparer.Instance);
 
     /// <summary>
+    /// Where the digits of the object number of each cross-reference stream the chain reached start, a position in the file,
+    /// as its reading lexed them (<see cref="XRefSectionRecord.DigitsAt"/>): past the run of signs the number is written
+    /// with, where it is, and where the header starts otherwise — beside each start <see cref="_sectionsReadAt"/> holds
+    /// for a stream, and -1 for a classic table, which no place equals. The search near an offset finds a header written
+    /// <c>-+5 0 obj</c> or <c>++5 0 obj</c> at its digit, wherever the run of signs before it starts, and a reading from a
+    /// <c>+</c> of that run read the same header: it tells the header as that section by this position (#327).
+    /// </summary>
+    /// <remarks>
+    /// One entry for each start <see cref="_sectionsReadAt"/> takes, and let go with them once the chain is read.
+    /// </remarks>
+    private readonly HashSet<long> _sectionDigitsAt = new(SeededComparer.Instance);
+
+    /// <summary>
     /// What the last probe <see cref="PaddingAt"/> read found, and the one before it: the chain asks of each position it
     /// names where the first token there starts, to know whether it has reached what is there (<see cref="ReachedAt"/>), then
     /// again where it reads the section there, and of a hybrid table's <c>/Prev</c> in between. Each position's white space
@@ -2740,6 +2753,8 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
             _streamsPassedOver = null;
             _sectionsReadAt.Clear();
             _sectionsReadAt.TrimExcess();
+            _sectionDigitsAt.Clear();
+            _sectionDigitsAt.TrimExcess();
         }
 
         if (!chainRead)
@@ -4098,16 +4113,24 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
 
     /// <summary>
     /// Records where <paramref name="section"/> starts: its <c>xref</c> keyword or its stream's object header, past the white
-    /// space the offset that names it fell short by (<see cref="_sectionsReadAt"/>) — and, in <paramref name="sectionsAt"/>,
-    /// that the section is what is there, unless what was first named there is (#156). A section the chain read, where it
-    /// was named or where it was found moved; or one it reached and could not read, which declares itself a section, and is
-    /// reported once where it is: a cross-reference stream whose <c>/Prev</c> the chain goes on through (#208), or a section
-    /// an <c>/XRefStm</c> names.
+    /// space the offset that names it fell short by (<see cref="_sectionsReadAt"/>), and where the digits of a stream's
+    /// object number start (<see cref="_sectionDigitsAt"/>) — and, in <paramref name="sectionsAt"/>, that the section is
+    /// what is there, unless what was first named there is (#156). A section the chain read, where it was named or where it
+    /// was found moved; or one it reached and could not read, which declares itself a section, and is reported once where
+    /// it is: a cross-reference stream whose <c>/Prev</c> the chain goes on through (#208), or a section an
+    /// <c>/XRefStm</c> names.
     /// </summary>
+    /// <remarks>
+    /// Each such section is a classic table, which starts at its keyword, or a stream whose header was read, its object
+    /// number lexed (<see cref="XRefSectionRecord.DigitsAt"/>): a section lost before its header was read declares nothing,
+    /// and is not recorded. So a section recorded that starts at a sign of the run of signs a number is written with is a
+    /// stream whose header was read from that sign, the digits past the run recorded with it (#327).
+    /// </remarks>
     private void RecordSectionReached(XRefSectionRecord section, Dictionary<long, XRefSectionRecord> sectionsAt)
     {
         var start = section.Offset + section.Padding;
         _sectionsReadAt.Add(start);
+        _sectionDigitsAt.Add(section.DigitsAt);
         sectionsAt.TryAdd(start, section);
     }
 
@@ -5256,19 +5279,18 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
             // Where the section was named holds no section that reads, and a place where a section the chain reached starts —
             // read there, found moved there, or there and not read though it declares itself one — holds that section, not the
             // one looked for: both are passed over, but for what the table's /XRefStm read in the stream's place, which is
-            // taken (#188, #156). A header the walk back from obj found at its digit, its number written with a run of signs
-            // that starts with a +, is a token from that run's first sign, as a load reads it: a reading that started at that
-            // sign, or at a sign past it, read that header, and where the run lies within the bytes searched
-            // (HeaderTokenStart), the place is passed over where a section the chain reached starts anywhere from that sign to
-            // the digit — a stream the chain could not read among them, which nothing above tells by its data (#327). Past
-            // that digit, inside the number, a section the chain reached is not looked for, the stream above aside: the header
-            // found before it is tried as a place of its own (#332).
+            // taken (#188, #156). A header the walk back from obj found at its digit, its number written with a run of signs,
+            // is the header a reading that started at a + of that run read, the signs before that + aside, as a load reads a
+            // run of signs as one, the first deciding: the place is passed over where the digits of a stream the chain reached
+            // start there, as its reading lexed them (_sectionDigitsAt) — wherever the run starts, before the bytes searched
+            // too, and whatever sign starts it, a - among them, from which no reading reads a header —, a stream the chain
+            // could not read among them, which nothing above tells by its data (#327). A section the chain reached that starts
+            // at a sign is such a stream, its digits recorded with it (RecordSectionReached). A section the chain reached past
+            // where the place starts, inside its number — past its first digit, or past the first sign of a header the walk
+            // lexed from its line's start — is not looked for, the stream above aside: the header found before it is tried
+            // as a place of its own (#332).
             if (candidate == absolute ||
-                (candidate != takeAt &&
-                    StartsWithin(
-                        _sectionsReadAt,
-                        start - lead + HeaderTokenStart(window.Memory.Span, lead, (int)(candidate - (start - lead))),
-                        candidate + 1)))
+                (candidate != takeAt && (_sectionsReadAt.Contains(candidate) || _sectionDigitsAt.Contains(candidate))))
             {
                 continue;
             }
