@@ -1087,3 +1087,21 @@ readable and lost forms, oldest table in and out of reach, '-+5' read at its '+'
 no longer gives the case to #332; a short follow-up on #327.
 - 2026-11-10: R13-Q0 fix launched: wf_16c95c5b-c85 (task wy7gd4xh1), lot19-r13-q0-win.js, from 69731a2. Round 13 follows on
   its head.
+
+# R13-Q0 fix (wf_16c95c5b-c85, Windows): result
+
+Head dfb03fc: a93e60a fix, 3aa09c3 test, dfb03fc docs (Refs #188, #327), pushed 69731a2..dfb03fc; check_msgs passes,
+grep_keys finds none. Full report in r13a-result.json.
+- DigitsPastSigns(span, spanStart, at): the first non-sign byte at or past the place (IndexOfAnyExcept '+','-'); the
+  place itself where the run reaches the end of the bytes searched (defensive, unreachable). The reached test looks
+  `_sectionDigitsAt` up there. The comment above it no longer gives the comment-line case to #332.
+- Two new theories, 38 rows: 13 fail on 69731a2, 25 controls. Every '+'-started % row reads byte-identical to its twin
+  without the %; the line test and the passed-over record needed no widening. '-+5 0 %c' read at its '+': object 5 null
+  and Error entry-broken, as main with the %.
+- ADR 53: 30 mutants, 27 killed, 3 equivalent (C2, C4, C5 in DigitsPastSigns; C5's first kill was a 20 s corpus bound
+  under four parallel suites, it survives alone).
+- Checks: suite 11,044 / 11,041 / 3 skipped / 0 failed; build 0 warnings; format clean; page tests 100/100; site 269
+  pages 0 warnings; timing groups x3 alone pass; differential and corpus byte-identical to r12i; batch patch coverage
+  1,456 / 1,462 (99.59 %; new partial: DigitsPastSigns' defensive arm). #327 comment 6776569954.
+- Windows coverage-run flakes: SeededComparerTests' IL check flagged ArlingtonWalk..ctor once (passes alone).
+- 2026-11-10: round 13 launched on dfb03fc with lot19-review-r13.js (brief updated for R13a and r13a-result.json).
