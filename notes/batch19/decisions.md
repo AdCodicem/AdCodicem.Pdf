@@ -1130,3 +1130,7 @@ Minors and nits confirmed or narrowed, all text or test (no behavior change):
 Under the amended stopping rule the review loop ends here: one final pass fixes these texts and tests with no further
 review. Then the batch-wide ADR 53 step.
 - Commit bodies not rewritten: add 69731a2 (says the threat model's entry and three rows; it changed two).
+- 2026-11-10: final pass and batch-wide ADR 53 inventory launched in parallel: wf_189428e4-7ea (task wkmstug5l),
+  lot19-final-adr53inv.js. The inventory reuses a stage record only where the replacement, the killing test and the
+  code the site flows into are unchanged at the head; equivalents, survivors and not-viable are re-run. The run itself
+  is launched after reading the inventory's counts and estimate.
