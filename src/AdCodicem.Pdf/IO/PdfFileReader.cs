@@ -5752,13 +5752,14 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
         if (padding < 0)
         {
             // White space and comments fill a trailer's window there and run on past it: the first token past them is the
-            // guard's to hide, as a dictionary it cuts is (ADR 34), and the section is not read from there. It is looked for
-            // as one not there is: near the offset, where the search may find it past them, or, for the one startxref names,
-            // by rebuilding the index. A place a search near an offset tries starts at a token, and never gets here: the
-            // offset is one the chain names. What that search passes over, or what the section names past the guard, is
-            // the guard's: the search may take a section other than the one past them, which the reader cannot tell
-            // without reading past the guard, and no stream passed over anywhere in the document is reported, even where
-            // the search takes the section past them and reads it whole (ReportStreamsPassedOver).
+            // guard's to hide, as whatever else it cuts at an offset the chain names is (ADR 34), and the section is not
+            // read from there. It is looked for as one not there is: near the offset, where the search may find it past
+            // them, or, for the one startxref names, by rebuilding the index. A place a search near an offset tries starts
+            // at a token, and never gets here: the offset is one the chain names. What that search passes over, or what the
+            // section names past the guard, is the guard's: the search may take a section other than the one past them,
+            // which the reader cannot tell without reading past the guard, and no stream passed over anywhere in the
+            // document is reported, even where the search takes the section past them and reads it whole
+            // (ReportStreamsPassedOver).
             ReachLimit(
                 PdfLimit.Trailer,
                 $"White space and comments run past {PdfLimitGuard.FormatLength(_guard.Bound(PdfLimit.Trailer))} where a cross-reference section is named; the section was not read from there.",
@@ -6618,21 +6619,27 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
 
             cutByGuard = _guardsReached != guards;
 
-            // A guard that cut the dictionary at an offset the chain names leaves the object as far as it was read (#279),
-            // and what lay past the cut is unknown. Where a /Prev or startxref names the offset, any /W makes a stream of
-            // any /Type the section there (#263): the cut may have hidden a /Prev the chain would follow — /XRef parted,
-            // inside the name or inside a #xx escape, a stream of another /Type that gives a /W past the cut, a /Type
-            // given twice whose later /XRef lies past it —, and the object, read as one of another type, has its /Prev
-            // not followed, wherever it lies. Where an /XRefStm names the offset, the chain never follows that stream's
-            // /Prev, but the guard's cut is what would end the chain there (#264), as #279's closing reads it. Either
-            // way no stream passed over is reported anywhere in the document (ReportStreamsPassedOver), whatever /Type
-            // the cut left: the reader cannot tell which without reading past the guard (ADR 34), and a dictionary of
-            // another type cut where it gives no /W withholds the reports too. What is there is read as written all the
-            // same, until #279 settles it; where the reading takes it for the guard's section, the chain's own cut
-            // withholds them already. A place the search tries is a guess, and what the guard cut there hides no link
-            // the chain names: an object there that declares another type is dropped before its guard is counted, and
-            // none is kept but one that gives /Type /XRef, or a /Type that is not a name.
-            if (!candidate && cutByGuard && value is PdfDictionary)
+            // A guard that cut the reading at an offset the chain names hid what lay past the cut, whatever it cut: a
+            // dictionary, which the parser keeps as far as it read it (#279); the object's header — its number or its
+            // generation running on past the guard, or a comment between its tokens —, which leaves no object read
+            // (#289); or a token where no header starts, such as dashes read from inside a comment. The guard is
+            // MaxTrailerLength, the only one this reading counts: its windows are a trailer's, a value it reads through a
+            // reference is read without loading, no guard counted (ReadWithoutLoading), and the stream's data is neither
+            // read nor decoded yet. Where a /Prev or startxref names the offset, any /W makes a stream of any /Type the
+            // section there (#263): the cut may have hidden a /Prev the chain would follow — /XRef parted, inside the
+            // name or inside a #xx escape, a stream of another /Type that gives a /W past the cut, a /Type given twice
+            // whose later /XRef lies past it, or the whole dictionary past a header the cut parted —, which the reading,
+            // finding an object of another type there or none, does not follow, wherever it lies. Where an /XRefStm names
+            // the offset, the chain never follows that stream's /Prev, but the guard's cut is what would end the chain
+            // there (#264), as #279's closing reads it. Either way no stream passed over is reported anywhere in the
+            // document (ReportStreamsPassedOver), whatever the cut left: the reader cannot tell what it hid without
+            // reading past the guard (ADR 34), and a cut that hid nothing — a dictionary of another type that gives no /W,
+            // a token no header starts — withholds the reports too. What is there is read as written all the same — an
+            // object of another type, or none, the section then looked for as one not there —, until #279 and #289 settle
+            // it; where the reading takes it for the guard's section, the chain's own cut withholds them already. A place
+            // the search tries is a guess, and what the guard cut there, a dictionary or a header, hides no link the
+            // chain names.
+            if (!candidate && cutByGuard)
             {
                 _guardMayHideLink = true;
             }
@@ -6648,8 +6655,9 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
                 // the dictionary declares a section only through a /W, which the cut may have hidden
                 // (DeclaresOnlyCrossReferenceStream). An array, a dictionary whose /Type names another type, or a stream
                 // whose dictionary was read whole is no cross-reference stream, cut or not — a /Type the cut parted among
-                // them, its name read as far as it was read until #279 settles it —: where a guard cut such a dictionary,
-                // the cut withholds only the report of streams passed over, as set above.
+                // them, its name read as far as it was read until #279 settles it —, and a header the cut parted leaves
+                // no object to tell, the section looked for as one not there (#289): where a guard cut any of them, the
+                // cut withholds only the report of streams passed over, as set above.
                 section.CutByLimit = true;
                 section.Fault = string.Create(
                     CultureInfo.InvariantCulture,

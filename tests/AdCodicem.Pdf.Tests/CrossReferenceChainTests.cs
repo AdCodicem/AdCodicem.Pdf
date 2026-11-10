@@ -7939,7 +7939,7 @@ public class CrossReferenceChainTests
     [InlineData("/Catalog", 2, "missing")]
     [InlineData("5", 3, "cut")]
     [InlineData("/XRef", 80, "read")]
-    public void A_stream_passed_over_near_a_hybrid_table_s_prev_is_reported_where_no_trailer_guard_cut_the_dictionary_of_the_stream_an_older_table_s_xrefstm_names(
+    public void A_stream_passed_over_near_a_hybrid_table_s_prev_is_reported_where_no_trailer_guard_cut_the_stream_an_older_table_s_xrefstm_names_nor_the_comment_the_newest_table_s_prev_names(
         string type, int window, string nineRead)
     {
         // The newest table's /Prev names a place inside a comment of dashes, whose search passes stream 12 over as possibly
@@ -7955,8 +7955,10 @@ public class CrossReferenceChainTests
         // chain goes on through the table's /Prev: no stream passed over is reported anywhere in the document, as where the
         // guard's cut ends the chain (#156, ADR 34). The dashes at the place the newest table's /Prev names make one token,
         // which the lowered guard cuts too, the guard reported first: no header starts there, and where the guard, lowered
-        // less, cuts that token alone, stream 9 is read whole and the report stands — the cut leaves no dictionary, and
-        // withholds nothing.
+        // less, cuts that token alone, stream 9 is read whole, and no stream passed over is reported all the same. The
+        // guard cut the reading at an offset a /Prev names, which may have hidden a /Prev the chain would follow, whatever
+        // it cut: the reader cannot tell without reading past it, and withholds the reports even where the cut hid
+        // nothing, as it does where white space runs past it (#289).
         var (file, typeAt, _, own, named, older, oldest, nine, _) = HybridFiles.PassingOverAStreamAnOlderTableNamesBesideAPaddedStreamItsXRefStmNames(type);
         var limits = window == 0 ? PdfReaderLimits.Default : PdfReaderLimits.Default with { MaxTrailerLength = typeAt + window };
         using var document = PdfDocument.Open(file, new PdfReaderOptions { Limits = limits });
@@ -7971,7 +7973,7 @@ public class CrossReferenceChainTests
                 document.Diagnostics.Select(diagnostic => (diagnostic.Code, diagnostic.Position)).Should().Equal(
                     window == 0
                         ? [(PdfDiagnosticCodes.XRefOffsetAdjusted, older), (PdfDiagnosticCodes.XRefStreamPassedOver, own)]
-                        : [(PdfDiagnosticCodes.LimitTrailer, named), (PdfDiagnosticCodes.XRefOffsetAdjusted, older), (PdfDiagnosticCodes.XRefStreamPassedOver, own)]);
+                        : [(PdfDiagnosticCodes.LimitTrailer, named), (PdfDiagnosticCodes.XRefOffsetAdjusted, older)]);
                 Text(document, 5).Should().Be("five");
                 break;
 
