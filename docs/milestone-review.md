@@ -11,7 +11,7 @@ applies as the frame being checked, but its reading order does not. The review s
 ## Why
 
 Each session of a milestone decides with the context it has, and records its decisions where it works: the
-specification, an ADR, the journal in `docs/status.md`, an issue, a commit message. No session reads everything
+specification, an ADR, the journal, `docs/journal.md`, an issue, a commit message. No session reads everything
 the others decided. CI, the referees, coverage and the review of each pull request all look at one change at a
 time. So no one checks that the decisions, taken together, still agree. The review does. It is run by a session
 that did not take those decisions, and every finding it makes has to survive an attempt to refute it.
@@ -69,7 +69,7 @@ Read what the milestone **produced**, not yet what was said about it:
   `docs/threat-model.md` among them.
 - The specifications of the milestones already closed, in the places the milestone touched their behavior.
 
-Do not read yet: the journal in `docs/status.md`, the issues and their comments, the pull requests and their
+Do not read yet: the journal, `docs/journal.md`, the issues and their comments, the pull requests and their
 review threads, commit bodies, or ADRs accepted or amended during the milestone.
 
 Write every **candidate finding** to a file in the scratchpad before pass 2 begins. Pass 2 can drop a
@@ -205,8 +205,8 @@ by the one the review is filed under.
   never `fix:` or `feat:`, because a change a caller could observe is not trivial.
 - **The issues**, each saying in its body *Found by the review of Mxx (`docs/reviews/Mxx.md`, R-07)*, and
   written like any other debt: what is wrong, the evidence, and *What closes it*.
-- **`docs/status.md`**: one line under *At a glance* and a journal entry giving the counts, the issues filed,
-  and what the milestone now waits on.
+- **`docs/status.md`**: one line under *At a glance*, and an entry in `docs/journal.md` giving the counts, the
+  issues filed, and what the milestone now waits on.
 - **One pull request**, `docs: record the review of Mxx`, which says `Closes #n` for the review's issue.
 
 The review's issue closes with that pull request. The milestone closes once the issues the review filed under

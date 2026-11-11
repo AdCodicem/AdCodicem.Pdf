@@ -9,6 +9,11 @@ Accepted on 2026-10-30, on the maintainer's decisions of that day, put to them i
 the bound set that morning for that batch's review the general rule, without its per-call-site level and its
 narrowings: a helper is mutated in its body, not at each of its callers, and no condition is narrowed to a sub-case.
 
+Amended on 2026-11-11, by the maintainer, with [54](0054-review-and-documentation-effort-follow-what-protects-the-library.md):
+the step mutates the defenses a pull request adds or changes, not every line it changes; a mutant is equivalent when no
+document and no public call tells it apart; the step runs once, at the pull request's end (*Amendment of 2026-11-11*,
+below). Where the decision below says "the lines of `src/` the pull request changes", read "the defenses among them".
+
 ## Context
 
 Since batch 5 — the batches are the pull requests in which M02 pays the debt filed under it — each batch has mutated
@@ -121,8 +126,53 @@ each survivor classed, filed or left with its reason.
 - **Survivors past a threshold filed as debt.** This bounds the cost. But it leaves known gaps in a pull request whose
   claim is that its tests hold its defenses.
 
+## Amendment of 2026-11-11
+
+### Context
+
+Across batches 5 to 19, about 6,000 mutants of the library were run, and one survivor revealed a defect in it (batch 8:
+a stream whose `/Length` the file cannot hold marked the parse as having met the window's edge). Every other survivor
+was a gap in the tests, an equivalent, or dead code. Batch 19's step, the first over a whole patch under this record,
+built 3,751 mutants for 1,746 changed lines of code and ran 3,736 of them: 7.5 h of machine time and 21.6 agent-hours
+of settling, about 11 h of wall clock, on top of the mutants each fix stage ran over its own lines. Its 319 survivors
+became 112 tests and 206 equivalents, with no change to `src/`; 78 of the 112 tests assert positions or offsets. The
+second opinion on equivalents overturned 39 of 245, and 33 of those 39 differed only when an internal member was called
+directly, with an argument the library never passes. The measurements are in
+[Where a batch's time goes](../research/2026-11-session-speed.md).
+
+What mutation alone protects is a defense held by no test: a bound, a guard, a depth limit a later change could remove
+with every test still green. That is invariant 4's ground, and a small part of a patch.
+
+### Decision
+
+- **What is mutated.** The defenses among the lines of `src/` the pull request adds or changes: a bound checked before
+  an allocation, a read or a copy; a guard's check and its report (a `PdfReaderLimits` property, a `limit.*` code); a
+  depth or count limit; a visited set's insertion and membership test; the exit condition of a loop or a recursion that
+  reads the file. Oracles over the library's code are mutated as before. The rest — messages and the positions they
+  quote, the choice of a diagnostic, the other logic — is left to the review and to coverage.
+- **The catalog** is unchanged, and applies to those lines.
+- **Equivalence.** A mutant is equivalent when no document and no call through the public API tells it apart from the
+  original. A difference that shows only when a test calls an internal member directly, with an argument the library
+  never passes, does not make it killable.
+- **The second opinion stays**: each "equivalent" verdict is checked by a second agent, with the evidence written.
+- **When.** Once per pull request, after its review loop stops ([54](0054-review-and-documentation-effort-follow-what-protects-the-library.md))
+  and before its final verification. Fix stages no longer mutate their own lines.
+- Survivors are settled as before: a test, an equivalent with its reason, a widening in an oracle, or a debt.
+
+### Consequences
+
+- A batch's step falls from thousands of mutants to the defenses it adds: tens to a few hundred, an hour or two.
+- A test gap outside the defenses is no longer found by mutation. The record says how rarely mutation found a defect
+  there: once in about 6,000 mutants.
+- Fewer tests pin internal positions, and fewer survivors need a second opinion.
+- Which line is a defense is a judgment. The step's record lists the lines it took and those it left, so the review
+  can check it.
+
 ## What would reopen it
 
 Two things. A defect reaching `main` that no review found and that a mutant outside the catalog would have caught: a
 second-order mutant, a helper specialized at one of its callers, or a narrowed condition. Or the step taking a pull
 request longer than its review does.
+
+Since the amendment of 2026-11-11, a third: a defect reaching `main` that a mutant of a line the step left — not a
+defense — would have caught.
