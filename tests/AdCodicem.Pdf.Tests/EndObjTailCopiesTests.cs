@@ -84,4 +84,47 @@ public class EndObjTailCopiesTests
         copies.TryGet(DataStart + 8, out var kept).Should().BeTrue();
         kept.UpTo.Should().Be(DataStart + 8);
     }
+
+    [Fact]
+    public void A_place_the_tail_passed_with_no_copy_kept_there_is_not_given_the_copy_kept_after_it()
+    {
+        // The first read takes a copy at the second number only, past an endobj; the next carries the first number too, which
+        // the tail passed with no copy kept: it is given none, rather than the copy kept further on, which has seen an endobj
+        // the data before the first number does not hold, and that copy stays at its own place.
+        var data = Encoding.Latin1.GetBytes("1 endobj 2 3");
+        Span<EndObjTail> room = stackalloc EndObjTail[HeaderText.MostNumbersCarried];
+        Span<long> roomAt = stackalloc long[HeaderText.MostNumbersCarried];
+        var copies = new EndObjTailCopies(room, roomAt);
+        var tail = new EndObjTail(DataStart);
+
+        copies.ReadTo(ref tail, data.AsSpan(0, 11), DataStart, DataStart + 10, [DataStart + 9]);
+        copies.ReadTo(ref tail, data.AsSpan(10), DataStart + 10, DataStart + data.Length, [DataStart, DataStart + 9]);
+
+        copies.TryGet(DataStart, out _).Should().BeFalse();
+        copies.TryGet(DataStart + 9, out var kept).Should().BeTrue();
+        kept.UpTo.Should().Be(DataStart + 9);
+        kept.Seen.Should().BeTrue();
+    }
+
+    [Fact]
+    public void A_place_given_twice_is_kept_once_and_the_copy_of_the_place_after_it_stays()
+    {
+        // The reader gives each place once; one given twice is kept once all the same: the copies are written over in place as
+        // the places are looked at, and a second copy of the first place would take the room of the copy kept at the next one.
+        var data = Encoding.Latin1.GetBytes("1 endobj 2 3");
+        Span<EndObjTail> room = stackalloc EndObjTail[HeaderText.MostNumbersCarried];
+        Span<long> roomAt = stackalloc long[HeaderText.MostNumbersCarried];
+        var copies = new EndObjTailCopies(room, roomAt);
+        var tail = new EndObjTail(DataStart);
+
+        copies.ReadTo(ref tail, data.AsSpan(0, 11), DataStart, DataStart + 10, [DataStart, DataStart + 9]);
+        copies.ReadTo(ref tail, data.AsSpan(10), DataStart + 10, DataStart + data.Length, [DataStart, DataStart, DataStart + 9]);
+
+        copies.TryGet(DataStart, out var first).Should().BeTrue();
+        first.UpTo.Should().Be(DataStart);
+        first.Seen.Should().BeFalse();
+        copies.TryGet(DataStart + 9, out var second).Should().BeTrue();
+        second.UpTo.Should().Be(DataStart + 9);
+        second.Seen.Should().BeTrue();
+    }
 }
