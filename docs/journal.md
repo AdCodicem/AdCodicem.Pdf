@@ -25,7 +25,8 @@ reason for a past decision. A new entry is short, about thirty lines; the detail
   amended: defenses only, once per pull request, equivalence through documents and the public API.
 - **Done.** The threat model compacted to what each defense stops, where it lives and the test class that holds it;
   this journal moved out of `status.md`; the `batch` skill and `.claude/scripts/batch-check.sh`; `CLAUDE.md` brought in
-  line. Proposed as its own pull request: `PdfFileReader.cs` split into partial files by concern, a pure move.
+  line. In its own pull request, merged first ([#345]): `PdfFileReader.cs` split into ten partial files by concern, a
+  pure move.
 
 ## 2026-11-03 — Batch 19: where the chain's sections lie, and what it reports of one it reads in part ([#156], [#188], [#197], [#207], [#208], [#210], [#221], [#222], [#241], [#261], [#264], [#281], [#317])
 - **The question.** Measured on `main` at `21a0298` by nine agents, one for each part of the batch, and a completeness
@@ -3130,3 +3131,4 @@ The detail is in git and in the pull requests; what still matters is in the reco
 [#342]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/342
 [#343]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/343
 [#344]: https://github.com/AdCodicem/AdCodicem.Pdf/pull/344
+[#345]: https://github.com/AdCodicem/AdCodicem.Pdf/pull/345
