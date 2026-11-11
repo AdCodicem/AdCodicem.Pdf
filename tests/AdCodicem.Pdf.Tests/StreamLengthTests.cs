@@ -624,6 +624,25 @@ public class StreamLengthTests
     }
 
     [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void A_header_at_the_file_s_first_byte_stops_a_search_whose_data_starts_there_as_it_does_anywhere(bool held)
+    {
+        // No stream's data starts at the file's first byte, its stream keyword before it, but the file searches data said to
+        // start there as it searches any other: the header there stops the search where it starts, a stop the search
+        // reached, with no byte searched before it — its endobj, after it, unseen —, whether the bytes the parser holds give
+        // the header or the first read of the file past them does, the parser holding none of the data.
+        const string Head = "12 0 obj\nendobj\n";
+        byte[] file = [.. Encoding.ASCII.GetBytes(Head), .. Document()];
+        using var document = PdfDocument.Open(file);
+        var provider = (IPdfStreamDataProvider)document.Reader;
+        ReadOnlySpan<byte> buffered = held ? file.AsSpan(0, Head.Length) : [];
+
+        provider.FindEndStream(0, 0, -1, buffered, deferred: false).Should().Be(
+            new StreamEndSearch(null, 0, EndObjState.Unknown) { HeaderStopped = true });
+    }
+
+    [Theory]
     [InlineData("7 0 obj", true)]
     [InlineData(Wide, true)]
     [InlineData("x" + Wide, false)]
