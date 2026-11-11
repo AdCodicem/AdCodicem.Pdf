@@ -126,27 +126,31 @@ public class HeaderTextTests
         CarriedStarts(data, starts).Should().Equal(carried.Select(start => DataStart + start));
     }
 
-    [Fact]
-    public void A_byte_carried_into_a_read_is_placed_where_its_run_starts_and_a_byte_of_the_read_where_it_lies()
+    [Theory]
+    [InlineData("12   0 obj", 6, new[] { 0, 0, 0, 2, 5, 6, 7 })]
+    [InlineData("(a)12   0 obj", 9, new[] { 2, 3, 3, 5, 8, 9, 10 })]
+    public void A_byte_carried_into_a_read_is_placed_where_its_run_starts_and_a_byte_of_the_read_where_it_lies(
+        string data, int split, int[] positions)
     {
         // 12, three spaces and 0, read and carried into the read after them: counted back from that read's first byte come
-        // the 0, the spaces as one, 12's digits and the space that stands for the start of the data, each placed where the
-        // run it stands for starts in the file; the read's own bytes are placed where they lie.
-        var bytes = Encoding.Latin1.GetBytes("12   0 obj");
+        // the 0, the spaces as one, 12's digits and the byte before them, each placed where the run it stands for starts in
+        // the file — the space that stands for the start of the data at that start, and the byte of the read before the
+        // runs, the ) that ends a string, where it lies —; the read's own bytes are placed where they lie.
+        var bytes = Encoding.Latin1.GetBytes(data);
         Span<byte> carried = stackalloc byte[HeaderText.CarriedLength];
         Span<long> carriedAt = stackalloc long[HeaderText.CarriedLength];
         var text = new HeaderText(carried, carriedAt, DataStart);
-        text.Read(bytes.AsSpan(0, 6), DataStart);
-        text.CarryTo(DataStart + 6);
-        text.Read(bytes.AsSpan(6), DataStart + 6);
-        var positions = new long[7];
+        text.Read(bytes.AsSpan(0, split), DataStart);
+        text.CarryTo(DataStart + split);
+        text.Read(bytes.AsSpan(split), DataStart + split);
+        var placed = new long[7];
 
         for (var index = -5; index < 2; index++)
         {
-            positions[index + 5] = text.PositionOf(index) - DataStart;
+            placed[index + 5] = text.PositionOf(index);
         }
 
-        positions.Should().Equal(0, 0, 0, 2, 5, 6, 7);
+        placed.Should().Equal(positions.Select(position => DataStart + position));
     }
 
     [Theory]

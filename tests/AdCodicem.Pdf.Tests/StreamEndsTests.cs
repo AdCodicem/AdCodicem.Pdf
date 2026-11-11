@@ -15,6 +15,7 @@ public class StreamEndsTests
     [Theory]
     [InlineData("12 % endstream\n0 obj", false, -1, 0)]
     [InlineData("12 % endstream\n0 obj", true, 5, -1)]
+    [InlineData("12 % endstream\nobj", false, 5, -1)]
     [InlineData("\nendstream", false, 0, -1)]
     [InlineData("\nendstream", true, 0, -1)]
     [InlineData("\r\nendstream", false, 0, -1)]
@@ -27,7 +28,8 @@ public class StreamEndsTests
         // An end-of-line before the keyword is not the data's, a line feed always and a carriage return but where the stream
         // is a cross-reference stream whose /Length the chain could not read, whose last row may end in one (#220). A header
         // whose tokens a comment holding the keyword parts stops the search first (#261), but where the stream is such a
-        // cross-reference stream, which no header stops.
+        // cross-reference stream, which no header stops; an obj past the keyword's line that ends no header, one number
+        // alone before it, leaves the keyword to end the data.
         var (end, at) = Search(data, deferred);
 
         end.Should().Be(found < 0 ? -1 : DataStart + found);
