@@ -395,6 +395,28 @@ public class CrossReferenceChainTests
     }
 
     [Fact]
+    public void An_xrefstm_naming_the_file_s_length_is_not_left_to_a_prev_naming_the_comment_that_ends_the_file()
+    {
+        // As above, the two links swapped: the /Prev names the %%EOF that ends the file, past which its reading comes to the
+        // end of the file, at the file's length, and the /XRefStm names that length, outside the file, where no white space
+        // is crossed and no start is reached. The two reach no one section: the /XRefStm is missing, placed at the table
+        // that names it, and the /Prev finds no section either (#156).
+        var (built, newest, marker) = HybridFiles.NamingTheEndOfTheFile();
+        var file = Encoding.Latin1.GetBytes(Encoding.Latin1.GetString(built).Replace(
+            Invariant($"/Prev {built.Length:D10} /XRefStm {marker:D10}"),
+            Invariant($"/Prev {marker:D10} /XRefStm {built.Length:D10}"),
+            StringComparison.Ordinal));
+        using var document = PdfDocument.Open(file);
+
+        document.Reader.Structure.Sections.Select(section => (section.NamedBy, section.State, section.Offset, section.Padding)).Skip(1).Should().Equal(
+            ("/XRefStm", XRefSectionState.NotFound, file.Length, 0),
+            ("/Prev", XRefSectionState.NotFound, marker, "%%EOF\n".Length));
+        document.Diagnostics.Select(diagnostic => (diagnostic.Code, diagnostic.Position)).Should().Equal(
+            (PdfDiagnosticCodes.XRefSectionMissing, newest),
+            (PdfDiagnosticCodes.XRefSectionMissing, marker));
+    }
+
+    [Fact]
     public void Goes_on_through_prev_past_an_xrefstm_that_names_nothing()
     {
         // A hybrid file's stream indexes what its classic table leaves out. When it is missing, that is reported,
@@ -1248,6 +1270,27 @@ public class CrossReferenceChainTests
         var (file, _, _, _) = LostStreamFiles.ThreeRevisions(
             LostStreamFiles.Unreadable.Replace("/Size 9 /Index [4 2 7 1]", size, StringComparison.Ordinal),
             nine: size.Contains(" R", StringComparison.Ordinal) ? "8" : null);
+
+        using var document = PdfDocument.Open(file);
+
+        document.Reader.Structure.Sections.Should().HaveCount(3);
+        document.Reader.ChainIndex!.CopyNumbers().Should().BeEquivalentTo(standing);
+    }
+
+    [Theory]
+    [InlineData("/Size 9 /Index [4 2 7 1]", new[] { 0, 1, 2, 3, 6, 8 })]
+    [InlineData("/Size 2 /Index [4 2 7 1]", new[] { 0, 1, 2, 3, 6, 8 })]
+    [InlineData("/Size 9 0 R /Index [4 2 7 1]", new[] { 0, 1, 2, 3, 6, 8, 9 })]
+    [InlineData("/Index [4 2 7 1]", new[] { 0, 1, 2, 3, 6, 8 })]
+    public void A_lost_stream_with_an_index_declares_the_numbers_its_subsections_give_whatever_its_size(string numbering, int[] standing)
+    {
+        // With an /Index, a stream's rows number the objects its subsections give, 4, 5 and 7, and its /Size is not read for
+        // them: one below them, one written as a reference — which, without an /Index, leaves the numbers unknown —, or none.
+        // No older row stands for 4, 5 and 7, and the oldest table's rows for objects 1 to 3 and 8 stand beside the newest
+        // table's, object 9 among them where the reference leads to it (#208).
+        var (file, _, _, _) = LostStreamFiles.ThreeRevisions(
+            LostStreamFiles.Unreadable.Replace("/Size 9 /Index [4 2 7 1]", numbering, StringComparison.Ordinal),
+            nine: numbering.Contains(" R", StringComparison.Ordinal) ? "9" : null);
 
         using var document = PdfDocument.Open(file);
 
@@ -4327,6 +4370,32 @@ public class CrossReferenceChainTests
             every
                 ? [PdfDiagnosticCodes.XRefSectionUnreadable, PdfDiagnosticCodes.XRefRebuilt]
                 : [PdfDiagnosticCodes.XRefSectionUnreadable]);
+    }
+
+    [Theory]
+    [InlineData(4095, false)]
+    [InlineData(4096, true)]
+    public void The_rest_of_a_subsection_a_guard_cuts_among_its_rows_counts_as_one_range_a_table_lost(int lost, bool every)
+    {
+        // The table of the theory above, 4,095 or 4,096 lost subsections before its free rows, read through a window that
+        // MaxXRefSectionLength stops at the end of the tenth free row: the rest of that subsection, which the guard cut, is
+        // one range more that the table lost, 4,096 in all, kept apart, or 4,097, past the bound, and every number is refused.
+        // The chain ends at the guard, and the report says which (#210).
+        var file = PartialFiles.LostSubsections(lost, free: 1000);
+        var newest = PdfTemplate.OffsetOf(file, "\nxref\n", 2) + 1;
+        var cutAt = PdfTemplate.OffsetOf(file, "20000 1000\n") + "20000 1000\n".Length + (10 * "0000000000 00000 f \n".Length);
+        var options = new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxXRefSectionLength = (int)(cutAt - newest) } };
+
+        using var document = PdfDocument.Open(file, options);
+
+        var table = document.Reader.Structure.Sections.Should().ContainSingle().Which;
+        (table.CutByLimit, table.Incomplete).Should().Be((true, true));
+        document.Reader.ChainIndex!.TryGet(20009, out _).Should().BeTrue("the rows before the cut stand");
+        document.Diagnostics.Select(diagnostic => diagnostic.Code).Should().Equal(
+            PdfDiagnosticCodes.LimitXRefSectionLength, PdfDiagnosticCodes.XRefSectionUnreadable, PdfDiagnosticCodes.XRefRebuilt);
+        document.Diagnostics[1].Message.Should().EndWith(every
+            ? "; the rows read were kept, and every other object no section read before it indexes is looked for by rebuilding the index, rather than taken from an older section's rows."
+            : "; the rows read were kept, and the objects the rest of that subsection numbers are looked for by rebuilding the index where no section read before it indexes them, rather than taken from an older section's rows.");
     }
 
     [Theory]
