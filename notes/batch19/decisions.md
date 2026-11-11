@@ -1329,3 +1329,13 @@ review. Then the batch-wide ADR 53 step.
   0.96-1.09 within spread, allocation +~770 B an opening, +~280 B a section on a 1,000-section chain, +20-30 B a stream
   with a wrong /Length; site 269 pages, 0 warnings. Results: W/verify/final/result.json, result.md, bench/.
 - PR body and status.md last fill: wf_a42a1b3e-478 (task wc23dnxjp).
+- PR body and status (wf_a42a1b3e-478): the check found that a single 'Closes #a, #b, ...' line closes only #a on
+  GitHub (#318 left #168, #201, #277, #307, #312 open); body rewritten one 'Closes #n' per line. Patch coverage
+  corrected: cov_patch.py misread '66.67% (4/6)', so SizeWrongRule.cs:162 (Counted's null arms, after IsWhole) is not
+  whole: 1,456 of 1,461 whole (99.66 %), five lines, all defensive or compiler-added. Maintainer (2026-11-11): close
+  batch 18's five through this PR: yes.
+- PR opened: https://github.com/AdCodicem/AdCodicem.Pdf/pull/344 ('fix!: read the chain's sections where they lie and
+  report one it reads only in part'); GitHub links 18 issues (13 + batch 18's 5). docs/status.md committed with the PR
+  number: 55cb5be 'docs: record batch 19 in the status' (site 269 pages, 0 warnings), pushed 2c7cf01..55cb5be. PR bound
+  in the app, Auto-fix on (enabled by the maintainer). Never merge it.
+- After the merge: the session-speed review (memory project_session_speed_review.md).
