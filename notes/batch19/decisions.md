@@ -1312,3 +1312,10 @@ review. Then the batch-wide ADR 53 step.
   (with what remains of #158); #342 in batch 32; post the optional #260 comment: yes.
 - End-of-batch comments posted (LF-normalized first): #289 6803096734, #295 6803097172, #52 6803097720,
   #260 6803098212.
+- status.md filled (wf_84683e73-700) into W/status-draft/status-final.md (work-final/assemble.py rebuilds it); its
+  check fixed 7 defects and found that round 4's P02 (the Array.MaxLength clamp on PaddingAt's reach, :5891) was never
+  settled: no catalog operator applies to that line, so the batch-wide step did not run it (R12b's G2b is another form
+  of the batch-wide 'false' of IsTokenOnItsLine's guard, PFR-1457, killed; G5 = PFR-1456, killed). MaxTrailerLength's
+  init caps the bound at Array.MaxLength, so the reach passes it by at most 32 bytes, only past ~2 GB of white space.
+  Filed #343 (debt, area: reader, M23), as the round 4 triage decided. The refuter count: 39 of 245 (not 246).
+  Left in status-final: PR, UNIT, UNIT_REMOTE, COVERAGE, COVERAGE_LEFT, BENCH, HEAD, CLAMP_DEBT (= #343, M23).

@@ -1,0 +1,108 @@
+[
+ {
+  "type": "result",
+  "key": "v2:401cd6d25098435fa47bb419f21a0e29ab225d497c67d319d80a17435eab360f",
+  "agentId": "a66e7c3166f154738",
+  "result": {
+   "filled": [
+    "Output: C:/Users/clemm/AppData/Local/Temp/claude/7278f9d03177d71e/898783fc-049f-469a-ab79-dfd299ad558e/scratchpad/cloud/status-draft/status-final.md (3,695 lines) and status-final.diff (git diff --no-index against status.head.md, 11 hunks). Rebuild with: python -I status-draft/work-final/assemble.py <status-draft folder> status-final.md. It uses work-final/entry.src. status.md and work/ were not touched.",
+    "{{ADR53}} in the At a glance Mutation testing bullet: of the 3,736 run at 19a2296, 3,193 killed and 224 did not compile. The 319 that survived were settled: 113 killed by tests written since, 206 classed equivalent (29 of them in what is reported), none filed. Every first verdict of equivalence was checked a second time, against an input built to tell the two apart, which overturned 39 of the 245.",
+    "{{ADR53}} in the journal's Mutation bullet: the 224 failed to build, 3,193 were killed and 319 survived. Eight mutants that the project's build refuses (CS0162) were built without warnings as errors. Of the 319: 112 killed by tests written for them, and 1 by a test the batch added after 19a2296 for another (f8e9aa1's). Those tests are 103 test cases in 43 test: commits, 9d20508 to f732361. 206 equivalent, 29 in what is reported, with three examples of a bounded cost. 245 first verdicts of equivalence were checked a second time and 39 overturned, 12 of them in the first 36, mostly on the internal-member premise.",
+    "{{ADR53_DEBT}}: the sentence now says what happened to the two defensive sites. The line test's guard fell to a new test (a hybrid table's own stream read from a sign before the window near its /Prev, cut short before it is read again). The defensive branch of the parse of an object no section records survived and is classed equivalent. No mutant that survived was left to a debt, so no issue files any. The array's-greatest-length clamp clause is dropped.",
+    "{{SETTLE_COMMITS}}: ', and 46 after it to 2c7cf01, 45 test: and one docs:'. That is the 43 test: commits 9d20508..f732361, then e5424b2 (docs), 9a21ac7 and 2c7cf01, which change comments only (checked with git).",
+    "{{END_COMMENTS}}: one clause each for #289 (6803096734), #295 (6803097172), #52 (6803097720), #260 (6803098212) and #158 (6800877183), checked against the posted bodies with gh. #342 is added to the Tracking filings on 2026-11-11.",
+    "{{PLACE_333}} and {{PLACE_336}}: 'The maintainer placed the other three on 2026-11-11, their bodies naming no batch'. #333 goes to batch 31 with #332, #330 and #321. #336 and #342 go to batch 32 with what remains of #158.",
+    "#342 was also added in four other places: step 4's item 32 now reads 'What remains of [#158], with [#223], [#336] and [#342].'; the At a glance debt list ('[#336], [#342]'); the placement counts (sixteen filed, fifteen left under M02); and the [#342] link definition.",
+    "{{CORPUS}}: 'and so at 26ce787, whose src/ the branch keeps but for comments, its dump of the 410 documents byte-identical to the last round's'. Checked with cmp: verify/corpus/corpus-branch-1.txt is identical to r12i/corpus-branch-1.txt and corpus-branch-2.txt.",
+    "{{INTEGRATION}}, At a glance: 3,760 integration against qpdf at 26ce787, run class by class, 3,754 passed and 6 skipped where qpdf cannot walk a damaged document's pages.",
+    "{{INTEGRATION}}, journal Tests: 1,495 on the committed corpus and 3,760 with all 242 remote documents.",
+    "{{INTEGRATION}}, journal Checked: the six classes with their counts, read from verify/integ-*Tests.txt (QpdfReferee 786 = 780 passed + 6 skipped; the others all passed), about 54 minutes in all. Two whole-suite runs ran past the 60-minute bound and failed no test. CI's integration job was green on every push, with 1,495 tests, 1,493 passed and 2 skipped at 9a21ac7.",
+    "{{ISLAND}}: held by CI's compat (.NET 11) job alone; the .NET 11 SDK is not on the maintainer's machine. The job was green on every push. At 2c7cf01 (CI run 1055), on .NET 11 rc.1: 150 documents opened and validated, 18 encrypted refused, none differing, and the unit suite on the .NET 11 runtime.",
+    "{{REMOTE_RUN}} = 109, in both places.",
+    "{{REMOTE}}, At a glance Tests: '11,155 acceptance tests and 3,760 referee checks'.",
+    "{{REMOTE}}, CI bullet: run 109 on 9a21ac7 passed whole at its first attempt, from the cache alone, with 11,155 acceptance tests and 3,760 referee checks.",
+    "{{REMOTE}}, Checked: run 109, 242 documents from the cache; 11,155 acceptance tests (3 skipped) and 3,760 referee checks (6 skipped); no other Remote corpus run on the branch.",
+    "{{NIGHTLY}}: nightly runs 100 to 108 on main at 21a0298 all passed whole at their first attempt. Run 108 ran from the cache alone (242 'present', cache hit), with 9,346 acceptance tests and 3,760 referee checks.",
+    "{{NIGHTLY_LAST}}: 'run 108 on `main` on 2026-11-11, from the cache alone'.",
+    "{{CI_MAIN}}: CI run 927 (id 41584284353, success).",
+    "{{CI_BRANCH}}: `2c7cf01` (CI run 1055, all six jobs green, checked after it finished).",
+    "{{CI}}: 89 runs, 930 to 1055, all green except 982 to 984 (f8550c7, ee0c231, e3d0c99). In those three only the workflows job failed, because actionlint's download returned 504 (read from their logs); run 1055 is green on 2c7cf01."
+   ],
+   "corrected": [
+    "The #295 cost in Current measurements was false: 'a run of 65,530 spaces before a table reads 343,127 bytes'. decisions.md says that figure could not be reproduced, and the posted #295 comment measured it again at f732361. Now: 215,497 bytes where the file ends past the table, and 411,968 where 8 MB follow it.",
+    "The Coverage clause about dfb03fc (At a glance and Checked) said 'none of which an input takes'. That is now false for the line test's guard (IsTokenOnItsLine at < 0): the batch-wide step killed its mutant with a new test. The clause now reads '...none of which an input takes but the line test's guard, which a test written since in the mutation step takes'.",
+    "The journal's Mutation bullet said both defensive sites 'were expected to survive', next to the array-length clamp and a debt issue. Rewritten: one site was killed, one is equivalent, and no debt issue exists.",
+    "The array-length clamp clause is dropped. decisions.md claims P02 was re-run in the batch-wide catalog, but the catalog has no mutant at the clamp's line (PdfFileReader.cs:5891 at 19a2296). The line is among the 1,746 changed lines, but no catalog operator applies to it, so no settled case matches.",
+    "Commit bodies not rewritten: 'Twenty-nine' is now 'Thirty', with 743cea0 added. Its body says the ')' is a byte past the data's start; it is two bytes past. No other new body is recorded as inexact in decisions.md since the resume.",
+    "Placement counts: 'Of the fifteen batch 19 filed' is now 'sixteen', and 'Of the fourteen left under M02' is now 'fifteen'. The At a glance list of the nineteenth batch's debts gains [#342].",
+    "Overturned count: the task says 39 of 246; I wrote 39 of 245, from the ledger. fates.jsonl and the b*-result.json first verdicts give 245 first 'equivalent' verdicts: 206 upheld plus 39 overturned. Per batch that is b1 36, b2 26, b3 55, b4 87, b5 41. decisions.md's 246 is an arithmetic slip; the 246th check was the one 'killed by an existing test' verdict, which was also checked."
+   ],
+   "left": [
+    "{{PR}}: 13 occurrences, including the [#PR] link definition.",
+    "{{UNIT}}: 2 (At a glance Tests, journal Tests). CI run 1053/1055's compat job shows 8,466 tests, 8,446 passed and 20 skipped at 9a21ac7/2c7cf01, if the verification wants it.",
+    "{{UNIT_REMOTE}}: 2. Expected 11,155 with 3 skipped: run 109 gives that, and it matches 11,052 + 103.",
+    "{{COVERAGE}}: 2.",
+    "{{COVERAGE_LEFT}}: 1.",
+    "{{BENCH}}: 6 (two measurement rows of two cells each, the Batch 19 paragraph, the Checked item).",
+    "{{HEAD}}: 1.",
+    "{{MERGE_DATE}}: not in the draft. The draft's checker had already replaced it with batch 18's form 'done, in [#PR]'."
+   ],
+   "unverified": [
+    "Whole-suite integration runs: I wrote 'ran past the 60-minute bound ..., failing no test', without 'not hung'. integ-run1.txt's container log stops at about 00:17:24 and exits 143 at 59m58s, which decisions.md first called a stall on a docker exec. I could not confirm run 2 was still progressing when it was killed. Neither log shows a failed test.",
+    "The 29 'equivalent in what is reported' come from reading the reasons in fates.jsonl. Two borderline cases are not counted: PFR-1831, whose reason says it costs one allocation, and PES-0070, an extra HeaderAt with no cost a test could see. PFR-1831 may contradict the 2026-11-01 rule, under which an allocation that tells a mutant apart kills it; the maintainer may want to look.",
+    "103 test cases: counted from [Fact] and [InlineData] lines added in 19a2296..f732361, with no MemberData added. This agrees with run 109's 11,155 against 11,052. The final suite count on the maintainer's machine is still the verification's.",
+    "CI_BRANCH (2c7cf01, run 1055), the '46 after it to 2c7cf01' count and the island's commit assume the branch head stays at 2c7cf01. If the running verification pushes more commits, those clauses and {{HEAD}} need updating.",
+    "Nightly runs 100 to 107: only checked as success at attempt 1 with gh. Only run 108's log was read for 'from the cache alone'.",
+    "The harness fault fixed during the run is not mentioned: a test process that did not start would have been classed a crash, a false kill, and no such line occurred. Batch 18's entry records no harness detail, so I treated it as a process note.",
+    "The four end comments: summarized from their opening paragraphs and section headings, not read in full.",
+    "The journal's Reviewed bullet: left as drafted. Its stopping-rule wording matches decisions.md (2026-11-10 entry, cap at round 14), but its finding totals (328, 14 refuted) were not recounted.",
+    "Banned-key scan of every line new against the head: none found. 'survivor' appears only in plain English, and the only regex hit was 'invariant'. Links: every [#n] used is defined once, in numeric order, and none is unused."
+   ]
+  },
+  "remoteControlDeviceReport": false,
+  "toolsUsed": [
+   "Bash",
+   "mcp__ccd_turn__update_plan",
+   "Read",
+   "Write",
+   "Grep",
+   "Edit",
+   "StructuredOutput"
+  ]
+ },
+ {
+  "type": "result",
+  "key": "v2:71ac21a0913d07a9374a51ea2742e472f71141c26e0a9128c6e25095fee10173",
+  "agentId": "a9688f0077e514e05",
+  "result": {
+   "defects": [
+    "Journal, Mutation bullet (the debt sentence). When the fill dropped the array-length clamp clause, it also hid a mutant that is still unsettled. Round 4's fix stage had a survivor (record r4-fix-result.json, its P02): removing the Array.MaxLength clamp on the probe's reach in PaddingAt, which only a run past 2 GB tells apart. It was marked 'report for filing' with the batch-wide survivors under M23. I checked that the final catalog has no mutant on PdfFileReader.cs:5890-5891 at 19a2296 (the line is in lines.json), that the only stage record named P02 is a different one (R11a, which maps to PFR-1375), and that no issue files it. So decisions.md's line saying 'G2b, G5 and P02 were re-run in the batch-wide catalog' is wrong for this P02. (G5 is PFR-1456, killed. G2b is outside the catalog, and the mutant it equals, PFR-1453, is killed.) That made 'No mutant that survived was left to a debt, so no issue files any' false. CHANGED to: 'No mutant of the step at the end was left to a debt. The clamp of the probe's reach to an array's greatest length, whose removal survived at the fourth round's fixes, only a run past 2 GB telling it apart, was to be filed with the step's debts, under M23, and the catalog at the end holds no mutant on its line: {{CLAMP_DEBT: the issue that files it, its number, title and milestone, or what the maintainer decides instead}}.' Filing it also means updating: the At a glance debt list ('its nineteenth (...)'), the Tracking filings, the placement counts (seventeen filed, then sixteen or fifteen left under M02), a new [#n] definition in numeric order, and possibly the At a glance Mutation testing bullet.",
+    "Journal, Done line: 'the 43 test: commits that settled the mutants that survived the batch-wide step' was inexact. Two of the 43 change comments only and settle no mutant: 5d5c32d (the stale HostileInputTests comment) and f732361 (the HybridFiles comment), checked with git show. CHANGED to: 'the 43 test: commits of the settling of the mutants that survived the batch-wide step, 9d20508 to f732361, two of them correcting comments alone, then e5424b2, 9a21ac7 and 2c7cf01, which change comments alone too'. The counts (173, 46, 45 test: plus 1 docs:, 43) and the comment-only nature of e5424b2, 9a21ac7 and 2c7cf01 all check out against git.",
+    "Journal, Checked, integration: 'two runs of the whole suite at once ran past the 60-minute bound ..., failing no test' implied the runs were still progressing, and 'at once' could be read as running at the same time. In fact integ-run1 and integ-run2 both exited with code 143 at 59m58s and 59m59s, one after the other. Their container logs stop at 00:17:24 (512 qpdf execs) and 00:19:39 (876 execs), so a stall cannot be ruled out. Neither log shows a failed test. CHANGED to: 'two runs of the whole suite in one process were stopped at the 60-minute bound they were given on that machine, no test failing in either'.",
+    "Next concrete step, item 32: the fill made it read 'What remains of [#158], with [#223], [#336] and [#342]' but did not add [#333] to item 31, nor the twelve placements this batch made to their items. Since batch 16, placements go only into the placement paragraph: #309 is not in item 29, #313 not in 27, #314 and #315 not in 25, #279 and the rest not in 27. A batch's item names its debts only once the batch is done. REVERTED to the head and draft text 'What remains of [#158], with [#223].' The placements of #333, #336 and #342 stay in the placement paragraph. [#336] and [#342] are still used elsewhere, so the links remain balanced.",
+    "Journal, 'Commit bodies not rewritten': 'Three source texts went out inexact too' missed a fourth. HeaderText's remarks said each byte carried into a read records where the run it stands for starts. That has been false since b09f981, which writes -1 or a number's start into _leadAt for the bytes carried for what precedes a line (checked in b09f981's file). e5424b2 corrected it, and decisions.md records it as a docs nit. CHANGED 'Three' to 'Four' and added: '...; and HeaderText's remarks, that each byte carried into a read records where the run it stands for starts, false since b09f981 of the bytes carried for what precedes the line a read starts in, which record where a number starts or no place, until e5424b2.'",
+    "Rebuild kept in step: all edits are mirrored in work-final/entry.src. In work-final/assemble.py the item-32 edit is replaced by a comment. 'python -I work-final/assemble.py <status-draft> status-final.md' now produces status-final.md exactly (3,701 lines; one line wraps as the assembler wraps it). status-final.diff is regenerated in the same git --no-index form: 10 hunks, index 16da290..0b5a5d0. Backups of the old diff, entry.src and assemble.py are in C:/Users/clemm/AppData/Local/Temp/claude/bc4976e88c6ca0c5/898783fc-049f-469a-ab79-dfd299ad558e/scratchpad/chk/.",
+    "Checked and correct, no change needed. Batch-wide step: 3,193 killed, 224 not viable and 319 survived (= 3,736), recomputed from summary-01..27 (136 BUILD ERROR lines are the stopped first run's, each with a later final line). fates.jsonl: 112 killed by new tests + 1 by an existing test + 206 equivalent. 245 first verdicts of equivalence (b1 36, b2 26, b3 55, b4 87, b5 41), recomputed from the b*-result.json first passes, 39 overturned (12 in b1); decisions.md's 246 is a slip. 103 test cases = 23 [Fact] + 80 [InlineData] added in 19a2296..f732361, which matches 11,155 - 11,052. Eight CS0162 ids; 388 of 529 records refused; 1,746 lines, 2,171 sites. PFR-1457 (the line test's guard) killed by the new hybrid sign test; PFR-0644 equivalent. CI: 89 runs, 930 to 1055, all push; only 982 to 984 failed, and only their workflows job (curl 504 on actionlint); integration and compat green in every run; 1055 green on 2c7cf01; main run 927 on 21a0298. Remote corpus: runs 100 to 108 on main at 21a0298, attempt 1, success; run 108 restored 242 of 242 from the cache, 9,346 (3 skipped) and 3,760 (6 skipped); run 109 on 9a21ac7, workflow_dispatch, attempt 1, 242 present from the cache, 11,155 (3 skipped) and 3,760 (6 skipped); no other run on the branch. Compat 1055: rc.1, 150 documents, 18 encrypted, 0 differences, unit suite 8,466/8,446/20. CI integration at 9a21ac7: 1,495/1,493/2. Local integration by class at 26ce787 (the verify worktree's HEAD): 410+774+129+21+1,640+786 = 3,760, with 780+6 skipped in QpdfReferee, about 53.7 minutes. The corpus dump is identical (cmp) to r12i's two dumps. #318 merged 2026-11-03. Placements: #333, #336 and #342 match the maintainer's answers. #342's body matches its summary. Comment ids 6803096734, 6803097172, 6803097720, 6803098212 and 6800877183 are on #289, #295, #52, #260 and #158. The #295 figures (215,497 and 411,968; 84,288 = 1.29 x 65,568) match the posted comment. 743cea0's ')' is at index 2. There are thirty inexact bodies. Links: 218 defined, 218 used, none duplicated or unused, in numeric order, and the PR placeholder sorts last (#343 and up do not exist yet). No review or mutation keys on new lines: 'probe' is the library's probe and 'invariant' the project's term."
+   ],
+   "unverified": [
+    "The count of 29 equivalents 'in what is reported' is a judgment call. A regex for explicit cost-only labels in the reason or the second reason gives exactly 29, the same ids the fill counted. Other equivalents' reasons describe a cost difference without the label: PES-0048 (one extra search), PFR-1831 (one allocation, which may go against the 2026-11-01 rule that an allocation telling a mutant apart kills it), HT-0003 (a larger stack room) and PES-0070. Read more loosely, the count is 30 to 32. The maintainer may want to look at PFR-1831.",
+    "Whether the two whole-suite local integration runs hung or were only slow cannot be told from the logs, which stop at about 17 and 19 minutes. decisions.md says they were not hung. The new wording claims neither.",
+    "Placeholders still to fill: PR (13), UNIT (2), UNIT_REMOTE (2), COVERAGE (2), COVERAGE_LEFT (1), BENCH (6), HEAD (1), plus the new CLAMP_DEBT (1). The running verification's verify/final/result.md (steps 0 to 5 done when read; benchmarks and site still pending) already gives: final head H = 2c7cf01; whole suite with the remote corpus 11,155, 11,152 passed, 3 skipped; coverage run 8,466 total, 8,445 passed, 1 failed (#336's test, which passed 3 of 3 runs alone under coverage), 20 skipped; patch 1,461 coverable lines, 1,460 run, 1,457 whole; src 19,700 of 19,713 lines = 99.93 %. The lines not whole are PdfFileReader.cs:4075 and 4077 (TryParseUnrecordedAt), 5567 (DigitsPastSigns) and SizeWrongRule.cs:71. The timing groups passed three times, and the hybrid differential (9,228) is identical to r13a and r12i. That run's check of commit messages flagged 761ce0b's 87-column footer, but commitlint's config-conventional allows 100, so 'every commit message checked against the project's rules' still holds. If the coverage placeholder says 'fails #336's test', the Checked bullet already says so.",
+    "Reverting item 32 is a choice of convention. If the maintainer prefers that placements the maintainer made go into the batch items, as #218 and #256 once did, then #333 belongs in item 31 as well, and #336 and #342 go back into item 32.",
+    "The fourth source text (HeaderText) rests on b09f981's code writing -1 into _leadAt and on e5424b2's message. I did not trace whether b4cfda0 changed which bytes record what.",
+    "End comments: I read #295's and #158's in full, and #289's, #52's and #260's openings and headings only. The status summaries match what I read.",
+    "The Reviewed bullet's '14 of them refuted' was not recounted. The 328 findings do add up from the rounds' counts.",
+    "'Four survivors of the twelfth round's reached test' (draft text) uses 'survivors' as a plain noun, as the head does elsewhere, so it was left. The 'Remote corpus ... last green in run 108' line is 140 characters, against 139 in the head, and was left unwrapped.",
+    "In CI run 949 (b9de553), the 'release scripts' job record shows in_progress with no conclusion while the run shows success. This looks like a GitHub record glitch and was not investigated."
+   ]
+  },
+  "remoteControlDeviceReport": false,
+  "toolsUsed": [
+   "Bash",
+   "Read",
+   "Write",
+   "Edit",
+   "StructuredOutput"
+  ]
+ }
+]
