@@ -7410,6 +7410,29 @@ public class CrossReferenceChainTests
         new PdfValidator().Validate(document).Findings.Should().NotContain(finding => finding.Severity == PdfValidationSeverity.Error);
     }
 
+    [Fact]
+    public void A_prev_naming_offset_zero_tries_last_a_stream_past_the_one_its_xrefstm_read_that_gives_no_prev()
+    {
+        // The newest table's /Prev names offset 0, the header, past which the catalog lies, no section; its /XRefStm read
+        // stream 6, which gives no /Prev, within reach of the search near offset 0. Past stream 6 lie stream 11, which gives
+        // no /Prev either, and, farther off, a table. Stream 11 starts no sooner than the stream the /XRefStm read and hands
+        // the chain nothing on: it may be the table's own, at offset 0 as at any other offset, and is tried once every other
+        // place was. The search takes the table, and stream 11, which no link the chain reads names, is reported as a stream
+        // passed over, object 5, which only it indexes, missing from the index (#156).
+        var (file, stream, own, table, newest) = HybridFiles.PrevOfZeroNearAStreamPastTheOneItsXRefStmRead();
+        using var document = PdfDocument.Open(file);
+
+        document.Reader.Structure.Sections.Select(section => (section.NamedBy, section.State, section.Kind, section.Offset)).Should().Equal(
+            ("startxref", XRefSectionState.Read, XRefSectionKind.Table, newest),
+            ("/XRefStm", XRefSectionState.Read, XRefSectionKind.Stream, stream),
+            ("/Prev", XRefSectionState.Relocated, XRefSectionKind.Table, table));
+        document.Diagnostics.Select(diagnostic => (diagnostic.Code, diagnostic.Position)).Should().Equal(
+            (PdfDiagnosticCodes.XRefOffsetAdjusted, table), (PdfDiagnosticCodes.XRefStreamPassedOver, own));
+        document.Diagnostics[0].Message.Should().Be(Invariant($"The cross-reference section /Prev names at offset 0 was found {table} bytes after it."));
+        document.GetObject(new PdfObjectId(5)).Should().BeSameAs(PdfNull.Instance, "only stream 11 indexes object 5");
+        Text(document, 4).Should().Be("four");
+    }
+
     [Theory]
     [InlineData("the first revision's stream")]
     [InlineData("a reference")]

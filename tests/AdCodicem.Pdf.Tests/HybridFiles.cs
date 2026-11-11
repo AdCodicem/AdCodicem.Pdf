@@ -1226,6 +1226,36 @@ internal static class HybridFiles
     }
 
     /// <summary>
+    /// A one-page document whose newest table, at <c>Newest</c>, past a comment of 600 dashes, indexes the catalog, the page
+    /// tree and the page, and names through <c>/Prev</c> offset 0, the header, past which the catalog lies, and through
+    /// <c>/XRefStm</c> cross-reference stream 6, at <c>Stream</c>, which indexes object 4, <c>(four)</c>, and itself and
+    /// gives no <c>/Prev</c>. Past stream 6, within reach of a search near offset 0, lie object 5, <c>(five)</c>,
+    /// cross-reference stream 11, at <c>Own</c>, which indexes it and itself and gives no <c>/Prev</c> either, and a table,
+    /// at <c>Table</c>, which indexes the catalog and gives no <c>/Prev</c>, followed by the page tree and the page.
+    /// </summary>
+    public static (byte[] File, long Stream, long Own, long Table, long Newest) PrevOfZeroNearAStreamPastTheOneItsXRefStmRead()
+    {
+        var file = new HandWrittenFile(version: "1.5");
+        var catalog = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>");
+        var four = file.Object(4, "(four)");
+        var stream = file.Position;
+        var rows = StreamRows((1, four, 0), (1, stream, 0));
+        file.Object(6, Invariant($"<< /Type /XRef /Size 12 /W [1 4 2] /Index [4 1 6 1] /Root 1 0 R /Length {rows.Length} >>\nstream\n{rows}\nendstream"));
+        var five = file.Object(5, "(five)");
+        var own = file.Position;
+        var ownRows = StreamRows((1, five, 0), (1, own, 0));
+        file.Object(11, Invariant($"<< /Type /XRef /Size 12 /W [1 4 2] /Index [5 1 11 1] /Root 1 0 R /Length {ownRows.Length} >>\nstream\n{ownRows}\nendstream"));
+        var table = file.Position;
+        file.Raw(Invariant($"xref\n0 2\n0000000000 65535 f \n{Row(catalog)}trailer\n<< /Size 12 /Root 1 0 R >>\n"));
+        var pages = file.Object(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>");
+        var page = file.Object(3, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << >> >>");
+        file.Raw("%" + new string('-', 600) + "\n");
+        var newest = file.Position;
+        file.Raw(Invariant($"xref\n0 4\n0000000000 65535 f \n{Row(catalog)}{Row(pages)}{Row(page)}trailer\n<< /Size 12 /Root 1 0 R /Prev 0 /XRefStm {stream} >>\nstartxref\n{newest}\n%%EOF\n"));
+        return (file.Bytes, stream, own, table, newest);
+    }
+
+    /// <summary>
     /// A one-page document saved three times, whose newest table, at <c>Newest</c>, names through <c>/XRefStm</c> the
     /// cross-reference stream of its own revision, stream 6, at <c>Stream</c>, which indexes object 4, <c>(four)</c>,
     /// and itself, and through <c>/Prev</c> the place 12 bytes into that stream's object, inside its dictionary. The
