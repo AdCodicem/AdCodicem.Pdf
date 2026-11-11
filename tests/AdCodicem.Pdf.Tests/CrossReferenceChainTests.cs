@@ -3769,6 +3769,30 @@ public class CrossReferenceChainTests
     }
 
     [Theory]
+    [InlineData(3, false)]
+    [InlineData(3, true)]
+    [InlineData(2, false)]
+    [InlineData(2, true)]
+    [InlineData(0, false)]
+    public void A_section_records_how_many_rows_a_stream_holds_only_where_they_are_fewer_than_it_declares_and_where_a_number_s_digits_start_only_for_a_stream(
+        int rows, bool hybrid)
+    {
+        // As above, the stream's data holding the rows of all three objects it declares, of the first two, or of none. The
+        // count of rows it holds is recorded where it holds fewer, none among them, as its report gives it (#210): a stream
+        // read whole, and a classic table, record no count, -1 rather than one a stream could hold. Where the digits of an
+        // object number start is recorded for the stream alone, whose header was read, at its first byte, the number written
+        // with no sign: a classic table, read from its keyword, records no such place (#327).
+        var (file, oldest, stream, table) = PartialFiles.StreamOverOlderRows(rows: rows, hybrid: hybrid);
+        long held = rows < 3 ? rows : -1;
+
+        using var document = PdfDocument.Open(file);
+
+        document.Reader.Structure.Sections.Select(section => (section.Kind, section.Offset, section.RowsHeld, section.DigitsAt)).Should().Equal(hybrid
+            ? [(XRefSectionKind.Table, table, -1L, -1L), (XRefSectionKind.Stream, stream, held, stream), (XRefSectionKind.Table, oldest, -1L, -1L)]
+            : [(XRefSectionKind.Stream, stream, held, stream), (XRefSectionKind.Table, oldest, -1L, -1L)]);
+    }
+
+    [Theory]
     [InlineData(
         "/Index [4 2 7 1]",
         "its /W gives a field a negative width",
