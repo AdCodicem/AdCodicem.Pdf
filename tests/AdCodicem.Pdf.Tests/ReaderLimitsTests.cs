@@ -2623,6 +2623,27 @@ public class ReaderLimitsTests
     }
 
     [Theory]
+    [InlineData("stream rows")]
+    [InlineData("stream index")]
+    public void A_prev_naming_offset_zero_of_a_table_whose_hybrid_stream_a_guard_stops_stays_the_guard_s(string guard)
+    {
+        // #264: as above, the table's /Prev naming offset 0, the header's line, near which a whole read finds the older table
+        // and reads its /Root. Offset 0 lies in the file, and the chain has not reached what it names: it may name a sound
+        // section, as any other offset in the file may, the guard's, and so are the trailers past it. The guard is the only
+        // report, and nothing is rebuilt for the /Root the table's trailer lacks.
+        var (file, _) = StoppedSectionFiles.HybridWhoseStreamIsStopped("0");
+
+        using var whole = PdfDocument.Open(file);
+        using var document = PdfDocument.Open(file, StoppedSectionFiles.Guard(guard));
+
+        whole.Diagnostics.Select(entry => entry.Code).Should().Equal(PdfDiagnosticCodes.XRefOffsetAdjusted);
+        whole.Catalog.IsOfType(PdfName.Catalog).Should().BeTrue();
+        document.Diagnostics.Select(entry => entry.Code).Should().Equal(StoppedSectionFiles.GuardCode(guard));
+        document.Reader.Structure.TrailersHiddenByGuard.Should().BeTrue();
+        document.WasRepaired.Should().BeFalse("what a guard hides is no reason to rebuild the index (ADR 34)");
+    }
+
+    [Theory]
     [InlineData("/Prev {older} /XRefStm 99999999", "table rows")]
     [InlineData("/Prev {older} /XRefStm 99999999", "table index")]
     [InlineData("/Prev {older} /XRefStm {self}", "table rows")]

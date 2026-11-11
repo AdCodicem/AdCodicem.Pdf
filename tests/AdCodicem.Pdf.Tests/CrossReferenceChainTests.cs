@@ -5239,7 +5239,8 @@ public class CrossReferenceChainTests
         // /Prev left unread, the /Prev looped back to it, and what only the oldest table indexes, the page, was found by
         // rebuilding the index. The /XRefStm is not followed: the /Prev reads the section whole, its own /Prev with it, and the
         // /XRefStm, which names no stream of its revision, is reported (#156). Only an offset that names the end of line is
-        // imprecise: what lies 7 bytes before is no white space.
+        // imprecise, and its naming falls short of the section by that byte: what lies 7 bytes before is no white space, and
+        // an /XRefStm that names the offset the /Prev names falls short by none.
         var built = stream ? HybridFiles.NamingThePreviousStream().File : HybridFiles.NamingThePreviousTable();
         var named = PreviousSection(built, stream);
         var file = Encoding.Latin1.GetBytes(junk + Encoding.Latin1.GetString(built).Replace(
@@ -5250,11 +5251,11 @@ public class CrossReferenceChainTests
         using var document = PdfDocument.Open(file);
 
         var sections = document.Reader.Structure.Sections;
-        sections.Select(section => (section.State, section.Offset)).Should().Equal(
-            (XRefSectionState.Read, newest),
-            (XRefSectionState.NamedAgain, previous - shortBy),
-            (XRefSectionState.Read, previous),
-            (XRefSectionState.Read, oldest));
+        sections.Select(section => (section.State, section.Offset, section.Padding)).Should().Equal(
+            (XRefSectionState.Read, newest, 0),
+            (XRefSectionState.NamedAgain, previous - shortBy, shortBy == 1 ? 1 : 0),
+            (XRefSectionState.Read, previous, 0),
+            (XRefSectionState.Read, oldest, 0));
         sections[1].ReadAs.Should().BeSameAs(sections[2]);
         sections[2].NamedBy.Should().Be("/Prev");
         document.Reader.Structure.LoopOffset.Should().Be(-1);
