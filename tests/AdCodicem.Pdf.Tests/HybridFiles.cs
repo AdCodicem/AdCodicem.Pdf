@@ -500,9 +500,9 @@ internal static class HybridFiles
     /// The document <see cref="NamingAnObjectBesideTheStream"/> writes, with object 4, <paramref name="four"/> and no
     /// <c>endobj</c>, ending the file: the newest table, at <c>Newest</c>, comes before the first table, a comment of 1,200
     /// dashes between them, and the <c>startxref</c> that names it comes after object 8, right before object 4, at
-    /// <c>Four</c>, 38 bytes past the place the newest table's <c>/XRefStm</c> names, 20 bytes into object 8's string. The
-    /// stream, at <c>Stream</c>, starts 212 bytes before that place, and the first table, at <c>Oldest</c>, 418 bytes
-    /// before object 4: the search near the <c>/XRefStm</c> comes to object 4 before the stream, and the one near the
+    /// <c>Four</c>, 38 bytes past the place the newest table's <c>/XRefStm</c> names, 20 bytes into object 8, inside its
+    /// string. The stream, at <c>Stream</c>, starts 212 bytes before that place, and the first table, at <c>Oldest</c>, 418
+    /// bytes before object 4: the search near the <c>/XRefStm</c> comes to object 4 before the stream, and the one near the
     /// <c>/Prev</c> reaches the first table.
     /// </summary>
     public static (byte[] File, long Oldest, long Four, long Stream, long Newest) NamingAnObjectThatEndsTheFile(string four)
