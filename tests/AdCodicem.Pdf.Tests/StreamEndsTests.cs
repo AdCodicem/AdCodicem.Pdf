@@ -17,6 +17,7 @@ public class StreamEndsTests
     [InlineData("12 % endstream\n0 obj", true, 5, -1)]
     [InlineData("12 % endstream\n %\n0 obj", false, -1, 0)]
     [InlineData("12 % endstream\nobj", false, 5, -1)]
+    [InlineData("12 % endstream\n0 R", false, 5, -1)]
     [InlineData("\nendstream", false, 0, -1)]
     [InlineData("\nendstream", true, 0, -1)]
     [InlineData("\r\nendstream", false, 0, -1)]
@@ -30,11 +31,25 @@ public class StreamEndsTests
         // is a cross-reference stream whose /Length the chain could not read, whose last row may end in one (#220). A header
         // whose tokens a comment holding the keyword parts stops the search first (#261), an empty comment after white space
         // on a line between them as well, but where the stream is such a cross-reference stream, which no header stops; an
-        // obj past the keyword's line that ends no header, one number alone before it, leaves the keyword to end the data.
+        // obj past the keyword's line that ends no header, one number alone before it, leaves the keyword to end the data,
+        // and so does a token other than obj past the run of digits that could have been a header's generation, as the R of
+        // a reference the comment parts from its number.
         var (end, at) = Search(data, deferred);
 
         end.Should().Be(found < 0 ? -1 : DataStart + found);
         at.Should().Be(header < 0 ? -1 : DataStart + header);
+    }
+
+    [Fact]
+    public void A_header_that_starts_at_the_first_byte_of_the_file_stops_the_search_as_one_further_on_does()
+    {
+        // No stream's data starts at the start of a file, which its dictionary and its stream keyword come before, but the
+        // search knows only where the data starts: a header whose tokens a comment holding the keyword parts, and which
+        // starts there, at 0, stops the search as one further on does (#261), and the keyword ends no data.
+        var (end, at) = Search("12 % endstream\n0 obj", deferred: false, dataStart: 0);
+
+        end.Should().Be(-1);
+        at.Should().Be(0);
     }
 
     [Theory]
@@ -73,17 +88,17 @@ public class StreamEndsTests
     }
 
     /// <summary>
-    /// Searches <paramref name="data"/>, which starts at <see cref="DataStart"/>, in one read that ends where the search does,
-    /// and gives where the data ends and where the header that stopped the search starts, -1 for either that is none.
+    /// Searches <paramref name="data"/>, which starts at <paramref name="dataStart"/>, in one read that ends where the search
+    /// does, and gives where the data ends and where the header that stopped the search starts, -1 for either that is none.
     /// </summary>
-    private static (long Found, long Header) Search(string data, bool deferred)
+    private static (long Found, long Header) Search(string data, bool deferred, long dataStart = DataStart)
     {
         var bytes = Encoding.Latin1.GetBytes(data);
         Span<byte> carried = stackalloc byte[HeaderText.CarriedLength];
         Span<long> carriedAt = stackalloc long[HeaderText.CarriedLength];
-        var text = new HeaderText(carried, carriedAt, DataStart);
+        var text = new HeaderText(carried, carriedAt, dataStart);
         var pending = default(PendingEndStream);
-        text.Read(bytes, DataStart);
+        text.Read(bytes, dataStart);
         var found = StreamEnds.SearchStretch(text, endsRange: true, deferred, ref pending, out var header);
         return (found, header);
     }
