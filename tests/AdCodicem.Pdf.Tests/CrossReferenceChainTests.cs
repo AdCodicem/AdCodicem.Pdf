@@ -7178,9 +7178,9 @@ public class CrossReferenceChainTests
         // The same file, the stream giving no /Prev and its rows left unread, by a filter the library cannot run or a negative
         // width: the /XRefStm reports it where it names it. The header the search near the place the /Prev names finds at the
         // digit past the signs is that stream, which the chain reached and could not read; the bytes searched start at a
-        // later sign of the run or at the digit, so that the run does not lie within them, and the header, asked about at
-        // the digit, where no token starts, declares nothing: it is dropped, the /Prev's section missing, and the stream is
-        // reported once (#327).
+        // later sign of the run or at the digit, so that the run does not lie within them, and the header is told by where
+        // that stream's reading found its digits, as a section the chain reached: passed over, nothing read at it, the
+        // /Prev's section missing, and the stream is reported once (#327).
         var (file, _, stream, newest) = HybridFiles.NamingTheUpdatesStreamAtOrInsideItsNumber(
             into, "nothing", catalogInStream: true, header, widths: widths, filter: filter, prevFrom: prevFrom);
         var named = stream + into;
@@ -8094,11 +8094,12 @@ public class CrossReferenceChainTests
     [InlineData(0)]
     public void A_stream_passed_over_near_a_hybrid_table_s_prev_that_a_newer_table_s_xrefstm_read_at_its_header_or_inside_its_object_number_is_not_reported_as_passed_over(int into)
     {
-        // As above, the search near the table's /Prev passes over stream 11, which gives no /Prev, and takes stream 6, whose
-        // /Prev names the oldest table. A newer table names stream 11 through /XRefStm, at its header or 1 byte past its
-        // start, inside its object number: the chain read it there, whole, before the search came to its header. Named
-        // inside its number, it is the same stream, told by its data, and was reported as a stream the chain did not read,
-        // its objects said to be missing from the index, though object 10, which only it indexes, was read from it (#156).
+        // As in the tests above, the search near the table's /Prev passes over stream 11, which gives no /Prev, and takes
+        // stream 6, whose /Prev names the oldest table. A newer table names stream 11 through /XRefStm, at its header or 1
+        // byte past its start, inside its object number: the chain read it there, whole, before the search came to its
+        // header. Named inside its number, it is the same stream, told by its data, and was reported as a stream the chain
+        // did not read, its objects said to be missing from the index, though object 10, which only it indexes, was read from
+        // it (#156).
         var (file, oldest, stream, own, newest, newer) = HybridFiles.NamingTheTablesOwnStreamFromANewerTable(into);
         using var document = PdfDocument.Open(file);
 

@@ -3841,12 +3841,12 @@ public class GuardCutValueTests
     public void A_section_whose_length_waits_for_the_chain_is_the_guard_s_where_the_guard_cut_its_size_or_index_whatever_its_filters_decode(
         string values, string five, string fault)
     {
-        // As above, but object 6's /Length is the reference 2 0 R, which only stream 7 places, the /Prev naming object 6 in
-        // its stead: the length waits for the chain, and the data, taken up to its endstream, is not data whose extent the
-        // file gives. Read whole, the stream cannot be read, its filter decoding nothing of its data, the file's fault. Under
-        // the guard, which cut its /Size or its whole /Index, whether its filters decode anything of data whose extent is not
-        // the file's is not judged: the section is the guard's, the cut value hiding whether its rows are, and the guard is
-        // reached once the chain is read (#221, #263).
+        // As in the theory before the test above, but object 6's /Length is the reference 2 0 R, which only stream 7 places,
+        // the /Prev naming object 6 in its stead: the length waits for the chain, and the data, taken up to its endstream,
+        // is not data whose extent the file gives. Read whole, the stream cannot be read, its filter decoding nothing of its
+        // data, the file's fault. Under the guard, which cut its /Size or its whole /Index, whether its filters decode
+        // anything of data whose extent is not the file's is not judged: the section is the guard's, the cut value hiding
+        // whether its rows are, and the guard is reached once the chain is read (#221, #263).
         var built = ChainFiles.UnderAnUpdate(
             "/Type /XRef /Size 8 /W [1 4 2] /Length {length}",
             five + new string(' ', 1100),
