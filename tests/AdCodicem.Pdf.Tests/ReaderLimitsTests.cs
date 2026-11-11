@@ -2526,10 +2526,17 @@ public class ReaderLimitsTests
     [InlineData("/Prev {older}", "table index")]
     [InlineData("/Prev {older}", "stream rows")]
     [InlineData("/Prev {older}", "stream index")]
+    [InlineData("/Prev 0", "table rows")]
+    [InlineData("/Prev 0", "table index")]
+    [InlineData("/Prev 0", "stream rows")]
+    [InlineData("/Prev 0", "stream index")]
+    [InlineData("/XRefStm 0", "table rows")]
+    [InlineData("/XRefStm 0", "table index")]
     public void A_link_a_section_a_guard_stops_gives_that_may_be_sound_stays_the_guard_s(string links, string guard)
     {
         // #264: the /Prev, or a table's /XRefStm, is a reference to a row the guard left unread — free, which a whole read
-        // reports —, or names the older section, in the file. Either may name a sound section as far as the reader can tell
+        // reports —, or names the older section, in the file, or offset 0, where the header starts, which the chain has not
+        // reached, and near which a whole read finds a section. Each may name a sound section as far as the reader can tell
         // without reading past the guard: the chain ends there for the guard, which is the only report, and the older
         // trailers are the guard's to hide.
         var (file, _) = StoppedSectionFiles.Stopped(links, stream: guard.StartsWith("stream", StringComparison.Ordinal));
@@ -2994,14 +3001,16 @@ public class ReaderLimitsTests
     [InlineData("the last row declared", "22 0 R", true)]
     [InlineData("one past the last row declared", "23 0 R", false)]
     [InlineData("a row of a later subsection", "31 0 R", true)]
+    [InlineData("the first object's row, declared last", "1 0 R", true)]
     [InlineData("a number between two subsections", "25 0 R", false)]
     [InlineData("a row past the data a guard cut", "21 0 R", true)]
     [InlineData("a row its data, decoded whole, does not hold", "25 0 R", false)]
     public void A_prev_a_stream_a_guard_stopped_writes_as_a_reference_is_unknown_only_for_a_row_it_left_unread(string shape, string prev, bool hidden)
     {
         // The newest section, a cross-reference stream with no /Root, holds rows for 0 and 2 to 22 — or, for the later
-        // subsection, 2 to 21 then 30 to 32 —, and MaxIndexEntries fills at the row for object 9; or MaxDecodedStreamLength
-        // leaves it the data of ten rows. Its /Prev names an object whose row the guard left unread, which may place the
+        // subsection, 2 to 21 then 30 to 32, and for the first object's row, 2 to 22 then 1 —, and MaxIndexEntries fills at
+        // the row for object 9; or MaxDecodedStreamLength leaves it the data of ten rows. Its /Prev names an object whose row
+        // the guard left unread — object 1 as any other, only object 0 being one no read places —, which may place the
         // older section: the trailers are hidden. One past the rows the stream declares is the file's to lack, as a whole
         // read finds: reported, and the index rebuilt for the /Root; and so is one it declares but its data, decoded whole,
         // does not hold (X1-1), or one between two subsections, which no row numbers.
@@ -3009,6 +3018,7 @@ public class ReaderLimitsTests
         {
             "a row of a later subsection" or "a number between two subsections" => NewestStreamNaming("[0 1 2 20 30 3]", [0, .. Numbers(2, 20), 30, 31, 32], prev, refused: -1, size: 33),
             "a row its data, decoded whole, does not hold" => NewestStreamNaming("[0 1 2 21 25 1]", [0, .. Numbers(2, 21)], prev, refused: -1, size: 26),
+            "the first object's row, declared last" => NewestStreamNaming("[0 1 2 21 1 1]", [0, .. Numbers(2, 21), 1], prev, refused: -1),
             _ => NewestStreamNaming("[0 1 2 21]", [0, .. Numbers(2, 21)], prev, refused: -1),
         };
         var limits = shape == "a row past the data a guard cut"
