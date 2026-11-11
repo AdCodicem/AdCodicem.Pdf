@@ -2242,6 +2242,54 @@ public class CrossReferenceChainTests
     }
 
     [Theory]
+    [InlineData(513)]
+    [InlineData(514)]
+    [InlineData(515)]
+    public void The_word_xref_on_the_header_line_is_no_section_found_moved_whichever_byte_of_that_line_the_window_near_an_offset_starts_at(long named)
+    {
+        // The header line reads %PDF-1.7 xref, and the update's /Prev names a place inside the comment past the page tree,
+        // 513 to 515 bytes into the file, where no section starts; the first table lies more than 512 bytes past that place,
+        // out of reach. The window of the search near the place starts at the file's first byte, the header's %, or at the
+        // byte past it, or at the one past that: the word xref is lexed from the start of the line it is on, the file's
+        // first, whether the window holds that start or the line is read again from it, and the % there makes the whole line
+        // a comment. The word declares nothing, and is dropped, the /Prev's section missing, rather than taken for the
+        // section found moved, which cannot be read (#281).
+        var (file, update) = NearbyFiles.UpdateNamingACommentPastAHeaderLine("1.7 xref", named, table: 1200);
+        using var document = PdfDocument.Open(file);
+
+        document.Reader.Structure.Sections.Select(section => (section.NamedBy, section.State, section.Kind, section.Offset)).Should().Equal(
+            ("startxref", XRefSectionState.Read, XRefSectionKind.Table, update),
+            ("/Prev", XRefSectionState.NotFound, XRefSectionKind.Unknown, named));
+        document.Diagnostics.Select(diagnostic => (diagnostic.Code, diagnostic.Position)).Should().Equal((PdfDiagnosticCodes.XRefSectionMissing, named));
+    }
+
+    [Fact]
+    public void The_word_xref_on_the_file_s_first_line_is_lexed_from_the_window_near_an_offset_that_holds_that_line_with_nothing_read_again()
+    {
+        // The header line reads %PDF-1.7, two spaces and the word xref, or %PDF-1.7 alone, and the next line %xref, the word
+        // 10 bytes into the file either way; the update's /Prev names a place 300 bytes into it, inside the comment past the
+        // page tree, and the first table lies 350 bytes past that place, farther than the word, within reach. The window of
+        // the search near the place starts at the file's first byte: the word, tried before the table, is lexed from the
+        // start of its line in the window — the file's first byte, or the byte past the end of line —, a comment's either
+        // way, and dropped, the search going on to the table, found moved. Nothing is read again for the word on the file's
+        // first line, which the window holds from its start: the file is read as much as where the word is on the second
+        // line (#281).
+        Read("1.7  xref").Should().Be(Read("1.7\n%xref"));
+
+        static long Read(string version)
+        {
+            var (file, update) = NearbyFiles.UpdateNamingACommentPastAHeaderLine(version, named: 300, table: 650);
+            var source = new StrictCountingSource(file);
+            using var document = PdfDocument.Open(source, options: null, ownsSource: true);
+            document.Reader.Structure.Sections.Select(section => (section.NamedBy, section.State, section.Kind, section.Offset)).Should().Equal(
+                ("startxref", XRefSectionState.Read, XRefSectionKind.Table, update),
+                ("/Prev", XRefSectionState.Relocated, XRefSectionKind.Table, 650L));
+            document.Diagnostics.Select(diagnostic => (diagnostic.Code, diagnostic.Position)).Should().Equal((PdfDiagnosticCodes.XRefOffsetAdjusted, 650L));
+            return source.BytesRead;
+        }
+    }
+
+    [Theory]
     [InlineData("a line that starts before the bytes searched", "\n")]
     [InlineData("a line that starts before the bytes searched", "\r")]
     [InlineData("a line that starts in the bytes searched", "\n")]
@@ -4406,6 +4454,44 @@ public class CrossReferenceChainTests
         index.TryGet(3, out _).Should().BeTrue();
         index.TryGet(100, out _).Should().BeFalse();
         document.WasRepaired.Should().BeFalse("the catalog is the oldest table's alone");
+    }
+
+    [Theory]
+    [InlineData(4095, false)]
+    [InlineData(4096, true)]
+    public void A_range_a_table_loses_that_meets_one_lost_before_the_last_counts_toward_the_bound_as_a_range_of_its_own(int apart, bool every)
+    {
+        // The newest table loses every other number from 100, 4,095 or 4,096 of them, in as many one-row subsections, and then
+        // object 100's row again, which meets the first range lost and not the last: the ranges lost are not searched, and it
+        // counts as one more, 4,096 ranges within the bound or 4,097 past it, though sorted they join into one fewer. Within
+        // the bound, the oldest table's row for object 3 stands; past it, every number is refused, and the catalog, which
+        // only the oldest table indexes, is found by rebuilding the index (#210).
+        var lost = new StringBuilder();
+
+        for (var i = 0; i < apart; i++)
+        {
+            lost.Append(CultureInfo.InvariantCulture, $"{100 + (2 * i)} 1\n0 0 x\n");
+        }
+
+        lost.Append("100 1\n0 0 x\n");
+        var file = new HandWrittenFile();
+        var catalog = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>");
+        var pages = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>");
+        var three = file.Object(3, "(three)");
+        var oldest = file.Table(4, new Dictionary<int, long> { [1] = catalog, [2] = pages, [3] = three }, "/Size 4 /Root 1 0 R");
+        var newest = file.Position;
+        file.Raw(Invariant($"xref\n0 1\n0000000000 65535 f \n{lost}trailer\n<< /Size 10000 /Root 1 0 R /Prev {oldest} >>\nstartxref\n{newest}\n%%EOF\n"));
+
+        using var document = PdfDocument.Open(file.Bytes);
+
+        var index = document.Reader.ChainIndex!;
+        index.TryGet(3, out _).Should().Be(!every);
+        index.TryGet(100, out _).Should().BeFalse();
+        document.Diagnostics.Select(diagnostic => diagnostic.Code).Should().Equal(
+            every
+                ? [PdfDiagnosticCodes.XRefSectionUnreadable, PdfDiagnosticCodes.XRefRebuilt]
+                : [PdfDiagnosticCodes.XRefSectionUnreadable]);
+        document.WasRepaired.Should().Be(every);
     }
 
     [Theory]
@@ -6959,6 +7045,38 @@ public class CrossReferenceChainTests
         new PdfValidator().Validate(validated).Findings.Where(finding => finding.Severity == PdfValidationSeverity.Error)
             .Select(finding => (finding.RuleId, finding.Location.Position)).Should().Equal(
                 (PdfValidationRuleIds.XRefSectionMalformed, named), (PdfValidationRuleIds.XRefSectionNotFound, previous));
+    }
+
+    [Theory]
+    [InlineData("++13 0 obj", 0, 514)]
+    [InlineData("+++13 0 obj", 0, 515)]
+    [InlineData("+++13 0 obj", 1, 515)]
+    public void A_hybrid_table_s_own_stream_read_from_a_sign_before_the_window_near_its_prev_and_cut_short_before_it_is_read_again_declares_nothing_there(
+        string header, int into, int prevFrom)
+    {
+        // The same file, the stream giving through /Prev the oldest table's offset, read through a source another process cuts
+        // short past the stream's dictionary as the search near the place the table's /Prev names reads its window. The
+        // /XRefStm read the stream whole, from a sign one or two bytes before that window, and the header the search finds at
+        // the digit past the signs is that stream, told by its digits and tried where its reading started: its /Prev, which
+        // names another offset, makes it no stream that may be the table's own. Read again there, it holds no data past its
+        // dictionary, and cannot be read; its place, which the window does not hold, has no line lexed: it declares nothing,
+        // and is dropped, the /Prev's section missing, rather than taken for the /Prev's section found moved, which cannot be
+        // read (#327).
+        var (file, _, stream, newest) = HybridFiles.NamingTheUpdatesStreamAtOrInsideItsNumber(
+            into, "the oldest table", catalogInStream: true, header, prevFrom: prevFrom);
+        var named = stream + into;
+        var previous = stream + prevFrom;
+        var window = previous - PdfFileReader.NearbySearchRadius - 1;
+        named.Should().BeLessThan(window, "the window starts past the sign the reading started at");
+        using var source = new CutShortSource(file);
+        source.CutWhenReadAt(window, (int)stream + file.AsSpan((int)stream).IndexOf("\nstream\n"u8));
+        using var document = PdfDocument.Open(source, options: null, ownsSource: false);
+
+        document.Reader.Structure.Sections.Select(section => (section.NamedBy, section.State, section.Kind, section.Offset)).Should().Equal(
+            ("startxref", XRefSectionState.Read, XRefSectionKind.Table, newest),
+            ("/XRefStm", XRefSectionState.Read, XRefSectionKind.Stream, named),
+            ("/Prev", XRefSectionState.NotFound, XRefSectionKind.Unknown, previous));
+        document.Diagnostics.Select(diagnostic => (diagnostic.Code, diagnostic.Position)).Should().Equal((PdfDiagnosticCodes.XRefSectionMissing, previous));
     }
 
     [Theory]

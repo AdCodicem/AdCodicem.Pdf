@@ -897,6 +897,28 @@ internal static class NearbyFiles
         return (file.Bytes, spaces, original, update);
     }
 
+    /// <summary>
+    /// A document saved twice, whose header line is <c>%PDF-</c> followed by <paramref name="version"/> — such as
+    /// <c>1.7 xref</c>, the word <c>xref</c> in the comment the header is, or <c>1.7</c>, an end of line and the comment
+    /// <c>%xref</c> —, then its catalog, an empty page tree and a comment, past which the first table, at
+    /// <paramref name="table"/>, indexes them. The update's table, at <c>Update</c>, indexes them too, and names through
+    /// <c>/Prev</c> the place <paramref name="named"/>, inside the comment, where no section starts.
+    /// </summary>
+    public static (byte[] File, long Update) UpdateNamingACommentPastAHeaderLine(string version, long named, long table)
+    {
+        var file = new HandWrittenFile(version: version);
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"),
+        };
+        named.Should().BeInRange(file.Position + 1, table - 2, "the place named lies inside the comment");
+        PadTo(file, table);
+        file.Table(3, rows, "/Size 3 /Root 1 0 R");
+        var update = file.Table(3, rows, string.Create(CultureInfo.InvariantCulture, $"/Size 3 /Root 1 0 R /Prev {named}"));
+        return (file.Bytes, update);
+    }
+
     /// <summary>Writes a comment of <paramref name="length"/> bytes, its end of line counted, when it is more than none.</summary>
     private static void Gap(HandWrittenFile file, int length)
     {
