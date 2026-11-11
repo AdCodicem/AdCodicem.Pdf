@@ -1319,3 +1319,13 @@ review. Then the batch-wide ADR 53 step.
   init caps the bound at Array.MaxLength, so the reach passes it by at most 32 bytes, only past ~2 GB of white space.
   Filed #343 (debt, area: reader, M23), as the round 4 triage decided. The refuter count: 39 of 245 (not 246).
   Left in status-final: PR, UNIT, UNIT_REMOTE, COVERAGE, COVERAGE_LEFT, BENCH, HEAD, CLAMP_DEBT (= #343, M23).
+- Final verification (wf_992edef5-b25) at 2c7cf01 (test comment 'four rows, all of a reserved type', Refs #260):
+  build 0 warnings, format clean; check_msgs 219 commits, 218 OK, 761ce0b flagged (87-column Refs line, recorded);
+  whole suite with 242 remote documents 11,155 / 11,152 / 3 skipped in 3 min 58 s; coverage (CI command, Windows)
+  8,466 / 8,445 / 1 failed (#336's test, passes alone 3/3) / 20 skipped; patch 1,461 coverable, 1,460 run, 1,457
+  whole (99.73 %), src/ 99.93 %; not whole: PdfFileReader.cs:4075/4077 and :5567 (defensive), SizeWrongRule.cs:71
+  (compiler ?.); timing groups 3x each all green (timing 25, budget 14, alloc 20, memory 19, hostile 263); hybrid
+  differential 9,228 blocks byte-identical to r13a and r12i; benchmarks ShortRun twice alternated vs main: time ratios
+  0.96-1.09 within spread, allocation +~770 B an opening, +~280 B a section on a 1,000-section chain, +20-30 B a stream
+  with a wrong /Length; site 269 pages, 0 warnings. Results: W/verify/final/result.json, result.md, bench/.
+- PR body and status.md last fill: wf_a42a1b3e-478 (task wc23dnxjp).
