@@ -172,6 +172,16 @@ public class HeaderTextTests
         new[] { text.PositionOf(-2), text.PositionOf(-1), text.PositionOf(0) }.Should().Equal(-1, -1, DataStart + last);
     }
 
+    [Fact]
+    public void A_byte_carried_across_an_end_of_line_is_placed_alike_whatever_the_room_the_search_is_given_held()
+    {
+        // 1 and 2 end a line, and white space starts the next, where the read after them starts: the runs carried into that
+        // read are read back through the two numbers carried before the line, each written with a space after it, and the
+        // line's white space runs back into the space after 2. The room may be rented, or have served a search before: every
+        // byte carried is placed from what the reads held, none from what the room held.
+        CarriedPositions("1 2\n  ", held: 0).Should().Equal(CarriedPositions("1 2\n  ", held: 7));
+    }
+
     /// <summary>
     /// Gives where each number <paramref name="data"/>, which starts at <see cref="DataStart"/>, carries into a read after its
     /// end, read a part at a time as <see cref="FirstHeader"/> reads it.
@@ -193,6 +203,31 @@ public class HeaderTextTests
         }
 
         return found[..text.CarriedStarts(found)].ToArray();
+    }
+
+    /// <summary>
+    /// Gives where each of the five bytes <paramref name="data"/>, which starts at <see cref="DataStart"/>, carries into the
+    /// read after its end is placed in the file, the room for the places carried holding <paramref name="held"/> throughout
+    /// before the search starts.
+    /// </summary>
+    private static long[] CarriedPositions(string data, long held)
+    {
+        var bytes = Encoding.Latin1.GetBytes(data);
+        Span<byte> carried = stackalloc byte[HeaderText.CarriedLength];
+        Span<long> carriedAt = stackalloc long[HeaderText.CarriedLength];
+        carriedAt.Fill(held);
+        var text = new HeaderText(carried, carriedAt, DataStart);
+        text.Read(bytes, DataStart);
+        text.CarryTo(DataStart + bytes.Length);
+        text.Read("0 obj"u8, DataStart + bytes.Length);
+        var positions = new long[5];
+
+        for (var index = -5; index < 0; index++)
+        {
+            positions[index + 5] = text.PositionOf(index);
+        }
+
+        return positions;
     }
 
     /// <summary>
