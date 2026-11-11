@@ -36,6 +36,26 @@ public class StreamEndsTests
         at.Should().Be(header < 0 ? -1 : DataStart + header);
     }
 
+    [Theory]
+    [InlineData("12 % endstream", -1)]
+    [InlineData("% endstream", -1)]
+    [InlineData("/Name % endstream", 8)]
+    [InlineData("12 0 R % endstream", 9)]
+    [InlineData("(12) % endstream", 7)]
+    [InlineData("12\n/Name % endstream", 11)]
+    public void A_keyword_in_a_comment_waits_for_the_reads_after_it_only_where_its_line_may_begin_a_header(
+        string data, long found)
+    {
+        // A keyword in a comment may lie between the tokens of a header that ends past it, which only what follows its line
+        // says (#261): where the line holds no token before the comment, or a run of digits last, the read that holds it,
+        // which the search goes on past, ends no data and leaves the keyword waiting. Any other token last — a name, a
+        // keyword, a string — begins no header, whatever the lines before end in, and the keyword ends the data in its read.
+        var (end, waits) = SearchFirstRead(data);
+
+        end.Should().Be(found < 0 ? -1 : DataStart + found);
+        waits.Should().Be(found < 0);
+    }
+
     /// <summary>
     /// Searches <paramref name="data"/>, which starts at <see cref="DataStart"/>, in one read that ends where the search does,
     /// and gives where the data ends and where the header that stopped the search starts, -1 for either that is none.
@@ -50,5 +70,21 @@ public class StreamEndsTests
         text.Read(bytes, DataStart);
         var found = StreamEnds.SearchStretch(text, endsRange: true, deferred, ref pending, out var header);
         return (found, header);
+    }
+
+    /// <summary>
+    /// Searches <paramref name="data"/>, which starts at <see cref="DataStart"/>, as the first read of a search that goes on
+    /// past it, and gives where the data ends, -1 for none, and whether a keyword in a comment waits for the reads after it.
+    /// </summary>
+    private static (long Found, bool Waits) SearchFirstRead(string data)
+    {
+        var bytes = Encoding.Latin1.GetBytes(data);
+        Span<byte> carried = stackalloc byte[HeaderText.CarriedLength];
+        Span<long> carriedAt = stackalloc long[HeaderText.CarriedLength];
+        var text = new HeaderText(carried, carriedAt, DataStart);
+        var pending = default(PendingEndStream);
+        text.Read(bytes, DataStart);
+        var found = StreamEnds.SearchStretch(text, endsRange: false, deferred: false, ref pending, out _);
+        return (found, pending.IsPending);
     }
 }
