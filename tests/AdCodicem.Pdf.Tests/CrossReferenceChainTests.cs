@@ -2542,6 +2542,37 @@ public class CrossReferenceChainTests
     }
 
     [Fact]
+    public void A_loop_through_an_offset_a_section_was_found_moved_from_is_placed_there_though_a_section_read_since_starts_past_its_white_space()
+    {
+        // The newest table's /Prev names the end of line before stream 7, whose /W is object 9, which no section read so far
+        // places: the stream cannot be read there, and the search near the offset finds the table past it. That table places
+        // object 9, and its /Prev names the stream's header, where the stream now reads; the stream's /Prev names the end of
+        // line again. The chain found its section moved from that offset, and the loop is placed where it was named, not at
+        // the stream read since past the white space there (#188).
+        var file = new HandWrittenFile();
+        var catalog = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>");
+        var pages = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>");
+        var widths = file.Object(9, "[1 4 2]");
+        var stream = file.Position;
+        var named = stream - 1;
+        file.Object(7, Invariant($"<< /Size 1 /W 9 0 R /Prev {named} /Length 7 >>\nstream\n\0\0\0\0\0ÿÿ\nendstream"));
+        var moved = file.Table(10, new() { [1] = catalog, [2] = pages, [9] = widths }, Invariant($"/Size 10 /Root 1 0 R /Prev {stream}"));
+        file.Raw("%" + new string('-', 1200) + "\n");
+        var newest = file.Table(3, new() { [1] = catalog, [2] = pages }, Invariant($"/Size 10 /Root 1 0 R /Prev {named}"));
+        using var document = PdfDocument.Open(file.Bytes);
+
+        document.Reader.Structure.Sections.Select(section => (section.NamedBy, section.State, section.Offset)).Should().Equal(
+            ("startxref", XRefSectionState.Read, newest),
+            ("/Prev", XRefSectionState.Relocated, moved),
+            ("/Prev", XRefSectionState.Read, stream));
+        document.Reader.Structure.LoopOffset.Should().Be(named);
+        var loop = document.Diagnostics.Should().ContainSingle(diagnostic => diagnostic.Code == PdfDiagnosticCodes.XRefChainCycle).Which;
+        loop.Position.Should().Be(named);
+        loop.Message.Should().Be(Invariant(
+            $"The cross-reference chain loops back on itself: the /Prev of the section at offset {stream} names offset {named}, which the chain has already read."));
+    }
+
+    [Fact]
     public void A_table_read_past_the_white_space_its_offset_falls_short_by_is_no_place_a_later_section_is_found()
     {
         // The update's /Prev names the end of line before the first table's keyword, where the table is read as it stands;
@@ -8893,6 +8924,34 @@ public class CrossReferenceChainTests
         document.Reader.Structure.LoopTarget.Should().Be(XRefLoopTarget.Named);
         document.Diagnostics.Should().ContainSingle(diagnostic => diagnostic.Code == PdfDiagnosticCodes.XRefChainCycle).Which.Message.Should().Be(Invariant(
             $"The cross-reference chain loops back on itself: the /Prev of the section at offset {oldest} names offset {nine}, which the chain has already named."));
+    }
+
+    [Fact]
+    public void A_prev_looping_back_through_the_white_space_before_an_object_an_xrefstm_named_that_only_gives_a_width_is_placed_where_it_names()
+    {
+        // As above, but both links name the end of line before object 9: the chain crossed it, read the object, and reached no
+        // section there. The loop runs through the offset it named, and is placed there, not where the object starts, as it
+        // would be at a section the chain reached past that end of line (#188).
+        var file = new HandWrittenFile();
+        var catalog = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>");
+        var pages = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>");
+        var nine = file.Object(9, "<< /Size 10 /W [1 -4 2] /Length 0 >>\nstream\n\nendstream");
+        var named = nine - 1;
+        file.Raw("%" + new string('-', 1200) + "\n");
+        var oldest = file.Position;
+        file.Raw(Invariant($"xref\n0 3\n0000000000 65535 f \n{catalog:D10} 00000 n \n{pages:D10} 00000 n \ntrailer\n<< /Size 3 /Root 1 0 R /Prev {named} >>\nstartxref\n{oldest}\n%%EOF\n"));
+        var newest = file.Position;
+        file.Raw(Invariant($"xref\n0 1\n0000000000 65535 f \ntrailer\n<< /Size 3 /Root 1 0 R /Prev {oldest} /XRefStm {named} >>\nstartxref\n{newest}\n%%EOF\n"));
+        using var document = PdfDocument.Open(file.Bytes);
+
+        var lost = document.Reader.Structure.Sections[1];
+        (lost.State, lost.Offset, lost.Padding).Should().Be((XRefSectionState.Malformed, named, 1));
+        document.Reader.Structure.LoopOffset.Should().Be(named);
+        document.Reader.Structure.LoopTarget.Should().Be(XRefLoopTarget.Named);
+        var loop = document.Diagnostics.Should().ContainSingle(diagnostic => diagnostic.Code == PdfDiagnosticCodes.XRefChainCycle).Which;
+        loop.Position.Should().Be(named);
+        loop.Message.Should().Be(Invariant(
+            $"The cross-reference chain loops back on itself: the /Prev of the section at offset {oldest} names offset {named}, which the chain has already named."));
     }
 
     [Theory]
