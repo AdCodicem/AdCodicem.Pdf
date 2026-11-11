@@ -4860,6 +4860,39 @@ public class CrossReferenceChainTests
         document.WasRepaired.Should().BeFalse();
     }
 
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void An_xrefstm_naming_its_own_table_is_reported_before_the_chain_reads_what_that_table_s_prev_names(bool throughTheHeader)
+    {
+        // The newest table, right past the header, names itself through /XRefStm, no stream of its revision, and the older
+        // table through /Prev. startxref and the /XRefStm name it by its keyword's offset, or by offset 0, the header's line,
+        // which the chain reads through to the keyword (#188): either way the /XRefStm names what the chain has reached. The
+        // naming is reported as the chain judges it, before the chain reads on: a source that fails as the chain comes to the
+        // offset the /Prev names leaves that report made, and the source's own exception is the one that leaves (#156).
+        var file = new HandWrittenFile();
+        var named = throughTheHeader ? 0 : file.Position;
+        file.Raw(Invariant($"xref\n0 1\n0000000000 65535 f \ntrailer\n<< /Size 4 /Root 1 0 R /XRefStm {named} /Prev 00000 >>\n"));
+        var catalog = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>");
+        var pages = file.Object(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>");
+        var page = file.Object(3, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] >>");
+        var older = file.Table(4, new() { [1] = catalog, [2] = pages, [3] = page }, "/Size 4 /Root 1 0 R");
+        var bytes = Encoding.Latin1.GetBytes(Encoding.Latin1.GetString(file.Bytes)
+            .Replace("/Prev 00000", Invariant($"/Prev {older:D5}"), StringComparison.Ordinal)
+            .Replace(Invariant($"startxref\n{older}\n"), Invariant($"startxref\n{named}\n"), StringComparison.Ordinal));
+        var failure = new IOException("The source failed to give the bytes asked for.");
+        using var source = new ShortCountSource(bytes, (offset, held) => offset == older ? throw failure : held);
+        var diagnostics = new PdfDiagnostics();
+
+        FluentActions.Invoking(() => new PdfFileReader(
+                source, diagnostics, new PdfLimitGuard(PdfReaderLimits.Default, throwOnLimit: false), cacheCapacity: 64, ownsSource: false))
+            .Should().Throw<IOException>().Which.Should().BeSameAs(failure);
+
+        diagnostics.Select(diagnostic => (diagnostic.Code, diagnostic.Position)).Should().Equal((PdfDiagnosticCodes.XRefHybridStreamLost, named));
+        diagnostics[0].Message.Should().StartWith(Invariant(
+            $"The /XRefStm of the cross-reference table at offset {named} names offset {named}, the table itself: "));
+    }
+
     [Fact]
     public void An_xrefstm_naming_offset_zero_of_a_table_with_no_prev_is_read_where_it_names_whatever_precedes_the_header()
     {
