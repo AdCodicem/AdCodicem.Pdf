@@ -29,9 +29,14 @@ namespace AdCodicem.Pdf.IO;
 /// </list>
 /// <para>
 /// The start of the data is carried as a space, which ends a token as white space does and holds no digit. The bytes carried
-/// have negative indexes, and each records where the run it stands for starts in the file. None of the sizes below bounds what
-/// the file holds (ADR 34): a run of any length is carried, as what decides a header — its kind and its value —, and a line
-/// of any length, as its lexer's state.
+/// have negative indexes, and each records a place in the file: the space for the start of the data, where the data starts;
+/// a run of the first part, where its first byte lies, and the byte before the runs, where it lies — or, where that byte was
+/// carried into the read, the place it records —; a number of the second part, its digits and the space after them, where
+/// the number starts; and the other bytes of that part, which no number places — the byte before its numbers, and both its
+/// bytes where the walk took none —, -1, nowhere in the file. Each digit of a run or of a number so records where its number
+/// starts; no other place carried gives where a header, or a number carried, starts (<see cref="CarriedStarts"/>). None of
+/// the sizes below bounds what the file holds (ADR 34): a run of any length is carried, as what decides a header — its kind
+/// and its value —, and a line of any length, as its lexer's state.
 /// </para>
 /// </remarks>
 internal ref struct HeaderText
@@ -45,7 +50,10 @@ internal ref struct HeaderText
     /// <summary>The most digits a run of digits is carried as: those of <see cref="Beyond"/>.</summary>
     private const int MaxDigits = 10;
 
-    /// <summary>The most bytes a view carries: the byte before its runs, two runs of white space and two of digits.</summary>
+    /// <summary>
+    /// The most bytes a view carries: the byte before its runs, two runs of white space and two of digits; or the byte before
+    /// its numbers, and two numbers with a space after each.
+    /// </summary>
     private const int ViewLength = 1 + (2 * (1 + MaxDigits));
 
     /// <summary>The most bytes carried into a read: those of its two views.</summary>
@@ -69,7 +77,7 @@ internal ref struct HeaderText
 
     /// <summary>Starts a search at <paramref name="dataStart"/>, before which nothing is read.</summary>
     /// <param name="carried">Room for <see cref="CarriedLength"/> bytes carried into a read.</param>
-    /// <param name="carriedAt">Room for where the run each of them stands for starts in the file.</param>
+    /// <param name="carriedAt">Room for the place in the file each of them records.</param>
     /// <param name="dataStart">Where the data starts in the file.</param>
     public HeaderText(Span<byte> carried, Span<long> carriedAt, long dataStart)
     {
@@ -108,7 +116,10 @@ internal ref struct HeaderText
         _at = at;
     }
 
-    /// <summary>Gives where the byte at <paramref name="index"/> is in the file, or, for a byte carried, where its run starts.</summary>
+    /// <summary>
+    /// Gives where the byte at <paramref name="index"/> is in the file, or, for a byte carried, the place it records
+    /// (<see cref="HeaderText"/>).
+    /// </summary>
     public readonly long PositionOf(int index) => PositionOf(index, 0, View.Runs);
 
     /// <summary>
@@ -493,7 +504,7 @@ internal ref struct HeaderText
         : _lead[_leadLength + index - start];
 
     /// <summary>
-    /// Gives where the byte at <paramref name="index"/> is in the file, or, for a byte carried, where its run starts: in the
+    /// Gives where the byte at <paramref name="index"/> is in the file, or, for a byte carried, the place it records: in the
     /// read from <paramref name="start"/> on, or before it, counted back, in <paramref name="view"/>.
     /// </summary>
     private readonly long PositionOf(int index, int start, View view) =>
