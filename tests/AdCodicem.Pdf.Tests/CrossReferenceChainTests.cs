@@ -8817,6 +8817,34 @@ public class CrossReferenceChainTests
         document.WasRepaired.Should().BeFalse();
     }
 
+    [Fact]
+    public void A_stream_the_search_near_a_hybrid_table_s_prev_comes_back_to_and_takes_is_read_alike_wherever_its_line_starts()
+    {
+        // As above, object 9 passed over as possibly the table's own, but readable, and the oldest table out of the search's
+        // reach: the search comes back to object 9, and takes it. Taken, it is no stream passed over, and is not reported,
+        // whether its line starts 600 bytes before it, before the bytes the search reads, or an end of line starts it within
+        // them; nor is its line read again to tell, the file read alike in both (#156, #188).
+        Read(lineBroken: false).Should().Be(Read(lineBroken: true));
+
+        static long Read(bool lineBroken)
+        {
+            var (file, _, stream, at, newest) = HybridFiles.PrevFallingInsideAStreamOnALongLine(600, lineBroken, comesBack: true);
+            var source = new StrictCountingSource(file);
+            using var document = PdfDocument.Open(source, options: null, ownsSource: true);
+            var opened = source.BytesRead;
+
+            document.Reader.Structure.Sections.Select(section => (section.NamedBy, section.State, section.Kind, section.Offset)).Should().Equal(
+                ("startxref", XRefSectionState.Read, XRefSectionKind.Table, newest),
+                ("/XRefStm", XRefSectionState.Read, XRefSectionKind.Stream, stream),
+                ("/Prev", XRefSectionState.Relocated, XRefSectionKind.Stream, at));
+            document.Diagnostics.Select(diagnostic => (diagnostic.Code, diagnostic.Position)).Should().Equal(
+                (PdfDiagnosticCodes.XRefOffsetAdjusted, at));
+            Text(document, 4).Should().Be("four");
+            document.WasRepaired.Should().BeFalse();
+            return opened;
+        }
+    }
+
     [Theory]
     [InlineData("a header in a comment")]
     [InlineData("a header in a string")]

@@ -1060,9 +1060,13 @@ internal static class HybridFiles
     /// names it through <c>/XRefStm</c>, and through <c>/Prev</c> the place 20 bytes past <c>Place</c>: a search near it
     /// comes to object 9, which lies past stream 21 and may be the table's own, then to the oldest table. Where
     /// <paramref name="lead"/> is 600 or more, and the line is not broken, the line starts before the bytes that search
-    /// reads; where it is 5,000, more than 4,096 bytes before them.
+    /// reads; where it is 5,000, more than 4,096 bytes before them. Where <paramref name="comesBack"/> says so, object 9
+    /// reads, giving <c>/Size 22</c> and <c>/Index [9 1]</c>, its row freeing object 9; the comment runs on to 600 dashes,
+    /// which leaves object 5 and the oldest table out of the search's reach; and the update's table indexes the first three
+    /// objects too: the search comes back to object 9 once no other place holds a section, and takes it.
     /// </summary>
-    public static (byte[] File, long Oldest, long Stream, long Place, long Newest) PrevFallingInsideAStreamOnALongLine(int lead, bool lineBroken)
+    public static (byte[] File, long Oldest, long Stream, long Place, long Newest) PrevFallingInsideAStreamOnALongLine(
+        int lead, bool lineBroken, bool comesBack = false)
     {
         var file = new HandWrittenFile(version: "1.5");
         var (catalog, pages, page) = Page(file);
@@ -1072,13 +1076,15 @@ internal static class HybridFiles
         file.Object(21, Invariant($"<< /Type /XRef /Size 22 /W [1 4 2] /Index [4 1 21 1] /Length {rows.Length} >>\nstream\n{rows}\nendstream"));
         var line = "8 0 obj (" + new string('x', lead) + ") endobj" + (lineBroken ? "\n" : " ");
         var at = file.Position + line.Length;
-        file.Raw(line + "9 0 obj << /Type /XRef /W [1 1 1] /Length 3 >> stream\n\u0000\u0000\u0000\nendstream\nendobj\n");
-        file.Raw("%" + new string('-', 40) + "\n");
+        var numbering = comesBack ? "/Size 22 /Index [9 1] " : string.Empty;
+        file.Raw(line + "9 0 obj << /Type /XRef " + numbering + "/W [1 1 1] /Length 3 >> stream\n\u0000\u0000\u0000\nendstream\nendobj\n");
+        file.Raw("%" + new string('-', comesBack ? 600 : 40) + "\n");
         var oldFive = file.Object(5, "(old five)");
         var oldest = file.Position;
         file.Raw(Invariant($"xref\n0 4\n0000000000 65535 f \n{Row(catalog)}{Row(pages)}{Row(page)}5 1\n{Row(oldFive)}trailer\n<< /Size 22 /Root 1 0 R >>\nstartxref\n{oldest}\n%%EOF\n"));
         var newest = file.Position;
-        file.Raw(Invariant($"xref\n0 1\n0000000000 65535 f \n21 1\n{Row(stream)}trailer\n<< /Size 22 /Root 1 0 R /Prev {at + 20} /XRefStm {stream} >>\nstartxref\n{newest}\n%%EOF\n"));
+        var first = comesBack ? Invariant($"1 3\n{Row(catalog)}{Row(pages)}{Row(page)}") : string.Empty;
+        file.Raw(Invariant($"xref\n0 1\n0000000000 65535 f \n{first}21 1\n{Row(stream)}trailer\n<< /Size 22 /Root 1 0 R /Prev {at + 20} /XRefStm {stream} >>\nstartxref\n{newest}\n%%EOF\n"));
         return (file.Bytes, oldest, stream, at, newest);
     }
 
