@@ -982,6 +982,33 @@ public class PageTreeRuleTests
         new PdfValidator().Validate(cut).Contains(PdfValidationRuleIds.PageTreePageOrphaned).Should().BeFalse();
     }
 
+    [Theory]
+    [InlineData(nameof(XRefSectionState.NotFound), false)]
+    [InlineData(nameof(XRefSectionState.Malformed), false)]
+    [InlineData(nameof(XRefSectionState.Read), true)]
+    public void A_page_the_tree_leaves_out_is_not_said_orphaned_where_a_section_of_the_chain_was_not_read_whole(string state, bool incomplete)
+    {
+        // A section the chain did not find, could not read, or read only in part leaves the index incomplete, which a
+        // validation rebuilds before its first rule. The rule, given a structure no file produces that says so of a section
+        // whose index was left whole, judges no page left out all the same; read as the file writes it, object 7 is orphaned.
+        var file = WithObject(7, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << >> >>");
+        using var whole = PdfDocument.Open(file);
+        using var notWhole = PdfDocument.Open(file);
+        var section = notWhole.Reader.Structure.Sections.Should().ContainSingle().Which;
+        section.State = Enum.Parse<XRefSectionState>(state);
+        section.Incomplete = incomplete;
+
+        Orphans(whole).Should().Equal(new PdfObjectId(7));
+        Orphans(notWhole).Should().BeEmpty();
+
+        static IEnumerable<PdfObjectId?> Orphans(PdfDocument document)
+        {
+            var context = new ValidationContext(document, capacity: 16);
+            new PageTreePageOrphanedRule().Check(context);
+            return context.ToReport(ValidationProfile.Structural).Findings.Select(finding => finding.Location.Object);
+        }
+    }
+
     [Fact]
     public void A_dictionary_typed_page_with_neither_parent_nor_contents_is_no_orphaned_page()
     {
