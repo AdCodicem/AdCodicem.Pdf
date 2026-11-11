@@ -1923,6 +1923,49 @@ internal static class HybridFiles
     }
 
     /// <summary>
+    /// A one-page document saved twice, whose newest table names two places in the <paramref name="run"/> line feeds that
+    /// follow the <c>]</c> closing the array of object 8, before its <c>endobj</c>: through <c>/Prev</c> the first, at
+    /// <c>Run</c>, and through <c>/XRefStm</c> the second, at <c>Run + 1</c>. Cross-reference stream 9, of
+    /// <c>/Type /XRef</c>, at <c>Stream</c>, which indexes object 7, <c>(seven)</c>, and gives no <c>/Prev</c>, lies just
+    /// before object 8, within reach of a search near either. The newest table, past a long comment, indexes the catalog,
+    /// the page tree and its page.
+    /// </summary>
+    public static (byte[] File, long Stream, long Run) NamingTwoPlacesInARunOfWhiteSpace(int run)
+    {
+        var file = new HandWrittenFile(version: "1.5");
+        var (catalog, pages, page) = Page(file);
+        var seven = file.Object(7, "(seven)");
+        var stream = file.Position;
+        var rows = StreamRows((1, seven, 0));
+        file.Object(9, Invariant($"<< /Type /XRef /Size 10 /W [1 4 2] /Index [7 1] /Length {rows.Length} >>\nstream\n{rows}\nendstream"));
+        var eight = file.Object(8, "[1 2]" + new string('\n', run));
+        var runAt = eight + "8 0 obj\n[1 2]".Length;
+        file.Raw("%" + new string('-', 1200) + "\n");
+        var newest = file.Position;
+        file.Raw(Invariant($"xref\n0 4\n0000000000 65535 f \n{Row(catalog)}{Row(pages)}{Row(page)}trailer\n<< /Size 10 /Root 1 0 R /Prev {runAt} /XRefStm {runAt + 1} >>\nstartxref\n{newest}\n%%EOF\n"));
+        return (file.Bytes, stream, runAt);
+    }
+
+    /// <summary>
+    /// A one-page document whose one table, at <c>Newest</c>, indexes the catalog, the page tree and its page, and names
+    /// through <c>/XRefStm</c> the <c>%%EOF</c> that ends the file, at <c>Marker</c>, a comment only its line feed follows,
+    /// and through <c>/Prev</c> the file's length, the first offset past its last byte: the first token past the comment
+    /// is the end of the file, where the <c>/Prev</c> names. Both offsets are written in ten digits.
+    /// </summary>
+    public static (byte[] File, long Newest, long Marker) NamingTheEndOfTheFile()
+    {
+        var file = new HandWrittenFile(version: "1.5");
+        var (catalog, pages, page) = Page(file);
+        var newest = file.Position;
+        var marker = newest + Table(0, 0).Length;
+        file.Raw(Table(marker + "%%EOF\n".Length, marker) + "%%EOF\n");
+        return (file.Bytes, newest, marker);
+
+        string Table(long previous, long stream) => Invariant(
+            $"xref\n0 4\n0000000000 65535 f \n{Row(catalog)}{Row(pages)}{Row(page)}trailer\n<< /Size 4 /Root 1 0 R /Prev {previous:D10} /XRefStm {stream:D10} >>\nstartxref\n{newest}\n");
+    }
+
+    /// <summary>
     /// A one-page document saved twice, whose newest table names through <c>/Prev</c> the first of <paramref name="run"/>
     /// spaces before the oldest table — the table itself where it is 0. The update writes object 4, <c>(four)</c>, and
     /// two cross-reference streams that index it and themselves and give no <c>/Prev</c>, each of <c>/Type /XRef</c>, its

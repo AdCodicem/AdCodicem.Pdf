@@ -377,6 +377,24 @@ public class CrossReferenceChainTests
     }
 
     [Fact]
+    public void An_xrefstm_naming_the_comment_that_ends_the_file_is_left_to_no_prev_naming_the_file_s_length()
+    {
+        // The table names through /XRefStm the %%EOF that ends the file, past which the first token is the end of the file,
+        // and through /Prev the file's length, which lies outside it: that /Prev comes to no start, and the two reach no
+        // one section. The /XRefStm is read where it names, and is missing, no cross-reference stream lying near it; the
+        // /Prev names a section outside the file, missing too (#156).
+        var (file, newest, marker) = HybridFiles.NamingTheEndOfTheFile();
+        using var document = PdfDocument.Open(file);
+
+        document.Reader.Structure.Sections.Select(section => (section.NamedBy, section.State, section.Offset, section.Padding)).Skip(1).Should().Equal(
+            ("/XRefStm", XRefSectionState.NotFound, marker, "%%EOF\n".Length),
+            ("/Prev", XRefSectionState.NotFound, file.Length, 0));
+        document.Diagnostics.Select(diagnostic => (diagnostic.Code, diagnostic.Position)).Should().Equal(
+            (PdfDiagnosticCodes.XRefSectionMissing, marker),
+            (PdfDiagnosticCodes.XRefSectionMissing, newest));
+    }
+
+    [Fact]
     public void Goes_on_through_prev_past_an_xrefstm_that_names_nothing()
     {
         // A hybrid file's stream indexes what its classic table leaves out. When it is missing, that is reported,
@@ -5503,6 +5521,29 @@ public class CrossReferenceChainTests
             ("/Prev", XRefSectionState.NotFound, bracket + 1, bracket + 1));
         document.Diagnostics.Select(diagnostic => diagnostic.Code).Should().NotContain(PdfDiagnosticCodes.XRefHybridStreamLost);
         document.Diagnostics.Should().ContainSingle(diagnostic => diagnostic.Code == PdfDiagnosticCodes.LimitTrailer).Which.Position.Should().Be(bracket + 1);
+        Text(document, 7).Should().Be("seven");
+    }
+
+    [Fact]
+    public void An_xrefstm_naming_white_space_past_a_trailer_s_window_a_byte_past_its_table_s_prev_is_left_to_no_prev()
+    {
+        // The newest table names through /Prev the first of the 65,537 line feeds after the bracket that closes an array, and
+        // through /XRefStm the second, from each of which they run past a trailer's window. Neither reading comes to a start
+        // past them, the guard's: the two reach no one section, and the /XRefStm is not left to the /Prev. It is read where
+        // it names, the guard reached there, and the table's stream found a hundred bytes or so before it; the /Prev reaches
+        // the guard where it names in turn, finds no section near the offset but the one the chain read, and is reported
+        // missing (#156, #188).
+        var (file, stream, run) = HybridFiles.NamingTwoPlacesInARunOfWhiteSpace(65_537);
+        using var document = PdfDocument.Open(file);
+
+        document.Reader.Structure.Sections.Select(section => (section.NamedBy, section.State, section.Offset, section.NamedOffset)).Skip(1).Should().Equal(
+            ("/XRefStm", XRefSectionState.Relocated, stream, run + 1),
+            ("/Prev", XRefSectionState.NotFound, run, run));
+        document.Diagnostics.Select(diagnostic => (diagnostic.Code, diagnostic.Position)).Should().Equal(
+            (PdfDiagnosticCodes.LimitTrailer, run + 1),
+            (PdfDiagnosticCodes.XRefOffsetAdjusted, stream),
+            (PdfDiagnosticCodes.LimitTrailer, run),
+            (PdfDiagnosticCodes.XRefSectionMissing, run));
         Text(document, 7).Should().Be("seven");
     }
 
