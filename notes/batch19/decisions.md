@@ -1339,3 +1339,10 @@ review. Then the batch-wide ADR 53 step.
   number: 55cb5be 'docs: record batch 19 in the status' (site 269 pages, 0 warnings), pushed 2c7cf01..55cb5be. PR bound
   in the app, Auto-fix on (enabled by the maintainer). Never merge it.
 - After the merge: the session-speed review (memory project_session_speed_review.md).
+- Codecov on #344: patch 99.63 %, two partials in SizeWrongRule.cs (71, 162), codecov/patch passing; no code change
+  (a ?. on a value never null and a defensive arm, which CLAUDE.md keeps partial); PR body's Codecov paragraph updated.
+- 2026-11-11 19:52 UTC: the maintainer squash-merged #344 into main as e38ebbc ('fix!: read the chain's sections where
+  they lie and report one it reads only in part (#344)'). Checked: the 18 issues (#156 #188 #197 #207 #208 #210 #221
+  #222 #241 #261 #264 #281 #317, and batch 18's #168 #201 #277 #307 #312) are CLOSED, state reason COMPLETED, each
+  closed by #344. Batch 19 is done. Next: the session-speed review (memory project_session_speed_review.md), then
+  batch 20 (#189 with #276).
