@@ -594,6 +594,36 @@ public class StreamLengthTests
     }
 
     [Theory]
+    [InlineData("endstream\n", false)]
+    [InlineData("9 0 obj\nendobj\n", true)]
+    public void A_search_for_data_that_starts_at_the_file_s_first_byte_stops_at_an_endstream_or_a_header_that_starts_there(string junk, bool header)
+    {
+        // The reader is asked where data that starts at the file's first byte ends, as no stream's data can, its keyword
+        // before it: the bytes the parser holds run past the junk before %PDF-, short of object 1, the next object the index
+        // places. The junk starts with an endstream, which ends the data where it starts, or with a header, which stops the
+        // search there, its object's endobj past it no part of the data. The first byte is a place like any other: the
+        // search ends there, and reads nothing of the file past the parser's bytes.
+        var file = new HandWrittenFile(junk);
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"),
+        };
+        file.Table(3, rows, "/Size 3 /Root 1 0 R");
+        var bytes = file.Bytes;
+        using var document = PdfDocument.Open(bytes);
+        var provider = (IPdfStreamDataProvider)document.Reader;
+
+        var search = provider.FindEndStream(
+            number: 0, absoluteDataStart: 0, declaredEnd: -1, buffered: bytes.AsSpan(0, junk.Length + "%PDF-".Length), deferred: false);
+
+        search.Should().Be(header
+            ? new StreamEndSearch(null, 0, EndObjState.Unknown) { HeaderStopped = true }
+            : new StreamEndSearch(0, junk.Length + rows[1], EndObjState.Absent));
+        document.Reader.EndStreamSearchBytes.Should().Be(0);
+    }
+
+    [Theory]
     [InlineData("7 0 obj", true)]
     [InlineData(Wide, true)]
     [InlineData("x" + Wide, false)]
