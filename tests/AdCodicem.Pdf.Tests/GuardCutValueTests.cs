@@ -3784,6 +3784,8 @@ public class GuardCutValueTests
         section.State.Should().Be(XRefSectionState.Malformed);
         section.CutByLimit.Should().BeFalse();
         section.Fault.Should().Be("its data could not be decoded");
+        section.UndecodedReports.Should().BeNull(
+            "what decoding its data reported stands beside a section the chain names, and no mark is kept to drop it");
 
         // The guard is reached once, where the rebuild the file's fault asks for loads object 5, past what a whole read
         // reports: the section's reading reports no limit of its own.
