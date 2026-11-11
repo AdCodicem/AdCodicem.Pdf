@@ -54,6 +54,25 @@ public class HeaderTextTests
     }
 
     [Theory]
+    [InlineData("12 0 obj", 0)]
+    [InlineData("% c\n0 obj", -1)]
+    public void What_precedes_the_data_is_its_start_whatever_the_room_the_search_is_given_held(string data, long header)
+    {
+        // The room may be rented, or have served a search before: until a read is carried into it, it stands for the start of
+        // the data alone, which a number after it starts a token at, and which a walk back past a comment line takes no number
+        // from, whatever digits and positions it held.
+        var bytes = Encoding.Latin1.GetBytes(data);
+        Span<byte> carried = stackalloc byte[HeaderText.CarriedLength];
+        Span<long> carriedAt = stackalloc long[HeaderText.CarriedLength];
+        carried.Fill((byte)'7');
+        carriedAt.Fill(7);
+        var text = new HeaderText(carried, carriedAt, DataStart);
+        text.Read(bytes, DataStart);
+
+        text.FindHeader(bytes.Length, endsRange: true).Should().Be(header < 0 ? -1 : DataStart + header);
+    }
+
+    [Theory]
     [InlineData("1 2\n3 4 % c 5 6", new[] { 0 }, new[] { 0, 2, 4, 6, 12, 14 })]
     [InlineData("1 2\n3 4 % 7 8 9", new[] { 0 }, new[] { 0, 2, 4, 6, 12, 14 })]
     [InlineData("12345 678", new[] { 0 }, new[] { 0, 6 })]
