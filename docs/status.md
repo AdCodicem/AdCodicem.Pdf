@@ -24,73 +24,92 @@ Tracking workflow mirrors from `docs/roadmap.md` (*Debt and open points*, below)
   [#274] and [#275], with [#278] on 2026-10-22; the sixteenth, [#174] and [#170], stream data, with [#220], [#224],
   [#230] and [#263], with [#297] on 2026-10-25; the seventeenth, [#155], tables keyed by numbers dense or seeded (ADR
   52), with [#308] on 2026-10-30; the eighteenth, [#167] and [#168], what a rebuild leaves a caller and what the
-  validator's analyses cost, with [#201], [#277], [#307] and [#312], in [#318]. Then the other batches, slices 4 to 6
-  ([#60] to [#62]); then the milestone's adversarial review, slice 7 ([#137], ADR 46), once every other issue filed
-  under M02 is closed. The debts come from the reader's own work, the threat model's first version ([#135],
-  `docs/threat-model.md`), M01's review after the fact ([#136], `docs/reviews/M01.md`), the planning of step 4 ([#199]
-  to [#202]), its second batch ([#207] to [#210]), its third ([#212]), its fifth ([#215], [#216]), its sixth ([#218] to
-  [#224]), its eighth ([#229], [#230]), its ninth ([#237]), its tenth ([#241], [#247]), its twelfth ([#250]), slice 4's
-  blockers ([#253]), its thirteenth ([#255] to [#257]), its fourteenth ([#259] to [#264]), its fifteenth ([#273] to
-  [#277]), its sixteenth ([#279] to [#283], [#287] to [#290], [#292] to [#296]), its seventeenth ([#307]) and its
-  eighteenth ([#309], [#312] to [#315], [#317]); [#123] moved to M20. The seventeenth filed [#305] and [#306] under M23,
-  the eighteenth [#310] under M03 and [#311] under M23.
+  validator's analyses cost, with [#201], [#277], [#307] and [#312], with [#318] on 2026-11-03; the nineteenth, [#188],
+  [#197] and [#156], where the chain's sections lie and what it reports of one it reads in part, with [#207], [#208],
+  [#210], [#221], [#222], [#241], [#261], [#264], [#281] and [#317], in [#344]. Then the
+  other batches, slices 4 to 6 ([#60] to [#62]); then the milestone's adversarial review, slice 7 ([#137], ADR 46), once
+  every other issue filed under M02 is closed. The debts come from the reader's own work, the threat model's first
+  version ([#135], `docs/threat-model.md`), M01's review after the fact ([#136], `docs/reviews/M01.md`), the planning of
+  step 4 ([#199] to [#202]), its second batch ([#207] to [#210]), its third ([#212]), its fifth ([#215], [#216]), its
+  sixth ([#218] to [#224]), its eighth ([#229], [#230]), its ninth ([#237]), its tenth ([#241], [#247]), its twelfth
+  ([#250]), slice 4's blockers ([#253]), its thirteenth ([#255] to [#257]), its fourteenth ([#259] to [#264]), its
+  fifteenth ([#273] to [#277]), its sixteenth ([#279] to [#283], [#287] to [#290], [#292] to [#296]), its seventeenth
+  ([#307]), its eighteenth ([#309], [#312] to [#315], [#317]) and its nineteenth ([#320] to [#330], [#332], [#333],
+  [#336], [#342]); [#123] moved to M20. The seventeenth filed [#305] and [#306] under M23, the eighteenth [#310] under
+  M03 and [#311] under M23, the nineteenth [#331] under M03 and [#343] under M23.
 - **User documentation**: organized along Diátaxis since 2026-09-30 ([ADR 47](adr/0047-the-user-documentation-follows-diataxis.md),
   [#148]), on `main`: a tutorial held to its sample by a test, four how-to guides, four reference
   pages — the validation rules among them, moved from the project documents — with the API reference under them, and
   four explanations. Outside any milestone.
 - **Last milestone closed**: **M01 — Object model and tolerant reading**
-- **Tests**: 6,657 unit on [#318]'s branch (20 skipped: 2 by design, the theory over the remote corpus's streams
-  whose length is wrong, the fifteen remote documents of the theory over the corpus's filter chains, which have no
-  document without them, the test held to PDFBox's remote report, and iPRES's stream that lost its `endstream`) + 1,495
-  integration (skipped without Docker) + 48 for the remote corpus's fetcher + 43 for the roadmap's mirror on GitHub.
-  With the remote documents fetched, on [#318]'s branch: 9,280 unit with the 235 this container holds,
-  3 skipped — the laziness test on the two documents recorded as unsupported until [#47], which every
-  other test holds to their expectations, and the private manifest this container lacks —; 3,700 integration
-  against qpdf in its container, 3,694 passed and 6 skipped where qpdf cannot
-  walk a damaged document's pages; and, with all 242, `Remote corpus` run 99's 9,346 acceptance tests and 3,760 referee
-  checks, at its one rerun, on the library code [#318] ends with.
+- **Tests**: 8,466 unit on [#344]'s branch (20 skipped: 2 by design, the theory over the
+  remote corpus's streams whose length is wrong, the fifteen remote documents of the theory over the corpus's filter
+  chains, which have no document without them, the test held to PDFBox's remote report, and iPRES's stream that lost its
+  `endstream`) + 1,495 integration (skipped without Docker) + 48 for the remote corpus's fetcher + 43 for the roadmap's
+  mirror on GitHub. With all 242 remote documents fetched, on [#344]'s branch:
+  11,155 unit on the maintainer's machine at `2c7cf01` — 11,052 at `19a2296` —, 11,152 passed and 3 skipped — the
+  laziness test on the two documents recorded as unsupported until [#47], which every other
+  test holds to their expectations, and the private manifest the machine lacks —; 3,760 integration against qpdf in its
+  container at `26ce787`, run class by class, 3,754 passed and 6 skipped where qpdf cannot walk a damaged document's
+  pages; and `Remote corpus` run 109's 11,155 acceptance tests and 3,760 referee checks, on the library code
+  [#344] ends with.
 - **Coverage**: on the committed corpus, as Codecov counts it (a line with an untaken branch is partial, the generated
-  Arlington tables left out), 99.44 % of `src/` — 8,859 of 8,909 lines on [#318]'s branch, of its patch's 1,123
-  coverable lines 1,122 run and 1,120 whole, and 933 of their 935 branches; on [#308]'s, 8,224 of 8,271, and all 191 of
-  its patch's measurable lines. Codecov's patch report leaves `ObjectStreamDependencies.cs` out, so the batch's figures
-  are counted from the unit suite's own report by Codecov's rule, which gives Codecov's totals for `663cb80` to the
-  line. The 50 left are those the rule of 2026-09-29 leaves (`CLAUDE.md`, *Coverage*), and five that only faults filed
-  reach. Forty-seven are [#297]'s, at the line numbers [#318] gives them; three are the batch's, in
+  Arlington tables left out), 99.48 % of `src/`, 10,005 of 10,057 lines, of the patch's 1,461 coverable lines 1,460 run
+  and 1,456 whole, and 1,307 of their 1,313 branches, at `2c7cf01` on [#344]'s
+  branch — at `dfb03fc`, of its patch's 1,462 coverable lines 1,460 run and 1,455 whole, the seven not whole a defensive
+  branch of the parse of an object no section records (two lines), the line test's guard against a place before the
+  bytes it read (two), two lines of `SizeWrongRule` (a branch the compiler adds, 71, and the arms of `Counted` that give
+  null, 162) and the defensive arm of the walk past a header's signs, none of which an input takes but the line test's
+  guard, which a test written since in the mutation step takes —; on [#318]'s, 99.44 %, 8,859 of 8,909 lines, of its
+  patch's 1,123 coverable lines 1,122 run and 1,120 whole, and 933 of their 935 branches. Codecov's patch report leaves
+  `ObjectStreamDependencies.cs` out, so [#318]'s figures were counted from the unit suite's own report by Codecov's
+  rule, which gives Codecov's totals for `663cb80` to the line. The branch's figures are counted the same way, from the
+  suite's report at `2c7cf01`, and leave 52 lines. Five are the batch's, in its patch, none of which an input takes: the
+  defensive check of the parse of an object no section records, whose one caller asks only places the search found
+  inside the file (`PdfFileReader` 4075, 4077); the defensive arm of the walk past a header's signs, a place the search
+  finds lying whole within the bytes searched, its number or `xref` with it (5567); and two lines of `SizeWrongRule`
+  that only a section named again that is no hybrid stream would take, every such record leaving a chain the rule does
+  not judge — the arms of `Counted` that give null for it (162), and the branch the compiler adds for the `?.` through
+  which the loop reads that null (71). The other 47 are the 50 left on [#318]'s branch but three, given below at the
+  line numbers `2c7cf01` gives them, the batch having moved `PdfFileReader`'s and a few of `PdfObjectParser`'s and
+  `PdfFilterPipeline`'s. The 50 left on [#318]'s branch are those the rule of 2026-09-29 leaves (`CLAUDE.md`,
+  *Coverage*), and five that only faults filed reach. Forty-seven are [#297]'s; three are batch 18's, in
   `ObjectStreamDependencies`: a defensive arm of a chain's walk, which the walk enters only while it is not done (924,
   926), and a `??=` on a list the walk of a standing made as it began (1353). [#297]'s are members that are private, or
   of a private type, which no input reaches — eight lines of `ArlingtonWalk` (194, 925, 1029, 1039, 1040, 1060, 1062,
   1152) and three of a defensive branch of `PdfLexer` (161, 164, 165) —, a `?.` on an index never null where it is read
   and a switch's default arm (`CrossReferenceProbe` 125 and 311, `PageTreePageOrphanedRule` 50, `RootInvalidRule` 111
-  and 120), a line the compiler puts after a call that never returns (`PdfFileReader` 2680), two branches the compiler
-  adds that no input takes (`FileQuote` 145, an interpolation's buffer too small; `PdfObjectParser` 1272, a
+  and 120), a line the compiler puts after a call that never returns (`PdfFileReader` 2955), two branches the compiler
+  adds that no input takes (`FileQuote` 145, an interpolation's buffer too small; `PdfObjectParser` 1292, a
   concatenation's null check); a defensive arm of the real's expansion (`PdfReal` 66, batch 5), one of the six ways out
-  of a cross-reference stream row's `switch` (5289) and `Repair`'s guard against a second rebuild (6571, 6573);
-  `KeepObjectStream`'s release of the contents it replaces (6526, 6528, batch 13). Batch 14's five: the switch over a
+  of a cross-reference stream row's `switch` (8294) and `Repair`'s guard against a second rebuild (9738, 9740);
+  `KeepObjectStream`'s release of the contents it replaces (9693, 9695, batch 13). Batch 14's five: the switch over a
   header's place (`CrossReferenceProbe` 184), whose target past the enumeration's values the compiler adds and no input
   takes; the one over a kid's presence (`PageTreeWalk` 382), whose default the batch's arm for a cut object leaves to
   `Deferred`, which `GetPresence` never answers; the test that a judged catalog's `/Pages` is a dictionary or a stream
   (`ObjectGraph` 312), which the walk judged a root there, so is one; and two defensive lines of a rebuild:
-  `FinishRebuild`'s `??=` when reading `/Root` reaches a guard (`PdfFileReader` 6737), which always finds one held
+  `FinishRebuild`'s `??=` when reading `/Root` reaches a guard (`PdfFileReader` 9904), which always finds one held
   already — a `/Root` a guard cuts is a regular object, or a member of an object stream, that the rebuild read as it
   took in object streams, reaching the guard first —, and `KeepMembersHiddenByGuard`'s position of a stream the rebuilt
-  index lacks (7017), when every stream it marks hidden was read from that index. Batch 15's two, in the probe's judging
-  of the members only a rebuild places: the arms that pass over an object stream the rebuilt index does not hold as a
-  regular object, or whose header the reader cannot read as one (`CrossReferenceProbe` 478), when the rebuild placed the
-  members there for having found that stream and read its header; and a `?.` on the chain's index (492), which a chain a
-  guard stopped has read. Batch 16 takes three off — `EndStreamAfter`'s two defensive arms, which a document whose
-  searches are spent now takes, and the switch over a `/Length`'s presence —, brings a fourth into its patch, the
-  `HasValue` checks the compiler adds on a `long?` (`PdfFileReader` 5142), and leaves fifteen. In its patch, nine no
-  input takes: a `?.` on the set of what the chain read, never null where it is forgotten (2617), and on a
-  cross-reference stream's `/W` element, `/Size` and `/Index` pair, which the parser never leaves null there (4677,
-  4714, 4730); those `HasValue` checks, on values already tested (5142); a deferred length's search, always memoized by
-  the parse before (4427), and its value, never null (4605), defensive arms of private members; the operand of
-  `ChecksumDisagrees` its one caller's precondition makes true (`PdfFilterPipeline` 343); and a header's generation
-  neither cut nor an integer, which the tests before it rule out (`PdfObjectParser` 1627). Outside it, the dispatch the
+  index lacks (10184), when every stream it marks hidden was read from that index. Batch 15's two, in the probe's
+  judging of the members only a rebuild places: the arms that pass over an object stream the rebuilt index does not hold
+  as a regular object, or whose header the reader cannot read as one (`CrossReferenceProbe` 478), when the rebuild
+  placed the members there for having found that stream and read its header; and a `?.` on the chain's index (492),
+  which a chain a guard stopped has read. Batch 16 takes three off — `EndStreamAfter`'s two defensive arms, which a
+  document whose searches are spent now takes, and the switch over a `/Length`'s presence —, brings a fourth into its
+  patch, the `HasValue` checks the compiler adds on a `long?` (`PdfFileReader` 8106), and leaves fifteen. In its patch,
+  nine no input takes: a `?.` on the set of what the chain read, never null where it is forgotten (2892), and on a
+  cross-reference stream's `/W` element, `/Size` and `/Index` pair, which the parser never leaves null there (7548,
+  7587, 7603); those `HasValue` checks, on values already tested (8106); a deferred length's search, always memoized by
+  the parse before (7297), and its value, never null (7474), defensive arms of private members; the operand of
+  `ChecksumDisagrees` its one caller's precondition makes true (`PdfFilterPipeline` 369); and a header's generation
+  neither cut nor an integer, which the tests before it rule out (`PdfObjectParser` 1647). Outside it, the dispatch the
   compiler builds over `SkipContainer`'s token kinds, to which the batch's arm for a header adds a leaf no kind reaches
-  (`PdfObjectParser` 1350); and five lines that inputs still reach, but only to show a fault filed rather than pinned: a
-  classic table's first token the probe's bound cut (`PdfFileReader` 3451, 3453, 3454, [#295]), and `MarkCutByGuard`,
-  which a `stream` a guard's edge parts reaches (5991, 5993, [#294]). `codecov.yml` asks 95 % of each patch, and lets
-  the project drop by half a point at most; the aim is 100 %.
+  (`PdfObjectParser` 1370); and five lines that inputs still reach, but only to show a fault filed rather than pinned: a
+  classic table's first token the probe's bound cut (`PdfFileReader` 5962, 5964, 5965, [#295]), and `MarkCutByGuard`,
+  which a `stream` a guard's edge parts reaches (9045, 9047, [#294]). Batch 19 takes three of batch 16's off, which the
+  branch runs whole: that generation's test and `MarkCutByGuard`'s two lines. `codecov.yml` asks 95 % of each patch, and
+  lets the project drop by half a point at most; the aim is 100 %.
 - **Mutation testing**: since 2026-10-30, a finite step of every pull request that changes `src/`, apart from its own
   review (ADR 53): a fixed, first-order catalog over the lines it changes, and over the conditions it adds to or changes
   in a test that reads the library's code; each survivor killed by a test, classed equivalent or, in such a test,
@@ -102,8 +121,14 @@ Tracking workflow mirrors from `docs/roadmap.md` (*Debt and open points*, below)
   (those of rounds 7, 8 and 10 changed none), and over its whole patch at its end: 1,675 distinct mutants run, 1,593
   killed by a test, 57 classed equivalent, 8 equivalent in what is reported and 17 superseded by a later rewrite or
   removal of their line, none filed; one more, which did not compile as written, classed equivalent by reading without a
-  run ([#318]).
-- **CI**: green on `main` at `75999e4` (CI run 859), and on [#318]'s branch at `755750b` (CI run 924). `Remote
+  run ([#318]). Batch 19 ran it at each stage of its implementation and of its fixes that changed code in `src/`, and
+  over its whole patch at its end, 3,751 mutants, of which 15 a stage record still covered: of the 3,736 run at
+  `19a2296`, 3,193 were killed, 224 did not compile, and the 319 that survived were settled — 113 killed by tests
+  written since, 206 classed equivalent, 29 of them in what is reported —, none filed; every first verdict of
+  equivalence was checked a second time, against an input built to tell the two apart, which overturned 39 of the 245
+  ([#344]).
+- **CI**: green on `main` at `21a0298` (CI run 927), and on [#344]'s branch at `2c7cf01`
+  (CI run 1055). `Remote
   corpus` passed on every document in the nightly run 18, on `main` at `8c54490`, and in runs 19 and 20, on [#203]'s and
   [#211]'s branches, each rerun once after web.archive.org refused a document ([#204]), in run 21, on [#213]'s branch,
   at its first attempt, and in run 22, on [#214]'s branch, rerun once for the same refusal. The nightly run 23, on
@@ -163,12 +188,15 @@ Tracking workflow mirrors from `docs/roadmap.md` (*Debt and open points*, below)
   94 to 97, on `main` at `75999e4`, [#308] merged, passed whole at their first attempt. On [#318]'s branch, run 98,
   on `1355cd8`, passed whole at its first attempt, from the cache alone: 9,346 acceptance tests and 3,760 referee
   checks; run 99, on `755750b`, whose library code the branch ends with, failed one test, [#317]'s, on .NET 10, every
-  other passing, and passed whole at its one rerun.
+  other passing, and passed whole at its one rerun. The nightly runs 100 to 108, on `main` at `21a0298`, [#318] merged,
+  passed whole at their first attempt, run 108 from the cache alone: 9,346 acceptance tests and 3,760 referee checks. On
+  [#344]'s branch, run 109, on `9a21ac7`, whose library code the branch ends with, passed
+  whole at its first attempt, from the cache alone: 11,155 acceptance tests and 3,760 referee checks.
 - **Corpus**: 168 committed documents, 23.0 MB — 19 generated here, 3 from Word and PDF24 on Windows, 146
   third-party files under attribution-only licenses (`docs/corpus-sources.md`). Beside them, a **remote
   corpus** of 242 documents we may use but not redistribute, fetched at a pinned SHA-256 and size (ADR 32),
   88 of them out of their authors' archive (ADR 33), 5 out of web.archive.org, and tested every night by `Remote
-  corpus`, last green in run 97 on `main` on 2026-11-02, from the cache alone. Since [#204] and [#291], 104 of them — the iPRES archive and
+  corpus`, last green in run 108 on `main` on 2026-11-11, from the cache alone. Since [#204] and [#291], 104 of them — the iPRES archive and
   two Government of Canada forms among them — come from the project's own copy in
   [AdCodicem/AdCodicem.Pdf.Corpus](https://github.com/AdCodicem/AdCodicem.Pdf.Corpus) (ADR 51), and the job keeps
   what it fetched in an encrypted Actions cache. All 410 are described in `tests/corpus/manifest.json`.
@@ -239,6 +267,8 @@ Tracking workflow mirrors from `docs/roadmap.md` (*Debt and open points*, below)
 | Decoding a chain of ASCII85 and Flate | 4 MB decoded | 10.4 ms | 13.7 MB |
 | Indexing, then parsing every page's content stream, each past the reader's first window | synthetic, 1000 pages of 16 KB | 4.0 to 4.6 ms from memory, 7.2 to 7.4 ms from a file | 1.75 MB |
 | The same, each stream declared 2 bytes too long and searched for its `endstream` | synthetic, 1000 pages of 16 KB | 10.6 to 11.3 ms from memory, 14.9 to 16.4 ms from a file | 2.71 MB |
+| Searching a damaged stream's data for its `endstream`: text lines, then nested strings | generated, 4 MB | 399 to 403 µs, then 35.0 to 36.1 ms | 7.2 KB |
+| Rebuilding an index by scanning for object headers, each with a comment between its tokens | generated, 4 MB, 100,000 headers | 44.8 to 45.1 ms | 17.8 MB |
 | Parsing one object, a medium job | Word's page dictionary | 6.0 µs | 4.6 KB |
 
 The gap between the first two rows is the library's promise: opening a document does not read its content. The
@@ -346,6 +376,41 @@ benchmark run on `main`). The rebuild's scan for trailers past 12,000 keywords t
 ms over a reference or a null and 408 to 447 ms over a dictionary, against 258 to 288 ms and 473 to 475 ms on `main`
 (`TrailerScanBenchmarks`, a medium job, twice, alternated).
 
+Batch 19 ([#344]) leaves indexing, reading every page, the probe, validating, the
+stream-length rows and the rebuild's scan for trailers within the runs' spread, each 0.96 to 1.09 times what it takes on
+`main`, the error bars of the branch's runs and of `main`'s overlapping on every row (`ReaderBenchmarks`,
+`IndexBenchmarks`, `CrossReferenceProbeBenchmarks`, `ValidationBenchmarks`, `StreamLengthBenchmarks` and
+`TrailerScanBenchmarks`, ShortRun, each class twice on `2c7cf01` and twice on `main`, alternated, one process at a
+time): indexing a thousand pages takes 172 to 173 µs against 167 to 169 µs, reading every page 2.86 to 2.93 ms against
+2.75 to 2.84, the rules 2.51 to 2.55 ms against 2.56 to 2.65, opening and validating 5.67 to 5.84 ms against 5.59 to
+5.61. Opening allocates about 770 bytes more, whatever the document (5.47 → 6.23 KB for ten pages, 82.84 → 83.59 KB for
+a thousand); a chain of a thousand sections about 280 bytes more a section (23.11 → 23.38 MB for 300,000 objects); a
+stream whose `/Length` is wrong 20 to 30 bytes more (2.67 → 2.69 and 2.70 MB for a thousand); the rules about 140 bytes
+more, and the scan for trailers about 220; the rest allocates what it did, to the last digit its table gives. The two
+classes the batch adds, which `main` lacks, ran twice on the branch: 4 MB searched for a lost `endstream` in 399 to 403
+µs over text lines, 35.0 to 36.1 ms over nested strings and 40.9 to 41.3 ms over one-byte tokens, the costliest shape in
+these runs, allocating 7.2 KB, 7.6 KB where a keyword in a comment waits on what follows its line; 100,000 headers with
+a comment between their tokens scanned in 44.8 to 45.1 ms and 17.8 MB, as many plain headers in 38.3 to 38.4 ms.
+Measured as the batch went, on a shared machine: the search for a damaged stream's `endstream`, which now lexes from its
+start a line that holds a `%`, costs what it did on text and on binary data, about 0.5 ms for 4 MB, and allocates 6.9 KB
+against 6.4 KB, whatever the data (`StreamEndSearchBenchmarks`, ShortRun, twice, alternated with `main`, in the review's
+first round); data built to cross such a line at every byte or two costs more, in time linear in its size — 4 MB of
+one-byte tokens 36 to 39 ms, of comment lines 27 ms, of nested strings 44 ms, each about 0.5 ms on `main`, which took no
+header with a comment —, and a timing test holds it so, 4 MB taking 3.99 times what 1 MB takes; the review's fourth
+round halved what a keyword waiting on comment lines costs, 87.3 to 43.5 ms, and measured nested strings, the worst
+shape, at 58 ms, some 14 ns a byte. The rebuild's scan for object headers costs what it did on sound files, 3.0 to 3.2
+ms for 4 MB, and on plain headers, 32 to 34 ms against 34 to 36; lines that hold a `%` 6.9 to 7.5 ms against 1.3,
+strings that hold one 12.7 to 13.7 ms against 2.8, and 100,000 headers with a comment between their tokens 40 to 43 ms
+and 18 MB, indexed where `main` found none (`ObjectScanBenchmarks`, the same runs). The chain pays for the numbers it
+refuses while it is read, about 60 bytes a number: 6.0 MB for 100,000 refused rows, and 1.01 GB for a stream whose every
+row is refused at the default bound on the index's entries; 1,024 chained streams that cannot be read open in about four
+times what 256 take, 197 to 201 ms against 47 to 53 under a `MaxTrailerLength` of 8 KB. A thousand tables naming one
+stream of 100,000 rows read it once, 168 bytes more a naming. The white space before a named section is crossed once a
+position, its probes reading less than ten times the bytes to the first token's end — 9.14 times at worst, 2,044 spaces
+before `xref` —, and 84,288 bytes at most under the default `MaxTrailerLength`, 1.29 times the 65,568 they reach; a link
+naming the start of a run of 65,530 spaces before a table reads 215,497 bytes where the file ends past the table, and
+411,968 where 8 MB follow it, the table's windows reading the run again (measured at the batch's end, [#295]).
+
 ## Next concrete step
 
 M02 — document validation (`docs/milestones/M02.md`), slices 1 to 3 done. Its progress is the
@@ -404,9 +469,11 @@ One pull request per batch, each design question put to the maintainer after mea
    17. [#155], numbers a file chooses to share a bucket, tables keyed by numbers dense or seeded (ADR 52) — done, merged
        with [#308] on 2026-10-30, `Remote corpus` runs 87, 89, 90 and 93 green on its branch (journal of 2026-10-28).
    18. [#167] and [#168], what a rebuild leaves a caller and what the validator's analyses cost, with [#201], [#277] and
-       [#307], and [#312], which the batch filed — done, in [#318], `Remote corpus` runs 98 and 99, the second at its
-       one rerun, green on its branch (journal of 2026-10-30).
-   19. [#188], [#197] and [#156], with [#207], [#208], [#210], [#221], [#222], [#241], [#261] and [#264].
+       [#307], and [#312], which the batch filed — done, merged with [#318] on 2026-11-03, `Remote corpus` runs 98 and
+       99, the second at its one rerun, green on its branch (journal of 2026-10-30).
+   19. [#188], [#197] and [#156], where the chain's sections lie and what it reports of one it reads in part, with
+       [#207], [#208], [#210], [#221], [#222], [#241], [#261] and [#264], and [#281] and [#317], placed with it — done,
+       in [#344], `Remote corpus` run 109 green on its branch (journal of 2026-11-03).
    20. [#189], with [#276].
    21. [#154] and [#171].
    22. [#132], with [#218], [#229] and [#260].
@@ -452,7 +519,27 @@ One pull request per batch, each design question put to the maintainer after mea
    the probe's verdicts that depend on what was read before, with [#163], whose cut of nested loads also makes a report
    depend on it; and [#309], the Arlington walk's queue, with [#173], whose walk it shares; [#317], a timing test's
    flake on .NET 11, goes with [#188], the next batch, since the job it fails runs on every pull request, as [#307] went
-   with [#168].
+   with [#168]. Batch 19 filed seventeen, fifteen under M02, one under M03 and one under M23: [#331], the search for a
+   classic table's trailer that a source serving short reads sends round one window without end, goes under M03, with
+   [#52], where the source's contract is written; [#343], the clamp of a section probe's reach to an array's greatest
+   length, which only white space past 2 GB tells apart, under M23, which budgets what the library costs and hardens it.
+   Of the fifteen under M02, twelve go with the batch whose code they share: [#320], the rows a relocation
+   candidate leaves when it is dropped, with [#189], the next batch, whose fix settles which of a number's definitions
+   the index keeps; [#327], a header whose number or generation carries a sign, with [#171], whose fix reads the byte
+   before a header's number in the same method; [#322], a table whose `trailer` keyword no dictionary follows, [#323], a
+   first section that cannot be read reported only as a rebuild, and [#325], `xref.section-malformed` silent where the
+   trailer is at fault too, with [#132], [#218] and [#229], whose rebuilds at opening, search for the catalog and rule
+   over the same records decide them; [#326], counts grouped in some messages and not others, with [#162], whose filter
+   reports it rewords; [#324], a classic table mid-chain whose bad row ends the chain, [#328], a `/Prev` in a trailer
+   `MaxTrailerLength` cut, and [#329], the `/Prev` of a stream at which a value's cut ends the chain, with [#163], the
+   reader at its guards; [#321], an `/XRefStm` copied two revisions late, [#330], a sound `/Prev` reported as a loop
+   where a newer `/XRefStm` read its stream first, and [#332], blocked by [#330], a `/Prev` a few bytes off a stream a
+   newer `/XRefStm` read, with [#107] and [#111], whose rules the maintainer names. The maintainer placed the other
+   three on 2026-11-11, their bodies naming no batch: [#333], an older revision's stream taken near a hybrid table's
+   `/Prev` before its own revision's table, in batch 31, with [#332], [#330] and [#321], the other side of the same
+   search; [#336], the test of the seeded comparer that fails under coverage on Windows, and [#342], the tests bound by
+   the stack or a stopwatch that fail on a loaded machine, in batch 32, with what remains of [#158], the tests' own
+   debt.
 5. Slice 4 ([#60]) in two pull requests, streams then fonts, after the decisions it waits on: the severity of a font
    that is not embedded, the standard 14's aliases, where text is "meant to be extractable", how the rules that need
    content are left out and shown so, and the tools that referee both families.
@@ -473,6 +560,466 @@ A stream, object or section the reader cut at one of its limits (`limit.*`, ADR 
 not a fault of the file: the rules on it report at most, as information, that it was not checked whole.
 
 ## Journal
+
+### 2026-11-03 — Batch 19: where the chain's sections lie, and what it reports of one it reads in part ([#156], [#188], [#197], [#207], [#208], [#210], [#221], [#222], [#241], [#261], [#264], [#281], [#317])
+- **The question.** Measured on `main` at `21a0298` by nine agents, one for each part of the batch, and a completeness
+  critic who composed their changes and looked for what none of them could see. [#188] and [#281]: a section the chain
+  names that is there and cannot be read was looked for nearby as one that is not there, and landed on a section the
+  chain had read — a newer table, the table that named it, a hybrid table's own stream —, reported as a loop and a shift
+  the file did not have, `Error xref.chain-loop` among them, and, where a hybrid table was taken for the stream its
+  `/XRefStm` names, an object read as null with nothing said; of the 735 sections the chains of the 403 corpus documents
+  name, one was relocated, in IBM's QMF manual, onto the right table. [#197]: near the file's start the search near an
+  offset reached 1,024 bytes past it, not 512, and a window that began inside a header's number served another object's
+  body. [#261]: neither the search near a row nor the rebuild's scan read a header with a comment between its tokens,
+  which a load reads, and digits a comment ended with were taken for a number. [#208]: the chain stopped at a
+  cross-reference stream whose rows could not be read — a width negative or no number, an `/Index` or a `/Size` that
+  numbers nothing, a deferred `/Length` no `endstream` confirms — though its dictionary named the older sections, and
+  the file was rebuilt; the issue's own shape, a width past 8, had been paid. [#207], [#210] and [#222]: a table the end
+  of the file cuts before its trailer, a section that lost rows to a row that is no row or a stream short of its rows,
+  and a table that holds no subsection opened with no report, an object the cut took lost in silence or found by a
+  rebuild whose `xref.rebuilt` was all that was said, a false `file.size-wrong` beside them. [#156]: an `/XRefStm`
+  naming a section already read, or a classic table, left no record and no finding, and a stream two tables name counted
+  for one, so that a PDFMaker 7 document of the OPF corpus drew a false `file.size-wrong`. [#221]: a row of a reserved
+  type was skipped, an older section's row standing where ISO 32000-1 reads null. [#264]: a section a rows guard stopped
+  judged nothing of what it names, a `/Prev` naming a free row, an offset outside the file or the section itself
+  reported as the guard alone. [#241]: 1,072 lines of the reports of 28 corpus documents put a count of one in the
+  plural, or a distance back as a negative count. [#317]: under four busy loops the row the issue names went past its
+  bound of 8 in one run of ten, and the row of members written as streams in five, up to 10.96 — a collection inside the
+  large probe, which kept every finding, 15.6 MB for 50,000 members and 63.1 MB for 200,000. Twelve questions followed.
+- **Settled with the maintainer**, eleven of the twelve as recommended (2026-11-03):
+  - a section is there where its offset holds the `xref` keyword or a stream whose dictionary gives `/Type /XRef`: one
+    that cannot be read is reported where it is, never looked for nearby, and a stream of `/Type /XRef` hands its
+    `/Prev` on ([#208]); an object that gives only a `/W` stays a guess, looked for nearby, as [#263]'s tests have it;
+  - no older section's row stands for a number that a section which lost rows declares — a stream that cannot be read
+    and hands its `/Prev` on, a stream read in part, a hybrid table's stream that cannot be read —, the ranges kept to
+    4,096, an internal constant (ADR 34), past which every number is refused, with a timing test of 1,024 chained
+    streams that cannot be read;
+  - a section read only in part is reported under `xref.section-unreadable`, its message saying that it was read only in
+    part and why, the code's summary widened to a section that cannot be read whole, `startxref`'s included, the
+    validator unchanged; a first section that cannot be read at all, which leaves only `xref.rebuilt`, filed ([#323]);
+  - a table that holds no subsection reads as indexing nothing, as `0 0` does, its index whole, the reader reporting
+    `xref.section-empty`, a repair, and a new rule `xref.subsection-missing`, a warning ([#222]);
+  - an `/XRefStm` that names no cross-reference stream of its table's revision is reported by the reader as
+    `xref.hybrid-stream-lost`, a warning, the index left incomplete, and by a new rule, `xref.hybrid-stream-wrong`, an
+    error; `xref.chain-cycle` and `xref.chain-loop` keep to `/Prev`: an `/XRefStm` naming what its table's `/Prev` names
+    is not followed, that `/Prev` reading it whole ([#156]);
+  - a cross-reference stream row of a reserved type reads as the null object, indexed as a free entry is, no older row
+    standing for it, the reader reporting `xref.entry-reserved` and a new rule `xref.entry-type-reserved`, both
+    warnings, which say that ISO 32000-1 defines types 0, 1 and 2 ([#221]);
+  - [#317]'s probe given a validation's default room for findings, 1,000, with five turns and its bound of 8, in the
+    test alone: a fourth way of steadying a timing test, which the maintainer consented to;
+  - one notion of what the chain has read — the positions where it read or relocated a section, a header's offset
+    counted — for its loop check, an `/XRefStm` naming a stream again ([#156]), what a guard's stop leaves judged
+    ([#264]) and relocation;
+  - `trailer.root-recovered` reported once a document;
+  - a hybrid table that copies an older revision's `/XRefStm` two revisions or more late filed under M02, with how to
+    detect it, its rule left to M03's writer ([#321]); and the rows a relocation candidate leaves when it is dropped
+    filed under M02 with both designs, a mark to roll back to or rows held until the candidate is taken ([#320]).
+
+  Against the recommendation, which had left it to a debt: the rule a damaged stream's `endstream` search stops at
+  follows the rebuild's scan in this batch, taking a header with comments between its tokens, a comment carried across
+  its reads, so that such a stream stops at that header, two rows of `StreamLengthTests` turning; the texts that said
+  the rule refuses such a header, the record of 2026-09-30 below among them, say it follows the scan.
+
+  Decided on the measures, without a question: [#197]'s window, 512 bytes either side of the offset wherever it falls,
+  one that does not start the file reading one byte before its start, a header or a section counting only where it
+  starts inside it — [#171]'s left edge, paid for the search near a row; [#261]'s header confirmed forward from a token
+  boundary, its line lexed by the load's lexer, the tests that hid a header from the scan with a comment hiding it with
+  a signed generation, through one helper ([#327]); [#207]'s cut table read in part where it read a row, unreadable
+  where it read none, and `file.size-wrong` judging no chain that holds a section read in part; [#210]'s report made
+  once, at the section, for its first fault, a section a guard cut that lost no row left the guard's, and the section
+  `startxref` names read in part not rebuilt at opening; [#208]'s handed `/Prev` followed under the chain's positions,
+  its count guard and relocation, the stream's dictionary never taken for the trailer, `file.trailer-value-wrong`
+  judging that `/Prev` alone; [#156]'s classic table read in the stream's place reported, the index left incomplete, and
+  a stream two tables name read once, counted for each and its `/Size` judged where the oldest names it; [#264]'s
+  guarded `/Prev` and `/XRefStm` judged as a whole read judges them; [#221] reported by the reader and the validator
+  alike; [#241]'s distances said "before" or "after", its counts agreeing with their noun through one helper the reader
+  and the validator share, each site keeping its digit grouping ([#326]); and the sixteen spacers the tests had put
+  between sections, to keep them out of the search near an offset, removed.
+
+  The reviews put twenty more questions to the maintainer, each answered as recommended:
+  - 2026-11-04, after the first round: a relocation candidate that declares itself a section and cannot be read ends the
+    search where it is the nearest, taken for the section found moved — `xref.offset-adjusted`, then
+    `xref.section-unreadable` there, its declared numbers refused, a stream of `/Type /XRef` read whole handing its
+    `/Prev` on, the validator giving `xref.section-shifted` and `xref.section-malformed` —, which changes what [#320]
+    expects; a classic table an `/XRefStm` names that cannot be read refuses what it surely lost, and every number where
+    what follows its fault cannot be known; the mirror order of [#156], an `/XRefStm` read first and a later `/Prev`
+    reaching its stream reported as a loop, filed under M02 ([#330]), `file.size-wrong` judging no chain that ends in a
+    loop; and [#317]'s test timing four probes back to back each turn, held over some 300 runs under four busy loops.
+  - 2026-11-06, after the fourth: a section a link names is read from the first token past its white space, the white
+    space and the dictionary each bounded by `MaxTrailerLength`, white space past it reaching `limit.trailer` there.
+  - 2026-11-07, after the sixth: the search near an offset taking `xref`, or a header of `/Type /XRef`, in uncompressed
+    stream data for a section found moved — worse than `main` since the first round's decision — documented and pinned
+    by tests under [#171], with no change of code.
+  - 2026-11-07, after the seventh: a cross-reference stream whose filters decode nothing of its data — a filter the
+    library does not know, Flate data corrupt before its first byte — holds no rows, its fault that its data could not
+    be decoded, its numbers refused and its `/Prev` handed on, the filter pipeline saying so by a value of its own and
+    encoded bytes no longer read as rows; a stream near a hybrid table's `/Prev` that may be the table's own told by its
+    own `/Prev`, one that gives none, or the table's, tried after every other place; and a section in stream data that
+    reads, taken before any line is lexed, left to [#171].
+  - 2026-11-07, after the eighth, on a measurement of the rules proposed over 3,210 hybrid files generated for it, read
+    under six sets of limits, 9,228 readings: a stream near the table's `/Prev` may be the table's own only where it
+    starts at or after the stream the table's `/XRefStm` read or names again, one before it keeping its nearest-first
+    place, with what that costs accepted — one shape back to `main`'s rebuild and its false `file.root-invalid`, two
+    generated files that read a first revision's stream some 500 bytes off, the revisions between lost with only a
+    section found moved reported ([#333]), and a test whose file no appending writer makes rewritten —; its `/Prev`
+    compared as the chain reads it, a real with no fraction as its integer, a reference as what a section read places
+    there, an offset outside the file as another offset; and a stream an `/XRefStm` names again standing for the one it
+    read, never taken in its place, which is filed ([#332]). The rule chosen read 1,193 of the readings worse than
+    `main` by the measurement's classing, a chain read whole where `main` rebuilt counting among them, and 69 better,
+    against 1,434 and 69 under the rule it replaced; no later round moved those counts. Told to the maintainer before
+    those questions, as invariant 5 settles it: a stream the search passes over as possibly the table's own, which the
+    chain never reads, is reported, `xref.stream-passed-over`, a warning.
+  - 2026-11-08, after the ninth: a place before the stream an `/XRefStm` read whose header's number runs into where that
+    reading started is that stream; and `xref.stream-passed-over` names only a place that declares itself —
+    `/Type /XRef`, its header a token on its line —, nothing read for it. That day the maintainer let builds and test
+    runs share the machine, benchmarks and the timing, budget, allocation and memory tests apart, and the batch moved to
+    the maintainer's Windows machine.
+  - 2026-11-08, after the eleventh: once white space past `MaxTrailerLength` meets the chain where it names a section,
+    the warning is withheld throughout the document, even where the search finds the section whole past the run, which
+    only a bound under the search's 512 bytes allows; [#289]'s closing may bring it back.
+  - 2026-11-10, after the twelfth: the flag that withholds the warning set wherever a trailer guard cut the reading at
+    an offset the chain names, whatever the cut left — a dictionary of any `/Type`, a header, a comment —; and the
+    stream an `/XRefStm` read, and every stream section the chain reached from a sign of its header, told by where the
+    header's digits start, whatever the bytes searched hold, so that no such header is read twice in a loop.
+  - 2026-11-10, before the thirteenth: a header found at its first sign, a `%` on the line of its number, told by the
+    digits past its signs, as it is without the `%`.
+- **Reviewed** thirteen times, each finding put to a second agent that tried to refute it, most of them in a worktree of
+  their own, 328 findings in all, 14 of them refuted. On 2026-11-10 the maintainer amended the rule the loop stops by,
+  from the thirteenth round on: it ends at the first round in which no blocker and no major survives refutation, rather
+  than no minor, that round's minors and nits getting one final pass and no review after it — a minor that needs a
+  change of behavior filed or put to the maintainer —, the fourteenth round at the latest, a blocker or a major left
+  after it going to the maintainer. The thirteenth met it. Every blocker and major was fixed in the batch, but the
+  search's reading of stream data, documented and pinned under [#171] at the maintainer's choice, and what the rules of
+  2026-11-07 accepted, filed as [#332] and [#333].
+  - The first round, on the implementation, 49 findings, ten major: the chain told a section it had reached by the
+    offset written rather than by where the section's first token starts, so that a link naming the white space before a
+    section read it again and doubled its reports, and an `/XRefStm` reaching what its table's `/Prev` reads through
+    another offset went unseen; a relocation passed over the nearest place that declares itself a section and cannot be
+    read; a guarded `/Prev` naming a number a newer section refused went unjudged; a table a guard cut before its first
+    row was decided by what the index held, and the end of the file inside the `trailer` keyword read as a stray token;
+    a classic table an `/XRefStm` names that cannot be read let older rows stand for what it lost, and the check of rows
+    leading past the index left the refused numbers out; the stream-end search judged a header a later read found with
+    what it had read past that header's start. Its fixes brought the stream-end search's and the object scan's
+    benchmarks.
+  - The second, 24 findings, three major: an `/XRefStm`'s search stopped at what the table's `/Prev` names where that
+    `/Prev` keeps no place there — a font, a CIDFont that gives a `/W`, a string —, the stream beyond never read; a
+    `/Prev` a few bytes short of a section the `/XRefStm` had read in the stream's place passed it over as reached,
+    skipping a revision or rebuilding the file; and the word `xref` in a comment or a string ended a relocation.
+  - The third, 18 findings, four major: whether that `/Prev` keeps its place was told from its dictionary alone, now by
+    a check that reads the section as the chain would and keeps nothing of it; the line test lexed a place's line from
+    the bytes searched, now from the line's start, read back up to 4,096 bytes, an internal constant; a stray header of
+    `/Type /XRef` ended a relocation as the word had; and `xref.hybrid-stream-wrong` blamed the file where a guard's cut
+    decided the place.
+  - The fourth, 27 findings, one blocker and two majors: the line test threw, or read without end, on a source that
+    serves short reads, and the decision on an `endstream` a comment holds failed on one too; and the look at a
+    `/Prev`'s place read the object from its header where the `/Prev`'s own reading read from the offset named, so that
+    near `MaxTrailerLength` the two disagreed, which the maintainer settled by reading every named section from its
+    first token. The search for a classic table's trailer past rows a guard left unread, which reads a short window
+    again without end, was found older than the batch and filed ([#331]).
+  - The fifth, 18 findings, none major: what white space past `MaxTrailerLength` at an `/XRefStm`'s offset now leads to,
+    left to [#289]; a section read in part reported before what it refused, its message then wrong; the threat model's
+    gap on short reads, split in two.
+  - The sixth, 14 findings, one major: the search near an offset takes `xref`, or a header of `/Type /XRef`, in
+    uncompressed stream data, a section the file does not have, worse than `main`, documented and tracked under [#171];
+    and the threat model understated what short reads spend of the `endstream` searches' budget.
+  - The seventh, 21 findings, two major, each worse than `main`: a cross-reference stream whose filters decoded nothing
+    had its encoded bytes read as rows, zlib's first byte a reserved type since [#221], so that an object read as null;
+    and a hybrid table's `/Prev` took the update's own stream, which the second round's fixes had tried last, the chain
+    ending there, the file rebuilt and a freed object served.
+  - The eighth, 32 findings, nine major, six once duplicates are merged: dropping a place whose data decodes to nothing
+    took with it what reading its dictionary had reported, which nothing made again; a guard's cut of `/Size` or of the
+    whole `/Index` hid such data, the guard blamed; a stream passed over was counted twice against the places the search
+    may try, so that a section 5 bytes off was lost; a dictionary `MaxTrailerLength` cut decided whether a stream was
+    the table's own, the guard unreported; and a first revision's stream, which gives no `/Prev`, tried last as possibly
+    the table's own, and a stream an `/XRefStm` names again escaping that order, which the maintainer's answers of that
+    day settled. Since its fixes, a stream whose `/Size` or whole `/Index` a guard cut has its data decoded to tell
+    whether it holds rows, so that `MaxStreamLength`, `MaxFilterChainLength` or `MaxDecodedStreamLength` may be reached,
+    and thrown under `ThrowOnLimit`, before the guard that cut the value; the look at a `/Prev`'s place did so for a
+    stream of `/Type /XRef` too, until the ninth round's fixes.
+  - The ninth, 31 findings, three major: `xref.stream-passed-over` was made at a stream the chain had reached and could
+    not read, and where a guard had stopped the chain or cut what it reached.
+  - The tenth, 22 findings, eight major, three once duplicates are merged: the look at a `/Prev`'s place dropped a guard
+    its decoding reached, which no later reading reported; the diagnostics counted a guard met again as one the capacity
+    left out, with room to spare, since `e157359` and `68a55fa`; and the warning was made at a stream the chain had read
+    from inside its object number.
+  - The eleventh, 24 findings, one major, worse than `main`: a stream of `/Type /XRef` that cannot be read, its header
+    written `+14 0 obj`, was dropped by the search, the next section farther off taken and the revision's objects served
+    from an older one, with nothing said: `2b26d18`'s line test, asked at the digit [#327]'s walk finds, where no token
+    starts.
+  - The twelfth, 25 findings, one major, from the eleventh's fix: a header the chain reached at its sign was taken again
+    at its digit, the section reported twice, a false loop, and a rebuild serving a freed object. A shape its fixes
+    left, a header written `++5 0` with a `%` on its line, still looped where `main` read the chain whole, and was fixed
+    before the thirteenth round.
+  - The thirteenth, 23 findings: its two majors were refuted, both [#332]'s and no worse than `main`, and so was one
+    minor; the 13 minors and 7 nits left were texts and tests, which the final pass, `d26df72`, `cd17a9a` and `19a2296`,
+    fixed, with a comment on [#332].
+- **Done**, in [#344], 173 commits from `4c744a5` to `19a2296`, and 46 after it to
+  `2c7cf01`, 45 `test:` and one `docs:` — the 43 `test:` commits of the settling of the mutants that survived the
+  batch-wide step, `9d20508` to `f732361`, two of them correcting comments alone, then `e5424b2`, `9a21ac7` and
+  `2c7cf01`, which change comments alone too —:
+  - [#188] and [#281]: a section the chain names is there where its offset holds the `xref` keyword or a stream whose
+    dictionary gives `/Type /XRef`; one there that cannot be read is reported where it is, `xref.section-unreadable`,
+    and never looked for nearby. The search near an offset that holds no section passes over every place where a section
+    the chain reached starts — told by where its first token starts, the white space before it crossed once a position,
+    or, for a stream reached from a sign of its header, by where its digits start —, and takes the nearest place that
+    reads as a section, or that declares itself one and cannot be read, which ends the search there, the section found
+    moved and unreadable. A place declares itself only where its keyword or header is a token its line, lexed alone from
+    its start, reads — read back up to 4,096 bytes, `LineStartSearchLength`, an internal constant —, a signed header
+    asked at its first sign; an object that gives only a `/W` stays a guess. The word in stream data, or on a line
+    inside a string an earlier line opened, is still taken, as [#171] records.
+  - [#197]: the search near an offset, for an object or a section, reaches 512 bytes either side of it wherever it
+    falls; a window that does not start the file reads one byte before its start, and a header or a section counts only
+    where it starts inside it, so that the window's edge no longer cuts a header's number — [#171]'s first bullet, for
+    that search.
+  - [#261]: the search near a row, the rebuild's scan and the search near an offset read a header with comments between
+    its tokens as a load does, a line that holds a `%` lexed from its start by the load's lexer, the walk linear and
+    allocating nothing; the rule a damaged stream's `endstream` search stops at, and the parser's end of the containers
+    an object left open, take such a header too, an `endstream` inside its comment waiting for what follows the line,
+    decided alike however a source parts its reads. A header whose number carries a sign is [#327]'s.
+  - [#208]: a cross-reference stream of `/Type /XRef` whose rows cannot be read — a width negative or no number, a fault
+    of its numbering, a deferred `/Length` no `endstream` confirms, data its filters decode nothing of — hands its
+    `/Prev` on: the older sections are read and judged, its dictionary never taken for the trailer. Data left at a
+    filter the library does not know, or Flate data corrupt before its first byte, holds no rows: the filter pipeline
+    says so, and the encoded bytes are no longer read as rows.
+  - [#207] and [#210]: a section read only in part — a table the end of the file cuts after a row, a row that is no row
+    ending a subsection, a stream that holds fewer rows than it declares — is kept and reported once, at the section,
+    under `xref.section-unreadable`, its message saying which rows stand; a table cut before its first row cannot be
+    read, the file ending before its trailer. No older section's row stands for a number such a section lost, nor for
+    one a stream that cannot be read declares, nor for what a classic table an `/XRefStm` names that cannot be read
+    lost, every number where what follows its fault cannot be known: the ranges are kept to 4,096, `MaxRefusedRanges`,
+    an internal constant, every number refused past them, and the rebuild finds the objects when they are asked for.
+    `trailer.root-recovered` is reported once a document.
+  - [#222]: a table that holds no subsection reads as indexing nothing, `xref.section-empty`, a repair.
+  - [#156]: every `/XRefStm` naming is recorded, a stream two tables name read once and counted for each; one that names
+    no cross-reference stream of its revision — the table itself, another table, a table read in the stream's place, a
+    section the chain read, what its `/Prev` names — is `xref.hybrid-stream-lost`, a warning, the index left incomplete,
+    and is not followed where its `/Prev` names the same section. The search near a hybrid table's `/Prev` tells the
+    table's own stream by where it lies — at or after the stream the `/XRefStm` read or names again — and by its `/Prev`
+    as the chain reads it, one that gives none, or the table's, tried last; the stream the `/XRefStm` read is told by
+    its header's digits, a place inside its object number or at a sign of it included; places tried are counted once
+    each, 32 a document at most, a retry uncounted, the place a hybrid table's `/Prev` names still asked past them. A
+    stream it passes over that declares itself, which the chain never reads, is reported, `xref.stream-passed-over`, a
+    warning, but nowhere in a document where a limit stopped the chain or cut what it reached, a trailer guard cut the
+    reading where the chain names an offset — but for the trailer of a classic table an `/XRefStm` names, whose links
+    the chain never follows —, or white space there ran past `MaxTrailerLength`.
+  - [#264]: what a section a rows guard stopped names — `MaxXRefSectionLength`, `MaxDecodedStreamLength`,
+    `MaxIndexEntries` — is judged as a whole read judges it, nothing past the guard read (ADR 34, amended on
+    2026-11-04).
+  - a section a link names is read from the first token past its white space, the white space and the dictionary each
+    bounded by `MaxTrailerLength`, a classic table's white space counting toward `MaxXRefSectionLength` as well
+    ([#289]); white space past it reaches `limit.trailer`, reported at the offset, the section not read from there; the
+    probe reads a few bytes past the window, and crosses each position once.
+  - [#221]: a cross-reference stream row of a reserved type reads as the null object, no older row standing for it,
+    `xref.entry-reserved`, a warning, until a rebuild for another fault reads its object as the scan finds it.
+  - the validator: `xref.subsection-missing` ([#222]) and `xref.entry-type-reserved` ([#221]), warnings, and
+    `xref.hybrid-stream-wrong` ([#156]), an error; `file.size-wrong` counts a stream two tables name for each, judges
+    its `/Size` where the oldest names it, and judges no chain that holds a section read in part or ends in a loop, so
+    that the PDFMaker 7 document loses its false finding; `xref.section-malformed` covers a section read in part;
+    `xref.chain-loop` keeps to `/Prev`; `xref.offset-imprecise` counts each offset written once;
+    `file.trailer-value-wrong` judges a handed `/Prev`, and a hybrid stream's own `/Prev`, read only to tell its place,
+    as written.
+  - [#241]: a count agrees with its noun, and a distance says "before" or "after", through `CountText`, which the reader
+    and the validator share; each site keeps its digit grouping ([#326]).
+  - the diagnostics count apart the guards' reports their capacity drops, so that a rollback beside the guards counts
+    left out only those.
+  - [#317]: the test's probe takes a validation's default room for findings, 1,000, and times four probes back to back
+    each turn under its bound of 8: under four busy loops, 300 of 300 runs of the classes together and 100 of 100 alone
+    passed, at ratios of 2.1 to 7.7, one at 7.7 and the rest at most 6.6, and 3.7 to 4.6 over 50 runs without load; the
+    scan of the header for each member, which the test guards against, was caught in 45 of 45 runs, at 13.1 to 21.9. The
+    review's fourth round saw 9.07, 9.68 and 15.8 under a heavier load: the issue closes on four busy loops, not on a
+    machine run past its cores. The timing of 1,024 chained streams that cannot be read is held under 12, 3.2 to 6.2
+    over 300 runs under four busy loops and up to 10.0 with builds beside them.
+  - `StreamEndSearchBenchmarks` and `ObjectScanBenchmarks`; `HybridFiles`, `NearbyFiles`, `PartialFiles`,
+    `LostStreamFiles`, `ReservedRowFiles`, `StoppedSectionFiles` and `UndecodedStreamFiles` building the files, and
+    `CappedReadSource`, `CutShortSource` and `ShortCountSource` serving short reads; the tests that hide a header from
+    the scan write its generation with a sign, through one helper.
+
+  Docs: ADR 34, amended on 2026-11-04; ADR 46's spelling; the threat model's rows on the chain's search near an offset,
+  the sections read in part and the numbers refused, the stream-end search and the scan, undecodable data and what a
+  dropped place leaves, and its known gaps, [#156], [#188], [#197], [#221] and [#261]'s gone, [#52], [#171] and [#279]'s
+  widened, [#47]'s restated, and [#320] to [#325] and [#327] to [#333] new; M02's specification of the chain and its
+  corpus row; M04's revision of a stream several tables name; the row of `docs/corpus-contributions.md` for a real
+  update whose middle section is damaged; `concepts/diagnostics.md`, `concepts/lazy-reading.md`,
+  `concepts/reader-limits.md`, `concepts/validation.md`, `reference/diagnostics.md`, `reference/reader-limits.md` and
+  `reference/validation-rules.md`.
+- **Tests**: 1,809 new unit tests, 6,657 to 8,466 at `2c7cf01`, 8,446 passing and the same 20 skipped in CI's run 1055,
+  8,445 under the coverage command on the maintainer's machine, which on Windows fails [#336]'s test, older than the
+  batch, passing alone three times of three — with the remote documents, from 9,817 at the implementation's end with
+  the 235 the container held to 11,052 at `19a2296` with all 242, on the maintainer's machine, 11,049 passing and 3
+  skipped, and 11,155 at `2c7cf01`, 11,152 passing in 3 min 58 s and the same 3 skipped, the laziness test on the two
+  documents recorded as unsupported until [#47] and the private manifest's schema —, in `CrossReferenceChainTests`,
+  `CrossReferenceRuleTests`, `GuardCutValueTests`, `ReaderLimitsTests`, `HostileInputTests`, `DocumentReaderTests`,
+  `WindowEdgeTests`, `StreamLengthTests`, `PropertyTests`, `ReaderTimingTests`, `HeaderTextTests`, `DiagnosticsTests`,
+  `FileRuleTests`, `CountTextTests`, `EndObjTailCopiesTests` and their neighbors; the integration suite unchanged, 1,495
+  tests on the committed corpus and 3,760 with all 242 remote documents.
+- **Mutation**: ADR 53's step at each stage of the implementation and of the fixes that changed code in `src/`, then
+  over the whole batch at its end. The review corrected the records of six stages: a mutant of the stage on undecodable
+  data, one of the stage that read a stream's own `/Prev` through references and one of the stage on decoding beside a
+  cut value, each classed equivalent, each killed once a row told it apart; three classed equivalent at the stage that
+  told a stream by its data, whose reasons failed for a run of signs, classed again on the code that followed, and two
+  mutants of its digit range it had left out, then killed, one reason of the stage before it corrected, a stream's first
+  byte able to be a `+`; and three of the window-edge stage, killed by the final pass's rows of a section at the file's
+  first byte and of longer runs of signs. Four survivors of the twelfth round's reached test went with the change that
+  followed, three of their edges pinned by fourteen rows, the fourth [#332]'s. The step at the end took as its catalog
+  the 1,746 code lines of `src/` the batch changes, 2,171 sites and 3,751 mutants, of which 15 a stage record still
+  covered — its replacement, its killing test and the code it flows into unchanged at `19a2296` —, 388 of the 529
+  records read refused, each with its reason; the 3,736 others were run at `19a2296`, each stopping at its first failing
+  test, 224 of them expected not to compile and built to confirm it; eight that the project's own build refuses, for a
+  statement the change leaves unreachable, were built without warnings as errors, which changes nothing of what they
+  compile to. The 224 failed to build, 3,193 were killed and 319 survived. Each of the 319 was settled, none filed as
+  debt: 112 killed by tests written for them and one by a test the batch added after `19a2296` for another — 103 test
+  cases in 43 `test:` commits, `9d20508` to `f732361` —, and 206 classed equivalent, each with its reason, 29 of them in
+  what is reported, their only change a bounded cost — state that only the chain's reading uses, kept until the reader
+  is collected; a search begun a byte back; a scan in place of a halving lookup among the refused ranges, at most
+  `MaxRefusedRanges` comparisons a row —. Every first verdict of equivalence, 245 in all, was checked a second time,
+  against an input built to tell the two apart, and 39 were overturned, each mutant then killed by a test: 12 of the
+  first 36, most of them on the premise that an internal member is called only inside the read it serves. Two sites no
+  test reached had been expected to survive: the line test's guard against a place before the bytes it read fell to a
+  new test, a hybrid table's own stream read from a sign before the window near its `/Prev` and cut short before it is
+  read again; the defensive branch of the parse of an object no section records survived, classed equivalent, its one
+  caller asking only places inside the file and reading what it would return as nothing found. No mutant of the step at
+  the end was left to a debt. The clamp of the probe's reach to an array's greatest length, whose removal survived at
+  the fourth round's fixes, only a run past 2 GB telling it apart, and on whose line the catalog at the end holds no
+  mutant, is filed under M23, which budgets what the library costs and hardens it: [#343], to close on a test that tells
+  the clamp apart, or on the maintainer's choice to keep it a defensive line no test reaches.
+- **Tracking.** Filed under M02 on 2026-11-03, from the measurement: [#320], the rows a relocation candidate leaves in
+  the index when it is dropped; [#321], an `/XRefStm` copied two revisions or more late; [#322], a table whose `trailer`
+  keyword no dictionary follows, ending the chain in silence; [#323], a first section that cannot be read reported only
+  as a rebuild; [#324], a classic table mid-chain whose bad row, subsection header or stray token ends the chain;
+  [#325], `xref.section-malformed` silent where the trailer is at fault too; [#326], counts grouped in some messages and
+  not others, and one fault of an object stream's header worded two ways; [#327], a header whose number or generation
+  carries a sign, missed or misread by the scan and the searches; [#328], a `/Prev` in a trailer `MaxTrailerLength` cut,
+  never judged. On 2026-11-04, after the first round: [#329], the `/Prev` of a stream at which a value's cut ends the
+  chain, never judged; [#330], the mirror order of [#156]. On 2026-11-06, under M03: [#331], the search for a classic
+  table's trailer that a source serving short reads sends round one window without end, older than the batch. On
+  2026-11-08: [#332], a `/Prev` a few bytes off a stream a newer table's `/XRefStm` read, which never takes it, blocked
+  by [#330]; [#333], an older revision's stream nearer a hybrid table's `/Prev` than its own table taken, what only the
+  sections it skips index lost. On 2026-11-10: [#336], the test that every table keyed by numbers takes the seeded
+  comparer, which fails under the coverage command on Windows, reading IL the profiler rewrote, older than the batch. On
+  2026-11-11, from the mutation step: [#342], three tests bound by the stack or a stopwatch that fail on a loaded
+  machine and pass alone, two allocation rows the name filters that run such tests alone miss, and an allocation test
+  that rests on the shared pool's per-thread slot. The same day, under M23: [#343], the clamp of a section probe's reach
+  to an array's greatest length, which no test holds, only white space past 2 GB telling it apart. Commented: [#171],
+  seven times — the left edge paid, two more ways a header is read otherwise than a load reads it, the chain's search
+  near an offset as a fourth such reader, the word or a stream's header in stream data, edited after the seventh round,
+  a section there that reads, a quoted stream passed over, and a table whose keyword a comment holds, taken under a
+  guard or read whole, edited on 2026-11-10 —; [#289], four times, the warning the white-space guard withholds, its
+  reach throughout the document, a comment between a header's tokens counted toward `MaxTrailerLength`, and any cut
+  withholding it; [#327], four times, the search near an offset asking a signed header at its first sign, its reached
+  test doing so too, the two edges that left fixed, and the `%` line's loop fixed; [#332], four times, each check that
+  tells a stream the chain read by a byte, and its body's first item corrected; [#279], three times, a `/Type` value a
+  cut parts, any dictionary cut, then any cut; [#260], twice, two more ways to `file.root-invalid`'s false sentence, a
+  trailer with no `/Root` whose catalog a rebuild finds in an older one, and a file whose only section gives only
+  reserved rows; [#320], twice, what the first round's decision changes of its shape, and the refusals and the flag a
+  dropped candidate leaves too; [#330], twice, its shape with the `/Prev` a few bytes short of the stream and one byte
+  into its number; [#322], the converse of its shape, rows that run into `<<` with no `trailer`; [#292], the same
+  rebuild through a rows guard and `MaxObjectLength`, which its fix must cover; [#52], the two readers the batch added
+  that a source serving short reads broke, and how they are guarded; [#336]'s body, a line number corrected. At the
+  batch's end, on 2026-11-11: [#289], what the batch changed of a guard reached in white space — a stream read from its
+  first token, the probe 32 bytes past the bound, the guard's words of its own, the warning it withholds —, where an
+  `/XRefStm` naming the run now leads, the probe's cost and what its closing should keep; [#295], its two shapes,
+  measured, reading under the bound as with it raised, and what a run costs through a classic table's windows, measured
+  again; [#52], which short windows repeat less than the overlap, corrected, what every short read costs the `endstream`
+  searches' budget, and two more places the line test drops under a capped source; [#260], one more way to
+  `file.root-invalid`'s false sentence the batch pins, which `main` takes too, and the reserved-row shape measured
+  again; and [#158], two tests the mutation step found holding less than their names claim. The pull request closes
+  [#156], [#188], [#197], [#207], [#208], [#210], [#221], [#222], [#241], [#261], [#264],
+  [#281] and [#317].
+- **Checked**, at `2c7cf01` unless said:
+  - the unit suite under code coverage, as CI runs it, on the committed corpus: 8,466 tests, 8,445 passed, 20 skipped
+    and one failed, [#336]'s, below, where CI's run 1055 passed 8,446 and skipped the same 20; of the patch's 1,461
+    coverable lines in `src/`, 1,460 run and 1,456 whole, and 1,307 of their 1,313 branches, the five not whole, none of
+    which an input takes: the defensive branch of the parse of an object no section records, whose one caller asks only
+    places the search found inside the file (`PdfFileReader` 4075, 4077); the arm of the walk past a header's signs for
+    a run that reaches the end of the bytes searched, where a place the search finds lies whole within them, its number
+    or `xref` with it (5567); and in `SizeWrongRule` the arms of `Counted` that give null, for a section named again
+    that is no hybrid stream, every such record leaving a chain the rule refuses before its loop (162), and the branch
+    the compiler adds for the `?.` through which the loop reads that null (71). `src/` as Codecov counts it: 10,005 of
+    10,057 lines, 99.48 %; of the 19,713 lines of `src/` the report holds, the generated Arlington tables among them,
+    19,700 run, 99.93 %, the report's own line-rate 99.90 % and branch-rate 99.18 %. At `dfb03fc`, of the patch's 1,462
+    coverable lines 1,460 run and 1,455 whole, the seven not whole a defensive branch of the parse of an object no
+    section records (two lines), the line test's guard against a place before the bytes it read (two), the same two
+    lines of `SizeWrongRule` (71, 162) and the defensive arm of the walk past a header's signs, none of which an input
+    takes but the line test's guard, which a test written since in the mutation step takes. On Windows the coverage
+    command fails [#336]'s test, older than the batch, which passed alone three times of three at `2c7cf01`, and once
+    failed a timing row under load, both passing alone;
+  - with all 242 remote documents, on the maintainer's machine, 11,155 unit tests, 11,152 passed and 3 skipped, in 3 min
+    58 s, and 11,052 at `19a2296`, 11,049 passed and 3 skipped; the timing, budget, allocation, memory and hostile-input
+    groups three times each, alone, at every round's check from the seventh and at `2c7cf01`, all passing; the
+    integration suite against qpdf at `26ce787`, with all 242 remote documents, its six classes run one after another,
+    each alone: `ReadOrderSweepTests` 410, `FlateRefereeTests` 774, `StreamLengthRefereeTests` 129,
+    `TextFilterRefereeTests` 21, `ValidationRefereeTests` 1,640 and `QpdfRefereeTests`
+    786, 3,760 tests in some 54 minutes, 3,754 passed and 6 skipped where qpdf cannot walk a damaged document's pages,
+    none failing; two runs of the whole suite in one process were stopped at the 60-minute bound they were given on that
+    machine, no test failing in either; and CI's integration job, on the committed corpus, green on every push of the
+    branch, 1,495 tests, 1,493 passed and 2 skipped at `9a21ac7`;
+  - the corpus opened and validated on `main` and on the branch at every round's check — 403 documents in the container
+    until the eighth, 410 on the maintainer's machine from the ninth, 168 committed and 242 remote —: once [#241]'s
+    1,072 rewordings in 28 documents are applied to `main`'s reports, one document differs, the PDFMaker 7 document of
+    the OPF corpus, which loses its false `file.size-wrong`; no document threw; and so at `26ce787`, whose `src/` the
+    branch keeps but for comments, its dump of the 410 documents byte-identical to the last round's;
+  - the 9,228 readings of the generated hybrid files, the same at every round's check from the eighth but where a
+    decision changed them;
+  - the package in the compatibility island's trimmed application on .NET 11 rc.1, in CI's compatibility job alone, the
+    .NET 11 SDK not being installed on the maintainer's machine: green on every push of the branch, at `2c7cf01` 150
+    documents opened and validated as their manifest says, 18 encrypted refused, none differing; the unit suite on the
+    .NET 11 runtime in the same job;
+  - the documentation site, 269 pages, no warning, at `19a2296`; formatting clean; every commit message checked against
+    the project's rules;
+  - `ReaderBenchmarks`, `IndexBenchmarks`, `ValidationBenchmarks`, `CrossReferenceProbeBenchmarks`,
+    `StreamLengthBenchmarks` and `TrailerScanBenchmarks` under ShortRun, each class twice on the branch and twice on
+    `main` at `21a0298`, alternated, one process at a time, alone on the machine, and `StreamEndSearchBenchmarks` and
+    `ObjectScanBenchmarks`, which `main` lacks, twice on the branch: *Current measurements* gives the figures;
+  - CI: 89 runs, 930 to 1055, one on each push of the branch, all green but runs 982 to 984, on `f8550c7`, `ee0c231` and
+    `e3d0c99`, whose workflows job alone failed, the download of actionlint answering 504; run 1055 green on `2c7cf01`;
+  - `Remote corpus`: run 109, on `9a21ac7`, whole at its first attempt, 242 documents from the cache, 11,155 acceptance
+    tests, 3 skipped, and 3,760 referee checks, 6 skipped; no other run on the branch.
+- **Commit bodies not rewritten.** Thirty bodies went out inexact, or became so as later commits changed the code, and
+  pushed history is not rewritten. `e67fef9`'s "rebuild benchmarks" were a probe never committed, the shapes held since
+  by `ObjectScanBenchmarks`; `b09f981` shipped its lexer's searches without a benchmark, `StreamEndSearchBenchmarks`
+  holding them since, and its "a long line costs what searching it costs" holds of a long token, not of a line of short
+  ones; `d63f093` and `7c0748b` say each run of white space is crossed once, false where an `/XRefStm`'s search tried
+  two places or more, until `2b26d18`; `394028c` says a stream the `/XRefStm` read is taken only where its own `/Prev`
+  names an older section, where any `/Prev` it gave sufficed; `5656c64` says an `/XRefStm` naming what its `/Prev` names
+  outside the file, where the count guard ends the chain, is the guard's, where its test and the code say "outside the
+  file", as a whole read does; `2b26d18` says whether a `/Prev` keeps its place is told by reading the object as the
+  chain would, false within `MaxTrailerLength` of the window's edge until `f0d90c8`; `ea348ce` says where the reads part
+  the data changes nothing, true of whole reads only until `cfaa90c`; `8ccd868` says the reports say which of the rows
+  they count do not stand, which they leave unnamed, as `056461b` corrected the pages; `f0d90c8` says a section past a
+  run of white space is looked for nearby as before, true of a `/Prev` or an `/XRefStm`, the section `startxref` names
+  being rebuilt; `8ba4589` says the `limit.trailer` summary had the section always looked for near the offset, where
+  that summary said nothing of white space; `8692234` says a table whose rest cannot be known keeps its words, false
+  past 4,096 lost ranges, and gives "every object where the stream kept no row" for a split by the rows it holds;
+  `de12b13` says the word is taken anywhere on its line, where it is taken wherever its line, lexed alone, reads it as a
+  token; `092b772` says such a stream hands its `/Prev` on and has its numbers refused, true of a stream of
+  `/Type /XRef` alone, that a stream whose value a guard cut is found unreadable for such data, false for a cut `/Size`
+  or whole `/Index` until `5d10a36`, and that the look at a `/Prev`'s place drops what its decoding reported, false for
+  a guard until `42ca0bb`; `ed61728` drops the same qualifier; `253f179` says the threat model's entry for the gap cites
+  the tests, which its row of defenses does; `5de20b7` and `da0e157` are false beside a cut value until `68a55fa`;
+  `d8e67de` gives an older revision's stream before the one the `/XRefStm` read as ending the chain, true only where it
+  gives no `/Prev`, and places read at most 64 times a document, leaving out the look at the `/Prev`'s place past the
+  bound; `9823992` spells judgment the British way; `68a55fa` says the look reports nothing, a guard its decoding
+  reached standing since `e157359`, and `e3d0c99` says what decoding a dropped place's data reported goes with it, where
+  a guard that decoding reached stands, as the comment it wrote says, and went out while the look dropped the guard its
+  decoding beside a cut value reached, which `e157359` keeps; `b55738a` says nothing is reported where a limit stopped
+  the chain or cut what it reached, false for the white-space guard until `5395eed`; `2be5c44` says a link inside a
+  stream's number reads the same dictionary and data from there, false where the digits from there read 0; `220eab4`
+  says a guard a decoding meets again is never counted left out, true only where the document holds its report and the
+  decoding made fewer reports than the capacity before it; `305c1fb`, `78885bf` and `5880c0b` give the flag's reach as a
+  dictionary a guard cut, any cut since `9e20161`; `69731a2` says the threat model's entry and three of its rows
+  changed, where two did; `743cea0` places the `)` that ends a string a byte past the data's start, where it lies two
+  bytes past. Four source texts went out inexact too, each corrected since: `9823992`'s remark that a header counts only
+  where its number starts a token, false for the walk back from `obj`, which finds `+17` or `x17` at its first digit,
+  until `2be5c44`; `daca13c`'s summary that a guard a decoding meets again is not counted left out, scoped in `a0e94ca`
+  to a decoding that made fewer reports than the capacity before it; `7b1de15`'s, which gave the flag's reach as a cut
+  inside the name a `/Type` gives, where the code takes any name `XRef` begins with wherever the cut fell, until
+  `1c1d270`; and `HeaderText`'s remarks, that each byte carried into a read records where the run it stands for starts,
+  false since `b09f981` of the bytes carried for what precedes the line a read starts in, which record where a number
+  starts or no place, until `e5424b2`. One footer went out too wide: `761ce0b`'s names the fourteen issues it advances
+  on one line of 87 columns, past the 79 every other line of the batch's messages keeps to below its subject, within the
+  100 commitlint allows.
+- **Next**: batch 20, [#189], with [#276], and [#320], placed with it.
 
 ### 2026-10-30 — Batch 18: what a rebuild leaves a caller, and what the validator's analyses cost ([#167], [#168], [#201], [#277], [#307], [#312])
 - **The question.** Measured on `main` at `75999e4` by seven agents and a completeness critic, whose own record went
@@ -2897,10 +3444,11 @@ The detail is in git and in the pull requests; what still matters is in the reco
   `endstream` is taken, searched no further than the nearer of the next object the index as written places and the
   first object header the file's bytes hold — bounds no read changes, as the maintainer settled once reviews found
   lengths that depended on what was read first. No guard (ADR 34); no search starts once a document's searches have
-  read four times the file (`EndStreamSearchPasses`); a header with a comment between its tokens is not taken, as in
-  the rebuild's scan (maintainer, 2026-09-30). `stream.length-invalid` went from 81 to 96 reports, each stream
-  reported once; 15 of the 16 wrong lengths read to their `endstream`, held to qpdf by `StreamLengthRefereeTests`;
-  crafted files still order-dependent are [#138] (M23). SAMHSA's object 27, now read whole, became [#56]'s case.
+  read four times the file (`EndStreamSearchPasses`); a header with a comment between its tokens was not taken, as in
+  the rebuild's scan then (maintainer, 2026-09-30), and both take it since batch 19 ([#261]), as a load reads it.
+  `stream.length-invalid` went from 81 to 96 reports, each stream reported once; 15 of the 16 wrong lengths read to
+  their `endstream`, held to qpdf by `StreamLengthRefereeTests`; crafted files still order-dependent are [#138] (M23).
+  SAMHSA's object 27, now read whole, became [#56]'s case.
 - **2026-09-30 — a damaged Flate stream keeps what it decoded ([#56], T40).** Of the corpus's Flate streams, 272 are
   damaged, 223 of which lost what the read meeting the fault decoded. The maintainer settled: data that faults is read
   again, after the fault only — a plain zlib header's body as raw deflate, kept whole when only the checksum
@@ -3173,3 +3721,21 @@ Until 2026-09-27 this section was a table whose rows were numbered T01 to T40; t
 [#315]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/315
 [#317]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/317
 [#318]: https://github.com/AdCodicem/AdCodicem.Pdf/pull/318
+[#320]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/320
+[#321]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/321
+[#322]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/322
+[#323]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/323
+[#324]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/324
+[#325]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/325
+[#326]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/326
+[#327]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/327
+[#328]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/328
+[#329]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/329
+[#330]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/330
+[#331]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/331
+[#332]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/332
+[#333]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/333
+[#336]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/336
+[#342]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/342
+[#343]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/343
+[#344]: https://github.com/AdCodicem/AdCodicem.Pdf/pull/344
