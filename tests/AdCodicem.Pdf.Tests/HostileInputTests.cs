@@ -2716,9 +2716,9 @@ public class HostileInputTests
     public void Does_not_take_a_keyword_the_probe_saw_cut_for_a_cross_reference_table()
     {
         // The section is probed through a few bytes, which spaces and "xref" fill, but the token is "xrefs". The probe reads
-        // on past a token its edge reaches, finds no keyword there, nor an object, and the index is rebuilt (#174). Where
-        // MaxTrailerLength stops the probe right after "xref", the table's own window reads the token whole and refuses it
-        // under another rule (#295).
+        // on past a token its edge reaches, finds no keyword there, nor an object, and the index is rebuilt (#174). A
+        // MaxTrailerLength that ends right after "xref" would not cut the token there either: the probe reads XRefProbeLength
+        // bytes past a trailer's window, far enough to read "xrefs" whole (#289).
         var written = new TestPdfBuilder()
             .WithObject(1, "<< /Type /Catalog /Pages 2 0 R >>")
             .WithObject(2, "<< /Type /Pages /Kids [] /Count 0 >>")
