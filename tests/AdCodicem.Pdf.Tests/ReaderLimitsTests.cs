@@ -2707,6 +2707,51 @@ public class ReaderLimitsTests
     }
 
     [Theory]
+    [InlineData(0)]
+    [InlineData(1)]
+    public void A_prev_looping_back_to_a_stream_a_guard_cut_says_the_chain_only_named_it(int namedShortBy)
+    {
+        // #264, beside #263 and #156: the newest table's /XRefStm names cross-reference stream 44 at its header, or at the end
+        // of line before it, where no section read yet places the objects its /Type and its /Size refer to: it declares no
+        // section, and is reported as one that cannot be read. The older table places them, and its /XRefStm reaches the
+        // stream through the other offset: it gives /Type /XRef now, and its /Size, object 7, a comment of 3,000 bytes then 1,
+        // is one MaxObjectLength cuts. The stream is the guard's, no section the chain reached and could not read: the older
+        // table's /Prev, which names again what the newest table's /XRefStm named, loops back to an offset the chain only
+        // named. Read whole, the older table's /XRefStm reads the stream, which the loop then reaches.
+        var file = new HandWrittenFile();
+        var catalog = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>");
+        var pages = file.Object(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>");
+        var page = file.Object(3, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 1 1] /Resources << >> >>");
+        var type = file.Object(5, "/XRef");
+        var size = file.Object(7, "%" + new string('-', 3000) + "\n1");
+        var stream = file.Position;
+        file.Raw("44 0 obj\n<< /Type 5 0 R /Size 7 0 R /W [1 4 2] /Filter /ASCIIHexDecode /Length 15 >>\nstream\n0000000000FFFF>\nendstream\nendobj\n");
+        file.Raw("%" + new string('-', 600) + "\n");
+        var named = stream - namedShortBy;
+        var older = file.Table(
+            8,
+            new Dictionary<int, long> { [1] = catalog, [2] = pages, [3] = page, [5] = type, [7] = size },
+            string.Create(CultureInfo.InvariantCulture, $"/Size 45 /Root 1 0 R /XRefStm {stream - 1 + namedShortBy} /Prev {named}"));
+        file.Table(1, [], string.Create(CultureInfo.InvariantCulture, $"/Size 45 /XRefStm {named} /Prev {older}"));
+
+        using var whole = PdfDocument.Open(file.Bytes);
+        using var document = PdfDocument.Open(file.Bytes, new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxObjectLength = 1024 } });
+
+        whole.Reader.Structure.LoopTarget.Should().NotBe(XRefLoopTarget.Named, "read whole, the stream is a section the chain reached");
+        document.Diagnostics.Select(entry => (entry.Code, entry.Position)).Should().Equal(
+            (PdfDiagnosticCodes.XRefSectionUnreadable, named),
+            (PdfDiagnosticCodes.XRefChainCycle, named),
+            (PdfDiagnosticCodes.LimitObject, size));
+        document.Diagnostics[1].Message.Should().Be(string.Create(
+            CultureInfo.InvariantCulture,
+            $"The cross-reference chain loops back on itself: the /Prev of the section at offset {older} names offset {named}, which the chain has already named."));
+        document.Reader.Structure.LoopOffset.Should().Be(named);
+        document.Reader.Structure.LoopTarget.Should().Be(XRefLoopTarget.Named);
+        document.Reader.Structure.TrailersHiddenByGuard.Should().BeTrue();
+        document.WasRepaired.Should().BeFalse();
+    }
+
+    [Theory]
     [InlineData("table rows")]
     [InlineData("table index")]
     public void An_xrefstm_in_the_file_a_table_a_guard_stops_names_stays_the_guard_s(string guard)
