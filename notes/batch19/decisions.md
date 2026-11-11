@@ -1260,3 +1260,21 @@ review. Then the batch-wide ADR 53 step.
 - Last settle batch b5 (55 survivors, 8 groups: TryParseUnrecordedAt, PendingEndStream.Decide/TokenEnds,
   XRefSectionRecord.RelocateTo, PageTreePageOrphanedRule.IsIndexSound, SizeWrongRule.Check), pool 4:
   wf_c651c520-8d0 (task wbzmlhep7). settled.txt = 319 = every survivor.
+- Verification (src-only, while b4/b5 settle; src at every later head = 19a2296): corpus dump at 26ce787
+  byte-identical to r12i's branch dump (410 documents, F 2,982 D 1,343; vs main only pdfmaker7-powerpoint-va-cancer-
+  database-course, #156). Branch CI green at 26ce787 (run 43030793447: build and unit tests, integration tests,
+  compat (.NET 11), documentation site, release scripts, workflows). The .NET 11 SDK is not installed on this machine:
+  the island is held by CI's compat job. Docker Desktop started for the local integration runs (2 runs, in progress).
+- b4 settled (wf_371248e0-341): 114 = 33 KILLED-NEW + 81 EQUIVALENT; the refuter overturned 6 (PFR-1555 probe cache,
+  PFR-1846/1849 UndecodedReports read through Structure.Sections, XRSR-0001/0002/0010 record members tests read).
+  PFR-1457 (IsTokenOnItsLine at < 0, expected unreachable) KILLED-NEW: a stream cut short before it is read again
+  reaches it. PFR-0884 (a merge's pool return, cost only) killed under the 2026-11-01 rule (allocation tells it apart):
+  the first test measured bytes and passed inside a 3,253-test process (the shared pool already held arrays), so the
+  merge rewrote it (4327524) to watch SharedArrayPool's per-thread slot, retried up to 5 times when a gen2 collection
+  runs: watch it in the whole-suite runs. Pushed 26ce787..4327524 (14 test commits); 35 ids confirmed KILLED.
+  Found for the end: stale comment in CrossReferenceChainTests.A_hybrid_table_s_own_stream_read_from_a_sign_that_
+  cannot_be_read_is_reported_once_however_few_of_its_signs_the_window_near_its_prev_holds; four DocumentReaderTests
+  allocation rows carry 'budget' only in a theory parameter (escape *budget* filters); ReaderTimingTests' refused-
+  ranges test may not catch a top-down scan (PFR-0916, equivalent cost only); PdfObjectParser.MayBeHeaderBytes ranges
+  differ only on '+'/'-'; the stack-depth test flaky under load (1 in 11-12 on the head).
+- After b1-b4: 264 = 99 killed by new tests + 165 equivalent; b5 (55) running.
