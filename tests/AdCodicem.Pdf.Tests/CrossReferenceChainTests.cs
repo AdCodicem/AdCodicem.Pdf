@@ -1128,7 +1128,7 @@ public class CrossReferenceChainTests
     public void A_file_whose_only_cross_reference_stream_decodes_to_nothing_is_rebuilt_and_its_catalog_found()
     {
         // The file's one cross-reference stream, which startxref names, holds zlib data damaged at its third byte, which
-        // decodes to nothing, and the file has no trailer keyword. The encoded bytes were read as rows, three of a reserved
+        // decodes to nothing, and the file has no trailer keyword. The encoded bytes were read as four rows, all of a reserved
         // type, and the validator said no object of the file is a catalog, though the rebuild found one (#260). The data holds
         // no row, the file is rebuilt as it opens, and the rebuild finds the catalog, the stream's dictionary, which alone
         // gave /Root, read as no trailer: the validator says only what made the stream unreadable.
