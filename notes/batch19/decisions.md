@@ -1253,3 +1253,10 @@ review. Then the batch-wide ADR 53 step.
 - Batch b4 (114 survivors, 14 groups: the rest of PdfFileReader, PdfObjectParser.MayBeHeaderBytes, PendingEndStream,
   XRefSectionRecord, ChainLoopRule), pool 4: wf_371248e0-341 (task wljgtmtxg). settled.txt: 264. Run at 14:40: 3,419
   with a final line; shards 24-27 left.
+- 2026-11-11 15:40: batch-wide ADR 53 run finished (lanes.sh, 08:05-15:40 plus PFR-0644 rerun): 3,736 mutants at
+  19a2296 = 3,193 KILLED + 224 NOT VIABLE (exactly the inventory's in-memory count) + 319 SURVIVED (PFR-0644
+  included: no class reaches TryParseUnrecordedAt's defensive return; suite 10,978, 0 failed). 15 more covered by
+  valid stage records (inventory). No start failure after the harness fix; one harness error (PFR-0644, fixed).
+- Last settle batch b5 (55 survivors, 8 groups: TryParseUnrecordedAt, PendingEndStream.Decide/TokenEnds,
+  XRefSectionRecord.RelocateTo, PageTreePageOrphanedRule.IsIndexSound, SizeWrongRule.Check), pool 4:
+  wf_c651c520-8d0 (task wbzmlhep7). settled.txt = 319 = every survivor.
