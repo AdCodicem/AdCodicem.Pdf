@@ -1212,6 +1212,41 @@ public class CrossReferenceRuleTests
             $"The /Prev of the cross-reference section at offset {update} names offset {hole}, which the chain has already named: the chain loops.");
     }
 
+    [Fact]
+    public void A_loop_through_the_offset_where_the_file_ends_says_it_lies_outside_the_file()
+    {
+        // The newest table's /XRefStm names the offset just past the file's last byte, and the update's /Prev names it again:
+        // no byte lies there, and the loop is said to go through an offset outside the file, as the reader says it, the
+        // finding placed at the update. Written on ten digits, the offset leaves the file as long whatever it names.
+        static byte[] Build(string offset) => PdfTemplate.Build((Updated
+            .Replace("/Prev {xref:1}", "/Prev {offset}", StringComparison.Ordinal) + """
+            xref
+            0 1
+            {free}
+            trailer
+            << /Size 5 /Root 1 0 R /Prev {xref:2} /XRefStm {offset} >>
+            startxref
+            {xref:3}
+            %%EOF
+
+            """).Replace("{offset}", offset, StringComparison.Ordinal));
+        var end = Build("0000000000").Length;
+        var file = Build(end.ToString("D10", CultureInfo.InvariantCulture));
+        var update = PdfTemplate.OffsetOf(file, "\nxref\n", 2) + 1;
+        using var document = PdfDocument.Open(file);
+
+        file.Length.Should().Be(end);
+        document.Reader.Structure.LoopOffset.Should().Be(end);
+        document.Reader.Structure.LoopTarget.Should().Be(XRefLoopTarget.Named);
+        var cycle = document.Diagnostics.Should().ContainSingle(d => d.Code == PdfDiagnosticCodes.XRefChainCycle).Which;
+        cycle.Position.Should().Be(update);
+        cycle.Message.Should().EndWith($"names offset {end}, outside the file, which the chain has already named.");
+        var finding = Single(new PdfValidator().Validate(document), PdfValidationRuleIds.XRefChainLoop);
+        finding.Location.Position.Should().Be(update);
+        finding.Message.Should().Be(
+            $"The /Prev of the cross-reference section at offset {update} names offset {end}, outside the file, which the chain has already named: the chain loops.");
+    }
+
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
