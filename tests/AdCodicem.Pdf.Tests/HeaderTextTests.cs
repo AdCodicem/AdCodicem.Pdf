@@ -149,6 +149,29 @@ public class HeaderTextTests
         positions.Should().Equal(0, 0, 0, 2, 5, 6, 7);
     }
 
+    [Theory]
+    [InlineData("12\nx\n0 obj", 5)]
+    [InlineData("12\nx\n 0 obj", 6)]
+    public void What_precedes_a_line_after_one_ending_in_no_number_is_carried_placed_nowhere_with_white_space_it_starts_with(
+        string data, int last)
+    {
+        // 12 ends the first line, and the read after it carries 12's place for what precedes the second line. The second ends
+        // in x, no number: counted back from the first byte of the read the third line starts in come a space for the end of
+        // line before that line, as one run with any white space the line starts with, and the space before it, which no
+        // number places. Each is placed at -1, nowhere in the file, whatever places their room held from the reads before.
+        var bytes = Encoding.Latin1.GetBytes(data);
+        Span<byte> carried = stackalloc byte[HeaderText.CarriedLength];
+        Span<long> carriedAt = stackalloc long[HeaderText.CarriedLength];
+        var text = new HeaderText(carried, carriedAt, DataStart);
+        text.Read(bytes.AsSpan(0, 3), DataStart);
+        text.CarryTo(DataStart + 3);
+        text.Read(bytes.AsSpan(3, last - 3), DataStart + 3);
+        text.CarryTo(DataStart + last);
+        text.Read(bytes.AsSpan(last), DataStart + last);
+
+        new[] { text.PositionOf(-2), text.PositionOf(-1), text.PositionOf(0) }.Should().Equal(-1, -1, DataStart + last);
+    }
+
     /// <summary>
     /// Gives where each number <paramref name="data"/>, which starts at <see cref="DataStart"/>, carries into a read after its
     /// end, read a part at a time as <see cref="FirstHeader"/> reads it.
