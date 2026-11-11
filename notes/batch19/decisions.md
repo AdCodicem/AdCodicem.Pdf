@@ -1285,7 +1285,7 @@ review. Then the batch-wide ADR 53 step.
 - ADR 53 batch-wide step DONE: 3,736 run + 15 by valid records; 319 survivors = 112 killed by new tests + 1 by a test
   the batch added after 19a2296 + 206 equivalent (several 'in what is reported, cost only'); 0 DEBT, so no survivor
   debt issue (R12b's G2b, G5 and P02 were re-run in the batch-wide catalog and settled there). The refuter overturned
-  60 of 266 first equivalents (b1 12, b2 4, b3 17, b4 6, b5 0... see fates.jsonl). Settling commits 19a2296..f732361,
+  39 of 246 first equivalents (b1 12, b2 4, b3 17, b4 6, b5 0; fates.jsonl). Settling commits 19a2296..f732361,
   all test:, plus 5d5c32d's comment fix. Mutants that compile only without TreatWarningsAsErrors (CS0162: PFR-0635,
   PFR-0676, PFR-0573, PES-0022, PES-0047, PES-0065, LT-0078, LT-0090) were run as the inventory decided (same IL).
 - Filed #342 (debt, area: tests, M02): three tests bound by the stack or a stopwatch fail on a loaded machine
