@@ -1215,3 +1215,13 @@ review. Then the batch-wide ADR 53 step.
   fields), pool 2: wf_4e36a9e1-524 (task wltnjdx3p). W/settle/settled.txt lists the ids already taken (80).
 - Run progress 10:27: 1,073 of 3,736 with a final line (935 killed, 105 survived, 33 not viable); ~7.6 a minute;
   expected end about 16:15. No start failure since the harness fix.
+- b1 refute (wf_88024c0a-b7e): of 36 EQUIVALENT, 12 OVERTURNED (HT-0001, -0020, -0021, -0272, -0273, -0275, -0276,
+  -0308, -0309, -0310, -0311, -0320; mostly a false 'PositionOf is only called inside the read' premise: it is internal
+  and its own test reads carried positions; HT-0001: LineTokens.TakeDigits caps with Beyond too), 24 UPHELD (some with
+  corrected reasons, backed by a 7,546-line probe), 8 KILLED-NEW tests checked TEST-OK. Pushed 5d5c32d..1e1d171
+  (2b21fd2, 90c9934, 1e1d171, test, Refs #261); the 12 confirmed KILLED at 1e1d171 (summary-b1r.txt). b1 final: 46 =
+  22 killed by new tests (HT-0020/-0021 by a test the batch added earlier in b1) + 24 equivalent. One third of first
+  equivalents were wrong: the refuter stays mandatory.
+- chunk.py now splits a member past the cap in line order. Batch b3 (70 survivors, 7 groups: PdfFileReader
+  Initialize..NamesSection, SearchEndStream, StartOf*, TryReadXRefChain), pool 2: wf_d0221f6a-d25 (task wfw1jp9pr).
+  settled.txt: 150 ids. Run at 11:24: 1,576 with a final line (1,361 killed, 141 survived, 74 not viable).

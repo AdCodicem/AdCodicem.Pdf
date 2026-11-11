@@ -1,0 +1,253 @@
+{
+ "shard": "b1r",
+ "head": "1e1d17194011492ee0532aa3fedfccccc34adb3c",
+ "mutants": [
+  {
+   "id": "HT-0001",
+   "file": "src/AdCodicem.Pdf/IO/HeaderText.cs",
+   "old": "    internal const long Beyond = (long)PdfObjectId.MaxNumber + 1;",
+   "new": "    internal const long Beyond = (long)PdfObjectId.MaxNumber + 2;",
+   "site": "src/AdCodicem.Pdf/IO/HeaderText.cs:40:64:bound-const:1",
+   "member": "HeaderText.Beyond",
+   "filter": [
+    "CrossReferenceChainTests",
+    "GuardCutValueTests",
+    "HeaderTextTests",
+    "ParserTests",
+    "PropertyTests",
+    "StreamEndsTests",
+    "StreamLengthTests",
+    "WindowEdgeTests",
+    "AdCodicem.Pdf.Tests.HeaderTextTests"
+   ],
+   "timeout": 300
+  },
+  {
+   "id": "HT-0020",
+   "file": "src/AdCodicem.Pdf/IO/HeaderText.cs",
+   "old": "_runsAt[0] = dataStart;",
+   "new": "",
+   "site": "src/AdCodicem.Pdf/IO/HeaderText.cs:81:9:assignment:23",
+   "member": "HeaderText..ctor",
+   "filter": [
+    "CrossReferenceChainTests",
+    "CrossReferenceRuleTests",
+    "DocumentReaderTests",
+    "FilterChainCorpusTests",
+    "GuardCutValueTests",
+    "HeaderOffsetTests",
+    "HeaderTextTests",
+    "ObjectRuleTests",
+    "ParserTests",
+    "PropertyTests",
+    "ReadOrderConvergenceTests",
+    "ReadOrderTests",
+    "ReaderLimitsTests",
+    "StreamEndsTests",
+    "StreamLengthTests",
+    "ValidatorTests",
+    "WindowEdgeTests",
+    "AdCodicem.Pdf.Tests.HeaderTextTests"
+   ],
+   "timeout": 300
+  },
+  {
+   "id": "HT-0021",
+   "file": "src/AdCodicem.Pdf/IO/HeaderText.cs",
+   "old": "        _runsAt[0] = dataStart;",
+   "new": "        _runsAt[1] = dataStart;",
+   "site": "src/AdCodicem.Pdf/IO/HeaderText.cs:81:17:bound-const:1",
+   "member": "HeaderText..ctor",
+   "filter": [
+    "CrossReferenceChainTests",
+    "CrossReferenceRuleTests",
+    "DocumentReaderTests",
+    "FilterChainCorpusTests",
+    "GuardCutValueTests",
+    "HeaderOffsetTests",
+    "HeaderTextTests",
+    "ObjectRuleTests",
+    "ParserTests",
+    "PropertyTests",
+    "ReadOrderConvergenceTests",
+    "ReadOrderTests",
+    "ReaderLimitsTests",
+    "StreamEndsTests",
+    "StreamLengthTests",
+    "ValidatorTests",
+    "WindowEdgeTests",
+    "AdCodicem.Pdf.Tests.HeaderTextTests"
+   ],
+   "timeout": 300
+  },
+  {
+   "id": "HT-0272",
+   "file": "src/AdCodicem.Pdf/IO/HeaderText.cs",
+   "old": "_leadAt[0] = -1;",
+   "new": "",
+   "site": "src/AdCodicem.Pdf/IO/HeaderText.cs:393:9:assignment:16",
+   "member": "HeaderText.CarryLead",
+   "filter": [
+    "CrossReferenceChainTests",
+    "DocumentReaderTests",
+    "GuardCutValueTests",
+    "HeaderTextTests",
+    "PropertyTests",
+    "StreamLengthTests",
+    "WindowEdgeTests",
+    "AdCodicem.Pdf.Tests.HeaderTextTests"
+   ],
+   "timeout": 300
+  },
+  {
+   "id": "HT-0273",
+   "file": "src/AdCodicem.Pdf/IO/HeaderText.cs",
+   "old": "        _leadAt[0] = -1;",
+   "new": "        _leadAt[1] = -1;",
+   "site": "src/AdCodicem.Pdf/IO/HeaderText.cs:393:17:bound-const:1",
+   "member": "HeaderText.CarryLead",
+   "filter": [
+    "CrossReferenceChainTests",
+    "DocumentReaderTests",
+    "GuardCutValueTests",
+    "HeaderTextTests",
+    "PropertyTests",
+    "StreamLengthTests",
+    "WindowEdgeTests",
+    "AdCodicem.Pdf.Tests.HeaderTextTests"
+   ],
+   "timeout": 300
+  },
+  {
+   "id": "HT-0275",
+   "file": "src/AdCodicem.Pdf/IO/HeaderText.cs",
+   "old": "        _leadAt[0] = -1;",
+   "new": "        _leadAt[0] = -2;",
+   "site": "src/AdCodicem.Pdf/IO/HeaderText.cs:393:23:bound-const:1",
+   "member": "HeaderText.CarryLead",
+   "filter": [
+    "CrossReferenceChainTests",
+    "DocumentReaderTests",
+    "GuardCutValueTests",
+    "HeaderTextTests",
+    "PropertyTests",
+    "StreamLengthTests",
+    "WindowEdgeTests",
+    "AdCodicem.Pdf.Tests.HeaderTextTests"
+   ],
+   "timeout": 300
+  },
+  {
+   "id": "HT-0276",
+   "file": "src/AdCodicem.Pdf/IO/HeaderText.cs",
+   "old": "        _leadAt[0] = -1;",
+   "new": "        _leadAt[0] = -0;",
+   "site": "src/AdCodicem.Pdf/IO/HeaderText.cs:393:23:bound-const:1",
+   "member": "HeaderText.CarryLead",
+   "filter": [
+    "CrossReferenceChainTests",
+    "DocumentReaderTests",
+    "GuardCutValueTests",
+    "HeaderTextTests",
+    "PropertyTests",
+    "StreamLengthTests",
+    "WindowEdgeTests",
+    "AdCodicem.Pdf.Tests.HeaderTextTests"
+   ],
+   "timeout": 300
+  },
+  {
+   "id": "HT-0308",
+   "file": "src/AdCodicem.Pdf/IO/HeaderText.cs",
+   "old": "_leadAt[length] = -1;",
+   "new": "",
+   "site": "src/AdCodicem.Pdf/IO/HeaderText.cs:412:13:assignment:21",
+   "member": "HeaderText.CarryLead",
+   "filter": [
+    "CrossReferenceChainTests",
+    "DocumentReaderTests",
+    "GuardCutValueTests",
+    "HeaderTextTests",
+    "PropertyTests",
+    "StreamLengthTests",
+    "WindowEdgeTests",
+    "AdCodicem.Pdf.Tests.HeaderTextTests"
+   ],
+   "timeout": 300
+  },
+  {
+   "id": "HT-0309",
+   "file": "src/AdCodicem.Pdf/IO/HeaderText.cs",
+   "old": "            _leadAt[length] = -1;",
+   "new": "            _leadAt[length] = -2;",
+   "site": "src/AdCodicem.Pdf/IO/HeaderText.cs:412:32:bound-const:1",
+   "member": "HeaderText.CarryLead",
+   "filter": [
+    "CrossReferenceChainTests",
+    "DocumentReaderTests",
+    "GuardCutValueTests",
+    "HeaderTextTests",
+    "PropertyTests",
+    "StreamLengthTests",
+    "WindowEdgeTests",
+    "AdCodicem.Pdf.Tests.HeaderTextTests"
+   ],
+   "timeout": 300
+  },
+  {
+   "id": "HT-0310",
+   "file": "src/AdCodicem.Pdf/IO/HeaderText.cs",
+   "old": "            _leadAt[length] = -1;",
+   "new": "            _leadAt[length] = -0;",
+   "site": "src/AdCodicem.Pdf/IO/HeaderText.cs:412:32:bound-const:1",
+   "member": "HeaderText.CarryLead",
+   "filter": [
+    "CrossReferenceChainTests",
+    "DocumentReaderTests",
+    "GuardCutValueTests",
+    "HeaderTextTests",
+    "PropertyTests",
+    "StreamLengthTests",
+    "WindowEdgeTests",
+    "AdCodicem.Pdf.Tests.HeaderTextTests"
+   ],
+   "timeout": 300
+  },
+  {
+   "id": "HT-0311",
+   "file": "src/AdCodicem.Pdf/IO/HeaderText.cs",
+   "old": "length++;",
+   "new": "",
+   "site": "src/AdCodicem.Pdf/IO/HeaderText.cs:413:13:assignment:9",
+   "member": "HeaderText.CarryLead",
+   "filter": [
+    "CrossReferenceChainTests",
+    "DocumentReaderTests",
+    "GuardCutValueTests",
+    "HeaderTextTests",
+    "PropertyTests",
+    "StreamLengthTests",
+    "WindowEdgeTests",
+    "AdCodicem.Pdf.Tests.HeaderTextTests"
+   ],
+   "timeout": 300
+  },
+  {
+   "id": "HT-0320",
+   "file": "src/AdCodicem.Pdf/IO/HeaderText.cs",
+   "old": "        _leadAt.Slice(at, written + 1).Fill(taken.Start);",
+   "new": "        _leadAt.Slice(at, written + 0).Fill(taken.Start);",
+   "site": "src/AdCodicem.Pdf/IO/HeaderText.cs:425:37:bound-const:1",
+   "member": "HeaderText.CarryNumber",
+   "filter": [
+    "CrossReferenceChainTests",
+    "HeaderTextTests",
+    "PropertyTests",
+    "StreamLengthTests",
+    "WindowEdgeTests",
+    "AdCodicem.Pdf.Tests.HeaderTextTests"
+   ],
+   "timeout": 300
+  }
+ ]
+}
