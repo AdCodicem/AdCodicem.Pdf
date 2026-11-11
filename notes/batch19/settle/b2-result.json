@@ -1,0 +1,758 @@
+[
+ {
+  "type": "result",
+  "key": "v2:ad56fdb954e803d2ef7a3b86b426eccd20e3baec8d787c6c5e0710a77b6780ce",
+  "agentId": "a1613dbc29a7693d1",
+  "result": {
+   "label": "b2-02",
+   "base": "5d5c32d",
+   "survivors": [
+    {
+     "id": "HT-0114",
+     "fate": "KILLED-NEW",
+     "reason": "With the conjunct forced to true, PendsHeader treats any endstream inside a comment as waiting, even on a line whose last token before the comment is a name, a keyword or a string, which can begin no header. On a read the search goes on past, SearchStretch then returns -1 with the keyword waiting, where the base ends the data at the keyword in that read. The four rows whose line ends in such a token fail with the mutant applied (found -1 instead of the keyword's position, waits true) and pass on the base.",
+     "test": "AdCodicem.Pdf.Tests.StreamEndsTests.A_keyword_in_a_comment_waits_for_the_reads_after_it_only_where_its_line_may_begin_a_header"
+    }
+   ],
+   "tests_added": [
+    "StreamEndsTests.A_keyword_in_a_comment_waits_for_the_reads_after_it_only_where_its_line_may_begin_a_header(string data, long found), a theory with 6 rows. Each row searches the data as the first read of a search that goes on past it (endsRange false, deferred false, through a new private helper SearchFirstRead) and checks two things exactly: where the data ends (DataStart + found, or -1) and whether the keyword waits (PendingEndStream.IsPending == found < 0). Rows: \"12 % endstream\" -> -1, waits (a run of digits last); \"% endstream\" -> -1, waits (no token before the comment); \"/Name % endstream\" -> 8 (a name last ends the data in the read); \"12 0 R % endstream\" -> 9 (a keyword last); \"(12) % endstream\" -> 7 (a string last); \"12\\n/Name % endstream\" -> 11 (only the keyword's own line counts, even when the line before it ends in digits)."
+   ],
+   "commit": "ee63ea7 test: pin that only a line that may begin a header leaves its endstream waiting (Refs #261, from ea348ce, the batch commit that wrote HeaderText.cs:271)",
+   "patch": "C:/Users/clemm/AppData/Local/Temp/claude/7278f9d03177d71e/898783fc-049f-469a-ab79-dfd299ad558e/scratchpad/cloud/settle/patches/b2-02/0001-test-pin-that-only-a-line-that-may-begin-a-header-le.patch",
+   "commands": [
+    "git fetch origin ccr-6d6c0ee6-dqm4lm-188; git checkout --detach origin/ccr-6d6c0ee6-dqm4lm-188 -> HEAD 5d5c32d (the expected base)",
+    "dotnet build tests/AdCodicem.Pdf.Tests/AdCodicem.Pdf.Tests.csproj -c Release -m:2 (base + new test) -> 0 warnings, 0 errors",
+    "AdCodicem.Pdf.Tests.exe --filter-class AdCodicem.Pdf.Tests.StreamEndsTests (first draft) -> total 14, failed 1, succeeded 13, skipped 0. A row of my own was wrong: \"/Name % endstream\" puts the keyword at 8, not 7. I fixed the row.",
+    "rebuild -> 0 warnings; StreamEndsTests on base -> total 14, failed 0, succeeded 14, skipped 0",
+    "mutant.py . HT-0114 (applied), rebuild 0 warnings, StreamEndsTests -> total 14, failed 4, succeeded 10, skipped 0. The 4 failures are the new theory's rows \"/Name % endstream\", \"12\\n/Name % endstream\", \"12 0 R % endstream\" and \"(12) % endstream\"",
+    "mutant.py . HT-0114 --revert, rebuild 0 warnings, StreamEndsTests on base -> total 14, failed 0, succeeded 14, skipped 0",
+    "git log -L271,271:src/AdCodicem.Pdf/IO/HeaderText.cs 21a0298..HEAD -> ea348ce (Refs #261)",
+    "check_msgs.py -> 'ee63ea7 79 OK'; grep_keys.py and widegrep.py on the diff -> no output, exit 0",
+    "git format-patch -1 -> patches/b2-02/0001-test-pin-that-only-a-line-that-may-begin-a-header-le.patch; git status --short clean, src/ unchanged from 5d5c32d, tests/corpus/remote never linked"
+   ],
+   "found": [
+    "No fault in src/. On the whole reader the mutant almost always reaches the same data end, which is why no document test caught it. A walk back from any later obj crosses the keyword's line, sees its last token is not a number (LineTokens.Kind.Other) and stops, so the waiting keyword is always decided as the same DataEnd. What differs is when it is decided and how much is read: PdfFileReader.SearchEndStream goes on reading windows past the parser's bytes, which raises EndStreamSearchBytes (the budget shared by all searches) for nothing, and PdfObjectParser.SearchBuffer, on a window with endsData false, returns null and marks the parser truncated where the base settles the length. The new test pins the decision at the read level, where it shows.",
+    "No stale comment and no flaky test seen: the harness's summary line had no unconfirmed failures."
+   ]
+  },
+  "remoteControlDeviceReport": false,
+  "toolsUsed": [
+   "Bash",
+   "Read",
+   "Edit",
+   "Write",
+   "StructuredOutput"
+  ]
+ },
+ {
+  "type": "result",
+  "key": "v2:b0114d0de8c8c11e233f5ed58b081cbeb8cd3c05eec786e31bc2092318d4025b",
+  "agentId": "abf5c3436b7167b38",
+  "result": {
+   "label": "b2-03",
+   "base": "5d5c32d",
+   "survivors": [
+    {
+     "id": "LT-0050",
+     "fate": "KILLED-NEW",
+     "test": "AdCodicem.Pdf.Tests.HeaderTextTests.A_header_is_found_wherever_the_reads_part_its_lines_as_one_read_finds_it(data: \"5 12: % c\\n0 obj\", header: -1, starts: [0, 4])",
+     "reason": "With ':' counted as a digit, the line lexer reads \"12:\" as a run of digits worth 130, where the original reads it as a keyword. The walk back from obj then takes it as the object number, and FirstHeader gives 102 where -1 is expected. The harness's unconfirmed failure, CorpusReadingTests.Every_message_a_document_earns_is_printable_ascii_on_one_line_whatever_the_culture, passed three times out of three with the mutant applied (410/410 each run). The harness failure was an OutOfMemoryException in PdfBoundedOutput.ToArray while the 8-worker run was loading the machine, so no existing test kills this mutant."
+    },
+    {
+     "id": "LT-0037",
+     "fate": "EQUIVALENT",
+     "reason": "Same output for every input. Without the white-space arm, Pass returns 0 and Step skips each white-space byte itself, testing the same Whitespace set (IsWhitespace), so Last, Before, HoldsPercent and InComment come out the same. Only the cost changes: each such byte costs one more Pass call and one Step call, which stays linear in the line. StreamEndSearchBenchmarks' white-space shape holds the constant factor, and no allocation or count tells the two apart."
+    },
+    {
+     "id": "LT-0045",
+     "fate": "EQUIVALENT",
+     "reason": "Same output for every input. Inside a keyword (_digits false), the digit arm stops at each non-digit. Step keeps a regular byte in the run, and completes the run as Other at white space or a delimiter: RunEnds is exactly the set of bytes IsRegular refuses. The _value that TakeDigits writes is read only while _digits holds, and a keyword never gets _digits back. Only the cost changes: each non-digit byte is stepped once, which stays linear. StreamEndSearchBenchmarks' one-token shape holds the constant factor."
+    },
+    {
+     "id": "LT-0059",
+     "fate": "EQUIVALENT",
+     "reason": "Same output for every input. A keyword's bytes fall to the default arm and are stepped one at a time. Step keeps each regular byte in the run and completes it as Other at the first byte of RunEnds, which is exactly the set IsRegular refuses, the same byte where the search would have stopped. Only the cost changes, and it stays linear; StreamEndSearchBenchmarks' one-token shape holds the constant factor. The harness's unconfirmed failure, CorpusReadingTests.Damaged_documents_are_recovered_as_far_as_an_independent_tool_recovers_them, passed three times out of three with the mutant applied (129/129 each run). The harness failure was the 20 s validation bound reached at 25 s under the 8-worker load."
+    },
+    {
+     "id": "LT-0040",
+     "fate": "EQUIVALENT",
+     "reason": "Same output for every input. Without the arm, Step reads every byte of a literal string. A byte that neither escapes, nests nor closes goes through the Literal arm without changing anything, because the && returns before --_depth runs. Only the cost changes: one Step per byte, which stays linear. StreamEndSearchBenchmarks' open-string shape holds the constant factor."
+    },
+    {
+     "id": "LT-0064",
+     "fate": "EQUIVALENT",
+     "reason": "Same reason as LT-0040: with the guard false, every byte of a literal string goes to Step, and a byte that neither escapes, nests nor closes changes no state, since the && returns before --_depth runs. The escaped case already went to the default arm in the original. Only the cost changes, and it stays linear; the open-string shape holds the constant factor."
+    },
+    {
+     "id": "LT-0041",
+     "fate": "EQUIVALENT",
+     "reason": "Same output for every input. Step's Less-or-Hex arm reads each byte of a hexadecimal string, stays in Hex mode, and completes the token as Other at the first '>', the same byte where IndexOf('>') would have stopped. Only the cost changes: one Step per byte, which stays linear. StreamEndSearchBenchmarks' hex-string shape holds the constant factor."
+    },
+    {
+     "id": "LT-0131",
+     "fate": "EQUIVALENT",
+     "reason": "Step reaches the closing branch of a literal string only when _escaped is false. In that state Read calls Step only at the byte where Pass stopped, which is one of StringMarks: (, ) or a backslash. Past the backslash and ( branches, that byte is always ), so the dropped test is always true at that point."
+    },
+    {
+     "id": "LT-0159",
+     "fate": "EQUIVALENT",
+     "reason": "Without its own arm, a '/' starts a Regular run whose first byte is not a digit (_digits false, _start set before the switch). Pass carries it to the first byte of RunEnds, as it does for a name. Step completes it there as Other, because RunEnds is exactly the set IsRegular refuses. Finish completes it as Other at the end of the line, also as for a name. Nothing else reads Mode.Name."
+    },
+    {
+     "id": "LT-0184",
+     "fate": "EQUIVALENT",
+     "reason": "_value is read only while _digits holds: by TakeDigits from Pass's digit arm, and by Complete when the kind is Digits (from Step and Finish). A token whose first byte is not a digit keeps _digits false to its end, and the next token's start writes _value again. So whatever a non-digit start writes into _value is never read."
+    },
+    {
+     "id": "LT-0186",
+     "fate": "EQUIVALENT",
+     "reason": "Same reason as LT-0184: the value a non-digit token start writes into _value is never read. _value is read only while _digits holds, a token that starts with a non-digit never gets _digits back, and the next token's start overwrites _value."
+    },
+    {
+     "id": "LT-0187",
+     "fate": "EQUIVALENT",
+     "reason": "Same reason as LT-0184: the -1 written into _value at a non-digit token start is never read. _value is read only while _digits holds, which such a token never gets back, and the next token's start overwrites _value."
+    }
+   ],
+   "tests_added": [
+    "AdCodicem.Pdf.Tests.HeaderTextTests.A_header_is_found_wherever_the_reads_part_its_lines_as_one_read_finds_it, one new row (\"5 12: % c\\n0 obj\", -1, new[] { 0, 4 }), placed after the row (\"5 12 % c\\n0 obj\", 2). It pins that a colon, the byte just past 9, is a regular character that turns 12 into the keyword 12:. So the line that ends in a comment gives no number, and the 0 obj on the next line starts no header (-1). This holds when the second read starts at the colon, so that the digits reach it inside the line lexer's state, and when the data is read in one piece."
+   ],
+   "commit": "93dfe07 test: say digits a colon follows are no number on a line a comment ends (Refs #261, from b09f981, which wrote LineTokens.cs:137)",
+   "patch": "C:/Users/clemm/AppData/Local/Temp/claude/7278f9d03177d71e/898783fc-049f-469a-ab79-dfd299ad558e/scratchpad/cloud/settle/patches/b2-03/0001-test-say-digits-a-colon-follows-are-no-number-on-a-l.patch",
+   "commands": [
+    "git fetch origin ccr-6d6c0ee6-dqm4lm-188; git checkout --detach origin/ccr-6d6c0ee6-dqm4lm-188 -> base 5d5c32d",
+    "dotnet build tests/AdCodicem.Pdf.Tests/AdCodicem.Pdf.Tests.csproj -c Release -m:2 (base plus the new row): 0 warnings, 0 errors",
+    "AdCodicem.Pdf.Tests.exe --filter-class AdCodicem.Pdf.Tests.HeaderTextTests (base): total 45, failed 0, succeeded 45, skipped 0",
+    "mutant.py . LT-0050, then build: 0 warnings. HeaderTextTests: total 45, failed 1 (the new row (\"5 12: % c\\n0 obj\", -1, [0, 4]): expected -1, found 102), succeeded 44",
+    "LT-0050 applied: --filter-method '*Every_message_a_document_earns_is_printable_ascii_on_one_line_whatever_the_culture*' run three times (remote corpus hard-linked): 410/410 passed each time (42.7 s, 47.0 s, 41.4 s)",
+    "mutant.py . LT-0050 --revert; mutant.py . LT-0059, then build: 0 warnings. --filter-method '*Damaged_documents_are_recovered_as_far_as_an_independent_tool_recovers_them*' run three times: 129/129 passed each time (18.7 s, 20.0 s, 20.4 s)",
+    "mutant.py . LT-0059 --revert, rebuild: 0 warnings. HeaderTextTests (base): total 45, failed 0, succeeded 45",
+    "grep_keys.py on the diff: exit 0. widegrep.py on the diff: exit 0. check_msgs.py: '93dfe07 71 OK'",
+    "git format-patch -1 -o .../settle/patches/b2-03/ HEAD",
+    "rm -rf tests/corpus/remote; git status --short is clean, and src/ is identical to 5d5c32d"
+   ],
+   "found": [
+    "No fault in src/. LineTokens' Pass arms only speed up what Step already does. RunEnds is exactly PdfCharacters.Whitespace plus Delimiters, the set IsRegular refuses, and Pass's white-space search uses the same set as IsWhitespace. That is why the arm and alternative removals (LT-0037, 0040, 0041, 0045, 0059, 0064) change only the cost, each held by its own StreamEndSearchBenchmarks shape (white-space, open-string, hex-string, one-token).",
+    "Both of the harness's unconfirmed failures came from the load on the machine, not from the mutants. One was an OutOfMemoryException in PdfBoundedOutput.ToArray while reading remote/usgs/us-topo-washington-west-2023.pdf (LT-0050). The other was CorpusReadingTests' 20 s validation bound reached at 25 s on remote/pdfjs/cairo-firefox-objstm-index-overflow-bug1978317.pdf (LT-0059). Both tests passed three times out of three here with the mutants applied.",
+    "Possible flakiness under load, not a fault: the 20 s bound in CorpusReadingTests.Timed for validating cairo-firefox-objstm-index-overflow-bug1978317.pdf has little room left while a parallel run loads the machine. That single row took 32 s, 25 s of it validating, in the harness's 8-worker run, against about 20 s for all 129 rows here.",
+    "The property test's HeaderPieces has no regular character that would sort right after the digits, such as ':'. That is why LT-0050 got past PropertyTests.A_line_lexed_through_any_reads_ends_in_the_tokens_the_lexer_reads_from_its_start. The new deterministic row covers that byte."
+   ]
+  },
+  "remoteControlDeviceReport": false,
+  "toolsUsed": [
+   "Bash",
+   "Edit",
+   "Write",
+   "StructuredOutput"
+  ]
+ },
+ {
+  "type": "result",
+  "key": "v2:53381451594f618ce679f731d470a17d9759d46a30779872c16a34c8131f1d36",
+  "agentId": "a591bf4ea76f50b2c",
+  "result": {
+   "label": "b2-01",
+   "base": "5d5c32d",
+   "survivors": [
+    {
+     "id": "HT-0077",
+     "fate": "EQUIVALENT",
+     "reason": "_lead[0] is only ever written as ' ' (constructor, CarryLead) or 'x' (CarryLead when the number does not start a token), never a digit, and _lead is a separate slice from _runs, so nothing else writes it. Starting the lead loop at 0 therefore adds no start. The flagged CorpusReadingTests.A_document_holds_each_report_once_however_often_its_streams_are_decoded passed 3 of 3 runs alone with the change applied (410/0/410 each: 48.5 s, 51.7 s, 42.9 s). The harness failure was an OutOfMemoryException in FlateFilter on remote/usgs/us-topo-washington-west-2023.pdf while 8 workers were running, so it is load, not this change."
+    },
+    {
+     "id": "HT-0335",
+     "fate": "EQUIVALENT",
+     "reason": "end never falls below first+1: it starts at or after start (view length >= 1), and each run stops at first+1. So `true` behaves exactly like `>=` (HT-0343): see that reason."
+    },
+    {
+     "id": "HT-0343",
+     "fate": "EQUIVALENT",
+     "reason": "The change only adds the case end == first+1, where the runs reach the view's first byte with fewer than four runs taken. That byte is then a space: a digit there only follows a stop at four runs, which no later carry can pass with fewer. So the change appends empty runs (one carried space each) next to that space, while end, the byte before the runs and its place stay the same. Every walk reads these extra spaces as the white space beside them (the ws loop stops at first, and StartsToken sees a non-regular byte either way). No carry and no CarriedStarts sees an extra digit. The view still fits in 23 bytes. The only values that change are the places of carried spaces and of a view's first byte, which nothing in the library reads: walks, carries and starts read only places of digits, and the library callers of PositionOf pass indexes inside the read (same reasoning as batch 1's HT-0272/HT-0308). Checked over about 285,000 partitioned reads: FindHeader, HeaderAt and PendsHeader at every index, and CarriedStarts after every carry, hash the same as on the head. Only the carried-place dump differs."
+    },
+    {
+     "id": "HT-0345",
+     "fate": "EQUIVALENT",
+     "reason": "`end > first + 0` is `end >= first + 1` for these small ints, so it is the same function as HT-0343: same reason. Harness output is byte-identical to HT-0343's."
+    },
+    {
+     "id": "HT-0378",
+     "fate": "EQUIVALENT",
+     "reason": "runValue is a stackalloc local. Its entries are read only by `runValue[run] < 0`, which marks a white-space run, and by TryFormat when the value is not negative. A run of digits always has a value >= 0 (Value starts at 0 and only adds digits), so -1 and -2 both mark white space and nothing else reads them. Harness output is identical to the head."
+    },
+    {
+     "id": "HT-0384",
+     "fate": "KILLED-NEW",
+     "reason": "Without the write, _runsAt[0] keeps the constructor's data start, so the byte before the runs (the ')' at 101+1) is placed at 100 instead of 102.",
+     "test": "AdCodicem.Pdf.Tests.HeaderTextTests.A_byte_carried_into_a_read_is_placed_where_its_run_starts_and_a_byte_of_the_read_where_it_lies(data: \"(a)12   0 obj\", split: 9, positions: [2, 3, 3, 5, 8, 9, 10])"
+    },
+    {
+     "id": "HT-0385",
+     "fate": "KILLED-NEW",
+     "reason": "The place is written to slot 1, which the Fill for the farthest run then overwrites. Slot 0 keeps the data start, so the byte before the runs is placed at 100 instead of 102.",
+     "test": "AdCodicem.Pdf.Tests.HeaderTextTests.A_byte_carried_into_a_read_is_placed_where_its_run_starts_and_a_byte_of_the_read_where_it_lies(data: \"(a)12   0 obj\", split: 9, positions: [2, 3, 3, 5, 8, 9, 10])"
+    },
+    {
+     "id": "HT-0388",
+     "fate": "KILLED-NEW",
+     "reason": "PositionOf(end) gives the place of the first digit of 12 (103), not of the ')' before it (102).",
+     "test": "AdCodicem.Pdf.Tests.HeaderTextTests.A_byte_carried_into_a_read_is_placed_where_its_run_starts_and_a_byte_of_the_read_where_it_lies(data: \"(a)12   0 obj\", split: 9, positions: [2, 3, 3, 5, 8, 9, 10])"
+    },
+    {
+     "id": "HT-0412",
+     "fate": "EQUIVALENT",
+     "reason": "The bool TryFormat returns is discarded by `_ =`. Negating it leaves the call, the digits it writes and `written` unchanged (same as batch 1's HT-0314). Harness output is identical to the head. The flagged CorpusReadingTests.Damaged_documents_are_recovered_as_far_as_an_independent_tool_recovers_them passed 3 of 3 runs alone with the change applied (129/0/129/0: 20.6 s, 25.8 s, 18.2 s). The harness failure was the 20 s validation timing guard (27.1 s) under 8-worker load."
+    },
+    {
+     "id": "HT-0060",
+     "fate": "EQUIVALENT",
+     "reason": "Starting the line's runs at its end of line only adds that byte (white space) to the white-space run that ends with the lead's last space, which it joins. The one exception is when four runs of the line reach back to the line's first byte, a run of digits. Then the byte before the runs is the end of line itself instead of the lead's space. Both are non-regular white space in a view of four runs, so they are read only as the byte before a number (StartsToken, same answer) and never as the last byte of a one-byte view. Their place (the end of line's, against the lead space's placeholder: the nearer number's start or -1) is read by no walk, carry, start or library caller of PositionOf (same reasoning as batch 1's HT-0320). Harness: every library-visible result is equal. Only 8 of the dumped first-byte places differ (for example -1 -> 101, 103 -> 115)."
+    },
+    {
+     "id": "HT-0096",
+     "fate": "KILLED-NEW",
+     "reason": "HeaderAt's -2 reaches SearchStretch's out header through PendingEndStream.TokenEnds. The theory asserts that header exactly, and an obj past the keyword's line that ends no header gives -2 instead of -1.",
+     "test": "AdCodicem.Pdf.Tests.StreamEndsTests.The_data_ends_at_its_first_endstream_its_end_of_line_left_out_unless_a_header_comes_first(data: \"12 % endstream\\nobj\", deferred: False, found: 5, header: -1)"
+    },
+    {
+     "id": "HT-0097",
+     "fate": "KILLED-NEW",
+     "reason": "HeaderAt's 0 counts as a header at file offset 0. The pending keyword then gives no data end: found is -1 instead of 105.",
+     "test": "AdCodicem.Pdf.Tests.StreamEndsTests.The_data_ends_at_its_first_endstream_its_end_of_line_left_out_unless_a_header_comes_first(data: \"12 % endstream\\nobj\", deferred: False, found: 5, header: -1)"
+    }
+   ],
+   "tests_added": [
+    "HeaderTextTests.A_byte_carried_into_a_read_is_placed_where_its_run_starts_and_a_byte_of_the_read_where_it_lies: the Fact becomes a Theory with two rows. Row (\"12   0 obj\", 6, [0,0,0,2,5,6,7]) is the existing case: the space that stands for the start of the data is placed at that start. New row (\"(a)12   0 obj\", 9, [2,3,3,5,8,9,10]): the byte before the carried runs is the ')' that ends a string, a byte of the read one past the data's start, and it is placed where it lies (102). It also pins the places of the 12, the spaces, the 0 and the next read's first bytes. Settles HT-0384, HT-0385 and HT-0388.",
+    "StreamEndsTests.The_data_ends_at_its_first_endstream_its_end_of_line_left_out_unless_a_header_comes_first: new row (\"12 % endstream\\nobj\", false, 5, -1). An endstream in a comment waits, and the obj past its line has one number alone before it, so it ends no header: the data ends at the keyword (105) and the header is exactly -1. The comment gains one clause saying so. Settles HT-0096 and HT-0097."
+   ],
+   "commit": "d6079d8 test: hold the place of a byte carried as itself and an obj past a comment that ends no header (Refs #261); patch: C:/Users/clemm/AppData/Local/Temp/claude/7278f9d03177d71e/898783fc-049f-469a-ab79-dfd299ad558e/scratchpad/cloud/settle/patches/b2-01/0001-test-hold-the-place-of-a-byte-carried-as-itself-and-.patch",
+   "patch": "C:/Users/clemm/AppData/Local/Temp/claude/7278f9d03177d71e/898783fc-049f-469a-ab79-dfd299ad558e/scratchpad/cloud/settle/patches/b2-01/0001-test-hold-the-place-of-a-byte-carried-as-itself-and-.patch",
+   "commands": [
+    "git fetch origin ccr-6d6c0ee6-dqm4lm-188; git checkout --detach origin/ccr-6d6c0ee6-dqm4lm-188 -> 5d5c32d",
+    "dotnet build tests/AdCodicem.Pdf.Tests/AdCodicem.Pdf.Tests.csproj -c Release -m:2 (base plus new tests): 0 warnings, 0 errors",
+    "AdCodicem.Pdf.Tests.exe --filter-class HeaderTextTests (base): total 45, failed 0, succeeded 45, skipped 0",
+    "AdCodicem.Pdf.Tests.exe --filter-class StreamEndsTests (base): total 9, failed 0, succeeded 9, skipped 0",
+    "Temporary differential harness (a scratch test, deleted before the commit): 6000 random token strings, each read whole, at every 2-read split and at 6 random 4-read splits (about 285,000 probes). It records FindHeader, HeaderAt and PendsHeader at every index, CarriedStarts after each carry, and separately PositionOf(-1..-24). Base hashes: results 2517c6ad5019cec5, places 7fafca927efa6e77",
+    "HT-0343 applied: results 2517c6ad5019cec5 (equal), places 230630f0b85671e7. 54806 lines differ: 49092 only in the view's extra length (extra places equal to the first byte's), 5692 where the old first-byte index now reads the number's start instead of -1, 22 where the first byte's place is 104 instead of -1",
+    "HT-0335 applied: results equal, places 230630f0b85671e7 (same as HT-0343)",
+    "HT-0345 applied: results equal, places 230630f0b85671e7 (same as HT-0343)",
+    "HT-0060 applied: results equal, places 4889800a04e0667a. 8 lines differ, each in the first byte's place only (for example -1 -> 101, 103 -> 115)",
+    "HT-0077 applied: results and places both equal to the base",
+    "HT-0077 applied, remote corpus hard-linked: CorpusReadingTests.A_document_holds_each_report_once_however_often_its_streams_are_decoded alone x3: 410/0/410/0 each (48.5 s, 51.7 s, 42.9 s)",
+    "HT-0384 applied: HeaderTextTests 45 total, 1 failed (the new (a)12 row: expected 102 at index 0, got 100), 44 succeeded. CorpusReadingTests.Damaged_documents_are_recovered_as_far_as_an_independent_tool_recovers_them alone x3: 129/0/129/0 each (16.1 s, 15.4 s, 17.8 s)",
+    "HT-0385 applied: HeaderTextTests 45 total, 1 failed (the new (a)12 row: got 100 instead of 102), 44 succeeded",
+    "HT-0388 applied: HeaderTextTests 45 total, 1 failed (the new (a)12 row: got 103 instead of 102), 44 succeeded",
+    "HT-0412 applied: harness results and places equal to the base. CorpusReadingTests.Damaged_documents_are_recovered_as_far_as_an_independent_tool_recovers_them alone x3: 129/0/129/0 each (20.6 s, 25.8 s, 18.2 s)",
+    "HT-0096 applied: StreamEndsTests 9 total, 1 failed (row \"12 % endstream\\nobj\": header expected -1, got -2), 8 succeeded",
+    "HT-0097 applied: StreamEndsTests 9 total, 1 failed (same row: found expected 105, got -1), 8 succeeded",
+    "HT-0378 applied: harness results and places equal to the base",
+    "Each mutant was reverted with mutant.py --revert. Harness file removed. Rebuilt on base: 0 warnings. HeaderTextTests 45/0/45/0, StreamEndsTests 9/0/9/0",
+    "grep_keys.py and widegrep.py on the diff: exit 0. check_msgs.py on 5d5c32d..HEAD: d6079d8 94 OK",
+    "git format-patch -1 -o .../settle/patches/b2-01/ HEAD; rm -rf tests/corpus/remote (links only; the maintainer's copy is intact); git status clean; git diff 5d5c32d -- src empty"
+   ],
+   "found": [
+    "No real fault in src. Every mutant classed equivalent left every result the library can see unchanged on the differential harness (FindHeader, HeaderAt, PendsHeader, CarriedStarts).",
+    "The class remark is inaccurate (a comment problem, not a behavior one). It says 'each records where the run it stands for starts in the file' for carried bytes, but the lead's bytes do not. The lead's first byte is placed at -1. The space after a lead number is placed at that number's start (CarryNumber's Fill), not where the white space it stands for starts. The space of a no-number lead is placed at -1. A white-space run that starts at that space inherits the same placeholder. Reproducer: carry \"5\\n1 2 \" (the read whole, CarryTo its end). PositionOf(-5), the byte before the four runs, gives the 5's start (DataStart+0), where the end of line it stands for lies at DataStart+1. Nothing in the library reads these places. Only a direct PositionOf call at a negative index does.",
+    "Judgment call for the orchestrator: HT-0335, HT-0343, HT-0345 and HT-0060 are equivalent for every input the library takes. A direct call to the internal PositionOf at a negative index can still tell them apart, but only through the placeholder places above (the lead's first byte at -1 versus the nearer number's start). The existing byte-place test already reads negative indexes, so a row could kill them. It would freeze those placeholders, so I did not add one, in line with batch 1's HT-0272/HT-0308/HT-0320. HT-0384/0385/0388 are different: they change the place of a byte of the read carried as itself, which PositionOf does promise, so the new row kills them.",
+    "Flaky under load, not regressions: CorpusReadingTests.Damaged_documents_are_recovered_as_far_as_an_independent_tool_recovers_them hits its 20 s validation timing guard at 26-27 s on remote/pdfjs/cairo-firefox-objstm-index-overflow-bug1978317.pdf with 8 workers. Run alone it passes in 15-26 s; one run took 25.8 s and still passed, so that row's real cost is near the guard. CorpusReadingTests.A_document_holds_each_report_once_however_often_its_streams_are_decoded hit an OutOfMemoryException in FlateFilter.Inflate on remote/usgs/us-topo-washington-west-2023.pdf under the same load, and passes alone."
+   ]
+  },
+  "remoteControlDeviceReport": false,
+  "toolsUsed": [
+   "Bash",
+   "Read",
+   "Grep",
+   "Write",
+   "Edit",
+   "StructuredOutput"
+  ]
+ },
+ {
+  "type": "result",
+  "key": "v2:042b076a67342eb2effa80f3645c71ad2c338b38a13fd88ac796169c949ee9e8",
+  "agentId": "a7d1c5417d3a7d4ae",
+  "result": {
+   "label": "b2-03",
+   "base": "5d5c32d",
+   "verdicts": [
+    {
+     "id": "LT-0050",
+     "verdict": "TEST-OK",
+     "test": "AdCodicem.Pdf.Tests.HeaderTextTests.A_header_is_found_wherever_the_reads_part_its_lines_as_one_read_finds_it(data: \"5 12: % c\\n0 obj\", header: -1, starts: [0, 4])",
+     "reason": "The new row is the row (\"5 12 % c\\n0 obj\", 2) with a colon after 12, so the colon is the only difference. It asserts the exact result: no header (-1), both with the reads cut at the colon and with one read. With the mutant the colon counts as a digit, \"12:\" becomes the number 130, and the result is 102. I checked it again: the patch applies cleanly on 5d5c32d. HeaderTextTests: 45/45 pass on the base. With the mutant applied: 1 of 45 fails, this row, with 'Expected FirstHeader(data, starts) to be -1L, but found 102L'. In my 400,000-line differential probe the mutant also changes the line lexer's trace (a different digest), so it is a real behavior change. The harness's one failure was an OutOfMemoryException in PdfBoundedOutput.ToArray under the machine's load (its LT-0050-suite log), not this mutant."
+    },
+    {
+     "id": "LT-0037",
+     "verdict": "UPHELD",
+     "reason": "I tried white space at every position and at read edges, between tokens and after Finish. Without the arm, Pass returns 0 in Space mode, and Step falls through to the between-tokens code. There, IsWhitespace (the same six bytes as PdfCharacters.Whitespace) returns before _start or _mode is written. So Last, Before, HoldsPercent and InComment are the same after every Read. With the mutant applied, the probe digest equals the base's."
+    },
+    {
+     "id": "LT-0045",
+     "verdict": "UPHELD",
+     "reason": "I tried keywords mixing digits and letters, and keywords that start with a digit (12x3), cut at every byte. In a keyword, the digit arm stops at each non-digit. Step keeps a regular byte in the run and completes the run as Other at the same byte where RunEnds would stop, because RunEnds is exactly Whitespace plus Delimiters, the set IsRegular refuses. The _value that TakeDigits changes is read only in Regular mode while _digits holds, and _digits turns true again only at a token start, which also writes _value. Math.Min keeps _value at most Beyond, so nothing can overflow. With the mutant applied, the probe digest equals the base's."
+    },
+    {
+     "id": "LT-0059",
+     "verdict": "UPHELD",
+     "reason": "I tried keywords ended by every RunEnds byte and cut by a read edge. Without the Regular alternative, a keyword falls to default (return 0), and Step keeps each regular byte and completes the run as Other at the first byte IsRegular refuses, which is exactly RunEnds. So the output is the same. With the mutant applied, the probe digest equals the base's. The harness's unconfirmed failure was CorpusReadingTests.Timed's 20 s bound reached at 25 s under the 8-worker load (its LT-0059-suite log). That is time, not output, and every observable value of LineTokens is the same."
+    },
+    {
+     "id": "LT-0040",
+     "verdict": "UPHELD",
+     "reason": "I tried literal strings with % [ < / digits inside, nested parentheses, escapes, and cuts right after a backslash. Without the arm, every byte of a string goes to Step's Literal arm. A byte that is not a backslash, ( or ) fails all three tests, and the && stops before --_depth runs, so the state does not change. With the mutant applied, the probe digest equals the base's."
+    },
+    {
+     "id": "LT-0064",
+     "verdict": "UPHELD",
+     "reason": "This is the same code path as LT-0040: 'when false' sends Literal mode to default (return 0), and a byte that is not a backslash, ( or ) leaves the state unchanged in Step. The escaped byte already went to default. With the mutant applied (built as the harness builds, TreatWarningsAsErrors=false, because the mutant raises CS0162), the probe digest equals the base's."
+    },
+    {
+     "id": "LT-0041",
+     "verdict": "UPHELD",
+     "reason": "I tried hexadecimal strings with < ( % / and digits inside, a '>' at a read edge, and strings left open. Without the arm, each byte goes to Step's 'Mode.Less or Mode.Hex' arm, which keeps Hex mode and completes the string as Other at the first '>', the same byte where IndexOf('>') stops. With the mutant applied, the probe digest equals the base's."
+    },
+    {
+     "id": "LT-0131",
+     "verdict": "UPHELD",
+     "reason": "I tried strings with escapes and parentheses, cut at every byte. Read calls Step only at the byte where Pass stopped. When not escaped, Pass's Literal arm stops only at a backslash, ( or ), and returns rest.Length (so no Step) when there is none. The backslash and ( branches come first, so a byte that reaches the closing test is always ')'. With the mutant applied, the probe digest equals the base's."
+    },
+    {
+     "id": "LT-0159",
+     "verdict": "UPHELD",
+     "reason": "I tried //, /12, a name at a read edge, and a name cut by Finish. Without the arm, '/' starts a Regular run with _digits false (IsDigit('/') is false). Pass carries that run to the next RunEnds byte, as it does for a name. Step completes it there as Other, because that byte is not regular, and Finish completes it as Other. Those are all the places Mode.Name is read. With the mutant applied, the probe digest equals the base's."
+    },
+    {
+     "id": "LT-0184",
+     "verdict": "UPHELD",
+     "reason": "The verdict holds, but one premise is false: 'the next token's start writes _value again' does not hold when the next token starts with a delimiter or %. Corrected reason: _value is read only in Regular mode while _digits holds (TakeDigits from Pass's digit arm, and Complete(Digits) from Step and Finish). _digits turns true only in Step's default arm, at a token start that is a digit, and that arm writes _value too. So nothing reads the value a non-digit start writes. With the mutant applied, the probe digest equals the base's."
+    },
+    {
+     "id": "LT-0186",
+     "verdict": "UPHELD",
+     "reason": "Same corrected reason as LT-0184: a read of _value needs Regular mode and _digits true, and the only write of _digits = true is at a digit token start, which writes _value in the same statement block. The 1 written at a non-digit start is never read. With the mutant applied, the probe digest equals the base's."
+    },
+    {
+     "id": "LT-0187",
+     "verdict": "UPHELD",
+     "reason": "Same corrected reason as LT-0184: the -1 written at a non-digit start is never read, because every read of _value needs Regular mode with _digits true, and only a digit token start sets that, writing _value too. A -1 could only matter through TakeDigits, which is never reached with _digits false. With the mutant applied, the probe digest equals the base's."
+    }
+   ],
+   "tests_added": [],
+   "patch": "none",
+   "commands": [
+    "git fetch origin ccr-6d6c0ee6-dqm4lm-188; git checkout --detach origin/ccr-6d6c0ee6-dqm4lm-188 -> base 5d5c32d (git diff 19a2296 HEAD -- src is empty)",
+    "mutant.py - <ID> for all 12 ids; read src/AdCodicem.Pdf/IO/LineTokens.cs, PdfCharacters.cs (RunEnds equals Whitespace plus Delimiters), and every use of LineTokens in HeaderText.cs and PropertyTests.cs",
+    "Temporary probe test tests/AdCodicem.Pdf.Tests/ZzProbe.cs (removed afterwards, never committed): 400,000 random lines (0-39 bytes over digits, ':', '/', '(', ')', '\\\\', '<', '>', '%', [ ] { }, the six white-space bytes, letters, plus 1 in 20 random bytes), read in random cuts (0-11 bytes) with Finish called at random points. Records Last, Before, HoldsPercent and InComment after every Read and Finish, then writes a SHA-256 digest",
+    "dotnet build tests/AdCodicem.Pdf.Tests/AdCodicem.Pdf.Tests.csproj -c Release -m:2 (base plus probe): 0 warnings, 0 errors; probe: 1/1 passed, digest 074B1D57...EEAA over 400000 lines",
+    "For each of LT-0050, 0037, 0045, 0059, 0040: mutant.py . <ID>; build -m:2 (0 warnings, 0 errors); probe 1/1; mutant.py --revert. LT-0050 (control) digest 60E477E4... (differs); LT-0037, 0045, 0059, 0040 digest 074B1D57... (same as base)",
+    "LT-0064 with the default build: error CS0162 (unreachable code), because TreatWarningsAsErrors is on. The harness builds with -p:TreatWarningsAsErrors=false (adr53/run.py), so I rebuilt that way",
+    "For each of LT-0064, 0041, 0131, 0159, 0184, 0186, 0187: mutant.py . <ID>; build -m:2 -p:TreatWarningsAsErrors=false (0 errors; 1 warning CS0162 for LT-0064 only); probe 1/1; revert. Every digest is 074B1D57... (same as base)",
+    "git apply the settling patch 0001-test-say-digits-a-colon-follows-are-no-number-on-a-l.patch on 5d5c32d; build -m:2: 0 warnings, 0 errors; HeaderTextTests: total 45, failed 0, succeeded 45, skipped 0",
+    "mutant.py . LT-0050; build: 0 warnings, 0 errors; HeaderTextTests: total 45, failed 1 (the new row: expected -1L, found 102L), succeeded 44; mutant.py . LT-0050 --revert",
+    "Read the harness logs adr53/logs/*/LT-0059-suite.txt (CorpusReadingTests.Timed: 25 s against the 20 s bound) and LT-0050-suite.txt (OutOfMemoryException in PdfBoundedOutput.ToArray). Both are load, not output. I did not rerun those corpus rows: one asserts a time bound, and the probe shows the same lexer output",
+    "Checked StreamEndSearchBenchmarks: the white-space, one-token, open-string and hex-string shapes the reasons cite exist, and each is a single line that CarryTo lexes through LineTokens",
+    "Removed ZzProbe.cs; git checkout -- tests/AdCodicem.Pdf.Tests/HeaderTextTests.cs; git status --short is clean; src/ is identical to 5d5c32d; tests/corpus/remote was never linked; no commit, no patch"
+   ]
+  },
+  "remoteControlDeviceReport": false,
+  "toolsUsed": [
+   "Bash",
+   "Write",
+   "PowerShell",
+   "StructuredOutput"
+  ]
+ },
+ {
+  "type": "result",
+  "key": "v2:9ae16c599bf495efb40127e5cccc1bed0dfde59ff433400f4453f37120ac6055",
+  "agentId": "a0e2240d8296e71e9",
+  "result": {
+   "label": "b2-04",
+   "base": "5d5c32d",
+   "survivors": [
+    {
+     "id": "LT-0079",
+     "fate": "KILLED-NEW",
+     "reason": "With `_value == 1`, a run whose first digit is 1 drops the zeros right after it, so 100000 reads as 1. A generation of 1 is valid, so the header is wrongly found. This happens when the read is whole (Step takes the '1', then TakeDigits gets \"00000\") and when it is cut after the '1' (the carried line holds `1`, then the next read gives \"00000\"). Applied, both rows fail with 'Expected FirstHeader(data, starts) to be -1L, but found 100L': the committed row with cut {0, 4}, and a temporary single-read row {0} that I then removed.",
+     "test": "AdCodicem.Pdf.Tests.HeaderTextTests.A_header_is_found_wherever_the_reads_part_its_lines_as_one_read_finds_it(data: \"12 100000 % c\\nobj\", header: -1, starts: [0, 4])"
+    },
+    {
+     "id": "LT-0078",
+     "fate": "EQUIVALENT",
+     "reason": "Equivalent in what is reported (the maintainer's cost-only rule of 2026-11-01). Without the skip, each leading zero goes through the loop while _value is 0 and gives min(0*10+0, Beyond) = 0. Beyond is positive, so the early return never fires on a zero. The run's value after its zeros, and after any digits that follow, is therefore the same for every input, and TakeDigits writes nothing else. Only the cost changes: one extra scalar iteration per leading zero, linear in the line, with no allocation and no count that would show it. No benchmark shape holds this constant factor (see found)."
+    },
+    {
+     "id": "LT-0080",
+     "fate": "EQUIVALENT",
+     "reason": "Equivalent in what is reported, for the same reason as the `false` variant. _value is never negative: Step writes `value - '0'` (0 to 9) or 0, and TakeDigits only writes Math.Min of a non-negative value times 10 plus a digit. So `_value == -1` is false for every input, the leading zeros are never skipped, and each one leaves _value at 0. Only the cost changes: one scalar iteration per leading zero, linear, no allocation."
+    },
+    {
+     "id": "LT-0081",
+     "fate": "EQUIVALENT",
+     "reason": "Equivalent in what is reported: `first` is computed and then unused, so the zeros stay in `digits`. The loop takes them in at _value 0 and they leave it at 0 (min(0*10+0, Beyond); the early return cannot fire because Beyond > 0). The value is the same for every run. Only the cost changes: one scalar iteration per leading zero, linear in the line, no allocation, no count that would show it."
+    },
+    {
+     "id": "LT-0090",
+     "fate": "EQUIVALENT",
+     "reason": "Equivalent in what is reported. Once _value is Beyond (2^31), each further digit gives Math.Min(Beyond*10 + d, Beyond) = Beyond. The sum is at most 21,474,836,489, which fits a long, so nothing overflows, and the value is the same for every input. Pass returns its length independently of TakeDigits. Only the cost changes: one scalar iteration per digit after the value reaches Beyond, linear in the line, no allocation. The 'digits' shape of StreamEndSearchBenchmarks (4 MB of one number, which every read's carried line goes through TakeDigits for) holds the constant factor."
+    }
+   ],
+   "tests_added": [
+    "AdCodicem.Pdf.Tests.HeaderTextTests.A_header_is_found_wherever_the_reads_part_its_lines_as_one_read_finds_it: one new row (\"12 100000 % c\\nobj\", -1, new[] { 0, 4 }). It pins that the zeros after a run's first digit count in its value when the run is one of the last tokens of a header line holding a comment. The test asserts this both with the read cut right after the digit '1' (reads at 0 and 4) and with one whole read. 100000 is no generation, so no header is found (-1), next to the existing 70000 and 999999999999 rows. One sentence added to the test's comment says this."
+   ],
+   "commit": "bf19d4e test: count the zeros after a number's first digit on a header line that holds a comment (Refs #261; written by b09f981, whose footer is Refs #261)",
+   "patch": "C:/Users/clemm/AppData/Local/Temp/claude/7278f9d03177d71e/898783fc-049f-469a-ab79-dfd299ad558e/scratchpad/cloud/settle/patches/b2-04/0001-test-count-the-zeros-after-a-number-s-first-digit-on.patch",
+   "commands": [
+    "git fetch origin ccr-6d6c0ee6-dqm4lm-188; git checkout --detach origin/ccr-6d6c0ee6-dqm4lm-188 -> 5d5c32d",
+    "base + new row: dotnet build tests/AdCodicem.Pdf.Tests/AdCodicem.Pdf.Tests.csproj -c Release -m:2 -> 0 warnings, 0 errors; AdCodicem.Pdf.Tests.exe --filter-class AdCodicem.Pdf.Tests.HeaderTextTests -> total 45, failed 0, succeeded 45, skipped 0",
+    "LT-0079 applied (normal build, 0 warnings): HeaderTextTests -> total 45, failed 1, succeeded 44. The failure is the new row (starts [0, 4]): expected -1, found 100",
+    "LT-0079 applied, plus a temporary single-read row {0} (removed afterwards): HeaderTextTests -> total 46, failed 2, succeeded 44. Both 100000 rows fail, so the whole read and the cut read each tell the variant apart",
+    "LT-0080 applied (normal build): HeaderTextTests -> total 45, failed 0, succeeded 45",
+    "LT-0081 applied (normal build): HeaderTextTests -> total 45, failed 0, succeeded 45",
+    "LT-0078 applied: the normal build fails (CS0162 unreachable code, an error under TreatWarningsAsErrors), as the harness's own build shows (1 warning there). With -p:TreatWarningsAsErrors=false: 1 warning, 0 errors; HeaderTextTests -> total 45, failed 0, succeeded 45",
+    "LT-0090 applied, with -p:TreatWarningsAsErrors=false (CS0162 again): HeaderTextTests -> total 45, failed 0, succeeded 45",
+    "each variant reverted with mutant.py --revert. Final normal build on base + commit: 0 warnings, 0 errors; HeaderTextTests -> total 45, failed 0, succeeded 45, skipped 0",
+    "check_msgs.py on git log 5d5c32d..HEAD -> 'bf19d4e 88 OK'; grep_keys.py and widegrep.py on git diff 5d5c32d..HEAD -> rc 0, no output",
+    "git format-patch -1 HEAD -> patches/b2-04/0001-...patch; git status --short clean; git diff 5d5c32d HEAD -- src empty; tests/corpus/remote never linked"
+   ],
+   "found": [
+    "No benchmark holds the cost of skipping a run's leading zeros in LineTokens.TakeDigits (src/AdCodicem.Pdf/IO/LineTokens.cs:166-170). The skip is purely an optimization: its three variants change only cost. StreamEndSearchBenchmarks has a 'digits' shape (4 MB of '1'), which holds the early return at Beyond, but no run of zeros. Without the skip, a long run of zeros in a stream's data goes through the scalar loop one byte at a time instead of one IndexOfAnyExcept. It stays linear, but the class remarks' claim that 'a line of one long token costs what searching it costs' is not held for zeros (invariant 9: every optimization with its benchmark). A 'zeros' shape (new string('0', Size)) would hold it. I wrote no benchmark and ran none, as this step forbids it.",
+    "The harness builds with TreatWarningsAsErrors off. The `false` variants at TakeDigits (LT-0078 and LT-0090) do not compile under the project's own build: CS0162 unreachable code is an error. Anyone re-running them needs -p:TreatWarningsAsErrors=false.",
+    "PropertyTests' HeaderPieces generator never yields a run with zeros after a nonzero first digit (its numbers are 12, 0, 00, 4, 65536, 2147483648, 99999999999999999999, and no concatenation puts a '1' right before a '0'). That is why the line-lexing property test could not tell `_value == 1` apart. The generator is left unchanged because the other property tests share its sequence, and the explicit row covers the case.",
+    "No real fault in src/, no stale comment, and no flaky test seen: HeaderTextTests passed 45/45 on every base run."
+   ]
+  },
+  "remoteControlDeviceReport": false,
+  "toolsUsed": [
+   "Bash",
+   "Edit",
+   "Write",
+   "StructuredOutput"
+  ]
+ },
+ {
+  "type": "result",
+  "key": "v2:1750f88c0ee2e6e5daed2698064285c6fb475fca0ffd51cb5c710b5c08f058e9",
+  "agentId": "a61942d7870192b92",
+  "result": {
+   "label": "b2-01-r",
+   "base": "5d5c32d",
+   "verdicts": [
+    {
+     "id": "HT-0077",
+     "verdict": "UPHELD",
+     "reason": "The reason holds. Only three places write _lead[0]: the constructor (' ') and CarryLead (' ', then ' ' or 'x'). CarryNumber writes digits only at _lead[at..] with at >= 1, and _runs' TryFormat cannot leave its own 23-byte slice of carried. So index 0 of the lead loop never adds a start. The harness's unconfirmed failure is an OutOfMemoryException in CorpusReadingTests.A_document_holds_each_report_once... on remote/usgs/us-topo-washington-west-2023.pdf (logs/02/HT-0077-suite.txt). That is machine load, not this change. With it applied, HeaderTextTests and StreamEndsTests gave 54/0/54/0."
+    },
+    {
+     "id": "HT-0335",
+     "verdict": "OVERTURNED",
+     "reason": "Same function as HT-0343: end never drops below first+1, so `true` behaves as `>=`. The settler's reason concedes that only the places of carried bytes change. It then rests on 'nothing in the library reads them', the reasoning of batch 1's HT-0272/HT-0308/HT-0320, which batch 1's later review overturned with tests that read those places. PositionOf(int) is internal, and the class's own tests call it at negative indexes. On \"y 5\\n12\", carried whole, the walk reaches the lead's first byte after three runs. That byte says 5 starts a token, and CarryLead places it at -1. The change adds an empty run of white space before it, so PositionOf(-5) gives 102 instead of -1.",
+     "test": "AdCodicem.Pdf.Tests.HeaderTextTests.A_byte_carried_before_the_runs_for_what_precedes_a_line_that_no_number_places_is_placed_nowhere(data: \"y 5\\n12\")"
+    },
+    {
+     "id": "HT-0343",
+     "verdict": "OVERTURNED",
+     "reason": "The reason's claims about behavior hold: walks, carries, CarriedStarts and FindHeader/HeaderAt/PendsHeader do not change, and the view stays within 23 bytes. Its claim that nothing reads the changed places does not hold for this internal type's own member. On \"y 5\\n12\" carried whole, three runs reach the lead's first byte, which is placed at -1 (CarryLead's _leadAt[0] = -1). The change writes an empty run of white space before it, placed at 5's start. The view becomes 6 bytes long, and PositionOf(-5) gives 102 instead of -1.",
+     "test": "AdCodicem.Pdf.Tests.HeaderTextTests.A_byte_carried_before_the_runs_for_what_precedes_a_line_that_no_number_places_is_placed_nowhere(data: \"y 5\\n12\")"
+    },
+    {
+     "id": "HT-0345",
+     "verdict": "OVERTURNED",
+     "reason": "`end > first + 0` is `end >= first + 1`, so this is the same function as HT-0343 and the same input tells it apart: PositionOf(-5) gives 102 instead of -1 on \"y 5\\n12\".",
+     "test": "AdCodicem.Pdf.Tests.HeaderTextTests.A_byte_carried_before_the_runs_for_what_precedes_a_line_that_no_number_places_is_placed_nowhere(data: \"y 5\\n12\")"
+    },
+    {
+     "id": "HT-0378",
+     "verdict": "UPHELD",
+     "reason": "runValue is read in two places only: `runValue[run] < 0`, and TryFormat in the branch where the value is not negative. Value() starts at 0 and only adds digits 0 to 9, capped at Beyond, so it is never negative, and -1 and -2 both mean white space. With it applied, HeaderTextTests and StreamEndsTests gave 54/0/54/0."
+    },
+    {
+     "id": "HT-0384",
+     "verdict": "TEST-OK",
+     "reason": "The new row (\"(a)12   0 obj\", split 9) puts a byte of the read before the carried runs: the ')' at 102, which differs from the constructor's data start. The row asserts that byte's place at index -5 exactly. The change leaves 100 there. Confirmed: 47 total, 3 failed, 44 succeeded with the settler's patch and mine applied. The settler's row fails with 100 at index 0; my new test also fails on it. One nit in the settler's commit body and tests_added: the ')' is two bytes past the data's start (index 2), not one. The test comment itself is accurate."
+    },
+    {
+     "id": "HT-0385",
+     "verdict": "TEST-OK",
+     "reason": "Same row. Slot 1 is overwritten by the Fill for the farthest run, slot 0 keeps 100, and the row asserts 102 at index -5. Confirmed: 47 total, 3 failed, 44 succeeded (expected 102, got 100 at index 0)."
+    },
+    {
+     "id": "HT-0388",
+     "verdict": "TEST-OK",
+     "reason": "Same row. PositionOf(end) places the byte before the runs at the 12's start (103) instead of where the ')' lies (102), and the row asserts 102. Confirmed: 47 total, 3 failed, 44 succeeded (got 103 at index 0)."
+    },
+    {
+     "id": "HT-0412",
+     "verdict": "UPHELD",
+     "reason": "The bool TryFormat returns is thrown away by `_ =`. Negating it leaves the call, the digits it writes and `written` the same. The harness's unconfirmed failure is CorpusReadingTests.Damaged_documents...'s 20 s validation timing guard, which took 27.1 s under 8-worker load (logs/04/HT-0412-suite.txt), not a difference this change makes. With it applied, HeaderTextTests and StreamEndsTests gave 54/0/54/0."
+    },
+    {
+     "id": "HT-0060",
+     "verdict": "OVERTURNED",
+     "reason": "The reason is right that walks, carries and starts do not change. Its claim that no PositionOf caller reads the changed place fails for the class's own direct calls. Take \"x\\n1 2 \" carried whole. Four runs of the line (1, space, 2, space) reach back to the line's first byte. The byte before them is the lead's space for the end of line, where the line before holds no number, and CarryLead places it at -1 (`_leadAt[length] = -1`). With the change, the end of line itself is carried there, placed at 101. PositionOf(-5) gives 101 instead of -1.",
+     "test": "AdCodicem.Pdf.Tests.HeaderTextTests.A_byte_carried_before_the_runs_for_what_precedes_a_line_that_no_number_places_is_placed_nowhere(data: \"x\\n1 2 \")"
+    },
+    {
+     "id": "HT-0096",
+     "verdict": "TEST-OK",
+     "reason": "The row (\"12 % endstream\\nobj\", false, 5, -1) asserts SearchStretch's documented out header exactly: -1 where none. The -2 from HeaderAt reaches it through PendingEndStream.TokenEnds, and nothing else changes, because the data end reads only the sign. So the row asserts the one value the change alters. Confirmed: 9 total, 1 failed, 8 succeeded (expected -1, got -2)."
+    },
+    {
+     "id": "HT-0097",
+     "verdict": "TEST-OK",
+     "reason": "Same row. A 0 from HeaderAt counts as a header at file offset 0, so the keyword gives no data end. The row asserts found = 105 and header = -1 exactly. Confirmed: 9 total, 1 failed, 8 succeeded (expected 105, got -1)."
+    }
+   ],
+   "tests_added": [
+    "HeaderTextTests.A_byte_carried_before_the_runs_for_what_precedes_a_line_that_no_number_places_is_placed_nowhere (new two-row Theory, inserted after What_precedes_the_data_is_its_start_whatever_the_room_the_search_is_given_held so it does not touch the lines that the settler's patch and batch 1's refuter patches change). Each row reads the data whole, carries it into a read after it, and asserts PositionOf(-5), the first of the five bytes carried, == -1 exactly. Row \"y 5\\n12\": 12, the space after 5 and 5 are three runs that reach back to the byte saying 5 starts a token. Settles HT-0335, HT-0343 and HT-0345 (they give 102). Row \"x\\n1 2 \": four runs reach back to the line's start, and the byte before them is the space for an end of line that ends a line holding no number. Settles HT-0060 (it gives 101). The test also fails under HT-0384, HT-0385 and HT-0388 (100, 100, 102). Caveat: the -1 values it pins are deliberate writes in CarryLead (_leadAt[0] = -1 and the no-number _leadAt[length] = -1), the same -1 places batch 1's b1-03-r test pins. HT-0060 would instead place that byte where the end of line really lies (101), which is closer to the class remark ('each records where the run it stands for starts'). If the maintainer settles the remark question the settler raised in its 'found' notes in favor of real places, this row changes along with it."
+   ],
+   "patch": "C:/Users/clemm/AppData/Local/Temp/claude/7278f9d03177d71e/898783fc-049f-469a-ab79-dfd299ad558e/scratchpad/cloud/settle/patches/b2-01-r/0001-test-place-nowhere-a-byte-carried-for-what-precedes-.patch",
+   "commands": [
+    "git fetch origin ccr-6d6c0ee6-dqm4lm-188; git checkout --detach origin/ccr-6d6c0ee6-dqm4lm-188 -> base 5d5c32d",
+    "git log -L441,441 and -L137,137 of src/AdCodicem.Pdf/IO/HeaderText.cs over 21a0298..HEAD -> b09f981, Refs #261",
+    "dotnet build tests/AdCodicem.Pdf.Tests/AdCodicem.Pdf.Tests.csproj -c Release -m:2 (base + new test): 0 warnings, 0 errors (every later build too)",
+    "AdCodicem.Pdf.Tests.exe --filter-class HeaderTextTests (base + new test): total 46, failed 0, succeeded 46, skipped 0",
+    "HT-0343 applied: HeaderTextTests total 46, failed 1 (new row \"y 5\\n12\": expected -1, found 102), succeeded 45, skipped 0; reverted",
+    "HT-0335 applied: HeaderTextTests total 46, failed 1 (same row, 102), succeeded 45, skipped 0; reverted",
+    "HT-0345 applied: HeaderTextTests total 46, failed 1 (same row, 102), succeeded 45, skipped 0; reverted",
+    "HT-0060 applied: HeaderTextTests total 46, failed 1 (new row \"x\\n1 2 \": expected -1, found 101), succeeded 45, skipped 0; reverted",
+    "git commit -F (LF message) -> 6847635 'test: place nowhere a byte carried for what precedes a line no number places' (Refs #261)",
+    "check_msgs.py on 5d5c32d..HEAD log: 6847635 76 OK; grep_keys.py and widegrep.py on git diff 5d5c32d HEAD: exit 0 both",
+    "git apply of the settler's b2-01 patch on top (working tree only): applied cleanly (offset 21)",
+    "base + both patches, --filter-class HeaderTextTests --filter-class StreamEndsTests: total 56, failed 0, succeeded 56, skipped 0",
+    "HT-0384 applied (both patches): HeaderTextTests total 47, failed 3 (settler's (a)12 row: 100 at index 0; my two rows: 100), succeeded 44; reverted",
+    "HT-0385 applied (both patches): HeaderTextTests total 47, failed 3 (settler's row: 100; my rows: 100), succeeded 44; reverted",
+    "HT-0388 applied (both patches): HeaderTextTests total 47, failed 3 (settler's row: 103; my rows: 102), succeeded 44; reverted",
+    "HT-0096 applied (both patches): StreamEndsTests total 9, failed 1 (row \"12 % endstream\\nobj\": header expected -1, found -2), succeeded 8; reverted",
+    "HT-0097 applied (both patches): StreamEndsTests total 9, failed 1 (same row: found expected 105, got -1), succeeded 8; reverted",
+    "git checkout of both test files (settler's patch removed from the working tree)",
+    "HT-0077, HT-0378 and HT-0412 applied in turn (my test only), --filter-class HeaderTextTests --filter-class StreamEndsTests: each total 54, failed 0, succeeded 54, skipped 0; reverted",
+    "final base (my commit), both classes: total 54, failed 0, succeeded 54, skipped 0",
+    "harness logs read: logs/02/HT-0077-suite.txt (OutOfMemoryException on remote/usgs/us-topo-washington-west-2023.pdf), logs/04/HT-0384-suite.txt and logs/04/HT-0412-suite.txt (20 s timing guard at 27.0 s and 27.1 s on cairo-firefox-objstm-index-overflow-bug1978317.pdf). The corpus tests were not rerun: they are the timing- and memory-sensitive ones, and both mutants are provably equivalent. The remote corpus was never linked.",
+    "git format-patch -1 -o .../settle/patches/b2-01-r/ HEAD; git status clean; git diff 5d5c32d -- src empty"
+   ]
+  },
+  "remoteControlDeviceReport": false,
+  "toolsUsed": [
+   "Bash",
+   "Grep",
+   "Edit",
+   "Write",
+   "StructuredOutput"
+  ]
+ },
+ {
+  "type": "result",
+  "key": "v2:c32503f82eb294eeeaeb571da4a97752297101afa03cb95de31125a64ab04654",
+  "agentId": "aac7996f7c9a2c0e7",
+  "result": {
+   "label": "b2-04",
+   "base": "5d5c32d",
+   "verdicts": [
+    {
+     "id": "LT-0079",
+     "verdict": "TEST-OK",
+     "reason": "The new row (\"12 100000 % c\\nobj\", -1, {0, 4}) fails with the variant applied: HeaderTextTests gives total 45, failed 1, succeeded 44, and the only failure is that row, 'Expected FirstHeader(data, starts) to be -1L, but found 100L'. On the base with the patch it passes 45/45. What the variant changes is the value of a run whose first digit is 1 and is followed by zeros. The test asserts the exact result of that value: 100000 is no generation, so no header is found, while the variant reads 1 and finds '12 1 obj' at 100. The cut {0, 4} holds the carried-line path: the read ending at 4 takes the '1' in Step, then the next read's TakeDigits gets \"00000\" with _value 1. The second assertion, FirstHeader(data, [0]), holds the whole-read path. My probe confirms that a whole read alone tells the variant apart: the line \"10\", read whole, lexes to 1. The added comment is accurate, and Refs #261 matches b09f981, the commit that wrote TakeDigits.",
+     "test": "AdCodicem.Pdf.Tests.HeaderTextTests.A_header_is_found_wherever_the_reads_part_its_lines_as_one_read_finds_it(data: \"12 100000 % c\\nobj\", header: -1, starts: [0, 4])"
+    },
+    {
+     "id": "LT-0078",
+     "verdict": "UPHELD",
+     "reason": "What I tried: a differential probe of LineTokens over 8,640 lines. Each line was read whole, cut at every one and every two positions (two cuts on lines of 40 bytes or less), and read one byte at a time. That is 2,219,705 checks of Last and Before after Finish, against PdfLexer's token boundaries and a BigInteger value capped at Beyond. The lines hold runs of 1 to 24 zeros; zeros before and after a 1 or a 2; zeros before 2147483647, 2147483648, 21474836470 and 99999999999, with and without zeros after. Each run appears alone, after '12 ', before ' 0', in a comment line, after a string that holds %, twice, and followed by x. Result: 0 failures with this variant, as on the base, while the same probe found 117,603 under LT-0079. It cannot differ: _value is 0 exactly while the run so far is all zeros. It is written only by Step, from a digit, and by Math.Min(v*10+d, Beyond), which is at least v. So a zero leaves a 0 at 0, and the early return (_value == Beyond) never fires on one. The reason is correct. Note: the 2026-11-01 rule also asks for a benchmark that holds the constant factor, and none does. StreamEndSearchBenchmarks' 'digits' shape is all '1', so the skip never runs. The settling agent's found item (a 'zeros' shape) still has to be added or filed as debt before this classing is complete. Separately, under the project's own build the variant does not compile: CS0162 is an error with TreatWarningsAsErrors on, so I built it with TreatWarningsAsErrors off."
+    },
+    {
+     "id": "LT-0080",
+     "verdict": "UPHELD",
+     "reason": "The same probe gives 0 failures out of 2,219,705 checks. _value is never -1. It starts at 0 (default). Line 283 writes value - '0' only when IsDigit(value), which is '0'..'9', and 0 otherwise. Line 179 writes Math.Min(non-negative*10 + (0..9), Beyond), because Pass hands TakeDigits only bytes in '0'..'9' (IndexOfAnyExceptInRange). Copies of the struct (var tokens = _line in Walk and PendsHeader) carry the value unchanged. So the skip never runs and the leading zeros leave 0 at 0. The reason is correct. The same note on the missing zeros benchmark applies."
+    },
+    {
+     "id": "LT-0081",
+     "verdict": "UPHELD",
+     "reason": "The same probe gives 0 failures out of 2,219,705 checks. `first` is still computed, but nothing reads it, and IndexOfAnyExcept has no side effect. The zeros stay in `digits` and leave _value at 0, the early return never fires on them, and the value after them is the same. The build gives 0 warnings (no unused-value diagnostic fires). The reason is correct. The same note on the missing zeros benchmark applies."
+    },
+    {
+     "id": "LT-0090",
+     "verdict": "UPHELD",
+     "reason": "The same probe gives 0 failures out of 2,219,705 checks. It includes runs of up to 24 nines or ones, runs at and past 2147483648, zeros after the run reaches Beyond, and reads of one byte at a time. Once _value is Beyond it stays there: Beyond*10+9 = 21,474,836,489, which fits a long, and Math.Min brings it back to Beyond. Before it reaches Beyond, _value*10+9 cannot overflow either. Pass computes its length before TakeDigits, which returns nothing. The cost claim also holds: for the 'digits' shape (one 4 MB line with no end of line), CarryTo lexes each read's part of the line with _line.Read, so TakeDigits sees every digit and the shape holds the constant factor. The reason is correct. As with LT-0078, this variant hits CS0162 under the project's build, so I built it with TreatWarningsAsErrors off."
+    }
+   ],
+   "tests_added": [],
+   "patch": "none (every verdict holds; no commit, no format-patch)",
+   "commands": [
+    "git fetch origin ccr-6d6c0ee6-dqm4lm-188; git checkout --detach origin/ccr-6d6c0ee6-dqm4lm-188 -> base 5d5c32d",
+    "git log --format='%h %s%n%b' 21a0298..HEAD -L166,181:src/AdCodicem.Pdf/IO/LineTokens.cs -> b09f981, Refs #261",
+    "grep of adr53 summaries: LT-0078/79/80/81/90 all SURVIVED with no unconfirmed failures (suite 9058 or 9458 total, 0 failed, 3 skipped)",
+    "git apply of the settling agent's patch (b2-04/0001-...patch) plus a temporary differential probe of LineTokens (8,640 lines; whole reads, every one-cut, every two-cut on lines of 40 bytes or less, one byte a read; Last and Before checked against PdfLexer boundaries and a BigInteger value capped at Beyond)",
+    "base: dotnet build tests/AdCodicem.Pdf.Tests/AdCodicem.Pdf.Tests.csproj -c Release -m:2 -p:TreatWarningsAsErrors=false -> 0 errors, 1 warning (CA1305 in the probe only); probe -> 2,219,705 checks, 0 failures; HeaderTextTests -> total 45, failed 0, succeeded 45, skipped 0",
+    "LT-0079 applied (0 warnings): probe -> 117,603 failures (e.g. '10' read whole lexes to 1); HeaderTextTests -> total 45, failed 1, succeeded 44, skipped 0; the failure is the row (\"12 100000 % c\\nobj\", -1, [0, 4]): 'Expected FirstHeader(data, starts) to be -1L, but found 100L'",
+    "LT-0078 applied (CS0162, 1 warning, TreatWarningsAsErrors off): probe -> 0 failures; HeaderTextTests -> total 45, all passed",
+    "LT-0080 applied (0 warnings): probe -> 0 failures; HeaderTextTests -> total 45, all passed",
+    "LT-0081 applied (0 warnings): probe -> 0 failures; HeaderTextTests -> total 45, all passed",
+    "LT-0090 applied (CS0162, 1 warning, TreatWarningsAsErrors off): probe -> 0 failures; HeaderTextTests -> total 45, all passed",
+    "each variant reverted with mutant.py --revert (lines 166-179 checked after each one); probe file deleted; HeaderTextTests.cs restored with git checkout; git status --short clean; git diff HEAD empty; HEAD 5d5c32d; tests/corpus/remote never linked; no benchmark, timing, budget or allocation test run"
+   ]
+  },
+  "remoteControlDeviceReport": false,
+  "toolsUsed": [
+   "Bash",
+   "Grep",
+   "Write",
+   "StructuredOutput"
+  ]
+ },
+ {
+  "type": "result",
+  "key": "v2:b1dee1b6a7a9e07b6fac0720e29fa6ff1a0f8a5ca4aa7cffbf7e6968fc54efc5",
+  "agentId": "a43f81e1a6db394f8",
+  "result": {
+   "label": "b2-05",
+   "base": "1e1d171",
+   "survivors": [
+    {
+     "id": "PFR-0005",
+     "fate": "EQUIVALENT",
+     "reason": "The only read of _previousPastGuard (PdfFileReader.cs:3531) follows the call to TryReadXRefSection at :3415 in the same chain-loop iteration. That method's first statements (:5796-5797) set the field to -1 before any return, so the initializer (-1 or -2) is overwritten before every read, whatever the input."
+    },
+    {
+     "id": "PFR-0006",
+     "fate": "EQUIVALENT",
+     "reason": "Same reason as PFR-0005. TryReadXRefSection resets _previousPastGuard to -1 at :5796, which is the only path to the field's sole read at :3531, so an initializer of 0 is never read."
+    },
+    {
+     "id": "PFR-0007",
+     "fate": "EQUIVALENT",
+     "reason": "The only read of _streamPastGuard (:3531/:3536) follows TryReadXRefSection at :3415 in the same iteration. That method sets the field to -1 at :5797 before any return, so the initializer (-1 or -2) is never read, whatever the input."
+    },
+    {
+     "id": "PFR-0008",
+     "fate": "EQUIVALENT",
+     "reason": "Same reason as PFR-0007. The reset of _streamPastGuard to -1 at :5797 comes before the sole read at :3531 on every path, so an initializer of 0 is never read."
+    }
+   ],
+   "tests_added": [],
+   "commit": "",
+   "patch": "",
+   "commands": [
+    "git fetch origin ccr-6d6c0ee6-dqm4lm-188 && git checkout --detach origin/ccr-6d6c0ee6-dqm4lm-188 -> HEAD 1e1d171, not the expected 5d5c32d. 5d5c32d is an ancestor, and the three commits on top of it (2b21fd2, 90c9934, 1e1d171) touch only tests/AdCodicem.Pdf.Tests/HeaderTextTests.cs (+86 lines). git diff 19a2296 HEAD -- src/ is empty, so src/ matches the mutation run. Base recorded as 1e1d171.",
+    "Read the b2-args.json entry for b2-05: 4 survivors (PFR-0005..0008), all initializers of the fields _previousPastGuard and _streamPastGuard in src/AdCodicem.Pdf/IO/PdfFileReader.cs. The harness lines (summary-06.txt:125-127,129) read 'first filter (5216,0,5216,0), suite (5762,0,5759,3)', with no unconfirmed failures.",
+    "grep -rn 'PastGuard' src/ --include=*.cs -> fields declared at :428/:434. Read only at :3531, :3535 and :3536 (chain loop). Written at :5796-5797 (reset at the start of TryReadXRefSection), :6332-6333 (JudgeLinksPastGuard) and :7213 (cross-reference stream reading). No use in any other file. PdfFileReader is a single sealed, non-partial class.",
+    "Read the chain loop at :3274-3540. Every path to :3531 evaluates `if (TryReadXRefSection(section.Offset, ...) != Read)` at :3415 earlier in the same iteration. Every path that skips :3531 (break, or continue after HandOnPrevious) leaves the iteration first.",
+    "No mutant applied, no build, no test run: no test is needed because all four mutants are equivalent. git status --short is clean. tests/corpus/remote was never created."
+   ],
+   "found": [
+    "The branch head was 1e1d171, not the expected 5d5c32d: three test-only commits from other groups landed on top of it (HeaderTextTests.cs only). src/ is unchanged from the mutation run at 19a2296.",
+    "The `= -1` initializers of PdfFileReader._previousPastGuard and _streamPastGuard (:428, :434) are never read: TryReadXRefSection resets both fields to -1 before the only read at :3531. This is not a fault, and the doc comment ('-1 where it gives none ... Set as each section is read') stays accurate. Nothing to change."
+   ]
+  },
+  "remoteControlDeviceReport": false,
+  "toolsUsed": [
+   "Bash",
+   "StructuredOutput"
+  ]
+ },
+ {
+  "type": "result",
+  "key": "v2:a91806e448ce82c4731a3e0682c4dbba6edac445c47e52792995268ecaecc4d4",
+  "agentId": "a842204482905b06f",
+  "result": {
+   "label": "b2-05",
+   "base": "1e1d171",
+   "verdicts": [
+    {
+     "id": "PFR-0005",
+     "verdict": "UPHELD",
+     "reason": "Equivalent. The reason holds, with one wording fix: the field is read twice, at :3531 and :3535, not only at :3531. Corrected reason: every read of _previousPastGuard (:3531 and :3535, in the chain loop) comes after the unconditional call to TryReadXRefSection at :3415 in the same iteration. That method's first statements (:5796-5797) set the field to -1 before any return, and the other writes (:6332 and :7213) do not depend on the old value, so the initializer is never read. What I tried: an input that reaches :3531 before any call to TryReadXRefSection. No such path exists. Every path from the top of the loop either leaves it (break, return, continue) or passes :3415 first. The file has no goto and no try/catch around the call. The local pastGuard (:3274) is a different variable. Nothing reads the field by reflection, by clone or through a ref: the class is sealed and non-partial, and no test names the field."
+    },
+    {
+     "id": "PFR-0006",
+     "verdict": "UPHELD",
+     "reason": "Equivalent. Two parts of the wording are off. The field has two reads, :3531 and :3535, not a sole read at :3531. And the reset is not 'the only path' to the read: the call at :3415 that performs the reset lies on every path to it. Corrected reason: the same as PFR-0005. An initializer of 0 would pass the `>= 0` test at :3531, but it is overwritten with -1 at :5796 before either read on every path, so no input can reach that test with 0."
+    },
+    {
+     "id": "PFR-0007",
+     "verdict": "UPHELD",
+     "reason": "Equivalent. The reason is accurate as written. _streamPastGuard is read only at :3531 and :3536, and on every path both reads follow TryReadXRefSection at :3415 in the same iteration. That method sets the field to -1 at :5797 before any return, and the only other write (:6333) does not depend on the old value. No input can tell -2 from -1."
+    },
+    {
+     "id": "PFR-0008",
+     "verdict": "UPHELD",
+     "reason": "Equivalent. Wording fix: the field is read at :3531 and at :3536, not only at :3531. Corrected reason: on every path, the reset of _streamPastGuard to -1 at :5797 (the start of TryReadXRefSection, called unconditionally at :3415) comes before both reads in the same chain-loop iteration. An initializer of 0 is therefore never read, even though `>= 0` at :3531 would treat it differently."
+    }
+   ],
+   "tests_added": [],
+   "patch": "none",
+   "commands": [
+    "git fetch origin ccr-6d6c0ee6-dqm4lm-188 && git checkout --detach origin/ccr-6d6c0ee6-dqm4lm-188 -> HEAD 1e1d171 (5d5c32d plus three commits that touch only HeaderTextTests.cs). git diff 19a2296 HEAD -- src/ is empty. Base recorded as 1e1d171.",
+    "mutant.py - PFR-0005..0008: each changes one field initializer. _previousPastGuard (:428) goes from -1 to -2 or 0; _streamPastGuard (:434) goes from -1 to -2 or 0. All four share the same 24-class filter.",
+    "Harness summary for all four: SURVIVED, first filter (5216 total, 0 failed, 5216 passed, 0 skipped), suite (5762 total, 0 failed, 5759 passed, 3 skipped). No unconfirmed failures, so no confirm reruns were needed.",
+    "grep -rn PastGuard src/ tests/: the fields are read only at :3531, :3535 and :3536. They are written at :5796-5797 (the reset at the start of TryReadXRefSection), :6332-6333 (JudgeLinksPastGuard, unconditional values) and :7213 (`_previousPastGuard = named`, no read of the old value). No test names either field.",
+    "grep for partial, record, MemberwiseClone, DebuggerDisplay, BindingFlags and CheckForOverflow: PdfFileReader is internal, sealed and non-partial. The one reflection test (SeededComparerTests.CompiledRules) scans only for newobj/call/ldsfld-type IL opcodes, not instance-field initializers. Overflow checking is not enabled.",
+    "Read the chain loop (:3260-3545) and every caller of TryReadXRefSection (:3415, :3617, :5375). Every path to :3531 passes the unconditional call at :3415 in the same iteration. The file has no goto and no try/catch inside the loop.",
+    "No mutant applied and no build or test run. No input reaches the reads before the reset, so there was no probe input to run, and the harness had already run the whole suite against each mutant with 0 failures. git status --short is clean, and tests/corpus/remote was never created."
+   ]
+  },
+  "remoteControlDeviceReport": false,
+  "toolsUsed": [
+   "Bash",
+   "StructuredOutput"
+  ]
+ },
+ {
+  "type": "result",
+  "key": "v2:69754d59100a0916c4b157930386a30b6409cfaa9717811ecac94dd6631ccda9",
+  "agentId": "a00f250f6148e066b",
+  "result": {
+   "head_before": "1e1d17194011492ee0532aa3fedfccccc34adb3c",
+   "head_after": "95d5814e34fffed554201a9baaacc6775e396f66",
+   "commits": [
+    "743cea0 test: hold the place of a byte carried as itself and an obj past a comment that ends no header (Refs #261; b2-01 patch, applied with git am -3 by 3-way merge, no conflict; pushed)",
+    "7d2f00f test: place nowhere a byte carried for what precedes a line no number places (Refs #261; b2-01-r patch, conflict resolved; pushed)",
+    "f8e9aa1 test: pin that only a line that may begin a header leaves its endstream waiting (Refs #261; b2-02 patch, clean; pushed)",
+    "c7be350 test: say digits a colon follows are no number on a line a comment ends (Refs #261; b2-03 patch, clean; pushed)",
+    "95d5814 test: count the zeros after a number's first digit on a header line that holds a comment (Refs #261; b2-04 patch, clean; pushed)"
+   ],
+   "confirm": [
+    "HT-0060: KILLED by first filter, 1 of 249 rows failed (1 tests), first HeaderTextTests.A_byte_carried_before_the_runs_for_what_precedes_a_line_that_no_number_places_is_placed_nowhere [stopped at the first failure: the count is a floor] (32s)",
+    "HT-0096: KILLED by first filter, 1 of 74 rows failed (1 tests), first StreamEndsTests.The_data_ends_at_its_first_endstream_its_end_of_line_left_out_unless_a_header_comes_first [stopped at the first failure: the count is a floor] (32s)",
+    "HT-0097: KILLED by first filter, 1 of 89 rows failed (1 tests), first StreamEndsTests.The_data_ends_at_its_first_endstream_its_end_of_line_left_out_unless_a_header_comes_first [stopped at the first failure: the count is a floor] (26s)",
+    "HT-0114: KILLED by first filter, 2 of 371 rows failed (2 tests), first StreamEndsTests.A_keyword_in_a_comment_waits_for_the_reads_after_it_only_where_its_line_may_begin_a_header [stopped at the first failure: the count is a floor] (28s)",
+    "HT-0335: KILLED by first filter, 1 of 179 rows failed (1 tests), first HeaderTextTests.A_byte_carried_before_the_runs_for_what_precedes_a_line_that_no_number_places_is_placed_nowhere [stopped at the first failure: the count is a floor] (22s)",
+    "HT-0343: KILLED by first filter, 1 of 157 rows failed (1 tests), first HeaderTextTests.A_byte_carried_before_the_runs_for_what_precedes_a_line_that_no_number_places_is_placed_nowhere [stopped at the first failure: the count is a floor] (26s)",
+    "HT-0345: KILLED by first filter, 1 of 204 rows failed (1 tests), first HeaderTextTests.A_byte_carried_before_the_runs_for_what_precedes_a_line_that_no_number_places_is_placed_nowhere [stopped at the first failure: the count is a floor] (26s)",
+    "HT-0384: KILLED by first filter, 2 of 247 rows failed (2 tests), first HeaderTextTests.What_precedes_a_line_after_one_ending_in_no_number_is_carried_placed_nowhere_with_white_space_it_starts_with [stopped at the first failure: the count is a floor] (26s)",
+    "HT-0385: KILLED by first filter, 1 of 206 rows failed (1 tests), first HeaderTextTests.A_byte_carried_into_a_read_is_placed_where_its_run_starts_and_a_byte_of_the_read_where_it_lies [stopped at the first failure: the count is a floor] (21s)",
+    "HT-0388: KILLED by first filter, 1 of 114 rows failed (1 tests), first HeaderTextTests.A_byte_carried_into_a_read_is_placed_where_its_run_starts_and_a_byte_of_the_read_where_it_lies [stopped at the first failure: the count is a floor] (22s)",
+    "LT-0050: KILLED by first filter, 1 of 75 rows failed (1 tests), first HeaderTextTests.A_header_is_found_wherever_the_reads_part_its_lines_as_one_read_finds_it [stopped at the first failure: the count is a floor] (18s)",
+    "LT-0079: KILLED by first filter, 1 of 54 rows failed (1 tests), first HeaderTextTests.A_header_is_found_wherever_the_reads_part_its_lines_as_one_read_finds_it [stopped at the first failure: the count is a floor] (20s)",
+    "Harness: shard b2, 12 mutants at 95d5814 with 2 workers, done in 190s, errors: none, exit 0. Summary in C:/Users/clemm/AppData/Local/Temp/claude/7278f9d03177d71e/898783fc-049f-469a-ab79-dfd299ad558e/scratchpad/cloud/adr53/summary-b2.txt, shard file C:/Users/clemm/AppData/Local/Temp/claude/7278f9d03177d71e/898783fc-049f-469a-ab79-dfd299ad558e/scratchpad/cloud/settle/b2-confirm.json (first filters widened by AdCodicem.Pdf.Tests.HeaderTextTests and AdCodicem.Pdf.Tests.StreamEndsTests)."
+   ],
+   "tests_run": [
+    "dotnet build AdCodicem.Pdf.slnx -c Release -m:2: Build succeeded, 0 warnings, 0 errors",
+    "dotnet format AdCodicem.Pdf.slnx --verify-no-changes: exit 0, no changes",
+    "AdCodicem.Pdf.Tests.exe --filter-class AdCodicem.Pdf.Tests.HeaderTextTests --filter-class AdCodicem.Pdf.Tests.StreamEndsTests (remote corpus hard-linked): total 72, failed 0, succeeded 72, skipped 0",
+    "AdCodicem.Pdf.Tests.exe --filter-class AdCodicem.Pdf.Tests.HeaderTextTests: total 57, failed 0, succeeded 57, skipped 0",
+    "AdCodicem.Pdf.Tests.exe --filter-class AdCodicem.Pdf.Tests.StreamEndsTests: total 15, failed 0, succeeded 15, skipped 0",
+    "check_msgs.py over git log 1e1d171..HEAD: 95d5814 88 OK, c7be350 71 OK, f8e9aa1 79 OK, 7d2f00f 76 OK, 743cea0 94 OK (exit 0)",
+    "grep_keys.py over git diff 1e1d171 HEAD: exit 0, no output",
+    "widegrep.py over git diff 1e1d171 HEAD: exit 0, no output",
+    "adr53/run.py confirm run over 12 ids at 95d5814 (--any-commit --stop-on-fail, 2 workers): 12 of 12 KILLED by first filter"
+   ],
+   "problems": [
+    "The group agents' base was 5d5c32d, but the branch head was 1e1d171: three test-only commits from batch 1 (2b21fd2, 90c9934, 1e1d171) touch HeaderTextTests.cs. src/ is unchanged from the mutation run.",
+    "b2-01 applied through git am's 3-way fallback with no conflict. b2-01-r CONFLICTED in tests/AdCodicem.Pdf.Tests/HeaderTextTests.cs: the batch-1 test A_line_lexed_through_any_reads_takes_a_run_of_digits_past_any_object_number_for_the_first_value_past_it (b1-02-r, now on the head) and the refuter's new A_byte_carried_before_the_runs_for_what_precedes_a_line_that_no_number_places_is_placed_nowhere were both inserted right after What_precedes_the_data_is_its_start_whatever_the_room_the_search_is_given_held. Resolved by keeping both, the existing lexer test first and the new place test after it, next to the class's other tests of carried-byte places. The commit message is unchanged. Build, format and both classes pass on the result.",
+    "b2-02, b2-03 and b2-04 applied cleanly. b2-03 and b2-04 had refuter runs with no patch, and b2-05 had no patch at all (all equivalent), so nothing was applied for them.",
+    "Not fixed, because the instructions say to keep each commit as written: the body of 743cea0 (b2-01) says the ')' is 'a byte of the read a byte past the data's start'. It is two bytes past (index 2, place 102). The b2-01-r refuter flagged the same slip. The test comment in the diff is accurate. It could only be fixed now by a later commit or a history rewrite, and the commit is already pushed.",
+    "No TEST-WEAK verdicts, so no test was strengthened. No new fix commit was needed: every check passed on the first run.",
+    "The remote corpus was hard-linked for the class run and then removed with rm -rf tests/corpus/remote (links only; the maintainer's copy is intact). The harness removed its own worktrees. The worktree is clean at 95d5814.",
+    "Push: a fast-forward of 1e1d171..95d5814 to origin/ccr-6d6c0ee6-dqm4lm-188 on the first try, and a re-fetch shows FETCH_HEAD = 95d5814. No timing, budget, allocation or memory test and no benchmark was run."
+   ]
+  },
+  "remoteControlDeviceReport": false,
+  "toolsUsed": [
+   "Bash",
+   "Read",
+   "ToolSearch",
+   "Monitor",
+   "StructuredOutput"
+  ]
+ }
+]

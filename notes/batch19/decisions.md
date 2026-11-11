@@ -1225,3 +1225,18 @@ review. Then the batch-wide ADR 53 step.
 - chunk.py now splits a member past the cap in line order. Batch b3 (70 survivors, 7 groups: PdfFileReader
   Initialize..NamesSection, SearchEndStream, StartOf*, TryReadXRefChain), pool 2: wf_d0221f6a-d25 (task wfw1jp9pr).
   settled.txt: 150 ids. Run at 11:24: 1,576 with a final line (1,361 killed, 141 survived, 74 not viable).
+- Harness: PFR-0644 (TryParseUnrecordedAt's defensive return, empty first filter) ran its suite (10,978, 0 failed:
+  it survives) but the summary line raised KeyError('first_totals') -> harness error, rerun at the end. Fixed in run.py
+  (r.get with 'none: no class reaches the site'); only PFR-0644 and PFR-1457 (IsTokenOnItsLine, shard 17) have an
+  empty filter.
+- b2 settled (wf_4e36a9e1-524): 34 = 12 KILLED-NEW + 22 EQUIVALENT; the refuter overturned 4 (HT-0335, -0343, -0345,
+  -0060: places of carried bytes read by the class's direct PositionOf calls). Pushed 1e1d171..95d5814 (743cea0,
+  7d2f00f, f8e9aa1, c7be350, 95d5814; test, Refs #261); 13 ids confirmed KILLED (summary-b2.txt). Commit body not
+  rewritten: 743cea0 says the ')' is 'a byte past the data's start'; it is two bytes past (index 2, place 102).
+  Found: PropertyTests' HeaderPieces generator has no ':' after digits and no '1' before a '0' (why LT-0050 and the
+  TakeDigits zeros passed it); TakeDigits 'false' variants do not compile under the project's own build (CS0162),
+  only under the harness's; _previousPastGuard/_streamPastGuard '= -1' initializers never read (reset before the only
+  read); HeaderText's class remark 'each records where the run it stands for starts' is false of the lead's bytes
+  (docs nit, with b1's).
+- Ledger: W/settle/fates.jsonl (one line per id, final fate after the refuter); summarize.py appends a batch to it.
+  After b1+b2: 80 ids = 34 killed by new tests + 46 equivalent.

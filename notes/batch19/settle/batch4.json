@@ -1,0 +1,231 @@
+{
+ "ready": [
+  {
+   "member": "PdfFileReader.ReachedAt",
+   "file": "src/AdCodicem.Pdf/IO/PdfFileReader.cs",
+   "survivors": [
+    {
+     "id": "PFR-0561",
+     "file": "src/AdCodicem.Pdf/IO/PdfFileReader.cs",
+     "old": "        start = -1;",
+     "new": "        start = -2;",
+     "site": "src/AdCodicem.Pdf/IO/PdfFileReader.cs:3935:18:bound-const:1",
+     "member": "PdfFileReader.ReachedAt",
+     "filter": [
+      "ArlingtonMessageTests",
+      "ArlingtonRuleTests",
+      "CrossReferenceChainTests",
+      "CrossReferenceRuleTests",
+      "DiagnosticsTests",
+      "DocumentReaderTests",
+      "EndOfFileMarkerRuleTests",
+      "FileRuleTests",
+      "FilterChainCorpusTests",
+      "FilterDamageTests",
+      "FilterTests",
+      "FirstStepsTutorialTests",
+      "GuardCutValueTests",
+      "HeaderOffsetTests",
+      "ObjectRuleTests",
+      "PageTreeRuleTests",
+      "PropertyTests",
+      "ReadOrderConvergenceTests",
+      "ReadOrderTests",
+      "ReaderLimitsTests",
+      "StreamLengthTests",
+      "SyntaxFaultTests",
+      "ValidatorTests",
+      "WindowEdgeTests"
+     ],
+     "timeout": 300,
+     "summary": "SURVIVED (first filter (5216, 0, 5216, 0), suite (5762, 0, 5759, 3)) (358s)"
+    },
+    {
+     "id": "PFR-0573",
+     "file": "src/AdCodicem.Pdf/IO/PdfFileReader.cs",
+     "old": "!IsInFile(position)",
+     "new": "false",
+     "site": "src/AdCodicem.Pdf/IO/PdfFileReader.cs:3943:13:cond-whole:19",
+     "member": "PdfFileReader.ReachedAt",
+     "filter": [
+      "ArlingtonMessageTests",
+      "ArlingtonRuleTests",
+      "CrossReferenceChainTests",
+      "CrossReferenceRuleTests",
+      "DiagnosticsTests",
+      "DocumentReaderTests",
+      "EndOfFileMarkerRuleTests",
+      "FileRuleTests",
+      "FilterChainCorpusTests",
+      "FilterDamageTests",
+      "FilterTests",
+      "FirstStepsTutorialTests",
+      "GuardCutValueTests",
+      "HeaderOffsetTests",
+      "ObjectRuleTests",
+      "PageTreeRuleTests",
+      "PropertyTests",
+      "ReadOrderConvergenceTests",
+      "ReadOrderTests",
+      "ReaderLimitsTests",
+      "StreamLengthTests",
+      "SyntaxFaultTests",
+      "ValidatorTests",
+      "WindowEdgeTests"
+     ],
+     "timeout": 300,
+     "summary": "SURVIVED (first filter (5216, 0, 5216, 0), suite (5762, 0, 5759, 3)) (388s)"
+    },
+    {
+     "id": "PFR-0575",
+     "file": "src/AdCodicem.Pdf/IO/PdfFileReader.cs",
+     "old": "        if (!IsInFile(position))\n        {\n            return -1;\n        }",
+     "new": "        if (!IsInFile(position))\n        {\n            return -2;\n        }",
+     "site": "src/AdCodicem.Pdf/IO/PdfFileReader.cs:3945:21:bound-const:1",
+     "member": "PdfFileReader.ReachedAt",
+     "filter": [
+      "ArlingtonRuleTests",
+      "CrossReferenceChainTests",
+      "CrossReferenceRuleTests",
+      "DocumentReaderTests",
+      "FileRuleTests",
+      "HeaderOffsetTests",
+      "ObjectRuleTests",
+      "ReadOrderConvergenceTests",
+      "ReadOrderTests",
+      "ReaderLimitsTests",
+      "ValidatorTests"
+     ],
+     "timeout": 300,
+     "summary": "SURVIVED (first filter (3694, 0, 3694, 0), suite (7284, 0, 7281, 3)) (321s)"
+    },
+    {
+     "id": "PFR-0582",
+     "file": "src/AdCodicem.Pdf/IO/PdfFileReader.cs",
+     "old": "        return _sectionsReadAt.Contains(start) ? start : -1;",
+     "new": "        return _sectionsReadAt.Contains(start) ? start : -2;",
+     "site": "src/AdCodicem.Pdf/IO/PdfFileReader.cs:3949:59:bound-const:1",
+     "member": "PdfFileReader.ReachedAt",
+     "filter": [
+      "ArlingtonMessageTests",
+      "ArlingtonRuleTests",
+      "CrossReferenceChainTests",
+      "CrossReferenceRuleTests",
+      "DiagnosticsTests",
+      "DocumentReaderTests",
+      "EndOfFileMarkerRuleTests",
+      "FileRuleTests",
+      "FilterChainCorpusTests",
+      "FilterDamageTests",
+      "FilterTests",
+      "FirstStepsTutorialTests",
+      "GuardCutValueTests",
+      "HeaderOffsetTests",
+      "ObjectRuleTests",
+      "PageTreeRuleTests",
+      "PropertyTests",
+      "ReadOrderConvergenceTests",
+      "ReadOrderTests",
+      "ReaderLimitsTests",
+      "StreamLengthTests",
+      "SyntaxFaultTests",
+      "ValidatorTests",
+      "WindowEdgeTests"
+     ],
+     "timeout": 300,
+     "summary": "SURVIVED (first filter (5216, 0, 5216, 0), suite (5762, 0, 5759, 3)) (305s)"
+    }
+   ]
+  },
+  {
+   "member": "PdfFileReader.RefuseDeclared",
+   "file": "src/AdCodicem.Pdf/IO/PdfFileReader.cs",
+   "survivors": [
+    {
+     "id": "PFR-0777",
+     "file": "src/AdCodicem.Pdf/IO/PdfFileReader.cs",
+     "old": "    private void RefuseDeclared(PdfDictionary dictionary)\n    {\n        if (_everyNumberRefused)\n        {",
+     "new": "    private void RefuseDeclared(PdfDictionary dictionary)\n    {\n        if (false)\n        {",
+     "site": "src/AdCodicem.Pdf/IO/PdfFileReader.cs:4382:13:cond-whole:19",
+     "member": "PdfFileReader.RefuseDeclared",
+     "filter": [
+      "CrossReferenceChainTests",
+      "CrossReferenceRuleTests",
+      "DocumentReaderTests",
+      "GuardCutValueTests",
+      "ReaderLimitsTests"
+     ],
+     "timeout": 300,
+     "summary": "SURVIVED (first filter (2742, 0, 2742, 0), suite (8236, 1, 8232, 3)) [unconfirmed failures: ObjectRuleTests.A_run_of_links_the_walk_takes_at_the_reader_s_deepest_load_is_never_where_the_stack_cuts_it] (337s)"
+    },
+    {
+     "id": "PFR-0779",
+     "file": "src/AdCodicem.Pdf/IO/PdfFileReader.cs",
+     "old": "        var size = index is null ? dictionary.GetRaw(PdfName.Size) : null;",
+     "new": "        var size = true ? dictionary.GetRaw(PdfName.Size) : null;",
+     "site": "src/AdCodicem.Pdf/IO/PdfFileReader.cs:4389:20:cond-whole:13",
+     "member": "PdfFileReader.RefuseDeclared",
+     "filter": [
+      "CrossReferenceChainTests",
+      "CrossReferenceRuleTests",
+      "DocumentReaderTests",
+      "GuardCutValueTests",
+      "ReaderLimitsTests"
+     ],
+     "timeout": 300,
+     "summary": "SURVIVED (first filter (2742, 0, 2742, 0), suite (8236, 2, 8231, 3)) [unconfirmed failures: HostileInputTests.A_dictionary_that_gives_one_key_a_million_times_reads_in_time_and_keeps_a_bounded_report, ObjectRuleTests.A_run_of_links_the_walk_takes_at_the_reader_s_deepest_load_is_never_where_the_stack_cuts_it] (363s)"
+    },
+    {
+     "id": "PFR-0798",
+     "file": "src/AdCodicem.Pdf/IO/PdfFileReader.cs",
+     "old": "        var declared = ArrayPool<(long First, long End)>.Shared.Rent(subsections.Length / 2);",
+     "new": "        var declared = ArrayPool<(long First, long End)>.Shared.Rent(subsections.Length / 1);",
+     "site": "src/AdCodicem.Pdf/IO/PdfFileReader.cs:4404:91:bound-const:1",
+     "member": "PdfFileReader.RefuseDeclared",
+     "filter": [
+      "CrossReferenceChainTests",
+      "CrossReferenceRuleTests",
+      "DocumentReaderTests",
+      "GuardCutValueTests",
+      "ReaderLimitsTests"
+     ],
+     "timeout": 300,
+     "summary": "SURVIVED (first filter (2742, 0, 2742, 0), suite (8236, 0, 8233, 3)) (328s)"
+    }
+   ]
+  },
+  {
+   "member": "PdfFileReader.RefuseEveryNumber",
+   "file": "src/AdCodicem.Pdf/IO/PdfFileReader.cs",
+   "survivors": [
+    {
+     "id": "PFR-0893",
+     "file": "src/AdCodicem.Pdf/IO/PdfFileReader.cs",
+     "old": "        _everyNumberRefused = true;\n        ReleaseRefusedRanges();",
+     "new": "        _everyNumberRefused = true;\n        ",
+     "site": "src/AdCodicem.Pdf/IO/PdfFileReader.cs:4493:9:call:23",
+     "member": "PdfFileReader.RefuseEveryNumber",
+     "filter": [
+      "ArlingtonRuleTests",
+      "CrossReferenceChainTests",
+      "CrossReferenceRuleTests",
+      "FileRuleTests",
+      "GuardCutValueTests",
+      "ObjectRuleTests",
+      "ReaderLimitsTests"
+     ],
+     "timeout": 300,
+     "summary": "SURVIVED (first filter (2913, 0, 2913, 0), suite (8065, 0, 8062, 3)) (335s)"
+    }
+   ]
+  }
+ ],
+ "pending_members": 114,
+ "counts": {
+  "KILLED": 1525,
+  "NOT VIABLE": 83,
+  "SURVIVED": 137
+ },
+ "mutants": 3736,
+ "with_result": 1745
+}

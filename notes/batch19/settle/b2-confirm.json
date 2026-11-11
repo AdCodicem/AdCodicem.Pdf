@@ -1,0 +1,267 @@
+{
+ "shard": "b2",
+ "head": "95d5814e34fffed554201a9baaacc6775e396f66",
+ "mutants": [
+  {
+   "id": "HT-0060",
+   "file": "src/AdCodicem.Pdf/IO/HeaderText.cs",
+   "old": "        CarryRuns(end, endOfLine + 1, View.Lead);",
+   "new": "        CarryRuns(end, endOfLine + 0, View.Lead);",
+   "site": "src/AdCodicem.Pdf/IO/HeaderText.cs:137:36:bound-const:1",
+   "member": "HeaderText.CarryTo",
+   "filter": [
+    "CrossReferenceChainTests",
+    "DocumentReaderTests",
+    "GuardCutValueTests",
+    "HeaderTextTests",
+    "PropertyTests",
+    "StreamLengthTests",
+    "WindowEdgeTests",
+    "AdCodicem.Pdf.Tests.HeaderTextTests",
+    "AdCodicem.Pdf.Tests.StreamEndsTests"
+   ],
+   "timeout": 300
+  },
+  {
+   "id": "HT-0096",
+   "file": "src/AdCodicem.Pdf/IO/HeaderText.cs",
+   "old": "    public readonly long HeaderAt(int tokenStart) => TryFindStart(tokenStart, out var start) ? start : -1;",
+   "new": "    public readonly long HeaderAt(int tokenStart) => TryFindStart(tokenStart, out var start) ? start : -2;",
+   "site": "src/AdCodicem.Pdf/IO/HeaderText.cs:257:105:bound-const:1",
+   "member": "HeaderText.HeaderAt",
+   "filter": [
+    "PropertyTests",
+    "StreamEndsTests",
+    "StreamLengthTests",
+    "WindowEdgeTests",
+    "AdCodicem.Pdf.Tests.HeaderTextTests",
+    "AdCodicem.Pdf.Tests.StreamEndsTests"
+   ],
+   "timeout": 300
+  },
+  {
+   "id": "HT-0097",
+   "file": "src/AdCodicem.Pdf/IO/HeaderText.cs",
+   "old": "    public readonly long HeaderAt(int tokenStart) => TryFindStart(tokenStart, out var start) ? start : -1;",
+   "new": "    public readonly long HeaderAt(int tokenStart) => TryFindStart(tokenStart, out var start) ? start : -0;",
+   "site": "src/AdCodicem.Pdf/IO/HeaderText.cs:257:105:bound-const:1",
+   "member": "HeaderText.HeaderAt",
+   "filter": [
+    "PropertyTests",
+    "StreamEndsTests",
+    "StreamLengthTests",
+    "WindowEdgeTests",
+    "AdCodicem.Pdf.Tests.HeaderTextTests",
+    "AdCodicem.Pdf.Tests.StreamEndsTests"
+   ],
+   "timeout": 300
+  },
+  {
+   "id": "HT-0114",
+   "file": "src/AdCodicem.Pdf/IO/HeaderText.cs",
+   "old": "tokens.Last.Kind != LineTokens.Kind.Other",
+   "new": "true",
+   "site": "src/AdCodicem.Pdf/IO/HeaderText.cs:271:36:cond-conjunct:41",
+   "member": "HeaderText.PendsHeader",
+   "filter": [
+    "CrossReferenceChainTests",
+    "CrossReferenceRuleTests",
+    "DocumentReaderTests",
+    "FilterChainCorpusTests",
+    "GuardCutValueTests",
+    "HeaderOffsetTests",
+    "ObjectRuleTests",
+    "ParserTests",
+    "PropertyTests",
+    "ReadOrderConvergenceTests",
+    "ReadOrderTests",
+    "ReaderLimitsTests",
+    "StreamEndsTests",
+    "StreamLengthTests",
+    "ValidatorTests",
+    "WindowEdgeTests",
+    "AdCodicem.Pdf.Tests.HeaderTextTests",
+    "AdCodicem.Pdf.Tests.StreamEndsTests"
+   ],
+   "timeout": 300
+  },
+  {
+   "id": "HT-0335",
+   "file": "src/AdCodicem.Pdf/IO/HeaderText.cs",
+   "old": "end > first + 1",
+   "new": "true",
+   "site": "src/AdCodicem.Pdf/IO/HeaderText.cs:441:34:cond-conjunct:15",
+   "member": "HeaderText.CarryRuns",
+   "filter": [
+    "CrossReferenceChainTests",
+    "CrossReferenceRuleTests",
+    "DocumentReaderTests",
+    "GuardCutValueTests",
+    "HeaderTextTests",
+    "PropertyTests",
+    "ReadOrderTests",
+    "ReaderLimitsTests",
+    "StreamLengthTests",
+    "WindowEdgeTests",
+    "AdCodicem.Pdf.Tests.HeaderTextTests",
+    "AdCodicem.Pdf.Tests.StreamEndsTests"
+   ],
+   "timeout": 300
+  },
+  {
+   "id": "HT-0343",
+   "file": "src/AdCodicem.Pdf/IO/HeaderText.cs",
+   "old": "        while (runs < MaxRuns && end > first + 1 &&",
+   "new": "        while (runs < MaxRuns && end >= first + 1 &&",
+   "site": "src/AdCodicem.Pdf/IO/HeaderText.cs:441:34:bound-op:15",
+   "member": "HeaderText.CarryRuns",
+   "filter": [
+    "CrossReferenceChainTests",
+    "CrossReferenceRuleTests",
+    "DocumentReaderTests",
+    "GuardCutValueTests",
+    "HeaderTextTests",
+    "PropertyTests",
+    "ReadOrderTests",
+    "ReaderLimitsTests",
+    "StreamLengthTests",
+    "WindowEdgeTests",
+    "AdCodicem.Pdf.Tests.HeaderTextTests",
+    "AdCodicem.Pdf.Tests.StreamEndsTests"
+   ],
+   "timeout": 300
+  },
+  {
+   "id": "HT-0345",
+   "file": "src/AdCodicem.Pdf/IO/HeaderText.cs",
+   "old": "        while (runs < MaxRuns && end > first + 1 &&",
+   "new": "        while (runs < MaxRuns && end > first + 0 &&",
+   "site": "src/AdCodicem.Pdf/IO/HeaderText.cs:441:48:bound-const:1",
+   "member": "HeaderText.CarryRuns",
+   "filter": [
+    "CrossReferenceChainTests",
+    "CrossReferenceRuleTests",
+    "DocumentReaderTests",
+    "GuardCutValueTests",
+    "HeaderTextTests",
+    "PropertyTests",
+    "ReadOrderTests",
+    "ReaderLimitsTests",
+    "StreamLengthTests",
+    "WindowEdgeTests",
+    "AdCodicem.Pdf.Tests.HeaderTextTests",
+    "AdCodicem.Pdf.Tests.StreamEndsTests"
+   ],
+   "timeout": 300
+  },
+  {
+   "id": "HT-0384",
+   "file": "src/AdCodicem.Pdf/IO/HeaderText.cs",
+   "old": "_runsAt[0] = PositionOf(end - 1, start, view);",
+   "new": "",
+   "site": "src/AdCodicem.Pdf/IO/HeaderText.cs:461:9:assignment:46",
+   "member": "HeaderText.CarryRuns",
+   "filter": [
+    "CrossReferenceChainTests",
+    "CrossReferenceRuleTests",
+    "DocumentReaderTests",
+    "GuardCutValueTests",
+    "HeaderTextTests",
+    "PropertyTests",
+    "ReadOrderTests",
+    "ReaderLimitsTests",
+    "StreamLengthTests",
+    "WindowEdgeTests",
+    "AdCodicem.Pdf.Tests.HeaderTextTests",
+    "AdCodicem.Pdf.Tests.StreamEndsTests"
+   ],
+   "timeout": 300
+  },
+  {
+   "id": "HT-0385",
+   "file": "src/AdCodicem.Pdf/IO/HeaderText.cs",
+   "old": "        _runsAt[0] = PositionOf(end - 1, start, view);",
+   "new": "        _runsAt[1] = PositionOf(end - 1, start, view);",
+   "site": "src/AdCodicem.Pdf/IO/HeaderText.cs:461:17:bound-const:1",
+   "member": "HeaderText.CarryRuns",
+   "filter": [
+    "CrossReferenceChainTests",
+    "CrossReferenceRuleTests",
+    "DocumentReaderTests",
+    "GuardCutValueTests",
+    "HeaderTextTests",
+    "PropertyTests",
+    "ReadOrderTests",
+    "ReaderLimitsTests",
+    "StreamLengthTests",
+    "WindowEdgeTests",
+    "AdCodicem.Pdf.Tests.HeaderTextTests",
+    "AdCodicem.Pdf.Tests.StreamEndsTests"
+   ],
+   "timeout": 300
+  },
+  {
+   "id": "HT-0388",
+   "file": "src/AdCodicem.Pdf/IO/HeaderText.cs",
+   "old": "        _runsAt[0] = PositionOf(end - 1, start, view);",
+   "new": "        _runsAt[0] = PositionOf(end - 0, start, view);",
+   "site": "src/AdCodicem.Pdf/IO/HeaderText.cs:461:39:bound-const:1",
+   "member": "HeaderText.CarryRuns",
+   "filter": [
+    "CrossReferenceChainTests",
+    "CrossReferenceRuleTests",
+    "DocumentReaderTests",
+    "GuardCutValueTests",
+    "HeaderTextTests",
+    "PropertyTests",
+    "ReadOrderTests",
+    "ReaderLimitsTests",
+    "StreamLengthTests",
+    "WindowEdgeTests",
+    "AdCodicem.Pdf.Tests.HeaderTextTests",
+    "AdCodicem.Pdf.Tests.StreamEndsTests"
+   ],
+   "timeout": 300
+  },
+  {
+   "id": "LT-0050",
+   "file": "src/AdCodicem.Pdf/IO/LineTokens.cs",
+   "old": "'9'",
+   "new": "':'",
+   "site": "src/AdCodicem.Pdf/IO/LineTokens.cs:137:72:bound-const:3",
+   "member": "LineTokens.Pass",
+   "filter": [
+    "CrossReferenceChainTests",
+    "GuardCutValueTests",
+    "HeaderTextTests",
+    "PropertyTests",
+    "StreamEndsTests",
+    "StreamLengthTests",
+    "WindowEdgeTests",
+    "AdCodicem.Pdf.Tests.HeaderTextTests",
+    "AdCodicem.Pdf.Tests.StreamEndsTests"
+   ],
+   "timeout": 300
+  },
+  {
+   "id": "LT-0079",
+   "file": "src/AdCodicem.Pdf/IO/LineTokens.cs",
+   "old": "        if (_value == 0)",
+   "new": "        if (_value == 1)",
+   "site": "src/AdCodicem.Pdf/IO/LineTokens.cs:166:23:bound-const:1",
+   "member": "LineTokens.TakeDigits",
+   "filter": [
+    "CrossReferenceChainTests",
+    "GuardCutValueTests",
+    "HeaderTextTests",
+    "PropertyTests",
+    "StreamEndsTests",
+    "StreamLengthTests",
+    "WindowEdgeTests",
+    "AdCodicem.Pdf.Tests.HeaderTextTests",
+    "AdCodicem.Pdf.Tests.StreamEndsTests"
+   ],
+   "timeout": 300
+  }
+ ]
+}
