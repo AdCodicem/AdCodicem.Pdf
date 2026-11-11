@@ -43,10 +43,13 @@ public class HeaderTextTests
     [InlineData("(a\\) b) 12 % c\n0 obj", 8, new[] { 0, 3 })]
     [InlineData("(a\\nb) 12 % c\n0 obj", 7, new[] { 0, 3 })]
     [InlineData("5 12 % c\n0 obj", 2, new[] { 0 })]
+    [InlineData("1234567890 1234567890\n0 obj", 11, new[] { 0, 22 })]
     public void A_header_is_found_wherever_the_reads_part_its_lines_as_one_read_finds_it(string data, long header, int[] starts)
     {
         // Each read starts where the array says, and repeats the four bytes before the next read's start, so that obj and the
-        // byte after it are whole in one read: the header, or none, is the one a single read of the data finds.
+        // byte after it are whole in one read: the header, or none, is the one a single read of the data finds. Two numbers of
+        // ten digits, the most a number is carried as, that end the line before the one a read starts in fill the room carried
+        // for them.
         var expected = header < 0 ? -1 : DataStart + header;
 
         FirstHeader(data, starts).Should().Be(expected);
@@ -91,6 +94,29 @@ public class HeaderTextTests
         // byte before the runs, no number starts at; every digit of a number names its start. What a read carried before
         // and the next no longer carries is not given, however much of it the room still holds.
         CarriedStarts(data, starts).Should().Equal(carried.Select(start => DataStart + start));
+    }
+
+    [Fact]
+    public void A_byte_carried_into_a_read_is_placed_where_its_run_starts_and_a_byte_of_the_read_where_it_lies()
+    {
+        // 12, three spaces and 0, read and carried into the read after them: counted back from that read's first byte come
+        // the 0, the spaces as one, 12's digits and the space that stands for the start of the data, each placed where the
+        // run it stands for starts in the file; the read's own bytes are placed where they lie.
+        var bytes = Encoding.Latin1.GetBytes("12   0 obj");
+        Span<byte> carried = stackalloc byte[HeaderText.CarriedLength];
+        Span<long> carriedAt = stackalloc long[HeaderText.CarriedLength];
+        var text = new HeaderText(carried, carriedAt, DataStart);
+        text.Read(bytes.AsSpan(0, 6), DataStart);
+        text.CarryTo(DataStart + 6);
+        text.Read(bytes.AsSpan(6), DataStart + 6);
+        var positions = new long[7];
+
+        for (var index = -5; index < 2; index++)
+        {
+            positions[index + 5] = text.PositionOf(index) - DataStart;
+        }
+
+        positions.Should().Equal(0, 0, 0, 2, 5, 6, 7);
     }
 
     /// <summary>
