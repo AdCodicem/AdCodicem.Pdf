@@ -9409,6 +9409,51 @@ public class CrossReferenceChainTests
     }
 
     [Fact]
+    public void A_search_near_a_prev_reads_only_the_object_at_a_place_an_xrefstm_s_reading_probed()
+    {
+        // The newest table names object 5, a font, through /XRefStm, and the end of line before it through /Prev: both reach
+        // the font, and the /Prev finds its section moved to the older table past it. That table names the font again
+        // through /XRefStm, as a writer that copies it leaves it, and through /Prev object 1, the catalog, or object 7, a
+        // font past the reach of a search near object 5. The /XRefStm is read at the font once the older table's /Prev was
+        // probed, and finds no stream there nor near it; the /Prev finds no section where it names nor near it, a search
+        // near the catalog trying the font among the places there. That search reads the font's object without probing the
+        // place again, the probe the /XRefStm's reading made kept: one window more at the font, the object's, than in the
+        // file whose /Prev lies past its reach (#188, #156).
+        var near = ReadsAtTheFont(farPrevious: false);
+        var far = ReadsAtTheFont(farPrevious: true);
+
+        near.Should().Equal([.. far, far[^1]]);
+
+        // The length of each read at the font, in order, while the document opens.
+        static List<int> ReadsAtTheFont(bool farPrevious)
+        {
+            var file = new HandWrittenFile();
+            var catalog = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>");
+            var pages = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>");
+            var font = file.Object(5, "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>");
+
+            // The /Prev is written in ten digits whichever object it names, so that nothing moves.
+            var older = file.Position;
+            var farFont = older + 1600;
+            var rows = new Dictionary<int, long> { [1] = catalog, [2] = pages, [5] = font, [7] = farFont };
+            file.Table(8, rows, Invariant($"/Size 8 /Root 1 0 R /Prev {(farPrevious ? farFont : catalog):D10} /XRefStm {font}"));
+            file.Raw(new string(' ', (int)(farFont - file.Position - 1)) + "\n");
+            file.Object(7, "<< /Type /Font /Subtype /Type1 /BaseFont /Courier >>").Should().Be(farFont);
+            var newest = file.Table(8, rows, Invariant($"/Size 8 /Root 1 0 R /Prev {font - 1} /XRefStm {font}"));
+            var source = new ReadRecordingSource(file.Bytes);
+            using var document = PdfDocument.Open(source, options: null, ownsSource: false);
+
+            document.Reader.Structure.Sections.Select(section => (section.NamedBy, section.State, section.Offset)).Should().Equal(
+                ("startxref", XRefSectionState.Read, newest),
+                ("/XRefStm", XRefSectionState.NamedAgain, font),
+                ("/Prev", XRefSectionState.Relocated, older),
+                ("/XRefStm", XRefSectionState.NotFound, font),
+                ("/Prev", XRefSectionState.NotFound, farPrevious ? farFont : catalog));
+            return [.. source.Reads.Where(read => read.Offset == font).Select(read => read.Length)];
+        }
+    }
+
+    [Fact]
     public void A_prev_and_an_xrefstm_writing_one_offset_short_of_the_previous_section_count_once_among_the_imprecise_offsets()
     {
         // The newest table names the section before it, through /Prev and through /XRefStm, at the end of line before it: one
@@ -9982,5 +10027,22 @@ public class CrossReferenceChainTests
         var text = Encoding.Latin1.GetString(file);
         var start = text.LastIndexOf("startxref", StringComparison.Ordinal) + "startxref".Length;
         return long.Parse(text[start..].Trim().Split('\n')[0], CultureInfo.InvariantCulture);
+    }
+
+    /// <summary>A file in memory that records where each read starts and how many bytes it asks for, in order.</summary>
+    private sealed class ReadRecordingSource(byte[] data) : PdfFileSource
+    {
+        /// <summary>Gets where each read started, and the bytes it asked for, in order.</summary>
+        public List<(long Offset, int Length)> Reads { get; } = [];
+
+        public override long Length => data.Length;
+
+        public override int Read(long offset, Span<byte> buffer)
+        {
+            Reads.Add((offset, buffer.Length));
+            var count = (int)Math.Min(buffer.Length, data.Length - offset);
+            data.AsSpan((int)offset, count).CopyTo(buffer);
+            return count;
+        }
     }
 }
