@@ -3791,6 +3791,48 @@ public class GuardCutValueTests
         document.GetObject(new PdfObjectId(8)).Should().BeOfType<PdfString>().Which.ToText().Should().Be("eight");
     }
 
+    [Fact]
+    public void A_section_whose_value_a_guard_cut_counts_the_rows_its_data_holds_as_read_whole_a_lone_last_hex_digit_completed()
+    {
+        // As above, object 6's /Index gives its first number as the reference 5 0 R, which MaxObjectLength cuts, and declares
+        // eight rows of seven bytes, in ASCIIHex data of 111 digits that no > ends. A whole read completes the last digit
+        // with a 0, as one before the marker is: the data decodes to 56 bytes, which hold the eight rows, and the section is
+        // read. Judged whatever the cut value holds, the data is decoded as the whole read decodes it, its end the file's: it
+        // holds the rows the section declares, and the section is the guard's, the cut value hiding whether its rows are, the
+        // guard reached once the chain is read (#221, #263). Decoded as data whose end a guard hides, the lone digit dropped,
+        // it would hold 55 bytes, seven rows, and the section would be taken for one that lacks a row.
+        var built = ChainFiles.UnderAnUpdate(
+            "/Type /XRef /Size 8 /W [1 4 2] /Length {length}",
+            "0" + new string(' ', 1100),
+            compressed: false,
+            predicted: false,
+            placed: true,
+            six: "<< /Type /XRef /W [1 4 2] /Index [5 0 R 8] /Filter /ASCIIHexDecode /Length 111 >>\nstream\n" + new string('0', 111) + "\nendstream",
+            placedToo: new Dictionary<int, string> { [8] = "(eight)" });
+        var text = Encoding.Latin1.GetString(built);
+        var stream = text.IndexOf("\n7 0 obj", StringComparison.Ordinal) + 1;
+        var sixAt = text.IndexOf("\n6 0 obj", StringComparison.Ordinal) + 1;
+        var file = Encoding.Latin1.GetBytes(text.Replace(Invariant($"/Prev {stream} "), Invariant($"/Prev {sixAt} "), StringComparison.Ordinal));
+
+        using (var whole = PdfDocument.Open(file))
+        {
+            whole.Reader.Structure.Sections[^1].Should().Match<XRefSectionRecord>(read =>
+                read.Offset == sixAt && read.State == XRefSectionState.Read && !read.Incomplete && read.Fault == null);
+            whole.Diagnostics.Select(entry => entry.Code).Should().Equal(PdfDiagnosticCodes.FilterFailed, PdfDiagnosticCodes.XRefRebuilt);
+        }
+
+        using var document = PdfDocument.Open(file, ObjectGuard);
+
+        document.Reader.Structure.Sections[^1].Should().Match<XRefSectionRecord>(section =>
+            section.Offset == sixAt && section.State == XRefSectionState.Malformed && section.CutByLimit &&
+            section.Fault == "its /Index holds the reference 5 0 R, which one of the reader's limits cut");
+        document.Diagnostics.Select(entry => (entry.Code, entry.Position)).Should().Equal(
+            (PdfDiagnosticCodes.FilterFailed, text.IndexOf("stream\n", sixAt, StringComparison.Ordinal) + 7),
+            (PdfDiagnosticCodes.LimitObject, text.IndexOf("\n5 0 obj", StringComparison.Ordinal) + 1));
+        document.Diagnostics[0].Message.Should().Be(
+            "An ASCIIHex stream ends without its > end marker, after a digit without its pair; it was completed with a 0 as a last one is, and data may have been lost.");
+    }
+
     [Theory]
     [InlineData("/W [1 4 2] /Size 5 0 R", "8", "its /Size is the reference 5 0 R, which one of the reader's limits cut")]
     [InlineData("/W [1 4 2] /Index 5 0 R", "[0 8]", "its /Index is the reference 5 0 R, which one of the reader's limits cut")]

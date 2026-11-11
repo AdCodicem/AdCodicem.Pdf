@@ -2808,6 +2808,24 @@ public class CrossReferenceChainTests
         document.WasRepaired.Should().BeTrue();
     }
 
+    [Fact]
+    public void Records_the_section_a_prev_that_is_not_an_offset_names_as_named_at_no_offset()
+    {
+        // As above. The record of the section the /Prev would name says it was not found, named by the update's table, at
+        // -1 both where it was named and where it was read, no offset being given, and what the /Prev is in its stead, which
+        // the validator's report quotes.
+        var (file, original) = Updated(prevAt: Offset.AsReference);
+        var update = StartXRef(file);
+
+        using var document = PdfDocument.Open(file);
+
+        document.Reader.Structure.Sections
+            .Select(section => (section.NamedBy, section.State, section.NamedOffset, section.Offset, section.NamedFrom, section.Fault))
+            .Skip(1)
+            .Should().Equal(
+                ("/Prev", XRefSectionState.NotFound, -1L, -1L, update, Invariant($"is the reference {original} 0 R, which no section read before it places where it can be read")));
+    }
+
     [Theory]
     [InlineData(9)]
     [InlineData(4)]

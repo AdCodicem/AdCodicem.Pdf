@@ -4934,6 +4934,38 @@ public class HostileInputTests
     }
 
     [Fact]
+    public void A_refusal_merged_with_ranges_refused_before_gives_back_the_array_they_were_kept_in()
+    {
+        // As above, a lost stream declares 4,096 one-row subsections apart; its /Prev names an older lost stream that declares
+        // one subsection, object 10's, which joins the first range kept, and the older stream's /Prev names the table of 16
+        // rows. The same file without the older stream refuses once (#208). Each refusal merges the ranges kept and its own
+        // into an array the shared pool lends, 4,096 ranges long here, and gives back the one the ranges were kept in once
+        // they are merged. Opened again and again, the first allocates beyond the second only the older stream it reads,
+        // 2.8 KB: one array kept back at each merge would cost 64 KB more each opening.
+        var twice = LostStreamFiles.Chain(2, rows: 16, objects: [], s => s == 0 ? Apart() : [(10L, 1L)]);
+        var once = LostStreamFiles.RangesOverOlderRows(apart: true, rows: 16);
+
+        var twiceAllocated = Allocations.Least(() => Open(twice), out var twiceSections);
+        var onceAllocated = Allocations.Least(() => Open(once), out var onceSections);
+
+        twiceSections.Should().Be(4);
+        onceSections.Should().Be(3);
+        (twiceAllocated - onceAllocated).Should().BeLessThan(
+            32 * 1024,
+            "a refusal gives back the array the ranges it merges with were kept in ({0:N0} bytes against {1:N0})",
+            twiceAllocated,
+            onceAllocated);
+
+        static IEnumerable<(long First, long Count)> Apart() => Enumerable.Range(0, 4096).Select(i => (10L + (2L * i), 1L));
+
+        static int Open(byte[] file)
+        {
+            using var document = PdfDocument.Open(file);
+            return document.Reader.Structure.Sections.Count;
+        }
+    }
+
+    [Fact]
     public async Task Survives_a_string_longer_than_the_largest_window()
     {
         // A string that never closes runs to the end of every window, so each attempt asks for a larger
