@@ -5614,6 +5614,32 @@ public class CrossReferenceChainTests
         new PdfValidator().Validate(document).Findings.Select(finding => finding.RuleId).Should().NotContain(PdfValidationRuleIds.XRefHybridStreamWrong);
     }
 
+    [Fact]
+    public void An_xrefstm_goes_on_past_its_table_s_prev_to_the_stream_where_that_prev_names_a_dictionary_ending_the_file_that_gives_its_type_null_last()
+    {
+        // The newest table names object 4 through /Prev, and through /XRefStm a place 38 bytes before it, whose search comes
+        // to object 4 before the stream. Object 4 ends the file: its dictionary gives /Type /XRef, then /Type null, the
+        // file's last token, which the end of the file does not cut as a window's edge may: the null removes the key, and
+        // the dictionary declares nothing. The look at the /Prev's place reads it so, through a window that ends where the
+        // file does, as the /Prev's own reading does: the /Prev keeps no place there, the /XRefStm's search goes on to the
+        // stream, and the /Prev looks for its own section nearby and finds the oldest table (#156).
+        var (file, oldest, four, stream, newest) = HybridFiles.NamingAnObjectThatEndsTheFile("<< /Type /XRef /Type null");
+        using var document = PdfDocument.Open(file);
+
+        document.Reader.Structure.Sections.Select(section => (section.NamedBy, section.State, section.Offset)).Should().Equal(
+            ("startxref", XRefSectionState.Read, newest),
+            ("/XRefStm", XRefSectionState.Relocated, stream),
+            ("/Prev", XRefSectionState.Relocated, oldest));
+        document.Diagnostics.Select(diagnostic => (diagnostic.Code, diagnostic.Position)).Should().Equal(
+            (PdfDiagnosticCodes.XRefOffsetAdjusted, stream),
+            (PdfDiagnosticCodes.SyntaxKeyRepeated, four + "4 0 obj\n<< /Type /XRef ".Length),
+            (PdfDiagnosticCodes.SyntaxTruncatedObject, four + "4 0 obj\n".Length),
+            (PdfDiagnosticCodes.XRefOffsetAdjusted, oldest));
+        Text(document, 7).Should().Be("new seven");
+        Text(document, 5).Should().Be("five");
+        document.WasRepaired.Should().BeFalse();
+    }
+
     [Theory]
     [InlineData("/Type /XRefStream ")]
     [InlineData("")]

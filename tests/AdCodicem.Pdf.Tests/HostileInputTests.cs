@@ -4793,6 +4793,33 @@ public class HostileInputTests
     }
 
     [Fact]
+    public void The_look_at_what_a_prev_names_reads_the_object_there_through_the_windows_the_prev_s_own_reading_opens()
+    {
+        // The newest table names object 4 through /Prev, and through /XRefStm a place beside it, whose search comes to object
+        // 4 and asks whether the /Prev keeps its place there: a stream of no type, whose dictionary holds 70,000 bytes and
+        // whose data, 600,000 bytes, runs on past it. MaxTrailerLength raised to 1 MB, the dictionary is read through the
+        // windows a trailer's is: 64 KB, which cuts it, then eight times as much, which holds it, the data served from the
+        // file. The look opens those windows, past the probe of the white space before object 4, and so do the place's
+        // reading by the search, which drops it, and the /Prev's own reading, which looks for its section nearby: each
+        // reads object 4 as the others do (#156).
+        var (file, oldest, four, stream, _) = HybridFiles.NamingAnObjectBesideTheStream(
+            "<< /Pad (" + new string('-', 70_000) + ") /Length 600000 >>\nstream\n" + new string('-', 600_000) + "\nendstream");
+        var options = new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxTrailerLength = 1024 * 1024 } };
+        using var source = new WindowLoggingSource(file);
+
+        using (var document = PdfDocument.Open(source, options, ownsSource: false))
+        {
+            document.Reader.Structure.Sections.Select(section => (section.NamedBy, section.State, section.Offset)).Skip(1).Should().Equal(
+                ("/XRefStm", XRefSectionState.Relocated, stream),
+                ("/Prev", XRefSectionState.Relocated, oldest));
+        }
+
+        const int Grown = 8 * PdfFileReader.XRefWindow;
+        source.Windows.Where(window => window.Offset == four).Select(window => window.Length).Should().Equal(
+            PdfFileReader.XRefProbeLength, PdfFileReader.XRefWindow, Grown, PdfFileReader.XRefWindow, Grown, PdfFileReader.XRefWindow, Grown);
+    }
+
+    [Fact]
     public void A_prev_looping_back_through_the_spaces_before_a_table_it_named_there_is_known_without_a_look()
     {
         // The newest table names the middle one 3 bytes short of it, where the chain reads it; a table between the middle and

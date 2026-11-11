@@ -497,6 +497,47 @@ internal static class HybridFiles
     }
 
     /// <summary>
+    /// The document <see cref="NamingAnObjectBesideTheStream"/> writes, with object 4, <paramref name="four"/> and no
+    /// <c>endobj</c>, ending the file: the newest table, at <c>Newest</c>, comes before the first table, a comment of 1,200
+    /// dashes between them, and the <c>startxref</c> that names it comes after object 8, right before object 4, at
+    /// <c>Four</c>, 38 bytes past the place the newest table's <c>/XRefStm</c> names, 20 bytes into object 8's string. The
+    /// stream, at <c>Stream</c>, starts 212 bytes before that place, and the first table, at <c>Oldest</c>, 418 bytes
+    /// before object 4: the search near the <c>/XRefStm</c> comes to object 4 before the stream, and the one near the
+    /// <c>/Prev</c> reaches the first table.
+    /// </summary>
+    public static (byte[] File, long Oldest, long Four, long Stream, long Newest) NamingAnObjectThatEndsTheFile(string four)
+    {
+        // Where object 4 and the place the /XRefStm names lie is read once, then written ten digits wide.
+        var (_, _, at, _, _, named) = Write(0, 0);
+        var (file, oldest, fourAt, stream, newest, _) = Write(at, named);
+        return (file, oldest, fourAt, stream, newest);
+
+        (byte[] File, long Oldest, long Four, long Stream, long Newest, long Named) Write(long previous, long xrefStm)
+        {
+            var file = new HandWrittenFile(version: "1.5");
+            var (catalog, pages, page) = Page(file);
+            var oldSeven = file.Object(7, "(old seven)");
+            var five = file.Object(5, "(five)");
+            var newSeven = file.Object(7, "(new seven)");
+            var six = file.Object(6, "(six)");
+            var newest = file.Position;
+            file.Raw(Invariant($"xref\n0 1\n0000000000 65535 f \n6 1\n{Row(six)}trailer\n<< /Size 10 /Root 1 0 R /Prev {previous:D10} /XRefStm {xrefStm:D10} >>\n"));
+            file.Raw("%" + new string('-', 1200) + "\n");
+            var oldest = file.Position;
+            file.Raw(Invariant($"xref\n0 4\n0000000000 65535 f \n{Row(catalog)}{Row(pages)}{Row(page)}7 1\n{Row(oldSeven)}trailer\n<< /Size 8 /Root 1 0 R >>\nstartxref\n{oldest}\n%%EOF\n"));
+            var stream = file.Position;
+            var rows = StreamRows((1, five, 0), (1, newSeven, 0));
+            file.Object(9, Invariant($"<< /Type /XRef /Size 10 /W [1 4 2] /Index [5 1 7 1] /Length {rows.Length} >>\nstream\n{rows}\nendstream"));
+            file.Raw(new string(' ', (int)(oldest + 360 - file.Position)));
+            var eight = file.Object(8, "(" + new string('x', 20) + ")");
+            file.Raw(Invariant($"startxref\n{newest}\n%%EOF\n"));
+            var fourAt = file.Position;
+            file.Raw("4 0 obj\n" + four);
+            return (file.Bytes, oldest, fourAt, stream, newest, eight + 20);
+        }
+    }
+
+    /// <summary>
     /// <paramref name="file"/>, whose newest table lies at <paramref name="newest"/>, saved once more as a hybrid file:
     /// object 11, at <c>Eleven</c>, the reference <c>12 0 R</c> followed by 1,100 spaces, which
     /// <see cref="Documents.PdfReaderLimits.MaxObjectLength"/> at 1 KB cuts past the whole reference; object 12,
