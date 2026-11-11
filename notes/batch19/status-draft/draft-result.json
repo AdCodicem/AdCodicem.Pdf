@@ -1,0 +1,207 @@
+[
+ {
+  "type": "result",
+  "key": "v2:1ad55d4bd7ac47e45409f430edd6c3ba4da6faa46811b21139b8c88dbaebb515",
+  "agentId": "a8715baf683888627",
+  "result": {
+   "files": [
+    "C:/Users/clemm/AppData/Local/Temp/claude/7278f9d03177d71e/898783fc-049f-469a-ab79-dfd299ad558e/scratchpad/cloud/status-draft/comments/289.md",
+    "C:/Users/clemm/AppData/Local/Temp/claude/7278f9d03177d71e/898783fc-049f-469a-ab79-dfd299ad558e/scratchpad/cloud/status-draft/comments/295.md",
+    "C:/Users/clemm/AppData/Local/Temp/claude/7278f9d03177d71e/898783fc-049f-469a-ab79-dfd299ad558e/scratchpad/cloud/status-draft/comments/52.md",
+    "C:/Users/clemm/AppData/Local/Temp/claude/7278f9d03177d71e/898783fc-049f-469a-ab79-dfd299ad558e/scratchpad/cloud/status-draft/comments/260.md"
+   ],
+   "placeholders": [
+    "289.md: {{CORPUS: the corpus differential, main 21a0298 against the batch's final head at default limits, showing no committed or remote document reaching the white-space guard (no limit.trailer, section state or finding changed beyond #241's rewordings and #156's known document)}}",
+    "289.md: {{MEASURE: build shapes A and B (an /XRefStm naming 65,537 line feeds before its stream with /Prev at the oldest table; an /XRefStm naming the end of line after the oldest table before 70,000 spaces, /Prev at stream 4 whose /Prev is that table), open each on the final head at default limits and under MaxTrailerLength 1 MB, and on main 21a0298; replace or confirm the offsets and quoted lines (measured only on 8ba4589; the /XRefStm search changed after)}}",
+    "289.md: {{MEASURE: startxref naming the first of 300 spaces before a classic table, MaxXRefSectionLength 128 and MaxTrailerLength at its default, on the final head and on main 21a0298: diagnostics, section state and CutByLimit, findings (the white-space-fills-the-table-window case of the 'runs past' message, stated from the code, never measured)}}",
+    "295.md: {{MEASURE: on the final head and on main 21a0298, startxref naming 252 spaces then xrefs and 253 spaces then xref before a classic table, under MaxTrailerLength 256 and at default limits; the first also through 65,532 spaces at default; each also with a /Prev naming the run; record diagnostics, section state and fault, findings (the issue's two shapes, stated from the code; nobody re-measured them)}}",
+    "295.md: {{MEASURE: on the final head, bytes one startxref naming reads through 60,000 and 65,530 spaces before a classic table at default limits, and through 1,048,574 spaces under MaxTrailerLength 1 MB, probes and table windows counted apart with a read-logging source; confirm or replace 343,127 / 84,854 / 7.1 MB}}",
+    "52.md: {{MEASURE: on the final head, open HybridFiles.PrevFallingInsideAStreamOnALongLine(600, false) whole and through CappedReadSource(file, 4096); record whether xref.stream-passed-over is made in each and where the bytes searched near the /Prev start; lengthen the lead if they start before byte 4,096 (the dropped passed-over record is stated from the code only)}}",
+    "260.md: {{MEASURE: rebuild the earlier #260 comment's 251-byte file (catalog, empty page tree, cross-reference stream 3 at 110, /W [1 4 2] /Size 4 /Root 1 0 R, four rows of type 3 for objects 0 to 3) and open it on the final head; give its diagnostics at opening and its findings in the earlier comment's order}}"
+   ],
+   "notes": [
+    "Setup: worktree detached at origin/ccr-6d6c0ee6-dqm4lm-188, git log -1 = 19a2296. I ran no dotnet, npm or gh comment. I read decisions.md in full, the stage results (r4 to r13), round findings r5/r6/r7, and the issues #289, #295, #52, #260, #171, #317, #330, #331, #332 and #333 with their comments. I wrote only under status-draft/comments. The files use LF, and each ends exactly with the required footer, no trailing newline.",
+    "#289 (289.md): what batch 19 changed for the issue. A stream's windows now open at its first token (f0d90c8). The probe reads 32 bytes past MaxTrailerLength. The guard now has its own white-space message (bd70ef5). The guard flag's reach is stated more precisely: it covers white space between a header's tokens and an obj the bound parts; it does not cover the trailer cut of a table an /XRefStm names. The comment also gives the /XRefStm consequences (shape A: hybrid-stream-lost plus an Error hybrid-stream-wrong; shape B: table read in the stream's place, then chain-cycle, chain-loop and hybrid-stream-wrong) and corrects the first comment's 'as they were'. It adds the shape #197's fix brings (/Prev 457, 511 spaces, under 256), the 'runs past' wording of the MaxXRefSectionLength report and summary (main's), the probe-cost figures (64/7 at worst, 84,288 bytes = 1.286 times the last probe), and widened closing criteria.",
+    "#295 (295.md): by the code at 19a2296, both of the issue's shapes now read as with the bound raised. The 252-space `xrefs` file is NotFound under 256 and at the default alike; the 253-space `xref` file reads the table. The guard is reached from 257 spaces on, which is #289's ground. TryReadClassicTable's 'does not start with the xref keyword' is reachable only past the Array.MaxLength clamp. The comment then covers the table's windows: they open at the offset, so the run counts toward MaxXRefSectionLength (665-byte table at 600; 600 spaces under 650) and is read again by each window that grows (343,127 / 84,854 bytes, 7.1 MB at 1 MB). It ends with what is left of the closing.",
+    "#52 (52.md): corrects the round 4 comment's 'the next window starts one byte past the short one's start, and repeats less than the overlap'. The code steps max(1, n - 10): reads of 11 bytes or fewer step one byte, and only reads of 10 or fewer repeat less than the overlap. It states the search budget that every short read spends, with the measured multipliers. It gives the two-stream reproducer: 30,000/9,000 at caps 8 to 11, 60,000/9,000 at caps 6 to 12, 42,000/500 unaffected, endobj unjudged at caps 9 to 11. It adds the line test dropping a /Type /XRef header under a 4,096-byte cap, and the passed-over record under that cap. It points to #331 and adds to the proposed closing.",
+    "#260 (260.md), OPTIONAL: decisions.md (final line) and RESUME.md list it as 'optionally #260'. The comment says the batch pins a false file.root-invalid that main also gives (the older-revision stream before S, test A_stream_before_the_one_a_hybrid_table_s_xrefstm_read_that_gives_no_prev_..., #333). It points to #332's shape 1, which the branch takes and main does not. It corrects the 2026-11-04 comment: entry-type-reserved has been worded 'as the reader did until it rebuilt the index...' since 0e974e6. It notes that the damaged-Flate single-stream shape no longer reaches the sentence (092b772).",
+    "Figures conflict, resolved toward the later measurement: decisions.md's round 7 triage says the 60,000/9,000 reproducer applies 'at 8 to 12'. The later explicit measurement at f409eee (r7-fix-result, R7d) gives caps 6 to 12, and I used 6 to 12. Code checks: PaddingAt and TryReadClassicTable are unchanged since f0d90c8, comments aside. SearchEndStream, NextSignificant and the budget lines are unchanged since f409eee. The nearby-search window is unchanged since 8ba4589. Earlier measurements on those members therefore stand, and I cite them with their commit.",
+    "Doubt about the #295 cost figures: I cite them as recorded, but by my reading of the code they do not add up. At any run past 16 KB the probes alone read 84,288 bytes before a 64 KB table window, so 84,854 for a 60,000-byte run looks too low. That is why the MEASURE placeholder asks for probes and table windows to be counted apart.",
+    "Found while drafting, outside the comments: the comment in HostileInputTests.Does_not_take_a_keyword_the_probe_saw_cut_for_a_cross_reference_table is stale since f0d90c8. It still says MaxTrailerLength stops the probe right after 'xref'. #295's comment names it for its closing; it may also deserve a line in status.md, or a comment-only fix.",
+    "Considered and judged not owed — #171's end-of-batch corrections (round 7 [4]/[13]): already made by editing comment 6703927674 in place; its 'Edited on 2026-11-07' line is present. The optional #171 comment on the earlier-string limit (round 3): decisions.md left it, since the user docs and the threat model name it with a #171 link.",
+    "Not owed — #317 neighbor note (decisions 'Comments: ... #317 neighbor ... note only'): never posted and not marked end-of-batch. The flaky stage passed it on as unmeasured, 'note only'. #317 closes with the PR, so this fits better in the PR or status.md.",
+    "Not owed, flagged — #330 trade-off comment (round 2's 'Open for round 3'): no later round took it up, and it is not marked end-of-batch. The later rules and #330's two later comments (6716295153, 6762401914) cover the ground. I am flagging it for the maintainer in case they still want it.",
+    "Not owed — #323: round 1 says no comment is needed. #320, #322, #327, #330, #332, #279 and #336: their comments and body edits were posted by the tracking stages; #332's last was 6779617033 in the final pass. The issues the PR closes need only 'Closes' in the PR. The batch-wide survivor debt (G2b, G5, P02 and the two defensive sites) is a new issue to file after the ADR 53 run, not a comment."
+   ]
+  },
+  "remoteControlDeviceReport": false,
+  "toolsUsed": [
+   "Bash",
+   "Read",
+   "Write",
+   "Edit",
+   "StructuredOutput"
+  ]
+ },
+ {
+  "type": "result",
+  "key": "v2:aa4e30161e40313b23e6e2706e382b98ad1235e65cbe57ec11c33b7c2099757d",
+  "agentId": "ab3e0cdd2ab84f8fc",
+  "result": {
+   "files": [
+    "C:/Users/clemm/AppData/Local/Temp/claude/7278f9d03177d71e/898783fc-049f-469a-ab79-dfd299ad558e/scratchpad/cloud/status-draft/status.md",
+    "C:/Users/clemm/AppData/Local/Temp/claude/7278f9d03177d71e/898783fc-049f-469a-ab79-dfd299ad558e/scratchpad/cloud/status-draft/status.diff",
+    "C:/Users/clemm/AppData/Local/Temp/claude/7278f9d03177d71e/898783fc-049f-469a-ab79-dfd299ad558e/scratchpad/cloud/status-draft/M02.md",
+    "C:/Users/clemm/AppData/Local/Temp/claude/7278f9d03177d71e/898783fc-049f-469a-ab79-dfd299ad558e/scratchpad/cloud/status-draft/M02.diff",
+    "C:/Users/clemm/AppData/Local/Temp/claude/7278f9d03177d71e/898783fc-049f-469a-ab79-dfd299ad558e/scratchpad/cloud/status-draft/work/entry.src",
+    "C:/Users/clemm/AppData/Local/Temp/claude/7278f9d03177d71e/898783fc-049f-469a-ab79-dfd299ad558e/scratchpad/cloud/status-draft/work/assemble.py"
+   ],
+   "placeholders": [
+    "{{PR: the pull request's number}} — 13 places: the At a glance milestone bullet, Tests, Coverage, Mutation testing and CI bullets, the Current measurements paragraph, step 4's item 19, the journal's Done line, and the link definition [#{{PR}}]: .../pull/{{PR}} after [#336]",
+    "{{MERGE_DATE: the day it merges}} — step 4's item 19 ('done, merged with [#n] on ...'). If status.md is committed before the merge, batch 18's form 'done, in [#n]' fits instead.",
+    "{{REMOTE_RUN: the run number}} — step 4's item 19 and the At a glance Tests bullet: the Remote corpus run(s) green on the branch",
+    "{{REMOTE: ...}} — 3 places: At a glance Tests (acceptance tests and referee checks of that run), the end of the CI bullet, and the journal's Checked list (each run on the branch, its commit, its outcome and its counts)",
+    "{{NIGHTLY: ...}} — end of the At a glance CI bullet: the nightly Remote corpus runs on main at 21a0298, #318 merged, and how they ended",
+    "{{NIGHTLY_LAST: ...}} — At a glance Corpus bullet: the last green nightly run on main, its date, and whether it ran from the cache alone (this replaced 'run 97 on main on 2026-11-02, from the cache alone')",
+    "{{CI_MAIN: ...}} — At a glance CI bullet: the CI run that is green on main at 21a0298",
+    "{{CI_BRANCH: ...}} — At a glance CI bullet: the branch's last commit and its green CI run",
+    "{{CI: ...}} — journal Checked: the CI runs on the branch and how they ended",
+    "{{UNIT: ...}} — At a glance Tests (unit count on the committed corpus at the branch's last code, skipped count to confirm, 6,657 on #318's) and journal Tests (count of new unit tests, and the whole suite from 6,657 at 21a0298, passed and skipped)",
+    "{{UNIT_REMOTE: ...}} — At a glance Tests and journal Tests: the unit count with all 242 remote documents at the branch's last code (11,052 / 11,049 passed / 3 skipped at 19a2296 is already written beside it)",
+    "{{INTEGRATION: ...}} — At a glance Tests, journal Tests and Checked: the integration count against qpdf, passed and skipped, and the commits it ran on",
+    "{{COVERAGE: ...}} — At a glance Coverage (share of src/ and lines covered, the patch's coverable lines run and whole, its branches) and journal Checked (the same, with each line that is not whole and why). The dfb03fc figure, 1,456 of 1,462 patch lines and the six left with their reasons, is already written beside it",
+    "{{COVERAGE_LEFT: ...}} — At a glance Coverage: how many lines are left on the branch, and the new line numbers for the list that follows (that list still gives #318's numbers, and PdfFileReader moved about 3,900 lines)",
+    "{{ADR53: ...}} — At a glance Mutation testing and journal Mutation: the batch-wide tally (viable, killed, equivalent and equivalent in what is reported, survivors filed as debt, not viable), plus the tests written to kill survivors and their commits",
+    "{{ADR53_DEBT: ...}} — journal Mutation: number, title and milestone of the issue that files the survivors no input reaches",
+    "{{SETTLE_COMMITS: ...}} — journal Done line, after '173 commits from 4c744a5 to 19a2296': the commits the ADR 53 settling adds, up to the branch's last",
+    "{{HEAD: ...}} — journal Checked: the branch's last commit after the ADR 53 step's tests",
+    "{{CORPUS: ...}} — journal Checked: the corpus differential against main at the branch's last code",
+    "{{ISLAND: ...}} — journal Checked: the .NET 11 compatibility island (documents opened and validated, refused, differing, and the commit)",
+    "{{BENCH: ...}} — 6 places: two new Current measurements rows (StreamEndSearchBenchmarks time and allocation for text lines and nested strings; ObjectScanBenchmarks time and allocation for comment headers), the opening of the 'Batch 19 (...)' paragraph (the final runs of indexing, reading pages, the probe, validation, stream length and the trailer scan against main, and how they were run), and the journal Checked item (which benchmarks were run, how, and against main)",
+    "{{END_COMMENTS: ...}} — journal Tracking: the comments posted at the batch's end. Planned: #289 (what the batch changed for a guard reached in white space, its closing criteria, the probe's costs), #295 (the cost measured through a long run before a table), #52 (the shape of two streams that spend the endstream searches' budget), and #260 if posted",
+    "{{PLACE_333: ...}} — step 4's placement paragraph: which batch #333 goes with. Its body names none; I proposed batch 31 beside #332, #330 and #321",
+    "{{PLACE_336: ...}} — step 4's placement paragraph: which batch #336 goes with. Its body names none; I proposed batch 32, with what remains of #158"
+   ],
+   "notes": [
+    "M02.md: none of its checklist or exit-criteria items is batch 19's. The batch already wrote its own M02 changes, the chain paragraph under Design and the corpus row, in its commits. So M02.md is copied unchanged, and M02.diff is empty. Batch 18 did not touch M02.md either.",
+    "status.md has 13 changed hunks: the At a glance milestone, Tests, Coverage (first part), Mutation testing, CI (first line and end) and Corpus bullets; two Current measurements rows and a 'Batch 19' paragraph; step 4's items 18 and 19; the placement paragraph for the 15 debts the batch filed; the new journal entry, first under Journal; the 2026-09-30 record, which now says the stream-end rule and the scan have both taken comment headers since batch 19 (decided for status.md in the first call and the first round); and 16 link definitions, [#320] to [#333], [#336] and the PR. Every [#n] used is defined once, in numeric order, and none is unused.",
+    "Two edits fall outside the list I was given. I updated Current measurements because it is part of '## At a glance' and the first round's fix stage asks for its benchmark figures there, as batch 18's session did. I amended the 2026-09-30 record as decisions.md asks. I also marked item 18 as 'merged with [#318] on 2026-11-03' (decisions.md line 6), both in step 4 and in the At a glance milestone bullet. '## Debt and open points' names no batch and no debt, so it is unchanged.",
+    "Commit bodies not rewritten: 29 entries, each a sha decisions.md records, with one clause on what the body gets wrong: e67fef9, b09f981, d63f093, 7c0748b, 394028c, 5656c64, 2b26d18, ea348ce, 8ccd868, f0d90c8, 8ba4589, 8692234, de12b13, 092b772 (three records), ed61728, 253f179, 5de20b7, da0e157, d8e67de, 9823992, 68a55fa, e3d0c99, b55738a, 2be5c44, 220eab4, 305c1fb, 78885bf, 5880c0b, 69731a2.",
+    "Left out of that list: 761ce0b. decisions.md records no body misstatement for it; the only flag found is an 87-character Refs line, which commitlint allows and the 80-column message check flags.",
+    "e3d0c99's clause is inferred. decisions.md only says it was pushed while the check still used RollBack, so I wrote that its body says what decoding a dropped place's data reported goes with it, written while the guards it reached were still dropped, which stand since e157359. Worth a check.",
+    "Not verified or not placeable: #333 and #336 name no batch in their bodies (placeholders above). decisions.md says the PR is typed 'fix!' but gives no reason, so the draft does not mention it. The '20 skipped' on the committed corpus is not re-verified and sits inside the UNIT placeholder. There is no unit count at 21a0298 with all 242 remote documents (batch 18 recorded 9,280 with 235), so the draft gives 9,817 at the implementation's end (235 documents) and 11,052 at 19a2296 (242 documents), with no delta.",
+    "Counts where decisions.md and the findings files disagree. Round 10: decisions.md says '5 major' after merging; the findings file has 8 major findings in 3 groups, and the draft says 'eight major, three once duplicates are merged'. Round 8: the draft says 'nine major, six once duplicates are merged', from the findings headers. The minor and nit counts for rounds 11 and 12 also differ, but the draft gives none.",
+    "Figures I took from the records without recomputing: the round 8 differential (1,193 readings worse than main by its classing and 69 better, against 1,434 and 69 before; I said that a chain read whole where main rebuilt counts as worse); the '1.01 GB for a stream whose every row is refused at the default bound' (I did not re-read the exact shape). The timing-group checks are recorded only from the seventh round on, so the draft says 'from the seventh'. SizeWrongRule:71 is called 'a lowering arm' in the records; I wrote 'a branch of SizeWrongRule (71)'.",
+    "Items marked for status.md that I left out or condensed: the per-stage ADR 53 tallies of rounds 1 to 13 are summed up rather than listed, since the batch-wide step reruns 3,736 of the 3,751 mutants; the five corrected stage records and the inventory figures are kept. Container restarts, pauses, the weekly usage limit, the -wip branch and the Windows tooling are process notes; only the move to the Windows machine and the relaxed resource rule are kept. Intermediate suite counts per round (10,005 to 11,044) are dropped.",
+    "Also left out: the PendingEndStream type by name (LineStartSearchLength and MaxRefusedRanges are named); 7b1de15's and daca13c's source texts and R9b's NumberRunsInto remark, which are not commit bodies; status.md:2391's missing test name (to be left as is, per the decision); the unused [#51] in corpus-contributions.md; PR-only notes (the M04 clarification, 5656c64 corrected in the squash body); the fifth round's note that the batch improves two guard cases against main; and the sixth round's differential figures (reports made twice 26 to 0, older revisions served in silence 51 to 14). The last two are measurements decisions.md does not mark for status.md.",
+    "The draft contains none of the banned keys or role words; a script scanned the new text (the only hits were milestone names such as M02 and the word 'invariant'). The text uses American spelling: 9823992's 'judgement' is described rather than quoted. Short placeholders stay on one line; long ones wrap across lines. The one line longer than 120 characters in the new text is the Corpus bullet's existing long line, where only a substring was replaced.",
+    "A 'comments' folder appeared in status-draft at 08:42. I did not create it and did not touch it; it looks like another agent's output.",
+    "Working files: status.head.md and M02.head.md are copies of the head's files, and work/entry.src plus work/assemble.py rebuild the draft. Rerun with: python -I work/assemble.py <status-draft folder>."
+   ]
+  },
+  "remoteControlDeviceReport": false,
+  "toolsUsed": [
+   "Bash",
+   "Read",
+   "Write",
+   "Edit",
+   "StructuredOutput"
+  ]
+ },
+ {
+  "type": "result",
+  "key": "v2:891777bac76f445ef9f9b414b0f3f95c5a89d51126e12882ca5b841d6f3884a1",
+  "agentId": "a6afc10bbb7b5e1b2",
+  "result": {
+   "defects": [
+    "289.md: the labels 'Shape A' and 'Shape B' (two bullets, the summary sentence, the closing bullet and the MEASURE placeholder) clash with the earlier #289 comment, which already defines shapes A and B as other files (found-300.pdf and other-300.pdf). They also echo the review's own (A)/(B2) labels. Fixed: the bullets are now 'The search stops at the /Prev's place' and 'A table read in the stream's place, then a loop'. The summary says 'one Error (the stop at the /Prev's place) or two (the loop)'. The closing bullet is 'The two /XRefStm files above', and 'stream 9 read' became 'the stream past the run read'. The placeholder now says 'build the two /XRefStm files'.",
+    "289.md, the guard bullet: it quoted the head's limit.trailer message, then said three files measured on 8ba4589 read as on main 'but for that wording'. On 8ba4589 the message still ended 'what follows them was not read'; bd70ef5 reworded it later. main's message was also cut short, and 'The rest is main's' was unclear. Fixed: main's message is now given whole ('...runs past 64 KB; only what lies within it was read.'), the sentence says the guard's words ended 'what follows them was not read' until bd70ef5, and the unclear sentence is gone.",
+    "289.md: it said CrossReferenceRuleTests.A_startxref_naming_as_much_white_space_and_comments_as_a_trailer_s_window_holds_reads_the_classic_table_past_them shows 256 bytes giving 'xref.offset-imprecise alone'. The test checks three things only: nothing reported at opening, padding 256, and one finding of that rule. It does not check that this is the only finding. Fixed: the text now says the table is read with nothing reported at opening, its padding 256, and the validator gives xref.offset-imprecise.",
+    "289.md: under 'A run of exactly the bound reads the section past it', it listed 65,530 line feeds, which is not the bound. Fixed: '65,536 line feeds at default limits, and 65,530, the stream's header across the window's end'.",
+    "289.md: it said the white-space flag is set 'wherever MaxTrailerLength was reached in reading what lies at an offset the chain names'. The code sets it in two places only: where TryReadXRefStream reads the object (:6699-6702) and in the padding branch (:5824). A classic table's trailer cut does not set it. Fixed: 'in reading the object at an offset the chain names ..., and where the white space before it runs past the bound (:5824)'.",
+    "289.md: 'Each is the file's under any bound' was unclear. Fixed, following the review's own words: 'Each applies under any bound: bytes that hold no section, in place of the run, give the same reports with no guard reached'.",
+    "289.md, the probe's cost: it said a position asked of again is answered 'for the last two positions probed'. _paddingProbes keeps only positions the chain names (remember: !candidate), never the places the search near an offset tries. Fixed.",
+    "289.md, closing line: the probe-cost figures (2,044 spaces, 9.14 times) were measured while the fifth review's findings were fixed, not during that review. Fixed: 'during batch 19's fifth and sixth adversarial reviews and their fixes'.",
+    "289.md, placeholders: the CORPUS placeholder took its own result for granted ('that shows no document ... reaching'). It now asks whether any document reaches the guard. The MEASURE placeholder for the two /XRefStm files now also asks to name the commit measured, both there and in the closing line.",
+    "295.md, closing line: 'to be confirmed as above' would be wrong once the placeholder is filled. It also said the 665-byte table was measured during a review, but it was measured while the fourth review's findings were fixed. Rewritten: 'read from the code at 19a2296 and measured as the section on them gives; the 665-byte table was measured as batch 19's fourth adversarial review was fixed, and the run's cost during the fifth.'",
+    "295.md: 'Since f0d90c8 the probe is never stopped there' contradicted the Array.MaxLength clamp the same paragraph had just named as the one exception. Fixed: 'short of that clamp'.",
+    "295.md: '(#289 gives that report's wording)' was unclear, since #289's body says nothing of it. Fixed: '(the comment on #289 beside this one takes up that report's wording)'.",
+    "295.md: the recorded cost of 84,854 bytes for a 60,000-byte run cannot hold by the code. PaddingAt and TryReadClassicTable are unchanged since f0d90c8, so 8ba4589 has the head's code, and at that run the probes alone ask 32+256+2,048+16,384+65,568 = 84,288 bytes before a table window of about 60,000 more. 343,127 and 7.1 MB do not match the window sizes either. I left the figures as the record gives them. I added this check to the cost MEASURE placeholder, with a request to update the closing line.",
+    "52.md: it said the comment above lists 'among the places a source capped at 4,096 bytes a read drops where whole reads take them' a word in a comment. That comment says whole reads drop such a word too. Fixed: 'two places ...: a word in a comment, which whole reads drop too, and a table's xref keyword, which whole reads take as the section found moved. There are two more that whole reads take or report.'",
+    "52.md: it described #331's hang without the empty-window case that #331 and the threat model's #331 entry both give. Fixed: added 'or empty'.",
+    "52.md, the passed-over MEASURE placeholder: 'lengthen the lead' could move the line's start past LineStartSearchLength. The whole-read row would then go unreported too. Added the condition 'the line's start still within 4,096 bytes before them', and a request to name the commit measured in the closing line.",
+    "260.md: 'that shape wants measuring again' would be wrong once the placeholder is filled. Fixed: 'that shape is measured again below'.",
+    "260.md: it said the batch 'pins one more way to the false sentence'. The test it names asserts only that file.root-invalid is each row's only Error, not the rule's sentence. Fixed: the opening now reads 'pins one more way to the file.root-invalid whose sentence is false', and the body adds 'The test holds the rule, not its sentence.' The sentence itself is cited from #333's shape 2.",
+    "260.md: it gave #332's shape 1 in the present tense for the branch, with no commit. #332 measured it on da2b06f and b55738a, and no one measured it again after the later changes to the search. Fixed: '#332's shape 1, as #332 measured it on b55738a'."
+   ],
+   "unverified": [
+    "289.md: the two /XRefStm files' offsets (230, 426, 65,963; 1304, 1450, 72,566), quoted lines and objects come from the fifth review's probe on 8ba4589 only. The search near a hybrid table's /Prev changed several times after that (3a1ac79, 9a07bb9, 9823992, 2be5c44, 6b32490, 13e5021, a93e60a). They rest on the MEASURE placeholder.",
+    "289.md: the claim that main and 8ba4589 give the same Errors, rebuilds and fault for startxref with 70,000 spaces, startxref with 257 spaces under 256, and a /Prev naming 65,537 line feeds rests only on the fifth review's record. The test row for the /Prev at 65,537 relocates the oldest table, 147 bytes before, without a rebuild. So the record's /Prev file differs from the test's, and I could not check it.",
+    "289.md: the near-start table (/Prev 457, 511 spaces, keyword at 968) was measured on 65306d4 only. The window lines (:5224-5225) and FindSectionCandidates are unchanged since then, comments aside, but TryRelocateXRefSection changed after f409eee.",
+    "289.md: the case where white space fills the MaxXRefSectionLength window (no rows read, trailer looked for past the keyword, 'runs past' message) is stated from the code (:6111-6129) and has never been measured. It rests on its MEASURE placeholder.",
+    "295.md: both of the issue's shapes are stated from the code at 19a2296 and were never measured on any commit. 'xref.offset-imprecise alone' for 253 spaces, and 'Error file.startxref-wrong with no xref.checked-in-part' for 257 spaces, come from analogy and the fifth review's record. The 665-byte table at bounds of 700 and 1,024 comes from the fourth review's fix report alone.",
+    "295.md: 343,127 bytes, 84,854 bytes and 7.1 MB do not match the code's window sizes (see the defect). The measurement must confirm or replace them.",
+    "52.md: the claim that a 4,096-byte cap drops the record of a stream passed over is the drafter's own reasoning from the code. decisions.md does not record it. By IsTokenOnItsLine (:5673-5681) it holds wherever the bytes searched start 4,096 bytes or more into the file and the header's line starts before them. It has never been measured.",
+    "52.md: the 60,000/9,000 reproducer is given at reads of 6 to 12 bytes, which disagrees with decisions.md's round 7 triage (8 to 12). It matches the later explicit measurement at f409eee and the budget arithmetic (5.99 × about 51,900 is more than 4 × 73,559; 4.99 × that is less). The one-stream endobj case (reads of 9 to 11) and the multipliers come from those records alone.",
+    "260.md: the 251-byte reserved-row file was not measured again. The claim that it is rebuilt as it opens, and that the finding now ends 'as the reader did until it rebuilt the index...', comes from ReservedTypeRule.cs:55-63 and the code. It rests on the MEASURE placeholder.",
+    "260.md: 'No test holds that shape yet' comes from scanning the test names for reserved-row and root-invalid tests and finding none. The scan was not exhaustive.",
+    "260.md: 'main never reached the sentence' for the single stream of damaged Flate data rests only on the seventh review's record. I did not check that #332's shape 1 still reads the same way at 19a2296.",
+    "Not owed, possibly missing: round 2's 'Open for round 3' item, a comment on #330 about the trade-off (an /XRefStm passing over a /Prev that does not keep its place may find a stream farther off). No later round took it up. #330's two comments (6716295153 and 6762401914) do not cover it, and RESUME.md does not list it among the end-of-batch comments.",
+    "The CrossReferenceRuleTests rows for 252 spaces then 'xrefs' and 253 spaces then 'xref' do not exist at 19a2296. A case-sensitive scan found 'xrefs' only in HostileInputTests. The HostileInputTests comment that 295.md calls stale is stale at 19a2296: it was checked, and it is not reworded by any commit of the batch."
+   ]
+  },
+  "remoteControlDeviceReport": false,
+  "toolsUsed": [
+   "Bash",
+   "Read",
+   "Grep",
+   "Glob",
+   "Edit",
+   "StructuredOutput"
+  ]
+ },
+ {
+  "type": "result",
+  "key": "v2:e0d97d2c15c6f3fd83022999d3d5a970f9a0bc218df2a5f69a0e85dc50145fc9",
+  "agentId": "af214635de422702b",
+  "result": {
+   "defects": [
+    "Journal heading and step 4's item 19 were dated 2026-11-10. Batches 17 and 18 date their entries by the day the batch was settled and began (2026-10-28 and 2026-10-30, not their merge days), and batch 19 was settled with the maintainer and began on 2026-11-03 (first commit 4c744a5). Changed the heading to '### 2026-11-03 — Batch 19: …' and item 19 to '(journal of 2026-11-03)'.",
+    "Step 4's item 19 said 'done, merged with [#{{PR}}] on {{MERGE_DATE}}'. status.md is committed inside the PR before it merges, and batch 18's own item reads 'done, in [#318]' (the next batch writes the merge date). Changed it to 'done, in [#{{PR}}], `Remote corpus` run {{REMOTE_RUN}} green on its branch' and dropped the MERGE_DATE placeholder, which was wrong.",
+    "#336 was described as 'the reading of tables keyed by numbers' in the Tracking line and in the placement paragraph. #336 is the test that every table keyed by numbers takes the seeded comparer, which reads IL the coverage profiler rewrote. Rewrote both descriptions from the issue's title.",
+    "The placement paragraph said #333's stream is 'taken near a hybrid table's `/Prev` for its own table's', which does not parse. Changed it to 'before its own revision's table', following #333's title.",
+    "Done, [#188]/[#281]: the draft said the search 'takes the nearest place that declares itself a section'. The code (TryRelocateXRefSection, DeclaresItselfASection) takes the nearest place that reads as a section, whatever it declares. Only a place that cannot be read must declare itself. Changed it to 'takes the nearest place that reads as a section, or that declares itself one and cannot be read, which ends the search there'.",
+    "Done, white-space item: the draft said every named section is read from its first token. PaddingAt's remarks and the fifth round's settlement say a classic table's windows open at the offset, so its white space counts toward MaxXRefSectionLength too (#289). Added 'a classic table's white space counting toward `MaxXRefSectionLength` as well ([#289])'.",
+    "Done, [#156]: the draft said xref.stream-passed-over is withheld wherever a trailer guard cut the reading at an offset the chain names. It left out the exception the final pass wrote into PdfDiagnosticCodes.XRefStreamPassedOver: a cut trailer of a classic table an /XRefStm names keeps the report (#263). Added '— but for the trailer of a classic table an `/XRefStm` names, whose links the chain never follows —'.",
+    "Mutation paragraph: 'The review corrected the records of five stages'. The items it lists correct six stage records: undecodable data, the stream's own /Prev read through references, decoding beside a cut value, the stage before the told-by-data stage (its M11 reason), the told-by-data stage, and the window-edge stage. Changed it to 'six stages'.",
+    "Checked list: 'the corpus opened and validated twice on `main` and twice on the branch at every round's check' is not borne out. The round-13 pre-check ran the dump once on the branch and compared it with the previous dump, and only some checks record two alternated runs. Removed both 'twice'.",
+    "Commit bodies, e3d0c99: the drafter inferred 'written while the look still dropped the guards too, which stand since e157359'. That ties a dropped place's guards to e157359, but dropped places have rolled back beside the guards since 092b772 (line 5461). What e157359 fixed was the look's cut-value path. Rewrote the entry to what the record and the code support: the body says what decoding a dropped place's data reported goes with it, where a guard that decoding reached stands, as the comment it wrote says; and it went out while the look dropped the guard its decoding beside a cut value reached, which e157359 keeps. The count stays twenty-nine.",
+    "Three records decisions.md marks 'for status.md' were missing; the drafter had dropped them as 'not commit bodies'. They are 9823992's NumberRunsInto remark, false for the digit walk until 2be5c44; daca13c's RollBackBesideLimits summary, scoped in a0e94ca; and 7b1de15's source texts, 'inside the name its /Type gives', corrected in 1c1d270. Added one closing sentence to 'Commit bodies not rewritten', after batch 18's precedent of a non-body record there.",
+    "Coverage, At a glance and Checked: '1,456 of its patch's 1,462 lines' did not say run or whole, unlike the [#318] figures beside it. The round 12 and 13 records give two of the six lines as missed (4066, 5646) and four as partial (4064, 5644, 5554, SizeWrongRule:71). Changed it to 'of its patch's 1,462 coverable lines 1,460 run and 1,456 whole, the six not whole …'. Also reworded 'a branch of `SizeWrongRule` (71)', which was vague, to 'a branch the compiler adds in `SizeWrongRule` (71)', the records' lowering arm.",
+    "Docs paragraph, threat-model known gaps: comparing 21a0298 with 19a2296 shows #47's gap rewritten as well, for the probe's cost and #188, not only #52, #171 and #279. Added \"[#47]'s restated\". The gone and new lists are confirmed exactly: gone #156, #188, #197, #221, #261; new #320 to #325 and #327 to #333.",
+    "The question, #317: 'the row the issue names passed its bound of 8' reads as though the test passed. Changed it to 'went past its bound of 8'.",
+    "Work files: the draft's own assemble.py and entry.src reproduce the draft byte for byte, so I made every fix there and rebuilt status.md with them. git diff --no-index was refused outside the worktree, so I added work/mkdiff.py, which uses GNU diff and adds git's hunk context and blob hashes. On the original draft it gives a diff byte-identical to the drafter's git-made status.diff. With it I regenerated status.diff (index 16da290..f3eec7b, 10 hunks) and M02.diff (empty: M02.md is unchanged, and none of its checklist or exit items is batch 19's). I also deleted my own intermediate work/mkdiff.sh. The 'comments' folder belongs to another agent and was not touched."
+   ],
+   "unverified": [
+    "The journal date convention: batches 17 and 18 use their start day, but batch 16 used its merge day (2026-10-25, settled 22-23). My change to 2026-11-03 follows the two most recent entries; the maintainer may prefer another convention.",
+    "The '20 skipped' list on the committed corpus. The count of 20 is confirmed by the coverage run at 69731a2 (8,317 total, 20 skipped, 'the remote documents'), but no record itemizes the 20 at the branch's code. It stays as #318 gave it, beside the UNIT placeholder.",
+    "'no document threw' in the corpus check. The stage records report only 'corpus vs main: only pdfmaker7 differs'. None states 'no throw' explicitly for each round.",
+    "'1.01 GB for a stream whose every row is refused at the default bound on the index's entries'. The fourth round's record says only 'at the default bound'. MaxIndexEntries is the plausible bound (the same round's [8] put the cost in MaxIndexEntries' remarks), but the shape was not re-read.",
+    "'a chain read whole where `main` rebuilt counting among them' (1,193 worse). It matches classify.py's MIXED tag on worse blocks (the chain read whole where main rebuilt or gave an Error), but I did not rerun the classification.",
+    "The #317 'one run of ten' over its bound is the probe's replay under four busy loops (8.47). The real test failed in the streams row, 5 of 10 under load. Both figures are taken from the flaky lens's summary.",
+    "#333 and #336 name no batch in their bodies. The PLACE_333 and PLACE_336 placeholders keep the drafter's proposals (batch 31 and batch 32), which no record or issue confirms.",
+    "The round-10 counts. decisions.md says '5 major' and '20 once the duplicates are merged', but r10-findings.md has 8 majors in 3 groups after refutation, which the draft follows. Rounds 1 to 9 and 11 to 13 match decisions.md and the findings files.",
+    "The inference that 9823992 is the commit carrying the NumberRunsInto remark comes from the tenth round's blame ('The remark at :5273-5275 is new in 9823992'). The other two source-text records (daca13c with a0e94ca, 7b1de15 with 1c1d270) were checked against git show.",
+    "Everything behind the placeholders is unverified by design, while the batch-wide ADR 53 run is still going: unit counts at the final code, integration, coverage at the final code, CI runs, Remote corpus runs, the corpus differential, the island, benchmarks, end-of-batch comments, the survivor debt and the settling commits."
+   ]
+  },
+  "remoteControlDeviceReport": false,
+  "toolsUsed": [
+   "Bash",
+   "Read",
+   "Write",
+   "Edit",
+   "StructuredOutput"
+  ]
+ }
+]

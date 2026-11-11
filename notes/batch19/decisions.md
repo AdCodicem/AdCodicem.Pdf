@@ -1174,3 +1174,21 @@ review. Then the batch-wide ADR 53 step.
 - Next, in order: the ADR 53 run, then a settle stage (survivors killed by tests, equivalents classed, a batch-wide
   survivor debt with G2b, G5, P02 and the two unreachable defensive sites), full verification, status.md, end-of-batch
   comments (#289, #295, #52, optionally #260), the fix! PR (never merged).
+
+## 2026-11-11: resumed
+
+- Harness fix (W/adr53/run.py, backup run.py.bak-2026-11-10): a process that does not start (rc 0xC0000142, empty log)
+  is started again after 10, 20, 40, 80, 160 s and noted in W/adr53/startfail.log with a process count; six failures
+  raise a harness error (not counted, rerun). Before the fix such a test process would have been classed 'crash', a
+  false kill; no 'crash' line existed in the first run's summaries. Run relaunched (lanes.sh, old lane logs in
+  W/adr53/old-run1); after 10 minutes: 65 killed, 6 survived, 1 not viable, no start failure.
+- Drafts (wf_876f17cd-2c0, no commit, no post): W/status-draft/status.md (+ status.diff, work/assemble.py,
+  work/entry.src; M02.md unchanged: no checklist item is batch 19's) and W/status-draft/comments/{289,295,52,260}.md,
+  each checked by a refuter (19 and 15 defects fixed in place); results in W/status-draft/draft-result.json.
+  Placeholders to fill after the run and the verification ({{PR}}, {{ADR53}}, {{COVERAGE}}, {{BENCH}}, {{MEASURE: ...}}
+  in the comments, among others). Open: placement of #333 and #336 (bodies name no batch; drafter proposes batches 31
+  and 32) -> ask the maintainer with the other end questions; #295's recorded cost figures (343,127 / 84,854 bytes)
+  look inconsistent with the window sizes -> measure again; stale comment in
+  HostileInputTests.Does_not_take_a_keyword_the_probe_saw_cut_for_a_cross_reference_table (says MaxTrailerLength stops
+  the probe right after 'xref', false since f0d90c8) -> fix in the settle commits; possible #330 trade-off comment
+  (round 2, never taken up) -> not owed, mention only.
