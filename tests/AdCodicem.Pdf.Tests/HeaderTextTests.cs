@@ -78,6 +78,34 @@ public class HeaderTextTests
     }
 
     [Theory]
+    [InlineData("2147483648", new int[0], 0)]
+    [InlineData("2147483649", new int[0], 0)]
+    [InlineData("99999999999999999999", new[] { 10 }, 0)]
+    [InlineData("0002147483649", new[] { 3 }, 0)]
+    [InlineData("x 2147483649 % c", new[] { 6 }, 2)]
+    public void A_line_lexed_through_any_reads_takes_a_run_of_digits_past_any_object_number_for_the_first_value_past_it(
+        string line, int[] cuts, long start)
+    {
+        // A header asks of a run of digits only whether it is an object number or a generation: past 2,147,483,647, the
+        // largest object number, every run is one value, 2,147,483,648, however many digits it has, zeros lead it or reads
+        // part it, and whether or not a comment follows it (#261).
+        var bytes = Encoding.Latin1.GetBytes(line);
+        var tokens = default(LineTokens);
+        var from = 0;
+
+        foreach (var cut in cuts)
+        {
+            tokens.Read(bytes.AsSpan(from, cut - from), from);
+            from = cut;
+        }
+
+        tokens.Read(bytes.AsSpan(from), from);
+        tokens.Finish();
+
+        tokens.Last.Should().Be(new LineTokens.Token(LineTokens.Kind.Digits, 2_147_483_648, start));
+    }
+
+    [Theory]
     [InlineData("1 2\n3 4 % c 5 6", new[] { 0 }, new[] { 0, 2, 4, 6, 12, 14 })]
     [InlineData("1 2\n3 4 % 7 8 9", new[] { 0 }, new[] { 0, 2, 4, 6, 12, 14 })]
     [InlineData("12345 678", new[] { 0 }, new[] { 0, 6 })]
