@@ -43,13 +43,15 @@ public class HeaderTextTests
     [InlineData("(a\\) b) 12 % c\n0 obj", 8, new[] { 0, 3 })]
     [InlineData("(a\\nb) 12 % c\n0 obj", 7, new[] { 0, 3 })]
     [InlineData("5 12 % c\n0 obj", 2, new[] { 0 })]
+    [InlineData("x 1111111111 2147483647 0 obj", 13, new[] { 0, 23 })]
     [InlineData("1234567890 1234567890\n0 obj", 11, new[] { 0, 22 })]
+    [InlineData("1111111111 2147483647\n0 obj", 11, new[] { 0, 22 })]
     public void A_header_is_found_wherever_the_reads_part_its_lines_as_one_read_finds_it(string data, long header, int[] starts)
     {
         // Each read starts where the array says, and repeats the four bytes before the next read's start, so that obj and the
-        // byte after it are whole in one read: the header, or none, is the one a single read of the data finds. Two numbers of
-        // ten digits, the most a number is carried as, that end the line before the one a read starts in fill the room carried
-        // for them.
+        // byte after it are whole in one read: the header, or none, is the one a single read of the data finds. Two runs of
+        // ten digits, the most a run is carried as, fill the room carried for them and are carried whole, before the read or
+        // before the line it starts in.
         var expected = header < 0 ? -1 : DataStart + header;
 
         FirstHeader(data, starts).Should().Be(expected);
