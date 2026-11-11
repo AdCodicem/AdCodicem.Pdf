@@ -806,6 +806,39 @@ public class FileRuleTests
         report.Contains(PdfValidationRuleIds.FileSizeWrong).Should().BeFalse("its /Size 4 counts the page, which no section indexes");
     }
 
+    [Fact]
+    public void A_size_is_not_judged_where_the_chain_indexes_nothing()
+    {
+        // The only table's one row, for object 0, gives a generation of 65,536, which refuses it: the chain indexes nothing,
+        // and the index is rebuilt as the document opens. The table's /Size 4 is not judged by the one number its rows use,
+        // 0, which would make it 1: the chain gave no index, and the objects the rebuild found number up to 3.
+        var file = PdfTemplate.SoundWith("0 4\n{free}\n{row:1}\n{row:2}\n{row:3}\n", "0 1\n{off:1} 65536 n\n");
+        using var document = PdfDocument.Open(file);
+
+        var report = new PdfValidator().Validate(document);
+
+        document.WasRepaired.Should().BeTrue();
+        document.Reader.Structure.Sections.Should().ContainSingle().Which.HighestNumber.Should().Be(0);
+        report.Findings.Select(finding => (finding.RuleId, finding.Location.Position)).Should().Equal(
+            (PdfValidationRuleIds.XRefSectionMalformed, PdfTemplate.OffsetOf(file, "xref\n")));
+    }
+
+    [Fact]
+    public void A_size_is_not_judged_where_the_chain_is_cut_at_the_file_s_first_byte()
+    {
+        // The only table read gives /Size 9, and its /Prev names offset 0, where the header starts, past the one section
+        // MaxXRefSectionCount at 1 lets the reader read: the chain is cut at the file's first byte, and the older sections it
+        // leaves unread may number the objects that /Size counts. The table's own rows, which make it 4, do not judge it.
+        var file = PdfTemplate.SoundWith("<< /Size 4 /Root 1 0 R >>", "<< /Size 9 /Root 1 0 R /Prev 0 >>");
+        using var document = PdfDocument.Open(file, new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxXRefSectionCount = 1 } });
+
+        var report = new PdfValidator().Validate(document);
+
+        document.Reader.Structure.ChainCutAt.Should().Be(0);
+        report.Findings.Select(finding => (finding.RuleId, finding.Location.Position)).Should().Equal(
+            (PdfValidationRuleIds.XRefCheckedInPart, 0L));
+    }
+
     [Theory]
     [InlineData(0)]
     [InlineData(7)]
