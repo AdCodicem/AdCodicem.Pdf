@@ -3,6 +3,7 @@ export const meta = {
   description: 'Batch 19 ADR 53: settle a batch of survivors (kill with a test, class equivalent, or file as debt), then merge, confirm with the harness and push',
   phases: [
     { title: 'Settle', detail: 'one agent per group of survivors, at most POOL at once, tests as local patches' },
+    { title: 'Refute', detail: 'one refuter per group with an equivalent or debt verdict, tests as local patches' },
     { title: 'Merge', detail: 'apply the patches on the branch, build, run, confirm the kills with the harness, push' },
   ],
 }
@@ -43,14 +44,36 @@ Your group: ${g.label}. Read it from ${S}/${BATCH}-args.json: the entry of "grou
 Work: read the member(s) whole and every use of what each site touches; settle each survivor; for each test you write, show it fails with each mutant it is meant to settle applied (one at a time) and passes on the base; run the whole class you added to on the base. Several survivors may fall to one test, or be equivalent for one reason: say so per id.
 Return the structured report: per survivor its fate (KILLED-NEW with the test's full name, KILLED-EXISTING with the test and the three runs, EQUIVALENT with its one-line reason, DEBT with the input and why no test builds it), the tests added (class, name, rows, what each pins), the commit (sha, subject, Refs) and the patch path, the commands run with their counts (each mutant applied: which tests failed), and anything found on the way (a real fault the mutant reveals in the code: describe it with a reproducer and do NOT fix src/; a stale comment; a flaky test).`
 
+const REFUTE = (label, report, base) => `You check how a group of surviving mutants of the batch-wide ADR 53 step of batch 19 of milestone M02 of AdCodicem.Pdf (CLAUDE.md is loaded) was settled. Mutants classed equivalent by mistake have been found before in this batch (three, by a later review): your job is to REFUTE each EQUIVALENT and each DEBT verdict below, and to check that each KILLED-NEW test asserts the behavior the mutant changes rather than an incidental value.
+${ENV}
+${RULES}
+${HELPER}
+Git: your worktree is fresh. \`git fetch origin ${BR}\`, \`git checkout --detach origin/${BR}\`; record \`git rev-parse --short HEAD\` as your base (expected ${base} or later; src/ is the same as at 19a2296 either way). Commit locally, ONE commit for any tests you add (none if every verdict holds), never push; then \`mkdir -p ${S}/patches/${label}-r && git format-patch -1 -o ${S}/patches/${label}-r/ HEAD\`. Leave src/ as the base has it.
+The group: ${label}; its survivors are in ${S}/${BATCH}-args.json (the entry of "groups" whose "label" is "${label}"). The settling agent's report: ${report ? JSON.stringify(report) : `read it from ${S}/${BATCH}-result.json (the result whose "label" is "${label}")`}.
+For each EQUIVALENT or DEBT verdict: read the reason, then try hard to build an input on which the mutant and the code behave differently in anything observable (a returned value, a diagnostic's code, position or message, a section list, an object's value, an exception, a WasRepaired flag; for an internal type, what its internal members return, as the class's own tests call them). Check every premise of the reason against the code: 'never read' (grep every read, including through ref returns, spans and copies), 'always overwritten before' (every path, including early returns and the first call), 'no caller gives' (every caller, including tests' direct calls when the member is internal and other members of the type), a capacity 'no path reaches' (compute the largest input the bounds allow). Apply the mutant and run a probe test of your input. If the mutant shows a difference, the verdict is wrong: turn the probe into a proper test (the rules above), show it fails with the mutant and passes on the base, and commit it. If the verdict holds, say in one line what you tried and why it cannot differ. A reason that holds but is worded wrongly (a false premise that does not change the verdict) is reported with the corrected one-line reason.
+Return: per id your verdict (UPHELD with the corrected reason if any, OVERTURNED with the test that now settles it as KILLED-NEW, or for a KILLED-NEW: TEST-OK or TEST-WEAK with what to change), the test(s) added and the patch path (or none), and the commands run with their counts.`
+
+const REFUTE_REPORT = {
+  type: 'object',
+  properties: {
+    label: { type: 'string' },
+    base: { type: 'string' },
+    verdicts: { type: 'array', items: { type: 'object', properties: { id: { type: 'string' }, verdict: { type: 'string', enum: ['UPHELD', 'OVERTURNED', 'TEST-OK', 'TEST-WEAK'] }, reason: { type: 'string' }, test: { type: 'string' } }, required: ['id', 'verdict', 'reason'] } },
+    tests_added: { type: 'array', items: { type: 'string' } },
+    patch: { type: 'string' },
+    commands: { type: 'array', items: { type: 'string' } },
+  },
+  required: ['label', 'base', 'verdicts', 'tests_added', 'patch', 'commands'],
+}
+
 const MERGE = (results, base) => `You merge the tests that settle a batch of surviving mutants of the batch-wide ADR 53 step of batch 19 of milestone M02 of AdCodicem.Pdf (CLAUDE.md is loaded). The mutation run is at 19a2296; the group agents worked from base ${base}.
 ${ENV}
 ${RULES}
 ${HELPER}
-Git: your worktree is fresh. \`git fetch origin ${BR}\`, \`git checkout --detach origin/${BR}\`, note the head. Apply every patch under ${S}/patches/${BATCH}-*/ in label order with \`git am -3\` (keep each commit as written; resolve a conflict by keeping both sides' tests, in the class's order, and say so). ${args.extra ? `Then: ${args.extra}` : ''}
+Git: your worktree is fresh. \`git fetch origin ${BR}\`, \`git checkout --detach origin/${BR}\`, note the head. Apply every patch under ${args.refuteOnly ? `${S}/patches/${BATCH}-*-r/ (the refuters' patches only: the settling patches of this batch are already on the branch)` : `${S}/patches/${BATCH}-*/ (a group's own patch, then its refuter's, '-r')`} in label order with \`git am -3\`; if there is none, skip to the push check and say so (keep each commit as written; resolve a conflict by keeping both sides' tests, in the class's order, and say so). ${args.extra ? `Then: ${args.extra}` : ''}
 The group reports (each survivor's fate, tests, patch): ${JSON.stringify(results)}
 Checks, in order: \`dotnet build AdCodicem.Pdf.slnx -c Release -m:2\` with 0 warnings; \`dotnet format AdCodicem.Pdf.slnx --verify-no-changes\`; every test class the patches touched, whole, with the remote corpus hard-linked (then removed); check_msgs over the new commits (\`git log --format='%x01%h%x00%B' <head-before>..HEAD > f\`), grep_keys and widegrep over \`git diff <head-before> HEAD\`. Fix what fails in a new \`test:\` commit (never rewrite pushed history; amending a commit you have not pushed is fine).
-Confirm the kills with the harness at your new head: collect the ids settled KILLED-NEW, and the classes their tests are in; \`python -I ${S}/mutant.py --confirm ${S}/${BATCH}-confirm.json ${BATCH} <full new head sha> <ids,comma-separated> --extra <classes>\`; then \`timeout 7200 python -I ${A}/run.py ${S}/${BATCH}-confirm.json <new head sha> 2 --any-commit --stop-on-fail --repo <your worktree>\` (it writes ${A}/summary-${BATCH}.txt; read the harness's docstring first). Every id must read KILLED; one that does not goes back to its group's reasoning: fix the test in a new commit and run the harness again with \`--ids <id> --rerun\`.
+Confirm the kills with the harness at your new head: collect the ids ${args.refuteOnly ? 'a refuter OVERTURNED' : 'settled KILLED-NEW or OVERTURNED by a refuter'}, and the classes their tests are in (full names, AdCodicem.Pdf.Tests.<Class>); \`python -I ${S}/mutant.py --confirm ${S}/${BATCH}${args.refuteOnly ? 'r' : ''}-confirm.json ${BATCH}${args.refuteOnly ? 'r' : ''} <full new head sha> <ids,comma-separated> --extra <classes>\`; then \`timeout 7200 python -I ${A}/run.py ${S}/${BATCH}${args.refuteOnly ? 'r' : ''}-confirm.json <new head sha> 2 --any-commit --stop-on-fail --repo <your worktree>\` (it writes ${A}/summary-${BATCH}${args.refuteOnly ? 'r' : ''}.txt; read the harness's docstring first). A TEST-WEAK verdict: strengthen that test in a new commit as the refuter says, and include its ids in the confirm run. Every id must read KILLED; one that does not goes back to its group's reasoning: fix the test in a new commit and run the harness again with \`--ids <id> --rerun\`.
 Then push: \`git push origin HEAD:${BR}\` (fast-forward; on a network error retry up to 4 times, waiting 2, 4, 8, 16 s; if the branch moved, \`git fetch\` and rebase your unpushed commits on it, then run the build and the touched classes again; never force).
 Return: the head before and after, each commit (sha, subject, Refs, pushed), the confirm summary (each id and its line), the tests run with counts, and every problem or deviation.`
 
@@ -96,8 +119,13 @@ async function pool(items, n, fn) {
 const base = args.base
 phase('Settle')
 const groups = args.labels.map(label => ({ label }))
-const reports = await pool(groups, POOL, g =>
-  agent(GROUP(g, base), { label: `settle-${g.label}`, phase: 'Settle', schema: GROUP_REPORT, isolation: 'worktree' }))
+const needsCheck = r => r && r.survivors.some(s => s.fate === 'EQUIVALENT' || s.fate === 'DEBT')
+const reports = await pool(groups, POOL, async g => {
+  const r = args.refuteOnly ? null : await agent(GROUP(g, base), { label: `settle-${g.label}`, phase: 'Settle', schema: GROUP_REPORT, isolation: 'worktree' })
+  if (!args.refuteOnly && !needsCheck(r)) return r && { ...r, refute: null }
+  const v = await agent(REFUTE(g.label, r, base), { label: `refute-${g.label}`, phase: 'Refute', schema: REFUTE_REPORT, isolation: 'worktree' })
+  return args.refuteOnly ? (v && { label: g.label, refute: v }) : (r && { ...r, refute: v })
+})
 const done = reports.filter(Boolean)
 log(`${done.length} of ${groups.length} groups reported`)
 const missing = groups.filter((g, k) => !reports[k]).map(g => g.label)

@@ -1199,3 +1199,19 @@ review. Then the batch-wide ADR 53 step.
   head into summary-b1.txt, push). wf_ef25cc65-ba7 (task wumhkjzco). Batch b1 also fixes the stale HostileInputTests
   comment. Later batches pass --done-ids with the ids already settled (equivalents and debts stay SURVIVED in the
   shard summaries).
+- Batch b1 settled (wf_ef25cc65-ba7): 46 survivors = 10 KILLED-NEW (confirmed KILLED by the harness at 5d5c32d,
+  summary-b1.txt) + 36 EQUIVALENT (HT-0011 equivalent in what is reported: stack cost only). Pushed 19a2296..5d5c32d:
+  9d20508, 75a9296, 6669f35, d24253a (test, Refs #261) and 5d5c32d (test: the stale HostileInputTests comment,
+  Refs #289; f0d90c8's footer cites #156 #188 #264, #289 kept as the test's own case). Results: W/settle/b1-result.json.
+  Found: CorpusReadingTests.Damaged_documents_are_recovered_as_far_as_an_independent_tool_recovers_them holds a 20 s
+  Timed() bound (cairo-firefox-objstm-index-overflow-bug1978317.pdf validated in 30-38 s under the 8-worker load): the
+  source of most 'unconfirmed failures'; it is not in the timing group by name -> debt candidate. OOM once in
+  FlateFilter.Inflate (us-topo-washington-west-2023.pdf) under the harness's 3 GB heap limit and load. Doc nits for a
+  final docs commit: HeaderText remarks / PositionOf(int) 'where its run starts' (not true of the space after a lead
+  number, nor of the lead's first byte, -1); ViewLength's summary describes the runs view only.
+- Equivalents get a refuter from now on (three mutants were misclassed in R12b): lot19-settle.js gained a Refute stage
+  (per group with an EQUIVALENT or DEBT verdict, tests as '-r' patches) and a refuteOnly mode. b1 refute-only:
+  wf_88024c0a-b7e (task w5tchpzyo). Batch b2 (34 survivors, 5 groups: HeaderText rest, LineTokens, two PdfFileReader
+  fields), pool 2: wf_4e36a9e1-524 (task wltnjdx3p). W/settle/settled.txt lists the ids already taken (80).
+- Run progress 10:27: 1,073 of 3,736 with a final line (935 killed, 105 survived, 33 not viable); ~7.6 a minute;
+  expected end about 16:15. No start failure since the harness fix.
