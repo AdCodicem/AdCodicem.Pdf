@@ -1,3 +1,4 @@
+using System.Buffers;
 using System.Buffers.Binary;
 using System.Diagnostics;
 using System.Globalization;
@@ -4936,27 +4937,51 @@ public class HostileInputTests
     [Fact]
     public void A_refusal_merged_with_ranges_refused_before_gives_back_the_array_they_were_kept_in()
     {
-        // As above, a lost stream declares 4,096 one-row subsections apart; its /Prev names an older lost stream that declares
-        // one subsection, object 10's, which joins the first range kept, and the older stream's /Prev names the table of 16
-        // rows. The same file without the older stream refuses once (#208). Each refusal merges the ranges kept and its own
-        // into an array the shared pool lends, 4,096 ranges long here, and gives back the one the ranges were kept in once
-        // they are merged. Opened again and again, the first allocates beyond the second only the older stream it reads,
-        // 2.8 KB: one array kept back at each merge would cost 64 KB more each opening.
-        var twice = LostStreamFiles.Chain(2, rows: 16, objects: [], s => s == 0 ? Apart() : [(10L, 1L)]);
-        var once = LostStreamFiles.RangesOverOlderRows(apart: true, rows: 16);
+        // A lost stream declares 40 subsections, every other number from 10, every other one of them of one row and the
+        // rest of none; its /Prev names an older lost stream that declares 16 one-row subsections apart from 100, and
+        // the older stream's /Prev names the table of 16 rows (#208). The shared pool lends arrays by sizes, 16, 32, 64
+        // and up, and lends a thread first the array of a size that thread gave back last. The newer stream's 20 ranges
+        // are kept in an array of 32, its numbering read into one of 64; the older stream's 16 are merged with them
+        // into an array of 64 as well, and the array of 32 goes back to the pool once they are merged. So the array of
+        // 32 this thread gives back before the file is opened keeps the newer stream's ranges, and is lent again once
+        // the file is read: kept back at the merge, it would be lost to the pool, which would lend another. The bytes
+        // allocated do not tell this apart: where the pool already keeps other arrays of 32, from what the process did
+        // before, it lends one of those without allocating. A collection of the oldest generation under memory pressure
+        // may empty what the pool keeps for each thread: an opening one falls in is done again.
+        var file = LostStreamFiles.Chain(2, rows: 16, objects: [], s => s == 0 ? Newer() : Older());
+        var pool = ArrayPool<(long First, long End)>.Shared;
+        var lent = pool.Rent(20);
+        pool.Return(lent);
+        pool.Rent(20).Should().BeSameAs(lent, "the pool lends a thread first the array of a size it gave back last");
+        pool.Return(lent);
 
-        var twiceAllocated = Allocations.Least(() => Open(twice), out var twiceSections);
-        var onceAllocated = Allocations.Least(() => Open(once), out var onceSections);
+        var again = lent;
+        var sections = 0;
 
-        twiceSections.Should().Be(4);
-        onceSections.Should().Be(3);
-        (twiceAllocated - onceAllocated).Should().BeLessThan(
-            32 * 1024,
-            "a refusal gives back the array the ranges it merges with were kept in ({0:N0} bytes against {1:N0})",
-            twiceAllocated,
-            onceAllocated);
+        for (var attempt = 0; attempt < 5; attempt++)
+        {
+            var collections = GC.CollectionCount(2);
+            lent = pool.Rent(20);
+            pool.Return(lent);
+            sections = Open(file);
+            again = pool.Rent(20);
+            pool.Return(again);
 
-        static IEnumerable<(long First, long Count)> Apart() => Enumerable.Range(0, 4096).Select(i => (10L + (2L * i), 1L));
+            if (GC.CollectionCount(2) == collections)
+            {
+                break;
+            }
+        }
+
+        sections.Should().Be(4);
+        again.Should().BeSameAs(
+            lent,
+            "the array the newer stream's ranges were kept in goes back to the pool once the older stream's are merged with them");
+
+        static IEnumerable<(long First, long Count)> Newer() =>
+            Enumerable.Range(0, 40).Select(i => (10L + (2L * i), i % 2 == 0 ? 1L : 0L));
+
+        static IEnumerable<(long First, long Count)> Older() => Enumerable.Range(0, 16).Select(i => (100L + (2L * i), 1L));
 
         static int Open(byte[] file)
         {
