@@ -39,6 +39,9 @@ Measured over the part of batch 19 that ran on the maintainer's machine:
   context (the orchestrating session's: 197,000, and 458,000 at the 90th percentile). A reviewer's brief sends it to
   the batch's whole record, every earlier round's findings and the fix reports; `status.md` and `threat-model.md`
   weigh 366 KB each.
+- **What the agents read**, by volume of text returned to them: the batch's own working notes 28 %, other working
+  files (reports, scripts, probes) 26 %, `PdfFileReader.cs` 20 %, tests 10 %, the threat model 8 % (read by 131 of
+  the 255 agents), the rest of `src/` 3 %, `status.md` 2 %, the ADRs 1.4 % (50 reads, most of them ADR 53 and ADR 34).
 - **Builds and tests are not the bottleneck.** The whole unit suite, 11,155 tests, runs in 4 minutes; builds and test
   runs were about 3 of the 42 agent-hours of rounds 9 to 12.
 
