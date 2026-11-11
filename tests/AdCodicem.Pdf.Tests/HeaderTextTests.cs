@@ -43,6 +43,7 @@ public class HeaderTextTests
     [InlineData("(a\\) b) 12 % c\n0 obj", 8, new[] { 0, 3 })]
     [InlineData("(a\\nb) 12 % c\n0 obj", 7, new[] { 0, 3 })]
     [InlineData("5 12 % c\n0 obj", 2, new[] { 0 })]
+    [InlineData("5 12: % c\n0 obj", -1, new[] { 0, 4 })]
     [InlineData("x 1111111111 2147483647 0 obj", 13, new[] { 0, 23 })]
     [InlineData("1234567890 1234567890\n0 obj", 11, new[] { 0, 22 })]
     [InlineData("1111111111 2147483647\n0 obj", 11, new[] { 0, 22 })]
