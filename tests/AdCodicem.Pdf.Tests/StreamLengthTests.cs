@@ -2413,6 +2413,37 @@ public class StreamLengthTests
     }
 
     [Theory]
+    [InlineData("")]
+    [InlineData("12 ")]
+    public void An_endstream_in_a_comment_that_only_white_space_separates_from_the_next_object_ends_the_data(string before)
+    {
+        // The data, which no endobj follows, holds its first endstream in a comment, on a line whose tokens may begin a
+        // header — none, or a number —, and nothing but an end of line between it and the next object, where the search
+        // ends: the bytes the parser holds reach that object, and no header can end past the keyword, which ends the data
+        // as the first endstream does (#261).
+        using var document = PdfDocument.Open(OneStream("<< /Length 20000 >>\nstream\nhello\n" + before + "% endstream\n", endObj: false));
+
+        document.GetObject(new PdfObjectId(4)).AsStream().Required().RawLength.Should().Be(("hello\n" + before + "% ").Length);
+    }
+
+    [Fact]
+    public void A_search_whose_bytes_the_object_s_window_holds_to_the_end_of_the_file_reads_nothing_more()
+    {
+        // The stream is the last object the index places, and the window it was parsed through ends where the file does:
+        // the bytes the parser holds are all the search may read, and they hold no endstream, nor an endobj that ends the
+        // object, the table following it. The data runs to the end of the file, and the file is not read again for it.
+        var file = Document((StreamNumber, Stream(20_000, "hello", end: string.Empty)));
+
+        using var source = new StrictCountingSource(file);
+        using var document = PdfDocument.Open(source, options: null, ownsSource: false);
+        var beforeLoading = source.BytesRead;
+
+        document.GetObject(new PdfObjectId(StreamNumber)).AsStream().Required().RawLength.Should().Be((int)(file.Length - DataStartOf(file, StreamNumber)));
+        (source.BytesRead - beforeLoading).Should().Be(file.Length - HeaderOf(file, StreamNumber), "the window, which reaches the end of the file, and nothing after it");
+        document.Reader.EndStreamSearchBytes.Should().Be(0);
+    }
+
+    [Theory]
     [InlineData("\nendobj\n% a note\nfoo\n")]
     [InlineData("\nendobj % a note endobj\nx")]
     public void An_endobj_a_token_follows_past_its_comments_ends_no_data(string tail)

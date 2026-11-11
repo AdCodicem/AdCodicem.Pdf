@@ -7644,6 +7644,34 @@ public class CrossReferenceChainTests
         }
     }
 
+    [Fact]
+    public void A_stream_passed_over_near_a_hybrid_table_s_prev_that_names_a_place_inside_its_object_number_is_reported_though_an_older_xrefstm_names_that_place_again()
+    {
+        // As above, stream 20 gives no /Prev, but the newest table's /Prev names the place 1 byte into its object number, the
+        // 0 of 20, where no object's header is read: the search near that place passes over stream 20 as possibly the
+        // table's own, and takes stream 6, which the /XRefStm read. The oldest table names that place again through
+        // /XRefStm: an offset the chain named and found its section moved from leads nowhere new, and is recorded as naming
+        // what the /Prev read there, nothing read. No section of the chain starts at stream 20's header or inside its number,
+        // which the naming again does not read: the stream passed over is reported, its objects missing from the index (#156).
+        var (bytes, oldest, stream, own, newest) = HybridFiles.PrevFallingShortOfTheStreamBeforeTheTablesOwn(
+            "nothing", shortOfOwn: true, "the oldest table", "/XRefStm", into: 1, ownNumber: 20);
+        var file = Encoding.Latin1.GetBytes(Encoding.Latin1.GetString(bytes).Replace(
+            Invariant($"/Prev {own - 7} /XRefStm {stream} "), Invariant($"/Prev {own + 1} /XRefStm {stream} "), StringComparison.Ordinal));
+        using var document = PdfDocument.Open(file);
+
+        document.Reader.Structure.Sections.Select(section => (section.NamedBy, section.State, section.Kind, section.Offset)).Should().Equal(
+            ("startxref", XRefSectionState.Read, XRefSectionKind.Table, newest),
+            ("/XRefStm", XRefSectionState.NamedAgain, XRefSectionKind.Unknown, stream),
+            ("/Prev", XRefSectionState.Relocated, XRefSectionKind.Stream, stream),
+            ("/Prev", XRefSectionState.Read, XRefSectionKind.Table, oldest),
+            ("/XRefStm", XRefSectionState.NamedAgain, XRefSectionKind.Unknown, own + 1));
+        document.Diagnostics.Select(diagnostic => (diagnostic.Code, diagnostic.Position)).Should().Equal(
+            (PdfDiagnosticCodes.XRefOffsetAdjusted, stream),
+            (PdfDiagnosticCodes.XRefHybridStreamLost, stream),
+            (PdfDiagnosticCodes.XRefHybridStreamLost, own + 1),
+            (PdfDiagnosticCodes.XRefStreamPassedOver, own));
+    }
+
     [Theory]
     [InlineData(1)]
     [InlineData(0)]
