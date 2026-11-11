@@ -106,6 +106,27 @@ public class HeaderTextTests
     }
 
     [Theory]
+    [InlineData("y 5\n12")]
+    [InlineData("x\n1 2 ")]
+    public void A_byte_carried_before_the_runs_for_what_precedes_a_line_that_no_number_places_is_placed_nowhere(string data)
+    {
+        // Each read carries five bytes into the next, its runs read back into what precedes the line it ends in: 12, the space
+        // after 5 and 5, three runs that reach back to the byte before 5, which says that 5 starts a token; or the space after
+        // 2, 2, the space after 1 and 1, four runs that reach back to the line's start, and the space that stands for the end
+        // of line before it, which ends a line holding no number. Neither stands for a run of the file a number places: the
+        // first byte carried is placed at -1, nowhere in the file.
+        var bytes = Encoding.Latin1.GetBytes(data);
+        Span<byte> carried = stackalloc byte[HeaderText.CarriedLength];
+        Span<long> carriedAt = stackalloc long[HeaderText.CarriedLength];
+        var text = new HeaderText(carried, carriedAt, DataStart);
+        text.Read(bytes, DataStart);
+        text.CarryTo(DataStart + bytes.Length);
+        text.Read("0 obj"u8, DataStart + bytes.Length);
+
+        text.PositionOf(-5).Should().Be(-1);
+    }
+
+    [Theory]
     [InlineData("1 2\n3 4 % c 5 6", new[] { 0 }, new[] { 0, 2, 4, 6, 12, 14 })]
     [InlineData("1 2\n3 4 % 7 8 9", new[] { 0 }, new[] { 0, 2, 4, 6, 12, 14 })]
     [InlineData("12345 678", new[] { 0 }, new[] { 0, 6 })]
