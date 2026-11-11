@@ -1294,3 +1294,17 @@ review. Then the batch-wide ADR 53 step.
   (6800877183): PropertyTests' HeaderPieces gaps and ReaderTimingTests' refused-ranges test that cannot tell a scan.
 - End texts and comment measures: wf_363e5e3c-bc9 (task wute65y37), lot19-endtexts.js. Local integration run 1 timed
   out at 60 min (stalled after 17 min on a docker exec right after Docker Desktop started, under load); run 2 progressing.
+- End texts (wf_363e5e3c-bc9): e5424b2 docs (HeaderText remark, PositionOf summaries, ViewLength, Refs #261) and
+  9a21ac7 test (CrossReferenceChainTests comment on a lost stream's header; two 'As above' comments the settling's
+  insertions misdirected; Refs #156, #188, #221, #263, #327), comment-only (checked by script), pushed f732361..9a21ac7.
+  citecheck/namecheck: threat model 315/1,256 none missing. Comments 289, 295, 52, 260 measured on the final source and
+  main, each refuted (9, 6, 7, 7 defects fixed); no placeholder left; #295's recorded cost figures (343,127 / 84,854 /
+  7.1 MB) could not be reproduced and are replaced by new measurements. Results: W/endtexts/endtexts-result.json.
+- Integration: both whole-suite local runs hit the 60-min timeout (not hung: the suite takes ~54 min class by class on
+  this machine, longer under load). By class at 26ce787 with the remote corpus, alone: ReadOrderSweep 410 (21 s),
+  FlateReferee 774 (646 s), StreamLengthReferee 129 (253 s), TextFilterReferee 21 (5 s), ValidationReferee 1,640
+  (1,559 s), QpdfReferee 786 (743 s): 3,760 passed, 0 failed. Remote corpus workflow on the branch: run 43061663880 at
+  9a21ac7, success. Docker Desktop stopped again before the benchmarks.
+- Final verification launched alone: wf_992edef5-b25 (task wrduo8y00): test comment ('three of a reserved type'),
+  build, whole suite with remote corpus, coverage (CI command, cov_patch), timing groups, hybrid differential vs r13a,
+  benchmarks vs main, site.
