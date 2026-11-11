@@ -1192,3 +1192,10 @@ review. Then the batch-wide ADR 53 step.
   HostileInputTests.Does_not_take_a_keyword_the_probe_saw_cut_for_a_cross_reference_table (says MaxTrailerLength stops
   the probe right after 'xref', false since f0d90c8) -> fix in the settle commits; possible #330 trade-off comment
   (round 2, never taken up) -> not owed, mention only.
+- Settling started during the run (lever: wall clock): W/settle/groups.py groups survivors of members whose every
+  mutant has a final line; chunk.py makes groups of at most 13; mutant.py applies/reverts one mutant and writes a
+  confirm shard. Workflow lot19-settle.js (session scratchpad), batch b1: 46 survivors in 5 groups (EndObjTailCopies,
+  HeaderText), 3 agents at once, then one merge agent (git am -3, build, touched classes, harness confirm at the new
+  head into summary-b1.txt, push). wf_ef25cc65-ba7 (task wumhkjzco). Batch b1 also fixes the stale HostileInputTests
+  comment. Later batches pass --done-ids with the ids already settled (equivalents and debts stay SURVIVED in the
+  shard summaries).
