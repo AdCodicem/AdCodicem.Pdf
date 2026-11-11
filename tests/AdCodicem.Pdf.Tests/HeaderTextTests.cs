@@ -36,6 +36,7 @@ public class HeaderTextTests
     [InlineData("007 0 % c\nobj", 0, new[] { 0, 1 })]
     [InlineData("12 70000 % c\nobj", -1, new[] { 0, 4 })]
     [InlineData("12 999999999999 % c\nobj", -1, new[] { 0, 5 })]
+    [InlineData("12 100000 % c\nobj", -1, new[] { 0, 4 })]
     [InlineData("% a\n12 % c\n0 obj", 4, new[] { 0, 3 })]
     [InlineData("x\n(%) 12\n0 obj", 6, new[] { 0 })]
     [InlineData("x\n(%) 12x\n0 obj", -1, new[] { 0 })]
@@ -52,7 +53,8 @@ public class HeaderTextTests
         // Each read starts where the array says, and repeats the four bytes before the next read's start, so that obj and the
         // byte after it are whole in one read: the header, or none, is the one a single read of the data finds. Two runs of
         // ten digits, the most a run is carried as, fill the room carried for them and are carried whole, before the read or
-        // before the line it starts in.
+        // before the line it starts in. The zeros after a run's first digit count in its value, whether the read that holds
+        // the digit holds them or the next: 100000 is no generation.
         var expected = header < 0 ? -1 : DataStart + header;
 
         FirstHeader(data, starts).Should().Be(expected);
