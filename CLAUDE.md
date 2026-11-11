@@ -8,7 +8,8 @@ PDF documents**, under a standing requirement of frugal CPU and memory use.
 Read these, in this order, and nothing else:
 
 1. **this file** — the invariant frame;
-2. **`docs/status.md`** — where the project stands and what is in flight;
+2. **`docs/status.md`** — where the project stands and what is in flight (its history is `docs/journal.md`, read
+   only when a past decision's reason is needed);
 3. **the current milestone file** in `docs/milestones/` — the detailed specification of the work;
 4. **the current milestone's open issues** on GitHub, through the GitHub tools — its slices, and the debt
    filed under it. The rest of the known debt is the open issues labeled `debt`.
@@ -28,9 +29,15 @@ a parser, a decoder, a resource loader —, and is completed in the same change 
 question with its options, the recommended one first and marked so, and what each implies. Up to four questions a
 call; more take several calls.
 
-At the end of every session: update `docs/status.md` (actual state, not intentions), tick the milestone
-checklist, open an issue labeled `debt` for anything found and left, commit, push, and name in the pull
-request the issues it closes (`Closes #58`).
+At the end of every session: update `docs/status.md` (actual state, not intentions), add a short entry to
+`docs/journal.md` (about thirty lines; the detail goes in the pull request's body), tick the milestone checklist,
+open an issue labeled `debt` for anything found and left, commit, push, and name in the pull request the issues it
+closes (`Closes #58`, one per line).
+
+**A batch of M02's step 4 follows the `batch` skill** (`.claude/skills/batch/SKILL.md`), and every pull request's
+review follows ADR 54: a finding's severity comes from its effect and from whether real files have its input; the
+review rounds stop at the first one with no blocker and no major, at the eighth at the latest; a batch pays at most six
+issues and about 1,000 changed lines of code in `src/`.
 
 ## What the library is — and is not
 
@@ -162,15 +169,20 @@ over 2 MB, described in `tests/corpus/manifest.json` with origin `remote`, fetch
   input can reach it — conditions that contradict each other, a dead branch, a member nothing calls —, never
   because no file of the corpus does. A defensive branch stays, covered or not. A public member nothing
   calls is a question for the maintainer, not a removal.
-- **Mutation testing is a finite step of every pull request that changes `src/`, apart from its own review** (ADR 53). A
-  fixed, first-order catalog — negate or drop a condition, shift a bound by one, remove a call, return the default,
-  remove one element of a set or one arm of a switch — is run over the lines of `src/` the pull request changes and, in
-  a test that reads the library's code, over the conditions it adds to or changes in that test. Each mutant makes one
-  change at one place the code writes it: no helper specialized at a caller or along a path, no condition narrowed, no
-  mutant of two changes. A survivor is a gap in the tests, not a review finding: a test kills it, or it is classed
-  equivalent, or, in a test that reads the code, widening, each with a one-line reason and never reopened; one only an
-  input no test can build tells apart is filed as `debt`. The survivors are run again until each is settled, and the
-  tests written to kill them are never mutated in their turn.
+- **Mutation testing is a finite step of every pull request that adds or changes a defense in `src/`, once, after its
+  review loop stops** (ADR 53, amended 2026-11-11). A fixed, first-order catalog — negate or drop a condition, shift a
+  bound by one, remove a call, return the default, remove one element of a set or one arm of a switch — is run over the
+  defenses among the lines the pull request adds or changes: a bound checked before an allocation, a read or a copy; a
+  guard's check and its report; a depth or count limit; a visited set; the exit of a loop or a recursion that reads the
+  file. In a test that reads the library's code, it runs over the conditions the pull request adds to or changes in that
+  test. Each mutant makes one change at one place the code writes it. A survivor is a gap in the tests, not a review
+  finding: a test kills it, or it is classed equivalent — no document and no public call tells it apart — or, in a test
+  that reads the code, widening, each with a one-line reason a second agent checks, never reopened; one only an input
+  no test can build tells apart is filed as `debt`. The tests written to kill survivors are never mutated in their turn.
+- **A behavior is written once** (ADR 54): in the XML documentation of the diagnostic code, the rule or the member
+  that has it. The user documentation says what a caller can rely on and links the reference; `docs/threat-model.md`
+  names each defense, where it lives, its bounds and the test class that holds it, never a test method or a list of
+  hand-made shapes; a code comment says why, not which shapes take which branch.
 - The documentation site is `docs/website` (Docusaurus). It publishes the user-facing documentation *and*
   `docs/` as they are, so a project document that does not build breaks CI. The user documentation is
   versioned (ADR 31): `docs/website/docs` is the preview; a released line is frozen in

@@ -9,6 +9,7 @@ const sidebars = {
     'corpus-sources',
     'releasing',
     'status',
+    'journal',
     'threat-model',
     'milestone-review',
     {
@@ -24,7 +25,11 @@ const sidebars = {
     {
       type: 'category',
       label: 'Research',
-      items: ['research/2026-09-feature-survey', 'research/2026-09-milestone-open-points'],
+      items: [
+        'research/2026-09-feature-survey',
+        'research/2026-09-milestone-open-points',
+        'research/2026-11-session-speed',
+      ],
     },
     {
       type: 'category',

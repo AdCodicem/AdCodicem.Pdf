@@ -771,7 +771,7 @@ inserted.
 2. Work in vertical, testable slices, never a whole horizontal layer. When a milestone starts, each slice its
    specification lists becomes an issue labeled `slice`, filed under the milestone; the pull request that
    completes a slice closes its issue.
-3. A delivered feature is code plus tests plus an entry in the `status.md` journal.
+3. A delivered feature is code plus tests plus an entry in `journal.md`.
 4. What is discovered on the way and falls outside the milestone becomes an issue labeled `debt`, filed under
    the milestone that will pay it — not a change to the code.
 
