@@ -1,0 +1,1395 @@
+[
+ {
+  "type": "result",
+  "key": "v2:57336e18510c4a7ee9e9f7372d5e92c93a136fc4c6a351820bbe76252294666e",
+  "agentId": "ab3d174745a25e286",
+  "result": {
+   "label": "b3-02",
+   "base": "1e1d171",
+   "survivors": [
+    {
+     "id": "PFR-0533",
+     "fate": "KILLED-NEW",
+     "reason": "With the mutant, a NamedAgain section adds its Offset+Padding to the set of places the chain counts as reached. Here an older table's /XRefStm names again the place inside stream 20's number that the newest /Prev named, and that wrongly withholds the XRefStreamPassedOver report at the stream (the diagnostics list comes back one item short).",
+     "test": "AdCodicem.Pdf.Tests.CrossReferenceChainTests.A_stream_passed_over_near_a_hybrid_table_s_prev_that_names_a_place_inside_its_object_number_is_reported_though_an_older_xrefstm_names_that_place_again"
+    },
+    {
+     "id": "PFR-0011",
+     "fate": "KILLED-NEW",
+     "reason": "With endsRange false, a keyword in a comment that is still waiting when the parser's bytes reach the next object is left undecided. The search returns -1 and the data runs on to the next object: 18 or 21 bytes instead of 8 or 11.",
+     "test": "AdCodicem.Pdf.Tests.StreamLengthTests.An_endstream_in_a_comment_that_only_white_space_separates_from_the_next_object_ends_the_data (both rows)"
+    },
+    {
+     "id": "PFR-0012",
+     "fate": "KILLED-NEW",
+     "reason": "'>' is false exactly when the parser's bytes reach the next object (dataStart + inBuffer == limit), which is the same case PFR-0011 changes. The same two rows fail with the same lengths.",
+     "test": "AdCodicem.Pdf.Tests.StreamLengthTests.An_endstream_in_a_comment_that_only_white_space_separates_from_the_next_object_ends_the_data (both rows)"
+    },
+    {
+     "id": "PFR-0038",
+     "fate": "KILLED-NEW",
+     "reason": "When the object's window ends exactly where the search does (end == limit == file end, the last object), the mutant skips the early return and reads the last bytes of the buffer again through a source window. The test sees 247 bytes read instead of 237, and EndStreamSearchBytes is no longer 0.",
+     "test": "AdCodicem.Pdf.Tests.StreamLengthTests.A_search_whose_bytes_the_object_s_window_holds_to_the_end_of_the_file_reads_nothing_more"
+    },
+    {
+     "id": "PFR-0032",
+     "fate": "EQUIVALENT",
+     "reason": "found is either -1 or a file position at or past dataStart (a HeaderText position or pending.DataEnd). dataStart is past the 'stream' keyword the parser read, which FindEndStream's only caller, PdfObjectParser.ReadStream, passes as _baseOffset + dataStart. So found is never 0, and 'found > 0' gives the same answer as 'found >= 0'."
+    },
+    {
+     "id": "PFR-0033",
+     "fate": "EQUIVALENT",
+     "reason": "Same as PFR-0032: found is -1 or at least dataStart, and dataStart is at least 6 (past 'stream'), so 'found >= 1' gives the same answer as 'found >= 0'."
+    },
+    {
+     "id": "PFR-0057",
+     "fate": "EQUIVALENT",
+     "reason": "Same as PFR-0032, at the inner check: found is -1 or at least dataStart > 0, so 'found > 0' gives the same answer as 'found >= 0'."
+    },
+    {
+     "id": "PFR-0058",
+     "fate": "EQUIVALENT",
+     "reason": "Same as PFR-0032, at the inner check: found is -1 or at least dataStart > 0, so 'found >= 1' gives the same answer as 'found >= 0'."
+    },
+    {
+     "id": "PFR-0035",
+     "fate": "EQUIVALENT",
+     "reason": "header is -1 or a header start taken by HeaderText.TryFindStart, either through FindHeader or through PendingEndStream's HeaderAt. On the first read that start is a run in the bytes, at or past dataStart; the only carried run is the space standing for dataStart, from which no number is read. dataStart > 0, so 'header > 0' gives the same answer as 'header >= 0'. The flagged ObjectRuleTests test passed 3 times out of 3 when run alone with this mutant applied, so the existing test does not catch it (see found)."
+    },
+    {
+     "id": "PFR-0036",
+     "fate": "EQUIVALENT",
+     "reason": "Same as PFR-0035: header is -1 or at least dataStart, and dataStart is at least 6, so 'header >= 1' gives the same answer as 'header >= 0'."
+    },
+    {
+     "id": "PFR-0043",
+     "fate": "EQUIVALENT",
+     "reason": "Same as PFR-0035: header is never 0, so 'header > 0 ? header : dataStart + inBuffer' gives the tail the same end as 'header >= 0'."
+    },
+    {
+     "id": "PFR-0044",
+     "fate": "EQUIVALENT",
+     "reason": "Same as PFR-0035: header is never 0, so 'header >= 1 ? header : ...' gives the tail the same end as 'header >= 0'."
+    }
+   ],
+   "tests_added": [
+    "CrossReferenceChainTests.A_stream_passed_over_near_a_hybrid_table_s_prev_that_names_a_place_inside_its_object_number_is_reported_though_an_older_xrefstm_names_that_place_again (Fact). It builds the file with PrevFallingShortOfTheStreamBeforeTheTablesOwn(\"nothing\", shortOfOwn: true, \"the oldest table\", \"/XRefStm\", into: 1, ownNumber: 20) and points the newest /Prev at own+1, the 0 of 20. It pins the exact section list (startxref Read Table newest; /XRefStm NamedAgain stream; /Prev Relocated Stream stream; /Prev Read Table oldest; /XRefStm NamedAgain own+1) and the exact (Code, Position) diagnostics: XRefOffsetAdjusted@stream, XRefHybridStreamLost@stream, XRefHybridStreamLost@own+1, XRefStreamPassedOver@own.",
+    "StreamLengthTests.An_endstream_in_a_comment_that_only_white_space_separates_from_the_next_object_ends_the_data (Theory). Row \"\": the comment has no token before it on its line. Row \"12 \": a number that may begin a header comes before the comment. Uses OneStream with /Length 20000, no endobj, and data 'hello\\n' + before + '% endstream\\n' just before object 6. It pins RawLength == len('hello\\n' + before + '% ') (8 and 11): the keyword ends the data because the search ends where the parser's bytes reach the next object.",
+    "StreamLengthTests.A_search_whose_bytes_the_object_s_window_holds_to_the_end_of_the_file_reads_nothing_more (Fact). Stream 5 is the last object the index places, has no endstream and a /Length of 20000. It pins: RawLength == file.Length - DataStartOf (the data runs to the end of the file); the source bytes read during GetObject == file.Length - HeaderOf (the object's window only, nothing read again); and Reader.EndStreamSearchBytes == 0."
+   ],
+   "commit": "de35f66 test: pin endstream searches the parser's bytes settle and a stream passed over named again (Refs #156, #188, #261). Patch: C:/Users/clemm/AppData/Local/Temp/claude/7278f9d03177d71e/898783fc-049f-469a-ab79-dfd299ad558e/scratchpad/cloud/settle/patches/b3-02/0001-test-pin-endstream-searches-the-parser-s-bytes-settl.patch",
+   "patch": "C:/Users/clemm/AppData/Local/Temp/claude/7278f9d03177d71e/898783fc-049f-469a-ab79-dfd299ad558e/scratchpad/cloud/settle/patches/b3-02/0001-test-pin-endstream-searches-the-parser-s-bytes-settl.patch",
+   "commands": [
+    "git fetch origin ccr-6d6c0ee6-dqm4lm-188; git checkout --detach origin/ccr-6d6c0ee6-dqm4lm-188 -> base 1e1d171",
+    "dotnet build tests/AdCodicem.Pdf.Tests/AdCodicem.Pdf.Tests.csproj -c Release -m:2 (each build: 0 warnings, 0 errors)",
+    "Base, the 3 new tests (4 cases): first run had 3 passing; the last-object test's RawLength expectation was wrong (data runs to the end of the file, 202 bytes, not 5), so I corrected the expectation and it then passed 1/1",
+    "PFR-0011 applied: 4 cases, 2 failed (both rows of An_endstream_in_a_comment_that_only_white_space_separates_from_the_next_object_ends_the_data: 18 vs 8, 21 vs 11), 2 passed; reverted",
+    "PFR-0012 applied: 4 cases, 2 failed (the same two rows, same values), 2 passed; reverted",
+    "PFR-0038 applied: 4 cases, 1 failed (A_search_whose_bytes_the_object_s_window_holds_to_the_end_of_the_file_reads_nothing_more: 247 bytes read vs 237), 3 passed; reverted",
+    "PFR-0533 applied: 4 cases, 1 failed (the CrossReferenceChainTests test: the diagnostics list lacks the XRefStreamPassedOver at own), 3 passed; reverted",
+    "PFR-0035 applied: ObjectRuleTests.A_run_of_links_the_walk_takes_at_the_reader_s_deepest_load_is_never_where_the_stack_cuts_it run alone 3 times: 1/1 passed each time; reverted",
+    "Base, StreamLengthTests whole class except the three tests that measure time or allocation (Searches_through_an_index_of_a_million_entries_take_bounded_time, An_endstream_in_a_header_s_comment_is_decided_by_reading_on_once_through_the_comment_lines_after_it, A_file_of_data_with_no_endstream_is_searched_once_to_its_end): total 280, failed 0, succeeded 280, skipped 0",
+    "Base, CrossReferenceChainTests whole class: total 1072, failed 0, succeeded 1072, skipped 0",
+    "check_msgs.py: 'de35f66 91 OK'; grep_keys.py and widegrep.py on the diff: no output, rc 0",
+    "cp -al of tests/corpus/remote for the class runs, removed with rm -rf afterwards; git status clean, src/ identical to 1e1d171"
+   ],
+   "found": [
+    "No real fault found: each survivor is either a gap in the tests, now pinned, or equivalent because the data start always lies past the 'stream' keyword.",
+    "Flaky test: ObjectRuleTests.A_run_of_links_the_walk_takes_at_the_reader_s_deepest_load_is_never_where_the_stack_cuts_it failed once in the harness's first-filter run under PFR-0035. That mutant cannot change what this test reads (header is never 0). The failure was a missing 'Object 160 is reached through more nested objects than the thread's stack lets the validator follow' message, so where the stack cuts the walk seems to depend on load (8 mutation workers were running at the time). The test passed 3/3 alone with the mutant applied, and the harness's own confirm run also passed. I did not run it on the head.",
+    "When the window that holds the last object reaches the end of the file, the search reads nothing more (pinned by the new test). Code reading suggests most small files reach this path, and no test held it before."
+   ]
+  },
+  "remoteControlDeviceReport": false,
+  "toolsUsed": [
+   "Bash",
+   "Read",
+   "Edit",
+   "Write",
+   "StructuredOutput"
+  ]
+ },
+ {
+  "type": "result",
+  "key": "v2:2b7b0fa962956c44f4cb72bdef878c7ffac1328ad538972697014806c3ed7c26",
+  "agentId": "a5f36fc35f13d4848",
+  "result": {
+   "label": "b3-01",
+   "base": "1e1d171",
+   "survivors": [
+    {
+     "id": "PFR-0118",
+     "fate": "EQUIVALENT",
+     "reason": "Equivalent in what is reported, cost only (the maintainer's rule of 2026-11-01). _rowsLost is read and written only in RefuseRowsLost, LoseRows (from ReadSubsection < TryReadClassicTable < TryReadXRefSection) and TryReadClassicTable's per-pass Clear. TryReadXRefSection is called only from TryReadXRefChain and TryRelocateXRefSection, and the latter only from TryReadXRefChain. TryReadXRefChain is called once, from Initialize, and only the constructor calls Initialize. So nothing reads the field after the finally. Left non-null, the reader keeps a list of at most MaxRefusedRanges (4,096) ranges of 16 bytes, at most 64 KB, until it is collected."
+    },
+    {
+     "id": "PFR-0119",
+     "fate": "EQUIVALENT",
+     "reason": "Equivalent in what is reported, cost only. _streamsPassedOver is written only in TryRelocateXRefSection and read only in ReportStreamsPassedOver, which runs at the end of TryReadXRefChain. Both are reached only through the one TryReadXRefChain call that Initialize makes from the constructor, so nothing reads it after the finally. Left set, the reader keeps one 32-byte tuple per place passed over. Every such place is counted against the reader-wide _relocationCandidatesTried bound of MaxRelocationCandidates (32), so this is about 1 KB."
+    },
+    {
+     "id": "PFR-0120",
+     "fate": "EQUIVALENT",
+     "reason": "Equivalent in what is reported, cost only. Every read of _sectionsReadAt (Contains at TryReadXRefChain's loop judgment, ReachedAt, TryRelocateXRefSection) and its only Add (RecordSectionReached) are reached only from the one TryReadXRefChain call that the constructor's Initialize makes, so nothing reads it after the finally. Without the Clear, TrimExcess keeps every entry: one per section reached (the section, plus a hybrid stream), at most 2 x MaxXRefSectionCount (2,048 by default), about 20 bytes each. That is under about 50 KB, and less than the XRefSectionRecord the reader keeps for each section in Structure anyway. Not killed by an existing test: ObjectRuleTests.A_run_of_links_the_walk_takes_at_the_reader_s_deepest_load_is_never_where_the_stack_cuts_it was run alone with the mutant applied three times and passed each time (1/0, 4.9 s, 5.4 s, 6.6 s)."
+    },
+    {
+     "id": "PFR-0121",
+     "fate": "EQUIVALENT",
+     "reason": "Equivalent in what is reported, cost only. Same reads as PFR-0120: none after Initialize's finally. Without TrimExcess, the cleared set keeps its bucket and entry arrays, sized for at most 2 x MaxXRefSectionCount entries, about 20 bytes each and under about 50 KB by default, until the reader is collected."
+    },
+    {
+     "id": "PFR-0122",
+     "fate": "EQUIVALENT",
+     "reason": "Equivalent in what is reported, cost only. _sectionDigitsAt is read only in TryRelocateXRefSection (the candidate pass-over test) and written only in RecordSectionReached. Both are reached only from the one TryReadXRefChain call that the constructor's Initialize makes, so nothing reads it after the finally. Without the Clear, TrimExcess keeps one entry per stream section reached, plus -1 for tables: at most 2 x MaxXRefSectionCount entries, about 20 bytes each."
+    },
+    {
+     "id": "PFR-0123",
+     "fate": "EQUIVALENT",
+     "reason": "Equivalent in what is reported, cost only. Same reads as PFR-0122: none after the finally. Without TrimExcess, the cleared set keeps its arrays, sized for at most 2 x MaxXRefSectionCount entries (under about 50 KB by default), until the reader is collected."
+    },
+    {
+     "id": "PFR-0163",
+     "fate": "KILLED-NEW",
+     "reason": "With 'number > 1', a /Prev 1 0 R whose row a stream that filled the index declares past the full point reads as leading nowhere. The trailers are then not hidden and xref.section-missing is reported. On the head, TrailersHiddenByGuard is true.",
+     "test": "AdCodicem.Pdf.Tests.ReaderLimitsTests.A_prev_a_stream_a_guard_stopped_writes_as_a_reference_is_unknown_only_for_a_row_it_left_unread(shape: \"the first object's row, declared last\", prev: \"1 0 R\", hidden: True)"
+    },
+    {
+     "id": "PFR-0721",
+     "fate": "EQUIVALENT",
+     "reason": "A relocated record has Padding 0 for every input, so the ternary yields place.Padding either way. Offset changes only in RelocateTo, which copies the attempt's Padding. The attempt starts at a candidate from FindSectionCandidates (the x of an xref keyword, or a header's first digit or sign) or at a recorded stream's start (NumberRunsInto). That is a non-white, non-% byte, so PaddingAt gives first.Start = 0. For a stream, header - absolute = parser.HeaderStart = number.Start = 0. The attempt record is fresh and never read again before RelocateTo."
+    },
+    {
+     "id": "PFR-0139",
+     "fate": "EQUIVALENT",
+     "reason": "For a negative offset, PositionOf returns it unchanged (offset < 0 ? offset : ...), and IsInFile refuses any position < 0. So the conjunction is false with or without '>= 0', and ReachedBefore is never asked. Not killed by an existing test: ObjectRuleTests.A_run_of_links_the_walk_takes_at_the_reader_s_deepest_load_is_never_where_the_stack_cuts_it was run alone with the mutant applied three times and passed each time (1/0, about 5.3 s each). The new offset-0 rows also pass with it."
+    },
+    {
+     "id": "PFR-0140",
+     "fate": "KILLED-NEW",
+     "reason": "With '> 0', a /Prev 0, or a table's /XRefStm 0, from a section a guard stopped no longer names an older section. Offset 0 is the header's position: in the file, and not reached. So TrailersHiddenByGuard is false, where the head has it true. All six new rows fail. The flagged CorpusReadingTests.Damaged_documents_are_recovered_as_far_as_an_independent_tool_recovers_them, run alone with the mutant three times, passed 129/129 each time (16.0, 18.5, 17.3 s). The harness's failure was the 20 s validation time guard on cairo-firefox-objstm-index-overflow-bug1978317.pdf under load.",
+     "test": "AdCodicem.Pdf.Tests.ReaderLimitsTests.A_link_a_section_a_guard_stops_gives_that_may_be_sound_stays_the_guard_s (rows /Prev 0 x table rows, table index, stream rows, stream index; /XRefStm 0 x table rows, table index)"
+    },
+    {
+     "id": "PFR-0141",
+     "fate": "KILLED-NEW",
+     "reason": "'>= 1' is '> 0' over integers: offset 0 is refused, and TrailersHiddenByGuard is false. The same six new rows fail. The flagged corpus test, run alone with the mutant three times, passed 129/129 each time (16.1, 17.2, 17.1 s). The harness's failure was the same 20 s time guard.",
+     "test": "AdCodicem.Pdf.Tests.ReaderLimitsTests.A_link_a_section_a_guard_stops_gives_that_may_be_sound_stays_the_guard_s (rows /Prev 0 x four guards; /XRefStm 0 x table rows, table index)"
+    },
+    {
+     "id": "PFR-0142",
+     "fate": "EQUIVALENT",
+     "reason": "Same reason as PFR-0139. Offset -1 gives PositionOf(-1) = -1, which IsInFile refuses, so admitting -1 changes nothing for any input."
+    }
+   ],
+   "tests_added": [
+    "ReaderLimitsTests.A_prev_a_stream_a_guard_stopped_writes_as_a_reference_is_unknown_only_for_a_row_it_left_unread: new row (\"the first object's row, declared last\", \"1 0 R\", true). Newest cross-reference stream /Index [0 1 2 21 1 1], rows 0, 2..22, then 1; MaxIndexEntries = 8. It pins that a /Prev reference to object 1, whose row lies past the full point, hides the trailers (TrailersHiddenByGuard true) and reports no xref.section-missing: object 1 is treated as any other number, and only object 0 is excluded. The theory's comment now names the shape.",
+    "ReaderLimitsTests.A_link_a_section_a_guard_stops_gives_that_may_be_sound_stays_the_guard_s: six new rows, /Prev 0 under table rows, table index, stream rows and stream index, and /XRefStm 0 under table rows and table index. StoppedSectionFiles.Stopped; offset 0 is the header, which the chain never reached. Each row pins that the guard's report is the only diagnostic, TrailersHiddenByGuard is true, there is one section, there is no rebuild, and the whole read reports no xref.section-missing. A probe confirmed that the whole read finds the older table 199 bytes after offset 0: xref.offset-adjusted, plus xref.hybrid-stream-lost for /XRefStm. The theory's comment now names offset 0.",
+    "ReaderLimitsTests whole class on the base: 344 total, 0 failed, 344 succeeded, 0 skipped. It held 337 before the 7 rows."
+   ],
+   "commit": "2007812 test: hold a guarded section's link to object 1 or to offset 0 as the guard's (Refs #207, #210, #221, #264; the LeadsPastIndex line was last written by 8ccd868, Refs #207, #210, #221, and the NamesSection line by 294d550, Refs #264). Patch: C:/Users/clemm/AppData/Local/Temp/claude/7278f9d03177d71e/898783fc-049f-469a-ab79-dfd299ad558e/scratchpad/cloud/settle/patches/b3-01/0001-test-hold-a-guarded-section-s-link-to-object-1-or-to.patch",
+   "patch": "C:/Users/clemm/AppData/Local/Temp/claude/7278f9d03177d71e/898783fc-049f-469a-ab79-dfd299ad558e/scratchpad/cloud/settle/patches/b3-01/0001-test-hold-a-guarded-section-s-link-to-object-1-or-to.patch",
+   "commands": [
+    "git fetch origin ccr-6d6c0ee6-dqm4lm-188; git checkout --detach origin/ccr-6d6c0ee6-dqm4lm-188 -> 1e1d171",
+    "dotnet build tests/AdCodicem.Pdf.Tests/AdCodicem.Pdf.Tests.csproj -c Release -m:2 (each build: 0 warnings, 0 errors)",
+    "Base + new rows: --filter-method on both theories -> 24 total, 0 failed, 24 succeeded",
+    "Temporary probe test (deleted before commit) printed the whole-read and guarded diagnostics for /Prev 0 and /XRefStm 0",
+    "PFR-0163 applied: both theories -> 24 total, 1 failed (the new 'the first object's row, declared last' row: TrailersHiddenByGuard expected True, found False), 23 succeeded; reverted",
+    "PFR-0140 applied: both theories -> 24 total, 6 failed (the six offset-0 rows), 18 succeeded. CorpusReadingTests.Damaged_documents_are_recovered_as_far_as_an_independent_tool_recovers_them x3 -> 129/0/129 each (16.0 s, 18.5 s, 17.3 s), remote corpus hard-linked; reverted",
+    "PFR-0141 applied: both theories -> 24 total, 6 failed (the same six rows), 18 succeeded. Damaged_documents x3 -> 129/0/129 each (16.1 s, 17.2 s, 17.1 s); reverted",
+    "PFR-0139 applied: ObjectRuleTests.A_run_of_links_the_walk_takes_at_the_reader_s_deepest_load_is_never_where_the_stack_cuts_it x3 -> 1/0/1 each. Both theories -> 24/0/24; reverted",
+    "PFR-0120 applied: the same ObjectRuleTests method x3 -> 1/0/1 each (4.9, 5.4, 6.6 s); reverted",
+    "Base: ObjectRuleTests.A_run_of_links_... x3 -> 1/0/1 each",
+    "Base: --filter-class AdCodicem.Pdf.Tests.ReaderLimitsTests -> 344 total, 0 failed, 344 succeeded, 0 skipped (after the final comment wording too)",
+    "PFR-0118, 0119, 0121, 0122, 0123, 0142 and 0721: settled by reading every read and write, not built",
+    "check_msgs.py on git log 1e1d171..HEAD -> '2007812 77 OK'; grep_keys.py and widegrep.py on git show HEAD -> rc 0, no output",
+    "git format-patch -1 HEAD into patches/b3-01; rm -rf tests/corpus/remote (links only; the maintainer's copy is intact); git status --short clean; src/ identical to 1e1d171"
+   ],
+   "found": [
+    "ObjectRuleTests.A_run_of_links_the_walk_takes_at_the_reader_s_deepest_load_is_never_where_the_stack_cuts_it failed in the harness for two mutants that cannot touch its path. PFR-0120 only releases memory, and failed in both its first-filter and its whole-suite runs. PFR-0139 is equivalent, and failed in its whole-suite run. Each time, the stack cut the walk at objects 100 to 114 and never at 160. The test passed alone 3/3 with each mutant and 3/3 on the base. It looks flaky under the 8-worker load, since its stack probe depends on what else runs on the machine. It is not flaky alone.",
+    "CorpusReadingTests.Damaged_documents_are_recovered_as_far_as_an_independent_tool_recovers_them failed in the harness only on its 20 s validation time guard, for cairo-firefox-objstm-index-overflow-bug1978317.pdf (20.07 s) under load. Alone it runs in 16 to 18.5 s for all 129 rows.",
+    "LeaveReadingToPrevious: in 'Padding = place.WasRelocated ? 0 : place.Padding', the ternary is redundant. A relocated record's Padding is always 0, because every place the search tries starts at a token. This is not a fault, and the comment above it stays true.",
+    "NamesSection: the 'and >= 0' conjunct is redundant with IsInFile(PositionOf(offset)), because PositionOf keeps a negative offset negative. This is not a fault."
+   ]
+  },
+  "remoteControlDeviceReport": false,
+  "toolsUsed": [
+   "Bash",
+   "Read",
+   "Edit",
+   "Write",
+   "StructuredOutput"
+  ]
+ },
+ {
+  "type": "result",
+  "key": "v2:8e0be7966d08fc2430f46574be93d3abb4f8003496ae9f7e744d63582029359e",
+  "agentId": "ab41540658c112f0c",
+  "result": {
+   "label": "b3-02-r",
+   "base": "95d5814",
+   "verdicts": [
+    {
+     "id": "PFR-0533",
+     "verdict": "TEST-OK",
+     "reason": "Holds. With the check replaced by true, the NamedAgain section at own+1 is counted as a place the chain reached. StartsWithin then holds back the report at stream 20. The test compares the exact (Code, Position) list with Should().Equal, and with the change applied that list has no XRefStreamPassedOver at own (1 total, 1 failed). The assertion is on the report the change suppresses, not on a value that happens to come along.",
+     "test": "AdCodicem.Pdf.Tests.CrossReferenceChainTests.A_stream_passed_over_near_a_hybrid_table_s_prev_that_names_a_place_inside_its_object_number_is_reported_though_an_older_xrefstm_names_that_place_again"
+    },
+    {
+     "id": "PFR-0011",
+     "verdict": "TEST-OK",
+     "reason": "Holds. With endsRange false, the first read leaves the keyword in the comment undecided. Because the buffer reaches the limit, the search then returns -1 without reading any further, and the keyword is lost. Both rows pin the exact RawLength: 18 instead of 8, and 21 instead of 11 (3 total, 2 failed).",
+     "test": "AdCodicem.Pdf.Tests.StreamLengthTests.An_endstream_in_a_comment_that_only_white_space_separates_from_the_next_object_ends_the_data"
+    },
+    {
+     "id": "PFR-0012",
+     "verdict": "TEST-OK",
+     "reason": "Holds. inBuffer is clamped to limit - dataStart, so dataStart + inBuffer can never be more than limit. That makes '>' always false, the same change as PFR-0011. Both rows fail with the same values as for PFR-0011 (3 total, 2 failed).",
+     "test": "AdCodicem.Pdf.Tests.StreamLengthTests.An_endstream_in_a_comment_that_only_white_space_separates_from_the_next_object_ends_the_data"
+    },
+    {
+     "id": "PFR-0038",
+     "verdict": "TEST-OK",
+     "reason": "Holds. This change only affects cost. When the buffer ends exactly at end, which here is limit, the first read was already told it ends the range. The loop then reads the last 10 bytes again and reaches the same result. The maintainer's rule of 2026-11-01 says such a change is caught by a deterministic count, and the test pins an exact count: source bytes read and EndStreamSearchBytes == 0. With the change, 247 bytes are read instead of 237 (3 total, 1 failed).",
+     "test": "AdCodicem.Pdf.Tests.StreamLengthTests.A_search_whose_bytes_the_object_s_window_holds_to_the_end_of_the_file_reads_nothing_more"
+    },
+    {
+     "id": "PFR-0032",
+     "verdict": "OVERTURNED",
+     "reason": "One premise is false: that FindEndStream's only caller is PdfObjectParser.ReadStream. FindEndStream is a member of the internal IPdfStreamDataProvider, and the tests already call that interface's other members directly with places no file produces: DataStart(-1), TokenEndsAt(-1), EndsBesideWhiteSpace(0). CLAUDE.md's Coverage rule allows exactly that. For every document the reason is true, since the data starts at 6 or later. But a direct call with absoluteDataStart 0, on a file whose junk before %PDF- starts with 'endstream', gives found == 0. Here the parser holds 15 bytes, which is past the 10-byte overlap and short of object 1 at 19. On the base the call returns Length 0, NextObject 19, EndObj Absent. With the change the search goes into the loop and returns Length null, NextObject 19, EndObj Unknown (2 total, 1 failed). Now KILLED-NEW.",
+     "test": "AdCodicem.Pdf.Tests.StreamLengthTests.A_search_for_data_that_starts_at_the_file_s_first_byte_stops_at_an_endstream_or_a_header_that_starts_there"
+    },
+    {
+     "id": "PFR-0033",
+     "verdict": "OVERTURNED",
+     "reason": "Same false premise as PFR-0032. found == 0 when the data starts at 0, so 'found >= 1' sends the search into the loop. It returns Length null instead of 0 (2 total, 1 failed: the endstream row). Now KILLED-NEW.",
+     "test": "AdCodicem.Pdf.Tests.StreamLengthTests.A_search_for_data_that_starts_at_the_file_s_first_byte_stops_at_an_endstream_or_a_header_that_starts_there"
+    },
+    {
+     "id": "PFR-0057",
+     "verdict": "OVERTURNED",
+     "reason": "Same false premise as PFR-0032. At the inner check, found == 0 is not returned. The buffer stops short of object 1, so the search returns -1 with searched false: Length null and Searched False, instead of Length 0 (2 total, 1 failed). Now KILLED-NEW.",
+     "test": "AdCodicem.Pdf.Tests.StreamLengthTests.A_search_for_data_that_starts_at_the_file_s_first_byte_stops_at_an_endstream_or_a_header_that_starts_there"
+    },
+    {
+     "id": "PFR-0058",
+     "verdict": "OVERTURNED",
+     "reason": "Same as PFR-0057: 'found >= 1' at the inner check drops a data end at 0, giving Length null and Searched False instead of Length 0 (2 total, 1 failed). Now KILLED-NEW.",
+     "test": "AdCodicem.Pdf.Tests.StreamLengthTests.A_search_for_data_that_starts_at_the_file_s_first_byte_stops_at_an_endstream_or_a_header_that_starts_there"
+    },
+    {
+     "id": "PFR-0035",
+     "verdict": "OVERTURNED",
+     "reason": "Same false premise: header is never 0 only because no caller in src passes a data start of 0. A direct FindEndStream call with absoluteDataStart 0, on a file whose junk starts with '9 0 obj\\nendobj\\n', gives header == 0. The carried space at the data start means the header counts as preceded by white space. On the base the call returns NextObject 0, HeaderStopped true, EndObjSeen false. With the change the search goes into the loop, passes the header, and runs to object 1: NextObject 24, HeaderStopped false, EndObjSeen true, ObjectEnd 7 (2 total, 1 failed). Now KILLED-NEW. The ObjectRuleTests test the harness flagged passed alone with this change applied 3 times out of 3, so no existing test catches it.",
+     "test": "AdCodicem.Pdf.Tests.StreamLengthTests.A_search_for_data_that_starts_at_the_file_s_first_byte_stops_at_an_endstream_or_a_header_that_starts_there"
+    },
+    {
+     "id": "PFR-0036",
+     "verdict": "OVERTURNED",
+     "reason": "Same as PFR-0035. 'header >= 1' passes over a header at 0, giving NextObject 24 instead of 0 and HeaderStopped false (2 total, 1 failed: the header row). Now KILLED-NEW.",
+     "test": "AdCodicem.Pdf.Tests.StreamLengthTests.A_search_for_data_that_starts_at_the_file_s_first_byte_stops_at_an_endstream_or_a_header_that_starts_there"
+    },
+    {
+     "id": "PFR-0043",
+     "verdict": "OVERTURNED",
+     "reason": "Same false premise as PFR-0035. With header == 0, the tail is read through the parser's bytes instead of up to the header. It then sees the endobj that lies past the header, so EndObjSeen is True instead of False, the rest of the result unchanged (2 total, 1 failed). Now KILLED-NEW.",
+     "test": "AdCodicem.Pdf.Tests.StreamLengthTests.A_search_for_data_that_starts_at_the_file_s_first_byte_stops_at_an_endstream_or_a_header_that_starts_there"
+    },
+    {
+     "id": "PFR-0044",
+     "verdict": "OVERTURNED",
+     "reason": "Same as PFR-0043. 'header >= 1' reads the tail past a header at 0 and gives EndObjSeen True instead of False (2 total, 1 failed). Now KILLED-NEW.",
+     "test": "AdCodicem.Pdf.Tests.StreamLengthTests.A_search_for_data_that_starts_at_the_file_s_first_byte_stops_at_an_endstream_or_a_header_that_starts_there"
+    }
+   ],
+   "tests_added": [
+    "StreamLengthTests.A_search_for_data_that_starts_at_the_file_s_first_byte_stops_at_an_endstream_or_a_header_that_starts_there (Theory, placed after The_start_and_the_end_of_the_search_bound_an_object_header_as_white_space_does at line 596, away from the settling patch's hunk at 2412; the settling patch still applies on top). It writes a HandWrittenFile with junk before %PDF- (objects 1 and 2 and a classic table), opens it, and calls ((IPdfStreamDataProvider)document.Reader).FindEndStream(number: 0, absoluteDataStart: 0, declaredEnd: -1, buffered: bytes[..(junk.Length + 5)], deferred: false). The parser therefore holds the junk and '%PDF-': past the 10-byte overlap, short of object 1. Row 'endstream\\n': it pins new StreamEndSearch(0, junk.Length + rows[1], EndObjState.Absent). Row '9 0 obj\\nendobj\\n': it pins new StreamEndSearch(null, 0, EndObjState.Unknown) { HeaderStopped = true }. Both rows also pin Reader.EndStreamSearchBytes == 0. Base: 2/2 pass. Each of the 8 changes fails exactly one row: PFR-0032, 0033, 0057 and 0058 the endstream row; PFR-0035, 0036, 0043 and 0044 the header row."
+   ],
+   "patch": "C:/Users/clemm/AppData/Local/Temp/claude/7278f9d03177d71e/898783fc-049f-469a-ab79-dfd299ad558e/scratchpad/cloud/settle/patches/b3-02-r/0001-test-pin-a-search-for-data-at-the-file-s-first-byte-.patch",
+   "commands": [
+    "git fetch origin ccr-6d6c0ee6-dqm4lm-188; git checkout --detach origin/ccr-6d6c0ee6-dqm4lm-188 -> base 95d5814 (later than 1e1d171; git diff 19a2296 HEAD -- src is empty)",
+    "git apply of the settling patch b3-02/0001-...patch, then dotnet build tests/AdCodicem.Pdf.Tests/AdCodicem.Pdf.Tests.csproj -c Release -m:2 (every build in this session: 0 warnings, 0 errors)",
+    "Base + settling patch, its 3 tests (4 cases): total 4, failed 0, succeeded 4, skipped 0",
+    "PFR-0533 applied, the CrossReferenceChainTests test: total 1, failed 1 (the diagnostics list lacks XRefStreamPassedOver at own); reverted",
+    "PFR-0011 applied, the settling StreamLengthTests tests: total 3, failed 2 (both comment rows: 18 vs 8, 21 vs 11); reverted",
+    "PFR-0012 applied: total 3, failed 2 (same rows, same values); reverted",
+    "PFR-0038 applied: total 3, failed 1 (247 bytes read vs 237); reverted",
+    "PFR-0035 applied, ObjectRuleTests.A_run_of_links_the_walk_takes_at_the_reader_s_deepest_load_is_never_where_the_stack_cuts_it run alone 3 times: total 1, failed 0, succeeded 1 each time; reverted",
+    "My theory added; base: total 2, failed 0, succeeded 2",
+    "Each of PFR-0032, 0033, 0057, 0058, 0035, 0036, 0043, 0044 applied and the theory run, first on the draft and again on the final text: total 2, failed 1 every time (the endstream row for the first four, the header row for the last four); each reverted",
+    "git apply -R of the settling patch, so the commit holds only the new theory",
+    "cp -al of tests/corpus/remote; base, StreamLengthTests whole class with --filter-not-method on the three Measure-based tests (Searches_through_an_index_of_a_million_entries_take_bounded_time, An_endstream_in_a_header_s_comment_is_decided_by_reading_on_once_through_the_comment_lines_after_it, A_file_of_data_with_no_endstream_is_searched_once_to_its_end): total 279, failed 0, succeeded 279, skipped 0",
+    "git log -L2601,2606 21a0298..HEAD on PdfFileReader.cs: only b4cfda0 (Refs #261)",
+    "git commit -F msg.txt -> 998c1dd 'test: pin a search for data at the file's first byte ending at an endstream or a header there' (Refs #261)",
+    "check_msgs.py: '998c1dd 93 OK', rc 0; grep_keys.py and widegrep.py on git diff 95d5814 HEAD: no output, rc 0",
+    "git format-patch -1 -o .../settle/patches/b3-02-r/ HEAD",
+    "git apply --check of the settling patch on top of 998c1dd: applies",
+    "rm -rf tests/corpus/remote; git status clean; src/ identical to base 95d5814"
+   ]
+  },
+  "remoteControlDeviceReport": false,
+  "toolsUsed": [
+   "Bash",
+   "Write",
+   "Read",
+   "Edit",
+   "StructuredOutput"
+  ]
+ },
+ {
+  "type": "result",
+  "key": "v2:1eb3f7e47c1d7d98768af1b866d5e595b400f4d142e48bb84440b4d3f6f6bf62",
+  "agentId": "a6e924d4008eed587",
+  "result": {
+   "label": "b3-01",
+   "base": "95d5814",
+   "verdicts": [
+    {
+     "id": "PFR-0118",
+     "verdict": "UPHELD",
+     "reason": "I checked every read and write of _rowsLost: RefuseRowsLost, LoseRows (called from ReadSubsection, which TryReadClassicTable calls) and TryReadClassicTable's per-pass Clear. The call graph is TryReadXRefSection, called from TryReadXRefChain directly or through TryRelocateXRefSection. TryReadXRefChain has one caller, Initialize, and Initialize has one caller, the constructor. Nothing reads the field after the finally, and no other member or file touches it. Assigning null allocates nothing: allocations measured over 16 chain shapes match the head to the byte. The mutant keeps at most 4,096 ranges of 16 bytes (64 KB) until the reader is collected. The reason holds as written."
+    },
+    {
+     "id": "PFR-0119",
+     "verdict": "UPHELD",
+     "reason": "_streamsPassedOver is written only in TryRelocateXRefSection and read only in ReportStreamsPassedOver (line 3742). Both run only inside the one TryReadXRefChain call the constructor makes, so nothing reads it after the finally. Assigning null allocates nothing. Each entry is a place that was counted against the reader-wide _relocationCandidatesTried bound when it was first tried (MaxRelocationCandidates = 32, never reset). That is at most 32 tuples of 32 bytes, about 1 KB. The reason holds."
+    },
+    {
+     "id": "PFR-0120",
+     "verdict": "UPHELD",
+     "reason": "Equivalent in what is reported, but the cost is worded wrong. The reads hold: Contains in TryReadXRefChain, ReachedAt (reached from ReachedBefore, NamesSection and StartOfNamed) and TryRelocateXRefSection, plus the one Add in RecordSectionReached, all run only inside the one TryReadXRefChain call. The mutant does more than keep the entries. Without the Clear, TrimExcess(Count) copies them into new arrays of GetPrime(count) slots, about 20 bytes each. Allocations.Least on PdfDocument.Open of a chain of tables gave 893,328 bytes on the head and 915,328 with the mutant at 1,000 sections (+22,000, 2.5%). The gap is +15,160 at 673 sections, +2,080 at 100 and +160 at 8, and -112 at 4 to 7 entries, where the copy is skipped. A chain of streams gives the same gaps. The bound is one entry per section reached (the section, plus a hybrid stream), at most 2 x MaxXRefSectionCount = 2,048 by default. That is GetPrime(2048) = 2,333 slots, about 47 KB, allocated once per reader and kept until it is collected. It is classed cost only, as R19 and MHd2 were, because the excess is a small share of what reading the chain allocates and no budget can hold the two apart reliably. The flagged ObjectRuleTests stack-cut test passed alone with the mutant 3/3 (4.6, 4.5, 5.1 s)."
+    },
+    {
+     "id": "PFR-0121",
+     "verdict": "UPHELD",
+     "reason": "Same reads as PFR-0120, none after the finally. Corrected cost: the mutant allocates 112 bytes less than the head (measured on all 16 chain shapes), because TrimExcess(0) no longer builds 3-slot arrays. It keeps the cleared arrays at their full capacity, and growth leaves capacity at up to about twice the entries: 4,049 slots for 2,048 entries, about 81 KB by default, not 'under about 50 KB'. It is cheaper in allocation, so it is classed with what the head pays, its retained arrays bounded as above."
+    },
+    {
+     "id": "PFR-0122",
+     "verdict": "UPHELD",
+     "reason": "Equivalent in what is reported, but the cost is worded wrong. _sectionDigitsAt is read only in TryRelocateXRefSection and written only in RecordSectionReached, both inside the one TryReadXRefChain call. Without the Clear, TrimExcess(Count) copies the entries into new GetPrime(count) arrays. Tables add only -1, so a table chain's allocations match the head to the byte. A chain of streams gives +22,000 bytes at 1,000 streams (1,809,376 to 1,831,376), +2,080 at 100 and -112 at 4 to 7. At most 2 x MaxXRefSectionCount entries is about 47 KB, allocated once per reader and kept. Classed cost only, like PFR-0120."
+    },
+    {
+     "id": "PFR-0123",
+     "verdict": "UPHELD",
+     "reason": "Same reads as PFR-0122, none after the finally. Corrected cost: 112 bytes less allocated on a chain of streams, and nothing different on a chain of tables, whose set holds only -1 in its first 3 slots. It keeps the cleared arrays at their capacity: up to 4,049 slots for 2,048 entries, about 81 KB by default, not 'under about 50 KB'. Cheaper in allocation, so classed with what the head pays."
+    },
+    {
+     "id": "PFR-0163",
+     "verdict": "TEST-OK",
+     "reason": "With the mutant, exactly one of the theory's 8 rows fails: 'the first object's row, declared last', with 'Expected TrailersHiddenByGuard to be True, but found False'. That flag is the behavior the mutant changes: LeadsPastIndex now refuses object 1. The row passes on the base. The /Index [0 1 2 21 1 1] shape is needed, because object 1 has to be declared past the point where MaxIndexEntries = 8 fills, and a number no subsection declares already reads as not hidden. The row says something of its own: it pins the boundary between object 0 and object 1. The name holds for every row, and the Refs (#207, #210, #221 from 8ccd868) are right.",
+     "test": "AdCodicem.Pdf.Tests.ReaderLimitsTests.A_prev_a_stream_a_guard_stopped_writes_as_a_reference_is_unknown_only_for_a_row_it_left_unread(shape: \"the first object's row, declared last\", prev: \"1 0 R\", hidden: True)"
+    },
+    {
+     "id": "PFR-0721",
+     "verdict": "UPHELD",
+     "reason": "Offset changes only in the constructor and in RelocateTo, whose one caller is TryRelocateXRefSection at line 5405. Padding is written only at 5830 (from PaddingAt), 6739 (header - absolute) and in RelocateTo. A relocated record's Padding comes from an attempt read at a candidate. Every candidate is either an 'x' or the first digit or sign of a header (FindSectionCandidates), or streamStart, which is another record's Offset + Padding and so a token start. At a token start, PaddingAt gives first.Start = 0, including through the _paddingProbes cache, and HeaderStart is 0. To check that, I logged LeaveReadingToPrevious on the head over CrossReferenceChainTests, GuardCutValueTests, CrossReferenceRuleTests and ReaderLimitsTests (2,315 tests): 25 relocated places reached it, all with Padding 0 (199 places that were not relocated had Padding 0, and 5 had Padding 1). The reason holds."
+    },
+    {
+     "id": "PFR-0139",
+     "verdict": "UPHELD",
+     "reason": "PositionOf leaves a negative offset negative, and IsInFile refuses any position below 0. IsInFile is non-virtual and has no side effect, and ReachedBefore is never reached either way. I probed /Prev -1, -5 and -9999999999, /XRefStm -1 and -5, and both together, under the four guards, in the file StoppedSectionFiles.Stopped builds and in the one AtTheFirstByte builds (no header). Diagnostics (code, position, message), TrailersHiddenByGuard, section count and WasRepaired match the head line for line. Both theories pass 25/25. The flagged ObjectRuleTests test passed alone with the mutant 3/3 (5.4, 5.0, 4.6 s)."
+    },
+    {
+     "id": "PFR-0140",
+     "verdict": "TEST-OK",
+     "reason": "With the mutant, the six new offset-0 rows fail, and they pass on the base. They fail at the first assertion, the single guard diagnostic: the probe shows each guarded read now has TrailersHiddenByGuard False and WasRepaired True, and adds xref.rebuilt and object.redefined. The rows also assert TrailersHiddenByGuard and WasRepaired, the behavior offset 0 decides. The harness log shows its CorpusReadingTests failure was only the 20 s time guard (20.07 s on cairo-firefox-objstm-index-overflow-bug1978317.pdf), not a behavior. I did not run that corpus test again. The Refs (#264 from 294d550) are right.",
+     "test": "AdCodicem.Pdf.Tests.ReaderLimitsTests.A_link_a_section_a_guard_stops_gives_that_may_be_sound_stays_the_guard_s (/Prev 0 under table rows, table index, stream rows and stream index; /XRefStm 0 under table rows and table index)"
+    },
+    {
+     "id": "PFR-0141",
+     "verdict": "TEST-OK",
+     "reason": "Over integers, '>= 1' is the same as '> 0'. The same six rows fail at the same assertion, and the probe output matches PFR-0140's. The harness's corpus failure was the same time guard (22.76 s).",
+     "test": "AdCodicem.Pdf.Tests.ReaderLimitsTests.A_link_a_section_a_guard_stops_gives_that_may_be_sound_stays_the_guard_s (the same six offset-0 rows)"
+    },
+    {
+     "id": "PFR-0142",
+     "verdict": "UPHELD",
+     "reason": "Admitting -1 gives PositionOf(-1) = -1, which IsInFile refuses. With the mutant, the probe rows /Prev -1, /XRefStm -1 and both together give output identical to the head under all four guards and in both file layouts. The first theory passes 17/17."
+    }
+   ],
+   "tests_added": [],
+   "patch": "none",
+   "commands": [
+    "git fetch origin ccr-6d6c0ee6-dqm4lm-188; git checkout --detach origin/ccr-6d6c0ee6-dqm4lm-188 -> 95d5814. 1e1d171 is an ancestor; git diff 19a2296 HEAD -- src is empty; the 5 commits after 1e1d171 touch only HeaderTextTests and StreamEndsTests",
+    "git apply patches/b3-01/0001-test-hold-a-guarded-section-s-link-to-object-1-or-to.patch: applies cleanly on 95d5814; used to check the new rows, restored with git checkout at the end",
+    "dotnet build tests/AdCodicem.Pdf.Tests/AdCodicem.Pdf.Tests.csproj -c Release -m:2: 0 warnings, 0 errors on every build (one instrumented build with -p:TreatWarningsAsErrors=false, also 0 warnings)",
+    "Base + settling patch: both theories -> 24 total, 0 failed, 24 succeeded, 0 skipped",
+    "PFR-0163 applied: both theories -> 24 total, 1 failed (the row 'the first object's row, declared last': TrailersHiddenByGuard expected True, found False), 23 succeeded. Second theory alone -> 8/1/7. Reverted",
+    "PFR-0140 applied: both theories + probe -> 25 total, 6 failed (the six offset-0 rows, at the single-diagnostic assertion), 19 succeeded. Probe diff: 6 guarded cases go from hidden True / repaired False to hidden False / repaired True, plus xref.rebuilt and object.redefined. Reverted",
+    "PFR-0141 applied: first theory + probe -> 17 total, 6 failed (the same rows), 11 succeeded. Probe output identical to PFR-0140's. Reverted",
+    "PFR-0139 applied: both theories + probe of negative /Prev and /XRefStm (-1, -5, -9999999999, both together) under four guards, header file and first-byte file -> 25/0/25. Probe output identical to the head. Reverted",
+    "PFR-0142 applied: first theory + probe -> 17/0/17. Probe output identical to the head. Reverted",
+    "PFR-0120 applied: ObjectRuleTests.A_run_of_links_the_walk_takes_at_the_reader_s_deepest_load_is_never_where_the_stack_cuts_it x3 -> 1/0/1 each (4.6, 4.5, 5.1 s). PFR-0139 applied: the same x3 -> 1/0/1 each (5.4, 5.0, 4.6 s)",
+    "Head instrumented (LeaveReadingToPrevious logs WasRelocated and Padding): CrossReferenceChainTests, GuardCutValueTests, CrossReferenceRuleTests, ReaderLimitsTests -> 2,315 tests. Log: 25 relocated places, all Padding 0; 199 not relocated with 0, 5 with 1. Source restored with git checkout",
+    "Allocation probe (Allocations.Least on PdfDocument.Open of chains of 4, 5, 7, 8, 100, 673, 674 and 1,000 tables or cross-reference streams), head vs mutant. PFR-0120: +22,000 B at 1,000 (tables 893,328 -> 915,328; streams 1,809,376 -> 1,831,376), +15,160 at 673/674, +2,080 at 100, +160 at 8, -112 at 4 to 7. PFR-0122: the same on streams, 0 on tables. PFR-0121: -112 on all 16 shapes. PFR-0118: 0 on all 16",
+    "git log -L3060,3060 -> 8ccd868 (Refs #207, #210, #221); git log -L3034,3034 -> 294d550 (Refs #264); these match the settling commit's footer",
+    "Harness logs read (logs/07): PFR-0140 and PFR-0141 suite failures were the 20 s time guard (20.07 s, 22.76 s); PFR-0120 first-filter and PFR-0139 suite failures were the stack-cut test. CorpusReadingTests was not re-run here, and no remote corpus was linked",
+    "Cleanup: temporary probe test files deleted, ReaderLimitsTests.cs restored; git status clean at 95d5814 with src/ as the base has it; no commit and no patch, since every verdict holds"
+   ]
+  },
+  "remoteControlDeviceReport": false,
+  "toolsUsed": [
+   "Bash",
+   "Grep",
+   "Read",
+   "Write",
+   "Edit",
+   "StructuredOutput"
+  ]
+ },
+ {
+  "type": "result",
+  "key": "v2:92cea53d7a56f9b061d1a904fab8c9fb9e33d99f479cd9f313f29ff36ca58beb",
+  "agentId": "a3f115d9d30f41a24",
+  "result": {
+   "label": "b3-03",
+   "base": "95d5814 (the branch head of origin/ccr-6d6c0ee6-dqm4lm-188 when fetched; 1e1d171 was expected, but five test-only commits have landed on top of it since. `git diff 19a2296 HEAD -- src/` is empty, so src/ matches the mutation run.)",
+   "survivors": [
+    {
+     "id": "PFR-0060",
+     "fate": "EQUIVALENT",
+     "reason": "The header is either -1 or the file position of a number read at or after dataStart. dataStart is always past the stream keyword (DataStart returns a position at or after the keyword's end, and every parser the reader builds starts at a file offset of 0 or more), so it is at least 6, and `header > 0` matches `header >= 0` for every value the header can take."
+    },
+    {
+     "id": "PFR-0061",
+     "fate": "EQUIVALENT",
+     "reason": "Same reason as PFR-0060: the header is -1 or at least dataStart, and dataStart is at least 6, so `header >= 1` matches `header >= 0` for every value the header can take."
+    },
+    {
+     "id": "PFR-0065",
+     "fate": "EQUIVALENT",
+     "reason": "The two versions differ only when found >= 0. In this first block that value lies inside the parser's bytes, at most inBuffer (no more than int.MaxValue) past dataStart, so SearchEndStreamOnce keeps the length and never reads objectEnd. EndObjTail.DataEnd is a readonly pure read, so calling it changes nothing."
+    },
+    {
+     "id": "PFR-0067",
+     "fate": "EQUIVALENT",
+     "reason": "Same reason as PFR-0065: whenever found >= 0 here, the caller keeps the length and never reads objectEnd. Also, found is never 0, because it is at least dataStart, which is at least 6."
+    },
+    {
+     "id": "PFR-0068",
+     "fate": "EQUIVALENT",
+     "reason": "Same reason as PFR-0065 and PFR-0067: objectEnd is never read when found >= 0 in this block, and found is never 0."
+    },
+    {
+     "id": "PFR-0070",
+     "fate": "EQUIVALENT",
+     "reason": "Same reason as PFR-0065: this arm is taken only when found >= 0, and then the caller builds StreamEndSearch with the length and drops objectEnd, so -2 and -1 are never read."
+    },
+    {
+     "id": "PFR-0071",
+     "fate": "EQUIVALENT",
+     "reason": "Same reason as PFR-0065: this arm is taken only when found >= 0. The found value is at most inBuffer past dataStart, so the caller's `dataEnd - absoluteDataStart <= int.MaxValue` always holds and the 0 written to objectEnd is never read."
+    },
+    {
+     "id": "PFR-0079",
+     "fate": "EQUIVALENT",
+     "reason": "SearchEndStream's return value has one reader, SearchEndStreamOnce, and it uses the value only through `dataEnd >= 0`. -2 and -1 both fail that test, and the length expression is built only on the true branch."
+    },
+    {
+     "id": "PFR-0090",
+     "fate": "EQUIVALENT",
+     "reason": "Same reason as PFR-0079: the caller only checks whether the return value is negative, and -2 and -1 are both negative. The one unconfirmed failure, CorpusReadingTests.Damaged_documents_are_recovered_as_far_as_an_independent_tool_recovers_them, is a stopwatch bound, not a behavior change. In the harness suite log the 20 s check failed on remote/pdfjs/cairo-firefox-objstm-index-overflow-bug1978317.pdf (validating it took 21.1 s while 8 mutation workers were running). Run alone with the mutant applied it passed three times out of three (129/129 each time, 14 to 16 s for all rows), plus one earlier run whose localized summary also showed 0 failures. So no existing test catches the mutant."
+    },
+    {
+     "id": "PFR-0105",
+     "fate": "EQUIVALENT",
+     "reason": "Same reason as PFR-0060: inside the loop, SearchStretch (through FindHeader, or PendingEndStream through HeaderAt) gives either -1 or the start of a number read at or after dataStart, which is at least 6. The header is never 0, so `header > 0` picks the same Read bound as `header >= 0`."
+    },
+    {
+     "id": "PFR-0106",
+     "fate": "EQUIVALENT",
+     "reason": "Same reason as PFR-0105: the header is -1 or at least dataStart, which is at least 6, so `header >= 1` picks the same bound as `header >= 0` for every value the header can take."
+    }
+   ],
+   "tests_added": [],
+   "commit": "none: every survivor in this group is equivalent, so no test was written and nothing was committed (no patch was written).",
+   "patch": "none",
+   "commands": [
+    "git fetch origin ccr-6d6c0ee6-dqm4lm-188; git checkout --detach origin/ccr-6d6c0ee6-dqm4lm-188 -> HEAD 95d5814. 1e1d171 is an ancestor of it, and `git diff 19a2296 HEAD -- src/` is empty",
+    "cp -al C:/Users/clemm/repos/AdCodicem.Pdf/tests/corpus/remote tests/corpus/remote (needed by the remote rows of the corpus theory)",
+    "mutant.py . PFR-0090 (applied); dotnet build tests/AdCodicem.Pdf.Tests/AdCodicem.Pdf.Tests.csproj -c Release -m:2 -> 0 warnings, 0 errors",
+    "With PFR-0090 applied: AdCodicem.Pdf.Tests.exe --filter-method '*Damaged_documents_are_recovered_as_far_as_an_independent_tool_recovers_them*', run 4 times. First run (French-localized summary): total 129, failed 0. Then with DOTNET_CLI_UI_LANGUAGE=en-US, three runs: total 129, failed 0, succeeded 129, skipped 0 (15.9 s), then 129/0/129/0 (15.4 s), then 129/0/129/0 (14.2 s). No test failed with the mutant.",
+    "mutant.py . PFR-0090 --revert -> src/AdCodicem.Pdf/IO/PdfFileReader.cs restored",
+    "rm -rf tests/corpus/remote (removed only the links; the maintainer's tests/corpus/remote is intact); git status --short -> clean",
+    "No other mutant was applied or run: the other ten were settled by reading every read and write of what each site touches (SearchEndStreamOnce is the only caller; the return value is used only through dataEnd >= 0; objectEnd is read only on the ternary's false branch; header comes from HeaderText.TryFindStart through FindHeader or HeaderAt; dataStart comes from the parser's position past the stream keyword or from IPdfStreamDataProvider.DataStart)"
+   ],
+   "found": [
+    "No fault in src/ came out of this group: every mutant here changes a sentinel that is compared only by sign, a bound for a header value that never occurs (the header is -1 or at least dataStart, which is at least 6), or an objectEnd that the caller drops whenever the search returns a length.",
+    "Timing-sensitive test: CorpusReadingTests.Damaged_documents_are_recovered_as_far_as_an_independent_tool_recovers_them. Its Timed helper checks 20 s per operation, and that check failed on remote/pdfjs/cairo-firefox-objstm-index-overflow-bug1978317.pdf in the harness whole-suite step (validating it took 21.1 s while 8 mutation workers ran). It passed in every run alone (14 to 16 s for all 129 rows). It belongs on the list of time-bound tests that a loaded machine can fail, like ReaderTimingTests.",
+    "Base mismatch: the task expected 1e1d171, but the branch head was 95d5814, with five test-only commits since 1e1d171 (743cea0, 7d2f00f, f8e9aa1, c7be350, 95d5814, touching HeaderTextTests and StreamEndsTests). src/ is unchanged against the mutation run's 19a2296."
+   ]
+  },
+  "remoteControlDeviceReport": false,
+  "toolsUsed": [
+   "Bash",
+   "StructuredOutput"
+  ]
+ },
+ {
+  "type": "result",
+  "key": "v2:2b59e1e83fecbdabb7c7bad8e0418f057efeaa487fd45c35c97fbd696927d02e",
+  "agentId": "a34665c57a96e3ae2",
+  "result": {
+   "label": "b3-03-r",
+   "base": "95d5814 (head of origin/ccr-6d6c0ee6-dqm4lm-188 when fetched. 1e1d171 is an ancestor of it, and src/ matches the mutation run's 19a2296.) The new commit is 8e46f32, on top of 95d5814.",
+   "verdicts": [
+    {
+     "id": "PFR-0060",
+     "verdict": "OVERTURNED",
+     "reason": "The reason rests on a false premise: that dataStart is at least 6 because it always comes after a stream keyword. That holds only for calls that come through the parser. IPdfStreamDataProvider.FindEndStream is an internal interface member, and tests already call its sibling members directly at offsets 0 and -1. Called as FindEndStream(0, 0, -1, buffered, false) on a file whose first bytes are '12 0 obj\\nendobj\\n', where buffered holds those 16 bytes but stops before the stop at 32, it gives header == 0 and found == -1. The code returns Searched = true. With `header > 0` the code skips the stop branch, and since dataStart + buffered.Length < end it returns with searched = false, so StreamEndSearch.Searched is False. Now KILLED-NEW: the held: True row fails with the mutant and passes on the base.",
+     "test": "StreamLengthTests.A_header_at_the_file_s_first_byte_stops_a_search_whose_data_starts_there_as_it_does_anywhere(held: True)"
+    },
+    {
+     "id": "PFR-0061",
+     "verdict": "OVERTURNED",
+     "reason": "Same input as PFR-0060. `header >= 1` also treats header == 0 as no header, so Searched becomes False instead of True. Now KILLED-NEW: the held: True row fails with the mutant and passes on the base.",
+     "test": "StreamLengthTests.A_header_at_the_file_s_first_byte_stops_a_search_whose_data_starts_there_as_it_does_anywhere(held: True)"
+    },
+    {
+     "id": "PFR-0065",
+     "verdict": "UPHELD",
+     "reason": "Corrected reason: in this first block, found >= 0 means found lies in [dataStart, dataStart + inBuffer), for direct calls too. The only caller, SearchEndStreamOnce, then always takes the length branch (dataEnd - absoluteDataStart <= inBuffer <= int.MaxValue) and drops objectEnd. EndObjTail.DataEnd is a readonly, pure read that returns -1 for header -1, so calling it changes nothing. Tried: direct calls with data at offset 0 starting with 'endstream', '\\nendstream\\n', or a header, buffered or not, plus short-length streams found inside and past the window. All records were identical to the base."
+    },
+    {
+     "id": "PFR-0067",
+     "verdict": "UPHELD",
+     "reason": "Corrected reason: the clause 'found is never 0' is false. A direct call FindEndStream(0, 0, -1, \"endstream\\n\"/\"\\nendstream\\n\", false) gives found == 0, and the probe confirmed Length = 0. But whenever found >= 0 the caller takes the length branch and drops objectEnd. Also, at found == 0 the header is -1, so tail.DataEnd(-1) is -1 anyway. Probe records were identical to the base."
+    },
+    {
+     "id": "PFR-0068",
+     "verdict": "UPHELD",
+     "reason": "Corrected reason, same as PFR-0067: found == 0 can happen through a direct call at data offset 0, but objectEnd is dropped by the only caller whenever found >= 0, and DataEnd(-1) is -1 there anyway. Probe records were identical to the base."
+    },
+    {
+     "id": "PFR-0070",
+     "verdict": "UPHELD",
+     "reason": "This arm is taken only when found >= 0. Then found - dataStart < inBuffer <= int.MaxValue for every input, direct calls included, so SearchEndStreamOnce builds the StreamEndSearch from the length and never reads objectEnd. Probe records were identical to the base."
+    },
+    {
+     "id": "PFR-0071",
+     "verdict": "UPHELD",
+     "reason": "Same as PFR-0070: when found >= 0, the 0 written to objectEnd is never read, because the caller takes the length branch for every input. Probe records were identical to the base."
+    },
+    {
+     "id": "PFR-0079",
+     "verdict": "UPHELD",
+     "reason": "SearchEndStream is private and has one caller, SearchEndStreamOnce. That caller reads the return value only through `dataEnd >= 0`, and the length and the CheckEndStream call happen only on the true branch. -2 and -1 both fail that test. Probe records were identical to the base."
+    },
+    {
+     "id": "PFR-0090",
+     "verdict": "UPHELD",
+     "reason": "Same as PFR-0079: the return value is only compared by sign. The unconfirmed failure was a stopwatch bound, not a behavior change: the harness log shows that validating cairo-firefox-objstm-index-overflow-bug1978317.pdf took 21.1 s against a 20 s limit, and its confirm run passed 129 of 129. Run alone with the mutant applied, CorpusReadingTests.Damaged_documents_are_recovered_as_far_as_an_independent_tool_recovers_them passed three times out of three (129 of 129, 0 failed, 14 to 18 s). No existing test catches the mutant."
+    },
+    {
+     "id": "PFR-0105",
+     "verdict": "OVERTURNED",
+     "reason": "The reason has the same false premise (dataStart at least 6). A direct call FindEndStream(0, 0, -1, empty, false) on a file whose first bytes are '12 0 obj\\nendobj\\n' holds nothing in the first block, so the search enters the loop at position 0 with a 20-byte window. In that window the header is found at 0, and held.TryGet(0) is false because no copies are held. The code reads the tail up to 0, so EndObjSeen is false. With `header > 0` the code reads the whole window, sees the endobj at 9, and EndObjSeen is True. Now KILLED-NEW: the held: False row fails with the mutant and passes on the base.",
+     "test": "StreamLengthTests.A_header_at_the_file_s_first_byte_stops_a_search_whose_data_starts_there_as_it_does_anywhere(held: False)"
+    },
+    {
+     "id": "PFR-0106",
+     "verdict": "OVERTURNED",
+     "reason": "Same input as PFR-0105. `header >= 1` reads the whole window past a header at 0, so EndObjSeen becomes True instead of False. Now KILLED-NEW: the held: False row fails with the mutant and passes on the base.",
+     "test": "StreamLengthTests.A_header_at_the_file_s_first_byte_stops_a_search_whose_data_starts_there_as_it_does_anywhere(held: False)"
+    }
+   ],
+   "tests_added": [
+    "tests/AdCodicem.Pdf.Tests/StreamLengthTests.cs: A_header_at_the_file_s_first_byte_stops_a_search_whose_data_starts_there_as_it_does_anywhere(bool held). It is a theory with rows true and false. Each row opens a document whose bytes are '12 0 obj\\nendobj\\n' followed by Document(), then asserts with Should().Be that ((IPdfStreamDataProvider)document.Reader).FindEndStream(0, 0, -1, buffered, deferred: false) equals new StreamEndSearch(null, 0, EndObjState.Unknown) { HeaderStopped = true }. buffered is the 16 head bytes when held is true, and empty when it is false. The assertion pins Searched = true, EndObjSeen = false, ObjectEnd = -1 and NextObject = 0. The held row catches PFR-0060 and PFR-0061 (Searched becomes False). The not-held row catches PFR-0105 and PFR-0106 (EndObjSeen becomes True). Commit 8e46f32, test: with Refs #261 (from b4cfda0, the commit that wrote both site lines)."
+   ],
+   "patch": "C:/Users/clemm/AppData/Local/Temp/claude/7278f9d03177d71e/898783fc-049f-469a-ab79-dfd299ad558e/scratchpad/cloud/settle/patches/b3-03-r/0001-test-stop-a-search-at-a-header-that-starts-at-the-fi.patch",
+   "commands": [
+    "git fetch origin ccr-6d6c0ee6-dqm4lm-188; git checkout --detach origin/ccr-6d6c0ee6-dqm4lm-188 -> 95d5814; git diff 19a2296 HEAD --stat -- src/ is empty",
+    "Added the theory to StreamLengthTests. dotnet build tests/AdCodicem.Pdf.Tests/AdCodicem.Pdf.Tests.csproj -c Release -m:2 -> 0 warnings, 0 errors. Ran the new test on the base: total 2, failed 0, succeeded 2",
+    "For each of PFR-0060, PFR-0061, PFR-0105 and PFR-0106: mutant.py . <ID>, build (0 warnings, 0 errors), run the new test (--filter-method), then mutant.py --revert. PFR-0060: 2 run, 1 failed (held: True). PFR-0061: 2 run, 1 failed (held: True). PFR-0105: 2 run, 1 failed (held: False). PFR-0106: 2 run, 1 failed (held: False)",
+    "Wrote a temporary probe class (ZzProbe, deleted afterward) that dumps FindEndStream records at data offset 0 for heads 'endstream\\n', '\\nendstream\\n', 'endstream', '12 0 obj\\nendobj\\n' and '7 % endstream\\n0 obj\\n', each buffered and empty, with declaredEnd -1 and 0, plus two short-length streams (end found inside and past the window). Ran it on the base, then under PFR-0060, 0105, 0065, 0067, 0068, 0070, 0071, 0079 and 0090 (each: apply, build with 0 warnings, probe 1/1 passed, new test, revert). Probe output matched the base for 0065, 0067, 0068, 0070, 0071, 0079 and 0090 (new test 2 run, 0 failed each). It differed for 0060 (Searched False on the buffered header rows) and 0105 (EndObjSeen True on the empty-buffer header row)",
+    "cp -al C:/Users/clemm/repos/AdCodicem.Pdf/tests/corpus/remote tests/corpus/remote; mutant.py . PFR-0090; build (0 warnings, 0 errors); AdCodicem.Pdf.Tests.exe --filter-method '*Damaged_documents_are_recovered_as_far_as_an_independent_tool_recovers_them*' three times: 129/0/129/0 (17.6 s), 129/0/129/0 (14.3 s), 129/0/129/0 (14.1 s); mutant.py --revert",
+    "rm -rf tests/corpus/remote (removed only the links; the maintainer's folder is intact). Rebuilt on the base (0 warnings, 0 errors). --filter-class AdCodicem.Pdf.Tests.StreamLengthTests: total 257, failed 0, succeeded 255, skipped 2 (remote rows, the remote corpus being unlinked)",
+    "git log -L2606 and -L2656 of PdfFileReader.cs over 21a0298..HEAD -> b4cfda0 (Refs #261)",
+    "git commit -F (LF message) -> 8e46f32. check_msgs.py: '8e46f32 68 OK'. grep_keys.py and widegrep.py on the diff and the commit: rc 0, nothing reported",
+    "git format-patch -1 -o .../settle/patches/b3-03-r/ HEAD. git status clean; src/ as the base has it"
+   ]
+  },
+  "remoteControlDeviceReport": false,
+  "toolsUsed": [
+   "Bash",
+   "Read",
+   "Edit",
+   "Write",
+   "StructuredOutput"
+  ]
+ },
+ {
+  "type": "result",
+  "key": "v2:f223c7197590abae4552b8e5944858557acebb247cd9d6d3e5a22be4bc9570a9",
+  "agentId": "af9582beaa609c951",
+  "result": {
+   "label": "b3-04",
+   "base": "95d5814 (origin/ccr-6d6c0ee6-dqm4lm-188 when fetched; the task expected 1e1d171, but the branch had moved on by five test-only commits, 743cea0..95d5814; src/ unchanged)",
+   "survivors": [
+    {
+     "id": "PFR-0592",
+     "fate": "KILLED-NEW",
+     "test": "AdCodicem.Pdf.Tests.CrossReferenceChainTests.An_xrefstm_naming_white_space_past_a_trailer_s_window_a_byte_past_its_table_s_prev_is_left_to_no_prev",
+     "reason": "With StartOf returning 0 where white space runs past a trailer's window, a /Prev at the first line feed of such a run and an /XRefStm at the next both get start 0. The check previousStart >= 0 && hybridStart == previousStart then passes, so LeaveToPrevious runs: the /XRefStm becomes NamedAgain and the /Prev is Relocated to stream 9. The head gives /XRefStm Relocated to stream 9 and /Prev NotFound."
+    },
+    {
+     "id": "PFR-0600",
+     "fate": "KILLED-NEW",
+     "test": "AdCodicem.Pdf.Tests.CrossReferenceChainTests.An_xrefstm_naming_the_comment_that_ends_the_file_is_left_to_no_prev_naming_the_file_s_length",
+     "reason": "Without IsInFile, StartOfNamed for a /Prev at the file's length probes an empty window, which gives padding 0, so it returns file.Length. An /XRefStm naming the closing %%EOF comment also gets hybridStart = file.Length, so the two are taken for one start and the /XRefStm becomes NamedAgain instead of NotFound at the marker with padding 6. The harness's unconfirmed failure, CorpusReadingTests.Damaged_documents_are_recovered_as_far_as_an_independent_tool_recovers_them, was a timing guard (validating remote/pdfjs/cairo-firefox-objstm-index-overflow-bug1978317.pdf took 22 s against a 20 s limit under load). Run alone three times with the mutant applied it passed every time (129/0/129/0)."
+    },
+    {
+     "id": "PFR-0591",
+     "fate": "EQUIVALENT",
+     "reason": "StartOf's negative result is only tested by sign (previousStart >= 0), compared with positions that are never negative (_sectionsReadAt holds only offset plus padding of sections read, a candidate is a position found in the window), or, as ReachedAt's start out (hybridStart), compared and subtracted only inside branches that already require previousStart >= 0. So -2 behaves exactly like -1. The unconfirmed ObjectRuleTests.A_run_of_links_the_walk_takes_at_the_reader_s_deepest_load_is_never_where_the_stack_cuts_it failed once and passed five times in six runs alone with the mutant applied, so it does not fail all three; see found."
+    },
+    {
+     "id": "PFR-0603",
+     "fate": "EQUIVALENT",
+     "reason": "StartOfNamed's -1 goes only into previousStart. That value is read only by the previousStart >= 0 test and as leaveAt in TryRelocateXRefSection's candidate == leaveAt, and every candidate is a position of zero or more (a window position, or streamStart/takeAt, which are themselves at least zero). So -2 and -1 cannot be told apart."
+    },
+    {
+     "id": "PFR-0594",
+     "fate": "EQUIVALENT",
+     "reason": "When the condition holds, StartOf calls PaddingAt, which assigns table on both of its return paths (the cached probe and the fresh probe). When it fails, previousTable is read only as leaveIsTable inside TryRelocateXRefSection's candidate == leaveAt branch, and there leaveAt is -1, which no candidate (always zero or more) equals. So the initial value of table is never observed."
+    },
+    {
+     "id": "PFR-0547",
+     "fate": "EQUIVALENT",
+     "reason": "The one extra position the mutant checks, numberEnd, is the byte that ends the header's object-number token. That byte is always white space or a comment's %: the walk back crosses white space between the number and the generation, and a lexed integer token ends at a non-regular byte that must lead to the generation token. Every entry in told is a token start: the first token past padding, a digit or + candidate, or a header token start. No token starts on white space or on %. A padding run that reaches the end of the file gives file.Length, which is not a byte at all."
+    }
+   ],
+   "tests_added": [
+    "CrossReferenceChainTests.An_xrefstm_naming_white_space_past_a_trailer_s_window_a_byte_past_its_table_s_prev_is_left_to_no_prev (Fact; new builder HybridFiles.NamingTwoPlacesInARunOfWhiteSpace(65_537)): /Prev names the first of 65,537 line feeds after an array's closing bracket and /XRefStm names the second. It pins the exact section list [(/XRefStm, Relocated, stream, run+1), (/Prev, NotFound, run, run)], the exact (Code, Position) list [(limit.trailer, run+1), (xref.offset-adjusted, stream), (limit.trailer, run), (xref.section-missing, run)], and that object 7 reads \"seven\". Settles PFR-0592.",
+    "CrossReferenceChainTests.An_xrefstm_naming_the_comment_that_ends_the_file_is_left_to_no_prev_naming_the_file_s_length (Fact; new builder HybridFiles.NamingTheEndOfTheFile()): /XRefStm names the closing %%EOF and /Prev names file.Length, both written in ten digits. It pins the exact section list [(/XRefStm, NotFound, marker, padding 6), (/Prev, NotFound, file.Length, 0)] and the exact (Code, Position) list [(xref.section-missing, marker), (xref.section-missing, newest)]. Settles PFR-0600."
+   ],
+   "commit": "b276312 test: pin that an xrefstm and a prev reaching no start never meet at one (Refs #156, #188, #264: line 3963 was written by f0d90c8, which refs #156, #188, #264; line 3982 by d79900f, which refs #156, #188). check_msgs.py: OK; grep_keys.py and widegrep.py: clean.",
+   "patch": "C:/Users/clemm/AppData/Local/Temp/claude/7278f9d03177d71e/898783fc-049f-469a-ab79-dfd299ad558e/scratchpad/cloud/settle/patches/b3-04/0001-test-pin-that-an-xrefstm-and-a-prev-reaching-no-star.patch",
+   "commands": [
+    "git fetch origin ccr-6d6c0ee6-dqm4lm-188; git checkout --detach origin/ccr-6d6c0ee6-dqm4lm-188 -> HEAD 95d5814 (expected 1e1d171; five test-only commits newer)",
+    "dotnet build tests/AdCodicem.Pdf.Tests/AdCodicem.Pdf.Tests.csproj -c Release -m:2 (each build: 0 warnings, 0 errors)",
+    "Base, the two new tests: total 2, failed 0, succeeded 2 (before and after the rename)",
+    "PFR-0592 applied, the two new tests: total 2, failed 1 (An_xrefstm_naming_white_space_past_a_trailer_s_window_a_byte_past_its_table_s_prev_is_left_to_no_prev; sections became (/XRefStm, NamedAgain, 341), (/Prev, Relocated, 226)), succeeded 1. Run twice, once before and once after the rename, same result",
+    "PFR-0600 applied, the two new tests: total 2, failed 1 (An_xrefstm_naming_the_comment_that_ends_the_file_is_left_to_no_prev_naming_the_file_s_length; /XRefStm became NamedAgain), succeeded 1. Run twice, same result",
+    "PFR-0600 applied, --filter-method '*Damaged_documents_are_recovered_as_far_as_an_independent_tool_recovers_them*' three times, remote corpus hard-linked: 129 total, 0 failed, 129 succeeded, 0 skipped each time",
+    "PFR-0591 applied, --filter-method '*A_run_of_links_the_walk_takes_at_the_reader_s_deepest_load_is_never_where_the_stack_cuts_it*' six times: runs 1-2 passed, run 3 failed, runs 4-6 passed (1 total each)",
+    "PFR-0591 applied, the two new tests: total 2, failed 0",
+    "PFR-0594, PFR-0603 and PFR-0547 applied one at a time, the two new tests: total 2, failed 0 each (settled as equivalent)",
+    "Head, the stack test nine times: 9 passed, 0 failed",
+    "Base, --filter-class AdCodicem.Pdf.Tests.CrossReferenceChainTests (final names): total 1073, failed 0, succeeded 1073, skipped 0",
+    "cp -al .../tests/corpus/remote tests/corpus/remote, then rm -rf tests/corpus/remote; git status --short clean; git diff --stat 95d5814 HEAD touches only the two test files"
+   ],
+   "found": [
+    "Flaky test: ObjectRuleTests.A_run_of_links_the_walk_takes_at_the_reader_s_deepest_load_is_never_where_the_stack_cuts_it. With PFR-0591 applied, which is equivalent (a -2 that is only tested by sign or equality), it failed in the harness's first-filter step and in one of my six solo runs, with 'Expected cuts ... to contain \"Object 160 is reached through more nested objects than the thread's stack lets the validator follow...\"'. On the head it passed nine solo runs. It probes where the stack cuts the walk, frame by frame, so it plausibly depends on JIT tiering or frame sizes under machine load (the batch's 8-worker run was going at the same time). It was not proven to fail on the head.",
+    "Timing guard under load: CorpusReadingTests.Damaged_documents_are_recovered_as_far_as_an_independent_tool_recovers_them failed in the harness's suite step for PFR-0600 only through its 20 s Timed bound (22.5 s validating remote/pdfjs/cairo-firefox-objstm-index-overflow-bug1978317.pdf). It passed three solo runs with the same mutant applied, so this was load, not the mutant.",
+    "No fault in src/: both killed mutants change behavior only on inputs whose head behavior agrees with the documented design (an offset outside the file, or white space past the guard, comes to no start)."
+   ]
+  },
+  "remoteControlDeviceReport": false,
+  "toolsUsed": [
+   "Bash",
+   "Read",
+   "Edit",
+   "Write",
+   "StructuredOutput"
+  ]
+ },
+ {
+  "type": "result",
+  "key": "v2:fb6185f4fbe42e7279264beab62b072daabaf84ba8ad4e9e9066e7d20ec5de6f",
+  "agentId": "ae266b007aa2e6a64",
+  "result": {
+   "label": "b3-04-r",
+   "base": "95d5814 (origin/ccr-6d6c0ee6-dqm4lm-188 when fetched. That is 1e1d171 plus five test-only commits, 743cea0..95d5814, so src/ is the same as at 19a2296. The settling agent used this same base.)",
+   "verdicts": [
+    {
+     "id": "PFR-0592",
+     "verdict": "TEST-OK",
+     "test": "AdCodicem.Pdf.Tests.CrossReferenceChainTests.An_xrefstm_naming_white_space_past_a_trailer_s_window_a_byte_past_its_table_s_prev_is_left_to_no_prev",
+     "reason": "The mutant turns StartOf's no-start value into 0. hybridStart and previousStart then both become 0, so the check previousStart >= 0 && hybridStart == previousStart passes, and LeaveToPrevious runs. The test asserts the decision itself through the exact section list compared with Should().Equal, then the exact (Code, Position) list and object 7's text. With the settling patch applied in this worktree, the test passes on the base. With the mutant it fails at index 0 of the sections: (/XRefStm, NamedAgain, 341, 341), (/Prev, Relocated, 226, 340) instead of (/XRefStm, Relocated, 226, 341), (/Prev, NotFound, 340, 340). This is the behavior the mutant changes, not an incidental value."
+    },
+    {
+     "id": "PFR-0600",
+     "verdict": "TEST-OK",
+     "test": "AdCodicem.Pdf.Tests.CrossReferenceChainTests.An_xrefstm_naming_the_comment_that_ends_the_file_is_left_to_no_prev_naming_the_file_s_length",
+     "reason": "Without IsInFile, StartOfNamed(file.Length) probes an empty window. PaddingAt gives 0 there, so previousStart becomes file.Length, which equals the hybridStart of an /XRefStm naming the closing %%EOF (marker + 6). The test pins the exact section list. On the base it passes. With the mutant it fails at index 0: (/XRefStm, NamedAgain, 377, 6) instead of (/XRefStm, NotFound, 377, 6). That is the state the mutant flips. I did not rerun the harness's unconfirmed failure, CorpusReadingTests.Damaged_documents_are_recovered_as_far_as_an_independent_tool_recovers_them. It fails only through its 20 s timing bound, the task says not to run timing tests, and the result cannot change the verdict because the new test already settles the mutant."
+    },
+    {
+     "id": "PFR-0591",
+     "verdict": "UPHELD",
+     "reason": "Corrected wording. StartOf has three readers. At line 3316 its value goes through _sectionsReadAt.Contains, and that set never holds a negative: RecordSectionReached adds Offset + Padding of in-file sections, with Padding >= 0. In ReachedAt it also goes through Contains, and the out start reaches only hybridStart (3543). Through StartOfNamed it becomes previousStart. hybridStart is compared at 3547 only after previousStart >= 0. At 3554 it is subtracted only when hybrid != previous, which means the second disjunct held, so it equals a previousStart >= 0. The settling reason said that branch 'requires previousStart >= 0', but it can also be entered through hybrid == previous, where the ternary gives 0 without reading hybridStart. previousStart is read only by its sign test and as leaveAt in candidate == leaveAt, and every candidate is >= 0. So -2 behaves as -1. Tried: the whole CrossReferenceChainTests class (1073 tests, including the run-of-white-space file where both links get no start) with the mutant applied: 0 failed. The unconfirmed ObjectRuleTests stack test, run alone three times with the mutant: 3 passed, so it does not fail all three."
+    },
+    {
+     "id": "PFR-0603",
+     "verdict": "UPHELD",
+     "reason": "Corrected premise. StartOfNamed's false arm reaches only previousStart (3545). That value is read at 3547 behind previousStart >= 0, and at 3619 as leaveAt, where TryRelocateXRefSection compares it only in candidate == leaveAt (5337). The settling reason said streamStart and takeAt are 'themselves at least zero'. That is false here: 3619 passes null, null, so takeAt, streamStart and streamDigits are all -1. NumberRunsInto(candidate, -1, -1) is then false for every window candidate, which is >= 0, so candidate never becomes streamStart. Every candidate stays >= 0 and can never equal -2 or -1. Tried: CrossReferenceChainTests (1073) with the mutant applied, including the file whose /Prev names the file's length, which takes this arm and goes on to the relocation with leaveAt -2: 0 failed."
+    },
+    {
+     "id": "PFR-0594",
+     "verdict": "UPHELD",
+     "reason": "The reason holds as written. When the condition holds, StartOf calls PaddingAt, which assigns table on both of its returns (the cached probe and the fresh one). When it fails, StartOfNamed returns -1. previousTable is read only as leaveIsTable, passed to KeepsItsPlace inside candidate == leaveAt. There leaveAt is -1, and a candidate is always >= 0, so the true start value is never seen. Tried: CrossReferenceChainTests (1073) with the mutant applied, including the end-of-file file, which runs the relocation with leaveIsTable true and leaveAt -1: 0 failed."
+    },
+    {
+     "id": "PFR-0547",
+     "verdict": "UPHELD",
+     "reason": "Corrected premise. numberEnd is the byte that ends the header's Integer token. The lexer's regular run is [signs]digits, and NumberEnd from the token start skips exactly that. It is always white space or a comment's %: the walk back crosses white space between the number and the generation, and a number taken from a line holding a % is followed only by white space, its comment, or the generation, because a delimiter would itself be the line's last token. told holds the headerAt of streams already reported (token starts) and Offset + Padding of Read, Relocated and Malformed sections. Those come from PaddingAt's first token or the parser's number.Start, which lexer rules never place on white space or %, or file.Length. The settling reason said every entry is a token start; that misses one case. For a file over 2 GB, with MaxTrailerLength lifted past Array.MaxLength, PaddingAt can return Array.MaxLength over all-white-space bytes. A section that is then Malformed at the cut-dictionary return (before Padding is reset to the header) keeps a white-space start. That start is a position from which a numbered object reads, and numberEnd never is one, because only the generation and obj follow it. So no told entry equals numberEnd. Tried: CrossReferenceChainTests (1073, including its 19 tests asserting XRefStreamPassedOver) with the mutant applied: 0 failed."
+    }
+   ],
+   "tests_added": [],
+   "patch": "none (every verdict holds; no commit made, src/ and tests/ left exactly as at 95d5814)",
+   "commands": [
+    "git fetch origin ccr-6d6c0ee6-dqm4lm-188; git checkout --detach origin/ccr-6d6c0ee6-dqm4lm-188 -> HEAD 95d5814",
+    "mutant.py - <id> for PFR-0592, PFR-0600, PFR-0591, PFR-0603, PFR-0594, PFR-0547; summary-shard-10/11 lines read (PFR-0600 unconfirmed: CorpusReadingTests.Damaged_documents...; PFR-0591 unconfirmed: ObjectRuleTests.A_run_of_links_..._stack_cuts_it)",
+    "git apply <settle patches/b3-04/0001-...patch> to the working tree (not committed); dotnet build tests/AdCodicem.Pdf.Tests/AdCodicem.Pdf.Tests.csproj -c Release -m:2: 0 warnings, 0 errors (every build below the same)",
+    "Base + patch, the two new tests: total 2, failed 0, succeeded 2, skipped 0",
+    "PFR-0592 applied, the two new tests: total 2, failed 1 (the white-space test; sections (/XRefStm, NamedAgain, 341, 341), (/Prev, Relocated, 226, 340)), succeeded 1, skipped 0; reverted",
+    "PFR-0600 applied, the two new tests: total 2, failed 1 (the end-of-file test; /XRefStm NamedAgain instead of NotFound), succeeded 1, skipped 0; reverted",
+    "PFR-0547 applied, --filter-class AdCodicem.Pdf.Tests.CrossReferenceChainTests: total 1073, failed 0, succeeded 1073, skipped 0; reverted",
+    "PFR-0594 applied, CrossReferenceChainTests: total 1073, failed 0, succeeded 1073, skipped 0; reverted",
+    "PFR-0603 applied, CrossReferenceChainTests: total 1073, failed 0, succeeded 1073, skipped 0; reverted",
+    "Base + patch, CrossReferenceChainTests: total 1073, failed 0, succeeded 1073, skipped 0",
+    "PFR-0591 applied, CrossReferenceChainTests: total 1073, failed 0, succeeded 1073, skipped 0",
+    "PFR-0591 applied, --filter-method '*A_run_of_links_the_walk_takes_at_the_reader_s_deepest_load_is_never_where_the_stack_cuts_it*' three times (English summary): total 1, failed 0, succeeded 1 each; reverted",
+    "Base rebuilt, the same stack test three times: total 1, failed 0, succeeded 1 each",
+    "grep_keys.py and widegrep.py on the settling patch: clean (rc 0)",
+    "git checkout -- tests/AdCodicem.Pdf.Tests/CrossReferenceChainTests.cs tests/AdCodicem.Pdf.Tests/HybridFiles.cs; git status --short: clean; HEAD 95d5814; tests/corpus/remote never linked"
+   ]
+  },
+  "remoteControlDeviceReport": false,
+  "toolsUsed": [
+   "Bash",
+   "Write",
+   "StructuredOutput"
+  ]
+ },
+ {
+  "type": "result",
+  "key": "v2:a12d15a9ec01c1d0f8189965244c3d058c220dd6485de942cbece418e4e4004f",
+  "agentId": "a1645fa075178ee71",
+  "result": {
+   "label": "b3-05",
+   "base": "95d5814 (the task expected 1e1d171. Since then origin/ccr-6d6c0ee6-dqm4lm-188 gained five test-only commits, touching HeaderTextTests.cs and StreamEndsTests.cs. `git diff --stat 19a2296 HEAD -- src/` is empty, so src/ matches the mutation run)",
+   "survivors": [
+    {
+     "id": "PFR-0191",
+     "fate": "EQUIVALENT",
+     "reason": "When looped lies outside the file, its sectionsAt record was never relocated and has Padding 0: TryRelocateXRefSection returns false before relocating, and TryReadXRefSection returns before setting Padding. Every outside offset the chain reached has such a record: an /XRefStm's search returns KeptPlace.None at once, so its record always lands in the else branch, and a /Prev there ends the chain. So the first arm gives start = looped and looped is unchanged. Unconfirmed failures: CorpusReadingTests.Damaged_documents_are_recovered_as_far_as_an_independent_tool_recovers_them, run alone three times with the mutant, passed each time (129/0). HostileInputTests.A_dictionary_that_gives_one_key_a_million_times_reads_in_time_and_keeps_a_bounded_report was not run: it is a stopwatch and allocation budget test, which this step forbids during the concurrent run. Its file is one classic table with no /Prev, so the site, inside `if (reached >= 0)`, is never reached. Its harness failure was a stopwatch bound under load (22 s against 10 s)."
+    },
+    {
+     "id": "PFR-0195",
+     "fate": "KILLED-NEW",
+     "test": "AdCodicem.Pdf.Tests.CrossReferenceChainTests.A_loop_through_an_offset_a_section_was_found_moved_from_is_placed_there_though_a_section_read_since_starts_past_its_white_space",
+     "reason": "Without the moved arm, StartOf(looped) is looked up, and it finds the stream read since past the end of line. The loop moves there: LoopOffset expected 132, found 133. The damaged-corpus theory, run alone three times with the mutant, passed each time (129/0). The HostileInputTests timing test was not run, for the same reason as PFR-0191."
+    },
+    {
+     "id": "PFR-0202",
+     "fate": "KILLED-NEW",
+     "test": "AdCodicem.Pdf.Tests.CrossReferenceChainTests.A_loop_through_an_offset_a_section_was_found_moved_from_is_placed_there_though_a_section_read_since_starts_past_its_white_space",
+     "reason": "Same change as PFR-0195: the moved arm never matches. LoopOffset expected 132, found 133."
+    },
+    {
+     "id": "PFR-0205",
+     "fate": "KILLED-NEW",
+     "test": "AdCodicem.Pdf.Tests.CrossReferenceChainTests.A_prev_looping_back_through_the_white_space_before_an_object_an_xrefstm_named_that_only_gives_a_width_is_placed_where_it_names",
+     "reason": "An unconditional `looped = start` moves the loop past the end of line onto object 9, which is not a section and was never read: LoopOffset expected 109, found 110. The unconfirmed failure is only the HostileInputTests timing test, not run for the same reason as PFR-0191."
+    },
+    {
+     "id": "PFR-0251",
+     "fate": "EQUIVALENT",
+     "reason": "leaveAt is read only in `candidate == leaveAt`. Every candidate is at least 0: a position inside the search window, a stream start that was read (NumberRunsInto never fires when streamStart is -1), or one of those added again. So neither -1 nor -2 ever matches."
+    },
+    {
+     "id": "PFR-0253",
+     "fate": "EQUIVALENT",
+     "reason": "leaveIsTable is read only by KeepsItsPlace(leaveAt, leaveIsTable), under `candidate == leaveAt`. No candidate (all at least 0) meets that when leaveAt is -1."
+    },
+    {
+     "id": "PFR-0259",
+     "fate": "EQUIVALENT",
+     "reason": "naming is \"/Prev\" in every iteration after the first, because both the hand-on `continue` and the end of the loop body set it. The hand-on path is reached only after the first iteration, since `sections == 1` returns false before it. Unconfirmed failure: only the HostileInputTests timing test, not run (forbidden budget test; its single-table file never reaches the hand-on path)."
+    },
+    {
+     "id": "PFR-0310",
+     "fate": "EQUIVALENT",
+     "reason": "hybridStart is read only where hybrid >= 0: the if condition and the shortBy inside it. There ReachedAt, which sets its out parameter to -1 on entry, has already overwritten the initializer."
+    },
+    {
+     "id": "PFR-0311",
+     "fate": "EQUIVALENT",
+     "reason": "Same as PFR-0310: the initializer is never read, because every read is guarded by hybrid >= 0, where ReachedAt has assigned hybridStart."
+    },
+    {
+     "id": "PFR-0313",
+     "fate": "EQUIVALENT",
+     "reason": "For a negative hybrid, PositionOf returns it unchanged. visited holds only offsets of at least 0 (added under `offset >= 0` and `hybrid >= 0`), and _sectionsReadAt holds only positions in the file. So ReachedAt returns -1 before calling StartOf, and sets hybridStart to -1, the initializer's value, with no side effect."
+    }
+   ],
+   "tests_added": [
+    "CrossReferenceChainTests.A_prev_looping_back_through_the_white_space_before_an_object_an_xrefstm_named_that_only_gives_a_width_is_placed_where_it_names (Fact, settles PFR-0205). The newest table's /XRefStm and the oldest table's /Prev both name the end of line before object 9, which gives /W [1 -4 2] and no /Type. Pins the lost record's (State, Offset, Padding) = (Malformed, named, 1), LoopOffset = named, LoopTarget = Named, and the single XRefChainCycle diagnostic at Position named with its exact message ('... names offset {named}, which the chain has already named.').",
+    "CrossReferenceChainTests.A_loop_through_an_offset_a_section_was_found_moved_from_is_placed_there_though_a_section_read_since_starts_past_its_white_space (Fact, settles PFR-0195 and PFR-0202). The newest table's /Prev names the end of line before stream 7, whose /W is the reference 9 0 R, not yet placed, so the stream cannot be read and the search finds the table past it. That table places object 9, and its /Prev names the stream's header, where the stream now reads. The stream's /Prev names the end of line again. Pins the exact section list (NamedBy, State, Offset) = (startxref, Read, newest), (/Prev, Relocated, moved), (/Prev, Read, stream), LoopOffset = named, and the single XRefChainCycle diagnostic at Position named with its exact message ('... the /Prev of the section at offset {stream} names offset {named}, which the chain has already read.')."
+   ],
+   "commit": "1590d90 test: hold a loop at the end of line it names again where the section named there was not read (Refs #188; cb22c69 wrote lines 3307-3318 and the comments there cite #188)",
+   "patch": "C:/Users/clemm/AppData/Local/Temp/claude/7278f9d03177d71e/898783fc-049f-469a-ab79-dfd299ad558e/scratchpad/cloud/settle/patches/b3-05/0001-test-hold-a-loop-at-the-end-of-line-it-names-again-w.patch",
+   "commands": [
+    "git fetch origin ccr-6d6c0ee6-dqm4lm-188; git checkout --detach origin/ccr-6d6c0ee6-dqm4lm-188 -> 95d5814; git diff --stat 19a2296 HEAD -- src/ -> empty",
+    "dotnet build tests/AdCodicem.Pdf.Tests/AdCodicem.Pdf.Tests.csproj -c Release -m:2 (base plus new tests) -> 0 warnings, 0 errors; the two new tests on base -> total 2, failed 0, succeeded 2",
+    "cp -al .../tests/corpus/remote tests/corpus/remote (removed with rm -rf at the end; the maintainer's copy is intact)",
+    "mutant.py . PFR-0205, build -> 0 warnings; two new tests -> total 2, failed 1 (the white-space-before-object test: LoopOffset expected 109, found 110); reverted",
+    "mutant.py . PFR-0195, build -> 0 warnings; two new tests -> total 2, failed 1 (the found-moved test: LoopOffset expected 132, found 133); CorpusReadingTests.Damaged_documents_are_recovered_as_far_as_an_independent_tool_recovers_them x3 -> 129/0/129/0 each; reverted",
+    "mutant.py . PFR-0202, build -> 0 warnings; two new tests -> total 2, failed 1 (the found-moved test: 132 against 133); reverted",
+    "mutant.py . PFR-0191, build -> 0 warnings; CorpusReadingTests.Damaged_documents_are_recovered_as_far_as_an_independent_tool_recovers_them x3 -> 129/0/129/0 each; reverted",
+    "PFR-0251, 0253, 0259, 0310, 0311, 0313: settled by reading every read and write of the touched values; not applied",
+    "rebuild on base (src clean); --filter-class AdCodicem.Pdf.Tests.CrossReferenceChainTests -> total 1073, failed 0, succeeded 1073, skipped 0 (the class has no timing, budget or allocation methods)",
+    "grep_keys.py and widegrep.py on the diff -> clean; check_msgs.py on git log 95d5814..HEAD -> '1590d90 94 OK'",
+    "git format-patch -1 -> patches/b3-05/0001-...patch; git status --short -> clean"
+   ],
+   "found": [
+    "The base is 95d5814, not the expected 1e1d171: five test-only commits have landed on the branch since (HeaderTextTests.cs, StreamEndsTests.cs). src/ matches 19a2296.",
+    "No fault in src/. Every observable mutant changed only where the cycle diagnostic and Structure.LoopOffset are placed, and the code's placement matches its comments.",
+    "The HostileInputTests stopwatch test that shows up as an unconfirmed failure for PFR-0191, 0195, 0205 and 0259 failed only on its 10 s Stopwatch bound under the 8-worker load (22 s and 18 s). It was not run here, because the step forbids timing and budget tests during the concurrent run, so whether it is flaky on the head was not checked. The CorpusReadingTests cairo-firefox-objstm-index-overflow row failed the same way, on its 20 s bound, and passed three times alone under PFR-0191 and PFR-0195.",
+    "The xUnit executable prints in French unless DOTNET_CLI_UI_LANGUAGE=en-US is exported in the same shell. One corpus run without it was repeated in English."
+   ]
+  },
+  "remoteControlDeviceReport": false,
+  "toolsUsed": [
+   "Bash",
+   "mcp__ccd_turn__update_plan",
+   "Edit",
+   "Write",
+   "StructuredOutput"
+  ]
+ },
+ {
+  "type": "result",
+  "key": "v2:7582eca503a9ed4d487a6211193459588474429e42e1e9427c7bae12c104d9a4",
+  "agentId": "adc90ba2c3772d0b8",
+  "result": {
+   "label": "b3-06",
+   "base": "95d5814 (the task expected 1e1d171. origin/ccr-6d6c0ee6-dqm4lm-188 has since moved on by five test-only commits: 743cea0, 7d2f00f, f8e9aa1, c7be350, 95d5814. git diff 19a2296 HEAD -- src/ is empty, so src/ matches the mutation run.)",
+   "survivors": [
+    {
+     "id": "PFR-0317",
+     "fate": "EQUIVALENT",
+     "reason": "The mutant changes behavior only when hybrid == -1. Then ReachedAt(-1) sets start = -1 and returns -1 without probing anything. The reasons: PositionOf keeps a negative offset as it is, so the position is -1, which IsInFile rejects. visited only receives offsets >= 0 (line 3354 runs under while (offset >= 0), line 3601 under hybrid >= 0). _sectionsReadAt only receives Offset + Padding of a section read in the file, which is never negative. So hybridReached and hybridStart are -1, exactly as the code gives them."
+    },
+    {
+     "id": "PFR-0318",
+     "fate": "EQUIVALENT",
+     "reason": "hybridReached takes its default only when hybrid < 0, and that value is only ever compared by sign (< 0 at lines 3545 and 3547, >= 0 at 3557). Its one non-sign read, at line 3565, sits inside the >= 0 branch, so -2 and -1 behave the same for every input. The harness's unconfirmed failure is not a kill: run alone three times with the mutant, ObjectRuleTests.A_run_of_links_the_walk_takes_at_the_reader_s_deepest_load_is_never_where_the_stack_cuts_it went pass, fail, pass. The same test also fails on the head (flaky, see found)."
+    },
+    {
+     "id": "PFR-0320",
+     "fate": "EQUIVALENT",
+     "reason": "previousTable is read only at line 3619. That line is reached only when hybrid >= 0 (line 3595) and hybridReached < 0 (the else after 3557). In that case line 3545 has already called StartOfNamed, whose out parameter is always assigned (table = false first), so the initial value is overwritten before any read."
+    },
+    {
+     "id": "PFR-0322",
+     "fate": "EQUIVALENT",
+     "reason": "The extra StartOfNamed(previous) changes nothing observable. Its result is read only where hybrid >= 0 and hybridReached < 0 (the short-circuit at line 3547, the branch at 3619), and there the code computes it too. Its one side effect is PaddingAt's probe of PositionOf(previous), stored in _paddingProbes. The loop's next read, ReachedAt(offset = previous) at line 3288, makes that exact probe, and nothing in between reads bytes or probes: with hybrid < 0, lines 3547 to 3728 are all skipped. So the same bytes are read in the same order and the cache ends in the same state. A previous outside the file is never probed in either version, and a source failure fails the open the same way in both."
+    },
+    {
+     "id": "PFR-0325",
+     "fate": "EQUIVALENT",
+     "reason": "Same reason as PFR-0322, limited to hybrid < 0, where hybridReached is -1. The extra StartOfNamed(previous) makes the very probe of PositionOf(previous) that the loop's next statement, ReachedAt(previous) at line 3288, makes. Nothing in between reads or probes, and its values are read only when hybrid >= 0 and hybridReached < 0, where the code computes them. Not a kill: run alone three times with the mutant, the harness's unconfirmed test ObjectRuleTests.A_run_of_links_the_walk_takes_at_the_reader_s_deepest_load_is_never_where_the_stack_cuts_it went pass, fail, pass. It is flaky on the head too."
+    },
+    {
+     "id": "PFR-0327",
+     "fate": "EQUIVALENT",
+     "reason": "The mutant adds the StartOfNamed(previous) call when hybrid >= 0 and hybridReached >= 0. On that path only the branch at line 3557 runs: NameAgain, a sectionsAt lookup and ReportNoStream. These write records and diagnostics, read no bytes, never throw, and do not touch visited, _sectionsReadAt or _paddingProbes. So the extra probe is exactly the next one the code makes, at line 3288 through ReachedAt(previous), with the cache and the source in the same state. previousStart and previousTable are not read on this path (the && at line 3547 short-circuits, and 3619 is skipped)."
+    },
+    {
+     "id": "PFR-0330",
+     "fate": "EQUIVALENT",
+     "reason": "The mutant adds the call only when hybrid == -1, the hybrid < 0 path of PFR-0322. There the extra StartOfNamed(previous) makes only the probe that ReachedAt(previous) at line 3288 makes next, with nothing in between. Its values are read only when hybrid >= 0 and hybridReached < 0, where the code computes them."
+    },
+    {
+     "id": "PFR-0331",
+     "fate": "EQUIVALENT",
+     "reason": "The mutant adds the call only when hybrid >= 0 and hybridReached == 0, a subset of PFR-0327's path. Only NameAgain and ReportNoStream run before line 3288's ReachedAt(previous), and neither reads bytes or probes. The extra probe is therefore the code's next one, and previousStart and previousTable are not read on that path."
+    },
+    {
+     "id": "PFR-0332",
+     "fate": "EQUIVALENT",
+     "reason": "hybridReached < 1 differs from < 0 only at hybridReached == 0. That is the same path and the same reason as PFR-0331: the added StartOfNamed probe is the one ReachedAt(previous) makes next at line 3288, with no read in between, and its values are not read there."
+    },
+    {
+     "id": "PFR-0334",
+     "fate": "EQUIVALENT",
+     "reason": "previousStart takes its default only when hybrid < 0 or hybridReached >= 0. Its reads are at line 3547, behind hybrid >= 0 && hybridReached < 0 &&, and at line 3619, under hybrid >= 0 with hybridReached < 0. Both see the value StartOfNamed computed, never the default, so -2 and -1 behave the same for every input."
+    }
+   ],
+   "tests_added": [],
+   "commit": "none: all ten survivors are equivalent, so no test was needed and no commit was made",
+   "patch": "none (no commit)",
+   "commands": [
+    "git fetch origin ccr-6d6c0ee6-dqm4lm-188; git checkout --detach origin/ccr-6d6c0ee6-dqm4lm-188 -> HEAD 95d5814 (1e1d171 is an ancestor; git diff 19a2296 HEAD -- src/ is empty)",
+    "Read PdfFileReader.TryReadXRefChain whole (lines 3248-3744), plus ReachedAt, ReachedBefore, StartOf, StartOfNamed, PaddingAt and the _paddingProbes cache, PositionOf, IsInFile, RecordSectionReached (the only _sectionsReadAt.Add), NameAgain, LeaveToPrevious, ReportNoStream, DescribeOffset, PdfFileSource.GetWindow, and how Initialize and PdfDocument.Open handle an exception during the chain read; grepped every use of hybridReached, hybridStart, previousStart, previousTable and visited.Add",
+    "mutant.py . PFR-0318; dotnet build tests/AdCodicem.Pdf.Tests -c Release -m:2 -> 0 warnings, 0 errors",
+    "PFR-0318: AdCodicem.Pdf.Tests.exe --filter-method '*A_run_of_links_the_walk_takes_at_the_reader_s_deepest_load_is_never_where_the_stack_cuts_it' x3 -> (1,0,1,0), (1,1,0,0), (1,0,1,0): failed 1 of 3; an earlier batch of 4 runs, whose counts were hidden by the localized output apart from 1 known pass, is not counted",
+    "mutant.py . PFR-0318 --revert; mutant.py . PFR-0325; build -> 0 warnings, 0 errors",
+    "PFR-0325: same test x3 -> (1,0,1,0), (1,1,0,0), (1,0,1,0): failed 1 of 3",
+    "mutant.py . PFR-0325 --revert; git status --short clean; build of the head -> 0 warnings, 0 errors",
+    "Head, same test alone: 5 runs -> pass, pass, pass, fail, fail; 4 runs -> pass, pass, fail, pass; 6 runs -> all pass; 7 runs until a failure -> pass x6, then fail with the same assertion (Object 160 missing from the cuts). Head total: 4 failures in 22 runs",
+    "Final: git status --short clean at 95d5814, src/ as the base has it, tests/corpus/remote never created"
+   ],
+   "found": [
+    "Flaky test on the head: ObjectRuleTests.A_run_of_links_the_walk_takes_at_the_reader_s_deepest_load_is_never_where_the_stack_cuts_it fails intermittently under the batch's concurrent mutation run (8 workers): 4 failures in 22 runs alone on unmodified src/. The failure is always the assertion at ObjectRuleTests.cs:2742, Expected cuts {...} to contain \"Object 160 is reached through more nested objects than the thread's stack lets the validator follow: the validator reads it as null.\" In the failing runs, no caller frame between the first probe failure and the first place with room for the whole nest cuts the walk at 160's load. The test depends on stack and frame layout, which makes it timing- or load-sensitive. That explains the harness's 'unconfirmed failures' for PFR-0318 and PFR-0325, each of which failed it 1 run in 3 alone, like the head.",
+    "No fault found in src/: the touched lines behave as their comments say. The locals' default values are written but never read, and the guarded StartOfNamed call only spares a probe that the loop's next ReachedAt(previous) would make anyway.",
+    "Environment note: the test executable printed its summary in French unless DOTNET_CLI_UI_LANGUAGE=en-US was exported in the same shell, so counts must be read with that set."
+   ]
+  },
+  "remoteControlDeviceReport": false,
+  "toolsUsed": [
+   "Bash",
+   "Read",
+   "StructuredOutput"
+  ]
+ },
+ {
+  "type": "result",
+  "key": "v2:6f172a9e3dc63b7c00b574371b43575741a9c84a3fb914e60df2cf8771148501",
+  "agentId": "a965d23a1a1f47a8c",
+  "result": {
+   "label": "b3-05",
+   "base": "95d5814. The task expected 1e1d171 or later; origin/ccr-6d6c0ee6-dqm4lm-188 is at 95d5814, and `git diff --stat 19a2296 HEAD -- src/` is empty, so src/ matches the mutation run.",
+   "verdicts": [
+    {
+     "id": "PFR-0191",
+     "verdict": "UPHELD",
+     "reason": "The reason holds, with one more key to add. A looped outside the file can only come from visited.Contains(offset), because _sectionsReadAt holds only the starts of sections read in the file. Three writes can put a record in sectionsAt under an outside key: line 3404 (the /Prev's section), line 3642 (the /XRefStm's stream), and the alias at 3411, which is reached only when hybrid == previous because an outside hybrid's hybridStart is -1. Each stores a record whose Offset equals the key, since relocation needs an offset inside the file, and whose Padding is 0, since TryReadXRefSection returns NotFound before it sets Padding. So the first arm gives start = looped, and looped is unchanged. I tried to break it with a probe that dumps every section's (NamedBy, State, Offset, NamedOffset, Padding), the Loop* fields, WasRepaired, every diagnostic (code, position, message), object 1 and the validator findings. It covered: an /XRefStm and a /Prev naming 99999999; the same with a 5-byte prefix; an offset that overflows to long.MaxValue, with and without a prefix; three tables naming the outside offset twice; and a different outside /Prev. With the mutant applied the output was byte-identical, and the class's 27 outside_the_file tests passed. The harness's unconfirmed failures were stopwatch bounds under load: HostileInputTests at 22 s against 10 s, and the cairo corpus row at 25 s against 20 s. The harness's own confirm-suite run passed both (131/0). I did not re-run the timing test, because the step forbids it."
+    },
+    {
+     "id": "PFR-0195",
+     "verdict": "TEST-OK",
+     "reason": "The test asserts the exact LoopOffset and the cycle diagnostic's Position, which are what removing the arm changes. It also pins the exact section list and the message. With the mutant applied it fails on LoopOffset (expected 132, found 133); on the base it passes.",
+     "test": "AdCodicem.Pdf.Tests.CrossReferenceChainTests.A_loop_through_an_offset_a_section_was_found_moved_from_is_placed_there_though_a_section_read_since_starts_past_its_white_space"
+    },
+    {
+     "id": "PFR-0202",
+     "verdict": "TEST-OK",
+     "reason": "The same test as PFR-0195, and the same effect: the moved arm never matches, and StartOf finds the stream read since. With the mutant applied it fails on LoopOffset (expected 132, found 133); on the base it passes.",
+     "test": "AdCodicem.Pdf.Tests.CrossReferenceChainTests.A_loop_through_an_offset_a_section_was_found_moved_from_is_placed_there_though_a_section_read_since_starts_past_its_white_space"
+    },
+    {
+     "id": "PFR-0205",
+     "verdict": "TEST-OK",
+     "reason": "The test pins the exact LoopOffset and Position at the offset named, where the mutant moves both to where object 9 starts. It also pins the lost record's (State, Offset, Padding), LoopTarget and the exact message, which the mutant leaves as they are. With the mutant applied it fails on LoopOffset (expected 109, found 110); on the base it passes. Its 'As above' comment refers to the test before it, which uses the same object 9 that gives only a /W.",
+     "test": "AdCodicem.Pdf.Tests.CrossReferenceChainTests.A_prev_looping_back_through_the_white_space_before_an_object_an_xrefstm_named_that_only_gives_a_width_is_placed_where_it_names"
+    },
+    {
+     "id": "PFR-0251",
+     "verdict": "UPHELD",
+     "reason": "leaveAt is read only at line 5337 (candidate == leaveAt) and line 5341, inside that branch. Every candidate is at least 0. FindSectionCandidates adds start + position, with start at least 0 and position at least from, which is at least 0. NumberRunsInto replaces a candidate only with streamStart, the Offset + Padding of a stream that was read, which is at least 0; when streamStart is -1 it would need candidate == -1 or candidate < -1. The two re-adds put back candidates that are already at least 0. So neither -1 nor -2 is ever matched."
+    },
+    {
+     "id": "PFR-0253",
+     "verdict": "UPHELD",
+     "reason": "leaveIsTable is read only in KeepsItsPlace(leaveAt, leaveIsTable) at line 5341, under candidate == leaveAt. With leaveAt -1, no candidate (all at least 0) meets that."
+    },
+    {
+     "id": "PFR-0259",
+     "verdict": "UPHELD",
+     "reason": "naming is assigned only at lines 3270, 3446 and 3731. The loop's only continue is the hand-on at 3448; every other exit is a break or return false. The hand-on is reached only after sections == 1 has returned false, so never in the first iteration. Every earlier iteration therefore left naming at \"/Prev\", either at 3731 or by induction through an earlier hand-on, and the removed assignment rewrites the value it already holds."
+    },
+    {
+     "id": "PFR-0310",
+     "verdict": "UPHELD",
+     "reason": "hybridStart is read only at line 3547 (hybridStart == previousStart) and line 3554 (shortBy). Both are conjoined under hybrid >= 0, and there ReachedAt has already run its first statement, start = -1, which overwrites the initializer."
+    },
+    {
+     "id": "PFR-0311",
+     "verdict": "UPHELD",
+     "reason": "Same as PFR-0310: both reads of hybridStart (3547, 3554) are under hybrid >= 0, where ReachedAt has already set it to -1 on entry."
+    },
+    {
+     "id": "PFR-0313",
+     "verdict": "UPHELD",
+     "reason": "For a negative hybrid, PositionOf returns it unchanged, whatever the header offset. visited holds only offsets of at least 0: line 3354 under while (offset >= 0), and line 3601 under hybrid >= 0. _sectionsReadAt holds only section starts in the file (line 4146). So ReachedAt returns -1 at !IsInFile, before StartOf runs, with nothing changed, and hybridStart = -1, the same as the initializer. A probe with a 5-byte prefix (header offset 5, a single table and a hybrid table) and the outside-offset files gave byte-identical output with the mutant applied."
+    }
+   ],
+   "tests_added": [],
+   "patch": "none: every verdict holds and the three KILLED-NEW tests are TEST-OK, so no commit was made. The worktree is clean at 95d5814, and src/ is as the base has it.",
+   "commands": [
+    "export DOTNET_CLI_UI_LANGUAGE=en-US in every shell that ran dotnet or the test executable",
+    "git fetch origin ccr-6d6c0ee6-dqm4lm-188; git checkout --detach origin/ccr-6d6c0ee6-dqm4lm-188 -> 95d5814; git diff --stat 19a2296 HEAD -- src/ -> empty",
+    "Read TryReadXRefChain (3247-3745), ReachedAt, StartOf, StartOfNamed, RecordSectionReached, LeaveReadingToPrevious, NameAgain, PositionOf, TryReadXRefSection's start, TryRelocateXRefSection, NumberRunsInto, FindSectionCandidates and XRefSectionRecord's constructor and RelocateTo; grepped every write of sectionsAt, visited, _sectionsReadAt and Padding, every read of leaveAt, leaveIsTable, hybridStart and naming, and every exit of the loop",
+    "Read the harness logs adr53/logs/08/PFR-0191, 0195, 0205 and 0259 -suite and -confirm-suite: each unconfirmed failure is a Stopwatch bound (HostileInputTests 22 s / 18 s / 14 s / 12 s against 10 s; the cairo corpus row 25 s and 24 s against 20 s), and each confirm-suite passed (131/0 or 2/0)",
+    "git apply of the settling agent's patch (patches/b3-05/0001-...) plus a temporary probe test class, both uncommitted and later removed; dotnet build tests/AdCodicem.Pdf.Tests/AdCodicem.Pdf.Tests.csproj -c Release -m:2 -> 0 warnings, 0 errors",
+    "Base: probe -> total 1, failed 0 (dump written); the two new tests -> total 2, failed 0, succeeded 2",
+    "mutant.py . PFR-0191; build -> 0 warnings; probe -> total 1, failed 0, output identical to the base's (diff empty); --filter-method '*outside_the_file*' -> total 27, failed 0, succeeded 27; reverted",
+    "mutant.py . PFR-0195; build -> 0 warnings; the two new tests -> total 2, failed 1, succeeded 1 (found-moved test: LoopOffset expected 132, found 133); reverted",
+    "mutant.py . PFR-0202; build -> 0 warnings; the two new tests -> total 2, failed 1, succeeded 1 (found-moved test: 132 against 133); reverted",
+    "mutant.py . PFR-0205; build -> 0 warnings; the two new tests -> total 2, failed 1, succeeded 1 (white-space-before-object test: LoopOffset expected 109, found 110); reverted",
+    "mutant.py . PFR-0313; build -> 0 warnings; probe -> total 1, failed 0, output identical to the base's; --filter-method '*header*' -> total 916, failed 0, succeeded 916; reverted. A mistake on my part: this broad filter also ran two HostileInputMemoryTests methods that the step forbids during the concurrent run (An_object_stream_whose_N_its_blank_header_cannot_hold_allocates_no_table_for_it and The_object_stream_budget_weighs_the_header_tables_with_the_data). Both passed; no other timing, budget or allocation test was run",
+    "PFR-0251, 0253, 0259, 0310, 0311: settled by reading every read and write of what each site touches; not applied",
+    "Probe file removed, CrossReferenceChainTests.cs restored with git checkout; git status --short -> clean; tests/corpus/remote was never linked; HEAD 95d5814; no commit, no format-patch"
+   ]
+  },
+  "remoteControlDeviceReport": false,
+  "toolsUsed": [
+   "Bash",
+   "Write",
+   "StructuredOutput"
+  ]
+ },
+ {
+  "type": "result",
+  "key": "v2:c5fb2c1653f8c29c801feb09d543a547986fa89d351785c275d4e2839c4ca127",
+  "agentId": "a7000c95b6ead52ab",
+  "result": {
+   "label": "b3-06-r",
+   "base": "95d5814 (origin/ccr-6d6c0ee6-dqm4lm-188 at fetch time. 1e1d171 is an ancestor, and git diff 19a2296 HEAD -- src/ is empty, so src/ is the same as in the mutation run.)",
+   "verdicts": [
+    {
+     "id": "PFR-0317",
+     "verdict": "UPHELD",
+     "reason": "Holds, and the premise about the sets can go. For hybrid == -1, ReachedAt(-1) leaves start at -1 and returns -1 on every path: PositionOf(-1) is -1, so the early return gives -1, and otherwise IsInFile(-1) is false and it returns -1, with no probe either way. hybridReached and hybridStart are therefore -1, as in the code, whatever visited and _sectionsReadAt hold. (The premises that visited.Add runs only under offset >= 0 or hybrid >= 0, and that _sectionsReadAt gets only Offset+Padding >= 0, are true but not needed.) I tried a hybrid of -1 from a trailer with no /XRefStm and from _streamPastGuard: it cannot differ."
+    },
+    {
+     "id": "PFR-0318",
+     "verdict": "UPHELD",
+     "reason": "Holds, with one wording fix: when hybrid < 0, the hybridReached < 0 tests at 3545 and 3547 are never evaluated, because hybrid >= 0 && short-circuits them. Its only read on that path is hybridReached >= 0 at 3557, which is false for -2 as for -1, and line 3565 runs only inside that branch. Grep finds no other read. The harness's unconfirmed test, run alone 3 times with the mutant, passed all 3. It failed 1 of 6 runs on the head, so it is flaky under load and the harness's failure was not a kill."
+    },
+    {
+     "id": "PFR-0320",
+     "verdict": "UPHELD",
+     "reason": "Holds. previousTable is read only at 3619. That line needs hybrid >= 0 and hybridReached < 0: branch 2 takes hybridReached >= 0, and branch 3 needs hybrid >= 0. Under exactly that condition, line 3545 called StartOfNamed, whose first statement assigns table = false before any return, so the initial value is overwritten on every path that reads it."
+    },
+    {
+     "id": "PFR-0322",
+     "verdict": "OVERTURNED",
+     "reason": "Wrong on the hybrid >= 0, hybridReached >= 0 path. There the code first runs NameAgain and ReportNoStream, which writes an XRefHybridStreamLost warning to the caller's diagnostics. Only then does the loop top's ReachedAt(previous) read at the /Prev's offset. The mutant makes that read at line 3545, before the report. The premise that a source failure fails the open the same way in both is false there. If the source fails at that read, the code has already made the report, and the mutant fails before making it. Same IOException in both. The new test makes the source fail at the older table's offset and asserts diagnostics.Should().Equal((XRefHybridStreamLost, named)). Both rows fail with the mutant and pass on the base. It is now KILLED-NEW.",
+     "test": "CrossReferenceChainTests.An_xrefstm_naming_its_own_table_is_reported_before_the_chain_reads_what_that_table_s_prev_names (both rows fail with the mutant)"
+    },
+    {
+     "id": "PFR-0325",
+     "verdict": "UPHELD",
+     "reason": "Holds. The mutant adds the call only when hybrid < 0, where hybridReached is -1. Between 3545 and the loop top, the code then does nothing but local assignments: branches 1, 2 and 3 are all skipped, so nothing reports, records or reads. The extra StartOfNamed probe is therefore the code's next read: the same read, at the same point, with the same _paddingProbes state. It holds even with a source that fails there: same exception, same diagnostics. The harness's unconfirmed test, run alone 3 times with the mutant: fail, pass, pass, so not 3 of 3 and not a kill. It is flaky on the head (1 failure in 6 runs). The new test also passes with this mutant."
+    },
+    {
+     "id": "PFR-0327",
+     "verdict": "OVERTURNED",
+     "reason": "The premise that NameAgain and ReportNoStream read no bytes and never throw is true. But the conclusion misses that the mutant moves the /Prev's first read ahead of ReportNoStream's XRefHybridStreamLost warning. With a source that fails at the offset the /Prev names, the code leaves [(XRefHybridStreamLost, named)] in the reader's diagnostics, and the mutant leaves nothing. It is observable through the internal PdfFileReader constructor with a caller-owned PdfDiagnostics, the way DocumentReaderTests builds the reader. Both rows fail with the mutant. It is now KILLED-NEW.",
+     "test": "CrossReferenceChainTests.An_xrefstm_naming_its_own_table_is_reported_before_the_chain_reads_what_that_table_s_prev_names (both rows fail with the mutant)"
+    },
+    {
+     "id": "PFR-0330",
+     "verdict": "UPHELD",
+     "reason": "Holds. The mutant differs only at hybrid == -1, where hybridReached is -1: this is PFR-0325's path restricted to that value. Nothing reports, records or reads between 3545 and the loop top's ReachedAt(previous), which makes the same probe next. The values are read only when hybrid >= 0 and hybridReached < 0, where the code computes them too."
+    },
+    {
+     "id": "PFR-0331",
+     "verdict": "OVERTURNED",
+     "reason": "Same defect as PFR-0327, at hybridReached == 0. That happens when the chain named offset 0 (startxref 0) for a table that lies right past the header, and the table's /XRefStm 0 names it again. ReportNoStream ('the table itself') runs before the loop top reads at the /Prev's offset. The mutant reads there first, so a source failing at that read loses the report. The throughTheHeader: True row fails with the mutant and passes on the base. It is now KILLED-NEW.",
+     "test": "CrossReferenceChainTests.An_xrefstm_naming_its_own_table_is_reported_before_the_chain_reads_what_that_table_s_prev_names(throughTheHeader: True)"
+    },
+    {
+     "id": "PFR-0332",
+     "verdict": "OVERTURNED",
+     "reason": "hybridReached < 1 differs from < 0 only at hybridReached == 0, which is PFR-0331's case. The mutant reads at the /Prev's offset before the XRefStm-names-its-own-table report, so a source failing at that read leaves the reader's diagnostics empty instead of holding (XRefHybridStreamLost, 0). The throughTheHeader: True row fails with the mutant. It is now KILLED-NEW.",
+     "test": "CrossReferenceChainTests.An_xrefstm_naming_its_own_table_is_reported_before_the_chain_reads_what_that_table_s_prev_names(throughTheHeader: True)"
+    },
+    {
+     "id": "PFR-0334",
+     "verdict": "UPHELD",
+     "reason": "Holds. previousStart is read only at 3547, where it sits behind hybrid >= 0 && hybridReached < 0 &&, and at 3619, which is reached only under that same condition. Under that condition line 3545 assigned it from StartOfNamed, so the default (-1 or -2) is never read."
+    }
+   ],
+   "tests_added": [
+    "tests/AdCodicem.Pdf.Tests/CrossReferenceChainTests.cs: An_xrefstm_naming_its_own_table_is_reported_before_the_chain_reads_what_that_table_s_prev_names(bool throughTheHeader). A HandWrittenFile with the newest table right past the header, whose trailer gives /XRefStm naming the table itself and /Prev naming an older table with real rows. startxref and the /XRefStm both name the table by its keyword's offset (false row), or by offset 0, the header's line (true row). A ShortCountSource throws when read at the older table's offset, and the reader is built directly with a PdfDiagnostics the test holds. The test asserts: the source's own IOException (BeSameAs) leaves; diagnostics.Select((Code, Position)).Should().Equal((XRefHybridStreamLost, named)); and the message starts 'The /XRefStm of the cross-reference table at offset {named} names offset {named}, the table itself: '. On the base: 2 of 2 pass. Results with each mutant: PFR-0327 2 failed, PFR-0322 2 failed, PFR-0331 1 failed (True row), PFR-0332 1 failed (True row), PFR-0325 0 failed. Caveat for the orchestrator: through PdfDocument.Open the diagnostics are thrown away with the exception, so this ordering is visible only through the internal reader constructor with a caller-owned diagnostics object (or a caller's code inside a read)."
+   ],
+   "patch": "C:/Users/clemm/AppData/Local/Temp/claude/7278f9d03177d71e/898783fc-049f-469a-ab79-dfd299ad558e/scratchpad/cloud/settle/patches/b3-06-r/0001-test-report-an-xrefstm-naming-its-own-table-before-t.patch (commit df16519 on detached 95d5814, 1 file, +33, tests only; src/ untouched)",
+   "commands": [
+    "git fetch origin ccr-6d6c0ee6-dqm4lm-188; git checkout --detach origin/ccr-6d6c0ee6-dqm4lm-188 -> 95d5814; git diff 19a2296 HEAD --stat -- src/ -> empty",
+    "Read TryReadXRefChain (3248-3744), ReachedAt, ReachedBefore, StartOf, StartOfNamed, PaddingAt and _paddingProbes, PositionOf, IsInFile, RecordSectionReached (the only _sectionsReadAt.Add), NameAgain, ReportNoStream, DescribeOffset, PdfDiagnostics.Warn (never throws), PdfFileSource.GetWindow (reads at the exact offset), Initialize (try/finally only, no catch) and PdfDocument.Open; grep of hybridReached/hybridStart/previousStart/previousTable/visited",
+    "dotnet build tests/AdCodicem.Pdf.Tests -c Release -m:2 (base plus new test) -> 0 warnings, 0 errors; --filter-method '*An_xrefstm_naming_its_own_table_is_reported_before*' -> total 2, failed 0, succeeded 2, skipped 0",
+    "mutant.py . PFR-0327; build 0/0; new test -> total 2, failed 2, succeeded 0; revert",
+    "mutant.py . PFR-0322; build 0/0; new test -> total 2, failed 2, succeeded 0; revert",
+    "mutant.py . PFR-0331; build 0/0; new test -> total 2, failed 1 (throughTheHeader: True), succeeded 1; revert",
+    "mutant.py . PFR-0332; build 0/0; new test -> total 2, failed 1 (throughTheHeader: True), succeeded 1; revert",
+    "mutant.py . PFR-0318; build 0/0; ObjectRuleTests '*A_run_of_links_the_walk_takes_at_the_reader_s_deepest_load_is_never_where_the_stack_cuts_it' x3 -> (1,0,1,0) x3; revert",
+    "mutant.py . PFR-0325; build 0/0; same test x3 -> (1,1,0,0), (1,0,1,0), (1,0,1,0); new test -> total 2, failed 0, succeeded 2; revert",
+    "Final build of the base plus the test -> 0 warnings, 0 errors; --filter-class AdCodicem.Pdf.Tests.CrossReferenceChainTests -> total 1073, failed 0, succeeded 1073, skipped 0",
+    "Base, the stack-dependent ObjectRuleTests test x6 -> failed 0,0,0,0,1,0 (flaky on the head under the concurrent run)",
+    "git commit -F (LF message) -> df16519; check_msgs.py -> 'df16519 70 OK'; grep_keys.py on git diff 95d5814 HEAD -> rc 0, no hits; widegrep.py -> rc 0, no hits",
+    "git format-patch -1 -o .../settle/patches/b3-06-r/ HEAD; git status --short clean; tests/corpus/remote never created"
+   ]
+  },
+  "remoteControlDeviceReport": false,
+  "toolsUsed": [
+   "Bash",
+   "Edit",
+   "Write",
+   "StructuredOutput"
+  ]
+ },
+ {
+  "type": "result",
+  "key": "v2:b4bdbb3a9978a076796bc723469f9e451f5a82debbf551dc2e4e2f6996fb781a",
+  "agentId": "a0b755a8e03b1fee7",
+  "result": {
+   "label": "b3-07",
+   "base": "95d5814",
+   "survivors": [
+    {
+     "id": "PFR-0335",
+     "fate": "EQUIVALENT",
+     "reason": "Nothing ever reads the -1 arm of previousStart. It has two reads: line 3547, which sits behind `hybrid >= 0 && hybridReached < 0`, and line 3619, whose branch runs only when hybrid >= 0 and hybridReached < 0. That is the same condition that picks the StartOfNamed arm, so every read sees StartOfNamed's value."
+    },
+    {
+     "id": "PFR-0359",
+     "fate": "EQUIVALENT",
+     "reason": "previousStart == 0 matters only when hybridStart == 0 too. Each StartOf lies at or past its PositionOf, which is >= 0 inside the file. PositionOf gives 0 only for offset 0 with a header offset of 0, because _headerOffset is only ever set to an index > 0. So hybrid == previous == 0, and the first disjunct (hybrid == previous) already holds. The harness's unconfirmed failure, ObjectRuleTests.A_run_of_links_the_walk_takes_at_the_reader_s_deepest_load_is_never_where_the_stack_cuts_it, passed 3 of 3 runs alone with this mutant applied, so no existing test kills it."
+    },
+    {
+     "id": "PFR-0360",
+     "fate": "EQUIVALENT",
+     "reason": "For integers, `>= 1` is the same as `> 0`. Same reason as PFR-0359: previousStart == hybridStart == 0 forces both offsets to 0 with a header offset of 0. Then hybrid == previous, and the first disjunct already decides."
+    },
+    {
+     "id": "PFR-0366",
+     "fate": "KILLED-NEW",
+     "reason": "With hybrid == previous, the NamedAgain record that LeaveToPrevious writes got Padding -1 instead of 0. XRefSectionRecord.Padding says such a naming is short by none at the offset the chain reached the section by. The extended theory now projects Padding and fails on both shortBy-0 rows.",
+     "test": "AdCodicem.Pdf.Tests.CrossReferenceChainTests.An_xrefstm_reaching_what_its_table_s_prev_names_is_left_to_the_prev_which_reads_the_section_whole"
+    },
+    {
+     "id": "PFR-0466",
+     "fate": "EQUIVALENT",
+     "reason": "(1) A limit-cut section that declares itself one is never a classic table: TryReadClassicTable returns true after every cut, so a cut table is read, never lost. (2) For a /Type /XRef stream, ReportLostSection has already set TrailersHiddenByGuard and _cutByGuard. The chain then ends after this table: pastGuard is set, or previous is already -1 when the cut flag was set before. (3) The start the mutant records is read only by the next ReachedAt of the table's /Prev. That reaches it only when previousStart == hybridStart, where the LeaveToPrevious branch is taken instead. (4) _sectionsReadAt and _sectionDigitsAt are cleared once the chain is read. A temporary uncommitted check on 5 such files gave output identical to the head's."
+    },
+    {
+     "id": "PFR-0503",
+     "fate": "EQUIVALENT",
+     "reason": "For previous < 0, PositionOf keeps the negative value and IsInFile is false, so the conjunction is false with or without `previous >= 0`. ReachedBefore is never reached in that case."
+    },
+    {
+     "id": "PFR-0508",
+     "fate": "KILLED-NEW",
+     "reason": "With previous == 0, the head marks the trailers hidden: offset 0 is in the file and nothing the chain reached is there. The mutant does not, so the reader rebuilds the index for the missing /Root (extra xref.rebuilt and object.redefined). The new theory fails on both rows.",
+     "test": "AdCodicem.Pdf.Tests.ReaderLimitsTests.A_prev_naming_offset_zero_of_a_table_whose_hybrid_stream_a_guard_stops_stays_the_guard_s"
+    },
+    {
+     "id": "PFR-0509",
+     "fate": "KILLED-NEW",
+     "reason": "Same difference as PFR-0508, only at previous == 0. The new theory fails on both rows with the same extra xref.rebuilt and object.redefined.",
+     "test": "AdCodicem.Pdf.Tests.ReaderLimitsTests.A_prev_naming_offset_zero_of_a_table_whose_hybrid_stream_a_guard_stops_stays_the_guard_s"
+    },
+    {
+     "id": "PFR-0510",
+     "fate": "EQUIVALENT",
+     "reason": "The mutant differs only at previous == -1, where IsInFile(PositionOf(-1)) is IsInFile(-1), which is false. The conjunction is false either way."
+    }
+   ],
+   "tests_added": [
+    "ReaderLimitsTests.A_prev_naming_offset_zero_of_a_table_whose_hybrid_stream_a_guard_stops_stays_the_guard_s: new theory, rows \"stream rows\" and \"stream index\". File: StoppedSectionFiles.HybridWhoseStreamIsStopped(\"0\"). Read whole, the diagnostics are exactly [xref.offset-adjusted] and the catalog is found. Under the guard, the diagnostics are exactly [the guard's code], Structure.TrailersHiddenByGuard is true and WasRepaired is false.",
+    "CrossReferenceChainTests.An_xrefstm_reaching_what_its_table_s_prev_names_is_left_to_the_prev_which_reads_the_section_whole: existing 10-row theory (stream x shortBy 0/1/7 x junk) extended. The section projection is now (State, Offset, Padding) with rows (Read, newest, 0), (NamedAgain, previous - shortBy, shortBy == 1 ? 1 : 0), (Read, previous, 0), (Read, oldest, 0). The shortBy-0 rows pin Padding 0 for an /XRefStm naming the /Prev's own offset; the shortBy-1 rows pin 1; the shortBy-7 rows pin 0 (found by the search). The comment now says the end-of-line naming falls short by that byte and one at the /Prev's offset by none."
+   ],
+   "commit": "bba0f55 test: hold an xrefstm naming the prev's own offset short by nothing, and a prev of 0 past a guard (Refs #156, #188, #208, #264). Patch: C:/Users/clemm/AppData/Local/Temp/claude/7278f9d03177d71e/898783fc-049f-469a-ab79-dfd299ad558e/scratchpad/cloud/settle/patches/b3-07/0001-test-hold-an-xrefstm-naming-the-prev-s-own-offset-sh.patch",
+   "patch": "C:/Users/clemm/AppData/Local/Temp/claude/7278f9d03177d71e/898783fc-049f-469a-ab79-dfd299ad558e/scratchpad/cloud/settle/patches/b3-07/0001-test-hold-an-xrefstm-naming-the-prev-s-own-offset-sh.patch",
+   "commands": [
+    "git fetch origin ccr-6d6c0ee6-dqm4lm-188 && git checkout --detach origin/ccr-6d6c0ee6-dqm4lm-188 -> HEAD 95d5814 (not the expected 1e1d171: 5 test-only commits on top; git diff 19a2296 HEAD -- src/ is empty)",
+    "Base: dotnet build tests/AdCodicem.Pdf.Tests/AdCodicem.Pdf.Tests.csproj -c Release -m:2 -> 0 warnings, 0 errors",
+    "Base: --filter-method on the new theory and the extended theory -> total 12, failed 0, succeeded 12",
+    "PFR-0366 applied, built: --filter-method '*An_xrefstm_reaching_what_its_table_s_prev_names_is_left_to_the_prev_which_reads_the_section_whole*' -> total 10, failed 2 (stream True and False, shortBy 0, junk \"\": the (State, Offset, Padding) list differs), succeeded 8; reverted",
+    "PFR-0508 applied, built: --filter-method '*A_prev_naming_offset_zero_of_a_table_whose_hybrid_stream_a_guard_stops_stays_the_guard_s*' -> total 2, failed 2 (diagnostics [limit.decoded-stream|limit.index-entries, xref.rebuilt, object.redefined] instead of [guard code]); reverted",
+    "PFR-0509 applied, built: same test -> total 2, failed 2 (same extra xref.rebuilt and object.redefined); reverted",
+    "PFR-0359 applied, built: ObjectRuleTests.A_run_of_links_the_walk_takes_at_the_reader_s_deepest_load_is_never_where_the_stack_cuts_it alone x3 -> 1/1 succeeded each run, 0 failed; reverted",
+    "PFR-0466 applied, built: a temporary uncommitted test class ran 5 inputs (an /XRefStm naming a /Type /XRef stream cut by MaxTrailerLength = 1024, with /Prev naming the older table, 99999999, the table itself, 0, and the older table with /XRefStm one byte short) -> 5/5 ran, output identical to the base's (diagnostics, sections, TrailersHiddenByGuard, loop, WasRepaired); reverted and the file deleted",
+    "Base rebuilt: --filter-class ReaderLimitsTests --filter-class CrossReferenceChainTests -> total 1410, failed 0, succeeded 1410, skipped 0",
+    "grep_keys.py and widegrep.py on the diff -> clean (rc 0); check_msgs.py -> bba0f55 97 OK",
+    "git format-patch -1 HEAD -> patch written; git status --short clean; src/ identical to the base; tests/corpus/remote never linked"
+   ],
+   "found": [
+    "The base is 95d5814, not the expected 1e1d171. The branch moved by 5 test-only commits (HeaderTextTests, StreamEndsTests); src/ is identical to 19a2296.",
+    "Possibly flaky test (unconfirmed): ObjectRuleTests.A_run_of_links_the_walk_takes_at_the_reader_s_deepest_load_is_never_where_the_stack_cuts_it failed once in the harness's first filter under PFR-0359 (the cuts lacked object 160). It passed in the harness's confirm run and 3 of 3 runs alone here. PFR-0359 cannot change any output, so that failure came from the test itself; it probes stack depth, which the 8-worker load may disturb. Not run on the head, since the rule asks that only after 3 failures out of 3.",
+    "No fault in src/ and no stale comment found in TryReadXRefChain."
+   ]
+  },
+  "remoteControlDeviceReport": false,
+  "toolsUsed": [
+   "Bash",
+   "Read",
+   "Grep",
+   "Edit",
+   "Write",
+   "StructuredOutput"
+  ]
+ },
+ {
+  "type": "result",
+  "key": "v2:c5e0ae1a2bc3dc9337aeab848d136e43762b85368656a04ec5ca2227caa9ab9b",
+  "agentId": "aaed85c2817e62790",
+  "result": {
+   "label": "b3-07-r",
+   "base": "95d5814",
+   "verdicts": [
+    {
+     "id": "PFR-0335",
+     "verdict": "UPHELD",
+     "reason": "previousStart is declared fresh in each loop iteration. It has two reads: the disjunct at 3547 and leaveAt at 3619. Both sit behind hybrid >= 0 && hybridReached < 0, the same condition that picks the StartOfNamed arm, and neither hybrid nor hybridReached changes between 3545 and those reads. The -1 arm calls nothing, so the two arms have no side effects to tell apart either."
+    },
+    {
+     "id": "PFR-0359",
+     "verdict": "UPHELD",
+     "reason": "previousStart == 0 needs StartOf(PositionOf(previous)) == 0. Padding is never negative and PositionOf is the offset plus a header offset that is 0 or an index > 0, so this forces previous == 0, header offset 0 and no padding at byte 0 (a file with no %PDF- comment line). The difference also needs hybridStart == 0, which forces hybrid == 0 in the same way, so hybrid == previous and the first disjunct decides. The unconfirmed failure, ObjectRuleTests.A_run_of_links_the_walk_takes_at_the_reader_s_deepest_load_is_never_where_the_stack_cuts_it, passed 3 of 3 runs alone here with the mutant applied."
+    },
+    {
+     "id": "PFR-0360",
+     "verdict": "UPHELD",
+     "reason": "For integers, >= 1 is > 0, so the mutant differs only at previousStart == 0. As for PFR-0359, that forces previous == hybrid == 0 wherever hybridStart == previousStart could matter, and the first disjunct decides."
+    },
+    {
+     "id": "PFR-0366",
+     "verdict": "TEST-OK",
+     "reason": "The mutant changes only the Padding of the NamedAgain record that LeaveToPrevious writes when hybrid == previous. The extended theory now projects (State, Offset, Padding) with Should().Equal and pins Padding 0 for the shortBy-0 rows. Confirmed here: with the mutant applied, 2 of 10 rows fail (both shortBy-0 rows); all pass on the base.",
+     "test": "AdCodicem.Pdf.Tests.CrossReferenceChainTests.An_xrefstm_reaching_what_its_table_s_prev_names_is_left_to_the_prev_which_reads_the_section_whole"
+    },
+    {
+     "id": "PFR-0466",
+     "verdict": "OVERTURNED",
+     "reason": "Premise (3) is false. It says the recorded start is read only by the /Prev's next ReachedAt, which reaches it only when previousStart == hybridStart. But when the /Prev names an offset the chain already named, StartOfNamed gives -1. The third branch is then taken although the /Prev leads to that same stream, and the loop report at the next iteration reads the recorded start: in _sectionsReadAt, both where it resolves the looped position and in the target switch's Malformed arm. Input: a newer table's /XRefStm reads stream 44 while the objects behind its '/Type 5 0 R' and '/Size 7 0 R' are not placed yet. The stream declares no section, so it is lost for a file fault and not recorded. The older table places them, with object 7 a comment of 3,000 bytes before its value, which MaxObjectLength = 1024 cuts. Its /XRefStm reaches the stream through the other offset (header or end of line before it): /Type /XRef, cut by value. Its /Prev names again what the newer /XRefStm named. Head: the loop says 'which the chain has already named', LoopTarget Named. Mutant: 'where the chain has already reached a section it could not read', LoopTarget Reached; in the end-of-line row, LoopOffset and the report's position also move from R-1 to R. Settled as killed by the new test, which fails 2 of 2 with the mutant applied and passes 2 of 2 on the base.",
+     "test": "AdCodicem.Pdf.Tests.ReaderLimitsTests.A_prev_looping_back_to_a_stream_a_guard_cut_says_the_chain_only_named_it"
+    },
+    {
+     "id": "PFR-0503",
+     "verdict": "UPHELD",
+     "reason": "For previous < 0, PositionOf returns it unchanged and IsInFile is false, so the conjunction is false either way. ReachedBefore, and the PaddingAt probe it could cache, is evaluated in neither, so there is no side effect to tell them apart."
+    },
+    {
+     "id": "PFR-0508",
+     "verdict": "TEST-OK",
+     "reason": "The mutant drops the hidden-trailers mark for a /Prev of 0. The theory pins the behavior exactly: diagnostics are only the guard's code, TrailersHiddenByGuard is true and WasRepaired is false, against a whole read that finds the catalog. Confirmed here: 2 of 2 rows fail with the mutant applied; both pass on the base.",
+     "test": "AdCodicem.Pdf.Tests.ReaderLimitsTests.A_prev_naming_offset_zero_of_a_table_whose_hybrid_stream_a_guard_stops_stays_the_guard_s"
+    },
+    {
+     "id": "PFR-0509",
+     "verdict": "TEST-OK",
+     "reason": "Same difference as PFR-0508, only at previous == 0. Confirmed here: 2 of 2 rows fail with the mutant applied; both pass on the base.",
+     "test": "AdCodicem.Pdf.Tests.ReaderLimitsTests.A_prev_naming_offset_zero_of_a_table_whose_hybrid_stream_a_guard_stops_stays_the_guard_s"
+    },
+    {
+     "id": "PFR-0510",
+     "verdict": "UPHELD",
+     "reason": "The mutant differs only at previous == -1. There PositionOf(-1) is -1, IsInFile(-1) is false, and ReachedBefore is not reached either way. Below -1, both versions fail the first conjunct."
+    }
+   ],
+   "tests_added": [
+    "AdCodicem.Pdf.Tests.ReaderLimitsTests.A_prev_looping_back_to_a_stream_a_guard_cut_says_the_chain_only_named_it: new theory with rows namedShortBy 0 and 1. Built inline with HandWrittenFile: catalog, pages and page; object 5 '/XRef'; object 7, a comment of 3,000 bytes then 1; cross-reference stream 44 with '/Type 5 0 R /Size 7 0 R /W [1 4 2] /Filter /ASCIIHexDecode'; a 600-byte comment; an older table that places 1, 2, 3, 5 and 7, its /XRefStm naming the stream's other offset and its /Prev naming what the newest's /XRefStm names; a newest table whose /XRefStm names the header or the end of line before it. Under MaxObjectLength = 1024 it pins (Code, Position) exactly as [(xref.section-unreadable, named), (xref.chain-cycle, named), (limit.object, object 7)], the loop message ending 'which the chain has already named.', LoopOffset == named, LoopTarget Named, TrailersHiddenByGuard true and WasRepaired false. Read whole, LoopTarget is not Named."
+   ],
+   "patch": "C:/Users/clemm/AppData/Local/Temp/claude/7278f9d03177d71e/898783fc-049f-469a-ab79-dfd299ad558e/scratchpad/cloud/settle/patches/b3-07-r/0001-test-hold-a-prev-looping-back-to-a-stream-a-guard-cu.patch",
+   "commands": [
+    "git fetch origin ccr-6d6c0ee6-dqm4lm-188; git checkout --detach origin/ccr-6d6c0ee6-dqm4lm-188 -> HEAD 95d5814 (base; git diff 19a2296 HEAD -- src/ empty)",
+    "git apply <b3-07 settling patch> (uncommitted, to check its tests), plus a temporary probe test class",
+    "Base build: dotnet build tests/AdCodicem.Pdf.Tests/AdCodicem.Pdf.Tests.csproj -c Release -m:2 -> 0 warnings, 0 errors",
+    "Base: probe class -> total 3, failed 0, succeeded 3 (guarded run: loop target Named, 'which the chain has already named'); the two theories from the settling patch -> total 12, failed 0, succeeded 12",
+    "PFR-0466 applied, built (0 warnings): probe -> output differs from base (message 'where the chain has already reached a section it could not read', target Reached; second variant also LoopOffset 3237 -> 3238)",
+    "PFR-0466 applied, new test added and built: --filter-method '*A_prev_looping_back_to_a_stream_a_guard_cut_says_the_chain_only_named_it*' -> total 2, failed 2, succeeded 0",
+    "PFR-0466 reverted, probe deleted, built (0 warnings): same filter -> total 2, failed 0, succeeded 2",
+    "PFR-0366 applied, built: --filter-method '*An_xrefstm_reaching_what_its_table_s_prev_names_is_left_to_the_prev_which_reads_the_section_whole*' -> total 10, failed 2, succeeded 8; reverted",
+    "PFR-0508 applied, built: --filter-method '*A_prev_naming_offset_zero_of_a_table_whose_hybrid_stream_a_guard_stops_stays_the_guard_s*' -> total 2, failed 2, succeeded 0; reverted",
+    "PFR-0509 applied, built: same filter -> total 2, failed 2, succeeded 0; reverted",
+    "PFR-0359 applied, built: ObjectRuleTests.A_run_of_links_the_walk_takes_at_the_reader_s_deepest_load_is_never_where_the_stack_cuts_it alone x3 -> 1/1 succeeded each run, 0 failed; reverted",
+    "git apply -R <b3-07 settling patch> (only the new test left)",
+    "Base + new test built (0 warnings): --filter-class AdCodicem.Pdf.Tests.ReaderLimitsTests -> total 339, failed 0, succeeded 339, skipped 0",
+    "grep_keys.py and widegrep.py on the diff -> rc 0, rc 0",
+    "git commit -F (LF message) -> 9e043e5; check_msgs.py -> '9e043e5 88 OK'",
+    "git format-patch -1 -> patch written; git status clean; git diff 95d5814 HEAD -- src/ empty; tests/corpus/remote never linked; settling patch still applies over 9e043e5 (git apply --check OK)"
+   ]
+  },
+  "remoteControlDeviceReport": false,
+  "toolsUsed": [
+   "Bash",
+   "mcp__ccd_turn__update_plan",
+   "Read",
+   "Grep",
+   "Write",
+   "Edit",
+   "StructuredOutput"
+  ]
+ },
+ {
+  "type": "result",
+  "key": "v2:71e2695be7706a8b63c1239fe93b1d5fe7181f510cf53ac4fd5618db1c99b6d7",
+  "agentId": "a5dab12a84d954902",
+  "result": {
+   "head_before": "95d5814e34fffed554201a9baaacc6775e396f66",
+   "head_after": "26ce7879b5225ac9f31ef7df56ef036e43210d44",
+   "commits": [
+    "47668c4 test: hold a guarded section's link to object 1 or to offset 0 as the guard's (Refs #207, #210, #221, #264; from b3-01; pushed)",
+    "51dec0c test: pin endstream searches the parser's bytes settle and a stream passed over named again (Refs #156, #188, #261; from b3-02; pushed)",
+    "3ee9293 test: pin a search for data at the file's first byte ending at an endstream or a header there (Refs #261; from b3-02-r; pushed)",
+    "bbbeb08 test: stop a search at a header that starts at the file's first byte (Refs #261; from b3-03-r; pushed. Its git am -3 hit a conflict in StreamLengthTests.cs: both b3-02-r and b3-03-r add a theory right after The_start_and_the_end_of_the_search_bound_an_object_header_as_white_space_does. I kept both whole, b3-02-r's theory first and then b3-03-r's, each with its own [Theory]. Nothing else changed.)",
+    "1741773 test: pin that an xrefstm and a prev reaching no start never meet at one (Refs #156, #188, #264; from b3-04; pushed)",
+    "b48000e test: hold a loop at the end of line it names again where the section named there was not read (Refs #188; from b3-05; pushed)",
+    "65693d3 test: report an xrefstm naming its own table before the chain reads on (Refs #156, #188; from b3-06-r; pushed)",
+    "9d9de2e test: hold an xrefstm naming the prev's own offset short by nothing, and a prev of 0 past a guard (Refs #156, #188, #208, #264; from b3-07; pushed)",
+    "26ce787 test: hold a prev looping back to a stream a guard cut as a loop on what the chain named (Refs #156, #188, #208; from b3-07-r; pushed)"
+   ],
+   "confirm": [
+    "PFR-0163: KILLED by first filter, 1 of 782 rows failed (1 tests), first ReaderLimitsTests.A_prev_a_stream_a_guard_stopped_writes_as_a_reference_is_unknown_only_for_a_row_it_left_unread [stopped at the first failure: the count is a floor] (32s)",
+    "PFR-0140: KILLED by first filter, 1 of 917 rows failed (1 tests), first ReaderLimitsTests.A_link_a_section_a_guard_stops_gives_that_may_be_sound_stays_the_guard_s [stopped at the first failure: the count is a floor] (32s)",
+    "PFR-0533: KILLED by first filter, 1 of 453 rows failed (1 tests), first CrossReferenceChainTests.A_stream_passed_over_near_a_hybrid_table_s_prev_that_names_a_place_inside_its_object_number_is_reported_though_an_older_xrefstm_names_that_place_again [stopped at the first failure: the count is a floor] (19s)",
+    "PFR-0141: KILLED by first filter, 1 of 381 rows failed (1 tests), first ReaderLimitsTests.A_link_a_section_a_guard_stops_gives_that_may_be_sound_stays_the_guard_s [stopped at the first failure: the count is a floor] (21s)",
+    "PFR-0011: KILLED by first filter, 1 of 3592 rows failed (1 tests), first StreamLengthTests.An_endstream_in_a_comment_that_only_white_space_separates_from_the_next_object_ends_the_data [stopped at the first failure: the count is a floor] (35s)",
+    "PFR-0012: KILLED by first filter, 1 of 2652 rows failed (1 tests), first StreamLengthTests.An_endstream_in_a_comment_that_only_white_space_separates_from_the_next_object_ends_the_data [stopped at the first failure: the count is a floor] (36s)",
+    "PFR-0038: KILLED by first filter, 1 of 2006 rows failed (1 tests), first StreamLengthTests.A_search_whose_bytes_the_object_s_window_holds_to_the_end_of_the_file_reads_nothing_more [stopped at the first failure: the count is a floor] (30s)",
+    "PFR-0032: KILLED by first filter, 1 of 2272 rows failed (1 tests), first StreamLengthTests.A_search_for_data_that_starts_at_the_file_s_first_byte_stops_at_an_endstream_or_a_header_that_starts_there [stopped at the first failure: the count is a floor] (34s)",
+    "PFR-0033: KILLED by first filter, 1 of 2447 rows failed (1 tests), first StreamLengthTests.A_search_for_data_that_starts_at_the_file_s_first_byte_stops_at_an_endstream_or_a_header_that_starts_there [stopped at the first failure: the count is a floor] (30s)",
+    "PFR-0057: KILLED by first filter, 1 of 2607 rows failed (1 tests), first StreamLengthTests.A_search_for_data_that_starts_at_the_file_s_first_byte_stops_at_an_endstream_or_a_header_that_starts_there [stopped at the first failure: the count is a floor] (31s)",
+    "PFR-0058: KILLED by first filter, 1 of 2420 rows failed (1 tests), first StreamLengthTests.A_search_for_data_that_starts_at_the_file_s_first_byte_stops_at_an_endstream_or_a_header_that_starts_there [stopped at the first failure: the count is a floor] (32s)",
+    "PFR-0035: KILLED by first filter, 1 of 1296 rows failed (1 tests), first StreamLengthTests.A_header_at_the_file_s_first_byte_stops_a_search_whose_data_starts_there_as_it_does_anywhere [stopped at the first failure: the count is a floor] (32s)",
+    "PFR-0036: KILLED by first filter, 1 of 2350 rows failed (1 tests), first StreamLengthTests.A_search_for_data_that_starts_at_the_file_s_first_byte_stops_at_an_endstream_or_a_header_that_starts_there [stopped at the first failure: the count is a floor] (32s)",
+    "PFR-0043: KILLED by first filter, 1 of 1490 rows failed (1 tests), first StreamLengthTests.A_header_at_the_file_s_first_byte_stops_a_search_whose_data_starts_there_as_it_does_anywhere [stopped at the first failure: the count is a floor] (28s)",
+    "PFR-0044: KILLED by first filter, 1 of 2347 rows failed (1 tests), first StreamLengthTests.A_search_for_data_that_starts_at_the_file_s_first_byte_stops_at_an_endstream_or_a_header_that_starts_there [stopped at the first failure: the count is a floor] (26s)",
+    "PFR-0060: KILLED by first filter, 2 of 1369 rows failed (2 tests), first StreamLengthTests.A_header_at_the_file_s_first_byte_stops_a_search_whose_data_starts_there_as_it_does_anywhere [stopped at the first failure: the count is a floor] (27s)",
+    "PFR-0061: KILLED by first filter, 1 of 2312 rows failed (1 tests), first StreamLengthTests.A_search_for_data_that_starts_at_the_file_s_first_byte_stops_at_an_endstream_or_a_header_that_starts_there [stopped at the first failure: the count is a floor] (30s)",
+    "PFR-0105: KILLED by first filter, 2 of 1280 rows failed (2 tests), first StreamLengthTests.A_header_at_the_file_s_first_byte_stops_a_search_whose_data_starts_there_as_it_does_anywhere [stopped at the first failure: the count is a floor] (28s)",
+    "PFR-0106: KILLED by first filter, 1 of 2334 rows failed (1 tests), first StreamLengthTests.A_header_at_the_file_s_first_byte_stops_a_search_whose_data_starts_there_as_it_does_anywhere [stopped at the first failure: the count is a floor] (35s)",
+    "PFR-0592: KILLED by first filter, 2 of 2370 rows failed (2 tests), first CrossReferenceChainTests.An_xrefstm_naming_white_space_past_a_trailer_s_window_a_byte_past_its_table_s_prev_is_left_to_no_prev [stopped at the first failure: the count is a floor] (40s)",
+    "PFR-0600: KILLED by first filter, 1 of 407 rows failed (1 tests), first CrossReferenceChainTests.An_xrefstm_naming_the_comment_that_ends_the_file_is_left_to_no_prev_naming_the_file_s_length [stopped at the first failure: the count is a floor] (21s)",
+    "PFR-0195: KILLED by first filter, 1 of 1213 rows failed (1 tests), first CrossReferenceChainTests.A_loop_through_an_offset_a_section_was_found_moved_from_is_placed_there_though_a_section_read_since_starts_past_its_white_space [stopped at the first failure: the count is a floor] (23s)",
+    "PFR-0202: KILLED by first filter, 1 of 1737 rows failed (1 tests), first CrossReferenceChainTests.A_loop_through_an_offset_a_section_was_found_moved_from_is_placed_there_though_a_section_read_since_starts_past_its_white_space [stopped at the first failure: the count is a floor] (25s)",
+    "PFR-0205: KILLED by first filter, 2 of 733 rows failed (2 tests), first ReaderLimitsTests.A_prev_looping_back_to_a_stream_a_guard_cut_says_the_chain_only_named_it [stopped at the first failure: the count is a floor] (27s)",
+    "PFR-0322: KILLED by first filter, 1 of 3139 rows failed (1 tests), first CrossReferenceChainTests.An_xrefstm_naming_its_own_table_is_reported_before_the_chain_reads_what_that_table_s_prev_names [stopped at the first failure: the count is a floor] (36s)",
+    "PFR-0327: KILLED by first filter, 1 of 3617 rows failed (1 tests), first CrossReferenceChainTests.An_xrefstm_naming_its_own_table_is_reported_before_the_chain_reads_what_that_table_s_prev_names [stopped at the first failure: the count is a floor] (43s)",
+    "PFR-0331: KILLED by first filter, 1 of 3187 rows failed (1 tests), first CrossReferenceChainTests.An_xrefstm_naming_its_own_table_is_reported_before_the_chain_reads_what_that_table_s_prev_names [stopped at the first failure: the count is a floor] (40s)",
+    "PFR-0332: KILLED by first filter, 1 of 3677 rows failed (1 tests), first CrossReferenceChainTests.An_xrefstm_naming_its_own_table_is_reported_before_the_chain_reads_what_that_table_s_prev_names [stopped at the first failure: the count is a floor] (45s)",
+    "PFR-0366: KILLED by first filter, 1 of 1505 rows failed (1 tests), first CrossReferenceChainTests.An_xrefstm_reaching_what_its_table_s_prev_names_is_left_to_the_prev_which_reads_the_section_whole [stopped at the first failure: the count is a floor] (31s)",
+    "PFR-0508: KILLED by first filter, 1 of 1644 rows failed (1 tests), first ReaderLimitsTests.A_prev_naming_offset_zero_of_a_table_whose_hybrid_stream_a_guard_stops_stays_the_guard_s [stopped at the first failure: the count is a floor] (30s)",
+    "PFR-0509: KILLED by first filter, 1 of 1624 rows failed (1 tests), first ReaderLimitsTests.A_prev_naming_offset_zero_of_a_table_whose_hybrid_stream_a_guard_stops_stays_the_guard_s [stopped at the first failure: the count is a floor] (32s)",
+    "PFR-0466: KILLED by first filter, 1 of 737 rows failed (1 tests), first ReaderLimitsTests.A_prev_looping_back_to_a_stream_a_guard_cut_says_the_chain_only_named_it [stopped at the first failure: the count is a floor] (26s)",
+    "Harness: shard b3, 32 mutants at 26ce787 with 2 workers, done in 535 s, errors: none, rc=0. Its summary is at C:/Users/clemm/AppData/Local/Temp/claude/7278f9d03177d71e/898783fc-049f-469a-ab79-dfd299ad558e/scratchpad/cloud/adr53/summary-b3.txt (32 lines), and its shard file at C:/Users/clemm/AppData/Local/Temp/claude/7278f9d03177d71e/898783fc-049f-469a-ab79-dfd299ad558e/scratchpad/cloud/settle/b3-confirm.json. The extra classes were AdCodicem.Pdf.Tests.ReaderLimitsTests, CrossReferenceChainTests and StreamLengthTests. The harness removed its worktrees wb3-1 and wb3-2."
+   ],
+   "tests_run": [
+    "dotnet build AdCodicem.Pdf.slnx -c Release -m:2: Build succeeded, 0 warnings, 0 errors (3 min 31 s)",
+    "dotnet format AdCodicem.Pdf.slnx --verify-no-changes: rc 0, no output",
+    "AdCodicem.Pdf.Tests.exe --filter-class AdCodicem.Pdf.Tests.CrossReferenceChainTests (remote corpus hard-linked): total 1078, failed 0, succeeded 1078, skipped 0 (31 s). That is the 1071 the class held at 95d5814 plus 7 new.",
+    "AdCodicem.Pdf.Tests.exe --filter-class AdCodicem.Pdf.Tests.ReaderLimitsTests: total 348, failed 0, succeeded 348, skipped 0 (6.8 s). That is the 337 it held plus 11 new rows.",
+    "AdCodicem.Pdf.Tests.exe --filter-class AdCodicem.Pdf.Tests.StreamLengthTests, with --filter-not-method on its three Stopwatch-bound tests (Searches_through_an_index_of_a_million_entries_take_bounded_time, An_endstream_in_a_header_s_comment_is_decided_by_reading_on_once_through_the_comment_lines_after_it, A_file_of_data_with_no_endstream_is_searched_once_to_its_end): total 284, failed 0, succeeded 284, skipped 0 (10 s). That is 276 plus 8 new rows.",
+    "check_msgs.py over git log 95d5814..HEAD: all 9 commits OK (26ce787 88, 9d9de2e 97, 65693d3 70, b48000e 94, 1741773 72, bbbeb08 68, 3ee9293 93, 51dec0c 91, 47668c4 77), rc 0",
+    "grep_keys.py over git diff 95d5814 HEAD: rc 0, nothing reported; widegrep.py over the same diff: rc 0, nothing reported",
+    "Mutation harness confirm run (run.py ... b3-confirm.json 26ce787 2 --any-commit --stop-on-fail --repo <worktree>): 32 of 32 KILLED"
+   ],
+   "problems": [
+    "Base: the head was 95d5814, not 1e1d171. Five test-only commits had landed on the branch since 1e1d171, as most groups also reported. src/ matches the mutation run's 19a2296.",
+    "Conflict on applying b3-03-r (bbbeb08): b3-02-r's theory and b3-03-r's theory were both added after the same test in StreamLengthTests.cs. I resolved it by keeping both whole, b3-02-r's first and then b3-03-r's. The two theories cover close ground: a header at the file's first byte with data starting at 0. They differ in junk, buffering and asserted fields, and each settles its own mutants (PFR-0035, 0036, 0043, 0044 first-fail on either; PFR-0060, 0061, 0105, 0106 too).",
+    "Groups b3-03 and b3-06 had no patch of their own; only their refuters' patches (b3-03-r, b3-06-r) were applied. b3-01-r, b3-04-r and b3-05-r wrote no patch, because every verdict held.",
+    "No refuter returned TEST-WEAK, so nothing had to be strengthened, and no fix commit was needed after the checks.",
+    "In four kills the harness counted a second failing test besides the new one, because --stop-on-fail cancels the run. In PFR-0105 it was CrossReferenceChainTests.A_line_the_source_gives_short_of_the_place_..., with TaskCanceledException. In PFR-0205 it was CrossReferenceChainTests.The_stream_a_hybrid_table_s_xrefstm_read_is_told_near_its_prev_..., and in PFR-0592 CrossReferenceRuleTests.A_cross_reference_stream_an_update_names_..., both with TargetException 'Non-static method requires a target' after the cancel. In PFR-0060 it was ObjectRuleTests.A_run_of_links_the_walk_takes_at_the_reader_s_deepest_load_is_never_where_the_stack_cuts_it, the stack-probe test the groups found flaky under the 8-worker load ('Object 160' missing from the cuts). In each case the first failure is a new test, so none of these is a kill by an existing test.",
+    "PFR-0205 (settled by b3-05's test) first failed in the confirm run on b3-07-r's new test ReaderLimitsTests.A_prev_looping_back_to_a_stream_a_guard_cut_says_the_chain_only_named_it(namedShortBy: 1), because that test ran first. The kill stands either way.",
+    "The harness ran its first filters on the StreamLengthTests class whole, which includes its three Stopwatch-bound tests. The task asked for this run as written. None of them failed: every first failure is a behavior test.",
+    "To run the touched classes myself, I excluded those three StreamLengthTests timing tests, as groups b3-02 and b3-02-r did. No ReaderTimingTests, HostileInputMemoryTests, budget or allocation test, or benchmark was run by me.",
+    "The flaky test ObjectRuleTests.A_run_of_links_the_walk_takes_at_the_reader_s_deepest_load_is_never_where_the_stack_cuts_it fails again under load. b3-06 counted 4 failures in 22 solo runs on the head. Several groups flagged it, and it is worth a debt issue.",
+    "Cleanup: tests/corpus/remote was hard-linked for the class runs, then removed with rm -rf (links only; the maintainer's copy is intact). git status is clean. Push was a fast-forward 95d5814..26ce787 on the first try, and git ls-remote confirms 26ce787 on ccr-6d6c0ee6-dqm4lm-188."
+   ]
+  },
+  "remoteControlDeviceReport": false,
+  "toolsUsed": [
+   "Bash",
+   "mcp__ccd_turn__update_plan",
+   "Read",
+   "ToolSearch",
+   "Monitor",
+   "StructuredOutput"
+  ]
+ }
+]

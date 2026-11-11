@@ -1240,3 +1240,16 @@ review. Then the batch-wide ADR 53 step.
   (docs nit, with b1's).
 - Ledger: W/settle/fates.jsonl (one line per id, final fate after the refuter); summarize.py appends a batch to it.
   After b1+b2: 80 ids = 34 killed by new tests + 46 equivalent.
+- b3 settled (wf_d0221f6a-d25): 70 = 32 KILLED-NEW + 38 EQUIVALENT (6 'equivalent in what is reported, cost only':
+  PFR-0118..0123, Initialize's finally releasing chain-only state); the refuter overturned 17 (FindEndStream is a
+  member of the internal IPdfStreamDataProvider, callable at data start 0; PFR-0322/0327/0331/0332: the /Prev's first
+  read moved ahead of the hybrid-stream-lost report; PFR-0466). Pushed 95d5814..26ce787 (47668c4, 51dec0c, 3ee9293,
+  bbbeb08, 1741773, b48000e, 65693d3, 9d9de2e, 26ce787; test); 33 ids confirmed KILLED (summary-b3.txt).
+  Found: ObjectRuleTests.A_run_of_links_the_walk_takes_at_the_reader_s_deepest_load_is_never_where_the_stack_cuts_it
+  flaky under load (4 failures in 22 solo runs on the head while the run loads the machine; 'the cuts lacked object
+  160') -> debt candidate; HostileInputTests stopwatch test (10 s) fails under load (unconfirmed lines);
+  LeaveReadingToPrevious' 'place.WasRelocated ? 0 :' and NamesSection's '>= 0' are redundant (not faults).
+- After b1-b3: 150 ids = 66 killed by new tests + 84 equivalent; the refuter overturned 33 of 117 first equivalents.
+- Batch b4 (114 survivors, 14 groups: the rest of PdfFileReader, PdfObjectParser.MayBeHeaderBytes, PendingEndStream,
+  XRefSectionRecord, ChainLoopRule), pool 4: wf_371248e0-341 (task wljgtmtxg). settled.txt: 264. Run at 14:40: 3,419
+  with a final line; shards 24-27 left.

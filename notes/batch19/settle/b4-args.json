@@ -1,0 +1,1310 @@
+{
+ "batch": "b4",
+ "groups": [
+  {
+   "file": "src/AdCodicem.Pdf/IO/PdfFileReader.cs",
+   "members": [
+    "PdfFileReader.DigitsPastSigns",
+    "PdfFileReader.HoldsReference",
+    "PdfFileReader.IsPast64Bits"
+   ],
+   "survivors": [
+    {
+     "id": "PFR-1423",
+     "file": "src/AdCodicem.Pdf/IO/PdfFileReader.cs",
+     "old": "signs < 0",
+     "new": "false",
+     "site": "src/AdCodicem.Pdf/IO/PdfFileReader.cs:5567:16:cond-whole:9",
+     "member": "PdfFileReader.DigitsPastSigns",
+     "timeout": 300,
+     "summary": "SURVIVED (first filter (3495, 0, 3495, 0), suite (7483, 0, 7480, 3)) (321s)"
+    },
+    {
+     "id": "PFR-1424",
+     "file": "src/AdCodicem.Pdf/IO/PdfFileReader.cs",
+     "old": "        return signs < 0 ? at : at + signs;",
+     "new": "        return signs <= 0 ? at : at + signs;",
+     "site": "src/AdCodicem.Pdf/IO/PdfFileReader.cs:5567:16:bound-op:9",
+     "member": "PdfFileReader.DigitsPastSigns",
+     "timeout": 300,
+     "summary": "SURVIVED (first filter (3495, 0, 3495, 0), suite (7483, 0, 7480, 3)) (331s)"
+    },
+    {
+     "id": "PFR-1425",
+     "file": "src/AdCodicem.Pdf/IO/PdfFileReader.cs",
+     "old": "        return signs < 0 ? at : at + signs;",
+     "new": "        return signs < 1 ? at : at + signs;",
+     "site": "src/AdCodicem.Pdf/IO/PdfFileReader.cs:5567:24:bound-const:1",
+     "member": "PdfFileReader.DigitsPastSigns",
+     "timeout": 300,
+     "summary": "SURVIVED (first filter (3495, 0, 3495, 0), suite (7483, 0, 7480, 3)) (299s)"
+    },
+    {
+     "id": "PFR-1426",
+     "file": "src/AdCodicem.Pdf/IO/PdfFileReader.cs",
+     "old": "        return signs < 0 ? at : at + signs;",
+     "new": "        return signs < (-1) ? at : at + signs;",
+     "site": "src/AdCodicem.Pdf/IO/PdfFileReader.cs:5567:24:bound-const:1",
+     "member": "PdfFileReader.DigitsPastSigns",
+     "timeout": 300,
+     "summary": "SURVIVED (first filter (3495, 0, 3495, 0), suite (7483, 0, 7480, 3)) (315s)"
+    },
+    {
+     "id": "PFR-0940",
+     "file": "src/AdCodicem.Pdf/IO/PdfFileReader.cs",
+     "old": "            for (var i = 0; i < array.Count; i++)",
+     "new": "            for (var i = 1; i < array.Count; i++)",
+     "site": "src/AdCodicem.Pdf/IO/PdfFileReader.cs:4551:26:bound-const:1",
+     "member": "PdfFileReader.HoldsReference",
+     "timeout": 300,
+     "summary": "SURVIVED (first filter (2742, 0, 2742, 0), suite (8236, 0, 8233, 3)) (240s)"
+    },
+    {
+     "id": "PFR-2123",
+     "file": "src/AdCodicem.Pdf/IO/PdfFileReader.cs",
+     "old": "        width > sizeof(ulong) && row.Slice(start, width - sizeof(ulong)).ContainsAnyExcept((byte)0);",
+     "new": "        width >= sizeof(ulong) && row.Slice(start, width - sizeof(ulong)).ContainsAnyExcept((byte)0);",
+     "site": "src/AdCodicem.Pdf/IO/PdfFileReader.cs:8544:9:bound-op:21",
+     "member": "PdfFileReader.IsPast64Bits",
+     "timeout": 300,
+     "summary": "SURVIVED (first filter (2956, 0, 2956, 0), suite (8022, 1, 8018, 3)) [unconfirmed failures: ObjectRuleTests.A_run_of_links_the_walk_takes_at_the_reader_s_deepest_load_is_never_where_the_stack_cuts_it] (302s)"
+    }
+   ],
+   "n": 6,
+   "label": "b4-01"
+  },
+  {
+   "file": "src/AdCodicem.Pdf/IO/PdfFileReader.cs",
+   "members": [
+    "PdfFileReader.IsTokenOnItsLine",
+    "PdfFileReader.LoseRows"
+   ],
+   "survivors": [
+    {
+     "id": "PFR-1453",
+     "file": "src/AdCodicem.Pdf/IO/PdfFileReader.cs",
+     "old": "        if (at < 0)",
+     "new": "        if (false)",
+     "site": "src/AdCodicem.Pdf/IO/PdfFileReader.cs:5657:13:cond-whole:6",
+     "member": "PdfFileReader.IsTokenOnItsLine",
+     "timeout": 300,
+     "summary": "SURVIVED (first filter (1971, 0, 1971, 0), suite (9007, 0, 9004, 3)) (255s)"
+    },
+    {
+     "id": "PFR-1456",
+     "file": "src/AdCodicem.Pdf/IO/PdfFileReader.cs",
+     "old": "        if (at < 0)",
+     "new": "        if (at < (-1))",
+     "site": "src/AdCodicem.Pdf/IO/PdfFileReader.cs:5657:18:bound-const:1",
+     "member": "PdfFileReader.IsTokenOnItsLine",
+     "timeout": 300,
+     "summary": "SURVIVED (first filter (1971, 0, 1971, 0), suite (9007, 0, 9004, 3)) (317s)"
+    },
+    {
+     "id": "PFR-1457",
+     "file": "src/AdCodicem.Pdf/IO/PdfFileReader.cs",
+     "old": "        if (at < 0)\n        {\n            return false;\n        }",
+     "new": "        if (at < 0)\n        {\n            return true;\n        }",
+     "site": "src/AdCodicem.Pdf/IO/PdfFileReader.cs:5659:20:cond-return:5",
+     "member": "PdfFileReader.IsTokenOnItsLine",
+     "timeout": 300,
+     "summary": "SURVIVED (first filter none: no class reaches the site, suite (10978, 0, 10975, 3)) (322s)"
+    },
+    {
+     "id": "PFR-1468",
+     "file": "src/AdCodicem.Pdf/IO/PdfFileReader.cs",
+     "old": "spanStart == 0",
+     "new": "false",
+     "site": "src/AdCodicem.Pdf/IO/PdfFileReader.cs:5664:30:cond-alternative:14",
+     "member": "PdfFileReader.IsTokenOnItsLine",
+     "timeout": 300,
+     "summary": "SURVIVED (first filter (1971, 0, 1971, 0), suite (9007, 0, 9004, 3)) (451s)"
+    },
+    {
+     "id": "PFR-1472",
+     "file": "src/AdCodicem.Pdf/IO/PdfFileReader.cs",
+     "old": "        if (lineStart > 0 || spanStart == 0)",
+     "new": "        if (lineStart > 0 || spanStart == 1)",
+     "site": "src/AdCodicem.Pdf/IO/PdfFileReader.cs:5664:43:bound-const:1",
+     "member": "PdfFileReader.IsTokenOnItsLine",
+     "timeout": 300,
+     "summary": "SURVIVED (first filter (1971, 0, 1971, 0), suite (9007, 0, 9004, 3)) (428s)"
+    },
+    {
+     "id": "PFR-1473",
+     "file": "src/AdCodicem.Pdf/IO/PdfFileReader.cs",
+     "old": "        if (lineStart > 0 || spanStart == 0)",
+     "new": "        if (lineStart > 0 || spanStart == (-1))",
+     "site": "src/AdCodicem.Pdf/IO/PdfFileReader.cs:5664:43:bound-const:1",
+     "member": "PdfFileReader.IsTokenOnItsLine",
+     "timeout": 300,
+     "summary": "SURVIVED (first filter (1971, 0, 1971, 0), suite (9007, 0, 9004, 3)) (418s)"
+    },
+    {
+     "id": "PFR-1482",
+     "file": "src/AdCodicem.Pdf/IO/PdfFileReader.cs",
+     "old": "        if (bytes.Length <= before + at)",
+     "new": "        if (bytes.Length < before + at)",
+     "site": "src/AdCodicem.Pdf/IO/PdfFileReader.cs:5678:13:bound-op:27",
+     "member": "PdfFileReader.IsTokenOnItsLine",
+     "timeout": 300,
+     "summary": "SURVIVED (first filter (1579, 0, 1579, 0), suite (9399, 0, 9396, 3)) (287s)"
+    },
+    {
+     "id": "PFR-1218",
+     "file": "src/AdCodicem.Pdf/IO/PdfFileReader.cs",
+     "old": "lost.Count < MaxRefusedRanges",
+     "new": "true",
+     "site": "src/AdCodicem.Pdf/IO/PdfFileReader.cs:5041:18:cond-whole:29",
+     "member": "PdfFileReader.LoseRows",
+     "timeout": 300,
+     "summary": "SURVIVED (first filter (2564, 0, 2564, 0), suite (8414, 1, 8410, 3)) [unconfirmed failures: CorpusReadingTests.Damaged_documents_are_recovered_as_far_as_an_independent_tool_recovers_them] (310s)"
+    },
+    {
+     "id": "PFR-1220",
+     "file": "src/AdCodicem.Pdf/IO/PdfFileReader.cs",
+     "old": "        else if (lost.Count < MaxRefusedRanges)",
+     "new": "        else if (lost.Count <= MaxRefusedRanges)",
+     "site": "src/AdCodicem.Pdf/IO/PdfFileReader.cs:5041:18:bound-op:29",
+     "member": "PdfFileReader.LoseRows",
+     "timeout": 300,
+     "summary": "SURVIVED (first filter (2564, 0, 2564, 0), suite (8414, 0, 8411, 3)) (315s)"
+    }
+   ],
+   "n": 9,
+   "label": "b4-02"
+  },
+  {
+   "file": "src/AdCodicem.Pdf/IO/PdfFileReader.cs",
+   "members": [
+    "PdfFileReader.NumberEnd",
+    "PdfFileReader.NumberRunsInto",
+    "PdfFileReader.PaddingAt",
+    "PdfFileReader.PaddingProbe.None"
+   ],
+   "survivors": [
+    {
+     "id": "PFR-1408",
+     "file": "src/AdCodicem.Pdf/IO/PdfFileReader.cs",
+     "old": "        var rest = span[(int)(at - spanStart + 1)..];",
+     "new": "        var rest = span[(int)(at - spanStart + 0)..];",
+     "site": "src/AdCodicem.Pdf/IO/PdfFileReader.cs:5541:48:bound-const:1",
+     "member": "PdfFileReader.NumberEnd",
+     "timeout": 300,
+     "summary": "SURVIVED (first filter (1971, 0, 1971, 0), suite (9007, 0, 9004, 3)) (330s)"
+    },
+    {
+     "id": "PFR-1412",
+     "file": "src/AdCodicem.Pdf/IO/PdfFileReader.cs",
+     "old": "        return at + 1 + signs + rest[signs..].IndexOfAnyExceptInRange((byte)'0', (byte)'9');",
+     "new": "        return at + 2 + signs + rest[signs..].IndexOfAnyExceptInRange((byte)'0', (byte)'9');",
+     "site": "src/AdCodicem.Pdf/IO/PdfFileReader.cs:5543:21:bound-const:1",
+     "member": "PdfFileReader.NumberEnd",
+     "timeout": 300,
+     "summary": "SURVIVED (first filter (1971, 0, 1971, 0), suite (9007, 1, 9003, 3)) [unconfirmed failures: ObjectRuleTests.A_run_of_links_the_walk_takes_at_the_reader_s_deepest_load_is_never_where_the_stack_cuts_it] (316s)"
+    },
+    {
+     "id": "PFR-1415",
+     "file": "src/AdCodicem.Pdf/IO/PdfFileReader.cs",
+     "old": "        return at + 1 + signs + rest[signs..].IndexOfAnyExceptInRange((byte)'0', (byte)'9');",
+     "new": "        return at + 1 + signs + rest[signs..].IndexOfAnyExceptInRange((byte)'/', (byte)'9');",
+     "site": "src/AdCodicem.Pdf/IO/PdfFileReader.cs:5543:77:bound-const:3",
+     "member": "PdfFileReader.NumberEnd",
+     "timeout": 300,
+     "summary": "SURVIVED (first filter (1971, 0, 1971, 0), suite (9007, 0, 9004, 3)) (321s)"
+    },
+    {
+     "id": "PFR-1416",
+     "file": "src/AdCodicem.Pdf/IO/PdfFileReader.cs",
+     "old": "        return at + 1 + signs + rest[signs..].IndexOfAnyExceptInRange((byte)'0', (byte)'9');",
+     "new": "        return at + 1 + signs + rest[signs..].IndexOfAnyExceptInRange((byte)'0', (byte)':');",
+     "site": "src/AdCodicem.Pdf/IO/PdfFileReader.cs:5543:88:bound-const:3",
+     "member": "PdfFileReader.NumberEnd",
+     "timeout": 300,
+     "summary": "SURVIVED (first filter (1971, 0, 1971, 0), suite (9007, 0, 9004, 3)) (284s)"
+    },
+    {
+     "id": "PFR-1406",
+     "file": "src/AdCodicem.Pdf/IO/PdfFileReader.cs",
+     "old": "        candidate == streamDigits || (candidate < streamStart && NumberEnd(span, spanStart, candidate) > streamStart);",
+     "new": "        candidate == streamDigits || (candidate < streamStart && NumberEnd(span, spanStart, candidate) >= streamStart);",
+     "site": "src/AdCodicem.Pdf/IO/PdfFileReader.cs:5521:66:bound-op:51",
+     "member": "PdfFileReader.NumberRunsInto",
+     "timeout": 300,
+     "summary": "SURVIVED (first filter (3495, 0, 3495, 0), suite (7483, 1, 7479, 3)) [unconfirmed failures: ObjectRuleTests.A_run_of_links_the_walk_takes_at_the_reader_s_deepest_load_is_never_where_the_stack_cuts_it] (335s)"
+    },
+    {
+     "id": "PFR-1614",
+     "file": "src/AdCodicem.Pdf/IO/PdfFileReader.cs",
+     "old": "            var padding = first.Start > bound ? -1 : first.Start;",
+     "new": "            var padding = first.Start > bound ? -2 : first.Start;",
+     "site": "src/AdCodicem.Pdf/IO/PdfFileReader.cs:5910:50:bound-const:1",
+     "member": "PdfFileReader.PaddingAt",
+     "timeout": 300,
+     "summary": "SURVIVED (first filter (5216, 0, 5216, 0), suite (5762, 0, 5759, 3)) (279s)"
+    },
+    {
+     "id": "PFR-1621",
+     "file": "src/AdCodicem.Pdf/IO/PdfFileReader.cs",
+     "old": "padding >= 0",
+     "new": "true",
+     "site": "src/AdCodicem.Pdf/IO/PdfFileReader.cs:5911:21:cond-conjunct:12",
+     "member": "PdfFileReader.PaddingAt",
+     "timeout": 300,
+     "summary": "SURVIVED (first filter (5216, 0, 5216, 0), suite (5762, 0, 5759, 3)) (301s)"
+    },
+    {
+     "id": "PFR-1626",
+     "file": "src/AdCodicem.Pdf/IO/PdfFileReader.cs",
+     "old": "            table = padding >= 0 && first.IsKeyword(\"xref\"u8);",
+     "new": "            table = padding >= (-1) && first.IsKeyword(\"xref\"u8);",
+     "site": "src/AdCodicem.Pdf/IO/PdfFileReader.cs:5911:32:bound-const:1",
+     "member": "PdfFileReader.PaddingAt",
+     "timeout": 300,
+     "summary": "SURVIVED (first filter (5216, 0, 5216, 0), suite (5762, 0, 5759, 3)) (257s)"
+    },
+    {
+     "id": "PFR-1633",
+     "file": "src/AdCodicem.Pdf/IO/PdfFileReader.cs",
+     "old": "        public static PaddingProbe None => new(-1, 0, false);",
+     "new": "        public static PaddingProbe None => new(-2, 0, false);",
+     "site": "src/AdCodicem.Pdf/IO/PdfFileReader.cs:5932:49:bound-const:1",
+     "member": "PdfFileReader.PaddingProbe.None",
+     "timeout": 300,
+     "summary": "SURVIVED (first filter (5216, 0, 5216, 0), suite (5762, 0, 5759, 3)) (293s)"
+    },
+    {
+     "id": "PFR-1635",
+     "file": "src/AdCodicem.Pdf/IO/PdfFileReader.cs",
+     "old": "        public static PaddingProbe None => new(-1, 0, false);",
+     "new": "        public static PaddingProbe None => new(-1, 1, false);",
+     "site": "src/AdCodicem.Pdf/IO/PdfFileReader.cs:5932:52:bound-const:1",
+     "member": "PdfFileReader.PaddingProbe.None",
+     "timeout": 300,
+     "summary": "SURVIVED (first filter (5216, 0, 5216, 0), suite (5762, 0, 5759, 3)) (286s)"
+    },
+    {
+     "id": "PFR-1636",
+     "file": "src/AdCodicem.Pdf/IO/PdfFileReader.cs",
+     "old": "        public static PaddingProbe None => new(-1, 0, false);",
+     "new": "        public static PaddingProbe None => new(-1, (-1), false);",
+     "site": "src/AdCodicem.Pdf/IO/PdfFileReader.cs:5932:52:bound-const:1",
+     "member": "PdfFileReader.PaddingProbe.None",
+     "timeout": 300,
+     "summary": "SURVIVED (first filter (5216, 0, 5216, 0), suite (5762, 0, 5759, 3)) (288s)"
+    },
+    {
+     "id": "PFR-1637",
+     "file": "src/AdCodicem.Pdf/IO/PdfFileReader.cs",
+     "old": "        public static PaddingProbe None => new(-1, 0, false);",
+     "new": "        public static PaddingProbe None => new(-1, 0, true);",
+     "site": "src/AdCodicem.Pdf/IO/PdfFileReader.cs:5932:55:cond-value:5",
+     "member": "PdfFileReader.PaddingProbe.None",
+     "timeout": 300,
+     "summary": "SURVIVED (first filter (4593, 1, 4592, 0), suite (5762, 0, 5759, 3)) [unconfirmed failures: ObjectRuleTests.A_run_of_links_the_walk_takes_at_the_reader_s_deepest_load_is_never_where_the_stack_cuts_it] (255s)"
+    }
+   ],
+   "n": 12,
+   "label": "b4-03"
+  },
+  {
+   "file": "src/AdCodicem.Pdf/IO/PdfFileReader.cs",
+   "members": [
+    "PdfFileReader.PositionOf",
+    "PdfFileReader.ReachedAt",
+    "PdfFileReader.ReadSectionOffset",
+    "PdfFileReader.ReadSubsection",
+    "PdfFileReader.ReadTrailer",
+    "PdfFileReader.ReadTrailerPastRows",
+    "PdfFileReader.RefuseDeclared"
+   ],
+   "survivors": [
+    {
+     "id": "PFR-0971",
+     "file": "src/AdCodicem.Pdf/IO/PdfFileReader.cs",
+     "old": "        offset < 0 ? offset : offset > long.MaxValue - headerOffset ? long.MaxValue : offset + headerOffset;",
+     "new": "        offset < 0 ? offset : offset >= long.MaxValue - headerOffset ? long.MaxValue : offset + headerOffset;",
+     "site": "src/AdCodicem.Pdf/IO/PdfFileReader.cs:4585:31:bound-op:37",
+     "member": "PdfFileReader.PositionOf",
+     "timeout": 300,
+     "summary": "SURVIVED (first filter (5216, 0, 5216, 0), suite (5762, 0, 5759, 3)) (315s)"
+    },
+    {
+     "id": "PFR-0561",
+     "file": "src/AdCodicem.Pdf/IO/PdfFileReader.cs",
+     "old": "        start = -1;",
+     "new": "        start = -2;",
+     "site": "src/AdCodicem.Pdf/IO/PdfFileReader.cs:3935:18:bound-const:1",
+     "member": "PdfFileReader.ReachedAt",
+     "timeout": 300,
+     "summary": "SURVIVED (first filter (5216, 0, 5216, 0), suite (5762, 0, 5759, 3)) (358s)"
+    },
+    {
+     "id": "PFR-0573",
+     "file": "src/AdCodicem.Pdf/IO/PdfFileReader.cs",
+     "old": "!IsInFile(position)",
+     "new": "false",
+     "site": "src/AdCodicem.Pdf/IO/PdfFileReader.cs:3943:13:cond-whole:19",
+     "member": "PdfFileReader.ReachedAt",
+     "timeout": 300,
+     "summary": "SURVIVED (first filter (5216, 0, 5216, 0), suite (5762, 0, 5759, 3)) (388s)"
+    },
+    {
+     "id": "PFR-0575",
+     "file": "src/AdCodicem.Pdf/IO/PdfFileReader.cs",
+     "old": "        if (!IsInFile(position))\n        {\n            return -1;\n        }",
+     "new": "        if (!IsInFile(position))\n        {\n            return -2;\n        }",
+     "site": "src/AdCodicem.Pdf/IO/PdfFileReader.cs:3945:21:bound-const:1",
+     "member": "PdfFileReader.ReachedAt",
+     "timeout": 300,
+     "summary": "SURVIVED (first filter (3694, 0, 3694, 0), suite (7284, 0, 7281, 3)) (321s)"
+    },
+    {
+     "id": "PFR-0582",
+     "file": "src/AdCodicem.Pdf/IO/PdfFileReader.cs",
+     "old": "        return _sectionsReadAt.Contains(start) ? start : -1;",
+     "new": "        return _sectionsReadAt.Contains(start) ? start : -2;",
+     "site": "src/AdCodicem.Pdf/IO/PdfFileReader.cs:3949:59:bound-const:1",
+     "member": "PdfFileReader.ReachedAt",
+     "timeout": 300,
+     "summary": "SURVIVED (first filter (5216, 0, 5216, 0), suite (5762, 0, 5759, 3)) (305s)"
+    },
+    {
+     "id": "PFR-2068",
+     "file": "src/AdCodicem.Pdf/IO/PdfFileReader.cs",
+     "old": "            : $\"is {DescribeValue(value)}, not an offset\";\n        return -1;",
+     "new": "            : $\"is {DescribeValue(value)}, not an offset\";\n        return -2;",
+     "site": "src/AdCodicem.Pdf/IO/PdfFileReader.cs:8206:17:bound-const:1",
+     "member": "PdfFileReader.ReadSectionOffset",
+     "timeout": 300,
+     "summary": "SURVIVED (first filter (3026, 0, 3026, 0), suite (7952, 0, 7949, 3)) (279s)"
+    },
+    {
+     "id": "PFR-1726",
+     "file": "src/AdCodicem.Pdf/IO/PdfFileReader.cs",
+     "old": "LoseRows(first + i, (long)first + count);",
+     "new": "",
+     "site": "src/AdCodicem.Pdf/IO/PdfFileReader.cs:6492:17:call:41",
+     "member": "PdfFileReader.ReadSubsection",
+     "timeout": 300,
+     "summary": "SURVIVED (first filter (2564, 0, 2564, 0), suite (8414, 0, 8411, 3)) (307s)"
+    },
+    {
+     "id": "PFR-1716",
+     "file": "src/AdCodicem.Pdf/IO/PdfFileReader.cs",
+     "old": "TryParseNumberedAt(absolute + position, DirectObject, PdfLimit.Trailer, out var value, out _, out _, out _, out var syntaxFault)",
+     "new": "!TryParseNumberedAt(absolute + position, DirectObject, PdfLimit.Trailer, out var value, out _, out _, out _, out var syntaxFault)",
+     "site": "src/AdCodicem.Pdf/IO/PdfFileReader.cs:6387:13:cond-value:128",
+     "member": "PdfFileReader.ReadTrailer",
+     "timeout": 300,
+     "summary": "SURVIVED (first filter (2336, 0, 2336, 0), suite (8642, 0, 8639, 3)) (342s)"
+    },
+    {
+     "id": "PFR-1700",
+     "file": "src/AdCodicem.Pdf/IO/PdfFileReader.cs",
+     "old": "TryParseNumberedAt(found + TrailerKeyword.Length, DirectObject, PdfLimit.Trailer, out var value, out _, out _, out _, out var syntaxFault)",
+     "new": "!TryParseNumberedAt(found + TrailerKeyword.Length, DirectObject, PdfLimit.Trailer, out var value, out _, out _, out _, out var syntaxFault)",
+     "site": "src/AdCodicem.Pdf/IO/PdfFileReader.cs:6297:13:cond-value:138",
+     "member": "PdfFileReader.ReadTrailerPastRows",
+     "timeout": 300,
+     "summary": "SURVIVED (first filter (4081, 0, 4081, 0), suite (6897, 0, 6894, 3)) (388s)"
+    },
+    {
+     "id": "PFR-0777",
+     "file": "src/AdCodicem.Pdf/IO/PdfFileReader.cs",
+     "old": "    private void RefuseDeclared(PdfDictionary dictionary)\n    {\n        if (_everyNumberRefused)\n        {",
+     "new": "    private void RefuseDeclared(PdfDictionary dictionary)\n    {\n        if (false)\n        {",
+     "site": "src/AdCodicem.Pdf/IO/PdfFileReader.cs:4382:13:cond-whole:19",
+     "member": "PdfFileReader.RefuseDeclared",
+     "timeout": 300,
+     "summary": "SURVIVED (first filter (2742, 0, 2742, 0), suite (8236, 1, 8232, 3)) [unconfirmed failures: ObjectRuleTests.A_run_of_links_the_walk_takes_at_the_reader_s_deepest_load_is_never_where_the_stack_cuts_it] (337s)"
+    },
+    {
+     "id": "PFR-0779",
+     "file": "src/AdCodicem.Pdf/IO/PdfFileReader.cs",
+     "old": "        var size = index is null ? dictionary.GetRaw(PdfName.Size) : null;",
+     "new": "        var size = true ? dictionary.GetRaw(PdfName.Size) : null;",
+     "site": "src/AdCodicem.Pdf/IO/PdfFileReader.cs:4389:20:cond-whole:13",
+     "member": "PdfFileReader.RefuseDeclared",
+     "timeout": 300,
+     "summary": "SURVIVED (first filter (2742, 0, 2742, 0), suite (8236, 2, 8231, 3)) [unconfirmed failures: HostileInputTests.A_dictionary_that_gives_one_key_a_million_times_reads_in_time_and_keeps_a_bounded_report, ObjectRuleTests.A_run_of_links_the_walk_takes_at_the_reader_s_deepest_load_is_never_where_the_stack_cuts_it] (363s)"
+    },
+    {
+     "id": "PFR-0798",
+     "file": "src/AdCodicem.Pdf/IO/PdfFileReader.cs",
+     "old": "        var declared = ArrayPool<(long First, long End)>.Shared.Rent(subsections.Length / 2);",
+     "new": "        var declared = ArrayPool<(long First, long End)>.Shared.Rent(subsections.Length / 1);",
+     "site": "src/AdCodicem.Pdf/IO/PdfFileReader.cs:4404:91:bound-const:1",
+     "member": "PdfFileReader.RefuseDeclared",
+     "timeout": 300,
+     "summary": "SURVIVED (first filter (2742, 0, 2742, 0), suite (8236, 0, 8233, 3)) (328s)"
+    }
+   ],
+   "n": 12,
+   "label": "b4-04"
+  },
+  {
+   "file": "src/AdCodicem.Pdf/IO/PdfFileReader.cs",
+   "members": [
+    "PdfFileReader.RefuseEveryNumber",
+    "PdfFileReader.RefuseRanges",
+    "PdfFileReader.RefusedToOlderRows",
+    "PdfFileReader.ReleaseRefusedRanges",
+    "PdfFileReader.ReportNotAnOffset",
+    "PdfFileReader.RetakeDeferred",
+    "PdfFileReader.RowsHeldAtMost"
+   ],
+   "survivors": [
+    {
+     "id": "PFR-0893",
+     "file": "src/AdCodicem.Pdf/IO/PdfFileReader.cs",
+     "old": "        _everyNumberRefused = true;\n        ReleaseRefusedRanges();",
+     "new": "        _everyNumberRefused = true;\n        ",
+     "site": "src/AdCodicem.Pdf/IO/PdfFileReader.cs:4493:9:call:23",
+     "member": "PdfFileReader.RefuseEveryNumber",
+     "timeout": 300,
+     "summary": "SURVIVED (first filter (2913, 0, 2913, 0), suite (8065, 0, 8062, 3)) (335s)"
+    },
+    {
+     "id": "PFR-0826",
+     "file": "src/AdCodicem.Pdf/IO/PdfFileReader.cs",
+     "old": "    private void RefuseRanges(Span<(long First, long End)> ranges)\n    {\n        if (_everyNumberRefused)\n        {",
+     "new": "    private void RefuseRanges(Span<(long First, long End)> ranges)\n    {\n        if (false)\n        {",
+     "site": "src/AdCodicem.Pdf/IO/PdfFileReader.cs:4441:13:cond-whole:19",
+     "member": "PdfFileReader.RefuseRanges",
+     "timeout": 300,
+     "summary": "SURVIVED (first filter (2742, 0, 2742, 0), suite (8236, 0, 8233, 3)) (322s)"
+    },
+    {
+     "id": "PFR-0858",
+     "file": "src/AdCodicem.Pdf/IO/PdfFileReader.cs",
+     "old": "            var next = added == ranges.Length || (kept < refused.Length && refused[kept].First <= ranges[added].First)",
+     "new": "            var next = added == ranges.Length || (kept < refused.Length && refused[kept].First < ranges[added].First)",
+     "site": "src/AdCodicem.Pdf/IO/PdfFileReader.cs:4457:76:bound-op:42",
+     "member": "PdfFileReader.RefuseRanges",
+     "timeout": 300,
+     "summary": "SURVIVED (first filter (2742, 0, 2742, 0), suite (8236, 1, 8232, 3)) [unconfirmed failures: HostileInputTests.A_dictionary_that_gives_one_key_a_million_times_reads_in_time_and_keeps_a_bounded_report] (277s)"
+    },
+    {
+     "id": "PFR-0884",
+     "file": "src/AdCodicem.Pdf/IO/PdfFileReader.cs",
+     "old": "\n        ReleaseRefusedRanges();\n        _refusedRanges = merged;",
+     "new": "\n        \n        _refusedRanges = merged;",
+     "site": "src/AdCodicem.Pdf/IO/PdfFileReader.cs:4476:9:call:23",
+     "member": "PdfFileReader.RefuseRanges",
+     "timeout": 300,
+     "summary": "SURVIVED (first filter (2742, 0, 2742, 0), suite (8236, 0, 8233, 3)) (256s)"
+    },
+    {
+     "id": "PFR-0916",
+     "file": "src/AdCodicem.Pdf/IO/PdfFileReader.cs",
+     "old": "            var middle = (low + high) >>> 1;",
+     "new": "            var middle = (low + high) >>> 0;",
+     "site": "src/AdCodicem.Pdf/IO/PdfFileReader.cs:4527:43:bound-const:1",
+     "member": "PdfFileReader.RefusedToOlderRows",
+     "timeout": 300,
+     "summary": "SURVIVED (first filter (2742, 0, 2742, 0), suite (8236, 0, 8233, 3)) (265s)"
+    },
+    {
+     "id": "PFR-0899",
+     "file": "src/AdCodicem.Pdf/IO/PdfFileReader.cs",
+     "old": "_refusedRangeCount = 0;",
+     "new": "",
+     "site": "src/AdCodicem.Pdf/IO/PdfFileReader.cs:4505:9:assignment:23",
+     "member": "PdfFileReader.ReleaseRefusedRanges",
+     "timeout": 300,
+     "summary": "SURVIVED (first filter (5216, 0, 5216, 0), suite (5762, 0, 5759, 3)) (342s)"
+    },
+    {
+     "id": "PFR-0900",
+     "file": "src/AdCodicem.Pdf/IO/PdfFileReader.cs",
+     "old": "        _refusedRangeCount = 0;",
+     "new": "        _refusedRangeCount = 1;",
+     "site": "src/AdCodicem.Pdf/IO/PdfFileReader.cs:4505:30:bound-const:1",
+     "member": "PdfFileReader.ReleaseRefusedRanges",
+     "timeout": 300,
+     "summary": "SURVIVED (first filter (5031, 1, 5030, 0), suite (5762, 0, 5759, 3)) [unconfirmed failures: ObjectRuleTests.A_run_of_links_the_walk_takes_at_the_reader_s_deepest_load_is_never_where_the_stack_cuts_it] (322s)"
+    },
+    {
+     "id": "PFR-0901",
+     "file": "src/AdCodicem.Pdf/IO/PdfFileReader.cs",
+     "old": "        _refusedRangeCount = 0;",
+     "new": "        _refusedRangeCount = (-1);",
+     "site": "src/AdCodicem.Pdf/IO/PdfFileReader.cs:4505:30:bound-const:1",
+     "member": "PdfFileReader.ReleaseRefusedRanges",
+     "timeout": 300,
+     "summary": "SURVIVED (first filter (5216, 0, 5216, 0), suite (5762, 0, 5759, 3)) (286s)"
+    },
+    {
+     "id": "PFR-2071",
+     "file": "src/AdCodicem.Pdf/IO/PdfFileReader.cs",
+     "old": "        _structure.Add(new XRefSectionRecord(FileQuote.Name(key), -1, section) { State = XRefSectionState.NotFound, Fault = fault });",
+     "new": "        _structure.Add(new XRefSectionRecord(FileQuote.Name(key), -2, section) { State = XRefSectionState.NotFound, Fault = fault });",
+     "site": "src/AdCodicem.Pdf/IO/PdfFileReader.cs:8220:68:bound-const:1",
+     "member": "PdfFileReader.ReportNotAnOffset",
+     "timeout": 300,
+     "summary": "SURVIVED (first filter (3026, 0, 3026, 0), suite (7952, 0, 7949, 3)) (253s)"
+    },
+    {
+     "id": "PFR-1961",
+     "file": "src/AdCodicem.Pdf/IO/PdfFileReader.cs",
+     "old": "        if (type != 1 || offset > long.MaxValue || generation != (ulong)deferred.Length.Generation)",
+     "new": "        if (type != 1 || false || generation != (ulong)deferred.Length.Generation)",
+     "site": "src/AdCodicem.Pdf/IO/PdfFileReader.cs:7398:26:cond-alternative:22",
+     "member": "PdfFileReader.RetakeDeferred",
+     "timeout": 300,
+     "summary": "SURVIVED (first filter (826, 0, 826, 0), suite (10152, 0, 10149, 3)) (278s)"
+    },
+    {
+     "id": "PFR-1966",
+     "file": "src/AdCodicem.Pdf/IO/PdfFileReader.cs",
+     "old": "        if (type != 1 || offset > long.MaxValue || generation != (ulong)deferred.Length.Generation)",
+     "new": "        if (type != 1 || offset >= long.MaxValue || generation != (ulong)deferred.Length.Generation)",
+     "site": "src/AdCodicem.Pdf/IO/PdfFileReader.cs:7398:26:bound-op:22",
+     "member": "PdfFileReader.RetakeDeferred",
+     "timeout": 300,
+     "summary": "SURVIVED (first filter (826, 0, 826, 0), suite (10152, 0, 10149, 3)) (288s)"
+    },
+    {
+     "id": "PFR-1998",
+     "file": "src/AdCodicem.Pdf/IO/PdfFileReader.cs",
+     "old": "            stream, diagnostics: null, endHidden: false, reachedBefore: false, out var leftEncoded, out var cut, out undecoded);",
+     "new": "            stream, diagnostics: null, endHidden: true, reachedBefore: false, out var leftEncoded, out var cut, out undecoded);",
+     "site": "src/AdCodicem.Pdf/IO/PdfFileReader.cs:7679:51:cond-value:5",
+     "member": "PdfFileReader.RowsHeldAtMost",
+     "timeout": 300,
+     "summary": "SURVIVED (first filter (1551, 0, 1551, 0), suite (9427, 0, 9424, 3)) (307s)"
+    }
+   ],
+   "n": 12,
+   "label": "b4-05"
+  },
+  {
+   "file": "src/AdCodicem.Pdf/IO/PdfFileReader.cs",
+   "members": [
+    "PdfFileReader.StartsToken",
+    "PdfFileReader.StreamPreviousNoOffset",
+    "PdfFileReader.TryFindObjectHeader",
+    "PdfFileReader.TryParseNearHybridPrev",
+    "PdfFileReader.TryReadHeaderBackwards"
+   ],
+   "survivors": [
+    {
+     "id": "PFR-1510",
+     "file": "src/AdCodicem.Pdf/IO/PdfFileReader.cs",
+     "old": "        while (token.End <= at && token.Kind != PdfTokenKind.EndOfInput)",
+     "new": "        while (token.End <= at && true)",
+     "site": "src/AdCodicem.Pdf/IO/PdfFileReader.cs:5699:35:cond-conjunct:37",
+     "member": "PdfFileReader.StartsToken",
+     "timeout": 300,
+     "summary": "SURVIVED (first filter (1971, 0, 1971, 0), suite (9007, 0, 9004, 3)) (279s)"
+    },
+    {
+     "id": "PFR-1516",
+     "file": "src/AdCodicem.Pdf/IO/PdfFileReader.cs",
+     "old": "        return token.Kind != PdfTokenKind.EndOfInput && token.Start == at;",
+     "new": "        return true && token.Start == at;",
+     "site": "src/AdCodicem.Pdf/IO/PdfFileReader.cs:5704:16:cond-conjunct:37",
+     "member": "PdfFileReader.StartsToken",
+     "timeout": 300,
+     "summary": "SURVIVED (first filter (1971, 0, 1971, 0), suite (9007, 0, 9004, 3)) (270s)"
+    },
+    {
+     "id": "PFR-2023",
+     "file": "src/AdCodicem.Pdf/IO/PdfFileReader.cs",
+     "old": "    private const long StreamPreviousNoOffset = -2;",
+     "new": "    private const long StreamPreviousNoOffset = -3;",
+     "site": "src/AdCodicem.Pdf/IO/PdfFileReader.cs:7809:50:bound-const:1",
+     "member": "PdfFileReader.StreamPreviousNoOffset",
+     "timeout": 300,
+     "summary": "SURVIVED (first filter (1971, 0, 1971, 0), suite (9007, 0, 9004, 3)) (269s)"
+    },
+    {
+     "id": "PFR-2138",
+     "file": "src/AdCodicem.Pdf/IO/PdfFileReader.cs",
+     "old": "        // window, not where the window's start cuts its number — \"14 0 obj\" read from its \"4\" as object 4's.\n        var lead = start > 0 ? 1 : 0;",
+     "new": "        // window, not where the window's start cuts its number — \"14 0 obj\" read from its \"4\" as object 4's.\n        var lead = start > 0 ? 2 : 0;",
+     "site": "src/AdCodicem.Pdf/IO/PdfFileReader.cs:9143:32:bound-const:1",
+     "member": "PdfFileReader.TryFindObjectHeader",
+     "timeout": 300,
+     "summary": "SURVIVED (first filter (4777, 0, 4777, 0), suite (6201, 0, 6198, 3)) (303s)"
+    },
+    {
+     "id": "PFR-1934",
+     "file": "src/AdCodicem.Pdf/IO/PdfFileReader.cs",
+     "old": "        passedOver = mayBeOwn;\n        return read;",
+     "new": "        passedOver = mayBeOwn;\n        return true;",
+     "site": "src/AdCodicem.Pdf/IO/PdfFileReader.cs:7280:16:cond-return:4",
+     "member": "PdfFileReader.TryParseNearHybridPrev",
+     "timeout": 300,
+     "summary": "SURVIVED (first filter (1463, 0, 1463, 0), suite (9515, 1, 9511, 3)) [unconfirmed failures: ObjectRuleTests.A_run_of_links_the_walk_takes_at_the_reader_s_deepest_load_is_never_where_the_stack_cuts_it] (297s)"
+    },
+    {
+     "id": "PFR-2172",
+     "file": "src/AdCodicem.Pdf/IO/PdfFileReader.cs",
+     "old": "            while (index >= 0 && PdfCharacters.IsWhitespace(span[index]))",
+     "new": "            while (index > 0 && PdfCharacters.IsWhitespace(span[index]))",
+     "site": "src/AdCodicem.Pdf/IO/PdfFileReader.cs:9397:20:bound-op:10",
+     "member": "PdfFileReader.TryReadHeaderBackwards",
+     "timeout": 300,
+     "summary": "SURVIVED (first filter (4466, 1, 4465, 0), suite (6139, 0, 6136, 3)) [unconfirmed failures: ObjectRuleTests.A_run_of_links_the_walk_takes_at_the_reader_s_deepest_load_is_never_where_the_stack_cuts_it] (315s)"
+    },
+    {
+     "id": "PFR-2173",
+     "file": "src/AdCodicem.Pdf/IO/PdfFileReader.cs",
+     "old": "            while (index >= 0 && PdfCharacters.IsWhitespace(span[index]))",
+     "new": "            while (index >= 1 && PdfCharacters.IsWhitespace(span[index]))",
+     "site": "src/AdCodicem.Pdf/IO/PdfFileReader.cs:9397:29:bound-const:1",
+     "member": "PdfFileReader.TryReadHeaderBackwards",
+     "timeout": 300,
+     "summary": "SURVIVED (first filter (4839, 0, 4839, 0), suite (6139, 0, 6136, 3)) (315s)"
+    },
+    {
+     "id": "PFR-2194",
+     "file": "src/AdCodicem.Pdf/IO/PdfFileReader.cs",
+     "old": "                if (span[lineStart..(index + 1)].Contains((byte)'%'))",
+     "new": "                if (span[lineStart..(index + 2)].Contains((byte)'%'))",
+     "site": "src/AdCodicem.Pdf/IO/PdfFileReader.cs:9407:46:bound-const:1",
+     "member": "PdfFileReader.TryReadHeaderBackwards",
+     "timeout": 300,
+     "summary": "SURVIVED (first filter (2034, 0, 2034, 0), suite (8944, 1, 8940, 3)) [unconfirmed failures: CorpusReadingTests.A_document_holds_each_report_once_however_often_its_streams_are_decoded] (363s)"
+    },
+    {
+     "id": "PFR-2199",
+     "file": "src/AdCodicem.Pdf/IO/PdfFileReader.cs",
+     "old": "                    if (!numbers.TakeLine(span[..(index + 1)], lineStart))",
+     "new": "                    if (!numbers.TakeLine(span[..(index + 2)], lineStart))",
+     "site": "src/AdCodicem.Pdf/IO/PdfFileReader.cs:9409:59:bound-const:1",
+     "member": "PdfFileReader.TryReadHeaderBackwards",
+     "timeout": 300,
+     "summary": "SURVIVED (first filter (2034, 0, 2034, 0), suite (8944, 1, 8940, 3)) [unconfirmed failures: CorpusReadingTests.Damaged_documents_are_recovered_as_far_as_an_independent_tool_recovers_them] (308s)"
+    },
+    {
+     "id": "PFR-2222",
+     "file": "src/AdCodicem.Pdf/IO/PdfFileReader.cs",
+     "old": "runStart == runEnd",
+     "new": "false",
+     "site": "src/AdCodicem.Pdf/IO/PdfFileReader.cs:9430:17:cond-whole:18",
+     "member": "PdfFileReader.TryReadHeaderBackwards",
+     "timeout": 300,
+     "summary": "SURVIVED (first filter (4839, 0, 4839, 0), suite (6139, 0, 6136, 3)) (359s)"
+    },
+    {
+     "id": "PFR-2225",
+     "file": "src/AdCodicem.Pdf/IO/PdfFileReader.cs",
+     "old": "PdfNumberParser.TryParse(span[runStart..runEnd], out var value, out _, out var pastLong)",
+     "new": "!PdfNumberParser.TryParse(span[runStart..runEnd], out var value, out _, out var pastLong)",
+     "site": "src/AdCodicem.Pdf/IO/PdfFileReader.cs:9438:17:cond-value:88",
+     "member": "PdfFileReader.TryReadHeaderBackwards",
+     "timeout": 300,
+     "summary": "SURVIVED (first filter (4839, 0, 4839, 0), suite (6139, 0, 6136, 3)) (332s)"
+    }
+   ],
+   "n": 11,
+   "label": "b4-06"
+  },
+  {
+   "file": "src/AdCodicem.Pdf/IO/PdfFileReader.cs",
+   "members": [
+    "PdfFileReader.TryReadXRefSection"
+   ],
+   "survivors": [
+    {
+     "id": "PFR-1544",
+     "file": "src/AdCodicem.Pdf/IO/PdfFileReader.cs",
+     "old": "        long absolute, XRefSectionRecord section, out long previous, out long hybrid, bool candidate = false, long tablePrevious = -1)",
+     "new": "        long absolute, XRefSectionRecord section, out long previous, out long hybrid, bool candidate = false, long tablePrevious = -2)",
+     "site": "src/AdCodicem.Pdf/IO/PdfFileReader.cs:5790:133:bound-const:1",
+     "member": "PdfFileReader.TryReadXRefSection",
+     "timeout": 300,
+     "summary": "SURVIVED (first filter (5216, 0, 5216, 0), suite (5762, 0, 5759, 3)) (333s)"
+    },
+    {
+     "id": "PFR-1547",
+     "file": "src/AdCodicem.Pdf/IO/PdfFileReader.cs",
+     "old": "        _previousPastGuard = -1;",
+     "new": "        ",
+     "site": "src/AdCodicem.Pdf/IO/PdfFileReader.cs:5796:9:assignment:24",
+     "member": "PdfFileReader.TryReadXRefSection",
+     "timeout": 300,
+     "summary": "SURVIVED (first filter (5216, 0, 5216, 0), suite (5762, 0, 5759, 3)) (321s)"
+    },
+    {
+     "id": "PFR-1548",
+     "file": "src/AdCodicem.Pdf/IO/PdfFileReader.cs",
+     "old": "        _previousPastGuard = -1;",
+     "new": "        _previousPastGuard = -2;",
+     "site": "src/AdCodicem.Pdf/IO/PdfFileReader.cs:5796:31:bound-const:1",
+     "member": "PdfFileReader.TryReadXRefSection",
+     "timeout": 300,
+     "summary": "SURVIVED (first filter (5216, 0, 5216, 0), suite (5762, 0, 5759, 3)) (320s)"
+    },
+    {
+     "id": "PFR-1550",
+     "file": "src/AdCodicem.Pdf/IO/PdfFileReader.cs",
+     "old": "        _streamPastGuard = -1;",
+     "new": "        ",
+     "site": "src/AdCodicem.Pdf/IO/PdfFileReader.cs:5797:9:assignment:22",
+     "member": "PdfFileReader.TryReadXRefSection",
+     "timeout": 300,
+     "summary": "SURVIVED (first filter (5216, 0, 5216, 0), suite (5762, 0, 5759, 3)) (297s)"
+    },
+    {
+     "id": "PFR-1551",
+     "file": "src/AdCodicem.Pdf/IO/PdfFileReader.cs",
+     "old": "        _streamPastGuard = -1;",
+     "new": "        _streamPastGuard = -2;",
+     "site": "src/AdCodicem.Pdf/IO/PdfFileReader.cs:5797:29:bound-const:1",
+     "member": "PdfFileReader.TryReadXRefSection",
+     "timeout": 300,
+     "summary": "SURVIVED (first filter (5216, 0, 5216, 0), suite (5762, 0, 5759, 3)) (313s)"
+    },
+    {
+     "id": "PFR-1555",
+     "file": "src/AdCodicem.Pdf/IO/PdfFileReader.cs",
+     "old": "        var padding = PaddingAt(absolute, out var table, remember: !candidate);",
+     "new": "        var padding = PaddingAt(absolute, out var table, remember: false);",
+     "site": "src/AdCodicem.Pdf/IO/PdfFileReader.cs:5807:68:cond-value:10",
+     "member": "PdfFileReader.TryReadXRefSection",
+     "timeout": 300,
+     "summary": "SURVIVED (first filter (5216, 0, 5216, 0), suite (5762, 0, 5759, 3)) (262s)"
+    }
+   ],
+   "n": 6,
+   "label": "b4-07"
+  },
+  {
+   "file": "src/AdCodicem.Pdf/IO/PdfFileReader.cs",
+   "members": [
+    "PdfFileReader.TryReadXRefStream (lines 6617-6826)"
+   ],
+   "survivors": [
+    {
+     "id": "PFR-1730",
+     "file": "src/AdCodicem.Pdf/IO/PdfFileReader.cs",
+     "old": "        long absolute, XRefSectionRecord section, out long previous, bool candidate, bool checkOnly = false, long tablePrevious = -1)",
+     "new": "        long absolute, XRefSectionRecord section, out long previous, bool candidate, bool checkOnly = false, long tablePrevious = -2)",
+     "site": "src/AdCodicem.Pdf/IO/PdfFileReader.cs:6617:132:bound-const:1",
+     "member": "PdfFileReader.TryReadXRefStream",
+     "timeout": 300,
+     "summary": "SURVIVED (first filter (4954, 0, 4954, 0), suite (6024, 0, 6021, 3)) (371s)"
+    },
+    {
+     "id": "PFR-1731",
+     "file": "src/AdCodicem.Pdf/IO/PdfFileReader.cs",
+     "old": "        long absolute, XRefSectionRecord section, out long previous, bool candidate, bool checkOnly = false, long tablePrevious = -1)",
+     "new": "        long absolute, XRefSectionRecord section, out long previous, bool candidate, bool checkOnly = false, long tablePrevious = -0)",
+     "site": "src/AdCodicem.Pdf/IO/PdfFileReader.cs:6617:132:bound-const:1",
+     "member": "PdfFileReader.TryReadXRefStream",
+     "timeout": 300,
+     "summary": "SURVIVED (first filter (4954, 0, 4954, 0), suite (6024, 0, 6021, 3)) (334s)"
+    },
+    {
+     "id": "PFR-1740",
+     "file": "src/AdCodicem.Pdf/IO/PdfFileReader.cs",
+     "old": "            syntaxFault = false;",
+     "new": "            syntaxFault = true;",
+     "site": "src/AdCodicem.Pdf/IO/PdfFileReader.cs:6646:27:cond-value:5",
+     "member": "PdfFileReader.TryReadXRefStream",
+     "timeout": 300,
+     "summary": "SURVIVED (first filter (2308, 0, 2308, 0), suite (8670, 0, 8667, 3)) (323s)"
+    },
+    {
+     "id": "PFR-1748",
+     "file": "src/AdCodicem.Pdf/IO/PdfFileReader.cs",
+     "old": "            objectRead = tablePrevious >= 0",
+     "new": "            objectRead = tablePrevious > 0",
+     "site": "src/AdCodicem.Pdf/IO/PdfFileReader.cs:6654:26:bound-op:18",
+     "member": "PdfFileReader.TryReadXRefStream",
+     "timeout": 300,
+     "summary": "SURVIVED (first filter (4954, 0, 4954, 0), suite (6024, 0, 6021, 3)) (286s)"
+    },
+    {
+     "id": "PFR-1749",
+     "file": "src/AdCodicem.Pdf/IO/PdfFileReader.cs",
+     "old": "            objectRead = tablePrevious >= 0",
+     "new": "            objectRead = tablePrevious >= 1",
+     "site": "src/AdCodicem.Pdf/IO/PdfFileReader.cs:6654:43:bound-const:1",
+     "member": "PdfFileReader.TryReadXRefStream",
+     "timeout": 300,
+     "summary": "SURVIVED (first filter (4954, 0, 4954, 0), suite (6024, 0, 6021, 3)) (314s)"
+    },
+    {
+     "id": "PFR-1781",
+     "file": "src/AdCodicem.Pdf/IO/PdfFileReader.cs",
+     "old": "!objectRead",
+     "new": "false",
+     "site": "src/AdCodicem.Pdf/IO/PdfFileReader.cs:6705:13:cond-alternative:11",
+     "member": "PdfFileReader.TryReadXRefStream",
+     "timeout": 300,
+     "summary": "SURVIVED (first filter (4954, 0, 4954, 0), suite (6024, 0, 6021, 3)) (352s)"
+    },
+    {
+     "id": "PFR-1786",
+     "file": "src/AdCodicem.Pdf/IO/PdfFileReader.cs",
+     "old": "        if (!objectRead || !(candidate ? DeclaresOnlyCrossReferenceStream(value) : DeclaresCrossReferenceStream(value)))",
+     "new": "        if (!objectRead || !(false ? DeclaresOnlyCrossReferenceStream(value) : DeclaresCrossReferenceStream(value)))",
+     "site": "src/AdCodicem.Pdf/IO/PdfFileReader.cs:6705:30:cond-whole:9",
+     "member": "PdfFileReader.TryReadXRefStream",
+     "timeout": 300,
+     "summary": "SURVIVED (first filter (4954, 0, 4954, 0), suite (6024, 0, 6021, 3)) (327s)"
+    },
+    {
+     "id": "PFR-1791",
+     "file": "src/AdCodicem.Pdf/IO/PdfFileReader.cs",
+     "old": "            if (!candidate && cutByGuard && value is PdfDictionary { } cut && cut.GetRaw(PdfName.Type) is not PdfName)",
+     "new": "            if (true && cutByGuard && value is PdfDictionary { } cut && cut.GetRaw(PdfName.Type) is not PdfName)",
+     "site": "src/AdCodicem.Pdf/IO/PdfFileReader.cs:6707:17:cond-conjunct:10",
+     "member": "PdfFileReader.TryReadXRefStream",
+     "timeout": 300,
+     "summary": "SURVIVED (first filter (3955, 1, 3954, 0), suite (6856, 0, 6853, 3)) [unconfirmed failures: ObjectRuleTests.A_run_of_links_the_walk_takes_at_the_reader_s_deepest_load_is_never_where_the_stack_cuts_it] (282s)"
+    },
+    {
+     "id": "PFR-1823",
+     "file": "src/AdCodicem.Pdf/IO/PdfFileReader.cs",
+     "old": "!xrefStream.Data.EndHidden",
+     "new": "true",
+     "site": "src/AdCodicem.Pdf/IO/PdfFileReader.cs:6822:77:cond-conjunct:26",
+     "member": "PdfFileReader.TryReadXRefStream",
+     "timeout": 300,
+     "summary": "SURVIVED (first filter (1551, 0, 1551, 0), suite (9427, 1, 9423, 3)) [unconfirmed failures: HostileInputTests.A_dictionary_that_gives_one_key_a_million_times_reads_in_time_and_keeps_a_bounded_report] (489s)"
+    },
+    {
+     "id": "PFR-1831",
+     "file": "src/AdCodicem.Pdf/IO/PdfFileReader.cs",
+     "old": "candidate || checkOnly",
+     "new": "true",
+     "site": "src/AdCodicem.Pdf/IO/PdfFileReader.cs:6826:29:cond-whole:22",
+     "member": "PdfFileReader.TryReadXRefStream",
+     "timeout": 300,
+     "summary": "SURVIVED (first filter (1551, 0, 1551, 0), suite (9427, 0, 9424, 3)) (326s)"
+    }
+   ],
+   "n": 10,
+   "label": "b4-08"
+  },
+  {
+   "file": "src/AdCodicem.Pdf/IO/PdfFileReader.cs",
+   "members": [
+    "PdfFileReader.TryReadXRefStream (lines 6840-7205)"
+   ],
+   "survivors": [
+    {
+     "id": "PFR-1846",
+     "file": "src/AdCodicem.Pdf/IO/PdfFileReader.cs",
+     "old": "candidate && file == DataUndecoded",
+     "new": "true",
+     "site": "src/AdCodicem.Pdf/IO/PdfFileReader.cs:6840:48:cond-whole:34",
+     "member": "PdfFileReader.TryReadXRefStream",
+     "timeout": 300,
+     "summary": "SURVIVED (first filter (392, 0, 392, 0), suite (10586, 0, 10583, 3)) (353s)"
+    },
+    {
+     "id": "PFR-1849",
+     "file": "src/AdCodicem.Pdf/IO/PdfFileReader.cs",
+     "old": "                    section.UndecodedReports = candidate && file == DataUndecoded ? besideCut : null;",
+     "new": "                    section.UndecodedReports = true && file == DataUndecoded ? besideCut : null;",
+     "site": "src/AdCodicem.Pdf/IO/PdfFileReader.cs:6840:48:cond-conjunct:9",
+     "member": "PdfFileReader.TryReadXRefStream",
+     "timeout": 300,
+     "summary": "SURVIVED (first filter (392, 0, 392, 0), suite (10586, 0, 10583, 3)) (320s)"
+    },
+    {
+     "id": "PFR-1851",
+     "file": "src/AdCodicem.Pdf/IO/PdfFileReader.cs",
+     "old": "file == DataUndecoded",
+     "new": "true",
+     "site": "src/AdCodicem.Pdf/IO/PdfFileReader.cs:6840:61:cond-conjunct:21",
+     "member": "PdfFileReader.TryReadXRefStream",
+     "timeout": 300,
+     "summary": "SURVIVED (first filter (392, 0, 392, 0), suite (10586, 0, 10583, 3)) (302s)"
+    },
+    {
+     "id": "PFR-1855",
+     "file": "src/AdCodicem.Pdf/IO/PdfFileReader.cs",
+     "old": "                {\n                    return XRefSectionState.Read;",
+     "new": "                {\n                    return default;",
+     "site": "src/AdCodicem.Pdf/IO/PdfFileReader.cs:6847:21:return:29",
+     "member": "PdfFileReader.TryReadXRefStream",
+     "timeout": 300,
+     "summary": "SURVIVED (first filter (1463, 0, 1463, 0), suite (9515, 0, 9512, 3)) (323s)"
+    },
+    {
+     "id": "PFR-1867",
+     "file": "src/AdCodicem.Pdf/IO/PdfFileReader.cs",
+     "old": "            {\n                return XRefSectionState.Read;",
+     "new": "            {\n                return default;",
+     "site": "src/AdCodicem.Pdf/IO/PdfFileReader.cs:6939:17:return:29",
+     "member": "PdfFileReader.TryReadXRefStream",
+     "timeout": 300,
+     "summary": "SURVIVED (first filter (2308, 0, 2308, 0), suite (8670, 0, 8667, 3)) (278s)"
+    },
+    {
+     "id": "PFR-1875",
+     "file": "src/AdCodicem.Pdf/IO/PdfFileReader.cs",
+     "old": "            {\n                section.Fault = DataUndecoded;\n                return XRefSectionState.Malformed;",
+     "new": "            {\n                \n                return XRefSectionState.Malformed;",
+     "site": "src/AdCodicem.Pdf/IO/PdfFileReader.cs:6949:17:assignment:30",
+     "member": "PdfFileReader.TryReadXRefStream",
+     "timeout": 300,
+     "summary": "SURVIVED (first filter (1463, 0, 1463, 0), suite (9515, 0, 9512, 3)) (291s)"
+    },
+    {
+     "id": "PFR-1877",
+     "file": "src/AdCodicem.Pdf/IO/PdfFileReader.cs",
+     "old": "\n            return XRefSectionState.Read;",
+     "new": "\n            return default;",
+     "site": "src/AdCodicem.Pdf/IO/PdfFileReader.cs:6953:13:return:29",
+     "member": "PdfFileReader.TryReadXRefStream",
+     "timeout": 300,
+     "summary": "SURVIVED (first filter (1463, 0, 1463, 0), suite (9515, 0, 9512, 3)) (256s)"
+    },
+    {
+     "id": "PFR-1900",
+     "file": "src/AdCodicem.Pdf/IO/PdfFileReader.cs",
+     "old": "        var named = section.NamedBy == \"/XRefStm\" ? -1 : SectionOffset(dictionary, PdfName.Prev, absolute, out previousHidden, rowsHidden: rowsCut);",
+     "new": "        var named = section.NamedBy == \"/XRefStm\" ? -2 : SectionOffset(dictionary, PdfName.Prev, absolute, out previousHidden, rowsHidden: rowsCut);",
+     "site": "src/AdCodicem.Pdf/IO/PdfFileReader.cs:7205:54:bound-const:1",
+     "member": "PdfFileReader.TryReadXRefStream",
+     "timeout": 300,
+     "summary": "SURVIVED (first filter (4954, 0, 4954, 0), suite (6024, 0, 6021, 3)) (350s)"
+    },
+    {
+     "id": "PFR-1901",
+     "file": "src/AdCodicem.Pdf/IO/PdfFileReader.cs",
+     "old": "        var named = section.NamedBy == \"/XRefStm\" ? -1 : SectionOffset(dictionary, PdfName.Prev, absolute, out previousHidden, rowsHidden: rowsCut);",
+     "new": "        var named = section.NamedBy == \"/XRefStm\" ? -0 : SectionOffset(dictionary, PdfName.Prev, absolute, out previousHidden, rowsHidden: rowsCut);",
+     "site": "src/AdCodicem.Pdf/IO/PdfFileReader.cs:7205:54:bound-const:1",
+     "member": "PdfFileReader.TryReadXRefStream",
+     "timeout": 300,
+     "summary": "SURVIVED (first filter (4954, 0, 4954, 0), suite (6024, 0, 6021, 3)) (312s)"
+    }
+   ],
+   "n": 9,
+   "label": "b4-09"
+  },
+  {
+   "file": "src/AdCodicem.Pdf/IO/PdfFileReader.cs",
+   "members": [
+    "PdfFileReader.TryRelocateXRefSection",
+    "PdfFileReader.UndecodedFault"
+   ],
+   "survivors": [
+    {
+     "id": "PFR-1239",
+     "file": "src/AdCodicem.Pdf/IO/PdfFileReader.cs",
+     "old": "        var takeAt = readInStreamsPlace is { } place ? place.Offset + place.Padding : -1;",
+     "new": "        var takeAt = readInStreamsPlace is { } place ? place.Offset + place.Padding : -2;",
+     "site": "src/AdCodicem.Pdf/IO/PdfFileReader.cs:5246:88:bound-const:1",
+     "member": "PdfFileReader.TryRelocateXRefSection",
+     "timeout": 300,
+     "summary": "SURVIVED (first filter (3495, 0, 3495, 0), suite (7483, 1, 7479, 3)) [unconfirmed failures: CorpusReadingTests.Damaged_documents_are_recovered_as_far_as_an_independent_tool_recovers_them] (296s)"
+    },
+    {
+     "id": "PFR-1247",
+     "file": "src/AdCodicem.Pdf/IO/PdfFileReader.cs",
+     "old": "        var tablePrevious = streamRead is not null ? offset : -1;",
+     "new": "        var tablePrevious = streamRead is not null ? offset : -2;",
+     "site": "src/AdCodicem.Pdf/IO/PdfFileReader.cs:5248:64:bound-const:1",
+     "member": "PdfFileReader.TryRelocateXRefSection",
+     "timeout": 300,
+     "summary": "SURVIVED (first filter (3495, 0, 3495, 0), suite (7483, 0, 7480, 3)) (285s)"
+    },
+    {
+     "id": "PFR-1252",
+     "file": "src/AdCodicem.Pdf/IO/PdfFileReader.cs",
+     "old": "        var streamStart = streamRead is { } read ? read.Offset + read.Padding : -1;",
+     "new": "        var streamStart = streamRead is { } read ? read.Offset + read.Padding : -2;",
+     "site": "src/AdCodicem.Pdf/IO/PdfFileReader.cs:5249:82:bound-const:1",
+     "member": "PdfFileReader.TryRelocateXRefSection",
+     "timeout": 300,
+     "summary": "SURVIVED (first filter (3495, 0, 3495, 0), suite (7483, 0, 7480, 3)) (245s)"
+    },
+    {
+     "id": "PFR-1253",
+     "file": "src/AdCodicem.Pdf/IO/PdfFileReader.cs",
+     "old": "        var streamStart = streamRead is { } read ? read.Offset + read.Padding : -1;",
+     "new": "        var streamStart = streamRead is { } read ? read.Offset + read.Padding : -0;",
+     "site": "src/AdCodicem.Pdf/IO/PdfFileReader.cs:5249:82:bound-const:1",
+     "member": "PdfFileReader.TryRelocateXRefSection",
+     "timeout": 300,
+     "summary": "SURVIVED (first filter (3495, 0, 3495, 0), suite (7483, 0, 7480, 3)) (284s)"
+    },
+    {
+     "id": "PFR-1254",
+     "file": "src/AdCodicem.Pdf/IO/PdfFileReader.cs",
+     "old": "        var streamDigits = streamRead?.DigitsAt ?? -1;",
+     "new": "        var streamDigits = streamRead?.DigitsAt ?? -2;",
+     "site": "src/AdCodicem.Pdf/IO/PdfFileReader.cs:5250:53:bound-const:1",
+     "member": "PdfFileReader.TryRelocateXRefSection",
+     "timeout": 300,
+     "summary": "SURVIVED (first filter (3495, 0, 3495, 0), suite (7483, 0, 7480, 3)) (266s)"
+    },
+    {
+     "id": "PFR-1256",
+     "file": "src/AdCodicem.Pdf/IO/PdfFileReader.cs",
+     "old": "        var uncountedAt = -1;",
+     "new": "        var uncountedAt = -2;",
+     "site": "src/AdCodicem.Pdf/IO/PdfFileReader.cs:5255:28:bound-const:1",
+     "member": "PdfFileReader.TryRelocateXRefSection",
+     "timeout": 300,
+     "summary": "SURVIVED (first filter (3495, 0, 3495, 0), suite (7483, 0, 7480, 3)) (321s)"
+    },
+    {
+     "id": "PFR-1257",
+     "file": "src/AdCodicem.Pdf/IO/PdfFileReader.cs",
+     "old": "        var uncountedAt = -1;",
+     "new": "        var uncountedAt = -0;",
+     "site": "src/AdCodicem.Pdf/IO/PdfFileReader.cs:5255:28:bound-const:1",
+     "member": "PdfFileReader.TryRelocateXRefSection",
+     "timeout": 300,
+     "summary": "SURVIVED (first filter (3495, 0, 3495, 0), suite (7483, 1, 7479, 3)) [unconfirmed failures: CorpusReadingTests.Damaged_documents_are_recovered_as_far_as_an_independent_tool_recovers_them] (294s)"
+    },
+    {
+     "id": "PFR-1282",
+     "file": "src/AdCodicem.Pdf/IO/PdfFileReader.cs",
+     "old": "            var passOver = !retry && candidate >= streamStart ? tablePrevious : -1;",
+     "new": "            var passOver = !retry && candidate >= streamStart ? tablePrevious : -2;",
+     "site": "src/AdCodicem.Pdf/IO/PdfFileReader.cs:5293:82:bound-const:1",
+     "member": "PdfFileReader.TryRelocateXRefSection",
+     "timeout": 300,
+     "summary": "SURVIVED (first filter (3495, 0, 3495, 0), suite (7483, 0, 7480, 3)) (278s)"
+    },
+    {
+     "id": "PFR-1373",
+     "file": "src/AdCodicem.Pdf/IO/PdfFileReader.cs",
+     "old": "                for (var back = Math.Max(i + 1, inWindow); back < candidates.Count; back++)",
+     "new": "                for (var back = Math.Max(i + 0, inWindow); back < candidates.Count; back++)",
+     "site": "src/AdCodicem.Pdf/IO/PdfFileReader.cs:5427:46:bound-const:1",
+     "member": "PdfFileReader.TryRelocateXRefSection",
+     "timeout": 300,
+     "summary": "SURVIVED (first filter (3495, 0, 3495, 0), suite (7483, 0, 7480, 3)) (298s)"
+    },
+    {
+     "id": "PFR-1990",
+     "file": "src/AdCodicem.Pdf/IO/PdfFileReader.cs",
+     "old": "        _ = RowsHeldAtMost(stream, 1, out var undecoded);",
+     "new": "        _ = RowsHeldAtMost(stream, 2, out var undecoded);",
+     "site": "src/AdCodicem.Pdf/IO/PdfFileReader.cs:7652:36:bound-const:1",
+     "member": "PdfFileReader.UndecodedFault",
+     "timeout": 300,
+     "summary": "SURVIVED (first filter (392, 0, 392, 0), suite (10586, 0, 10583, 3)) (325s)"
+    }
+   ],
+   "n": 10,
+   "label": "b4-10"
+  },
+  {
+   "file": "src/AdCodicem.Pdf/IO/PdfObjectParser.cs",
+   "members": [
+    "PdfObjectParser.MayBeHeaderBytes"
+   ],
+   "survivors": [
+    {
+     "id": "POP-0066",
+     "file": "src/AdCodicem.Pdf/IO/PdfObjectParser.cs",
+     "old": "        return !span[number.Start..number.End].ContainsAnyExceptInRange((byte)'0', (byte)'9') &&",
+     "new": "        return !span[number.Start..number.End].ContainsAnyExceptInRange((byte)'1', (byte)'9') &&",
+     "site": "src/AdCodicem.Pdf/IO/PdfObjectParser.cs:1680:79:bound-const:3",
+     "member": "PdfObjectParser.MayBeHeaderBytes",
+     "timeout": 300,
+     "summary": "SURVIVED (first filter (1387, 0, 1387, 0), suite (9591, 0, 9588, 3)) (263s)"
+    },
+    {
+     "id": "POP-0067",
+     "file": "src/AdCodicem.Pdf/IO/PdfObjectParser.cs",
+     "old": "        return !span[number.Start..number.End].ContainsAnyExceptInRange((byte)'0', (byte)'9') &&",
+     "new": "        return !span[number.Start..number.End].ContainsAnyExceptInRange((byte)'/', (byte)'9') &&",
+     "site": "src/AdCodicem.Pdf/IO/PdfObjectParser.cs:1680:79:bound-const:3",
+     "member": "PdfObjectParser.MayBeHeaderBytes",
+     "timeout": 300,
+     "summary": "SURVIVED (first filter (1387, 0, 1387, 0), suite (9591, 0, 9588, 3)) (290s)"
+    },
+    {
+     "id": "POP-0068",
+     "file": "src/AdCodicem.Pdf/IO/PdfObjectParser.cs",
+     "old": "        return !span[number.Start..number.End].ContainsAnyExceptInRange((byte)'0', (byte)'9') &&",
+     "new": "        return !span[number.Start..number.End].ContainsAnyExceptInRange((byte)'0', (byte)':') &&",
+     "site": "src/AdCodicem.Pdf/IO/PdfObjectParser.cs:1680:90:bound-const:3",
+     "member": "PdfObjectParser.MayBeHeaderBytes",
+     "timeout": 300,
+     "summary": "SURVIVED (first filter (1387, 0, 1387, 0), suite (9591, 0, 9588, 3)) (300s)"
+    },
+    {
+     "id": "POP-0069",
+     "file": "src/AdCodicem.Pdf/IO/PdfObjectParser.cs",
+     "old": "        return !span[number.Start..number.End].ContainsAnyExceptInRange((byte)'0', (byte)'9') &&",
+     "new": "        return !span[number.Start..number.End].ContainsAnyExceptInRange((byte)'0', (byte)'8') &&",
+     "site": "src/AdCodicem.Pdf/IO/PdfObjectParser.cs:1680:90:bound-const:3",
+     "member": "PdfObjectParser.MayBeHeaderBytes",
+     "timeout": 300,
+     "summary": "SURVIVED (first filter (1387, 0, 1387, 0), suite (9591, 0, 9588, 3)) (314s)"
+    },
+    {
+     "id": "POP-0062",
+     "file": "src/AdCodicem.Pdf/IO/PdfObjectParser.cs",
+     "old": "            (generation.Kind != PdfTokenKind.Integer || !span[generation.Start..generation.End].ContainsAnyExceptInRange((byte)'0', (byte)'9'));",
+     "new": "            (false || !span[generation.Start..generation.End].ContainsAnyExceptInRange((byte)'0', (byte)'9'));",
+     "site": "src/AdCodicem.Pdf/IO/PdfObjectParser.cs:1681:14:cond-alternative:39",
+     "member": "PdfObjectParser.MayBeHeaderBytes",
+     "timeout": 300,
+     "summary": "SURVIVED (first filter (1387, 0, 1387, 0), suite (9591, 0, 9588, 3)) (367s)"
+    },
+    {
+     "id": "POP-0071",
+     "file": "src/AdCodicem.Pdf/IO/PdfObjectParser.cs",
+     "old": "            (generation.Kind != PdfTokenKind.Integer || !span[generation.Start..generation.End].ContainsAnyExceptInRange((byte)'0', (byte)'9'));",
+     "new": "            (generation.Kind != PdfTokenKind.Integer || !span[generation.Start..generation.End].ContainsAnyExceptInRange((byte)'/', (byte)'9'));",
+     "site": "src/AdCodicem.Pdf/IO/PdfObjectParser.cs:1681:128:bound-const:3",
+     "member": "PdfObjectParser.MayBeHeaderBytes",
+     "timeout": 300,
+     "summary": "SURVIVED (first filter (1387, 0, 1387, 0), suite (9591, 0, 9588, 3)) (310s)"
+    },
+    {
+     "id": "POP-0072",
+     "file": "src/AdCodicem.Pdf/IO/PdfObjectParser.cs",
+     "old": "            (generation.Kind != PdfTokenKind.Integer || !span[generation.Start..generation.End].ContainsAnyExceptInRange((byte)'0', (byte)'9'));",
+     "new": "            (generation.Kind != PdfTokenKind.Integer || !span[generation.Start..generation.End].ContainsAnyExceptInRange((byte)'0', (byte)':'));",
+     "site": "src/AdCodicem.Pdf/IO/PdfObjectParser.cs:1681:139:bound-const:3",
+     "member": "PdfObjectParser.MayBeHeaderBytes",
+     "timeout": 300,
+     "summary": "SURVIVED (first filter (1387, 0, 1387, 0), suite (9591, 0, 9588, 3)) (239s)"
+    },
+    {
+     "id": "POP-0073",
+     "file": "src/AdCodicem.Pdf/IO/PdfObjectParser.cs",
+     "old": "            (generation.Kind != PdfTokenKind.Integer || !span[generation.Start..generation.End].ContainsAnyExceptInRange((byte)'0', (byte)'9'));",
+     "new": "            (generation.Kind != PdfTokenKind.Integer || !span[generation.Start..generation.End].ContainsAnyExceptInRange((byte)'0', (byte)'8'));",
+     "site": "src/AdCodicem.Pdf/IO/PdfObjectParser.cs:1681:139:bound-const:3",
+     "member": "PdfObjectParser.MayBeHeaderBytes",
+     "timeout": 300,
+     "summary": "SURVIVED (first filter (1387, 0, 1387, 0), suite (9591, 0, 9588, 3)) (288s)"
+    }
+   ],
+   "n": 8,
+   "label": "b4-11"
+  },
+  {
+   "file": "src/AdCodicem.Pdf/IO/PendingEndStream.cs",
+   "members": [
+    "PendingEndStream.Decided",
+    "PendingEndStream.Take"
+   ],
+   "survivors": [
+    {
+     "id": "PES-0174",
+     "file": "src/AdCodicem.Pdf/IO/PendingEndStream.cs",
+     "old": "    {\n        _mode = Mode.None;",
+     "new": "    {\n        ",
+     "site": "src/AdCodicem.Pdf/IO/PendingEndStream.cs:222:9:assignment:18",
+     "member": "PendingEndStream.Decided",
+     "timeout": 300,
+     "summary": "SURVIVED (first filter (131, 0, 131, 0), suite (10847, 0, 10844, 3)) (285s)"
+    },
+    {
+     "id": "PES-0158",
+     "file": "src/AdCodicem.Pdf/IO/PendingEndStream.cs",
+     "old": "_matched >= 0 && _matched < ObjKeyword.Length && ObjKeyword[_matched] == value",
+     "new": "true",
+     "site": "src/AdCodicem.Pdf/IO/PendingEndStream.cs:216:20:cond-whole:78",
+     "member": "PendingEndStream.Take",
+     "timeout": 300,
+     "summary": "SURVIVED (first filter (419, 0, 419, 0), suite (10559, 0, 10556, 3)) (334s)"
+    },
+    {
+     "id": "PES-0165",
+     "file": "src/AdCodicem.Pdf/IO/PendingEndStream.cs",
+     "old": "ObjKeyword[_matched] == value",
+     "new": "true",
+     "site": "src/AdCodicem.Pdf/IO/PendingEndStream.cs:216:69:cond-conjunct:29",
+     "member": "PendingEndStream.Take",
+     "timeout": 300,
+     "summary": "SURVIVED (first filter (419, 0, 419, 0), suite (10559, 0, 10556, 3)) (348s)"
+    },
+    {
+     "id": "PES-0172",
+     "file": "src/AdCodicem.Pdf/IO/PendingEndStream.cs",
+     "old": "        _matched = _matched >= 0 && _matched < ObjKeyword.Length && ObjKeyword[_matched] == value ? _matched + 1 : -1;",
+     "new": "        _matched = _matched >= 0 && _matched < ObjKeyword.Length && ObjKeyword[_matched] == value ? _matched + 1 : -2;",
+     "site": "src/AdCodicem.Pdf/IO/PendingEndStream.cs:216:117:bound-const:1",
+     "member": "PendingEndStream.Take",
+     "timeout": 300,
+     "summary": "SURVIVED (first filter (419, 0, 419, 0), suite (10559, 0, 10556, 3)) (294s)"
+    },
+    {
+     "id": "PES-0173",
+     "file": "src/AdCodicem.Pdf/IO/PendingEndStream.cs",
+     "old": "        _matched = _matched >= 0 && _matched < ObjKeyword.Length && ObjKeyword[_matched] == value ? _matched + 1 : -1;",
+     "new": "        _matched = _matched >= 0 && _matched < ObjKeyword.Length && ObjKeyword[_matched] == value ? _matched + 1 : -0;",
+     "site": "src/AdCodicem.Pdf/IO/PendingEndStream.cs:216:117:bound-const:1",
+     "member": "PendingEndStream.Take",
+     "timeout": 300,
+     "summary": "SURVIVED (first filter (419, 0, 419, 0), suite (10559, 0, 10556, 3)) (303s)"
+    }
+   ],
+   "n": 5,
+   "label": "b4-12"
+  },
+  {
+   "file": "src/AdCodicem.Pdf/IO/XRef/XRefSectionRecord.cs",
+   "members": [
+    "XRefSectionRecord.DigitsAt",
+    "XRefSectionRecord.RowsHeld"
+   ],
+   "survivors": [
+    {
+     "id": "XRSR-0010",
+     "file": "src/AdCodicem.Pdf/IO/XRef/XRefSectionRecord.cs",
+     "old": "    public long DigitsAt { get; set; } = -1;",
+     "new": "    public long DigitsAt { get; set; } = -2;",
+     "site": "src/AdCodicem.Pdf/IO/XRef/XRefSectionRecord.cs:335:43:bound-const:1",
+     "member": "XRefSectionRecord.DigitsAt",
+     "timeout": 300,
+     "summary": "SURVIVED (first filter (5216, 0, 5216, 0), suite (5762, 0, 5759, 3)) (309s)"
+    },
+    {
+     "id": "XRSR-0001",
+     "file": "src/AdCodicem.Pdf/IO/XRef/XRefSectionRecord.cs",
+     "old": "    public long RowsHeld { get; set; } = -1;",
+     "new": "    public long RowsHeld { get; set; } = -2;",
+     "site": "src/AdCodicem.Pdf/IO/XRef/XRefSectionRecord.cs:114:43:bound-const:1",
+     "member": "XRefSectionRecord.RowsHeld",
+     "timeout": 300,
+     "summary": "SURVIVED (first filter (5216, 0, 5216, 0), suite (5762, 0, 5759, 3)) (334s)"
+    },
+    {
+     "id": "XRSR-0002",
+     "file": "src/AdCodicem.Pdf/IO/XRef/XRefSectionRecord.cs",
+     "old": "    public long RowsHeld { get; set; } = -1;",
+     "new": "    public long RowsHeld { get; set; } = -0;",
+     "site": "src/AdCodicem.Pdf/IO/XRef/XRefSectionRecord.cs:114:43:bound-const:1",
+     "member": "XRefSectionRecord.RowsHeld",
+     "timeout": 300,
+     "summary": "SURVIVED (first filter (5216, 0, 5216, 0), suite (5762, 0, 5759, 3)) (320s)"
+    }
+   ],
+   "n": 3,
+   "label": "b4-13"
+  },
+  {
+   "file": "src/AdCodicem.Pdf/Validation/Rules/ChainLoopRule.cs",
+   "members": [
+    "ChainLoopRule.Check"
+   ],
+   "survivors": [
+    {
+     "id": "CLR-0007",
+     "file": "src/AdCodicem.Pdf/Validation/Rules/ChainLoopRule.cs",
+     "old": "            _ => structure.LoopOffset < context.Source.Length",
+     "new": "            _ => structure.LoopOffset <= context.Source.Length",
+     "site": "src/AdCodicem.Pdf/Validation/Rules/ChainLoopRule.cs:44:18:bound-op:44",
+     "member": "ChainLoopRule.Check",
+     "timeout": 300,
+     "summary": "SURVIVED (first filter (554, 0, 554, 0), suite (10424, 0, 10421, 3)) (293s)"
+    }
+   ],
+   "n": 1,
+   "label": "b4-14"
+  }
+ ]
+}
