@@ -228,6 +228,23 @@ public class SyntaxFaultTests
             .Which.Message.Should().Be("An object header ended the object inside an array, which was never closed.");
     }
 
+    [Theory]
+    [InlineData("[1 1234567890 0 obj")]
+    [InlineData("[1 6 9 obj")]
+    public void An_object_header_ends_a_container_left_open_whatever_digits_its_number_and_generation_hold(string value)
+    {
+        // A header's number and generation are digits alone, any of the ten (#261): a number that holds each of them, a
+        // generation that is the last — the first is every other header's — ends the array object 4 left open, which keeps
+        // its one element, the cut reported where the array opens and nothing read as a stray token.
+        var file = FourLostItsEnd(value);
+        using var document = PdfDocument.Open(file);
+
+        document.GetObject(new PdfObjectId(4)).AsArray().Required().Should().ContainSingle()
+            .Which.Should().BeOfType<PdfInteger>().Which.Value.Should().Be(1);
+        document.Diagnostics.Select(entry => (entry.Code, entry.Position)).Should().Equal(
+            (PdfDiagnosticCodes.SyntaxTruncatedObject, PdfTemplate.OffsetOf(file, Header) + Header.Length));
+    }
+
     [Fact]
     public void A_header_inside_a_closed_container_ends_it_there_and_its_endobj_is_judged_missing()
     {
