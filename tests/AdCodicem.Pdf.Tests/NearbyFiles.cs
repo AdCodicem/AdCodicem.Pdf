@@ -414,6 +414,29 @@ internal static class NearbyFiles
     }
 
     /// <summary>
+    /// A one-page document whose one table, past object 6, written <paramref name="six"/>, a classic table at <c>Table</c>
+    /// that holds a stray name, <c>/Bad 1</c>, where its first subsection should start, and 1,200 bytes of comment, indexes
+    /// the catalog, the page tree and the page and names object 6 through <c>/Prev</c>: the table that cannot be read is
+    /// the one place near it that declares itself a section.
+    /// </summary>
+    public static (byte[] File, long Six, long Table) TableNamingAnObjectBeforeATableThatCannotBeRead(string six)
+    {
+        var file = new HandWrittenFile(version: "1.5");
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>"),
+            [3] = file.Object(3, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << >> >>"),
+        };
+        var at = file.Object(6, six);
+        var table = file.Position;
+        file.Raw("xref\n/Bad 1\ntrailer\n<< /Size 7 >>\n");
+        Gap(file, 1200);
+        file.Table(4, rows, string.Create(CultureInfo.InvariantCulture, $"/Size 7 /Root 1 0 R /Prev {at}"));
+        return (file.Bytes, at, table);
+    }
+
+    /// <summary>
     /// An empty document saved three times. The oldest table, at <c>Oldest</c>, indexes the catalog, the page tree, object
     /// 3, <c>(three)</c>, and object 4, <c>(old)</c>, then holds a stray name, <c>/Bad 1</c>, where its trailer should
     /// start. The next, at <c>Next</c>, indexes object 4 again, <c>(new)</c>, and names the oldest through <c>/Prev</c>.

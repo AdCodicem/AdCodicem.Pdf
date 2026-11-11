@@ -2769,6 +2769,36 @@ public class CrossReferenceChainTests
     }
 
     [Theory]
+    [InlineData("<< /Type /Font /Subtype /CIDFontType2 /W [0 [500]] /BaseFont /F >>")]
+    [InlineData("<< /Type /Font /W [1 -4 2] /Size 8 /Length 3 >>\nstream\nabc\nendstream")]
+    [InlineData("<< /Subtype /CIDFontType2 /W [0 [500]] /BaseFont /F >>")]
+    public void A_section_the_prev_names_at_an_object_of_any_type_is_found_moved_to_a_table_beside_it_that_cannot_be_read(string six)
+    {
+        // /Prev names object 6, which gives a /W and cannot be read as a section — a CIDFont, a stream of /Type /Font whose /W
+        // gives a negative width, or a dictionary that gives no /Type —, and a classic table holding a stray name follows it.
+        // The search near object 6 finds that table, which declares itself a section: the section is found moved there, and
+        // reported there as one that is there and cannot be read, as the table's reading found it. The /Type object 6 gives,
+        // which the reading where the section was named found, is not the section's once it is found moved: another type
+        // does not make it missing, as it does where no section is near (#281).
+        var (file, at, table) = NearbyFiles.TableNamingAnObjectBeforeATableThatCannotBeRead(six);
+
+        using var document = PdfDocument.Open(file);
+
+        document.Diagnostics.Select(d => (d.Code, d.Position)).Should().Equal(
+            (PdfDiagnosticCodes.XRefOffsetAdjusted, table), (PdfDiagnosticCodes.XRefSectionUnreadable, table));
+        document.Diagnostics[1].Message.Should().StartWith(Invariant(
+            $"The cross-reference table /Prev names at offset {at}, found at offset {table}, is there but cannot be read: "));
+        var section = document.Reader.Structure.Sections[1];
+        section.State.Should().Be(XRefSectionState.Malformed);
+        section.Offset.Should().Be(table);
+        section.NamedOffset.Should().Be(at);
+        section.Kind.Should().Be(XRefSectionKind.Table);
+        section.Fault.Should().Be(Invariant($"it holds a name at offset {table + 5}, where a subsection or the trailer should start"));
+        document.GetObject(new PdfObjectId(3)).AsDictionary()!.IsOfType(PdfName.Page).Should().BeTrue();
+        document.WasRepaired.Should().BeFalse();
+    }
+
+    [Theory]
     [InlineData(-4)]
     [InlineData(6)]
     public void Reads_a_cross_reference_stream_that_xrefstm_names_a_few_bytes_off(int error)
