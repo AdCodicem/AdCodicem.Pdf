@@ -21,10 +21,11 @@ reason for a past decision. A new entry is short, about thirty lines; the detail
 - **Settled with the maintainer** (2026-11-11, eight questions, six as recommended; the maintainer chose a cap of
   eight rounds over five, and compacting the documents now over a rule for new texts only):
   [ADR 54](adr/0054-review-and-documentation-effort-follow-what-protects-the-library.md) — severity by effect and by
-  whether real files have the input; rounds stop at the first with no blocker and no major, eight at most; round 1 on the whole patch with a real-damage lens, later rounds on the previous
-  fixes; refuters for blockers and majors only; batches of at most six issues and about 1,000 lines of code; a
-  behavior written once, beside the code. [ADR 53](adr/0053-mutation-testing-runs-a-fixed-catalog-over-the-changed-code.md)
-  amended: defenses only, once per pull request, equivalence through documents and the public API.
+  whether real files have the input; rounds stop at the first with no blocker and no major, eight at most; round 1
+  on the whole patch with a real-damage lens, later rounds on the previous fixes; refuters for blockers and majors
+  only; batches of at most six issues and about 1,000 lines of code; a behavior written once, beside the code.
+  [ADR 53](adr/0053-mutation-testing-runs-a-fixed-catalog-over-the-changed-code.md) amended: defenses only, once per
+  pull request, equivalence through documents and the public API.
 - **Done.** The threat model compacted to what each defense stops, where it lives and the test class that holds it;
   this journal moved out of `status.md` and its older entries summarized (303 KB to 82 KB); the `batch` skill and
   `.claude/scripts/batch-check.sh`; `CLAUDE.md` brought in line. In its own pull request, merged first ([#345]):
