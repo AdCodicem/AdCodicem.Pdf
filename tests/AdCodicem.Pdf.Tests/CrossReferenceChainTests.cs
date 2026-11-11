@@ -1206,13 +1206,16 @@ public class CrossReferenceChainTests
     [InlineData("/Index /X", null)]
     [InlineData("/Index [4]", null)]
     [InlineData("/Index [4 2 7 9 0 R]", "1")]
+    [InlineData("/Index [9 0 R 2 7 1]", "4")]
     [InlineData("/Index 9 0 R", "[4 2 7 1]")]
     public void A_lost_stream_whose_numbering_cannot_be_read_leaves_no_older_row_standing(string index, string? nine)
     {
-        // The stream's /Index is no array of pairs, or is written as a reference, or holds one, which ISO 32000-1 makes
-        // direct: which numbers its rows give is unknown, and no older row may stand for any. The oldest table is read all
-        // the same, its trailer merged and its rows judged, but every object it alone indexes is found by rebuilding the
-        // index, the catalog first, at once (#208).
+        // The stream's /Index is no array of pairs, or is written as a reference, or holds one, as its last element or its
+        // first, which ISO 32000-1 makes direct: which numbers its rows give is unknown, and no older row may stand for any.
+        // Object 9, where it is written, holds what would make the /Index read [4 2 7 1], which leaves objects 3 and 8 to
+        // the oldest table's rows, were the reference followed. The oldest table is read all the same, its trailer merged
+        // and its rows judged, but every object it alone indexes is found by rebuilding the index, the catalog first, at
+        // once (#208).
         var (file, oldest, stream, _) = LostStreamFiles.ThreeRevisions(
             LostStreamFiles.Unreadable.Replace("/Index [4 2 7 1]", index, StringComparison.Ordinal), nine: nine);
 
