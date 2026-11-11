@@ -232,6 +232,8 @@ public class DocumentReaderTests
     [InlineData(400, 505, true)]
     [InlineData(400, 506, false)]
     [InlineData(400, 600, false)]
+    [InlineData(513, 505, true)]
+    [InlineData(513, 506, false)]
     [InlineData(1400, 500, true)]
     [InlineData(1400, 505, true)]
     [InlineData(1400, 506, false)]
@@ -242,7 +244,8 @@ public class DocumentReaderTests
         // The page's entry gives an offset before its header, "3 0 obj", in the file's first 512 bytes or past them. The search
         // near the entry finds the header where it lies whole within 512 bytes of the offset, its obj keyword ending 512 bytes
         // after it at most; otherwise the index is rebuilt, which finds it. A window clamped at the file's start once reached up
-        // to 1,024 bytes past the offset: one shift was found near the start, and rebuilt past it (#197).
+        // to 1,024 bytes past the offset: one shift was found near the start, and rebuilt past it (#197). An entry 513 bytes in
+        // has the window start on the file's second byte, the byte read before it the file's first: it reaches as far.
         using var document = PdfDocument.Open(NearbyFiles.PageNamedAt(row, row + distance));
 
         document.GetObject(new PdfObjectId(3)).Should().BeOfType<PdfDictionary>().Which.IsOfType(PdfName.Page).Should().BeTrue();
