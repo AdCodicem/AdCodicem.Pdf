@@ -64,6 +64,21 @@ public class FileRuleTests
     }
 
     [Theory]
+    [InlineData(" ", "1 byte")]
+    [InlineData("\n\n", "2 bytes")]
+    public void The_bytes_before_the_header_are_counted_alike_by_the_reader_and_the_rule(string before, string count)
+    {
+        // A count of one in the singular, in the reader's report and in the rule's finding (#241).
+        var file = Encoding.Latin1.GetBytes(before).Concat(PdfTemplate.Build(PdfTemplate.Sound)).ToArray();
+        using var document = PdfDocument.Open(file);
+
+        document.Diagnostics.Should().ContainSingle(entry => entry.Code == PdfDiagnosticCodes.XRefOffsetAdjusted).Which.Message.Should().Be(
+            $"The PDF header starts {count} into the file; offsets were shifted accordingly.");
+        Single(new PdfValidator().Validate(document), PdfValidationRuleIds.FileHeaderOffset).Message.Should().Be(
+            $"The PDF header starts {count} into the file instead of at its first byte.");
+    }
+
+    [Theory]
     [InlineData("%PDF-1.8", "The header names version 1.8, which is not a version of PDF: 1.0 to 1.7, or 2.0.")]
     [InlineData("%PDF-2.1", "The header names version 2.1, which is not a version of PDF: 1.0 to 1.7, or 2.0.")]
     [InlineData("%PDF-2.2", "The header names version 2.2, which is not a version of PDF: 1.0 to 1.7, or 2.0.")]
@@ -684,6 +699,144 @@ public class FileRuleTests
         {
             atStream.Should().ContainSingle().Which.Should().Be($"The cross-reference stream at offset {stream} {message}");
         }
+    }
+
+    [Theory]
+    [InlineData(7, null)]
+    [InlineData(6, "gives /Size 6, where the highest object number it and the sections it updates use, 6, makes it 7.")]
+    public void A_stream_two_tables_name_counts_for_each_table_s_size(int olderSize, string? message)
+    {
+        // #156's shape: the update's table indexes objects 4 and 5, the stream its /XRefStm names, which indexes object 6;
+        // the newest table copies that /XRefStm. The update's naming left no record, and its /Size was judged without the
+        // stream's rows: a right /Size 7 was said to make it 6, and a wrong /Size 6 passed. The stream counts for each table.
+        var (file, _, older, _, _) = HybridFiles.SharedStream(olderSize);
+
+        var findings = Validate(file).Findings;
+
+        if (message is null)
+        {
+            findings.Should().BeEmpty();
+        }
+        else
+        {
+            var finding = findings.Should().ContainSingle().Which;
+            finding.RuleId.Should().Be(PdfValidationRuleIds.FileSizeWrong);
+            finding.Message.Should().Be($"The trailer of the cross-reference table at offset {older} {message}");
+        }
+    }
+
+    [Theory]
+    [InlineData(7, null)]
+    [InlineData(5, "gives /Size 5, where the highest object number it and the sections it updates use, 6, makes it 7.")]
+    public void A_stream_two_tables_name_is_judged_once_where_the_oldest_names_it(int streamSize, string? message)
+    {
+        // The newest table copies the update's /XRefStm two revisions late, a table indexing object 8 between: judged where
+        // the newest names it, a right /Size 7 was said to make it 9. The stream is of the update's revision, the oldest that
+        // names it, and is judged there, once (#156).
+        var (file, _, _, stream, _) = HybridFiles.SharedStream(olderSize: 7, streamSize, between: true);
+
+        var findings = Validate(file).Findings.Where(finding => finding.RuleId == PdfValidationRuleIds.FileSizeWrong);
+
+        if (message is null)
+        {
+            findings.Should().BeEmpty();
+        }
+        else
+        {
+            var finding = findings.Should().ContainSingle().Which;
+            finding.Location.Position.Should().Be(stream);
+            finding.Message.Should().Be($"The cross-reference stream at offset {stream} {message}");
+        }
+    }
+
+    [Theory]
+    [InlineData("0 0\n", null)]
+    [InlineData("0 1\n{free}\n", "gives /Size 4, where the highest object number it and the sections it updates use, 0, makes it 1.")]
+    public void An_original_table_is_judged_once_it_or_an_older_section_numbers_an_object(string rows, string? message)
+    {
+        // The first table indexes nothing, or object 0 alone, and gives /Size 4; the update indexes the document. Where no
+        // number is used, from the section down, there is no count to judge the /Size by; object 0 is one.
+        var file = PdfTemplate.Build(PdfTemplate.Sound
+            .Replace("0 4\n{free}\n{row:1}\n{row:2}\n{row:3}\n", rows, StringComparison.Ordinal) + """
+            xref
+            0 4
+            {free}
+            {row:1}
+            {row:2}
+            {row:3}
+            trailer
+            << /Size 4 /Root 1 0 R /Prev {xref:1} >>
+            startxref
+            {xref:2}
+            %%EOF
+
+            """);
+
+        var findings = Validate(file).Findings.Where(finding => finding.RuleId == PdfValidationRuleIds.FileSizeWrong);
+
+        if (message is null)
+        {
+            findings.Should().BeEmpty();
+        }
+        else
+        {
+            findings.Should().ContainSingle().Which.Message.Should().Be(
+                $"The trailer of the cross-reference table at offset {PdfTemplate.OffsetOf(file, "\nxref\n") + 1} {message}");
+        }
+    }
+
+    [Fact]
+    public void A_stream_two_tables_name_may_give_the_size_of_the_oldest_table_that_names_it()
+    {
+        // The update's table indexes object 8, above what the stream numbers, and gives /Size 9, which the stream gives too:
+        // Table 17's other reading, the /Size of the table that names it, read where the oldest names it (#156).
+        var (file, _, _, _, _) = HybridFiles.SharedStream(olderSize: 9, streamSize: 9, olderEight: true);
+
+        Validate(file).Findings.Should().BeEmpty();
+    }
+
+    [Fact]
+    public void A_size_is_not_judged_where_a_table_s_xrefstm_names_no_stream()
+    {
+        // The table's /XRefStm names the table itself: its stream, which may number objects its /Size counts, is lost, as a
+        // section the chain cannot read is, and the /Size is not judged (#156).
+        var report = Validate(HybridFiles.NamingItself());
+
+        report.Contains(PdfValidationRuleIds.XRefHybridStreamWrong).Should().BeTrue();
+        report.Contains(PdfValidationRuleIds.FileSizeWrong).Should().BeFalse("its /Size 4 counts the page, which no section indexes");
+    }
+
+    [Fact]
+    public void A_size_is_not_judged_where_the_chain_indexes_nothing()
+    {
+        // The only table's one row, for object 0, gives a generation of 65,536, which refuses it: the chain indexes nothing,
+        // and the index is rebuilt as the document opens. The table's /Size 4 is not judged by the one number its rows use,
+        // 0, which would make it 1: the chain gave no index, and the objects the rebuild found number up to 3.
+        var file = PdfTemplate.SoundWith("0 4\n{free}\n{row:1}\n{row:2}\n{row:3}\n", "0 1\n{off:1} 65536 n\n");
+        using var document = PdfDocument.Open(file);
+
+        var report = new PdfValidator().Validate(document);
+
+        document.WasRepaired.Should().BeTrue();
+        document.Reader.Structure.Sections.Should().ContainSingle().Which.HighestNumber.Should().Be(0);
+        report.Findings.Select(finding => (finding.RuleId, finding.Location.Position)).Should().Equal(
+            (PdfValidationRuleIds.XRefSectionMalformed, PdfTemplate.OffsetOf(file, "xref\n")));
+    }
+
+    [Fact]
+    public void A_size_is_not_judged_where_the_chain_is_cut_at_the_file_s_first_byte()
+    {
+        // The only table read gives /Size 9, and its /Prev names offset 0, where the header starts, past the one section
+        // MaxXRefSectionCount at 1 lets the reader read: the chain is cut at the file's first byte, and the older sections it
+        // leaves unread may number the objects that /Size counts. The table's own rows, which make it 4, do not judge it.
+        var file = PdfTemplate.SoundWith("<< /Size 4 /Root 1 0 R >>", "<< /Size 9 /Root 1 0 R /Prev 0 >>");
+        using var document = PdfDocument.Open(file, new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxXRefSectionCount = 1 } });
+
+        var report = new PdfValidator().Validate(document);
+
+        document.Reader.Structure.ChainCutAt.Should().Be(0);
+        report.Findings.Select(finding => (finding.RuleId, finding.Location.Position)).Should().Equal(
+            (PdfValidationRuleIds.XRefCheckedInPart, 0L));
     }
 
     [Theory]

@@ -106,7 +106,9 @@ public sealed record PdfReaderLimits
     /// </summary>
     /// <remarks>
     /// A value above <see cref="Array.MaxLength"/> is taken as that length. Reaching it keeps the entries read
-    /// and reports <see cref="Diagnostics.PdfDiagnosticCodes.LimitXRefSectionLength"/>.
+    /// and reports <see cref="Diagnostics.PdfDiagnosticCodes.LimitXRefSectionLength"/>. A section read where an offset
+    /// names it is measured from that offset, so that white space and comments before its <c>xref</c> keyword count toward
+    /// the bound (#289).
     /// </remarks>
     /// <exception cref="ArgumentOutOfRangeException">The value is zero or less.</exception>
     public int MaxXRefSectionLength { get; init => field = Length(value); } = 64 * 1024 * 1024;
@@ -141,8 +143,16 @@ public sealed record PdfReaderLimits
     /// <c>endstream</c> in the file, up to the next object or the end of the file. A value above
     /// <see cref="Array.MaxLength"/> is taken as that length. Reaching it reports
     /// <see cref="Diagnostics.PdfDiagnosticCodes.LimitTrailer"/>, and ends the cross-reference chain at the section cut: an
-    /// older section, or a key, past the cut is unknown, and what only older sections index reads as null until the
-    /// limit is raised.
+    /// older section, or a key, past the cut is unknown, and what only older sections index reads as null until the limit
+    /// is raised — but for the trailer of a classic table an <c>/XRefStm</c> names, whose links the chain never follows
+    /// (#263), the chain going on through the table that names it. It bounds, apart, the white space and comments an offset
+    /// that names a cross-reference section falls short by: a cross-reference stream is read from its object's header, so
+    /// that its dictionary is cut only where it alone runs past the bound, while a classic table's windows open at the
+    /// offset named, so that the white space before its <c>xref</c> keyword counts toward
+    /// <see cref="MaxXRefSectionLength"/> as well (#289). White space and comments that run on past the bound reach it too,
+    /// reported under the same code: the section is not read from that offset, and is looked for as one that is not there —
+    /// near the offset, where a search may find it past them, or, for the one <c>startxref</c> names, by rebuilding the
+    /// index.
     /// </remarks>
     /// <exception cref="ArgumentOutOfRangeException">The value is zero or less.</exception>
     public int MaxTrailerLength { get; init => field = Length(value); } = 64 * 1024;
@@ -158,7 +168,10 @@ public sealed record PdfReaderLimits
     /// rebuild in the file's order —, and once it holds this many takes no more: an object it holds no entry for reads
     /// as null until the bound is raised, and the index is not rebuilt for it. Reaching it reports
     /// <see cref="Diagnostics.PdfDiagnosticCodes.LimitIndexEntries"/>, once. The bound also sets what validating a
-    /// document can cost, which follows its index: about 24 seconds and 3 GB near the default.
+    /// document can cost, which follows its index: about 24 seconds and 3 GB near the default. While the cross-reference
+    /// chain is read, the numbers whose rows it refused, which the bound counts with the index, are held apart as well, each
+    /// with an int that tells which section refused it: about 60 bytes a number allocated in all as that set grows, let go
+    /// once the chain is read.
     /// </remarks>
     /// <exception cref="ArgumentOutOfRangeException">The value is zero or less.</exception>
     public int MaxIndexEntries

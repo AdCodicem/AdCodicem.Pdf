@@ -192,6 +192,41 @@ public class StreamLengthTests
     }
 
     [Theory]
+    [InlineData("<< /Length 1 >>\nstream\nABC\nendstream", "The stream declared 1 byte but ended after 3.")]
+    [InlineData("<< >>\nstream\nX\nendstream", "The stream has no /Length; its data ends after 1 byte.")]
+    [InlineData("<< /Length 1 >>\nstream\nX", "The stream has no endstream: its object's endobj follows the 1 byte it declared, which is taken as its data.")]
+    [InlineData("<< /Length 99 >>\nstream\nX", "The stream declared 99 bytes, and no endstream follows its data before the next object, at {0}: its object's endobj ends it, after 1 byte.")]
+    [InlineData("<< /Length 1 >>\nstream\nXYZ", "The stream declared 1 byte, and no endstream follows its data before the next object, at {0}: its object's endobj ends it, after 3 bytes.")]
+    public void A_length_or_data_of_one_byte_is_said_in_the_singular(string stream, string message)
+    {
+        // Each report a stream's length earns, with one byte declared, or taken as its data, before object 6 (#241).
+        var file = Document((StreamNumber, stream), (6, "(next)"));
+
+        using var document = PdfDocument.Open(file);
+        _ = document.GetObject(new PdfObjectId(StreamNumber));
+
+        document.Diagnostics.Should().ContainSingle().Which.Message.Should().Be(
+            string.Format(CultureInfo.InvariantCulture, message, HeaderOf(file, 6)));
+    }
+
+    [Theory]
+    [InlineData("<< /Length 1 >>\nstream\nXYZ", "The stream declared 1 byte, and no endstream follows it before the end of the file; the declared length is kept.")]
+    [InlineData("<< /Length 99 >>\nstream\nX", "The stream declared 99 bytes, and no endstream follows its data before the end of the file; the 1 byte to the end of the file is taken as its data.")]
+    public void A_length_or_data_of_one_byte_the_file_ends_in_is_said_in_the_singular(string stream, string message)
+    {
+        // The stream ends the file, its object without endobj, and the index is rebuilt: one byte declared and kept, or
+        // taken up to the end of the file (#241).
+        var file = Encoding.ASCII.GetBytes(
+            "%PDF-1.7\n1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n2 0 obj\n<< /Type /Pages /Kids [] /Count 0 >>\nendobj\n" +
+            "5 0 obj\n" + stream);
+
+        using var document = PdfDocument.Open(file);
+        _ = document.GetObject(new PdfObjectId(StreamNumber));
+
+        document.Diagnostics.Should().ContainSingle(d => d.Position == DataStartOf(file, StreamNumber)).Which.Message.Should().Be(message);
+    }
+
+    [Theory]
     [InlineData(0)]
     [InlineData(1)]
     [InlineData(1000)]
@@ -475,16 +510,33 @@ public class StreamLengthTests
     [InlineData("2147483648 0 obj", null)]
     [InlineData("02147483648 0 obj", null)]
     [InlineData("99999999999999999999999 0 obj", null)]
-    [InlineData("12 0 %\nobj", null)]
-    [InlineData("12 %\n0 obj", null)]
+    [InlineData("12 0 %\nobj", 0)]
+    [InlineData("12 %\n0 obj", 0)]
+    [InlineData("12 % a comment\n0 % another\nobj", 0)]
+    [InlineData("12\n% one\n% two\n0\n% three\nobj", 0)]
+    [InlineData("12% right after the number\r0 obj", 0)]
+    [InlineData("12 % a comment\r\n0 obj", 0)]
+    [InlineData("12 % 50% done\n0 obj", 0)]
+    [InlineData("12 % endstream\n0 obj", 0)]
+    [InlineData("12 0 % endstream\nobj", 0)]
+    [InlineData("12\n% endstream\n% endstream\n0 % endstream\nobj", 0)]
+    [InlineData("(50%) 12 % a comment\n0 obj", 6)]
+    [InlineData("5 12 % a comment\n0 obj", 2)]
+    [InlineData("% 12 0 obj", 2)]
+    [InlineData("% a note 12\n0 obj", null)]
+    [InlineData("12 (x) % a comment\nobj", null)]
+    [InlineData("12 +0 % a comment\nobj", null)]
+    [InlineData("/A 0 % a comment\nobj", null)]
+    [InlineData("12\n(x) % a comment\n0 obj", null)]
     public void Text_that_follows_a_lost_endstream_stops_the_search_when_it_is_an_object_header_and_only_then(string text, int? header)
     {
         // An object header is "N G obj" at a token boundary, as the bytes hold it: a number and a generation whose values
-        // the parser takes, however many zeros lead them, and white space between its tokens, however much. Text that is
-        // one stops the search before the endstream after it, and the data, which no declared length runs past, ends there
-        // (#174); text that only looks like
-        // one — endobj, obj glued to what follows or precedes it, digits after a regular character, a number or a
-        // generation out of range, a comment between its tokens — is read past, and the endstream after it ends the data.
+        // the parser takes, however many zeros lead them, and white space between its tokens, however much, and comments,
+        // the line one ends read from its start as a load reads it (#261). Text that is one stops the search before the
+        // endstream after it, and the data, which no declared length runs past, ends there (#174); text that only looks
+        // like one — endobj, obj glued to what follows or precedes it, digits after a regular character, a number or a
+        // generation out of range, a sign, digits a comment ends with, a token that is no number on a line a comment ends —
+        // is read past, and the endstream after it ends the data.
         var data = Data(3 * Window);
         var file = Document(
             (StreamNumber, Stream(data.Length + 400, data, end: "\n" + text + "\nendstream")),
@@ -542,19 +594,80 @@ public class StreamLengthTests
     }
 
     [Theory]
+    [InlineData("endstream\n", false)]
+    [InlineData("9 0 obj\nendobj\n", true)]
+    public void A_search_for_data_that_starts_at_the_file_s_first_byte_stops_at_an_endstream_or_a_header_that_starts_there(string junk, bool header)
+    {
+        // The reader is asked where data that starts at the file's first byte ends, as no stream's data can, its keyword
+        // before it: the bytes the parser holds run past the junk before %PDF-, short of object 1, the next object the index
+        // places. The junk starts with an endstream, which ends the data where it starts, or with a header, which stops the
+        // search there, its object's endobj past it no part of the data. The first byte is a place like any other: the
+        // search ends there, and reads nothing of the file past the parser's bytes.
+        var file = new HandWrittenFile(junk);
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"),
+        };
+        file.Table(3, rows, "/Size 3 /Root 1 0 R");
+        var bytes = file.Bytes;
+        using var document = PdfDocument.Open(bytes);
+        var provider = (IPdfStreamDataProvider)document.Reader;
+
+        var search = provider.FindEndStream(
+            number: 0, absoluteDataStart: 0, declaredEnd: -1, buffered: bytes.AsSpan(0, junk.Length + "%PDF-".Length), deferred: false);
+
+        search.Should().Be(header
+            ? new StreamEndSearch(null, 0, EndObjState.Unknown) { HeaderStopped = true }
+            : new StreamEndSearch(0, junk.Length + rows[1], EndObjState.Absent));
+        document.Reader.EndStreamSearchBytes.Should().Be(0);
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void A_header_at_the_file_s_first_byte_stops_a_search_whose_data_starts_there_as_it_does_anywhere(bool held)
+    {
+        // No stream's data starts at the file's first byte, its stream keyword before it, but the file searches data said to
+        // start there as it searches any other: the header there stops the search where it starts, a stop the search
+        // reached, with no byte searched before it — its endobj, after it, unseen —, whether the bytes the parser holds give
+        // the header or the first read of the file past them does, the parser holding none of the data.
+        const string Head = "12 0 obj\nendobj\n";
+        byte[] file = [.. Encoding.ASCII.GetBytes(Head), .. Document()];
+        using var document = PdfDocument.Open(file);
+        var provider = (IPdfStreamDataProvider)document.Reader;
+        ReadOnlySpan<byte> buffered = held ? file.AsSpan(0, Head.Length) : [];
+
+        provider.FindEndStream(0, 0, -1, buffered, deferred: false).Should().Be(
+            new StreamEndSearch(null, 0, EndObjState.Unknown) { HeaderStopped = true });
+    }
+
+    [Theory]
     [InlineData("7 0 obj", true)]
     [InlineData(Wide, true)]
     [InlineData("x" + Wide, false)]
     [InlineData(Wide + "x", false)]
     [InlineData("2147483648" + Spaces + "0 obj", false)]
     [InlineData("7" + Spaces + "65536 obj", false)]
+    [InlineData("7 % a comment longer than a read repeats\n0 obj", true)]
+    [InlineData("7 0 % a comment longer than a read repeats\r\nobj", true)]
+    [InlineData("7\n% a line that holds only a comment\n0\n%\nobj", true)]
+    [InlineData("7 % (a parenthesis the comment holds\n0 obj", true)]
+    [InlineData("% a note 7\n0 obj", false)]
+    [InlineData("7 (a string % that holds a percent sign) % c\n0 obj", false)]
+    [InlineData("7 <41 42> % c\n0 obj", false)]
+    [InlineData("7 << % c\n0 obj", false)]
+    [InlineData("7 >> % c\n0 obj", false)]
+    [InlineData("7 /A % c\n0 obj", false)]
     public void A_header_the_edge_between_two_reads_of_the_search_cuts_is_decided_whole(string text, bool header)
     {
         // The search reads the window's part of the data, then the file a read at a time, each repeating the last bytes of
         // the one before and twice as large: a header, with the byte before it and the byte after its obj, is decided
         // whole wherever the edge of the window or of the reads past it cuts it — here one wider than a read repeats, and
-        // the same with a regular character before or after it, or a number or a generation out of range, which are none.
-        // What a read's start cuts of a header, the read before carries into it. The start of a read is no boundary before
+        // the same with a regular character before or after it, or a number or a generation out of range, which are none;
+        // and headers with comments between their tokens, or text that only looks like one, the lines a comment ends cut
+        // anywhere (#261). What a read's start cuts of a header, the read before carries into it, the line it starts in
+        // lexed so far. The start of a read is no boundary before
         // a number, nor its end one after obj, unless the search starts or ends there. A header missed, the endstream after
         // it would end the data; text taken for one, the data would end there.
         var prefix = Invariant($"{StreamNumber} 0 obj\n") + Stream(0, string.Empty, end: string.Empty, width: 7);
@@ -600,12 +713,27 @@ public class StreamLengthTests
     [InlineData("12 1{0} obj", '0', false)]
     [InlineData("x{0}12 0 obj", '0', false)]
     [InlineData("12{0}x 0 obj", ' ', false)]
+    [InlineData("12 %{0}\n0 obj", 'c', true)]
+    [InlineData("12 0 %{0}\nobj", 'c', true)]
+    [InlineData("12\n%{0}\n0 obj", 'c', true)]
+    [InlineData("12 %{0}\n0 %{0}\nobj", '%', true)]
+    [InlineData("12 % endstream{0}\n0 obj", 'c', true)]
+    [InlineData("12 0 %{0} endstream{0}\nobj", 'c', true)]
+    [InlineData("12\n% endstream{0}\n0\n%{0}\nobj", 'c', true)]
+    [InlineData("%{0} 12\n0 obj", 'c', false)]
+    [InlineData("12 ({0}%) % c\n0 obj", 'c', false)]
+    [InlineData("12 ({0}) % c\n0 obj", '(', false)]
+    [InlineData("12 <{0}> % c\n0 obj", '4', false)]
+    [InlineData("12 /{0} % c\n0 obj", 'c', false)]
+    [InlineData("12 {0} % c\n0 obj", 'c', false)]
     public void A_header_whose_runs_span_whole_reads_of_the_search_is_decided_as_its_bytes_say(string text, char fill, bool header)
     {
         // White space or digits that run on from inside the window across its edge and the whole of the first read past
         // it: each read carries into the next what it cuts of a header, however long, and the search decides it as it
         // would the bytes whole. Zeros leading a number or a generation change nothing; other digits make it too large;
-        // a regular character before the number, or in place of a token, makes none.
+        // a regular character before the number, or in place of a token, makes none. A comment line that spans whole reads
+        // is carried as the state its lexing leaves, however long, and so is a string, a name or a keyword it cuts, which is
+        // no number: the line is read as a load reads it (#261).
         var spread = string.Format(CultureInfo.InvariantCulture, text, new string(fill, 5 * Window));
         var data = Data(Window / 2);
         var declared = data.Length + spread.Length + 400;
@@ -1686,6 +1814,106 @@ public class StreamLengthTests
     }
 
     [Fact]
+    public void An_endstream_in_a_header_s_comment_is_decided_by_reading_on_once_through_the_comment_lines_after_it()
+    {
+        // The stream's data runs into a header whose number a comment holding endstream follows, then four megabytes of
+        // comment lines, then its generation and obj (#261). The search reads on past that endstream to the header's obj,
+        // which decides it, through one pooled window at a time and each byte once, as it reads data with no endstream,
+        // and the data ends at the header.
+        var data = Data(Window / 2);
+        var comments = string.Concat(Enumerable.Repeat("% " + new string('c', 1022) + "\n", 4096));
+        var text = "\n12 % endstream\n" + comments + "0 obj\n(twelve)\nendobj";
+        var file = new TestPdfBuilder()
+            .WithObject(1, "<< /Type /Catalog /Pages 2 0 R >>")
+            .WithObject(2, "<< /Type /Pages /Kids [] /Count 0 >>")
+            .WithObject(StreamNumber, Invariant($"<< /Length {data.Length + 400} >>\nstream\n") + data + text)
+            .BuildClassic(rootNumber: 1);
+
+        using var source = new StrictCountingSource(file);
+        using var document = PdfDocument.Open(source, PdfReaderOptions.Default, ownsSource: false);
+        var opened = source.BytesRead;
+
+        var allocated = GC.GetAllocatedBytesForCurrentThread();
+        var stream = Measure(() => document.GetObject(new PdfObjectId(StreamNumber)).AsStream().Required());
+        allocated = GC.GetAllocatedBytesForCurrentThread() - allocated;
+
+        stream.Data.Length.Should().Be(data.Length + 1, "the data runs to the header, the endstream in its comment ending none of it");
+        var repeated = ((comments.Length / PdfFileReader.EndStreamSearchChunk) + 2) * PdfFileReader.EndStreamSearchOverlap;
+        (source.BytesRead - opened).Should().BeLessThan(text.Length + (2 * Window) + repeated, "what follows the endstream is read once");
+        allocated.Should().BeLessThan(256 * 1024, "the search reads through one pooled window at a time, and allocates nothing for what it reads");
+    }
+
+    [Fact]
+    public void An_endstream_in_a_header_s_comment_ends_the_data_once_the_searches_may_read_no_more()
+    {
+        // Ten streams whose data share a megabyte read as much of the file as the searches may. Stream 13's data runs into a
+        // header whose number a comment holding endstream follows, and whose obj lies past the bytes the parser holds: the
+        // search, which may read no further, cannot tell whether the header ends past the endstream, which ends the data as
+        // the first endstream does, rather than leave it unsearched (#261).
+        const int Streams = 10;
+        var data = Data(Window / 4);
+        var (file, _) = NestedStreams(
+            Streams,
+            100_000,
+            Invariant($"{Streams + 3} 0 obj\n<< /Length {data.Length + 400} >>\nstream\n{data}\n12 % endstream {new string('c', 3 * Window)}\n0 obj\n(twelve)\nendobj\n"));
+        using var document = PdfDocument.Open(file);
+
+        for (var number = 3; number <= Streams + 2; number++)
+        {
+            document.GetObject(new PdfObjectId(number));
+        }
+
+        document.Reader.EndStreamSearchBytes.Should().BeGreaterThanOrEqualTo(PdfFileReader.EndStreamSearchPasses * file.Length);
+        var stream = document.GetObject(new PdfObjectId(Streams + 3)).AsStream().Required();
+
+        stream.Data.Length.Should().Be(data.Length + "\n12 % ".Length);
+    }
+
+    [Fact]
+    public void An_endstream_in_a_header_s_comment_that_the_bytes_read_with_the_object_decide_stops_at_the_header_once_the_searches_may_read_no_more()
+    {
+        // As above, but the header's obj lies in the bytes the parser holds, which decide it: the data runs to the header, as
+        // where the searches may read on, rather than to the endstream (#261).
+        const int Streams = 10;
+        var data = Data(Window / 4);
+        var (file, _) = NestedStreams(
+            Streams,
+            100_000,
+            Invariant($"{Streams + 3} 0 obj\n<< /Length {data.Length + 400} >>\nstream\n{data}\n12 % endstream\n0 obj\n(twelve)\nendobj\n"));
+        using var document = PdfDocument.Open(file);
+
+        for (var number = 3; number <= Streams + 2; number++)
+        {
+            document.GetObject(new PdfObjectId(number));
+        }
+
+        document.Reader.EndStreamSearchBytes.Should().BeGreaterThanOrEqualTo(PdfFileReader.EndStreamSearchPasses * file.Length);
+        var stream = document.GetObject(new PdfObjectId(Streams + 3)).AsStream().Required();
+
+        stream.Data.Length.Should().Be(data.Length + 1);
+    }
+
+    [Fact]
+    public void An_endstream_in_a_header_s_comment_ends_the_data_where_the_file_was_cut_short_before_the_header_s_obj()
+    {
+        // As above, the searches unspent, but the file is cut short past the window once the document is open: the reads past
+        // the cut give nothing, and the endstream ends the data, as the first endstream does (#261).
+        var data = Data(Window / 4);
+        var file = new TestPdfBuilder()
+            .WithObject(1, "<< /Type /Catalog /Pages 2 0 R >>")
+            .WithObject(2, "<< /Type /Pages /Kids [] /Count 0 >>")
+            .WithObject(StreamNumber, Invariant($"<< /Length {data.Length + 400} >>\nstream\n{data}\n12 % endstream {new string('c', 3 * Window)}\n0 obj\n(twelve)\nendobj"))
+            .BuildClassic(rootNumber: 1);
+        var source = new CutShortSource(file);
+        using var document = PdfDocument.Open(source, options: null, ownsSource: true);
+
+        source.CutAt((int)HeaderOf(file, StreamNumber) + Window + 100);
+        var stream = document.GetObject(new PdfObjectId(StreamNumber)).AsStream().Required();
+
+        stream.Data.Length.Should().Be(data.Length + "\n12 % ".Length);
+    }
+
+    [Fact]
     public void A_file_of_data_with_no_endstream_is_searched_once_to_its_end()
     {
         // Sixteen megabytes of data declared, and nothing after them but the index and the end of the file: the search
@@ -1741,6 +1969,43 @@ public class StreamLengthTests
         var stream = document.GetObject(new PdfObjectId(StreamNumber)).AsStream().Required();
 
         stream.Data.Length.Should().Be(data.Length - 40, "no endstream was found before the source stopped, and the declared length is kept");
+    }
+
+    [Theory]
+    [InlineData(1)]
+    [InlineData(100)]
+    public void A_source_that_stops_giving_bytes_ends_the_search_with_what_the_data_read_before_held(int past)
+    {
+        // The file shrinks under the document a byte past the window its object was read through, or a hundred: the search
+        // reads on to where the source stops giving bytes, one less each read near the end, and stops there. The data runs to
+        // the next object, its length past it, and holds an endobj in the window, a token after it: the object's endobj is not
+        // judged missing, as the data read up to where the source stopped holds one.
+        var data = Data(Window / 2) + " endobj x " + Data(2 * Window);
+        var file = Document((StreamNumber, Stream(100_000, data)), (6, "(six)"));
+        var source = new CutShortSource(file);
+
+        using var document = PdfDocument.Open(source, options: null, ownsSource: true);
+        source.CutAt((int)HeaderOf(file, StreamNumber) + Window + past);
+        document.GetObject(new PdfObjectId(StreamNumber)).AsStream().Required();
+
+        document.Reader.IsEndObjMissing(StreamNumber, out _).Should().BeFalse();
+        document.Diagnostics.Should().ContainSingle(d => d.Code == PdfDiagnosticCodes.StreamLengthInvalid)
+            .Which.Message.Should().EndWith("are taken as its data.");
+    }
+
+    [Fact]
+    public void A_stream_past_the_window_whose_endstream_ends_the_file_ends_there()
+    {
+        // The file ends on the stream's endstream, no object, table or trailer after it: the search reads to the end of the
+        // file, and the keyword there ends the data.
+        var data = Data(3 * Window);
+        var text = "%PDF-1.7\n1 0 obj << /Type /Catalog /Pages 2 0 R >> endobj\n" +
+            "2 0 obj << /Type /Pages /Kids [] /Count 0 >> endobj\n5 0 obj << /Length 99999 >>\nstream\n" + data + "\nendstream";
+        using var document = PdfDocument.Open(Encoding.Latin1.GetBytes(text));
+
+        document.GetObject(new PdfObjectId(5)).AsStream().Required().RawLength.Should().Be(data.Length);
+        document.Diagnostics.Should().ContainSingle(entry => entry.Code == PdfDiagnosticCodes.StreamLengthInvalid)
+            .Which.Message.Should().Be(Invariant($"The stream declared 99999 bytes but ended after {data.Length}."));
     }
 
     [Theory]
@@ -2197,6 +2462,37 @@ public class StreamLengthTests
     }
 
     [Theory]
+    [InlineData("")]
+    [InlineData("12 ")]
+    public void An_endstream_in_a_comment_that_only_white_space_separates_from_the_next_object_ends_the_data(string before)
+    {
+        // The data, which no endobj follows, holds its first endstream in a comment, on a line whose tokens may begin a
+        // header — none, or a number —, and nothing but an end of line between it and the next object, where the search
+        // ends: the bytes the parser holds reach that object, and no header can end past the keyword, which ends the data
+        // as the first endstream does (#261).
+        using var document = PdfDocument.Open(OneStream("<< /Length 20000 >>\nstream\nhello\n" + before + "% endstream\n", endObj: false));
+
+        document.GetObject(new PdfObjectId(4)).AsStream().Required().RawLength.Should().Be(("hello\n" + before + "% ").Length);
+    }
+
+    [Fact]
+    public void A_search_whose_bytes_the_object_s_window_holds_to_the_end_of_the_file_reads_nothing_more()
+    {
+        // The stream is the last object the index places, and the window it was parsed through ends where the file does:
+        // the bytes the parser holds are all the search may read, and they hold no endstream, nor an endobj that ends the
+        // object, the table following it. The data runs to the end of the file, and the file is not read again for it.
+        var file = Document((StreamNumber, Stream(20_000, "hello", end: string.Empty)));
+
+        using var source = new StrictCountingSource(file);
+        using var document = PdfDocument.Open(source, options: null, ownsSource: false);
+        var beforeLoading = source.BytesRead;
+
+        document.GetObject(new PdfObjectId(StreamNumber)).AsStream().Required().RawLength.Should().Be((int)(file.Length - DataStartOf(file, StreamNumber)));
+        (source.BytesRead - beforeLoading).Should().Be(file.Length - HeaderOf(file, StreamNumber), "the window, which reaches the end of the file, and nothing after it");
+        document.Reader.EndStreamSearchBytes.Should().Be(0);
+    }
+
+    [Theory]
     [InlineData("\nendobj\n% a note\nfoo\n")]
     [InlineData("\nendobj % a note endobj\nx")]
     public void An_endobj_a_token_follows_past_its_comments_ends_no_data(string tail)
@@ -2356,6 +2652,51 @@ public class StreamLengthTests
         last.Taken.Should().Be((int)(file.Length - last.DataStart));
         document.Diagnostics.Should().ContainSingle(d => d.Position == last.DataStart).Which.Message.Should().Be(
             Invariant($"The stream declared {Declared} bytes, and no endstream follows its data in the bytes read with its object; the {last.Taken} bytes to the end of the file are taken as its data without a search, the document's searches for endstream having read as much of the file as they may."));
+    }
+
+    [Fact]
+    public void A_stream_left_unsearched_that_declares_one_byte_says_so_in_the_singular()
+    {
+        // As streams whose data share a stretch exhaust what the searches may read, stream 33 is left unsearched: it declares
+        // one byte, which no endstream follows within the bytes read with its object, and keeps it (#241).
+        const int Streams = 30;
+        var (file, _) = NestedStreams(Streams, 100_000, Invariant($"{Streams + 3} 0 obj\n<< /Length 1 >>\nstream\nX{Data(3 * Window)}\nendobj\n"));
+        using var document = PdfDocument.Open(file);
+
+        for (var number = 3; number <= Streams + 2; number++)
+        {
+            document.GetObject(new PdfObjectId(number));
+        }
+
+        var reports = document.Diagnostics.Count;
+        document.GetObject(new PdfObjectId(Streams + 3)).AsStream().Required().Data.Length.Should().Be(1);
+
+        document.Diagnostics.Skip(reports).Should().ContainSingle().Which.Message.Should().Be(
+            "The stream declared 1 byte, and no endstream follows it; the declared length is kept without a search, the document's searches for endstream having read as much of the file as they may.");
+    }
+
+    [Fact]
+    public void A_stream_left_unsearched_that_takes_one_byte_up_to_the_next_object_says_so_in_the_singular()
+    {
+        // As above, stream 33 is left unsearched, its dictionary ending where the window its object is read in does: of
+        // its data, its object's bytes hold none, and the one byte up to object 34 is taken (#241).
+        const int Streams = 30;
+        var head = Invariant($"{Streams + 3} 0 obj\n<< /Length 99 /Pad (");
+        var tail = ") >>\nstream\n";
+        var stream = head + new string('p', Window - head.Length - tail.Length) + tail + "X";
+        var (file, _) = NestedStreams(Streams, 100_000, stream, Invariant($"{Streams + 4} 0 obj\n(next)\nendobj\n"));
+        using var document = PdfDocument.Open(file);
+
+        for (var number = 3; number <= Streams + 2; number++)
+        {
+            document.GetObject(new PdfObjectId(number));
+        }
+
+        var reports = document.Diagnostics.Count;
+        document.GetObject(new PdfObjectId(Streams + 3)).AsStream().Required().Data.Length.Should().Be(1);
+
+        document.Diagnostics.Skip(reports).Should().ContainSingle().Which.Message.Should().Be(
+            "The stream declared 99 bytes, and no endstream follows its data in the bytes read with its object; the 1 byte up to the next object is taken as its data without a search, the document's searches for endstream having read as much of the file as they may.");
     }
 
     [Fact]

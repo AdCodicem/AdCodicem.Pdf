@@ -258,13 +258,14 @@ public class FilterDamageTests
 
     [Theory]
     [MemberData(nameof(Payloads))]
-    public void Keeps_all_of_a_zlib_stream_whose_checksum_is_wrong_and_warns_that_some_may_be_wrong(string payload, byte[] plain)
+    public void Keeps_all_of_a_zlib_stream_whose_checksum_is_wrong_and_reports_the_disagreement(string payload, byte[] plain)
     {
         // A whole checksum that disagrees with whole data: the framework throws from the read that meets it, and
         // what that read decoded was lost with it — all of it for data one read takes, which was left encoded. The
         // body read again as raw deflate reads to its end, so every byte is kept, as other readers keep it; the
-        // disagreement is a warning of its own, since the data may be wrong anywhere. Whatever the stream's length
-        // took in after the checksum changes nothing.
+        // disagreement is a warning of its own, which says some of the data may be wrong, since it may be wrong
+        // anywhere — or, of data that decoded to nothing, only that it did. Whatever the stream's length took in
+        // after the checksum changes nothing.
         var compressed = WithWrongChecksum(Compress(plain, CompressionLevel.Optimal));
         byte[][] tails = [[], [0x0A], [0x0D], [0x0D, 0x0A]];
         var failures = new List<string>();
@@ -330,6 +331,46 @@ public class FilterDamageTests
 
         decoded.ToArray().Should().Equal(plain);
         Describe(diagnostics).Should().Be(Report(PdfDiagnosticSeverity.Warning, CorruptAt(faultAt, data.Length, plain.Length)));
+    }
+
+    [Fact]
+    public void A_flate_stream_that_keeps_one_byte_says_so_in_the_singular()
+    {
+        // One byte decodes, then a checksum disagrees with it, or the data turns corrupt: each report says what it kept in
+        // the singular (#241).
+        byte[] plain = [(byte)'A'];
+        var data = CorruptAfter(plain, out var faultAt);
+        var mismatched = new PdfDiagnostics();
+        var corrupt = new PdfDiagnostics();
+
+        Decode(WithWrongChecksum(Compress(plain, CompressionLevel.Optimal)), PdfName.FlateDecode, mismatched).ToArray().Should().Equal(plain);
+        Decode(data, PdfName.FlateDecode, corrupt).ToArray().Should().Equal(plain);
+
+        Describe(mismatched).Should().Be(Report(
+            PdfDiagnosticSeverity.Warning,
+            "A Flate stream's checksum disagrees with the 1 byte its data decoded to; it was kept, and may be wrong.",
+            PdfDiagnosticCodes.FilterChecksumMismatch));
+        Describe(corrupt).Should().Be(Report(
+            PdfDiagnosticSeverity.Warning,
+            $"A Flate stream is corrupt at byte {faultAt} of its {data.Length}; the 1 byte decoded before the fault was found was kept."));
+    }
+
+    [Theory]
+    [InlineData("78DA030000000002")]
+    [InlineData("789C0300FFFFFFFF")]
+    [InlineData("789C010000FFFF00000002")]
+    public void A_flate_stream_that_decodes_to_nothing_against_a_wrong_checksum_says_it_decoded_to_nothing(string hex)
+    {
+        // A last block that is empty, fixed or stored, then a checksum other than empty data's: nothing decoded, so nothing
+        // kept may be wrong, and the report says only that the data decoded to nothing, not that all of no bytes were kept.
+        var diagnostics = new PdfDiagnostics();
+
+        Decode(Convert.FromHexString(hex), PdfName.FlateDecode, diagnostics).ToArray().Should().BeEmpty();
+
+        Describe(diagnostics).Should().Be(Report(
+            PdfDiagnosticSeverity.Warning,
+            "A Flate stream's checksum disagrees with its data, which decoded to nothing.",
+            PdfDiagnosticCodes.FilterChecksumMismatch));
     }
 
     [Fact]
@@ -1158,6 +1199,7 @@ public class FilterDamageTests
     [InlineData("ASCIIHexDecode", "48656C6C6", "48656C6C60", PdfDiagnosticSeverity.Warning, "An ASCIIHex stream ends without its > end marker, after a digit without its pair; it was completed with a 0 as a last one is, and data may have been lost.")]
     [InlineData("RunLengthDecode", "hex:014849", "4849", PdfDiagnosticSeverity.Repair, "A RunLength stream ends without its end-of-data byte; it decoded to the end of its data.")]
     [InlineData("RunLengthDecode", "hex:044849", "4849", PdfDiagnosticSeverity.Warning, "A RunLength stream ends inside a run of 5 bytes, of which it holds 2; they were kept, and data may have been lost.")]
+    [InlineData("RunLengthDecode", "hex:0248", "48", PdfDiagnosticSeverity.Warning, "A RunLength stream ends inside a run of 3 bytes, of which it holds 1; it was kept, and data may have been lost.")]
     [InlineData("RunLengthDecode", "hex:01484902", "4849", PdfDiagnosticSeverity.Warning, "A RunLength stream ends after the length of a run of 3 bytes, without any of them; data may have been lost.")]
     [InlineData("RunLengthDecode", "hex:014849FE", "4849", PdfDiagnosticSeverity.Warning, "A RunLength stream ends after the length of a run, without the byte the run repeats; data may have been lost.")]
     [InlineData("RunLengthDecode", "hex:01484900", "4849", PdfDiagnosticSeverity.Warning, "A RunLength stream ends after the length of a run of 1 byte, without that byte; data may have been lost.")]
@@ -1720,7 +1762,9 @@ public class FilterDamageTests
         $"A Flate stream is corrupt at byte {faultAt} of its {encoded}; the {kept} bytes decoded before the fault was found were kept.";
 
     private static string ChecksumMismatch(int decoded) =>
-        $"A Flate stream's checksum disagrees with the {decoded} bytes its data decoded to; all were kept, and some may be wrong.";
+        decoded == 0
+            ? "A Flate stream's checksum disagrees with its data, which decoded to nothing."
+            : $"A Flate stream's checksum disagrees with the {decoded} bytes its data decoded to; all were kept, and some may be wrong.";
 
     private static string ChecksumReport(int decoded) =>
         Report(PdfDiagnosticSeverity.Warning, ChecksumMismatch(decoded), PdfDiagnosticCodes.FilterChecksumMismatch);

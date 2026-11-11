@@ -41,26 +41,46 @@ outside a stream's data, and a `%` right where the declared length ends is the d
 window, the reader asks the file for the bytes after the declared length rather than reading the data, reading on as
 far as white space and comments run, and they tell it whether `endobj` follows too. Any other
 stream — its length unconfirmed, or a `/Length` that gives none — is searched once for the first `endstream` after the
-start of its data, which ends it: in the bytes the parser holds, then in the file, up to the next object — the one the
-file's index places as the file wrote it (as the reader rebuilt it when the document opened, if the file wrote none),
-or the first object header, `N G obj`, the file's bytes hold, whichever comes first —, or up to the end of the file.
+start of its data, which ends it, but for one a comment between an object header's tokens holds, below: in the bytes the
+parser holds, then in the file, up to the next object — the one the file's index places as the file wrote it (as the
+reader rebuilt it when the document opened, if the file wrote none), or the first object header, `N G obj`, the file's
+bytes hold, whichever comes first —, or up to the end of the file.
 
 Stopping at the next object keeps a later object's `endstream` from ending this stream, which is what a stretch of
 zeros that erased the end of one and the objects after it would otherwise do, or an object whose entry the index lost.
 Text in a damaged stream's data that reads as an object header stops the search as well: an object number and a
 generation the parser takes, however many zeros lead them, white space between the three tokens, however much, and
-white space, a delimiter, or the start or the end of the search around them. A comment between the tokens makes no
-header here, as it makes none for the scan that rebuilds a damaged index; nor does a regular character glued before
-the number, though that scan takes the digits after it for one. Neither `xref` nor `trailer` stops a search: the
-stream of a classic file's last object, which no object follows, is searched through the table and the trailer to the
-end of the file.
+white space, a delimiter, or the start or the end of the search around them. Comments may lie between the tokens, as a
+load reads them: the line a comment ends is read from its start, as the scan that rebuilds a damaged index reads it —
+but for the line of the `obj` keyword itself, which is read by its digits whatever a comment there holds, as that scan
+reads it, so that `% 5 0 obj` on a line stops the search where a load reads a comment
+([#171](https://github.com/AdCodicem/AdCodicem.Pdf/issues/171)). A regular character glued before the number makes no
+header here, though that scan takes the digits after it for one.
+Neither `xref` nor `trailer` stops a search: the stream of a classic file's last object, which no object follows, is
+searched through the table and the trailer to the end of the file.
+
+A comment between a header's tokens may hold `endstream`, which then ends no data before that header. A first
+`endstream` inside a comment, on a line whose tokens before the comment may begin a header — a run of digits last, or
+none —, waits for what follows its line: only the rest of the comment, white space and comments, and a header's
+generation can lie between it and the `obj` of a header that starts before it. The first token past that line outside a
+comment decides, or the two where the first is a run of digits: an `obj` where the rule above takes a header stops the
+search at that header, which starts before the keyword; anything else leaves the keyword to end the data. Those tokens
+are read through the search's own reads, so that where the reads part the data changes nothing, however short a source
+cuts them ([#52](https://github.com/AdCodicem/AdCodicem.Pdf/issues/52)), and no further than the search would read
+without the keyword; a search that can read no further — the document's searches having read as much of the file as they
+may, or a source that gives nothing more — takes the keyword. The data so ends at the same place whether the index
+places the header's object or not, but where the comment holds, before the keyword, text that the line of an `obj`,
+read by its digits, makes a header (above): past the stream's `endobj`, a line `12 % 5 0 obj endstream` and then
+`0 obj` run the data on to `5 0 obj` where no row places object 12, and leave that `endobj` to end it where one does.
 
 With no `endstream` before the stop, the object's `endobj` plays its part. A declared length that ends before the stop,
 and that the object's `endobj` follows as an `endstream` would, is kept: the stream lost only its `endstream`. Otherwise,
 the object's own `endobj`, when only white space and comments separate it from the stop, ends the data, the end-of-line
 before it left out. Both are reported as `stream.truncated`. Without one, a declared length that ends before the stop is
 kept, and whether the object ends with its `endobj` is not judged; and the data otherwise runs to the stop, a declared
-length past it cut there, the object judged to lack its `endobj` unless what is taken holds one. Both are reported as
+length past it cut there, the object judged to lack its `endobj` unless what is taken holds one — what is taken ends
+where the stopping header starts, so that an `endobj` a comment between that header's tokens holds plays no part,
+wherever the reader's reads part the data. Both are reported as
 `stream.length-invalid`, but data that runs to the end of the file as `stream.truncated`.
 
 A `/Length` that names an object one of the reader's limits cut is no length the file gave: what the cut left of it —
@@ -114,23 +134,24 @@ nothing proves is.
 
 ## Damaged stream data
 
-Damaged stream data decodes as far as it goes, and what decoded is kept, with a report. A Flate stream whose
-tail was lost, as a file cut short or a producer that stopped writing leaves it, is a warning: what decoded
-before the end is all there is. A Flate stream that lost only the zlib checksum after its last block decoded
-whole, unchecked, and is a repair, as a stream with no zlib header at all is. A Flate stream that turns
-corrupt is a warning too: decoding stops at the fault, and what decoded before the byte the fault lies in is
-kept; what that one byte decoded ahead of the fault can be lost with it, though no stream in the project's test
-corpus lost any. The report says at which byte of the encoded data the fault was found and how many bytes were
-kept, and does not vouch for them: the damage may lie before the point where decoding found it, since damaged
-data can go on decoding, wrongly, for a while. A stream in which nothing decodes before that byte is left
-encoded, and reported as one that could not be decoded. Finding what decoded before a fault reads the stream's
-data again, the last few kilobytes before the fault a byte at a time; a sound stream is read once.
+Damaged stream data decodes as far as it goes, and what decoded is kept, with a report. A Flate stream whose tail was
+lost, as a file cut short or a producer that stopped writing leaves it, is a warning: what decoded before the end is all
+there is. A Flate stream that lost only the zlib checksum after its last block decoded whole, unchecked, and is a
+repair, as a stream with no zlib header at all is. A Flate stream that turns corrupt is a warning too: decoding stops at
+the fault, and what decoded before the byte the fault lies in is kept; what that one byte decoded ahead of the fault can
+be lost with it, though no stream in the project's test corpus lost any. The report says at which byte of the encoded
+data the fault was found and how many bytes were kept, and does not vouch for them: the damage may lie before the point
+where decoding found it, since damaged data can go on decoding, wrongly, for a while. A stream in which nothing decodes
+before that byte is left encoded, and reported as one that could not be decoded; a cross-reference stream so left holds
+no rows, and its section cannot be read ([#221](https://github.com/AdCodicem/AdCodicem.Pdf/issues/221)). Finding what
+decoded before a fault reads the stream's data again, the last few kilobytes before the fault a byte at a time; a sound
+stream is read once.
 
 A Flate stream that decodes to its end, but whose zlib checksum disagrees with what it decoded to, is a
 warning of its own, `filter.checksum-mismatch`: all of its data is kept, as other readers keep it, and some of
-it may be wrong — the checksum does not say where. In the project's test corpus, none of the 86 such streams
-could be shown intact, and 39 were shown damaged, 28 of them by a change of line endings that, undone, makes
-the checksum agree.
+it may be wrong — the checksum does not say where; of data that decoded to nothing, the report says only that it
+did. In the project's test corpus, none of the 86 such streams could be shown intact, and 39 were shown damaged, 28
+of them by a change of line endings that, undone, makes the checksum agree.
 
 An LZW stream that uses a code it has not defined stops there, since what follows cannot be read reliably.
 

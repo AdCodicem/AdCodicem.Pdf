@@ -1,3 +1,4 @@
+using AdCodicem.Pdf.Diagnostics;
 using AdCodicem.Pdf.Objects;
 
 namespace AdCodicem.Pdf.IO.XRef;
@@ -65,11 +66,66 @@ internal sealed class XRefSectionRecord
     public string? RefusedRow { get; set; }
 
     /// <summary>
-    /// Gets a value indicating whether a cross-reference stream holds fewer rows than it declares: the rows it holds place
-    /// objects, but where a value they are read with is one a guard cut, beside which the data holds too few whatever the
-    /// value holds.
+    /// Gets the first row of a reserved type the cross-reference stream gives, in words — "the row for object 3 gives it
+    /// type 3" —; null when it gives none. ISO 32000-1 (7.5.8.3) defines types 0, 1 and 2, and reads any other as a
+    /// reference to the null object, as the reader does: the row stands for its object as a free row does, and no older
+    /// section's row stands for it (#221), but for one whose number was refused before it was read, which stands for nothing,
+    /// its object looked for by rebuilding the index (<see cref="ReservedRowsRefused"/>). It is no cause of the section's
+    /// being unreadable.
+    /// </summary>
+    public string? ReservedRow { get; set; }
+
+    /// <summary>Gets how many rows of a reserved type the cross-reference stream gives (<see cref="ReservedRow"/>).</summary>
+    public long ReservedRows { get; set; }
+
+    /// <summary>
+    /// Gets how many of the rows of a reserved type the cross-reference stream gives stand for nothing, their numbers refused
+    /// before they were read: by a newer section — a row refused alone, a range a stream whose rows were lost declares,
+    /// every number —, or by a row of the stream's own for the same number (#221). Each such object is looked for by
+    /// rebuilding the index, rather than read as the null object.
+    /// </summary>
+    public long ReservedRowsRefused { get; set; }
+
+    /// <summary>
+    /// Gets a value indicating whether the section's own reading lost rows through the file's fault, the rows before the
+    /// fault kept: a classic table's row that is no row, which ends its subsection; a classic table the end of the file cuts
+    /// before its trailer, once it read a row; a cross-reference stream that holds fewer rows than it declares — where a
+    /// value they are read with is one a guard cut too, beside which the data holds too few whatever the value holds. The
+    /// section was read only in part (#207, #210).
     /// </summary>
     public bool Incomplete { get; set; }
+
+    /// <summary>
+    /// Gets a value indicating whether what a classic table holds past where its reading stopped cannot be known: a
+    /// subsection header that gives no first object number and count of rows, or numbers its rows past the last object
+    /// number, a token where a subsection or the trailer should start, or the end of the file before its trailer — within
+    /// its <c>trailer</c> keyword too (#207). A row for any number may lie there, and the reader refuses every number to the
+    /// rows of the sections the chain reads after the table: for a table an <c>/XRefStm</c> names, whose trailer's links are
+    /// not followed, the chain goes on through the table that names it (#156, #210). Rows that run into a dictionary no
+    /// trailer keyword introduces end where the trailer starts, which is known.
+    /// </summary>
+    public bool SubsectionsUnknown { get; set; }
+
+    /// <summary>
+    /// Gets how many rows a cross-reference stream holds, read, where its data holds fewer than its <c>/Index</c> and
+    /// <c>/Size</c> declare (#210); -1 for every other section, and for a stream whose rows were left to a guard
+    /// (<see cref="RowsLeftToGuard"/>).
+    /// </summary>
+    public long RowsHeld { get; set; } = -1;
+
+    /// <summary>
+    /// Gets a value indicating whether the rows a cross-reference stream's data may hold were left unread: a value they are
+    /// read with leads to an object one of the reader's guards cut, beside which the data holds fewer rows than the stream
+    /// declares whatever that value holds. The section was read only in part, and the chain ends at it (#210, #263).
+    /// </summary>
+    public bool RowsLeftToGuard { get; set; }
+
+    /// <summary>
+    /// Gets a value indicating whether a classic table holds no subsection: its <c>trailer</c> keyword follows its
+    /// <c>xref</c> keyword, where ISO 32000-1 (7.5.4) has one or more subsections follow it. It is read as indexing nothing,
+    /// as a table whose one subsection is <c>0 0</c> is (#222).
+    /// </summary>
+    public bool NoSubsection { get; set; }
 
     /// <summary>
     /// Gets a value indicating whether one of the reader's limits stopped it reading the section, or its trailer,
@@ -92,6 +148,36 @@ internal sealed class XRefSectionRecord
     public bool TypedXRef { get; set; }
 
     /// <summary>
+    /// Gets a value indicating whether the place, which the search near the offset a hybrid table's <c>/Prev</c> names tried
+    /// where the table's <c>/XRefStm</c> read a cross-reference stream, or names again one a newer table's read, holds a
+    /// cross-reference stream that may be that table's own — it starts no sooner than that stream, and its dictionary, read
+    /// whole, gives no <c>/Prev</c>, or the offset the table's names, as the chain reads it —: read no further than its
+    /// object, its data neither decoded nor read as rows, it left nothing of its reading but a search for its
+    /// <c>endstream</c> and, where its <c>/Prev</c> is a reference, the objects read where it leads, as any value the
+    /// chain reads; the search tries it again once every other place was, uncounted (#156). Whether its dictionary gives
+    /// <c>/Type /XRef</c> is kept (<see cref="TypedXRef"/>): only such a stream, its header a token a load reads from the
+    /// start of its line, is reported where the search takes another section before it comes back to it.
+    /// </summary>
+    public bool MayBeTablesOwn { get; set; }
+
+    /// <summary>
+    /// Gets where the document's diagnostics stood, with the reports decodings had moved into them, just before the data of
+    /// a cross-reference stream was decoded at a place the section may have been moved to, where its filters decoded nothing
+    /// of it; null otherwise. A place that declares no section is dropped, and what that decoding reported goes with it, the
+    /// diagnostics rolled back to this mark beside the guards it reached: what reading the stream's dictionary reported
+    /// stands, as for any place dropped (#221).
+    /// </summary>
+    public PdfDiagnosticsMark? UndecodedReports { get; set; }
+
+    /// <summary>
+    /// Gets a value indicating whether the stream's dictionary gives a <c>/Type</c> that names another type than
+    /// <c>/XRef</c> — a CIDFont's, whose <c>/W</c> gives its glyphs' widths —: what is there said it is something else, and
+    /// is the section only where the chain names it and it reads as one, or a guard cut a value it is read with (#263):
+    /// otherwise it holds no section (#281).
+    /// </summary>
+    public bool TypedOther { get; set; }
+
+    /// <summary>
     /// Gets a value indicating whether <see cref="Documents.PdfReaderLimits.MaxTrailerLength"/> cut the section's
     /// trailer: what lay past the cut — an older section's <c>/Prev</c>, a key a newer trailer gives — is unknown.
     /// </summary>
@@ -109,6 +195,51 @@ internal sealed class XRefSectionRecord
     /// the guard hides is then the cross-reference stream of the section's revision, and any section older than it.
     /// </summary>
     public bool ChainHiddenAtStream { get; set; }
+
+    /// <summary>
+    /// Gets a value indicating whether the chain read the <c>/Prev</c> the dictionary of the section gives, a cross-reference
+    /// stream whose rows it could not read, to go on past it (#208): the one value of that dictionary the reader read, and
+    /// the one the validation rules judge, whether it names an offset the chain went on to or no offset at all.
+    /// </summary>
+    public bool PreviousHandedOn { get; set; }
+
+    /// <summary>
+    /// Gets a value indicating whether the object numbers the section lost, that cannot be read, were refused to the rows of
+    /// the sections the chain read after it: those a cross-reference stream declares, which declares itself one and whose
+    /// dictionary was read whole, whether the chain went on through its <c>/Prev</c> (#208) or it is a hybrid file's stream
+    /// (#210); and those a classic table an <c>/XRefStm</c> names lost — the rest of the subsection its fault ended, or every
+    /// number, where what follows the fault cannot be known (<see cref="SubsectionsUnknown"/>) —, the chain going on past it
+    /// through the table that names it (#156).
+    /// </summary>
+    public bool NumbersRefused { get; set; }
+
+    /// <summary>
+    /// Gets a value indicating whether a section the chain read before this one had refused every object number to the rows
+    /// of the sections read after it when the chain came to this one — a cross-reference stream whose rows were lost and whose
+    /// numbering cannot be read, more ranges lost than are kept apart, a classic table whose rest cannot be known (#208,
+    /// #210) —: none of the rows this section reads stands, and its report says so rather than that they were kept. What
+    /// the section refuses once it is read is its own, and does not count, though its report follows the refusal; nor does
+    /// what the chain's first reading of the same section refused, where a <c>/Prev</c> reads it again (#156).
+    /// </summary>
+    public bool EveryNumberRefusedBefore { get; set; }
+
+    /// <summary>
+    /// Gets a value indicating whether a row the section read was not indexed, its number refused before the row was read
+    /// by a section the chain read before this one — a range of numbers a stream whose rows were lost declares, the rest of a
+    /// subsection a table lost, a row refused alone (#208, #210). Its report says the rows read were kept but for those,
+    /// rather than all of them. Where the section gives a number twice, its own row refused first, the other row does not
+    /// stand either, which is the section's own refusal (<see cref="RefusedRow"/>), not a newer section's.
+    /// </summary>
+    public bool RowsRefusedBefore { get; set; }
+
+    /// <summary>
+    /// Gets which of the readings the chain started read the section, counted from 1 — the chain's own, and each place a
+    /// section may have been moved to that it tried —; 0 while none did. The reader keeps it, rather than the record, with
+    /// each object number a reading refused, so that a row for a number the section refused itself is told from one a
+    /// section read before it refused (<see cref="RowsRefusedBefore"/>) at the cost of an int a number (#210). A section
+    /// found moved keeps its own: it reads nothing more once it takes what the reading of the place it was found at read.
+    /// </summary>
+    public int Ordinal { get; set; }
 
     /// <summary>Gets the section's own trailer — a cross-reference stream's dictionary —, or null when none was read.</summary>
     public PdfDictionary? Trailer { get; set; }
@@ -132,6 +263,49 @@ internal sealed class XRefSectionRecord
     /// </summary>
     public PdfDictionary? NamingTrailer { get; init; }
 
+    /// <summary>
+    /// Gets the record of what the chain read, or looked for, where an <c>/XRefStm</c> names a position it had reached
+    /// before (<see cref="XRefSectionState.NamedAgain"/>) — the first record named or read there —, or, for an
+    /// <c>/XRefStm</c> that names what its own table's <c>/Prev</c> names, or whose search near the offset it names stopped
+    /// where a guard cut what that <c>/Prev</c> names, the record of the section that <c>/Prev</c> reads (#156); null for
+    /// every other section, and while that <c>/Prev</c> has read nothing — as past a guard that stopped the table, where it
+    /// reads nothing in the file (#264).
+    /// </summary>
+    public XRefSectionRecord? ReadAs { get; set; }
+
+    /// <summary>
+    /// Gets what a table's <c>/XRefStm</c> names in place of a cross-reference stream of the table's revision, in words, as
+    /// the reader reported it — "the table itself", "a cross-reference table, whose rows were read in the stream's place", "a
+    /// cross-reference table, which one of the reader's limits cut before its first row", "a cross-reference table, which
+    /// cannot be read" —, or, where <see cref="Documents.PdfReaderLimits.MaxXRefSectionCount"/>
+    /// ended the chain at what the table's <c>/Prev</c> names too, as the guard hides it; null where it names a stream, or
+    /// what the chain could not read but a classic table, and where its search near the offset it names stopped only where a
+    /// guard cut what the table's <c>/Prev</c> names, which is the guard's (#156, #264).
+    /// </summary>
+    public string? NamesNoStream { get; set; }
+
+    /// <summary>
+    /// Gets a value indicating whether the <c>/XRefStm</c> names, in the file, what its own table's <c>/Prev</c> reaches too,
+    /// which that <c>/Prev</c> reads (<see cref="ReadAs"/>): what the <c>/Prev</c> names, or what its search near the offset
+    /// it names came to, which the <c>/XRefStm</c> read in the stream's place first (#156). The reader reported the naming
+    /// as it knew it then — before the <c>/Prev</c> read what is there, as what the chain looks for there; as what the
+    /// <c>/XRefStm</c>'s own reading found, a table whose rows were read in the stream's place; or, a stream that reading
+    /// took for the table's own, once the <c>/Prev</c> read it —, and what the <c>/Prev</c> found is known from
+    /// <see cref="ReadAs"/> once the chain is read. False for every other naming, and where a guard kept the <c>/Prev</c>
+    /// from being read — one that stopped the table, or <see cref="Documents.PdfReaderLimits.MaxXRefSectionCount"/> ending
+    /// the chain at what the <c>/Prev</c> names —, or that offset lies outside the file, or where the search near the offset
+    /// the <c>/XRefStm</c> names stopped only where a guard cut what the <c>/Prev</c> names, before it said what it is or in a
+    /// value its rows are read with.
+    /// </summary>
+    public bool NamesWhatPreviousReads { get; set; }
+
+    /// <summary>
+    /// Gets a value indicating whether the section is a hybrid file's cross-reference stream: one a table's <c>/XRefStm</c>
+    /// named, which the chain found to be a stream. A record of a naming again is none: what it names is
+    /// <see cref="ReadAs"/>.
+    /// </summary>
+    public bool IsHybridStream => NamedBy == "/XRefStm" && Kind == XRefSectionKind.Stream;
+
     /// <summary>Gets the object number of a cross-reference stream, or 0 for a classic table.</summary>
     public int StreamObjectNumber { get; set; }
 
@@ -140,9 +314,25 @@ internal sealed class XRefSectionRecord
 
     /// <summary>
     /// Gets how many bytes of white space or comments lie between where the section was read and its first token —
-    /// the <c>xref</c> keyword, or the stream's object header —, where the offset should have named that token.
+    /// the <c>xref</c> keyword, or the stream's object header —, where the offset should have named that token. For an
+    /// <c>/XRefStm</c> that names what the chain reaches anyway (<see cref="XRefSectionState.NamedAgain"/>), how many lie
+    /// between where it names and the first token of the section <see cref="ReadAs"/> records, which it reached through
+    /// them: none where it names that token, or the offset the chain reached the section by (#156).
     /// </summary>
     public int Padding { get; set; }
+
+    /// <summary>
+    /// Gets where the digits of a cross-reference stream's object number start, in the file: past the run of signs its
+    /// header is written with, where it is, as the reading of its header lexed them, and where the header starts otherwise
+    /// (#327). The search near an offset finds a header written <c>++13 0 obj</c> or <c>-+13 0 obj</c> at its digit, and
+    /// tells it by this position as a stream the chain reached from a <c>+</c> of that run, wherever the run starts — near
+    /// the offset a hybrid table's <c>/Prev</c> names, as the stream the table's <c>/XRefStm</c> read, or names again,
+    /// however few of those signs its window holds. One it finds at the first sign of a run a <c>+</c> starts, within the
+    /// bytes searched, where the line its number is on holds a <c>%</c>, it tells as a section the chain reached, from a
+    /// later <c>+</c> of the run or from its digit, by this position past the run. -1 for a classic table, and for a
+    /// section whose header was not read as a cross-reference stream's.
+    /// </summary>
+    public long DigitsAt { get; set; } = -1;
 
     /// <summary>Takes what a successful attempt at another offset read, the section having been relocated there.</summary>
     public void RelocateTo(XRefSectionRecord attempt)
@@ -152,10 +342,19 @@ internal sealed class XRefSectionRecord
         Kind = attempt.Kind;
         Fault = attempt.Fault;
         RefusedRow = attempt.RefusedRow;
+        ReservedRow = attempt.ReservedRow;
+        ReservedRows = attempt.ReservedRows;
+        ReservedRowsRefused = attempt.ReservedRowsRefused;
         Incomplete = attempt.Incomplete;
+        SubsectionsUnknown = attempt.SubsectionsUnknown;
+        RowsHeld = attempt.RowsHeld;
+        RowsLeftToGuard = attempt.RowsLeftToGuard;
+        RowsRefusedBefore = attempt.RowsRefusedBefore;
+        NoSubsection = attempt.NoSubsection;
         CutByLimit = attempt.CutByLimit;
         CutByValue = attempt.CutByValue;
         TypedXRef = attempt.TypedXRef;
+        TypedOther = attempt.TypedOther;
         TrailerCutByLimit = attempt.TrailerCutByLimit;
         ChainHiddenByGuard = attempt.ChainHiddenByGuard;
         ChainHiddenAtStream = attempt.ChainHiddenAtStream;
@@ -165,5 +364,6 @@ internal sealed class XRefSectionRecord
         StreamObjectNumber = attempt.StreamObjectNumber;
         HighestNumber = attempt.HighestNumber;
         Padding = attempt.Padding;
+        DigitsAt = attempt.DigitsAt;
     }
 }

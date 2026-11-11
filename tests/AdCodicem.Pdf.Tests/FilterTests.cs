@@ -1232,6 +1232,56 @@ public class FilterTests
         Text(stream.Decode()).Should().Be("plain");
     }
 
+    [Theory]
+    [InlineData("an unsupported filter", "/Foo", "abc", true, "abc")]
+    [InlineData("Flate corrupt before its first byte decodes", "/FlateDecode", "xxxxxxx", true, "xxxxxxx")]
+    [InlineData("ASCIIHex, then an unsupported filter", "[/ASCIIHexDecode /Foo]", "4142>", true, "AB")]
+    [InlineData("ASCIIHex, then Flate corrupt before its first byte decodes", "[/ASCIIHexDecode /FlateDecode]", "78787878787878>", true, "xxxxxxx")]
+    [InlineData("ASCIIHex, then an element that names no filter", "[/ASCIIHexDecode 5]", "4142>", true, "AB")]
+    [InlineData("a /Filter that is neither a name nor an array", "5", "abc", true, "abc")]
+    [InlineData("Flate that decodes a stored block, then meets a block of the reserved type", "/FlateDecode", "{stored}", false, "Hello")]
+    [InlineData("ASCIIHex that decodes to nothing, then an unsupported filter", "[/ASCIIHexDecode /Foo]", ">", false, "")]
+    [InlineData("LZW whose first code it has not defined", "/LZWDecode", "\u0096\u0000", false, "")]
+    [InlineData("ASCIIHex whose bytes encode nothing", "/ASCIIHexDecode", "zzzzzz>", false, "")]
+    [InlineData("an image filter", "/DCTDecode", "abc", false, "abc")]
+    [InlineData("sound Flate", "/FlateDecode", "{sound}", false, FlateText)]
+    [InlineData("no filter", "", "abc", false, "abc")]
+    public void Data_is_said_undecoded_only_where_a_filter_the_library_cannot_run_is_left_some_or_flate_data_is_corrupt_before_its_first_byte(
+        string shape, string filter, string data, bool undecoded, string decoded)
+    {
+        // What comes back from a filter the library does not know, from an element of /Filter that names none or a /Filter
+        // that is neither a name nor an array, or from Flate data corrupt before its first byte decodes, the one fault of a
+        // filter that leaves the data as it was given, is the data as the filters before it left it, not what the stream
+        // decodes to: a reader of a cross-reference stream's rows reads none from it (#221). Flate that decoded part of its
+        // data before a fault gives that part; LZW whose first code it has not defined, and ASCIIHex whose bytes encode
+        // nothing, decode none of their data, and give none, as a filter left no data does; and an image filter leaves the
+        // image on purpose: none of them is said undecoded. No guard ended any of these decodings.
+        var bytes = data switch
+        {
+            // A zlib header, a stored block that is not the last, of the five bytes of Hello, then a block of type 3.
+            "{stored}" => [0x78, 0x01, 0x00, 0x05, 0x00, 0xFA, 0xFF, .. "Hello"u8, 0x07],
+            "{sound}" => FlateZlib,
+            _ => Encoding.Latin1.GetBytes(data),
+        };
+        var dictionary = new PdfObjectParser(Encoding.ASCII.GetBytes(filter.Length == 0 ? "<< >>" : $"<< /Filter {filter} >>"))
+            .ParseObject().AsDictionary().Required();
+        var diagnostics = new PdfDiagnostics();
+
+        var output = PdfFilterPipeline.Decode(
+            new PdfStream(dictionary, PdfStreamData.FromMemory(bytes)),
+            diagnostics,
+            endHidden: false,
+            reachedBefore: false,
+            out var leftEncoded,
+            out var cut,
+            out var said);
+
+        said.Should().Be(undecoded, shape);
+        Text(output).Should().Be(decoded, shape);
+        leftEncoded.Should().BeFalse(shape);
+        cut.Should().BeFalse(shape);
+    }
+
     /// <summary>The IDAT of libpng's adaptive rendering of <see cref="LibpngPixels"/>.</summary>
     private const string LibpngAdaptive =
         "CNdtzCEOg1AMgGG2IRATvUzlu1Avg6wg2QFIqGyyZPKJCRwCUUeTmacqEDgECMR++yX/o0Jq+zzH8/WeflU3fJe17T9z3CMi58zMRJRSAgB3V9X6gG1jIkREADzgNjWp+VcdEaONdsnNzOxcibCIiEgpxd1VdAefBVSZ";

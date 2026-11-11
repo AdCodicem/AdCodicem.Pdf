@@ -131,6 +131,26 @@ public class ParserTests
     }
 
     [Theory]
+    [InlineData("7 0 obj\nnull\nendobj\n", 0, 0, 7)]
+    [InlineData("  007 0 obj\nnull\nendobj\n", 2, 2, 7)]
+    [InlineData("% a note\n+14 0 obj\nnull\nendobj\n", 9, 10, 14)]
+    [InlineData("++14 0 obj\nnull\nendobj\n", 0, 2, 14)]
+    [InlineData("+-+-014 0 obj\nnull\nendobj\n", 0, 4, 14)]
+    public void Gives_where_an_object_header_starts_and_where_the_digits_of_its_number_start_past_the_signs_it_is_written_with(
+        string text, int start, int digits, int number)
+    {
+        // The lexer reads a run of signs with the number as one token, the first sign deciding: the header starts at the
+        // first sign, and the number's digits, leading zeros among them, past the run (#327).
+        var parser = new PdfObjectParser(Encoding.ASCII.GetBytes(text));
+
+        parser.TryReadIndirectObject(out var id, out _).Should().BeTrue();
+
+        id.Should().Be(new PdfObjectId(number));
+        parser.HeaderStart.Should().Be(start);
+        parser.HeaderDigits.Should().Be(digits);
+    }
+
+    [Theory]
     [InlineData("0 0 obj\nnull\nendobj\n")]
     [InlineData("3000000000 0 obj\nnull\nendobj\n")]
     [InlineData("7 -1 obj\nnull\nendobj\n")]
@@ -378,6 +398,22 @@ public class ParserTests
 
         Encoding.ASCII.GetString(stream.GetRawBytes().Span).Should().Be("hello\n");
         diagnostics.Should().ContainSingle().Which.Code.Should().Be(PdfDiagnosticCodes.StreamLengthInvalid);
+    }
+
+    [Theory]
+    [InlineData("hello endobj x\n", true)]
+    [InlineData("hello x\n", false)]
+    public void A_stream_a_window_given_alone_runs_to_a_header_without_its_endobj_unless_its_data_holds_one(
+        string data, bool holdsEndObj)
+    {
+        // A window no reader backs is searched as the reader searches the file: a stream that lost its endstream runs to the
+        // header after it, and its object lacks its endobj unless the data taken holds one, which may be the object's own.
+        var parser = new PdfObjectParser(Encoding.ASCII.GetBytes("5 0 obj\n<< /Length 99 >>\nstream\n" + data + "6 0 obj\n(six)\nendobj"));
+
+        parser.TryReadIndirectObject(out _, out var value).Should().BeTrue();
+
+        Encoding.ASCII.GetString(value.Should().BeOfType<PdfStream>().Subject.GetRawBytes().Span).Should().Be(data);
+        parser.EndObj.Should().Be(holdsEndObj ? EndObjState.Unknown : EndObjState.Absent);
     }
 
     [Fact]

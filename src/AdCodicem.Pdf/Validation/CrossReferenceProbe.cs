@@ -158,7 +158,7 @@ internal sealed class CrossReferenceProbe
                 first.Location,
                 probe._undecidedCount == 1
                     ? Invariant($"{Stopped}: the entry of {first.Message}, which it had not decided by then, was not checked.")
-                    : Invariant($"{Stopped}: the entries of {RuleText.Objects(probe._undecidedCount)} it had not decided by then, the first {first.Message}'s, were not checked.")));
+                    : Invariant($"{Stopped}: the entries of {CountText.Objects(probe._undecidedCount)} it had not decided by then, the first {first.Message}'s, were not checked.")));
         }
 
         if (packed.Count > 0)
@@ -188,7 +188,7 @@ internal sealed class CrossReferenceProbe
                 {
                     FirstImprecise = new ProbeFinding(
                         PdfValidationLocation.OfObject(id, offset),
-                        Invariant($"the entry of object {number} gives offset {offset}, {RuleText.Bytes(placement.Position - offset)} before its header"));
+                        Invariant($"the entry of object {number} gives offset {offset}, {CountText.Bytes(placement.Position - offset)} before its header"));
                 }
 
                 CheckGeneration(number, entry, placement.Position, placement.Generation);
@@ -205,7 +205,7 @@ internal sealed class CrossReferenceProbe
 
                     Shifted.Keep(new ProbeFinding(
                         at,
-                        Invariant($"The entry of object {number} gives offset {Named(reader, entry, offset, inFile)}, {found}; the object starts {RuleText.Distance(placement.Position - offset)}, at offset {placement.Position}.")));
+                        Invariant($"The entry of object {number} gives offset {Named(reader, entry, offset, inFile)}, {found}; the object starts {CountText.Distance(placement.Position - offset, "it")}, at offset {placement.Position}.")));
                 }
 
                 CheckGeneration(number, entry, placement.Position, placement.Generation);
@@ -349,7 +349,7 @@ internal sealed class CrossReferenceProbe
                 {
                     NotChecked.Keep(new ProbeFinding(
                         at,
-                        Invariant($"One of the reader's limits stopped it reading object stream {stream} before its header ended: the {RuleText.Objects(objects.Count)} the index places in it {(objects.Count == 1 ? "was" : "were")} not checked. Raising the limit the reader reported lets {(objects.Count == 1 ? "it" : "them")} be.")));
+                        Invariant($"One of the reader's limits stopped it reading object stream {stream} before its header ended: the {CountText.Objects(objects.Count)} the index places in it {(objects.Count == 1 ? "was" : "were")} not checked. Raising the limit the reader reported lets {(objects.Count == 1 ? "it" : "them")} be.")));
                 }
 
                 return;

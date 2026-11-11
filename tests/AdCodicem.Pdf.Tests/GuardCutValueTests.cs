@@ -690,12 +690,12 @@ public class GuardCutValueTests
         // The update's stream indexes its /Length, object 4, and object 8 after rows that spell an endstream, and
         // MaxObjectLength cuts object 4 after its 35: the section was said to lack the rows past the endstream, and object 8
         // read as the first revision wrote it. The 35 the cut left is where to look for the endstream, which confirms it
-        // (#224).
+        // (#224). The rows that spell the endstream, of reserved types, are then read, and reported (#221).
         var file = ChainFiles.UpdateWithIndirectLength(spellingEndStream: true, four: "{length}" + new string(' ', 3000));
         using var document = PdfDocument.Open(file, ObjectGuard);
 
         document.GetObject(new PdfObjectId(8)).Should().BeOfType<PdfString>().Which.ToText().Should().Be("new");
-        document.Diagnostics.Select(entry => entry.Code).Should().Equal(PdfDiagnosticCodes.LimitObject);
+        document.Diagnostics.Select(entry => entry.Code).Should().Equal(PdfDiagnosticCodes.XRefEntryReserved, PdfDiagnosticCodes.LimitObject);
         document.WasRepaired.Should().BeFalse();
         new PdfValidator().Validate(document).Contains(PdfValidationRuleIds.XRefSectionMalformed).Should().BeFalse();
     }
@@ -712,11 +712,13 @@ public class GuardCutValueTests
         // which only stream 7's own row places — and MaxObjectLength cuts it after its value. The value the cut left is where
         // to look for the endstream, as for an object the section's own row places: confirmed, the data is taken again to it
         // and every row read; otherwise the rows past the endstream they spell are the guard's (#224).
+        // The rows that spell the endstream, of reserved types, are reported where the data taken again holds them (#221).
         var file = ChainFiles.UpdatePlacingAPaddedLength(chained, lengthOff: lengthOff, lengthFirst: true);
         using var document = PdfDocument.Open(file, ObjectGuard);
+        string[] spelled = lengthOff == 0 ? [PdfDiagnosticCodes.XRefEntryReserved] : [];
 
         document.WasRepaired.Should().BeFalse();
-        document.Diagnostics.Select(entry => entry.Code).Should().Equal(PdfDiagnosticCodes.LimitObject);
+        document.Diagnostics.Select(entry => entry.Code).Should().Equal([.. spelled, PdfDiagnosticCodes.LimitObject]);
         document.Reader.Structure.Sections[1].CutByLimit.Should().Be(lengthOff != 0);
         document.Reader.Structure.Sections[1].Incomplete.Should().BeFalse();
         (document.GetObject(new PdfObjectId(3)).AsDictionary() is not null).Should().Be(lengthOff == 0);
@@ -733,14 +735,16 @@ public class GuardCutValueTests
 
         using (var whole = PdfDocument.Open(file))
         {
-            whole.Diagnostics.Should().BeEmpty();
+            // Read whole, the rows that spell the endstream, of reserved types, are read and reported (#221).
+            whole.Diagnostics.Select(entry => entry.Code).Should().Equal(PdfDiagnosticCodes.XRefEntryReserved);
             whole.GetObject(new PdfObjectId(3)).AsDictionary().Should().NotBeNull();
         }
 
         using var document = PdfDocument.Open(file, ObjectGuard);
 
         document.WasRepaired.Should().BeFalse();
-        document.Diagnostics.Select(entry => entry.Code).Should().Equal(PdfDiagnosticCodes.LimitObject);
+        // The rows the data taken again holds include those that spell the first endstream, of reserved types (#221).
+        document.Diagnostics.Select(entry => entry.Code).Should().Equal(PdfDiagnosticCodes.XRefEntryReserved, PdfDiagnosticCodes.LimitObject);
         document.Reader.Structure.Sections[1].CutByLimit.Should().BeTrue();
         document.Reader.Structure.Sections[1].Incomplete.Should().BeFalse();
         new PdfValidator().Validate(document).Contains(PdfValidationRuleIds.XRefSectionMalformed).Should().BeFalse();
@@ -2243,7 +2247,8 @@ public class GuardCutValueTests
         // As above, but for objects 8, 9 and 10, which follow stream 5 in that order and which only its rows place, 9 first,
         // then 8, then 10 — with a type field, or without, every row then of type 1. The object that follows the stream's
         // endobj is the nearest of them, 8, which proves the endstream its own whichever of the rows places it: the row the
-        // data lacks is the file's to lack, as read whole, the index rebuilt, the page read (#224).
+        // data lacks is the file's to lack, as read whole, the section reported read only in part (#210), the index rebuilt,
+        // the page read (#224).
         var file = ChainFiles.AloneWithACutLengthBeforeObjectsItsRowsPlace(typeField);
         using var whole = PdfDocument.Open(file);
         using var document = PdfDocument.Open(file, ObjectGuard);
@@ -2254,7 +2259,8 @@ public class GuardCutValueTests
         document.GetObject(new PdfObjectId(3)).AsDictionary().Required().IsOfType(PdfName.Page).Should().BeTrue();
         document.WasRepaired.Should().BeTrue();
         document.GetObject(new PdfObjectId(8)).Should().BeOfType<PdfString>().Which.ToText().Should().Be("eight");
-        document.Diagnostics.Select(entry => entry.Code).Should().Equal(PdfDiagnosticCodes.LimitObject, PdfDiagnosticCodes.XRefRebuilt);
+        document.Diagnostics.Select(entry => entry.Code).Should().Equal(
+            PdfDiagnosticCodes.XRefSectionUnreadable, PdfDiagnosticCodes.LimitObject, PdfDiagnosticCodes.XRefRebuilt);
     }
 
     [Theory]
@@ -2266,8 +2272,8 @@ public class GuardCutValueTests
     {
         // Stream 5's /Length, object 4, which only its own row places, is one MaxObjectLength cuts before its value, and its
         // data lacks the page's row; 100 spaces part its endstream from its endobj, which the update's first object follows.
-        // Read on to, that proves the endstream its own: the row is the file's to lack, as read whole, the index rebuilt, the
-        // page read. Five updates whose data runs over 500,000 spaces to an endstream they share read the file about once
+        // Read on to, that proves the endstream its own: the row is the file's to lack, as read whole, the section reported
+        // read only in part (#210), the index rebuilt, the page read. Five updates whose data runs over 500,000 spaces to an endstream they share read the file about once
         // each, as much as the document's searches may (EndStreamSearchPasses): nothing is read past stream 5's endstream,
         // which nothing then proves its own, and where its data ends is the guard's — the page's row with it, which reads as
         // null until the guard is lifted. So it is where 60 characters glued to the endstream make it no keyword, which
@@ -2293,7 +2299,8 @@ public class GuardCutValueTests
 
         document.GetObject(new PdfObjectId(3)).AsDictionary().Required().IsOfType(PdfName.Page).Should().BeTrue();
         document.WasRepaired.Should().BeTrue();
-        document.Diagnostics.Select(entry => entry.Code).Should().Equal(PdfDiagnosticCodes.LimitObject, PdfDiagnosticCodes.XRefRebuilt);
+        document.Diagnostics.Select(entry => entry.Code).Should().Equal(
+            PdfDiagnosticCodes.XRefSectionUnreadable, PdfDiagnosticCodes.LimitObject, PdfDiagnosticCodes.XRefRebuilt);
     }
 
     [Theory]
@@ -2310,7 +2317,8 @@ public class GuardCutValueTests
 
         using (var whole = PdfDocument.Open(file))
         {
-            whole.Diagnostics.Should().BeEmpty();
+            // Read whole, the rows that spell the endstream, of reserved types, are read and reported (#221).
+            whole.Diagnostics.Select(entry => entry.Code).Should().Equal(PdfDiagnosticCodes.XRefEntryReserved);
             whole.GetObject(new PdfObjectId(3)).AsDictionary().Required().IsOfType(PdfName.Page).Should().BeTrue();
         }
 
@@ -2336,7 +2344,8 @@ public class GuardCutValueTests
 
         using (var whole = PdfDocument.Open(file))
         {
-            whole.Diagnostics.Should().BeEmpty();
+            // Read whole, the rows that spell the endstream, of reserved types, are read and reported (#221).
+            whole.Diagnostics.Select(entry => entry.Code).Should().Equal(PdfDiagnosticCodes.XRefEntryReserved);
         }
 
         using var document = PdfDocument.Open(file, ObjectGuard);
@@ -2358,7 +2367,8 @@ public class GuardCutValueTests
 
         using (var whole = PdfDocument.Open(file))
         {
-            whole.Diagnostics.Should().BeEmpty();
+            // Read whole, the rows that spell the endstream, of reserved types, are read and reported (#221).
+            whole.Diagnostics.Select(entry => entry.Code).Should().Equal(PdfDiagnosticCodes.XRefEntryReserved);
             whole.GetObject(new PdfObjectId(3)).AsDictionary().Required().IsOfType(PdfName.Page).Should().BeTrue();
         }
 
@@ -2381,13 +2391,16 @@ public class GuardCutValueTests
 
         using (var whole = PdfDocument.Open(file))
         {
-            whole.Diagnostics.Should().BeEmpty();
+            // Read whole, the rows that spell the endstream, of reserved types, are read and reported (#221).
+            whole.Diagnostics.Select(entry => entry.Code).Should().Equal(PdfDiagnosticCodes.XRefEntryReserved);
         }
 
         using var document = PdfDocument.Open(file, ObjectGuard);
 
         document.WasRepaired.Should().BeFalse();
-        document.Diagnostics.Select(entry => entry.Code).Should().Equal(PdfDiagnosticCodes.LimitObject);
+        // Taken again, the data holds the rows that spell the first endstream, of reserved types, which are reported (#221).
+        string[] spelled = free == 29 ? [PdfDiagnosticCodes.XRefEntryReserved] : [];
+        document.Diagnostics.Select(entry => entry.Code).Should().Equal([.. spelled, PdfDiagnosticCodes.LimitObject]);
         document.Reader.Structure.Sections[1].CutByLimit.Should().BeTrue();
     }
 
@@ -2400,14 +2413,16 @@ public class GuardCutValueTests
 
         using (var whole = PdfDocument.Open(file))
         {
-            whole.Diagnostics.Should().BeEmpty();
+            // Read whole, the rows that spell the endstream, of reserved types, are read and reported (#221).
+            whole.Diagnostics.Select(entry => entry.Code).Should().Equal(PdfDiagnosticCodes.XRefEntryReserved);
             whole.GetObject(new PdfObjectId(3)).AsDictionary().Should().NotBeNull();
         }
 
         using var document = PdfDocument.Open(file, ObjectGuard);
 
         document.WasRepaired.Should().BeFalse();
-        document.Diagnostics.Select(entry => entry.Code).Should().Equal(PdfDiagnosticCodes.LimitObject);
+        // The rows the data taken again holds include those that spell the first endstream, of reserved types (#221).
+        document.Diagnostics.Select(entry => entry.Code).Should().Equal(PdfDiagnosticCodes.XRefEntryReserved, PdfDiagnosticCodes.LimitObject);
         document.Reader.Structure.Sections[0].CutByLimit.Should().BeTrue();
         document.Reader.Structure.Sections[0].Incomplete.Should().BeFalse();
         new PdfValidator().Validate(document).Contains(PdfValidationRuleIds.XRefSectionMalformed).Should().BeFalse();
@@ -2420,14 +2435,18 @@ public class GuardCutValueTests
     {
         // The stream's own row places object 5, which MaxObjectLength cuts after "6 0 R", whole; object 6, which a newer
         // section places, holds the length. The data is taken again to it, as read whole: the guard hid nothing the length
-        // needs, and the rows the data lacks — one, where the /Index declares one more — are the file's, as read whole. They
-        // went to the guard (#224).
+        // needs, and the rows the data lacks — one, where the /Index declares one more — are the file's, as read whole, the
+        // section reported read only in part either way (#210). They went to the guard (#224).
         var file = ChainFiles.OwnRowPlacingAPaddedLength(throughReference: true, lackingRow);
         using var whole = PdfDocument.Open(file);
         using var document = PdfDocument.Open(file, ObjectGuard);
+        // The rows that spell the endstream, of reserved types, are read and reported, after the report of the rows lacking.
+        string[] reported = lackingRow
+            ? [PdfDiagnosticCodes.XRefSectionUnreadable, PdfDiagnosticCodes.XRefEntryReserved]
+            : [PdfDiagnosticCodes.XRefEntryReserved];
 
-        document.Diagnostics.Select(entry => entry.Code).Should().Equal(PdfDiagnosticCodes.LimitObject);
-        whole.Diagnostics.Should().BeEmpty();
+        document.Diagnostics.Select(entry => entry.Code).Should().Equal([.. reported, PdfDiagnosticCodes.LimitObject]);
+        whole.Diagnostics.Select(entry => entry.Code).Should().Equal(reported);
 
         foreach (var read in (ReadOnlySpan<PdfDocument>)[whole, document])
         {
@@ -2451,13 +2470,17 @@ public class GuardCutValueTests
         // any section places 6, and what the cut left of it was kept as that read judged it: the older stream's data could
         // not be taken again, its rows past the spelled endstream went to the guard and the file was said to give a length
         // no endstream confirms; with a row lacking, the section was cut where it is the file's to lack (#224). The guard hides
-        // nothing either length needs: each reads as read whole.
+        // nothing either length needs: each reads as read whole, the section lacking a row reported read only in part (#210).
         var file = ChainFiles.UpdatesReachingALengthThroughACutReference(bothNameIt, lackingRow);
         using var whole = PdfDocument.Open(file);
         using var document = PdfDocument.Open(file, ObjectGuard);
+        // The rows that spell the endstream, of reserved types, are read and reported, after the report of the rows lacking.
+        string[] reported = lackingRow
+            ? [PdfDiagnosticCodes.XRefSectionUnreadable, PdfDiagnosticCodes.XRefEntryReserved]
+            : [PdfDiagnosticCodes.XRefEntryReserved];
 
-        document.Diagnostics.Select(entry => entry.Code).Should().Equal(PdfDiagnosticCodes.LimitObject);
-        whole.Diagnostics.Should().BeEmpty();
+        document.Diagnostics.Select(entry => entry.Code).Should().Equal([.. reported, PdfDiagnosticCodes.LimitObject]);
+        whole.Diagnostics.Select(entry => entry.Code).Should().Equal(reported);
 
         foreach (var read in (ReadOnlySpan<PdfDocument>)[whole, document])
         {
@@ -2804,7 +2827,8 @@ public class GuardCutValueTests
         using (var whole = PdfDocument.Open(file))
         {
             whole.GetObject(new PdfObjectId(3)).AsDictionary().Should().NotBeNull();
-            whole.Diagnostics.Should().BeEmpty();
+            // Read whole, the rows that spell the endstream, of reserved types, are read and reported (#221).
+            whole.Diagnostics.Select(entry => entry.Code).Should().Equal(PdfDiagnosticCodes.XRefEntryReserved);
         }
 
         using var document = PdfDocument.Open(file, ObjectGuard);
@@ -2885,13 +2909,14 @@ public class GuardCutValueTests
         // Stream 7's /Length leads to an object the newer table places — object 5 itself, or object 9 through object 4,
         // which only stream 7's own row places — and MaxObjectLength cuts before its value: the rows past the endstream they
         // spell are the guard's, as when the cut object is the one the section's own row places (#224) — the data taken to it
-        // holding no row whole too, the spelled rows first. Read whole, the file is clean.
+        // holding no row whole too, the spelled rows first.
         var file = ChainFiles.UpdatePlacingAPaddedLength(chained, spelledFirst: spelledFirst);
 
         using (var whole = PdfDocument.Open(file))
         {
             whole.GetObject(new PdfObjectId(3)).AsDictionary().Should().NotBeNull();
-            whole.Diagnostics.Should().BeEmpty();
+            // Read whole, the rows that spell the endstream, of reserved types, are read and reported (#221).
+            whole.Diagnostics.Select(entry => entry.Code).Should().Equal(PdfDiagnosticCodes.XRefEntryReserved);
         }
 
         using var document = PdfDocument.Open(file, ObjectGuard);
@@ -3193,13 +3218,14 @@ public class GuardCutValueTests
         // are read, and the chain goes on through the update's /Prev, as past a stream. The table's own /Prev or /XRefStm,
         // which a stream's is not since #263, was read all the same: one that leads to an object MaxObjectLength cuts ended
         // the chain for the guard, the original table and the catalog lost, and one no section places was said to name a
-        // missing section. The rule on trailer values judges it as the file wrote it.
+        // missing section. The rule on trailer values judges it as the file wrote it. That the /XRefStm names a table is the
+        // file's to be reported, whatever its links (#156).
         var file = ChainFiles.HybridNamingATable(key, value);
         using var document = PdfDocument.Open(file, guarded ? ObjectGuard : null);
 
         document.WasRepaired.Should().BeFalse();
         document.Reader.Structure.Sections.Should().HaveCount(3);
-        document.Diagnostics.Should().BeEmpty();
+        document.Diagnostics.Should().ContainSingle().Which.Code.Should().Be(PdfDiagnosticCodes.XRefHybridStreamLost);
         document.GetObject(new PdfObjectId(3)).AsDictionary().Should().NotBeNull();
         var report = new PdfValidator().Validate(document);
         report.Contains(PdfValidationRuleIds.XRefSectionNotFound).Should().BeFalse();
@@ -3211,7 +3237,13 @@ public class GuardCutValueTests
 
         // A table's /XRefStm may be a reference (Table 19); its /Prev is direct (Table 15).
         findings.Should().HaveCount(key == "Prev" ? 1 : 0).And.OnlyContain(message => message.Contains($"writes its /Prev as the reference {value}", StringComparison.Ordinal));
-        judged.Diagnostics.Should().BeEmpty();
+
+        // The validation rebuilds first the index the /XRefStm left incomplete, which reads object 9 whole: under the guard,
+        // the limit's to report. The table's links are read by neither.
+        judged.Diagnostics.Select(diagnostic => diagnostic.Code).Should().Equal(
+            guarded
+                ? [PdfDiagnosticCodes.XRefHybridStreamLost, PdfDiagnosticCodes.XRefRebuilt, PdfDiagnosticCodes.LimitObject]
+                : [PdfDiagnosticCodes.XRefHybridStreamLost, PdfDiagnosticCodes.XRefRebuilt]);
     }
 
     [Theory]
@@ -3356,7 +3388,7 @@ public class GuardCutValueTests
         file.Raw(Invariant(
             $"xref\n%{new string('x', 2000)}\n0 4\n0000000000 65535 f\r\n{one:D10} 00000 n\r\n{two:D10} 00000 n\r\n{three:D10} 00000 n\r\ntrailer\n<< /Size 4 /Root 1 0 R >>\n"));
         var newer = file.Position;
-        file.Raw(Invariant($"xref\ntrailer\n<< /Size 4 /Root 1 0 R /Prev {older + shift} >>\nstartxref\n{newer}\n%%EOF\n"));
+        file.Raw(Invariant($"xref\n0 0\ntrailer\n<< /Size 4 /Root 1 0 R /Prev {older + shift} >>\nstartxref\n{newer}\n%%EOF\n"));
         var options = new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxXRefSectionLength = 1024 } };
 
         using var document = PdfDocument.Open(file.Bytes, options);
@@ -3624,7 +3656,10 @@ public class GuardCutValueTests
         // for the guard's: the chain ended, nothing was rebuilt and the catalog was lost (#263); then for a section that
         // cannot be read, whose trailer was lost, and which, where the chain names a place a few bytes off, was passed over
         // for an older revision's stream nearby. Named by /XRefStm it is read as named. Filters written direct are a name or
-        // an array of names, beside parameters written as a dictionary, or an array of them, that holds no reference.
+        // an array of names, beside parameters written as a dictionary, or an array of them, that holds no reference. The
+        // 56 bytes of data are eight rows each refused — placing its object in object stream 0, which is no object number —,
+        // which leave their objects to a rebuild to find, as the reader once left the rows of a reserved type written there,
+        // which it now reads as the null object (#221).
         using var output = new MemoryStream();
 
         using (var zlib = new ZLibStream(output, CompressionLevel.NoCompression, leaveOpen: true))
@@ -3636,7 +3671,7 @@ public class GuardCutValueTests
         six = six
             .Replace("{flate}", Encoding.Latin1.GetString(flate), StringComparison.Ordinal)
             .Replace("{length}", Invariant($"{flate.Length}"), StringComparison.Ordinal)
-            .Replace("{56}", new string('0', 56), StringComparison.Ordinal);
+            .Replace("{56}", string.Concat(Enumerable.Repeat("\u0002\0\0\0\0\0\0", 8)), StringComparison.Ordinal);
         var built = ChainFiles.UnderAnUpdate(
             "/Type /XRef /Size 8 /W [1 4 2] /Length {length}",
             five + new string(' ', 1100),
@@ -3676,6 +3711,18 @@ public class GuardCutValueTests
         section.CutByLimit.Should().Be(hidesRows);
         section.Incomplete.Should().BeTrue();
         section.Fault.Should().Contain(fault);
+
+        // Rows the data may hold, read with the cut value, were not read, and none was kept, which the report says, where it
+        // said the rows the stream holds were kept; data that holds none keeps none, which it does not say it kept (#210). An
+        // /Index that holds a reference, which ISO 32000-1 makes direct, leaves the numbers the stream lost unknown: every
+        // number is refused to the older sections' rows, and the report, made once they are, says every object no section read
+        // before it indexes is looked for by rebuilding the index, where it said only those it lacks, or numbers, were (#210).
+        const string Every = "every object no section read before it indexes is looked for by rebuilding the index, rather than taken from an older section's rows.";
+        var every = six.Contains("/Index [5 0 R", StringComparison.Ordinal);
+        document.Diagnostics.Single(entry => entry.Code == PdfDiagnosticCodes.XRefSectionUnreadable).Message.Should().EndWith(hidesRows
+            ? "; the rows its data may hold were not read, a value they are read with having been cut by one of the reader's limits, and " +
+                (every ? Every : "the objects it numbers are looked for by rebuilding the index where no section read before it indexes them, rather than taken from an older section's rows.")
+            : "; " + (every ? Every : "the objects whose rows it lacks are looked for by rebuilding the index where no section read before it indexes them, rather than taken from an older section's rows."));
         document.WasRepaired.Should().BeTrue();
         document.GetObject(new PdfObjectId(1)).AsDictionary().Required().IsOfType(PdfName.Catalog).Should().BeTrue();
         document.Trailer.Keys.Select(key => key.Value).Order().Should().Equal(wholeKeys);
@@ -3688,6 +3735,562 @@ public class GuardCutValueTests
             hidesRows
                 ? [.. wholeRules.Where(rule => rule != PdfValidationRuleIds.FileSizeWrong).Append(PdfValidationRuleIds.XRefCheckedInPart).Order()]
                 : wholeRules);
+    }
+
+    [Theory]
+    [InlineData("/W 5 0 R /Size 8", "[1 4 2]", "/FlateDecode")]
+    [InlineData("/W 5 0 R /Size 8", "[1 4 2]", "/Foo")]
+    [InlineData("/W 5 0 R /Size 0", "[1 4 2]", "/FlateDecode")]
+    [InlineData("/W [1 4 2] /Index [5 0 R 8]", "0", "/FlateDecode")]
+    [InlineData("/W [1 4 2] /Size 5 0 R", "8", "/Foo")]
+    [InlineData("/W [1 4 2] /Size 5 0 R", "8", "/FlateDecode")]
+    [InlineData("/W [1 4 2] /Index 5 0 R", "[0 8]", "/Foo")]
+    public void A_section_whose_filters_decode_nothing_of_its_data_whatever_a_value_a_guard_cut_holds_cannot_be_read_as_read_whole(
+        string values, string five, string filter)
+    {
+        // As above, object 6's /W, its /Size, its /Index, or the first number of its /Index, names object 5, which
+        // MaxObjectLength cuts, and its data, xxxxxxx, is what its filter decodes nothing of. The data holds no row whatever
+        // the cut value holds, as a whole read finds: the stream cannot be read, the file's fault, under the guard as read
+        // whole. The encoded bytes were taken for the data decoded, which held at most one row of the eight the stream
+        // declares, and the section was the guard's, its rows said left unread — or, declaring none, it was the guard's,
+        // whatever its data —; and where the guard cut its /Size or its whole /Index, the section was the guard's before its
+        // data was looked at, the file's fault blamed on the guard (#221, #263).
+        var built = ChainFiles.UnderAnUpdate(
+            "/Type /XRef /Size 8 /W [1 4 2] /Length {length}",
+            five + new string(' ', 1100),
+            compressed: false,
+            predicted: false,
+            placed: true,
+            six: "<< /Type /XRef " + values + " /Filter " + filter + " /Length 7 >>\nstream\nxxxxxxx\nendstream",
+            placedToo: new Dictionary<int, string> { [8] = "(eight)" });
+        var text = Encoding.Latin1.GetString(built);
+        var stream = text.IndexOf("\n7 0 obj", StringComparison.Ordinal) + 1;
+        var sixAt = text.IndexOf("\n6 0 obj", StringComparison.Ordinal) + 1;
+        var file = Encoding.Latin1.GetBytes(text.Replace(Invariant($"/Prev {stream} "), Invariant($"/Prev {sixAt} "), StringComparison.Ordinal));
+        string[] wholeCodes;
+
+        using (var whole = PdfDocument.Open(file))
+        {
+            var read = whole.Reader.Structure.Sections[^1];
+            read.State.Should().Be(XRefSectionState.Malformed);
+            read.Fault.Should().Be("its data could not be decoded");
+            wholeCodes = [.. whole.Diagnostics.Select(entry => entry.Code)];
+        }
+
+        using var document = PdfDocument.Open(file, ObjectGuard);
+
+        var section = document.Reader.Structure.Sections[^1];
+        section.Offset.Should().Be(sixAt);
+        section.State.Should().Be(XRefSectionState.Malformed);
+        section.CutByLimit.Should().BeFalse();
+        section.Fault.Should().Be("its data could not be decoded");
+        section.UndecodedReports.Should().BeNull(
+            "what decoding its data reported stands beside a section the chain names, and no mark is kept to drop it");
+
+        // The guard is reached once, where the rebuild the file's fault asks for loads object 5, past what a whole read
+        // reports: the section's reading reports no limit of its own.
+        document.Diagnostics.Select(entry => entry.Code).Should().Equal([.. wholeCodes, PdfDiagnosticCodes.LimitObject]);
+        document.GetObject(new PdfObjectId(8)).Should().BeOfType<PdfString>().Which.ToText().Should().Be("eight");
+    }
+
+    [Fact]
+    public void A_section_whose_value_a_guard_cut_counts_the_rows_its_data_holds_as_read_whole_a_lone_last_hex_digit_completed()
+    {
+        // As above, object 6's /Index gives its first number as the reference 5 0 R, which MaxObjectLength cuts, and declares
+        // eight rows of seven bytes, in ASCIIHex data of 111 digits that no > ends. A whole read completes the last digit
+        // with a 0, as one before the marker is: the data decodes to 56 bytes, which hold the eight rows, and the section is
+        // read. Judged whatever the cut value holds, the data is decoded as the whole read decodes it, its end the file's: it
+        // holds the rows the section declares, and the section is the guard's, the cut value hiding whether its rows are, the
+        // guard reached once the chain is read (#221, #263). Decoded as data whose end a guard hides, the lone digit dropped,
+        // it would hold 55 bytes, seven rows, and the section would be taken for one that lacks a row.
+        var built = ChainFiles.UnderAnUpdate(
+            "/Type /XRef /Size 8 /W [1 4 2] /Length {length}",
+            "0" + new string(' ', 1100),
+            compressed: false,
+            predicted: false,
+            placed: true,
+            six: "<< /Type /XRef /W [1 4 2] /Index [5 0 R 8] /Filter /ASCIIHexDecode /Length 111 >>\nstream\n" + new string('0', 111) + "\nendstream",
+            placedToo: new Dictionary<int, string> { [8] = "(eight)" });
+        var text = Encoding.Latin1.GetString(built);
+        var stream = text.IndexOf("\n7 0 obj", StringComparison.Ordinal) + 1;
+        var sixAt = text.IndexOf("\n6 0 obj", StringComparison.Ordinal) + 1;
+        var file = Encoding.Latin1.GetBytes(text.Replace(Invariant($"/Prev {stream} "), Invariant($"/Prev {sixAt} "), StringComparison.Ordinal));
+
+        using (var whole = PdfDocument.Open(file))
+        {
+            whole.Reader.Structure.Sections[^1].Should().Match<XRefSectionRecord>(read =>
+                read.Offset == sixAt && read.State == XRefSectionState.Read && !read.Incomplete && read.Fault == null);
+            whole.Diagnostics.Select(entry => entry.Code).Should().Equal(PdfDiagnosticCodes.FilterFailed, PdfDiagnosticCodes.XRefRebuilt);
+        }
+
+        using var document = PdfDocument.Open(file, ObjectGuard);
+
+        document.Reader.Structure.Sections[^1].Should().Match<XRefSectionRecord>(section =>
+            section.Offset == sixAt && section.State == XRefSectionState.Malformed && section.CutByLimit &&
+            section.Fault == "its /Index holds the reference 5 0 R, which one of the reader's limits cut");
+        document.Diagnostics.Select(entry => (entry.Code, entry.Position)).Should().Equal(
+            (PdfDiagnosticCodes.FilterFailed, text.IndexOf("stream\n", sixAt, StringComparison.Ordinal) + 7),
+            (PdfDiagnosticCodes.LimitObject, text.IndexOf("\n5 0 obj", StringComparison.Ordinal) + 1));
+        document.Diagnostics[0].Message.Should().Be(
+            "An ASCIIHex stream ends without its > end marker, after a digit without its pair; it was completed with a 0 as a last one is, and data may have been lost.");
+    }
+
+    [Theory]
+    [InlineData("/W [1 4 2] /Size 5 0 R", "8", "its /Size is the reference 5 0 R, which one of the reader's limits cut")]
+    [InlineData("/W [1 4 2] /Index 5 0 R", "[0 8]", "its /Index is the reference 5 0 R, which one of the reader's limits cut")]
+    public void A_section_whose_length_waits_for_the_chain_is_the_guard_s_where_the_guard_cut_its_size_or_index_whatever_its_filters_decode(
+        string values, string five, string fault)
+    {
+        // As in the theory before the test above, but object 6's /Length is the reference 2 0 R, which only stream 7 places,
+        // the /Prev naming object 6 in its stead: the length waits for the chain, and the data, taken up to its endstream,
+        // is not data whose extent the file gives. Read whole, the stream cannot be read, its filter decoding nothing of its
+        // data, the file's fault. Under the guard, which cut its /Size or its whole /Index, whether its filters decode
+        // anything of data whose extent is not the file's is not judged: the section is the guard's, the cut value hiding
+        // whether its rows are, and the guard is reached once the chain is read (#221, #263).
+        var built = ChainFiles.UnderAnUpdate(
+            "/Type /XRef /Size 8 /W [1 4 2] /Length {length}",
+            five + new string(' ', 1100),
+            compressed: false,
+            predicted: false,
+            placed: true,
+            six: "<< /Type /XRef " + values + " /Filter /Foo /Length 2 0 R >>\nstream\nxxxxxxx\nendstream");
+        var text = Encoding.Latin1.GetString(built);
+        var stream = text.IndexOf("\n7 0 obj", StringComparison.Ordinal) + 1;
+        var sixAt = text.IndexOf("\n6 0 obj", StringComparison.Ordinal) + 1;
+        var file = Encoding.Latin1.GetBytes(text.Replace(Invariant($"/Prev {stream} "), Invariant($"/Prev {sixAt} "), StringComparison.Ordinal));
+
+        using (var whole = PdfDocument.Open(file))
+        {
+            whole.Reader.Structure.Sections[^1].Should().Match<XRefSectionRecord>(read =>
+                read.Offset == sixAt && read.State == XRefSectionState.Malformed && !read.CutByLimit && read.Fault == "its data could not be decoded");
+            whole.Diagnostics.Select(entry => entry.Code).Should().Equal(
+                PdfDiagnosticCodes.FilterUnsupported, PdfDiagnosticCodes.XRefSectionUnreadable, PdfDiagnosticCodes.XRefRebuilt, PdfDiagnosticCodes.StreamLengthInvalid);
+        }
+
+        using var document = PdfDocument.Open(file, ObjectGuard);
+
+        document.Reader.Structure.Sections[^1].Should().Match<XRefSectionRecord>(section =>
+            section.Offset == sixAt && section.State == XRefSectionState.Malformed && section.CutByLimit && section.Fault == fault);
+        document.Diagnostics.Select(entry => entry.Code).Should().Equal(PdfDiagnosticCodes.LimitObject);
+    }
+
+    [Theory]
+    [InlineData("/W 5 0 R /Size 8", "[1 4 2]", "/Foo")]
+    [InlineData("/W 5 0 R /Size 8", "[1 4 2]", "/FlateDecode")]
+    [InlineData("/W [1 5 0 R 2] /Size 8", "4", "/Foo")]
+    [InlineData("/W [1 5 0 R 2] /Size 8", "4", "/FlateDecode")]
+    [InlineData("/W [1 4 2] /Size 5 0 R", "8", "/Foo")]
+    [InlineData("/W [1 4 2] /Size 5 0 R", "8", "/FlateDecode")]
+    [InlineData("/W [1 4 2] /Index 5 0 R", "[0 8]", "/Foo")]
+    [InlineData("/W [1 4 2] /Index 5 0 R", "[0 8]", "/FlateDecode")]
+    [InlineData("/W [1 4 2] /Size 8", "8", "/Foo")]
+    public void A_stream_of_no_type_the_search_near_an_offset_drops_leaves_nothing_its_decoding_reported_whatever_value_of_it_a_guard_cut(
+        string values, string five, string filter)
+    {
+        // As above, but object 6 gives no /Type, and the newer table's /Prev names a place 2 bytes into its header: the search
+        // near that place tries object 6, which gives only a /W and cannot be read, its filter decoding nothing of its data,
+        // drops it, a place that declares no section, and takes stream 7, found moved. Object 6's /W, an element of its /W,
+        // its /Size or its whole /Index names object 5, which MaxObjectLength cuts — or none does. What decoding object 6's
+        // data reported goes with the place, under the guard as read whole. Where the guard cut a value, the data is decoded
+        // beside it, to tell whether its filters decode anything of it, and what that decoding reported stood, though the
+        // place was dropped and a whole read reports nothing of it (#221, #263).
+        var built = ChainFiles.UnderAnUpdate(
+            "/Type /XRef /Size 8 /W [1 4 2] /Length {length}",
+            five + new string(' ', 1100),
+            compressed: false,
+            predicted: false,
+            placed: true,
+            six: "<< " + values + " /Filter " + filter + " /Length 7 >>\nstream\nxxxxxxx\nendstream");
+        var text = Encoding.Latin1.GetString(built);
+        var stream = text.IndexOf("\n7 0 obj", StringComparison.Ordinal) + 1;
+        var sixAt = text.IndexOf("\n6 0 obj", StringComparison.Ordinal) + 1;
+        var file = Encoding.Latin1.GetBytes(text.Replace(Invariant($"/Prev {stream} "), Invariant($"/Prev {sixAt + 2} "), StringComparison.Ordinal));
+
+        using (var whole = PdfDocument.Open(file))
+        {
+            whole.Reader.Structure.Sections[^1].Should().Match<XRefSectionRecord>(read =>
+                read.NamedBy == "/Prev" && read.State == XRefSectionState.Relocated && read.Offset == stream);
+            whole.Diagnostics.Select(entry => entry.Code).Should().Equal(PdfDiagnosticCodes.XRefOffsetAdjusted);
+        }
+
+        using var document = PdfDocument.Open(file, ObjectGuard);
+
+        document.Reader.Structure.Sections[^1].Should().Match<XRefSectionRecord>(section =>
+            section.NamedBy == "/Prev" && section.State == XRefSectionState.Relocated && section.Offset == stream);
+        document.Diagnostics.Select(entry => entry.Code).Should().Equal(PdfDiagnosticCodes.XRefOffsetAdjusted);
+    }
+
+    [Theory]
+    [InlineData("/Type /XRef ", "/Size", true)]
+    [InlineData("/Type /XRef ", "/W", false)]
+    [InlineData("/Type /XRef ", "/Index", true)]
+    [InlineData("", "/Size", false)]
+    [InlineData("", "/W", false)]
+    [InlineData("", "/Index", false)]
+    public void What_decoding_a_stream_beside_a_value_a_guard_cut_meets_is_reported_where_the_whole_read_reports_it_whatever_the_look_at_the_prev_s_place_decoded(
+        string type, string cut, bool rebuilt)
+    {
+        // The newest table names object 4 through /Prev, and through /XRefStm a place beside it, whose search comes to object
+        // 4 and asks whether the /Prev keeps its place there. Object 4, a stream of /Type /XRef or of no type whose filter
+        // decodes nothing of its data, writes its /Size, its /W or its /Index as the reference 9 0 R, which MaxObjectLength
+        // cuts. The look decodes nothing of a stream of /Type /XRef, which keeps the /Prev's place whatever its data holds,
+        // and drops what decoding any other met; so does the search, which tries such a stream next and drops it. What the
+        // decoding met is reported where the whole read reports it: by the /Prev's own reading of object 4. The look, and
+        // the search, reported it before the /XRefStm's own report, under the guard alone (#156, #221). A stream of /Type
+        // /XRef that cannot be read, numbering its rows with a /Size, or an /Index the reference 9 0 R holds, refuses every
+        // number to the oldest table's rows, the catalog's among them: the index is rebuilt at opening, and the rebuild,
+        // loading every object it finds, reaches the guard at object 9 before it reports object 7 defined twice.
+        var (file, _, _, _) = HybridFiles.PrevNamingAStreamBesideTheOldestTable(type, filter: "/Foo", cut: cut);
+        string[] codes = type.Length > 0
+            ? [PdfDiagnosticCodes.XRefHybridStreamLost, PdfDiagnosticCodes.FilterUnsupported, PdfDiagnosticCodes.XRefSectionUnreadable]
+            : [PdfDiagnosticCodes.XRefOffsetAdjusted, PdfDiagnosticCodes.XRefHybridStreamLost, PdfDiagnosticCodes.FilterUnsupported, PdfDiagnosticCodes.XRefOffsetAdjusted];
+
+        using (var whole = PdfDocument.Open(file))
+        {
+            whole.Diagnostics.Select(entry => entry.Code).Should().Equal(
+                rebuilt ? [.. codes, PdfDiagnosticCodes.XRefRebuilt, PdfDiagnosticCodes.ObjectRedefined] : codes);
+        }
+
+        using var document = PdfDocument.Open(file, ObjectGuard);
+
+        document.Diagnostics.Select(entry => entry.Code).Should().Equal(
+            rebuilt ? [.. codes, PdfDiagnosticCodes.XRefRebuilt, PdfDiagnosticCodes.LimitObject, PdfDiagnosticCodes.ObjectRedefined] : codes);
+    }
+
+    [Theory]
+    [InlineData("", "/Foo", "/W", 50, new[] { PdfDiagnosticCodes.LimitStreamLength, PdfDiagnosticCodes.XRefOffsetAdjusted, PdfDiagnosticCodes.XRefHybridStreamLost, PdfDiagnosticCodes.FilterUnsupported, PdfDiagnosticCodes.XRefOffsetAdjusted })]
+    [InlineData("/Type /XRef ", "/Foo", "/W", 50, new[] { PdfDiagnosticCodes.XRefHybridStreamLost, PdfDiagnosticCodes.LimitStreamLength, PdfDiagnosticCodes.FilterUnsupported, PdfDiagnosticCodes.XRefSectionUnreadable })]
+    [InlineData("", "/Foo", null, 50, new[] { PdfDiagnosticCodes.LimitStreamLength, PdfDiagnosticCodes.XRefOffsetAdjusted, PdfDiagnosticCodes.XRefHybridStreamLost, PdfDiagnosticCodes.FilterUnsupported, PdfDiagnosticCodes.XRefOffsetAdjusted })]
+    [InlineData("/Type /XRef ", "/Foo", null, 50, new[] { PdfDiagnosticCodes.XRefHybridStreamLost, PdfDiagnosticCodes.LimitStreamLength, PdfDiagnosticCodes.FilterUnsupported, PdfDiagnosticCodes.XRefSectionUnreadable })]
+    [InlineData("", "", null, 50, new[] { PdfDiagnosticCodes.LimitStreamLength, PdfDiagnosticCodes.XRefHybridStreamLost })]
+    [InlineData("/Type /XRef ", "", null, 50, new[] { PdfDiagnosticCodes.XRefHybridStreamLost, PdfDiagnosticCodes.LimitStreamLength })]
+    [InlineData("", "", null, 5, new[] { PdfDiagnosticCodes.LimitStreamLength, PdfDiagnosticCodes.XRefHybridStreamLost, PdfDiagnosticCodes.XRefRebuilt, PdfDiagnosticCodes.ObjectRedefined })]
+    [InlineData("/Type /XRef ", "", null, 5, new[] { PdfDiagnosticCodes.XRefHybridStreamLost, PdfDiagnosticCodes.LimitStreamLength, PdfDiagnosticCodes.XRefRebuilt, PdfDiagnosticCodes.ObjectRedefined })]
+    public void A_guard_reached_decoding_a_stream_a_prev_names_is_reported_once_whatever_the_look_at_the_prev_s_place_drops(
+        string type, string filter, string? cut, int maxStreamLength, string[] codes)
+    {
+        // As above, object 4, a stream of /Type /XRef or of no type, its /W written direct or as the reference 9 0 R, which
+        // MaxObjectLength cuts, and its data, 107 bytes its filter decodes nothing of or that no filter encodes, past what
+        // MaxStreamLength at 50 or 5 bytes reads. The cut of the data is reported once for the stream, where the data is first
+        // read: by the look at the /Prev's place, which decodes a stream of no type, beside a cut value or not, and drops the
+        // rest of what that decoding met, the guard standing, or by the /Prev's own reading of a stream of /Type /XRef, which
+        // the look does not decode. Dropped with the rest, the guard's report was made by no later reading, the cut known.
+        // Under MaxStreamLength at 5 bytes, the cut leaves no whole row, the chain ends at the stream, and the catalog, which
+        // only the oldest table indexes, is found by rebuilding the index as the document opens: the guard unreported, the
+        // rebuild was laid on the file. Read again once the document is open, the data is cut where it was, and the guard is
+        // not reported twice (#221, #263).
+        var (file, _, _, _) = HybridFiles.PrevNamingAStreamBesideTheOldestTable(type, padding: 100, filter: filter, cut: cut);
+        using var document = PdfDocument.Open(file, new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxObjectLength = 1024, MaxStreamLength = maxStreamLength } });
+
+        document.Diagnostics.Select(entry => entry.Code).Should().Equal(codes);
+        document.GetObject(new PdfObjectId(4)).AsStream().Required().GetRawBytes().Length.Should().Be(maxStreamLength);
+        document.Diagnostics.Count(entry => entry.Code == PdfDiagnosticCodes.LimitStreamLength).Should().Be(1);
+    }
+
+    [Theory]
+    [InlineData("", PdfDiagnosticCodes.LimitDecodedStream, new[] { PdfDiagnosticCodes.LimitDecodedStream, PdfDiagnosticCodes.XRefHybridStreamLost })]
+    [InlineData("/Type /Foo ", PdfDiagnosticCodes.LimitDecodedStream, new[] { PdfDiagnosticCodes.LimitDecodedStream, PdfDiagnosticCodes.XRefHybridStreamLost })]
+    [InlineData("/Type /XRef ", PdfDiagnosticCodes.LimitDecodedStream, new[] { PdfDiagnosticCodes.XRefHybridStreamLost, PdfDiagnosticCodes.LimitDecodedStream })]
+    [InlineData("", PdfDiagnosticCodes.LimitFilterChain, new[] { PdfDiagnosticCodes.LimitFilterChain, PdfDiagnosticCodes.XRefHybridStreamLost, PdfDiagnosticCodes.XRefRebuilt, PdfDiagnosticCodes.ObjectRedefined })]
+    [InlineData("/Type /Foo ", PdfDiagnosticCodes.LimitFilterChain, new[] { PdfDiagnosticCodes.LimitFilterChain, PdfDiagnosticCodes.XRefHybridStreamLost, PdfDiagnosticCodes.XRefRebuilt, PdfDiagnosticCodes.ObjectRedefined })]
+    [InlineData("/Type /XRef ", PdfDiagnosticCodes.LimitFilterChain, new[] { PdfDiagnosticCodes.XRefHybridStreamLost, PdfDiagnosticCodes.LimitFilterChain, PdfDiagnosticCodes.XRefRebuilt, PdfDiagnosticCodes.ObjectRedefined })]
+    public void A_guard_reached_decoding_the_data_of_a_stream_a_prev_names_is_reported_once_where_the_data_is_first_decoded(
+        string type, string guard, string[] codes)
+    {
+        // As above, object 4, a stream of /Type /XRef, of no type or of another type, every value of it read, and its data
+        // its row and 4,000 dashes Flate-encoded, which decode past what MaxDecodedStreamLength at 1,000 bytes decodes, or
+        // its row and 100 dashes ASCIIHex-encoded twice, under two /ASCIIHexDecode filters, one more than
+        // MaxFilterChainLength at 1 lets run. A stream of another type that gives a /W reads as the section at the place
+        // the /Prev names, as one of no type does. The guard decoding the data reaches is reported once for the stream,
+        // where the data is first decoded: by the look at the /Prev's place, which decodes a stream of no type or of another
+        // type and drops the rest of what that decoding met, the guard standing, ahead of the /XRefStm's own report; or by
+        // the /Prev's own reading of a stream of /Type /XRef, which the look does not decode. Dropped with the rest, the
+        // guard was reported by the /Prev's reading, after the /XRefStm's report. Where the second filter is not run, the
+        // stream's rows are taken as a guard's cut, the chain ends at the stream, and the catalog, which only the oldest
+        // table indexes, is found by rebuilding the index as the document opens. Decoded again once the document is open,
+        // the data stops where it did, and the guard is not reported twice (#221, #263).
+        var flate = guard == PdfDiagnosticCodes.LimitDecodedStream;
+        var (file, _, _, _) = flate
+            ? HybridFiles.PrevNamingAStreamBesideTheOldestTable(type, padding: 4000, filter: "/FlateDecode", deflated: true)
+            : HybridFiles.PrevNamingAStreamBesideTheOldestTable(type, padding: 100, filter: "[/ASCIIHexDecode /ASCIIHexDecode]", hexed: 2);
+        var limits = flate
+            ? PdfReaderLimits.Default with { MaxDecodedStreamLength = 1000 }
+            : PdfReaderLimits.Default with { MaxFilterChainLength = 1 };
+        using var document = PdfDocument.Open(file, new PdfReaderOptions { Limits = limits });
+
+        document.Diagnostics.Select(entry => entry.Code).Should().Equal(codes);
+        document.GetObject(new PdfObjectId(4)).AsStream().Required().Decode().Length.Should().Be(flate ? 1000 : 215);
+        document.Diagnostics.Count(entry => entry.Code == guard).Should().Be(1);
+    }
+
+    [Theory]
+    [InlineData("", PdfDiagnosticCodes.LimitDecodedStream, new[] { PdfDiagnosticCodes.SyntaxKeyRepeated, PdfDiagnosticCodes.LimitDecodedStream, PdfDiagnosticCodes.XRefHybridStreamLost })]
+    [InlineData("/Type /XRef ", PdfDiagnosticCodes.LimitDecodedStream, new[] { PdfDiagnosticCodes.SyntaxKeyRepeated, PdfDiagnosticCodes.XRefHybridStreamLost, PdfDiagnosticCodes.LimitDecodedStream })]
+    [InlineData("", PdfDiagnosticCodes.LimitStreamLength, new[] { PdfDiagnosticCodes.SyntaxKeyRepeated, PdfDiagnosticCodes.LimitStreamLength, PdfDiagnosticCodes.XRefHybridStreamLost })]
+    [InlineData("", PdfDiagnosticCodes.LimitFilterChain, new[] { PdfDiagnosticCodes.SyntaxKeyRepeated, PdfDiagnosticCodes.LimitFilterChain, PdfDiagnosticCodes.XRefHybridStreamLost, PdfDiagnosticCodes.XRefRebuilt, PdfDiagnosticCodes.ObjectRedefined })]
+    public void A_guard_the_look_at_a_prev_s_place_reaches_is_reported_after_what_reading_a_nearer_place_the_search_dropped_reported(
+        string type, string guard, string[] codes)
+    {
+        // As above, object 4, a stream of /Type /XRef or of no type, every value of it read, its data past what
+        // MaxDecodedStreamLength at 1,000 bytes decodes, past what MaxStreamLength at 50 bytes reads, or under one filter
+        // more than MaxFilterChainLength at 1 lets run. Object 8 is now a stream that gives no /Type, a /W, the key /A twice
+        // and a filter the library does not know: the nearest place to what the /XRefStm names, which the search tries
+        // first and drops, an object that only gives a /W and cannot be read, what reading its dictionary reported standing.
+        // The search then comes to object 4, and the guard the look at the /Prev's place reaches decoding a stream of no type
+        // is reported there, after the repeated key, which stands, and ahead of the /XRefStm's own report; a stream of
+        // /Type /XRef the look does not decode, and its guard is reported by the /Prev's own reading, after that report
+        // (#156, #221).
+        var (file, _, _, _) = guard switch
+        {
+            PdfDiagnosticCodes.LimitDecodedStream => HybridFiles.PrevNamingAStreamBesideTheOldestTable(type, padding: 4000, filter: "/FlateDecode", deflated: true, eightAStream: true),
+            PdfDiagnosticCodes.LimitStreamLength => HybridFiles.PrevNamingAStreamBesideTheOldestTable(type, padding: 100, eightAStream: true),
+            _ => HybridFiles.PrevNamingAStreamBesideTheOldestTable(type, padding: 100, filter: "[/ASCIIHexDecode /ASCIIHexDecode]", hexed: 2, eightAStream: true),
+        };
+        var limits = guard switch
+        {
+            PdfDiagnosticCodes.LimitDecodedStream => PdfReaderLimits.Default with { MaxDecodedStreamLength = 1000 },
+            PdfDiagnosticCodes.LimitStreamLength => PdfReaderLimits.Default with { MaxStreamLength = 50 },
+            _ => PdfReaderLimits.Default with { MaxFilterChainLength = 1 },
+        };
+        using var document = PdfDocument.Open(file, new PdfReaderOptions { Limits = limits });
+
+        document.Diagnostics.Select(entry => entry.Code).Should().Equal(codes);
+        document.Diagnostics.Count(entry => entry.Code == guard).Should().Be(1);
+    }
+
+    [Theory]
+    [InlineData("", PdfDiagnosticCodes.LimitDecodedStream, "/W", 3, new[] { PdfDiagnosticCodes.LimitDecodedStream, PdfDiagnosticCodes.LimitObject })]
+    [InlineData("/Type /XRef ", PdfDiagnosticCodes.LimitDecodedStream, "/W", 2, new[] { PdfDiagnosticCodes.XRefHybridStreamLost, PdfDiagnosticCodes.LimitDecodedStream, PdfDiagnosticCodes.LimitObject, PdfDiagnosticCodes.XRefRebuilt, PdfDiagnosticCodes.ObjectRedefined })]
+    [InlineData("", PdfDiagnosticCodes.LimitFilterChain, "/Size", 3, new[] { PdfDiagnosticCodes.LimitFilterChain, PdfDiagnosticCodes.LimitObject })]
+    [InlineData("/Type /XRef ", PdfDiagnosticCodes.LimitFilterChain, "/Size", 2, new[] { PdfDiagnosticCodes.XRefHybridStreamLost, PdfDiagnosticCodes.LimitFilterChain, PdfDiagnosticCodes.LimitObject, PdfDiagnosticCodes.XRefRebuilt, PdfDiagnosticCodes.ObjectRedefined })]
+    public void A_guard_reached_decoding_the_data_of_a_stream_a_prev_names_beside_a_value_a_guard_cut_is_reported_where_the_data_is_first_decoded_and_counted_at_each_decoding(
+        string type, string guard, string cut, int reached, string[] codes)
+    {
+        // As above, but object 4's /W or /Size is written as the reference 9 0 R, which MaxObjectLength cuts. Beside the
+        // cut value, the data is decoded to tell whether its filters decode anything of it, and the guard that decoding
+        // reaches is reported where the data is first decoded: by the look at the /Prev's place for a stream of no type,
+        // the rest of what the look met dropped and the guard standing, met again by the /Prev's own reading — the place is
+        // the guard's, and the naming with it —; or by the /Prev's own reading of a stream of /Type /XRef, which the look
+        // does not decode, after the /XRefStm's report. Each decoding that meets the guard counts it reached, beside the
+        // cut of object 9: three guards reached for a stream of no type, two for one of /Type /XRef. Dropped with the rest,
+        // the guard was reported by the /Prev's reading in the same place, nothing reported between, but the look's meeting
+        // of it went uncounted (#221, #263).
+        var flate = guard == PdfDiagnosticCodes.LimitDecodedStream;
+        var (file, _, _, _) = flate
+            ? HybridFiles.PrevNamingAStreamBesideTheOldestTable(type, padding: 4000, filter: "/FlateDecode", cut: cut, deflated: true)
+            : HybridFiles.PrevNamingAStreamBesideTheOldestTable(type, padding: 100, filter: "[/ASCIIHexDecode /ASCIIHexDecode]", cut: cut, hexed: 2);
+        var limits = flate
+            ? PdfReaderLimits.Default with { MaxObjectLength = 1024, MaxDecodedStreamLength = 1000 }
+            : PdfReaderLimits.Default with { MaxObjectLength = 1024, MaxFilterChainLength = 1 };
+        using var document = PdfDocument.Open(file, new PdfReaderOptions { Limits = limits });
+
+        document.Diagnostics.Select(entry => entry.Code).Should().Equal(codes);
+        document.Diagnostics.LimitsReached.Should().Be(reached);
+    }
+
+    [Theory]
+    [InlineData(PdfDiagnosticCodes.LimitDecodedStream, "/W")]
+    [InlineData(PdfDiagnosticCodes.LimitFilterChain, "/Size")]
+    public void A_guard_the_look_at_a_prev_s_place_reaches_beside_a_value_a_guard_cut_stands_ahead_of_what_the_prev_s_own_reading_reports_before_it_decodes(
+        string guard, string cut)
+    {
+        // As above, object 4, a stream of no type, its /W or its /Size written as the reference 9 0 R, which MaxObjectLength
+        // cuts, and its data past what MaxDecodedStreamLength at 1,000 bytes decodes, or under one filter more than
+        // MaxFilterChainLength at 1 lets run; its dictionary gives the key /Q twice. The look at the /Prev's place drops what
+        // reading the dictionary reported, and keeps the guard its decoding beside the cut reached. The /Prev's own reading
+        // reports the repeated key before it decodes beside the cut, meeting the guard again: the look's guard stands ahead
+        // of it, reported where the data is first decoded, and each decoding counts it reached, three guards in all with the
+        // cut of object 9. Dropped with the rest, the guard came after the repeated key, reported by the /Prev's reading, and
+        // the look's meeting of it went uncounted (#221, #263).
+        var flate = guard == PdfDiagnosticCodes.LimitDecodedStream;
+        var (file, _, _, _) = flate
+            ? HybridFiles.PrevNamingAStreamBesideTheOldestTable("/Q 1 /Q 2 ", padding: 4000, filter: "/FlateDecode", cut: cut, deflated: true)
+            : HybridFiles.PrevNamingAStreamBesideTheOldestTable("/Q 1 /Q 2 ", padding: 100, filter: "[/ASCIIHexDecode /ASCIIHexDecode]", cut: cut, hexed: 2);
+        var limits = flate
+            ? PdfReaderLimits.Default with { MaxObjectLength = 1024, MaxDecodedStreamLength = 1000 }
+            : PdfReaderLimits.Default with { MaxObjectLength = 1024, MaxFilterChainLength = 1 };
+        using var document = PdfDocument.Open(file, new PdfReaderOptions { Limits = limits });
+
+        document.Diagnostics.Select(entry => entry.Code).Should().Equal(guard, PdfDiagnosticCodes.SyntaxKeyRepeated, PdfDiagnosticCodes.LimitObject);
+        document.Diagnostics.LimitsReached.Should().Be(3);
+    }
+
+    [Theory]
+    [InlineData("/Size")]
+    [InlineData(null)]
+    public void A_guard_reached_again_decoding_a_stream_a_prev_names_counts_no_entry_left_out_where_the_diagnostics_have_room(string? cut)
+    {
+        // As above, object 4, a stream of no type, its /Size written direct or as the reference 9 0 R, which MaxObjectLength
+        // cuts, and its data Flate-encoded: it decodes to its row and 4,000 dashes, past what MaxDecodedStreamLength at 1,000
+        // bytes decodes, and its second filter, /Foo, is one the library does not know, so that its filters decode nothing of
+        // it. The look at the /Prev's place decodes the data and keeps the guard it reached; the search near the /XRefStm's
+        // offset tries object 4 next and decodes the data again, meeting the guard again, whose report the document holds,
+        // and drops the place, an object that only gives a /W and cannot be read. The guard met again is counted reached, and
+        // nothing was left out. Taken for a report the capacity dropped, it was counted as an entry left out, with room to
+        // spare, once the place was dropped (#144, #221).
+        var (file, _, _, _) = HybridFiles.PrevNamingAStreamBesideTheOldestTable(string.Empty, padding: 4000, filter: "[/FlateDecode /Foo]", cut: cut, deflated: true);
+        using var document = PdfDocument.Open(file, new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxObjectLength = 1024, MaxDecodedStreamLength = 1000 } });
+
+        document.Diagnostics.Select(entry => entry.Code).Should().Equal(
+            PdfDiagnosticCodes.LimitDecodedStream,
+            PdfDiagnosticCodes.XRefOffsetAdjusted,
+            PdfDiagnosticCodes.XRefHybridStreamLost,
+            PdfDiagnosticCodes.FilterUnsupported,
+            PdfDiagnosticCodes.XRefOffsetAdjusted);
+        document.Diagnostics.SuppressedCount.Should().Be(0);
+    }
+
+    [Theory]
+    [InlineData(8, 0, 0, 0, new[] { PdfDiagnosticCodes.LimitDecodedStream, PdfDiagnosticCodes.XRefOffsetAdjusted, PdfDiagnosticCodes.XRefHybridStreamLost, PdfDiagnosticCodes.FilterFailed, PdfDiagnosticCodes.FilterFailed, PdfDiagnosticCodes.FilterUnsupported, PdfDiagnosticCodes.XRefOffsetAdjusted })]
+    [InlineData(2, 0, 6, 4, new[] { PdfDiagnosticCodes.LimitDecodedStream, PdfDiagnosticCodes.XRefOffsetAdjusted })]
+    [InlineData(1, 0, 8, 4, new[] { PdfDiagnosticCodes.XRefOffsetAdjusted })]
+    [InlineData(4, 3, 8, 4, new[] { PdfDiagnosticCodes.SyntaxKeyRepeated, PdfDiagnosticCodes.SyntaxKeyRepeated, PdfDiagnosticCodes.SyntaxKeyRepeated, PdfDiagnosticCodes.XRefOffsetAdjusted })]
+    public void A_guard_a_decoding_meets_again_is_counted_left_out_where_its_document_never_held_its_report_or_that_decoding_made_as_many_reports_as_the_capacity_before_it(
+        int capacity, int sizeGivenAgain, int leftOut, int leftOutByEachDecoding, string[] codes)
+    {
+        // Object 4, a stream of no type whose data decodes past what MaxDecodedStreamLength at 1,000 bytes decodes, and
+        // whose last filter, /Foo, is one the library does not know, is decoded three times as the document opens: by the
+        // look at the /Prev's place and by the search near the /XRefStm's offset, its /Length unknown and its data ending
+        // at the first endstream, where the hex digits lack their end marker; and by the /Prev's own reading, once the
+        // oldest table, read in the stream's place, has placed object 5: its data then runs on through that endstream and
+        // the letters past it, nine of which are no hex digits. A decoding holds no more reports than the capacity, and the
+        // guard follows one fault of the hex data, or two: the first decoding moved the guard's report in where the
+        // capacity is 2 or more, and each decoding that made as many reports as the capacity before the guard dropped it,
+        // counted among the reports left out as any report is, though the document holds it; and where the document never
+        // held the guard's report, a decoding that meets the guard again counts it left out whatever it made before it. Each
+        // decoding of object 4 once the document is open reaches the guard again, counted reached: under a capacity of 8,
+        // which holds every report, nothing is left out; under 2, the two faults find the document full and the guard and
+        // /Foo find that decoding's own reports filling it; under 1, the first decoding's one report is the fault before the
+        // guard, so that the guard's report was never held, and each decoding counts it left out for that, as for its own
+        // fault before the guard, which fills its capacity too. Under 4, the newest trailer gives its /Size three times more:
+        // the three repeated keys leave the document room for one report, which the first decoding's fault before the guard
+        // takes, so that the guard's report was never held; that fault dropped with the rest of what the look met, the
+        // section found moved then fills the document. Each
+        // decoding once the document is open, whose two faults before the guard are fewer than the capacity, holds its four
+        // reports, the guard's among them, finds the document full and counts all four left out (#144).
+        var (file, _) = HybridFiles.PrevNamingAStreamWhoseLengthOnlyTheOldestTablePlaces(sizeGivenAgain);
+        using var document = PdfDocument.Open(file, new PdfReaderOptions
+        {
+            Limits = PdfReaderLimits.Default with { MaxDecodedStreamLength = 1000 },
+            DiagnosticCapacity = capacity,
+        });
+
+        document.Diagnostics.Select(entry => entry.Code).Should().Equal(codes);
+        document.Diagnostics.SuppressedCount.Should().Be(leftOut);
+        document.Diagnostics.LimitsReached.Should().Be(3);
+        var four = document.GetObject(new PdfObjectId(4)).AsStream().Required();
+
+        for (var decoding = 1; decoding <= 2; decoding++)
+        {
+            four.Decode().Length.Should().Be(1000);
+            document.Diagnostics.Select(entry => entry.Code).Should().Equal(codes);
+            document.Diagnostics.SuppressedCount.Should().Be(leftOut + (decoding * leftOutByEachDecoding));
+            document.Diagnostics.LimitsReached.Should().Be(3 + decoding);
+        }
+    }
+
+    [Theory]
+    [InlineData(
+        "/Size 8",
+        "(eight)",
+        "the objects whose rows it lacks are looked for by rebuilding the index where no section read before it indexes them, rather than taken from an older section's rows",
+        "the objects it numbers are looked for by rebuilding the index where no section read before it indexes them, rather than taken from an older section's rows")]
+    [InlineData(
+        "/Index [0 8 0 R] /Size 8",
+        "8",
+        "every other object no section read before it indexes is looked for by rebuilding the index, rather than taken from an older section's rows",
+        "every object no section read before it indexes is looked for by rebuilding the index, rather than taken from an older section's rows")]
+    public void Rows_a_section_beside_a_value_a_guard_cut_holds_are_kept_read_whole_and_said_unread_under_the_guard(
+        string numbering, string eight, string lacking, string unread)
+    {
+        // As above, object 6's /W names object 5, [1 1 1], which MaxObjectLength cuts, and its 6 bytes of data hold the rows of
+        // objects 0 and 1, of the 8 its /Size declares. Read whole, the stream keeps both rows, which its report says; under
+        // the guard, the rows are read with the cut value, the guard's, and none is kept: its report says they were not read,
+        // where it said the rows it holds were kept, as read whole (#210, #263). Where its /Index holds the reference 8 0 R,
+        // which the newer table places and ISO 32000-1 makes direct, the numbers it lost are not kept apart, and every number
+        // is refused to the older sections' rows: both reports say every object no section read before it indexes is looked
+        // for by rebuilding the index — every other one, beside the rows kept —, where they said only those it lacks, or
+        // those it numbers, were (#210).
+        var built = ChainFiles.UnderAnUpdate(
+            "/Type /XRef /Size 8 /W [1 4 2] /Length {length}",
+            "[1 1 1]" + new string(' ', 1100),
+            compressed: false,
+            predicted: false,
+            placed: true,
+            six: "<< /Type /XRef /W 5 0 R " + numbering + " /Length 6 >>\nstream\n{rows}\nendstream",
+            placedToo: new Dictionary<int, string> { [8] = eight });
+        var text = Encoding.Latin1.GetString(built);
+        var stream = text.IndexOf("\n7 0 obj", StringComparison.Ordinal) + 1;
+        var sixAt = text.IndexOf("\n6 0 obj", StringComparison.Ordinal) + 1;
+        var catalog = text.IndexOf("1 0 obj", StringComparison.Ordinal);
+        catalog.Should().BeLessThan(256, "a field of one byte places it");
+        var file = Encoding.Latin1.GetBytes(text
+            .Replace(Invariant($"/Prev {stream} "), Invariant($"/Prev {sixAt} "), StringComparison.Ordinal)
+            .Replace("{rows}", "\0\0\0\u0001" + (char)catalog + "\0", StringComparison.Ordinal));
+        using (var whole = PdfDocument.Open(file))
+        {
+            whole.Reader.ChainIndex!.TryGet(1, out var entry).Should().BeTrue();
+            entry.Offset.Should().Be(catalog);
+            whole.Diagnostics.Single(diagnostic => diagnostic.Code == PdfDiagnosticCodes.XRefSectionUnreadable).Message.Should().Be(Invariant(
+                $"The cross-reference stream /Prev names at offset {sixAt} was read only in part: it holds 2 rows where its /Index and /Size declare 8; the rows it holds were kept, and {lacking}."));
+        }
+
+        using var document = PdfDocument.Open(file, ObjectGuard);
+
+        document.Reader.ChainIndex!.TryGet(1, out _).Should().BeFalse("the rows the data holds are not read under the guard");
+        var section = document.Reader.Structure.Sections[^1];
+        section.CutByLimit.Should().BeTrue();
+        section.RowsLeftToGuard.Should().BeTrue();
+        document.Diagnostics.Single(diagnostic => diagnostic.Code == PdfDiagnosticCodes.XRefSectionUnreadable).Message.Should().Be(Invariant(
+            $"The cross-reference stream /Prev names at offset {sixAt} was read only in part: its data, 6 bytes decoded, holds at most 6 of the 8 rows its /Index and /Size declare; the rows its data may hold were not read, a value they are read with having been cut by one of the reader's limits, and {unread}."));
+    }
+
+    [Fact]
+    public void Rows_a_guard_left_unread_past_a_stream_that_refused_every_number_are_said_to_leave_every_object_to_a_rebuild()
+    {
+        // As above, but the newer table names through /Prev cross-reference stream 10, whose rows cannot be read and whose
+        // /Index is no array: every number is refused to the older sections' rows, and its /Prev, handed on, names object 6
+        // (#208). Read whole, none of object 6's rows stands, which its report says. Under the guard, its rows left unread,
+        // its report said only the objects it numbers were looked for by rebuilding the index, though a newer section had
+        // refused every number: it says every object no section read before it indexes is, as where the stream refused every
+        // number itself (#210).
+        var built = ChainFiles.UnderAnUpdate(
+            "/Type /XRef /Size 8 /W [1 4 2] /Length {length}",
+            "[1 1 1]" + new string(' ', 1100),
+            compressed: false,
+            predicted: false,
+            placed: true,
+            six: "<< /Type /XRef /W 5 0 R /Size 8 /Length 6 >>\nstream\n{rows}\nendstream",
+            placedToo: new Dictionary<int, string>
+            {
+                [10] = "<< /Type /XRef /Size 12 /Index /X /W [1 -4 2] /Prev {six} /Length 0 >>\nstream\n\nendstream",
+            });
+        var text = Encoding.Latin1.GetString(built);
+        var stream = text.IndexOf("\n7 0 obj", StringComparison.Ordinal) + 1;
+        var sixAt = text.IndexOf("\n6 0 obj", StringComparison.Ordinal) + 1;
+        var lost = text.IndexOf("\n10 0 obj", StringComparison.Ordinal) + 1;
+        var catalog = text.IndexOf("1 0 obj", StringComparison.Ordinal);
+        catalog.Should().BeLessThan(256, "a field of one byte places it");
+        var file = Encoding.Latin1.GetBytes(text
+            .Replace(Invariant($"/Prev {stream} "), Invariant($"/Prev {lost} "), StringComparison.Ordinal)
+            .Replace("/Prev {six} ", Invariant($"/Prev {sixAt:D5} "), StringComparison.Ordinal)
+            .Replace("{rows}", "\0\0\0\u0001" + (char)catalog + "\0", StringComparison.Ordinal));
+
+        using (var whole = PdfDocument.Open(file))
+        {
+            whole.Reader.ChainIndex!.TryGet(1, out _).Should().BeFalse("the lost stream refused every number");
+            whole.Diagnostics.Single(diagnostic => diagnostic.Code == PdfDiagnosticCodes.XRefSectionUnreadable && diagnostic.Position == sixAt).Message.Should().Be(Invariant(
+                $"The cross-reference stream /Prev names at offset {sixAt} was read only in part: it holds 2 rows where its /Index and /Size declare 8; none of the rows it holds stands, a newer section having refused every number to the older sections' rows, and every object no section read before it indexes is looked for by rebuilding the index."));
+        }
+
+        using var document = PdfDocument.Open(file, ObjectGuard);
+
+        var section = document.Reader.Structure.Sections[^1];
+        section.Offset.Should().Be(sixAt);
+        section.RowsLeftToGuard.Should().BeTrue();
+        section.EveryNumberRefusedBefore.Should().BeTrue();
+        document.Diagnostics.Single(diagnostic => diagnostic.Code == PdfDiagnosticCodes.XRefSectionUnreadable && diagnostic.Position == sixAt).Message.Should().Be(Invariant(
+            $"The cross-reference stream /Prev names at offset {sixAt} was read only in part: its data, 6 bytes decoded, holds at most 6 of the 8 rows its /Index and /Size declare; the rows its data may hold were not read, a value they are read with having been cut by one of the reader's limits, and every object no section read before it indexes is looked for by rebuilding the index, rather than taken from an older section's rows."));
     }
 
     [Theory]
@@ -3817,7 +4420,8 @@ public class GuardCutValueTests
         // eight its /Index declares, whose first number names object 5, which MaxObjectLength cuts; the first revision's
         // table places the older one. Read whole, its rows win. The rows the data holds are read with the value the guard
         // cut: the guard's, as rows a guard cut are, the chain ending there, where an older section's rows would stand for
-        // them — the older catalog was served, and the guard neither reported nor thrown under ThrowOnLimit.
+        // them — the older catalog was served, and the guard neither reported nor thrown under ThrowOnLimit. The section is
+        // the file's to lack the eighth row: reported read only in part (#210).
         var file = LackingBesideCut(naming, "/Index [5 0 R 8] /Size 8", rows => string.Concat(rows[..7]), out var sixAt);
 
         using (var whole = PdfDocument.Open(file))
@@ -3830,7 +4434,7 @@ public class GuardCutValueTests
         using var document = PdfDocument.Open(file, ObjectGuard);
 
         document.Diagnostics.Select(entry => entry.Code).Should().Equal(
-            PdfDiagnosticCodes.LimitObject, PdfDiagnosticCodes.XRefRebuilt, PdfDiagnosticCodes.ObjectRedefined);
+            PdfDiagnosticCodes.XRefSectionUnreadable, PdfDiagnosticCodes.LimitObject, PdfDiagnosticCodes.XRefRebuilt, PdfDiagnosticCodes.ObjectRedefined);
         document.Reader.Structure.Sections.Should().HaveCount(2);
         var section = document.Reader.Structure.Sections[^1];
         section.Offset.Should().Be(sixAt);
@@ -3850,8 +4454,10 @@ public class GuardCutValueTests
     public void A_section_lacking_rows_beside_a_value_a_guard_cut_reaches_the_guard_once_the_chain_is_read(string naming)
     {
         // As above, but stream 6's data, three bytes, holds no row of seven bytes: the section lacks rows whatever the value
-        // holds, its trailer merged and the chain going on, the first revision's table indexing every object, so that
-        // nothing is rebuilt. The value the guard cut was never loaded: the guard was neither reported nor thrown.
+        // holds, its trailer merged and the chain going on, the first revision's table read. The value the guard cut was
+        // never loaded: the guard was neither reported nor thrown. It is reached once the chain is read, before the index is
+        // rebuilt at opening: the stream's /Index holds a reference, so the numbers it declares are unknown and no older row
+        // stands for any (#210) — the catalog's among them, whose newer definition the rebuild finds.
         var file = LackingBesideCut(naming, "/Index [5 0 R 8] /Size 8", _ => "abc", out var sixAt);
         string[] wholeCodes;
 
@@ -3859,16 +4465,19 @@ public class GuardCutValueTests
         {
             whole.Reader.Structure.Sections.Single(section => section.Offset == sixAt).Incomplete.Should().BeTrue();
             wholeCodes = [.. whole.Diagnostics.Select(entry => entry.Code)];
+            Revision(whole).Should().Be("two");
         }
+
+        wholeCodes.Should().Equal(PdfDiagnosticCodes.XRefSectionUnreadable, PdfDiagnosticCodes.XRefRebuilt, PdfDiagnosticCodes.ObjectRedefined);
 
         using var document = PdfDocument.Open(file, ObjectGuard);
 
-        document.Diagnostics.Select(entry => entry.Code).Should().Equal([.. wholeCodes, PdfDiagnosticCodes.LimitObject]);
+        document.Diagnostics.Select(entry => entry.Code).Should().Equal([wholeCodes[0], PdfDiagnosticCodes.LimitObject, .. wholeCodes[1..]]);
         document.Reader.Structure.Sections.Should().HaveCount(3);
         var section = document.Reader.Structure.Sections.Single(section => section.Offset == sixAt);
         section.CutByLimit.Should().BeFalse();
         section.Incomplete.Should().BeTrue();
-        Revision(document).Should().Be("one");
+        Revision(document).Should().Be("two");
 
         var throwing = () => PdfDocument.Open(file, ObjectGuard with { ThrowOnLimit = true });
         throwing.Should().Throw<PdfLimitExceededException>().Which.LimitName.Should().Be(nameof(PdfReaderLimits.MaxObjectLength));
@@ -3930,7 +4539,6 @@ public class GuardCutValueTests
         ]);
         var prev = naming == "/Prev" ? Invariant($" /Prev {first}") : string.Empty;
         file.Raw(Invariant($"6 0 obj\n<< /Type /XRef /W [1 4 2] {numbering} /Root 1 0 R{prev} /Length {rows.Length} >>\nstream\n{rows}\nendstream\nendobj\n"));
-        file.Raw("%" + new string('-', 1200) + "\n");
         var table = file.Position;
         var link = naming == "/Prev" ? Invariant($"/Prev {sixAt}") : Invariant($"/Prev {first} /XRefStm {sixAt}");
         file.Raw(Invariant($"xref\n0 1\n0000000000 65535 f \n5 1\n{five:D10} 00000 n \ntrailer\n<< /Size {tableSize} /Root 1 0 R {link} >>\nstartxref\n{table}\n%%EOF\n"));
@@ -3960,7 +4568,6 @@ public class GuardCutValueTests
         var rows = Row(0, 0, 65535) + Row(1, one, 0) + Row(1, two, 0) + Row(1, three, 0) + Row(1, eight, 0) + Row(1, at, 0) +
             "\nendstream\0\0\0\0";
         file.Raw(Invariant($"7 0 obj\n<< /Type /XRef /W [5 0 R 4 2] /Index [0 4 8 1 7 1 20 2] /Root 1 0 R /Length 8 0 R >>\nstream\n{rows}\nendstream\nendobj\n"));
-        file.Raw("%" + new string('-', 1200) + "\n");
         var table = file.Position;
         file.Raw(Invariant($"xref\n0 1\n0000000000 65535 f \n5 1\n{five:D10} 00000 n \ntrailer\n<< /Size 22 /Root 1 0 R /Prev {at} >>\nstartxref\n{table}\n%%EOF\n"));
 
@@ -4003,13 +4610,14 @@ public class GuardCutValueTests
     [Fact]
     public void A_place_a_section_may_have_moved_to_that_cannot_be_read_leaves_what_it_read_through_to_the_rebuild()
     {
-        // The newer table's /Prev lands 3 bytes into stream 7, whose /W names object 5, which MaxObjectLength cuts after
-        // "6 0 R", whole, and whose /Index names object 9, which nothing places: the stream, read through object 5, cannot be
-        // read, the file's fault, and is no section. Object 5 was loaded once the chain was read all the same: nothing of a
-        // place dropped is kept. The index is rebuilt, as read whole, and the rebuild, which reads object 5, reaches the
-        // guard (#263).
+        // The newer table's /Prev lands 3 bytes into stream 7, which gives no /Type, whose /W names object 5, which
+        // MaxObjectLength cuts after "6 0 R", whole, and whose /Index names object 9, which nothing places: the stream, read
+        // through object 5, cannot be read, the file's fault, and, saying nothing of what it is, is no section. Object 5 was
+        // loaded once the chain was read all the same: nothing of a place dropped is kept. The index is rebuilt, as read
+        // whole, and the rebuild, which reads object 5, reaches the guard (#263). A stream of /Type /XRef would be the section
+        // found moved, which cannot be read (#281).
         var file = ChainFiles.UnderAnUpdate(
-            "/Type /XRef /Size 8 /W 5 0 R /Index 9 0 R /Length {length}",
+            "/Size 8 /W 5 0 R /Index 9 0 R /Length {length}",
             "6 0 R" + new string(' ', 1524),
             compressed: false,
             predicted: false,
@@ -4025,6 +4633,146 @@ public class GuardCutValueTests
         whole.Diagnostics.Select(entry => entry.Code).Should().Equal(PdfDiagnosticCodes.XRefSectionMissing, PdfDiagnosticCodes.XRefRebuilt);
         document.Diagnostics.Select(entry => entry.Code).Should().Equal(
             PdfDiagnosticCodes.XRefSectionMissing, PdfDiagnosticCodes.XRefRebuilt, PdfDiagnosticCodes.LimitObject);
+    }
+
+    [Theory]
+    [InlineData("<< /Size 8 /W 5 0 R /Index 10 0 R /Length 0 >>", "6 0 R", false)]
+    [InlineData("<< /W [1 5 0 R 2] /Size 3 /Length 0 >>", "4", true)]
+    public void What_the_look_at_a_prev_s_place_read_through_a_guard_s_cut_is_not_loaded_where_the_chain_ends_before_that_prev(
+        string four, string five, bool keepsItsPlace)
+    {
+        // The newest table, the one section MaxXRefSectionCount lets the chain read, names through /Prev stream 4, which
+        // gives no /Type, and through /XRefStm a place 18 bytes before it, whose search comes to it before the table's own
+        // stream. Object 5, which MaxObjectLength cuts, holds "6 0 R", whole, which stream 4's /W names, its /Index naming
+        // object 10, which nothing places; or the integer 4, cut where it ends, which an element of its /W names, its data
+        // holding none of the 3 rows its /Size declares. Whether the /Prev keeps its place there was told by reading stream
+        // 4 through object 5: the first cannot be read, the file's fault, and keeps none, the search going on to the stream;
+        // the second reads, its rows lacking whatever the cut value holds, and keeps it, the search stopping there. The
+        // guard ends the chain before the /Prev is read: object 5, which only that look read through, is not loaded once the
+        // chain is read, nor its guard reached, and nothing that look read is merged or marked lacking (#156, #263).
+        var file = new HandWrittenFile(version: "1.5");
+        var catalog = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>");
+        var pages = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>");
+        var three = file.Object(3, "(three)");
+        var fiveAt = file.Object(5, five + new string(' ', 1524));
+        var six = file.Object(6, "[1 4 2]");
+        file.Raw("%" + new string('-', 1200) + "\n");
+        var row = "\u0001" + (char)((three >> 24) & 0xFF) + (char)((three >> 16) & 0xFF) + (char)((three >> 8) & 0xFF) + (char)(three & 0xFF) + "\0\0";
+        var stream = file.Object(9, "<< /Type /XRef /Size 11 /W [1 4 2] /Index [3 1] /Length 7 >>\nstream\n" + row + "\nendstream");
+        var eight = file.Object(8, "(" + new string('x', 20) + ")");
+        var fourAt = file.Object(4, four + "\nstream\n\nendstream");
+        file.Raw("%" + new string('-', 1200) + "\n");
+        var newest = file.Position;
+        file.Raw(Invariant(
+            $"xref\n0 3\n0000000000 65535 f \n{catalog:D10} 00000 n \n{pages:D10} 00000 n \n5 2\n{fiveAt:D10} 00000 n \n{six:D10} 00000 n \ntrailer\n<< /Size 11 /Root 1 0 R /Prev {fourAt} /XRefStm {eight + 20} >>\nstartxref\n{newest}\n%%EOF\n"));
+        var options = new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxObjectLength = 1024, MaxXRefSectionCount = 1 } };
+        using var document = PdfDocument.Open(file.Bytes, options);
+
+        var naming = document.Reader.Structure.Sections[1];
+        (naming.State, naming.Offset).Should().Be(keepsItsPlace ? (XRefSectionState.NamedAgain, eight + 20) : (XRefSectionState.Relocated, stream));
+        document.Diagnostics.Select(entry => entry.Code).Should().Equal(
+            keepsItsPlace ? PdfDiagnosticCodes.XRefHybridStreamLost : PdfDiagnosticCodes.XRefOffsetAdjusted,
+            PdfDiagnosticCodes.LimitXRefSectionCount);
+        document.Trailer.ContainsKey(PdfName.W).Should().Be(!keepsItsPlace, "only the dictionary of the stream the chain read is merged into the trailer");
+        document.WasRepaired.Should().BeFalse();
+    }
+
+    [Fact]
+    public void What_the_chain_read_through_a_guard_s_cut_before_the_look_at_a_prev_s_place_is_loaded_once_the_chain_is_read_whatever_that_look_forgets()
+    {
+        // A hybrid file's table names through /Prev object 4, a font, and through /XRefStm a place inside the string of
+        // object 8, 30 bytes before it, whose search comes to the font and asks whether the /Prev keeps its place there. A
+        // newer revision, a hybrid file's too, reads first: its stream's /W names object 11, which MaxObjectLength cuts after
+        // "12 0 R", whole, read through to object 12, [1 4 2]. The look at the /Prev's place forgets what it read through a
+        // guard's cut, and only that: object 11, which the chain read through before it, is loaded once the chain is read,
+        // the guard reported at object 11, or thrown at opening under ThrowOnLimit. The font keeps no place, the search goes
+        // on to the older stream, and the /Prev finds the oldest table nearby (#156, #263).
+        var (older, oldest, _, olderStream, olderTable) = HybridFiles.NamingAnObjectBesideTheStream("<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>");
+        var (file, eleven, stream, newest) = HybridFiles.UnderAStreamWhoseWidthsACutObjectLeadsTo(older, olderTable);
+
+        using (var document = PdfDocument.Open(file, ObjectGuard))
+        {
+            document.Reader.Structure.Sections.Select(section => (section.NamedBy, section.State, section.Offset)).Should().Equal(
+                ("startxref", XRefSectionState.Read, newest),
+                ("/XRefStm", XRefSectionState.Read, stream),
+                ("/Prev", XRefSectionState.Read, olderTable),
+                ("/XRefStm", XRefSectionState.Relocated, olderStream),
+                ("/Prev", XRefSectionState.Relocated, oldest));
+            document.Diagnostics.Select(entry => (entry.Code, entry.Position)).Should().Equal(
+                (PdfDiagnosticCodes.XRefOffsetAdjusted, olderStream),
+                (PdfDiagnosticCodes.XRefOffsetAdjusted, oldest),
+                (PdfDiagnosticCodes.LimitObject, eleven));
+            document.WasRepaired.Should().BeFalse();
+        }
+
+        var opening = () => PdfDocument.Open(file, ObjectGuard with { ThrowOnLimit = true }).Dispose();
+        opening.Should().Throw<PdfLimitExceededException>().Which.LimitName.Should().Be(nameof(PdfReaderLimits.MaxObjectLength));
+    }
+
+    [Theory]
+    [InlineData(true, "the table's /Prev", false)]
+    [InlineData(false, "the table's /Prev", true)]
+    [InlineData(true, "the oldest table", true)]
+    public void What_the_prev_of_the_stream_an_xrefstm_read_leads_to_through_a_guard_s_cut_is_loaded_at_opening_only_where_the_search_takes_that_stream(
+        bool oldestWithinReach, string streamPrev, bool taken)
+    {
+        // The newest table's /XRefStm reads stream 6, and its /Prev falls 7 bytes short of it. Stream 6 gives /Prev 20 0 R:
+        // object 20, which MaxObjectLength cuts after "21 0 R", whole, is read through to object 21, which holds the place the
+        // table's /Prev names, or the oldest table's offset, to tell whether the stream may be the table's own. Where it may
+        // be, the search puts it back, and takes the oldest table, within reach: the chain never follows the stream's /Prev,
+        // and object 20, read through only to tell, is not loaded once the chain is read, nor its guard reached, as for any
+        // place the search does not take. Where the oldest table lies out of reach, the search comes back to the stream and
+        // takes it, the chain following its /Prev back to the place the table's names, a loop; where that /Prev names the
+        // oldest table, the stream is taken where it comes nearest, and the chain follows it there: object 20 is loaded once
+        // the chain is read, the guard reported, or thrown (#156, #263).
+        var (file, oldest, stream, _) = HybridFiles.PrevFallingShortOfAStreamWhosePrevLeadsThroughALongObject(oldestWithinReach, streamPrev);
+        string[] codes = (oldestWithinReach, taken) switch
+        {
+            (true, false) => [PdfDiagnosticCodes.XRefOffsetAdjusted],
+            (false, _) =>
+            [
+                PdfDiagnosticCodes.XRefOffsetAdjusted, PdfDiagnosticCodes.XRefHybridStreamLost, PdfDiagnosticCodes.XRefChainCycle,
+                PdfDiagnosticCodes.LimitObject, PdfDiagnosticCodes.XRefRebuilt,
+            ],
+            _ => [PdfDiagnosticCodes.XRefOffsetAdjusted, PdfDiagnosticCodes.XRefHybridStreamLost, PdfDiagnosticCodes.LimitObject],
+        };
+
+        using (var document = PdfDocument.Open(file, ObjectGuard))
+        {
+            document.Reader.Structure.Sections[2].Should().Match<XRefSectionRecord>(
+                section => section.NamedBy == "/Prev" && section.State == XRefSectionState.Relocated && section.Offset == (taken ? stream : oldest));
+            document.Diagnostics.Select(entry => entry.Code).Should().Equal(codes);
+        }
+
+        var opening = () => PdfDocument.Open(file, ObjectGuard with { ThrowOnLimit = true }).Dispose();
+
+        if (taken)
+        {
+            opening.Should().Throw<PdfLimitExceededException>().Which.LimitName.Should().Be(nameof(PdfReaderLimits.MaxObjectLength));
+        }
+        else
+        {
+            opening.Should().NotThrow();
+        }
+    }
+
+    [Fact]
+    public void What_the_prev_of_the_stream_an_xrefstm_read_leads_to_through_a_guard_s_cut_is_left_to_the_rebuild_where_the_bound_stops_that_stream()
+    {
+        // As above, stream 6's /Prev leading through object 20 to the oldest table: the stream is no stream that may be the
+        // table's own, and the nearest place. A newer table's search spent the 32 places the reader allows a document: the
+        // bound stops the search at the stream, which it does not take, and the section the /Prev names is reported missing.
+        // Object 20, read through only to tell, is not loaded once the chain is read: the index is rebuilt, as read whole,
+        // and the rebuild, which reads object 20, reaches the guard (#263).
+        var (built, _, _, newest) = HybridFiles.PrevFallingShortOfAStreamWhosePrevLeadsThroughALongObject(oldestWithinReach: true, "the oldest table");
+        var (file, _) = HybridFiles.UnderPlacesSpent(built, newest, 32);
+        using var whole = PdfDocument.Open(file);
+        using var document = PdfDocument.Open(file, ObjectGuard);
+
+        whole.Diagnostics.Select(entry => entry.Code).Should().Equal(
+            PdfDiagnosticCodes.XRefOffsetAdjusted, PdfDiagnosticCodes.XRefSectionMissing, PdfDiagnosticCodes.XRefRebuilt);
+        document.Diagnostics.Select(entry => entry.Code).Should().Equal(
+            PdfDiagnosticCodes.XRefOffsetAdjusted, PdfDiagnosticCodes.XRefSectionMissing, PdfDiagnosticCodes.XRefRebuilt, PdfDiagnosticCodes.LimitObject);
     }
 
     [Fact]

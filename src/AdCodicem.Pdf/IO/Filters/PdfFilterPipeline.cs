@@ -33,7 +33,7 @@ internal static class PdfFilterPipeline
     /// </param>
     /// <param name="guard">Bounds what each filter's output may be and how many filters run, and says what reaching either does.</param>
     public static ReadOnlyMemory<byte> Decode(PdfStream stream, PdfDiagnostics? diagnostics, PdfLimitGuard guard) =>
-        Decode(stream, diagnostics, guard, endHidden: false, reachedBefore: false, out _, out _);
+        Decode(stream, diagnostics, guard, endHidden: false, reachedBefore: false, out _, out _, out _);
 
     /// <summary>
     /// Decodes a stream's data under its document's guards, and says whether one of them ended decoding — the most filters
@@ -61,12 +61,13 @@ internal static class PdfFilterPipeline
     /// Decoding reaches one of its document's guards, and the document was opened to throw when it does.
     /// </exception>
     public static ReadOnlyMemory<byte> Decode(PdfStream stream, PdfDiagnostics? diagnostics, out bool leftEncoded, out bool cutByGuard) =>
-        Decode(stream, diagnostics, stream.Data.LimitGuard, endHidden: false, reachedBefore: false, out leftEncoded, out cutByGuard);
+        Decode(stream, diagnostics, stream.Data.LimitGuard, endHidden: false, reachedBefore: false, out leftEncoded, out cutByGuard, out _);
 
     /// <summary>
     /// Decodes a stream's data as <see cref="Decode(PdfStream, PdfDiagnostics?, out bool, out bool)"/> does, its end, with
     /// <paramref name="endHidden"/>, one a guard hides: a filter that runs out there says nothing of the file, as for data a
-    /// guard cut, while a fault in what it read is the file's still.
+    /// guard cut, while a fault in what it read is the file's still. It says, too, whether the filters left the data
+    /// undecoded, as a reader of a cross-reference stream's rows must know (#221).
     /// </summary>
     /// <param name="stream">The stream to decode.</param>
     /// <param name="diagnostics">Receives what decoding met; when none are supplied, the stream's document does.</param>
@@ -86,12 +87,29 @@ internal static class PdfFilterPipeline
     /// </param>
     /// <param name="leftEncoded">As the other overload gives it.</param>
     /// <param name="cutByGuard">As the other overload gives it.</param>
+    /// <param name="undecoded">
+    /// Whether what comes back is not what the stream's filters decode it to, though no guard ended decoding: a filter the
+    /// library does not know, an element of <c>/Filter</c> that names no filter, or a <c>/Filter</c> that is neither a name
+    /// nor an array, was left data to decode, or Flate data was corrupt before its first byte decodes — the one fault of a
+    /// filter that leaves the data as it was given —, with filters before it that decoded the data or none. What comes
+    /// back is then the data as the filters before that one left it, which a reader of the rows the stream decodes to cannot
+    /// read as such (#221). A filter that decoded part of its data before a fault gives what it decoded, and any other
+    /// filter that decodes none of its data — LZW whose first code is undefined, ASCIIHex or ASCII85 data that encodes
+    /// nothing —, or is given none, gives none: this says neither; an image filter leaves the image on purpose, which this
+    /// does not say either; a guard that ended decoding is <paramref name="leftEncoded"/>'s.
+    /// </param>
     /// <exception cref="PdfLimitExceededException">
     /// Decoding reaches one of its document's guards, and the document was opened to throw when it does.
     /// </exception>
     public static ReadOnlyMemory<byte> Decode(
-        PdfStream stream, PdfDiagnostics? diagnostics, bool endHidden, bool reachedBefore, out bool leftEncoded, out bool cutByGuard) =>
-        Decode(stream, diagnostics, stream.Data.LimitGuard, endHidden, reachedBefore, out leftEncoded, out cutByGuard);
+        PdfStream stream,
+        PdfDiagnostics? diagnostics,
+        bool endHidden,
+        bool reachedBefore,
+        out bool leftEncoded,
+        out bool cutByGuard,
+        out bool undecoded) =>
+        Decode(stream, diagnostics, stream.Data.LimitGuard, endHidden, reachedBefore, out leftEncoded, out cutByGuard, out undecoded);
 
     private static ReadOnlyMemory<byte> Decode(
         PdfStream stream,
@@ -100,7 +118,8 @@ internal static class PdfFilterPipeline
         bool endHidden,
         bool reachedBefore,
         out bool leftEncoded,
-        out bool cutByGuard)
+        out bool cutByGuard,
+        out bool undecoded)
     {
         diagnostics ??= guard.DocumentDiagnostics;
 
@@ -124,7 +143,7 @@ internal static class PdfFilterPipeline
                 guard.Reach(PdfLimit.StreamLength, diagnostics, guard.DescribeStreamLengthCut(), stream.Data.Position);
             }
 
-            return DecodeChain(stream, chain, data, diagnostics, guard, endHidden, reachedBefore, out leftEncoded, out cutByGuard);
+            return DecodeChain(stream, chain, data, diagnostics, guard, endHidden, reachedBefore, out leftEncoded, out cutByGuard, out undecoded);
         }
 
         var decodings = diagnostics.Decodings;
@@ -132,7 +151,7 @@ internal static class PdfFilterPipeline
 
         try
         {
-            return DecodeChain(stream, chain, data, decodings, guard, endHidden, reachedBefore, out leftEncoded, out cutByGuard);
+            return DecodeChain(stream, chain, data, decodings, guard, endHidden, reachedBefore, out leftEncoded, out cutByGuard, out undecoded);
         }
         finally
         {
@@ -151,7 +170,8 @@ internal static class PdfFilterPipeline
         bool endHidden,
         bool reachedBefore,
         out bool leftEncoded,
-        out bool cutByGuard)
+        out bool cutByGuard,
+        out bool undecoded)
     {
         leftEncoded = false;
 
@@ -251,6 +271,7 @@ internal static class PdfFilterPipeline
             if (failed)
             {
                 cutByGuard = stream.Data.CutByGuard || limitReported || endCut;
+                undecoded = true;
                 return given;
             }
 
@@ -271,6 +292,11 @@ internal static class PdfFilterPipeline
         // silence.
         leftEncoded = chain.End is FilterChainEnd.Limit or FilterChainEnd.Guard;
         cutByGuard = stream.Data.CutByGuard || limitReported || endCut;
+
+        // A filter the library does not know, an element that names none, or a /Filter that is neither a name nor an array,
+        // leaves the data as the filters before it decoded it, but for none, which every filter decodes to none. An image
+        // filter leaves the image it encodes, on purpose.
+        undecoded = !data.IsEmpty && chain.End is FilterChainEnd.Unsupported or FilterChainEnd.NotAName or FilterChainEnd.NotAFilterEntry;
         return data;
     }
 
@@ -602,7 +628,7 @@ internal static class PdfFilterPipeline
             DataEnding.UnmarkedInsideRun when faults.UnitHeld == 0 =>
                 Invariant($"{subject} ends after the length of a run of {faults.UnitLength} bytes, without any of them; data may have been lost."),
             DataEnding.UnmarkedInsideRun =>
-                Invariant($"{subject} ends inside a run of {faults.UnitLength} bytes, of which it holds {faults.UnitHeld}; they were kept, and data may have been lost."),
+                Invariant($"{subject} ends inside a run of {faults.UnitLength} bytes, of which it holds {faults.UnitHeld}; {(faults.UnitHeld == 1 ? "it was" : "they were")} kept, and data may have been lost."),
             _ => $"{subject} ends after the length of a run, without the byte the run repeats; data may have been lost.",
         };
 
@@ -622,9 +648,11 @@ internal static class PdfFilterPipeline
             guard.Reach(
                 PdfLimit.FilterChain,
                 diagnostics,
-                string.Create(
-                    CultureInfo.InvariantCulture,
-                    $"The /Filter entry names more than {chain.EndIndex:N0} filters; decoding stopped after the first {chain.EndIndex:N0}."),
+                chain.EndIndex == 1
+                    ? "The /Filter entry names more than 1 filter; decoding stopped after the first."
+                    : string.Create(
+                        CultureInfo.InvariantCulture,
+                        $"The /Filter entry names more than {chain.EndIndex:N0} filters; decoding stopped after the first {chain.EndIndex:N0}."),
                 position);
             return;
         }
@@ -669,11 +697,14 @@ internal static class PdfFilterPipeline
                 break;
 
             case FlateEnding.ChecksumMismatch:
+                // Data that decoded to nothing kept nothing that could be wrong: the report says only that it decoded so.
                 diagnostics?.Warn(
                     PdfDiagnosticCodes.FilterChecksumMismatch,
-                    string.Create(
-                        CultureInfo.InvariantCulture,
-                        $"A Flate stream's checksum disagrees with the {decoded} bytes its data decoded to; all were kept, and some may be wrong."),
+                    decoded == 0
+                        ? "A Flate stream's checksum disagrees with its data, which decoded to nothing."
+                        : string.Create(
+                            CultureInfo.InvariantCulture,
+                            $"A Flate stream's checksum disagrees with the {CountText.Bytes(decoded)} its data decoded to; {(decoded == 1 ? "it was kept, and may be wrong" : "all were kept, and some may be wrong")}."),
                     position);
                 break;
 
@@ -689,7 +720,7 @@ internal static class PdfFilterPipeline
                     PdfDiagnosticCodes.FilterFailed,
                     string.Create(
                         CultureInfo.InvariantCulture,
-                        $"A Flate stream is corrupt at byte {faultAt} of its {encoded}; the {decoded} bytes decoded before the fault was found were kept."),
+                        $"A Flate stream is corrupt at byte {faultAt} of its {encoded}; the {CountText.Bytes(decoded)} decoded before the fault was found {(decoded == 1 ? "was" : "were")} kept."),
                     position);
                 break;
         }

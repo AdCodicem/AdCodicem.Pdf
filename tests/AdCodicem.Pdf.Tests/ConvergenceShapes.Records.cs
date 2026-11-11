@@ -620,7 +620,7 @@ internal static partial class ConvergenceShapes
                 [[new PdfObjectId(9)]]);
         }
 
-        // Kid 5's header, "5 0 % lost" then "obj", is read where its row places it but not found by a rebuild, and no endobj
+        // Kid 5's header is read where its row places it but not found by a rebuild (ChainFiles.HiddenHeader), and no endobj
         // follows its value; kid 4's row leads nowhere. Validating, as it did after reading 5 first, reported 5's missing
         // endobj and page faults, a second validation the endobj alone, as a note kept of a definition the rebuild dropped;
         // reading 4 first, neither.
@@ -632,7 +632,7 @@ internal static partial class ConvergenceShapes
                 [2] = file.Object(2, "<< /Type /Pages /Kids [5 0 R 4 0 R] /Count 2 >>"),
                 [5] = file.Position,
             };
-            file.Raw("5 0 % lost\nobj\n<< /Type /Page /Parent 2 0 R >>\n(stray)\nendobj\n");
+            file.Raw(ChainFiles.HiddenHeader(5) + "\n<< /Type /Page /Parent 2 0 R >>\n(stray)\nendobj\n");
             rows[6] = file.Padding(6);
             rows[4] = rows[6] + 600;
             file.Object(4, Page);
@@ -644,7 +644,7 @@ internal static partial class ConvergenceShapes
                 [[new PdfObjectId(4)], [new PdfObjectId(5)]]);
         }
 
-        // CRLF: the catalog's /Test 5 has a header a rebuild cannot find, refers to object 99, which the file lacks, and no
+        // CRLF: the catalog's /Test 5 has a header a rebuild cannot find (ChainFiles.HiddenHeader), refers to object 99, which the file lacks, and no
         // endobj follows its value; /Info 7's row leads nowhere. Validating reported its reference to "object 0 0" and its
         // missing endobj, a second validation the endobj alone, as a note kept of a definition the rebuild dropped; reading 7
         // first, neither.
@@ -657,7 +657,7 @@ internal static partial class ConvergenceShapes
                 [3] = file.Object(3, Page),
                 [5] = file.Position,
             };
-            file.Raw("5 0 %c\r\nobj\r\n<< /Ref 99 0 R >>\r\n(stray)\r\nendobj\r\n");
+            file.Raw(ChainFiles.HiddenHeader(5) + "\r\n<< /Ref 99 0 R >>\r\n(stray)\r\nendobj\r\n");
             rows[6] = file.Padding(6);
             rows[7] = rows[6] + 600;
             file.Object(7, "<< /Title (info) >>");

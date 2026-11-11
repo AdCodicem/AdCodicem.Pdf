@@ -200,8 +200,13 @@ limit lets it check the rest. The same holds of a value that leads to such an ob
 malformed — so is one whose `/Length`, which the chain could not read, leads to one where only that length could say
 where its data ends —, unless what the values read say makes it unreadable whatever the guard hid, or data whose length the file gives, its
 filters written direct, lacks the rows they declare whatever it hid — the file's, such a section read as read whole,
-lacking rows, the rows it may still hold said not checked, nor the `/Size` they bear on;
-a `/Prev` or an `/XRefStm` the reader follows that leads to one ends the chain there rather than naming a section not found; and an
+lacking rows, the rows it may still hold said not checked, nor the `/Size` they bear on, and the `/Prev` of a stream so
+cut not judged yet ([#329](https://github.com/AdCodicem/AdCodicem.Pdf/issues/329));
+a `/Prev` or an `/XRefStm` the reader follows that leads to one ends the chain there rather than naming a section not found;
+a section whose rows a limit cut, or filled the index at, ends the chain too, though what it names that can name no
+section whatever the limit hid — no offset, an offset outside the file, the section itself — is found as in the file
+read whole
+([#264](https://github.com/AdCodicem/AdCodicem.Pdf/issues/264)); and an
 object stream whose `/Filter` or `/DecodeParms` leads to one, or to an object a limit left out of the index, is left
 encoded, the objects it holds said not checked rather than lost
 ([#263](https://github.com/AdCodicem/AdCodicem.Pdf/issues/263)). The page tree rules take a node so cut to give what its

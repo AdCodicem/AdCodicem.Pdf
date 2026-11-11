@@ -95,10 +95,11 @@ internal sealed class PageTreePageOrphanedRule : IValidationRule
             return false;
         }
 
+        // A naming again reads nothing: what it names is judged where it was read, or looked for (#156).
         foreach (var section in structure.Sections)
         {
-            if (section.State is not (XRefSectionState.Read or XRefSectionState.Relocated) || section.Incomplete || section.CutByLimit ||
-                section.ChainHiddenByGuard is not null)
+            if (section.State is not (XRefSectionState.Read or XRefSectionState.Relocated or XRefSectionState.NamedAgain) ||
+                section.Incomplete || section.CutByLimit || section.ChainHiddenByGuard is not null)
             {
                 return false;
             }

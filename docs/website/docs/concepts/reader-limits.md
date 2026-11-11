@@ -66,13 +66,54 @@ follows that is so named, or a cross-reference stream whose values lead to an ob
 section a guard cut does, wherever near its named offset the section is found — unless what the values read say makes
 the section unreadable whatever the cut hides, or data whose length the file gives, its filters written direct, lacks
 the rows they declare whatever it hides: a fault of the file, as read whole, such a section read as read whole, lacking
-rows. The rows such data may still hold are read with the value the guard cut, and are the guard's: the chain ends at
-that section, as where a guard cut its rows, since an older section's rows would stand for them.
+rows, or unreadable where its filters decode nothing of its data. The rows such data may still hold are read with the
+value the guard cut, and are the guard's: the chain ends at that section, as where a guard cut its rows, since an older
+section's rows would stand for them.
 
 What a guard leaves out of the cross-reference index — the oldest sections of a long chain, the rows past a long
 table's bound, the objects past the most the index holds — is no damage either. Those objects read as null, unknown
 rather than missing, until you raise the limit; the reader does not rebuild the index for them, as it would for a file
 whose index is broken, since a rebuild would report a sound file as damaged and could lose what the chain had read.
+
+The chain of cross-reference sections ends at the section a guard stopped, since an older section's rows would stand for
+those the guard left unread. Where the guard stopped its rows — cut them, or filled the index at them —, what that
+section names is still the file's to answer for, though, where it can name no section whatever the guard hid: a `/Prev`
+that is no offset or lies outside the file, one that names the section itself or another the chain has reached, an
+`/XRefStm` that names no cross-reference stream. The reader judges such a value as a read of the whole file judges it,
+and reads nothing past the guard to do so: such a guard hides no damage that can be seen without reading past it, and
+what the lost sections index is found by rebuilding the index, as in the file read whole. A value that may name a sound
+section — an offset in the file the chain has not reached — stays the guard's, the older sections with it
+([#264](https://github.com/AdCodicem/AdCodicem.Pdf/issues/264)). A hybrid table's `/XRefStm` whose offset holds no
+section, and whose search nearby stops at what the table's `/Prev` names because a guard cut it before it said what it
+is, or cut a value its rows are read with — the `/Prev` may read a section there, which the guard hides —, is the
+guard's too: nothing is reported of it, and the index is not rebuilt for it. Wherever the chain names a section, a
+table or a stream, `MaxTrailerLength` bounds apart the white space and comments the offset falls short by: a stream's
+dictionary is measured from its object's header, so that that search and the `/Prev`'s own reading meet one cut or
+none, while a classic table's window opens at the offset, the white space before its `xref` keyword counting toward
+`MaxXRefSectionLength` as well ([#289](https://github.com/AdCodicem/AdCodicem.Pdf/issues/289)). White space and
+comments that run on past `MaxTrailerLength` reach the guard themselves: the section is not read from that offset, and
+is looked for as one that is not there — near the offset, where a search may find it past them, or, for the one
+`startxref` names, by rebuilding the index —, and a `/Prev` that names them keeps no place for the search to stop at.
+What that search passes over, or what the section would have named, is the guard's, and so is which section the search
+takes, the one past them or another, which the reader cannot tell without reading past the guard. Wherever
+`MaxTrailerLength` cuts the reading at an offset the chain names, whatever it cuts — white space and comments, which
+turn that reading into the search, a dictionary, whatever its `/Type`, that the reading does not take for a section it
+cut, or the object's header, its number, its generation or its `obj` keyword running on past the guard or white space or
+a comment between its tokens, or a token where no header starts —, no cross-reference stream passed over near a hybrid
+table's `/Prev` is reported as one the chain did not reach, anywhere in the document: the cut may have hidden the
+`/Prev` of a section — any `/W` makes the dictionary there one —, or be what would end the chain, where an `/XRefStm`
+names the offset, and the reader cannot tell without reading past the guard, even where the search finds the section
+whole past the white space, or where the cut hid nothing
+([#279](https://github.com/AdCodicem/AdCodicem.Pdf/issues/279)). Where the guard cuts the trailer of a classic table an
+`/XRefStm` names, whose links the chain never follows ([#263](https://github.com/AdCodicem/AdCodicem.Pdf/issues/263)),
+the cut hides no link the chain follows and ends nothing, the chain going on through the table that names it, and the
+report is made. An `/XRefStm` that names what the `/Prev` names, at that offset or in the white space before it, names
+no stream of the table's revision whatever the guard hid, and is reported, the validator saying the guard hides what is
+there. The `/Prev` of a cross-reference stream at which a guard's cut of a value its rows are read with ends the chain,
+and a `/Prev` in a trailer a guard cut, are not judged
+yet: a fault they show without reading past the guard goes unreported
+([#329](https://github.com/AdCodicem/AdCodicem.Pdf/issues/329),
+[#328](https://github.com/AdCodicem/AdCodicem.Pdf/issues/328)).
 
 ## What decoding a stream may hold
 
@@ -90,8 +131,9 @@ whose data decodes to itself never runs out of it: a `/Filter` array of millions
 hold in a file of a few hundred kilobytes, cost seconds on every decode, more for filters that never run out of data.
 `MaxFilterChainLength` bounds how many filters a stream's data passes through, 64 by default: decoding stops before the
 first past it, as at a filter the library does not know, and nothing past it is read. Data a filter decodes to nothing
-ends decoding too, since every filter after it would decode nothing to nothing. Of the filters it read, decoding keeps
-less than the `/Filter` array holds: nothing for a name the array holds itself.
+ends decoding too, since every filter after it would decode nothing to nothing; the filters after it are read all the
+same, and one the library does not know, or an element that names none, is still reported as `filter.unsupported`. Of
+the filters it read, decoding keeps less than the `/Filter` array holds: nothing for a name the array holds itself.
 
 A filter's parameters can name an object, and that object can sit in an object stream that has to be decoded first,
 whose own parameters can name another. A stream therefore reads its filters and every parameter they need before it
@@ -128,9 +170,13 @@ searches read four times the file at most: a valid file is read past those bytes
 stream whose `/Length` the chain cannot read yet, for the data of a stream whose `/Length` a guard cut or left out of the
 index, and for white space and comments after a declared length, about twice the file — three times over the white
 space a cross-reference stream's search takes as data that its length, once read, is read on through —, and for the
-proof that an `endstream` found under a hidden `/Length` is the stream's own, about three times the file in all. Those stay internal
-constants, since lifting them would let nothing more be read, and
-each says where it is declared why no valid file reaches it.
+proof that an `endstream` found under a hidden `/Length` is the stream's own, about three times the file in all. The
+numbers that cross-reference sections the reader could not read whole lost, which no older section's row may stand for,
+are kept as 4,096 ranges at most — those of the sections read so far that meet joined, and those a table loses each
+joined as it is lost to the last one lost where the two meet —, past which every number the newer sections do not give
+is looked for by rebuilding the index: a valid file's sections lose none ([#208](https://github.com/AdCodicem/AdCodicem.Pdf/issues/208),
+[#210](https://github.com/AdCodicem/AdCodicem.Pdf/issues/210)). Those stay internal constants, since lifting them would
+let nothing more be read, and each says where it is declared why no valid file reaches it.
 
 A new bound is classified when it is added ([ADR 34](/project/adr/every-valid-pdf-is-readable-and-the-readers-guards-are)):
 if a valid file can reach it, it becomes a limit, with its code and its test.

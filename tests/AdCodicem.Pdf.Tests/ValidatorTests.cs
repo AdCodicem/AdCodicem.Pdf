@@ -60,9 +60,12 @@ public class ValidatorTests
             PdfValidationRuleIds.FileSizeWrong,
             PdfValidationRuleIds.FileTrailerValueWrong,
             PdfValidationRuleIds.XRefSectionMalformed,
+            PdfValidationRuleIds.XRefEntryTypeReserved,
             PdfValidationRuleIds.XRefSectionNotFound,
             PdfValidationRuleIds.XRefSectionShifted,
+            PdfValidationRuleIds.XRefSubsectionMissing,
             PdfValidationRuleIds.XRefChainLoop,
+            PdfValidationRuleIds.XRefHybridStreamWrong,
             PdfValidationRuleIds.XRefEntryBroken,
             PdfValidationRuleIds.XRefEntryShifted,
             PdfValidationRuleIds.XRefGenerationMismatch,
@@ -370,6 +373,9 @@ public class ValidatorTests
     [InlineData("a trailer without its keyword", PdfValidationRuleIds.FileTrailerMissing, 256)]
     [InlineData("sections refusing a row", PdfValidationRuleIds.XRefSectionMalformed, 256)]
     [InlineData("sections naming streams that are not there", PdfValidationRuleIds.XRefSectionNotFound, 256)]
+    [InlineData("tables holding no subsection", PdfValidationRuleIds.XRefSubsectionMissing, 256)]
+    [InlineData("streams giving rows of a reserved type", PdfValidationRuleIds.XRefEntryTypeReserved, 256)]
+    [InlineData("tables naming themselves as their stream", PdfValidationRuleIds.XRefHybridStreamWrong, 256)]
     [InlineData("a table the section guard cuts", PdfValidationRuleIds.XRefCheckedInPart, 256)]
     [InlineData("older sections the object guard hides", PdfValidationRuleIds.XRefCheckedInPart, 256)]
     [InlineData("object streams the index lacks", PdfValidationRuleIds.XRefObjectStreamBroken, 256)]
@@ -574,8 +580,6 @@ public class ValidatorTests
         RuleText.Kind(PdfBoolean.True).Should().Be("a boolean");
         RuleText.Kind(new PdfReference(new PdfObjectId(1))).Should().Be("a reference");
         RuleText.Kind(PdfNull.Instance).Should().Be("null");
-        RuleText.Pages(1).Should().Be("1 page");
-        RuleText.Pages(2).Should().Be("2 pages");
         FileQuote.Name(PdfName.Get("A\0B")).Should().Be("/A#00B");
     }
 
@@ -683,6 +687,9 @@ public class ValidatorTests
                 PdfTemplate.SoundWith("<< /Size 4 /Root 1 0 R >>", "/Size 4 /Root 1 0 R >>"), PdfReaderLimits.Default),
             ["sections refusing a row"] = (SectionsRefusingARow(), PdfReaderLimits.Default),
             ["sections naming streams that are not there"] = (SectionsNamingNoStream(), PdfReaderLimits.Default),
+            ["tables holding no subsection"] = (SectionsHoldingNoSubsection(), PdfReaderLimits.Default),
+            ["streams giving rows of a reserved type"] = (ReservedRowFiles.Updated(type: 3, more: 4, olderType: 9).File, PdfReaderLimits.Default),
+            ["tables naming themselves as their stream"] = (TablesNamingThemselves(), PdfReaderLimits.Default),
             ["a table the section guard cuts"] = (LongTable(), PdfReaderLimits.Default with { MaxXRefSectionLength = 2048 }),
             ["older sections the object guard hides"] = (OlderSectionsBehindAnObject(), PdfReaderLimits.Default with { MaxObjectLength = 1024 }),
             ["invalid kids"] = (HostileInputTests.Kids(12), PdfReaderLimits.Default),
@@ -989,6 +996,45 @@ public class ValidatorTests
         {
             var prev = previous < 0 ? string.Empty : string.Create(CultureInfo.InvariantCulture, $" /Prev {previous}");
             previous = file.Table(3, rows, string.Create(CultureInfo.InvariantCulture, $"/Size 3 /Root 1 0 R /XRefStm {comment + 2048}{prev}"));
+        }
+
+        return file.Bytes;
+    }
+
+    /// <summary>
+    /// A sound one-page document saved three more times by updates whose tables hold no subsection, each naming the one
+    /// before through <c>/Prev</c> (#222).
+    /// </summary>
+    private static byte[] SectionsHoldingNoSubsection()
+    {
+        var template = new StringBuilder(PdfTemplate.Sound);
+
+        for (var update = 1; update <= 3; update++)
+        {
+            template.Append(CultureInfo.InvariantCulture, $"xref\ntrailer\n<< /Size 4 /Root 1 0 R /Prev {{xref:{update}}} >>\nstartxref\n{{xref:{update + 1}}}\n%%EOF\n");
+        }
+
+        return PdfTemplate.Build(template.ToString());
+    }
+
+    /// <summary>
+    /// An empty document saved three times, each table naming the one before through <c>/Prev</c> and, through
+    /// <c>/XRefStm</c>, itself, where a hybrid file's table names its cross-reference stream (#156).
+    /// </summary>
+    private static byte[] TablesNamingThemselves()
+    {
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"),
+        };
+        var previous = -1L;
+
+        for (var section = 0; section < 3; section++)
+        {
+            var prev = previous < 0 ? string.Empty : string.Create(CultureInfo.InvariantCulture, $" /Prev {previous}");
+            previous = file.Table(3, rows, string.Create(CultureInfo.InvariantCulture, $"/Size 3 /Root 1 0 R /XRefStm {file.Position}{prev}"));
         }
 
         return file.Bytes;

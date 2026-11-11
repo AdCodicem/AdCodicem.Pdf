@@ -5,9 +5,9 @@ using AdCodicem.Pdf.Objects;
 namespace AdCodicem.Pdf.Validation;
 
 /// <summary>
-/// Words the rules' messages share: counts of bytes, objects and pages, distances either way, what kind of value a file
-/// wrote where another was due, and the path to a value. A name the file wrote is quoted through
-/// <see cref="IO.FileQuote"/>.
+/// Words the rules' messages share: what kind of value a file wrote where another was due, and the path to a value. A
+/// name the file wrote is quoted through <see cref="IO.FileQuote"/>; a count, or a distance, is said through
+/// <see cref="IO.CountText"/>, which the reader's diagnostics share (#241).
 /// </summary>
 internal static class RuleText
 {
@@ -18,22 +18,6 @@ internal static class RuleText
     /// end are the ones that locate a value, from its object and to it.
     /// </remarks>
     internal const int PathEnds = 4;
-
-    /// <summary>Says a number of bytes: <c>1 byte</c>, <c>12 bytes</c>.</summary>
-    public static string Bytes(long count) =>
-        count == 1 ? "1 byte" : string.Create(CultureInfo.InvariantCulture, $"{count} bytes");
-
-    /// <summary>Says how far, and which way, something lies from where it was named: <c>12 bytes after it</c>.</summary>
-    public static string Distance(long delta) =>
-        delta < 0 ? $"{Bytes(-delta)} before it" : $"{Bytes(delta)} after it";
-
-    /// <summary>Says a number of objects: <c>1 object</c>, <c>3 objects</c>.</summary>
-    public static string Objects(long count) =>
-        count == 1 ? "1 object" : string.Create(CultureInfo.InvariantCulture, $"{count} objects");
-
-    /// <summary>Says a number of pages: <c>1 page</c>, <c>3 pages</c>.</summary>
-    public static string Pages(long count) =>
-        count == 1 ? "1 page" : string.Create(CultureInfo.InvariantCulture, $"{count} pages");
 
     /// <summary>Says what kind of value a file wrote: <c>a number</c>, <c>an array</c>, <c>null</c>.</summary>
     public static string Kind(PdfObject value) => value switch

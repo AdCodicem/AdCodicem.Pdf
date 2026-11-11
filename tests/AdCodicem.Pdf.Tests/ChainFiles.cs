@@ -9,6 +9,14 @@ namespace AdCodicem.Pdf.Tests;
 /// dictionary written with references, an indirect <c>/Length</c>, a <c>/Prev</c> or an <c>/XRefStm</c> written as a
 /// reference —, which the reader reads without loading anything while the chain is read (#182).
 /// </summary>
+/// <remarks>
+/// Rows of 7 bytes that spell <c>endstream</c> or an object header after an end-of-line — 10 bytes or more — always
+/// hold a row's type byte, a letter or the end-of-line, of a type past 2: each such row reads as a reference to the
+/// null object, its number indexed as a free one's is, and its section is reported once for the rows of reserved types
+/// it gives (<see cref="Diagnostics.PdfDiagnosticCodes.XRefEntryReserved"/>, #221) wherever the chain reads them. A
+/// file said valid below that holds such rows is valid but for them: ISO 32000-1 defines no type past 2, and reads one
+/// as the null object.
+/// </remarks>
 internal static class ChainFiles
 {
     /// <summary>The keys <see cref="UnderAnUpdate"/> writes as references, one shape each.</summary>
@@ -21,8 +29,7 @@ internal static class ChainFiles
     /// reference to object 5, which holds the value. The second is a classic table that indexes object 5 again — where it
     /// is when <paramref name="placed"/>, at offset 99999, outside the file, otherwise — and names stream 7 through
     /// <c>/Prev</c>. Object 5's value is followed by <paramref name="padding"/> spaces. With <paramref name="reals"/>, the
-    /// stream's <c>/Length</c> and the integers object 5 holds are written as reals with no fractional part. A comment
-    /// keeps the newer table out of reach of the search near stream 7, which would take it for the stream (#188).
+    /// stream's <c>/Length</c> and the integers object 5 holds are written as reals with no fractional part.
     /// </summary>
     public static byte[] UnderAnUpdate(string key, bool placed, string version = "1.5", int padding = 0, bool reals = false)
     {
@@ -96,7 +103,6 @@ internal static class ChainFiles
             ],
             predicted ? Rows.PngFlate : compressed ? Rows.Flate : Rows.Raw);
         file.Stream(7, entries.Replace("{length}", data.Length.ToString(CultureInfo.InvariantCulture), StringComparison.Ordinal) + " /Root 1 0 R", data);
-        file.Text("%" + new string('-', 1200) + "\n");
         var xref = file.Position;
         var rows = new StringBuilder(string.Create(
             CultureInfo.InvariantCulture, $"xref\n0 1\n0000000000 65535 f\r\n5 1\n{(placed ? file.OffsetOf(5) : 99999):D10} 00000 n\r\n"));
@@ -177,8 +183,8 @@ internal static class ChainFiles
                 rows.Add((0, 0, 13));
             }
 
-            // Types 10 and 101 or 106, reserved: the rows are ignored, and their bytes read "\nendstream", or "\n1 0 obj". The
-            // length's row past them is written as they are, uncompressed.
+            // Types 10 and 101 or 106, reserved: the rows read as references to the null object, and their bytes read
+            // "\nendstream", or "\n1 0 obj". The length's row past them is written as they are, uncompressed.
             var data = new List<byte>(Encode([.. rows], encoding));
             data.AddRange(spelled);
 
@@ -196,9 +202,10 @@ internal static class ChainFiles
     /// A file of one cross-reference stream, object 5, whose <c>/Length</c> names object 4, which only that stream indexes,
     /// in a row before two rows of reserved types that spell <c>endstream</c> after an end-of-line; the page's row comes
     /// after them. With <paramref name="reservedRowFirst"/>, the <c>/Index</c> numbers object 4 twice: first in a row of a
-    /// reserved type, which the specification says to ignore, then in the row that places it. With <paramref name="stored"/>,
-    /// the data is compressed in stored blocks, which show the rows as written, <paramref name="layers"/> times over, each
-    /// layer a Flate filter. The file is valid.
+    /// reserved type, which ISO 32000-1 reads as a reference to the null object and which stands, though its fields give
+    /// object 4's offset and generation, then in the row that places it. With <paramref name="stored"/>, the data is
+    /// compressed in stored blocks, which show the rows as written, <paramref name="layers"/> times over, each layer a
+    /// Flate filter. The file is valid.
     /// </summary>
     public static byte[] AloneWithIndirectLengthBeforeSpelledRows(bool reservedRowFirst, bool stored = false, int layers = 1)
     {
@@ -206,11 +213,12 @@ internal static class ChainFiles
         file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>");
         file.Object(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>");
         file.Object(3, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << >> >>");
-        var reserved = reservedRowFirst ? [(3, 0L, 0)] : Array.Empty<(int, long, int)>();
 
         // The data's length does not depend on the offsets its rows hold.
         byte[] Data(long four, long stream)
         {
+            // The row of a reserved type keeps the fields of the one that places object 4: they place nothing.
+            (int, long, int)[] reserved = reservedRowFirst ? [(3, four, 0)] : [];
             var data = new List<byte>(Encode([(0, 0, 65535), (1, file.OffsetOf(1), 0), (1, file.OffsetOf(2), 0), .. reserved, (1, four, 0), (1, stream, 0)], Rows.Raw));
             data.AddRange("\nendstream\0\0\0\0"u8.ToArray());
             data.AddRange(Encode([(1, file.OffsetOf(3), 0)], Rows.Raw));
@@ -262,20 +270,56 @@ internal static class ChainFiles
     }
 
     /// <summary>
+    /// A file of two sections: a classic table that indexes the catalog, the page tree, the page and object 4, then
+    /// cross-reference stream 5, whose <c>/Prev</c> names the table and whose <c>/Length</c> is <paramref name="length"/>.
+    /// The stream's one row, one byte wide under <c>/W [0 1 0]</c>, places the catalog where it is, at offset 65, the
+    /// letter <c>A</c>; its data then spells <c>endstream</c> after an end-of-line, before its own: the chain, which reads
+    /// it before object 4, takes one byte of data. Object 4 holds the whole data's length, 13.
+    /// </summary>
+    public static byte[] OneByteRowBeforeASpelledEndStream(string length)
+    {
+        using var file = new Writer("1.5");
+        file.Text("%" + new string('-', 54) + "\n");
+        file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>");
+        file.Object(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>");
+        file.Object(3, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << >> >>");
+        byte[] data = [(byte)file.OffsetOf(1), .. "\nendstream\0\0"u8];
+        file.Object(4, data.Length.ToString(CultureInfo.InvariantCulture));
+        var table = file.Position;
+        var rows = new StringBuilder("xref\n0 5\n0000000000 65535 f\r\n");
+
+        for (var number = 1; number <= 4; number++)
+        {
+            rows.Append(CultureInfo.InvariantCulture, $"{file.OffsetOf(number):D10} 00000 n\r\n");
+        }
+
+        file.Text(rows + "trailer\n<< /Size 5 /Root 1 0 R >>\n");
+        var stream = file.Position;
+        file.Stream(
+            5,
+            string.Create(CultureInfo.InvariantCulture, $"/Type /XRef /Size 6 /W [0 1 0] /Index [1 1] /Prev {table} /Root 1 0 R /Length {length}"),
+            data);
+        file.StartXRef(stream);
+        return file.ToArray();
+    }
+
+    /// <summary>
     /// A file of two revisions. The first writes object 8 as <c>(old)</c> and indexes it in cross-reference stream 7. The
     /// second writes it again as <c>(new)</c>, and indexes it in cross-reference stream 10, whose <c>/Length</c> names
     /// object 4, which only that stream indexes, and whose rows of objects 5 and 6, of reserved types, spell
     /// <c>endstream</c> after an end-of-line when <paramref name="spellingEndStream"/>. With
-    /// <paramref name="olderIndirect"/>, stream 7's <c>/Length</c> names object 9, which only stream 7 indexes, and a comment
-    /// sets the update further from it than a search for a section's misplaced offset reaches. Object 4 holds
+    /// <paramref name="olderIndirect"/>, stream 7's <c>/Length</c> names object 9, which only stream 7 indexes. Object 4 holds
     /// <paramref name="four"/>, in which <c>{length}</c> stands for the length. The file is valid. With
-    /// <paramref name="nine"/>, the update writes object 9 again, holding it, and stream 10 indexes it there.
+    /// <paramref name="nine"/>, the update writes object 9 again, holding it, and stream 10 indexes it there. A comment of
+    /// <paramref name="gap"/> bytes, where one is given, sets the update that much further from stream 7: with none, stream
+    /// 10 lies within 512 bytes of it.
     /// </summary>
     public static byte[] UpdateWithIndirectLength(
         bool spellingEndStream,
         bool olderIndirect = false,
         string four = "{length}",
-        string? nine = null)
+        string? nine = null,
+        int gap = 0)
     {
         using var file = new Writer("1.5");
         file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>");
@@ -297,9 +341,9 @@ internal static class ChainFiles
         file.Stream(7, string.Create(CultureInfo.InvariantCulture, $"/Type /XRef /Size {olderRows} /W [1 4 2] /Root 1 0 R /Length {olderLength}"), rows);
         file.StartXRef(first);
 
-        if (olderIndirect)
+        if (gap > 0)
         {
-            file.Text("%" + new string('x', 2 * AdCodicem.Pdf.IO.PdfFileReader.NearbySearchRadius) + "\n");
+            file.Text("%" + new string('x', gap - 2) + "\n");
         }
 
         file.Object(8, "(new)");
@@ -328,9 +372,8 @@ internal static class ChainFiles
     /// <summary>
     /// A file of two revisions. The first writes object 8 as <c>(old)</c> and indexes it in cross-reference stream 7, whose
     /// <c>/Length</c> names object 4, which only that stream indexes; its rows of objects 5 and 6, of reserved types, spell
-    /// <c>endstream</c> after an end-of-line when <paramref name="spellingEndStream"/>. The second, set further from it than a
-    /// search for a section's misplaced offset reaches, writes object 8 again as <c>(new)</c> and indexes it in
-    /// cross-reference stream 9. The file is valid.
+    /// <c>endstream</c> after an end-of-line when <paramref name="spellingEndStream"/>. The second writes object 8 again as
+    /// <c>(new)</c> and indexes it in cross-reference stream 9. The file is valid.
     /// </summary>
     public static byte[] OlderWithIndirectLength(bool spellingEndStream)
     {
@@ -346,7 +389,6 @@ internal static class ChainFiles
         data.AddRange(Encode([(1, first, 0), (1, file.OffsetOf(8), 0)], Rows.Raw));
         file.Stream(7, "/Type /XRef /Size 9 /W [1 4 2] /Root 1 0 R /Length 4 0 R", [.. data]);
         file.StartXRef(first);
-        file.Text("%" + new string('x', 2 * AdCodicem.Pdf.IO.PdfFileReader.NearbySearchRadius) + "\n");
 
         file.Object(8, "(new)");
         var second = file.Position;
@@ -495,7 +537,6 @@ internal static class ChainFiles
             7,
             string.Create(CultureInfo.InvariantCulture, $"/Type /XRef /Size {(chained ? 12 : 10)} /W [1 4 2] /Index {index} /Root 1 0 R /Length {(chained ? 4 : 5)} 0 R"),
             [.. data]);
-        file.Text("%" + new string('-', 1200) + "\n");
         var xref = file.Position;
         file.Text(string.Create(
             CultureInfo.InvariantCulture,
@@ -541,7 +582,6 @@ internal static class ChainFiles
                 CultureInfo.InvariantCulture,
                 $"/Type /XRef /Size {size} /W [1 4 2] /Index [0 1 20 2 22 2 1 3 5 1 7 1 30 {free}]{(compressed ? " /Filter /FlateDecode" : string.Empty)} /Root 1 0 R /Length 5 0 R"),
             Data(file.OffsetOf(5), stream));
-        file.Text("%" + new string('-', 1200) + "\n");
         var xref = file.Position;
         file.Text(string.Create(
             CultureInfo.InvariantCulture,
@@ -577,7 +617,6 @@ internal static class ChainFiles
             5,
             $"/Type /XRef /Size 6 /W [1 4 2] /Filter [/ASCIIHexDecode /FlateDecode] /Root 1 0 R /Length {(deferred ? "4 0 R" : length)}",
             Data(file.OffsetOf(4), at));
-        file.Text("%" + new string('-', 1200) + "\n");
         var xref = file.Position;
         file.Text(string.Create(
             CultureInfo.InvariantCulture,
@@ -631,7 +670,6 @@ internal static class ChainFiles
             5,
             $"/Type /XRef /Size 6 /W [1 4 2] /Filter {(compressed ? "[/ASCIIHexDecode /FlateDecode]" : "/ASCIIHexDecode")} /Root 1 0 R /Length {(deferred ? "4 0 R" : length)}",
             data);
-        file.Text("%" + new string('-', 1200) + "\n");
         var xref = file.Position;
         file.Text(string.Create(
             CultureInfo.InvariantCulture,
@@ -694,7 +732,6 @@ internal static class ChainFiles
             5,
             $"/Type /XRef /Size 6 /W [1 4 2] /Filter [/RunLengthDecode /FlateDecode] /Root 1 0 R /Length {(deferred ? "4 0 R" : length)}",
             data);
-        file.Text("%" + new string('-', 1200) + "\n");
         var xref = file.Position;
         file.Text(string.Create(
             CultureInfo.InvariantCulture,
@@ -900,7 +937,6 @@ internal static class ChainFiles
                 CultureInfo.InvariantCulture,
                 $"/Type /XRef /Size 22 /W [1 4 2] /Index {(pageBefore ? "[0 4 20 2 5 1 7 1]" : "[1 1 20 2 2 2 5 1 7 1]")} /Filter /FlateDecode /DecodeParms << /Predictor 12 /Columns {columns} >> /Root 1 0 R /Length 5 0 R"),
             Data(file.OffsetOf(5), at));
-        file.Text("%" + new string('-', 1200) + "\n");
         var xref = file.Position;
         file.Text(string.Create(
             CultureInfo.InvariantCulture,
@@ -943,8 +979,8 @@ internal static class ChainFiles
             if (predictor == 2)
             {
                 // Each byte but a row's first is written as its difference from the one before it: the two rows of reserved
-                // types hold the bytes whose differences spell the endstream, their types still past 2, which no reading
-                // takes.
+                // types hold the bytes whose differences spell the endstream, their types still past 2, read as references to
+                // the null object.
                 var spelled = "\nendstream\0\0\0\0"u8;
 
                 for (var i = 35; i < 49; i++)
@@ -1247,7 +1283,6 @@ internal static class ChainFiles
             return file.ToArray();
         }
 
-        file.Text("%" + new string('-', 1200) + "\n");
         var xref = file.Position;
         file.Text(string.Create(
             CultureInfo.InvariantCulture,
@@ -1288,7 +1323,6 @@ internal static class ChainFiles
             20,
             string.Create(CultureInfo.InvariantCulture, $"/Type /XRef /Size 26 /W [1 4 2] /Index [6 1 20 6] /Root 1 0 R /Prev {older} /Length {(bothNameIt ? "5 0 R" : "49")}"),
             rows);
-        file.Text("%" + new string('-', 1200) + "\n");
         var xref = file.Position;
         file.Text(string.Create(
             CultureInfo.InvariantCulture,
@@ -1333,7 +1367,6 @@ internal static class ChainFiles
             7,
             string.Create(CultureInfo.InvariantCulture, $"/Type /XRef /Size 10 /W [1 4 2] /Index [0 3 {lengthNumber} 1 7 1 8 2 3 1] /Root 1 0 R /Length {lengthNumber} 0 R"),
             [.. data]);
-        file.Text("%" + new string('-', 1200) + "\n");
         var xref = file.Position;
         var rows = new StringBuilder("xref\n0 1\n0000000000 65535 f\r\n");
 
@@ -1848,6 +1881,15 @@ internal static class ChainFiles
 
         return text.ToString();
     }
+
+    /// <summary>
+    /// The header of object <paramref name="number"/>, generation 0, as a load reads it where a row places it, and as neither a
+    /// rebuild's scan nor the search near a row finds it: its generation written with a sign, <c>+0</c>, which they refuse,
+    /// reading a header back from its <c>obj</c> by the digits of its numbers (#327). A test that needs an object its row
+    /// reaches and no rebuild does writes its header with this — a comment between the tokens did once, until the scan came
+    /// to read comments as a load does (#261) —, so that only this changes if the scan comes to read signs too.
+    /// </summary>
+    public static string HiddenHeader(int number) => string.Create(CultureInfo.InvariantCulture, $"{number} +0 obj");
 
     /// <summary>Compresses data in stored blocks, which show it as written.</summary>
     private static byte[] Compress(byte[] data)

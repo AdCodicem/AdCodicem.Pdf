@@ -100,7 +100,7 @@ milestone closes.**
   it costs an order of magnitude more for a gain the two-role review has not yet been shown to leave on
   the table. It can be reconsidered if a review's report shows an axis looked at too thinly.
 - **A review by the maintainer alone, with Claude preparing the file.** This was the form of M02's review
-  of 2026-09-29. It keeps the maintainer's judgement, but it asks the maintainer to find the problems as
+  of 2026-09-29. It keeps the maintainer's judgment, but it asks the maintainer to find the problems as
   well as to arbitrate them.
 - **Every finding blocking the milestone.** A gap a later milestone already plans would hold up a milestone
   that has nothing left to do about it.

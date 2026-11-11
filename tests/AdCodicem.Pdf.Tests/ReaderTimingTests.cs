@@ -130,11 +130,30 @@ public class ReaderTimingTests
     {
         // One object stream of many members, each placed by the index: the probe finds each in the header through a lookup
         // built once, and each member written as a stream by a search of those it found, not by scanning the header for
-        // each — four times the members take about four times as long, where a scan would take sixteen. The probe alone is
-        // timed, the documents opened and settled before, and each probed once first; each run starts from a collected heap,
-        // so that the findings of a run before it, one for each member, are not collected inside the next.
+        // each — four times the members take about four times as long, where a scan would take sixteen. The probes alone are
+        // timed, the documents opened and settled before, and each probed once first; each turn starts from a collected heap.
+        // The probe is given the room a validation gives it by default, 1,000 findings of each kind: it writes those and
+        // counts the rest, and still looks up and searches every member (#317). Given room for every finding, it kept one
+        // for each member, 63 MB for the large stream whose every index is wrong and 75 MB for the one whose members are
+        // written as streams, and the collections that keeping them took fell inside the large probe: four to seven, some
+        // 80 to 120 ms of pause in a probe of 180 to 390 ms, where the small probe met one. Its ratio measured 5.0 to 7.3
+        // without load and up to 10.5 under four busy loops, and went past 8 three times in CI. Given that room, the large
+        // probe meets no collection, or a single young one; but one probe of the small stream takes 5 to 17 ms, and on a
+        // busy machine one of its five turns would fall in a quiet moment that no turn of the large one met: under four busy
+        // loops the ratio went past 8 in 3 runs of 71, at 8.7 to 9.4, each time beside other timing tests. Each turn times
+        // four probes back to back, 14 to 46 ms of the small stream's, which a busy machine slows apart from the large
+        // one's far less often than a single probe: the ratio measured 3.7 to 4.6 without load over 50 runs, and under four
+        // busy loops 2.3 to 6.6 over 300 runs beside two other timing tests and 2.1 to 7.7 over 100 runs on its own — 7.7
+        // once, nothing else past 6.4 —, never past 8. A heavier load still slows the large probes alone now and then: with
+        // builds running beside four busy loops, the load reaching 8 to 14 on four cores, the ratio went past 8 once in 20
+        // runs on its own, at 8.6, and once in 5 runs beside the other timing tests and the hostile input tests, at 9.0, its
+        // small probes at their usual time and every large turn slowed; under that load three other timing tests of this
+        // class failed too, up to 18.3 at a bound of 12. A scan of the header for each member, the lookup removed, measured
+        // 13.1 to 21.9 where every index is wrong, and failed each of 45 runs, under four busy loops and without, and each
+        // of 3 at a load of 9.5 to 16.
         const int Small = 50_000;
         const int Large = 4 * Small;
+        const int Probes = 4;
         using var small = PdfDocument.Open(Packed(Small, shape));
         using var large = PdfDocument.Open(Packed(Large, shape));
         small.Reader.SettleIndex();
@@ -147,8 +166,8 @@ public class ReaderTimingTests
 
         for (var run = 0; run < 5; run++)
         {
-            smallTime = Min(smallTime, Time(() => Probe(small)));
-            largeTime = Min(largeTime, Time(() => Probe(large)));
+            smallTime = Min(smallTime, Time(small));
+            largeTime = Min(largeTime, Time(large));
         }
 
         largeTime.Should().BeLessThan(
@@ -161,19 +180,24 @@ public class ReaderTimingTests
 
         static TimeSpan Min(TimeSpan a, TimeSpan b) => a < b ? a : b;
 
-        static TimeSpan Time(Action action)
+        static TimeSpan Time(PdfDocument document)
         {
             GC.Collect();
             GC.WaitForPendingFinalizers();
             GC.Collect();
             var stopwatch = Stopwatch.StartNew();
-            action();
+
+            for (var probe = 0; probe < Probes; probe++)
+            {
+                Probe(document);
+            }
+
             return stopwatch.Elapsed;
         }
 
         static void Probe(PdfDocument document)
         {
-            var probe = CrossReferenceProbe.Run(document);
+            var probe = CrossReferenceProbe.Run(document, PdfValidatorOptions.Default.FindingCapacity);
             (probe.Broken.Total + probe.Shifted.Total + probe.BrokenObjectStreams.Count).Should().BePositive();
         }
     }
@@ -531,6 +555,129 @@ public class ReaderTimingTests
 
             return builder
                 .WithObject(2, string.Create(CultureInfo.InvariantCulture, $"<< /Type /Pages /Count {kids} /MediaBox [0 0 612 792] /Resources << >> /Kids [{listed}] >>"))
+                .BuildClassic(rootNumber: 1);
+        }
+    }
+
+    [Fact]
+    public void Four_times_as_many_lost_streams_declaring_numbers_of_their_own_cost_about_four_times_the_time()
+    {
+        // A chain of cross-reference streams of /Type /XRef whose rows cannot be read, each handing its /Prev on and refusing
+        // to the older rows the numbers it declares (#208): 700 one-row subsections of its own, about as many as
+        // MaxTrailerLength, lowered to 8 KB, lets its dictionary hold. Past 4,096 ranges kept, every number is refused, and
+        // nothing more is merged: four times the streams take about four times as long. Merging every range declared so far
+        // again for each stream, with no bound, took 11.7 times as long, 1.3 s against 114 ms; but what holds the bound is
+        // what each opening asserts, object 3 refused past 4,096 ranges, which such a merge fails at its first opening.
+        // The time tells a chain whose cost grows with the streams, about four times, from one whose cost grows with their
+        // square, about sixteen. Every opening of the larger file is slowed now and then on a busy machine while those of the
+        // smaller one are not: the ratio measured 4.0 to 4.2 without load over 20 runs and 3.2 to 6.2 over 300 runs under
+        // four busy loops, but reached 7.4 to 10.0 with builds running beside them, which a bound of 12 allows for, as it
+        // does for the circular object streams. The measure is the ratio, the best opening of each, run in turn.
+        const int Small = 256;
+        const int Large = 4 * Small;
+        var options = new PdfReaderOptions
+        {
+            Limits = PdfReaderLimits.Default with { MaxXRefSectionCount = Large + 2, MaxTrailerLength = LostStreamFiles.TrailerLength },
+        };
+        var small = LostStreamFiles.OwnNumbers(Small, each: 700, rows: 16);
+        var large = LostStreamFiles.OwnNumbers(Large, each: 700, rows: 16);
+
+        var (smallTime, largeTime) = BestOfEach(() => Open(small, Small), () => Open(large, Large));
+
+        largeTime.Should().BeLessThan(
+            smallTime * 12,
+            "four times the streams must cost about four times the time ({0} for {1:N0}, {2} for {3:N0})",
+            smallTime,
+            Small,
+            largeTime,
+            Large);
+
+        void Open(byte[] file, int streams)
+        {
+            using var document = PdfDocument.Open(file, options);
+            document.Reader.Structure.Sections.Should().HaveCount(streams + 2);
+            document.Diagnostics.Should().OnlyContain(d => d.Code == PdfDiagnosticCodes.XRefSectionUnreadable);
+            document.Reader.ChainIndex!.TryGet(3, out _).Should().BeFalse("past 4,096 ranges, every number is refused");
+        }
+    }
+
+    [Fact]
+    public void Older_rows_looked_for_among_4096_refused_ranges_are_read_in_about_the_time_they_are_among_one()
+    {
+        // A lost stream declares 4,096 one-row subsections, every other number, or one after the other, which meet in one
+        // range, and the older table holds 262,144 rows (#208). Each row's number is looked for among the ranges by halves:
+        // 4,096 of them cost about what one does. Looking for each row range by range took 42 times as long, 1.18 s against
+        // 28 ms. The measure is the ratio, the best opening of each, run in turn.
+        const int Rows = 262_144;
+        var apart = LostStreamFiles.RangesOverOlderRows(apart: true, Rows);
+        var joined = LostStreamFiles.RangesOverOlderRows(apart: false, Rows);
+
+        var (joinedTime, apartTime) = BestOfEach(() => Open(joined, apart: false), () => Open(apart, apart: true));
+
+        apartTime.Should().BeLessThan(
+            joinedTime * 2,
+            "rows looked for among 4,096 ranges must cost about what they do among one ({0} against {1})",
+            apartTime,
+            joinedTime);
+
+        static void Open(byte[] file, bool apart)
+        {
+            using var document = PdfDocument.Open(file);
+            var index = document.Reader.ChainIndex!;
+            index.TryGet(3, out _).Should().BeTrue();
+            index.TryGet(11, out _).Should().Be(apart);
+            index.TryGet(10 + 4096, out _).Should().Be(!apart);
+        }
+    }
+
+    [Fact]
+    public void A_search_through_four_times_as_long_a_line_of_one_byte_tokens_costs_about_four_times_the_time()
+    {
+        // A stream whose /Length runs past its data, one line of one-byte tokens that a '%' ends: the search for its endstream
+        // lexes the line each read ends in as a load reads it, and carries what it lexed into the next read, a few fields,
+        // rather than lexing the line again from its start (#261). The search allocates the same whatever the line's length,
+        // and four times the line take about four times as long. Lexing the line again from its start at each read took 13
+        // times as long, 1.13 s against 85 ms. The measure is the ratio, the best search of each, run in turn.
+        const int Small = 1024 * 1024;
+        const int Large = 4 * Small;
+        var small = LineOfOneByteTokens(Small);
+        var large = LineOfOneByteTokens(Large);
+
+        var smallAllocated = Allocations.Least(() => Search(small, Small), out _);
+        var largeAllocated = Allocations.Least(() => Search(large, Large), out _);
+        var (smallTime, largeTime) = BestOfEach(() => Search(small, Small), () => Search(large, Large));
+
+        largeAllocated.Should().Be(smallAllocated, "what the search allocates does not grow with what it reads");
+        largeTime.Should().BeLessThan(
+            smallTime * 8,
+            "four times the line must cost about four times the time ({0} for {1:N0} bytes, {2} for {3:N0})",
+            smallTime,
+            Small,
+            largeTime,
+            Large);
+
+        static int Search(byte[] file, int length)
+        {
+            using var document = PdfDocument.Open(file);
+            var data = document.GetObject(new PdfObjectId(3)).AsStream().Required().RawLength;
+            data.Should().Be(length);
+            return data;
+        }
+
+        static byte[] LineOfOneByteTokens(int length)
+        {
+            var data = new StringBuilder(length);
+
+            while (data.Length < length - 1)
+            {
+                data.Append("1 ");
+            }
+
+            data.Length = length - 1;
+            return new TestPdfBuilder()
+                .WithObject(1, "<< /Type /Catalog /Pages 2 0 R >>")
+                .WithObject(2, "<< /Type /Pages /Kids [] /Count 0 >>")
+                .WithObject(3, string.Create(CultureInfo.InvariantCulture, $"<< /Length {length + 1000} >>\nstream\n{data}%\nendstream"))
                 .BuildClassic(rootNumber: 1);
         }
     }

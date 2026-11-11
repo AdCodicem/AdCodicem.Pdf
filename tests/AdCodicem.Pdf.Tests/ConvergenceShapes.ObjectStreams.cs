@@ -20,23 +20,25 @@ internal static partial class ConvergenceShapes
     {
         (int Number, string Body)[] six = [(5, "<< /Predictor 1 >>"), (6, "<< /Title (six) >>")];
         (int Number, string Body)[] sixteen = [(15, "<< /Predictor 1 >>"), (16, "<< /Title (sixteen) >>")];
+        var hiddenSeven = ChainFiles.HiddenHeader(7) + "\n";
+        var hiddenEight = ChainFiles.HiddenHeader(8) + "\n";
 
-        // Object streams 7 and 8 each need, through /DecodeParms, a member they hold, and a comment after each header's number
-        // hides them from a rebuild; the row of stream 30, which holds 31, points into the binary comment. Reading 30 or 31
-        // rebuilt the index and lost both circular findings.
+        // Object streams 7 and 8 each need, through /DecodeParms, a member they hold, and each header is one a rebuild does not
+        // find (ChainFiles.HiddenHeader); the row of stream 30, which holds 31, points into the binary comment. Reading 30 or
+        // 31 rebuilt the index and lost both circular findings.
         yield return new(
-            "circular object streams, headers split after the number, a broken stream after them",
-            ObjectStreamPairAfterBinaryComment(("7 %c\n0 obj\n", "/DecodeParms 5 0 R", six), ("8 %c\n0 obj\n", "/DecodeParms 15 0 R", sixteen), 30),
+            "circular object streams, headers a rebuild misses, a broken stream after them",
+            ObjectStreamPairAfterBinaryComment((hiddenSeven, "/DecodeParms 5 0 R", six), (hiddenEight, "/DecodeParms 15 0 R", sixteen), 30),
             PdfReaderLimits.Default,
             ObjectStreamReads([.. Enumerable.Range(0, 42), 46], [30, 7, 8, 12]));
 
-        // Stream 7 needs its member 9 as its filter, its header split before obj; stream 8 needs 17 as its predictor, and a
+        // Stream 7 needs its member 9 as its filter, its header one a rebuild misses; stream 8 needs 17 as its predictor, and a
         // later plain object 8 is what a rebuild keeps; the rows are 1 2 1 wide, and as in the first, the row of stream 30
         // points into the binary comment. Reading 30 or 31 lost both circular findings.
         yield return new(
-            "circular object streams, one header split before obj, the other redefined after them",
+            "circular object streams, one header a rebuild misses, the other redefined after them",
             ObjectStreamPairAfterBinaryComment(
-                ("7 0\n%h\nobj\n", "/Filter [9 0 R]", [(9, "/ASCIIHexDecode"), (10, "(ten)")]),
+                (hiddenSeven, "/Filter [9 0 R]", [(9, "/ASCIIHexDecode"), (10, "(ten)")]),
                 ("8 0 obj\n", "/DecodeParms << /Predictor 17 0 R >>", [(17, "1"), (18, "(eighteen)")]),
                 30,
                 later: "8 0 obj\n<< /Note (a later plain object 8) >>\nendobj\n",
@@ -44,39 +46,39 @@ internal static partial class ConvergenceShapes
             PdfReaderLimits.Default,
             ObjectStreamReads([.. Enumerable.Range(0, 37), 41], [30, 7, 8, 12]));
 
-        // As the first, but stream 8's header is whole, so a rebuild finds it where its row places it. Reading 30 or 31 lost
-        // the circular finding of 7 alone.
+        // As the first, but stream 8's header is one a rebuild finds where its row places it. Reading 30 or 31 lost the
+        // circular finding of 7 alone.
         yield return new(
-            "circular object streams, only the first header split, a broken stream after them",
-            ObjectStreamPairAfterBinaryComment(("7 %c\n0 obj\n", "/DecodeParms 5 0 R", six), ("8 0 obj\n", "/DecodeParms 15 0 R", sixteen), 30),
+            "circular object streams, only the first header missed by a rebuild, a broken stream after them",
+            ObjectStreamPairAfterBinaryComment((hiddenSeven, "/DecodeParms 5 0 R", six), ("8 0 obj\n", "/DecodeParms 15 0 R", sixteen), 30),
             PdfReaderLimits.Default,
             ObjectStreamReads([.. Enumerable.Range(0, 42), 46], [30, 7, 8, 12]));
 
         // As the first, but the broken stream is 3, which the walk loaded before 7 and 8: the rebuild that load set off hid
         // both circular findings from every validation, a fresh one included.
         yield return new(
-            "circular object streams, headers split after the number, a broken stream before them",
-            ObjectStreamPairAfterBinaryComment(("7 %c\n0 obj\n", "/DecodeParms 5 0 R", six), ("8 %c\n0 obj\n", "/DecodeParms 15 0 R", sixteen), 3),
+            "circular object streams, headers a rebuild misses, a broken stream before them",
+            ObjectStreamPairAfterBinaryComment((hiddenSeven, "/DecodeParms 5 0 R", six), (hiddenEight, "/DecodeParms 15 0 R", sixteen), 3),
             PdfReaderLimits.Default,
             ObjectStreamReads([.. Enumerable.Range(0, 42), 46], [3, 7, 8, 12]));
 
-        // As the first, but stream 7's header is whole, and it needs its member 5 through regular object 12, whose header a
-        // comment splits after its number. Reading 30 or 31 lost both circular findings, 7's because 12 no longer loaded.
+        // As the first, but stream 7's header is one a rebuild finds, and it needs its member 5 through regular object 12, whose
+        // header a rebuild misses. Reading 30 or 31 lost both circular findings, 7's because 12 no longer loaded.
         yield return new(
-            "an object stream needing its member through an object whose header is split",
+            "an object stream needing its member through an object whose header a rebuild misses",
             ObjectStreamPairAfterBinaryComment(
                 ("7 0 obj\n", "/DecodeParms 12 0 R", six),
-                ("8 %c\n0 obj\n", "/DecodeParms 15 0 R", sixteen),
+                (hiddenEight, "/DecodeParms 15 0 R", sixteen),
                 30,
-                twelve: "12 %c\n0 obj\n<< /Predictor 5 0 R >>\nendobj\n"),
+                twelve: ChainFiles.HiddenHeader(12) + "\n<< /Predictor 5 0 R >>\nendobj\n"),
             PdfReaderLimits.Default,
             ObjectStreamReads([.. Enumerable.Range(0, 42), 46], [30, 7, 8, 12]));
 
-        // Streams 7 and 8 each need a member they hold, a comment splitting their headers before obj; stream 20, which no row
-        // names, lists 8 again, and the row of stream 30, which holds 31, points to offset 1. Reading 30 or 31 lost both
-        // circular findings.
+        // Streams 7 and 8 each need a member they hold, their headers ones a rebuild misses; stream 20, which no row names,
+        // lists 8 again, and the row of stream 30, which holds 31, points to offset 1. Reading 30 or 31 lost both circular
+        // findings.
         yield return new(
-            "circular object streams split before obj, one listed again, a broken stream after them",
+            "circular object streams a rebuild misses, one listed again, a broken stream after them",
             ObjectStreamPairListedAgain((7, 5, 6), (8, 15, 16), 20, 30, 32),
             PdfReaderLimits.Default,
             ObjectStreamReads([.. Enumerable.Range(0, 33)], [30, 7, 8]));
@@ -84,7 +86,7 @@ internal static partial class ConvergenceShapes
         // The same file renumbered: streams 9 and 12, listing stream 25, broken stream 40. Reading 40 or 41 lost both circular
         // findings.
         yield return new(
-            "circular object streams split before obj, one listed again, renumbered",
+            "circular object streams a rebuild misses, one listed again, renumbered",
             ObjectStreamPairListedAgain((9, 3, 4), (12, 13, 14), 25, 40, 44),
             PdfReaderLimits.Default,
             ObjectStreamReads([.. Enumerable.Range(0, 45)], [40, 9, 12]));
@@ -92,7 +94,7 @@ internal static partial class ConvergenceShapes
         // The file of streams 7, 8 and 20 above, with the broken stream numbered 3, which the walk loaded first: the rebuild
         // hid 7 and 8 from every validation, a fresh one included.
         yield return new(
-            "circular object streams split before obj, one listed again, a broken stream before them",
+            "circular object streams a rebuild misses, one listed again, a broken stream before them",
             ObjectStreamPairListedAgain((7, 5, 6), (8, 15, 16), 20, 3, 32),
             PdfReaderLimits.Default,
             ObjectStreamReads([.. Enumerable.Range(0, 33)], [3, 7, 8]));
@@ -101,7 +103,7 @@ internal static partial class ConvergenceShapes
         // loading 9 rebuilt the index in the middle of the walk and hid 8 from every validation, and validating again, or
         // reading 9, 30 or 31 first, hid 7 too.
         yield return new(
-            "circular object streams split before obj, one needing a broken object too",
+            "circular object streams a rebuild misses, one needing a broken object too",
             ObjectStreamPairListedAgain((7, 5, 6), (8, 15, 16), 20, 30, 32, firstNeeds: "[9 0 R 5 0 R]", alsoBroken: 9),
             PdfReaderLimits.Default,
             ObjectStreamReads([.. Enumerable.Range(0, 33)], [30, 7, 8]));
@@ -246,8 +248,8 @@ internal static partial class ConvergenceShapes
 
     /// <summary>
     /// Writes catalog 1, an empty page tree 2, object streams <paramref name="first"/> and <paramref name="second"/> — each
-    /// holding the object it needs through <c>/DecodeParms</c> and another, a comment splitting its header before
-    /// <c>obj</c> —, a stream <paramref name="listing"/> no row names that lists <paramref name="second"/>'s number, and
+    /// holding the object it needs through <c>/DecodeParms</c> and another, its header one a rebuild misses
+    /// (<see cref="ChainFiles.HiddenHeader"/>) —, a stream <paramref name="listing"/> no row names that lists <paramref name="second"/>'s number, and
     /// cross-reference stream <paramref name="crossReference"/>, whose row for <paramref name="broken"/> points to offset 1,
     /// and which places <paramref name="broken"/> + 1 in it.
     /// </summary>
@@ -292,7 +294,7 @@ internal static partial class ConvergenceShapes
         long Write((int Stream, int Needed, int Other) stream, string needs, string title) =>
             ObjectStreamAfter(
                 file,
-                string.Create(CultureInfo.InvariantCulture, $"{stream.Stream} 0 %x\nobj\n"),
+                ChainFiles.HiddenHeader(stream.Stream) + "\n",
                 "/DecodeParms " + needs,
                 2,
                 string.Create(CultureInfo.InvariantCulture, $"{stream.Needed} 0 {stream.Other} 19 "),

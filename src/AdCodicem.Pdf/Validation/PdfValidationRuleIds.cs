@@ -73,8 +73,9 @@ public static class PdfValidationRuleIds
     /// <summary>
     /// A value a section's trailer — a classic table's, or a cross-reference stream's dictionary — gives the reader to read
     /// the chain is written as the specification does not allow: a reference where it must be direct, a real with no
-    /// fractional part where it must be an integer. The reader reads such a value all the same, or does not read it at all
-    /// — a hybrid file's stream's own <c>/Prev</c>, a <c>/W</c> element past the third —, which is then judged as written.
+    /// fractional part where it must be an integer. The reader reads such a value all the same, reads it only to tell a
+    /// place — a hybrid file's stream's own <c>/Prev</c>, which the chain does not follow —, or does not read it at all —
+    /// a <c>/W</c> element past the third —, which is then judged as written.
     /// <see cref="PdfValidationSeverity.Warning"/>.
     /// </summary>
     public const string FileTrailerValueWrong = "file.trailer-value-wrong";
@@ -84,6 +85,12 @@ public static class PdfValidationRuleIds
     /// has a row that gives an object in use what no entry can hold. <see cref="PdfValidationSeverity.Error"/>.
     /// </summary>
     public const string XRefSectionMalformed = "xref.section-malformed";
+
+    /// <summary>
+    /// A cross-reference stream gives a row of a reserved type: a type ISO 32000-1 does not define, which it reads as a
+    /// reference to the null object. <see cref="PdfValidationSeverity.Warning"/>.
+    /// </summary>
+    public const string XRefEntryTypeReserved = "xref.entry-type-reserved";
 
     /// <summary>
     /// A cross-reference section a <c>/Prev</c> or an <c>/XRefStm</c> names is neither there nor near it, or what
@@ -98,10 +105,23 @@ public static class PdfValidationRuleIds
     public const string XRefSectionShifted = "xref.section-shifted";
 
     /// <summary>
-    /// The chain of cross-reference sections names a section it has already read, or an offset it has already named,
-    /// and the sections before the loop are out of reach. <see cref="PdfValidationSeverity.Error"/>.
+    /// A classic cross-reference table holds no subsection: its <c>trailer</c> keyword follows its <c>xref</c> keyword.
+    /// <see cref="PdfValidationSeverity.Warning"/>.
+    /// </summary>
+    public const string XRefSubsectionMissing = "xref.subsection-missing";
+
+    /// <summary>
+    /// A <c>/Prev</c> of the chain of cross-reference sections names a section the chain has already read, or one it has
+    /// already reached and could not read though it declares itself one, or an offset it has already named, and the
+    /// sections before the loop are out of reach. <see cref="PdfValidationSeverity.Error"/>.
     /// </summary>
     public const string XRefChainLoop = "xref.chain-loop";
+
+    /// <summary>
+    /// A hybrid file's table names through <c>/XRefStm</c> no cross-reference stream of its revision, and what only that
+    /// stream indexes is lost. <see cref="PdfValidationSeverity.Error"/>.
+    /// </summary>
+    public const string XRefHybridStreamWrong = "xref.hybrid-stream-wrong";
 
     /// <summary>
     /// An in-use entry places its object where it is not, nor near it; or in an object stream that does not hold

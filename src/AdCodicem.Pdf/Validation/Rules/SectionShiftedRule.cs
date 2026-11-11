@@ -1,4 +1,5 @@
 using System.Globalization;
+using AdCodicem.Pdf.IO;
 
 namespace AdCodicem.Pdf.Validation.Rules;
 
@@ -37,7 +38,7 @@ internal sealed class SectionShiftedRule : IValidationRule
                 PdfValidationLocation.AtPosition(section.Offset),
                 string.Create(
                     CultureInfo.InvariantCulture,
-                    $"The cross-reference section {section.NamedBy} names at offset {section.NamedOffset} starts {RuleText.Distance(section.Offset - section.NamedOffset)}, at offset {section.Offset}."),
+                    $"The cross-reference section {section.NamedBy} names at offset {section.NamedOffset} starts {CountText.Distance(section.Offset - section.NamedOffset, "it")}, at offset {section.Offset}."),
                 "Correct the offset that names the section.");
         }
     }

@@ -139,6 +139,12 @@ internal ref struct PdfObjectParser
     /// <summary>Where the header of the last indirect object <see cref="TryReadIndirectObject"/> read starts, in the buffer.</summary>
     private int _headerStart;
 
+    /// <summary>
+    /// Where the digits of the object number of the last indirect object <see cref="TryReadIndirectObject"/> read start, in
+    /// the buffer (<see cref="HeaderDigits"/>).
+    /// </summary>
+    private int _headerDigits;
+
     /// <summary>Creates a parser over <paramref name="memory"/>.</summary>
     /// <param name="memory">The bytes to parse.</param>
     /// <param name="baseOffset">Where the bytes start in the file.</param>
@@ -252,6 +258,14 @@ internal ref struct PdfObjectParser
     /// <summary>Gets where the header of the last indirect object <see cref="TryReadIndirectObject"/> read starts, in the buffer.</summary>
     public readonly int HeaderStart => _headerStart;
 
+    /// <summary>
+    /// Gets where the digits of the object number of the last indirect object <see cref="TryReadIndirectObject"/> read
+    /// start, in the buffer: past the run of signs the number is written with, which the lexer reads with the number as one
+    /// token, the first sign deciding — <c>++14 0 obj</c> is object 14, its digits two bytes past its header's start —,
+    /// and where the header starts otherwise (#327).
+    /// </summary>
+    public readonly int HeaderDigits => _headerDigits;
+
     /// <summary>Gets what followed the value of the last indirect object <see cref="TryReadIndirectObject"/> read.</summary>
     public readonly EndObjState EndObj => _endObj;
 
@@ -338,6 +352,9 @@ internal ref struct PdfObjectParser
         id = new PdfObjectId((int)number.Integer, (int)generation.Integer);
         _objectNumber = id.Number;
         _headerStart = number.Start;
+
+        // The number is an integer past 0: its token holds a digit past the signs it may start with.
+        _headerDigits = number.Start + _memory.Span[number.Start..number.End].IndexOfAnyExcept((byte)'+', (byte)'-');
         _headerAt = -1;
         _headerUndecided = false;
         _lookAheadCut = false;
@@ -948,10 +965,10 @@ internal ref struct PdfObjectParser
                     fits
                         ? string.Create(
                             CultureInfo.InvariantCulture,
-                            $"The stream declared {length} bytes, and no endstream follows them; the declared length is kept without a search, the document's searches for endstream having read as much of the file as they may.")
+                            $"The stream declared {CountText.Bytes(length)}, and no endstream follows {(length == 1 ? "it" : "them")}; the declared length is kept without a search, the document's searches for endstream having read as much of the file as they may.")
                         : string.Create(
                             CultureInfo.InvariantCulture,
-                            $"{Describe(declared)}, and no endstream follows its data in the bytes read with its object; the {kept} bytes {(search.NextObject is null ? "to the end of the file" : "up to the next object")} are taken as its data without a search, the document's searches for endstream having read as much of the file as they may."),
+                            $"{Describe(declared)}, and no endstream follows its data in the bytes read with its object; the {CountText.Bytes(kept)} {(search.NextObject is null ? "to the end of the file" : "up to the next object")} {(kept == 1 ? "is" : "are")} taken as its data without a search, the document's searches for endstream having read as much of the file as they may."),
                     dataStart);
             }
 
@@ -967,7 +984,7 @@ internal ref struct PdfObjectParser
                     PdfDiagnosticCodes.StreamTruncated,
                     string.Create(
                         CultureInfo.InvariantCulture,
-                        $"The stream has no endstream: its object's endobj follows the {length} bytes it declared, which are taken as its data."),
+                        $"The stream has no endstream: its object's endobj follows the {CountText.Bytes(length)} it declared, which {(length == 1 ? "is" : "are")} taken as its data."),
                     dataStart);
             }
 
@@ -985,7 +1002,7 @@ internal ref struct PdfObjectParser
                     PdfDiagnosticCodes.StreamTruncated,
                     string.Create(
                         CultureInfo.InvariantCulture,
-                        $"{Describe(declared)}, and no endstream follows its data {Where(search.NextObject)}: its object's endobj ends it, after {taken} bytes."),
+                        $"{Describe(declared)}, and no endstream follows its data {Where(search.NextObject)}: its object's endobj ends it, after {CountText.Bytes(taken)}."),
                     dataStart);
             }
 
@@ -1001,7 +1018,7 @@ internal ref struct PdfObjectParser
                     PdfDiagnosticCodes.StreamLengthInvalid,
                     string.Create(
                         CultureInfo.InvariantCulture,
-                        $"The stream declared {length} bytes, and no endstream follows them {Where(search.NextObject)}; the declared length is kept."),
+                        $"The stream declared {CountText.Bytes(length)}, and no endstream follows {(length == 1 ? "it" : "them")} {Where(search.NextObject)}; the declared length is kept."),
                     dataStart);
             }
 
@@ -1027,7 +1044,7 @@ internal ref struct PdfObjectParser
                 search.NextObject is null ? PdfDiagnosticCodes.StreamTruncated : PdfDiagnosticCodes.StreamLengthInvalid,
                 string.Create(
                     CultureInfo.InvariantCulture,
-                    $"{Describe(declared)}, and no endstream follows its data {Where(search.NextObject)}; the {upToStop} bytes {(search.NextObject is null ? "to the end of the file" : "up to that object")} are taken as its data."),
+                    $"{Describe(declared)}, and no endstream follows its data {Where(search.NextObject)}; the {CountText.Bytes(upToStop)} {(search.NextObject is null ? "to the end of the file" : "up to that object")} {(upToStop == 1 ? "is" : "are")} taken as its data."),
                 dataStart);
         }
 
@@ -1101,9 +1118,12 @@ internal ref struct PdfObjectParser
         Span<long> carriedAt = stackalloc long[HeaderText.CarriedLength];
         var start = _baseOffset + dataStart;
         var text = new HeaderText(carried, carriedAt, start);
+        var pending = default(PendingEndStream);
         text.Read(span[dataStart..], start);
 
-        var dataEnd = StreamEnds.SearchStretch(text, endsRange: _endsData, deferred, out var header);
+        // A keyword in a comment that what follows its line is still to decide leaves the buffer undecided, as a header the
+        // end of the buffer cuts does: a larger window says (#261).
+        var dataEnd = StreamEnds.SearchStretch(text, endsRange: _endsData, deferred, ref pending, out var header);
 
         if (dataEnd >= 0)
         {
@@ -1123,7 +1143,7 @@ internal ref struct PdfObjectParser
         return new StreamEndSearch(null, header < 0 ? null : header, EndObjState.Unknown)
         {
             HeaderStopped = header >= 0,
-            EndObjSeen = StreamEnds.HoldsEndObj(stretch, stretch.Length),
+            EndObjSeen = tail.Seen,
             EndObjAfterDeclared = declaredEnd >= start && declaredEnd - _baseOffset <= stop &&
                 StreamEnds.IsEndObjAt(span[..stop], (int)(declaredEnd - _baseOffset), reachesEndOfFile: true) == true,
             ObjectEnd = tail.DataEnd(_baseOffset + stop),
@@ -1224,8 +1244,8 @@ internal ref struct PdfObjectParser
 
     /// <summary>Says what was wrong with a stream's <c>/Length</c>, its <c>endstream</c> found after <paramref name="recovered"/> bytes.</summary>
     private static string DescribeRecovered(DeclaredLength declared, int recovered) => declared.Form == StreamLengthForm.Integer
-        ? string.Create(CultureInfo.InvariantCulture, $"The stream declared {declared.Value} bytes but ended after {recovered}.")
-        : string.Create(CultureInfo.InvariantCulture, $"{Describe(declared)}; its data ends after {recovered} bytes.");
+        ? string.Create(CultureInfo.InvariantCulture, $"The stream declared {CountText.Bytes(declared.Value.GetValueOrDefault())} but ended after {recovered}.")
+        : string.Create(CultureInfo.InvariantCulture, $"{Describe(declared)}; its data ends after {CountText.Bytes(recovered)}.");
 
     /// <summary>
     /// Says how a stream's <c>/Length</c> was written, as a report starts: the length it declared, or why it gives none.
@@ -1234,7 +1254,7 @@ internal ref struct PdfObjectParser
     {
         if (declared.Form == StreamLengthForm.Integer)
         {
-            return string.Create(CultureInfo.InvariantCulture, $"The stream declared {declared.Value} bytes");
+            return "The stream declared " + CountText.Bytes(declared.Value.GetValueOrDefault());
         }
 
         if (declared.Form == StreamLengthForm.Absent)
@@ -1625,7 +1645,7 @@ internal ref struct PdfObjectParser
     /// </summary>
     private readonly bool HeaderUndecided(PdfToken number, PdfToken generation, PdfToken keyword) =>
         !_endsData && _member is null && MayBeginHeader(number, generation, _memory.Length) &&
-        MayBeHeaderBytes(number, generation, keyword) &&
+        MayBeHeaderBytes(number, generation) &&
         (generation.Kind == PdfTokenKind.EndOfInput ||
             (generation.Kind == PdfTokenKind.Integer &&
                 (keyword.Kind == PdfTokenKind.EndOfInput ||
@@ -1634,9 +1654,9 @@ internal ref struct PdfObjectParser
     /// <summary>
     /// Determines whether three tokens are an object header as the bytes hold one, the rule the search for a stream's
     /// <c>endstream</c> stops at (<see cref="HeaderText"/>): <c>N G obj</c>, digits alone for a number from 1 to
-    /// 2,147,483,647 and a generation from 0 to 65,535, white space alone between them — no comment —, and <c>obj</c> a
-    /// whole keyword, which one a window's edge reaches may not be. An object stream's member is never followed by a
-    /// header: its members have none (#230).
+    /// 2,147,483,647 and a generation from 0 to 65,535 — no sign —, white space and comments between them, which the lexer
+    /// reads past as a load does (#261), and <c>obj</c> a whole keyword, which one a window's edge reaches may not be. An
+    /// object stream's member is never followed by a header: its members have none (#230).
     /// </summary>
     private readonly bool IsHeader(PdfToken number, PdfToken generation, PdfToken keyword)
     {
@@ -1647,35 +1667,18 @@ internal ref struct PdfObjectParser
             return false;
         }
 
-        var span = _memory.Span;
-        return !span[number.Start..number.End].ContainsAnyExceptInRange((byte)'0', (byte)'9') &&
-            !span[generation.Start..generation.End].ContainsAnyExceptInRange((byte)'0', (byte)'9') &&
-            !span[number.End..generation.Start].ContainsAnyExcept(PdfCharacters.Whitespace) &&
-            !span[generation.End..keyword.Start].ContainsAnyExcept(PdfCharacters.Whitespace);
+        return MayBeHeaderBytes(number, generation);
     }
 
     /// <summary>
-    /// Determines whether the bytes read of what may be a header, up to the window's edge, keep to the header's byte rule
-    /// (<see cref="IsHeader"/>): digits alone, white space alone between the tokens — no sign, no comment.
+    /// Determines whether the tokens read of what may be a header, up to the window's edge, keep to the header's byte rule
+    /// (<see cref="IsHeader"/>): digits alone — no sign —, whatever white space and comments lie between them.
     /// </summary>
-    private readonly bool MayBeHeaderBytes(PdfToken number, PdfToken generation, PdfToken keyword)
+    private readonly bool MayBeHeaderBytes(PdfToken number, PdfToken generation)
     {
         var span = _memory.Span;
-
-        if (span[number.Start..number.End].ContainsAnyExceptInRange((byte)'0', (byte)'9'))
-        {
-            return false;
-        }
-
-        if (generation.Kind != PdfTokenKind.Integer)
-        {
-            return !span[number.End..].ContainsAnyExcept(PdfCharacters.Whitespace);
-        }
-
-        var upTo = keyword.Kind == PdfTokenKind.EndOfInput ? span.Length : keyword.Start;
-        return !span[generation.Start..generation.End].ContainsAnyExceptInRange((byte)'0', (byte)'9') &&
-            !span[number.End..generation.Start].ContainsAnyExcept(PdfCharacters.Whitespace) &&
-            !span[generation.End..upTo].ContainsAnyExcept(PdfCharacters.Whitespace);
+        return !span[number.Start..number.End].ContainsAnyExceptInRange((byte)'0', (byte)'9') &&
+            (generation.Kind != PdfTokenKind.Integer || !span[generation.Start..generation.End].ContainsAnyExceptInRange((byte)'0', (byte)'9'));
     }
 
     /// <summary>Gets what ended the buffer, as a report of what it cut short names it.</summary>

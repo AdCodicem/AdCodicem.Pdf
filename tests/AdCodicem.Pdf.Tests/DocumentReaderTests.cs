@@ -189,7 +189,8 @@ public class DocumentReaderTests
     [InlineData("fa-IR")]
     public void Writes_the_distance_to_an_object_found_before_its_entry_the_same_whatever_the_culture(string name)
     {
-        // Every entry points 3 bytes past its object. Swedish writes a minus sign as U+2212, Persian as U+200E U+2212.
+        // Every entry points 3 bytes past its object: the report says the object lies before it in words, where it once
+        // wrote a minus sign, which Swedish writes as U+2212 and Persian as U+200E U+2212 (#241).
         var bytes = SampleDocument().BuildClassic(rootNumber: 1, offsetError: 3);
         var culture = CultureInfo.CurrentCulture;
 
@@ -200,11 +201,275 @@ public class DocumentReaderTests
             _ = PageContent(document);
 
             document.Diagnostics.Where(entry => entry.Code == PdfDiagnosticCodes.XRefOffsetAdjusted).Should().NotBeEmpty()
-                .And.OnlyContain(entry => entry.Message.EndsWith(" was found -3 bytes from where the index said.", StringComparison.Ordinal));
+                .And.OnlyContain(entry => entry.Message.EndsWith(" was found 3 bytes before where the index said.", StringComparison.Ordinal));
         }
         finally
         {
             CultureInfo.CurrentCulture = culture;
+        }
+    }
+
+    [Theory]
+    [InlineData(1, "1 byte before")]
+    [InlineData(3, "3 bytes before")]
+    [InlineData(-2, "2 bytes after")]
+    [InlineData(-3, "3 bytes after")]
+    public void Says_which_way_and_how_far_from_its_entry_each_object_was_found(int offsetError, string found)
+    {
+        // Every entry points past its object, or before it — one byte before is the end-of-line its header follows,
+        // which is read as it stands —: each report says the way in words, and a count of one in the singular (#241).
+        using var document = PdfDocument.Open(SampleDocument().BuildClassic(rootNumber: 1, offsetError: offsetError));
+        _ = PageContent(document);
+
+        document.Diagnostics.Where(entry => entry.Code == PdfDiagnosticCodes.XRefOffsetAdjusted).Select(entry => entry.Message)
+            .Should().BeEquivalentTo(Enumerable.Range(1, 4).Select(number => $"Object {number} was found {found} where the index said."));
+    }
+
+    [Theory]
+    [InlineData(100, 500, true)]
+    [InlineData(100, 600, false)]
+    [InlineData(400, 500, true)]
+    [InlineData(400, 505, true)]
+    [InlineData(400, 506, false)]
+    [InlineData(400, 600, false)]
+    [InlineData(513, 505, true)]
+    [InlineData(513, 506, false)]
+    [InlineData(1400, 500, true)]
+    [InlineData(1400, 505, true)]
+    [InlineData(1400, 506, false)]
+    [InlineData(1400, 600, false)]
+    public void An_object_is_found_near_its_entry_only_where_its_header_ends_within_512_bytes_after_it_however_near_the_file_s_start(
+        long row, long distance, bool nearby)
+    {
+        // The page's entry gives an offset before its header, "3 0 obj", in the file's first 512 bytes or past them. The search
+        // near the entry finds the header where it lies whole within 512 bytes of the offset, its obj keyword ending 512 bytes
+        // after it at most; otherwise the index is rebuilt, which finds it. A window clamped at the file's start once reached up
+        // to 1,024 bytes past the offset: one shift was found near the start, and rebuilt past it (#197). An entry 513 bytes in
+        // has the window start on the file's second byte, the byte read before it the file's first: it reaches as far.
+        using var document = PdfDocument.Open(NearbyFiles.PageNamedAt(row, row + distance));
+
+        document.GetObject(new PdfObjectId(3)).Should().BeOfType<PdfDictionary>().Which.IsOfType(PdfName.Page).Should().BeTrue();
+        document.WasRepaired.Should().Be(!nearby);
+        var report = document.Diagnostics.Should().ContainSingle().Which;
+        report.Code.Should().Be(nearby ? PdfDiagnosticCodes.XRefOffsetAdjusted : PdfDiagnosticCodes.XRefRebuilt);
+
+        if (nearby)
+        {
+            report.Message.Should().Be($"Object 3 was found {distance} bytes after where the index said.");
+        }
+    }
+
+    [Theory]
+    [InlineData(-500, 500, false)]
+    [InlineData(-500, 600, false)]
+    [InlineData(-511, 500, false)]
+    [InlineData(-511, 600, false)]
+    [InlineData(-1, 500, true)]
+    [InlineData(-1, 504, true)]
+    [InlineData(-1, 505, false)]
+    [InlineData(-1, 600, false)]
+    [InlineData(-9, 490, true)]
+    [InlineData(-9, 500, false)]
+    public void An_object_whose_entry_lies_before_the_file_s_start_is_found_near_it_only_where_its_header_ends_within_512_bytes_after_it(
+        long row, long at, bool nearby)
+    {
+        // The page's entry gives a negative offset, and its header, "3 0 obj", starts at 490 to 600 bytes into the file: the
+        // search near the entry finds it where its obj keyword ends 512 bytes after the offset at most, as for any other entry,
+        // and the index is otherwise rebuilt. A window clamped at the file's start once reached 1,024 bytes into the file
+        // whatever the offset, so that an entry of -500 found an object 1,323 bytes after it (#197).
+        using var document = PdfDocument.Open(NearbyFiles.PageNamedAt(row, at));
+
+        document.GetObject(new PdfObjectId(3)).Should().BeOfType<PdfDictionary>().Which.IsOfType(PdfName.Page).Should().BeTrue();
+        document.WasRepaired.Should().Be(!nearby);
+        document.Diagnostics.Select(diagnostic => diagnostic.Code).Should().Equal(
+            PdfDiagnosticCodes.XRefEntryOutOfRange, nearby ? PdfDiagnosticCodes.XRefOffsetAdjusted : PdfDiagnosticCodes.XRefRebuilt);
+
+        if (nearby)
+        {
+            document.Diagnostics[1].Message.Should().Be($"Object 3 was found {at - row} bytes after where the index said.");
+        }
+    }
+
+    [Theory]
+    [InlineData(4, 512, "near", true)]
+    [InlineData(4, 513, "near", false)]
+    [InlineData(14, 513, "four", false)]
+    public void An_object_is_found_near_its_entry_only_where_its_header_starts_within_512_bytes_before_it_whatever_number_the_window_s_start_cuts(
+        int number, long before, string served, bool nearby)
+    {
+        // Object 4's entry gives an offset 512 or 513 bytes past the header of object 4, or 513 bytes past object 14's, whose 4
+        // the window the search reads near the entry starts on. The search reads the byte before its window too: a header counts
+        // only where its number's first digit lies within the window, and object 14's body, which was served as object 4's with
+        // a warning, is not taken for it (#197). Otherwise the index is rebuilt, which finds object 4 where it is.
+        const long At = 805;
+        using var document = PdfDocument.Open(NearbyFiles.HeaderNear(number, At, At + before));
+
+        document.GetObject(new PdfObjectId(4)).Should().BeOfType<PdfString>().Which.ToText().Should().Be(served);
+        document.WasRepaired.Should().Be(!nearby);
+        var report = document.Diagnostics.Should().ContainSingle().Which;
+        report.Code.Should().Be(nearby ? PdfDiagnosticCodes.XRefOffsetAdjusted : PdfDiagnosticCodes.XRefRebuilt);
+
+        if (nearby)
+        {
+            report.Message.Should().Be("Object 4 was found 512 bytes before where the index said.");
+        }
+    }
+
+    [Fact]
+    public void A_window_that_starts_on_the_file_s_second_byte_reads_its_first_too_and_takes_no_number_it_cuts_for_a_header()
+    {
+        // The file starts with "14 0 obj", before its header, and object 4's entry gives the offset of the byte 513 bytes into
+        // the file: the window the search reads near it starts on the 4 of 14, the file's second byte. It reads the first byte
+        // too, as every window that does not start the file does, and object 14 is not taken for object 4 (#197). The index
+        // is rebuilt, which finds object 4 where it is.
+        using var document = PdfDocument.Open(NearbyFiles.FourNamedPastJunk("14 0 obj\n(fourteen)\nendobj\n", 513));
+
+        document.GetObject(new PdfObjectId(4)).Should().BeOfType<PdfString>().Which.ToText().Should().Be("four");
+        document.WasRepaired.Should().BeTrue();
+        document.Diagnostics.Should().NotContain(diagnostic => diagnostic.Message.StartsWith("Object 4 ", StringComparison.Ordinal));
+    }
+
+    /// <summary>
+    /// Headers of object 4 with comments between their tokens, each after what precedes it on its line, or on the line before
+    /// it — which ISO 32000-1 allows (7.2.3), and a load reads (#175).
+    /// </summary>
+    public static readonly TheoryData<string, string> HeadersHoldingComments = new()
+    {
+        { string.Empty, "4 % a comment\n0 obj" },
+        { string.Empty, "4 0 % a comment\nobj" },
+        { string.Empty, "4 % one\n0 % two\nobj" },
+        { string.Empty, "4% right after the number\n0 obj" },
+        { string.Empty, "4\n% one\n% two\n0\n% three\nobj" },
+        { string.Empty, "4 % a comment\r0 obj" },
+        { string.Empty, "4 % a comment\r\n0 obj" },
+        { string.Empty, "4 0 % a comment\robj" },
+        { string.Empty, "4 % 50% done\n0 obj" },
+        { string.Empty, "4 %\n0 obj" },
+        { "(50%) ", "4 % a comment\n0 obj" },
+        { "null ", "4 % a comment\n0 obj" },
+        { "(\n", "4 % a comment\n0 obj" },
+        { "(\r", "4 % a comment\r0 obj" },
+    };
+
+    [Theory]
+    [MemberData(nameof(HeadersHoldingComments))]
+    public void An_object_whose_header_holds_comments_is_read_where_its_entry_places_it(string before, string header)
+    {
+        using var document = PdfDocument.Open(NearbyFiles.FourWrittenAs(header, before: before));
+
+        document.GetObject(new PdfObjectId(4)).Should().BeOfType<PdfString>().Which.ToText().Should().Be("four");
+        document.WasRepaired.Should().BeFalse();
+        document.Diagnostics.Should().BeEmpty();
+    }
+
+    [Theory]
+    [MemberData(nameof(HeadersHoldingComments))]
+    public void An_object_whose_header_holds_comments_is_found_near_an_entry_two_bytes_past_it(string before, string header)
+    {
+        // The search near an entry reads a header back from its obj keyword: where an end of line lies between its tokens, the
+        // line it ends is read as a load reads it, from its start, which tells a comment from a % inside a string, and a line
+        // that holds only a comment is passed. It once stopped at the comment, and rebuilt the index, which did not find the
+        // object either (#261). What precedes the header on its line is read for what it is, and what a line before it leaves
+        // open is not: the header's line is read from its own start.
+        using var document = PdfDocument.Open(NearbyFiles.FourWrittenAs(header, shift: 2, before: before));
+
+        document.GetObject(new PdfObjectId(4)).Should().BeOfType<PdfString>().Which.ToText().Should().Be("four");
+        document.WasRepaired.Should().BeFalse();
+        var report = document.Diagnostics.Should().ContainSingle().Which;
+        report.Code.Should().Be(PdfDiagnosticCodes.XRefOffsetAdjusted);
+        report.Message.Should().Be("Object 4 was found 2 bytes before where the index said.");
+    }
+
+    [Theory]
+    [MemberData(nameof(HeadersHoldingComments))]
+    public void A_rebuild_finds_an_object_whose_header_holds_comments_where_its_number_starts(string before, string header)
+    {
+        // startxref names the catalog's header, no section: the index is rebuilt as the document opens, and its scan reads a
+        // header with comments between its tokens as the search near an entry does (#261).
+        var file = NearbyFiles.FourWrittenAs(header, startxrefLost: true, before: before);
+        using var document = PdfDocument.Open(file);
+
+        document.WasRepaired.Should().BeTrue();
+        document.GetObject(new PdfObjectId(4)).Should().BeOfType<PdfString>().Which.ToText().Should().Be("four");
+        document.Reader.Index.TryGet(4, out var entry).Should().BeTrue();
+        entry.Offset.Should().Be(PdfTemplate.OffsetOf(file, before + header) + before.Length);
+    }
+
+    [Theory]
+    [InlineData("% a note 4\n0 obj")]
+    [InlineData("4 (x) % a comment\nobj")]
+    [InlineData("4 0.0 % a comment\nobj")]
+    [InlineData("4 -1 % a comment\nobj")]
+    [InlineData("4 (open % a comment\n0 obj")]
+    [InlineData("/Four 0 % a comment\nobj")]
+    [InlineData("x4 % a comment\n0 obj")]
+    [InlineData("4\n(x) % a comment\n0 obj")]
+    [InlineData("4\n/Four 0 % a comment\nobj")]
+    public void Tokens_a_load_takes_for_no_header_are_none_for_a_rebuild_whatever_comments_lie_between_them(string header)
+    {
+        // Each is no header of object 4 as a load reads it: digits a comment ends with, a string, a real, a negative
+        // generation, a string the line does not close, a name, a keyword. The rebuild's scan, which reads the line a comment
+        // ends as a load does, takes none for object 4's header, where it once took digits ending a comment for its number.
+        using var document = PdfDocument.Open(NearbyFiles.FourWrittenAs(header, startxrefLost: true));
+
+        document.WasRepaired.Should().BeTrue();
+        document.Reader.Index.TryGet(4, out _).Should().BeFalse();
+        document.GetObject(new PdfObjectId(4)).Should().BeSameAs(PdfNull.Instance);
+    }
+
+    [Fact]
+    public void A_header_after_a_string_holding_a_percent_sign_on_its_line_is_read_by_its_tokens()
+    {
+        // The line that ends with object 4's number holds a % in a string, and no comment: it is lexed from its start as a
+        // load reads it, the string read past, and the number at its end taken, near the entry as by a rebuild (#261).
+        using var nearby = PdfDocument.Open(NearbyFiles.FourWrittenAs("4\n0 obj", shift: 2, before: "(50%) "));
+        using var rebuilt = PdfDocument.Open(NearbyFiles.FourWrittenAs("4\n0 obj", startxrefLost: true, before: "(50%) "));
+
+        nearby.GetObject(new PdfObjectId(4)).Should().BeOfType<PdfString>().Which.ToText().Should().Be("four");
+        nearby.WasRepaired.Should().BeFalse();
+        rebuilt.GetObject(new PdfObjectId(4)).Should().BeOfType<PdfString>().Which.ToText().Should().Be("four");
+        rebuilt.WasRepaired.Should().BeTrue();
+    }
+
+    [Fact]
+    public void The_line_of_an_obj_keyword_is_read_by_its_digits_whatever_else_it_holds()
+    {
+        // A line is lexed only where a walk back from an obj keyword enters it through an end of line: the keyword's own
+        // line is read by the digits before it, as it was, and a header a comment holds is taken for one, as a header in a
+        // string is (#171). Lexed from its start, the line would be a comment.
+        var file = NearbyFiles.FourWrittenAs("% 4 0 obj", startxrefLost: true);
+        using var document = PdfDocument.Open(file);
+
+        document.Reader.Index.TryGet(4, out var entry).Should().BeTrue();
+        entry.Offset.Should().Be(PdfTemplate.OffsetOf(file, "4 0 obj"));
+    }
+
+    [Fact]
+    public void Digits_a_comment_ends_with_are_no_object_number_for_the_search_near_an_entry()
+    {
+        // Object 4's entry gives where "% a note 4" starts, a line before "0 obj": a comment, then the header of no object,
+        // as a load reads it. The search near the entry once took the 4 for object 4's number, and served what follows as
+        // object 4, 9 bytes from its entry (#261); the index is rebuilt, which finds no object 4.
+        using var document = PdfDocument.Open(NearbyFiles.FourWrittenAs("% a note 4\n0 obj"));
+
+        document.GetObject(new PdfObjectId(4)).Should().BeSameAs(PdfNull.Instance);
+        document.WasRepaired.Should().BeTrue();
+        document.Diagnostics.Should().NotContain(diagnostic => diagnostic.Code == PdfDiagnosticCodes.XRefOffsetAdjusted);
+    }
+
+    [Theory]
+    [InlineData("x4 0 obj", "x4\n0 obj")]
+    [InlineData("-4 0 obj", "-4\n0 obj")]
+    public void A_line_end_between_a_header_s_tokens_changes_nothing_where_no_comment_lies_on_its_line(string oneLine, string twoLines)
+    {
+        // A line that holds no % is read back by its digits, whatever ends it: the rebuild's scan reads a header whose tokens a
+        // line end parts as it reads the same header on one line, here digits a regular character or a sign precedes (#171).
+        Read(oneLine).Should().Be(Read(twoLines));
+
+        static string Read(string header)
+        {
+            using var document = PdfDocument.Open(NearbyFiles.FourWrittenAs(header, startxrefLost: true));
+            return document.GetObject(new PdfObjectId(4)).ToString() ?? string.Empty;
         }
     }
 
@@ -1494,6 +1759,7 @@ public class DocumentReaderTests
     [InlineData("/N 9 /First 4", "has a header that ends after 1 of the 9 objects its /N declares; only the first 1 of its 9 objects can be read from it.")]
     [InlineData("/N 1 /First 40", "gives in /First an offset, 40, past the end of its decoded data, which is 8 bytes long; none of its objects can be read from it.")]
     [InlineData("/N 2 /First 4", "has a header that ends after 1 of the 2 objects its /N declares; only the first 1 of its 2 objects can be read from it.")]
+    [InlineData("/N 1 /First 0", "has a header that ends after 0 of the 1 object its /N declares; none of its objects can be read from it.")]
     public void Reports_an_object_stream_whose_dictionary_or_header_cannot_be_believed_where_its_data_starts(string entries, string fault)
     {
         // The index is rebuilt, which reads every object stream the file holds: object stream 5 holds object 6.
@@ -1560,7 +1826,7 @@ public class DocumentReaderTests
 
         document.GetObject(new PdfObjectId(6)).Should().BeSameAs(PdfNull.Instance);
         document.Diagnostics.Should().ContainSingle(entry => entry.Code == PdfDiagnosticCodes.ObjectStreamUnreadable).Which.Message.Should().Be(
-            "Object stream 5 has a header that holds something other than an object number and an offset after 0 of the 1 objects its /N declares; none of its objects can be read from it.");
+            "Object stream 5 has a header that holds something other than an object number and an offset after 0 of the 1 object its /N declares; none of its objects can be read from it.");
     }
 
     [Theory]
@@ -1844,8 +2110,8 @@ public class DocumentReaderTests
         document.Diagnostics.Should().NotContain(entry => entry.Code == PdfDiagnosticCodes.ObjectRedefined);
         document.Diagnostics.Where(entry => entry.Code == PdfDiagnosticCodes.ObjectStreamUnreadable).Select(entry => entry.Message)
             .Should().Equal(
-                "Object stream 5 has a header that lists object -5 at offset 0, which no member can be, after 0 of the 1 objects its /N declares; none of its objects can be read from it.",
-                "Object stream 7 has a header that lists object -5 at offset 0, which no member can be, after 0 of the 1 objects its /N declares; none of its objects can be read from it.");
+                "Object stream 5 has a header that lists object -5 at offset 0, which no member can be, after 0 of the 1 object its /N declares; none of its objects can be read from it.",
+                "Object stream 7 has a header that lists object -5 at offset 0, which no member can be, after 0 of the 1 object its /N declares; none of its objects can be read from it.");
     }
 
     [Fact]
@@ -1902,23 +2168,21 @@ public class DocumentReaderTests
     [Fact]
     public void A_reference_the_chain_cannot_read_rebuilds_nothing_while_the_chain_is_read()
     {
-        // Two cross-reference streams, each header split by a comment, which a rebuild's scan does not take for an object
-        // header. The newer declares rows its data lacks, leaving the index incomplete; the older, which its /Prev names,
-        // numbers its rows from object 9, which the index lacks. Resolving it once rebuilt the index before any of its rows
-        // was read, and the chain's empty index asked for a rebuild once more (#182). Nothing is loaded while the chain is
-        // read: the reference names nothing the chain can read, the older stream is malformed, and the empty index the
-        // chain leaves is rebuilt once.
+        // Two cross-reference streams, each header one a rebuild's scan does not find (ChainFiles.HiddenHeader). The newer
+        // declares rows its data lacks, leaving the index incomplete; the older, which its /Prev names, numbers its rows from
+        // object 9, which the index lacks. Resolving it once rebuilt the index before any of its rows was read, and the
+        // chain's empty index asked for a rebuild once more (#182). Nothing is loaded while the chain is read: the reference
+        // names nothing the chain can read, the older stream is malformed, and the empty index the chain leaves is rebuilt
+        // once. The newer stream, read only in part, is reported first (#210).
         const string Template = """
             %PDF-1.5
-            7 0 % a comment between the generation and the keyword
-            obj
+            {seven}
             << /Type /XRef /W [1 2 0] /Index [0 2] /Prev 00000 /Length 0 >>
             stream
 
             endstream
             endobj
-            8 0 % another
-            obj
+            {eight}
             << /Type /XRef /W [1 2 0] /Index [9 0 R 1] /Length 0 >>
             stream
 
@@ -1929,8 +2193,10 @@ public class DocumentReaderTests
             %%EOF
 
             """;
-        var text = Template.Replace("\r\n", "\n", StringComparison.Ordinal);
-        var older = text.IndexOf("8 0 %", StringComparison.Ordinal);
+        var text = Template.Replace("\r\n", "\n", StringComparison.Ordinal)
+            .Replace("{seven}", ChainFiles.HiddenHeader(7), StringComparison.Ordinal)
+            .Replace("{eight}", ChainFiles.HiddenHeader(8), StringComparison.Ordinal);
+        var older = text.IndexOf(ChainFiles.HiddenHeader(8), StringComparison.Ordinal);
         var file = Encoding.ASCII.GetBytes(text.Replace("/Prev 00000", string.Create(CultureInfo.InvariantCulture, $"/Prev {older:D5}"), StringComparison.Ordinal));
         var diagnostics = new PdfDiagnostics();
 
@@ -1945,8 +2211,11 @@ public class DocumentReaderTests
         reader.WasRepaired.Should().BeTrue();
         reader.Structure.ChainRead.Should().BeFalse();
         reader.Structure.Sections[1].Fault.Should().Be("its /Index holds the reference 9 0 R, which no section read before it places where it can be read");
-        diagnostics.Select(diagnostic => diagnostic.Code).Should().Equal(PdfDiagnosticCodes.XRefSectionUnreadable, PdfDiagnosticCodes.XRefRebuilt);
-        diagnostics[1].Message.Should().Be("The cross-reference index was rebuilt by scanning the file.");
+        diagnostics.Select(diagnostic => diagnostic.Code).Should().Equal(
+            PdfDiagnosticCodes.XRefSectionUnreadable, PdfDiagnosticCodes.XRefSectionUnreadable, PdfDiagnosticCodes.XRefRebuilt);
+        diagnostics[0].Message.Should().StartWith(
+            "The cross-reference stream startxref names at offset 9 was read only in part: it holds 0 rows where its /Index and /Size declare 2;");
+        diagnostics[2].Message.Should().Be("The cross-reference index was rebuilt by scanning the file.");
     }
 
     [Fact]
@@ -1967,13 +2236,14 @@ public class DocumentReaderTests
     [Theory]
     [InlineData(4, "The stream declared 46 bytes but ended after 42.")]
     [InlineData(-4, "The stream declared 38 bytes but ended after 42.")]
+    [InlineData(-41, "The stream declared 1 byte but ended after 42.")]
     [InlineData(1, null)]
     public void Checks_a_deferred_length_against_the_data_once_the_chain_is_read(int lengthOff, string? message)
     {
-        // Object 4 gives 46 or 38 bytes where the data holds 42: the length is reported once the chain is read, as any
-        // stream's is. One that counts the end-of-line before endstream is confirmed by it, as the parser takes any
-        // stream's, and says nothing. (The data's last bytes are zeros, which PDF counts as white space: a length that
-        // leaves them out is confirmed as well.)
+        // Object 4 gives a length of 46, 38 or 1 where the data holds 42 bytes: the length is reported once the chain is
+        // read, as any stream's is, one byte in the singular (#241). One that counts the end-of-line before endstream is
+        // confirmed by it, as the parser takes any stream's, and says nothing. (The data's last bytes are zeros, which PDF
+        // counts as white space: a length that leaves them out is confirmed as well.)
         using var document = PdfDocument.Open(ChainFiles.AloneWithIndirectLength(lengthOff));
 
         document.WasRepaired.Should().BeFalse();
@@ -2038,15 +2308,19 @@ public class DocumentReaderTests
         // Two rows of reserved types spell an endstream after an end-of-line, a few bytes in or past the first 64 KB: the
         // chain, which could not read the /Length, took the data up to it, and read the rows before it alone — once with a
         // report, the section said to lack rows. The stream's own row for object 4 lies among them: the object it places
-        // gives the length, which the endstream after it confirms, and the data is taken again to it (#220).
+        // gives the length, which the endstream after it confirms, and the data is taken again to it (#220). The two rows
+        // that spell it, of reserved types, read as the null object, their numbers indexed as free ones, and are reported
+        // (#221).
         var file = ChainFiles.AloneWithIndirectLength(spellingEndStream: true, padding: padding);
         using var document = PdfDocument.Open(file);
 
-        document.Diagnostics.Should().BeEmpty();
+        document.Diagnostics.Should().ContainSingle().Which.Message.Should().Contain(string.Create(
+            CultureInfo.InvariantCulture,
+            $" gives 2 rows a reserved type: the row for object {6 + padding} gives it type 10, the first of them. "));
         document.WasRepaired.Should().BeFalse();
-        document.Reader.Index.Count.Should().Be(6 + padding);
+        document.Reader.Index.Count.Should().Be(8 + padding);
         document.Reader.Structure.Sections.Should().ContainSingle().Which.Incomplete.Should().BeFalse();
-        new PdfValidator().Validate(document).Findings.Should().BeEmpty();
+        new PdfValidator().Validate(document).Findings.Select(finding => finding.RuleId).Should().Equal(PdfValidationRuleIds.XRefEntryTypeReserved);
     }
 
     [Fact]
@@ -2054,29 +2328,39 @@ public class DocumentReaderTests
     {
         // The update's stream indexes its /Length, object 4, and object 8 after rows that spell an endstream: read up to it,
         // the stream held object 4's row alone, and object 8 read as the first revision wrote it, a valid file said to have
-        // a malformed section. The update's rows are read whole, and object 8 reads as it does in its direct twin (#220).
+        // a malformed section. The update's rows are read whole, and object 8 reads as it does in its direct twin (#220),
+        // whose rows for objects 5 and 6 are free where the spelling rows are of reserved types, read as free ones and
+        // reported (#221).
         using var document = PdfDocument.Open(ChainFiles.UpdateWithIndirectLength(spellingEndStream: true));
         using var twin = PdfDocument.Open(ChainFiles.UpdateWithIndirectLength(spellingEndStream: false));
 
         document.GetObject(new PdfObjectId(8)).Should().BeOfType<PdfString>().Which.ToText().Should().Be("new");
         twin.GetObject(new PdfObjectId(8)).Should().BeOfType<PdfString>().Which.ToText().Should().Be("new");
-        document.Diagnostics.Should().BeEmpty();
+        document.Diagnostics.Select(entry => entry.Code).Should().Equal(PdfDiagnosticCodes.XRefEntryReserved);
+        twin.Diagnostics.Should().BeEmpty();
         document.Reader.Index.Count.Should().Be(twin.Reader.Index.Count);
-        new PdfValidator().Validate(document).Findings.Should().BeEmpty();
+        new PdfValidator().Validate(document).Findings.Select(finding => finding.RuleId).Should().Equal(PdfValidationRuleIds.XRefEntryTypeReserved);
     }
 
     [Fact]
-    public void A_deferred_length_is_taken_again_by_the_row_the_section_keeps_for_it()
+    public void A_deferred_length_is_not_taken_again_when_the_row_the_section_keeps_for_it_is_of_a_reserved_type()
     {
-        // The stream's /Index numbers its /Length, object 4, first in a row of a reserved type, which reading the rows ignores,
-        // then in the row that places it, before rows that spell an endstream: the data was not taken again by the first, and
-        // the section was said to lack the rows past them, the page's among them (#220).
+        // The stream's /Index numbers its /Length, object 4, first in a row of a reserved type whose fields give where object
+        // 4 lies, then in a row that places it, before rows that spell an endstream. The first row is the one the reading of
+        // the rows keeps, a reference to the null object as ISO 32000-1 reads it (#221): it places no length, whatever its
+        // fields give, and the data stays as the chain took it, up to the spelled endstream, the section lacking the rows past
+        // it, the page's among them, which a rebuild finds. The row after it, skipped as the first, once took the data again
+        // to the length (#220).
         using var document = PdfDocument.Open(ChainFiles.AloneWithIndirectLengthBeforeSpelledRows(reservedRowFirst: true));
 
-        document.Diagnostics.Should().BeEmpty();
-        document.Reader.Structure.Sections.Should().ContainSingle().Which.Incomplete.Should().BeFalse();
+        document.Diagnostics.Select(entry => entry.Code).Should().Equal(
+            PdfDiagnosticCodes.XRefSectionUnreadable, PdfDiagnosticCodes.XRefEntryReserved, PdfDiagnosticCodes.StreamLengthInvalid);
+        var section = document.Reader.Structure.Sections.Should().ContainSingle().Which;
+        section.Incomplete.Should().BeTrue();
+        section.ReservedRow.Should().Be("the row for object 4 gives it type 3");
         document.GetObject(new PdfObjectId(3)).AsDictionary().IsOfType(PdfName.Page).Should().BeTrue();
-        new PdfValidator().Validate(document).Contains(PdfValidationRuleIds.XRefSectionMalformed).Should().BeFalse();
+        document.WasRepaired.Should().BeTrue();
+        new PdfValidator().Validate(document).Contains(PdfValidationRuleIds.XRefSectionMalformed).Should().BeTrue();
     }
 
     [Fact]
@@ -2110,8 +2394,9 @@ public class DocumentReaderTests
 
         if (objects == 32)
         {
+            // The rows that spell the endstream, of reserved types, are read, and reported (#221).
             section.Incomplete.Should().BeFalse();
-            document.Diagnostics.Should().BeEmpty();
+            document.Diagnostics.Select(entry => entry.Code).Should().Equal(PdfDiagnosticCodes.XRefEntryReserved);
             return;
         }
 
@@ -2161,7 +2446,9 @@ public class DocumentReaderTests
         document.Diagnostics.Select(entry => entry.Code).Should().Equal(
             decoding ? PdfDiagnosticCodes.LimitDecodedStream : PdfDiagnosticCodes.LimitStreamLength);
         document.Reader.Structure.Sections.Should().ContainSingle().Which.CutByLimit.Should().BeTrue();
-        whole.Diagnostics.Should().BeEmpty();
+
+        // Read whole, the rows that spell the endstream, of reserved types, are read, and reported (#221).
+        whole.Diagnostics.Select(entry => entry.Code).Should().Equal(PdfDiagnosticCodes.XRefEntryReserved);
     }
 
     [Fact]
@@ -2174,7 +2461,8 @@ public class DocumentReaderTests
         using var whole = PdfDocument.Open(file);
         using var document = PdfDocument.Open(file, new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxFilterChainLength = 1 } });
 
-        whole.Diagnostics.Should().BeEmpty();
+        // Read whole, the rows that spell the endstream, of reserved types, are read, and reported (#221).
+        whole.Diagnostics.Select(entry => entry.Code).Should().Equal(PdfDiagnosticCodes.XRefEntryReserved);
         document.Diagnostics.Should().Contain(entry => entry.Code == PdfDiagnosticCodes.LimitFilterChain);
         document.Diagnostics.Should().NotContain(entry => entry.Code.StartsWith("filter.", StringComparison.Ordinal));
 
@@ -2389,6 +2677,20 @@ public class DocumentReaderTests
         document.Reader.Structure.Sections.Should().OnlyContain(section => section.State == IO.XRef.XRefSectionState.Read);
     }
 
+    [Theory]
+    [InlineData("9 0 R", "The /Length of cross-reference stream 5 names object 9 0, which the file lacks; the chain took its data up to its endstream, after 1 byte.")]
+    [InlineData("4 0 R", "The /Length of cross-reference stream 5 gives 13 bytes, which an endstream confirms; the chain, which could not read it, took the data up to an endstream 1 byte in, and read no row past it.")]
+    public void A_deferred_length_the_chain_read_one_byte_of_data_without_says_so_in_the_singular(string length, string message)
+    {
+        // The stream's one row is one byte, after which its data spells an endstream: the chain takes that byte. The length,
+        // read once the chain is, names an object the file lacks, or gives the whole data, which the stream's own endstream
+        // confirms (#241).
+        using var document = PdfDocument.Open(ChainFiles.OneByteRowBeforeASpelledEndStream(length));
+
+        document.Diagnostics.Should().ContainSingle(entry => entry.Code == PdfDiagnosticCodes.StreamLengthInvalid).Which.Message.Should().Be(message);
+        document.Catalog.Required().IsOfType(PdfName.Catalog).Should().BeTrue();
+    }
+
     [Fact]
     public void Reports_the_rows_a_deferred_length_shows_the_chain_did_not_read()
     {
@@ -2451,10 +2753,10 @@ public class DocumentReaderTests
         static byte[] WithUpdatePlacingFourOutside(byte[] file)
         {
             var stream = PdfTemplate.OffsetOf(file, "5 0 obj");
-            var update = new StringBuilder("%").Append('x', 2 * PdfFileReader.NearbySearchRadius).Append('\n');
-            var xref = file.Length + update.Length;
-            update.Append(CultureInfo.InvariantCulture, $"xref\n4 1\n0000099999 00000 n\r\ntrailer\n<< /Size 8 /Root 1 0 R /Prev {stream} >>\nstartxref\n{xref}\n%%EOF\n");
-            return [.. file, .. Encoding.Latin1.GetBytes(update.ToString())];
+            var update = string.Create(
+                CultureInfo.InvariantCulture,
+                $"xref\n4 1\n0000099999 00000 n\r\ntrailer\n<< /Size 8 /Root 1 0 R /Prev {stream} >>\nstartxref\n{file.Length}\n%%EOF\n");
+            return [.. file, .. Encoding.Latin1.GetBytes(update)];
         }
     }
 
@@ -2466,14 +2768,17 @@ public class DocumentReaderTests
         // The older section's /Length names object 4, which only it indexes, and two of its rows spell an endstream: the
         // search for it stops at the update's first object, past them. Its data is taken again to the length object 4
         // gives, as the newest section's is (#220).
+        // The rows that spell it, of reserved types, are reported at the older section (#221).
         var file = ChainFiles.OlderWithIndirectLength(spellingEndStream: !twin);
         using var document = PdfDocument.Open(file);
+        string[] reported = twin ? [] : [PdfDiagnosticCodes.XRefEntryReserved];
+        string[] found = twin ? [] : [PdfValidationRuleIds.XRefEntryTypeReserved];
 
-        document.Diagnostics.Should().BeEmpty();
+        document.Diagnostics.Select(entry => entry.Code).Should().Equal(reported);
         document.WasRepaired.Should().BeFalse();
         document.Reader.Structure.Sections.Should().HaveCount(2).And.OnlyContain(section => !section.Incomplete);
         document.GetObject(new PdfObjectId(8)).Should().BeOfType<PdfString>().Which.ToText().Should().Be("new");
-        new PdfValidator().Validate(document).Findings.Should().BeEmpty();
+        new PdfValidator().Validate(document).Findings.Select(finding => finding.RuleId).Should().Equal(found);
     }
 
     [Fact]
@@ -2567,11 +2872,12 @@ public class DocumentReaderTests
     public void Rows_that_spell_an_object_header_do_not_end_a_deferred_length_s_data()
     {
         // Rows of reserved types spell "1 0 obj" past the first 64 KB: a header the bytes hold ends a search for a stream's
-        // endstream, but not one whose /Length the chain could not read, whose rows may spell anything (#220).
+        // endstream, but not one whose /Length the chain could not read, whose rows may spell anything (#220). Those two rows
+        // read as the null object, their numbers indexed as free ones, and are reported (#221).
         using var document = PdfDocument.Open(ChainFiles.AloneWithIndirectLength(padding: 10_000, spellingHeader: true));
 
-        document.Diagnostics.Should().BeEmpty();
-        document.Reader.Index.Count.Should().Be(10_006);
+        document.Diagnostics.Select(entry => entry.Code).Should().Equal(PdfDiagnosticCodes.XRefEntryReserved);
+        document.Reader.Index.Count.Should().Be(10_008);
     }
 
     [Fact]
@@ -2590,6 +2896,48 @@ public class DocumentReaderTests
         section.Fault.Should().Be(
             "its /Length is the reference 4 0 R, which no section read before it places where it can be read, and no endstream follows its data before the end of the file");
         document.Diagnostics.Select(entry => entry.Code).Should().NotContain(code => code.StartsWith("limit.", StringComparison.Ordinal));
+    }
+
+    [Theory]
+    [InlineData("/W [1 4 2]", "/W [1 4 /]", "its /W gives a field a width that is not an integer", 0)]
+    [InlineData("/W [1 4 2]", "/W [1 4 /]", "its /W gives a field a width that is not an integer", 1200)]
+    [InlineData("/Root 1 0 R", "/Index [0 ]", "its /Index holds 1 value, not pairs of a first object number and a count of rows", 0)]
+    [InlineData("/Root 1 0 R", "/Index [0 ]", "its /Index holds 1 value, not pairs of a first object number and a count of rows", 1200)]
+    [InlineData("/Size 9 ", "/Size/X ", "it has no /Index, and its /Size gives no count of objects", 0)]
+    [InlineData("/Size 9 ", "/Size/X ", "it has no /Index, and its /Size gives no count of objects", 1200)]
+    public void A_cross_reference_stream_an_update_names_that_cannot_be_read_is_reported_where_it_is_however_near_the_update(
+        string written, string faulty, string fault, int gap)
+    {
+        // The older stream's /W, /Index or /Size is written so that no row can be read, in place, and the newer stream, which
+        // names it through /Prev, lies within 512 bytes of it, or past a comment of 1,200 bytes. The newer stream was taken
+        // for the older moved, read again and named the older once more: a loop, a rebuild, and the older stream never said
+        // to be malformed (#281). It declares itself a cross-reference stream: it is reported where it is, as out of reach,
+        // and what only it indexes is found by rebuilding the index.
+        var sound = ChainFiles.UpdateWithIndirectLength(spellingEndStream: false, gap: gap);
+        var older = PdfTemplate.OffsetOf(sound, "7 0 obj");
+        var text = Encoding.Latin1.GetString(sound);
+        var at = text.IndexOf(written, StringComparison.Ordinal);
+        at.Should().BeGreaterThan((int)older).And.BeLessThan((int)PdfTemplate.OffsetOf(sound, "stream\n"), "the older stream's dictionary holds it");
+        var file = Encoding.Latin1.GetBytes(string.Concat(text.AsSpan(0, at), faulty, text.AsSpan(at + written.Length)));
+
+        using (var whole = PdfDocument.Open(sound))
+        {
+            whole.Diagnostics.Should().BeEmpty();
+            whole.Reader.Structure.Sections.Should().HaveCount(2).And.OnlyContain(section => section.State == XRefSectionState.Read);
+        }
+
+        using var document = PdfDocument.Open(file);
+
+        document.Diagnostics.Select(entry => entry.Code).Should().Equal(
+            PdfDiagnosticCodes.XRefSectionUnreadable, PdfDiagnosticCodes.XRefRebuilt, PdfDiagnosticCodes.ObjectRedefined);
+        document.Diagnostics[0].Position.Should().Be(older);
+        document.Diagnostics[0].Message.Should().StartWith(string.Create(
+            CultureInfo.InvariantCulture, $"The cross-reference stream /Prev names at offset {older} is there but cannot be read: {fault}."));
+        document.Reader.Structure.Sections.Should().HaveCount(2);
+        document.Reader.Structure.Sections[1].State.Should().Be(XRefSectionState.Malformed);
+        document.Reader.Structure.Sections[1].Offset.Should().Be(older);
+        document.GetObject(new PdfObjectId(8)).Should().BeOfType<PdfString>().Which.ToText().Should().Be("new");
+        document.GetObject(new PdfObjectId(3)).AsDictionary().IsOfType(PdfName.Page).Should().BeTrue();
     }
 
     [Fact]
@@ -2817,7 +3165,7 @@ public class DocumentReaderTests
 
         document.WasRepaired.Should().BeFalse();
         document.Diagnostics.Select(diagnostic => diagnostic.Code).Should().Equal(PdfDiagnosticCodes.LimitTrailer, PdfDiagnosticCodes.XRefOffsetAdjusted);
-        document.Diagnostics[1].Message.Should().EndWith(string.Create(CultureInfo.InvariantCulture, $"was found {stream - named} bytes from there."));
+        document.Diagnostics[1].Message.Should().EndWith(string.Create(CultureInfo.InvariantCulture, $"was found {stream - named} bytes after it."));
         document.GetObject(new PdfObjectId(6)).AsDictionary().IsOfType(PdfName.Font).Should().BeTrue();
     }
 
@@ -3008,6 +3356,9 @@ public class DocumentReaderTests
             9999999999 0 obj
             (too large)
             endobj
+            5 99999999999999999999 obj
+            (a generation past what a long holds)
+            endobj
 
             """;
 
@@ -3017,6 +3368,33 @@ public class DocumentReaderTests
         document.WasRepaired.Should().BeTrue();
         document.ObjectCount.Should().Be(sound.ObjectCount);
         document.Catalog.IsOfType(PdfName.Catalog).Should().BeTrue();
+    }
+
+    [Fact]
+    public void A_rebuild_finds_a_header_of_the_largest_object_number_and_generation()
+    {
+        // The largest number an object can have, 2,147,483,647, under the largest generation, 65,535, is a header the scan
+        // takes, as the parser does.
+        const string Text = """
+            %PDF-1.7
+            2147483647 65535 obj
+            (largest)
+            endobj
+            1 0 obj
+            << /Type /Catalog /Pages 2 0 R >>
+            endobj
+            2 0 obj
+            << /Type /Pages /Kids [] /Count 0 >>
+            endobj
+            %%EOF
+
+            """;
+
+        using var document = PdfDocument.Open(Encoding.ASCII.GetBytes(Text));
+
+        document.WasRepaired.Should().BeTrue();
+        document.Reader.Index.TryGet(PdfObjectId.MaxNumber, out var entry).Should().BeTrue();
+        entry.Generation.Should().Be(PdfObjectId.MaxGeneration);
     }
 
     [Theory]
@@ -3315,7 +3693,7 @@ public class DocumentReaderTests
                     StaleChain.StreamsPast => "xref\n3 1\n0000000000 00001 f\r\n",
                     StaleChain.TablesPast => string.Create(CultureInfo.InvariantCulture, $"xref\n{newest + k} 1\n0000000000 00001 f\r\n"),
                     _ when k % 2 == 1 => string.Create(CultureInfo.InvariantCulture, $"xref\n{newest + ((k + 1) / 2)} 1\n0000000000 00001 f\r\n"),
-                    _ => "xref\n",
+                    _ => "xref\n0 0\n",
                 });
                 file.Append("trailer\n<< /Size 1 /Root 1 0 R");
                 file.Append(hybrid ? string.Create(CultureInfo.InvariantCulture, $" /XRefStm {stream}") : string.Empty);
@@ -3682,11 +4060,12 @@ public class DocumentReaderTests
         // its tag bytes in the rows; or, under the TIFF predictor, to that row still differenced —, and the row for the
         // /Length was not found, or found garbled. The section was charged with the rows it lacked and the index rebuilt
         // (#220).
+        // The rows that spell the endstream, of reserved types, are read once the data is, and reported (#221).
         var file = ChainFiles.DeferredLengthRowPartedBySpelledEndStream(columns, predictor);
 
         using var document = PdfDocument.Open(file);
 
-        document.Diagnostics.Should().BeEmpty();
+        document.Diagnostics.Select(entry => entry.Code).Should().Equal(PdfDiagnosticCodes.XRefEntryReserved);
         document.WasRepaired.Should().BeFalse();
         document.GetObject(new PdfObjectId(3)).AsDictionary().Required().IsOfType(PdfName.Page).Should().BeTrue();
     }
@@ -3699,14 +4078,14 @@ public class DocumentReaderTests
     {
         // Stream 7's /Length names object 5, which only its own row places, and its data spells an endstream before its first
         // row: the data up to it holds no whole row, which the row for the /Length cannot lie in, nor a predicted row undone,
-        // and the section lacks every row, the file's. Asked to look for that row again, the reader would divide by the
-        // length of a row it took to be none.
+        // and the section lacks every row, the file's, which is reported (#210). Asked to look for that row again, the reader
+        // would divide by the length of a row it took to be none.
         var file = ChainFiles.DeferredLengthEndStreamSpelledBeforeRows(prefix);
 
         using var document = PdfDocument.Open(file);
 
         document.WasRepaired.Should().BeTrue();
-        document.Diagnostics.Select(entry => entry.Code).Should().Equal(PdfDiagnosticCodes.XRefRebuilt);
+        document.Diagnostics.Select(entry => entry.Code).Should().Equal(PdfDiagnosticCodes.XRefSectionUnreadable, PdfDiagnosticCodes.XRefRebuilt);
         document.GetObject(new PdfObjectId(3)).AsDictionary().Required().IsOfType(PdfName.Page).Should().BeTrue();
     }
 
@@ -3767,9 +4146,10 @@ public class DocumentReaderTests
 
         var file = ChainFiles.DeferredLengthPageRowInPartedRunLengthRow();
 
+        // Unbounded, every row is read, those that spell the endstream, of reserved types, reported (#221).
         using (var unbounded = PdfDocument.Open(file))
         {
-            unbounded.Diagnostics.Should().BeEmpty();
+            unbounded.Diagnostics.Select(entry => entry.Code).Should().Equal(PdfDiagnosticCodes.XRefEntryReserved);
         }
 
         using var document = PdfDocument.Open(file, options);

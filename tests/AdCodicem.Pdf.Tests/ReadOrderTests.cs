@@ -69,9 +69,9 @@ public class ReadOrderTests
     [Fact]
     public void A_rebuild_forgets_that_an_object_it_no_longer_indexes_lacked_its_endobj()
     {
-        // Page 5's header is written "5 0 % lost" then "obj" on the next line, which the parser reads where the row places it
-        // and a rebuild's scan does not find; no endobj follows its value. Page 4's row leads nowhere: reading it rebuilds the
-        // index, which holds no 5.
+        // Page 5's header is one the parser reads where the row places it and a rebuild's scan does not find
+        // (ChainFiles.HiddenHeader); no endobj follows its value. Page 4's row leads nowhere: reading it rebuilds the index,
+        // which holds no 5.
         var file = new HandWrittenFile();
         var rows = new Dictionary<int, long>
         {
@@ -79,7 +79,7 @@ public class ReadOrderTests
             [2] = file.Object(2, "<< /Type /Pages /Kids [5 0 R 4 0 R] /Count 2 >>"),
             [5] = file.Position,
         };
-        file.Raw("5 0 % lost\nobj\n<< /Type /Page /Parent 2 0 R >>\n(stray)\nendobj\n");
+        file.Raw(ChainFiles.HiddenHeader(5) + "\n<< /Type /Page /Parent 2 0 R >>\n(stray)\nendobj\n");
         rows[6] = file.Padding(6);
         rows[4] = rows[6] + 600;
         file.Object(4, Page);
@@ -195,10 +195,10 @@ public class ReadOrderTests
     [Fact]
     public void A_rebuild_forgets_that_the_read_which_set_it_off_found_no_endobj()
     {
-        // Stream 5's header is written "5 0 % lost" then "obj" on the next line, which the parser reads where the row places it
-        // and a rebuild's scan does not find; no endobj follows it. Its /Length is object 4, whose row leads nowhere: reading
-        // 5 rebuilds the index while 5 is being loaded, and the load notes the missing endobj once the rebuild has begun. The
-        // finished index holds no 5, and nothing is noted of it.
+        // Stream 5's header is one the parser reads where the row places it and a rebuild's scan does not find
+        // (ChainFiles.HiddenHeader); no endobj follows it. Its /Length is object 4, whose row leads nowhere: reading 5 rebuilds
+        // the index while 5 is being loaded, and the load notes the missing endobj once the rebuild has begun. The finished
+        // index holds no 5, and nothing is noted of it.
         var file = new HandWrittenFile();
         var rows = new Dictionary<int, long>
         {
@@ -207,7 +207,7 @@ public class ReadOrderTests
             [3] = file.Object(3, Page),
             [5] = file.Position,
         };
-        file.Raw("5 0 % lost\nobj\n<< /Length 4 0 R >>\nstream\n0123456789\nendstream\n");
+        file.Raw(ChainFiles.HiddenHeader(5) + "\n<< /Length 4 0 R >>\nstream\n0123456789\nendstream\n");
         rows[6] = file.Padding(6);
         rows[4] = rows[6] + 600;
         file.Object(4, "10");
@@ -233,7 +233,7 @@ public class ReadOrderTests
             [3] = file.Object(3, Page),
             [5] = file.Position,
         };
-        file.Raw("5 0 % lost\nobj\n<< /Length 4 0 R >>\nstream\n0123456789\nendstream\nendobj\n");
+        file.Raw(ChainFiles.HiddenHeader(5) + "\n<< /Length 4 0 R >>\nstream\n0123456789\nendstream\nendobj\n");
         rows[6] = file.Padding(6);
         rows[4] = rows[6] + 600;
         file.Object(4, "3");
@@ -281,9 +281,9 @@ public class ReadOrderTests
     [InlineData(true)]
     public void A_rebuild_forgets_that_a_stream_it_no_longer_indexes_gave_a_wrong_length(bool settling)
     {
-        // Stream 5's header is written "5 0 % lost" then "obj" on the next line, which the parser reads where the row places it
-        // and a rebuild's scan does not find; its /Length is short of its data. Object 4's row leads nowhere: reading it
-        // rebuilds the index once its load is done, settling rebuilds it at once, and the rebuilt index holds no 5.
+        // Stream 5's header is one the parser reads where the row places it and a rebuild's scan does not find
+        // (ChainFiles.HiddenHeader); its /Length is short of its data. Object 4's row leads nowhere: reading it rebuilds the
+        // index once its load is done, settling rebuilds it at once, and the rebuilt index holds no 5.
         var file = new HandWrittenFile();
         var rows = new Dictionary<int, long>
         {
@@ -292,7 +292,7 @@ public class ReadOrderTests
             [3] = file.Object(3, Page),
             [5] = file.Position,
         };
-        file.Raw("5 0 % lost\nobj\n<< /Length 3 >>\nstream\n0123456789\nendstream\nendobj\n");
+        file.Raw(ChainFiles.HiddenHeader(5) + "\n<< /Length 3 >>\nstream\n0123456789\nendstream\nendobj\n");
         rows[6] = file.Padding(6);
         rows[4] = rows[6] + 600;
         file.Object(4, "(four)");
@@ -1058,7 +1058,7 @@ public class ReadOrderTests
     public void A_rebuild_whose_scan_the_source_fails_keeps_when_run_again_the_entries_a_chain_a_guard_cut_gave()
     {
         // The cross-reference stream decodes no further than its first ten rows, a guard's cut; object 6, which holds 7, has
-        // a comment inside its header, which the scan does not find (#261); object 4's row leads into padding, and reading 4
+        // a header the scan does not find (ChainFiles.HiddenHeader); object 4's row leads into padding, and reading 4
         // rebuilds the index. The source fails the scan's read of the file: the next read runs the rebuild again, which
         // keeps, as the first would have, the chain's entries for 6 and 7, so that 7 is read from 6 (#167).
         var file = new HandWrittenFile(version: "1.5");
@@ -1068,7 +1068,7 @@ public class ReadOrderTests
             [2] = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"),
             [6] = file.Position,
         };
-        file.Raw("6 0 % object stream\nobj\n<< /Type /ObjStm /N 1 /First 4 /Length 18 >>\nstream\n7 0 (packed seven)\nendstream\nendobj\n");
+        file.Raw(ChainFiles.HiddenHeader(6) + "\n<< /Type /ObjStm /N 1 /First 4 /Length 18 >>\nstream\n7 0 (packed seven)\nendstream\nendobj\n");
         rows[8] = file.Padding(8);
         rows[4] = rows[8] + 600;
         file.Object(4, "(four)");

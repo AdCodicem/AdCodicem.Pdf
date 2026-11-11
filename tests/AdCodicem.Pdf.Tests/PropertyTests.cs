@@ -32,6 +32,9 @@ public class PropertyTests
 
     private const ulong DefaultSeed = 0x5EED_1729UL;
 
+    /// <summary>Where the data the rule for object headers reads starts in the file the properties read it from.</summary>
+    private const long HeaderDataStart = 100;
+
     /// <summary>
     /// The second half of FsCheck's random state. It must be odd — FsCheck rejects an even gamma outright —
     /// which is why it is a constant here and only the seed is taken from the environment.
@@ -59,6 +62,40 @@ public class PropertyTests
 
     /// <summary>What a number may start with: no sign, one, or the two some generators write, the first of which decides.</summary>
     private static Gen<string> Signs => Gen.Elements(string.Empty, "-", "+", "--", "+-", "-+");
+
+    /// <summary>
+    /// Pieces lines and the data of a stream are made of, for the rule for object headers: numbers, white space and ends of
+    /// line, comments, strings and the other delimiters, keywords, a sign and a backslash.
+    /// </summary>
+    private static Gen<string> HeaderPieces => Gen.Elements(
+        "12", "0", "00", "4", "65536", "2147483648", "99999999999999999999", " ", "  ", "\t", "\0", "\n", "\r", "\r\n", "%",
+        "% c", "%%", "(", ")", "\\", "<", "<<", ">", ">>", "/A", "[", "]", "{", "}", "x", "+", "-", ".", "obj", "obj ",
+        "endobj", "objx", "R");
+
+    /// <summary>Strings of up to forty pieces.</summary>
+    private static Gen<string> HeaderTexts =>
+        from count in Gen.Choose(0, 40)
+        from pieces in Gen.ArrayOf(HeaderPieces, count)
+        select string.Concat(pieces);
+
+    /// <summary>What may lie between an object header's tokens, white space and comments, or what only looks like it.</summary>
+    private static Gen<string> HeaderSeparators => Gen.Elements(
+        " ", "  ", "\n", "\r", "\r\n", " % c\n", "%\n", "% 7 %\r", "\n% c\n", "\n%\n\n", " (x) ", " % (\n", "x", string.Empty);
+
+    /// <summary>Text shaped as an object header, comments between its tokens or not, and the byte after its obj.</summary>
+    private static Gen<string> HeaderLike =>
+        from number in Gen.Elements("12", "4", "0", "007", "65536", "2147483648", "x4", "+4")
+        from first in HeaderSeparators
+        from generation in Gen.Elements("0", "00", "65535", "65536", "+0", "x")
+        from second in HeaderSeparators
+        from after in Gen.Elements(" ", "\n", "x", "%", string.Empty)
+        select number + first + generation + second + "obj" + after;
+
+    /// <summary>Strings of up to twelve pieces, each a header's shape or one of the pieces lines are made of.</summary>
+    private static Gen<string> HeaderLikeTexts =>
+        from count in Gen.Choose(0, 12)
+        from pieces in Gen.ArrayOf(Gen.OneOf(HeaderPieces, HeaderLike), count)
+        select string.Concat(pieces);
 
     [Fact]
     public void The_lexer_terminates_on_any_bytes_and_stays_inside_the_buffer()
@@ -347,6 +384,168 @@ public class PropertyTests
     }
 
     [Fact]
+    public void A_line_lexed_through_any_reads_ends_in_the_tokens_the_lexer_reads_from_its_start()
+    {
+        // A line the rule for object headers lexes is read a piece at a time, as the reads of a search part it, and gives
+        // the same last two tokens as the lexer a load reads with, reading the line whole from its start (#261).
+        var cases =
+            from text in HeaderTexts
+            from count in Gen.Choose(0, 6)
+            from cuts in Gen.ArrayOf(Gen.Choose(0, 200), count)
+            select (Line: text.Replace("\r", " ", StringComparison.Ordinal).Replace("\n", " ", StringComparison.Ordinal), Cuts: cuts);
+
+        Check.One(Settings, Prop.ForAll(cases.ToArbitrary(), drawn =>
+        {
+            var (line, at) = drawn;
+            var bytes = Encoding.Latin1.GetBytes(line);
+            var tokens = default(LineTokens);
+            var from = 0;
+
+            foreach (var cut in at.Select(value => Math.Min(value, bytes.Length)).Order())
+            {
+                tokens.Read(bytes.AsSpan(from, cut - from), from);
+                from = cut;
+            }
+
+            tokens.Read(bytes.AsSpan(from), from);
+            tokens.Finish();
+
+            var (last, before) = LastTwoAsTheLexerReads(bytes);
+            tokens.Last.Should().Be(last, line);
+            tokens.Before.Should().Be(before, line);
+            tokens.HoldsPercent.Should().Be(line.Contains('%', StringComparison.Ordinal), line);
+        }));
+    }
+
+    [Fact]
+    public void The_rule_for_object_headers_stops_at_the_same_header_wherever_the_reads_of_a_search_part_the_data()
+    {
+        // A search for endstream reads the data a part at a time, each read repeating the last bytes of the one before, and
+        // carries into each what the reads before hold of a header: runs of white space and digits, lines that end in a
+        // comment, the line the read starts in. However the reads part the data, the first header is the one a single read
+        // of it all finds (#174, #261).
+        var cases =
+            from text in Gen.OneOf(HeaderTexts, HeaderLikeTexts)
+            from count in Gen.Choose(0, 12)
+            from sizes in Gen.ArrayOf(Gen.Choose(PdfFileReader.EndStreamSearchOverlap + 1, 40), count)
+            select (Text: text, Sizes: sizes);
+
+        Check.One(Settings.WithMaxTest(10 * Cases), Prop.ForAll(cases.ToArbitrary(), drawn =>
+        {
+            var data = Encoding.Latin1.GetBytes(drawn.Text);
+            FirstHeaderReadPartly(data, drawn.Sizes).Should().Be(FirstHeaderReadPartly(data, []), drawn.Text);
+        }));
+    }
+
+    [Fact]
+    public void A_search_for_endstream_ends_the_data_at_the_same_place_wherever_its_reads_part_the_data()
+    {
+        // The first endstream of the data ends it, unless a header comes first; one inside a comment, between the tokens of
+        // a header that ends past it, waits for what follows its line, which the reads after it may hold (#261). However
+        // the reads part the data, each repeating the last bytes of the one before, the search ends the data, or stops at a
+        // header, where a single read of it all does.
+        var pieces = Gen.OneOf(HeaderPieces, Gen.Elements("endstream", "% endstream", "%endstream\n", " endstream", "\nendstream"));
+        var cases =
+            from count in Gen.Choose(0, 40)
+            from parts in Gen.ArrayOf(pieces, count)
+            from reads in Gen.Choose(0, 12)
+            from sizes in Gen.ArrayOf(Gen.Choose(PdfFileReader.EndStreamSearchOverlap + 1, 40), reads)
+            select (Text: string.Concat(parts), Sizes: sizes);
+
+        Check.One(Settings.WithMaxTest(10 * Cases), Prop.ForAll(cases.ToArbitrary(), drawn =>
+        {
+            var data = Encoding.Latin1.GetBytes(drawn.Text);
+            EndReadPartly(data, drawn.Sizes).Should().Be(EndReadPartly(data, []), drawn.Text);
+        }));
+    }
+
+    [Fact]
+    public void A_search_decides_an_endstream_in_a_comment_as_one_read_does_however_short_the_reads_after_it_fall()
+    {
+        // A source may give fewer bytes than asked before the end of the file (#52): a read may then end before the one
+        // before it, and the next starts a byte past its start, which may be past a token's first byte. Once a keyword in a
+        // comment waits for what follows its line (#261), that is read from the furthest the reads reached, and whether an
+        // obj would end a header is read at its first byte: however short the reads after the one that found the keyword,
+        // the keyword ends the data, or a header stops the search, where a single read of it all says.
+        var cases =
+            from prefix in Gen.Elements("12 % endstream", "12 0 % endstream", "% endstream", "12 %endstream", "\n12 % endstream")
+            from text in Gen.OneOf(HeaderTexts, HeaderLikeTexts)
+            from first in Gen.Choose(0, 20)
+            from reads in Gen.Choose(0, 30)
+            from sizes in Gen.ArrayOf(Gen.Choose(1, 40), reads)
+            select (Text: prefix + text, Sizes: (int[])[prefix.Length + first, .. sizes]);
+
+        Check.One(Settings.WithMaxTest(10 * Cases), Prop.ForAll(cases.ToArbitrary(), drawn =>
+        {
+            var data = Encoding.Latin1.GetBytes(drawn.Text);
+            EndReadPartly(data, drawn.Sizes).Should().Be(EndReadPartly(data, []), drawn.Text);
+        }));
+    }
+
+    [Fact]
+    public void The_rule_for_object_headers_takes_the_header_the_scan_that_rebuilds_an_index_takes()
+    {
+        // The rule a search for endstream stops at reads comments between a header's tokens as the scan that rebuilds an
+        // index reads them (#261). Read whole or a part at a time, it finds the first header the scan finds, but for the two
+        // differences its remarks list: the scan takes digits a regular byte precedes (#171), and an obj a regular byte
+        // follows. The texts hold no sign, which the scan reads as the lexer does and the rule refuses (#327).
+        var cases =
+            from text in Gen.OneOf(HeaderTexts, HeaderLikeTexts)
+            from count in Gen.Choose(0, 12)
+            from sizes in Gen.ArrayOf(Gen.Choose(PdfFileReader.EndStreamSearchOverlap + 1, 40), count)
+            select (Text: text.Replace("+", string.Empty, StringComparison.Ordinal).Replace("-", string.Empty, StringComparison.Ordinal), Sizes: sizes);
+
+        Check.One(Settings.WithMaxTest(10 * Cases), Prop.ForAll(cases.ToArbitrary(), drawn =>
+        {
+            var data = Encoding.Latin1.GetBytes(drawn.Text);
+            var scanned = FirstHeaderTheScanTakes(data);
+
+            FirstHeaderReadPartly(data, drawn.Sizes).Should().Be(scanned < 0 ? -1 : HeaderDataStart + scanned, drawn.Text);
+        }));
+    }
+
+    [Fact]
+    public void The_tail_of_an_object_s_endobj_reads_the_same_wherever_the_reads_part_the_data_up_to_where_it_stops()
+    {
+        // The search follows the object's own endobj through its reads, each repeating the last bytes of the one before, and
+        // stops reading it where a header starts, a copy of it kept at each place one may start (#174, #261). However the
+        // reads part the data up to that place, the tail says what one read of it all says: where an endobj that only white
+        // space and comments follow ends the data, and whether the data holds an endobj at all.
+        var pieces = Gen.Elements(
+            "endobj", "endobj ", "obj", "end", "e", "%", "% endobj", "% c", "\n", "\r", "\r\n", " ", "x", "/", "1", "(");
+        var cases =
+            from count in Gen.Choose(0, 24)
+            from parts in Gen.ArrayOf(pieces, count)
+            from stop in Gen.Choose(0, 1000)
+            from cuts in Gen.ArrayOf(Gen.Choose(0, 1000), 6)
+            from back in Gen.Choose(0, PdfFileReader.EndStreamSearchOverlap)
+            select (Text: string.Concat(parts), Stop: stop, Cuts: cuts, Back: back);
+
+        Check.One(Settings.WithMaxTest(10 * Cases), Prop.ForAll(cases.ToArbitrary(), drawn =>
+        {
+            var data = Encoding.Latin1.GetBytes(drawn.Text);
+            var stop = Math.Min(drawn.Stop, data.Length);
+            var whole = new EndObjTail(HeaderDataStart);
+            whole.Read(data.AsSpan(0, stop), HeaderDataStart, HeaderDataStart + stop);
+
+            var parted = new EndObjTail(HeaderDataStart);
+            var from = 0;
+
+            foreach (var cut in drawn.Cuts.Select(value => Math.Min(value, stop)).Order().Append(stop))
+            {
+                var start = Math.Max(0, from - drawn.Back);
+                parted.Read(data.AsSpan(start, cut - start), HeaderDataStart + start, HeaderDataStart + cut);
+                from = Math.Max(from, cut);
+            }
+
+            whole.Seen.Should().Be(data.AsSpan(0, stop).IndexOf("endobj"u8) >= 0, drawn.Text);
+            parted.UpTo.Should().Be(HeaderDataStart + stop, drawn.Text);
+            parted.Seen.Should().Be(whole.Seen, drawn.Text);
+            parted.DataEnd(HeaderDataStart + stop).Should().Be(whole.DataEnd(HeaderDataStart + stop), drawn.Text);
+        }));
+    }
+
+    [Fact]
     public void A_property_failure_replays_from_its_seed()
     {
         // The guarantee the remarks above claim, asserted rather than assumed: the same seed draws the
@@ -552,6 +751,123 @@ public class PropertyTests
         decimals < digits.Length
             ? digits[..^decimals] + "." + digits[^decimals..]
             : "0." + new string('0', decimals - digits.Length) + digits;
+
+    /// <summary>
+    /// Gives where the first object header of <paramref name="data"/> starts that the scan that rebuilds an index takes, and
+    /// that no regular byte precedes or follows, walking back from each <c>obj</c> in turn; -1 when there is none.
+    /// </summary>
+    private static long FirstHeaderTheScanTakes(byte[] data)
+    {
+        for (var from = 0; from < data.Length;)
+        {
+            var index = data.AsSpan(from).IndexOf("obj"u8);
+
+            if (index < 0)
+            {
+                return -1;
+            }
+
+            var keyword = from + index;
+
+            if (PdfFileReader.TryReadHeaderBackwards(data, keyword, out _, out _, out var start) &&
+                (start == 0 || !PdfCharacters.IsRegular(data[start - 1])) &&
+                (keyword + 3 == data.Length || !PdfCharacters.IsRegular(data[keyword + 3])))
+            {
+                return start;
+            }
+
+            from = keyword + 3;
+        }
+
+        return -1;
+    }
+
+    /// <summary>
+    /// Gives where the first object header of <paramref name="data"/> starts, which starts at offset
+    /// <see cref="HeaderDataStart"/>, read as a search reads it: a part at a time, each of the size <paramref name="sizes"/> gives in turn — the rest when they run out —,
+    /// and each repeating the last bytes of the one before; -1 when there is none.
+    /// </summary>
+    private static long FirstHeaderReadPartly(byte[] data, int[] sizes)
+    {
+        const long DataStart = HeaderDataStart;
+        Span<byte> carried = stackalloc byte[HeaderText.CarriedLength];
+        Span<long> carriedAt = stackalloc long[HeaderText.CarriedLength];
+        var text = new HeaderText(carried, carriedAt, DataStart);
+        var start = 0;
+        var read = 0;
+
+        while (true)
+        {
+            var end = read < sizes.Length ? Math.Min(data.Length, start + sizes[read]) : data.Length;
+            text.Read(data.AsSpan(start, end - start), DataStart + start);
+            var header = text.FindHeader(end - start, endsRange: end == data.Length);
+
+            if (header >= 0 || end == data.Length)
+            {
+                return header;
+            }
+
+            start = Math.Max(start + 1, end - PdfFileReader.EndStreamSearchOverlap);
+            text.CarryTo(DataStart + start);
+            read++;
+        }
+    }
+
+    /// <summary>
+    /// Searches <paramref name="data"/>, which starts at <see cref="HeaderDataStart"/>, for where its first <c>endstream</c> ends
+    /// it, as a search for one reads a stream's data — in reads of <paramref name="sizes"/> bytes, then one to the end, each
+    /// repeating the last bytes of the one before, or starting a byte past its start where it is shorter than that — and
+    /// gives where the data ends, or the header that stopped the search.
+    /// </summary>
+    private static (long Found, long Header) EndReadPartly(byte[] data, int[] sizes)
+    {
+        const long DataStart = HeaderDataStart;
+        Span<byte> carried = stackalloc byte[HeaderText.CarriedLength];
+        Span<long> carriedAt = stackalloc long[HeaderText.CarriedLength];
+        var text = new HeaderText(carried, carriedAt, DataStart);
+        var pending = default(PendingEndStream);
+        var start = 0;
+        var read = 0;
+
+        while (true)
+        {
+            var end = read < sizes.Length ? Math.Min(data.Length, start + sizes[read]) : data.Length;
+            text.Read(data.AsSpan(start, end - start), DataStart + start);
+            var found = StreamEnds.SearchStretch(text, endsRange: end == data.Length, deferred: false, ref pending, out var header);
+
+            if (found >= 0 || header >= 0 || end == data.Length)
+            {
+                return (found, header);
+            }
+
+            start = Math.Max(start + 1, end - PdfFileReader.EndStreamSearchOverlap);
+            text.CarryTo(DataStart + start);
+            read++;
+        }
+    }
+
+    /// <summary>
+    /// Gives the last two tokens the lexer reads from <paramref name="line"/>'s start, told apart as the rule for object
+    /// headers tells them: a run of digits alone, with its value up to <see cref="HeaderText.Beyond"/>, or another.
+    /// </summary>
+    private static (LineTokens.Token Last, LineTokens.Token Before) LastTwoAsTheLexerReads(byte[] line)
+    {
+        var lexer = new PdfLexer(line);
+        var last = default(LineTokens.Token);
+        var before = default(LineTokens.Token);
+
+        for (var token = lexer.Read(); token.Kind != PdfTokenKind.EndOfInput; token = lexer.Read())
+        {
+            var digits = token.Kind is PdfTokenKind.Integer or PdfTokenKind.Real &&
+                !line.AsSpan(token.Start, token.End - token.Start).ContainsAnyExceptInRange((byte)'0', (byte)'9');
+            before = last;
+            last = digits
+                ? new LineTokens.Token(LineTokens.Kind.Digits, token.Kind == PdfTokenKind.Integer ? Math.Min(token.Integer, HeaderText.Beyond) : HeaderText.Beyond, token.Start)
+                : new LineTokens.Token(LineTokens.Kind.Other, 0, token.Start);
+        }
+
+        return (last, before);
+    }
 
     private static bool IsWellFormedUtf16(string value)
     {

@@ -1,4 +1,5 @@
 using System.Globalization;
+using AdCodicem.Pdf.IO.XRef;
 
 namespace AdCodicem.Pdf.Validation.Rules;
 
@@ -33,14 +34,17 @@ internal sealed class ChainLoopRule : IValidationRule
         var namedFrom = structure.LoopNamedFrom;
         var written = context.Document.Reader.DescribeOffset(structure.LoopWrittenOffset);
 
-        // The chain may loop through an offset where it read no section: an /XRefStm and a /Prev naming the same offset that
-        // holds nothing, in the file, past its end, or past what a long holds once the header's offset is added (#125). It
-        // loops all the same, as the reader says.
-        var what = structure.LoopOffsetRead
-            ? "a section the chain has already read"
-            : structure.LoopOffset < context.Source.Length
+        // The chain may loop through an offset where it read no section: a section there it could not read, though it declares
+        // itself one; or an /XRefStm and a /Prev naming the same offset that holds nothing, in the file, past its end, or past
+        // what a long holds once the header's offset is added (#125). It loops all the same, as the reader says.
+        var what = structure.LoopTarget switch
+        {
+            XRefLoopTarget.Read => "a section the chain has already read",
+            XRefLoopTarget.Reached => "a section the chain has already reached and could not read",
+            _ => structure.LoopOffset < context.Source.Length
                 ? "which the chain has already named"
-                : "outside the file, which the chain has already named";
+                : "outside the file, which the chain has already named",
+        };
 
         context.Report(
             this,

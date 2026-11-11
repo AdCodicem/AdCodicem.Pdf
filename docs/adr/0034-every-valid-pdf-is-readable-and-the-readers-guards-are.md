@@ -136,6 +136,26 @@ loading a value of a stream's filters reaches is that value's, not a cut of the 
 No bound is added for those values, nor for the next object's header that ends an object's open containers: no valid
 object holds `obj` where a value is expected.
 
+Amended on 2026-11-04, while [#264](https://github.com/AdCodicem/AdCodicem.Pdf/issues/264) was fixed: the chain still
+ends at a section whose rows a guard stopped — `MaxXRefSectionLength` or `MaxDecodedStreamLength` cut them, or
+`MaxIndexEntries` filled at them —, and at a hybrid table whose stream a guard so stopped, since an older section's rows
+would stand for those the guard left unread; but what that section names is judged as far as the guard lets it be, and
+nothing past the guard is read. A `/Prev` or an `/XRefStm` that can name no section whatever the guard hid — no offset, a
+reference to a free row the reader read or to a number a newer section that lost rows refused among them, an offset
+outside the file, a section the chain has reached, for an `/XRefStm` what the table's `/Prev` names too, at that offset
+or through the white space before that section — is the file's, reported as a whole read reports it, and leaves the
+index incomplete as it does read whole, so that what only the sections it should have named index is found by a rebuild
+when it is asked for; one that may name a sound section — an offset in the file the chain has not reached, a reference
+to a row past the cut — stays the guard's, and so do the trailers past it. A reference the reader follows through rows
+it read is judged as the value it leads to. A guarded read said nothing of such a value, and served what only the older
+sections index as null, the guard blamed for the file's damage. A classic table `MaxXRefSectionLength` cuts before its
+first row is the guard's whatever the index holds, its `xref` keyword having declared it a section, and what its trailer
+names is judged so too. A `/Prev` in a trailer `MaxTrailerLength` cut is not judged yet, nor an `/XRefStm` in such a
+trailer found past rows a guard stopped; the `/XRefStm` that the cut trailer of a table read whole gives is followed as
+if whole, though the cut may have parted its digits ([#328](https://github.com/AdCodicem/AdCodicem.Pdf/issues/328)).
+Nor is the `/Prev` of a cross-reference stream judged where a guard's cut of a value its rows are read with ends the
+chain at it ([#329](https://github.com/AdCodicem/AdCodicem.Pdf/issues/329)).
+
 ## Context
 
 Invariant 4 treats everything read from a file as hostile: no allocation, loop or recursion is sized by a
@@ -210,8 +230,14 @@ guard: active by default, reported when it is reached, and lifted by an option.
   at a cut — a table's, a stream's rows, a section or a trailer cut wherever the cut falls, a cross-reference stream
   whose `/W`, `/Index`, `/Filter` or `/DecodeParms`, or `/Size` with no `/Index`, leads to an object `MaxObjectLength`
   cut, or whose `/Length` does where only it could say how far the data runs, a `/Prev` or an `/XRefStm` the reader
-  follows that does (amended on 2026-10-23 and 2026-10-24) —, since an older section, or its trailer, would stand for what the cut left out; and a section a guard
-  cut is where it was named, not looked for near there. One found near where it is named, whose values a guard keeps
+  follows that does (amended on 2026-10-23 and 2026-10-24) —, since an older section, or its trailer, would stand for
+  what the cut left out; where a guard stopped its rows — `MaxXRefSectionLength` or `MaxDecodedStreamLength` cut them,
+  or `MaxIndexEntries` filled at them, a hybrid table's stream among them —, what the section it ends at names is judged
+  all the same, as far as the guard lets it be, without reading past it (amended on 2026-11-04), while the `/Prev` of a
+  cross-reference stream a value's cut ends the chain at, and a `/Prev` in a trailer `MaxTrailerLength` cut, are not
+  judged yet ([#329](https://github.com/AdCodicem/AdCodicem.Pdf/issues/329),
+  [#328](https://github.com/AdCodicem/AdCodicem.Pdf/issues/328)); and a section a guard cut is where it was named, not
+  looked for near there. One found near where it is named, whose values a guard keeps
   from being read, or that declared itself a section — the `xref` keyword, `/Type /XRef` — before a guard cut it, is the
   guard's there too (amended on 2026-10-24). A rebuild that damage forces on such a chain keeps the entries
   the chain read; one the chain cannot do without — a guard that leaves it no section — runs as before.

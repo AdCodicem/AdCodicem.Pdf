@@ -9795,9 +9795,6 @@
         "clean": true,
         "indexRebuilt": false,
         "requiredDiagnostics": [],
-        "findings": [
-          "file.size-wrong"
-        ],
         "hasExtractableText": true,
         "textContains": [
           "research project focusing on cancer",

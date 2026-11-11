@@ -1,3 +1,4 @@
+using System.Buffers;
 using System.Buffers.Binary;
 using System.Diagnostics;
 using System.Globalization;
@@ -285,7 +286,8 @@ public class HostileInputTests
         // A hundred cross-reference streams, chained by /Prev, each with /Length 5 0 R and rows that spell an endstream
         // first; the newest table places object 5, which holds 28 then 2,000,000 spaces, past MaxObjectLength. Each section
         // takes its data again to the 28 the cut left, which an endstream confirms, and the chain goes on: the cut object
-        // was read again for each section, and opening read the file several times over (#224).
+        // was read again for each section, and opening read the file several times over (#224). Each section's rows that
+        // spell the endstream, of reserved types, are reported once for it (#221).
         const int Sections = 100;
         var file = new HandWrittenFile(version: "1.5");
         var one = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>");
@@ -314,7 +316,8 @@ public class HostileInputTests
         using var document = PdfDocument.Open(source, options, ownsSource: false);
 
         document.Reader.Structure.Sections.Should().HaveCount(Sections + 1).And.OnlyContain(section => !section.CutByLimit);
-        document.Diagnostics.Select(entry => entry.Code).Should().Equal(PdfDiagnosticCodes.LimitObject);
+        document.Diagnostics.Select(entry => entry.Code).Should().Equal(
+            [.. Enumerable.Repeat(PdfDiagnosticCodes.XRefEntryReserved, Sections), PdfDiagnosticCodes.LimitObject]);
         source.BytesRead.Should().BeLessThan(bytes.Length);
 
         static string Row(int type, long offset) => string.Concat(
@@ -924,11 +927,12 @@ public class HostileInputTests
     }
 
     [Fact]
-    public void Rows_that_index_nothing_make_room_for_no_more_entries_than_the_guard_allows()
+    public void Rows_of_a_reserved_type_take_no_more_entries_than_the_guard_allows()
     {
-        // A reserved row type indexes nothing, and the room its rows ask for is reserved all the same, as the rows the data
-        // holds: the guard bounds it, as it bounds the rows of a type that index. Eight million rows of type 3 decode from 16
-        // KB; under a guard of a million entries, the index is sized for a million.
+        // A row of a reserved type reads as a reference to the null object, its number indexed as a free one's is (#221):
+        // such rows take entries as free rows do, and the guard bounds them. Eight million rows of type 3 decode from 16 KB;
+        // under a guard of a million entries, the index fills at the millionth number, which is reported, and is sized for
+        // a million. They once indexed nothing, and the room they asked for was bounded by the guard all the same.
         var file = ReservedTypeRows(8_000_000);
         var limits = PdfReaderLimits.Default with { MaxIndexEntries = 1_000_000 };
         file.Length.Should().BeLessThan(32 * 1024);
@@ -937,13 +941,15 @@ public class HostileInputTests
         using var document = Measure(() => PdfDocument.Open(file, new PdfReaderOptions { Limits = limits }));
         allocated = GC.GetAllocatedBytesForCurrentThread() - allocated;
 
-        document.ObjectCount.Should().Be(4);
+        document.ObjectCount.Should().Be(1_000_000);
         document.Catalog.Required().IsOfType(PdfName.Catalog).Should().BeTrue();
-        document.Diagnostics.Should().NotContain(entry => entry.Code == PdfDiagnosticCodes.LimitIndexEntries);
-        // Measured at 119,843,360 and 119,851,472 bytes on 2026-10-28, 5 % above: 16 MB of rows decoded, and the index
-        // sized for a million entries, its slots with them, where it would be for eight million past the guard;
-        // 140,272,056 with the map it was before #155.
-        allocated.Should().BeLessThan(125_850_000, "the room made for rows that index nothing is bounded by the guard");
+        document.Diagnostics.Select(entry => entry.Code).Should().Equal(PdfDiagnosticCodes.LimitIndexEntries, PdfDiagnosticCodes.XRefEntryReserved);
+        document.Diagnostics.Should().ContainSingle(entry => entry.Code == PdfDiagnosticCodes.XRefEntryReserved).Which.Message.Should().Contain(
+            " gives 999,997 rows a reserved type: the row for object 4 gives it type 3, the first of them. ");
+        // Measured at 119,845,568 to 119,853,680 bytes on 2026-11-04, 5 % above: 16 MB of rows decoded, and the index sized
+        // for a million entries, its slots with them, where it would be for eight million past the guard; 119,843,360 and
+        // 119,851,472 on 2026-10-28, when the rows took no entry; 140,272,056 with the map it was before #155.
+        allocated.Should().BeLessThan(125_850_000, "the room made for rows of a reserved type is bounded by the guard");
     }
 
     [Fact]
@@ -1006,6 +1012,46 @@ public class HostileInputTests
         document.GetObject(new PdfObjectId(10)).Should().BeSameAs(PdfNull.Instance);
         document.WasRepaired.Should().BeFalse();
         document.Diagnostics.Select(entry => entry.Code).Should().Equal(PdfDiagnosticCodes.LimitIndexEntries);
+    }
+
+    [Fact]
+    public void The_numbers_a_stream_refuses_cost_no_more_than_a_map_of_them_to_an_int()
+    {
+        // Each of 100,000 rows gives an offset past what a long holds, and is refused: its number is held apart while the
+        // chain is read, so that no older section's row stands for it, with the ordinal of the reading that refused it, which
+        // tells a row a section refused itself from one a newer section refused (#210). Held with the section's record
+        // instead, each number took 8 bytes more, which the set's growth doubles. Beside the same stream whose rows stand,
+        // the refused numbers cost what a map of them to an int costs, filled one at a time, and a few kilobytes more.
+        const int Rows = 100_000;
+        var refused = RefusedRows(Rows, out _);
+        var standing = RefusedRows(Rows, out _, offset: 10);
+
+        var refusing = Allocations.Least(() => Opened(refused), out var refusedCodes);
+        var placing = Allocations.Least(() => Opened(standing), out var standingCodes);
+        var map = Allocations.Least(() => Map(Rows), out var mapped);
+
+        refusedCodes.Should().Equal(PdfDiagnosticCodes.XRefSectionUnreadable);
+        standingCodes.Should().BeEmpty();
+        mapped.Should().Be(Rows);
+        (refusing - placing).Should().BeLessThan(map + (16 * 1024), "each number refused is held with an int beside it, not a reference");
+
+        static string[] Opened(byte[] file)
+        {
+            using var document = PdfDocument.Open(file);
+            return [.. document.Diagnostics.Select(entry => entry.Code)];
+        }
+
+        static int Map(int count)
+        {
+            var numbers = new Dictionary<int, int>();
+
+            for (var number = 4; number < count + 4; number++)
+            {
+                numbers.Add(number, 1);
+            }
+
+            return numbers.Count;
+        }
     }
 
     [Fact]
@@ -1533,9 +1579,11 @@ public class HostileInputTests
     public void An_object_stream_decoded_again_while_it_is_decoded_counts_once_against_the_budget()
     {
         // Object stream 7 takes its /DecodeParms from object 5, which it holds and the index does not list — its row is
-        // of a reserved type —, in an index that declares a row more than it holds. Decoding 7 asks for 5, which
-        // rebuilds the index; the rebuilt index places 5 in 7, which is decoded again, 5 read as null, and kept. The
-        // first decoding then keeps 7 in place of the second: its data counts once, as it does in the sound file.
+        // refused, placing it in object stream 0, which is no object number —, the object left for a rebuild to find.
+        // Decoding 7 asks for 5, which rebuilds the index; the rebuilt index places 5 in 7, which is decoded again, 5 read
+        // as null, and kept. The first decoding then keeps 7 in place of the second: its data counts once, as it does in
+        // the sound file. A row of a reserved type, which once left 5 out of the index, now reads as the null object
+        // (#221).
         var sound = new TestPdfBuilder()
             .WithObject(1, "<< /Type /Catalog /Pages 2 0 R >>")
             .WithObject(2, "<< /Type /Pages /Kids [] /Count 0 >>")
@@ -1546,8 +1594,8 @@ public class HostileInputTests
         var dictionary = text.IndexOf("/Type /XRef /Size 9 ", StringComparison.Ordinal);
         var rows = text.IndexOf("stream\n", dictionary, StringComparison.Ordinal) + "stream\n".Length;
         var chars = text.ToCharArray();
-        chars[rows + (5 * 7)] = '\u0003';
-        var file = Encoding.Latin1.GetBytes(new string(chars).Replace("/Type /XRef /Size 9 ", "/Type /XRef /Size 10 ", StringComparison.Ordinal));
+        chars.AsSpan(rows + (5 * 7) + 1, 4).Clear();
+        var file = Encoding.Latin1.GetBytes(chars);
 
         using var expected = PdfDocument.Open(sound);
         Title(expected.GetObject(new PdfObjectId(6))).Should().Be("six");
@@ -1565,11 +1613,13 @@ public class HostileInputTests
     public void An_object_stream_decoded_again_while_it_is_decoded_and_short_both_times_reads_as_nothing_without_failing()
     {
         // Object stream 7 takes its first filter from object 10, which object stream 9 holds, and the parameters of its
-        // second, a Flate step, from object 5, which 7 holds and the index does not list — its row is of a reserved type
-        // —, in an index a row short of its /Size. Decoding 7 asks for 5, which rebuilds the index while 10 is not yet in
-        // it: the rebuild reads 7 as far as its first filter, which names none yet, and places 5 in it. Reading 5 decodes
-        // 7 again inside the first decoding, through /ASCIIHexDecode this time, into fewer bytes than its /First: neither
-        // decoding gives anything to keep, and the second to end has nothing to take the place of.
+        // second, a Flate step, from object 5, which 7 holds and the index does not list — its row is refused, placing it in
+        // object stream 0, which is no object number —, in an index a row short of its /Size. Decoding 7 asks for 5, which
+        // rebuilds the index while 10 is not yet in it: the rebuild reads 7 as far as its first filter, which names none
+        // yet, and places 5 in it. Reading 5 decodes 7 again inside the first decoding, through /ASCIIHexDecode this time,
+        // into fewer bytes than its /First: neither decoding gives anything to keep, and the second to end has nothing to
+        // take the place of. A row of a reserved type, which once left 5 out of the index, now reads as the null object
+        // (#221).
         using var output = new MemoryStream();
         var offsets = new Dictionary<int, long>();
         void Write(string text) => output.Write(Encoding.ASCII.GetBytes(text));
@@ -1590,7 +1640,7 @@ public class HostileInputTests
         using var rows = new MemoryStream();
         (int Type, long Field, int Index)[] entries =
         [
-            (0, 0, 65535), (1, offsets[1], 0), (1, offsets[2], 0), (0, 0, 0), (0, 0, 0), (3, 7, 0),
+            (0, 0, 65535), (1, offsets[1], 0), (1, offsets[2], 0), (0, 0, 0), (0, 0, 0), (2, 0, 0),
             (2, 7, 1), (1, offsets[7], 0), (0, 0, 0), (1, offsets[9], 0), (2, 9, 0), (1, xref, 0),
         ];
 
@@ -2667,9 +2717,9 @@ public class HostileInputTests
     public void Does_not_take_a_keyword_the_probe_saw_cut_for_a_cross_reference_table()
     {
         // The section is probed through a few bytes, which spaces and "xref" fill, but the token is "xrefs". The probe reads
-        // on past a token its edge reaches, finds no keyword there, nor an object, and the index is rebuilt (#174). Where
-        // MaxTrailerLength stops the probe right after "xref", the table's own window reads the token whole and refuses it
-        // under another rule (#295).
+        // on past a token its edge reaches, finds no keyword there, nor an object, and the index is rebuilt (#174). A
+        // MaxTrailerLength that ends right after "xref" would not cut the token there either: the probe reads XRefProbeLength
+        // bytes past a trailer's window, far enough to read "xrefs" whole (#289).
         var written = new TestPdfBuilder()
             .WithObject(1, "<< /Type /Catalog /Pages 2 0 R >>")
             .WithObject(2, "<< /Type /Pages /Kids [] /Count 0 >>")
@@ -4412,6 +4462,562 @@ public class HostileInputTests
     }
 
     [Fact]
+    public void A_thousand_tables_naming_one_stream_read_it_once()
+    {
+        // A thousand tables name through /XRefStm, all at one offset, one cross-reference stream of 100,000 rows, 700 KB. It is
+        // read once, where the newest names it, and each older table's naming is recorded as naming it again, nothing read for
+        // it (#156): the chain reads not a byte more than when the newest alone names it, the older tables giving its offset
+        // under a key that names nothing, and allocates beside it the records of the namings, 168 bytes each as measured. Read
+        // again for each table, the stream would cost 700 MB of reads.
+        const int Tables = 1000;
+        var every = HybridFiles.TablesNamingOneStream(Tables, rows: 100_000, every: true);
+        var newest = HybridFiles.TablesNamingOneStream(Tables, rows: 100_000, every: false);
+
+        var (everyRead, sections) = Read(every);
+        var (newestRead, _) = Read(newest);
+        var everyAllocated = Allocations.Least(() => Open(every), out _);
+        var newestAllocated = Allocations.Least(() => Open(newest), out _);
+
+        sections.Should().HaveCount(2 * Tables);
+        sections.Where(section => section.IsHybridStream).Should().ContainSingle().Which.State.Should().Be(XRefSectionState.Read);
+        sections.Where(section => section.State == XRefSectionState.NamedAgain).Should().HaveCount(Tables - 1)
+            .And.OnlyContain(section => ReferenceEquals(section.ReadAs, sections[1]) && section.NamesNoStream == null);
+        everyRead.Should().Be(newestRead, "a naming again reads nothing");
+        (everyAllocated - newestAllocated).Should().BeLessThan(
+            (Tables - 1) * 256L,
+            "a naming again allocates its record, nothing it reads ({0:N0} bytes against {1:N0})",
+            everyAllocated,
+            newestAllocated);
+
+        static (long Read, IReadOnlyList<XRefSectionRecord> Sections) Read(byte[] file)
+        {
+            using var source = new StrictCountingSource(file);
+            using var document = Measure(() => PdfDocument.Open(source, options: null, ownsSource: false));
+            document.Diagnostics.Should().BeEmpty();
+            return (source.BytesRead, document.Reader.Structure.Sections);
+        }
+
+        static int Open(byte[] file)
+        {
+            using var document = PdfDocument.Open(file);
+            return document.Reader.Structure.Sections.Count;
+        }
+    }
+
+    [Fact]
+    public void A_thousand_tables_naming_one_stream_through_the_white_space_before_it_read_it_once()
+    {
+        // The thousand tables name the stream of 100,000 rows each at its own offset, k bytes short of its header for the
+        // table k revisions older than the newest, in the 999 spaces before it. The chain knew the stream by the offset that
+        // named it, and read it again for each older table: 999 times 700 KB. It knows it by where its header starts, and
+        // records each older naming as naming it again (#156): it reads beside the file whose tables all name the header
+        // only what each naming's white space takes to cross — windows of 32, 256 and 2,048 bytes at most —, and allocates
+        // nothing more.
+        const int Tables = 1000;
+        var shifted = HybridFiles.TablesNamingOneStream(Tables, rows: 100_000, every: true, spaces: Tables - 1, shifted: true);
+        var same = HybridFiles.TablesNamingOneStream(Tables, rows: 100_000, every: true, spaces: Tables - 1);
+        shifted.Should().HaveCount(same.Length, "the offsets are written in ten digits in both");
+
+        var (shiftedRead, sections) = Read(shifted);
+        var (sameRead, _) = Read(same);
+        var shiftedAllocated = Allocations.Least(() => Open(shifted), out _);
+        var sameAllocated = Allocations.Least(() => Open(same), out _);
+
+        sections.Where(section => section.IsHybridStream).Should().ContainSingle().Which.State.Should().Be(XRefSectionState.Read);
+        sections.Where(section => section.State == XRefSectionState.NamedAgain).Should().HaveCount(Tables - 1)
+            .And.OnlyContain(section => ReferenceEquals(section.ReadAs, sections[1]) && section.NamesNoStream == null);
+        (shiftedRead - sameRead).Should().BeInRange(
+            0,
+            (Tables - 1) * (32L + 256 + 2048),
+            "each older naming reads its white space, not the stream ({0:N0} bytes against {1:N0})",
+            shiftedRead,
+            sameRead);
+        (shiftedAllocated - sameAllocated).Should().BeLessThan(
+            64 * 1024,
+            "crossing the white space allocates nothing ({0:N0} bytes against {1:N0})",
+            shiftedAllocated,
+            sameAllocated);
+
+        static (long Read, IReadOnlyList<XRefSectionRecord> Sections) Read(byte[] file)
+        {
+            using var source = new StrictCountingSource(file);
+            using var document = Measure(() => PdfDocument.Open(source, options: null, ownsSource: false));
+            document.Diagnostics.Should().BeEmpty();
+            return (source.BytesRead, document.Reader.Structure.Sections);
+        }
+
+        static int Open(byte[] file)
+        {
+            using var document = PdfDocument.Open(file);
+            return document.Reader.Structure.Sections.Count;
+        }
+    }
+
+    [Theory]
+    [InlineData(false, 0, 0)]
+    [InlineData(true, 0, 0)]
+    [InlineData(true, 3, 0)]
+    [InlineData(true, 3, 1)]
+    public void A_chain_whose_offsets_name_long_runs_of_white_space_crosses_each_run_once(bool hybrid, int streamShortBy, int objectsBefore)
+    {
+        // A hundred tables, each named, by startxref or by the /Prev of the table after it, at the start of the 60,000 spaces
+        // before its xref keyword — and, in a hybrid file, each naming through /XRefStm a stream of its own, at its header or
+        // 3 bytes short of it, inside the token before it, where the search near that offset finds it; or, with an object
+        // written before the stream, 3 bytes into that object, whose header the search tries before it finds the stream.
+        // Where the chain reaches what an offset names, it crossed the run as far as a trailer's window reaches, then again
+        // where it read the section there, and a hybrid table's /Prev a third time: two or three crossings of 84 KB for each
+        // run — and, where the search tried two places, the places it tried pushed the /Prev's probe out, and the /Prev's run
+        // was crossed again. Each run is crossed once, its probe answering each time it is asked of, the /Prev's outlasting
+        // its /XRefStm's search, however many places that search tries (#188): beside the same file whose offsets name the
+        // keywords, a crossing a section at most, and a few bytes more.
+        const int Tables = 100;
+        const long Crossing = PdfFileReader.XRefProbeLength + 256 + 2048 + 16384 + 65536;
+        var padded = Chain(namesTheRun: true);
+        var exact = Chain(namesTheRun: false);
+        padded.Should().HaveCount(exact.Length, "the offsets are written in ten digits in both");
+
+        var paddedRead = Read(padded);
+        var exactRead = Read(exact);
+
+        (paddedRead - exactRead).Should().BeInRange(
+            Tables * Crossing,
+            Tables * (Crossing + 4096),
+            "each run is crossed once ({0:N0} bytes against {1:N0})",
+            paddedRead,
+            exactRead);
+
+        byte[] Chain(bool namesTheRun)
+        {
+            var text = new StringBuilder("%PDF-1.7\n1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n2 0 obj\n<< /Type /Pages /Kids [] /Count 0 >>\nendobj\n");
+            var previous = -1L;
+
+            for (var table = 0; table < Tables; table++)
+            {
+                var stream = -1L;
+                var xrefStm = -1L;
+
+                if (hybrid)
+                {
+                    var before = text.Length;
+
+                    for (var objects = 0; objects < objectsBefore; objects++)
+                    {
+                        text.Append(CultureInfo.InvariantCulture, $"{200 + (table * objectsBefore) + objects} 0 obj\nnull\nendobj\n");
+                    }
+
+                    // One free row for object 0, in seven bytes.
+                    stream = text.Length;
+                    xrefStm = objectsBefore > 0 ? before + streamShortBy : stream - streamShortBy;
+                    text.Append(CultureInfo.InvariantCulture, $"{table + 3} 0 obj\n<< /Type /XRef /Size 3 /Index [0 1] /W [1 4 2] /Length 7 >>\nstream\n")
+                        .Append("\0\0\0\0\0\u00ff\u00ff\nendstream\nendobj\n");
+                }
+
+                var named = text.Length;
+                text.Append(' ', 60_000);
+                var xref = text.Length;
+                text.Append("xref\n0 1\n0000000000 65535 f\r\ntrailer\n<< /Size 3 /Root 1 0 R")
+                    .Append(previous < 0 ? string.Empty : string.Create(CultureInfo.InvariantCulture, $" /Prev {previous:D10}"))
+                    .Append(stream < 0 ? string.Empty : string.Create(CultureInfo.InvariantCulture, $" /XRefStm {xrefStm:D10}"))
+                    .Append(" >>\n");
+                previous = namesTheRun ? named : xref;
+            }
+
+            text.Append(CultureInfo.InvariantCulture, $"startxref\n{previous:D10}\n%%EOF\n");
+            return Encoding.Latin1.GetBytes(text.ToString());
+        }
+
+        long Read(byte[] file)
+        {
+            using var source = new StrictCountingSource(file);
+            using var document = PdfDocument.Open(source, options: null, ownsSource: false);
+            // Each table is read where it is named; a stream named short of it is found by as many searches as a document
+            // allows, the others missing, which the file reads the same whichever way its tables are named.
+            var sections = document.Reader.Structure.Sections;
+            sections.Should().HaveCount(hybrid ? 2 * Tables : Tables);
+            sections.Where(section => section.NamedBy != "/XRefStm").Should().OnlyContain(section => section.State == XRefSectionState.Read);
+            sections.Where(section => section.NamedBy == "/XRefStm").Should().OnlyContain(section =>
+                section.State == (streamShortBy > 0 ? XRefSectionState.Relocated : XRefSectionState.Read) || section.State == XRefSectionState.NotFound);
+            return source.BytesRead;
+        }
+    }
+
+    [Theory]
+    [InlineData("99999999", false)]
+    [InlineData("99999999", true)]
+    [InlineData("50000", false)]
+    public void A_table_reads_nothing_of_what_its_prev_names_for_an_xrefstm_whose_search_never_comes_there(string xrefStm, bool guard)
+    {
+        // The newest table, of 40 rows, names through /Prev an older section that 100 KB of comment follow, and through
+        // /XRefStm an offset outside the file, or one inside the comment, some 50 KB past the older section: no search runs
+        // near the first, and the one near the second comes nowhere near what the /Prev names. Where the older section is no
+        // classic table, whether the /Prev keeps its place there was told all the same, reading a window of 64 KB at it —
+        // past the guard, where MaxXRefSectionLength cut the newest table's rows, which reads nothing past it (#264). It is
+        // told only where the search comes there: beside the same files without the /XRefStm, the table reads no more where
+        // its /Prev names a cross-reference stream than where it names a classic table, which needs no look, but for a few
+        // bytes the two files' lengths part (#156).
+        var limits = guard ? PdfReaderLimits.Default with { MaxXRefSectionLength = 300 } : PdfReaderLimits.Default;
+        var namingAStream = Read(Build(" /XRefStm " + xrefStm, table: false)) - Read(Build(string.Empty, table: false));
+        var namingATable = Read(Build(" /XRefStm " + xrefStm, table: true)) - Read(Build(string.Empty, table: true));
+
+        namingAStream.Should().BeInRange(
+            namingATable - 1024,
+            namingATable + 1024,
+            "the /XRefStm reads {0:N0} bytes more where the /Prev names a classic table",
+            namingATable);
+
+        static byte[] Build(string xrefStm, bool table)
+        {
+            var file = new HandWrittenFile();
+            var catalog = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>");
+            var pages = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>");
+            var older = table
+                ? file.Table(3, new() { [1] = catalog, [2] = pages }, "/Size 3 /Root 1 0 R")
+                : file.CrossReferenceStream(9, 10, new() { [1] = (1, catalog, 0), [2] = (1, pages, 0) }, "/Root 1 0 R");
+            file.Raw("%" + new string('-', 100 * 1024) + "\n");
+            file.Table(40, new() { [1] = catalog, [2] = pages }, string.Create(CultureInfo.InvariantCulture, $"/Size 40 /Root 1 0 R /Prev {older}{xrefStm}"));
+            return file.Bytes;
+        }
+
+        long Read(byte[] file)
+        {
+            using var source = new StrictCountingSource(file);
+            using var document = PdfDocument.Open(source, new PdfReaderOptions { Limits = limits }, ownsSource: false);
+            return source.BytesRead;
+        }
+    }
+
+    [Theory]
+    [InlineData("a stream 100 KB long that reads")]
+    [InlineData("a dictionary the end of the file cuts")]
+    public void The_look_at_what_a_prev_names_grows_no_window_for_stream_data_or_the_file_s_end_under_a_raised_trailer_limit(string four)
+    {
+        // The newest table names object 4 through /Prev, and through /XRefStm a place beside it, whose search comes to object
+        // 4 and asks whether the /Prev keeps its place there, reading object 4 as the chain would: a stream that gives a /W
+        // and no /Type, which reads, its data of 100 KB filling the first window read at it, or a dictionary a string the
+        // file never closes runs to the end of the file. Neither is cut by a window's edge, and both are read in one window:
+        // with MaxTrailerLength raised to 1 MB, as many bytes are read as with the default, no larger window read for what
+        // a window full of data holds, nor again for the file's end (#156).
+        var file = four == "a dictionary the end of the file cuts"
+            ? HybridFiles.NamingAnObjectBesideTheStream("<< /Pad (").File
+            : HybridFiles.PrevNamingAStreamBesideTheOldestTable(string.Empty, padding: 100_000).File;
+
+        Read(PdfReaderLimits.Default with { MaxTrailerLength = 1024 * 1024 }).Should().Be(Read(PdfReaderLimits.Default));
+
+        long Read(PdfReaderLimits limits)
+        {
+            using var source = new StrictCountingSource(file);
+            using var document = PdfDocument.Open(source, new PdfReaderOptions { Limits = limits }, ownsSource: false);
+            return source.BytesRead;
+        }
+    }
+
+    [Fact]
+    public void The_search_near_a_hybrid_table_s_prev_tries_an_object_past_the_stream_its_xrefstm_read_once()
+    {
+        // The newest table's /XRefStm reads stream 6, which gives no /Prev, and its /Prev falls 7 bytes short of stream 6. The
+        // search near that offset tries objects 5 and 10, past stream 6, which declare no cross-reference stream, then passes
+        // over stream 11, which may be the table's own, and takes it once every other place was. Only a stream that may be the
+        // table's own is put back, and tried again: object 5 is tried once, the probe of its header read once, and dropped
+        // (#156).
+        var (file, _, stream, own, _) = HybridFiles.PrevFallingShortOfTheStreamBeforeTheTablesOwn("nothing", shortOfOwn: false, streamPrev: "nothing");
+        var five = Encoding.Latin1.GetString(file).IndexOf("5 0 obj", (int)stream, StringComparison.Ordinal);
+        using var source = new WindowLoggingSource(file);
+
+        using (var document = PdfDocument.Open(source, options: null, ownsSource: false))
+        {
+            document.Reader.Structure.Sections[^1].Should().Match<XRefSectionRecord>(
+                section => section.NamedBy == "/Prev" && section.State == XRefSectionState.Relocated && section.Offset == own);
+        }
+
+        source.Windows.Count(window => window.Offset == five && window.Length == PdfFileReader.XRefProbeLength).Should().Be(1);
+    }
+
+    [Fact]
+    public void The_search_near_a_hybrid_table_s_prev_reads_nothing_at_the_header_of_the_stream_its_xrefstm_read_from_inside_its_number()
+    {
+        // The newest table's /XRefStm names a place 1 byte into stream 13's object number, from which the stream reads as
+        // object 3, and its /Prev falls 7 bytes short of the stream's header, which starts 1 byte before where that reading
+        // started. The stream gives no /Prev. The header's number runs on into where that reading started: it is the stream
+        // the /XRefStm read, told by the dictionary that reading kept, and passed over as that stream is where it gives no
+        // /Prev, its header not even probed, rather than taken as a stream before it. No other section lies within reach:
+        // the section the /Prev names is missing, as where the /XRefStm names the stream's header itself (#156).
+        var (file, stream, newest) = HybridFiles.NamingAStreamOneByteIntoItsNumber();
+        using var source = new WindowLoggingSource(file);
+
+        using (var document = PdfDocument.Open(source, options: null, ownsSource: false))
+        {
+            document.Reader.Structure.Sections.Select(section => (section.NamedBy, section.State, section.Kind, section.Offset)).Should().Equal(
+                ("startxref", XRefSectionState.Read, XRefSectionKind.Table, newest),
+                ("/XRefStm", XRefSectionState.Read, XRefSectionKind.Stream, stream + 1),
+                ("/Prev", XRefSectionState.NotFound, XRefSectionKind.Unknown, stream - 7));
+            document.Diagnostics.Select(diagnostic => diagnostic.Code).Should().Equal(PdfDiagnosticCodes.XRefSectionMissing);
+        }
+
+        source.Windows.Count(window => window.Offset == stream && window.Length == PdfFileReader.XRefProbeLength).Should().Be(0);
+    }
+
+    [Theory]
+    [InlineData("/Type /XRef ", null, 1)]
+    [InlineData("", null, 2)]
+    [InlineData("/Type /XRef ", "/Size", 1)]
+    [InlineData("/Type /XRef ", "/W", 1)]
+    [InlineData("/Type /XRef ", "/Index", 1)]
+    [InlineData("", "/Size", 2)]
+    public void The_look_at_what_a_prev_names_reads_a_stream_s_data_only_where_the_data_decides_whether_the_prev_keeps_its_place(
+        string type, string? cut, int reads)
+    {
+        // The newest table names object 4 through /Prev, and through /XRefStm a place beside it, whose search comes to object
+        // 4 and asks whether the /Prev keeps its place there: a stream that reads, its data of 100 KB, which gives /Type /XRef
+        // or no /Type. A stream of /Type /XRef keeps the /Prev's place whatever its data holds: the look decodes none of it,
+        // and the /Prev's own reading, next, reads it once. Where the stream gives only a /W, whether its filters decode
+        // anything of its data tells whether it reads as a section there: the look decodes it, and the /Prev's own reading
+        // reads it again. Every decoding reads the data whole, from its first byte. So it goes where the stream's /Size, /W
+        // or /Index is the reference 9 0 R, which MaxObjectLength cuts, the /Prev's own reading then ending the chain at the
+        // guard's section. The look decoded a stream of /Type /XRef beside the cut value, to tell whether its data holds any
+        // row, which tells nothing of the place it keeps: the data was read twice (#156, #221, #263).
+        var (file, _, four, _) = HybridFiles.PrevNamingAStreamBesideTheOldestTable(type, padding: 100_000, cut: cut);
+        var data = Encoding.Latin1.GetString(file).IndexOf("stream\n", (int)four, StringComparison.Ordinal) + "stream\n".Length;
+        var options = cut is null ? null : new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxObjectLength = 1024 } };
+        (string, XRefSectionState)[] sections = cut is null
+            ? [("startxref", XRefSectionState.Read), ("/XRefStm", XRefSectionState.NamedAgain), ("/Prev", XRefSectionState.Read), ("/Prev", XRefSectionState.Read)]
+            : [("startxref", XRefSectionState.Read), ("/XRefStm", XRefSectionState.NamedAgain), ("/Prev", XRefSectionState.Malformed)];
+        using var source = new WindowLoggingSource(file);
+
+        using (var document = PdfDocument.Open(source, options, ownsSource: false))
+        {
+            document.Reader.Structure.Sections.Select(section => (section.NamedBy, section.State)).Should().Equal(sections);
+            document.Reader.Structure.Sections[^1].CutByLimit.Should().Be(cut is not null);
+        }
+
+        source.Windows.Count(window => window.Offset == data).Should().Be(reads);
+    }
+
+    [Fact]
+    public void The_look_at_what_a_prev_names_reads_the_object_there_through_the_windows_the_prev_s_own_reading_opens()
+    {
+        // The newest table names object 4 through /Prev, and through /XRefStm a place beside it, whose search comes to object
+        // 4 and asks whether the /Prev keeps its place there: a stream of no type, whose dictionary holds 70,000 bytes and
+        // whose data, 600,000 bytes, runs on past it. MaxTrailerLength raised to 1 MB, the dictionary is read through the
+        // windows a trailer's is: 64 KB, which cuts it, then eight times as much, which holds it, the data served from the
+        // file. The look opens those windows, past the probe of the white space before object 4, and so do the place's
+        // reading by the search, which drops it, and the /Prev's own reading, which looks for its section nearby: each
+        // reads object 4 as the others do (#156).
+        var (file, oldest, four, stream, _) = HybridFiles.NamingAnObjectBesideTheStream(
+            "<< /Pad (" + new string('-', 70_000) + ") /Length 600000 >>\nstream\n" + new string('-', 600_000) + "\nendstream");
+        var options = new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxTrailerLength = 1024 * 1024 } };
+        using var source = new WindowLoggingSource(file);
+
+        using (var document = PdfDocument.Open(source, options, ownsSource: false))
+        {
+            document.Reader.Structure.Sections.Select(section => (section.NamedBy, section.State, section.Offset)).Skip(1).Should().Equal(
+                ("/XRefStm", XRefSectionState.Relocated, stream),
+                ("/Prev", XRefSectionState.Relocated, oldest));
+        }
+
+        const int Grown = 8 * PdfFileReader.XRefWindow;
+        source.Windows.Where(window => window.Offset == four).Select(window => window.Length).Should().Equal(
+            PdfFileReader.XRefProbeLength, PdfFileReader.XRefWindow, Grown, PdfFileReader.XRefWindow, Grown, PdfFileReader.XRefWindow, Grown);
+    }
+
+    [Fact]
+    public void A_prev_looping_back_through_the_spaces_before_a_table_it_named_there_is_known_without_a_look()
+    {
+        // The newest table names the middle one 3 bytes short of it, where the chain reads it; a table between the middle and
+        // the oldest is read next, then the oldest, whose /Prev names the middle again at that offset, or at its keyword. The
+        // chain has read two other places since it crossed the spaces before the middle, which its last probes now answer:
+        // a look at them would cross them again. Either loop is placed where the table starts, known from what the chain
+        // read there, without a look at the spaces again: the chain reads not a byte more for the one than for the other
+        // (#188).
+        var (repeated, _, _, _) = NearbyFiles.ChainNamingTheSpacesBeforeTheMiddle(3, oldestPrev: 3, tablesBetween: 1);
+        var (atKeyword, _, _, _) = NearbyFiles.ChainNamingTheSpacesBeforeTheMiddle(3, oldestPrev: 0, tablesBetween: 1);
+        repeated.Should().HaveCount(atKeyword.Length);
+
+        Read(repeated).Should().Be(Read(atKeyword), "the place the chain read a section at is known without a look");
+
+        static long Read(byte[] file)
+        {
+            using var source = new StrictCountingSource(file);
+            using var document = PdfDocument.Open(source, options: null, ownsSource: false);
+            document.Diagnostics.Should().ContainSingle(diagnostic => diagnostic.Code == PdfDiagnosticCodes.XRefChainCycle);
+            return source.BytesRead;
+        }
+    }
+
+    [Fact]
+    public void A_section_named_again_where_it_was_found_moved_is_known_without_reading_there_again()
+    {
+        // The middle table, which the newest names 3 bytes short of it, is found moved; the oldest's /Prev names it again,
+        // where it lies or where the newest named it. Either ends the chain in a loop at once, known by the position the
+        // chain read the table at, or by the offset it named: the chain reads not a byte more for the one than for the other
+        // (#188). The oldest's offset is written in thirteen digits, as long as the /XRefStm it stands for.
+        var built = HybridFiles.OldestNaming("0000000000");
+        var middle = PdfTemplate.OffsetOf(built, "\nxref\n", 2) + 1;
+        var text = Encoding.Latin1.GetString(built)
+            .Replace(string.Create(CultureInfo.InvariantCulture, $"/Prev {middle} >>"), string.Create(CultureInfo.InvariantCulture, $"/Prev {middle - 3} >>"), StringComparison.Ordinal);
+        var whereItLies = Encoding.Latin1.GetBytes(text.Replace("/XRefStm 0000000000 >>", string.Create(CultureInfo.InvariantCulture, $"/Prev {middle:D13} >>"), StringComparison.Ordinal));
+        var whereNamed = Encoding.Latin1.GetBytes(text.Replace("/XRefStm 0000000000 >>", string.Create(CultureInfo.InvariantCulture, $"/Prev {middle - 3:D13} >>"), StringComparison.Ordinal));
+        whereItLies.Should().HaveCount(whereNamed.Length);
+
+        Read(whereItLies).Should().Be(Read(whereNamed), "the place the chain read a section at is known without a look");
+
+        static long Read(byte[] file)
+        {
+            using var source = new StrictCountingSource(file);
+            using var document = PdfDocument.Open(source, options: null, ownsSource: false);
+            document.Diagnostics.Select(diagnostic => diagnostic.Code).Should().Equal(PdfDiagnosticCodes.XRefOffsetAdjusted, PdfDiagnosticCodes.XRefChainCycle);
+            return source.BytesRead;
+        }
+    }
+
+    [Fact]
+    public void A_section_named_in_the_white_space_that_ends_the_file_is_looked_at_in_one_window_each_time()
+    {
+        // The table's /Prev names the ten spaces that end the file, past its %%EOF. The probe that finds where a section
+        // there would start holds them and all the file has there: it is not grown, as a probe the file does not end is, up
+        // to a trailer's window, which would read the same ten bytes four times more at each look (#188). The chain looks
+        // there to know whether it reached the place and to read the section it finds nothing of, and parses what is there.
+        var file = new HandWrittenFile();
+        var catalog = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>");
+        var pages = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>");
+        file.Padding(3);
+        var table = file.Position;
+        var text = string.Create(
+            CultureInfo.InvariantCulture,
+            $"xref\n0 3\n0000000000 65535 f \n{catalog:D10} 00000 n \n{pages:D10} 00000 n \ntrailer\n<< /Size 3 /Root 1 0 R /Prev PPPPPPPPPP >>\nstartxref\n{table}\n%%EOF\n");
+        var spaces = table + text.Length;
+        file.Raw(text.Replace("PPPPPPPPPP", spaces.ToString("D10", CultureInfo.InvariantCulture), StringComparison.Ordinal) + new string(' ', 10));
+        var bytes = file.Bytes;
+        var position = bytes.Length - 10;
+        using var source = new WindowLoggingSource(bytes);
+        using var document = PdfDocument.Open(source, options: null, ownsSource: false);
+
+        document.Diagnostics.Select(diagnostic => diagnostic.Code).Should().Equal(PdfDiagnosticCodes.XRefSectionMissing);
+        source.Windows.Count(window => window.Offset == position).Should().BeLessThanOrEqualTo(3, "each look reads the ten bytes once");
+    }
+
+    [Fact]
+    public void Four_times_as_many_lost_streams_declaring_numbers_of_their_own_allocate_about_four_times_as_much()
+    {
+        // A chain of cross-reference streams whose rows cannot be read, each handing its /Prev on and refusing to the older
+        // rows four numbers of its own, the ranges kept growing to 4,096 over 1,024 streams (#208). The ranges are merged into
+        // arrays the shared pool lends and takes back: what the chain allocates follows what it reads, the streams'
+        // dictionaries and the older table's 64 rows a stream, 4.02 times as much for four times the streams, on every run.
+        // A list of every range kept, made again for each stream, allocated 14 times as much, 106 MB against 7.6 MB.
+        const int Small = 256;
+        const int Large = 4 * Small;
+        var options = new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxXRefSectionCount = Large + 2 } };
+        var small = LostStreamFiles.OwnNumbers(Small, each: 4, rows: 64 * Small);
+        var large = LostStreamFiles.OwnNumbers(Large, each: 4, rows: 64 * Large);
+
+        var smallAllocated = Allocations.Least(() => Open(small), out var smallSections);
+        var largeAllocated = Allocations.Least(() => Open(large), out var largeSections);
+
+        smallSections.Should().Be(Small + 2);
+        largeSections.Should().Be(Large + 2);
+        largeAllocated.Should().BeLessThan(
+            smallAllocated * 9 / 2,
+            "four times the streams must allocate about four times as much ({0:N0} bytes for {1:N0}, {2:N0} for {3:N0})",
+            smallAllocated,
+            Small,
+            largeAllocated,
+            Large);
+
+        int Open(byte[] file)
+        {
+            using var document = PdfDocument.Open(file, options);
+            document.Reader.ChainIndex!.TryGet(3, out _).Should().BeTrue("no stream declares object 3");
+            return document.Reader.Structure.Sections.Count;
+        }
+    }
+
+    [Fact]
+    public void A_refusal_gives_back_the_arrays_it_merges_ranges_in()
+    {
+        // A lost stream declares 4,096 one-row subsections apart, and its /Prev names a table of 16 rows; the same file with
+        // the stream's /Prev renamed names no older section, and refuses nothing (#208). Opened again and again, the first
+        // allocates beyond the second the numbering it reads, 16 bytes a subsection, and the older table it reaches: 66.8 KB.
+        // The arrays the ranges are merged in come from the shared pool and go back to it, each document's once its chain is
+        // read: one kept back would cost 64 KB more each opening.
+        var refusing = LostStreamFiles.RangesOverOlderRows(apart: true, rows: 16);
+        var text = Encoding.Latin1.GetString(refusing);
+        var prev = text.IndexOf("/Prev", StringComparison.Ordinal);
+        var namingNone = Encoding.Latin1.GetBytes(string.Concat(text.AsSpan(0, prev), "/Xrev", text.AsSpan(prev + 5)));
+
+        var refusingAllocated = Allocations.Least(() => Open(refusing), out var refusingSections);
+        var namingNoneAllocated = Allocations.Least(() => Open(namingNone), out var namingNoneSections);
+
+        refusingSections.Should().Be(3);
+        namingNoneSections.Should().Be(2);
+        (refusingAllocated - namingNoneAllocated).Should().BeLessThan(
+            96 * 1024,
+            "a refusal allocates the numbering it reads, and gives back what it rents ({0:N0} bytes against {1:N0})",
+            refusingAllocated,
+            namingNoneAllocated);
+
+        static int Open(byte[] file)
+        {
+            using var document = PdfDocument.Open(file);
+            return document.Reader.Structure.Sections.Count;
+        }
+    }
+
+    [Fact]
+    public void A_refusal_merged_with_ranges_refused_before_gives_back_the_array_they_were_kept_in()
+    {
+        // A lost stream declares 40 subsections, every other number from 10, every other one of them of one row and the
+        // rest of none; its /Prev names an older lost stream that declares 16 one-row subsections apart from 100, and
+        // the older stream's /Prev names the table of 16 rows (#208). The shared pool lends arrays by sizes, 16, 32, 64
+        // and up, and lends a thread first the array of a size that thread gave back last. The newer stream's 20 ranges
+        // are kept in an array of 32, its numbering read into one of 64; the older stream's 16 are merged with them
+        // into an array of 64 as well, and the array of 32 goes back to the pool once they are merged. So the array of
+        // 32 this thread gives back before the file is opened keeps the newer stream's ranges, and is lent again once
+        // the file is read: kept back at the merge, it would be lost to the pool, which would lend another. The bytes
+        // allocated do not tell this apart: where the pool already keeps other arrays of 32, from what the process did
+        // before, it lends one of those without allocating. A collection of the oldest generation under memory pressure
+        // may empty what the pool keeps for each thread: an opening one falls in is done again.
+        var file = LostStreamFiles.Chain(2, rows: 16, objects: [], s => s == 0 ? Newer() : Older());
+        var pool = ArrayPool<(long First, long End)>.Shared;
+        var lent = pool.Rent(20);
+        pool.Return(lent);
+        pool.Rent(20).Should().BeSameAs(lent, "the pool lends a thread first the array of a size it gave back last");
+        pool.Return(lent);
+
+        var again = lent;
+        var sections = 0;
+
+        for (var attempt = 0; attempt < 5; attempt++)
+        {
+            var collections = GC.CollectionCount(2);
+            lent = pool.Rent(20);
+            pool.Return(lent);
+            sections = Open(file);
+            again = pool.Rent(20);
+            pool.Return(again);
+
+            if (GC.CollectionCount(2) == collections)
+            {
+                break;
+            }
+        }
+
+        sections.Should().Be(4);
+        again.Should().BeSameAs(
+            lent,
+            "the array the newer stream's ranges were kept in goes back to the pool once the older stream's are merged with them");
+
+        static IEnumerable<(long First, long Count)> Newer() =>
+            Enumerable.Range(0, 40).Select(i => (10L + (2L * i), i % 2 == 0 ? 1L : 0L));
+
+        static IEnumerable<(long First, long Count)> Older() => Enumerable.Range(0, 16).Select(i => (100L + (2L * i), 1L));
+
+        static int Open(byte[] file)
+        {
+            using var document = PdfDocument.Open(file);
+            return document.Reader.Structure.Sections.Count;
+        }
+    }
+
+    [Fact]
     public async Task Survives_a_string_longer_than_the_largest_window()
     {
         // A string that never closes runs to the end of every window, so each attempt asks for a larger
@@ -5822,7 +6428,8 @@ public class HostileInputTests
 
     /// <summary>
     /// The catalog, an empty page tree and a cross-reference stream of <paramref name="rows"/> rows of two bytes under one
-    /// Flate filter: rows 1 to 3 place objects 1 to 3, every other row is of type 3, which indexes nothing.
+    /// Flate filter: rows 1 to 3 place objects 1 to 3, every other row is of type 3, which reads as a reference to the null
+    /// object, its number indexed as a free one's is (#221).
     /// </summary>
     private static byte[] ReservedTypeRows(int rows)
     {
@@ -5861,9 +6468,10 @@ public class HostileInputTests
 
     /// <summary>
     /// The catalog, an empty page tree and a cross-reference stream whose rows place them, then <paramref name="refused"/>
-    /// rows for objects 4 onward whose offsets need all of eight bytes, past what a long holds.
+    /// rows for objects 4 onward whose offsets need all of eight bytes, past what a long holds — or that give
+    /// <paramref name="offset"/>, where one a long holds is given, and stand.
     /// </summary>
-    private static byte[] RefusedRows(int refused, out long section)
+    private static byte[] RefusedRows(int refused, out long section, ulong offset = ulong.MaxValue)
     {
         var head = new StringBuilder("%PDF-1.7\n");
         var catalog = head.Length;
@@ -5880,7 +6488,7 @@ public class HostileInputTests
 
         for (var i = 0; i < refused; i++)
         {
-            Row(1, ulong.MaxValue);
+            Row(1, offset);
         }
 
         head.Append(string.Create(

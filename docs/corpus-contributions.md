@@ -307,6 +307,7 @@ The milestone is closed, so nothing here blocks: these widen what the reader is 
 | An object stream whose /DecodeParms names an object stored inside it, hand-built and marked as such | Since M02's third slice the reader reports it (`stream.self-reference`) and so does the validator (`xref.object-stream-circular`), but on hand-built test files only | none | Generate here | 3 |
 | A widget that belongs to no field, and a destination naming a page the file lacks, from a real producer | The annotation rules meet these only in hand-written and damaged files | none from a real producer | Contribution | 3 |
 | A document from a real producer whose index a read rebuilds after opening: a row that places its object more than 512 bytes from its header, or a section the chain loses, with nothing that rebuilds the index as the document opens | The validator rebuilds such an index before its first rule ([ADR 50](adr/0050-validation-settles-the-reader-before-its-rules.md), [#237]); no committed document reaches it, and `CorpusValidationTests` and `ReadOrderSweepTests` hold it against a regression only | eight documents of the remote corpus: three Quartz files whose damage no rule reaches, `distiller6-zeroed-object-stream-pdfbox3947`, the two tiff2pdf scans of `jhove-hul-157`, and the Atypon and PDFium files of `jhove-hul-35` | Contribution | 2 |
+| A real incremental update whose middle cross-reference section is damaged: above all a cross-reference stream whose rows cannot be read, its `/Prev` naming the older sections; or a section read only in part, a table holding no subsection, an `/XRefStm` that names no stream, a row of a reserved type | The chain going on past such a stream ([#208]), the sections kept though read only in part ([#207], [#210]), and the reports of [#222], [#156] and [#221] are accepted on hand-built files alone (batch 19): no corpus document has a section past the first that cannot be read whole | the remote iPRES 2017 files whose cross-reference sections are at fault, `t03-003` to `t03-006`, `t03-009` and `t04-008`, which hold the fault in their first section and are rebuilt as they open | Contribution | 2 |
 | A stream from a real producer whose `/Filter` chains three filters or more, or whose Flate or LZW step takes a `/Predictor`, `/Columns` or `/EarlyChange` through a reference | The bound the filters before the last share, and the parameters a stream resolves before decoding its data, meet these in hand-built files only (batch 12, [#165], [#166]) | the 18 documents whose streams chain two filters, and jhove-hul-117 and xerox-workcentre-5755, whose `/DecodeParms` elements an object stream holds (`FilterChainCorpusTests`) | Contribution | 3 |
 
 ### M03
@@ -775,6 +776,12 @@ The milestone is closed, so nothing here blocks: these widen what the reader is 
 [W28]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/87
 [W29]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/88
 [W30]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/89
+[#156]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/156
 [#165]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/165
 [#166]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/166
+[#207]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/207
+[#208]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/208
+[#210]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/210
+[#221]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/221
+[#222]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/222
 [#237]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/237
