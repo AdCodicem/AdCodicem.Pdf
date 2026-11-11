@@ -850,6 +850,8 @@ public class WindowEdgeTests
     [InlineData("\n12 % endstream\nendobj\n12 0 obj", 6, false)]
     [InlineData("\n12 % endstream\n(0) obj", 6, true)]
     [InlineData("\n12 % endstream\n0 objx\n12 0 obj", 6, true)]
+    [InlineData("\n12 % endstream\n0 obi\n12 0 obj", 6, true)]
+    [InlineData("\n12 % endstream\n0 oxobj\n12 0 obj", 6, true)]
     [InlineData("\n12 % endstream\n0\n", 6, true)]
     [InlineData("\n12 (% endstream\n0 obj", 7, true)]
     [InlineData("\nendstream 12 0\nobj", 0, true)]
@@ -858,10 +860,10 @@ public class WindowEdgeTests
     {
         // As above, but nothing after the comment's line ends a header that starts before the endstream: the line's tokens
         // end in a keyword or a name, a second number — which starts a header past the endstream —, a keyword or a string
-        // follows the first, an obj a regular byte follows, or the first number is the last token before the end of the
-        // object. An endstream in a string, or one that is a token, is in no comment, and a header after it starts past it.
-        // The endstream, the first of the data, ends it, wherever the reads part what follows, and its object's endobj is
-        // judged by what follows it.
+        // follows the first, an obj a regular byte follows, a keyword in its place starts with an o and is three bytes
+        // long or ends in obj, or the first number is the last token before the end of the object. An endstream in a
+        // string, or one that is a token, is in no comment, and a header after it starts past it. The endstream, the first
+        // of the data, ends it, wherever the reads part what follows, and its object's endobj is judged by what follows it.
         foreach (var filler in new[] { 100, 20_000, Window - LostEndPrefix.Length - header.Length + 6 })
         {
             var ending = HeaderEnding(header, filler, null);

@@ -56,6 +56,21 @@ public class StreamEndsTests
         waits.Should().Be(found < 0);
     }
 
+    [Theory]
+    [InlineData("12 % endstream\n(x", 5)]
+    [InlineData("12 % endstream\n0 R\n", 5)]
+    public void A_keyword_in_a_comment_waits_no_longer_once_its_read_ends_every_header_that_starts_before_it(
+        string data, long found)
+    {
+        // What follows the keyword's line may decide in the read that holds the keyword, which the search goes on past
+        // (#261): a delimiter, or a token other than obj after a number, ends every header that starts before the keyword,
+        // which then ends the data, and nothing waits for the reads after it.
+        var (end, waits) = SearchFirstRead(data);
+
+        end.Should().Be(DataStart + found);
+        waits.Should().BeFalse();
+    }
+
     /// <summary>
     /// Searches <paramref name="data"/>, which starts at <see cref="DataStart"/>, in one read that ends where the search does,
     /// and gives where the data ends and where the header that stopped the search starts, -1 for either that is none.
