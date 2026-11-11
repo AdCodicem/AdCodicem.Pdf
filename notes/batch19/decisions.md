@@ -1278,3 +1278,19 @@ review. Then the batch-wide ADR 53 step.
   ranges test may not catch a top-down scan (PFR-0916, equivalent cost only); PdfObjectParser.MayBeHeaderBytes ranges
   differ only on '+'/'-'; the stack-depth test flaky under load (1 in 11-12 on the head).
 - After b1-b4: 264 = 99 killed by new tests + 165 equivalent; b5 (55) running.
+- b5 settled (wf_c651c520-8d0): 55 = 13 KILLED-NEW + 1 KILLED-EXISTING (PES-0107, by f8e9aa1's StreamEndsTests test,
+  written after 19a2296) + 41 EQUIVALENT (TryParseUnrecordedAt's range check unreachable: its only caller passes a
+  place inside the file; PFR-0644 equivalent too). Pushed 4327524..f732361 (c94ddd6, f4f3a1a, 5939301, bd603e0,
+  e691eb4, ea5572a, f732361 HybridFiles comment slip); 14 confirmed KILLED (summary-b5.txt).
+- ADR 53 batch-wide step DONE: 3,736 run + 15 by valid records; 319 survivors = 112 killed by new tests + 1 by a test
+  the batch added after 19a2296 + 206 equivalent (several 'in what is reported, cost only'); 0 DEBT, so no survivor
+  debt issue (R12b's G2b, G5 and P02 were re-run in the batch-wide catalog and settled there). The refuter overturned
+  60 of 266 first equivalents (b1 12, b2 4, b3 17, b4 6, b5 0... see fates.jsonl). Settling commits 19a2296..f732361,
+  all test:, plus 5d5c32d's comment fix. Mutants that compile only without TreatWarningsAsErrors (CS0162: PFR-0635,
+  PFR-0676, PFR-0573, PES-0022, PES-0047, PES-0065, LT-0078, LT-0090) were run as the inventory decided (same IL).
+- Filed #342 (debt, area: tests, M02): three tests bound by the stack or a stopwatch fail on a loaded machine
+  (ObjectRuleTests deepest-load, CorpusReadingTests Damaged_documents Timed 20 s, HostileInputTests one-key 10 s), two
+  DocumentReaderTests allocation rows escape the name filters, the new pool-slot test's premise. Commented #158
+  (6800877183): PropertyTests' HeaderPieces gaps and ReaderTimingTests' refused-ranges test that cannot tell a scan.
+- End texts and comment measures: wf_363e5e3c-bc9 (task wute65y37), lot19-endtexts.js. Local integration run 1 timed
+  out at 60 min (stalled after 17 min on a docker exec right after Docker Desktop started, under load); run 2 progressing.

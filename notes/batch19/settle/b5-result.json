@@ -1,0 +1,1214 @@
+[
+ {
+  "type": "result",
+  "key": "v2:fec4382551a1b7a35803b7409a95c10c051c53a5f6f55c977b15b23a3420a858",
+  "agentId": "a384ac237fe250814",
+  "result": {
+   "label": "b5-03",
+   "base": "26ce787",
+   "survivors": [
+    {
+     "id": "PES-0011",
+     "fate": "EQUIVALENT",
+     "reason": "Decide first runs on the same read SearchStretch found the keyword in, in Comment mode, so `at`+1 starts it one byte back, on the keyword's final 'm'. Comment mode passes that byte as it passes any byte that is not an end of line: IndexOfAny reaches the same end of line, with lineEnd one larger. Only Decide reads _readTo (lines 99 and 177; Start writes it), and the mutant leaves it one larger after every read, as it does `at`. Every later `_readTo - at` is therefore the same."
+    },
+    {
+     "id": "PES-0022",
+     "fate": "EQUIVALENT",
+     "reason": "When bytes[index] is CR or LF, the fallthrough IndexOfAny(CR, LF) returns 0, so lines 116-117 set index+1 and Mode.Space, exactly what the shortcut at lines 110-111 sets."
+    },
+    {
+     "id": "PES-0023",
+     "fate": "EQUIVALENT",
+     "reason": "Same reason as PES-0022: a CR the shortcut no longer takes reaches IndexOfAny, which returns 0, and lines 116-117 then set index+1 and Mode.Space, the same state."
+    },
+    {
+     "id": "PES-0024",
+     "fate": "EQUIVALENT",
+     "reason": "Same reason as PES-0022: an LF the shortcut no longer takes reaches IndexOfAny, which returns 0, and lines 116-117 then set index+1 and Mode.Space, the same state."
+    },
+    {
+     "id": "PES-0025",
+     "fate": "EQUIVALENT",
+     "reason": "Without index++, index stays on the CR/LF with Mode.Space. Space mode's '%' test fails on that byte, and IndexOfAnyExcept(Whitespace), whose set holds 0x0D and 0x0A, passes it, so every later branch lands on the same byte as from index+1. This includes the case where the end of line is the read's last byte: next = -1, so index = Length."
+    },
+    {
+     "id": "PES-0033",
+     "fate": "EQUIVALENT",
+     "reason": "lineEnd is never 0 at line 116, because the shortcut at line 108 already took a bytes[index] that is CR or LF. IndexOfAny there returns -1 or at least 1, and on those values `< 0` and `<= 0` agree."
+    },
+    {
+     "id": "PES-0034",
+     "fate": "EQUIVALENT",
+     "reason": "Same reason as PES-0033: lineEnd at line 116 is -1 or at least 1, never 0, so `< 0` and `< 1` agree."
+    },
+    {
+     "id": "PES-0037",
+     "fate": "EQUIVALENT",
+     "reason": "With +0, index lands on the comment's end of line rather than past it, with Mode.Space set. Space mode passes that CR/LF as white space before any branch reads a byte, the same reason as PES-0025, so every later step is unchanged."
+    },
+    {
+     "id": "PES-0042",
+     "fate": "EQUIVALENT",
+     "reason": "Same reason as PES-0033: lineEnd at line 117 is -1 or at least 1, never 0, because of the shortcut at line 108, so `< 0` and `<= 0` choose the same mode."
+    },
+    {
+     "id": "PES-0043",
+     "fate": "EQUIVALENT",
+     "reason": "Same reason as PES-0033: lineEnd at line 117 is -1 or at least 1, never 0, so `< 0` and `< 1` choose the same mode."
+    },
+    {
+     "id": "PES-0047",
+     "fate": "EQUIVALENT",
+     "reason": "'%' (0x25) is not in PdfCharacters.Whitespace, so for a '%' at index, IndexOfAnyExcept(Whitespace) returns 0. The branch at lines 135-138 then sets index+1 and Mode.Comment, exactly what the shortcut at lines 124-125 sets."
+    }
+   ],
+   "tests_added": [],
+   "commit": "",
+   "patch": "",
+   "commands": [
+    "git fetch origin ccr-6d6c0ee6-dqm4lm-188; git checkout --detach origin/ccr-6d6c0ee6-dqm4lm-188 -> HEAD 26ce787 (matches the expected base)",
+    "Read src/AdCodicem.Pdf/IO/PendingEndStream.cs whole, plus its only callers: StreamEnds.SearchStretch (Start at line 161, then the first Decide on the same read at line 162; later Decides at line 132), HeaderText.PositionOf (index >= 0 gives _at + index) and PdfCharacters.Whitespace ({00,09,0A,0C,0D,20}, no '%')",
+    "Harness summary-24.txt: all 11 SURVIVED with no unconfirmed failures (first filter 419/0 or 411/0; suite 10559 or 10567 total, 0 failed, 3 skipped)",
+    "Differential check, not committed: a temporary xUnit fact in the test project, deleted afterwards. It ran StreamEnds.SearchStretch the way a search reads, overlap 10, data at offset 100, over 150,000 seeded random inputs, each holding an endstream in a comment among digits, obj, comments, CR/LF and delimiters, each in 5 read partitions (one whole read, plus 4 of random 1-25 byte reads). That makes 750,000 (Found, Header) results: 224,062 waited over several reads, 7,861 ended at a header, 739,871 ended the data and 2,269 found nothing. The results were dumped to a file and compared byte for byte with the head's dump",
+    "dotnet build tests/AdCodicem.Pdf.Tests/AdCodicem.Pdf.Tests.csproj -c Release -m:2 on the head: 0 warnings, 0 errors; dump written",
+    "Each mutant applied with mutant.py, built with -p:TreatWarningsAsErrors=false as the harness does (PES-0022 and PES-0047 turn their shortcut into unreachable code, CS0162), dumped, then reverted. PES-0011, 0022, 0023, 0024, 0025, 0033, 0034, 0037, 0042, 0043 and 0047 each build with 0 errors and give a dump identical to the head's",
+    "Pipeline check: PES-0038, a mutant the first filter detects, produces a dump that differs from the head's at line 14171, so the comparison does tell a behavior change apart",
+    "No test failed or ran in the class sense: the only test run was the 1-test scratch fact, each time 1 total, 0 failed",
+    "Clean-up: scratch file removed; git status --short is empty; HEAD is still 26ce787; tests/corpus/remote was never linked; final rebuild on the base: 0 warnings, 0 errors"
+   ],
+   "found": [
+    "No fault in the code. Two shortcuts set exactly the state the general search sets on the same byte: the end-of-line shortcut in Comment mode (lines 108-113) and the '%' shortcut in Space mode (lines 122-127). So all of their mutants are equivalent, and the `lineEnd < 0` bounds at lines 116-117 never see 0 because of the first shortcut. The comments say they are there for cost, a byte a line rather than two searches, which matches what they do.",
+    "PES-0022 and PES-0047 do not compile under the repository's TreatWarningsAsErrors: replacing the condition with `false` raises CS0162, unreachable code. The harness built with warnings not treated as errors (its log shows the CS0162 warning), and I did the same to evaluate them.",
+    "No stale comment found. No flaky test observed: the harness lines show no unconfirmed failures."
+   ]
+  },
+  "remoteControlDeviceReport": false,
+  "toolsUsed": [
+   "Bash",
+   "Grep",
+   "Write",
+   "StructuredOutput"
+  ]
+ },
+ {
+  "type": "result",
+  "key": "v2:fe2b0b662e861fe91ca59c873b81b72743be6f65218047697ceee30e4b0f1f73",
+  "agentId": "aa00894dc9761ba51",
+  "result": {
+   "label": "b5-01",
+   "base": "26ce787",
+   "survivors": [
+    {
+     "id": "PFR-0627",
+     "fate": "EQUIVALENT",
+     "reason": "foundNumber's initial value survives only a false return (a true return always assigns found.Number). The only caller is TryReadXRefStream's check, and only KeepsItsPlace calls that. On a false return the caller writes the number into check.Fault and nothing else. check is a local record that KeepsItsPlace throws away: it reads only the state, check.TypedXRef and check.CutByLimit. The harness's one-off failure did not come back: CorpusReadingTests.Damaged_documents_are_recovered_as_far_as_an_independent_tool_recovers_them passed 3 of 3 runs alone with this change applied (129/0/129/0 each).",
+     "test": ""
+    },
+    {
+     "id": "PFR-0628",
+     "fate": "EQUIVALENT",
+     "reason": "Same reason as PFR-0627: foundNumber's initial value survives only a false return, where it reaches only check.Fault, which KeepsItsPlace never reads (it reads the state, TypedXRef and CutByLimit only).",
+     "test": ""
+    },
+    {
+     "id": "PFR-0632",
+     "fate": "EQUIVALENT",
+     "reason": "cut's initial value survives only a false return. There value is still PdfNull, and the caller reads cutByGuard only inside `!candidate && cutByGuard && value is PdfDictionary`, which is false, before it returns NotFound. A true return always sets cut = parser.IsTruncated && edge before anything reads it. The harness's one-off failure did not come back: ObjectRuleTests.A_run_of_links_the_walk_takes_at_the_reader_s_deepest_load_is_never_where_the_stack_cuts_it passed 3 of 3 runs alone with this change applied (1/0/1/0 each).",
+     "test": ""
+    },
+    {
+     "id": "PFR-0635",
+     "fate": "EQUIVALENT",
+     "reason": "The check `offset < 0 || offset >= _source.Length` is false for every input. The only caller passes KeepsItsPlace's start (check.Padding is 0). KeepsItsPlace runs only where a place the nearby search tries equals leaveAt, and that search call (line 3619) passes no stream record, so no place is moved to a stream's start. Every place is therefore a header or xref keyword that FindSectionCandidates found inside a window that lies within [0, _source.Length). The harness's coverage agrees: no test reaches line 4077. Damaged_documents passed 3 of 3 runs alone with this change (129/0/129/0 each). With TreatWarningsAsErrors on, this change does not compile (CS0162 on line 4077); like the harness, I built it with -p:TreatWarningsAsErrors=false.",
+     "test": ""
+    },
+    {
+     "id": "PFR-0637",
+     "fate": "EQUIVALENT",
+     "reason": "This change differs only for offset < 0. Same reason as PFR-0635: the only caller always passes a position inside [0, _source.Length).",
+     "test": ""
+    },
+    {
+     "id": "PFR-0642",
+     "fate": "EQUIVALENT",
+     "reason": "This change differs only at offset == -1. Same reason as PFR-0635: the only caller always passes a position inside [0, _source.Length).",
+     "test": ""
+    },
+    {
+     "id": "PFR-0639",
+     "fate": "EQUIVALENT",
+     "reason": "This change differs only for offset >= _source.Length. Same reason as PFR-0635: the only caller always passes a position inside the file. Damaged_documents passed 3 of 3 runs alone with this change (129/0/129/0 each).",
+     "test": ""
+    },
+    {
+     "id": "PFR-0643",
+     "fate": "EQUIVALENT",
+     "reason": "This change differs only at offset == _source.Length. Same reason as PFR-0635: every place the search tries lies strictly inside the file. A /Prev's start can equal the file's length, when only white space follows it, but no place the search tries equals that value, so KeepsItsPlace is never called with it. Damaged_documents passed 3 of 3 runs alone with this change (129/0/129/0 each).",
+     "test": ""
+    },
+    {
+     "id": "PFR-0644",
+     "fate": "EQUIVALENT",
+     "reason": "The changed return is on the out-of-range path, which no input takes (same reason as PFR-0635; the harness also found no test that reaches it). Even if it were taken, the caller would behave the same: it tests `!objectRead || !DeclaresCrossReferenceStream(value)`, and value is PdfNull, which declares nothing, so number 0 and cut false give the same NotFound.",
+     "test": ""
+    }
+   ],
+   "tests_added": [],
+   "commit": "",
+   "patch": "",
+   "commands": [
+    "git fetch origin ccr-6d6c0ee6-dqm4lm-188 && git checkout --detach origin/ccr-6d6c0ee6-dqm4lm-188 -> base 26ce787, tree clean",
+    "cp -al C:/Users/clemm/repos/AdCodicem.Pdf/tests/corpus/remote tests/corpus/remote (hard links, removed at the end with rm -rf tests/corpus/remote)",
+    "dotnet build tests/AdCodicem.Pdf.Tests/AdCodicem.Pdf.Tests.csproj -c Release -m:2 (base) -> 0 warnings, 0 errors",
+    "mutant.py . PFR-0627; build -> 0 warnings; AdCodicem.Pdf.Tests.exe --filter-method '*Damaged_documents_are_recovered_as_far_as_an_independent_tool_recovers_them*' x3 -> 129 total, 0 failed, 129 succeeded, 0 skipped each run (13.1 s, 12.5 s, 8.4 s); reverted",
+    "mutant.py . PFR-0635; build with TreatWarningsAsErrors -> error CS0162 (line 4077 unreachable); rebuilt with -p:TreatWarningsAsErrors=false -> 1 warning, 0 errors; Damaged_documents x3 -> 129/0/129/0 each run (12.2 s, 10.6 s, 9.8 s); reverted",
+    "mutant.py . PFR-0639; build -p:TreatWarningsAsErrors=false -> 0 warnings; Damaged_documents x3 -> 129/0/129/0 each run (12.5 s, 9.3 s, 13.5 s); reverted",
+    "mutant.py . PFR-0643; build -p:TreatWarningsAsErrors=false -> 0 warnings; Damaged_documents x3 -> 129/0/129/0 each run (14.6 s, 9.3 s, 9.4 s); reverted",
+    "mutant.py . PFR-0632; build -p:TreatWarningsAsErrors=false -> 0 warnings; --filter-method '*A_run_of_links_the_walk_takes_at_the_reader_s_deepest_load_is_never_where_the_stack_cuts_it*' x3 -> 1 total, 0 failed, 1 succeeded, 0 skipped each run; reverted",
+    "PFR-0628, PFR-0637, PFR-0642, PFR-0644: had no unconfirmed failure; settled by reading the code, not applied",
+    "dotnet build (base, after every revert) -> 0 warnings, 0 errors; git status --short -> clean; HEAD 26ce787; no commit, no patch"
+   ],
+   "found": [
+    "The check `if (offset < 0 || offset >= _source.Length) return false;` in PdfFileReader.TryParseUnrecordedAt (lines 4075-4078) cannot be reached. Its only caller path is KeepsItsPlace, then TryReadXRefStream with checkOnly: true, then this method, and it always passes a place the nearby search found inside the file. It is a defensive check, so it stays as it is (CLAUDE.md 'Coverage'). It is not a fault.",
+    "The harness's unconfirmed failures came from load during the whole-suite run, not from these changes. In CorpusReadingTests.Damaged_documents_are_recovered_as_far_as_an_independent_tool_recovers_them, validating remote/pdfjs/cairo-firefox-objstm-index-overflow-bug1978317.pdf took 27-45 s against a 20 s bound. Run alone, the whole theory takes 8-15 s. ObjectRuleTests.A_run_of_links_the_walk_takes_at_the_reader_s_deepest_load_is_never_where_the_stack_cuts_it depends on stack depth and failed once under load. Both passed every run alone. Neither ever failed alone, so per the rule I did not run them on the head.",
+    "PFR-0635 (`if (false)`) does not compile with the repository's TreatWarningsAsErrors (CS0162). The harness built it with warnings allowed, and I did the same to run it.",
+    "No stale comment found."
+   ]
+  },
+  "remoteControlDeviceReport": false,
+  "toolsUsed": [
+   "Bash",
+   "StructuredOutput"
+  ]
+ },
+ {
+  "type": "result",
+  "key": "v2:fdeb295c042a95d2af3f38a90d48f9f7169094647ed4eeca6c2ce84df18ade73",
+  "agentId": "a8a07c88c445350e3",
+  "result": {
+   "label": "b5-04",
+   "base": "26ce787",
+   "survivors": [
+    {
+     "id": "PES-0048",
+     "fate": "EQUIVALENT",
+     "reason": "Without the index++ the Comment arm starts on the % itself, which is no CR/LF, so its first-byte check fails and IndexOfAny from the % finds the same line end, or none (index = bytes.Length, still Comment), as it would from the byte after it. Same index, mode and _readTo for every input; the only difference is one extra search."
+    },
+    {
+     "id": "PES-0060",
+     "fate": "EQUIVALENT",
+     "reason": "Leaving index on the white space and switching to Comment makes the comment search start there. In every input it stops at the first CR/LF in that white space, after which Space reads on from the byte past it as it would anyway, or, when the white space holds none, at the % comment's own line end (or none). Each step moves forward, and the end state is the same as jumping past the %."
+    },
+    {
+     "id": "PES-0061",
+     "fate": "KILLED-NEW",
+     "reason": "Skipping the byte after a % that follows white space skips an empty comment's line end. The comment then swallows the next line, so the header's generation and obj are lost and the keyword ends the data: Search returns (105, -1) where it should return (-1, 100).",
+     "test": "AdCodicem.Pdf.Tests.StreamEndsTests.The_data_ends_at_its_first_endstream_its_end_of_line_left_out_unless_a_header_comes_first(data: \"12 % endstream\\n %\\n0 obj\", deferred: False, found: -1, header: 0)"
+    },
+    {
+     "id": "PES-0062",
+     "fate": "EQUIVALENT",
+     "reason": "index lands on the % instead of past it. The Comment arm's first-byte check fails on a %, and IndexOfAny from there finds the same line end, or none, as from the next byte. The harness's unconfirmed ObjectRuleTests failure passed 3/3 when run alone with this change applied, so no existing test fails it."
+    },
+    {
+     "id": "PES-0065",
+     "fate": "EQUIVALENT",
+     "reason": "With the condition forced true, the only byte that changes path is a delimiter (white space and % are handled earlier). Taken as a token, it has no regular byte to read, so TokenEnds runs at once: at most it counts as a first run of digits, then it returns DataEnd with header -1 and mode None, exactly as Decided() does. DataEnd >= 0, so the reader and the parser stop and never read the leftover fields."
+    },
+    {
+     "id": "PES-0070",
+     "fate": "EQUIVALENT",
+     "reason": "_header is read only in TokenEnds when _matched == 3. _matched is reset to 0 at each token's first byte and reaches 3 only if that byte is 'o', so _header for any other token is never read. HeaderAt is a readonly method that only reads the bytes before the token and changes nothing (its LineTokens and Numbers are local value copies)."
+    },
+    {
+     "id": "PES-0074",
+     "fate": "EQUIVALENT",
+     "reason": "This changes _header only for a token whose first byte is not 'o'. TokenEnds reads _header only when _matched == 3, which needs an 'o' first byte, and the next token start overwrites it."
+    },
+    {
+     "id": "PES-0075",
+     "fate": "EQUIVALENT",
+     "reason": "Same as PES-0074: _header for a token not starting with 'o' (now 0 instead of -1) is never read, because TokenEnds reads it only when _matched == 3, which needs an 'o' first byte."
+    },
+    {
+     "id": "PES-0107",
+     "fate": "KILLED-EXISTING",
+     "reason": "A test added after the mutation run at 19a2296 (commit f8e9aa1) asserts the undecided read's return is exactly -1. With the change applied it failed 3/3 runs, 2 rows each: \"% endstream\" and \"12 % endstream\" (Expected -1L, found -2L). It is deterministic, not flaky.",
+     "test": "AdCodicem.Pdf.Tests.StreamEndsTests.A_keyword_in_a_comment_waits_for_the_reads_after_it_only_where_its_line_may_begin_a_header"
+    },
+    {
+     "id": "PES-0114",
+     "fate": "EQUIVALENT",
+     "reason": "At the end of the search, mode is Comment or Space only before any token (_digits false, _matched 0) or after a first run of digits that TokenEnds let pass (_numbered true, _matched -1); an obj token always decides at once. In those states TokenEnds returns DataEnd with header -1 and mode None, exactly as Decided() does."
+    }
+   ],
+   "tests_added": [
+    "AdCodicem.Pdf.Tests.StreamEndsTests.The_data_ends_at_its_first_endstream_its_end_of_line_left_out_unless_a_header_comes_first: one new row (\"12 % endstream\\n %\\n0 obj\", deferred false, found -1, header 0). It pins that a line holding a space and an empty comment, between the keyword's comment line and the header's generation and obj, ends at its own line end. The search then stops at the header \"12 0 obj\", which starts at the data's start (header 100, found -1). The test comment gains a clause for that row. The class runs 16/16 on base."
+   ],
+   "commit": "91cd131 test: stop a search at a header an empty comment after white space parts (Refs #261; line 137 was written by ea348ce, Refs #261). Patch: C:/Users/clemm/AppData/Local/Temp/claude/7278f9d03177d71e/898783fc-049f-469a-ab79-dfd299ad558e/scratchpad/cloud/settle/patches/b5-04/0001-test-stop-a-search-at-a-header-an-empty-comment-afte.patch",
+   "patch": "C:/Users/clemm/AppData/Local/Temp/claude/7278f9d03177d71e/898783fc-049f-469a-ab79-dfd299ad558e/scratchpad/cloud/settle/patches/b5-04/0001-test-stop-a-search-at-a-header-an-empty-comment-afte.patch",
+   "commands": [
+    "git fetch origin ccr-6d6c0ee6-dqm4lm-188; git checkout --detach origin/ccr-6d6c0ee6-dqm4lm-188 -> base 26ce787",
+    "dotnet build tests/AdCodicem.Pdf.Tests/AdCodicem.Pdf.Tests.csproj -c Release -m:2 (base): 0 warnings, 0 errors",
+    "PES-0107 applied, StreamEndsTests (15 tests before my row): 2 failed (A_keyword_in_a_comment_waits_... rows \"% endstream\" and \"12 % endstream\", Expected -1L found -2L), 13 passed. --filter-method on that theory two more times: 6 total, 2 failed each time",
+    "PES-0061 applied with the new row, StreamEndsTests: 16 total, 1 failed (only the new row: Expected -1L, found 105L), 15 passed",
+    "Base with the new row, StreamEndsTests: 16 total, 0 failed, 16 passed (run twice)",
+    "PES-0062 applied, ObjectRuleTests.A_run_of_links_the_walk_takes_at_the_reader_s_deepest_load_is_never_where_the_stack_cuts_it alone x3: 1/1 passed each time",
+    "Each of PES-0048, 0060, 0062, 0065, 0070, 0074, 0075 and 0114 applied in turn, StreamEndsTests + HeaderTextTests + StreamLengthTests: 335 total, 0 failed, 333 passed, 2 skipped (remote corpus not linked). This is a sanity check of the equivalence reasoning. PES-0065 and later were built with -p:TreatWarningsAsErrors=false as the harness does, because PES-0065 raises CS0162 (unreachable code)",
+    "git log -L137,137:src/AdCodicem.Pdf/IO/PendingEndStream.cs 21a0298..HEAD -> ea348ce (Refs #261)",
+    "check_msgs.py on 26ce787..HEAD log: 91cd131 OK; grep_keys.py and widegrep.py on the diff: clean (rc 0)",
+    "git format-patch -1 HEAD into patches/b5-04; git status --short clean; src/ identical to base; tests/corpus/remote never linked"
+   ],
+   "found": [
+    "PES-0065 does not compile under the repository's TreatWarningsAsErrors (CS0162, unreachable else at PendingEndStream.cs:154). The harness built it with warnings allowed, so its result stands, but a plain repository build rejects this mutant.",
+    "PES-0107 survived the run only because StreamEndsTests did not exist at 19a2296. The later commit f8e9aa1 now catches it.",
+    "ObjectRuleTests.A_run_of_links_the_walk_takes_at_the_reader_s_deepest_load_is_never_where_the_stack_cuts_it failed once in the harness's whole-suite run with PES-0062 applied (Object 160 missing from the stack-cut messages) and passed in its confirm run and 3/3 alone here. The test depends on how deep the thread's stack lets the validator go, so it looks flaky under whole-suite load. It was not run on the head, since it caught nothing here.",
+    "No fault in src/ and no stale comment found."
+   ]
+  },
+  "remoteControlDeviceReport": false,
+  "toolsUsed": [
+   "Bash",
+   "Grep",
+   "Edit",
+   "Write",
+   "StructuredOutput"
+  ]
+ },
+ {
+  "type": "result",
+  "key": "v2:28a69c7d42e883c644305118d982e6a5738a63c411c29d480c98088ffdce2008",
+  "agentId": "a45f001ff7d8fa71c",
+  "result": {
+   "label": "b5-01",
+   "base": "26ce787",
+   "verdicts": [
+    {
+     "id": "PFR-0627",
+     "verdict": "UPHELD",
+     "reason": "The verdict holds as written. foundNumber keeps its initial value only on a false return, because every true return assigns found.Number. The one caller of TryParseUnrecordedAt is TryReadXRefStream with checkOnly (line 6645), and KeepsItsPlace (line 4025) is the only call that passes checkOnly: true. On a false return value is still PdfNull, so the caller skips the value-is-PdfDictionary branch, writes only check.Fault (the number either changes or picks the string) and returns NotFound. check is a new local XRefSectionRecord that is never stored, and KeepsItsPlace reads only the state, TypedXRef and CutByLimit. Probe: the hybrid file whose /Prev names a font with a parted header, at MaxTrailerLength 120/140/160/180/200, where the guard cuts the header at maxWindow. That is the false-return path, reached at offset 1891, and I confirmed it with temporary instrumentation. I also ran it at 400 and at the default (true path). I dumped every section (NamedBy, State, Offset, Padding, Kind, StreamObjectNumber, CutByLimit, TypedXRef, CutByValue, Fault), every diagnostic (Code, Position, Message), every validator finding and WasRepaired. With this mutant the dump was byte-identical to the base.",
+     "test": ""
+    },
+    {
+     "id": "PFR-0628",
+     "verdict": "UPHELD",
+     "reason": "Same reason as PFR-0627: the value -1 survives only a false return, where it reaches only check.Fault, and KeepsItsPlace drops check. The same probe dump at seven MaxTrailerLength values, three of them hitting the false return, was byte-identical to the base.",
+     "test": ""
+    },
+    {
+     "id": "PFR-0632",
+     "verdict": "UPHELD",
+     "reason": "The verdict holds. cut keeps its initial value only on a false return, because every true return assigns parser.IsTruncated && edge first. On a false return value is PdfNull. In the checkOnly branch of TryReadXRefStream, cutByGuard is read only in `!candidate && cutByGuard && value is PdfDictionary`, which is false, so the method returns NotFound and check.CutByLimit stays false. The _guardMayHideLink write is in the non-check branch only. The probe covered the one false-return path a test can build, a header the guard cuts at maxWindow, where the base gives cut=false and the mutant cut=true: its dump was byte-identical to the base. Its unconfirmed failure, ObjectRuleTests.A_run_of_links_the_walk_takes_at_the_reader_s_deepest_load_is_never_where_the_stack_cuts_it, passed 3 of 3 runs alone with this mutant (1/0/1/0 each). The harness log shows a stack-depth Contain failure under whole-suite load.",
+     "test": ""
+    },
+    {
+     "id": "PFR-0635",
+     "verdict": "UPHELD",
+     "reason": "The verdict holds. KeepsItsPlace is called only at line 5341, inside the one TryRelocateXRefSection call that passes leaveAt (line 3619). That call passes readInStreamsPlace and streamNamedAgain as null, so takeAt, streamStart and streamDigits are -1. As a result NumberRunsInto(…, -1, -1) is false for every candidate >= 0, and no place is put back. Every candidate therefore comes from FindSectionCandidates and lies in [max(0, absolute-radius), end), with end <= _source.Length. The check builds new XRefSectionRecord(\"/Prev\", start, start) with Padding 0, so at == start lies in [0, _source.Length). _source is fixed for the whole chain read, because TryReadXRefChain runs only from Initialize in the constructor and only Close replaces _source. No input reaches the out-of-range branch, and no probe of the four filter classes logged a range hit. With the repository's TreatWarningsAsErrors, CS0162 stops the build. With warnings allowed, the damaged-documents theory passed 3 of 3 runs (129/0/129/0 each). Its harness failure was a 20 s timing bound under load (27.8 s).",
+     "test": ""
+    },
+    {
+     "id": "PFR-0637",
+     "verdict": "UPHELD",
+     "reason": "This mutant differs only for offset < 0, and, as for PFR-0635, the only caller always passes a start inside [0, _source.Length).",
+     "test": ""
+    },
+    {
+     "id": "PFR-0642",
+     "verdict": "UPHELD",
+     "reason": "This mutant differs only at offset == -1, and, as for PFR-0635, the only caller always passes a start inside [0, _source.Length).",
+     "test": ""
+    },
+    {
+     "id": "PFR-0639",
+     "verdict": "UPHELD",
+     "reason": "This mutant differs only for offset >= _source.Length. As for PFR-0635, every candidate lies before end <= _source.Length, so the only caller always passes a start inside the file. Its unconfirmed failure was the same load-timing bound on the cairo-firefox remote file.",
+     "test": ""
+    },
+    {
+     "id": "PFR-0643",
+     "verdict": "UPHELD",
+     "reason": "This mutant differs only at offset == _source.Length. The premise is right: previousStart can equal _source.Length when PaddingAt's probe holds only white space up to the end of the file. Every candidate, though, is < end <= _source.Length, so `candidate == leaveAt` never holds there and KeepsItsPlace never sees that value. Its unconfirmed failure was the same load-timing bound.",
+     "test": ""
+    },
+    {
+     "id": "PFR-0644",
+     "verdict": "UPHELD",
+     "reason": "The verdict holds on both counts. No input reaches the branch, for the same reason as PFR-0635. Even if one did, returning true with value PdfNull, number 0 and cut false sends the caller to `!DeclaresCrossReferenceStream(PdfNull)`. That is true (line 7482 needs a dictionary), the PdfDictionary branch is false, and the result is the same NotFound with no CutByLimit and no TypedXRef that KeepsItsPlace reads.",
+     "test": ""
+    }
+   ],
+   "tests_added": [],
+   "patch": "none (every verdict upheld; no commit, no patch; worktree clean at 26ce787, src/ as the base has it)",
+   "commands": [
+    "git fetch origin ccr-6d6c0ee6-dqm4lm-188; git checkout --detach origin/ccr-6d6c0ee6-dqm4lm-188 -> base 26ce787, tree clean",
+    "mutant.py - <id> for the 9 ids; read PdfFileReader.TryParseUnrecordedAt (4066-4128), KeepsItsPlace (4014-4031), TryReadXRefStream checkOnly path (6616-6740), TryRelocateXRefSection (5197-5345), FindSectionCandidates, NumberRunsInto, StartOf/StartOfNamed/PaddingAt, DeclaresCrossReferenceStream, XRefSectionRecord ctor/Padding, TryReadXRefChain/Initialize/Close (_source writes)",
+    "harness logs logs/11/<id>-suite.txt: unconfirmed failures were Timed() 20 s bounds on remote/pdfjs/cairo-firefox-objstm-index-overflow-bug1978317.pdf (36.0 s, 27.8 s) and a stack-depth Contain in ObjectRuleTests under whole-suite load; confirm runs passed",
+    "dotnet build tests/AdCodicem.Pdf.Tests/AdCodicem.Pdf.Tests.csproj -c Release -m:2 (base) -> 0 warnings, 0 errors",
+    "cp -al C:/Users/clemm/repos/AdCodicem.Pdf/tests/corpus/remote tests/corpus/remote (removed at the end with rm -rf tests/corpus/remote)",
+    "temporary instrumentation of TryParseUnrecordedAt (enter/range/false/true log lines), build -p:TreatWarningsAsErrors=false -> 0 errors; ran CrossReferenceChainTests (1078 total), CrossReferenceRuleTests (508), GuardCutValueTests (392), ReaderLimitsTests (348): 109 calls, 0 range hits, 1 false return (offset 1891, truncated, edge; in CrossReferenceChainTests), 108 true returns; instrumentation reverted with git checkout -- src/AdCodicem.Pdf/IO/PdfFileReader.cs",
+    "temporary probe test (dump of sections, diagnostics with messages, validator findings, WasRepaired for HybridFiles.NamingAnObjectBesideTheStream font parted by 300 dashes at MaxTrailerLength 160/120/140/180/200/400/default): base dump recorded (1 total, 0 failed)",
+    "PFR-0627, PFR-0628, PFR-0632 each: mutant.py apply, build -> 0 warnings 0 errors, probe 1 total 0 failed, dump byte-identical to base, mutant.py --revert",
+    "PFR-0632 applied, build 0 warnings: --filter-method '*A_run_of_links_the_walk_takes_at_the_reader_s_deepest_load_is_never_where_the_stack_cuts_it*' x3 -> 1/0/1/0 each; reverted",
+    "PFR-0635 applied: build with TreatWarningsAsErrors -> error CS0162 at 4077; build -p:TreatWarningsAsErrors=false -> 1 warning 0 errors; --filter-method '*Damaged_documents_are_recovered_as_far_as_an_independent_tool_recovers_them*' x3 -> 129/0/129/0 each (12.8 s, 9.3 s, 9.0 s); reverted",
+    "probe test file deleted; dotnet build (base) -> 0 warnings, 0 errors; rm -rf tests/corpus/remote; git status --short -> clean; HEAD 26ce787; no commit"
+   ]
+  },
+  "remoteControlDeviceReport": false,
+  "toolsUsed": [
+   "Bash",
+   "Write",
+   "StructuredOutput"
+  ]
+ },
+ {
+  "type": "result",
+  "key": "v2:dcec0424c1b69ce3d59618d547529b1bcbf290bdeeda416b4fa0f25905299873",
+  "agentId": "a828ea3449f7b36e0",
+  "result": {
+   "label": "b5-04-r",
+   "base": "26ce787",
+   "verdicts": [
+    {
+     "id": "PES-0048",
+     "verdict": "UPHELD",
+     "reason": "Holds as worded. With the index left on the %, the Comment arm's first-byte check fails, because % is not CR/LF. IndexOfAny from the % then finds the same absolute line end, or none, as the original finds from the byte after it. Index, mode and _readTo come out the same for every input. A differential probe gave byte-identical results: 40000 inputs, each searched in one read and in about 70 read partitions, short reads included, recording found/header/IsPending/DataEnd per read."
+    },
+    {
+     "id": "PES-0060",
+     "verdict": "UPHELD",
+     "reason": "Holds as worded. Every byte from the index up to the % is white space. The mutant's comment step either takes a CR/LF in that run (the first-byte check, or IndexOfAny), after which Space reaches the same % with fewer white-space bytes before it, or it finds none in the run and stops at the % comment's own line end, or at none. By induction the state matches the original's. The same probe gave identical output."
+    },
+    {
+     "id": "PES-0061",
+     "verdict": "TEST-OK",
+     "reason": "The row \"12 % endstream\\n %\\n0 obj\" goes through line 137: Space starts at the space after the first line feed, with next = 1. It asserts exactly where the data ends (-1) and where the header starts (DataStart + 0). That is the behavior the mutant changes: skipping the empty comment's line feed makes the comment swallow \"0 obj\". Re-run here: base 16/16 passed; with the mutant 1 of 16 failed, only that row (Expected -1L, found 105L). As a control, the probe also tells this mutant apart on 757 of its 40000 inputs.",
+     "test": "AdCodicem.Pdf.Tests.StreamEndsTests.The_data_ends_at_its_first_endstream_its_end_of_line_left_out_unless_a_header_comes_first(data: \"12 % endstream\\n %\\n0 obj\", deferred: False, found: -1, header: 0)"
+    },
+    {
+     "id": "PES-0062",
+     "verdict": "UPHELD",
+     "reason": "Holds as worded: same argument as PES-0048, and the probe output is identical. Correction to the flaky-test note: the unconfirmed ObjectRuleTests.A_run_of_links_the_walk_takes_at_the_reader_s_deepest_load_is_never_where_the_stack_cuts_it failed 2 of 3 runs alone here with the mutant applied. That is not all three, so it is not a kill. It is flaky on the base: 3 of 25 runs failed there, with the same assertion the harness saw ('Object 160 ... reads it as null' missing from the cuts). Its outcome depends on the thread's stack depth, not on this site."
+    },
+    {
+     "id": "PES-0065",
+     "verdict": "UPHELD",
+     "reason": "Holds; one premise needs to be stated. Here a delimiter (anything else is white space or %, handled earlier) becomes an empty token. TokenEnds either decides at once, or first counts it as a run of digits and then re-reads it from Space and decides. Either way it returns DataEnd with header -1 and mode None, as Decided() does. The fields left different (_numbered, _digits, _matched) are never read again: Start is documented to be called once per search on a fresh struct, and every caller (PdfFileReader, PdfObjectParser, StreamEndsTests, PropertyTests) uses default(PendingEndStream) per search. Probe output identical. The mutant raises CS0162, so it builds only with warnings allowed, as the harness builds it."
+    },
+    {
+     "id": "PES-0070",
+     "verdict": "UPHELD",
+     "reason": "Holds; corrected wording. _header is read only in TokenEnds when _matched == 3, which needs an 'o' first byte, and the original computes HeaderAt for exactly those tokens. HeaderAt is a readonly member of an `in` parameter. It reads only the bytes before the token, so it cannot mutate the text. Whatever it does at a non-'o' token, including whether it throws, it does in the original at an 'o' token in the same place. At most two tokens are read per search, so the extra calls add no cost a test could see. Probe output identical."
+    },
+    {
+     "id": "PES-0074",
+     "verdict": "UPHELD",
+     "reason": "Holds as worded. _header is assigned only at line 146 and read only at line 206, behind _matched == 3. Token mode is entered only through line 146 (which resets _matched to 0), and _matched reaches 3 only when the token's first byte is 'o'. So the -2 is never read. Probe output identical."
+    },
+    {
+     "id": "PES-0075",
+     "verdict": "UPHELD",
+     "reason": "Holds as worded: same reads and writes as PES-0074, so the 0 written for a token that does not start with 'o' is never read. Probe output identical."
+    },
+    {
+     "id": "PES-0107",
+     "verdict": "UPHELD",
+     "reason": "KILLED-EXISTING confirmed. The theory added in f8e9aa1 asserts that the undecided read returns exactly -1. With the mutant it failed 3 of 3 runs, 2 of 6 rows each time (\"% endstream\" and \"12 % endstream\": Expected -1L, found -2L), so the result is deterministic. src/ at 26ce787 is identical to 19a2296; StreamEndsTests did not exist at 19a2296.",
+     "test": "AdCodicem.Pdf.Tests.StreamEndsTests.A_keyword_in_a_comment_waits_for_the_reads_after_it_only_where_its_line_may_begin_a_header"
+    },
+    {
+     "id": "PES-0114",
+     "verdict": "UPHELD",
+     "reason": "Holds; sharpened wording. Decide runs only while a keyword is pending, so line 185 sees Comment, Space or Token. In Comment or Space, _matched is 0 before any token, or -1 after a first run of digits, because a digit is not 'o'. _numbered is true whenever _digits is, since a token leaves Token mode only through TokenEnds. An obj token decides as soon as it ends. So TokenEnds gives header -1 and DataEnd with mode None, exactly as Decided() does. Probe output identical."
+    }
+   ],
+   "tests_added": [],
+   "patch": "none",
+   "commands": [
+    "git fetch origin ccr-6d6c0ee6-dqm4lm-188; git checkout --detach origin/ccr-6d6c0ee6-dqm4lm-188 -> base 26ce787; git diff --quiet 19a2296 HEAD -- src: src identical",
+    "dotnet build tests/AdCodicem.Pdf.Tests/AdCodicem.Pdf.Tests.csproj -c Release -m:2 (base): 0 warnings, 0 errors",
+    "AdCodicem.Pdf.Tests.exe --filter-class AdCodicem.Pdf.Tests.StreamEndsTests (base): total 15, failed 0, succeeded 15",
+    "Temporary differential probe (tests/AdCodicem.Pdf.Tests/ProbeDiff.cs, never committed, removed): 40000 seeded inputs, each with a pending-keyword prefix and a random suffix from a token alphabet (digits, obj fragments, delimiters, white space, CR/LF, %, empty comments, endstream). Each was searched by StreamEnds.SearchStretch in one read (endsRange true/false x deferred true/false), in uniform reads of 1..30 bytes with overlap 10 and overlap 0, and in 6 random size lists (short reads included), recording found/header/IsPending/DataEnd after every read. Built with -p:TreatWarningsAsErrors=false",
+    "Probe output, base: md5 7b14981efb46e2ead570408e5f9ca57f. PES-0048, PES-0060, PES-0062, PES-0065 (1 warning, CS0162), PES-0070, PES-0074, PES-0075 and PES-0114 each gave the same md5 7b14981e... Control PES-0061: md5 8829bb2b..., 757 of 40000 inputs differ",
+    "PES-0062 applied, ObjectRuleTests.A_run_of_links_the_walk_takes_at_the_reader_s_deepest_load_is_never_where_the_stack_cuts_it alone x3: failed, passed, failed (1 test each)",
+    "Base, the same test alone x25: 22 passed, 3 failed, each with the same assertion ('Object 160 ... reads it as null' not among the cuts): flaky on the head",
+    "PES-0107 applied, --filter-method '*A_keyword_in_a_comment_waits_for_the_reads_after_it_only_where_its_line_may_begin_a_header*' x3: total 6, failed 2, succeeded 4 each time (rows \"% endstream\" and \"12 % endstream\": Expected -1L, found -2L)",
+    "git log 19a2296..HEAD -- tests/AdCodicem.Pdf.Tests/StreamEndsTests.cs: f8e9aa1, 743cea0 (the class postdates the mutation run)",
+    "git apply of the settling patch (b5-04/0001-...patch), StreamEndsTests on base: total 16, failed 0, succeeded 16; with PES-0061 applied: total 16, failed 1 (the new row only, Expected -1L, found 105L), succeeded 15; patch and mutant reverted",
+    "Final state: every mutant reverted through mutant.py --revert, probe file removed, git status clean at 26ce787, src/ identical to base, tests/corpus/remote never linked, no commit made"
+   ]
+  },
+  "remoteControlDeviceReport": false,
+  "toolsUsed": [
+   "Bash",
+   "Grep",
+   "Write",
+   "Read",
+   "StructuredOutput"
+  ]
+ },
+ {
+  "type": "result",
+  "key": "v2:c686dd0be1afa8f356656ced7fb3557103aa80903eab4c7995301519f66d8561",
+  "agentId": "ae42b83dd31144ef5",
+  "result": {
+   "label": "b5-05",
+   "base": "26ce787",
+   "survivors": [
+    {
+     "id": "PES-0131",
+     "fate": "EQUIVALENT",
+     "reason": "TokenEnds is private and has two callers, Decide lines 167 (`index < bytes.Length && TokenEnds(out var dataEnd, out header)`, then `return dataEnd`) and 185 (`TokenEnds(out var last, out header) ? last : Decided()`). Each reads the dataEnd out only when TokenEnds returns true, and line 201 sits on the path that returns false, so the value written there is never read for any input. The harness's unconfirmed failure, ObjectRuleTests.A_run_of_links_the_walk_takes_at_the_reader_s_deepest_load_is_never_where_the_stack_cuts_it, was run alone three times with the mutant applied: pass, FAIL, pass. It did not fail all three times, so the mutant is settled as any other survivor. The test is flaky on the head too (see found)."
+    },
+    {
+     "id": "PES-0132",
+     "fate": "EQUIVALENT",
+     "reason": "Same site and reason as PES-0131: line 201 is on TokenEnds' return-false path, and both callers (Decide lines 167 and 185) read the dataEnd out only when TokenEnds returns true. So -0 in place of -1 is never read."
+    },
+    {
+     "id": "PES-0138",
+     "fate": "KILLED-NEW",
+     "reason": "The no-obj arm's header becomes -2. Inside the library it is only compared by sign, but SearchStretch's documented contract gives -1 for no header, and StreamEndsTests asserts that exact value. No existing row ended the wait on a token other than obj through TokenEnds. The new row \"12 % endstream\\n0 R\" (a reference whose number the comment parts from its generation and R) does: it returns found 105 and header -1 on the base, and fails under the mutant with 'Expected value to be -1L, but found -2L'.",
+     "test": "AdCodicem.Pdf.Tests.StreamEndsTests.The_data_ends_at_its_first_endstream_its_end_of_line_left_out_unless_a_header_comes_first(data: \"12 % endstream\\n0 R\", deferred: False, found: 5, header: -1)"
+    },
+    {
+     "id": "PES-0144",
+     "fate": "KILLED-NEW",
+     "reason": "`header > 0` differs only for a header that starts at file position 0. Through a document the header is always at or past the data start, which is past the dictionary and the stream keyword. The internal SearchStretch, however, accepts any data start (CLAUDE.md 'Coverage': a direct test with what no file can produce). With the data at 0, \"12 % endstream\\n0 obj\" gives found -1 and header 0 on the base. Under the mutant the search returns the keyword's end, 5, and the test fails with 'Expected value to be -1L, but found 5L'.",
+     "test": "AdCodicem.Pdf.Tests.StreamEndsTests.A_header_that_starts_at_the_first_byte_of_the_file_stops_the_search_as_one_further_on_does"
+    },
+    {
+     "id": "PES-0145",
+     "fate": "KILLED-NEW",
+     "reason": "`header >= 1` is the same change as PES-0144 (it differs only at header 0), and the same test fails on it: 'Expected value to be -1L, but found 5L'.",
+     "test": "AdCodicem.Pdf.Tests.StreamEndsTests.A_header_that_starts_at_the_first_byte_of_the_file_stops_the_search_as_one_further_on_does"
+    }
+   ],
+   "tests_added": [
+    "AdCodicem.Pdf.Tests.StreamEndsTests.The_data_ends_at_its_first_endstream_its_end_of_line_left_out_unless_a_header_comes_first: new row (\"12 % endstream\\n0 R\", false, 5, -1). It pins that a token other than obj, past the run of digits that could have been a header's generation (the R of a reference the comment parts from its number), ends the wait. The keyword then ends the data at 105, and the header is exactly -1. The test's comment now mentions this case. The theory went from 9 to 10 rows.",
+    "AdCodicem.Pdf.Tests.StreamEndsTests.A_header_that_starts_at_the_first_byte_of_the_file_stops_the_search_as_one_further_on_does (Fact): SearchStretch is given \"12 % endstream\\n0 obj\" with the data starting at file position 0. It pins that the header the comment parts, starting at 0, stops the search (header exactly 0) and that the keyword ends no data (found exactly -1).",
+    "Helper StreamEndsTests.Search gained an optional `long dataStart = DataStart` parameter, used for the HeaderText and the read. Its doc comment was updated; existing calls are unchanged."
+   ],
+   "commit": "74f4011 test: pin the header a waiting endstream's decision gives, at the first byte and none (Refs #261). Patch: C:/Users/clemm/AppData/Local/Temp/claude/7278f9d03177d71e/898783fc-049f-469a-ab79-dfd299ad558e/scratchpad/cloud/settle/patches/b5-05/0001-test-pin-the-header-a-waiting-endstream-s-decision-g.patch. Refs reasoning: line 207 was written by ea348ce (Refs #261). Line 206 was last rewritten by cfaa90c (Refs #261, #52), but its `: -1` arm dates from ea348ce, and #52 is not one of the batch's issues, so the footer is Refs #261 only.",
+   "patch": "C:/Users/clemm/AppData/Local/Temp/claude/7278f9d03177d71e/898783fc-049f-469a-ab79-dfd299ad558e/scratchpad/cloud/settle/patches/b5-05/0001-test-pin-the-header-a-waiting-endstream-s-decision-g.patch",
+   "commands": [
+    "git fetch origin ccr-6d6c0ee6-dqm4lm-188; git checkout --detach origin/ccr-6d6c0ee6-dqm4lm-188 -> 26ce787",
+    "Base with new tests: dotnet build tests/AdCodicem.Pdf.Tests -c Release -m:2 -> 0 warnings, 0 errors; --filter-class StreamEndsTests -> total 17, failed 0, succeeded 17",
+    "PES-0131 applied: build 0 warnings; the unconfirmed test ObjectRuleTests.A_run_of_links_the_walk_takes_at_the_reader_s_deepest_load_is_never_where_the_stack_cuts_it alone x3 -> run 1 pass, run 2 FAIL, run 3 pass; --filter-class StreamEndsTests -> 17 total, 0 failed (equivalent: no test fails); reverted",
+    "PES-0132 applied: build 0 warnings; --filter-class StreamEndsTests -> 17 total, 0 failed, 17 succeeded (equivalent); reverted",
+    "PES-0138 applied: build 0 warnings; --filter-class StreamEndsTests -> 17 total, 1 failed (The_data_ends_at_its_first_endstream_..._unless_a_header_comes_first row \"12 % endstream\\n0 R\": Expected -1L, found -2L), 16 succeeded; reverted",
+    "PES-0144 applied: build 0 warnings; --filter-class StreamEndsTests -> 17 total, 1 failed (A_header_that_starts_at_the_first_byte_of_the_file_stops_the_search_as_one_further_on_does: Expected -1L, found 5L), 16 succeeded; reverted",
+    "PES-0145 applied: build 0 warnings; --filter-class StreamEndsTests -> 17 total, 1 failed (A_header_that_starts_at_the_first_byte_of_the_file_stops_the_search_as_one_further_on_does: Expected -1L, found 5L), 16 succeeded; reverted",
+    "Head (base + tests) rebuilt: 0 warnings; --filter-class StreamEndsTests -> 17 total, 0 failed, 17 succeeded",
+    "Head: the stack test alone 37 times, run alone with no other dotnet process -> 35 passes, 2 failures (runs 15 and 18), with the same message as the harness: cuts do not contain 'Object 160 is reached through more nested objects...'",
+    "grep_keys.py and widegrep.py on the diff and on git show HEAD -> rc 0; check_msgs.py on git log 26ce787..HEAD -> '74f4011 85 OK'",
+    "git status --short clean; git diff --stat 26ce787 HEAD -> only tests/AdCodicem.Pdf.Tests/StreamEndsTests.cs; tests/corpus/remote never linked"
+   ],
+   "found": [
+    "Flaky test: ObjectRuleTests.A_run_of_links_the_walk_takes_at_the_reader_s_deepest_load_is_never_where_the_stack_cuts_it fails intermittently on the unmutated head. It failed 2 of 37 solo runs, and 1 of 3 solo runs on the PES-0131 build, which is equivalent. The message is always the same: no frame offset in its 0..1000 probe sweep cut the walk at object 160's load, so `cuts.Should().Contain(ReadAsNull(160))` fails. This is the failure the harness recorded as unconfirmed for PES-0131. A likely cause, not verified: the frame sizes of the validator's recursion change while it runs, for example as tiered compilation promotes methods in the background, so whether some probe position lands the cut exactly at 160 depends on timing. This is worth filing as debt against the test.",
+    "No fault in src: PendingEndStream.TokenEnds behaves as its documentation says for every settled site. Through any document a header is always at or past the data start (> 0); position 0 is reachable only by calling the internal SearchStretch directly, which is why the PES-0144/0145 test calls it with the data at 0."
+   ]
+  },
+  "remoteControlDeviceReport": false,
+  "toolsUsed": [
+   "Bash",
+   "Read",
+   "Edit",
+   "StructuredOutput"
+  ]
+ },
+ {
+  "type": "result",
+  "key": "v2:48489bf21d9dfa97a2d3e6c3e38718bc1985f54a5398249ae2456b0af8c453b4",
+  "agentId": "a4b9bef0c75e9b596",
+  "result": {
+   "label": "b5-02",
+   "base": "26ce787",
+   "survivors": [
+    {
+     "id": "PFR-0656",
+     "fate": "KILLED-NEW",
+     "test": "AdCodicem.Pdf.Tests.CrossReferenceChainTests.An_xrefstm_goes_on_past_its_table_s_prev_to_the_stream_where_that_prev_names_a_dictionary_ending_the_file_that_gives_its_type_null_last",
+     "reason": "The parser behaves differently with endsData false only when the parse reaches the end of the buffer. Here object 4 ends the file with '<< /Type /XRef /Type null'. On the base, a window that ends at the end of the file has the null remove /Type, so the check gets {} and KeptPlace.None. With the mutant the null counts as a value the window's edge cut (PastWindowEdge, so EarlierKept keeps /Type /XRef), and KeepsItsPlace returns Section. The /XRefStm then reads NamedAgain at 2007 instead of Relocated at the stream. Separately, the harness's unconfirmed failure, CorpusReadingTests.Damaged_documents_are_recovered_as_far_as_an_independent_tool_recovers_them, passed 3/3 alone with the mutant applied (129/129 each run)."
+    },
+    {
+     "id": "PFR-0670",
+     "fate": "EQUIVALENT",
+     "reason": "Entries a cut attempt leaves in _pending are dropped with everything else by the finally's RollBack(mark), which also restores the suppressed and limit counts. Until then nothing keeps or counts them. The check runs only while the chain is read (KeepsItsPlace is reached only from TryReadXRefChain, with _readingChain set). The next attempt's parser, and the /Length it resolves through ReadThroughWithoutLoading and TryReadUnrecorded (which rolls back to its own mark), only add to _pending. They read it only through IsFull, which changes only the text of messages the finally drops. Separately, the harness's unconfirmed failure, the Damaged_documents theory, passed 3/3 alone with the mutant applied."
+    },
+    {
+     "id": "PFR-0672",
+     "fate": "KILLED-NEW",
+     "test": "AdCodicem.Pdf.Tests.HostileInputTests.The_look_at_what_a_prev_names_reads_the_object_there_through_the_windows_the_prev_s_own_reading_opens",
+     "reason": "With MaxTrailerLength at 1 MB and a 70,000-byte dictionary at the /Prev's place, the check's second window becomes 576 KB (589824) instead of the 512 KB (524288) that the search's reading and the /Prev's own reading open. The exact window list at object 4 differs at index 2. Separately, the harness's unconfirmed failure, the Damaged_documents theory, passed 3/3 alone with the mutant applied."
+    },
+    {
+     "id": "PFR-0673",
+     "fate": "KILLED-NEW",
+     "test": "AdCodicem.Pdf.Tests.HostileInputTests.The_look_at_what_a_prev_names_reads_the_object_there_through_the_windows_the_prev_s_own_reading_opens",
+     "reason": "Same test as PFR-0672: the check's second window becomes 448 KB (458752) instead of 512 KB, and the window list at object 4 differs at index 2."
+    },
+    {
+     "id": "PFR-0676",
+     "fate": "EQUIVALENT",
+     "reason": "TryReadIndirectObject returns false only from its header branch. That leaves value at PdfNull.Instance and id at its default (number 0), and HeaderStart and HeaderDigits at 0 on a fresh parser. MarkCutByGuard does nothing to a non-stream. The only caller (TryReadXRefStream's check branch) takes the same NotFound path for a PdfNull read as for no read: DeclaresCrossReferenceStream(PdfNull) is false, the guard branch needs a PdfDictionary, and cutByGuard is read nowhere else in the check. KeepsItsPlace reads only state, TypedXRef and CutByLimit. Separately, the harness's unconfirmed failures each passed 3/3 alone with the mutant applied, built with -p:TreatWarningsAsErrors=false as the harness did because CS0162 fires: the Damaged_documents theory (129/129 each run) and ObjectRuleTests.A_run_of_links_the_walk_takes_at_the_reader_s_deepest_load_is_never_where_the_stack_cuts_it (1/1 each run)."
+    },
+    {
+     "id": "PFR-0677",
+     "fate": "EQUIVALENT",
+     "reason": "Returning true with the out values still at their initial values (PdfNull, 0, offset, offset, cut false) leads the only caller to the same NotFound path that false does. The value declares nothing, it is no dictionary, and the check record's TypedXRef and CutByLimit stay unset."
+    },
+    {
+     "id": "PFR-0691",
+     "fate": "EQUIVALENT",
+     "reason": "In the check, foundNumber reaches only section.Fault text, check.StreamObjectNumber and DeferredLength.Stream. The check tests the DeferredLength only for null. All three belong to the record that KeepsItsPlace drops after reading only its state, TypedXRef and CutByLimit."
+    },
+    {
+     "id": "PFR-0692",
+     "fate": "EQUIVALENT",
+     "reason": "headerAt reaches only check.Padding, which is written after its one read at the method's start (at = absolute + section.Padding). The check record is then dropped, and KeepsItsPlace never reads Padding. Separately, the harness's unconfirmed failure, the Damaged_documents theory, passed 3/3 alone with the mutant applied."
+    },
+    {
+     "id": "PFR-0693",
+     "fate": "EQUIVALENT",
+     "reason": "digitsAt reaches only check.DigitsAt. DigitsAt is read only for chain records (RecordSectionReached, and the stream an /XRefStm read in TryRelocateXRefSection), never for the dropped check record."
+    }
+   ],
+   "tests_added": [
+    "CrossReferenceChainTests.An_xrefstm_goes_on_past_its_table_s_prev_to_the_stream_where_that_prev_names_a_dictionary_ending_the_file_that_gives_its_type_null_last (Fact). It reads a hybrid document whose /Prev names object 4, which ends the file with '<< /Type /XRef /Type null'. It pins the exact sections [(startxref, Read, newest), (/XRefStm, Relocated, stream), (/Prev, Relocated, oldest)]. It pins the exact (Code, Position) diagnostics [(XRefOffsetAdjusted, stream), (SyntaxKeyRepeated, four+23), (SyntaxTruncatedObject, four+8), (XRefOffsetAdjusted, oldest)]. It also checks that objects 7 and 5 read 'new seven' and 'five' and that the document was not repaired.",
+    "HostileInputTests.The_look_at_what_a_prev_names_reads_the_object_there_through_the_windows_the_prev_s_own_reading_opens (Fact). It uses HybridFiles.NamingAnObjectBesideTheStream with object 4 a stream of no type: a 70,000-byte dictionary and 600,000 bytes of data. MaxTrailerLength is raised to 1 MB and the document is read through WindowLoggingSource. It pins the sections after startxref [(/XRefStm, Relocated, stream), (/Prev, Relocated, oldest)]. It pins the exact window lengths opened at object 4: [XRefProbeLength, XRefWindow, 8*XRefWindow, XRefWindow, 8*XRefWindow, XRefWindow, 8*XRefWindow].",
+    "Builder HybridFiles.NamingAnObjectThatEndsTheFile(string four). It writes the same hybrid document with the newest table first, its startxref written after object 8, and object 4 last, with no endobj. Object 4 lies 38 bytes past the place the /XRefStm names, the stream 212 bytes before that place, and the oldest table 418 bytes before object 4."
+   ],
+   "commit": "1d70d15 test: hold the look at a prev's place to its own reading's windows and the file's end (Refs #156, #281; the lines were written by 2b26d18, whose footer is Refs #156, #188, #208, #281, #264, narrowed to the issues the check KeepsItsPlace pays, as its doc cites them)",
+   "patch": "C:/Users/clemm/AppData/Local/Temp/claude/7278f9d03177d71e/898783fc-049f-469a-ab79-dfd299ad558e/scratchpad/cloud/settle/patches/b5-02/0001-test-hold-the-look-at-a-prev-s-place-to-its-own-read.patch",
+   "commands": [
+    "git fetch origin ccr-6d6c0ee6-dqm4lm-188; git checkout --detach origin/ccr-6d6c0ee6-dqm4lm-188 -> base 26ce787",
+    "cp -al <maintainer>/tests/corpus/remote tests/corpus/remote (removed with rm -rf before finishing)",
+    "dotnet build tests/AdCodicem.Pdf.Tests/AdCodicem.Pdf.Tests.csproj -c Release -m:2 on the base: 0 warnings, 0 errors",
+    "base: the 2 new tests: total 2, failed 0, succeeded 2",
+    "base: --filter-method '*Damaged_documents_are_recovered_as_far_as_an_independent_tool_recovers_them': total 129, failed 0, succeeded 129 (about 11 s)",
+    "PFR-0656 applied, built: new tests total 2, failed 1 (CrossReferenceChainTests ..._null_last; the mutant gives /XRefStm NamedAgain at 2007), succeeded 1; Damaged theory alone x3: 129/129, 129/129, 129/129",
+    "PFR-0672 applied, built: new tests total 2, failed 1 (HostileInputTests window test; windows {32, 65536, 589824, ...}), succeeded 1; Damaged theory alone x3: 129/129 x3",
+    "PFR-0673 applied, built: new tests total 2, failed 1 (HostileInputTests window test; windows {32, 65536, 458752, ...}), succeeded 1",
+    "PFR-0670 applied, built: new tests 2/2 passed; Damaged theory alone x3: 129/129 x3",
+    "PFR-0676 applied, built with -p:TreatWarningsAsErrors=false -p:RunAnalyzers=false as the harness did (CS0162; the default build errors): new tests 2/2 passed; Damaged theory alone x3: 129/129 x3; ObjectRuleTests '*A_run_of_links_the_walk_takes_at_the_reader_s_deepest_load_is_never_where_the_stack_cuts_it' x3: 1/1 x3",
+    "PFR-0692 applied, built (harness flags): new tests 2/2 passed; Damaged theory alone x3: 129/129 x3",
+    "each mutant reverted with mutant.py --revert; git diff -- src empty",
+    "base rebuilt (0 warnings): --filter-class CrossReferenceChainTests total 1079, failed 0, succeeded 1079, skipped 0; --filter-class HostileInputTests (run alone) total 262, failed 0, succeeded 262, skipped 0",
+    "grep_keys.py and widegrep.py on the diff: no output; check_msgs.py on 26ce787..HEAD: 1d70d15 85 OK",
+    "git format-patch -1 HEAD -> patches/b5-02/"
+   ],
+   "found": [
+    "No fault in src. Each unconfirmed failure the harness saw in CorpusReadingTests.Damaged_documents_are_recovered_as_far_as_an_independent_tool_recovers_them is a timing assertion under whole-suite load: in the PFR-0656 suite log, validating cairo-firefox-objstm-index-overflow-bug1978317.pdf took 24 s against a 20 s budget. Run alone, the theory passes in about 10 s on the base and on every mutant tried, so this is a load-dependent flaky timing test, not a mutant effect.",
+    "TryParseUnrecordedAt's foundNumber, headerAt and digitsAt outputs are dead at their only caller. TryReadXRefStream's check branch writes them only into the check record and fault text, which KeepsItsPlace drops. This is not a defect: the outputs keep the check's call shape the same as the reading's.",
+    "PFR-0676 does not build with TreatWarningsAsErrors on (CS0162, unreachable code); it was built with the harness's flags -p:TreatWarningsAsErrors=false -p:RunAnalyzers=false."
+   ]
+  },
+  "remoteControlDeviceReport": false,
+  "toolsUsed": [
+   "Bash",
+   "Edit",
+   "Read",
+   "StructuredOutput"
+  ]
+ },
+ {
+  "type": "result",
+  "key": "v2:6541a800ba9b2e18e5fb7889e5ca8e4ca71064dbe6ac1c621fcb2e43f161fb63",
+  "agentId": "a5ca6d487b6032c9b",
+  "result": {
+   "label": "b5-06",
+   "base": "26ce787",
+   "survivors": [
+    {
+     "id": "XRSR-0032",
+     "fate": "KILLED-NEW",
+     "reason": "The section named at object 6 (a CIDFont, or a stream of /Type /Font) has TypedOther=true from its reading at the named offset. A table that cannot be read lies beside it, so TryRelocateXRefSection finds it moved there (RelocateTo, then Malformed, break). ReportLostSection then calls NoSectionWhereAnotherType. With the assignment gone, the stale TypedOther=true turns the found-moved section NotFound, clears its trailer and reports it missing. The code instead reports (XRefOffsetAdjusted, table), (XRefSectionUnreadable, table). Both typed rows fail with the mutant applied. The untyped row passes either way, as it should.",
+     "test": "AdCodicem.Pdf.Tests.CrossReferenceChainTests.A_section_the_prev_names_at_an_object_of_any_type_is_found_moved_to_a_table_beside_it_that_cannot_be_read"
+    },
+    {
+     "id": "XRSR-0035",
+     "fate": "EQUIVALENT",
+     "reason": "RelocateTo is called only from TryRelocateXRefSection, with an attempt read with candidate: true, and the attempt's TypedOther is false for every input. The only write is PdfFileReader.cs:6743, and a candidate reaches it only once DeclaresOnlyCrossReferenceStream(value) holds. That needs /Type resolving to /XRef (so TypedXRef is true) or a /Type that is no direct name, and either makes TypedOther false. A table attempt never writes it. So `TypedOther = attempt.TypedOther` already assigns false."
+    }
+   ],
+   "tests_added": [
+    "CrossReferenceChainTests.A_section_the_prev_names_at_an_object_of_any_type_is_found_moved_to_a_table_beside_it_that_cannot_be_read (theory, 3 rows). /Prev names object 6, and a classic table holding a stray name (/Bad 1) follows it. Object 6 is one of: '<< /Type /Font /Subtype /CIDFontType2 /W [0 [500]] /BaseFont /F >>' (a CIDFont with no stream data); '<< /Type /Font /W [1 -4 2] /Size 8 /Length 3 >>' with stream data (a /Type /Font stream whose /W gives a negative width); '<< /Subtype /CIDFontType2 /W [0 [500]] /BaseFont /F >>' (untyped control row). Each row pins: the exact (Code, Position) list [(XRefOffsetAdjusted, table), (XRefSectionUnreadable, table)] with Should().Equal; the unreadable report's opening 'The cross-reference table /Prev names at offset {at}, found at offset {table}, is there but cannot be read: '; and Sections[1] with State Malformed, Offset table, NamedOffset at, Kind Table and Fault 'it holds a name at offset {table+5}, where a subsection or the trailer should start'. It also checks that object 3 reads as a Page and that WasRepaired is false.",
+    "NearbyFiles.TableNamingAnObjectBeforeATableThatCannotBeRead(string six) (new builder, returns File, Six, Table). A one-page document: object 6 written as given, then a classic table 'xref /Bad 1 trailer << /Size 7 >>', 1,200 bytes of comment, and the one good table, which indexes objects 1 to 3 and names object 6 through /Prev."
+   ],
+   "commit": "929ddbb test: hold a section found moved from an object of another type as unreadable (Refs #281). The site's line was written by d5b4d48, whose footer is 'Refs #188, #281'. TypedOther is #281's.",
+   "patch": "C:/Users/clemm/AppData/Local/Temp/claude/7278f9d03177d71e/898783fc-049f-469a-ab79-dfd299ad558e/scratchpad/cloud/settle/patches/b5-06/0001-test-hold-a-section-found-moved-from-an-object-of-an.patch",
+   "commands": [
+    "git fetch origin ccr-6d6c0ee6-dqm4lm-188; git checkout --detach origin/ccr-6d6c0ee6-dqm4lm-188 -> HEAD 26ce787 (expected base)",
+    "git log -L357,357:src/AdCodicem.Pdf/IO/XRef/XRefSectionRecord.cs 21a0298..HEAD -> d5b4d48, Refs #188, #281",
+    "Base, first draft with a placeholder Fault assertion: dotnet build -c Release -m:2 (0 warnings, 0 errors); AdCodicem.Pdf.Tests.exe --filter-method '*An_object_of_any_type_the_prev_names_beside*' -> total 3, failed 3 (Fault placeholder only; the diagnostics list already matched)",
+    "Base, after fixing the Fault assertion: build 0 warnings; the same filter -> total 3, failed 0, succeeded 3",
+    "XRSR-0032 applied (mutant.py . XRSR-0032): build 0 warnings; the new test -> total 3, failed 2 (CIDFont row and /Type /Font stream row, both on the Should().Equal of the (Code, Position) list), succeeded 1 (untyped row); reverted with --revert",
+    "XRSR-0035 applied: build 0 warnings; the new test -> total 3, failed 0, succeeded 3 (consistent with equivalence); reverted",
+    "Base: AdCodicem.Pdf.Tests.exe --filter-class AdCodicem.Pdf.Tests.CrossReferenceChainTests -> total 1081, failed 0, succeeded 1081, skipped 0",
+    "XRSR-0032 applied again to capture the failure output: the same 2 rows failed on the diagnostics list; reverted",
+    "Base, after renaming the test and rewording its comment: build 0 warnings; --filter-method '*A_section_the_prev_names_at_an_object_of_any_type*' -> total 3, failed 0, succeeded 3",
+    "grep_keys.py and widegrep.py on the diff -> no output, rc 0; check_msgs.py on git log 26ce787..HEAD -> '929ddbb 77 OK'",
+    "git format-patch -1 HEAD -> patches/b5-06/0001-...patch; git status --short -> clean; src/ unchanged from the base; tests/corpus/remote never linked"
+   ],
+   "found": [
+    "No fault in src/. Because the attempt's TypedOther is always false, `TypedOther = attempt.TypedOther` in RelocateTo does one real job: it clears the /Type that the reading at the named offset found, so that NoSectionWhereAnotherType does not turn a found-moved section into a missing one. The code behaves correctly. Its only gap was that no test covered it.",
+    "No stale comment and no flaky test seen. The harness's summary for both ids showed no unconfirmed failures (suite 7483 total, 0 failed, 3 skipped)."
+   ]
+  },
+  "remoteControlDeviceReport": false,
+  "toolsUsed": [
+   "Bash",
+   "Grep",
+   "Edit",
+   "Write",
+   "StructuredOutput"
+  ]
+ },
+ {
+  "type": "result",
+  "key": "v2:355ea099502e124ab45250fcb80bd50e3cdbf070dca3b3d553f8bed17a812f6d",
+  "agentId": "ad8848220520da8a5",
+  "result": {
+   "label": "b5-03",
+   "base": "26ce787",
+   "verdicts": [
+    {
+     "id": "PES-0011",
+     "verdict": "UPHELD",
+     "reason": "Holds. Corrected reason: StreamEnds.SearchStretch is PendingEndStream's only caller in src and in tests. StreamEndsTests and PropertyTests drive the type only through it, and no test calls Start or Decide directly. SearchStretch runs its first Decide on the read it found the keyword in, so the mutant starts one byte back, on the keyword's final 'm'. Comment mode passes that byte. It reaches the same end of line (lineEnd is one larger, or -1 in both), or the read's end in Comment mode when the keyword ends the read, which is the state the head's empty loop leaves. From then on `at` and `_readTo` are both one larger, so every later index is the same. A read that decides returns before line 177 and ends the search. The mutant changes only cost: one byte more, once per search. One call tells it apart, and no caller makes it: Start followed by a first Decide on a read that starts exactly where the keyword ends. Probe: Start(100,112), then Decide on \" rest\\n0 obj\" read at 112. The head returns 100/-1; the mutant throws IndexOutOfRangeException on bytes[-1]."
+    },
+    {
+     "id": "PES-0022",
+     "verdict": "UPHELD",
+     "reason": "Holds as written: on a CR or LF at index, IndexOfAny returns 0, so lines 116-117 set index+1 and Space, the shortcut's state. Correction of class: it changes only cost, one search that ends at its first byte instead of a compare, once per comment line with no text. That cost allocates nothing and no count tells it apart. Under the rule of 2026-11-01 it is equivalent in what is reported, its extra cost bounded per line. StreamEndSearchBenchmarks' endstream-comment-then-comment-lines measures that cost. As written it does not compile under TreatWarningsAsErrors (CS0162)."
+    },
+    {
+     "id": "PES-0023",
+     "verdict": "UPHELD",
+     "reason": "Holds: a CR the shortcut no longer takes reaches IndexOfAny, which returns 0, and lines 116-117 set index+1 and Space. Same class correction as PES-0022: cost only, one search ending at its first byte per comment line with no text that ends in CR."
+    },
+    {
+     "id": "PES-0024",
+     "verdict": "UPHELD",
+     "reason": "Holds: an LF the shortcut no longer takes reaches IndexOfAny, which returns 0, and lines 116-117 set index+1 and Space. Same class correction as PES-0022: cost only, one search ending at its first byte per comment line with no text that ends in LF."
+    },
+    {
+     "id": "PES-0025",
+     "verdict": "UPHELD",
+     "reason": "Holds: index stays on the CR or LF in Space mode. The '%' test fails on that byte, and IndexOfAnyExcept(Whitespace), which holds 0x0D and 0x0A, passes it, so every later branch lands on the same absolute byte (an end of line that ends the read gives next=-1, then index=Length). Class correction: cost only, one IndexOfAnyExcept instead of the '%' shortcut per line that holds only '%', with no allocation. The comment-lines benchmark shape measures it."
+    },
+    {
+     "id": "PES-0033",
+     "verdict": "UPHELD",
+     "reason": "Holds as written: the shortcut at line 108 takes every CR or LF at index with nothing changing in between, so IndexOfAny at line 115 returns -1 or at least 1, never 0, and `< 0` and `<= 0` agree. A plain equivalent with no change in cost."
+    },
+    {
+     "id": "PES-0034",
+     "verdict": "UPHELD",
+     "reason": "Holds as written: lineEnd at line 116 is -1 or at least 1, never 0, because of the shortcut at line 108, so `< 0` and `< 1` agree. A plain equivalent with no change in cost."
+    },
+    {
+     "id": "PES-0037",
+     "verdict": "UPHELD",
+     "reason": "Holds: index lands on the comment's end of line with Mode.Space. The next Space step's '%' test fails on that byte and IndexOfAnyExcept passes it as white space, so the state reaches the same absolute byte; an end of line that ends the read gives next=-1 and index=Length. Class correction: cost only, at most one short IndexOfAnyExcept per comment line that holds text, with no allocation."
+    },
+    {
+     "id": "PES-0042",
+     "verdict": "UPHELD",
+     "reason": "Holds as written: lineEnd at line 117 is -1 or at least 1, never 0, because of the shortcut at line 108, so `< 0` and `<= 0` choose the same mode. A plain equivalent."
+    },
+    {
+     "id": "PES-0043",
+     "verdict": "UPHELD",
+     "reason": "Holds as written: lineEnd at line 117 is -1 or at least 1, never 0, so `< 0` and `< 1` choose the same mode. A plain equivalent."
+    },
+    {
+     "id": "PES-0047",
+     "verdict": "UPHELD",
+     "reason": "Holds: '%' (0x25) is not in PdfCharacters.Whitespace {00,09,0A,0C,0D,20}, so IndexOfAnyExcept returns 0 on it, and lines 135-138 set index+1 and Comment, the shortcut's state. Class correction: cost only, one search ending at its first byte instead of a compare per comment line. StreamEndSearchBenchmarks' endstream-comment-then-comment-lines measures it. As written it does not compile under TreatWarningsAsErrors (CS0162)."
+    }
+   ],
+   "tests_added": [],
+   "patch": "none (every verdict holds; no commit made, so no patch was written)",
+   "commands": [
+    "git fetch origin ccr-6d6c0ee6-dqm4lm-188; git checkout --detach origin/ccr-6d6c0ee6-dqm4lm-188: HEAD 26ce787, the expected base",
+    "mutant.py - <ID> for all 11 ids. Harness summary-24.txt: all 11 SURVIVED with no unconfirmed failures (first filter 419/0 or 411/0; suite 10559/0/10556/3 or 10567/0/10564/3)",
+    "Read src/AdCodicem.Pdf/IO/PendingEndStream.cs; HeaderText.PositionOf (index >= 0 gives _at + index); StreamEnds.SearchStretch (Start at 161, then the first Decide on the same text at 162; later Decides at 132); the production callers PdfFileReader 2586-2650 and PdfObjectParser 1121-1126, which read only IsPending and DataEnd; and PdfCharacters.Whitespace {00,09,0A,0C,0D,20}. grep: no test calls Start or Decide directly; StreamEndsTests and PropertyTests go through SearchStretch",
+    "Exhaustive differential probe, a temporary xUnit fact, deleted afterwards. Inputs: 8 prefixes (\"\", \"12 \", \"12\\n\", \"1 0 \", \"/N \", \"%c\\n12 \", \"12 0\", \"\\r\\n12\\r\") x 3 comment forms (\"% endstream\", \"%endstream\", \"% a endstream\") x every sequence of up to 5 of 11 units (%, LF, CR, space, 0, obj, /, x, CRLF, \"% c\", 7), giving 4,251,744 inputs. Each was read in 10 partitions: one read; reads of 1, 2, 3, 5, 7, 11 and 13 bytes with overlap 10, short reads included; and a first read ending exactly at the keyword's end followed by 1- or 12-byte reads. That makes 42.5M searches, with 108,198,694 reads left waiting, 587,574 header stops and 0 exceptions. The SHA-256 of every per-read (found, header, pending) trace and the final DataEnd is 63093CDB...37E5 on the base",
+    "Each mutant applied with mutant.py, built with -p:TreatWarningsAsErrors=false -m:2 (0 errors each; PES-0022 and PES-0047 give 1 warning, CS0162), probed, then reverted. PES-0011, 0022, 0023, 0024, 0025, 0033, 0034, 0037, 0042, 0043 and 0047 all give the base's hash and counts exactly",
+    "Pipeline controls: PES-0038 gives A1A0CB... with 528,966 headers, and PES-0026 gives 8357D3... with 310,350 headers. Both differ from the base, so the probe does tell a behavior change apart",
+    "Direct-call probe for PES-0011: Start(100,112), then a first Decide on \" rest\\n0 obj\" read at 112. The base returns 100/-1; PES-0011 throws IndexOutOfRangeException. No caller in src or tests makes this call",
+    "Clean-up: probe file removed; dotnet build tests/AdCodicem.Pdf.Tests -c Release -m:2 on the base gives 0 warnings, 0 errors; AdCodicem.Pdf.Tests.exe --filter-class StreamEndsTests gives total 15, failed 0, succeeded 15, skipped 0; git status --short is empty; HEAD is still 26ce787; tests/corpus/remote was never linked"
+   ]
+  },
+  "remoteControlDeviceReport": false,
+  "toolsUsed": [
+   "Bash",
+   "Read",
+   "Write",
+   "ToolSearch",
+   "Monitor",
+   "StructuredOutput"
+  ]
+ },
+ {
+  "type": "result",
+  "key": "v2:fa03ff1563483ed44ace39ddd904c08e72aa13758b4b1054e4a8eee5de09b0f5",
+  "agentId": "a3716dcadb31cedf3",
+  "result": {
+   "label": "b5-05",
+   "base": "26ce787",
+   "verdicts": [
+    {
+     "id": "PES-0131",
+     "verdict": "UPHELD",
+     "reason": "The reason is right. TokenEnds is private and Decide is its only caller: line 167 `if (index < bytes.Length && TokenEnds(out var dataEnd, out header)) return dataEnd;` and line 185 `(_mode == Mode.Token && TokenEnds(out var last, out header)) ? last : Decided()`. Each reads its out local only when TokenEnds returns true, and nothing else reads `dataEnd` or `last`; I grepped the file. Line 201 runs only on the return-false path, so its value is never read for any input. The header out on that path is still -1 from line 195. Probe: with the mutant applied I added theory rows that drive the false return through both call sites. \"12 % endstream\\n0\" reaches line 185 with the digits token cut at the search end, then Decided(). \"12 % endstream\\n0 7\" and the existing \"…\\n0 obj\" and \"…\\n0 R\" rows reach line 167 false, then true. All passed: 412 run over StreamEndsTests, PropertyTests, StreamLengthTests and WindowEdgeTests, 0 failed, 2 skipped (remote). The harness's unconfirmed test, ObjectRuleTests.A_run_of_links_the_walk_takes_at_the_reader_s_deepest_load_is_never_where_the_stack_cuts_it, run alone three times with the mutant applied: 3 passes (and 3 more passes in an earlier loop whose output did not parse). Not all three failed, so no existing test catches the mutant. That test validates a chain of links and reaches no lost-endstream search; its one failure is the timing-dependent probe sweep the settling agent reported as flaky on the head."
+    },
+    {
+     "id": "PES-0132",
+     "verdict": "UPHELD",
+     "reason": "Same site and the same holding reason as PES-0131. The 0 written at line 201 sits on TokenEnds' return-false path, and both of Decide's call sites (lines 167 and 185) read the dataEnd out only on a true return. So a position of 0, valid as it would be, never reaches a caller. The same probe rows with this mutant applied: 412 run over the four filter classes, 0 failed, 2 skipped."
+    },
+    {
+     "id": "PES-0138",
+     "verdict": "TEST-OK",
+     "reason": "The mutant changes only the header out value on the path where a token other than obj ends the wait (_matched != 3), from -1 to -2. In the library that value is compared only by sign: SearchEndStream and SearchEndStreamOnce use `>= 0`, EndObjTailCopies.TryGet matches no start of -1 or -2, and SearchBuffer uses `< 0` / `>= 0`. The internal SearchStretch, however, documents -1 for no header (out param 'Where the header that stopped the search starts in the file, or -1'). The new row asserts exactly that value through the theory's `at.Should().Be(header < 0 ? -1 : DataStart + header)`. I checked that no existing row reaches that arm: \"…\\nobj\" takes the obj arm with _header -1. With the patch applied to the base and the mutant on: the row (data \"12 % endstream\\n0 R\", found 5, header -1) fails with 'Expected value to be -1L, but found -2L', and it passes on the base. My probe row \"12 % endstream\\n0 7\" fails the same way, which confirms it is the arm the row pins. The assertion targets the behavior, not an incidental value.",
+     "test": "AdCodicem.Pdf.Tests.StreamEndsTests.The_data_ends_at_its_first_endstream_its_end_of_line_left_out_unless_a_header_comes_first(data: \"12 % endstream\\n0 R\", deferred: False, found: 5, header: -1)"
+    },
+    {
+     "id": "PES-0144",
+     "verdict": "TEST-OK",
+     "reason": "`header > 0` differs from `header >= 0` only when the header the rule takes starts at 0. No document reaches that. HeaderText holds only bytes from where the data starts, so HeaderAt returns at least the data start. The reader's data start lies past the dictionary and `stream` keyword. PdfObjectParser is internal, its file offsets are at least 0, and object-stream members are parsed with readsStreams: false. So calling the internal SearchStretch with the data at 0 is the legitimate direct test (CLAUDE.md 'Coverage'). The test asserts exactly what the mutant changes: the keyword ends no data (end -1) and the header is 0. With the mutant applied it fails with 'Expected value to be -1L, but found 5L', and it passes on the base (19 of 19 in the class with the patch and my two probe rows).",
+     "test": "AdCodicem.Pdf.Tests.StreamEndsTests.A_header_that_starts_at_the_first_byte_of_the_file_stops_the_search_as_one_further_on_does"
+    },
+    {
+     "id": "PES-0145",
+     "verdict": "TEST-OK",
+     "reason": "For a long, `header >= 1` is the same change as `header > 0`: it differs only at header 0. The same Fact asserts end -1 and header 0, and with this mutant applied it fails with 'Expected value to be -1L, but found 5L' (1 failed of 19 in the class); it passes on the base.",
+     "test": "AdCodicem.Pdf.Tests.StreamEndsTests.A_header_that_starts_at_the_first_byte_of_the_file_stops_the_search_as_one_further_on_does"
+    }
+   ],
+   "tests_added": [],
+   "patch": "none (every verdict holds; the settling agent's patch stays C:/Users/clemm/AppData/Local/Temp/claude/7278f9d03177d71e/898783fc-049f-469a-ab79-dfd299ad558e/scratchpad/cloud/settle/patches/b5-05/0001-test-pin-the-header-a-waiting-endstream-s-decision-g.patch)",
+   "commands": [
+    "git fetch origin ccr-6d6c0ee6-dqm4lm-188; git checkout --detach origin/ccr-6d6c0ee6-dqm4lm-188 -> HEAD 26ce787 (base)",
+    "git apply of the settling agent's patch b5-05/0001-…patch to the working tree, plus two temporary probe rows in the theory (\"12 % endstream\\n0\" and \"12 % endstream\\n0 7\", both found 5, header -1)",
+    "Head + patch + probes: dotnet build tests/AdCodicem.Pdf.Tests -c Release -m:2 -> 0 warnings, 0 errors; --filter-class StreamEndsTests -> total 19, failed 0, succeeded 19",
+    "PES-0138 applied: build 0 warnings; --filter-class StreamEndsTests -> total 19, failed 2 (rows \"…\\n0 R\" and probe \"…\\n0 7\": Expected -1L, found -2L), succeeded 17; reverted",
+    "PES-0144 applied: build 0 warnings; --filter-class StreamEndsTests -> total 19, failed 1 (A_header_that_starts_at_the_first_byte_of_the_file_…: Expected -1L, found 5L), succeeded 18; reverted",
+    "PES-0145 applied: build 0 warnings; --filter-class StreamEndsTests -> total 19, failed 1 (same Fact, Expected -1L, found 5L), succeeded 18; reverted",
+    "PES-0131 applied: build 0 warnings; four filter classes (StreamEndsTests, PropertyTests, StreamLengthTests, WindowEdgeTests) -> total 412, failed 0, succeeded 410, skipped 2 (remote corpus not linked); ObjectRuleTests.A_run_of_links_…_stack_cuts_it alone x3 (no other dotnet process) -> 3 passes, plus 3 earlier runs that also returned total 1 but whose counts did not parse; reverted",
+    "PES-0132 applied: build 0 warnings; four filter classes -> total 412, failed 0, succeeded 410, skipped 2; reverted",
+    "git log --format='%h %s%n%b' 21a0298..HEAD -L201,207:src/AdCodicem.Pdf/IO/PendingEndStream.cs -> cfaa90c (Refs #261, #52), ea348ce (Refs #261): consistent with the settling commit's Refs #261",
+    "Probe rows removed, test file restored with git checkout; git status --short clean at 26ce787; src/ as the base has it; tests/corpus/remote never linked; no commit made"
+   ]
+  },
+  "remoteControlDeviceReport": false,
+  "toolsUsed": [
+   "Bash",
+   "Write",
+   "StructuredOutput"
+  ]
+ },
+ {
+  "type": "result",
+  "key": "v2:441f2ed05baf46e5f529a3dd6216d9df3266364a3ab37d677996e0ee955e9d9b",
+  "agentId": "ab524adb139fe1d8d",
+  "result": {
+   "label": "b5-06",
+   "base": "26ce787",
+   "verdicts": [
+    {
+     "id": "XRSR-0032",
+     "verdict": "TEST-OK",
+     "reason": "The test holds the behavior the change breaks. RelocateTo's assignment clears the TypedOther that the reading at the named offset wrote. Without it, NoSectionWhereAnotherType makes a section found moved NotFound. With the change applied, the CIDFont row and the /Type /Font stream row fail on the exact Should().Equal (Code, Position) list: [(xref.offset-adjusted, 285), (xref.section-missing, 203)] instead of [(xref.offset-adjusted, 285), (xref.section-unreadable, 285)], and likewise at 287. The section's State, Offset, Kind and Fault assertions would also tell the two apart. The untyped row passes both ways. It still says something: a found-moved table is reported unreadable whatever object 6 is. The name is true of every row. The patch passes grep_keys and widegrep, and the Refs #281 matches d5b4d48's footer (Refs #188, #281), whose TypedOther part is #281's.",
+     "test": "AdCodicem.Pdf.Tests.CrossReferenceChainTests.A_section_the_prev_names_at_an_object_of_any_type_is_found_moved_to_a_table_beside_it_that_cannot_be_read"
+    },
+    {
+     "id": "XRSR-0035",
+     "verdict": "UPHELD",
+     "reason": "Corrected reason: RelocateTo has one caller, TryRelocateXRefSection:5405 (no test or other member calls it). Its attempt is a fresh record (new XRefSectionRecord, TypedOther false), read with candidate: true. Only PdfFileReader.cs:6743 writes an attempt's TypedOther; table readings and the hybrid pass-over return never write it. A candidate reaches that write only past DeclaresOnlyCrossReferenceStream(value) at 6705, on the same dictionary. That needs IsOfType(XRef), and a direct /Type name compares the same both times, so TypedXRef is true. Otherwise it needs a /W beside a /Type that is no direct name, which fails TypedOther's own `is PdfName`. So attempt.TypedOther is false for every file, and `= false` assigns the same value. Tried: 18 files with a CIDFont or a /Type /Font stream at the offset /Prev names and a candidate beside it. The candidates were /Type /XRef, /Type given twice in both orders (the later key wins, so only /Font-then-/XRef is taken), /Type 9 0 R, /Type (XRef), /Type /Font, untyped, a readable /XRef stream, and a /XRef dictionary with no data. All diagnostics, section fields (TypedOther included) and WasRepaired matched between base and change. A direct RelocateTo call with an attempt whose TypedOther is true would tell them apart. But that attempt breaks the member's contract ('what a successful attempt at another offset read'): TypedOther's doc says such a place holds no section. That is the out-of-contract case batch 1's HT-0239 upheld, not PFR-0032's in-contract direct call.",
+     "test": ""
+    }
+   ],
+   "tests_added": [],
+   "patch": "none",
+   "commands": [
+    "git fetch origin ccr-6d6c0ee6-dqm4lm-188; git checkout --detach origin/ccr-6d6c0ee6-dqm4lm-188 -> HEAD 26ce787 (base)",
+    "grep -rn TypedOther/TypedXRef src/ -> one write to an attempt (PdfFileReader.cs:6743), reads at 4736 and RelocateTo; grep RelocateTo src/ tests/ -> one caller, PdfFileReader.cs:5405; grep TryReadXRefStream( -> 4025 (checkOnly, candidate false, own record) and 5841",
+    "git log -L357,357:src/AdCodicem.Pdf/IO/XRef/XRefSectionRecord.cs 21a0298..HEAD -> d5b4d48, Refs #188, #281",
+    "git apply the settling patch b5-06/0001-...patch; dotnet build tests/AdCodicem.Pdf.Tests -c Release -m:2 -> 0 warnings, 0 errors; --filter-method '*A_section_the_prev_names_at_an_object_of_any_type*' -> total 3, failed 0, succeeded 3",
+    "mutant.py . XRSR-0032; build 0 warnings; same filter -> total 3, failed 2 (CIDFont and /Type /Font stream rows, on the (Code, Position) list: section-missing at 203 instead of section-unreadable at 285/287), succeeded 1; --revert",
+    "mutant.py . XRSR-0035 plus a temporary probe (18 files: 2 objects at the /Prev offset x 9 candidates beside them); build 0 warnings; probe -> total 1, failed 0; new test -> total 3, failed 0, succeeded 3; --revert",
+    "Base: probe rebuilt -> total 1, failed 0; diff of probe outputs (181 lines each) base vs XRSR-0035 -> identical",
+    "Probe removed; base build 0 warnings; --filter-class AdCodicem.Pdf.Tests.CrossReferenceChainTests with the settling patch -> total 1081, failed 0, succeeded 1081, skipped 0",
+    "grep_keys.py and widegrep.py on the settling patch -> no output, rc 0",
+    "git checkout -- the two test files; git status --short -> clean at 26ce787; src/ untouched; tests/corpus/remote never linked; no commit, no patch (every verdict holds)"
+   ]
+  },
+  "remoteControlDeviceReport": false,
+  "toolsUsed": [
+   "Bash",
+   "Write",
+   "StructuredOutput"
+  ]
+ },
+ {
+  "type": "result",
+  "key": "v2:beb0d54f03d733a6247a95a594f3052b6ee4c272cda1f63f1428c4c9667b8b4b",
+  "agentId": "aac6c0dd6e5ba09c7",
+  "result": {
+   "label": "b5-07",
+   "base": "26ce787",
+   "survivors": [
+    {
+     "id": "PTPOR-0005",
+     "fate": "KILLED-NEW",
+     "reason": "With the section-state test dropped, a chain section recorded as not found or unreadable no longer stops the rule judging the index, so it reports object 7 as orphaned. No file can show this through PdfValidator.Validate: every such record that no limit cut sets the reader's _indexIncomplete, and SettleIndex then rebuilds, so WasRepaired returns first at line 93. The rule is internal, so the test hands it a structure no file produces, as CrossReferenceRuleTests and FileRuleTests already do.",
+     "test": "AdCodicem.Pdf.Tests.PageTreeRuleTests.A_page_the_tree_leaves_out_is_not_said_orphaned_where_a_section_of_the_chain_was_not_read_whole (rows NotFound/false and Malformed/false fail with it applied)"
+    },
+    {
+     "id": "PTPOR-0007",
+     "fate": "KILLED-NEW",
+     "reason": "With section.Incomplete dropped, a section read only in part no longer stops the rule judging the index, so it reports object 7 as orphaned. Through the validator, ReportSectionReadInPart, or the row readers at PdfFileReader.cs 6504, 6856 and 7162, always set _indexIncomplete for such a section, and the index is rebuilt first. The test hands the rule a structure no file produces.",
+     "test": "AdCodicem.Pdf.Tests.PageTreeRuleTests.A_page_the_tree_leaves_out_is_not_said_orphaned_where_a_section_of_the_chain_was_not_read_whole (row Read/true fails with it applied)"
+    }
+   ],
+   "tests_added": [
+    "PageTreeRuleTests.A_page_the_tree_leaves_out_is_not_said_orphaned_where_a_section_of_the_chain_was_not_read_whole(string state, bool incomplete): a theory with 3 rows on the Tree file plus object 7, a /Type /Page with a /Parent that the tree does not list. Each row opens the file twice. The control document, left as read, makes PageTreePageOrphanedRule report exactly [7 0] (Should().Equal). The second document's single section is altered and must give no finding (Should().BeEmpty()). Rows: (NotFound, false) is a section the chain did not find; (Malformed, false) is a section it could not read; (Read, true) is a section read only in part. The rule runs directly through new ValidationContext(document, 16), and ToReport(ValidationProfile.Structural) lists the objects it located."
+   ],
+   "commit": "625dedd test: hold the orphaned-page rule silent beside a section not read whole (Refs #156; the line was written by batch commit 7d35896, footer Refs #156)",
+   "patch": "C:/Users/clemm/AppData/Local/Temp/claude/7278f9d03177d71e/898783fc-049f-469a-ab79-dfd299ad558e/scratchpad/cloud/settle/patches/b5-07/0001-test-hold-the-orphaned-page-rule-silent-beside-a-sec.patch",
+   "commands": [
+    "git fetch origin ccr-6d6c0ee6-dqm4lm-188; git checkout --detach origin/ccr-6d6c0ee6-dqm4lm-188 -> 26ce787",
+    "git log 21a0298..HEAD -L98,106:src/AdCodicem.Pdf/Validation/Rules/PageTreePageOrphanedRule.cs -> only 7d35896 (Refs #156)",
+    "dotnet build tests/AdCodicem.Pdf.Tests -c Release -m:2 (base plus new test) -> 0 warnings, 0 errors",
+    "AdCodicem.Pdf.Tests.exe --filter-method '*a_section_of_the_chain_was_not_read_whole*' on base -> total 3, failed 0, succeeded 3, skipped 0",
+    "mutant.py . PTPOR-0005; build 0 warnings; same filter -> total 3, failed 2 (NotFound/false and Malformed/false, at Orphans(notWhole).Should().BeEmpty(): found object 7), succeeded 1 (Read/true); reverted",
+    "mutant.py . PTPOR-0007; build 0 warnings; same filter -> total 3, failed 1 (Read/true, same assertion), succeeded 2; reverted",
+    "rebuild base; AdCodicem.Pdf.Tests.exe --filter-class AdCodicem.Pdf.Tests.PageTreeRuleTests -> total 217, failed 0, succeeded 217, skipped 0",
+    "check_msgs.py on git log 26ce787..HEAD -> 625dedd 72 OK",
+    "grep_keys.py and widegrep.py on git diff 26ce787 HEAD -> clean (exit 0)",
+    "git format-patch -1 -> patch written; git status --short clean; tests/corpus/remote never created"
+   ],
+   "found": [
+    "No fault in src/. Both conditions in IsIndexSound are defensive. Through PdfValidator.Validate, every section recorded as not found or unreadable that no limit cut, and every section read only in part, also sets the reader's _indexIncomplete. The places that set it are ReportMissingSection, ReportLostSection, ReportNotAnOffset, ReportNoStream, ReportSectionReadInPart, and the row readers at PdfFileReader.cs 6504, 6856 and 7162. SettleIndex then rebuilds the index before the first rule, so WasRepaired at line 93 returns false first. An unreadable section that a limit cut does not set it, but the CutByLimit test catches that section. So no document tells either change apart. Only an internal call with a hand-made structure does, which is how the repository covers such branches.",
+    "The harness summary showed no unconfirmed failures for either id: the suite ran 6152 tests, 0 failed, 3 skipped. No flaky test was seen."
+   ]
+  },
+  "remoteControlDeviceReport": false,
+  "toolsUsed": [
+   "Bash",
+   "Read",
+   "Edit",
+   "Write",
+   "StructuredOutput"
+  ]
+ },
+ {
+  "type": "result",
+  "key": "v2:f00085434bce0a6944ea99c1a2a74c07e6bc57f854a7456bd68c1f3617dddf45",
+  "agentId": "aebe6cdd14fcb5a3f",
+  "result": {
+   "label": "b5-02-r",
+   "base": "26ce787",
+   "verdicts": [
+    {
+     "id": "PFR-0656",
+     "verdict": "TEST-OK",
+     "test": "AdCodicem.Pdf.Tests.CrossReferenceChainTests.An_xrefstm_goes_on_past_its_table_s_prev_to_the_stream_where_that_prev_names_a_dictionary_ending_the_file_that_gives_its_type_null_last",
+     "reason": "The test pins the exact section list and the exact (Code, Position) diagnostics. That is the behavior the change to endsData alters: with the mutant, the null at the end of the file counts as cut, the check keeps /Type /XRef, KeepsItsPlace returns Section, and the /XRefStm becomes NamedAgain at 2007 (the test failed with exactly that) instead of Relocated at the stream 1795. It passes on the base. My differential probe of 91 inputs differed from the base only on this file shape, which shows the test targets the one input class that tells the mutant apart. One minor wording slip, not in the test: the builder's doc says '20 bytes into object 8's string', but eight+20 is 20 bytes into object 8 (11 bytes into the string's text, since the object starts with '8 0 obj\\n(')."
+    },
+    {
+     "id": "PFR-0670",
+     "verdict": "UPHELD",
+     "reason": "Corrected wording: until the finally's RollBack(mark), which restores entries and the suppressed and limit counts, the entries a cut attempt leaves are read only through IsFull (the parser's KeepsReports) and through Add's capacity check. These change only the text of entries the finally drops, and whether they are stored or only counted. Checked: KeepsItsPlace is reached only through TryRelocateXRefSection from TryReadXRefChain, with _readingChain set. So ResolveLength goes through ReadThroughWithoutLoading, then TryReadUnrecorded, which rolls back to its own mark and never calls SyntaxFaultSince or MoveTo. FindEndStream and the other provider members never touch _pending. A probe with 15,000 repeated keys in a 75 KB dictionary (first window cut, then retried at 1 MB), at capacities 2, 3, 50 and 1000, and with MaxTrailerLength 128 and 64 KB, matched the base on every section field, diagnostic (code, position, message), suppressed count, WasRepaired flag and object value."
+    },
+    {
+     "id": "PFR-0672",
+     "verdict": "TEST-OK",
+     "test": "AdCodicem.Pdf.Tests.HostileInputTests.The_look_at_what_a_prev_names_reads_the_object_there_through_the_windows_the_prev_s_own_reading_opens",
+     "reason": "The growth factor shows only in the windows opened. Because min(windowSize*k, maxWindow) always reaches maxWindow, the cut a guard makes is the same for any k, so the exact window list is the observable behavior. TryParseUnrecordedAt's and KeepsItsPlace's docs specify it (eightfold, and the windows the /Prev's own reading opens). Rerun: with the mutant the list is {32, 65536, 589824, ...} and differs at index 2. It passes on the base."
+    },
+    {
+     "id": "PFR-0673",
+     "verdict": "TEST-OK",
+     "test": "AdCodicem.Pdf.Tests.HostileInputTests.The_look_at_what_a_prev_names_reads_the_object_there_through_the_windows_the_prev_s_own_reading_opens",
+     "reason": "Same test as PFR-0672. With the mutant the list is {32, 65536, 458752, ...}, differing at index 2 from the base's 524288. It asserts the windows the check opens, which is the behavior the mutant changes."
+    },
+    {
+     "id": "PFR-0676",
+     "verdict": "UPHELD",
+     "reason": "Holds as written. TryReadIndirectObject returns false only from its header branch: id default, value PdfNull, and _headerStart/_headerDigits at 0 on the fresh parser of each attempt. MarkCutByGuard(PdfNull) does nothing. At the caller, DeclaresCrossReferenceStream(PdfNull) is false and the guard branch needs a PdfDictionary, so the result is NotFound, as for objectRead false. KeepsItsPlace reads only state, TypedXRef and CutByLimit. Probes covered a header that a 70,000- or 200-dash comment parts past MaxTrailerLength 128 (read false at the guard with cut true), and files truncated to '4', '4 0', '4 0 o' and so on: every output matched the base. The harness's unconfirmed failures, each run alone 3 times with the mutant built with -p:TreatWarningsAsErrors=false -p:RunAnalyzers=false: the Damaged_documents theory passed 129/129 x3 and ObjectRuleTests A_run_of_links... passed 1/1 x3."
+    },
+    {
+     "id": "PFR-0677",
+     "verdict": "UPHELD",
+     "reason": "Holds as written. Returning true leaves the initial outs: PdfNull, 0, offset, offset and cut false. The caller then takes the same NotFound path as for false, and the check record's TypedXRef and CutByLimit stay unset. The probe (91 inputs, including header-less and truncated files) matched the base."
+    },
+    {
+     "id": "PFR-0691",
+     "verdict": "UPHELD",
+     "reason": "Holds as written. In TryReadXRefStream's check path, number reaches only section.Fault text, section.StreamObjectNumber and new DeferredLength(..., number). The DeferredLength is tested only for null, by the _endStreamSearches lookup, which is keyed by data position, and by 'judged'. CutByValue writes only CutByLimit, CutByValue and _chainValuesCut, by object id. XRefSectionRecord's properties are plain auto-properties, and the check record is dropped by KeepsItsPlace. The probe matched the base."
+    },
+    {
+     "id": "PFR-0692",
+     "verdict": "UPHELD",
+     "reason": "Holds as written. header reaches only section.Padding = header - absolute. Padding is read once in TryReadXRefStream (at = absolute + section.Padding), before that write, and is not read on the check path after it. KeepsItsPlace drops the record without reading Padding. The probe matched the base. The Damaged_documents theory, run alone with the mutant, passed 129/129 x3."
+    },
+    {
+     "id": "PFR-0693",
+     "verdict": "UPHELD",
+     "reason": "Holds as written. digits reaches only section.DigitsAt, which nothing on the check path reads after the write and KeepsItsPlace never reads. DigitsAt is read only on chain records. The probe matched the base."
+    }
+   ],
+   "tests_added": [],
+   "patch": "none",
+   "commands": [
+    "git fetch origin ccr-6d6c0ee6-dqm4lm-188; git checkout --detach origin/ccr-6d6c0ee6-dqm4lm-188 -> base 26ce787",
+    "git apply patches/b5-02/0001-test-hold-the-look-at-a-prev-s-place-to-its-own-read.patch (working tree only, to check the settler's tests), plus a temporary differential probe test (tests/AdCodicem.Pdf.Tests/ProbeDump.cs, removed afterwards). It dumps every section field, every diagnostic (code, position, message), the suppressed count, the WasRepaired flag and objects 4-8 for 91 inputs: NamingAnObjectBesideTheStream with 18 object-4 bodies and partedBy 70000/200/50, NamingAnObjectThatEndsTheFile with 13 bodies, and that file truncated 1-7 bytes into object 4's header. Each input runs under 6 option sets (capacity 1000/3/50/2; MaxTrailerLength 64 KB, 1 MB, 128).",
+    "dotnet build tests/AdCodicem.Pdf.Tests/AdCodicem.Pdf.Tests.csproj -c Release -m:2 on the base (+ patch + probe): 0 warnings, 0 errors",
+    "base: the 2 new tests: total 2, failed 0, succeeded 2; probe: total 1, succeeded 1 (dump of 36548 lines)",
+    "Loop per mutant (apply with mutant.py, build, probe, the 2 new tests, revert). PFR-0656: probe DIFFERS (only on 'ending 0', the test's shape); new tests total 2, failed 1 (CrossReferenceChainTests ..._null_last: /XRefStm NamedAgain 2007).",
+    "PFR-0670: probe SAME; new tests 2/2 passed",
+    "PFR-0672: probe SAME; new tests total 2, failed 1 (HostileInputTests window test: {32, 65536, 589824, ...} differs at index 2)",
+    "PFR-0673: probe SAME; new tests total 2, failed 1 (window test: {32, 65536, 458752, ...} differs at index 2)",
+    "PFR-0677, PFR-0691, PFR-0692, PFR-0693: each built with 0 warnings; probe SAME; new tests 2/2 passed",
+    "PFR-0676: built with -p:TreatWarningsAsErrors=false -p:RunAnalyzers=false (1 warning, CS0162); probe SAME; new tests 2/2 passed",
+    "cp -al <maintainer>/tests/corpus/remote tests/corpus/remote (removed with rm -rf before finishing)",
+    "PFR-0670 applied: --filter-method '*Damaged_documents_are_recovered_as_far_as_an_independent_tool_recovers_them' x3: 129/129, 129/129, 129/129 (about 8 s each)",
+    "PFR-0692 applied: Damaged theory x3: 129/129 x3",
+    "PFR-0676 applied (harness flags): Damaged theory x3: 129/129 x3; '*A_run_of_links_the_walk_takes_at_the_reader_s_deepest_load_is_never_where_the_stack_cuts_it' x3: 1/1 x3",
+    "each mutant reverted with mutant.py --revert; git diff --stat -- src empty",
+    "base + patch rebuilt (0 warnings, 0 errors): --filter-class CrossReferenceChainTests total 1079, failed 0, succeeded 1079, skipped 0; --filter-class HostileInputTests (alone) total 262, failed 0, succeeded 262, skipped 0",
+    "probe removed, test files restored with git checkout, tests/corpus/remote removed; git status clean at 26ce787; no commit (every verdict holds), so no patch"
+   ]
+  },
+  "remoteControlDeviceReport": false,
+  "toolsUsed": [
+   "Bash",
+   "Grep",
+   "Write",
+   "StructuredOutput"
+  ]
+ },
+ {
+  "type": "result",
+  "key": "v2:04537d597c028a2279cd7dad7834dde2a624a50453a9ab52e824bbad6a27a707",
+  "agentId": "ab3cdbd5aacc5a9f9",
+  "result": {
+   "label": "b5-08",
+   "base": "26ce787",
+   "survivors": [
+    {
+     "id": "SWR-0005",
+     "fate": "KILLED-NEW",
+     "reason": "A chain whose sections are all read whole but whose only row is refused indexes nothing (_xref.Count == 0), so ChainRead stays false and the file is rebuilt. IsWhole is still true, and the section's HighestNumber is 0. With the ChainRead check removed, the rule judges /Size 4 against 1 and adds a file.size-wrong finding at the trailer.",
+     "test": "AdCodicem.Pdf.Tests.FileRuleTests.A_size_is_not_judged_where_the_chain_indexes_nothing"
+    },
+    {
+     "id": "SWR-0012",
+     "fate": "KILLED-NEW",
+     "reason": "With a /Prev 0, the header at byte 0 and MaxXRefSectionCount at 1, the reader sets ChainCutAt = PositionOf(0) = 0 and flags no section, so IsWhole holds. With `> 0`, the rule judges the table's /Size 9 by its own rows (which make it 4) and adds a file.size-wrong finding.",
+     "test": "AdCodicem.Pdf.Tests.FileRuleTests.A_size_is_not_judged_where_the_chain_is_cut_at_the_file_s_first_byte"
+    },
+    {
+     "id": "SWR-0013",
+     "fate": "KILLED-NEW",
+     "reason": "Same input as SWR-0012: `>= 1` differs from `>= 0` only at ChainCutAt == 0, which a cut at /Prev 0 with the header at byte 0 produces. The mutant adds a file.size-wrong finding at the trailer.",
+     "test": "AdCodicem.Pdf.Tests.FileRuleTests.A_size_is_not_judged_where_the_chain_is_cut_at_the_file_s_first_byte"
+    },
+    {
+     "id": "SWR-0021",
+     "fate": "EQUIVALENT",
+     "reason": "`own` is read only at line 71, inside Math.Max(running, ...). `running` starts at -1 and only grows through Math.Max, so -1 and -2 are both at or below it and leave it unchanged."
+    },
+    {
+     "id": "SWR-0024",
+     "fate": "EQUIVALENT",
+     "reason": "The default applies only when `section` is null. A null section fails the stream pattern, so `own` is -1 and Math.Max(-2, -1) == Math.Max(-1, -1) == -1."
+    },
+    {
+     "id": "SWR-0025",
+     "fate": "EQUIVALENT",
+     "reason": "The `?? 0` default is never reached in a chain the rule judges. Counted returns null only for a named-again /XRefStm whose ReadAs is not a hybrid file's stream. The reader writes three such records (lines 4174, 4205, 4244), and for every input each one has NamesNoStream set, names a section that is lost, malformed or cut by a guard, or ends a chain that loops or was cut. Line 48 returns on each case. I checked every State = NamedAgain write, every ReadAs write and every sectionsAt key; no code clears NamesNoStream."
+    },
+    {
+     "id": "SWR-0062",
+     "fate": "EQUIVALENT",
+     "reason": "The third disjunct runs only when `count.Value == expected` is false. Since the values are not equal there, `<=` and `<` agree."
+    }
+   ],
+   "tests_added": [
+    "FileRuleTests.A_size_is_not_judged_where_the_chain_indexes_nothing (Fact). The Sound file's table becomes one row for object 0 with generation 65536, which is refused, so the chain indexes nothing and the file is rebuilt. Pins: WasRepaired true; one section with HighestNumber 0; findings (RuleId, Position) equal exactly [(xref.section-malformed, offset of the table)]. No file.size-wrong.",
+    "FileRuleTests.A_size_is_not_judged_where_the_chain_is_cut_at_the_file_s_first_byte (Fact). The Sound file's trailer becomes << /Size 9 /Root 1 0 R /Prev 0 >>, opened with MaxXRefSectionCount = 1. Pins: Structure.ChainCutAt == 0; findings (RuleId, Position) equal exactly [(xref.checked-in-part, 0)]. No file.size-wrong."
+   ],
+   "commit": "e1e862e test: hold the size rule silent on a chain that indexes nothing or is cut at offset 0 (Refs #207, #208, #210, #156, #264; taken from 0fc7ce5, the batch commit that last wrote SizeWrongRule.cs line 48)",
+   "patch": "C:/Users/clemm/AppData/Local/Temp/claude/7278f9d03177d71e/898783fc-049f-469a-ab79-dfd299ad558e/scratchpad/cloud/settle/patches/b5-08/0001-test-hold-the-size-rule-silent-on-a-chain-that-index.patch",
+   "commands": [
+    "git fetch origin ccr-6d6c0ee6-dqm4lm-188; git checkout --detach origin/ccr-6d6c0ee6-dqm4lm-188 -> base 26ce787",
+    "dotnet build tests/AdCodicem.Pdf.Tests/AdCodicem.Pdf.Tests.csproj -c Release -m:2 (base, and after each edit): 0 warnings, 0 errors",
+    "Throwaway dump tests, replaced before commit, on both files at base: file 1 gave ChainRead=False, one Read section with H=0, not Incomplete or CutByLimit, WasRepaired=True. File 2 gave ChainCutAt=0, one whole Read section with H=3, and findings [xref.checked-in-part@0]",
+    "AdCodicem.Pdf.Tests.exe --filter-method '*A_size_is_not_judged_where_the_chain_*' on the base: total 2, failed 0, succeeded 2",
+    "SWR-0005 applied: total 2, failed 1 (A_size_is_not_judged_where_the_chain_indexes_nothing, which now also gets file.size-wrong), succeeded 1; reverted",
+    "SWR-0012 applied: total 2, failed 1 (A_size_is_not_judged_where_the_chain_is_cut_at_the_file_s_first_byte, which now also gets file.size-wrong), succeeded 1; reverted",
+    "SWR-0013 applied: total 2, failed 1 (A_size_is_not_judged_where_the_chain_is_cut_at_the_file_s_first_byte, which now also gets file.size-wrong), succeeded 1; reverted",
+    "AdCodicem.Pdf.Tests.exe --filter-class AdCodicem.Pdf.Tests.FileRuleTests on the base with the final tests: total 116, failed 0, succeeded 116, skipped 0",
+    "grep_keys.py and widegrep.py on the diff: no output (clean)",
+    "check_msgs.py on git log 26ce787..HEAD: e1e862e 85 OK",
+    "git format-patch -1 HEAD -> patches/b5-08/; git diff 26ce787 HEAD -- src is empty; git status clean; tests/corpus/remote was never created"
+   ],
+   "found": [
+    "No real fault found. The harness lines show no unconfirmed failures (suite 6152/0/6149/3), so no test needed three confirmation runs.",
+    "SWR-0025's equivalence rests on an invariant spread across the reader, not on SizeWrongRule alone: in a whole chain, every named-again /XRefStm that does not name a hybrid stream has NamesNoStream set, or names a section that is lost, malformed or cut. One link depends on KeepsItsPlace's stated design that the check and the /Prev's own reading 'meet one cut, or none'. The existing test CrossReferenceChainTests.An_xrefstm_stops_short_of_its_stream_only_where_its_table_s_prev_keeps_its_place confirms it for the shape it covers (the /Prev's section is CutByLimit). If a later change lets that check move _cutByGuard or fill the index, the chain could end at a guard with an unflagged named-again record. The rule would then judge /Size on a chain a guard ended, a false file.size-wrong, and this mutant would become killable.",
+    "Neither half of line 48 had a test before: no file reached SizeWrongRule with ChainRead false and the sections whole (a chain that indexes nothing only because its rows were refused), or with ChainCutAt exactly 0 (a /Prev 0 cut by MaxXRefSectionCount with the header at byte 0). PageTreePageOrphanedRule line 93 uses the same `ChainCutAt >= 0` check, so the second file may help settle any survivor at that site."
+   ]
+  },
+  "remoteControlDeviceReport": false,
+  "toolsUsed": [
+   "Bash",
+   "Edit",
+   "Read",
+   "Write",
+   "Grep",
+   "StructuredOutput"
+  ]
+ },
+ {
+  "type": "result",
+  "key": "v2:825ef0cb54d067081e7ee960a792b5d78d71cf99bdfea5fe8da9a3ef35f6b77b",
+  "agentId": "aad32e026f3c2b937",
+  "result": {
+   "label": "b5-08-r",
+   "base": "4327524",
+   "verdicts": [
+    {
+     "id": "SWR-0005",
+     "verdict": "TEST-OK",
+     "reason": "I checked this myself. With the mutant applied, the test fails at the exact (RuleId, Position) list: it also gets file.size-wrong at the trailer. It passes on the base. The input is a chain whose only row is refused, so it indexes nothing (ChainRead is false) while its one section is whole, with HighestNumber 0. The list pins exactly what the ChainRead half of line 48 guards: the rule says nothing on a chain that gave no index. The WasRepaired and HighestNumber asserts only fix that state.",
+     "test": "AdCodicem.Pdf.Tests.FileRuleTests.A_size_is_not_judged_where_the_chain_indexes_nothing"
+    },
+    {
+     "id": "SWR-0012",
+     "verdict": "TEST-OK",
+     "reason": "I checked this myself. The input has /Prev 0, the header at byte 0 and MaxXRefSectionCount 1, so ChainCutAt is exactly 0, the one value where `> 0` and `>= 0` differ. With the mutant, the findings list gains file.size-wrong at the trailer and the test fails. It passes on the base. The exact findings list [(xref.checked-in-part, 0)] is the behavior: a chain cut at offset 0 is still a cut chain and is not judged.",
+     "test": "AdCodicem.Pdf.Tests.FileRuleTests.A_size_is_not_judged_where_the_chain_is_cut_at_the_file_s_first_byte"
+    },
+    {
+     "id": "SWR-0013",
+     "verdict": "TEST-OK",
+     "reason": "Same input as SWR-0012: `>= 1` differs from `>= 0` only at ChainCutAt == 0. Applied, the test fails with an extra file.size-wrong. It passes on the base.",
+     "test": "AdCodicem.Pdf.Tests.FileRuleTests.A_size_is_not_judged_where_the_chain_is_cut_at_the_file_s_first_byte"
+    },
+    {
+     "id": "SWR-0021",
+     "verdict": "UPHELD",
+     "reason": "Holds. `own` is a local read only at line 71, inside Math.Max(X, own). There X is -1 or HighestNumber, which starts at -1 and only grows (Math.Max at the row reads; RelocateTo copies another record's value), so X >= -1 and Max(X, -1) == Max(X, -2). Even if X were lower, the outer Math.Max with `running` (which is at least -1) would absorb the difference."
+    },
+    {
+     "id": "SWR-0024",
+     "verdict": "UPHELD",
+     "reason": "Holds. HighestNumber is a non-nullable int, so `section?.HighestNumber` is null only when `section` is null. A null section fails the stream pattern, so own is -1, and Max(-2, -1) == Max(-1, -1) == -1."
+    },
+    {
+     "id": "SWR-0025",
+     "verdict": "UPHELD",
+     "reason": "The verdict holds, but the line numbers are wrong. Corrected reason: the reader constructs a named-again record in only two places, NameAgain (4244) and LeaveReadingToPrevious (4205). NameAgain has three callers. LeaveToPrevious (4174) always sets NamesNoStream through ReportNoStream. The reached-again branch (3564) leaves NamesNoStream null only when ReadAs is null or is a lost stream; a lost stream's record is in Sections as NotFound or Malformed, and a null ReadAs means a visited /XRefStm offset whose /Prev was never read, which only a loop or the section-count cut causes. The guard-kept-place branch (3637) gets the /Prev's section as ReadAs, and the same guard cuts that section (CutByLimit, as CrossReferenceChainTests.An_xrefstm_stops_short_of_its_stream_only_where_its_table_s_prev_keeps_its_place pins). LeaveReadingToPrevious copies the place's NamesNoStream, which ReportNoStream set when the place is a table, or calls ReportNoStream itself when it is a stream. Nothing ever clears NamesNoStream. So every record for which Counted returns null makes line 48 return. Attacks I tried and closed: (a) pastGuard ending the chain after the kept-place branch with nothing flagged; it cannot, because `_cutByGuard` changes there only with a CutByLimit record that the search takes, which sends it down the other branch. (b) A ReadAs taken from `sectionsAt` that is not in Sections; every value stored there is in Sections, and Replace remaps both keys of the record it removes. (c) The empty-table shape the mutant would need: every section from the null record back is empty, and a newer section with a trailer is empty too. It also fails on its own in the kept-place case: the /Prev's section there is a stream whose object number is non-negative, which already makes running >= 0 before the null record."
+    },
+    {
+     "id": "SWR-0062",
+     "verdict": "UPHELD",
+     "reason": "Holds. `||` short-circuits and the operands have no side effects, so the third disjunct is evaluated only when `count.Value == expected` is false. There `count.Value <= expected` and `count.Value < expected` agree."
+    }
+   ],
+   "tests_added": [],
+   "patch": "none",
+   "commands": [
+    "git fetch origin ccr-6d6c0ee6-dqm4lm-188; git checkout --detach origin/ccr-6d6c0ee6-dqm4lm-188 -> base 4327524 (descends from 26ce787; git diff --quiet 19a2296 HEAD -- src: identical)",
+    "python -I mutant.py - <ID> for the 7 survivors of b5-08 (all in SizeWrongRule.Check)",
+    "Read SizeWrongRule.cs, XRefSectionRecord.cs and PdfFileReader.cs: the chain loop 3250-3740, NameAgain, LeaveToPrevious, LeaveReadingToPrevious, ReportNoStream, ReachedAt, StartOfNamed, KeepsItsPlace, TryRelocateXRefSection, TryReadXRefStream's check path, every _cutByGuard write, ReachLimit",
+    "git apply of the settler's patch (working tree only), then dotnet build tests/AdCodicem.Pdf.Tests/AdCodicem.Pdf.Tests.csproj -c Release -m:2: 0 warnings, 0 errors",
+    "AdCodicem.Pdf.Tests.exe --filter-method '*A_size_is_not_judged_where_the_chain_*' on the base: total 2, failed 0, succeeded 2, skipped 0",
+    "SWR-0005 applied, rebuilt (0 warnings), same filter: total 2, failed 1 (A_size_is_not_judged_where_the_chain_indexes_nothing, extra file.size-wrong), succeeded 1; reverted",
+    "SWR-0012 applied, rebuilt (0 warnings), same filter: total 2, failed 1 (A_size_is_not_judged_where_the_chain_is_cut_at_the_file_s_first_byte, extra file.size-wrong), succeeded 1; reverted",
+    "SWR-0013 applied, rebuilt (0 warnings), same filter: total 2, failed 1 (A_size_is_not_judged_where_the_chain_is_cut_at_the_file_s_first_byte, extra file.size-wrong), succeeded 1; reverted",
+    "Rebuilt on the base with the settler's tests: 0 warnings, 0 errors; AdCodicem.Pdf.Tests.exe --filter-class AdCodicem.Pdf.Tests.FileRuleTests: total 116, failed 0, succeeded 116, skipped 0",
+    "git checkout -- tests/AdCodicem.Pdf.Tests/FileRuleTests.cs; git status clean; src/ as at the base; tests/corpus/remote never created; no commit and no patch, since every verdict holds"
+   ]
+  },
+  "remoteControlDeviceReport": false,
+  "toolsUsed": [
+   "Bash",
+   "StructuredOutput"
+  ]
+ },
+ {
+  "type": "result",
+  "key": "v2:bd38b124b4f57c0db3393004cebe8a34f024080cc8eaed681e781f19d906775d",
+  "agentId": "a2fc95d33d35a4b96",
+  "result": {
+   "head_before": "432752410275bd5da8ce841a6704e513370c91b5",
+   "head_after": "f7323610a562ad0f647515abefda4fbf8b1e0ab2",
+   "commits": [
+    "c94ddd6 test: hold the look at a prev's place to its own reading's windows and the file's end | Refs #156, #281 | pushed (b5-02's patch, applied as written)",
+    "f4f3a1a test: stop a search at a header an empty comment after white space parts | Refs #261 | pushed (b5-04's patch, applied as written)",
+    "5939301 test: pin the header a waiting endstream's decision gives, at the first byte and none | Refs #261 | pushed (b5-05's patch; git am -3 conflicted in StreamEndsTests.cs, resolved by keeping both sides, see problems)",
+    "bd603e0 test: hold a section found moved from an object of another type as unreadable | Refs #281 | pushed (b5-06's patch, applied as written)",
+    "e691eb4 test: hold the orphaned-page rule silent beside a section not read whole | Refs #156 | pushed (b5-07's patch, applied as written)",
+    "ea5572a test: hold the size rule silent on a chain that indexes nothing or is cut at offset 0 | Refs #207, #208, #210, #156, #264 | pushed (b5-08's patch, applied as written)",
+    "f732361 test: say the place the hybrid file's xrefstm names lies inside object 8 | Refs #156, #281 | pushed (my own commit: fixes the doc-comment wording slip that b5-02's refuter reported in HybridFiles.NamingAnObjectThatEndsTheFile)"
+   ],
+   "confirm": [
+    "Shard b5 at f732361, 13 ids (all KILLED-NEW; no refuter overturned anything and none gave TEST-WEAK). Run: 2 workers, --any-commit --stop-on-fail. Result: rc=0, done in 122 s, no errors. Every id reads KILLED. Summary file: C:/Users/clemm/AppData/Local/Temp/claude/7278f9d03177d71e/898783fc-049f-469a-ab79-dfd299ad558e/scratchpad/cloud/adr53/summary-b5.txt",
+    "PFR-0656: KILLED by first filter, 1 of 1572 rows failed (1 tests), first CrossReferenceChainTests.An_xrefstm_goes_on_past_its_table_s_prev_to_the_stream_where_that_prev_names_a_dictionary_ending_the_file_that_gives_its_type_null_last [stopped at the first failure: the count is a floor] (18s)",
+    "PFR-0672: KILLED by first filter, 1 of 1491 rows failed (1 tests), first HostileInputTests.The_look_at_what_a_prev_names_reads_the_object_there_through_the_windows_the_prev_s_own_reading_opens [stopped at the first failure: the count is a floor] (42s)",
+    "PFR-0673: KILLED by first filter, 1 of 138 rows failed (1 tests), first HostileInputTests.The_look_at_what_a_prev_names_reads_the_object_there_through_the_windows_the_prev_s_own_reading_opens [stopped at the first failure: the count is a floor] (9s)",
+    "PES-0061: KILLED by first filter, 1 of 24 rows failed (1 tests), first StreamEndsTests.The_data_ends_at_its_first_endstream_its_end_of_line_left_out_unless_a_header_comes_first [stopped at the first failure: the count is a floor] (9s)",
+    "PES-0138: KILLED by first filter, 1 of 25 rows failed (1 tests), first StreamEndsTests.The_data_ends_at_its_first_endstream_its_end_of_line_left_out_unless_a_header_comes_first [stopped at the first failure: the count is a floor] (9s)",
+    "PES-0144: KILLED by first filter, 1 of 33 rows failed (1 tests), first StreamEndsTests.A_header_that_starts_at_the_first_byte_of_the_file_stops_the_search_as_one_further_on_does [stopped at the first failure: the count is a floor] (9s)",
+    "PES-0145: KILLED by first filter, 1 of 8 rows failed (1 tests), first StreamEndsTests.A_header_that_starts_at_the_first_byte_of_the_file_stops_the_search_as_one_further_on_does [stopped at the first failure: the count is a floor] (9s)",
+    "XRSR-0032: KILLED by first filter, 1 of 2815 rows failed (1 tests), first CrossReferenceChainTests.A_section_the_prev_names_at_an_object_of_any_type_is_found_moved_to_a_table_beside_it_that_cannot_be_read [stopped at the first failure: the count is a floor] (20s)",
+    "PTPOR-0005: KILLED by first filter, 1 of 3628 rows failed (1 tests), first PageTreeRuleTests.A_page_the_tree_leaves_out_is_not_said_orphaned_where_a_section_of_the_chain_was_not_read_whole [stopped at the first failure: the count is a floor] (23s)",
+    "PTPOR-0007: KILLED by first filter, 1 of 4036 rows failed (1 tests), first PageTreeRuleTests.A_page_the_tree_leaves_out_is_not_said_orphaned_where_a_section_of_the_chain_was_not_read_whole [stopped at the first failure: the count is a floor] (24s)",
+    "SWR-0005: KILLED by first filter, 936 of 1870 rows failed (1 tests), first FileRuleTests.A_size_is_not_judged_where_the_chain_indexes_nothing [stopped at the first failure: the count is a floor] (15s)",
+    "SWR-0012: KILLED by first filter, 592 of 1182 rows failed (1 tests), first FileRuleTests.A_size_is_not_judged_where_the_chain_is_cut_at_the_file_s_first_byte [stopped at the first failure: the count is a floor] (13s)",
+    "SWR-0013: KILLED by first filter, 1 of 774 rows failed (1 tests), first FileRuleTests.A_size_is_not_judged_where_the_chain_is_cut_at_the_file_s_first_byte [stopped at the first failure: the count is a floor] (14s)"
+   ],
+   "tests_run": [
+    "dotnet build AdCodicem.Pdf.slnx -c Release -m:2 at f732361: Build succeeded, 0 warnings, 0 errors (9 project outputs)",
+    "dotnet format AdCodicem.Pdf.slnx --verify-no-changes: rc 0, no changes",
+    "Remote corpus hard-linked. AdCodicem.Pdf.Tests.exe --filter-class AdCodicem.Pdf.Tests.CrossReferenceChainTests: total 1108, failed 0, succeeded 1108, skipped 0",
+    "--filter-class AdCodicem.Pdf.Tests.FileRuleTests: total 116, failed 0, succeeded 116, skipped 0",
+    "--filter-class AdCodicem.Pdf.Tests.HostileInputTests (run alone, no other dotnet process): total 263, failed 0, succeeded 263, skipped 0 (1m 17s)",
+    "--filter-class AdCodicem.Pdf.Tests.PageTreeRuleTests: total 217, failed 0, succeeded 217, skipped 0",
+    "--filter-class AdCodicem.Pdf.Tests.StreamEndsTests: total 20, failed 0, succeeded 20, skipped 0",
+    "check_msgs.py over git log 4327524..HEAD: all 7 commits OK (f732361 72, ea5572a 85, e691eb4 72, bd603e0 77, 5939301 85, f4f3a1a 72, c94ddd6 85); grep_keys.py and widegrep.py over git diff 4327524 HEAD: no output, rc 0",
+    "ADR 53 harness (run.py, b5-confirm.json, 13 ids, 2 workers, --any-commit --stop-on-fail) at f732361: 13/13 KILLED by the first filter, rc 0, 122 s"
+   ],
+   "problems": [
+    "The branch had moved since the group agents' base. Its head was 4327524 (a descendant of 26ce787, with src/ unchanged from 19a2296 according to b5-08's refuter), not 26ce787. All six patches were applied on 4327524 with git am -3.",
+    "Conflict on b5-05's patch (5939301) in tests/AdCodicem.Pdf.Tests/StreamEndsTests.cs, in the comment of The_data_ends_at_its_first_endstream_its_end_of_line_left_out_unless_a_header_comes_first. b5-04's commit had just added the clause about an empty comment after white space, and b5-05 added the clause about a token other than obj past the run of digits. I kept both clauses in one comment, rewrapped to the class's 125-column width. Both sides' InlineData rows merged on their own, so all 11 rows are kept. The branch's own test A_keyword_in_a_comment_waits_no_longer_once_its_read_ends_every_header_that_starts_before_it (from 59e2b0b) is kept untouched. Its row '12 % endstream\\n0 R\\n' looks like b5-05's new row, but it asserts only the end and the wait, not the header. b5-05's row is the one that pins header -1 against PES-0138.",
+    "Deviation: I added a seventh commit (f732361). It fixes the wording slip that b5-02's refuter reported in the doc comment of HybridFiles.NamingAnObjectThatEndsTheFile. The comment said '20 bytes into object 8's string', but the place is eight + 20, which is 20 bytes into object 8 from its header and inside its string. The new wording is '20 bytes into object 8, inside its string', the same as the sibling builders. Only the comment changed. Its Refs (#156, #281) are the builder's commit's.",
+    "There were no '-r' (refuter) patches: every refuter verdict was UPHELD or TEST-OK, and none gave TEST-WEAK or OVERTURNED. Groups b5-01 and b5-03 had no patch, because all their survivors are EQUIVALENT.",
+    "PES-0107 (KILLED-EXISTING, by StreamEndsTests.A_keyword_in_a_comment_waits_for_the_reads_after_it_only_where_its_line_may_begin_a_header from f8e9aa1) was not in the confirm run. The instructions name only KILLED-NEW and OVERTURNED ids.",
+    "Flaky test reported by b5-04's refuter and b5-05's settler, not fixed here: ObjectRuleTests.A_run_of_links_the_walk_takes_at_the_reader_s_deepest_load_is_never_where_the_stack_cuts_it fails intermittently on the unmutated head (3/25 and 2/37 solo runs), always on the assertion that the cuts contain the message 'Object 160 ... reads it as null'. It depends on stack depth. Candidate for a debt issue. The settlers also report CorpusReadingTests.Damaged_documents_are_recovered_as_far_as_an_independent_tool_recovers_them as load-dependent: its 20 s timing bound on remote/pdfjs/cairo-firefox-objstm-index-overflow-bug1978317.pdf is exceeded under whole-suite load.",
+    "The groups note that several mutants (PFR-0635, PFR-0676, PES-0022, PES-0047, PES-0065) do not compile under the repository's TreatWarningsAsErrors (CS0162). The harness builds without warnings as errors. This is information only.",
+    "The remote corpus was hard-linked for the class runs and removed afterwards (rm -rf tests/corpus/remote, links only). The maintainer's tests/corpus/remote is intact, and the harness's own worktrees were removed by the harness. Push: git push origin HEAD:ccr-6d6c0ee6-dqm4lm-188 fast-forwarded 4327524..f732361 on the first try, and ls-remote shows f7323610a562ad0f647515abefda4fbf8b1e0ab2. The worktree is clean."
+   ]
+  },
+  "remoteControlDeviceReport": false,
+  "toolsUsed": [
+   "mcp__ccd_turn__update_plan",
+   "Bash",
+   "Read",
+   "Grep",
+   "Edit",
+   "Write",
+   "ToolSearch",
+   "Monitor",
+   "StructuredOutput"
+  ]
+ }
+]
