@@ -1308,3 +1308,7 @@ review. Then the batch-wide ADR 53 step.
 - Final verification launched alone: wf_992edef5-b25 (task wrduo8y00): test comment ('three of a reserved type'),
   build, whole suite with remote corpus, coverage (CI command, cov_patch), timing groups, hybrid differential vs r13a,
   benchmarks vs main, site.
+- 2026-11-11, maintainer (AskUserQuestion): #333 in batch 31 (with #332, #330, #321, #107/#111); #336 in batch 32
+  (with what remains of #158); #342 in batch 32; post the optional #260 comment: yes.
+- End-of-batch comments posted (LF-normalized first): #289 6803096734, #295 6803097172, #52 6803097720,
+  #260 6803098212.
