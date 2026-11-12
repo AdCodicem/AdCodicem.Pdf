@@ -1880,6 +1880,7 @@ internal sealed partial class PdfFileReader
         if (IndexHasRoom)
         {
             (_refusedNumbers ??= new(SeededComparer.Instance)).Add(number, section.Ordinal);
+            _refusedOrder?.Add(number);
         }
         else
         {

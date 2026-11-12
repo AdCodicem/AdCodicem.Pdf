@@ -165,9 +165,13 @@ internal sealed partial class PdfFileReader
         var candidates = new List<long>();
 
         // The window stays open while the places are tried: a table that cannot be read is told from a word in a comment or a
-        // string by the line it lies in.
-        using var window = _source.GetWindow(start - lead, (int)(end - start) + lead);
-        FindSectionCandidates(window.Memory.Span, start - lead, lead, candidates);
+        // string by the line it lies in. The byte past it is read as well, where there is one, and seen only by the search for
+        // places: it tells a keyword that ends the window from a longer word (#189). A window shorter than asked holds the end
+        // of the data, as every window does.
+        var trail = end < _source.Length ? 1 : 0;
+        using var whole = _source.GetWindow(start - lead, (int)(end - start) + lead + trail);
+        var window = whole.Memory[..Math.Min(whole.Length, (int)(end - start) + lead)];
+        FindSectionCandidates(whole.Memory.Span, start - lead, lead, window.Length, candidates);
 
         candidates.Sort((left, right) => Math.Abs(left - absolute).CompareTo(Math.Abs(right - absolute)));
 
@@ -219,7 +223,7 @@ internal sealed partial class PdfFileReader
             // start may lie before the bytes the window holds: the look for a section the chain reached takes it as it is,
             // the stream reached there, and the line test, which no window answers there, has it declare nothing
             // (HeaderTokenStart, IsTokenOnItsLine).
-            if (NumberRunsInto(window.Memory.Span, start - lead, candidate, streamStart, streamDigits))
+            if (NumberRunsInto(window.Span, start - lead, candidate, streamStart, streamDigits))
             {
                 candidate = streamStart;
             }
@@ -252,7 +256,7 @@ internal sealed partial class PdfFileReader
             if (candidate == absolute ||
                 (candidate != takeAt &&
                     (_sectionsReadAt.Contains(candidate) ||
-                        _sectionDigitsAt.Contains(DigitsPastSigns(window.Memory.Span, start - lead, candidate)))))
+                        _sectionDigitsAt.Contains(DigitsPastSigns(window.Span, start - lead, candidate)))))
             {
                 continue;
             }
@@ -310,7 +314,23 @@ internal sealed partial class PdfFileReader
             }
 
             var attempt = new XRefSectionRecord(section.NamedBy, candidate, section.NamedFrom);
-            var state = TryReadXRefSection(candidate, attempt, out previous, out hybrid, candidate: true, passOver);
+            var indexMark = MarkIndex();
+            XRefSectionState state;
+
+            try
+            {
+                state = TryReadXRefSection(candidate, attempt, out previous, out hybrid, candidate: true, passOver);
+            }
+            catch
+            {
+                // The source failed the reading: what it recorded is kept, as before the place was tried.
+                _xref.KeepTentative();
+                throw;
+            }
+            finally
+            {
+                _refusedOrder = null;
+            }
 
             // A section that cannot be read is the section all the same where what is there declared itself one — the xref
             // keyword, /Type /XRef —, before a guard's cut or a fault (#281), or where a guard cut an object a value it is read
@@ -336,10 +356,11 @@ internal sealed partial class PdfFileReader
                     (attempt.CutByValue ||
                         ((attempt.TypedXRef || attempt.Kind == XRefSectionKind.Table) &&
                             IsTokenOnItsLine(
-                                window.Memory.Span,
+                                window.Span,
                                 start - lead,
-                                HeaderTokenStart(window.Memory.Span, lead, (int)(candidate - (start - lead))))))))
+                                HeaderTokenStart(window.Span, lead, (int)(candidate - (start - lead))))))))
             {
+                _xref.KeepTentative();
                 section.RelocateTo(attempt);
                 _diagnostics.Repair(
                     PdfDiagnosticCodes.XRefOffsetAdjusted,
@@ -368,13 +389,13 @@ internal sealed partial class PdfFileReader
 
                     if (typedPassedOver?.Contains(passed) == true)
                     {
-                        var header = HeaderTokenStart(window.Memory.Span, lead, (int)(passed - (start - lead)));
+                        var header = HeaderTokenStart(window.Span, lead, (int)(passed - (start - lead)));
 
-                        if (IsTokenOnItsLine(window.Memory.Span, start - lead, header))
+                        if (IsTokenOnItsLine(window.Span, start - lead, header))
                         {
                             var headerAt = start - lead + header;
                             (_streamsPassedOver ??= []).Add(
-                                (headerAt, NumberEnd(window.Memory.Span, start - lead, headerAt), absolute, section.NamedFrom));
+                                (headerAt, NumberEnd(window.Span, start - lead, headerAt), absolute, section.NamedFrom));
                         }
                     }
                 }
@@ -389,6 +410,7 @@ internal sealed partial class PdfFileReader
             }
 
             ForgetReadThrough(readThrough);
+            RollBackIndex(indexMark);
 
             // A stream whose filters decode nothing of its data is read that far, and dropped where it declares no section:
             // what its decoding reported goes with it, a reading of that stream meeting it again, and a guard the decoding
@@ -643,6 +665,44 @@ internal sealed partial class PdfFileReader
     }
 
     /// <summary>
+    /// Records what the index holds, for a place the search tries and may drop (<see cref="RollBackIndex"/>): the reading of
+    /// the place is a tentative one of the index, and the numbers it refuses are kept apart as it refuses them.
+    /// </summary>
+    private IndexMark MarkIndex()
+    {
+        _xref.StartTentative();
+        _refusedOrder = [];
+        return new(_refusedOrder, _indexIncomplete, _cutByGuard);
+    }
+
+    /// <summary>
+    /// Gives back what the reading of a place the search dropped added to the index: its rows, the numbers it refused, with
+    /// the room they took under <see cref="PdfReaderLimits.MaxIndexEntries"/>, and the index marked incomplete for them —
+    /// what the place read is no section of the file's, and stands for no row of the one the search takes next (#320). A
+    /// guard the reading reached stands, as what a dropped place's decoding reached does (#221): where it cut the chain, the
+    /// index stays marked incomplete with it.
+    /// </summary>
+    private void RollBackIndex(IndexMark mark)
+    {
+        _xref.DropTentative();
+
+        foreach (var number in mark.Refused)
+        {
+            _refusedNumbers!.Remove(number);
+        }
+
+        if (_cutByGuard == mark.CutByGuard)
+        {
+            _indexIncomplete = mark.Incomplete;
+        }
+    }
+
+    /// <summary>
+    /// What the reading of a place refused, whether the index was incomplete before it, and whether a guard had cut the chain.
+    /// </summary>
+    private readonly record struct IndexMark(List<int> Refused, bool Incomplete, bool CutByGuard);
+
+    /// <summary>
     /// Collects where a cross-reference section could start in <paramref name="span"/>: an <c>xref</c> keyword
     /// standing on its own — not the end of <c>startxref</c> —, and every object header.
     /// </summary>
@@ -652,14 +712,18 @@ internal sealed partial class PdfFileReader
     /// Where in <paramref name="span"/> a place may start: the bytes before it are read only to tell a keyword or a header
     /// that starts there from a longer token, or a longer number, that runs into it (#197).
     /// </param>
+    /// <param name="to">
+    /// Where in <paramref name="span"/> a place's keyword must end: the byte after it, which tells a keyword from a longer
+    /// token, is read past it where the file holds one.
+    /// </param>
     /// <param name="candidates">Receives where each place starts in the file.</param>
-    private static void FindSectionCandidates(ReadOnlySpan<byte> span, long start, int from, List<long> candidates)
+    private static void FindSectionCandidates(ReadOnlySpan<byte> span, long start, int from, int to, List<long> candidates)
     {
         var searchFrom = 0;
 
-        while (searchFrom < span.Length)
+        while (searchFrom < to)
         {
-            var index = span[searchFrom..].IndexOf("xref"u8);
+            var index = span[searchFrom..to].IndexOf("xref"u8);
             if (index < 0)
             {
                 break;
@@ -680,9 +744,9 @@ internal sealed partial class PdfFileReader
 
         searchFrom = 0;
 
-        while (searchFrom < span.Length)
+        while (searchFrom < to)
         {
-            var index = span[searchFrom..].IndexOf(ObjKeyword);
+            var index = span[searchFrom..to].IndexOf(ObjKeyword);
             if (index < 0)
             {
                 break;

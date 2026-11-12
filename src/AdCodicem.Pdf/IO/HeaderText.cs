@@ -204,8 +204,8 @@ internal ref struct HeaderText
     /// alone —, and a line that holds only a comment is passed; and white space, a delimiter or the end of the search after
     /// <c>obj</c>. <c>endobj</c> is no header, nor <c>10 0 objx</c>, nor digits a regular character precedes, nor a sign
     /// before a number, nor digits a comment ends with, which were once taken for a number. The scan that rebuilds an index
-    /// refuses <c>endobj</c> and digits a comment ends with too, but takes <c>10 0 objx</c>, digits a
-    /// regular character precedes (#171), and numbers a sign precedes as its digits or the lexer read them (#327).
+    /// refuses <c>endobj</c>, <c>10 0 objx</c> (#189) and digits a comment ends with too, but takes digits a regular
+    /// character precedes (#171), and numbers a sign precedes as its digits or the lexer read them (#327).
     /// A header lies whole in what the search reads, from the start of the data to the next object the index places: the
     /// stream's own header, and whatever precedes the data, is never one, and one that the next object's offset cuts is
     /// not seen, that offset stopping the search first. The rule reads nothing but the bytes, so where it stops cannot

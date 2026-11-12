@@ -1634,11 +1634,10 @@ public class StreamLengthTests
     [InlineData(true)]
     public void An_index_rebuilt_as_the_document_opened_bounds_the_searches_as_it_stood_once_opened_whatever_is_read_after(bool reverse)
     {
-        // No index was written. Object 8's string holds "7 0 objx", which the rebuild takes for object 7's last definition:
-        // object 7 is not there, and is found near it as the document opens, which corrects its entry. The rebuild loads
-        // every object it places as it takes in the object streams, so object 5, which lost its endstream, is searched as
-        // the document opens, up to object 6. Reading afterwards, in any order, searches nothing and changes neither the
-        // index nor what the stream holds: the index as it stood once opened is the one that bounds the searches.
+        // No index was written. The rebuild loads every object it places as it takes in the object streams, so object 5,
+        // which lost its endstream, is searched as the document opens, up to object 6. Reading afterwards, in any order,
+        // searches nothing and changes neither the index nor what the stream holds: the index as it stood once opened is the
+        // one that bounds the searches.
         var data = Data(3 * Window);
         var file = new TestPdfBuilder()
             .WithObject(1, "<< /Type /Catalog /Pages 2 0 R >>")
@@ -1646,7 +1645,6 @@ public class StreamLengthTests
             .WithObject(StreamNumber, Stream(data.Length + 100, data, end: "\n"))
             .WithObject(6, "(" + new string('p', 200) + ")")
             .WithObject(7, Stream(5, "hello"))
-            .WithObject(8, "(7 0 objx)")
             .BuildClassic(rootNumber: 1, includeXRef: false);
         var dataStart = DataStartOf(file, StreamNumber);
 
@@ -1655,9 +1653,6 @@ public class StreamLengthTests
         source.Forget();
 
         document.Reader.ChainIndex.Should().BeNull("no index was written");
-        document.Diagnostics.Contains(PdfDiagnosticCodes.XRefOffsetAdjusted).Should().BeTrue("object 7 was found near its entry as the document opened");
-        document.Reader.Index.TryGet(7, out var seven).Should().BeTrue();
-        seven.Offset.Should().Be(HeaderOf(file, 7));
         var opened = document.Reader.Index.ToList();
 
         var numbers = document.ObjectNumbers.Order().ToList();

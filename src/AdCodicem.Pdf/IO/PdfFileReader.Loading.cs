@@ -571,14 +571,18 @@ internal sealed partial class PdfFileReader
 
         // The byte before the window is read as well, where there is one: a header counts only where it starts inside the
         // window, not where the window's start cuts its number — "14 0 obj" read from its "4" as object 4's.
+        // So is the byte after it, where there is one: it tells an obj that ends the window from a longer word (#189). A
+        // window shorter than asked holds the end of the data, as every window does.
         var lead = start > 0 ? 1 : 0;
-        using var window = source.GetWindow(start - lead, (int)length + lead);
+        var trail = start + length < source.Length ? 1 : 0;
+        using var window = source.GetWindow(start - lead, (int)length + lead + trail);
         var span = window.Memory.Span;
+        var searched = Math.Min(span.Length, (int)length + lead);
         var searchFrom = 0;
 
-        while (searchFrom < span.Length)
+        while (searchFrom < searched)
         {
-            var index = span[searchFrom..].IndexOf(ObjKeyword);
+            var index = span[searchFrom..searched].IndexOf(ObjKeyword);
             if (index < 0)
             {
                 return false;
@@ -781,6 +785,11 @@ internal sealed partial class PdfFileReader
     /// </summary>
     /// <remarks>
     /// <para>
+    /// The keyword ends where white space, a delimiter or the end of <paramref name="span"/> follows it, as a load lexes it:
+    /// <c>10 0 objx</c> is no header (#189). The end of <paramref name="span"/> stands for the end of the data, so a caller
+    /// gives a span that holds the byte after every <c>obj</c> it asks about, where the file holds one.
+    /// </para>
+    /// <para>
     /// Each number, the generation first, is a run of digits read backwards over the white space after it, as a load reads
     /// it where only white space lies between the tokens. A comment may lie there too (ISO 32000-1, 7.2.3), and runs to the
     /// end of its line: one ends before a token only where the white space crossed holds an end of line. There, a line that
@@ -812,8 +821,10 @@ internal sealed partial class PdfFileReader
         headerStart = 0;
 
         var index = objPosition - 1;
+        var after = objPosition + ObjKeyword.Length;
 
-        if (index < 0 || !PdfCharacters.IsWhitespace(span[index]))
+        if (index < 0 || !PdfCharacters.IsWhitespace(span[index]) ||
+            (after < span.Length && PdfCharacters.IsRegular(span[after])))
         {
             return false;
         }
@@ -1148,9 +1159,14 @@ internal sealed partial class PdfFileReader
 
     private void Cache(int number, PdfObject value)
     {
-        if (_cache.Count >= _cacheCapacity && _cacheOrder.TryDequeue(out var oldest))
+        while (_cache.Count >= _cacheCapacity && _cacheOrder.TryDequeue(out var oldest))
         {
-            _cache.Remove(oldest);
+            // The queue can name a number the cache let go of already, a rebuild having replaced its definition
+            // (ForgetObject): the next is let go in its place, so that the cache never holds more than its capacity.
+            if (_cache.Remove(oldest))
+            {
+                break;
+            }
         }
 
         if (_cache.TryAdd(number, value))

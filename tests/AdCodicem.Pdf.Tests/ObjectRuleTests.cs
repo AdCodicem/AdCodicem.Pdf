@@ -2206,8 +2206,8 @@ public class ObjectRuleTests
     [InlineData("a parameter neither index holds", true)]
     [InlineData("a parameter only the rebuilt index holds, past the chain's /Size", false)]
     [InlineData("a parameter neither index holds, past the chain's /Size", true)]
-    [InlineData("the object itself, held at its index by a stream written before", false)]
-    [InlineData("the object itself, held at its index by a stream written before, its own known to decode alike", false)]
+    [InlineData("the object itself, held at its index by a stream written after", false)]
+    [InlineData("the object itself, held at its index by a stream written after, its own known to decode alike", false)]
     [InlineData("the object itself, at another index of its stream", false)]
     [InlineData("a parameter a stream holds, which the chain writes at the file's first byte", false)]
     public void An_object_is_followed_only_where_the_reader_s_rebuilt_index_places_what_its_stream_s_decoding_reads_as_the_chain_s(string redefined, bool circular)
@@ -3541,13 +3541,14 @@ public class ObjectRuleTests
             case "a parameter neither index holds, past the chain's /Size":
                 parameters = "/DecodeParms 900 0 R";
                 break;
-            case "the object itself, held at its index by a stream written before":
-                file.Object(8, ObjectStreamBody(string.Empty, (50, "5 0 R")));
+            case "the object itself, held at its index by a stream written after":
+                // Written past 9, stream 8's copy is the one a rebuild keeps (#189).
+                later.Add((8, ObjectStreamBody(string.Empty, (50, "5 0 R"))));
                 break;
-            case "the object itself, held at its index by a stream written before, its own known to decode alike":
+            case "the object itself, held at its index by a stream written after, its own known to decode alike":
                 // Stream 3, walked first, takes its parameters from 51, which 9 holds as well, and which both indexes place
                 // alike: 9's standing is known before 7 is walked.
-                file.Object(8, ObjectStreamBody(string.Empty, (50, "5 0 R")));
+                later.Add((8, ObjectStreamBody(string.Empty, (50, "5 0 R"))));
                 rows[3] = (1, file.Object(3, ObjectStreamBody("/DecodeParms 51 0 R", (60, "<< >>"))), 0);
                 rows[60] = (2, 3, 0);
                 rows[51] = (2, 9, 1);

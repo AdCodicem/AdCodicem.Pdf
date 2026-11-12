@@ -3964,6 +3964,69 @@ public class CrossReferenceRuleTests
         _ => throw new ArgumentOutOfRangeException(nameof(shape), shape, null),
     };
 
+    [Theory]
+    [InlineData("another definition of its stream, which does not list it", false)]
+    [InlineData("another definition of its stream, which does not list it", true)]
+    [InlineData("another object stream, which writes it as a stream", false)]
+    [InlineData("another definition of its stream, which writes it as a stream", false)]
+    [InlineData("the definition of its stream the chain's index places", false)]
+    public void An_object_the_chain_s_index_places_soundly_that_a_rebuild_loses_is_an_entry_broken(string served, bool kid)
+    {
+        // The chain places object 7 at index 0 of object stream 6, whose definition there lists it; row 9 lies outside the
+        // file, so the validation rebuilds the index, which serves the object stream the file writes last. Where that loses 7,
+        // the entry is broken as the reader reads it, though sound where the chain places it (#276). 7 is a value of the
+        // catalog, or a kid of the page tree.
+        const string StreamMember = "<< /Length 3 >>\nstream\nabc\nendstream";
+        var seven = kid ? "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 10 10] >>" : "(seven)";
+        var file = new HandWrittenFile(version: "1.5");
+        var rows = new Dictionary<int, (int Type, long Field2, int Field3)>
+        {
+            [1] = (1, file.Object(1, kid ? "<< /Type /Catalog /Pages 2 0 R >>" : "<< /Type /Catalog /Pages 2 0 R /Foo 7 0 R >>"), 0),
+            [2] = (1, file.Object(2, kid ? "<< /Type /Pages /Kids [4 0 R 7 0 R] /Count 2 >>" : "<< /Type /Pages /Kids [4 0 R] /Count 1 >>"), 0),
+            [4] = (1, file.Object(4, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 10 10] >>"), 0),
+            [7] = (2, 6, 0),
+            [9] = (1, 999_999, 0),
+        };
+        string? expected;
+
+        switch (served)
+        {
+            case "another definition of its stream, which does not list it":
+                rows[6] = (1, file.ObjectStream(6, [(7, seven)]), 0);
+                var lacking = file.ObjectStream(6, [(12, "(twelve)")]);
+                expected = Invariant($"The entry of object 7 places it at index 0 of object stream 6, and the index the reader rebuilt lacks it: the definition of object stream 6 it serves, at offset {lacking}, does not list it.");
+                break;
+            case "another object stream, which writes it as a stream":
+                rows[6] = (1, file.ObjectStream(6, [(7, seven)]), 0);
+                rows[8] = (1, file.ObjectStream(8, [(7, StreamMember)]), 0);
+                expected = Invariant($"The entry of object 7 places it at index 0 of object stream 6; the index the reader rebuilt places it at index 0 of object stream 8, at offset {rows[8].Field2}, where it is written as a stream, which an object stream cannot hold.");
+                break;
+            case "another definition of its stream, which writes it as a stream":
+                rows[6] = (1, file.ObjectStream(6, [(7, seven)]), 0);
+                var holding = file.ObjectStream(6, [(7, StreamMember)]);
+                expected = Invariant($"The entry of object 7 places it at index 0 of object stream 6; the index the reader rebuilt places it at index 0 of object stream 6, at offset {holding}, where it is written as a stream, which an object stream cannot hold.");
+                break;
+            default:
+                file.ObjectStream(6, [(12, "(twelve)")]);
+                rows[6] = (1, file.ObjectStream(6, [(7, seven)]), 0);
+                expected = null;
+                break;
+        }
+
+        file.CrossReferenceStream(20, 21, rows, "/Root 1 0 R");
+        using var document = PdfDocument.Open(file.Bytes);
+
+        var findings = new PdfValidator().Validate(document).Findings
+            .Where(finding => finding.RuleId == PdfValidationRuleIds.XRefEntryBroken && finding.Location.Object?.Number == 7)
+            .Select(finding => finding.Message);
+
+        document.WasRepaired.Should().BeTrue();
+        findings.Should().Equal(expected is null ? [] : [expected]);
+        (document.GetObject(new PdfObjectId(7)) == PdfNull.Instance).Should().Be(expected is not null);
+    }
+
+    private static string Invariant(FormattableString text) => text.ToString(CultureInfo.InvariantCulture);
+
     private static PdfValidationFinding Single(PdfValidationReport report, string ruleId)
     {
         report.Findings.Where(finding => finding.RuleId == ruleId).Should().ContainSingle(

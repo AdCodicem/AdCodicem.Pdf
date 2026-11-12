@@ -10082,6 +10082,53 @@ public class CrossReferenceChainTests
         document.WasRepaired.Should().Be(!(three && four));
     }
 
+    [Theory]
+    [InlineData("a row for object 3")]
+    [InlineData("a row refused for its generation")]
+    [InlineData("a row refused, the section taken refusing one of its own")]
+    [InlineData("a row refused for a number the newest section indexes")]
+    public void A_place_the_search_near_a_section_drops_leaves_nothing_in_the_index(string decoy)
+    {
+        // The newest table's /Prev names a place inside a decoy: "% xref", a row for object 3, then junk. The search near
+        // that place reads the decoy first, the nearest, fails at the junk, and drops it, its keyword lying in a comment; it
+        // then takes the table 3's row places as "(new three)". The decoy's row, or the number it refused, does not stand
+        // over that table's, nor does the index stay marked incomplete for it (#320): the file reads as one whose decoy is a
+        // comment of the same length.
+        var refused = decoy != "a row for object 3";
+        var ownRefusal = decoy == "a row refused, the section taken refusing one of its own";
+        var newestIndexes = decoy == "a row refused for a number the newest section indexes";
+
+        byte[] Build(bool withDecoy)
+        {
+            var file = new HandWrittenFile(version: "1.4");
+            var catalog = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>");
+            var pages = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>");
+            var old = file.Object(3, "(old three)");
+            var current = file.Object(3, "(new three)");
+            file.Raw(Invariant($"xref\n0 4\n0000000000 65535 f \n{catalog:D10} 00000 n \n{pages:D10} {(ownRefusal ? 65536 : 0):D5} n \n{current:D10} 00000 n \ntrailer\n<< /Size 4 /Root 1 0 R >>\n"));
+            var text = Invariant($"% xref\n3 1\n{old:D10} {(refused ? 65536 : 0):D5} n \njunk junk junk junk\n");
+            file.Raw(withDecoy ? text : "%" + new string('c', text.Length - 2) + "\n");
+            var previous = file.Position - 8;
+            var newest = file.Position;
+            var row = newestIndexes ? Invariant($"3 1\n{current:D10} 00000 n \n") : string.Empty;
+            file.Raw(Invariant($"xref\n0 1\n0000000000 65535 f \n{row}trailer\n<< /Size 4 /Root 1 0 R /Prev {previous} >>\nstartxref\n{newest}\n%%EOF\n"));
+            return file.Bytes;
+        }
+
+        using var document = PdfDocument.Open(Build(withDecoy: true));
+        using var control = PdfDocument.Open(Build(withDecoy: false));
+
+        document.GetObject(new PdfObjectId(3)).Should().BeOfType<PdfString>().Which.ToText().Should().Be("new three");
+        document.WasRepaired.Should().Be(control.WasRepaired).And.BeFalse();
+        document.Diagnostics.Select(entry => entry.Message).Should().Equal(control.Diagnostics.Select(entry => entry.Message));
+
+        var findings = new PdfValidator().Validate(document).Findings.Select(finding => finding.Message);
+
+        findings.Should().Equal(new PdfValidator().Validate(control).Findings.Select(finding => finding.Message));
+        document.WasRepaired.Should().Be(control.WasRepaired).And.Be(ownRefusal);
+        document.Diagnostics.Select(entry => entry.Message).Should().Equal(control.Diagnostics.Select(entry => entry.Message));
+    }
+
     private static string Invariant(FormattableString text) => text.ToString(CultureInfo.InvariantCulture);
 
     /// <summary>

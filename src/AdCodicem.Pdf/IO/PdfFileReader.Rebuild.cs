@@ -12,9 +12,10 @@ namespace AdCodicem.Pdf.IO;
 internal sealed partial class PdfFileReader
 {
     /// <summary>
-    /// Rebuilds the index by scanning the whole file for object headers, keeping the last definition of
-    /// each object number under the generation its header gives, and then looking for a trailer and for anything
-    /// that can act as one.
+    /// Rebuilds the index by scanning the whole file for object headers and taking in what the object streams among them
+    /// hold, keeping the definition of each object number the file writes last
+    /// (<see cref="PdfDiagnosticCodes.ObjectRedefined"/>), and then looking for a trailer and for anything that can act as
+    /// one.
     /// </summary>
     private void Repair()
     {
@@ -345,7 +346,8 @@ internal sealed partial class PdfFileReader
 
     /// <summary>
     /// Indexes every object header the file holds, read once each, to its end: the last definition of a number wins, under
-    /// the generation its header gives.
+    /// the generation its header gives. Each chunk is read with the byte past it, which tells an <c>obj</c> that ends the
+    /// chunk from a longer word (<see cref="TryReadHeaderBackwards"/>).
     /// </summary>
     /// <remarks>
     /// The index takes object numbers as the file gives them, as many as <see cref="PdfReaderLimits.MaxIndexEntries"/>
@@ -363,16 +365,20 @@ internal sealed partial class PdfFileReader
         while (position < _source.Length)
         {
             var length = (int)Math.Min(ScanChunkSize, _source.Length - position);
-            using var window = _source.GetWindow(position, length);
+            var trail = position + length < _source.Length ? 1 : 0;
+            using var window = _source.GetWindow(position, length + trail);
             var span = window.Memory.Span;
+
+            // A window shorter than asked holds the end of the data, as every window does.
+            var searched = Math.Min(length, span.Length);
 
             // An obj keyword wholly within the overlap was found by the window before, which held it and what precedes
             // it: each header is read once.
             var searchFrom = position == 0 ? 0 : ScanOverlap - ObjKeyword.Length + 1;
 
-            while (searchFrom < span.Length)
+            while (searchFrom < searched)
             {
-                var index = span[searchFrom..].IndexOf(ObjKeyword);
+                var index = span[searchFrom..searched].IndexOf(ObjKeyword);
                 if (index < 0)
                 {
                     break;
@@ -666,6 +672,7 @@ internal sealed partial class PdfFileReader
     {
         var numbers = _xref.CopyNumbers();
         ExceptionDispatchInfo? reached = null;
+        Dictionary<int, long>? streamPositions = null;
 
         foreach (var number in numbers)
         {
@@ -723,23 +730,62 @@ internal sealed partial class PdfFileReader
                 KeepObjectStream(number, contents);
             }
 
+            // A member counts where its stream's definition lies, as an object written there directly would: the definition
+            // the file writes last wins, whatever order the streams are taken in (PdfDiagnosticCodes.ObjectRedefined). Where
+            // each stream taken lies is kept, to rank a member it gave against one a later stream lists.
+            var streamPosition = PositionOf(entry);
+            (streamPositions ??= new(SeededComparer.Instance))[number] = streamPosition;
+
             for (var index = 0; index < contents.Count; index++)
             {
-                // An object written directly in the file wins over a copy inside an object stream, and the first
-                // copy listed in the object streams read wins over the others. A member the index lacks takes room in
-                // it, which it may have no more of.
-                if (_xref.TryGet(contents.NumberAt(index), out _))
+                var member = contents.NumberAt(index);
+
+                if (_xref.TryGet(member, out var held))
                 {
-                    redefinitions.Add(contents.NumberAt(index));
+                    redefinitions.Add(member);
+
+                    var heldAt = held.Kind == XRefEntryKind.Regular ? PositionOf(held)
+                        : streamPositions.TryGetValue(held.ObjectStreamNumber, out var at) ? at : long.MaxValue;
+
+                    // Replacing an entry takes no room. A number the stream lists twice keeps its first place, as does the
+                    // stream's own number, which lies where the stream does.
+                    if (streamPosition > heldAt)
+                    {
+                        _xref.Set(member, XRefEntry.Compressed(number, index));
+                        ForgetObject(member);
+                    }
                 }
-                else if (HasRoomInRebuild(PositionOf(entry), ref reached))
+                else if (HasRoomInRebuild(streamPosition, ref reached))
                 {
-                    _xref.Set(contents.NumberAt(index), XRefEntry.Compressed(number, index));
+                    _xref.Set(member, XRefEntry.Compressed(number, index));
                 }
             }
         }
 
         return reached;
+    }
+
+    /// <summary>
+    /// Lets go of what the reader kept and noted of object <paramref name="number"/>, read from a definition the index no
+    /// longer serves: it is read again, and noted again, from the one it serves.
+    /// </summary>
+    /// <remarks>
+    /// The expansion of the object streams loads every object the scan placed, to tell which are object streams, before a
+    /// later stream may replace its definition. An object stream so replaced lets go of its decoded contents too.
+    /// </remarks>
+    private void ForgetObject(int number)
+    {
+        _cache.Remove(number);
+        _unproduced.Remove(number);
+        _cutAtLimit.Remove(number);
+        _endObjMissing.Remove(number);
+        _streamLengthFaults.Remove(number);
+        _nullWhileDecoding.Remove(number);
+
+        if (_objectStreams.Remove(number, out var released) && released is not null)
+        {
+            _objectStreamBytes -= released.Weight;
+        }
     }
 
     /// <summary>
@@ -947,7 +993,7 @@ internal sealed partial class PdfFileReader
                     CultureInfo.InvariantCulture,
                     $"Rebuilding the index met {Count:N0} definitions of object numbers it had already found, {(_unlisted ? "among them those of objects" : _listed == 1 ? "of object" : "of objects")} {numbers}.");
             return met +
-                " Of each number, the definition kept is the last written directly in the file, or, for a number written only inside object streams, the first listed in the object stream read first.";
+                " Of each number, the definition kept is the one the file writes last, an object stream's members counting where the stream lies.";
         }
     }
 }

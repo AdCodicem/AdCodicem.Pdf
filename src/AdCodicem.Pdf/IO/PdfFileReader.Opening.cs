@@ -26,6 +26,7 @@ internal sealed partial class PdfFileReader
             _readWhileChainIsRead = null;
             _cutWhileChainIsRead = null;
             _refusedNumbers = null;
+            _refusedOrder = null;
             ReleaseRefusedRanges();
             _rowsLost = null;
             _streamsPassedOver = null;
