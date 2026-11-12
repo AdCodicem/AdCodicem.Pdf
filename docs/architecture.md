@@ -90,8 +90,9 @@ separate types, separate severity scales, and vocabularies that never share a co
    own structure looked like — its header, what `startxref` gave, each section and its trailer as written —,
    a record per section and nothing per object, for the validation rules to judge the file as written.
 2. **Repair** — if `startxref` is wrong, the table missing, or an offset does not point at the object it
-   claims, fall back to scanning the whole file for `N G obj` headers, keeping the last definition of each
-   number under the generation its header gives, and saying once, as `object.redefined`, how many it met of numbers already found. A trailer whose `/Root` leads to no catalog does not discard a sound index: the catalog is looked
+   claims, fall back to scanning the whole file for `N G obj` headers and taking in the object streams among them,
+   keeping the definition of each number the file writes last — an object stream's members counting where the stream
+   lies — under the generation its header gives, and saying once, as `object.redefined`, how many it met of numbers already found. A trailer whose `/Root` leads to no catalog does not discard a sound index: the catalog is looked
    for among the indexed objects first. Every repair is recorded in the diagnostics, and the index the chain
    gave is copied before a relocation or a rebuild changes it, so that validation still sees the file's own.
 3. **Lazy resolution** — `PdfReference.Resolve()` reads and parses the object on demand. A bounded cache
