@@ -1899,7 +1899,7 @@ public class DocumentReaderTests
     }
 
     private const string KeptRule =
-        " Of each number, the definition kept is the last written directly in the file, or, for a number written only inside object streams, the first listed in the object stream read first.";
+        " Of each number, the definition kept is the one the file writes last, an object stream's members counting where the stream lies.";
 
     [Fact]
     public void Reports_an_object_a_rebuild_finds_defined_twice_in_the_file_once_as_information()
@@ -1921,25 +1921,70 @@ public class DocumentReaderTests
     }
 
     [Theory]
-    [InlineData("6 0 6 6 ", "(one)\n(two)", "(one)")]
-    [InlineData("6 0 ", "(one)", "(one)")]
-    public void Reports_an_object_a_rebuild_finds_twice_inside_object_streams_and_keeps_the_first_listed(string header, string body, string kept)
+    [InlineData("a direct definition, then an object stream", "in the object stream")]
+    [InlineData("an object stream, then a direct definition", "written directly")]
+    [InlineData("two object streams", "in the later object stream")]
+    [InlineData("two object streams, the later one's number defined before both", "in the later object stream")]
+    [InlineData("two object streams, the earlier one's number defined before both", "in the later object stream")]
+    [InlineData("one object stream listing it twice", "listed first")]
+    public void A_rebuild_keeps_the_definition_the_file_writes_last_a_member_counting_where_its_stream_lies(string shape, string kept)
     {
-        // Listed twice in one header, or once in each of two object streams: the first listed in the stream read
-        // first is kept.
-        var data = header + body;
-        var file = new TestPdfBuilder()
+        // Object 6 is defined twice; the index is rebuilt. A member of an object stream counts where the stream lies,
+        // whatever order the object streams are taken in, which follows where each number was first met (#189).
+        var builder = new TestPdfBuilder()
             .WithObject(1, "<< /Type /Catalog /Pages 2 0 R >>")
-            .WithObject(2, "<< /Type /Pages /Kids [] /Count 0 >>")
-            .WithObject(5, string.Create(CultureInfo.InvariantCulture, $"<< /Type /ObjStm /N {header.Split(' ', StringSplitOptions.RemoveEmptyEntries).Length / 2} /First {header.Length} /Length {data.Length} >>\nstream\n{data}\nendstream"))
-            .WithObject(7, "<< /Type /ObjStm /N 1 /First 4 /Length 9 >>\nstream\n6 0 (two)\nendstream")
-            .BuildClassic(rootNumber: 1, includeXRef: false);
+            .WithObject(2, "<< /Type /Pages /Kids [] /Count 0 >>");
 
-        using var document = PdfDocument.Open(file);
+        switch (shape)
+        {
+            case "a direct definition, then an object stream":
+                builder.WithObject(6, "(written directly)").WithObject(10, ObjectStreamOf((6, "(in the object stream)")));
+                break;
+            case "an object stream, then a direct definition":
+                builder.WithObject(10, ObjectStreamOf((6, "(in the object stream)"))).WithObject(6, "(written directly)");
+                break;
+            case "two object streams":
+                builder.WithObject(20, ObjectStreamOf((6, "(in the earlier object stream)")))
+                    .WithObject(11, ObjectStreamOf((6, "(in the later object stream)")));
+                break;
+            case "two object streams, the later one's number defined before both":
+                builder.WithObject(11, "null")
+                    .WithObject(20, ObjectStreamOf((6, "(in the earlier object stream)")))
+                    .WithObject(11, ObjectStreamOf((6, "(in the later object stream)")));
+                break;
+            case "two object streams, the earlier one's number defined before both":
+                builder.WithObject(20, "null")
+                    .WithObject(11, ObjectStreamOf((6, "(in the earlier object stream)")))
+                    .WithObject(20, ObjectStreamOf((6, "(in the later object stream)")));
+                break;
+            default:
+                builder.WithObject(10, ObjectStreamOf((6, "(listed first)"), (6, "(listed second)")));
+                break;
+        }
 
-        document.GetObject(new PdfObjectId(6)).Should().BeOfType<PdfString>().Which.ToText().Should().Be(kept.Trim('(', ')'));
-        var report = document.Diagnostics.Should().ContainSingle(entry => entry.Code == PdfDiagnosticCodes.ObjectRedefined).Which;
-        report.Message.Should().StartWith("Rebuilding the index met ").And.EndWith(KeptRule);
+        using var document = PdfDocument.Open(builder.BuildClassic(rootNumber: 1, includeXRef: false));
+
+        document.GetObject(new PdfObjectId(6)).Should().BeOfType<PdfString>().Which.ToText().Should().Be(kept);
+        document.Diagnostics.Should().ContainSingle(entry => entry.Code == PdfDiagnosticCodes.ObjectRedefined)
+            .Which.Message.Should().StartWith("Rebuilding the index met ").And.EndWith(KeptRule);
+    }
+
+    /// <summary>Writes the body of an object stream holding <paramref name="members"/>, uncompressed.</summary>
+    private static string ObjectStreamOf(params (int Number, string Body)[] members)
+    {
+        var header = new StringBuilder();
+        var data = new StringBuilder();
+
+        foreach (var (number, body) in members)
+        {
+            header.Append(CultureInfo.InvariantCulture, $"{number} {data.Length} ");
+            data.Append(body).Append('\n');
+        }
+
+        var content = header.ToString() + data;
+        return string.Create(
+            CultureInfo.InvariantCulture,
+            $"<< /Type /ObjStm /N {members.Length} /First {header.Length} /Length {content.Length} >>\nstream\n{content}\nendstream");
     }
 
     [Theory]
@@ -1972,6 +2017,61 @@ public class DocumentReaderTests
 
         document.WasRepaired.Should().BeTrue();
         document.Diagnostics.Should().NotContain(entry => entry.Code == PdfDiagnosticCodes.ObjectRedefined);
+    }
+
+    [Theory]
+    [InlineData("far from the object's header")]
+    [InlineData("its obj ending a piece of the scan")]
+    public void A_rebuild_takes_no_obj_a_regular_character_follows_for_a_header(string where)
+    {
+        // Object 9's string holds "7 0 objx", which a load reads as no header: the scan takes it for none either, and object
+        // 7 reads as written (#189). The scan reads the file a megabyte at a time: the byte after an obj that ends one piece
+        // is the next piece's first.
+        byte[] Build(int filler) => new TestPdfBuilder()
+            .WithObject(1, "<< /Type /Catalog /Pages 2 0 R >>")
+            .WithObject(2, "<< /Type /Pages /Kids [] /Count 0 >>")
+            .WithObject(7, "(seven)")
+            .WithObject(8, "(" + new string('x', filler) + ")")
+            .WithObject(9, "(7 0 objx)")
+            .BuildClassic(rootNumber: 1, includeXRef: false);
+        var file = Build(600);
+
+        if (where != "far from the object's header")
+        {
+            var probe = Build(1_000_000);
+            file = Build(1_000_000 + (1024 * 1024) - probe.AsSpan().IndexOf("objx"u8) - 3);
+            file.AsSpan().IndexOf("objx"u8).Should().Be((1024 * 1024) - 3);
+        }
+
+        using var document = PdfDocument.Open(file);
+
+        document.GetObject(new PdfObjectId(7)).Should().BeOfType<PdfString>().Which.ToText().Should().Be("seven");
+        document.Diagnostics.Should().NotContain(entry => entry.Code == PdfDiagnosticCodes.ObjectRedefined);
+    }
+
+    [Fact]
+    public void A_search_near_an_entry_takes_no_obj_a_regular_character_follows_for_the_object_s_header()
+    {
+        // The row of 7 falls inside object 6's string; "7 0 objx" lies within 512 bytes of it, before the real header: the
+        // search near the row passes it, as a load would, and finds 7 (#189).
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"),
+            [6] = file.Padding(6, 100),
+        };
+        rows[7] = rows[6] + 50;
+        file.Raw("% 7 0 objx\n");
+        var seven = file.Object(7, "(seven)");
+        file.Table(8, rows, "/Size 8 /Root 1 0 R");
+        using var document = PdfDocument.Open(file.Bytes);
+
+        document.GetObject(new PdfObjectId(7)).Should().BeOfType<PdfString>().Which.ToText().Should().Be("seven");
+        document.WasRepaired.Should().BeFalse();
+        document.Diagnostics.Should().ContainSingle().Which.Code.Should().Be(PdfDiagnosticCodes.XRefOffsetAdjusted);
+        document.Reader.Index.TryGet(7, out var entry).Should().BeTrue();
+        entry.Offset.Should().Be(seven);
     }
 
     [Fact]

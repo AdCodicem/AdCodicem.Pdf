@@ -723,6 +723,12 @@ internal sealed partial class PdfFileReader : IPdfObjectSource, IPdfStreamDataPr
     private Dictionary<int, int>? _refusedNumbers;
 
     /// <summary>
+    /// The numbers the reading of a place a search near an offset tries refuses, while it is read, so that a place dropped
+    /// gives them back (<see cref="RollBackIndex"/>, #320); null outside such a reading.
+    /// </summary>
+    private List<int>? _refusedOrder;
+
+    /// <summary>
     /// How many readings of a cross-reference section the chain started — the chain's own, and each place a section may have
     /// been moved to that it tried —, the count given to each reading's record as it starts
     /// (<see cref="XRefSectionRecord.Ordinal"/>). Only told equal or not: two readings share one only 4,294,967,296 readings

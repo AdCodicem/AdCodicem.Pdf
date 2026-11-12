@@ -75,6 +75,11 @@ internal sealed class PdfXRefTable : IEnumerable<KeyValuePair<int, XRefEntry>>
     /// </summary>
     private SortedOffsets? _offsets;
 
+    /// <summary>
+    /// Where the numbers a tentative reading records start (<see cref="StartTentative"/>), or -1 while none is under way.
+    /// </summary>
+    private int _tentativeFrom = -1;
+
     /// <summary>Gets the trailer, merged across every section of the chain.</summary>
     /// <remarks>
     /// What the reader merges into it or sets in it once the document is open, it does in a copy made first
@@ -166,7 +171,7 @@ internal sealed class PdfXRefTable : IEnumerable<KeyValuePair<int, XRefEntry>>
         }
 
         Add(number, entry);
-        Track(entry);
+        TrackRecorded(entry);
         return true;
     }
 
@@ -178,13 +183,17 @@ internal sealed class PdfXRefTable : IEnumerable<KeyValuePair<int, XRefEntry>>
         if (at < 0)
         {
             Add(number, entry);
-        }
-        else
-        {
-            _entries[at] = entry;
+            TrackRecorded(entry);
+            return;
         }
 
-        Track(entry);
+        _entries[at] = entry;
+
+        // An entry a tentative reading recorded is tracked once the reading is kept, as it then stands.
+        if (_tentativeFrom < 0 || at < _tentativeFrom)
+        {
+            Track(entry);
+        }
     }
 
     /// <summary>
@@ -229,6 +238,7 @@ internal sealed class PdfXRefTable : IEnumerable<KeyValuePair<int, XRefEntry>>
         _count = 0;
         _version++;
         _offsets = null;
+        _tentativeFrom = -1;
     }
 
     /// <summary>Removes every entry, and lets go of the room they took, for a table nothing will read again.</summary>
@@ -243,6 +253,67 @@ internal sealed class PdfXRefTable : IEnumerable<KeyValuePair<int, XRefEntry>>
         _numbers = [];
         _entries = [];
         _slots = [];
+    }
+
+    /// <summary>
+    /// Starts a tentative reading: what it records may be dropped (<see cref="DropTentative"/>) or kept
+    /// (<see cref="KeepTentative"/>). Until then, the numbers it records are looked up as any other, but the offsets their
+    /// entries give bound no search (<see cref="FirstOffsetAfter"/>), so that dropping them costs no sorting.
+    /// </summary>
+    public void StartTentative() => _tentativeFrom = _count;
+
+    /// <summary>Keeps what the tentative reading recorded: the offsets its entries give join the sorted ones.</summary>
+    public void KeepTentative()
+    {
+        var from = _tentativeFrom;
+        _tentativeFrom = -1;
+
+        if (from < 0 || _offsets is null)
+        {
+            return;
+        }
+
+        foreach (var entry in _entries.AsSpan(from, _count - from))
+        {
+            Track(entry);
+        }
+    }
+
+    /// <summary>
+    /// Removes the numbers the tentative reading recorded, and their entries: the numbers before it stay as they were, an
+    /// entry it replaced among them included.
+    /// </summary>
+    public void DropTentative()
+    {
+        var from = _tentativeFrom;
+        _tentativeFrom = -1;
+
+        if (from < 0 || from >= _count)
+        {
+            return;
+        }
+
+        if (_numbersLent > 0)
+        {
+            // A caller enumerating the numbers keeps what it was given: the numbers recorded from here on go into a copy.
+            _numbers = _numbers.AsSpan().ToArray();
+            _numbersLent = 0;
+        }
+
+        foreach (var number in _numbers.AsSpan(from, _count - from))
+        {
+            if ((uint)number < (uint)_slots.Length)
+            {
+                _slots[number] = 0;
+            }
+            else
+            {
+                _beyond!.Remove(number);
+            }
+        }
+
+        _count = from;
+        _version++;
     }
 
     /// <summary>Copies the indexed object numbers, in the order the table first recorded them.</summary>
@@ -379,7 +450,8 @@ internal sealed class PdfXRefTable : IEnumerable<KeyValuePair<int, XRefEntry>>
             // One array the size of the offsets, sorted in place: sorting a large index costs what it keeps.
             var count = 0;
 
-            var entries = _entries.AsSpan(0, _count);
+            // A tentative reading's entries are sorted in once it is kept.
+            var entries = _entries.AsSpan(0, _tentativeFrom < 0 ? _count : _tentativeFrom);
 
             foreach (var entry in entries)
             {
@@ -408,6 +480,15 @@ internal sealed class PdfXRefTable : IEnumerable<KeyValuePair<int, XRefEntry>>
     /// those the entries give then.
     /// </summary>
     public void ForgetSortedOffsets() => _offsets = null;
+
+    /// <summary>Adds the offset an entry just recorded gives to the sorted ones, but where a tentative reading recorded it.</summary>
+    private void TrackRecorded(XRefEntry entry)
+    {
+        if (_tentativeFrom < 0)
+        {
+            Track(entry);
+        }
+    }
 
     /// <summary>Adds the offset an entry gives to the sorted ones, once they are kept.</summary>
     private void Track(XRefEntry entry)

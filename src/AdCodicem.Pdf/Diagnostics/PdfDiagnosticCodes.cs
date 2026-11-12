@@ -301,8 +301,10 @@ public static class PdfDiagnosticCodes
     /// <summary>
     /// Rebuilding the index met more than one definition of an object number: the file was updated, or copies an
     /// object. It is reported once for each rebuild, as information with no position: how many definitions met a number
-    /// already found, the first ten of those numbers, and which definition was kept — the last written directly in the
-    /// file, or, for a number written only inside object streams, the first listed in the object stream read first.
+    /// already found, the first ten of those numbers, and which definition was kept: the one the file writes last, a member
+    /// of an object stream counting where the stream's definition lies — an update appends what it changes, written
+    /// directly or in a new object stream (ISO 32000-1, 7.5.6) —, and, of a number one object stream lists twice, the first
+    /// listed. Only the definition kept of an object stream's own number is read for members (#189).
     /// </summary>
     public const string ObjectRedefined = "object.redefined";
 

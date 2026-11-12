@@ -1837,7 +1837,7 @@ public class ReaderLimitsTests
         if (shape == "a member written again directly")
         {
             document.Reader.Index.TryGet(4, out var four).Should().BeTrue();
-            four.Kind.Should().Be(XRefEntryKind.Regular, "an object written directly in the file wins over a copy in an object stream");
+            four.Kind.Should().Be(XRefEntryKind.Regular, "an object written directly past the object stream that holds a copy of it wins over that copy");
             document.Reader.IsCutAtLimit(4).Should().BeFalse();
             document.GetObject(new PdfObjectId(4)).Should().BeOfType<PdfString>().Which.ToText().Should().Be("direct four");
             whole.GetObject(new PdfObjectId(4)).Should().BeOfType<PdfString>().Which.ToText().Should().Be("direct four");

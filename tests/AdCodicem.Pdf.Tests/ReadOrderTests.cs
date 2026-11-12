@@ -98,11 +98,11 @@ public class ReadOrderTests
     [Fact]
     public void A_member_whose_load_rebuilt_the_index_is_served_as_a_rebuild_run_first_serves_it()
     {
-        // Object 5 is in object streams 7 and 10, and the first one listed wins: 7. Stream 7 takes its /Length from object
-        // 8, whose row leads nowhere: reading 5 rebuilds the index while 7 is being decoded, which reads 7 as null and places
-        // 5 in 10 meanwhile. Finished once no load is in flight, the index places 5 in 7 again; stream 12, which decodes to
-        // more than the reader keeps of object streams, lets 7 go, and 7, decoded again, reads as the file wrote it, not as
-        // the null the loads in flight read it as.
+        // Object 5 is in object streams 10 and 7, and the one the file writes last wins: 7. Stream 7 takes its /Length from
+        // object 8, whose row leads nowhere: reading 5 rebuilds the index while 7 is being decoded, which reads 7 as null and
+        // places 5 in 10 meanwhile. Finished once no load is in flight, the index places 5 in 7 again; stream 12, which
+        // decodes to more than the reader keeps of object streams, lets 7 go, and 7, decoded again, reads as the file wrote
+        // it, not as the null the loads in flight read it as.
         var file = new HandWrittenFile(version: "1.5");
         var rows = new Dictionary<int, (int Type, long Field2, int Field3)>
         {
@@ -113,11 +113,11 @@ public class ReadOrderTests
             [13] = (2, 12, 0),
         };
         const string Seven = "5 0 6 13 (from seven) (six)";
+        rows[10] = (1, file.ObjectStream(10, [(5, "(from ten)")]), 0);
         rows[7] = (1, file.Object(7, $"<< /Type /ObjStm /N 2 /First 9 /Length 8 0 R >>\nstream\n{Seven}\nendstream"), 0);
         rows[9] = (1, file.Padding(9), 0);
         rows[8] = (1, rows[9].Field2 + 600, 0);
         file.Object(8, Seven.Length.ToString(CultureInfo.InvariantCulture));
-        rows[10] = (1, file.ObjectStream(10, [(5, "(from ten)")]), 0);
         var twelve = new byte[33 * 1024 * 1024];
         twelve.AsSpan().Fill((byte)' ');
         Encoding.ASCII.GetBytes("13 0 (thirteen)").CopyTo(twelve, 0);

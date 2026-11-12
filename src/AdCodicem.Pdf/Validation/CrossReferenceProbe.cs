@@ -22,14 +22,17 @@ namespace AdCodicem.Pdf.Validation;
 /// most twice the file's length, which a valid file's headers, distinct bytes, never reach, and an entry left undecided
 /// past that is said not checked, as one whose header runs past the limit is. An entry outside the file is looked for
 /// near its offset, as a load looks for it. It reads each object stream once, without keeping it — once more when the
-/// reader rebuilt its index, the chain's places some of its objects and only the rebuilt one others —, so that memory
+/// reader rebuilt its index, the chain's places some of its objects and only the rebuilt one others, or the rebuilt one
+/// serves elsewhere some the chain's places —, so that memory
 /// follows the largest of them
 /// rather than their sum, each member whose bytes hold <c>stream</c> parsed as a load parses it. It probes
 /// the index the file's chain gave, as the reader first read it — not one the reader has corrected or rebuilt since —,
 /// and nothing of it when the chain gave none: the file rules have then said the index is unusable, and every entry would
-/// only say it again. Of the index a rebuild made, it judges only the members written as a stream that it places where the
+/// only say it again. Of the index a rebuild made, it judges the members written as a stream that it places where the
 /// chain's places nothing — or, the chain stopped short by a guard, where the part of it the reader read places nothing —,
-/// which the reader reads as null and no entry of the file's the reader read would name (#161, #202).
+/// which the reader reads as null and no entry of the file's the reader read would name (#161, #202); and, of the objects
+/// the chain's index places soundly in an object stream, those it lacks or places where they are written as a stream,
+/// which the reader loses though the chain's entry is sound (#276).
 /// </para>
 /// <para>
 /// Several rules read it, so the validation context works it out once. What it keeps is what it found wrong, never an
@@ -48,6 +51,12 @@ internal sealed class CrossReferenceProbe
 
     /// <summary>What the headers' reading may still consume past the first bytes of each, and the run of white space it crossed.</summary>
     private readonly HeaderReading _reading;
+
+    /// <summary>
+    /// The objects the chain's index places soundly in an object stream that the index the reader rebuilt does not serve from
+    /// there; null while there is none.
+    /// </summary>
+    private List<(int Number, int Stream, int Index, long Offset)>? _servedElsewhere;
 
     /// <summary>How many entries the probe left undecided, its reading spent.</summary>
     private int _undecidedCount;
@@ -164,6 +173,7 @@ internal sealed class CrossReferenceProbe
         if (packed.Count > 0)
         {
             probe.CheckObjectStreams(document, reader, packed);
+            probe.CheckMembersARebuildServesElsewhere(reader);
         }
 
         probe.CheckMembersOnlyARebuildPlaces(document, reader);
@@ -266,6 +276,99 @@ internal sealed class CrossReferenceProbe
             GenerationMismatches.Keep(new ProbeFinding(
                 PdfValidationLocation.OfObject(new PdfObjectId(number, entry.Generation), position),
                 Invariant($"The entry of object {number} gives generation {entry.Generation}, and the object is written as {number} {generation} obj.")));
+        }
+    }
+
+    /// <summary>
+    /// Determines whether the index the reader rebuilt places object <paramref name="number"/> where the chain's index does:
+    /// at <paramref name="index"/> of object stream <paramref name="stream"/>, of the definition at
+    /// <paramref name="offset"/>.
+    /// </summary>
+    private static bool ServedWhereChainPlaces(PdfFileReader reader, int number, int stream, int index, long offset) =>
+        reader.Index.TryGet(number, out var served) &&
+        served.Kind == XRefEntryKind.Compressed &&
+        served.ObjectStreamNumber == stream &&
+        served.IndexInObjectStream == index &&
+        reader.Index.TryGet(stream, out var definition) &&
+        definition.Kind == XRefEntryKind.Regular &&
+        reader.PositionOf(definition) == offset;
+
+    /// <summary>
+    /// Judges the objects the chain's index places soundly in an object stream that the index the reader rebuilt serves from
+    /// elsewhere: lost where it lacks them — the definition of their stream it serves does not list them — or places them in
+    /// an object stream that holds them written as a stream, which the reader reads as null (#276). Each object stream the
+    /// rebuilt index serves them from is read once more.
+    /// </summary>
+    private void CheckMembersARebuildServesElsewhere(PdfFileReader reader)
+    {
+        if (_servedElsewhere is null)
+        {
+            return;
+        }
+
+        SortedDictionary<int, List<(int Number, int Stream, int Index, int Served)>>? byServed = null;
+
+        foreach (var (number, stream, index, offset) in _servedElsewhere)
+        {
+            if (!reader.Index.TryGet(number, out var served))
+            {
+                if (reader.GetPresence(number) == ObjectPresence.Unindexed || !Broken.Take())
+                {
+                    continue;
+                }
+
+                // The rebuild takes in what each object stream it serves lists: lacking the object, it serves another
+                // definition of its stream, which does not list it, or could not read the one the chain's index places.
+                var definition = reader.Index.TryGet(stream, out var held) && held.Kind == XRefEntryKind.Regular &&
+                    reader.PositionOf(held) != offset
+                    ? Invariant($": the definition of object stream {stream} it serves, at offset {reader.PositionOf(held)}, does not list it")
+                    : string.Empty;
+                Broken.Keep(new ProbeFinding(
+                    PdfValidationLocation.OfObject(new PdfObjectId(number)),
+                    Invariant($"The entry of object {number} places it at index {index} of object stream {stream}, and the index the reader rebuilt lacks it{definition}.")));
+                continue;
+            }
+
+            if (served.Kind != XRefEntryKind.Compressed)
+            {
+                continue;
+            }
+
+            byServed ??= [];
+
+            if (!byServed.TryGetValue(served.ObjectStreamNumber, out var members))
+            {
+                members = [];
+                byServed.Add(served.ObjectStreamNumber, members);
+            }
+
+            members.Add((number, stream, index, served.IndexInObjectStream));
+        }
+
+        if (byServed is null)
+        {
+            return;
+        }
+
+        foreach (var (servedStream, members) in byServed)
+        {
+            if (!reader.Index.TryGet(servedStream, out var entry) || entry.Kind != XRefEntryKind.Regular ||
+                reader.ReadObjectStreamHeader(servedStream, entry, out _, out _, out var streamMembers) is
+                    ObjectStreamHeaderResult.NotFound or ObjectStreamHeaderResult.CutByLimit or ObjectStreamHeaderResult.NotAnObjectStream)
+            {
+                continue;
+            }
+
+            foreach (var (number, stream, index, served) in members)
+            {
+                if (Array.BinarySearch(streamMembers, served) >= 0 && Broken.Take())
+                {
+                    Broken.Keep(new ProbeFinding(
+                        PdfValidationLocation.OfObject(new PdfObjectId(number)),
+                        Invariant($"The entry of object {number} places it at index {index} of object stream {stream}; the index the reader rebuilt places it at index {served} of object stream {servedStream}, at offset {reader.PositionOf(entry)}, where it is written as a stream, which an object stream cannot hold."),
+                        StreamMemberRemedy));
+                }
+            }
         }
     }
 
@@ -408,6 +511,13 @@ internal sealed class CrossReferenceProbe
 
             if (listed)
             {
+                // Sound where the chain's index places it, the object may still be lost to a rebuild that serves it from
+                // elsewhere, or serves another definition of its stream (#276).
+                if (reader.WasRepaired && !ServedWhereChainPlaces(reader, number, stream, index, offset))
+                {
+                    (_servedElsewhere ??= []).Add((number, stream, index, offset));
+                }
+
                 continue;
             }
 
