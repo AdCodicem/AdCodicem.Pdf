@@ -92,7 +92,7 @@ separate types, separate severity scales, and vocabularies that never share a co
 2. **Repair** — if `startxref` is wrong, the table missing, or an offset does not point at the object it
    claims, fall back to scanning the whole file for `N G obj` headers and taking in the object streams among them,
    keeping the definition of each number the file writes last — an object stream's members counting where the stream
-   lies — under the generation its header gives, and saying once, as `object.redefined`, how many it met of numbers already found. A trailer whose `/Root` leads to no catalog does not discard a sound index: the catalog is looked
+   lies —, a direct one under the generation its header gives and a member under generation 0, and saying once, as `object.redefined`, how many it met of numbers already found. A trailer whose `/Root` leads to no catalog does not discard a sound index: the catalog is looked
    for among the indexed objects first. Every repair is recorded in the diagnostics, and the index the chain
    gave is copied before a relocation or a rebuild changes it, so that validation still sees the file's own.
 3. **Lazy resolution** — `PdfReference.Resolve()` reads and parses the object on demand. A bounded cache

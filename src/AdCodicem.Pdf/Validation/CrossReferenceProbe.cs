@@ -318,10 +318,11 @@ internal sealed class CrossReferenceProbe
                 }
 
                 // The rebuild takes in what each object stream it serves lists: lacking the object, it serves another
-                // definition of its stream, which does not list it, or could not read the one the chain's index places.
+                // definition of its stream, which does not list it or cannot be read, or could not read the one the chain's
+                // index places (#349).
                 var definition = reader.Index.TryGet(stream, out var held) && held.Kind == XRefEntryKind.Regular &&
                     reader.PositionOf(held) != offset
-                    ? Invariant($": the definition of object stream {stream} it serves, at offset {reader.PositionOf(held)}, does not list it")
+                    ? Invariant($": it serves the definition of object stream {stream} at offset {reader.PositionOf(held)} instead")
                     : string.Empty;
                 Broken.Keep(new ProbeFinding(
                     PdfValidationLocation.OfObject(new PdfObjectId(number)),

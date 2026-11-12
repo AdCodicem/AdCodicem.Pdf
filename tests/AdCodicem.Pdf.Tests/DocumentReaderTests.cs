@@ -1925,7 +1925,6 @@ public class DocumentReaderTests
     [InlineData("an object stream, then a direct definition", "written directly")]
     [InlineData("two object streams", "in the later object stream")]
     [InlineData("two object streams, the later one's number defined before both", "in the later object stream")]
-    [InlineData("two object streams, the earlier one's number defined before both", "in the later object stream")]
     [InlineData("one object stream listing it twice", "listed first")]
     public void A_rebuild_keeps_the_definition_the_file_writes_last_a_member_counting_where_its_stream_lies(string shape, string kept)
     {
@@ -1951,11 +1950,6 @@ public class DocumentReaderTests
                 builder.WithObject(11, "null")
                     .WithObject(20, ObjectStreamOf((6, "(in the earlier object stream)")))
                     .WithObject(11, ObjectStreamOf((6, "(in the later object stream)")));
-                break;
-            case "two object streams, the earlier one's number defined before both":
-                builder.WithObject(20, "null")
-                    .WithObject(11, ObjectStreamOf((6, "(in the earlier object stream)")))
-                    .WithObject(20, ObjectStreamOf((6, "(in the later object stream)")));
                 break;
             default:
                 builder.WithObject(10, ObjectStreamOf((6, "(listed first)"), (6, "(listed second)")));

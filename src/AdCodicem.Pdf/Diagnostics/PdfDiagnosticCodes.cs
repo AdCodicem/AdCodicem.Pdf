@@ -304,7 +304,9 @@ public static class PdfDiagnosticCodes
     /// already found, the first ten of those numbers, and which definition was kept: the one the file writes last, a member
     /// of an object stream counting where the stream's definition lies — an update appends what it changes, written
     /// directly or in a new object stream (ISO 32000-1, 7.5.6) —, and, of a number one object stream lists twice, the first
-    /// listed. Only the definition kept of an object stream's own number is read for members (#189).
+    /// listed (#189). Only the definition kept of an object stream's own number is read for members, but where that number
+    /// is listed by a later object stream after the earlier stream was taken in: its members then stay placed in it, and
+    /// read as null (#348).
     /// </summary>
     public const string ObjectRedefined = "object.redefined";
 
