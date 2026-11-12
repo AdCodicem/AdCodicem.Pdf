@@ -293,9 +293,10 @@ unreadable and drop it ([#171](https://github.com/AdCodicem/AdCodicem.Pdf/issues
 reported missing; where `startxref` names one, it holds no section either, and its dictionary is no trailer. The
 section `startxref` names is not looked for nearby: when it is not where `startxref` says, the map is rebuilt.
 
-A rebuilt map keeps, of each number, the definition `object.redefined` names — the last written directly in the file,
-or, for a number written only inside object streams, the first listed in the object stream read first —, a direct
-definition under the generation its header gives and a member of an object stream under generation 0. An object
+A rebuilt map keeps, of each number, the definition [`object.redefined`](../reference/diagnostics.md) names — the one
+the file writes last, an object stream's members counting where the stream lies, as an update appends what it
+changes —, a direct definition under the generation its header gives and a member of an object stream under generation
+0. An object
 found nearby takes the generation of the header found there, whatever its row gave; an entry of the chain otherwise
 keeps its row's. The rules that name an object from the map — `object.reference-missing`,
 `object.name-null-character`, `object.endobj-missing` — name it so, `5 1` for `5 1 obj`; the cross-reference rules
