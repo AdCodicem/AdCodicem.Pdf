@@ -439,8 +439,9 @@ internal sealed class PdfXRefTable : IEnumerable<KeyValuePair<int, XRefEntry>>
     /// nothing, and is left out (#125).
     /// </summary>
     /// <remarks>
-    /// The offsets are sorted the first time this is asked, and entries recorded since are sorted in as they come, so
-    /// that each lookup costs a logarithm of the index rather than a pass over it. An entry replaced keeps the offset
+    /// The offsets are sorted the first time this is asked, and entries recorded since are sorted in as they come — those of
+    /// a tentative reading once it is kept (<see cref="StartTentative"/>) —, so that each lookup costs a logarithm of the
+    /// index rather than a pass over it. An entry replaced keeps the offset
     /// it gave among them: the answer is always an offset some entry of the table gave, if not the entry it holds now.
     /// </remarks>
     public long FirstOffsetAfter(long offset)

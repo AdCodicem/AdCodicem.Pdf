@@ -540,7 +540,9 @@ internal sealed partial class PdfFileReader
     /// found near its entry, a rebuild — only after <see cref="PreserveChainIndex"/> has copied it. An index rebuilt as
     /// the document opened is the one the reader keeps, and no copy of it is needed: the rebuild runs once, and loads
     /// every object it places directly as it takes in the object streams, so that an object found near its entry is
-    /// found, and its entry changed, before the document has opened; object streams add entries that place no offset.
+    /// found, and its entry changed, before the document has opened; object streams add entries that place no offset, and
+    /// replace an entry written directly that a later object stream holds again, whose offset still bounds the searches
+    /// where they were sorted before (<see cref="PdfXRefTable.FirstOffsetAfter"/>).
     /// While the chain is read, and while a document whose chain gave none is rebuilt, the index being made bounds the
     /// searches made meanwhile, which opening makes the same whatever is read after it.
     /// </remarks>

@@ -75,11 +75,13 @@ it — not one it has corrected or rebuilt since —, and the object streams are
 stream's decoding reads, each read once a validation however many streams lead through it, what decoding may read of it
 kept for as many of them as the document's cache holds, an object let go read again when met again. An object held by
 an object stream that decodes alike in every read order is read through the reader, as its row says, provided the
-index the reader rebuilt places that object, and everything its stream's decoding reads, where the chain's index does. One exception:
+index the reader rebuilt places that object, and everything its stream's decoding reads, where the chain's index does. Two exceptions:
 `xref.entry-broken` also judges the objects written as a stream that the index the reader rebuilt places in an object
 stream where the chain's places nothing under their number — it lacks the number, or holds it free —, or, where one of
 the reader's limits stopped the chain short, where the part of it the reader read places nothing, reading that object
-stream where the rebuilt index places it ([#161]), whether or not the chain gave an index. Any other value written
+stream where the rebuilt index places it ([#161]), whether or not the chain gave an index; and the objects the chain's index
+places soundly in an object stream that the rebuilt index lacks, or places in an object stream where they are written as
+a stream ([#276]). Any other value written
 elsewhere that an entry's object needs — a stream's
 own `/Length` written as a reference, a value `xref.object-stream-value-wrong` reports, a trailer value written as one —
 is read as any read reads it, through the index the validator had the reader settle on before its first rule: the

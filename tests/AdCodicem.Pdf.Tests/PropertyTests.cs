@@ -754,7 +754,8 @@ public class PropertyTests
 
     /// <summary>
     /// Gives where the first object header of <paramref name="data"/> starts that the scan that rebuilds an index takes, and
-    /// that no regular byte precedes or follows, walking back from each <c>obj</c> in turn; -1 when there is none.
+    /// that no regular byte precedes, walking back from each <c>obj</c> in turn; -1 when there is none. What follows
+    /// <c>obj</c> is the scan's to judge (#189).
     /// </summary>
     private static long FirstHeaderTheScanTakes(byte[] data)
     {
@@ -770,8 +771,7 @@ public class PropertyTests
             var keyword = from + index;
 
             if (PdfFileReader.TryReadHeaderBackwards(data, keyword, out _, out _, out var start) &&
-                (start == 0 || !PdfCharacters.IsRegular(data[start - 1])) &&
-                (keyword + 3 == data.Length || !PdfCharacters.IsRegular(data[keyword + 3])))
+                (start == 0 || !PdfCharacters.IsRegular(data[start - 1])))
             {
                 return start;
             }

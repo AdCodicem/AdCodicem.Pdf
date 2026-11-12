@@ -141,7 +141,8 @@ so do the verdicts of `xref.object-stream-broken`, `xref.entry-broken` and `xref
 The cross-reference rules read where each entry of the file's index places its object as a load reads it, and decide
 what a load would find there as settling decides it, through one function of the reader — a few dozen bytes of its
 header in a sound file, never its body —, and each object stream once, without keeping it, or once more when the file's
-index places some of its objects and only an index the reader rebuilt others. An entry outside the file is looked
+index places some of its objects and only an index the reader rebuilt others, or that index serves elsewhere some the
+file's places. An entry outside the file is looked
 for near its offset, as a load looks for it. An entry whose header runs past the reader's object limit, or that they had
 not decided once reading the headers had consumed twice the file's length, is said not checked rather than broken. They judge the rows as the file
 wrote them, not as the reader corrected them, and read each object stream where the file's own index places it,
@@ -167,7 +168,9 @@ index the reader rebuilt, they judge, besides, an object it places in an object 
 as null —, where the file's own index places nothing under its number, or, where one of the reader's limits stopped the
 chain short, where the part of it the reader read places nothing; the object stream is read where the rebuilt index
 places it ([#161](https://github.com/AdCodicem/AdCodicem.Pdf/issues/161)), and no row the reader read would say that
-object is lost. When the file gave no index at all, the object streams the rebuilt index places are the ones whose
+object is lost. So is an object the file's own index places soundly in an object stream, that the rebuilt index lacks or
+places in an object stream where it is written as a stream: the rebuild serves another definition of the stream, or
+another stream ([#276](https://github.com/AdCodicem/AdCodicem.Pdf/issues/276)). When the file gave no index at all, the object streams the rebuilt index places are the ones whose
 needs they work out, and whose integers written as reals they report. The other values written
 elsewhere that a row's object needs — a stream's own `/Length` written as a reference, the values an object stream's
 header gives as reals, a decoding parameter the trailer names — are read as any read reads them, through the index the

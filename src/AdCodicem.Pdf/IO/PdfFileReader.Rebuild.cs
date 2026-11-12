@@ -731,8 +731,9 @@ internal sealed partial class PdfFileReader
             }
 
             // A member counts where its stream's definition lies, as an object written there directly would: the definition
-            // the file writes last wins, whatever order the streams are taken in (PdfDiagnosticCodes.ObjectRedefined). Where
-            // each stream taken lies is kept, to rank a member it gave against one a later stream lists.
+            // the file writes last wins, whatever order the streams are taken in (PdfDiagnosticCodes.ObjectRedefined), but for
+            // the members of a stream whose own number a later stream lists, which stay where this one placed them (#348).
+            // Where each stream taken lies is kept, to rank a member it gave against one a later stream lists.
             var streamPosition = PositionOf(entry);
             (streamPositions ??= new(SeededComparer.Instance))[number] = streamPosition;
 

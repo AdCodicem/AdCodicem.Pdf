@@ -3994,7 +3994,7 @@ public class CrossReferenceRuleTests
             case "another definition of its stream, which does not list it":
                 rows[6] = (1, file.ObjectStream(6, [(7, seven)]), 0);
                 var lacking = file.ObjectStream(6, [(12, "(twelve)")]);
-                expected = Invariant($"The entry of object 7 places it at index 0 of object stream 6, and the index the reader rebuilt lacks it: the definition of object stream 6 it serves, at offset {lacking}, does not list it.");
+                expected = Invariant($"The entry of object 7 places it at index 0 of object stream 6, and the index the reader rebuilt lacks it: it serves the definition of object stream 6 at offset {lacking} instead.");
                 break;
             case "another object stream, which writes it as a stream":
                 rows[6] = (1, file.ObjectStream(6, [(7, seven)]), 0);
