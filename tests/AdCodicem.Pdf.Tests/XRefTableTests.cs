@@ -315,6 +315,63 @@ public class XRefTableTests
     }
 
     [Fact]
+    public void A_tentative_reading_dropped_takes_away_the_numbers_it_recorded_and_an_enumeration_keeps_those_it_was_given()
+    {
+        // A place the search near a section drops gives back the rows its reading recorded (#320): in the slots and past them
+        // in the map. An enumeration under way reads those it began with, though numbers recorded since fill their room.
+        var table = Filled(2);
+        table.StartTentative();
+        table.TryAdd(7, XRefEntry.Free);
+        table.TryAdd(2_000_000_000, XRefEntry.Free);
+        var given = new List<int>();
+
+        foreach (var number in table.Numbers)
+        {
+            given.Add(number);
+
+            if (number == 0)
+            {
+                table.DropTentative();
+                table.TryAdd(9, XRefEntry.Free);
+                table.TryAdd(10, XRefEntry.Free);
+            }
+        }
+
+        given.Should().Equal(0, 1, 7, 2_000_000_000);
+        table.Numbers.Should().Equal(0, 1, 9, 10);
+        table.TryGet(7, out _).Should().BeFalse();
+        table.TryGet(2_000_000_000, out _).Should().BeFalse();
+    }
+
+    [Fact]
+    public void The_offsets_a_tentative_reading_records_bound_no_search_until_it_is_kept()
+    {
+        // An entry recorded before the tentative reading and replaced during it bounds searches at once; one the reading
+        // recorded bounds them once it is kept, as it then stands, and never once dropped (#320).
+        var table = new PdfXRefTable();
+        table.TryAdd(1, XRefEntry.Regular(100, 0));
+        table.TryAdd(2, XRefEntry.Regular(500, 0));
+        table.FirstOffsetAfter(0).Should().Be(100);
+
+        table.StartTentative();
+        table.TryAdd(3, XRefEntry.Regular(200, 0));
+        table.Set(2, XRefEntry.Regular(300, 0));
+        table.Set(3, XRefEntry.Regular(250, 0));
+
+        table.FirstOffsetAfter(100).Should().Be(300);
+        table.KeepTentative();
+        table.FirstOffsetAfter(100).Should().Be(250);
+
+        var dropped = new PdfXRefTable();
+        dropped.TryAdd(1, XRefEntry.Regular(100, 0));
+        dropped.StartTentative();
+        dropped.TryAdd(2, XRefEntry.Regular(200, 0));
+        dropped.FirstOffsetAfter(100).Should().Be(long.MaxValue, "the offsets are sorted from the entries recorded before the reading");
+        dropped.DropTentative();
+        dropped.FirstOffsetAfter(100).Should().Be(long.MaxValue);
+    }
+
+    [Fact]
     public void An_enumeration_begun_once_the_table_was_cleared_under_another_keeps_its_numbers_through_the_next_clearing()
     {
         // The first enumeration reads an array the table stopped recording into when it was cleared: ending it leaves the
