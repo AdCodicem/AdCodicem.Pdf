@@ -1969,6 +1969,25 @@ public class DocumentReaderTests
             .Which.Message.Should().StartWith("Rebuilding the index met ").And.EndWith(KeptRule);
     }
 
+    [Fact]
+    public void An_object_stream_a_later_object_stream_defines_again_serves_none_of_its_members()
+    {
+        // Object stream 20, written after object stream 10, holds an object numbered 10: the definition of 10 the file writes
+        // last is no object stream, and 5, which only the earlier 10 holds, reads as null, though the rebuild decoded that 10
+        // as it took it in (#189).
+        var file = new TestPdfBuilder()
+            .WithObject(1, "<< /Type /Catalog /Pages 2 0 R >>")
+            .WithObject(2, "<< /Type /Pages /Kids [] /Count 0 >>")
+            .WithObject(10, ObjectStreamOf((5, "(five)")))
+            .WithObject(20, ObjectStreamOf((10, "(ten)")))
+            .BuildClassic(rootNumber: 1, includeXRef: false);
+
+        using var document = PdfDocument.Open(file);
+
+        document.GetObject(new PdfObjectId(10)).Should().BeOfType<PdfString>().Which.ToText().Should().Be("ten");
+        document.GetObject(new PdfObjectId(5)).Should().BeSameAs(PdfNull.Instance);
+    }
+
     /// <summary>Writes the body of an object stream holding <paramref name="members"/>, uncompressed.</summary>
     private static string ObjectStreamOf(params (int Number, string Body)[] members)
     {
