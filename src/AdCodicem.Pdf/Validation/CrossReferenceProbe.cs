@@ -376,10 +376,11 @@ internal sealed class CrossReferenceProbe
     private void CheckObjectStreams(
         PdfDocument document, PdfFileReader reader, SortedDictionary<int, List<(int Number, int Index)>> packed)
     {
-        if (document.IsEncrypted)
+        if (document.IsEncrypted || reader.EncryptFoundAfterOpening)
         {
             // An encrypted document's object streams are encrypted with it: until the library decrypts (M16),
-            // what they hold cannot be read, and saying anything about it would be a guess.
+            // what they hold cannot be read, and saying anything about it would be a guess. So are those of a document a
+            // rebuild after opening found an /Encrypt for, read as it opened (#154).
             var objects = 0;
             foreach (var (_, list) in packed)
             {
@@ -390,13 +391,14 @@ internal sealed class CrossReferenceProbe
             // them: a single stream can hold them all.
             if (NotChecked.Take())
             {
+                var why = document.IsEncrypted ? "The document is encrypted" : "The trailer the rebuilt index merged gives /Encrypt";
                 NotChecked.Keep(new ProbeFinding(
                     default,
                     objects == 1
-                        ? "The document is encrypted: the 1 object its index places in an object stream was not checked, that stream being readable only once decrypted."
+                        ? why + ": the 1 object its index places in an object stream was not checked, that stream being readable only once decrypted."
                         : packed.Count == 1
-                            ? Invariant($"The document is encrypted: the {objects} objects its index places in an object stream were not checked, that stream being readable only once decrypted.")
-                            : Invariant($"The document is encrypted: the {objects} objects its index places in object streams were not checked, those streams being readable only once decrypted.")));
+                            ? Invariant($"{why}: the {objects} objects its index places in an object stream were not checked, that stream being readable only once decrypted.")
+                            : Invariant($"{why}: the {objects} objects its index places in object streams were not checked, those streams being readable only once decrypted.")));
             }
 
             return;
@@ -555,7 +557,7 @@ internal sealed class CrossReferenceProbe
     /// </summary>
     private void CheckMembersOnlyARebuildPlaces(PdfDocument document, PdfFileReader reader)
     {
-        if (!reader.WasRepaired || document.IsEncrypted)
+        if (!reader.WasRepaired || document.IsEncrypted || reader.EncryptFoundAfterOpening)
         {
             return;
         }

@@ -273,6 +273,8 @@
               "syntax.key-repeated",
               "object.redefined",
               "trailer.root-recovered",
+              "trailer.encrypt-invalid",
+              "trailer.encrypt-late",
               "filter.failed",
               "filter.checksum-mismatch",
               "filter.unsupported",

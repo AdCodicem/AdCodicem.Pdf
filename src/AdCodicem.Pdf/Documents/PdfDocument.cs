@@ -191,14 +191,24 @@ public sealed class PdfDocument : IDisposable
 
     /// <summary>Gets a value indicating whether the document is encrypted.</summary>
     /// <remarks>
-    /// It says whether the trailer <see cref="Trailer"/> gives now holds <c>/Encrypt</c>. A rebuild of the index after
-    /// opening — set off by a read, or by the start of a validation — can merge an older trailer's <c>/Encrypt</c> into the
-    /// trailer it makes, so that it can turn true after opening, on a document opened as unencrypted (#154). When the
-    /// source fails the rebuild, it reads the unfinished rebuild's trailer, into which the scan has merged the trailers it
-    /// had reached: every one it finds, unless the source failed the scan.
+    /// It is decided once, as the document opens, and <see cref="PdfReaderOptions.ThrowOnEncrypted"/> applied then: the
+    /// trailer's <c>/Encrypt</c> resolves to a dictionary, the trailer a rebuild of the index makes as the document opens
+    /// included — a cross-reference stream's dictionary among the trailers it merges —, or names an object one of
+    /// <see cref="PdfReaderOptions.Limits"/> kept the reader from reading. An <c>/Encrypt</c> that names an
+    /// object the file lacks, or one that is null, or that is a value of another type, leaves the document unencrypted
+    /// (<see cref="PdfDiagnosticCodes.TrailerEncryptInvalid"/>). A rebuild after opening, set off by a read or by the start of
+    /// a validation, that merges an <c>/Encrypt</c> the trailer the document opened with did not give changes nothing of it
+    /// (<see cref="PdfDiagnosticCodes.TrailerEncryptLate"/>, #154).
     /// </remarks>
     /// <exception cref="ObjectDisposedException">The document was disposed.</exception>
-    public bool IsEncrypted => Trailer.ContainsKey(PdfName.Encrypt);
+    public bool IsEncrypted
+    {
+        get
+        {
+            ThrowIfDisposed();
+            return _reader.IsEncrypted;
+        }
+    }
 
     /// <summary>Opens a document from a file, reading its contents on demand.</summary>
     /// <param name="path">The path of the file, which stays open until the document is disposed.</param>
@@ -314,6 +324,16 @@ public sealed class PdfDocument : IDisposable
         }
 
         var document = new PdfDocument(reader, diagnostics);
+
+        try
+        {
+            reader.DecideEncryption();
+        }
+        catch
+        {
+            document.Dispose();
+            throw;
+        }
 
         if (document.IsEncrypted && options.ThrowOnEncrypted)
         {
