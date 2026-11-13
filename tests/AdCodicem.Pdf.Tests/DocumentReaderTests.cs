@@ -1942,10 +1942,14 @@ public class DocumentReaderTests
     [InlineData("two object streams", "in the later object stream")]
     [InlineData("two object streams, the later one's number defined before both", "in the later object stream")]
     [InlineData("one object stream listing it twice", "listed first")]
+    [InlineData("a direct definition, then an object stream whose /Predictor an earlier object stream holds", "in the object stream")]
+    [InlineData("a direct definition, then an object stream a later one defines again, naming deep in its dictionary an object the file lacks", "written directly")]
     public void A_rebuild_keeps_the_definition_the_file_writes_last_a_member_counting_where_its_stream_lies(string shape, string kept)
     {
         // Object 6 is defined twice; the index is rebuilt. A member of an object stream counts where the stream lies,
-        // whatever order the object streams are taken in, which follows where each number was first met (#189).
+        // whatever order the object streams are taken in, which follows where each number was first met (#189). A stream
+        // whose decoding reads an object an earlier stream holds is decoded once that stream is taken in; a reference deeper
+        // than decoding reads keeps no stream waiting, and an object stream defined again by a later one serves nothing.
         var builder = new TestPdfBuilder()
             .WithObject(1, "<< /Type /Catalog /Pages 2 0 R >>")
             .WithObject(2, "<< /Type /Pages /Kids [] /Count 0 >>");
@@ -1966,6 +1970,14 @@ public class DocumentReaderTests
                 builder.WithObject(11, "null")
                     .WithObject(20, ObjectStreamOf((6, "(in the earlier object stream)")))
                     .WithObject(11, ObjectStreamOf((6, "(in the later object stream)")));
+                break;
+            case "a direct definition, then an object stream whose /Predictor an earlier object stream holds":
+                builder.WithObject(6, "(written directly)").WithObject(10, ObjectStreamOf((9, "12")))
+                    .WithObject(11, PredictedObjectStreamOf("9 0 R", (6, "(in the object stream)")));
+                break;
+            case "a direct definition, then an object stream a later one defines again, naming deep in its dictionary an object the file lacks":
+                builder.WithObject(6, "(written directly)").WithObject(10, ObjectStreamOf((6, "(in the object stream)")))
+                    .WithObject(20, ObjectStreamOf((10, "(ten)")).Replace("/N 1", "/N 1 /Note << /A << /B << /C 99 0 R >> >> >>", StringComparison.Ordinal));
                 break;
             default:
                 builder.WithObject(10, ObjectStreamOf((6, "(listed first)"), (6, "(listed second)")));
@@ -2064,6 +2076,28 @@ public class DocumentReaderTests
         return string.Create(
             CultureInfo.InvariantCulture,
             $"<< /Type /ObjStm /N {members.Length} /First {header.Length} /Length {content.Length} >>\nstream\n{content}\nendstream");
+    }
+
+    /// <summary>
+    /// Writes the body of an object stream holding <paramref name="member"/>, its data one row behind PNG predictor Up,
+    /// compressed and written in hexadecimal, the step's <c>/Predictor</c> being <paramref name="predictor"/>.
+    /// </summary>
+    private static string PredictedObjectStreamOf(string predictor, (int Number, string Body) member)
+    {
+        var header = string.Create(CultureInfo.InvariantCulture, $"{member.Number} 0 ");
+        var row = Encoding.ASCII.GetBytes(header + member.Body + "\n");
+        using var deflated = new MemoryStream();
+
+        using (var zlib = new ZLibStream(deflated, CompressionLevel.Optimal, leaveOpen: true))
+        {
+            zlib.WriteByte(2);
+            zlib.Write(row);
+        }
+
+        var hex = Convert.ToHexString(deflated.ToArray()) + ">";
+        return string.Create(
+            CultureInfo.InvariantCulture,
+            $"<< /Type /ObjStm /N 1 /First {header.Length} /Filter [/ASCIIHexDecode /FlateDecode] /DecodeParms [null << /Predictor {predictor} /Columns {row.Length} >>] /Length {hex.Length} >>\nstream\n{hex}\nendstream");
     }
 
     [Theory]
@@ -4925,6 +4959,7 @@ public class DocumentReaderTests
     [InlineData("a long comment")]
     [InlineData("white space after a stream's direct length")]
     [InlineData("a run of letters glued to the endstream after a stream's direct length")]
+    [InlineData("data that no endstream ends after a stream's indirect length")]
     [InlineData("one line holding a header at each piece's start")]
     public void A_rebuild_reads_a_file_in_pieces_no_larger_than_a_megabyte(string shape)
     {
@@ -4932,7 +4967,8 @@ public class DocumentReaderTests
         // to 2 MiB (#350). It reads a piece of a megabyte, the byte past what it searches its last. The white space after a
         // stream's direct length was read in one window as long as it ran, and the line of a header found further back than
         // its piece in one window as long as the line: memory followed the file. Both are read as a piece or less at a time,
-        // the white space as a load reads it, and so is a run of letters glued to the endstream after a length (#171).
+        // the white space as a load reads it, and so is a run of letters glued to the endstream after a length (#171). The
+        // search for the endstream of a stream whose length is not confirmed reads twice as much each time, up to a piece.
         var text = new StringBuilder("%PDF-1.7\n1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n2 0 obj\n<< /Type /Pages /Kids [] /Count 0 >>\nendobj\n");
 
         switch (shape)
@@ -4945,6 +4981,9 @@ public class DocumentReaderTests
                 break;
             case "a run of letters glued to the endstream after a stream's direct length":
                 text.Append("3 0 obj\n<< /Length 4 >>\nstream\nabcdendstream").Append('X', 4 * 1024 * 1024).Append("\nendobj\n");
+                break;
+            case "data that no endstream ends after a stream's indirect length":
+                text.Append("3 0 obj\n<< /Length 9 0 R >>\nstream\n").Append('x', 5 * 1024 * 1024).Append("\nendobj\n");
                 break;
             default:
                 // Each piece starts most likely between a number and its obj, a thousand spaces apart, on one line.
