@@ -440,10 +440,14 @@ public class DocumentReaderTests
     [InlineData("4 0 obj", "(50%) ", true)]
     [InlineData("4 0 obj", "x", false)]
     [InlineData("4 0 obj", "/", false)]
+    [InlineData("4 0 obj", "%%EOF", true)]
+    [InlineData("4 0 obj", "% %%EOF", false)]
     public void A_rebuild_reads_the_line_of_a_header_between_objects_as_a_load_lexes_it(string header, string before, bool found)
     {
         // The line a header starts on is lexed as a load lexes it: a header a comment or a string holds is none, nor digits a
-        // longer token holds; a string closed before the header ends before it (#171).
+        // longer token holds; a string closed before the header ends before it (#171). The end-of-file marker is the one
+        // comment that ends with itself: a writer that appends an update with no end of line after it glues the update's
+        // first header to it, as pdfcpu does.
         var file = NearbyFiles.FourWrittenAs(header, startxrefLost: true, before: before);
         using var document = PdfDocument.Open(file);
 

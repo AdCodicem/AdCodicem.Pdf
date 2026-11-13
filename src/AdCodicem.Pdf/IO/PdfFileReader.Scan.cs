@@ -260,25 +260,27 @@ internal sealed partial class PdfFileReader
 
         if (from < end)
         {
-            scan.Line = SweepLine(span[from..end], scan.Line, ref scan.StringDepth);
+            scan.Line = SweepLine(span[from..], end - from, scan.Line, ref scan.StringDepth);
         }
 
         scan.SweptTo = Math.Max(scan.SweptTo, to);
     }
 
     /// <summary>
-    /// Runs the state a load's lexer is in over <paramref name="bytes"/>, from <paramref name="state"/>: a comment runs to
-    /// the end of its line, and a string, its parentheses balanced and a backslash escaping the byte after it, to its
-    /// closing parenthesis. An end of line ends both: no object holds the bytes between objects, where a string has no
-    /// business, and a line is read as its tokens, as an object's header is (<see cref="ReadHeaderBackwards"/>).
+    /// Runs the state a load's lexer is in over the first <paramref name="length"/> bytes of <paramref name="bytes"/>, from
+    /// <paramref name="state"/>: a comment runs to the end of its line, and a string, its parentheses balanced and a
+    /// backslash escaping the byte after it, to its closing parenthesis. An end of line ends both: no object holds the
+    /// bytes between objects, where a string has no business, and a line is read as its tokens, as an object's header is
+    /// (<see cref="ReadHeaderBackwards"/>). The end-of-file marker <c>%%EOF</c> is a comment that ends with it, a writer
+    /// gluing the next update to it; the bytes past <paramref name="length"/> are read only to tell it.
     /// </summary>
-    private static LineState SweepLine(ReadOnlySpan<byte> bytes, LineState state, ref int depth)
+    private static LineState SweepLine(ReadOnlySpan<byte> bytes, int length, LineState state, ref int depth)
     {
         var at = 0;
 
-        while (at < bytes.Length)
+        while (at < length)
         {
-            var rest = bytes[at..];
+            var rest = bytes[at..length];
             int found;
 
             switch (state)
@@ -328,6 +330,12 @@ internal sealed partial class PdfFileReader
                         return state;
                     }
 
+                    if (bytes[(at + found)..].StartsWith("%%EOF"u8))
+                    {
+                        found += "%%EOF".Length - 1;
+                        break;
+                    }
+
                     state = rest[found] == (byte)'%' ? LineState.Comment : LineState.String;
                     depth = 1;
                     break;
@@ -369,7 +377,7 @@ internal sealed partial class PdfFileReader
 
         using var line = _source.GetWindow(lineStart, (int)(position - lineStart));
         var depth = 0;
-        return SweepLine(line.Memory.Span, LineState.Tokens, ref depth) != LineState.Tokens;
+        return SweepLine(line.Memory.Span, line.Length, LineState.Tokens, ref depth) != LineState.Tokens;
     }
 
     /// <summary>

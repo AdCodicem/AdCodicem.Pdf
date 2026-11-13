@@ -814,7 +814,9 @@ internal sealed partial class PdfFileReader
     /// <c>+4 0 obj</c> are object 4's header, <c>-4 0 obj</c> none, its number below 1 (#327). The token starts where the
     /// lexer would start it: the byte before it is white space or a delimiter that ends a token, not a regular character, nor
     /// a delimiter that starts a token the digits would belong to — <c>(</c>, <c>&lt;</c>, <c>/</c>, <c>%</c> —; so
-    /// <c>x4 0 obj</c> is no header, and no window's start cuts a number short (#171). A comment may lie between the tokens
+    /// <c>x4 0 obj</c> is no header, and no window's start cuts a number short (#171). The end-of-file marker <c>%%EOF</c>
+    /// is the one comment that ends where it does, a writer gluing the next update's first header to it: <c>%%EOF1 0 obj</c>
+    /// is object 1's header. A comment may lie between the tokens
     /// too (ISO 32000-1, 7.2.3), and runs to the end of its line: one ends before a token only where the white space crossed
     /// holds an end of line. There, a line that holds a <c>%</c> is read as a load reads it, lexed forward from its start,
     /// which tells a comment from a <c>%</c> a string holds: its last tokens are the numbers still wanted, the nearest
@@ -939,9 +941,10 @@ internal sealed partial class PdfFileReader
                 index--;
             }
 
-            if (index < 0 ? !startsData : !PdfCharacters.EndsToken(span[index]))
+            if (index < 0 ? !startsData : !PdfCharacters.EndsToken(span[index]) && !EndsEndOfFileMarker(span, index))
             {
-                return index < 0 ? HeaderWalk.Undecided : HeaderWalk.None;
+                return index < 0 || (!startsData && index < EndOfFileMarker.Length - 1 &&
+                    EndOfFileMarker.EndsWith(span[..(index + 1)])) ? HeaderWalk.Undecided : HeaderWalk.None;
             }
 
             // Each token is judged by its value, however many zeros lead it, as the parser judges it: a header the parser
@@ -970,6 +973,17 @@ internal sealed partial class PdfFileReader
         found = numbers.NumberFound;
         return HeaderWalk.Header;
     }
+
+    /// <summary>
+    /// Determines whether the byte at <paramref name="index"/> ends the end-of-file marker <c>%%EOF</c>: a writer that
+    /// appends an update with no end of line after the marker glues the update's first header to it, and a token starts
+    /// right after it.
+    /// </summary>
+    private static bool EndsEndOfFileMarker(ReadOnlySpan<byte> span, int index) =>
+        index >= EndOfFileMarker.Length - 1 && span[(index - EndOfFileMarker.Length + 1)..(index + 1)].SequenceEqual(EndOfFileMarker);
+
+    /// <summary>The end-of-file marker, a comment a writer may glue the next update to (ISO 32000-1, 7.5.5).</summary>
+    private static ReadOnlySpan<byte> EndOfFileMarker => "%%EOF"u8;
 
     /// <summary>What a walk back from an <c>obj</c> keyword decides (<see cref="ReadHeaderBackwards"/>).</summary>
     private enum HeaderWalk
