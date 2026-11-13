@@ -10129,6 +10129,94 @@ public class CrossReferenceChainTests
         document.Diagnostics.Select(entry => entry.Message).Should().Equal(control.Diagnostics.Select(entry => entry.Message));
     }
 
+    [Fact]
+    public void A_search_near_a_section_takes_no_header_whose_obj_ends_past_the_bytes_it_searches()
+    {
+        // The header of cross-reference stream 9 starts within 512 bytes of the place the newest table's /Prev names, and
+        // its obj keyword ends a byte past them: the search near that place takes only what lies whole within them (#197),
+        // the byte past them read to tell the keyword from a longer word (#189). Object 4, which only 9 indexes, is found
+        // by rebuilding the index.
+        var file = new HandWrittenFile(version: "1.5");
+        var catalog = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>");
+        var pages = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>");
+        var four = file.Object(4, "(four)");
+        file.Padding(8);
+        var stream = file.CrossReferenceStream(9, 10, new() { [4] = (1, four, 0) }, "/Root 1 0 R");
+        var previous = stream + "9 0 ".Length + 2 - PdfFileReader.NearbySearchRadius;
+        var newest = file.Position;
+        file.Raw(Invariant($"xref\n0 3\n0000000000 65535 f \n{catalog:D10} 00000 n \n{pages:D10} 00000 n \ntrailer\n<< /Size 10 /Root 1 0 R /Prev {previous} >>\nstartxref\n{newest}\n%%EOF\n"));
+        using var document = PdfDocument.Open(file.Bytes);
+
+        document.GetObject(new PdfObjectId(4)).Should().BeOfType<PdfString>().Which.ToText().Should().Be("four");
+        document.WasRepaired.Should().BeTrue();
+        document.Diagnostics.Should().NotContain(entry => entry.Code == PdfDiagnosticCodes.XRefOffsetAdjusted);
+    }
+
+    [Fact]
+    public void A_section_the_search_near_an_offset_takes_bounds_the_searches_for_endstream_with_its_rows()
+    {
+        // The newest table's /Prev names a place three bytes into the older table's xref keyword: the search near it takes
+        // that table, whose row for 6 places it where stream 5's data goes on. Stream 5 declares 100 bytes, which no
+        // endstream follows: its data is searched up to the next object the index places, 6, not to the endstream past it
+        // (#320).
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"),
+        };
+        rows[5] = file.Object(5, "<< /Length 100 >>\nstream\nabc\nXYZ endstream");
+        rows[6] = rows[5] + "5 0 obj\n<< /Length 100 >>\nstream\nabc\n".Length;
+        var older = file.Table(7, rows, "/Size 7 /Root 1 0 R");
+        var newest = file.Position;
+        file.Raw(Invariant($"xref\n0 1\n0000000000 65535 f \ntrailer\n<< /Size 7 /Root 1 0 R /Prev {older + 3} >>\nstartxref\n{newest}\n%%EOF\n"));
+        using var document = PdfDocument.Open(file.Bytes);
+
+        var data = document.GetObject(new PdfObjectId(5)).AsStream().Required().Data;
+
+        document.Diagnostics.Should().Contain(entry => entry.Code == PdfDiagnosticCodes.XRefOffsetAdjusted);
+        Encoding.ASCII.GetString(data.GetBytes().Span).Should().Be("abc\n");
+    }
+
+    [Fact]
+    public void A_word_a_regular_byte_follows_where_the_search_near_a_section_ends_spends_none_of_its_attempts()
+    {
+        // The newest table's /XRefStm names a place among 31 objects, none a section, which the search near it tries, one
+        // attempt each; "xrefz" ends the bytes it searches, the byte past them telling it from the keyword (#189), and is no
+        // place to try. Its /Prev names a place three bytes into the older table's keyword: the search near it has one
+        // attempt left of 32, and takes that table.
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"),
+            [4] = file.Object(4, "(four)"),
+        };
+        var older = file.Table(5, rows, "/Size 5 /Root 1 0 R");
+        file.Padding(8);
+        var first = file.Position;
+
+        for (var number = 100; number < 131; number++)
+        {
+            file.Object(number, "null");
+        }
+
+        var named = first + ((file.Position - first) / 2);
+        file.Raw("%" + new string('c', (int)(named + PdfFileReader.NearbySearchRadius - "xref".Length - file.Position - 2)) + "\n");
+        file.Raw("xrefz\n");
+        file.Padding(9);
+        var newest = file.Position;
+        file.Raw(Invariant($"xref\n0 1\n0000000000 65535 f \ntrailer\n<< /Size 5 /Root 1 0 R /XRefStm {named} /Prev {older + 3} >>\nstartxref\n{newest}\n%%EOF\n"));
+        var bytes = file.Bytes;
+        bytes.AsSpan().IndexOf("xrefz"u8).Should().Be((int)(named + PdfFileReader.NearbySearchRadius - "xref".Length));
+        using var document = PdfDocument.Open(bytes);
+
+        document.GetObject(new PdfObjectId(4)).Should().BeOfType<PdfString>().Which.ToText().Should().Be("four");
+        document.WasRepaired.Should().BeFalse();
+        document.Diagnostics.Should().ContainSingle(entry => entry.Code == PdfDiagnosticCodes.XRefOffsetAdjusted)
+            .Which.Position.Should().Be(older);
+    }
+
     private static string Invariant(FormattableString text) => text.ToString(CultureInfo.InvariantCulture);
 
     /// <summary>

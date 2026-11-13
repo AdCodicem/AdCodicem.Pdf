@@ -3970,7 +3970,8 @@ public class CrossReferenceRuleTests
     [InlineData("another object stream, which writes it as a stream", false)]
     [InlineData("another definition of its stream, which writes it as a stream", false)]
     [InlineData("the definition of its stream the chain's index places", false)]
-    public void An_object_the_chain_s_index_places_soundly_that_a_rebuild_loses_is_an_entry_broken(string served, bool kid)
+    [InlineData("another object stream, which writes it as a stream", false, 1)]
+    public void An_object_the_chain_s_index_places_soundly_that_a_rebuild_loses_is_an_entry_broken(string served, bool kid, int capacity = 0)
     {
         // The chain places object 7 at index 0 of object stream 6, whose definition there lists it; row 9 lies outside the
         // file, so the validation rebuilds the index, which serves the object stream the file writes last. Where that loses 7,
@@ -4015,6 +4016,19 @@ public class CrossReferenceRuleTests
 
         file.CrossReferenceStream(20, 21, rows, "/Root 1 0 R");
         using var document = PdfDocument.Open(file.Bytes);
+
+        if (capacity > 0)
+        {
+            // With room for one finding, row 9's takes it: 7's is counted, not written, and the report holds every finding
+            // written or counted.
+            using var unlimited = PdfDocument.Open(file.Bytes);
+            var all = new PdfValidator().Validate(unlimited).Findings.Count;
+            var limited = new PdfValidator(new PdfValidatorOptions { FindingCapacity = capacity }).Validate(document);
+
+            limited.Findings.Count.Should().Be(capacity);
+            (limited.Findings.Count + limited.SuppressedCount).Should().Be(all);
+            return;
+        }
 
         var findings = new PdfValidator().Validate(document).Findings
             .Where(finding => finding.RuleId == PdfValidationRuleIds.XRefEntryBroken && finding.Location.Object?.Number == 7)
