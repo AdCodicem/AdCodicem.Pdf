@@ -312,6 +312,22 @@ public class CorpusReadingTests
     }
 
     [Theory]
+    [InlineData("remote/pdfcpu/word2019-diia-test-pades-b-b.pdf", 1)]
+    [InlineData("remote/opf-format-corpus/jhove-hul-122-word-dissertation.pdf", 20)]
+    public void A_rebuild_takes_an_update_whose_first_header_is_glued_to_the_end_of_file_marker(string file, int number)
+    {
+        // The update's first header follows %%EOF on its line, with no end of line between: "%%EOF1 0 obj". Damaged so that
+        // the index is rebuilt, the scan reads the marker as a comment that ends with itself, and takes the update's
+        // definition, as a read of the sound file serves it (#171).
+        Assert.SkipUnless(Corpus.Paths.Contains(file), $"{file} is a remote document this machine did not fetch");
+        using var sound = PdfDocument.Open(Corpus.PathOf(file));
+        using var document = PdfDocument.Open(Damaged(Corpus.Read(file), "startxref named off by seven bytes"));
+
+        document.WasRepaired.Should().BeTrue();
+        document.GetObject(new PdfObjectId(number)).ToString().Should().Be(sound.GetObject(new PdfObjectId(number)).ToString());
+    }
+
+    [Theory]
     [InlineData("vendor/node-signpdf/skia-chrome74-node-signpdf-reason-contains-trailer.pdf")]
     [InlineData("vendor/verapdf/pdf20-version-mismatch.pdf")]
     public void A_rebuild_takes_no_trailer_keyword_a_string_holds(string file)
