@@ -36,20 +36,15 @@ internal sealed partial class PdfFileReader
     /// (<see cref="PdfDiagnosticCodes.TrailerEncryptInvalid"/>, #154).
     /// </summary>
     /// <remarks>
-    /// Loading the object <c>/Encrypt</c> names may rebuild the index, its entry broken, as the document opens: the trailer
-    /// the rebuild merges is read again, once, since a document is rebuilt once. A guard that load reaches, the document
-    /// opened to throw on one, leaves opening. What a rebuild after this merges is reported, not followed
+    /// Loading the object <c>/Encrypt</c> names may rebuild the index, its entry broken, as the document opens: the load then
+    /// gives what the rebuilt index serves, and the rebuild, which merges into the trailer only the keys it lacks, leaves
+    /// <c>/Encrypt</c> as it was, so nothing is resolved again. A guard that load reaches, the document opened to throw on
+    /// one, leaves opening. What a rebuild after this merges is reported, not followed
     /// (<see cref="PdfDiagnosticCodes.TrailerEncryptLate"/>).
     /// </remarks>
     internal void DecideEncryption()
     {
-        var repaired = _repaired;
         var resolved = ResolveEncrypt(out var named);
-
-        if (!repaired && _repaired)
-        {
-            resolved = ResolveEncrypt(out named);
-        }
 
         // An object a guard kept the reader from reading is the reader's limit, not the file's fault: the file's /Encrypt
         // stands, unread.
