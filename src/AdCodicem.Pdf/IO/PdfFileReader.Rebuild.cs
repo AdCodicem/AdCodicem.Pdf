@@ -88,8 +88,10 @@ internal sealed partial class PdfFileReader
             // opened to throw on one throws once the index is whole, not half-way through rebuilding it: one abandoned mid-way
             // would leave the document unable to find the objects it had not reached. The first guard reached is the one
             // thrown.
-            var reached = ScanForObjects(redefinitions);
-            ScanForTrailers();
+            var trailers = new ScannedTrailers();
+            var reached = ScanForObjects(redefinitions, trailers);
+            MergeScannedTrailers(trailers);
+            ReportEncryptFoundLate();
 
             // A rebuild a load sets off runs with that load, and those it is part of, still in flight: the objects they are
             // loading read as null meanwhile, and so would the values an object stream among them needs, so that expanding
@@ -345,80 +347,6 @@ internal sealed partial class PdfFileReader
     }
 
     /// <summary>
-    /// Indexes every object header the file holds, read once each, to its end: the last definition of a number wins, under
-    /// the generation its header gives. Each chunk is read with the byte past it, which tells an <c>obj</c> that ends the
-    /// chunk from a longer word (<see cref="TryReadHeaderBackwards"/>).
-    /// </summary>
-    /// <remarks>
-    /// The index takes object numbers as the file gives them, as many as <see cref="PdfReaderLimits.MaxIndexEntries"/>
-    /// lets it; past that, a header for a number it holds still replaces its entry, so that the newest definition wins
-    /// whatever came before it, and one for a number it lacks is left out. A number defined again takes no room, so a file
-    /// that repeats one header millions of times hides nothing behind them. The scan's time follows the file's length, and
-    /// what it keeps the index's bound.
-    /// </remarks>
-    /// <returns>The exception a document opened to throw asked for, held until the index is whole; or null.</returns>
-    private ExceptionDispatchInfo? ScanForObjects(Redefinitions redefinitions)
-    {
-        var position = 0L;
-        ExceptionDispatchInfo? reached = null;
-
-        while (position < _source.Length)
-        {
-            var length = (int)Math.Min(ScanChunkSize, _source.Length - position);
-            var trail = position + length < _source.Length ? 1 : 0;
-            using var window = _source.GetWindow(position, length + trail);
-            var span = window.Memory.Span;
-
-            // A window shorter than asked holds the end of the data, as every window does.
-            var searched = Math.Min(length, span.Length);
-
-            // An obj keyword wholly within the overlap was found by the window before, which held it and what precedes
-            // it: each header is read once.
-            var searchFrom = position == 0 ? 0 : ScanOverlap - ObjKeyword.Length + 1;
-
-            while (searchFrom < searched)
-            {
-                var index = span[searchFrom..searched].IndexOf(ObjKeyword);
-                if (index < 0)
-                {
-                    break;
-                }
-
-                var objPosition = searchFrom + index;
-
-                if (TryReadHeaderBackwards(span, objPosition, out var number, out var generation, out var headerStart))
-                {
-                    // The last definition wins: that is what an incrementally updated file means. Its entry records
-                    // the generation its header gives, whatever an earlier definition gave (#118). A number the index
-                    // lacks takes room in it, which it may have no more of.
-                    var known = _xref.TryGet(number, out _);
-
-                    if (known)
-                    {
-                        redefinitions.Add(number);
-                    }
-
-                    if (known || HasRoomInRebuild(position + headerStart, ref reached))
-                    {
-                        _xref.Set(number, XRefEntry.Found(position + headerStart - _headerOffset, generation));
-                    }
-                }
-
-                searchFrom = objPosition + ObjKeyword.Length;
-            }
-
-            if (position + length >= _source.Length)
-            {
-                break;
-            }
-
-            position += length - ScanOverlap;
-        }
-
-        return reached;
-    }
-
-    /// <summary>
     /// Takes into a rebuilt index the entries in use of <paramref name="chain"/>, the index a chain a guard cut gave, for the
     /// numbers the rebuild did not find: what the file defines last, and the scan found, wins.
     /// </summary>
@@ -506,19 +434,28 @@ internal sealed partial class PdfFileReader
     }
 
     /// <summary>
-    /// Merges into the trailer the dictionary that follows each <c>trailer</c> keyword the file holds, the newest first, so
-    /// that its keys win.
+    /// Merges into the trailer the trailers the scan for objects met, the newest first, so that its keys win: the dictionary
+    /// after each <c>trailer</c> keyword, and the trailer keys of each cross-reference stream's dictionary — <c>/Root</c>,
+    /// <c>/Encrypt</c>, <c>/Info</c> and <c>/ID</c> —, which ISO 32000-1 makes a revision's trailer (7.5.8.2), the keys that
+    /// describe the stream left out (#154). The newest merged is where the rebuilt trailer lies
+    /// (<see cref="TrailerLocation"/>).
     /// </summary>
     /// <remarks>
+    /// <para>
+    /// The keywords and streams merged are those the scan takes (<see cref="ScanForObjects"/>): a <c>trailer</c> keyword a
+    /// load lexes as one, outside the objects the scan delimits and the comments between them, and a stream whose header the
+    /// scan takes — none inside a stream's data, a string or a comment, nor at the end of a name (#171).
+    /// </para>
     /// <para>
     /// What follows a keyword is parsed as the dictionary alone, and nothing is loaded (#171): a stream it introduces gives
     /// its dictionary as it was read, neither its data nor what its <c>/Length</c> names being read; a stream nested in the
     /// dictionary, which no file may write there, ends the parse at its <c>stream</c> keyword, the key that holds it and the
     /// keys after it not merged, and this is noted; a reference in the dictionary's place is none, is not followed, and is
     /// noted; any other value there is none too, and what the parse met of it is all that is noted; and the references the
-    /// dictionary holds are read only as the trailer's keys that hold them are. The scan so reaches no guard, and merges
-    /// the same trailers whatever reads are in flight as it runs — the object one is loading reads as null meanwhile — and
-    /// whether the document was opened to throw on a guard or not.
+    /// dictionary holds are read only as the trailer's keys that hold them are. A cross-reference stream's dictionary is
+    /// parsed so too, after its header, and what its parse meets is not noted: the stream is an object, read when asked for.
+    /// The merge so reaches no guard, and merges the same trailers whatever reads are in flight as it runs — the object one
+    /// is loading reads as null meanwhile — and whether the document was opened to throw on a guard or not.
     /// </para>
     /// <para>
     /// A nested stream ends the parse only within the nesting the parser follows: past its 128 levels, or where the stack
@@ -528,120 +465,145 @@ internal sealed partial class PdfFileReader
     /// or elements, and merged (#171).
     /// </para>
     /// <para>
-    /// What the scan notes goes with the faults the parse meets: kept once, though two windows of the scan meet a keyword
-    /// that lies where they overlap, and withdrawn with what the rebuild reported when the source fails it, for the rebuild
-    /// run again to note it again. The bytes <c>trailer</c> anywhere — a comment, a string, a stream's data, the end of a
-    /// name — are still taken for a trailer's keyword, and every key the parse gives of the dictionary after them merged,
-    /// not only the keys a trailer defines (#171).
+    /// What the merge notes goes with the faults the parse meets: kept once, and withdrawn with what the rebuild reported
+    /// when the source fails it, for the rebuild run again to note it again. Every key the parse gives of the dictionary
+    /// after a keyword is merged, not only the keys a trailer defines.
     /// </para>
     /// </remarks>
-    private void ScanForTrailers()
+    private void MergeScannedTrailers(ScannedTrailers trailers)
     {
-        var positions = new List<long>();
-        var position = 0L;
-
-        while (position < _source.Length)
-        {
-            var length = (int)Math.Min(ScanChunkSize, _source.Length - position);
-            using var window = _source.GetWindow(position, length);
-            var span = window.Memory.Span;
-            var searchFrom = 0;
-
-            while (searchFrom < span.Length)
-            {
-                var index = span[searchFrom..].IndexOf(TrailerKeyword);
-                if (index < 0)
-                {
-                    break;
-                }
-
-                positions.Add(position + searchFrom + index + TrailerKeyword.Length);
-                searchFrom += index + TrailerKeyword.Length;
-            }
-
-            if (position + length >= _source.Length)
-            {
-                break;
-            }
-
-            position += length - ScanOverlap;
-        }
+        var keywords = trailers.Keywords;
+        var streams = trailers.Streams;
+        var keyword = keywords.Count - 1;
+        var stream = streams.Count - 1;
 
         // The newest trailer is the last one in the file, and its keys must win.
-        for (var i = positions.Count - 1; i >= 0; i--)
+        while (keyword >= 0 || stream >= 0)
         {
-            // A trailer longer than the window is cut at its edge, which is not the file's end (#49): what the edge cuts
-            // short is not reported. A window shorter than asked holds the end of the data, as every window does. One the
-            // chain read already is not reported again.
-            using var window = _source.GetWindow(positions[i], XRefWindow);
-            var cut = window.Length == XRefWindow && positions[i] + window.Length < _source.Length;
-            var mark = _pending.GetMark();
-
-            try
+            if (stream >= 0 && (keyword < 0 || streams[stream] > keywords[keyword]))
             {
-                // No stream data is read: the file says where a token the window's edge reaches ends, as it does to a load.
-                // The white space and comments after the keyword are skipped once, for the parse to start past them and for
-                // a note to name where its value starts.
-                var parser = new PdfObjectParser(
-                    window.Memory, positions[i], this, _pending, endsData: !cut, fileEdge: this, readsStreams: false);
-                var keyword = positions[i] - TrailerKeyword.Length;
-                var valueStart = ValueStart(window.Memory.Span);
-                parser.Position = valueStart;
-                var value = parser.ParseObject();
-
-                if (value is PdfDictionary trailer)
-                {
-                    // A stream inside the dictionary ended the parse at its keyword, the dictionary with it; one after the
-                    // dictionary ends nothing of it. Noted with the parse's own faults, the note is kept once, as they are.
-                    // Hostile data can hold a keyword every few bytes: the offset is quoted only for a note that is kept.
-                    if (parser.StreamStopDepth > 0)
-                    {
-                        _pending.Warn(
-                            PdfDiagnosticCodes.SyntaxUnexpectedToken,
-                            _pending.IsFull
-                                ? "A stream inside the dictionary after a trailer keyword ends what the rebuild merges of it: the key that holds it and the keys after it are not merged."
-                                : string.Create(
-                                    CultureInfo.InvariantCulture,
-                                    $"A stream inside the dictionary after the trailer keyword at offset {keyword} ends what the rebuild merges of it: the key that holds it and the keys after it are not merged."),
-                            positions[i] + parser.StreamStop);
-                    }
-
-                    _xref.MergeTrailer(trailer);
-
-                    if (_rebuiltTrailerPosition < 0)
-                    {
-                        _rebuiltTrailerPosition = keyword;
-                    }
-                }
-                else if (value is PdfReference reference)
-                {
-                    // The reference is the value the parse began with, past the white space and comments after the keyword.
-                    // The offset and the number are quoted only for a note that is kept, as the stream's are.
-                    _pending.Warn(
-                        PdfDiagnosticCodes.SyntaxUnexpectedToken,
-                        _pending.IsFull
-                            ? "A trailer keyword is followed by a reference, not by a dictionary; the rebuild does not follow it."
-                            : string.Create(
-                                CultureInfo.InvariantCulture,
-                                $"The trailer keyword at offset {keyword} is followed by a reference to object {reference.Id.Number}, not by a dictionary; the rebuild does not follow it."),
-                        positions[i] + valueStart);
-                }
-
-                KeepPending(mark);
+                MergeCrossReferenceStreamTrailer(streams[stream--]);
             }
-            finally
+            else
             {
-                _pending.RollBack(mark);
+                MergeTrailerAfterKeyword(keywords[keyword--]);
             }
         }
     }
+
+    /// <summary>
+    /// Merges into the trailer the dictionary after the <c>trailer</c> keyword that ends at <paramref name="position"/>
+    /// (<see cref="MergeScannedTrailers"/>).
+    /// </summary>
+    private void MergeTrailerAfterKeyword(long position)
+    {
+        // A trailer longer than the window is cut at its edge, which is not the file's end (#49): what the edge cuts
+        // short is not reported. A window shorter than asked holds the end of the data, as every window does. One the
+        // chain read already is not reported again.
+        using var window = _source.GetWindow(position, XRefWindow);
+        var cut = window.Length == XRefWindow && position + window.Length < _source.Length;
+        var mark = _pending.GetMark();
+
+        try
+        {
+            // No stream data is read: the file says where a token the window's edge reaches ends, as it does to a load.
+            // The white space and comments after the keyword are skipped once, for the parse to start past them and for
+            // a note to name where its value starts.
+            var parser = new PdfObjectParser(
+                window.Memory, position, this, _pending, endsData: !cut, fileEdge: this, readsStreams: false);
+            var keyword = position - TrailerKeyword.Length;
+            var valueStart = ValueStart(window.Memory.Span);
+            parser.Position = valueStart;
+            var value = parser.ParseObject();
+
+            if (value is PdfDictionary trailer)
+            {
+                // A stream inside the dictionary ended the parse at its keyword, the dictionary with it; one after the
+                // dictionary ends nothing of it. Noted with the parse's own faults, the note is kept once, as they are.
+                // Hostile data can hold a keyword every few bytes: the offset is quoted only for a note that is kept.
+                if (parser.StreamStopDepth > 0)
+                {
+                    _pending.Warn(
+                        PdfDiagnosticCodes.SyntaxUnexpectedToken,
+                        _pending.IsFull
+                            ? "A stream inside the dictionary after a trailer keyword ends what the rebuild merges of it: the key that holds it and the keys after it are not merged."
+                            : string.Create(
+                                CultureInfo.InvariantCulture,
+                                $"A stream inside the dictionary after the trailer keyword at offset {keyword} ends what the rebuild merges of it: the key that holds it and the keys after it are not merged."),
+                        position + parser.StreamStop);
+                }
+
+                _xref.MergeTrailer(trailer);
+
+                if (_rebuiltTrailerPosition < 0)
+                {
+                    _rebuiltTrailerPosition = keyword;
+                }
+            }
+            else if (value is PdfReference reference)
+            {
+                // The reference is the value the parse began with, past the white space and comments after the keyword.
+                // The offset and the number are quoted only for a note that is kept, as the stream's are.
+                _pending.Warn(
+                    PdfDiagnosticCodes.SyntaxUnexpectedToken,
+                    _pending.IsFull
+                        ? "A trailer keyword is followed by a reference, not by a dictionary; the rebuild does not follow it."
+                        : string.Create(
+                            CultureInfo.InvariantCulture,
+                            $"The trailer keyword at offset {keyword} is followed by a reference to object {reference.Id.Number}, not by a dictionary; the rebuild does not follow it."),
+                    position + valueStart);
+            }
+
+            KeepPending(mark);
+        }
+        finally
+        {
+            _pending.RollBack(mark);
+        }
+    }
+
+    /// <summary>
+    /// Merges into the trailer the trailer keys of the cross-reference stream whose header starts at
+    /// <paramref name="position"/> (<see cref="MergeScannedTrailers"/>).
+    /// </summary>
+    private void MergeCrossReferenceStreamTrailer(long position)
+    {
+        using var window = _source.GetWindow(position, XRefWindow);
+        var cut = window.Length == XRefWindow && position + window.Length < _source.Length;
+        var parser = new PdfObjectParser(window.Memory, position, this, null, endsData: !cut, fileEdge: this, readsStreams: false);
+
+        if (!parser.TryReadIndirectObject(out _, out var value) || value is not PdfDictionary dictionary)
+        {
+            return;
+        }
+
+        var keys = new PdfDictionary();
+
+        foreach (var key in StreamTrailerKeys)
+        {
+            if (dictionary.GetRaw(key) is { } held)
+            {
+                keys.Set(key, held);
+            }
+        }
+
+        _xref.MergeTrailer(keys);
+
+        if (_rebuiltTrailerPosition < 0)
+        {
+            _rebuiltTrailerPosition = position;
+        }
+    }
+
+    /// <summary>The keys of a cross-reference stream's dictionary that a rebuild merges into the trailer (ISO 32000-1, Table 15).</summary>
+    private static readonly PdfName[] StreamTrailerKeys = [PdfName.Root, PdfName.Encrypt, PdfName.Info, PdfName.ID];
 
     /// <summary>
     /// Gets where the value after a trailer keyword starts in <paramref name="data"/>, the bytes that follow the keyword:
     /// past the white space and comments there.
     /// </summary>
     /// <remarks>
-    /// Kept out of <see cref="ScanForTrailers"/>, which calls it once a keyword: inlined there, the lexer's loop over a
+    /// Kept out of <see cref="MergeTrailerAfterKeyword"/>, which calls it once a keyword: inlined there, the lexer's loop over a
     /// comment was compiled with the whole scan once tiered PGO recompiled it, and ran about a third slower —
     /// <c>TrailerScanBenchmarks</c>, under a medium job, opened past 12,000 keywords sharing long comments in 344 to 355 ms
     /// over a reference or a null, against 211 to 220 ms with the loop in a frame of its own, and alike with PGO off.
@@ -668,11 +630,26 @@ internal sealed partial class PdfFileReader
         }
     }
 
+    /// <summary>
+    /// Takes into the rebuilt index the members of each object stream the scan placed, the stream the file writes last first:
+    /// a member counts where its stream's definition lies, as an object written there directly would, and the definition the
+    /// file writes last wins (<see cref="PdfDiagnosticCodes.ObjectRedefined"/>).
+    /// </summary>
+    /// <remarks>
+    /// Every object the scan placed is loaded first, to tell the object streams, and the streams are then taken in from the
+    /// last written to the first: a later stream's member that replaces an earlier stream's own number leaves that number
+    /// no object stream, and its members are not taken in, whatever order the numbers were met in (#348). A stream whose
+    /// dictionary names an object the index does not hold yet — a member of a stream written before it — waits until the
+    /// others are taken in, and is then taken in, with the others that wait, in the order the streams were met in. A
+    /// stream is loaded again before it is decoded once a definition has been replaced, and so is every object read before
+    /// the expansion ends: what was read through a replaced definition — an indirect <c>/Length</c>, an <c>/N</c> — is read
+    /// again from the final index.
+    /// </remarks>
     private ExceptionDispatchInfo? ExpandEachObjectStream(Redefinitions redefinitions)
     {
         var numbers = _xref.CopyNumbers();
         ExceptionDispatchInfo? reached = null;
-        Dictionary<int, long>? streamPositions = null;
+        List<(long Position, int Number)>? streams = null;
 
         foreach (var number in numbers)
         {
@@ -681,89 +658,244 @@ internal sealed partial class PdfFileReader
                 continue;
             }
 
-            ObjectStreamContents? contents;
-            var reentries = _reentries;
-
-            try
+            if (IsObjectStream(number, ref reached))
             {
-                var loaded = GetObject(new PdfObjectId(number));
-
-                if (loaded is not PdfStream stream)
-                {
-                    // An object a guard cut short of a stream may be an object stream the chain's index places members in.
-                    if (IsCutAtLimit(number))
-                    {
-                        _objectStreamsHiddenByGuard.Add(number);
-                    }
-
-                    continue;
-                }
-
-                if (!stream.Dictionary.IsOfType(PdfName.ObjStm))
-                {
-                    continue;
-                }
-
-                contents = ObjectStreamContents.TryCreate(number, stream, _diagnostics, _objectStreamReports, out var hidden);
-
-                if (contents is null && hidden)
-                {
-                    _objectStreamsHiddenByGuard.Add(number);
-                }
+                (streams ??= []).Add((PositionOf(entry), number));
             }
-            catch (PdfLimitExceededException exception)
-            {
-                // A guard reached loading or decoding the object hides it, as one reached without throwing would.
-                reached ??= ExceptionDispatchInfo.Capture(exception);
-                _objectStreamsHiddenByGuard.Add(number);
-                continue;
-            }
+        }
 
-            if (contents is null)
+        if (streams is null)
+        {
+            return reached;
+        }
+
+        // The order the streams were met in, kept for those taken in last.
+        var met = streams.ToArray();
+        streams.Sort(static (a, b) => b.Position.CompareTo(a.Position));
+        HashSet<int>? deferred = null;
+        Dictionary<int, long>? positions = null;
+        var replaced = false;
+
+        foreach (var stream in streams)
+        {
+            if (!IsStillObjectStream(stream.Number, replaced, ref reached))
             {
                 continue;
             }
 
-            // Contents decoded without an object the index did not hold yet are decoded again when first asked for.
-            if (reentries == _reentries)
+            if (NamesUnindexed(((PdfStream)GetObject(new PdfObjectId(stream.Number))).Dictionary, depth: 0))
             {
-                KeepObjectStream(number, contents);
+                (deferred ??= new(SeededComparer.Instance)).Add(stream.Number);
+                continue;
             }
 
-            // A member counts where its stream's definition lies, as an object written there directly would: the definition
-            // the file writes last wins, whatever order the streams are taken in (PdfDiagnosticCodes.ObjectRedefined), but for
-            // the members of a stream whose own number a later stream lists, which stay where this one placed them (#348).
-            // Where each stream taken lies is kept, to rank a member it gave against one a later stream lists.
-            var streamPosition = PositionOf(entry);
-            (streamPositions ??= new(SeededComparer.Instance))[number] = streamPosition;
+            TakeInMembers(stream, redefinitions, ref positions, ref replaced, ref reached);
+        }
 
-            for (var index = 0; index < contents.Count; index++)
+        // A stream whose dictionary names an object the index did not hold yet — a member of a stream written before it,
+        // most often — is taken in once the others are, in the order the streams were met in, loaded again first: what it
+        // names is read as the index then serves it.
+        if (deferred is not null)
+        {
+            foreach (var stream in met)
             {
-                var member = contents.NumberAt(index);
-
-                if (_xref.TryGet(member, out var held))
+                if (!deferred.Contains(stream.Number))
                 {
-                    redefinitions.Add(member);
-
-                    var heldAt = held.Kind == XRefEntryKind.Regular ? PositionOf(held)
-                        : streamPositions.TryGetValue(held.ObjectStreamNumber, out var at) ? at : long.MaxValue;
-
-                    // Replacing an entry takes no room. A number the stream lists twice keeps its first place, as does the
-                    // stream's own number, which lies where the stream does.
-                    if (streamPosition > heldAt)
-                    {
-                        _xref.Set(member, XRefEntry.Compressed(number, index));
-                        ForgetObject(member);
-                    }
+                    continue;
                 }
-                else if (HasRoomInRebuild(streamPosition, ref reached))
+
+                if (IsStillObjectStream(stream.Number, replaced: true, ref reached))
                 {
-                    _xref.Set(member, XRefEntry.Compressed(number, index));
+                    TakeInMembers(stream, redefinitions, ref positions, ref replaced, ref reached);
                 }
             }
         }
 
+        if (replaced)
+        {
+            ForgetObjectsRead();
+        }
+
         return reached;
+    }
+
+    /// <summary>
+    /// Determines whether object stream <paramref name="number"/> is still one of the rebuilt index: no later stream's member
+    /// replaced its number, and, a definition having been replaced since it was loaded, it still loads as one.
+    /// </summary>
+    private bool IsStillObjectStream(int number, bool replaced, ref ExceptionDispatchInfo? reached)
+    {
+        if (!_xref.TryGet(number, out var entry) || entry.Kind != XRefEntryKind.Regular)
+        {
+            return false;
+        }
+
+        if (!replaced)
+        {
+            return true;
+        }
+
+        ForgetObject(number);
+        return IsObjectStream(number, ref reached);
+    }
+
+    /// <summary>
+    /// Decodes object stream <paramref name="stream"/> and takes its members into the rebuilt index where they outrank what
+    /// it holds: a member counts where its stream lies, and replaces a definition written before it, directly or by a stream
+    /// taken in before it that lies before it.
+    /// </summary>
+    private void TakeInMembers(
+        (long Position, int Number) stream,
+        Redefinitions redefinitions,
+        ref Dictionary<int, long>? positions,
+        ref bool replaced,
+        ref ExceptionDispatchInfo? reached)
+    {
+        var contents = DecodeObjectStream(stream.Number, ref reached);
+
+        if (contents is null)
+        {
+            return;
+        }
+
+        (positions ??= new(SeededComparer.Instance))[stream.Number] = stream.Position;
+
+        for (var index = 0; index < contents.Count; index++)
+        {
+            var member = contents.NumberAt(index);
+
+            if (_xref.TryGet(member, out var held))
+            {
+                redefinitions.Add(member);
+
+                // Replacing an entry takes no room. A number the stream lists twice keeps its first place, as does the
+                // stream's own number, which lies where the stream does.
+                var heldAt = held.Kind == XRefEntryKind.Regular ? PositionOf(held)
+                    : positions.TryGetValue(held.ObjectStreamNumber, out var at) ? at : long.MaxValue;
+
+                if (stream.Position > heldAt)
+                {
+                    _xref.Set(member, XRefEntry.Compressed(stream.Number, index));
+                    ForgetObject(member);
+                    replaced = true;
+                }
+            }
+            else if (HasRoomInRebuild(stream.Position, ref reached))
+            {
+                _xref.Set(member, XRefEntry.Compressed(stream.Number, index));
+            }
+        }
+    }
+
+    /// <summary>
+    /// Determines whether <paramref name="value"/>, an object stream's dictionary or a value it holds, names an object the
+    /// index does not hold, within the few levels a stream's dictionary nests its filters' parameters in.
+    /// </summary>
+    private bool NamesUnindexed(PdfObject value, int depth)
+    {
+        switch (value)
+        {
+            case PdfReference reference:
+                return !_xref.TryGet(reference.Id.Number, out _);
+
+            case PdfDictionary dictionary when depth < NamedDepth:
+                foreach (var (_, held) in dictionary)
+                {
+                    if (NamesUnindexed(held, depth + 1))
+                    {
+                        return true;
+                    }
+                }
+
+                return false;
+
+            case PdfArray array when depth < NamedDepth:
+                foreach (var held in array)
+                {
+                    if (NamesUnindexed(held, depth + 1))
+                    {
+                        return true;
+                    }
+                }
+
+                return false;
+
+            default:
+                return false;
+        }
+    }
+
+    /// <summary>
+    /// How deep the look for what an object stream's dictionary names goes: its values, the arrays and dictionaries of its
+    /// filters and their parameters, and theirs. What lies deeper decodes no stream.
+    /// </summary>
+    private const int NamedDepth = 3;
+
+    /// <summary>
+    /// Determines whether object <paramref name="number"/>, which the index places in the file, is an object stream: loads
+    /// it, and notes it hidden by a guard where one cut it short of a stream, as the chain's index may place members in it.
+    /// </summary>
+    private bool IsObjectStream(int number, ref ExceptionDispatchInfo? reached)
+    {
+        try
+        {
+            var loaded = GetObject(new PdfObjectId(number));
+
+            if (loaded is not PdfStream stream)
+            {
+                if (IsCutAtLimit(number))
+                {
+                    _objectStreamsHiddenByGuard.Add(number);
+                }
+
+                return false;
+            }
+
+            return stream.Dictionary.IsOfType(PdfName.ObjStm);
+        }
+        catch (PdfLimitExceededException exception)
+        {
+            // A guard reached loading the object hides it, as one reached without throwing would.
+            reached ??= ExceptionDispatchInfo.Capture(exception);
+            _objectStreamsHiddenByGuard.Add(number);
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// Decodes the object stream <paramref name="number"/>, which <see cref="IsObjectStream"/> told, and keeps what it holds;
+    /// null when it cannot be read, a guard that hid it noted.
+    /// </summary>
+    private ObjectStreamContents? DecodeObjectStream(int number, ref ExceptionDispatchInfo? reached)
+    {
+        ObjectStreamContents? contents;
+        var reentries = _reentries;
+
+        try
+        {
+            var stream = (PdfStream)GetObject(new PdfObjectId(number));
+            contents = ObjectStreamContents.TryCreate(number, stream, _diagnostics, _objectStreamReports, out var hidden);
+
+            if (contents is null && hidden)
+            {
+                _objectStreamsHiddenByGuard.Add(number);
+            }
+        }
+        catch (PdfLimitExceededException exception)
+        {
+            // A guard reached decoding the object hides it, as one reached without throwing would.
+            reached ??= ExceptionDispatchInfo.Capture(exception);
+            _objectStreamsHiddenByGuard.Add(number);
+            return null;
+        }
+
+        // Contents decoded without an object the index did not hold yet are decoded again when first asked for.
+        if (contents is not null && reentries == _reentries)
+        {
+            KeepObjectStream(number, contents);
+        }
+
+        return contents;
     }
 
     /// <summary>
@@ -772,10 +904,12 @@ internal sealed partial class PdfFileReader
     /// </summary>
     /// <remarks>
     /// The expansion of the object streams loads every object the scan placed, to tell which are object streams, before a
-    /// later stream may replace its definition. An object stream so replaced lets go of its decoded contents too.
+    /// later stream may replace its definition. An object stream so replaced lets go of its decoded contents too, and is no
+    /// longer one a guard hid (#348).
     /// </remarks>
     private void ForgetObject(int number)
     {
+        _objectStreamsHiddenByGuard.Remove(number);
         _cache.Remove(number);
         _unproduced.Remove(number);
         _cutAtLimit.Remove(number);
@@ -787,6 +921,25 @@ internal sealed partial class PdfFileReader
         {
             _objectStreamBytes -= released.Weight;
         }
+    }
+
+    /// <summary>
+    /// Lets go of every object the reader kept and noted, and of the object streams it decoded, for an index whose
+    /// expansion replaced a definition after objects were read through it: each is read again from the final index. The
+    /// object streams a guard hid stay noted, as the expansion left them.
+    /// </summary>
+    private void ForgetObjectsRead()
+    {
+        _cache.Clear();
+        _cacheOrder.Clear();
+        _objectStreams.Clear();
+        _objectStreamOrder.Clear();
+        _objectStreamBytes = 0;
+        _nullWhileDecoding.Clear();
+        _unproduced.Clear();
+        _cutAtLimit.Clear();
+        _endObjMissing.Clear();
+        _streamLengthFaults.Clear();
     }
 
     /// <summary>

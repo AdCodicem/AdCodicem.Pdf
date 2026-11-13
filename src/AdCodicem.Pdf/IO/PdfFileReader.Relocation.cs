@@ -754,9 +754,13 @@ internal sealed partial class PdfFileReader
 
             var position = searchFrom + index;
 
-            if (TryReadHeaderBackwards(span, position, out _, out _, out var headerStart) && headerStart >= from)
+            // A header whose number is written with signs is placed where the walk met its number — at its digits, or at its
+            // first sign where the walk lexed its line —, where the search tells it from a section the chain reached
+            // (NumberRunsInto, DigitsPastSigns); a load reads it from either byte. A run a minus starts is no header (#327).
+            if (ReadHeaderBackwards(span, position, startsData: true, signsBeforeUnknown: true, out _, out _, out _, out var found) == HeaderWalk.Header &&
+                found >= from)
             {
-                candidates.Add(start + headerStart);
+                candidates.Add(start + found);
             }
 
             searchFrom = position + ObjKeyword.Length;

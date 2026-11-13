@@ -160,7 +160,13 @@ internal sealed partial class PdfFileReader : IPdfObjectSource, IPdfStreamDataPr
     private const int MaxRefusedRanges = 4096;
 
     private const int ScanChunkSize = 1024 * 1024;
-    private const int ScanOverlap = 64;
+
+    /// <summary>
+    /// How many bytes before where its search resumes each piece of the rebuild's scan reads: those a short header's walk
+    /// back from its <c>obj</c> reads. A walk that needs more reads them again (<see cref="ReadHeaderFurtherBack"/>), so this
+    /// sizes a read, and bounds nothing.
+    /// </summary>
+    private const int ScanLead = 64;
 
     /// <summary>
     /// What the object streams kept at once weigh, in bytes: their decoded data, and the tables and lookup of their
