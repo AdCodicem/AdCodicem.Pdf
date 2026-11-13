@@ -1285,6 +1285,38 @@ public class WindowEdgeTests
             + header + "\n(" + (text ?? "big") + ")\nendobj\ntrailer\n<< /Root 1 0 R >>\nstartxref\n9\n%%EOF\n");
     }
 
+    [Theory]
+    [InlineData("(a\\) ", "4 0 obj (in a string) endobj)", "real four")]
+    [InlineData("%%EOF", "4 0 obj (after the marker) endobj", "after the marker")]
+    public void A_line_between_objects_hides_the_same_headers_wherever_a_piece_of_the_rebuild_s_scan_starts(
+        string opening, string header, string text)
+    {
+        // A line between objects opens with a string whose parenthesis an escape keeps open, or with the end-of-file marker
+        // %%EOF, a comment that ends with itself, and holds a header a hundred spaces on. The sweep that tells a header in a
+        // comment or a string stopped at a byte chosen by where the next piece started, and the next sweep went on from
+        // there: from the parenthesis the escape takes, which then closed the string, or from the second % of the marker,
+        // which then opened a comment. The sweep goes on from where the bytes it read end, an escape's or a marker's whole,
+        // and wherever a piece starts, the line hides what it hides (#171). Object 4 is the file's own, written before.
+        var line = opening + new string(' ', 100) + header;
+        var probe = Build(line, 2);
+        var offset = probe.AsSpan().IndexOf(Encoding.Latin1.GetBytes(line));
+
+        // A piece starts a few dozen bytes short of the first megabyte's end: the line's opening is slid across it.
+        for (var start = (1024 * 1024) - 160; start < (1024 * 1024) - 40; start++)
+        {
+            var file = Build(line, start - offset + 2);
+            using var document = PdfDocument.Open(file);
+
+            document.WasRepaired.Should().BeTrue();
+            document.GetObject(new PdfObjectId(4)).AsText().Should().Be(text, $"the line starts at {start}");
+        }
+
+        static byte[] Build(string line, int padding) => Encoding.Latin1.GetBytes(
+            "%PDF-1.7\n1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n2 0 obj\n<< /Type /Pages /Kids [] /Count 0 >>\nendobj\n"
+            + "4 0 obj\n(real four)\nendobj\n%" + new string('-', Math.Max(0, padding - 2)) + "\n"
+            + line + "\ntrailer\n<< /Root 1 0 R >>\nstartxref\n9\n%%EOF\n");
+    }
+
     private static string Shorten(string text) => text.Length <= 200 ? text : text[..100] + " … " + text[^100..];
 
     private static string Describe(string endOfLine) => endOfLine switch

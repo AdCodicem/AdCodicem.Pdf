@@ -682,6 +682,62 @@ public class ReaderTimingTests
         }
     }
 
+    [Theory]
+    [InlineData("trailer keywords and no object after them")]
+    [InlineData("headers inside one string left open")]
+    [InlineData("headers whose lengths end in one run of white space")]
+    public void A_rebuild_s_scan_of_four_times_the_bytes_takes_about_four_times_the_time(string shape)
+    {
+        // The rebuild's scan searched again for the next obj after each trailer keyword, to the end of its piece where none
+        // came; lexed the value of each header inside a string left open to the end of its piece; and read the white space
+        // after each stream's direct length as far as it ran. Each cost what the file held after it: four times the bytes
+        // took 17, 32 and 10 times as long, the open string 77 s against 2.4 s. Each byte is now searched, lexed and read
+        // past a length a bounded number of times, and four times the bytes take about four times as long (#171). The
+        // measure is the ratio, the best opening of each, run in turn.
+        var small = ScanShape(shape, 1);
+        var large = ScanShape(shape, 4);
+
+        var (smallTime, largeTime) = BestOfEach(() => Open(small), () => Open(large));
+
+        largeTime.Should().BeLessThan(
+            smallTime * 8,
+            "four times the bytes must cost about four times the time ({0} for {1:N0} bytes, {2} for {3:N0})",
+            smallTime,
+            small.Length,
+            largeTime,
+            large.Length);
+
+        static void Open(byte[] file)
+        {
+            using var document = PdfDocument.Open(file);
+            document.WasRepaired.Should().BeTrue();
+            document.Catalog.IsOfType(PdfName.Catalog).Should().BeTrue();
+        }
+
+        static byte[] ScanShape(string shape, int scale)
+        {
+            var text = new StringBuilder("%PDF-1.7\n1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n2 0 obj\n<< /Type /Pages /Kids [] /Count 0 >>\nendobj\n");
+            var (unit, length) = shape switch
+            {
+                "trailer keywords and no object after them" => ("trailer oxj\n", 256 * 1024),
+                "headers inside one string left open" => ("3 0 obj [(\n", 256 * 1024),
+                _ => ("3 0 obj << /Length 65536 >>\nstream\n", 32 * 1024),
+            };
+
+            while (text.Length < scale * length)
+            {
+                text.Append(unit);
+            }
+
+            if (shape == "headers whose lengths end in one run of white space")
+            {
+                text.Append(' ', scale * 1024 * 1024);
+            }
+
+            return Encoding.Latin1.GetBytes(text.Append("\ntrailer\n<< /Root 1 0 R >>\n%%EOF\n").ToString());
+        }
+    }
+
     /// <summary>
     /// Gets the shortest run of each action, the two run in turn: five times each at least, and on until neither has run
     /// faster for three turns — at most forty turns, or twenty seconds —, so that both are timed warm whatever ran before.
