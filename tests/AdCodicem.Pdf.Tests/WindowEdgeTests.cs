@@ -1252,6 +1252,8 @@ public class WindowEdgeTests
     [InlineData("40 % a comment of a hundred bytes ----------------------------------------------------------------\n0 obj", 40, "forty")]
     [InlineData("1000000000000000000000000000000000000000000000000000000000000000000000004 0 obj", 0, null)]
     [InlineData("++40 0 obj", 40, "forty")]
+    [InlineData("%%EOF40 0 obj", 40, "forty")]
+    [InlineData("abc40 0 obj", 0, null)]
     public void A_header_across_the_start_of_a_piece_of_the_rebuild_s_scan_is_read_whole_wherever_the_piece_starts(
         string header, int number, string? text)
     {
@@ -1259,8 +1261,8 @@ public class WindowEdgeTests
         // was read from there: the 4 of 40, where a comment of a hundred bytes parts the number from the generation, was cut,
         // and object 40 lost; the 1 of a number past any object number was cut, and the run after it read as object 4,
         // which then replaced the file's own. The walk reads on from further back, as far as it takes, so that wherever
-        // the piece's start falls in the header, the scan takes what the file holds (#171). Object 4 is the file's own,
-        // written before.
+        // the piece's start falls in the header, the scan takes what the file holds (#171): a number glued to the end-of-file
+        // marker, which a piece may start inside, and none glued to a word. Object 4 is the file's own, written before.
         var probe = Build(header, text, 2);
         var offset = probe.AsSpan().IndexOf(Encoding.Latin1.GetBytes(header));
 
@@ -1283,6 +1285,37 @@ public class WindowEdgeTests
             "%PDF-1.7\n1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n2 0 obj\n<< /Type /Pages /Kids [] /Count 0 >>\nendobj\n"
             + "4 0 obj\n(real four)\nendobj\n%" + new string('-', Math.Max(0, padding - 2)) + "\n"
             + header + "\n(" + (text ?? "big") + ")\nendobj\ntrailer\n<< /Root 1 0 R >>\nstartxref\n9\n%%EOF\n");
+    }
+
+    [Theory]
+    [InlineData("5 0 obj\n<< /Length 24 >>\nstream\n4 0 obj (in data) endobj\nendstream\nendobj\n")]
+    [InlineData("5 0 obj\n12 0 R\nendobj\n4 0 obj\n(written again)\nendobj\n")]
+    public void An_object_the_end_of_a_piece_of_the_rebuild_s_scan_cuts_is_read_as_one_it_holds_whole(string objects)
+    {
+        // Object 5 — a stream whose data, which its direct length an endstream confirms, spells a header; a reference — is
+        // slid across the end of the scan's first piece, so that the piece ends inside each of its tokens in turn: the
+        // stream keyword after the dictionary, the generation of the reference. The scan reads a value its piece cuts again
+        // from its header, and takes what it takes from a piece that holds the object whole (#171).
+        var whole = Read(Build(objects, 2));
+
+        for (var start = (1024 * 1024) - 40 - objects.Length; start < 1024 * 1024; start++)
+        {
+            var file = Build(objects, 2);
+            var offset = file.AsSpan().IndexOf("5 0 obj"u8);
+            Read(Build(objects, start - offset + 2)).Should().Be(whole, $"object 5 starts at {start}");
+        }
+
+        static string Read(byte[] file)
+        {
+            using var document = PdfDocument.Open(file);
+            document.WasRepaired.Should().BeTrue();
+            return $"{document.GetObject(new PdfObjectId(4))} {document.GetObject(new PdfObjectId(5))}";
+        }
+
+        static byte[] Build(string objects, int padding) => Encoding.Latin1.GetBytes(
+            "%PDF-1.7\n1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n2 0 obj\n<< /Type /Pages /Kids [] /Count 0 >>\nendobj\n"
+            + "4 0 obj\n(real four)\nendobj\n%" + new string('-', Math.Max(0, padding - 2)) + "\n"
+            + objects + "trailer\n<< /Root 1 0 R >>\nstartxref\n9\n%%EOF\n");
     }
 
     [Theory]

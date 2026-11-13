@@ -1894,6 +1894,44 @@ public class HostileInputTests
     }
 
     [Fact]
+    public void An_encryption_dictionary_a_guard_cuts_under_ThrowOnLimit_leaves_the_opening()
+    {
+        // Encryption is decided as the document opens, which loads the object /Encrypt names. Under ThrowOnLimit, a guard that
+        // load reaches — the dictionary runs past MaxObjectLength, lowered to 1 KB — leaves the opening, and the document
+        // it was opening with it (#154).
+        var builder = new TestPdfBuilder()
+            .WithObject(1, "<< /Type /Catalog /Pages 2 0 R >>")
+            .WithObject(2, "<< /Type /Pages /Kids [] /Count 0 >>")
+            .WithObject(9, "<< /Filter /Standard /V 1 /R 2 /O <00> /U <00> /P -4 /Pad (" + new string('x', 2048) + ") >>");
+        var bytes = Encoding.Latin1.GetBytes(Encoding.Latin1.GetString(builder.BuildClassic(rootNumber: 1))
+            .Replace("/Root 1 0 R >>", "/Root 1 0 R /Encrypt 9 0 R >>", StringComparison.Ordinal));
+        var options = new PdfReaderOptions { ThrowOnLimit = true, Limits = PdfReaderLimits.Default with { MaxObjectLength = 1024 } };
+
+        FluentActions.Invoking(() => PdfDocument.Open(bytes, options)).Should().Throw<PdfLimitExceededException>();
+    }
+
+    [Fact]
+    public void An_encryption_dictionary_whose_row_is_broken_is_read_through_the_index_rebuilt_as_the_document_opens()
+    {
+        // The row of object 9, the trailer's /Encrypt, lies in the middle of a long string, far from any header: loading it
+        // as encryption is decided rebuilds the index, and the trailer the rebuild leaves is read again. The document opens
+        // encrypted, its encryption dictionary found (#154).
+        const string Encrypt = "<< /Filter /Standard /V 1 /R 2 /O <00> /U <00> /P -4 >>";
+        var file = new HandWrittenFile();
+        var catalog = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>");
+        var pages = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>");
+        file.Object(9, Encrypt);
+        var padding = file.Padding(3, 40_000);
+        file.Table(10, new() { [1] = catalog, [2] = pages, [3] = padding, [9] = padding + 20_000 }, "/Size 10 /Root 1 0 R /Encrypt 9 0 R /ID [<01> <02>]");
+
+        using var document = PdfDocument.Open(file.Bytes, new PdfReaderOptions { ThrowOnEncrypted = false });
+
+        document.WasRepaired.Should().BeTrue();
+        document.IsEncrypted.Should().BeTrue();
+        document.Diagnostics.Should().NotContain(diagnostic => diagnostic.Code == PdfDiagnosticCodes.TrailerEncryptInvalid);
+    }
+
+    [Fact]
     public void An_encryption_a_rebuild_merges_is_in_the_next_trailer_and_not_in_one_taken_before()
     {
         // #237's shape, the older trailer giving /Encrypt: the document opens as unencrypted, and the rebuild reading /Bar sets
