@@ -1254,6 +1254,7 @@ public class WindowEdgeTests
     [InlineData("1000000000000000000000000000000000000000000000000000000000000000000000004 0 obj", 0, null)]
     [InlineData("++40 0 obj", 40, "forty")]
     [InlineData("%%EOF40 0 obj", 40, "forty")]
+    [InlineData("%%EOF000000000000000000000000000000000000000000000000000000000000000000000040 0 obj", 40, "forty")]
     [InlineData("abc40 0 obj", 0, null)]
     public void A_header_across_the_start_of_a_piece_of_the_rebuild_s_scan_is_read_whole_wherever_the_piece_starts(
         string header, int number, string? text)

@@ -1858,6 +1858,7 @@ public class HostileInputTests
         using var document = PdfDocument.Open(bytes, new PdfReaderOptions { ThrowOnEncrypted = false });
         document.WasRepaired.Should().BeTrue();
         document.IsEncrypted.Should().BeTrue();
+        document.Diagnostics.Should().NotContain(diagnostic => diagnostic.Code == PdfDiagnosticCodes.TrailerEncryptLate);
         document.Trailer.ContainsKey(PdfName.ID).Should().BeTrue();
         document.Trailer.ContainsKey(PdfName.Get("W")).Should().BeFalse("a stream's own keys describe the stream, not the document");
     }
@@ -1915,7 +1916,7 @@ public class HostileInputTests
     {
         // The row of object 9, the trailer's /Encrypt, lies in the middle of a long string, far from any header: loading it
         // as encryption is decided rebuilds the index, and the trailer the rebuild leaves is read again. The document opens
-        // encrypted, its encryption dictionary found (#154).
+        // encrypted, its encryption dictionary found, and the rebuild, run as it opened, finds no /Encrypt late (#154).
         const string Encrypt = "<< /Filter /Standard /V 1 /R 2 /O <00> /U <00> /P -4 >>";
         var file = new HandWrittenFile();
         var catalog = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>");
@@ -1929,6 +1930,7 @@ public class HostileInputTests
         document.WasRepaired.Should().BeTrue();
         document.IsEncrypted.Should().BeTrue();
         document.Diagnostics.Should().NotContain(diagnostic => diagnostic.Code == PdfDiagnosticCodes.TrailerEncryptInvalid);
+        document.Diagnostics.Should().NotContain(diagnostic => diagnostic.Code == PdfDiagnosticCodes.TrailerEncryptLate);
     }
 
     [Fact]
