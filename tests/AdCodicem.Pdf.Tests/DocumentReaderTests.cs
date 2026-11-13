@@ -1980,6 +1980,10 @@ public class DocumentReaderTests
 
         document.GetObject(new PdfObjectId(10)).Should().BeOfType<PdfString>().Which.ToText().Should().Be("ten");
         document.GetObject(new PdfObjectId(5)).Should().BeSameAs(PdfNull.Instance);
+
+        // The earlier 10's decoded data no longer counts toward what the reader keeps of object streams: 20's alone does,
+        // its data and an entry for its one object.
+        document.Reader.ObjectStreamBytes.Should().Be(Encoding.ASCII.GetByteCount("10 0 (ten)\n") + 16);
     }
 
     /// <summary>Writes the body of an object stream holding <paramref name="members"/>, uncompressed.</summary>
@@ -2060,6 +2064,66 @@ public class DocumentReaderTests
 
         document.GetObject(new PdfObjectId(7)).Should().BeOfType<PdfString>().Which.ToText().Should().Be("seven");
         document.Diagnostics.Should().NotContain(entry => entry.Code == PdfDiagnosticCodes.ObjectRedefined);
+    }
+
+    [Theory]
+    [InlineData(3)]
+    [InlineData(2)]
+    [InlineData(1)]
+    public void A_header_whose_obj_ends_a_piece_of_the_scan_or_runs_into_the_next_is_read_once(int before)
+    {
+        // The scan reads the file a megabyte at a time, each piece with the byte past it: object 7's obj starts `before`
+        // bytes before the first megabyte ends, ending the piece or running into the next one, and is read once (#189).
+        byte[] Build(int filler) => new TestPdfBuilder()
+            .WithObject(1, "<< /Type /Catalog /Pages 2 0 R >>")
+            .WithObject(2, "<< /Type /Pages /Kids [] /Count 0 >>")
+            .WithObject(9, "(" + new string('x', filler) + ")")
+            .WithObject(7, "(seven)")
+            .BuildClassic(rootNumber: 1, includeXRef: false);
+        var probe = Build(1_000_000);
+        var file = Build(1_000_000 + (1024 * 1024) - before - (probe.AsSpan().IndexOf("7 0 obj"u8) + 4));
+        file.AsSpan().IndexOf("7 0 obj"u8).Should().Be((1024 * 1024) - before - 4);
+
+        using var document = PdfDocument.Open(file);
+
+        document.GetObject(new PdfObjectId(7)).Should().BeOfType<PdfString>().Which.ToText().Should().Be("seven");
+        document.Diagnostics.Should().NotContain(entry => entry.Code == PdfDiagnosticCodes.ObjectRedefined);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void The_cache_keeps_the_last_objects_read_as_many_as_its_capacity(bool replaced)
+    {
+        // A hundred objects read one after the other leave the last 64 in a cache of 64: the 64th from the last is served
+        // from it, the 65th parsed again. Where the rebuild loaded object 6 written directly, then took in object stream 10,
+        // written after it, which holds 6 again, the cache let go of the direct 6, and its turn in the cache's queue comes
+        // with nothing to let go: the cache still keeps 64 (#189).
+        var builder = new TestPdfBuilder()
+            .WithObject(1, "<< /Type /Catalog /Pages 2 0 R >>")
+            .WithObject(2, "<< /Type /Pages /Kids [] /Count 0 >>");
+
+        if (replaced)
+        {
+            builder.WithObject(6, "(direct)").WithObject(10, ObjectStreamOf((6, "(in the object stream)")));
+        }
+
+        for (var number = 100; number < 200; number++)
+        {
+            builder.WithObject(number, "<< /N " + number.ToString(CultureInfo.InvariantCulture) + " >>");
+        }
+
+        using var document = PdfDocument.Open(
+            builder.BuildClassic(rootNumber: 1, includeXRef: !replaced), PdfReaderOptions.Default with { ObjectCacheCapacity = 64 });
+        var read = new List<PdfObject>();
+
+        for (var number = 100; number < 200; number++)
+        {
+            read.Add(document.GetObject(new PdfObjectId(number)));
+        }
+
+        document.GetObject(new PdfObjectId(200 - 64)).Should().BeSameAs(read[^64]);
+        document.GetObject(new PdfObjectId(200 - 65)).Should().NotBeSameAs(read[^65]);
     }
 
     [Fact]

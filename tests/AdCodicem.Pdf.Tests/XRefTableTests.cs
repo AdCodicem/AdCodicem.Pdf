@@ -344,6 +344,26 @@ public class XRefTableTests
     }
 
     [Fact]
+    public void A_tentative_reading_dropped_takes_away_a_number_the_slots_end_at_from_the_map()
+    {
+        // Slots reach as far as a table this small lets them stretch, 1,032; the number 1,032, past them, goes into the map,
+        // and a dropped tentative reading takes it from there (#320).
+        var table = new PdfXRefTable();
+        table.TryAdd(0, XRefEntry.Free);
+        table.TryAdd(1031, XRefEntry.Free);
+        table.SlotCount.Should().Be(1032);
+        table.StartTentative();
+        table.TryAdd(1032, XRefEntry.Free);
+        table.MapCount.Should().Be(1);
+
+        table.DropTentative();
+
+        table.TryGet(1032, out _).Should().BeFalse();
+        table.MapCount.Should().Be(0);
+        table.Numbers.Should().Equal(0, 1031);
+    }
+
+    [Fact]
     public void The_offsets_a_tentative_reading_records_bound_no_search_until_it_is_kept()
     {
         // An entry recorded before the tentative reading and replaced during it bounds searches at once; one the reading
