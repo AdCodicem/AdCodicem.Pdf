@@ -1248,6 +1248,43 @@ public class WindowEdgeTests
         }
     }
 
+    [Theory]
+    [InlineData("40 % a comment of a hundred bytes ----------------------------------------------------------------\n0 obj", 40, "forty")]
+    [InlineData("1000000000000000000000000000000000000000000000000000000000000000000000004 0 obj", 0, null)]
+    [InlineData("++40 0 obj", 40, "forty")]
+    public void A_header_across_the_start_of_a_piece_of_the_rebuild_s_scan_is_read_whole_wherever_the_piece_starts(
+        string header, int number, string? text)
+    {
+        // The scan reads the file a megabyte at a time. A header whose walk back from its obj reached the start of a piece
+        // was read from there: the 4 of 40, where a comment of a hundred bytes parts the number from the generation, was cut,
+        // and object 40 lost; the 1 of a number past any object number was cut, and the run after it read as object 4,
+        // which then replaced the file's own. The walk reads on from further back, as far as it takes, so that wherever
+        // the piece's start falls in the header, the scan takes what the file holds (#171). Object 4 is the file's own,
+        // written before.
+        var probe = Build(header, text, 2);
+        var offset = probe.AsSpan().IndexOf(Encoding.Latin1.GetBytes(header));
+
+        // A piece starts a few bytes short of each megabyte: the header is slid across the first megabyte's end.
+        for (var start = (1024 * 1024) - 80 - header.Length; start < 1024 * 1024; start += 3)
+        {
+            var file = Build(header, text, start - offset + 2);
+            using var document = PdfDocument.Open(file);
+
+            document.WasRepaired.Should().BeTrue();
+            document.GetObject(new PdfObjectId(4)).AsText().Should().Be("real four", $"the header starts at {start}");
+
+            if (number > 0)
+            {
+                document.GetObject(new PdfObjectId(number)).AsText().Should().Be(text, $"the header starts at {start}");
+            }
+        }
+
+        static byte[] Build(string header, string? text, int padding) => Encoding.Latin1.GetBytes(
+            "%PDF-1.7\n1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n2 0 obj\n<< /Type /Pages /Kids [] /Count 0 >>\nendobj\n"
+            + "4 0 obj\n(real four)\nendobj\n%" + new string('-', Math.Max(0, padding - 2)) + "\n"
+            + header + "\n(" + (text ?? "big") + ")\nendobj\ntrailer\n<< /Root 1 0 R >>\nstartxref\n9\n%%EOF\n");
+    }
+
     private static string Shorten(string text) => text.Length <= 200 ? text : text[..100] + " … " + text[^100..];
 
     private static string Describe(string endOfLine) => endOfLine switch

@@ -3818,6 +3818,37 @@ public class CrossReferenceRuleTests
     }
 
     [Fact]
+    public void Objects_a_document_packs_in_object_streams_are_said_to_be_unchecked_where_a_rebuild_after_opening_finds_its_encryption()
+    {
+        // The newer cross-reference stream gives no /Prev and no /Encrypt, and places object 9 past the end of the file: the
+        // document opens as unencrypted, and the validation's settling rebuilds the index, which merges the older stream's
+        // /Encrypt. The document stays read as it opened (#154), but its object streams may be encrypted: they are said to
+        // be unchecked, as an encrypted document's are, the finding saying why.
+        var file = new HandWrittenFile(version: "1.5");
+        var rows = new Dictionary<int, (int Type, long Field2, int Field3)>
+        {
+            [1] = (1, file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"), 0),
+            [2] = (2, 4, 0),
+            [4] = (1, file.ObjectStream(4, [(2, "<< /Type /Pages /Kids [] /Count 0 >>")]), 0),
+            [5] = (1, file.Object(5, Encryption), 0),
+        };
+        file.CrossReferenceStream(7, 8, rows, "/Root 1 0 R /Encrypt 5 0 R");
+        rows.Remove(5);
+        rows[9] = (1, 999_999, 0);
+        file.CrossReferenceStream(10, 11, rows, "/Root 1 0 R");
+        using var document = PdfDocument.Open(file.Bytes);
+        document.IsEncrypted.Should().BeFalse();
+
+        var report = new PdfValidator().Validate(document);
+
+        document.WasRepaired.Should().BeTrue();
+        document.IsEncrypted.Should().BeFalse();
+        document.Diagnostics.Should().ContainSingle(diagnostic => diagnostic.Code == PdfDiagnosticCodes.TrailerEncryptLate);
+        report.Findings.Should().ContainSingle(finding => finding.RuleId == PdfValidationRuleIds.XRefCheckedInPart).Which.Message.Should().Be(
+            "The trailer the rebuilt index merged gives /Encrypt: the 1 object its index places in an object stream was not checked, that stream being readable only once decrypted.");
+    }
+
+    [Fact]
     public void What_was_read_before_validating_changes_nothing()
     {
         // Resolving the misplaced object makes the reader correct its own index; the rules judge the file's.
