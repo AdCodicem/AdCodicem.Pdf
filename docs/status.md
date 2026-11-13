@@ -43,7 +43,10 @@ Tracking workflow mirrors from `docs/roadmap.md` (*Debt and open points*, below)
   pages — the validation rules among them, moved from the project documents — with the API reference under them, and
   four explanations. Outside any milestone.
 - **Last milestone closed**: **M01 — Object model and tolerant reading**
-- **Tests**: 8,466 unit on [#344]'s branch (20 skipped: 2 by design, the theory over the
+- **Tests**: 8,497 unit on [#347]'s branch, on the committed corpus; with 235 of the 242 remote documents fetched — the
+  container reached neither web.archive.org nor a GitHub release for the other seven —, 11,120 at `0423a7f`, 11,117
+  passed and 3 skipped; the integration suite green in CI, and `Remote corpus` run 111's acceptance tests and referee
+  checks over all 242, on the library code [#347] ends with. Before it, 8,466 unit on [#344]'s branch (20 skipped: 2 by design, the theory over the
   remote corpus's streams whose length is wrong, the fifteen remote documents of the theory over the corpus's filter
   chains, which have no document without them, the test held to PDFBox's remote report, and iPRES's stream that lost its
   `endstream`) + 1,495 integration (skipped without Docker) + 48 for the remote corpus's fetcher + 43 for the roadmap's
@@ -54,8 +57,11 @@ Tracking workflow mirrors from `docs/roadmap.md` (*Debt and open points*, below)
   container at `26ce787`, run class by class, 3,754 passed and 6 skipped where qpdf cannot walk a damaged document's
   pages; and `Remote corpus` run 109's 11,155 acceptance tests and 3,760 referee checks, on the library code
   [#344] ends with.
-- **Coverage**: on the committed corpus, as Codecov counts it (a line with an untaken branch is partial, the generated
-  Arlington tables left out), 99.48 % of `src/`, 10,005 of 10,057 lines, of the patch's 1,461 coverable lines 1,460 run
+- **Coverage**: on [#347]'s branch at `0423a7f`, as Codecov reports it, 99.71 % of the 19,833 lines it counts, against
+  99.73 % on `main`; of the patch's 151 coverable lines 149 whole and 2 partial, both defensive branches no input takes —
+  the rank of a member whose stream the expansion has not recorded (`ExpandEachObjectStream`), and a served stream whose
+  header the probe cannot read (`CheckMembersARebuildServesElsewhere`). Before it, on the committed corpus, as Codecov
+  counts it (a line with an untaken branch is partial, the generated Arlington tables left out), 99.48 % of `src/`, 10,005 of 10,057 lines, of the patch's 1,461 coverable lines 1,460 run
   and 1,456 whole, and 1,307 of their 1,313 branches, at `2c7cf01` on [#344]'s
   branch — at `dfb03fc`, of its patch's 1,462 coverable lines 1,460 run and 1,455 whole, the seven not whole a defensive
   branch of the parse of an object no section records (two lines), the line test's guard against a place before the
@@ -142,7 +148,9 @@ Tracking workflow mirrors from `docs/roadmap.md` (*Debt and open points*, below)
   [Where a batch's time goes](research/2026-11-session-speed.md). Batch 20 stopped at its first round: seven lenses, 21
   findings, the one major refuted as [#171]'s, 5 minors and 15 nits, whose texts and tests the final pass fixed and the
   rest filed as [#348] to [#350] ([#347]).
-- **CI**: green on `main` at `21a0298` (CI run 927), and on [#344]'s branch at `2c7cf01`
+- **CI**: green on [#347]'s branch at `0423a7f`, the integration suite against qpdf, the .NET 11 island and the site
+  included; `Remote corpus` run 111 green on it at `3dfdf9d`, whose library code the branch keeps. Before it, green on
+  `main` at `21a0298` (CI run 927), and on [#344]'s branch at `2c7cf01`
   (CI run 1055). `Remote
   corpus` passed on every document in the nightly run 18, on `main` at `8c54490`, and in runs 19 and 20, on [#203]'s and
   [#211]'s branches, each rerun once after web.archive.org refused a document ([#204]), in run 21, on [#213]'s branch,
