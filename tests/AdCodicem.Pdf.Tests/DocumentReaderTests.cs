@@ -4403,6 +4403,49 @@ public class DocumentReaderTests
         document.GetObject(new PdfObjectId(5)).AsText().Should().Be("five");
     }
 
+    [Theory]
+    [InlineData(1)]
+    [InlineData(70)]
+    public void A_header_glued_to_a_stream_s_endstream_is_none_however_much_white_space_comes_before_the_keyword(int spaces)
+    {
+        // Stream 4's direct length is confirmed by the endstream after it, and object 5's header is glued to the keyword:
+        // "endstream5 0 obj". A load's lexer reads "endstream5" as one token, and the number is no header's. The scan ended
+        // the stream past the whole token when a first read saw it, and past the keyword alone when white space ran past a
+        // first read, where the digits after it read as object 5. It ends the stream past the whole token either way, and
+        // object 5 is the one written before (#171, #327).
+        var file = new HandWrittenFile();
+        file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>");
+        file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>");
+        file.Object(5, "(old five)");
+        file.Raw("4 0 obj\n<< /Length 10 >>\nstream\n0123456789" + new string(' ', spaces) + "endstream5 0 obj\n(new five)\nendobj\n");
+        file.Raw("trailer\n<< /Root 1 0 R >>\nstartxref\n9\n%%EOF\n");
+        using var document = PdfDocument.Open(file.Bytes);
+
+        document.WasRepaired.Should().BeTrue();
+        document.GetObject(new PdfObjectId(5)).AsText().Should().Be("old five");
+    }
+
+    [Fact]
+    public void A_string_that_runs_past_MaxObjectLength_is_read_as_any_object_past_it_wherever_its_piece_ends()
+    {
+        // Object 5's string holds endobj and runs 6 KB, past a MaxObjectLength of 4 KB; a line inside it, "% 9 0 obj", a
+        // comment between objects once object 5 is not delimited. The scan read what a runaway string runs into as the bytes
+        // give it when its piece held the string whole, and the header in the comment defined object 9 again; when the piece
+        // cut it, the string ran past the bound and the comment hid the header. A string past the bound is read as any
+        // object past it, wherever its piece ends (#171).
+        var file = new HandWrittenFile();
+        file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>");
+        file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>");
+        file.Object(9, "(real nine)");
+        file.Object(5, "(a endobj " + new string('x', 6000) + "\n% 9 0 obj\n(inner)\nendobj\n" + new string('x', 100) + ")");
+        file.Raw("trailer\n<< /Root 1 0 R >>\nstartxref\n9\n%%EOF\n");
+        var options = new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxObjectLength = 4096 } };
+        using var document = PdfDocument.Open(file.Bytes, options);
+
+        document.WasRepaired.Should().BeTrue();
+        document.GetObject(new PdfObjectId(9)).AsText().Should().Be("real nine");
+    }
+
     [Fact]
     public void An_object_a_piece_cuts_is_delimited_under_a_MaxObjectLength_smaller_than_a_first_window()
     {
