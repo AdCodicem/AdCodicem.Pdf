@@ -630,7 +630,7 @@ internal static partial class ConvergenceShapes
             {
                 [1] = file.Object(1, Catalog),
                 [2] = file.Object(2, "<< /Type /Pages /Kids [5 0 R 4 0 R] /Count 2 >>"),
-                [5] = file.Position,
+                [5] = file.Position + ChainFiles.HiddenHeaderLead,
             };
             file.Raw(ChainFiles.HiddenHeader(5) + "\n<< /Type /Page /Parent 2 0 R >>\n(stray)\nendobj\n");
             rows[6] = file.Padding(6);
@@ -655,7 +655,7 @@ internal static partial class ConvergenceShapes
                 [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R /Test 5 0 R >>"),
                 [2] = file.Object(2, Pages),
                 [3] = file.Object(3, Page),
-                [5] = file.Position,
+                [5] = file.Position + ChainFiles.HiddenHeaderLead,
             };
             file.Raw(ChainFiles.HiddenHeader(5) + "\r\n<< /Ref 99 0 R >>\r\n(stray)\r\nendobj\r\n");
             rows[6] = file.Padding(6);

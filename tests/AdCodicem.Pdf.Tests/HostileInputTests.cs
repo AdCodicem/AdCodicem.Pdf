@@ -1615,8 +1615,9 @@ public class HostileInputTests
         // Object stream 7 takes its first filter from object 10, which object stream 9 holds, and the parameters of its
         // second, a Flate step, from object 5, which 7 holds and the index does not list — its row is refused, placing it in
         // object stream 0, which is no object number —, in an index a row short of its /Size. Decoding 7 asks for 5, which
-        // rebuilds the index while 10 is not yet in it: the rebuild reads 7 as far as its first filter, which names none
-        // yet, and places 5 in it. Reading 5 decodes 7 again inside the first decoding, through /ASCIIHexDecode this time,
+        // rebuilds the index. 9 names an object the file lacks, so that 7 and 9 both wait for the other streams and are
+        // taken in as they were met (#348), 7 while 10 is not yet in the index: the rebuild reads 7 as far as its first
+        // filter, which names none yet, and places 5 in it. Reading 5 decodes 7 again inside the first decoding, through /ASCIIHexDecode this time,
         // into fewer bytes than its /First: neither decoding gives anything to keep, and the second to end has nothing to
         // take the place of. A row of a reserved type, which once left 5 out of the index, now reads as the null object
         // (#221).
@@ -1634,7 +1635,7 @@ public class HostileInputTests
         WriteObject(1, "<< /Type /Catalog /Pages 2 0 R >>");
         WriteObject(2, "<< /Type /Pages /Kids [] /Count 0 >>");
         WriteObject(7, "<< /Type /ObjStm /N 2 /First 9 /Filter [10 0 R /FlateDecode] /DecodeParms 5 0 R /Length 47 >>\nstream\n5 0 6 19 << /Predictor 1 >>\n<< /Title (six) >>\n\nendstream");
-        WriteObject(9, "<< /Type /ObjStm /N 1 /First 5 /Length 21 >>\nstream\n10 0 /ASCIIHexDecode\n\nendstream");
+        WriteObject(9, "<< /Type /ObjStm /N 1 /First 5 /Extends 99 0 R /Length 21 >>\nstream\n10 0 /ASCIIHexDecode\n\nendstream");
 
         var xref = output.Position;
         using var rows = new MemoryStream();
@@ -1830,8 +1831,8 @@ public class HostileInputTests
     public void An_encryption_a_rebuild_merges_is_in_the_next_trailer_and_not_in_one_taken_before()
     {
         // #237's shape, the older trailer giving /Encrypt: the document opens as unencrypted, and the rebuild reading /Bar sets
-        // off merges /Encrypt into the trailer the document gives next, which IsEncrypted reads (#154); the trailer taken
-        // before keeps none (#167).
+        // off merges /Encrypt into the trailer the document gives next; the trailer taken before keeps none (#167). Whether
+        // the document is encrypted was decided as it opened, and stays so, the rebuild saying what it merged (#154).
         var template = ConvergenceShapes.TrailerPrevLastTemplate.Replace(
             "/Info << /Title 5 >>", "/Encrypt << /Filter /Standard /V 1 /R 2 /O <00> /U <00> /P -4 >>", StringComparison.Ordinal);
         using var document = PdfDocument.Open(PdfTemplate.Build(template));
@@ -1843,7 +1844,9 @@ public class HostileInputTests
         document.WasRepaired.Should().BeTrue();
         taken.ContainsKey(PdfName.Encrypt).Should().BeFalse();
         document.Trailer.ContainsKey(PdfName.Encrypt).Should().BeTrue();
-        document.IsEncrypted.Should().BeTrue();
+        document.IsEncrypted.Should().BeFalse();
+        document.Reader.EncryptFoundAfterOpening.Should().BeTrue();
+        document.Diagnostics.Should().ContainSingle(diagnostic => diagnostic.Code == PdfDiagnosticCodes.TrailerEncryptLate);
     }
 
     [Fact]

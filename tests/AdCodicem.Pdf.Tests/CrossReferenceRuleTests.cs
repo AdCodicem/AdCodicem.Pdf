@@ -1964,10 +1964,11 @@ public class CrossReferenceRuleTests
     [Fact]
     public void An_object_a_rebuild_placed_where_the_stream_s_header_now_lists_another_is_not_judged_as_written_there()
     {
-        // Object stream 3 takes its filter from object 9, which object stream 8 holds. The rebuild expands 3 before 8, its
-        // filter unknown yet: its data read as written, "37 20 30 20 ...", list object 37 at index 0. Read once 9 is known,
-        // the data decode to a header that lists object 7 there, written as a stream: object 37 is not written there at all,
-        // as a stream or otherwise.
+        // Object stream 3 takes its filter from object 9, which object stream 8 holds; 8 names an object the file lacks. Both
+        // wait until the others are taken in, and are then taken in as they were met (#348): 3 before 8, its filter unknown
+        // yet, its data read as written, "37 20 30 20 ...", which list object 37 at index 0. Read once 9 is known, the data
+        // decode to a header that lists object 7 there, written as a stream: object 37 is not written there at all, as a
+        // stream or otherwise.
         const string Decoded = "7 0 << /Length 3 >> stream\nabc\nendstream";
         var hex = string.Join(' ', Encoding.Latin1.GetBytes(Decoded).Select(each => each.ToString("X2", CultureInfo.InvariantCulture))) + ">";
         var file = new HandWrittenFile(version: "1.5");
@@ -1976,7 +1977,7 @@ public class CrossReferenceRuleTests
         file.Object(3, string.Create(
             CultureInfo.InvariantCulture,
             $"<< /Type /ObjStm /N 1 /First 4 /Filter 9 0 R /Length {hex.Length} >>\nstream\n{hex}\nendstream"));
-        file.ObjectStream(8, [(9, "/ASCIIHexDecode")]);
+        file.ObjectStream(8, [(9, "/ASCIIHexDecode")], "/Extends 99 0 R ");
         file.Raw("trailer\n<< /Root 1 0 R /Size 10 >>\n%%EOF\n");
 
         using var document = PdfDocument.Open(file.Bytes);

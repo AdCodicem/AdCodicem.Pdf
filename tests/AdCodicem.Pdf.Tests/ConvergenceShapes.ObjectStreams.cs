@@ -211,7 +211,7 @@ internal static partial class ConvergenceShapes
 
         if (twelve.Length > 0)
         {
-            rows[12] = (1, file.Position, 0);
+            rows[12] = (1, file.Position + (twelve.StartsWith('%') ? ChainFiles.HiddenHeaderLead : 0), 0);
             file.Raw(twelve);
         }
 
@@ -306,11 +306,12 @@ internal static partial class ConvergenceShapes
     /// <summary>
     /// Writes, after <paramref name="header"/>, an object stream of <paramref name="count"/> members whose data is
     /// <paramref name="offsets"/> then <paramref name="members"/>, its dictionary holding <paramref name="entries"/> between
-    /// <c>/First</c> and <c>/Length</c>, and gives where the header starts.
+    /// <c>/First</c> and <c>/Length</c>, and gives where the header starts: past the lead of one a rebuild does not find
+    /// (<see cref="ChainFiles.HiddenHeader"/>).
     /// </summary>
     private static long ObjectStreamAfter(HandWrittenFile file, string header, string entries, int count, string offsets, string members)
     {
-        var at = file.Position;
+        var at = file.Position + (header.StartsWith('%') ? ChainFiles.HiddenHeaderLead : 0);
         file.Raw(
             string.Create(
                 CultureInfo.InvariantCulture,

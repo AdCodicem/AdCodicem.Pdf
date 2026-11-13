@@ -22,7 +22,8 @@ internal static class RebuiltTrailers
 
     /// <summary>
     /// Writes <paramref name="shape"/> of the sound one-page document, <paramref name="entries"/> added to its trailer, and
-    /// gives where the newest <c>trailer</c> keyword the rebuild merges starts.
+    /// gives where the newest trailer the rebuild merges starts: a <c>trailer</c> keyword, or a cross-reference stream's
+    /// header.
     /// </summary>
     /// <remarks>
     /// <list type="bullet">
@@ -35,6 +36,9 @@ internal static class RebuiltTrailers
     /// <item><description><c>entries only in the older trailer</c> adds an update whose trailer, the newest, names the
     /// older through <c>/Prev</c> and whose <c>startxref</c> points past the end: the rebuild merges the entries from the
     /// older trailer, under the newest, where the finding is located.</description></item>
+    /// <item><description><c>first section a cross-reference stream that cannot be read</c> appends a cross-reference stream
+    /// whose rows its data lacks, which <c>startxref</c> names: the rebuild merges its trailer keys, the newest, then the
+    /// classic trailer's entries, and the stream's header is where the rebuilt trailer lies (#154).</description></item>
     /// </list>
     /// </remarks>
     public static (byte[] File, long Trailer) Build(string shape, string entries)
@@ -91,6 +95,8 @@ internal static class RebuiltTrailers
         var text = Encoding.Latin1.GetString(file);
         text.Should().Contain(entries);
 
-        return (file, PdfTemplate.OffsetOf(file, "trailer\n", occurrence));
+        return (file, shape == "first section a cross-reference stream that cannot be read"
+            ? PdfTemplate.OffsetOf(file, "4 0 obj\n<< /Type /XRef")
+            : PdfTemplate.OffsetOf(file, "trailer\n", occurrence));
     }
 }

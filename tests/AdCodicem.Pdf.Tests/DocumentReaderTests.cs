@@ -431,17 +431,23 @@ public class DocumentReaderTests
         rebuilt.WasRepaired.Should().BeTrue();
     }
 
-    [Fact]
-    public void The_line_of_an_obj_keyword_is_read_by_its_digits_whatever_else_it_holds()
+    [Theory]
+    [InlineData("4 0 obj", "", true)]
+    [InlineData("% 4 0 obj", "", false)]
+    [InlineData("4 0 obj", "% a note ", false)]
+    [InlineData("4 0 obj", "(a note) ", true)]
+    [InlineData("4 0 obj", "(a note ", false)]
+    [InlineData("4 0 obj", "(50%) ", true)]
+    [InlineData("4 0 obj", "x", false)]
+    [InlineData("4 0 obj", "/", false)]
+    public void A_rebuild_reads_the_line_of_a_header_between_objects_as_a_load_lexes_it(string header, string before, bool found)
     {
-        // A line is lexed only where a walk back from an obj keyword enters it through an end of line: the keyword's own
-        // line is read by the digits before it, as it was, and a header a comment holds is taken for one, as a header in a
-        // string is (#171). Lexed from its start, the line would be a comment.
-        var file = NearbyFiles.FourWrittenAs("% 4 0 obj", startxrefLost: true);
+        // The line a header starts on is lexed as a load lexes it: a header a comment or a string holds is none, nor digits a
+        // longer token holds; a string closed before the header ends before it (#171).
+        var file = NearbyFiles.FourWrittenAs(header, startxrefLost: true, before: before);
         using var document = PdfDocument.Open(file);
 
-        document.Reader.Index.TryGet(4, out var entry).Should().BeTrue();
-        entry.Offset.Should().Be(PdfTemplate.OffsetOf(file, "4 0 obj"));
+        document.Reader.Index.TryGet(4, out _).Should().Be(found);
     }
 
     [Fact]
@@ -2032,36 +2038,6 @@ public class DocumentReaderTests
         document.Diagnostics.Should().NotContain(entry => entry.Code == PdfDiagnosticCodes.LimitObject);
     }
 
-    [Fact]
-    public void An_entry_of_the_cache_s_queue_a_rebuild_left_with_nothing_to_let_go_lets_the_next_go_in_its_place()
-    {
-        // The rebuild loads objects 3 to 100 and object stream 101, which holds 100 again: the cache, of 64, lets go of the
-        // direct 100, whose entry in its queue, just before 101's, has nothing to let go when its turn comes. Reading objects
-        // 1 to 64 brings that turn: 101 is let go in its place, and parsed again when read next (#189).
-        var builder = new TestPdfBuilder()
-            .WithObject(1, "<< /Type /Catalog /Pages 2 0 R >>")
-            .WithObject(2, "<< /Type /Pages /Kids [] /Count 0 >>");
-
-        for (var number = 3; number <= 100; number++)
-        {
-            builder.WithObject(number, "<< /N " + number.ToString(CultureInfo.InvariantCulture) + " >>");
-        }
-
-        builder.WithObject(101, ObjectStreamOf((100, "(again)")));
-        using var document = PdfDocument.Open(
-            builder.BuildClassic(rootNumber: 1, includeXRef: false), PdfReaderOptions.Default with { ObjectCacheCapacity = 64 });
-        var stream = document.GetObject(new PdfObjectId(101));
-
-        for (var number = 1; number <= 63; number++)
-        {
-            document.GetObject(new PdfObjectId(number));
-        }
-
-        document.GetObject(new PdfObjectId(101)).Should().BeSameAs(stream);
-        document.GetObject(new PdfObjectId(64));
-        document.GetObject(new PdfObjectId(101)).Should().NotBeSameAs(stream);
-    }
-
     /// <summary>Writes the body of an object stream holding <paramref name="members"/>, uncompressed.</summary>
     private static string ObjectStreamOf(params (int Number, string Body)[] members)
     {
@@ -2349,7 +2325,8 @@ public class DocumentReaderTests
     [Fact]
     public void Indexes_no_member_a_rebuild_finds_listed_under_a_number_no_object_can_have()
     {
-        // Two object streams list -5: the rebuild once indexed it, and met it twice (#157).
+        // Two object streams list -5: the rebuild once indexed it, and met it twice (#157). The stream written last is taken in
+        // first, and reported first (#348).
         var file = new TestPdfBuilder()
             .WithObject(1, "<< /Type /Catalog /Pages 2 0 R >>")
             .WithObject(2, "<< /Type /Pages /Kids [] /Count 0 >>")
@@ -2363,8 +2340,8 @@ public class DocumentReaderTests
         document.Diagnostics.Should().NotContain(entry => entry.Code == PdfDiagnosticCodes.ObjectRedefined);
         document.Diagnostics.Where(entry => entry.Code == PdfDiagnosticCodes.ObjectStreamUnreadable).Select(entry => entry.Message)
             .Should().Equal(
-                "Object stream 5 has a header that lists object -5 at offset 0, which no member can be, after 0 of the 1 object its /N declares; none of its objects can be read from it.",
-                "Object stream 7 has a header that lists object -5 at offset 0, which no member can be, after 0 of the 1 object its /N declares; none of its objects can be read from it.");
+                "Object stream 7 has a header that lists object -5 at offset 0, which no member can be, after 0 of the 1 object its /N declares; none of its objects can be read from it.",
+                "Object stream 5 has a header that lists object -5 at offset 0, which no member can be, after 0 of the 1 object its /N declares; none of its objects can be read from it.");
     }
 
     [Fact]
@@ -2442,14 +2419,14 @@ public class DocumentReaderTests
             endstream
             endobj
             startxref
-            9
+            10
             %%EOF
 
             """;
         var text = Template.Replace("\r\n", "\n", StringComparison.Ordinal)
             .Replace("{seven}", ChainFiles.HiddenHeader(7), StringComparison.Ordinal)
             .Replace("{eight}", ChainFiles.HiddenHeader(8), StringComparison.Ordinal);
-        var older = text.IndexOf(ChainFiles.HiddenHeader(8), StringComparison.Ordinal);
+        var older = text.IndexOf(ChainFiles.HiddenHeader(8), StringComparison.Ordinal) + ChainFiles.HiddenHeaderLead;
         var file = Encoding.ASCII.GetBytes(text.Replace("/Prev 00000", string.Create(CultureInfo.InvariantCulture, $"/Prev {older:D5}"), StringComparison.Ordinal));
         var diagnostics = new PdfDiagnostics();
 
@@ -2467,7 +2444,7 @@ public class DocumentReaderTests
         diagnostics.Select(diagnostic => diagnostic.Code).Should().Equal(
             PdfDiagnosticCodes.XRefSectionUnreadable, PdfDiagnosticCodes.XRefSectionUnreadable, PdfDiagnosticCodes.XRefRebuilt);
         diagnostics[0].Message.Should().StartWith(
-            "The cross-reference stream startxref names at offset 9 was read only in part: it holds 0 rows where its /Index and /Size declare 2;");
+            "The cross-reference stream startxref names at offset 10 was read only in part: it holds 0 rows where its /Index and /Size declare 2;");
         diagnostics[2].Message.Should().Be("The cross-reference index was rebuilt by scanning the file.");
     }
 

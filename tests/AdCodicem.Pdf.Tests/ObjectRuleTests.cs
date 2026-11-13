@@ -3123,7 +3123,9 @@ public class ObjectRuleTests
         dependencies.CircularStreams.Should().BeEquivalentTo([7, 8]);
         dependencies.Circular.Select(finding => finding.Location.Object).Should().Equal(new PdfObjectId(7), new PdfObjectId(8));
         dependencies.Circular.Select(finding => finding.Location.Position)
-            .Should().Equal(PdfTemplate.OffsetOf(file, ChainFiles.HiddenHeader(7)), PdfTemplate.OffsetOf(file, ChainFiles.HiddenHeader(8)));
+            .Should().Equal(
+                PdfTemplate.OffsetOf(file, ChainFiles.HiddenHeader(7)) + ChainFiles.HiddenHeaderLead,
+                PdfTemplate.OffsetOf(file, ChainFiles.HiddenHeader(8)) + ChainFiles.HiddenHeaderLead);
         dependencies.Circular.Select(finding => finding.Message).Should().Equal(
             "Object stream 7 needs object 5, which it holds, to be read: its /DecodeParms names it, and the object cannot be read before the stream is.",
             "Object stream 8 needs object 15, which it holds, to be read: its /DecodeParms names it, and the object cannot be read before the stream is.");
@@ -3435,7 +3437,7 @@ public class ObjectRuleTests
 
         void WriteObjectStream(int number, string header, string objects, string entries)
         {
-            offsets[number] = file.Position;
+            offsets[number] = file.Position + ChainFiles.HiddenHeaderLead;
             var data = Deflate(header + objects);
             Write($"{ChainFiles.HiddenHeader(number)}\n<< /Type /ObjStm /N 2 /First {header.Length} /Filter /FlateDecode {entries} /Length {data.Length} >>\nstream\n{data}\nendstream\nendobj\n");
         }
@@ -3448,7 +3450,7 @@ public class ObjectRuleTests
         WriteObjectStream(7, "5 0 6 19 ", "<< /Predictor 1 >> << /Title (six) >>", throughObject ? "/DecodeParms 12 0 R" : "/DecodeParms 5 0 R");
         WriteObjectStream(8, "15 0 16 19 ", "<< /Predictor 1 >> << /Title (sixteen) >>", "/DecodeParms 15 0 R");
         Write("20 0 obj\n<< /Type /ObjStm /N 1 /First 4 /Length 9 >>\nstream\n8 0 << >>\nendstream\nendobj\n");
-        offsets[12] = file.Position;
+        offsets[12] = file.Position + ChainFiles.HiddenHeaderLead;
         Write(ChainFiles.HiddenHeader(12) + "\n[5 0 R]\nendobj\n");
 
         var xref = file.Position;
