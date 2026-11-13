@@ -49,13 +49,19 @@ bytes hold, whichever comes first —, or up to the end of the file.
 Stopping at the next object keeps a later object's `endstream` from ending this stream, which is what a stretch of
 zeros that erased the end of one and the objects after it would otherwise do, or an object whose entry the index lost.
 Text in a damaged stream's data that reads as an object header stops the search as well: an object number and a
-generation the parser takes, however many zeros lead them, white space between the three tokens, however much, and
-white space, a delimiter, or the start or the end of the search around them. Comments may lie between the tokens, as a
-load reads them: the line a comment ends is read from its start, as the scan that rebuilds a damaged index reads it —
-but for the line of the `obj` keyword itself, which is read by its digits whatever a comment there holds, as that scan
-reads it, so that `% 5 0 obj` on a line stops the search where a load reads a comment
-([#171](https://github.com/AdCodicem/AdCodicem.Pdf/issues/171)). A regular character glued before the number makes no
-header here, though that scan takes the digits after it for one.
+generation the parser takes, however many zeros lead them, white space between the three tokens, however much, white
+space, a delimiter that ends a token — `)`, `>`, `[`, `]`, `{`, `}` — or the start of the search before them, and white
+space, a delimiter or the end of the search after them. Comments may lie between the tokens, as a load reads them: the
+line a comment ends is read from its start, as the scan that rebuilds a damaged index reads it — but for the line of the
+`obj` keyword itself, which is read by its digits whatever a comment there holds, so that `% 5 0 obj` on a line stops
+the search where a load reads a comment ([#171](https://github.com/AdCodicem/AdCodicem.Pdf/issues/171)). That scan
+reads such a line so only in the data of a stream whose length it cannot confirm, which this search reads: between
+objects, it takes no header that starts in a comment. A regular character, or a `(`, `<`, `/` or `%` that opens a
+string, a name or a comment, glued before the number makes no header, here or for that scan — but for the end-of-file
+marker, which that scan reads as a comment that ends with itself, taking `%%EOF1 0 obj` for object 1's header, as a
+writer that appends an update with no end of line leaves it; a sign before the number makes none here, where that scan
+reads a number written with signs as the lexer reads it, the first sign deciding
+([#327](https://github.com/AdCodicem/AdCodicem.Pdf/issues/327)).
 Neither `xref` nor `trailer` stops a search: the stream of a classic file's last object, which no object follows, is
 searched through the table and the trailer to the end of the file.
 

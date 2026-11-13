@@ -27,6 +27,11 @@ Opening a document builds an index, finds the catalog, and stops there.
 4. Resolves the trailer's `/Root`, which reads the document catalog, and decodes the object stream that holds
    it when one does. When `/Root` leads to no catalog, it loads the objects the map holds, one after the
    other, until one is a catalog (`trailer.root-recovered`), and rebuilds the map when none is.
+5. Decides, once, whether the document is encrypted, which `IsEncrypted` gives for the document's life: the trailer's
+   `/Encrypt` resolves to a dictionary, or names an object one of the reader's limits kept it from reading. One that
+   names an object the file lacks or one that is null, or that is a value of another type, leaves it unencrypted
+   ([`trailer.encrypt-invalid`](../reference/diagnostics.md#codes),
+   [#154](https://github.com/AdCodicem/AdCodicem.Pdf/issues/154)).
 
 On a file whose index and `/Root` are sound, that is all: no page is read, and no stream's data but that of the
 cross-reference streams and of the object stream holding the catalog. The search for a lost catalog parses
@@ -294,13 +299,15 @@ reported missing; where `startxref` names one, it holds no section either, and i
 section `startxref` names is not looked for nearby: when it is not where `startxref` says, the map is rebuilt.
 
 A rebuilt map keeps, of each number, the definition [`object.redefined`](../reference/diagnostics.md) names — the one
-the file writes last, an object stream's members counting where the stream lies, as an update appends what it
-changes —, a direct definition under the generation its header gives and a member of an object stream under generation
-0. An object
-found nearby takes the generation of the header found there, whatever its row gave; an entry of the chain otherwise
-keeps its row's. The rules that name an object from the map — `object.reference-missing`,
-`object.name-null-character`, `object.endobj-missing` — name it so, `5 1` for `5 1 obj`; the cross-reference rules
-name it as the file's row does, and the page tree and object-shape rules as the reference that reached it does.
+the file writes last, an object stream's members counting where the stream lies, as an update appends what it changes —,
+a direct definition under the generation its header gives and a member of an object stream under generation 0. An object
+stream whose own number a later object stream lists gives no members, whatever order the rebuild met the numbers in, and
+what the rebuild read through a definition a later object stream replaced — a stream's indirect `/Length`, an object
+stream's `/N` — is read again from the map it ends with ([#348](https://github.com/AdCodicem/AdCodicem.Pdf/issues/348)).
+An object found nearby takes the generation of the header found there, whatever its row gave; an entry of the chain
+otherwise keeps its row's. The rules that name an object from the map — `object.reference-missing`,
+`object.name-null-character`, `object.endobj-missing` — name it so, `5 1` for `5 1 obj`; the cross-reference rules name
+it as the file's row does, and the page tree and object-shape rules as the reference that reached it does.
 
 What the reader noted of an object as it read it — that no `endobj` followed it, that a limit cut it, that its
 stream's `/Length` was wrong — is forgotten by a rebuild, and noted again as the rebuilt map's definitions are read.
@@ -319,14 +326,30 @@ failed finish again from the scan costs a sound rebuild no copy of the map, whic
 validation whose first checks of the map the source fails checks again at the next one.
 
 A rebuild finds each object by its header, comments between the header's tokens included, as a load reads them
-([#261](https://github.com/AdCodicem/AdCodicem.Pdf/issues/261)). It reads the file to its end, and holds no more
-numbers than the map may: a header for a number it holds already
-takes no room, so that a million copies of one object hide nothing behind them, and the first number past
-`MaxIndexEntries` is reported once (`limit.index-entries`). A rebuild of a chain a limit had cut keeps the entries the
-chain read for the numbers the scan did not find, rather than losing them. Whether it runs as the document opens or
-after, a rebuild keeps the trailer the chain read too: it adds to it only the keys it lacks, from the trailers the scan
-finds, and replaces only a `/Root` that leads to no catalog, by the catalog its search finds (`trailer.root-recovered`,
-which a rebuild after opening that finds the same object again does not report again).
+([#261](https://github.com/AdCodicem/AdCodicem.Pdf/issues/261)), and its number and generation as the lexer reads them:
+a number written with signs is read with them, the first sign deciding, so that `4 +0 obj` is object 4's header and
+`-4 0 obj` none, and digits glued to a regular character before them, or to a `(`, `<`, `/` or `%` that opens a string,
+a name or a comment, are no number ([#327](https://github.com/AdCodicem/AdCodicem.Pdf/issues/327)) — but for the
+end-of-file marker `%%EOF`, a comment that ends with itself, to which a writer that appends an update with no end of
+line glues its first header: `%%EOF1 0 obj` is object 1's. It takes only what lies outside other objects: each object it
+takes is delimited as a load reads it — its value, the strings and comments it holds, and a stream's data where an
+`endstream` confirms its direct `/Length` —, and a header or a `trailer` keyword within is none, nor is one that starts
+in a comment or a string between objects, so that an attached PDF written as it is, or a string that quotes a header or
+says `trailer`, adds nothing to the map or the trailer ([#171](https://github.com/AdCodicem/AdCodicem.Pdf/issues/171)).
+The data of a stream whose length it cannot confirm — an indirect `/Length`, or one no `endstream` follows — ends for it
+where a load's search for that stream's end stops: at the first header, which it takes, or at the first `endstream`,
+before which it reads no comment. What follows the header of an object it cannot delimit — its value past
+`MaxObjectLength`, or none a load reads — is read as the bytes give it too. Where the pieces it reads the file in start
+changes nothing of what it takes. It reads the file to its end, and holds no more numbers than the map may: a header for
+a number it holds already takes no room, so that a million copies of one object hide nothing behind them, and the first
+number past `MaxIndexEntries` is reported once (`limit.index-entries`). A rebuild of a chain a limit had cut keeps the
+entries the chain read for the numbers the scan did not find, rather than losing them. Whether it runs as the document
+opens or after, a rebuild keeps the trailer the chain read too: it adds to it only the keys it lacks, from the trailers
+the scan takes, the newest first — the dictionary after each `trailer` keyword, and the `/Root`, `/Encrypt`, `/Info` and
+`/ID` of each cross-reference stream, which ISO 32000-1 makes its revision's trailer
+([#154](https://github.com/AdCodicem/AdCodicem.Pdf/issues/154)) —, and replaces only a `/Root` that leads to no catalog,
+by the catalog its search finds (`trailer.root-recovered`, which a rebuild after opening that finds the same object
+again does not report again).
 
 ## What a rebuild after opening changes
 
@@ -342,11 +365,15 @@ not what it handed out before, so that a loop over what the document gives goes 
 - An enumeration of `Diagnostics` under way gives the entries recorded when it began, and the next one the rebuild's
   too: between two calls you make, entries are only added after those the record held. Once it has ended, it stays
   ended, whatever is recorded after.
-- The next `Trailer` gives the trailer the rebuild merged, and `Catalog` and `IsEncrypted` read that one: the trailer
-  the document held, with the keys it lacks taken from the trailers the rebuild finds, and a `/Root` the rebuild set.
-  A trailer taken before is left as it was, without an older trailer's `/Info` or `/Encrypt`, or a `/Root` the
-  rebuild set, and one taken after is never changed: read `Trailer` again after reading the document rather than keep
-  it. The new trailer costs a copy of the old, a few hundred bytes.
+- The next `Trailer` gives the trailer the rebuild merged, and `Catalog` reads that one: the trailer the document held,
+  with the keys it lacks taken from the trailers the rebuild finds, and a `/Root` the rebuild set. A trailer taken
+  before is left as it was, without an older trailer's `/Info` or `/Encrypt`, or a `/Root` the rebuild set, and one
+  taken after is never changed: read `Trailer` again after reading the document rather than keep it. The new trailer
+  costs a copy of the old, a few hundred bytes.
+- `IsEncrypted` does not change: it was decided as the document opened. An `/Encrypt` the rebuild merged, which the
+  trailer the document opened with did not give, leaves the document read as unencrypted, and is reported
+  ([`trailer.encrypt-late`](../reference/diagnostics.md#codes),
+  [#154](https://github.com/AdCodicem/AdCodicem.Pdf/issues/154)).
 - An object read before is left as it was; the next read of its number reads it through the rebuilt map.
 
 Only a `PdfFileSource` of your own, reading the document from inside the read that rebuilds, sees the rebuild under
@@ -355,8 +382,8 @@ sets after. An enumeration of `Diagnostics` it steps may meet a finish that with
 reports again: it reads, up to the count it began with, the entries held at those places, which may be those reported
 again. Its `Current` stays the entry it advanced to, whatever is withdrawn or reported at that place after.
 
-If the source fails a rebuild, `Trailer`, `Catalog`, `IsEncrypted`, `ObjectCount` and `ObjectNumbers` describe the
-unfinished rebuild until the next read or validation runs it again: the map lacks the entries the scan or the finish
+If the source fails a rebuild, `Trailer`, `Catalog`, `ObjectCount` and `ObjectNumbers` describe the unfinished
+rebuild until the next read or validation runs it again: the map lacks the entries the scan or the finish
 had not taken in — every one when the source failed the scan's first read —, and the trailer lacks the trailers the scan
 had not merged and a `/Root` the finish would search for. Asking them finishes nothing, except that `Catalog` reads the
 `/Root` that trailer names — the file's own `/Root`, not the catalog a search found as the document opened —, and that read

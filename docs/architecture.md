@@ -113,9 +113,9 @@ separate types, separate severity scales, and vocabularies that never share a co
    search keeps depends on the file's bytes and its index as written, and in the 401 corpus documents measured
    each stream — each copy of an object at its offset — takes the same length whatever was read before it. A
    crafted file can still make it depend on the number a stream is first read under or, once the searches of a
-   document have read four times the file, on which streams were searched first ([#138], M23); the rebuild's scan
-   for trailers reads no stream ([#171]). A stream whose `/Length` a guard cut or left out of the index may be
-   valid, its length only hidden: when a header its data spells — an embedded file's does — stops its search, no `endobj` of its own before
+   document have read four times the file, on which streams were searched first ([#138], M23); the rebuild's merge
+   of the trailers its scan takes reads no stream ([#171]). A stream whose `/Length` a guard cut or left out of the
+   index may be valid, its length only hidden: when a header its data spells — an embedded file's does — stops its search, no `endobj` of its own before
    it, or an `endstream` it spells ends it, the data up to there is the guard's, cut by it, and nothing is said of the
    file. An `endstream` is the stream's own, and its end the file's, only where what follows the object's end — its
    `endobj`, or the `endstream` where none follows — is the next object the index places, a cross-reference stream
