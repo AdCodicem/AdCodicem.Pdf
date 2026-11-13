@@ -5,6 +5,7 @@ using System.Text;
 using AdCodicem.Pdf.Diagnostics;
 using AdCodicem.Pdf.Documents;
 using AdCodicem.Pdf.IO;
+using AdCodicem.Pdf.IO.XRef;
 using AdCodicem.Pdf.Objects;
 using AdCodicem.Pdf.Validation;
 using FsCheck;
@@ -77,7 +78,7 @@ public class ReadOrderTests
         {
             [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),
             [2] = file.Object(2, "<< /Type /Pages /Kids [5 0 R 4 0 R] /Count 2 >>"),
-            [5] = file.Position,
+            [5] = file.Position + ChainFiles.HiddenHeaderLead,
         };
         file.Raw(ChainFiles.HiddenHeader(5) + "\n<< /Type /Page /Parent 2 0 R >>\n(stray)\nendobj\n");
         rows[6] = file.Padding(6);
@@ -167,7 +168,7 @@ public class ReadOrderTests
         {
             "an index full past an object stream" => new[] { 6 },
             "an index the scan fills" => [7],
-            "an object the scan for trailers parses" => [6, 4, 5, 8, 9],
+            "an object the scan for trailers parses" => [6, 5, 9],
             _ => [4, 6],
         };
         using var first = PdfDocument.Open(file, options);
@@ -205,7 +206,7 @@ public class ReadOrderTests
             [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),
             [2] = file.Object(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>"),
             [3] = file.Object(3, Page),
-            [5] = file.Position,
+            [5] = file.Position + ChainFiles.HiddenHeaderLead,
         };
         file.Raw(ChainFiles.HiddenHeader(5) + "\n<< /Length 4 0 R >>\nstream\n0123456789\nendstream\n");
         rows[6] = file.Padding(6);
@@ -231,7 +232,7 @@ public class ReadOrderTests
             [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),
             [2] = file.Object(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>"),
             [3] = file.Object(3, Page),
-            [5] = file.Position,
+            [5] = file.Position + ChainFiles.HiddenHeaderLead,
         };
         file.Raw(ChainFiles.HiddenHeader(5) + "\n<< /Length 4 0 R >>\nstream\n0123456789\nendstream\nendobj\n");
         rows[6] = file.Padding(6);
@@ -290,7 +291,7 @@ public class ReadOrderTests
             [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),
             [2] = file.Object(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>"),
             [3] = file.Object(3, Page),
-            [5] = file.Position,
+            [5] = file.Position + ChainFiles.HiddenHeaderLead,
         };
         file.Raw(ChainFiles.HiddenHeader(5) + "\n<< /Length 3 >>\nstream\n0123456789\nendstream\nendobj\n");
         rows[6] = file.Padding(6);
@@ -734,9 +735,16 @@ public class ReadOrderTests
         using var source = new FailingSource(bytes);
         using var document = PdfDocument.Open(source, options: null, ownsSource: false);
         var failed = 0;
-        source.Failing = () => failed++;
+
+        // The read after the failed load is the finish's first.
+        source.Failing = () =>
+        {
+            if (++failed == 1)
+            {
+                source.FailRead(1, finishing);
+            }
+        };
         source.Fail(five, 1);
-        source.FailRead(8, finishing);
 
         FluentActions.Invoking(() => document.GetObject(new PdfObjectId(7))).Should().Throw<IOException>()
             .Which.Should().NotBeSameAs(finishing);
@@ -813,25 +821,34 @@ public class ReadOrderTests
     }
 
     [Theory]
-    [InlineData("/Root 1 0 R", 2, 0)]
-    [InlineData("/Root 1 0 R", 3, 7)]
-    [InlineData("", 2, 0)]
-    [InlineData("", 3, 7)]
+    [InlineData("/Root 1 0 R", "the scan", 0)]
+    [InlineData("/Root 1 0 R", "the trailers' merge", 7)]
+    [InlineData("", "the scan", 0)]
+    [InlineData("", "the trailers' merge", 7)]
     public void A_rebuild_whose_scan_the_source_fails_holds_what_the_scan_reached_until_the_next_read_runs_it_again(
-        string trailer, int read, int reached)
+        string trailer, string failed, int reached)
     {
         // Reading 7 rebuilds the index while object stream 6 is being loaded. Of the reads from the file's start, the first
-        // is a load's, the second the scan's for objects, the third its scan for trailers. The source failing the scan, the
-        // read throws at once, leaving the index the scan had reached — none of the objects, or those written directly, 6's
-        // member not taken in — and the trailer it had merged, holding the file's own /Root. The next read runs the rebuild
-        // again from its scan, into a new trailer, so that the one taken meanwhile is left as it was; it reports what a
-        // rebuild run whole reports, and serves 7 as it does (#167).
+        // is a load's, the second the scan's; once the scan is done, the rebuild reads the cross-reference stream's
+        // dictionary again, to merge it as a trailer. The source failing either, the read throws at once, leaving the index
+        // the scan had reached — none of the objects, or those written directly, 6's member not taken in — and the trailer
+        // it had merged, holding the file's own /Root. The next read runs the rebuild again from its scan, into a new
+        // trailer, so that the one taken meanwhile is left as it was; it reports what a rebuild run whole reports, and serves
+        // 7 as it does (#167).
         var (bytes, _) = MemberWhoseLengthLeadsNowhere(trailer);
         using var whole = PdfDocument.Open(bytes);
         whole.GetObject(new PdfObjectId(7));
         using var source = new FailingSource(bytes);
         using var document = PdfDocument.Open(source, options: null, ownsSource: false);
-        source.Fail(0, read);
+
+        if (failed == "the scan")
+        {
+            source.Fail(0, 2);
+        }
+        else
+        {
+            source.Fail(Encoding.Latin1.GetString(bytes).IndexOf("9 0 obj", StringComparison.Ordinal), 1);
+        }
 
         FluentActions.Invoking(() => document.GetObject(new PdfObjectId(7))).Should().Throw<IOException>();
         var waiting = document.Trailer;
@@ -985,8 +1002,8 @@ public class ReadOrderTests
     {
         // #237's shape, the older trailer naming /Encrypt: reading object 4 rebuilds the index, whose scan merges the trailers
         // it finds, the newest first. The source fails to give the older one: until the next read runs the rebuild again,
-        // Trailer lacks its /Encrypt and /Info, and IsEncrypted is false; the rebuild run again merges them into a new
-        // trailer, leaving the one taken meanwhile as it was, and IsEncrypted turns true (#154, #167).
+        // Trailer lacks its /Encrypt and /Info; the rebuild run again merges them into a new trailer, leaving the one taken
+        // meanwhile as it was, and says it found /Encrypt after opening, the document staying read as it opened (#154, #167).
         var bytes = PdfTemplate.Build(UpdateWithoutItsPrevious.Replace("/Foo 99 0 R", "/Encrypt 99 0 R", StringComparison.Ordinal));
         var older = Encoding.Latin1.GetString(bytes).IndexOf("trailer", StringComparison.Ordinal) + "trailer".Length;
         using var source = new FailingSource(bytes);
@@ -1004,7 +1021,8 @@ public class ReadOrderTests
         four.AsText().Should().Be("four");
         Keys(waiting).Should().Equal(keys);
         Keys(document.Trailer).Should().Equal("Size", "Root", "Prev", "Bar", "Encrypt", "Info");
-        document.IsEncrypted.Should().BeTrue();
+        document.IsEncrypted.Should().BeFalse();
+        document.Diagnostics.Should().ContainSingle(diagnostic => diagnostic.Code == PdfDiagnosticCodes.TrailerEncryptLate);
 
         static List<string> Keys(PdfDictionary trailer) => [.. trailer.Keys.Select(key => key.Value)];
     }
@@ -1066,7 +1084,7 @@ public class ReadOrderTests
         {
             [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),
             [2] = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"),
-            [6] = file.Position,
+            [6] = file.Position + ChainFiles.HiddenHeaderLead,
         };
         file.Raw(ChainFiles.HiddenHeader(6) + "\n<< /Type /ObjStm /N 1 /First 4 /Length 18 >>\nstream\n7 0 (packed seven)\nendstream\nendobj\n");
         rows[8] = file.Padding(8);
@@ -1224,9 +1242,9 @@ public class ReadOrderTests
     {
         // Object streams 10, 11 and 12 each decode to 12 MB, two members far apart, and the reader keeps 32 MB of them: two
         // at most. Reading 11's member, then 10's, keeps 11 and 10. Object 5's row leads into the catalog, and reading 5
-        // rebuilds the index, whose finish decodes 10, 11 and 12 in that order: keeping 12 lets go of 10, the oldest kept
-        // since the rebuild. Had the rebuild kept the order of before, the reader would have let go of 11 first, kept first
-        // then, though it was kept again since.
+        // rebuilds the index, whose finish decodes 12, 11 and 10, the last written first (#348): keeping 10 lets go of 12,
+        // the oldest kept since the rebuild. Had the rebuild kept the order of before, the reader would have let go of 11
+        // first, kept first then, though it was kept again since.
         var file = new HandWrittenFile(version: "1.5");
         var rows = new Dictionary<int, (int Type, long Field2, int Field3)>
         {
@@ -1268,9 +1286,9 @@ public class ReadOrderTests
 
         document.WasRepaired.Should().BeTrue();
         keptBefore.Should().Be((true, true));
-        document.Reader.KeptObjectStreamData(10).IsEmpty.Should().BeTrue();
+        document.Reader.KeptObjectStreamData(10).IsEmpty.Should().BeFalse();
         document.Reader.KeptObjectStreamData(11).IsEmpty.Should().BeFalse();
-        document.Reader.KeptObjectStreamData(12).IsEmpty.Should().BeFalse();
+        document.Reader.KeptObjectStreamData(12).IsEmpty.Should().BeTrue();
     }
 
     [Fact]
@@ -1812,16 +1830,12 @@ public class ReadOrderTests
     }
 
     [Theory]
-    [InlineData("a read", "in a comment", "/Root 1 0 R")]
-    [InlineData("a read", "between objects", "/Root 1 0 R")]
-    [InlineData("a read", "in a comment", "")]
-    [InlineData("a read", "between objects", "")]
-    [InlineData("a validation", "in a comment", "/Root 1 0 R")]
-    [InlineData("a validation", "between objects", "/Root 1 0 R")]
-    [InlineData("a validation", "in a comment", "")]
-    [InlineData("a validation", "between objects", "")]
+    [InlineData("a read", "/Root 1 0 R")]
+    [InlineData("a read", "")]
+    [InlineData("a validation", "/Root 1 0 R")]
+    [InlineData("a validation", "")]
     public void Each_trailer_whose_stream_length_runs_past_a_guard_is_merged_by_a_rebuild_that_throws_on_one(
-        string setOff, string keyword, string trailer)
+        string setOff, string trailer)
     {
         // A rebuild's scan for trailers parses the dictionary that follows each trailer keyword alone, the newest first, and
         // loads nothing (#171): the streams two keywords introduce give their dictionaries, each with a key of its own,
@@ -1833,7 +1847,7 @@ public class ReadOrderTests
         // does. The first guard the rebuild reaches is the expansion's, which loads each object the scan indexed, 21 first,
         // and it is thrown once the rebuild is finished: 6 is expanded, so that 7 is read, and a catalog the trailer does not
         // name is searched for and found.
-        var (bytes, older) = TwoTrailersPastTheObjectGuard(crossReferenceStream: setOff == "a read", keyword, trailer);
+        var (bytes, older) = TwoTrailersPastTheObjectGuard(crossReferenceStream: setOff == "a read", trailer);
         var limits = PdfReaderLimits.Default with { MaxObjectLength = 200 };
         using var tolerant = PdfDocument.Open(bytes, PdfReaderOptions.Default with { Limits = limits });
         SetOff(tolerant);
@@ -1866,11 +1880,9 @@ public class ReadOrderTests
     }
 
     [Theory]
-    [InlineData("between objects", "/Info 12 0 R")]
-    [InlineData("between objects", "/Encrypt 12 0 R")]
-    [InlineData("in a comment", "/Info 12 0 R")]
-    [InlineData("in a comment", "/Encrypt 12 0 R")]
-    public void A_rebuild_merges_the_same_trailers_whatever_was_read_before_it(string keyword, string entry)
+    [InlineData("/Info 12 0 R")]
+    [InlineData("/Encrypt 12 0 R")]
+    public void A_rebuild_merges_the_same_trailers_whatever_was_read_before_it(string entry)
     {
         // A rebuild's scan for trailers parses the dictionary that follows each trailer keyword alone, and loads nothing
         // (#171): the stream a keyword introduces gives its dictionary — the entry, and a /Length naming 21, past an object
@@ -1882,7 +1894,7 @@ public class ReadOrderTests
         // validation whatever it threw, the trailer holds the entry, and the document is encrypted as a read without
         // throwing finds it, in every order, the stream after the dictionary noted nowhere; and a validation after the first
         // finds the same in every order.
-        var bytes = AStreamTrailerWhoseLengthRunsPastTheObjectGuard(keyword, entry);
+        var bytes = AStreamTrailerWhoseLengthRunsPastTheObjectGuard(entry);
         var limits = PdfReaderLimits.Default with { MaxObjectLength = 200 };
         var key = entry[1..entry.IndexOf(' ', StringComparison.Ordinal)];
         var states = new Dictionary<string, string>();
@@ -1944,10 +1956,8 @@ public class ReadOrderTests
         }
     }
 
-    [Theory]
-    [InlineData("between objects")]
-    [InlineData("in a comment")]
-    public void A_rebuild_follows_no_reference_after_a_trailer_keyword_whatever_was_read_before_it(string keyword)
+    [Fact]
+    public void A_rebuild_follows_no_reference_after_a_trailer_keyword_whatever_was_read_before_it()
     {
         // A rebuild's scan for trailers parses what follows each trailer keyword as the dictionary alone, and loads nothing
         // (#171): a reference written in the dictionary's place — to object 10, a dictionary naming /Encrypt, whose row
@@ -1958,7 +1968,7 @@ public class ReadOrderTests
         // found then depended on what was read first, whether the document was opened to throw on a guard or not. Now the
         // trailer lacks /Encrypt, and the document is not encrypted, in every order; and a validation after the first finds
         // the same in every order.
-        var (bytes, reference) = AReferenceAfterATrailerKeyword(keyword);
+        var (bytes, reference) = AReferenceAfterATrailerKeyword();
         var states = new Dictionary<string, string>();
         var laters = new Dictionary<string, string>();
 
@@ -1993,12 +2003,10 @@ public class ReadOrderTests
     }
 
     [Theory]
-    [InlineData("a read", "between objects")]
-    [InlineData("a read", "in a comment")]
-    [InlineData("a validation", "between objects")]
-    [InlineData("a validation", "in a comment")]
+    [InlineData("a read")]
+    [InlineData("a validation")]
     public void A_rebuild_that_throws_on_a_guard_follows_no_reference_after_a_trailer_keyword_and_throws_once_it_is_finished(
-        string setOff, string keyword)
+        string setOff)
     {
         // A rebuild's scan for trailers parses what follows each trailer keyword as the dictionary alone, and loads nothing
         // (#171): a reference written in the dictionary's place — to object 21, a dictionary holding /Info whose comment runs
@@ -2009,7 +2017,7 @@ public class ReadOrderTests
         // reaches is the expansion's, which loads 21 as it loads each object the scan indexed, and it is thrown once the
         // rebuild is finished: 13 is read, the catalog is found, and the index counts what a read without throwing counts.
         // Neither merges /Info.
-        var (bytes, referenced) = AReferenceAfterATrailerKeywordPastTheObjectGuard(keyword);
+        var (bytes, referenced) = AReferenceAfterATrailerKeywordPastTheObjectGuard();
         var limits = PdfReaderLimits.Default with { MaxObjectLength = 200 };
         using var tolerant = PdfDocument.Open(bytes, PdfReaderOptions.Default with { Limits = limits });
         SetOff(tolerant);
@@ -2289,15 +2297,14 @@ public class ReadOrderTests
 
     /// <summary>
     /// A file whose catalog names object 7, which object stream 6 holds, and in which a rebuild's scan for trailers meets
-    /// two <c>trailer</c> keywords, <paramref name="keyword"/> — in a comment inside the header of objects 20 and 22, or
-    /// between objects —, each before a stream whose /Length is an object running past an object guard of 200 bytes: 21,
+    /// two <c>trailer</c> keywords between objects, each before a stream whose /Length is an object running past an object guard of 200 bytes: 21,
     /// then 23. The older stream's dictionary holds <c>/Older</c>, the newer's <c>/Newer</c>, which neither the table's
     /// trailer nor the cross-reference stream's dictionary holds. A cross-reference stream indexes it as
     /// <see cref="MemberWhoseLengthLeadsNowhere"/> does, 6's /Length object 5, whose row leads to the catalog's header; or a
     /// classic table that lacks 6 and 7 and names its previous section as a reference. Either holds
     /// <paramref name="trailer"/>. Gives the file and where 21 is.
     /// </summary>
-    private static (byte[] Bytes, long Older) TwoTrailersPastTheObjectGuard(bool crossReferenceStream, string keyword, string trailer)
+    private static (byte[] Bytes, long Older) TwoTrailersPastTheObjectGuard(bool crossReferenceStream, string trailer)
     {
         var file = new HandWrittenFile(version: "1.5");
         var catalog = file.Object(1, "<< /Type /Catalog /Pages 2 0 R /Test 7 0 R >>");
@@ -2313,14 +2320,7 @@ public class ReadOrderTests
             var own = number == 20 ? "/Older" : "/Newer";
             var dictionary = string.Create(CultureInfo.InvariantCulture, $"<< {own} true /Length {number + 1} 0 R >>\nstream\nabc\nendstream");
 
-            if (keyword == "in a comment")
-            {
-                file.Object(number, "% trailer\n" + dictionary);
-            }
-            else
-            {
-                file.Raw("trailer\n" + dictionary + "\n");
-            }
+            file.Raw("trailer\n" + dictionary + "\n");
 
             var past = file.Object(number + 1, "3 % " + new string('x', 400));
             older = older == 0 ? past : older;
@@ -2347,14 +2347,14 @@ public class ReadOrderTests
     }
 
     /// <summary>
-    /// A file in which a rebuild's scan for trailers meets a <c>trailer</c> keyword, <paramref name="keyword"/> — between
-    /// objects, or in a comment —, older than the table's own trailer and before a stream whose /Length is object 21, which
+    /// A file in which a rebuild's scan for trailers meets a <c>trailer</c> keyword between objects, older than the
+    /// table's own trailer and before a stream whose /Length is object 21, which
     /// runs past an object guard of 200 bytes. The stream's dictionary holds <paramref name="entry"/> too, which names
     /// object 12 and which the table's trailer lacks. The table places 21 at the pages' header, so that reading 21 sets the
     /// rebuild off while 21 is being loaded, and names the catalog. Comments pad the file, so that 21 is the only object
     /// past the guard.
     /// </summary>
-    private static byte[] AStreamTrailerWhoseLengthRunsPastTheObjectGuard(string keyword, string entry)
+    private static byte[] AStreamTrailerWhoseLengthRunsPastTheObjectGuard(string entry)
     {
         var file = new HandWrittenFile();
         var padding = "%" + new string('z', 1500) + "\n";
@@ -2370,19 +2370,19 @@ public class ReadOrderTests
         file.Object(21, "7 % " + new string('y', 500));
         rows[21] = rows[2];
         file.Raw(padding);
-        file.Raw((keyword == "in a comment" ? "% trailer\n" : "trailer\n") + $"<< {entry} /Length 21 0 R >>\nstream\nxyz\nendstream\n");
+        file.Raw($"trailer\n<< {entry} /Length 21 0 R >>\nstream\nxyz\nendstream\n");
         file.Table(22, rows, "/Size 22 /Root 1 0 R");
         return file.Bytes;
     }
 
     /// <summary>
-    /// A file in which a rebuild's scan for trailers meets a <c>trailer</c> keyword, <paramref name="keyword"/> — between
-    /// objects, or in a comment —, older than the table's own trailer and followed by a reference to object 10, a dictionary
+    /// A file in which a rebuild's scan for trailers meets a <c>trailer</c> keyword between objects, older than the
+    /// table's own trailer and followed by a reference to object 10, a dictionary
     /// naming object 12 as /Encrypt, which the table's trailer lacks. The table places 10 at the pages' header, so that
     /// reading 10 sets the rebuild off while 10 is being loaded, and names the catalog. Comments pad the file, so that 10 is
     /// not found near the row that misplaces it. Gives the file and where the reference starts.
     /// </summary>
-    private static (byte[] Bytes, long Reference) AReferenceAfterATrailerKeyword(string keyword)
+    private static (byte[] Bytes, long Reference) AReferenceAfterATrailerKeyword()
     {
         var file = new HandWrittenFile();
         var padding = "%" + new string('z', 1500) + "\n";
@@ -2398,7 +2398,7 @@ public class ReadOrderTests
         file.Object(10, "<< /Encrypt 12 0 R >>");
         rows[10] = rows[2];
         file.Raw(padding);
-        file.Raw(keyword == "in a comment" ? "% trailer\n" : "trailer\n");
+        file.Raw("trailer\n");
         var reference = file.Position;
         file.Raw("10 0 R\n");
         file.Table(13, rows, "/Size 13 /Root 1 0 R");
@@ -2408,11 +2408,11 @@ public class ReadOrderTests
     /// <summary>
     /// A file whose table lacks object stream 10, which holds 13, and places object 4 past the end of the file, so that
     /// reading 4, or the start of a validation, rebuilds the index; in which a rebuild's scan for trailers meets a
-    /// <c>trailer</c> keyword, <paramref name="keyword"/> — between objects, or in a comment —, followed by a reference to
+    /// <c>trailer</c> keyword between objects, followed by a reference to
     /// object 21, a dictionary holding /Info whose comment runs past an object guard of 200 bytes. Comments pad the file,
     /// so that 21 is the only object past the guard. Gives the file and where 21 is.
     /// </summary>
-    private static (byte[] Bytes, long Referenced) AReferenceAfterATrailerKeywordPastTheObjectGuard(string keyword)
+    private static (byte[] Bytes, long Referenced) AReferenceAfterATrailerKeywordPastTheObjectGuard()
     {
         var file = new HandWrittenFile();
         var padding = "%" + new string('z', 600) + "\n";
@@ -2428,16 +2428,16 @@ public class ReadOrderTests
         file.Raw(padding);
         var referenced = file.Object(21, "<< /Info 6 0 R % " + new string('y', 400) + "\n>>");
         file.Raw(padding);
-        file.Raw((keyword == "in a comment" ? "% trailer\n" : "trailer\n") + "21 0 R\n");
+        file.Raw("trailer\n21 0 R\n");
         file.Table(7, rows, "/Size 7 /Root 1 0 R");
         return (file.Bytes, referenced);
     }
 
     /// <summary>
-    /// A file whose objects 4 and 8 say <c>trailer</c> in a comment before their dictionary, which a rebuild's scan for
-    /// trailers parses alone, loading nothing (#171). Object 4's dictionary names /Dup twice, and its stream's /Length is
-    /// object 5, a stream whose own /Length its data does not end at; object 8's stream's /Length is object 9, whose
-    /// comment runs past an object guard of 64 bytes. The table lacks 5, 8 and 9; object 6's row leads into the catalog.
+    /// A file in which a rebuild's scan for trailers meets two <c>trailer</c> keywords between objects, each before a
+    /// stream's dictionary, which it parses alone, loading nothing (#171). The first dictionary names /Dup twice, and its
+    /// stream's /Length is object 5, a stream whose own /Length its data does not end at; the second's /Length is object 9,
+    /// whose comment runs past an object guard of 64 bytes. The table lacks 5 and 9; object 6's row leads into the catalog.
     /// </summary>
     private static byte[] AnObjectTheScanForTrailersParses()
     {
@@ -2446,10 +2446,10 @@ public class ReadOrderTests
         {
             [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),
             [2] = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"),
-            [4] = file.Object(4, "% trailer\n<< /Dup 1 /Dup 2 /Length 5 0 R >>\nstream\nabcdef\nendstream"),
         };
+        file.Raw("trailer\n<< /Dup 1 /Dup 2 /Length 5 0 R >>\nstream\nabcdef\nendstream\n");
         file.Object(5, "<< /Length 2 >>\nstream\nabcdef\nendstream");
-        file.Object(8, "% trailer\n<< /Length 9 0 R >>\nstream\nabc\nendstream");
+        file.Raw("trailer\n<< /Length 9 0 R >>\nstream\nabc\nendstream\n");
         file.Object(9, "3 % " + new string('x', 100));
         rows[6] = rows[1];
         file.Table(7, rows, "/Size 7 /Root 1 0 R");
@@ -2700,14 +2700,14 @@ public class ReadOrderTests
     }
 
     [Fact]
-    public void A_member_the_definition_a_rebuild_serves_lists_elsewhere_is_reported_moved_whatever_was_read_before()
+    public void A_member_the_definition_a_rebuild_serves_is_placed_as_its_header_decoded_through_a_later_stream_lists_it()
     {
         // Object stream 6 is defined twice. The chain places 6 at the first, which lists 33 at index 1 while its entry says
-        // 0. The second's /Filter is object 10, which object stream 30, written after it, holds: the rebuild, which serves
-        // the second, expands it before 10 is indexed, its data read as written, where 33 is listed first, and indexes 33
-        // at index 0; read once the index is whole, its data decodes to a header that lists 33 at index 1. A move is
-        // reported once for each definition of its stream, keyed by where the definition's data starts: 33 read before the
-        // rebuild does not keep the served definition's move from being said.
+        // 0: reading 33 before the rebuild reports the move, keyed by where that definition's data starts. The second's
+        // /Filter is object 10, which object stream 30, written after it, holds. The rebuild served the second, expanded
+        // before 10 was indexed, its data read as written, where 33 is listed first, and reported a second move once it was
+        // read decoded; it now takes in 30 first, the stream written last (#348), and decodes the second through 10, whose
+        // header lists 33 at index 1, where it places it: no move is said of the definition it serves.
         var file = new HandWrittenFile();
         var catalog = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>");
         var pages = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>");
@@ -2731,11 +2731,10 @@ public class ReadOrderTests
         document.GetObject(new PdfObjectId(5));
         document.GetObject(new PdfObjectId(33)).AsInteger().Should().Be(6);
 
-        var moves = document.Diagnostics.Where(diagnostic => diagnostic.Code == PdfDiagnosticCodes.ObjectStreamMemberMoved)
-            .Select(diagnostic => diagnostic.Position).ToList();
-        moves.Should().HaveCount(2);
-        moves[0].Should().BeInRange(first, second);
-        moves[1].Should().BeGreaterThan(second);
+        document.Reader.Index.TryGet(33, out var entry).Should().BeTrue();
+        entry.Should().Be(XRefEntry.Compressed(6, 1));
+        document.Diagnostics.Where(diagnostic => diagnostic.Code == PdfDiagnosticCodes.ObjectStreamMemberMoved)
+            .Should().ContainSingle().Which.Position.Should().BeInRange(first, second);
     }
 
     [Fact]
@@ -2957,9 +2956,9 @@ public class ReadOrderTests
     public void A_rebuild_whose_scan_for_trailers_meets_a_length_chain_past_the_depth_the_reader_follows_reports_the_depth_once()
     {
         // Streams 100 to 249 each take their /Length from the next, and 101's row leads nowhere: reading 100 rebuilds the
-        // index with 100 and 101 in flight. Stream 150 says trailer in a comment before its dictionary: the scan for trailers
-        // parses that dictionary alone, and loads nothing of its /Length's chain, which reaches past the depth the reader
-        // follows (#171). The finish reads each object again from the finished index, 100 among them, which nests that deep:
+        // index with 100 and 101 in flight. A trailer keyword after stream 150 introduces a dictionary whose /Length is 151:
+        // the scan for trailers parses that dictionary alone, and loads nothing of its /Length's chain, which reaches past the
+        // depth the reader follows (#171). The finish reads each object again from the finished index, 100 among them, which nests that deep:
         // the depth is reported once (#167).
         var file = new HandWrittenFile();
         var rows = new Dictionary<int, long>
@@ -2970,8 +2969,12 @@ public class ReadOrderTests
 
         for (var number = 100; number < 250; number++)
         {
-            var comment = number == 150 ? "% trailer\n" : string.Empty;
-            rows[number] = file.Object(number, string.Create(CultureInfo.InvariantCulture, $"{comment}<< /Length {number + 1} 0 R >>\nstream\nx\nendstream"));
+            rows[number] = file.Object(number, string.Create(CultureInfo.InvariantCulture, $"<< /Length {number + 1} 0 R >>\nstream\nx\nendstream"));
+
+            if (number == 150)
+            {
+                file.Raw("trailer\n<< /Length 151 0 R >>\nstream\nx\nendstream\n");
+            }
         }
 
         rows[250] = file.Object(250, "1");

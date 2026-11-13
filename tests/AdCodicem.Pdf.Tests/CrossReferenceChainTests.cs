@@ -797,6 +797,8 @@ public class CrossReferenceChainTests
         // once more, a loop the file does not have reported and the oldest table never read, the index rebuilt as the
         // document opened. The header is the stream the chain read, from a sign of that run, its digits starting at the digit
         // the search finds: passed over as reached, as where no sign is written, and the oldest table is taken (#188, #327).
+        // A run a - starts is no header where the stream's own row places it, its first byte, as a load lexes it from there:
+        // that row is broken (#327).
         const string Readable = "/Type /XRef /Size 9 /Index [4 2 7 1] /W [1 4 2]";
         var at = LostStreamFiles.ThreeRevisions(Readable, before: 0, header: header).Stream;
         var (file, oldest, stream, newest) = LostStreamFiles.ThreeRevisions(
@@ -813,7 +815,9 @@ public class CrossReferenceChainTests
         Text(document, 7).Should().Be("new seven");
         document.WasRepaired.Should().BeFalse();
 
-        new PdfValidator().Validate(document).Findings.Where(finding => finding.Severity == PdfValidationSeverity.Error).Should().BeEmpty();
+        new PdfValidator().Validate(document).Findings.Where(finding => finding.Severity == PdfValidationSeverity.Error)
+            .Select(finding => (finding.RuleId, finding.Location.Position))
+            .Should().Equal(header.StartsWith('-') ? [(PdfValidationRuleIds.XRefEntryBroken, stream)] : []);
     }
 
     [Theory]
@@ -919,10 +923,13 @@ public class CrossReferenceChainTests
         Text(document, 4).Should().Be("only in the stream");
         Text(document, 7).Should().Be("new seven");
 
+        // A readable stream's own row places it at its header's first byte: from a -, a load reads no header (#327).
         new PdfValidator().Validate(document).Findings.Where(finding => finding.Severity == PdfValidationSeverity.Error)
             .Select(finding => (finding.RuleId, finding.Location.Position)).Should().Equal(
                 readable
-                    ? [(PdfValidationRuleIds.XRefSectionNotFound, missing)]
+                    ? header.StartsWith('-')
+                        ? [(PdfValidationRuleIds.XRefSectionNotFound, missing), (PdfValidationRuleIds.XRefEntryBroken, stream)]
+                        : [(PdfValidationRuleIds.XRefSectionNotFound, missing)]
                     : [(PdfValidationRuleIds.XRefSectionMalformed, named), (PdfValidationRuleIds.XRefSectionNotFound, missing)]);
     }
 
@@ -1130,14 +1137,14 @@ public class CrossReferenceChainTests
         // The file's one cross-reference stream, which startxref names, holds zlib data damaged at its third byte, which
         // decodes to nothing, and the file has no trailer keyword. The encoded bytes were read as four rows, all of a reserved
         // type, and the validator said no object of the file is a catalog, though the rebuild found one (#260). The data holds
-        // no row, the file is rebuilt as it opens, and the rebuild finds the catalog, the stream's dictionary, which alone
-        // gave /Root, read as no trailer: the validator says only what made the stream unreadable.
+        // no row, the file is rebuilt as it opens, and the rebuild merges the stream's dictionary as the trailer it is, which
+        // gives /Root (#154): the validator says only what made the stream unreadable.
         var (file, stream) = UndecodedStreamFiles.AloneInDamagedZlibData();
 
         using var document = PdfDocument.Open(file);
 
         document.Diagnostics.Select(diagnostic => diagnostic.Code).Should().Equal(
-            PdfDiagnosticCodes.FilterFailed, PdfDiagnosticCodes.XRefRebuilt, PdfDiagnosticCodes.TrailerRootRecovered);
+            PdfDiagnosticCodes.FilterFailed, PdfDiagnosticCodes.XRefRebuilt);
         document.WasRepaired.Should().BeTrue();
         document.GetObject(new PdfObjectId(1)).AsDictionary().Required().IsOfType(PdfName.Catalog).Should().BeTrue();
 
@@ -3312,18 +3319,19 @@ public class CrossReferenceChainTests
     public void A_rebuild_reports_a_full_index_once_though_an_object_stream_lies_before_the_header()
     {
         // The rebuild placed an object stream found before the header at an offset counted from it, negative, and the
-        // report at that offset: the next number with no room, the report seeming not made, was reported again.
-        static string Packed(int number, int first)
+        // report at that offset: the next number with no room, the report seeming not made, was reported again. The later
+        // stream's few members, taken in first (#348), leave room; the earlier stream's fill it.
+        static string Packed(int number, int first, int count)
         {
-            var header = string.Join(' ', Enumerable.Range(0, 50).Select(i => string.Create(CultureInfo.InvariantCulture, $"{first + i} {i * 4}")));
-            var members = string.Concat(Enumerable.Range(0, 50).Select(_ => "(m)\n"));
+            var header = string.Join(' ', Enumerable.Range(0, count).Select(i => string.Create(CultureInfo.InvariantCulture, $"{first + i} {i * 4}")));
+            var members = string.Concat(Enumerable.Range(0, count).Select(_ => "(m)\n"));
             return string.Create(
                 CultureInfo.InvariantCulture,
-                $"{number} 0 obj\n<< /Type /ObjStm /N 50 /First {header.Length + 1} /Length {header.Length + 1 + members.Length} >>\nstream\n{header}\n{members}\nendstream\nendobj\n");
+                $"{number} 0 obj\n<< /Type /ObjStm /N {count} /First {header.Length + 1} /Length {header.Length + 1 + members.Length} >>\nstream\n{header}\n{members}\nendstream\nendobj\n");
         }
 
-        var text = Packed(3, 100) + "%PDF-1.7\n1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n2 0 obj\n<< /Type /Pages /Kids [] /Count 0 >>\nendobj\n"
-            + Packed(4, 200) + "trailer\n<< /Root 1 0 R >>\n%%EOF\n";
+        var text = Packed(3, 100, 50) + "%PDF-1.7\n1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n2 0 obj\n<< /Type /Pages /Kids [] /Count 0 >>\nendobj\n"
+            + Packed(4, 200, 5) + "trailer\n<< /Root 1 0 R >>\n%%EOF\n";
         var options = PdfReaderOptions.Default with { Limits = PdfReaderLimits.Default with { MaxIndexEntries = 20 } };
 
         using var document = PdfDocument.Open(Encoding.Latin1.GetBytes(text), options);
@@ -8682,7 +8690,8 @@ public class CrossReferenceChainTests
         // above, the chain never following its /Prev —, the cut is what would end the chain there (#264). Nothing is
         // reported of any stream passed over now, whatever the guard cut, as where it cuts a dictionary there — even where
         // stream 7 names nothing, and the report the chain read whole makes is the file's (ADR 34). Where startxref names
-        // the place, the index is rebuilt as the document opens, and no search runs that could pass a stream over. A bound
+        // the place, the index is rebuilt as the document opens, and no search runs that could pass a stream over; the
+        // rebuild merges the cross-reference streams' dictionaries as trailers, /Root among their keys (#154). A bound
         // three bytes past the header reads it, and cuts the dictionary on the padding before its /Type: the guard's
         // section, cut where it was named, the chain ending there.
         var written = HeaderWrittenAs(header, named == "/XRefStm" ? 9 : 7);
@@ -8737,7 +8746,7 @@ public class CrossReferenceChainTests
             document.Diagnostics.Select(diagnostic => (diagnostic.Code, diagnostic.Position)).Should().Equal(
                 maxTrailerLength == 0
                     ? []
-                    : [(PdfDiagnosticCodes.LimitTrailer, oldest), (PdfDiagnosticCodes.XRefRebuilt, -1), (PdfDiagnosticCodes.TrailerRootRecovered, -1)]);
+                    : [(PdfDiagnosticCodes.LimitTrailer, oldest), (PdfDiagnosticCodes.XRefRebuilt, -1)]);
             document.WasRepaired.Should().Be(maxTrailerLength != 0);
         }
         else
@@ -8939,7 +8948,8 @@ public class CrossReferenceChainTests
         // As above, the oldest table out of the search's reach: the search comes back to object 9 once no other place holds
         // a section, and takes it where it reads, whatever its line is, or where it declares itself a cross-reference stream
         // though it cannot be read; it drops a header a comment or a string holds on its line, and a stream that gives only a
-        // /W, where they cannot be read, and the section is reported missing (#171, #281).
+        // /W, where they cannot be read, and the section is reported missing (#171, #281). A header a string holds is no
+        // object for the rebuild either, which neither takes nor loads it (#171).
         var (file, _, _, at, _) = HybridFiles.PrevFallingShortOfAPlacePastTheStream(place, alone: true);
         var reads = place.StartsWith("a readable", StringComparison.Ordinal);
         var taken = reads || place == "a header on its line";
@@ -8956,7 +8966,9 @@ public class CrossReferenceChainTests
                 ? [PdfDiagnosticCodes.XRefOffsetAdjusted, PdfDiagnosticCodes.XRefRebuilt]
                 : taken
                     ? [PdfDiagnosticCodes.StreamTruncated, PdfDiagnosticCodes.XRefOffsetAdjusted, PdfDiagnosticCodes.XRefSectionUnreadable, PdfDiagnosticCodes.XRefRebuilt]
-                    : [PdfDiagnosticCodes.StreamTruncated, PdfDiagnosticCodes.XRefSectionMissing, PdfDiagnosticCodes.XRefRebuilt]);
+                    : place == "a header in a string"
+                        ? [PdfDiagnosticCodes.XRefSectionMissing, PdfDiagnosticCodes.XRefRebuilt]
+                        : [PdfDiagnosticCodes.StreamTruncated, PdfDiagnosticCodes.XRefSectionMissing, PdfDiagnosticCodes.XRefRebuilt]);
     }
 
     [Theory]
@@ -8979,8 +8991,8 @@ public class CrossReferenceChainTests
         // missing, though the file holds it near where it is named. Where the line its number is on, which an end of line
         // ends before obj, holds a % — a comment that ends that line, or one a string holds —, the walk lexes that line and
         // finds the header at its sign, where it was taken already; a comment on a line of its own leaves the number's line
-        // to the walk's digits. A run that starts with a - makes no object's number, and the section is missing (#281,
-        // #327).
+        // to the walk's digits. A run that starts with a - makes no object's number, and the section is missing; nor does
+        // the rebuild take it for object 9, and load it (#281, #327).
         var (file, _, _, at, _) = HybridFiles.PrevFallingShortOfAPlacePastTheStream("a header on its line", alone: true, header: header);
         using var document = PdfDocument.Open(file);
 
@@ -8992,7 +9004,7 @@ public class CrossReferenceChainTests
         document.Diagnostics.Select(diagnostic => diagnostic.Code).Should().Equal(
             found >= 0
                 ? [PdfDiagnosticCodes.StreamTruncated, PdfDiagnosticCodes.XRefOffsetAdjusted, PdfDiagnosticCodes.XRefSectionUnreadable, PdfDiagnosticCodes.XRefRebuilt]
-                : [PdfDiagnosticCodes.StreamTruncated, PdfDiagnosticCodes.XRefSectionMissing, PdfDiagnosticCodes.XRefRebuilt]);
+                : [PdfDiagnosticCodes.XRefSectionMissing, PdfDiagnosticCodes.XRefRebuilt]);
     }
 
     [Theory]

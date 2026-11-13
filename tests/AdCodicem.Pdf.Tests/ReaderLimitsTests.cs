@@ -1119,7 +1119,7 @@ public class ReaderLimitsTests
         {
             [1] = file.Object(1, Catalog),
             [2] = file.Object(2, Pages),
-            [6] = file.Position,
+            [6] = file.Position + ChainFiles.HiddenHeaderLead,
         };
         file.Raw(ChainFiles.HiddenHeader(6) + "\n<< /Type /ObjStm /N 1 /First 4 /Length 18 >>\nstream\n7 0 (packed seven)\nendstream\nendobj\n");
         rows[8] = file.Padding(8);
