@@ -223,7 +223,9 @@ internal sealed partial class PdfFileReader : IPdfObjectSource, IPdfStreamDataPr
     /// after it for one — and the index as written does not place, which only a rebuilt one does. This keeps what they
     /// read in proportion to the file, as a window keeps the parsing of their dictionaries. Which streams keep their
     /// declared length unsearched past it depends on the order they are read in: crafted files reach it, and no
-    /// document of the corpus comes near, whose searches read 0.35 of a file at most.
+    /// document of the corpus comes near, whose searches read 0.35 of a file at most. The rebuild's scan counts its own
+    /// reads past declared lengths apart, against the same multiple: it reads the white space after each length its
+    /// stream headers declare, the runs after different streams apart, about the file once for a valid one.
     /// </remarks>
     internal const int EndStreamSearchPasses = 4;
 
@@ -563,6 +565,13 @@ internal sealed partial class PdfFileReader : IPdfObjectSource, IPdfStreamDataPr
 
     /// <summary>How many bytes the searches for <c>endstream</c> read, which <see cref="EndStreamSearchPasses"/> bounds.</summary>
     private long _endStreamSearchBytes;
+
+    /// <summary>
+    /// How many bytes the rebuild's scan read past streams' declared lengths to confirm them, which
+    /// <see cref="EndStreamSearchPasses"/> bounds apart from the loads' searches, so that what the scan reads leaves them
+    /// theirs.
+    /// </summary>
+    private long _scanGapBytes;
 
     /// <summary>
     /// How many times a load answered null because the object was being loaded already, or because the object
