@@ -738,6 +738,42 @@ public class ReaderTimingTests
         }
     }
 
+    [Fact]
+    public void Four_times_as_many_stream_headers_whose_lengths_end_in_white_space_allocate_what_the_fewer_do()
+    {
+        // Stream headers of one number, each with a direct /Length that ends at a different offset of one run of spaces, and
+        // no endstream after it. The scan confirmed each length through the reader's own check, which kept a result for each
+        // place, the white space read past a budget too: memory followed the number of headers, 1.2 GB for a file of 710 MB.
+        // The scan keeps nothing of the white space it reads, and what it reads is bounded apart from the loads' searches:
+        // four times the headers allocate what the fewer do (#171).
+        var few = Headers(20_000);
+        var many = Headers(80_000);
+
+        var fewAllocated = Allocations.Least(() => Open(few), out _);
+        var manyAllocated = Allocations.Least(() => Open(many), out _);
+
+        manyAllocated.Should().BeLessThan(fewAllocated + (256 * 1024), "the scan keeps nothing for each header ({0} against {1})", manyAllocated, fewAllocated);
+
+        static int Open(byte[] file)
+        {
+            using var document = PdfDocument.Open(file);
+            document.WasRepaired.Should().BeTrue();
+            return document.Catalog?.Count ?? 0;
+        }
+
+        static byte[] Headers(int count)
+        {
+            var text = new StringBuilder("%PDF-1.7\n1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n2 0 obj\n<< /Type /Pages /Kids [] /Count 0 >>\nendobj\n");
+
+            for (var i = 0; i < count; i++)
+            {
+                text.Append(CultureInfo.InvariantCulture, $"3 0 obj<</Length {count * 37:D10}>>stream\n");
+            }
+
+            return Encoding.Latin1.GetBytes(text.Append(' ', count * 40).Append("x\ntrailer\n<< /Root 1 0 R >>\n%%EOF\n").ToString());
+        }
+    }
+
     /// <summary>
     /// Gets the shortest run of each action, the two run in turn: five times each at least, and on until neither has run
     /// faster for three turns — at most forty turns, or twenty seconds —, so that both are timed warm whatever ran before.

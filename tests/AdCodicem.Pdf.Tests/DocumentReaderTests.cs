@@ -4250,6 +4250,7 @@ public class DocumentReaderTests
     [InlineData("a string", false)]
     [InlineData("a string that holds endobj", true)]
     [InlineData("a comment between objects", false)]
+    [InlineData("a comment the end-of-file marker opens before a stream's endstream", false)]
     [InlineData("stream data whose /Length is an object", true)]
     [InlineData("stream data whose direct /Length is wrong", true)]
     [InlineData("nothing: written between objects", true)]
@@ -4282,6 +4283,9 @@ public class DocumentReaderTests
                 break;
             case "a comment between objects":
                 file.Raw("% " + Injected.Replace("\n", " ", StringComparison.Ordinal) + "\n");
+                break;
+            case "a comment the end-of-file marker opens before a stream's endstream":
+                file.Object(5, "<< /Length 4 >>\nstream\nabcd\n%%EOF " + Injected.Replace("\n", " ", StringComparison.Ordinal) + "\nendstream");
                 break;
             case "stream data whose /Length is an object":
                 file.Object(5, $"<< /Length 6 0 R >>\nstream\n{Injected}\nendstream");
@@ -4378,6 +4382,88 @@ public class DocumentReaderTests
 
         document.WasRepaired.Should().BeTrue();
         document.GetObject(new PdfObjectId(2)).AsDictionary().Required().ContainsKey(PdfName.Get("Injected")).Should().Be(injected);
+    }
+
+    [Fact]
+    public void A_header_whose_line_starts_in_a_stream_s_data_is_read_from_the_stream_s_end_wherever_the_piece_starts()
+    {
+        // Stream 4's data ends its line with a comment, " % def", and its line goes on past the data: " endstream endobj 5",
+        // object 5's generation and obj on the next line. The scan read the line of object 5's number from its start inside
+        // stream 4's data, where the comment took the number, and lost object 5 — unless stream 4 crossed the end of a piece,
+        // where the line was read from the stream's end and object 5 taken. A header is read from where the object before it
+        // ends, in a piece as from further back (#171).
+        var file = new HandWrittenFile();
+        file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>");
+        file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>");
+        file.Raw("4 0 obj\n<< /Length 206 >>\nstream\n" + new string('x', 200) + " % def endstream endobj 5\n0 obj\n(five)\nendobj\n");
+        file.Raw("trailer\n<< /Root 1 0 R >>\nstartxref\n9\n%%EOF\n");
+        using var document = PdfDocument.Open(file.Bytes);
+
+        document.WasRepaired.Should().BeTrue();
+        document.GetObject(new PdfObjectId(5)).AsText().Should().Be("five");
+    }
+
+    [Fact]
+    public void An_object_a_piece_cuts_is_delimited_under_a_MaxObjectLength_smaller_than_a_first_window()
+    {
+        // Object 5, a string of 2 KB that holds on a line of its own a second object 9, starts a thousand bytes before the end
+        // of the scan's first piece, under a MaxObjectLength of 4 KB. The scan gave a value its piece cuts up before reading
+        // any window, as though the window it was about to read reached the bound: object 5 was not delimited, and object 9
+        // defined again. It reads from the header as far as the bound, and object 5, within it, hides the header (#171).
+        var file = new HandWrittenFile();
+        file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>");
+        file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>");
+        file.Object(9, "(real nine)");
+        file.Raw("%" + new string('-', (1024 * 1024) - 1000 - (int)file.Position) + "\n");
+        file.Object(5, "(" + new string('x', 900) + "\n9 0 obj\n(inner)\n" + new string('x', 1000) + ")");
+        file.Raw("trailer\n<< /Root 1 0 R >>\nstartxref\n9\n%%EOF\n");
+        var options = new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxObjectLength = 4096 } };
+        using var document = PdfDocument.Open(file.Bytes, options);
+
+        document.WasRepaired.Should().BeTrue();
+        document.GetObject(new PdfObjectId(9)).AsText().Should().Be("real nine");
+    }
+
+    [Fact]
+    public void Objects_written_on_the_line_of_a_string_an_unbalanced_parenthesis_runs_on_are_the_file_s()
+    {
+        // Object 5's string leaves a parenthesis open, and the objects after it are written on the same line. The string runs
+        // past object 5's end and delimits nothing; the sweep that hides a header in a string between objects then read the
+        // rest of the line as that string, and hid them. What a runaway string runs into is read as the bytes give it (#171).
+        var file = new HandWrittenFile();
+        file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>");
+        file.Raw("5 0 obj (Report :-( draft) endobj 2 0 obj << /Type /Pages /Kids [3 0 R] /Count 1 >> endobj "
+            + "3 0 obj << /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] >> endobj 6 0 obj (six) endobj\n");
+        file.Raw("trailer\n<< /Root 1 0 R >>\nstartxref\n9\n%%EOF\n");
+        using var document = PdfDocument.Open(file.Bytes);
+
+        document.WasRepaired.Should().BeTrue();
+        document.GetObject(new PdfObjectId(2)).AsDictionary().Required().GetArray(PdfName.Kids).Required().Count.Should().Be(1);
+        document.GetObject(new PdfObjectId(3)).AsDictionary().Required().IsOfType(PdfName.Page).Should().BeTrue();
+        document.GetObject(new PdfObjectId(6)).AsText().Should().Be("six");
+    }
+
+    [Fact]
+    public void What_the_scan_reads_past_declared_lengths_leaves_the_loads_their_searches_for_endstream()
+    {
+        // Thousands of stream headers of object 9, each with a direct /Length ending at a different offset of one run of
+        // spaces, follow stream 3, whose /Length says 5 of its 100,000 bytes. The scan read the white space after each length
+        // with the loads' searches for endstream, and spent what they may read: stream 3 then kept its declared length
+        // unsearched. The scan's reads past declared lengths are bounded apart, and stream 3 is searched to its endstream
+        // (#171).
+        var text = new StringBuilder("%PDF-1.7\n1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n2 0 obj\n<< /Type /Pages /Kids [] /Count 0 >>\nendobj\n");
+        text.Append("3 0 obj\n<< /Length 5 >>\nstream\n").Append('d', 100_000).Append("\nendstream\nendobj\n");
+
+        for (var i = 0; i < 5000; i++)
+        {
+            text.Append(CultureInfo.InvariantCulture, $"9 0 obj<</Length {200_000 + (i * 37):D10}>>stream\n");
+        }
+
+        text.Append(' ', 256 * 1024).Append("x\ntrailer\n<< /Root 1 0 R >>\nstartxref\n9\n%%EOF\n");
+        using var document = PdfDocument.Open(Encoding.Latin1.GetBytes(text.ToString()));
+
+        document.WasRepaired.Should().BeTrue();
+        document.GetObject(new PdfObjectId(3)).Should().BeOfType<PdfStream>().Which.Data.Length.Should().Be(100_000);
     }
 
     [Theory]
