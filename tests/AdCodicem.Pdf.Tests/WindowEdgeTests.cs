@@ -1250,6 +1250,7 @@ public class WindowEdgeTests
 
     [Theory]
     [InlineData("40 % a comment of a hundred bytes ----------------------------------------------------------------\n0 obj", 40, "forty")]
+    [InlineData("7 0 obj null endobj 40 % a comment of a hundred bytes ----------------------------------------------------------------\n0 obj", 40, "forty")]
     [InlineData("1000000000000000000000000000000000000000000000000000000000000000000000004 0 obj", 0, null)]
     [InlineData("++40 0 obj", 40, "forty")]
     [InlineData("%%EOF40 0 obj", 40, "forty")]
@@ -1262,7 +1263,9 @@ public class WindowEdgeTests
         // and object 40 lost; the 1 of a number past any object number was cut, and the run after it read as object 4,
         // which then replaced the file's own. The walk reads on from further back, as far as it takes, so that wherever
         // the piece's start falls in the header, the scan takes what the file holds (#171): a number glued to the end-of-file
-        // marker, which a piece may start inside, and none glued to a word. Object 4 is the file's own, written before.
+        // marker, which a piece may start inside, and none glued to a word. A walk that reaches where the object before the
+        // header ends, on the header's line, reads it from there as from the start of the data, though that object ended
+        // in the piece before. Object 4 is the file's own, written before.
         var probe = Build(header, text, 2);
         var offset = probe.AsSpan().IndexOf(Encoding.Latin1.GetBytes(header));
 
