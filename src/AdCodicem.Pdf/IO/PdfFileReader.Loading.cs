@@ -780,8 +780,26 @@ internal sealed partial class PdfFileReader
     }
 
     /// <summary>
-    /// Reads the <c>N G</c> that precedes an <c>obj</c> keyword. Walking backwards is what distinguishes a
-    /// real object header from the <c>obj</c> inside <c>endobj</c>.
+    /// Reads the <c>N G</c> that precedes an <c>obj</c> keyword, the bytes before <paramref name="span"/> standing for the
+    /// start of the data. Walking backwards is what distinguishes a real object header from the <c>obj</c> inside
+    /// <c>endobj</c>.
+    /// </summary>
+    /// <param name="span">The bytes the keyword lies in, from the start of the data or of what a caller searches.</param>
+    /// <param name="objPosition">Where the keyword starts in <paramref name="span"/>.</param>
+    /// <param name="number">The object number the header gives.</param>
+    /// <param name="generation">The generation the header gives, as the parser reads it: what an entry recording the
+    /// header records (#118).</param>
+    /// <param name="headerStart">Where the header starts in <paramref name="span"/>: where the lexer starts its number's
+    /// token, at the first sign of a run of signs the number is written with (#327).</param>
+    internal static bool TryReadHeaderBackwards(
+        ReadOnlySpan<byte> span, int objPosition, out int number, out int generation, out int headerStart) =>
+        ReadHeaderBackwards(
+            span, objPosition, startsData: true, signsBeforeUnknown: false, out number, out generation, out headerStart, out _) ==
+            HeaderWalk.Header;
+
+    /// <summary>
+    /// Reads the <c>N G</c> that precedes an <c>obj</c> keyword, as a load lexes those tokens. Walking backwards is what
+    /// distinguishes a real object header from the <c>obj</c> inside <c>endobj</c>.
     /// </summary>
     /// <remarks>
     /// <para>
@@ -790,43 +808,74 @@ internal sealed partial class PdfFileReader
     /// gives a span that holds the byte after every <c>obj</c> it asks about, where the file holds one.
     /// </para>
     /// <para>
-    /// Each number, the generation first, is a run of digits read backwards over the white space after it, as a load reads
-    /// it where only white space lies between the tokens. A comment may lie there too (ISO 32000-1, 7.2.3), and runs to the
-    /// end of its line: one ends before a token only where the white space crossed holds an end of line. There, a line that
-    /// holds a <c>%</c> is read as a load reads it, lexed forward from its start, which tells a comment from a <c>%</c> a
-    /// string holds: its last tokens are the numbers still wanted, the nearest first, and a line that holds nothing but a
-    /// comment is passed for the line before it (#261). A line that holds no <c>%</c> is read by its digits, as is the line
-    /// of <c>obj</c> itself.
+    /// Each number, the generation first, is an integer token read backwards over the white space after it, as a load reads
+    /// it where only white space lies between the tokens: a run of digits, after the run of signs it may be written with,
+    /// which the lexer reads with it as one token, the first sign deciding (ISO 32000-1, 7.3.3) — <c>4 +0 obj</c> and
+    /// <c>+4 0 obj</c> are object 4's header, <c>-4 0 obj</c> none, its number below 1 (#327). The token starts where the
+    /// lexer would start it: the byte before it is white space or a delimiter that ends a token, not a regular character, nor
+    /// a delimiter that starts a token the digits would belong to — <c>(</c>, <c>&lt;</c>, <c>/</c>, <c>%</c> —; so
+    /// <c>x4 0 obj</c> is no header, and no window's start cuts a number short (#171). A comment may lie between the tokens
+    /// too (ISO 32000-1, 7.2.3), and runs to the end of its line: one ends before a token only where the white space crossed
+    /// holds an end of line. There, a line that holds a <c>%</c> is read as a load reads it, lexed forward from its start,
+    /// which tells a comment from a <c>%</c> a string holds: its last tokens are the numbers still wanted, the nearest
+    /// first, and a line that holds nothing but a comment is passed for the line before it (#261). A line that holds no
+    /// <c>%</c> is read by its tokens, as is the line of <c>obj</c> itself.
     /// </para>
     /// <para>
     /// A walk lexes a line once at most, and enters it only through the white space right after it, which one walk at most
     /// crosses — that of the <c>obj</c> the tokens after it lead to, through comments and a generation —: the work stays
     /// linear in the bytes searched, and nothing is allocated. Those bytes bound a walk: the window of a search near an
-    /// offset, or a chunk of the scan. A line whose start lies inside a string a line before it opened is lexed from its
-    /// start all the same, and a comment whose <c>%</c> lies before the bytes searched is read as what it holds, as a number
-    /// their start cuts is in the scan's chunks (#171).
+    /// offset, or what the rebuild's scan reads. Where <paramref name="startsData"/> is false, a walk that reaches the start
+    /// of <paramref name="span"/> undecided — in white space, a token, or a line holding a <c>%</c> that starts there — says
+    /// so, for the caller to read further back; where it is true, that start is the start of the data. A line whose start lies
+    /// inside a string a line before it opened is lexed from its start all the same.
     /// </para>
     /// </remarks>
     /// <param name="span">The bytes the keyword lies in.</param>
     /// <param name="objPosition">Where the keyword starts in <paramref name="span"/>.</param>
+    /// <param name="startsData">
+    /// Whether the start of <paramref name="span"/> is taken for the start of the data; a walk that reaches it undecided
+    /// says so otherwise.
+    /// </param>
+    /// <param name="signsBeforeUnknown">
+    /// Whether a run of signs that reaches the start of <paramref name="span"/>, taken for the start of the data, is left
+    /// out of the number, its first sign perhaps before the bytes given: the search near an offset reads such a header by
+    /// its digits.
+    /// </param>
     /// <param name="number">The object number the header gives.</param>
-    /// <param name="generation">The generation the header gives, as the parser reads it: what an entry recording the
-    /// header records (#118).</param>
-    /// <param name="headerStart">Where the header starts in <paramref name="span"/>.</param>
-    internal static bool TryReadHeaderBackwards(
-        ReadOnlySpan<byte> span, int objPosition, out int number, out int generation, out int headerStart)
+    /// <param name="generation">The generation the header gives, as the parser reads it.</param>
+    /// <param name="headerStart">Where the header starts in <paramref name="span"/>: its number's token, a sign included.</param>
+    /// <param name="found">
+    /// Where the walk met the object number in <paramref name="span"/>: its digits, past its signs, where it read the number
+    /// back by them, and its token's start where it lexed the number's line — where the search near an offset places a
+    /// header (<see cref="FindSectionCandidates"/>).
+    /// </param>
+    private static HeaderWalk ReadHeaderBackwards(
+        ReadOnlySpan<byte> span,
+        int objPosition,
+        bool startsData,
+        bool signsBeforeUnknown,
+        out int number,
+        out int generation,
+        out int headerStart,
+        out int found)
     {
         number = 0;
         generation = 0;
         headerStart = 0;
+        found = 0;
 
         var index = objPosition - 1;
         var after = objPosition + ObjKeyword.Length;
 
-        if (index < 0 || !PdfCharacters.IsWhitespace(span[index]) ||
-            (after < span.Length && PdfCharacters.IsRegular(span[after])))
+        if (index < 0)
         {
-            return false;
+            return startsData ? HeaderWalk.None : HeaderWalk.Undecided;
+        }
+
+        if (!PdfCharacters.IsWhitespace(span[index]) || (after < span.Length && PdfCharacters.IsRegular(span[after])))
+        {
+            return HeaderWalk.None;
         }
 
         var numbers = default(HeaderNumbers);
@@ -842,15 +891,26 @@ internal sealed partial class PdfFileReader
                 index--;
             }
 
+            if (index < 0)
+            {
+                return startsData ? HeaderWalk.None : HeaderWalk.Undecided;
+            }
+
             if (endOfLine)
             {
                 var lineStart = span[..(index + 1)].LastIndexOfAny((byte)'\r', (byte)'\n') + 1;
 
                 if (span[lineStart..(index + 1)].Contains((byte)'%'))
                 {
+                    // A line that starts the bytes may start before them, where a string or a token may begin.
+                    if (lineStart == 0 && !startsData)
+                    {
+                        return HeaderWalk.Undecided;
+                    }
+
                     if (!numbers.TakeLine(span[..(index + 1)], lineStart))
                     {
-                        return false;
+                        return HeaderWalk.None;
                     }
 
                     index = lineStart - 1;
@@ -858,8 +918,8 @@ internal sealed partial class PdfFileReader
                 }
             }
 
-            // A run of digits, which ends the walk where it is empty: a byte that is neither white space nor a digit before the
-            // generation's digits, or no byte, leaves the number none.
+            // A run of digits, which ends the walk where it is empty, then the run of signs before it: the lexer reads both as
+            // one token, which starts where neither a regular character nor a delimiter that starts a token comes before it.
             var runEnd = index + 1;
 
             while (index >= 0 && PdfCharacters.IsDigit(span[index]))
@@ -871,31 +931,57 @@ internal sealed partial class PdfFileReader
 
             if (runStart == runEnd)
             {
-                return false;
+                return HeaderWalk.None;
             }
 
-            // Each run is judged by its value, however many zeros lead it, as the parser judges it: a header the parser would
-            // refuse, found here, would be an object no read can serve. A run of digits always parses, as an integer within a
-            // long or as a real past one.
-            _ = PdfNumberParser.TryParse(span[runStart..runEnd], out var value, out _, out var pastLong);
+            while (index >= 0 && span[index] is (byte)'+' or (byte)'-')
+            {
+                index--;
+            }
+
+            if (index < 0 ? !startsData : !PdfCharacters.EndsToken(span[index]))
+            {
+                return index < 0 ? HeaderWalk.Undecided : HeaderWalk.None;
+            }
+
+            // Each token is judged by its value, however many zeros lead it, as the parser judges it: a header the parser
+            // would refuse, found here, would be an object no read can serve. A run of digits after signs always parses, as an
+            // integer within a long or as a real past one. Signs that run back to the start of bytes that do not start the
+            // data may follow a first sign they do not hold: they are not read, and the digits decide.
+            var tokenStart = index < 0 && signsBeforeUnknown ? runStart : index + 1;
+            _ = PdfNumberParser.TryParse(span[tokenStart..runEnd], out var value, out _, out var pastLong);
 
             if (pastLong)
             {
-                return false;
+                return HeaderWalk.None;
             }
 
-            numbers.Take(value, runStart);
+            numbers.Take(value, tokenStart, runStart);
         }
 
         if (numbers.Number is <= 0 or > PdfObjectId.MaxNumber || numbers.Generation is < 0 or > PdfObjectId.MaxGeneration)
         {
-            return false;
+            return HeaderWalk.None;
         }
 
         number = (int)numbers.Number;
         generation = (int)numbers.Generation;
         headerStart = numbers.NumberStart;
-        return true;
+        found = numbers.NumberFound;
+        return HeaderWalk.Header;
+    }
+
+    /// <summary>What a walk back from an <c>obj</c> keyword decides (<see cref="ReadHeaderBackwards"/>).</summary>
+    private enum HeaderWalk
+    {
+        /// <summary>No header ends at the keyword.</summary>
+        None,
+
+        /// <summary>A header ends at the keyword.</summary>
+        Header,
+
+        /// <summary>The walk reached the start of the bytes it was given before it could decide.</summary>
+        Undecided,
     }
 
     /// <summary>
@@ -913,11 +999,20 @@ internal sealed partial class PdfFileReader
         /// <summary>Gets the object number, once taken.</summary>
         public long Number { get; private set; }
 
-        /// <summary>Gets where the object number starts, once taken.</summary>
+        /// <summary>Gets where the object number's token starts, a sign included, once taken.</summary>
         public int NumberStart { get; private set; }
 
-        /// <summary>Takes <paramref name="value"/>, which starts at <paramref name="start"/>, as the next number wanted.</summary>
-        public void Take(long value, int start)
+        /// <summary>
+        /// Gets where the walk met the object number, once taken: its digits, past its signs, where it read the number back
+        /// by them, and its token's start where it lexed the number's line.
+        /// </summary>
+        public int NumberFound { get; private set; }
+
+        /// <summary>
+        /// Takes <paramref name="value"/>, whose token starts at <paramref name="start"/> and which the walk met at
+        /// <paramref name="found"/>, as the next number wanted.
+        /// </summary>
+        public void Take(long value, int start, int found)
         {
             if (Taken == 0)
             {
@@ -927,6 +1022,7 @@ internal sealed partial class PdfFileReader
             {
                 Number = value;
                 NumberStart = start;
+                NumberFound = found;
             }
 
             Taken++;
@@ -965,7 +1061,7 @@ internal sealed partial class PdfFileReader
                 return false;
             }
 
-            Take(token.Integer, token.Start);
+            Take(token.Integer, token.Start, token.Start);
             return true;
         }
     }

@@ -195,17 +195,19 @@ internal ref struct HeaderText
     /// it starts in the file; -1 when there is none.
     /// </summary>
     /// <remarks>
-    /// A header is <c>N G obj</c> at a token boundary, as the file's bytes hold it: white space, a delimiter or the start
-    /// of the data before the number; a run of digits whose value the parser takes for an object number, 1 to
+    /// A header is <c>N G obj</c> at a token boundary, as the file's bytes hold it: white space, a delimiter that ends a
+    /// token or the start of the data before the number; a run of digits whose value the parser takes for an object number, 1 to
     /// 2,147,483,647, and one whose value it takes for a generation, 0 to 65,535, however many zeros lead them; white
     /// space before each of the generation and <c>obj</c>, as much as the file holds, and comments between them, as the
     /// scan that rebuilds an index reads them (#261): where the white space crossed holds an end of line and the line it
     /// ends holds a <c>%</c>, that line is lexed from its start as a load reads it, its last tokens are the numbers — digits
     /// alone —, and a line that holds only a comment is passed; and white space, a delimiter or the end of the search after
-    /// <c>obj</c>. <c>endobj</c> is no header, nor <c>10 0 objx</c>, nor digits a regular character precedes, nor a sign
-    /// before a number, nor digits a comment ends with, which were once taken for a number. The scan that rebuilds an index
-    /// refuses <c>endobj</c>, <c>10 0 objx</c> (#189) and digits a comment ends with too, but takes digits a regular
-    /// character precedes (#171), and numbers a sign precedes as its digits or the lexer read them (#327).
+    /// <c>obj</c>. <c>endobj</c> is no header, nor <c>10 0 objx</c>, nor digits that a regular character, an opening
+    /// parenthesis or angle bracket, a solidus or a percent sign precedes — which a load lexes into a longer token, a string,
+    /// a name or a comment —, nor a sign before a number, nor digits a comment ends with, which were once taken for a
+    /// number. The scan that rebuilds an index refuses the same (#171, #189), but reads a number a run of signs precedes as
+    /// the lexer reads it, the first sign deciding (#327): the rule reads digits alone, so that a stream whose data holds
+    /// <c>+4 0 obj</c> is searched past it, to an <c>endstream</c> or a header after it.
     /// A header lies whole in what the search reads, from the start of the data to the next object the index places: the
     /// stream's own header, and whatever precedes the data, is never one, and one that the next object's offset cuts is
     /// not seen, that offset stopping the search first. The rule reads nothing but the bytes, so where it stops cannot
@@ -385,7 +387,7 @@ internal ref struct HeaderText
             }
 
             numbers.Take(
-                Value(index + 1, runEnd, 0, view), PositionOf(index + 1, 0, view), !PdfCharacters.IsRegular(ByteAt(index, 0, view)));
+                Value(index + 1, runEnd, 0, view), PositionOf(index + 1, 0, view), PdfCharacters.EndsToken(ByteAt(index, 0, view)));
         }
 
         return numbers;

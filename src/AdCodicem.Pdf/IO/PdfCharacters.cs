@@ -25,6 +25,15 @@ internal static class PdfCharacters
 
     public static bool IsDigit(byte value) => value is >= (byte)'0' and <= (byte)'9';
 
+    /// <summary>
+    /// Determines whether a token may start right after <paramref name="value"/>: white space, or a delimiter that ends a
+    /// token or stands alone — a closing parenthesis, an angle bracket, a bracket, a brace. A regular character runs on
+    /// into the token, and an opening parenthesis, an opening angle bracket, a solidus or a percent sign start a string, a
+    /// name or a comment that holds what follows.
+    /// </summary>
+    public static bool EndsToken(byte value) =>
+        IsWhitespace(value) || value is (byte)')' or (byte)'>' or (byte)'[' or (byte)']' or (byte)'{' or (byte)'}';
+
     /// <summary>Returns the value of a hexadecimal digit, or -1 if the byte is not one.</summary>
     public static int HexValue(byte value) => value switch
     {
