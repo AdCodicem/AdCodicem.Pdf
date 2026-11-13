@@ -26,7 +26,8 @@ Tracking workflow mirrors from `docs/roadmap.md` (*Debt and open points*, below)
   52), with [#308] on 2026-10-30; the eighteenth, [#167] and [#168], what a rebuild leaves a caller and what the
   validator's analyses cost, with [#201], [#277], [#307] and [#312], with [#318] on 2026-11-03; the nineteenth, [#188],
   [#197] and [#156], where the chain's sections lie and what it reports of one it reads in part, with [#207], [#208],
-  [#210], [#221], [#222], [#241], [#261], [#264], [#281] and [#317], in [#344]. Then the
+  [#210], [#221], [#222], [#241], [#261], [#264], [#281] and [#317], in [#344]; the twentieth, [#189], [#276] and [#320],
+  which definition a rebuild keeps and what a place the search near a section drops leaves, in [#347]. Then the
   other batches, slices 4 to 6 ([#60] to [#62]); then the milestone's adversarial review, slice 7 ([#137], ADR 46), once
   every other issue filed under M02 is closed. The debts come from the reader's own work, the threat model's first
   version ([#135], `docs/threat-model.md`), M01's review after the fact ([#136], `docs/reviews/M01.md`), the planning of
@@ -34,8 +35,8 @@ Tracking workflow mirrors from `docs/roadmap.md` (*Debt and open points*, below)
   sixth ([#218] to [#224]), its eighth ([#229], [#230]), its ninth ([#237]), its tenth ([#241], [#247]), its twelfth
   ([#250]), slice 4's blockers ([#253]), its thirteenth ([#255] to [#257]), its fourteenth ([#259] to [#264]), its
   fifteenth ([#273] to [#277]), its sixteenth ([#279] to [#283], [#287] to [#290], [#292] to [#296]), its seventeenth
-  ([#307]), its eighteenth ([#309], [#312] to [#315], [#317]) and its nineteenth ([#320] to [#330], [#332], [#333],
-  [#336], [#342]); [#123] moved to M20. The seventeenth filed [#305] and [#306] under M23, the eighteenth [#310] under
+  ([#307]), its eighteenth ([#309], [#312] to [#315], [#317]), its nineteenth ([#320] to [#330], [#332], [#333],
+  [#336], [#342]) and its twentieth ([#348] to [#351]); [#123] moved to M20. The seventeenth filed [#305] and [#306] under M23, the eighteenth [#310] under
   M03 and [#311] under M23, the nineteenth [#331] under M03 and [#343] under M23.
 - **User documentation**: organized along Diátaxis since 2026-09-30 ([ADR 47](adr/0047-the-user-documentation-follows-diataxis.md),
   [#148]), on `main`: a tutorial held to its sample by a test, four how-to guides, four reference
@@ -482,8 +483,9 @@ One pull request per batch, each design question put to the maintainer after mea
    19. [#188], [#197] and [#156], where the chain's sections lie and what it reports of one it reads in part, with
        [#207], [#208], [#210], [#221], [#222], [#241], [#261] and [#264], and [#281] and [#317], placed with it — done,
        in [#344], `Remote corpus` run 109 green on its branch (journal of 2026-11-03).
-   20. [#189], with [#276].
-   21. [#154] and [#171].
+   20. [#189], with [#276] and [#320] — done, in [#347], `Remote corpus` run 111 green on its branch (journal of
+       2026-11-12).
+   21. [#154] and [#171], with [#348] and [#350], which batch 20 filed.
    22. [#132], with [#218], [#229] and [#260].
    23. [#141] — done in [#254], brought forward with [#144] at the maintainer's request on 2026-10-15 (journal of
        2026-10-15).
@@ -547,7 +549,12 @@ One pull request per batch, each design question put to the maintainer after mea
    `/Prev` before its own revision's table, in batch 31, with [#332], [#330] and [#321], the other side of the same
    search; [#336], the test of the seeded comparer that fails under coverage on Windows, and [#342], the tests bound by
    the stack or a stopwatch that fail on a loaded machine, in batch 32, with what remains of [#158], the tests' own
-   debt.
+   debt. Batch 20 filed four, all under M02: [#348], what a rebuild's expansion keeps of a definition a later object
+   stream replaces, and [#350], the scan's window rented at twice its size, with [#171], the next batch, which decides
+   which object streams the expansion takes in and reads the scan's pieces at their edges; [#349], the reasons and cases
+   the probe's check of where a rebuild serves a member leaves, with [#162], whose findings' texts it rewords; and [#351],
+   a last definition that reads as nothing, which the maintainer filed on 2026-11-12, with [#163], the reader at its
+   guards and cuts.
 5. Slice 4 ([#60]) in two pull requests, streams then fonts, after the decisions it waits on: the severity of a font
    that is not embedded, the standard 14's aliases, where text is "meant to be extractable", how the rules that need
    content are left out and shown so, and the tools that referee both families.
@@ -818,3 +825,8 @@ Until 2026-09-27 this section was a table whose rows were numbered T01 to T40; t
 [#342]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/342
 [#343]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/343
 [#344]: https://github.com/AdCodicem/AdCodicem.Pdf/pull/344
+[#347]: https://github.com/AdCodicem/AdCodicem.Pdf/pull/347
+[#348]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/348
+[#349]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/349
+[#350]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/350
+[#351]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/351

@@ -1986,6 +1986,82 @@ public class DocumentReaderTests
         document.Reader.ObjectStreamBytes.Should().Be(Encoding.ASCII.GetByteCount("10 0 (ten)\n") + 16);
     }
 
+    [Fact]
+    public void An_object_stream_defined_again_twice_after_a_read_through_it_found_none_still_opens()
+    {
+        // Object stream 10 places 20; object streams 11 and 13, written after it, each hold an object numbered 10, and stream
+        // 12, between them, takes its /Length from 20: reading 20 through 10, which 11 has replaced, finds no object stream,
+        // which the reader keeps as 10's contents. 13 replaces 10 again, and the rebuild lets go of that, holding nothing
+        // (#189).
+        var file = new TestPdfBuilder()
+            .WithObject(1, "<< /Type /Catalog /Pages 2 0 R >>")
+            .WithObject(2, "<< /Type /Pages /Kids [] /Count 0 >>")
+            .WithObject(10, ObjectStreamOf((20, "(member of 10)")))
+            .WithObject(11, ObjectStreamOf((10, "42")))
+            .WithObject(12, "<< /Length 20 0 R >>\nstream\nabc\nendstream")
+            .WithObject(13, ObjectStreamOf((10, "43")))
+            .BuildClassic(rootNumber: 1, includeXRef: false);
+
+        using var document = PdfDocument.Open(file);
+
+        document.GetObject(new PdfObjectId(10)).AsInteger().Should().Be(43);
+    }
+
+    [Fact]
+    public void An_obj_a_regular_byte_follows_where_the_search_near_an_entry_ends_is_not_read()
+    {
+        // The row of 3 places it where no header is; "3 0 obj", its obj ending where the 512 bytes after the row end, runs into
+        // a word longer than MaxObjectLength. The byte past them tells it from a header (#189): it is not read, and reaches no
+        // guard; 3 is looked for by rebuilding the index, which finds no header of it either.
+        var head = new StringBuilder("%PDF-1.4\n");
+        var catalog = head.Length;
+        head.Append("1 0 obj <</Type/Catalog/Pages 2 0 R>> endobj\n");
+        var pages = head.Length;
+        head.Append("2 0 obj <</Type/Pages/Kids[]/Count 0/Extra 3 0 R>> endobj\n%").Append(' ', 600).Append('\n');
+        var row = head.Length;
+        head.Append("/Pad").Append(' ', row + PdfFileReader.NearbySearchRadius - "3 0 obj".Length - head.Length);
+        head.Append("3 0 obj").Append('x', 2048).Append('\n');
+        var table = head.Length;
+        head.Append(string.Create(CultureInfo.InvariantCulture, $"xref\n0 4\n0000000000 65535 f \n{catalog:D10} 00000 n \n{pages:D10} 00000 n \n{row:D10} 00000 n \n"));
+        head.Append(string.Create(CultureInfo.InvariantCulture, $"trailer\n<< /Root 1 0 R /Size 4 >>\nstartxref\n{table}\n%%EOF\n"));
+
+        using var document = PdfDocument.Open(
+            Encoding.Latin1.GetBytes(head.ToString()), new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxObjectLength = 1024 } });
+
+        document.GetObject(new PdfObjectId(3)).Should().BeSameAs(PdfNull.Instance);
+        document.Diagnostics.Should().NotContain(entry => entry.Code == PdfDiagnosticCodes.LimitObject);
+    }
+
+    [Fact]
+    public void An_entry_of_the_cache_s_queue_a_rebuild_left_with_nothing_to_let_go_lets_the_next_go_in_its_place()
+    {
+        // The rebuild loads objects 3 to 100 and object stream 101, which holds 100 again: the cache, of 64, lets go of the
+        // direct 100, whose entry in its queue, just before 101's, has nothing to let go when its turn comes. Reading objects
+        // 1 to 64 brings that turn: 101 is let go in its place, and parsed again when read next (#189).
+        var builder = new TestPdfBuilder()
+            .WithObject(1, "<< /Type /Catalog /Pages 2 0 R >>")
+            .WithObject(2, "<< /Type /Pages /Kids [] /Count 0 >>");
+
+        for (var number = 3; number <= 100; number++)
+        {
+            builder.WithObject(number, "<< /N " + number.ToString(CultureInfo.InvariantCulture) + " >>");
+        }
+
+        builder.WithObject(101, ObjectStreamOf((100, "(again)")));
+        using var document = PdfDocument.Open(
+            builder.BuildClassic(rootNumber: 1, includeXRef: false), PdfReaderOptions.Default with { ObjectCacheCapacity = 64 });
+        var stream = document.GetObject(new PdfObjectId(101));
+
+        for (var number = 1; number <= 63; number++)
+        {
+            document.GetObject(new PdfObjectId(number));
+        }
+
+        document.GetObject(new PdfObjectId(101)).Should().BeSameAs(stream);
+        document.GetObject(new PdfObjectId(64));
+        document.GetObject(new PdfObjectId(101)).Should().NotBeSameAs(stream);
+    }
+
     /// <summary>Writes the body of an object stream holding <paramref name="members"/>, uncompressed.</summary>
     private static string ObjectStreamOf(params (int Number, string Body)[] members)
     {
