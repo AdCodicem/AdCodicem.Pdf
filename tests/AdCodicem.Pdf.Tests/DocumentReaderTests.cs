@@ -4248,6 +4248,7 @@ public class DocumentReaderTests
     [Theory]
     [InlineData("stream data whose direct /Length endstream confirms", false)]
     [InlineData("a string", false)]
+    [InlineData("a string that holds endobj", true)]
     [InlineData("a comment between objects", false)]
     [InlineData("stream data whose /Length is an object", true)]
     [InlineData("stream data whose direct /Length is wrong", true)]
@@ -4258,7 +4259,9 @@ public class DocumentReaderTests
         // marked /Injected, lies where the case says. The scan delimits each object it takes, as a load reads it: a header
         // inside another object's value, or inside data its length confirms, is none, nor one a comment holds; object 2 is
         // then the file's own page tree. Where the length is not confirmed, the data ends at the next header, as a load's
-        // search ends it, and the header there is taken, the last definition winning (#171).
+        // search ends it, and the header there is taken, the last definition winning (#171). A string that holds endobj
+        // runs past its object's end, as one an unbalanced parenthesis runs on does, and delimits nothing: the header on
+        // the line after its start is taken as the bytes give it.
         const string Injected = "2 0 obj\n<< /Type /Pages /Kids [] /Count 0 /Injected true >>\nendobj\n";
         var file = new HandWrittenFile();
         file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>");
@@ -4272,7 +4275,10 @@ public class DocumentReaderTests
                 file.Object(5, $"<< /Length {length} >>\nstream\n{Injected}\nendstream");
                 break;
             case "a string":
-                file.Object(5, $"({Injected})");
+                file.Object(5, "(\n" + Injected[..Injected.IndexOf("endobj", StringComparison.Ordinal)] + ")");
+                break;
+            case "a string that holds endobj":
+                file.Object(5, $"(\n{Injected})");
                 break;
             case "a comment between objects":
                 file.Raw("% " + Injected.Replace("\n", " ", StringComparison.Ordinal) + "\n");
@@ -4294,6 +4300,77 @@ public class DocumentReaderTests
 
         document.WasRepaired.Should().BeTrue();
         document.GetObject(new PdfObjectId(2)).AsDictionary().Required().ContainsKey(PdfName.Get("Injected")).Should().Be(injected);
+    }
+
+    [Theory]
+    [InlineData("a string object an unbalanced parenthesis runs on")]
+    [InlineData("a string in a dictionary an unbalanced parenthesis runs on to a stray one")]
+    [InlineData("a string a cut leaves open, an update after it")]
+    [InlineData("a hexadecimal string a cut leaves open, an update after it")]
+    public void A_string_that_runs_past_its_object_s_end_hides_no_header_after_it(string shape)
+    {
+        // Some writers leave a parenthesis in a string unescaped. An unbalanced one runs the string, as a load lexes it, past
+        // its object's end: to a stray parenthesis further on, or to the end of the file. A file cut inside a string and
+        // updated after leaves it open the same way. Such a string delimits nothing: the objects after it, each on a line
+        // of its own, are the file's, and the index rebuilt as the file opens takes them (#171).
+        var file = new HandWrittenFile();
+        file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>");
+
+        switch (shape)
+        {
+            case "a string object an unbalanced parenthesis runs on":
+                file.Object(5, "(Report :-( draft)");
+                break;
+            case "a string in a dictionary an unbalanced parenthesis runs on to a stray one":
+                file.Object(5, "<< /Title (Report :-( draft) >>");
+                break;
+            case "a string a cut leaves open, an update after it":
+                file.Raw("5 0 obj\n(lorem-ip\n");
+                break;
+            default:
+                file.Raw("5 0 obj\n<48656C6C6F\n");
+                break;
+        }
+
+        // A hexadecimal string runs to the next '>': object 6, which holds none, lies within it with its endobj.
+        file.Object(6, "(six)");
+        file.Object(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>");
+        file.Object(3, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] >>");
+        file.Object(7, "<< /Contents (Done :-)) >>");
+        file.Object(8, "(eight)");
+        file.Raw("trailer\n<< /Root 1 0 R >>\nstartxref\n9\n%%EOF\n");
+        using var document = PdfDocument.Open(file.Bytes);
+
+        document.WasRepaired.Should().BeTrue();
+        document.GetObject(new PdfObjectId(2)).AsDictionary().Required().GetArray(PdfName.Kids).Required().Count.Should().Be(1);
+        document.GetObject(new PdfObjectId(3)).AsDictionary().Required().IsOfType(PdfName.Page).Should().BeTrue();
+        document.GetObject(new PdfObjectId(7)).AsDictionary().Should().NotBeNull();
+        document.GetObject(new PdfObjectId(6)).AsText().Should().Be("six");
+        document.GetObject(new PdfObjectId(8)).AsText().Should().Be("eight");
+        document.Diagnostics.Should().NotContain(d => d.Code == PdfDiagnosticCodes.TrailerRootRecovered);
+    }
+
+    [Fact]
+    public void A_header_whose_line_starts_in_the_object_before_it_is_read_from_where_that_object_ends()
+    {
+        // Stream 4's data runs on one line, longer than MaxObjectLength, lowered to 4 KB, and past the scan's first piece,
+        // and its line goes on past the data: " endstream endobj 5", object 5's generation and obj on the next line. The
+        // scan, which goes on past stream 4 from the next piece, read a header back from its obj as far as the line its
+        // number ends starts, which lies in stream 4's data: in windows eight times larger each time up to MaxObjectLength,
+        // then gave the header up, and object 5 was lost. A header starts no further back than where the object before it
+        // ends, from where a load's lexer reads tokens anew: the line is read from there (#171).
+        var data = new string('x', 1100 * 1024);
+        var file = new HandWrittenFile();
+        file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>");
+        file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>");
+        file.Raw(string.Create(CultureInfo.InvariantCulture, $"4 0 obj\n<< /Length {data.Length} >>\nstream\n{data} endstream endobj 5\n0 obj\n(five)\nendobj\n"));
+        file.Raw("trailer\n<< /Root 1 0 R >>\nstartxref\n9\n%%EOF\n");
+        var options = new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxObjectLength = 4096 } };
+        using var document = PdfDocument.Open(file.Bytes, options);
+
+        document.WasRepaired.Should().BeTrue();
+        document.GetObject(new PdfObjectId(5)).AsText().Should().Be("five");
+        document.GetObject(new PdfObjectId(4)).Should().BeOfType<PdfStream>().Which.Data.Length.Should().Be(data.Length);
     }
 
     [Theory]
@@ -4425,20 +4502,90 @@ public class DocumentReaderTests
         document.Reader.TryGetStreamLengthFault(8, out _).Should().BeFalse();
     }
 
-    [Fact]
-    public void A_rebuild_reads_a_file_in_pieces_no_larger_than_a_megabyte()
+    [Theory]
+    [InlineData("a long comment")]
+    [InlineData("white space after a stream's direct length")]
+    [InlineData("one line holding a header at each piece's start")]
+    public void A_rebuild_reads_a_file_in_pieces_no_larger_than_a_megabyte(string shape)
     {
         // The scan read each megabyte with the byte past it, which a file source rents from a pool that rounds 1,048,577 up
-        // to 2 MiB (#350). It reads a piece of a megabyte, the byte past what it searches its last.
-        var text = "%PDF-1.7\n1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n2 0 obj\n<< /Type /Pages /Kids [] /Count 0 >>\nendobj\n"
-            + "%" + new string('-', 3 * 1024 * 1024) + "\ntrailer\n<< /Root 1 0 R >>\nstartxref\n9\n%%EOF\n";
-        using var source = new CountingSource(Encoding.Latin1.GetBytes(text));
+        // to 2 MiB (#350). It reads a piece of a megabyte, the byte past what it searches its last. The white space after a
+        // stream's direct length was read in one window as long as it ran, and the line of a header found further back than
+        // its piece in one window as long as the line: memory followed the file. Both are read as a piece or less at a time,
+        // the white space as a load reads it (#171).
+        var text = new StringBuilder("%PDF-1.7\n1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n2 0 obj\n<< /Type /Pages /Kids [] /Count 0 >>\nendobj\n");
+
+        switch (shape)
+        {
+            case "a long comment":
+                text.Append('%').Append('-', 3 * 1024 * 1024).Append('\n');
+                break;
+            case "white space after a stream's direct length":
+                text.Append("3 0 obj\n<< /Length 4 >>\nstream\nabcd").Append(' ', 3 * 1024 * 1024).Append('\n');
+                break;
+            default:
+                // Each piece starts most likely between a number and its obj, a thousand spaces apart, on one line.
+                while (text.Length < 6 * 1024 * 1024)
+                {
+                    text.Append("9 ").Append(' ', 1000).Append("0 obj > ");
+                }
+
+                text.Append('\n');
+                break;
+        }
+
+        text.Append("trailer\n<< /Root 1 0 R >>\nstartxref\n9\n%%EOF\n");
+        using var source = new CountingSource(Encoding.Latin1.GetBytes(text.ToString()));
 
         using var document = PdfDocument.Open(source, options: null, ownsSource: false);
 
         document.WasRepaired.Should().BeTrue();
         document.Catalog.IsOfType(PdfName.Catalog).Should().BeTrue();
         source.LargestRead.Should().BeLessThanOrEqualTo(1024 * 1024);
+        source.BytesRead.Should().BeLessThan(8L * source.Length);
+    }
+
+    [Theory]
+    [InlineData("small streams whose length is an object")]
+    [InlineData("headers inside one string left open")]
+    [InlineData("headers whose lengths end in one run of white space")]
+    public void A_rebuild_reads_the_file_a_few_times_at_most_whatever_its_objects_repeat(string shape)
+    {
+        // Each stream whose length the scan cannot confirm read a megabyte from the file to find its endstream however near
+        // it lay; each header inside a string left open had its value lexed, from the file, in windows up to MaxObjectLength;
+        // each stream whose direct length ends in a run of white space read the whole run. Each read again what the one
+        // before had read, and a file of 256 KB read gigabytes. The scan searches the bytes it holds first, lexes no byte
+        // for one object after another, and reads the white space after a length as a load does, once for each place, with
+        // the searches for endstream: what it reads follows the file (#171).
+        var text = new StringBuilder("%PDF-1.7\n1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n2 0 obj\n<< /Type /Pages /Kids [] /Count 0 >>\nendobj\n");
+        var (unit, until, tail) = shape switch
+        {
+            "small streams whose length is an object" =>
+                ("3 0 obj <</Length 4 0 R>>stream\nx\nendstream\nendobj\n4 0 obj 1 endobj\n", 256 * 1024, string.Empty),
+            "headers inside one string left open" => ("3 0 obj [(\n", 1024 * 1024, new string('x', 2 * 1024 * 1024)),
+            _ => ("3 0 obj << /Length 262144 >>\nstream\n", 256 * 1024, new string(' ', 512 * 1024)),
+        };
+
+        // The headers inside one string left open end the first piece, which the string runs past.
+        if (until > 256 * 1024)
+        {
+            text.Append('%').Append('-', until - (16 * 1024)).Append('\n');
+        }
+
+        while (text.Length < until)
+        {
+            text.Append(unit);
+        }
+
+        text.Append(tail).Append("\ntrailer\n<< /Root 1 0 R >>\nstartxref\n9\n%%EOF\n");
+        using var source = new CountingSource(Encoding.Latin1.GetBytes(text.ToString()));
+
+        using var document = PdfDocument.Open(source, options: null, ownsSource: false);
+
+        document.WasRepaired.Should().BeTrue();
+        document.Catalog.IsOfType(PdfName.Catalog).Should().BeTrue();
+        document.GetObject(new PdfObjectId(3)).Should().NotBeNull();
+        source.BytesRead.Should().BeLessThan(8L * source.Length);
     }
 
     private sealed class CountingSource : PdfFileSource
