@@ -304,9 +304,10 @@ public static class PdfDiagnosticCodes
     /// already found, the first ten of those numbers, and which definition was kept: the one the file writes last, a member
     /// of an object stream counting where the stream's definition lies — an update appends what it changes, written
     /// directly or in a new object stream (ISO 32000-1, 7.5.6) —, and, of a number one object stream lists twice, the first
-    /// listed (#189). Only the definition kept of an object stream's own number is read for members, but where that number
-    /// is listed by a later object stream after the earlier stream was taken in: its members then stay placed in it, and
-    /// read as null (#348).
+    /// listed (#189). Only the definition kept of an object stream's own number is read for members: the object streams are
+    /// taken in from the last written to the first, so that one whose number a later object stream lists gives none (#348).
+    /// A header the rebuild's scan finds inside another object — a stream's data, a string, a comment — is no definition
+    /// (#171).
     /// </summary>
     public const string ObjectRedefined = "object.redefined";
 
@@ -316,6 +317,25 @@ public static class PdfDiagnosticCodes
     /// opening that takes the same object again reports nothing more; one that takes another object reports it.
     /// </summary>
     public const string TrailerRootRecovered = "trailer.root-recovered";
+
+    /// <summary>
+    /// The trailer's <c>/Encrypt</c>, as the document opened, is no encryption dictionary: it names an object the file lacks
+    /// or one that is null, which ISO 32000-1 reads as the key absent (7.3.10, 7.3.7) — not one a guard kept the reader
+    /// from reading, which counts as encrypted —, or it is a value of another type — a
+    /// name, an integer —, which gives nothing to decrypt with. The document is read as unencrypted, as qpdf, pdf.js and
+    /// PDFBox read the first and the last two the second, and <see cref="Documents.PdfReaderOptions.ThrowOnEncrypted"/>
+    /// throws nothing for it (#154). Reported once, at opening, where the trailer lies.
+    /// </summary>
+    public const string TrailerEncryptInvalid = "trailer.encrypt-invalid";
+
+    /// <summary>
+    /// A rebuild of the index after the document opened — set off by a read, or by the start of a validation — merged into
+    /// the trailer an <c>/Encrypt</c> the trailer the document opened with did not give. Whether a document is encrypted is
+    /// decided once, as it opens (<see cref="Documents.PdfDocument.IsEncrypted"/>): it stays read as it opened, as
+    /// unencrypted, and the validator treats its object streams as encrypted (#154). Reported once, by the rebuild that
+    /// merged it.
+    /// </summary>
+    public const string TrailerEncryptLate = "trailer.encrypt-late";
 
     /// <summary>
     /// A filter's data is not what the filter says. Flate data that nothing could decode was left as the filters before it
