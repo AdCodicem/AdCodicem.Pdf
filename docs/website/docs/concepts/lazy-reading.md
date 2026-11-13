@@ -336,10 +336,13 @@ takes is delimited as a load reads it — its value, the strings and comments it
 `endstream` confirms its direct `/Length` —, and a header or a `trailer` keyword within is none, nor is one that starts
 in a comment or a string between objects, so that an attached PDF written as it is, or a string that quotes a header or
 says `trailer`, adds nothing to the map or the trailer ([#171](https://github.com/AdCodicem/AdCodicem.Pdf/issues/171)).
+A string that runs past its object's end delimits nothing: one that holds `endobj` — a parenthesis some writers leave
+unescaped and unbalanced runs a string into the objects after it —, or one the end of a cut file leaves open.
 The data of a stream whose length it cannot confirm — an indirect `/Length`, or one no `endstream` follows — ends for it
 where a load's search for that stream's end stops: at the first header, which it takes, or at the first `endstream`,
 before which it reads no comment. What follows the header of an object it cannot delimit — its value past
-`MaxObjectLength`, or none a load reads — is read as the bytes give it too. Where the pieces it reads the file in start
+`MaxObjectLength`, or none a load reads — is read as the bytes give it too, and a header within what was read of it is
+taken undelimited, so that no byte is lexed for one object after another. Where the pieces it reads the file in start
 changes nothing of what it takes. It reads the file to its end, and holds no more numbers than the map may: a header for
 a number it holds already takes no room, so that a million copies of one object hide nothing behind them, and the first
 number past `MaxIndexEntries` is reported once (`limit.index-entries`). A rebuild of a chain a limit had cut keeps the
