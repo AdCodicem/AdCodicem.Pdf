@@ -46,7 +46,10 @@ Tracking workflow mirrors from `docs/roadmap.md` (*Debt and open points*, below)
   pages — the validation rules among them, moved from the project documents — with the API reference under them, and
   four explanations. Outside any milestone.
 - **Last milestone closed**: **M01 — Object model and tolerant reading**
-- **Tests**: 8,497 unit on [#347]'s branch, on the committed corpus; with 235 of the 242 remote documents fetched — the
+- **Tests**: 8,644 unit on [#352]'s branch at `7a91f02`, on the committed corpus, 8,620 passed and 24 skipped; with
+  235 of the 242 remote documents fetched, 11,267 at `0dc139f`, 11,264 passed and 3 skipped; the 52 timing and memory
+  tests alone; the integration suite green in CI, and `Remote corpus` run 113's acceptance tests and referee checks
+  over all 242, on the library code [#352] ends with. Before it, 8,497 unit on [#347]'s branch, on the committed corpus; with 235 of the 242 remote documents fetched — the
   container reached neither web.archive.org nor a GitHub release for the other seven —, 11,120 at `0423a7f`, 11,117
   passed and 3 skipped; the integration suite green in CI, and `Remote corpus` run 111's acceptance tests and referee
   checks over all 242, on the library code [#347] ends with. Before it, 8,466 unit on [#344]'s branch (20 skipped: 2 by design, the theory over the
@@ -60,7 +63,12 @@ Tracking workflow mirrors from `docs/roadmap.md` (*Debt and open points*, below)
   container at `26ce787`, run class by class, 3,754 passed and 6 skipped where qpdf cannot walk a damaged document's
   pages; and `Remote corpus` run 109's 11,155 acceptance tests and 3,760 referee checks, on the library code
   [#344] ends with.
-- **Coverage**: on [#347]'s branch at `0423a7f`, as Codecov reports it, 99.71 % of the 19,833 lines it counts, against
+- **Coverage**: on [#352]'s branch at `0dc139f`, as Codecov reports it, 99.52 % of the patch; of its 624 coverable
+  lines, measured at `7a91f02`, 621 whole and 3 partial, branches no input takes and their proofs checked by a second
+  agent — an `obj` at the start of the bytes the header walk is given with `startsData` false, which no caller passes
+  (`ReadHeaderBackwards`), the rank of a member whose stream the expansion has not recorded (`TakeInMembers`), and the
+  arm the compiler adds for `EndOfInput`, which the container loop leaves before its switch (`DelimitWithin`). Before
+  it, on [#347]'s branch at `0423a7f`, as Codecov reports it, 99.71 % of the 19,833 lines it counts, against
   99.73 % on `main`; of the patch's 151 coverable lines 149 whole and 2 partial, both defensive branches no input takes —
   the rank of a member whose stream the expansion has not recorded (`ExpandEachObjectStream`), and a served stream whose
   header the probe cannot read (`CheckMembersARebuildServesElsewhere`). Before it, on the committed corpus, as Codecov
@@ -160,7 +168,9 @@ Tracking workflow mirrors from `docs/roadmap.md` (*Debt and open points*, below)
   29 findings — 11 blockers, all the new scan's cost, 1 major, an unbalanced parenthesis the maintainer settled —;
   rounds 2 to 4, one or two blockers each in the code the round before wrote; round 5, 3 minors and a nit; the rest
   filed as [#353] to [#358] ([#352]).
-- **CI**: green on [#347]'s branch at `0423a7f`, the integration suite against qpdf, the .NET 11 island and the site
+- **CI**: green on [#352]'s branch at `7a91f02`, the integration suite against qpdf, the .NET 11 island and the site
+  included; `Remote corpus` run 113 green on it at `0dc139f`, whose library code the branch keeps. Before it, green on
+  [#347]'s branch at `0423a7f`, the integration suite against qpdf, the .NET 11 island and the site
   included; `Remote corpus` run 111 green on it at `3dfdf9d`, whose library code the branch keeps. Before it, green on
   `main` at `21a0298` (CI run 927), and on [#344]'s branch at `2c7cf01`
   (CI run 1055). `Remote
@@ -293,7 +303,7 @@ Tracking workflow mirrors from `docs/roadmap.md` (*Debt and open points*, below)
 | Probing rows that all lead into one run of 2 MB of null bytes | generated, 800 rows | 0.52 ms | 428 KB |
 | Walking the object streams' dependencies | generated, 1000 object streams sharing a 16 KB `/DecodeParms` | 2.9 to 3.3 ms | 1.1 MB |
 | Walking the object streams' dependencies through nests of streams by `/Length` | generated, 1000 object streams leading through 16,128 | 360 to 364 ms | 16.9 MB |
-| Rebuilding an index past 12,000 `trailer` keywords that share long comments, a medium job | generated, two comment lines | 211 to 220 ms | 642 KB |
+| Rebuilding an index past 12,000 `trailer` keywords that two comment lines hold, which hide them | generated, two comment lines | 0.22 to 0.31 ms | 6.2 KB |
 | Indexing, then reading every member of one object stream, a medium job | generated, 100,000 members | 136 ms | 64.2 MB |
 | Decoding a whole Flate content stream | 4 MB decoded, about 330 KB encoded | 8.3 ms | 13.1 MB |
 | Decoding the same stream without its checksum, or without its last five bytes | 4 MB decoded | 11.7 ms | 13.1 MB |
@@ -303,7 +313,7 @@ Tracking workflow mirrors from `docs/roadmap.md` (*Debt and open points*, below)
 | Indexing, then parsing every page's content stream, each past the reader's first window | synthetic, 1000 pages of 16 KB | 4.0 to 4.6 ms from memory, 7.2 to 7.4 ms from a file | 1.75 MB |
 | The same, each stream declared 2 bytes too long and searched for its `endstream` | synthetic, 1000 pages of 16 KB | 10.6 to 11.3 ms from memory, 14.9 to 16.4 ms from a file | 2.71 MB |
 | Searching a damaged stream's data for its `endstream`: text lines, then nested strings | generated, 4 MB | 399 to 403 µs, then 35.0 to 36.1 ms | 7.2 KB |
-| Rebuilding an index by scanning for object headers, each with a comment between its tokens | generated, 4 MB, 100,000 headers | 44.8 to 45.1 ms | 17.8 MB |
+| Rebuilding an index by scanning for object headers, each with a comment between its tokens, each object delimited, a medium job | generated, 4 MB, 100,000 headers | 82 ms | 17.8 MB |
 | Parsing one object, a medium job | Word's page dictionary | 6.0 µs | 4.6 KB |
 
 The gap between the first two rows is the library's promise: opening a document does not read its content. The
@@ -410,6 +420,16 @@ against 640 to 713 ms and 108 MB (`ObjectStreamDependencyBenchmarks`, ShortRun, 
 benchmark run on `main`). The rebuild's scan for trailers past 12,000 keywords that share long comments takes 211 to 220
 ms over a reference or a null and 408 to 447 ms over a dictionary, against 258 to 288 ms and 473 to 475 ms on `main`
 (`TrailerScanBenchmarks`, a medium job, twice, alternated).
+
+Batch 21's first pull request ([#352]) makes the rebuild's scan delimit each object it takes, which costs time in
+every shape and allocates what it did (`ObjectScanBenchmarks`, a medium job, one process at a time, `0dc139f` against
+`main`): a sound thousand-page document rebuilt in 4.9 ms against 4.1, 100,000 plain headers in 69 ms against 51, as
+many with a comment between their tokens in 82 ms against 66, 4 MB of comment lines in 11.9 ms against 10.2, and 4 MB
+of lines of a string holding a `%`, 100,000 objects of 18 bytes, in 61 ms against 20. The 12,000 `trailer` keywords
+that two comment lines hold are none to the scan, which sweeps each line once: 0.22 to 0.31 ms and 6.2 KB, against 249
+to 474 ms and 0.26 to 3.4 MB on `main` (`TrailerScanBenchmarks`, ShortRun). Indexing, reading every page and the
+search for a lost `endstream` stay within the runs' spread (`IndexBenchmarks`, `ReaderBenchmarks`, ShortRun;
+`StreamEndSearchBenchmarks`, a medium job).
 
 Batch 19 ([#344]) leaves indexing, reading every page, the probe, validating, the
 stream-length rows and the rebuild's scan for trailers within the runs' spread, each 0.96 to 1.09 times what it takes on
