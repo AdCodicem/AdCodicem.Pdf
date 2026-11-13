@@ -407,6 +407,15 @@ internal sealed partial class PdfFileReader
     private ObjectExtent DelimitObject(long at, ReadOnlySpan<byte> buffered, bool buffersToEnd, out long lexedTo)
     {
         var bound = (long)_guard.Bound(PdfLimit.Object);
+
+        // No more is lexed than the bound, however much the piece holds: where an object past it is let go does not depend
+        // on where its piece ends.
+        if (buffered.Length > bound)
+        {
+            buffered = buffered[..(int)bound];
+            buffersToEnd = false;
+        }
+
         var bounds = buffered.IsEmpty ? ObjectBounds.Cut : DelimitWithin(buffered, buffersToEnd);
         var size = Math.Max(XRefWindow, 2L * buffered.Length);
         var lexed = (long)buffered.Length;
@@ -497,7 +506,7 @@ internal sealed partial class PdfFileReader
 
     /// <summary>
     /// Gives where the token that starts at <paramref name="position"/> ends, the <c>endstream</c> keyword a stream's data
-    /// ends at, whole as a load lexes it — "endstreamx" too —; or -1 where none starts, or its token runs past a first read.
+    /// ends at, whole as a load lexes it — "endstreamx" too —; or -1 where none starts.
     /// </summary>
     private long EndStreamTokenEnd(long position)
     {
@@ -509,7 +518,55 @@ internal sealed partial class PdfFileReader
         Span<byte> bytes = stackalloc byte[PdfObjectParser.EndObjLookahead];
         var read = _source.Read(position, bytes[..(int)Math.Min(bytes.Length, _source.Length - position)]);
         var end = StreamEnds.ReadEnd(bytes[..read], position + read >= _source.Length);
-        return end.Kind == StreamEndKind.EndStream ? position + end.KeywordEnd : -1;
+
+        // The keyword glued to a run of regular characters longer than the read ends where the run does, read on with the
+        // scan's reads past declared lengths.
+        return end.Kind switch
+        {
+            StreamEndKind.EndStream => position + end.KeywordEnd,
+            StreamEndKind.Undecided when bytes[..read].StartsWith(StreamEnds.EndStreamKeyword) => RegularRunEnd(position + read),
+            _ => -1,
+        };
+    }
+
+    /// <summary>
+    /// Gives where the run of regular characters at <paramref name="position"/> ends, read with the scan's reads past
+    /// declared lengths (<see cref="_scanGapBytes"/>); -1 once those have read as much as they may.
+    /// </summary>
+    private long RegularRunEnd(long position)
+    {
+        var size = PdfObjectParser.EndObjLookahead;
+
+        while (position < _source.Length)
+        {
+            if (_scanGapBytes >= EndStreamSearchPasses * _source.Length)
+            {
+                return -1;
+            }
+
+            using var window = _source.GetWindow(position, (int)Math.Min(size, _source.Length - position));
+            var span = window.Memory.Span;
+
+            if (span.IsEmpty)
+            {
+                return -1;
+            }
+
+            _scanGapBytes += span.Length;
+
+            for (var i = 0; i < span.Length; i++)
+            {
+                if (!PdfCharacters.IsRegular(span[i]))
+                {
+                    return position + i;
+                }
+            }
+
+            position += span.Length;
+            size = Math.Min(2 * size, EndStreamSearchChunk);
+        }
+
+        return _source.Length;
     }
 
     /// <summary>
@@ -521,7 +578,8 @@ internal sealed partial class PdfFileReader
     /// A value is read as the parser reads one: a reference is three tokens, and an integer that a second integer and
     /// <c>obj</c> follow is the next object's header, which ends this one where it starts, inside a container too (#230); a
     /// <c>/Length</c> that a generation and <c>R</c> follow is indirect. A keyword that ends an object or a stream inside a
-    /// container, or a string that runs past its object's end (<see cref="IsRunaway"/>), leaves the value undelimited.
+    /// container, or a string that runs past its object's end (<see cref="IsRunaway"/>), leaves the value undelimited, and so
+    /// does a comment that holds the word <c>obj</c> before the value or inside it (<see cref="SkipGap"/>).
     /// </remarks>
     private static ObjectBounds DelimitWithin(ReadOnlySpan<byte> bytes, bool endsData)
     {
@@ -538,6 +596,11 @@ internal sealed partial class PdfFileReader
         if (number.Kind != PdfTokenKind.Integer || generation.Kind != PdfTokenKind.Integer || !keyword.IsKeyword("obj"u8))
         {
             return ObjectBounds.Undelimited(keyword.End);
+        }
+
+        if (!SkipGap(ref lexer, bytes))
+        {
+            return ObjectBounds.Undelimited(lexer.Position);
         }
 
         var first = lexer.Read();
@@ -582,6 +645,11 @@ internal sealed partial class PdfFileReader
 
         while (valueEnd < 0)
         {
+            if (!SkipGap(ref lexer, bytes))
+            {
+                return ObjectBounds.Undelimited(lexer.Position);
+            }
+
             var token = lexer.Read();
             count++;
 
@@ -722,7 +790,11 @@ internal sealed partial class PdfFileReader
     private static LookAhead ReadRegularToken(ref PdfLexer lexer, ReadOnlySpan<byte> bytes, bool endsData, out PdfToken token)
     {
         token = default;
-        lexer.SkipWhitespaceAndComments();
+
+        if (!SkipGap(ref lexer, bytes))
+        {
+            return LookAhead.Other;
+        }
 
         if (lexer.Position >= bytes.Length)
         {
@@ -999,6 +1071,67 @@ internal sealed partial class PdfFileReader
         /// <summary>A value that holds a string running past its object's end (<see cref="IsRunaway"/>).</summary>
         Runaway,
     }
+
+    /// <summary>
+    /// Skips the white space and comments before the next token, as a load's lexer does, but stops at a comment that holds
+    /// the word <c>obj</c>, leaving the position on its <c>%</c>: a header a comment holds, which the scan may take, is
+    /// then lexed from its own header rather than for each object before it whose lexing would cross it.
+    /// </summary>
+    /// <returns>False where a comment that holds the word stopped it.</returns>
+    private static bool SkipGap(ref PdfLexer lexer, ReadOnlySpan<byte> bytes)
+    {
+        var at = lexer.Position;
+
+        while (at < bytes.Length)
+        {
+            if (PdfCharacters.IsWhitespace(bytes[at]))
+            {
+                at++;
+                continue;
+            }
+
+            if (bytes[at] != (byte)'%')
+            {
+                break;
+            }
+
+            var comment = at++;
+
+            // A comment runs to the end of its line, read up to it, or up to the word, whichever comes first.
+            while (at < bytes.Length)
+            {
+                var found = bytes[at..].IndexOfAny(CommentStops);
+
+                if (found < 0)
+                {
+                    at = bytes.Length;
+                    break;
+                }
+
+                at += found;
+
+                if (bytes[at] != (byte)'o')
+                {
+                    break;
+                }
+
+                if (bytes[at..].StartsWith(ObjKeyword) && !PdfCharacters.IsRegular(bytes[at - 1]) &&
+                    (at + ObjKeyword.Length == bytes.Length || !PdfCharacters.IsRegular(bytes[at + ObjKeyword.Length])))
+                {
+                    lexer.Position = comment;
+                    return false;
+                }
+
+                at++;
+            }
+        }
+
+        lexer.Position = at;
+        return true;
+    }
+
+    /// <summary>The bytes a comment's reading stops at: its end of line, and the first letter of <c>obj</c>.</summary>
+    private static ReadOnlySpan<byte> CommentStops => "\r\no"u8;
 
     /// <summary>What the token after a value is, as far as it can change where the value ends (<see cref="ReadRegularToken"/>).</summary>
     private enum LookAhead
