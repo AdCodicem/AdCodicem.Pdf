@@ -7,6 +7,32 @@ to about thirty lines each; the unabridged text is the
 [journal of `e38ebbc`](https://github.com/AdCodicem/AdCodicem.Pdf/blob/e38ebbc471b86779c3f6ac5b320ca1ecd531b2c1/docs/status.md#journal). A session reads an entry when it needs the
 reason for a past decision. A new entry is short, about thirty lines; the detail is in the pull request's body.
 
+## 2026-11-12 — Batch 20: which definition a rebuild keeps, and what a dropped place leaves ([#189], [#276], [#320])
+
+- **The question.** Measured on `main` at `86e8d9c`, twice, identical: a rebuild kept a direct definition over a newer
+  copy in a later object stream, and of two object streams the one it happened to take first ([#189]); `10 0 objx` was a
+  header to the scan and to both searches near an offset, not to a load; an object a rebuild serves from another
+  definition of its object stream read as null with no finding ([#276]); a place the search near a missing section tried
+  and dropped left its rows, its refused numbers and the incomplete mark ([#320]).
+- **Settled by measurement.** The definition the file writes last wins, a member counting where its stream lies: of 403
+  corpus documents only two truncated PDFBox files change, each now serving its newest revision — the `/Info` with the
+  newest `/ModDate`, the struct tree of the last revision, which adds five true `object.reference-missing`. A dropped
+  place's reading is a tentative one of the index, whose offsets bound no search until kept, so that dropping it sorts
+  nothing; a guard it reached stands ([#221]).
+- **Settled with the maintainer** (2026-11-12, three questions, each as recommended): [#276] by the probe, an
+  `xref.entry-broken` finding, not a new rule nor the reader; a last definition that reads as nothing, filed as [#351];
+  `object.redefined` keeps counting a number reused under a new generation.
+- **Review** (ADR 54, its first batch): one round, seven lenses, 21 findings — the one major, a real portfolio whose
+  attachment's uncompressed object stream outranks the host's objects once damaged, refuted as [#171]'s; 5 minors, 15
+  nits. The final pass fixed texts and tests; [#348], [#349] and [#350] hold the rest, whose fixes change behavior.
+- **Mutation** (ADR 53 amended): 51 mutants over the defenses among the changed lines; 27 killed by the suite, 12 by
+  tests written in the step — 3 after a second opinion overturned their verdict —, 12 equivalent, each checked twice.
+- **Checks.** `Remote corpus` run 111 green; CI green; the patch's coverage 98.7 % as Codecov counts it, its two partial
+  lines defensive branches no input takes.
+- **For callers.** A rebuilt index may serve another definition of an object than before: the one the file writes last
+  (`fix!`). `10 0 objx` is no header anywhere. A rebuild's lost member is an `xref.entry-broken` finding. A file whose
+  relocation dropped a decoy reads as one without it.
+
 ## 2026-11-11 — Where a batch's time goes, and what the review protects
 
 - **The question.** Batch 19 took eight days: 13 review rounds, 13 fix workflows, a mutation step over its whole
@@ -882,3 +908,7 @@ The detail is in git and in the pull requests; what still matters is in the reco
 [#343]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/343
 [#344]: https://github.com/AdCodicem/AdCodicem.Pdf/pull/344
 [#345]: https://github.com/AdCodicem/AdCodicem.Pdf/pull/345
+[#348]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/348
+[#349]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/349
+[#350]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/350
+[#351]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/351
