@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Globalization;
+using System.Text;
 using System.Text.Json;
 using AdCodicem.Pdf.Diagnostics;
 using AdCodicem.Pdf.Documents;
@@ -261,6 +262,113 @@ public class CorpusReadingTests
 
         document.Diagnostics.Where(d => d.Position == 1670741 && d.Code == PdfDiagnosticCodes.FilterFailed).Select(d => d.ToString())
             .Should().Equal("Warning filter.failed at 1670741: A Flate stream ends before its data does; what decoded before the end was kept.");
+    }
+
+    [Theory]
+    [InlineData("startxref named off by seven bytes")]
+    [InlineData("its last 200 bytes cut")]
+    public void A_rebuild_of_a_document_that_attaches_a_pdf_written_as_it_is_serves_the_document_s_own_objects(string damage)
+    {
+        // The BFO PDF/A-2b file attaches a whole PDF as object 10, an embedded file whose direct /Length an endstream
+        // confirms, its own objects 1 to 15 written in it as they are. Damaged so that the index is rebuilt, the scan took
+        // the attachment's headers, the last definition winning, and served the attachment's objects 1 to 15 in place of the
+        // document's: the validator then judged the attachment's font as the document's, and said its /DescendantFonts held
+        // an array. The scan delimits the embedded file's data, and takes none of what it holds (#171).
+        var file = Damaged(Corpus.Read("vendor/bfo/bfo-pdfa2b-embedded-pdf.pdf"), damage);
+        using var sound = PdfDocument.Open(Corpus.PathOf("vendor/bfo/bfo-pdfa2b-embedded-pdf.pdf"));
+        using var document = PdfDocument.Open(file);
+
+        document.WasRepaired.Should().BeTrue();
+
+        foreach (var number in Enumerable.Range(1, 15))
+        {
+            document.GetObject(new PdfObjectId(number)).ToString().Should().Be(sound.GetObject(new PdfObjectId(number)).ToString(), $"object {number}");
+        }
+
+        new PdfValidator().Validate(document).Findings.Should().NotContain(finding => finding.RuleId == PdfValidationRuleIds.ObjectValueTypeWrong);
+    }
+
+    [Theory]
+    [InlineData("startxref named off by seven bytes")]
+    [InlineData("its last 200 bytes cut")]
+    public void A_rebuild_of_a_portfolio_whose_attachment_is_written_in_stored_blocks_serves_the_portfolio_s_own_objects(string damage)
+    {
+        // The Acrobat 9 portfolio's object 3 is an embedded PDF in stored Flate blocks, so that the attachment's headers lie
+        // in the file as written, its object stream 31 among them. Damaged so that the index is rebuilt, the scan took them:
+        // the attachment's objects replaced the portfolio's catalog 56 and its page 57, and the members of its object
+        // stream, ranked where that stream lies, the portfolio's objects 55, 63 and 64, which read as null (#171, #189).
+        const string File = "remote/opf-format-corpus/acrobat9-portfolio-signed-3d.pdf";
+        Assert.SkipUnless(Corpus.Paths.Contains(File), $"{File} is a remote document this machine did not fetch");
+        using var sound = PdfDocument.Open(Corpus.PathOf(File));
+        using var document = PdfDocument.Open(Damaged(Corpus.Read(File), damage));
+
+        document.WasRepaired.Should().BeTrue();
+        document.GetObject(new PdfObjectId(56)).AsDictionary().Required().IsOfType(PdfName.Catalog).Should().BeTrue();
+
+        foreach (var number in (int[])[55, 57, 63, 64])
+        {
+            document.GetObject(new PdfObjectId(number)).ToString().Should().Be(sound.GetObject(new PdfObjectId(number)).ToString(), $"object {number}");
+        }
+    }
+
+    [Theory]
+    [InlineData("vendor/node-signpdf/skia-chrome74-node-signpdf-reason-contains-trailer.pdf")]
+    [InlineData("vendor/verapdf/pdf20-version-mismatch.pdf")]
+    public void A_rebuild_takes_no_trailer_keyword_a_string_holds(string file)
+    {
+        // A signature's /Reason says "truck trailer", and an outline item's /Title "the trailer dictionary": damaged so that
+        // the index is rebuilt, the scan took each for a trailer keyword, and noted the token after it. It delimits the
+        // object, and takes nothing a string holds (#171).
+        using var document = PdfDocument.Open(Damaged(Corpus.Read(file), "startxref named off by seven bytes"));
+
+        document.WasRepaired.Should().BeTrue();
+        document.Diagnostics.Contains(PdfDiagnosticCodes.SyntaxUnexpectedToken).Should().BeFalse();
+    }
+
+    [Theory]
+    [InlineData("vendor/jp-nta/indesign-distiller18-nta-gift-tax-vertical.pdf", "startxref named off by seven bytes")]
+    [InlineData("vendor/jp-nta/indesign-distiller18-nta-gift-tax-vertical.pdf", "its last 200 bytes cut")]
+    [InlineData("vendor/opf-format-corpus/pdfmaker9-word-distiller-aes128-no-copy.pdf", "startxref named off by seven bytes")]
+    [InlineData("vendor/opf-format-corpus/pdfmaker9-word-distiller-aes128-no-copy.pdf", "its last 200 bytes cut")]
+    public void A_damaged_copy_of_an_encrypted_document_is_refused_as_encrypted(string file, string damage)
+    {
+        // Each file keeps its /Encrypt in a cross-reference stream's dictionary. Damaged so that the index is rebuilt, the
+        // rebuild merged only the dictionaries trailer keywords introduce, and opened the copy as unencrypted, handing out
+        // its encrypted strings and streams: it merges a cross-reference stream's trailer keys too (#154).
+        var bytes = Damaged(Corpus.Read(file), damage);
+
+        FluentActions.Invoking(() => PdfDocument.Open(bytes)).Should().Throw<PdfEncryptedException>();
+    }
+
+    /// <summary>
+    /// Gives <paramref name="file"/> damaged so that opening it rebuilds its index: its last <c>startxref</c> naming an
+    /// offset seven bytes past the one it gives, or its last 200 bytes cut.
+    /// </summary>
+    private static byte[] Damaged(byte[] file, string damage)
+    {
+        if (damage == "its last 200 bytes cut")
+        {
+            return file[..^200];
+        }
+
+        var text = Encoding.Latin1.GetString(file);
+        var keyword = text.LastIndexOf("startxref", StringComparison.Ordinal);
+        var start = keyword + "startxref".Length;
+
+        while (text[start] is ' ' or '\r' or '\n')
+        {
+            start++;
+        }
+
+        var end = start;
+
+        while (char.IsAsciiDigit(text[end]))
+        {
+            end++;
+        }
+
+        var offset = long.Parse(text[start..end], CultureInfo.InvariantCulture) + 7;
+        return Encoding.Latin1.GetBytes(text[..start] + offset.ToString(CultureInfo.InvariantCulture) + text[end..]);
     }
 
     [Theory]

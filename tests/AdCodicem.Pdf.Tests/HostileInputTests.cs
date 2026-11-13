@@ -1827,6 +1827,72 @@ public class HostileInputTests
         document.Catalog.Should().BeSameAs(document.GetObject(new PdfObjectId(1)) as PdfDictionary);
     }
 
+    [Theory]
+    [InlineData("a cross-reference stream alone")]
+    [InlineData("a table and the stream its /XRefStm names")]
+    public void An_encryption_a_cross_reference_stream_gives_refuses_a_document_rebuilt_as_it_opens(string sections)
+    {
+        // The file's startxref names nothing, and the rebuild that opening sets off merged only the dictionaries trailer
+        // keywords introduce: a cross-reference stream's /Encrypt, the trailer ISO 32000-1 makes its dictionary (7.5.8.2),
+        // was lost, and the document opened as unencrypted, handing out what it encrypts. The rebuild merges a stream's
+        // trailer keys beside the classic trailers', the newest first (#154).
+        const string Encrypt = "<< /Filter /Standard /V 1 /R 2 /O <00> /U <00> /P -4 >>";
+        var file = new HandWrittenFile(version: "1.5");
+        var rows = new Dictionary<int, (int Type, long Field2, int Field3)>
+        {
+            [1] = (1, file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"), 0),
+            [2] = (1, file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"), 0),
+            [4] = (1, file.Object(4, Encrypt), 0),
+        };
+        var stream = file.CrossReferenceStream(7, 8, rows, "/Root 1 0 R /Encrypt 4 0 R /ID [<01> <02>]");
+
+        if (sections != "a cross-reference stream alone")
+        {
+            file.Raw(string.Create(CultureInfo.InvariantCulture, $"xref\n0 1\n0000000000 65535 f \ntrailer\n<< /Size 8 /Root 1 0 R /XRefStm {stream} >>\n"));
+        }
+
+        var text = Encoding.Latin1.GetString(file.Bytes);
+        var bytes = Encoding.Latin1.GetBytes(text[..text.LastIndexOf("startxref", StringComparison.Ordinal)] + "startxref\n9\n%%EOF\n");
+
+        FluentActions.Invoking(() => PdfDocument.Open(bytes)).Should().Throw<PdfEncryptedException>();
+        using var document = PdfDocument.Open(bytes, new PdfReaderOptions { ThrowOnEncrypted = false });
+        document.WasRepaired.Should().BeTrue();
+        document.IsEncrypted.Should().BeTrue();
+        document.Trailer.ContainsKey(PdfName.ID).Should().BeTrue();
+        document.Trailer.ContainsKey(PdfName.Get("W")).Should().BeFalse("a stream's own keys describe the stream, not the document");
+    }
+
+    [Theory]
+    [InlineData("9 0 R", "", "The trailer's /Encrypt names object 9, which reads as null, not an encryption dictionary; the document is read as unencrypted.")]
+    [InlineData("9 0 R", "null", "The trailer's /Encrypt names object 9, which reads as null, not an encryption dictionary; the document is read as unencrypted.")]
+    [InlineData("9 0 R", "5", "The trailer's /Encrypt names object 9, which reads as an integer, not an encryption dictionary; the document is read as unencrypted.")]
+    [InlineData("/Standard", "", "The trailer's /Encrypt is a name, not an encryption dictionary; the document is read as unencrypted.")]
+    [InlineData("5", "", "The trailer's /Encrypt is an integer, not an encryption dictionary; the document is read as unencrypted.")]
+    public void An_encrypt_entry_that_gives_no_encryption_dictionary_opens_the_document_unencrypted_and_is_reported(
+        string value, string nine, string message)
+    {
+        // A reference to an object the file lacks, or to one that is null, is null (ISO 32000-1, 7.3.10), and a key given
+        // null is absent (7.3.7): qpdf opens such a file as unencrypted. A name or an integer gives nothing to decrypt with,
+        // and pdf.js and PDFBox read it so too. Each refused the file under ThrowOnEncrypted, with no diagnostic (#154).
+        var builder = new TestPdfBuilder()
+            .WithObject(1, "<< /Type /Catalog /Pages 2 0 R >>")
+            .WithObject(2, "<< /Type /Pages /Kids [] /Count 0 >>");
+
+        if (nine.Length > 0)
+        {
+            builder.WithObject(9, nine);
+        }
+
+        var bytes = Encoding.Latin1.GetBytes(Encoding.Latin1.GetString(builder.BuildClassic(rootNumber: 1))
+            .Replace("/Root 1 0 R >>", "/Root 1 0 R /Encrypt " + value + " >>", StringComparison.Ordinal));
+
+        using var document = PdfDocument.Open(bytes);
+
+        document.IsEncrypted.Should().BeFalse();
+        document.Diagnostics.Should().ContainSingle(diagnostic => diagnostic.Code == PdfDiagnosticCodes.TrailerEncryptInvalid)
+            .Which.Message.Should().Be(message);
+    }
+
     [Fact]
     public void An_encryption_a_rebuild_merges_is_in_the_next_trailer_and_not_in_one_taken_before()
     {

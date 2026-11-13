@@ -4241,6 +4241,202 @@ public class DocumentReaderTests
         source.BytesRead.Should().BeLessThan(2L * file.Length);
     }
 
+    [Theory]
+    [InlineData("stream data whose direct /Length endstream confirms", false)]
+    [InlineData("a string", false)]
+    [InlineData("a comment between objects", false)]
+    [InlineData("stream data whose /Length is an object", true)]
+    [InlineData("stream data whose direct /Length is wrong", true)]
+    [InlineData("nothing: written between objects", true)]
+    public void A_rebuild_takes_no_header_another_object_holds(string where, bool injected)
+    {
+        // The file's startxref names nothing, and its index is rebuilt as it opens. A second page tree, object 2 again,
+        // marked /Injected, lies where the case says. The scan delimits each object it takes, as a load reads it: a header
+        // inside another object's value, or inside data its length confirms, is none, nor one a comment holds; object 2 is
+        // then the file's own page tree. Where the length is not confirmed, the data ends at the next header, as a load's
+        // search ends it, and the header there is taken, the last definition winning (#171).
+        const string Injected = "2 0 obj\n<< /Type /Pages /Kids [] /Count 0 /Injected true >>\nendobj\n";
+        var file = new HandWrittenFile();
+        file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>");
+        file.Object(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>");
+        file.Object(3, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] >>");
+        var length = Injected.Length.ToString(CultureInfo.InvariantCulture);
+
+        switch (where)
+        {
+            case "stream data whose direct /Length endstream confirms":
+                file.Object(5, $"<< /Length {length} >>\nstream\n{Injected}\nendstream");
+                break;
+            case "a string":
+                file.Object(5, $"({Injected})");
+                break;
+            case "a comment between objects":
+                file.Raw("% " + Injected.Replace("\n", " ", StringComparison.Ordinal) + "\n");
+                break;
+            case "stream data whose /Length is an object":
+                file.Object(5, $"<< /Length 6 0 R >>\nstream\n{Injected}\nendstream");
+                file.Object(6, length);
+                break;
+            case "stream data whose direct /Length is wrong":
+                file.Object(5, $"<< /Length 3 >>\nstream\n{Injected}\nendstream");
+                break;
+            default:
+                file.Raw(Injected);
+                break;
+        }
+
+        file.Raw("trailer\n<< /Root 1 0 R >>\nstartxref\n9\n%%EOF\n");
+        using var document = PdfDocument.Open(file.Bytes);
+
+        document.WasRepaired.Should().BeTrue();
+        document.GetObject(new PdfObjectId(2)).AsDictionary().Required().ContainsKey(PdfName.Get("Injected")).Should().Be(injected);
+    }
+
+    [Theory]
+    [InlineData("stream data", false)]
+    [InlineData("a string", false)]
+    [InlineData("a comment between objects", false)]
+    [InlineData("the end of a name between objects", false)]
+    [InlineData("nothing: written between objects", true)]
+    public void A_rebuild_merges_no_trailer_another_object_or_a_comment_holds(string where, bool merged)
+    {
+        // The file's startxref names nothing, and its trailer gives /Root alone. A trailer keyword, or a name that ends with
+        // its letters, lies where the case says, before a dictionary that gives /Info and /Encrypt. A trailer a stream's
+        // data, a string or a comment holds is none, nor a name's last letters: the rebuild merges nothing of it, and the
+        // document is not encrypted (#171, #154).
+        const string Dictionary = "<< /Info 4 0 R /Encrypt << /Filter /Standard /V 1 /R 2 /O <00> /U <00> /P -4 >> >>";
+        var file = new HandWrittenFile();
+        file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>");
+        file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>");
+        file.Object(4, "<< /Title (info) >>");
+        var keyword = "trailer\n" + Dictionary;
+
+        switch (where)
+        {
+            case "stream data":
+                file.Object(5, string.Create(CultureInfo.InvariantCulture, $"<< /Length {keyword.Length} >>\nstream\n{keyword}\nendstream"));
+                break;
+            case "a string":
+                file.Object(5, "(" + keyword + ")");
+                break;
+            case "a comment between objects":
+                file.Raw("% trailer " + Dictionary + "\n");
+                break;
+            case "the end of a name between objects":
+                file.Raw("/Mytrailer " + Dictionary + "\n");
+                break;
+            default:
+                file.Raw(keyword + "\n");
+                break;
+        }
+
+        file.Raw("trailer\n<< /Root 1 0 R >>\nstartxref\n9\n%%EOF\n");
+        using var document = PdfDocument.Open(file.Bytes, new PdfReaderOptions { ThrowOnEncrypted = false });
+
+        document.WasRepaired.Should().BeTrue();
+        document.Trailer.ContainsKey(PdfName.Info).Should().Be(merged);
+        document.IsEncrypted.Should().Be(merged);
+    }
+
+    [Theory]
+    [InlineData("4 0 obj", true)]
+    [InlineData("4 +0 obj", true)]
+    [InlineData("4 -0 obj", true)]
+    [InlineData("+4 0 obj", true)]
+    [InlineData("++4 0 obj", true)]
+    [InlineData("+-4 0 obj", true)]
+    [InlineData("-4 0 obj", false)]
+    [InlineData("-+4 0 obj", false)]
+    [InlineData("4 -1 obj", false)]
+    public void A_header_whose_numbers_carry_signs_is_read_as_the_lexer_reads_them_at_its_row_and_by_a_rebuild(string header, bool four)
+    {
+        // ISO 32000-1 lets an integer carry a sign (7.3.3), and the lexer reads a run of signs with the number, the first sign
+        // deciding. A load at the row, the search near it and the rebuild's scan read a header so: 4 +0 obj and +4 0 obj are
+        // object 4's, -4 0 obj is none, its number below 1, nor the 4 0 obj after its sign (#327).
+        using var atItsRow = PdfDocument.Open(NearbyFiles.FourWrittenAs(header));
+        using var rebuilt = PdfDocument.Open(NearbyFiles.FourWrittenAs(header, startxrefLost: true));
+
+        Text(atItsRow).Should().Be(four ? "four" : null);
+        atItsRow.Diagnostics.Contains(PdfDiagnosticCodes.XRefOffsetAdjusted).Should().BeFalse();
+        Text(rebuilt).Should().Be(four ? "four" : null);
+        rebuilt.WasRepaired.Should().BeTrue();
+
+        static string? Text(PdfDocument document) => document.GetObject(new PdfObjectId(4)) is PdfString text ? text.ToText() : null;
+    }
+
+    [Theory]
+    [InlineData("as written")]
+    [InlineData("the later stream's number met first")]
+    public void A_rebuild_takes_no_member_from_an_object_stream_whose_number_a_later_object_stream_lists(string order)
+    {
+        // Object 6 is written directly, then in object stream 10, and object stream 20, written after both, lists an object
+        // 10: 10 is no object stream of the rebuilt index, and 6 is the one written directly. Object 7 is in object stream 30,
+        // then in 10: 30's. Taken in as their numbers were met, 10's members kept their place once 20 replaced it, and read as
+        // null; and where 20's number came first, 10 was skipped, so that the result followed the order the numbers were met
+        // in. The rebuild takes the streams in from the last written (#348). An earlier definition of 20, written first, makes
+        // its number the first met.
+        var file = new HandWrittenFile(version: "1.5");
+
+        if (order != "as written")
+        {
+            file.Object(20, "null");
+        }
+
+        file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>");
+        file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>");
+        file.Object(6, "(six written directly)");
+        file.ObjectStream(30, [(7, "(seven in 30)")]);
+        file.ObjectStream(10, [(6, "(six in 10)"), (7, "(seven in 10)")]);
+        file.ObjectStream(20, [(10, "(ten in 20)")]);
+        file.Raw("trailer\n<< /Root 1 0 R >>\nstartxref\n9\n%%EOF\n");
+        using var document = PdfDocument.Open(file.Bytes);
+
+        document.WasRepaired.Should().BeTrue();
+        document.GetObject(new PdfObjectId(6)).AsText().Should().Be("six written directly");
+        document.GetObject(new PdfObjectId(7)).AsText().Should().Be("seven in 30");
+        document.GetObject(new PdfObjectId(10)).AsText().Should().Be("ten in 20");
+    }
+
+    [Fact]
+    public void A_stream_whose_length_names_an_object_a_later_object_stream_defines_again_is_read_with_the_length_the_rebuild_serves()
+    {
+        // Stream 8's /Length is object 9, written directly as 3, then again, as 10, in object stream 20, written after it. The
+        // expansion loads stream 8, to tell whether it is an object stream, before 20 replaces 9: read through the definition
+        // it replaces, 8 stayed cached with 3 bytes of its 10. What was read through a replaced definition is read again from
+        // the rebuilt index (#348).
+        var file = new HandWrittenFile(version: "1.5");
+        file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>");
+        file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>");
+        file.Object(9, "3");
+        file.Object(8, "<< /Length 9 0 R >>\nstream\n0123456789\nendstream");
+        file.ObjectStream(20, [(9, "10")]);
+        file.Raw("trailer\n<< /Root 1 0 R >>\nstartxref\n9\n%%EOF\n");
+        using var document = PdfDocument.Open(file.Bytes);
+
+        var stream = document.GetObject(new PdfObjectId(8)).Should().BeOfType<PdfStream>().Subject;
+
+        document.WasRepaired.Should().BeTrue();
+        document.GetObject(new PdfObjectId(9)).AsInteger().Should().Be(10);
+        stream.Data.Length.Should().Be(10);
+        document.Reader.TryGetStreamLengthFault(8, out _).Should().BeFalse();
+    }
+
+    [Fact]
+    public void A_rebuild_reads_a_file_in_pieces_no_larger_than_a_megabyte()
+    {
+        // The scan read each megabyte with the byte past it, which a file source rents from a pool that rounds 1,048,577 up
+        // to 2 MiB (#350). It reads a piece of a megabyte, the byte past what it searches its last.
+        var text = "%PDF-1.7\n1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n2 0 obj\n<< /Type /Pages /Kids [] /Count 0 >>\nendobj\n"
+            + "%" + new string('-', 3 * 1024 * 1024) + "\ntrailer\n<< /Root 1 0 R >>\nstartxref\n9\n%%EOF\n";
+        using var source = new CountingSource(Encoding.Latin1.GetBytes(text));
+
+        using var document = PdfDocument.Open(source, options: null, ownsSource: false);
+
+        document.WasRepaired.Should().BeTrue();
+        document.Catalog.IsOfType(PdfName.Catalog).Should().BeTrue();
+        source.LargestRead.Should().BeLessThanOrEqualTo(1024 * 1024);
+    }
+
     private sealed class CountingSource : PdfFileSource
     {
         private readonly PdfFileSource _inner;
