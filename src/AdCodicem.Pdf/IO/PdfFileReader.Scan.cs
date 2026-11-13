@@ -434,7 +434,7 @@ internal sealed partial class PdfFileReader
         {
             BoundsKind.Value when bounds.End <= bound => new ObjectExtent(ExtentKind.Value, at + bounds.End, -1, false),
             BoundsKind.Stream when bounds.DataStart <= bound => ConfirmStream(at, bounds, buffered),
-            BoundsKind.Runaway => new ObjectExtent(ExtentKind.RunawayString, at + bounds.End, -1, false),
+            BoundsKind.Runaway when bounds.End <= bound => new ObjectExtent(ExtentKind.RunawayString, at + bounds.End, -1, false),
             _ => default,
         };
     }
@@ -447,7 +447,10 @@ internal sealed partial class PdfFileReader
     /// <remarks>
     /// The white space a first read cannot see past is read on with the scan's own reads past declared lengths, which
     /// <see cref="EndStreamSearchPasses"/> bounds apart from the loads' searches, and nothing is kept of it: a file of a
-    /// million stream headers holds the scan to the time of a few readings of it, and no more memory than one.
+    /// million stream headers holds the scan to the time of a few readings of it, and no more memory than one. Once those
+    /// reads have read as much as they may — crafted headers whose lengths end in long white space —, a length a first read
+    /// cannot confirm is not, and its stream's data is read as an unconfirmed stream's: which ones depends on the order the
+    /// scan meets them in, as for the loads' searches.
     /// </remarks>
     /// <param name="at">Where the header starts in the file.</param>
     /// <param name="bounds">What the lexing of the header and dictionary found.</param>
@@ -483,7 +486,7 @@ internal sealed partial class PdfFileReader
             else if (end.Kind == StreamEndKind.Undecided)
             {
                 var next = NextSignificant(dataEnd, ref _scanGapBytes, PdfObjectParser.EndObjLookahead);
-                keywordEnd = next >= 0 && IsEndStreamKeywordAt(next) ? next + StreamEnds.EndStreamKeyword.Length : -1;
+                keywordEnd = next >= 0 ? EndStreamTokenEnd(next) : -1;
             }
         }
 
@@ -492,16 +495,21 @@ internal sealed partial class PdfFileReader
             : new ObjectExtent(ExtentKind.UnconfirmedStream, dataStart, dataStart, bounds.CrossReferenceStream);
     }
 
-    /// <summary>Determines whether the keyword <c>endstream</c> starts at <paramref name="position"/>.</summary>
-    private bool IsEndStreamKeywordAt(long position)
+    /// <summary>
+    /// Gives where the token that starts at <paramref name="position"/> ends, the <c>endstream</c> keyword a stream's data
+    /// ends at, whole as a load lexes it — "endstreamx" too —; or -1 where none starts, or its token runs past a first read.
+    /// </summary>
+    private long EndStreamTokenEnd(long position)
     {
-        if (position >= _source.Length - (StreamEnds.EndStreamKeyword.Length - 1))
+        if (position >= _source.Length)
         {
-            return false;
+            return -1;
         }
 
-        Span<byte> keyword = stackalloc byte[StreamEnds.EndStreamKeyword.Length];
-        return _source.Read(position, keyword) == keyword.Length && keyword.SequenceEqual(StreamEnds.EndStreamKeyword);
+        Span<byte> bytes = stackalloc byte[PdfObjectParser.EndObjLookahead];
+        var read = _source.Read(position, bytes[..(int)Math.Min(bytes.Length, _source.Length - position)]);
+        var end = StreamEnds.ReadEnd(bytes[..read], position + read >= _source.Length);
+        return end.Kind == StreamEndKind.EndStream ? position + end.KeywordEnd : -1;
     }
 
     /// <summary>
@@ -656,16 +664,15 @@ internal sealed partial class PdfFileReader
 
         // A dictionary that the stream keyword follows is a stream's, whose data starts past the end of line after it.
         lexer.Position = valueEnd;
-        var next = lexer.Read();
 
-        if (!endsData && next.End >= bytes.Length)
+        switch (ReadRegularToken(ref lexer, bytes, endsData, out var next))
         {
-            return ObjectBounds.Cut;
-        }
-
-        if (!next.IsKeyword("stream"u8))
-        {
-            return new ObjectBounds(BoundsKind.Value, valueEnd, -1, -1, false);
+            case LookAhead.Cut:
+                return ObjectBounds.Cut;
+            case LookAhead.Token when next.IsKeyword("stream"u8):
+                break;
+            default:
+                return new ObjectBounds(BoundsKind.Value, valueEnd, -1, -1, false);
         }
 
         lexer.SkipStreamEndOfLine();
@@ -684,34 +691,51 @@ internal sealed partial class PdfFileReader
     /// </summary>
     private static ObjectBounds DelimitInteger(ref PdfLexer lexer, ReadOnlySpan<byte> bytes, bool endsData, PdfToken first)
     {
-        var second = lexer.Read();
-
-        if (!endsData && second.End >= bytes.Length)
+        switch (ReadRegularToken(ref lexer, bytes, endsData, out var second))
         {
-            return ObjectBounds.Cut;
-        }
-
-        if (second.Kind == PdfTokenKind.Integer)
-        {
-            var third = lexer.Read();
-
-            if (!endsData && third.End >= bytes.Length)
-            {
+            case LookAhead.Cut:
                 return ObjectBounds.Cut;
-            }
 
-            if (third.IsKeyword("R"u8))
-            {
-                return new ObjectBounds(BoundsKind.Value, third.End, -1, -1, false);
-            }
+            case LookAhead.Token when second.Kind == PdfTokenKind.Integer:
+                switch (ReadRegularToken(ref lexer, bytes, endsData, out var third))
+                {
+                    case LookAhead.Cut:
+                        return ObjectBounds.Cut;
+                    case LookAhead.Token when third.IsKeyword("R"u8):
+                        return new ObjectBounds(BoundsKind.Value, third.End, -1, -1, false);
+                    case LookAhead.Token when third.IsKeyword("obj"u8):
+                        return new ObjectBounds(BoundsKind.Value, first.Start, -1, -1, false);
+                }
 
-            if (third.IsKeyword("obj"u8))
-            {
-                return new ObjectBounds(BoundsKind.Value, first.Start, -1, -1, false);
-            }
+                break;
         }
 
         return new ObjectBounds(BoundsKind.Value, first.End, -1, -1, false);
+    }
+
+    /// <summary>
+    /// Lexes the token after a value only where it can change where the value ends: a run of regular characters — an
+    /// integer, <c>R</c>, <c>obj</c>, <c>stream</c> —, which no string, name or container is. A token a delimiter opens is
+    /// left unlexed: a string after a value is not the value's, and lexing it for each header it holds would read it again
+    /// and again.
+    /// </summary>
+    private static LookAhead ReadRegularToken(ref PdfLexer lexer, ReadOnlySpan<byte> bytes, bool endsData, out PdfToken token)
+    {
+        token = default;
+        lexer.SkipWhitespaceAndComments();
+
+        if (lexer.Position >= bytes.Length)
+        {
+            return endsData ? LookAhead.Other : LookAhead.Cut;
+        }
+
+        if (!PdfCharacters.IsRegular(bytes[lexer.Position]))
+        {
+            return LookAhead.Other;
+        }
+
+        token = lexer.Read();
+        return !endsData && token.End >= bytes.Length ? LookAhead.Cut : LookAhead.Token;
     }
 
     /// <summary>Determines whether <paramref name="token"/> is a keyword that ends an object or a stream, or starts one.</summary>
@@ -974,6 +998,19 @@ internal sealed partial class PdfFileReader
 
         /// <summary>A value that holds a string running past its object's end (<see cref="IsRunaway"/>).</summary>
         Runaway,
+    }
+
+    /// <summary>What the token after a value is, as far as it can change where the value ends (<see cref="ReadRegularToken"/>).</summary>
+    private enum LookAhead
+    {
+        /// <summary>A token a delimiter opens, or none before the end of the data.</summary>
+        Other,
+
+        /// <summary>The bytes end before the token does.</summary>
+        Cut,
+
+        /// <summary>A run of regular characters, lexed.</summary>
+        Token,
     }
 
     /// <summary>What a sweep of the bytes between objects stands in (<see cref="SweepLine"/>).</summary>
