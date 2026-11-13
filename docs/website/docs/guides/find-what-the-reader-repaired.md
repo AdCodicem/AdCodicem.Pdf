@@ -126,7 +126,9 @@ before that read accepts a file it would have refused after it.
 ## Read the trailer after reading the document
 
 A rebuild merges the trailers it finds — an older revision's `/Info`, or `/Encrypt` — and the catalog it finds into a new
-trailer, which `Trailer`, `Catalog` and `IsEncrypted` give from then on; a trailer you took before keeps none of it. Take
+trailer, which `Trailer` and `Catalog` give from then on; a trailer you took before keeps none of it. `IsEncrypted` is not
+among them: it is decided as the document opens, and an `/Encrypt` only a later rebuild finds is reported as
+[`trailer.encrypt-late`](../reference/diagnostics.md#codes), the document still read as unencrypted. Take
 the trailer once you have read what you need, rather than keep the one you took at opening:
 
 ```csharp

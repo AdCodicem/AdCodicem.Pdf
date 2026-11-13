@@ -101,8 +101,10 @@ as any read reads it, through the index the reader settled on.
   it has a finding for. The walk of the object streams' dependencies reads outside the reader's cache, and keeps the
   references of as many objects as that cache holds; past that, it reads an object again for each stream it meets it
   from.
-- `WasRepaired`, `ObjectCount`, `ObjectNumbers`, the merged `Trailer` and `IsEncrypted` can change when a validation
-  starts, on a damaged file, as they could on any read: what the next call gives changes, not what a call gave before.
+- `WasRepaired`, `ObjectCount`, `ObjectNumbers` and the merged `Trailer` can change when a validation starts, on a
+  damaged file, as they could on any read: what the next call gives changes, not what a call gave before. `IsEncrypted`
+  could too, until it was decided once, as the document opens (amended on 2026-11-13,
+  [#154](https://github.com/AdCodicem/AdCodicem.Pdf/issues/154)).
   An enumeration of `ObjectNumbers` or `Diagnostics` under way goes on over what it began with, and a trailer taken
   before is left as it was, the rebuild merging into a new one
   ([#167](https://github.com/AdCodicem/AdCodicem.Pdf/issues/167)).

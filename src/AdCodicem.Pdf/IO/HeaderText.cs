@@ -206,8 +206,9 @@ internal ref struct HeaderText
     /// parenthesis or angle bracket, a solidus or a percent sign precedes — which a load lexes into a longer token, a string,
     /// a name or a comment —, nor a sign before a number, nor digits a comment ends with, which were once taken for a
     /// number. The scan that rebuilds an index refuses the same (#171, #189), but reads a number a run of signs precedes as
-    /// the lexer reads it, the first sign deciding (#327): the rule reads digits alone, so that a stream whose data holds
-    /// <c>+4 0 obj</c> is searched past it, to an <c>endstream</c> or a header after it.
+    /// the lexer reads it, the first sign deciding (#327), and digits glued to the end-of-file marker <c>%%EOF</c>, a
+    /// writer's next update (#171): the rule reads digits alone, after a byte that ends a token, so that a stream whose data
+    /// holds <c>+4 0 obj</c> or <c>%%EOF4 0 obj</c> is searched past it, to an <c>endstream</c> or a header after it.
     /// A header lies whole in what the search reads, from the start of the data to the next object the index places: the
     /// stream's own header, and whatever precedes the data, is never one, and one that the next object's offset cuts is
     /// not seen, that offset stopping the search first. The rule reads nothing but the bytes, so where it stops cannot

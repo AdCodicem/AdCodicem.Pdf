@@ -75,7 +75,9 @@ there. Raise PdfReaderLimits.MaxDecodedStreamLength to read past it.
   the guard, and it withholds the report even where the cut hid nothing, a dictionary of another type that gives no
   `/W`, or a token no header starts, among them. When the trailer's
   `/Root` names an object so left out, the catalog reads as null too: the reader does not
-  look for another among the objects it indexed, which would be another object than the one `/Root` names. A classic table cut by its length, or whose rows run past a full index, keeps its trailer: the document's
+  look for another among the objects it indexed, which would be another object than the one `/Root` names. When its
+  `/Encrypt` names an object so left out, the document is taken for encrypted, as the file says
+  ([#154](https://github.com/AdCodicem/AdCodicem.Pdf/issues/154)). A classic table cut by its length, or whose rows run past a full index, keeps its trailer: the document's
   catalog, encryption and identity. The chain ends at such a cut, and at a section whose trailer a limit cut — but for a
   classic table an `/XRefStm` names, whose links the chain never follows
   ([#263](https://github.com/AdCodicem/AdCodicem.Pdf/issues/263)), the chain going on through the table that names it —:

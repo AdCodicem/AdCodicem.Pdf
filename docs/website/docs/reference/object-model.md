@@ -117,15 +117,15 @@ nothing it handed out before:
 
 | Taken before the rebuild | After it |
 |---|---|
-| `Trailer` | The trailer as it was. The rebuild merges the trailers it finds, and sets a `/Root` it searched for, in a new dictionary, which the next `Trailer` gives, and `Catalog` and `IsEncrypted` read; a trailer taken after the rebuild is never changed |
+| `Trailer` | The trailer as it was. The rebuild merges the trailers it finds, and sets a `/Root` it searched for, in a new dictionary, which the next `Trailer` gives, and `Catalog` reads; a trailer taken after the rebuild is never changed. `IsEncrypted` does not change: it is decided as the document opens, and an `/Encrypt` only the rebuild merged is reported as [`trailer.encrypt-late`](diagnostics.md#codes) |
 | An object from `GetObject`, `Catalog` or a reference resolved | The object as it was read. The next read of its number reads it through the rebuilt index, as a new instance, which may differ |
 | An enumeration of `ObjectNumbers` under way | The numbers the index held when the enumeration began, without a copy; the next enumeration gives the rebuilt index's |
 | An enumeration of `Diagnostics` under way | The entries recorded when the enumeration began; `Count` and the next enumeration give the rebuild's too. Once it has ended, it stays ended, whatever is recorded after |
 
 Only a `PdfFileSource` of your own, reading the document from inside the read that rebuilds, can take a trailer the
 rebuild still changes: the new dictionary, which may gain the trailers and the `/Root` the rebuild merges and sets
-after. If the source fails the rebuild — its scan or its finish —, `Trailer`, `Catalog`, `IsEncrypted`,
-`ObjectCount` and `ObjectNumbers` describe the unfinished rebuild until the next read or validation runs it again, and
+after. If the source fails the rebuild — its scan or its finish —, `Trailer`, `Catalog`, `ObjectCount` and
+`ObjectNumbers` describe the unfinished rebuild until the next read or validation runs it again, and
 `Catalog` may meanwhile give an object that is no catalog
 ([Lazy reading](../concepts/lazy-reading.md#what-a-rebuild-after-opening-changes) says what that leaves out).
 
