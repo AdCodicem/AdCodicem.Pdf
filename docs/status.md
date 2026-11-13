@@ -130,11 +130,18 @@ Tracking workflow mirrors from `docs/roadmap.md` (*Debt and open points*, below)
   ([#344]). Since 2026-11-11 (ADR 53 amended, ADR 54) the step runs once, after the review loop stops, over the
   defenses among the changed lines only — bounds, guards, depth and count limits, visited sets, the exits of loops and
   recursions that read the file —, and a mutant no document and no public call tells apart is equivalent: about 6,000
-  mutants since batch 5 had found one defect of the library.
+  mutants since batch 5 had found one defect of the library. Batch 20, the first under it, built 51 mutants over the
+  defenses among its changed lines — the windows of the scan and of both searches near an offset and the byte past them,
+  the cache's eviction, the object streams' weight, the tentative index's rollback, the probe's room — and left the rest
+  to the review: 27 were killed by the suite as it stood, 4 of them once compiled without warnings as errors; 12 by tests
+  the step wrote, 3 of them after the second opinion overturned their first verdict; 12 were classed equivalent, one in
+  cost only, each verdict checked by a second agent; none was filed ([#347]).
 - **Review rounds**: since 2026-11-11 (ADR 54) a finding's severity follows its effect and whether real files have its
   input; a pull request's rounds stop at the first with no blocker and no major, at the eighth at the latest, and a
   batch pays at most six issues. Batch 19's 13 rounds, measured, are in
-  [Where a batch's time goes](research/2026-11-session-speed.md).
+  [Where a batch's time goes](research/2026-11-session-speed.md). Batch 20 stopped at its first round: seven lenses, 21
+  findings, the one major refuted as [#171]'s, 5 minors and 15 nits, whose texts and tests the final pass fixed and the
+  rest filed as [#348] to [#350] ([#347]).
 - **CI**: green on `main` at `21a0298` (CI run 927), and on [#344]'s branch at `2c7cf01`
   (CI run 1055). `Remote
   corpus` passed on every document in the nightly run 18, on `main` at `8c54490`, and in runs 19 and 20, on [#203]'s and
