@@ -662,6 +662,37 @@ public class DocumentReaderTests
     }
 
     [Theory]
+    [InlineData("7 0{gap}obj", false)]
+    [InlineData("7 0{gap}obj", true)]
+    [InlineData("7 0 obj{gap}", false)]
+    [InlineData("7 0 obj{gap}", true)]
+    public void A_cross_reference_stream_a_rebuild_merges_gives_its_trailer_keys_only_where_its_window_holds_its_header_and_the_start_of_its_dictionary(
+        string header, bool past)
+    {
+        // A rebuild merges the trailer keys of each cross-reference stream its scan finds, reading the stream's header and
+        // dictionary through a window of 64 KB from the header, as it reads what follows a trailer keyword (#49, #154). White
+        // space that carries the obj keyword, or the dictionary, past the window's edge leaves nothing of the stream to
+        // merge: the catalog is then searched for, as for a trailer that lacks /Root. One space there leaves the keys merged.
+        var file = new HandWrittenFile(version: "1.5");
+        var rows = new Dictionary<int, (int Type, long Field2, int Field3)>
+        {
+            [1] = (1, file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"), 0),
+            [2] = (1, file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"), 0),
+        };
+        var gap = new string(' ', past ? PdfFileReader.XRefWindow : 1);
+        file.CrossReferenceStream(7, 8, rows, "/Root 1 0 R /ID [<01> <02>]", header: header.Replace("{gap}", gap, StringComparison.Ordinal));
+        var text = Encoding.Latin1.GetString(file.Bytes);
+        var bytes = Encoding.Latin1.GetBytes(text[..text.LastIndexOf("startxref", StringComparison.Ordinal)] + "startxref\n9\n%%EOF\n");
+
+        using var document = PdfDocument.Open(bytes);
+
+        document.WasRepaired.Should().BeTrue();
+        document.Trailer.ContainsKey(PdfName.ID).Should().Be(!past);
+        document.Diagnostics.Contains(PdfDiagnosticCodes.TrailerRootRecovered).Should().Be(past);
+        document.Catalog.Should().BeSameAs(document.GetObject(new PdfObjectId(1)) as PdfDictionary);
+    }
+
+    [Theory]
     [InlineData("<< /K 1 >> ", "streamline", "")]
     [InlineData("<< /K 1 >> ", "streamX", "")]
     [InlineData("[<< /K 1 >> ", "streamline", "]")]
@@ -4420,6 +4451,8 @@ public class DocumentReaderTests
     [InlineData("(endobj\n{2}\n)", true)]
     [InlineData("(\n{2}\nendobj)", true)]
     [InlineData("true (\n{2}\n)", true)]
+    [InlineData(">> (\n{2}\n)", true)]
+    [InlineData("1 2 (\n{2}\n)", true)]
     [InlineData(") (\n{2}\n)", true)]
     [InlineData("<< % obj\n/Note (\n{2}\n) >>", true)]
     public async Task A_rebuild_delimits_an_object_as_a_load_lexes_its_value(string value, bool injected)
@@ -4428,8 +4461,9 @@ public class DocumentReaderTests
         // The scan delimits object 5 as a load lexes it: a keyword or a stray parenthesis inside a container is one of its
         // tokens, and endobj inside a string a word only where no regular character runs into it, so the string, delimited,
         // hides the header. A string that holds endobj as a word runs past its object's end and delimits nothing; a value
-        // that ends with its first token, true, leaves the string after it between objects, and one no load reads, a stray
-        // parenthesis, has what follows its header read as the bytes give it: the header on its own line is taken (#171).
+        // that ends with its first token — true, a stray >>, an integer that a second one follows, then neither R nor obj —
+        // leaves the string after it between objects, and one no load reads, a stray parenthesis, has what follows its
+        // header read as the bytes give it: the header on its own line is taken (#171).
         // A comment inside a container is read to its end of line, past the obj of a longer word; one that holds obj
         // as a word, which the scan may take for a header's, leaves the value undelimited too.
         const string Injected = "2 0 obj\n<< /Type /Pages /Kids [] /Count 0 /Injected true >>";
@@ -4640,6 +4674,34 @@ public class DocumentReaderTests
 
         document.WasRepaired.Should().BeTrue();
         document.GetObject(new PdfObjectId(7)).AsText().Should().Be(seven);
+    }
+
+    [Theory(Timeout = 60_000)]
+    [InlineData(false, "real seven")]
+    [InlineData(true, "inner")]
+    public async Task A_run_of_letters_glued_to_an_endstream_confirms_a_length_where_it_ends_the_file_not_where_its_source_stops_giving_it(
+        bool cutShort, string seven)
+    {
+        // Stream 4 ends the file: its length is right, its endstream is glued to 300 letters that run to the end of the
+        // file, and its data spells object 7 again. A load lexes the letters as one token the end of the file ends, and
+        // confirms the length; the scan reads the run as far, and confirms it too. Where the source gives no byte past the
+        // first hundred letters, as one another process cuts short may (#52), the scan cannot tell where the run ends: it
+        // asks no more, leaves the length unconfirmed, and takes the header the data spells.
+        var file = new HandWrittenFile();
+        file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>");
+        file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>");
+        file.Object(7, "(real seven)");
+        file.Raw("trailer\n<< /Root 1 0 R >>\n4 0 obj\n<< /Length 23 >>\nstream\n7 0 obj (inner) endobj\nendstream" + new string('X', 300));
+        var bytes = file.Bytes;
+        var cut = bytes.Length - (cutShort ? 200 : 0);
+        var source = new ShortCountSource(bytes, (offset, held) => (int)Math.Clamp(cut - offset, 0, held));
+
+        using var document = await Task.Run(
+            () => PdfDocument.Open(source, options: null, ownsSource: true), TestContext.Current.CancellationToken);
+
+        document.WasRepaired.Should().BeTrue();
+        document.GetObject(new PdfObjectId(7)).AsText().Should().Be(seven);
+        (source.ShortReads > 0).Should().Be(cutShort);
     }
 
     [Theory]
@@ -5118,6 +5180,35 @@ public class DocumentReaderTests
         source.ShortReads.Should().BePositive();
     }
 
+    [Theory]
+    [InlineData(null, "six")]
+    [InlineData(0, "injected six")]
+    [InlineData(2, "injected six")]
+    [InlineData(6, "injected six")]
+    public void A_value_its_piece_cuts_delimits_nothing_where_the_read_again_from_its_header_gives_less_than_the_header(
+        int? given, string six)
+    {
+        // Object 5, an array of 100 KB that the end of the scan's first piece cuts, holds on a line of its own inside a string
+        // a second object 6. The scan reads the value again from its header, and the source gives that read no byte, "5 " or
+        // "5 0 ob", as a caller's may (#52): the reader takes them as all the file holds there, where no header a load reads
+        // lies. Object 5 is not delimited, and what follows its header is read as the bytes give it: object 6 is defined
+        // again. Given whole, the read holds the header and the array, which hides object 6's header.
+        var file = new HandWrittenFile();
+        file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>");
+        file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>");
+        file.Object(6, "(six)");
+        file.Raw("%" + new string('-', (1024 * 1024) - 300 - (int)file.Position) + "\n");
+        var five = file.Object(5, "[ (\n6 0 obj\n(injected six)\n) " + string.Concat(Enumerable.Repeat("1 ", 50 * 1024)) + "]");
+        file.Raw("trailer\n<< /Root 1 0 R >>\nstartxref\n9\n%%EOF\n");
+        using var source = new ShortCountSource(file.Bytes, (offset, held) => offset == five ? given ?? held : held);
+
+        using var document = PdfDocument.Open(source, options: null, ownsSource: false);
+
+        document.WasRepaired.Should().BeTrue();
+        document.GetObject(new PdfObjectId(6)).AsText().Should().Be(six);
+        (source.ShortReads > 0).Should().Be(given is not null);
+    }
+
     [Fact]
     public void A_rebuild_reads_a_file_cut_short_at_the_same_places_whether_the_cut_ends_an_object_s_value_or_falls_past_it()
     {
@@ -5146,6 +5237,43 @@ public class DocumentReaderTests
         }
 
         ReadsCutAt(end).Should().Equal(ReadsCutAt(end + 1));
+    }
+
+    [Theory(Timeout = 60_000)]
+    [InlineData(false, "real nine")]
+    [InlineData(true, "inner")]
+    public async Task An_object_the_scan_s_piece_cuts_is_read_again_as_the_file_cut_where_its_source_stops_giving_bytes(
+        bool cutInsideTheString, string nine)
+    {
+        // Object 5, a string of 2 KB that holds on a line of its own a second object 9, starts a thousand bytes before the
+        // end of the scan's first piece, which the source gives whole. Past the piece, it gives no byte past object 5's
+        // value, or past a point inside its string, as one another process cuts short may (#52): the read again from object
+        // 5's header comes back shorter than asked, and holds the end of the data, as the same bytes cut there do. Where the
+        // value is whole, object 5 is delimited and hides the header it holds; where the string runs to the end of the data,
+        // it delimits nothing, and that header is object 9.
+        var file = new HandWrittenFile();
+        file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>");
+        file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>");
+        file.Object(9, "(real nine)");
+        file.Raw("trailer\n<< /Root 1 0 R >>\n");
+        file.Raw("%" + new string('-', (1024 * 1024) - 1000 - (int)file.Position) + "\n");
+        var value = "(" + new string('x', 900) + "\n9 0 obj\n(inner)\n" + new string('x', 1000) + ")";
+        var cut = (int)file.Object(5, value) + "5 0 obj\n".Length + value.Length - (cutInsideTheString ? 500 : 0);
+        var bytes = file.Bytes;
+        var source = new ShortCountSource(bytes, (offset, held) => (int)Math.Clamp(cut - offset, 0, held));
+
+        static string? Nine(PdfFileSource from)
+        {
+            using var document = PdfDocument.Open(from, options: null, ownsSource: true);
+            document.WasRepaired.Should().BeTrue();
+            return (document.GetObject(new PdfObjectId(9)) as PdfString)?.ToText();
+        }
+
+        var read = await Task.Run(() => Nine(source), TestContext.Current.CancellationToken);
+
+        read.Should().Be(nine);
+        Nine(PdfFileSource.FromMemory(bytes.AsMemory(0, cut))).Should().Be(nine);
+        source.ShortReads.Should().BePositive();
     }
 
     private sealed class CountingSource : PdfFileSource
