@@ -7,6 +7,37 @@ to about thirty lines each; the unabridged text is the
 [journal of `e38ebbc`](https://github.com/AdCodicem/AdCodicem.Pdf/blob/e38ebbc471b86779c3f6ac5b320ca1ecd531b2c1/docs/status.md#journal). A session reads an entry when it needs the
 reason for a past decision. A new entry is short, about thirty lines; the detail is in the pull request's body.
 
+## 2026-11-13 — Batch 21, first pull request: what a rebuild takes, and encryption decided at opening ([#154], [#171], [#327], [#348], [#350])
+
+- **The question.** Measured on `main` at `7bccd5b`, twice, identical: a rebuild took any header the bytes spelled — in
+  an attachment's stream data, a string, a comment — and the newest won, so an injected page tree replaced the file's
+  own ([#171]); a rebuild lost an `/Encrypt` kept in a cross-reference stream, and one resolving to null refused the
+  document ([#154]); `4 +0 obj` was no header to the scan ([#327]); the expansion followed the order numbers were met
+  ([#348]); the scan rented 2 MiB from a file source ([#350]).
+- **Settled with the maintainer** (2026-11-13, each as recommended): all of [#171] in this batch, as two pull requests
+  by area — this one the rebuild, the next the searches near an offset and a row, which closes it; what the file
+  delimits hides the headers inside; signs read as the lexer reads them; a non-dictionary `/Encrypt` leaves the document
+  unencrypted, reported; encryption decided at opening; a string that holds `endobj`, or that the end of the data leaves
+  open, delimits nothing (round 1's one major); the second resolution of `/Encrypt` removed (the mutation step).
+- **What changed.** The scan delimits each object it takes as a load reads it, in pieces of a megabyte, each byte
+  searched, swept, lexed and walked back a bounded number of times. The rebuild merges cross-reference streams' trailer
+  keys newest first. Object streams are taken in from the last written. `IsEncrypted` is fixed as the document opens.
+- **Review** (ADR 54): five rounds. Round 1: six lenses, 29 findings — 11 blockers, all the new scan's cost, 1 major, 17
+  minors and nits. Rounds 2 to 4: one or two blockers each, in the code the round before had written. Round 5: no
+  blocker and no major, 3 minors and a nit.
+- **Mutation** (ADR 53 amended): 92 mutants over the defenses among the changed lines. 50 killed by the suite, 34 by
+  tests the step wrote and re-run on the final commit, 6 equivalent, each checked by a second agent, 1 filed ([#353]), 1
+  gone with its code: the second agent overturned its equivalence, and the maintainer removed the redundant resolution.
+  The step also found two defects, filed in [#356] and [#358].
+- **Checks.** Forced rebuild of 403 corpus documents: four change objects, each for the better; 50 lose a false
+  `trailer.root-recovered`. CI green at `7a91f02`; `Remote corpus` run 113 green; the patch's coverage 99.52 % as
+  Codecov counts it, its three partial lines branches no input takes. A rebuild's scan costs 1.2 to 3 times what it did,
+  allocating what it did; 12,000 `trailer` keywords that comments hold take 0.2 ms against 250 to 470.
+- **Filed**: [#353] to [#358] under M02, from the review and the step; [#359], from the corpus differential.
+- **For callers** (`fix!`). A rebuilt index no longer serves a header another object holds, and may serve another
+  definition than before: an object stream's newest. `IsEncrypted` is decided as the document opens;
+  `trailer.encrypt-invalid` and `trailer.encrypt-late` are new. `4 +0 obj` is object 4.
+
 ## 2026-11-12 — Batch 20: which definition a rebuild keeps, and what a dropped place leaves ([#189], [#276], [#320])
 
 - **The question.** Measured on `main` at `86e8d9c`, twice, identical: a rebuild kept a direct definition over a newer
@@ -912,3 +943,11 @@ The detail is in git and in the pull requests; what still matters is in the reco
 [#349]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/349
 [#350]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/350
 [#351]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/351
+[#352]: https://github.com/AdCodicem/AdCodicem.Pdf/pull/352
+[#353]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/353
+[#354]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/354
+[#355]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/355
+[#356]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/356
+[#357]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/357
+[#358]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/358
+[#359]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/359
