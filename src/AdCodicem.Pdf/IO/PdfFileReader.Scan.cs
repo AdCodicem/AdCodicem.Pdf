@@ -49,6 +49,7 @@ internal sealed partial class PdfFileReader
     {
         ExceptionDispatchInfo? reached = null;
         var scan = new ScanState();
+        _scanGapBytes = 0;
 
         while (scan.Resume < _source.Length)
         {
@@ -104,9 +105,12 @@ internal sealed partial class PdfFileReader
                 objFrom = objAt + ObjKeyword.Length;
                 trailerFrom = Math.Max(trailerFrom, objFrom);
 
+                // A header starts no further back than where the object before it ends, from where a load's lexer reads
+                // tokens anew, as from the start of the file: the window is walked from there when it holds it.
+                var floor = (int)Math.Clamp(scan.TokensFrom - windowStart, 0, objAt);
                 var walk = ReadHeaderBackwards(
-                    span, objAt, startsData: windowStart == 0, signsBeforeUnknown: false, out var number, out var generation, out var headerStart, out _);
-                var at = windowStart + headerStart;
+                    span[floor..], objAt - floor, startsData: windowStart + floor == scan.TokensFrom, signsBeforeUnknown: false, out var number, out var generation, out var headerStart, out _);
+                var at = windowStart + floor + headerStart;
 
                 if (walk == HeaderWalk.Undecided)
                 {
@@ -140,7 +144,7 @@ internal sealed partial class PdfFileReader
                 {
                     extent = DelimitObject(at, at >= windowStart ? span[(int)(at - windowStart)..] : [], endsData, out var lexedTo);
 
-                    if (extent.Kind == ExtentKind.Unknown)
+                    if (extent.Kind is ExtentKind.Unknown or ExtentKind.RunawayString)
                     {
                         scan.UndelimitedUntil = lexedTo;
                     }
@@ -196,13 +200,15 @@ internal sealed partial class PdfFileReader
     /// <remarks>
     /// A header starts no further back than <paramref name="tokensFrom"/>, where the last object the scan took ends and a
     /// load's lexer reads tokens anew, as from the start of the data: before it lies that object. One whose tokens run back
-    /// past <see cref="PdfReaderLimits.MaxObjectLength"/> from its <c>obj</c> is none: a load reads no further. The windows
-    /// stop at the first byte that is none of a header's, the keyword before it at the furthest, so that a walk reads
-    /// about twice the bytes between it and the walk before it.
+    /// past <see cref="PdfReaderLimits.MaxObjectLength"/> from its <c>obj</c>, or past what one window can hold, is none: a
+    /// load reads no further. A walk stops at the first byte that is none of a header's, the keyword before it at the
+    /// furthest, and its windows, each eight times the one before, read at most about nine times the bytes it crosses, or
+    /// the stretch back to <paramref name="tokensFrom"/>: walks that start at different keywords cross different bytes, and
+    /// at most a few start in each piece.
     /// </remarks>
     private HeaderWalk ReadHeaderFurtherBack(long objPosition, long tokensFrom, out int number, out int generation, out long at)
     {
-        var bound = Math.Min((long)_guard.Bound(PdfLimit.Object), objPosition - tokensFrom);
+        var bound = Math.Min(Math.Min(_guard.Bound(PdfLimit.Object), Array.MaxLength - ObjKeyword.Length - 1L), objPosition - tokensFrom);
         var before = (long)ScanLead;
 
         while (true)
@@ -405,9 +411,10 @@ internal sealed partial class PdfFileReader
         var size = Math.Max(XRefWindow, 2L * buffered.Length);
         var lexed = (long)buffered.Length;
 
+        // A value the bytes lexed cut, which already reach the bound, runs past it.
         while (bounds.Kind == BoundsKind.Cut)
         {
-            if (size / 8 >= bound)
+            if (lexed >= bound)
             {
                 lexedTo = at + lexed;
                 return default;
@@ -426,25 +433,75 @@ internal sealed partial class PdfFileReader
         return bounds.Kind switch
         {
             BoundsKind.Value when bounds.End <= bound => new ObjectExtent(ExtentKind.Value, at + bounds.End, -1, false),
-            BoundsKind.Stream when bounds.DataStart <= bound => ConfirmStream(at, bounds),
+            BoundsKind.Stream when bounds.DataStart <= bound => ConfirmStream(at, bounds, buffered),
+            BoundsKind.Runaway => new ObjectExtent(ExtentKind.RunawayString, at + bounds.End, -1, false),
             _ => default,
         };
     }
 
     /// <summary>
-    /// Says where the data of the stream whose header starts at <paramref name="at"/> ends: where its direct <c>/Length</c>
-    /// says, when an <c>endstream</c> follows, as a load reads it — white space and comments between, as many as there are,
-    /// read once for each place, with the searches for <c>endstream</c> (<see cref="EndStreamSearchPasses"/>, #174) —, or,
+    /// Says where the stream whose header starts at <paramref name="at"/> ends: past the <c>endstream</c> that follows its
+    /// direct <c>/Length</c>, white space and comments between, as many as there are, read as a load reads them (#174); or,
     /// its length not confirmed, unknown.
     /// </summary>
-    private ObjectExtent ConfirmStream(long at, ObjectBounds bounds)
+    /// <remarks>
+    /// The white space a first read cannot see past is read on with the scan's own reads past declared lengths, which
+    /// <see cref="EndStreamSearchPasses"/> bounds apart from the loads' searches, and nothing is kept of it: a file of a
+    /// million stream headers holds the scan to the time of a few readings of it, and no more memory than one.
+    /// </remarks>
+    /// <param name="at">Where the header starts in the file.</param>
+    /// <param name="bounds">What the lexing of the header and dictionary found.</param>
+    /// <param name="buffered">The bytes from <paramref name="at"/> the scan holds already.</param>
+    private ObjectExtent ConfirmStream(long at, ObjectBounds bounds, ReadOnlySpan<byte> buffered)
     {
         var dataStart = at + bounds.DataStart;
+        var dataEnd = dataStart + bounds.Length;
+        var keywordEnd = -1L;
 
-        return bounds.Length >= 0 && bounds.Length <= _source.Length - dataStart &&
-            ((IPdfStreamDataProvider)this).CheckEndStream(dataStart + bounds.Length) is not null
-            ? new ObjectExtent(ExtentKind.Stream, dataStart + bounds.Length, dataStart, bounds.CrossReferenceStream)
+        if (bounds.Length >= 0 && bounds.Length < _source.Length - dataStart)
+        {
+            Span<byte> tail = stackalloc byte[PdfObjectParser.EndObjLookahead];
+            var length = (int)Math.Min(tail.Length, _source.Length - dataEnd);
+            int read;
+
+            if (dataEnd - at + length <= buffered.Length)
+            {
+                buffered.Slice((int)(dataEnd - at), length).CopyTo(tail);
+                read = length;
+            }
+            else
+            {
+                read = _source.Read(dataEnd, tail[..length]);
+            }
+
+            var end = StreamEnds.ReadEnd(tail[..read], dataEnd + read >= _source.Length);
+
+            if (end.Kind == StreamEndKind.EndStream)
+            {
+                keywordEnd = dataEnd + end.KeywordEnd;
+            }
+            else if (end.Kind == StreamEndKind.Undecided)
+            {
+                var next = NextSignificant(dataEnd, ref _scanGapBytes, PdfObjectParser.EndObjLookahead);
+                keywordEnd = next >= 0 && IsEndStreamKeywordAt(next) ? next + StreamEnds.EndStreamKeyword.Length : -1;
+            }
+        }
+
+        return keywordEnd >= 0
+            ? new ObjectExtent(ExtentKind.Stream, keywordEnd, dataStart, bounds.CrossReferenceStream)
             : new ObjectExtent(ExtentKind.UnconfirmedStream, dataStart, dataStart, bounds.CrossReferenceStream);
+    }
+
+    /// <summary>Determines whether the keyword <c>endstream</c> starts at <paramref name="position"/>.</summary>
+    private bool IsEndStreamKeywordAt(long position)
+    {
+        if (position >= _source.Length - (StreamEnds.EndStreamKeyword.Length - 1))
+        {
+            return false;
+        }
+
+        Span<byte> keyword = stackalloc byte[StreamEnds.EndStreamKeyword.Length];
+        return _source.Read(position, keyword) == keyword.Length && keyword.SequenceEqual(StreamEnds.EndStreamKeyword);
     }
 
     /// <summary>
@@ -498,7 +555,7 @@ internal sealed partial class PdfFileReader
                 return ObjectBounds.Undelimited(first.End);
 
             default:
-                return IsRunaway(first) ? ObjectBounds.Undelimited(first.End) : new ObjectBounds(BoundsKind.Value, first.End, -1, -1, false);
+                return IsRunaway(first) ? ObjectBounds.Runaway(first.End) : new ObjectBounds(BoundsKind.Value, first.End, -1, -1, false);
         }
 
         var topIsDictionary = first.Kind == PdfTokenKind.DictionaryStart;
@@ -527,7 +584,7 @@ internal sealed partial class PdfFileReader
 
             if (IsRunaway(token))
             {
-                return ObjectBounds.Undelimited(token.End);
+                return ObjectBounds.Runaway(token.End);
             }
 
             var inTopDictionary = depth == 1 && topIsDictionary;
@@ -738,8 +795,8 @@ internal sealed partial class PdfFileReader
         public long UndelimitedUntil;
 
         /// <summary>
-        /// Where the data of a stream whose length the scan could not confirm ends for it: at its first <c>endstream</c>,
-        /// before which the scan reads no comment.
+        /// Where the bytes the scan reads as they give them, no comment nor string swept, end: the data of a stream whose
+        /// length it could not confirm, at its first <c>endstream</c>, or a string that runs past its object's end.
         /// </summary>
         public long RawUntil;
 
@@ -767,6 +824,14 @@ internal sealed partial class PdfFileReader
                     ObjFrom = TrailerFrom = SweptTo = TokensFrom = extent.End;
                     Line = LineState.Tokens;
                     return true;
+
+                case ExtentKind.RunawayString:
+                    // The objects a runaway string runs into are the file's: neither the string nor one it opens on its line
+                    // hides them.
+                    RawUntil = Math.Max(RawUntil, extent.End);
+                    SweptTo = Math.Max(SweptTo, RawUntil);
+                    Line = LineState.Tokens;
+                    return false;
 
                 case ExtentKind.UnconfirmedStream:
                     var buffered = extent.DataStart >= windowStart && extent.DataStart - windowStart < span.Length
@@ -866,6 +931,12 @@ internal sealed partial class PdfFileReader
 
         /// <summary>A stream whose length the scan cannot confirm.</summary>
         UnconfirmedStream,
+
+        /// <summary>
+        /// Not delimited: a string its value holds runs past its object's end, and what the string holds is read as the bytes
+        /// give it, no comment nor string swept there.
+        /// </summary>
+        RunawayString,
     }
 
     /// <summary>What the lexing of an object at the start of some bytes found (<see cref="DelimitWithin"/>).</summary>
@@ -881,6 +952,9 @@ internal sealed partial class PdfFileReader
 
         /// <summary>Gives bounds that say the bytes hold no header and value a load reads, lexed as far as <paramref name="reached"/>.</summary>
         public static ObjectBounds Undelimited(int reached) => new(BoundsKind.None, reached, -1, -1, false);
+
+        /// <summary>Gives bounds that say the value holds a string that runs past its object's end, to <paramref name="end"/>.</summary>
+        public static ObjectBounds Runaway(int end) => new(BoundsKind.Runaway, end, -1, -1, false);
     }
 
     /// <summary>What the lexing of an object found.</summary>
@@ -897,6 +971,9 @@ internal sealed partial class PdfFileReader
 
         /// <summary>A stream's dictionary and where its data starts.</summary>
         Stream,
+
+        /// <summary>A value that holds a string running past its object's end (<see cref="IsRunaway"/>).</summary>
+        Runaway,
     }
 
     /// <summary>What a sweep of the bytes between objects stands in (<see cref="SweepLine"/>).</summary>

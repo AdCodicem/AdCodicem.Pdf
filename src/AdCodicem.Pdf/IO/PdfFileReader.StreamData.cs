@@ -184,21 +184,29 @@ internal sealed partial class PdfFileReader
     /// count with, or the source gives less than it holds. The first read is <paramref name="firstRead"/> bytes, and each
     /// after it twice the one before, up to <see cref="EndStreamSearchChunk"/>.
     /// </summary>
-    private long NextSignificant(long position, int firstRead = PdfObjectParser.EndObjLookahead)
+    private long NextSignificant(long position, int firstRead = PdfObjectParser.EndObjLookahead) =>
+        NextSignificant(position, ref _endStreamSearchBytes, firstRead);
+
+    /// <summary>
+    /// Gives where the first byte at or after <paramref name="position"/> lies that is neither white space nor part of a
+    /// comment, as <see cref="NextSignificant(long, int)"/> does, its reads counted in <paramref name="spent"/>, which
+    /// <see cref="EndStreamSearchPasses"/> times the length of the file bounds.
+    /// </summary>
+    private long NextSignificant(long position, ref long spent, int firstRead)
     {
         var size = firstRead;
         var inComment = false;
 
         while (position < _source.Length)
         {
-            if (_endStreamSearchBytes >= EndStreamSearchPasses * _source.Length)
+            if (spent >= EndStreamSearchPasses * _source.Length)
             {
                 return -1;
             }
 
             using var window = _source.GetWindow(position, (int)Math.Min(size, _source.Length - position));
             var span = window.Memory.Span;
-            _endStreamSearchBytes += span.Length;
+            spent += span.Length;
 
             if (span.IsEmpty)
             {
