@@ -27,7 +27,9 @@ Tracking workflow mirrors from `docs/roadmap.md` (*Debt and open points*, below)
   validator's analyses cost, with [#201], [#277], [#307] and [#312], with [#318] on 2026-11-03; the nineteenth, [#188],
   [#197] and [#156], where the chain's sections lie and what it reports of one it reads in part, with [#207], [#208],
   [#210], [#221], [#222], [#241], [#261], [#264], [#281] and [#317], in [#344]; the twentieth, [#189], [#276] and [#320],
-  which definition a rebuild keeps and what a place the search near a section drops leaves, in [#347]. Then the
+  which definition a rebuild keeps and what a place the search near a section drops leaves, in [#347]; the twenty-first,
+  [#154] and [#171] with [#327], [#348] and [#350], in two pull requests by area, the rebuild in [#352], the searches
+  near an offset and a row next, from the same branch. Then the
   other batches, slices 4 to 6 ([#60] to [#62]); then the milestone's adversarial review, slice 7 ([#137], ADR 46), once
   every other issue filed under M02 is closed. The debts come from the reader's own work, the threat model's first
   version ([#135], `docs/threat-model.md`), M01's review after the fact ([#136], `docs/reviews/M01.md`), the planning of
@@ -36,7 +38,8 @@ Tracking workflow mirrors from `docs/roadmap.md` (*Debt and open points*, below)
   ([#250]), slice 4's blockers ([#253]), its thirteenth ([#255] to [#257]), its fourteenth ([#259] to [#264]), its
   fifteenth ([#273] to [#277]), its sixteenth ([#279] to [#283], [#287] to [#290], [#292] to [#296]), its seventeenth
   ([#307]), its eighteenth ([#309], [#312] to [#315], [#317]), its nineteenth ([#320] to [#330], [#332], [#333],
-  [#336], [#342]) and its twentieth ([#348] to [#351]); [#123] moved to M20. The seventeenth filed [#305] and [#306] under M23, the eighteenth [#310] under
+  [#336], [#342]), its twentieth ([#348] to [#351]) and its twenty-first ([#353] to [#359]); [#123] moved to M20.
+  The seventeenth filed [#305] and [#306] under M23, the eighteenth [#310] under
   M03 and [#311] under M23, the nineteenth [#331] under M03 and [#343] under M23.
 - **User documentation**: organized along Diátaxis since 2026-09-30 ([ADR 47](adr/0047-the-user-documentation-follows-diataxis.md),
   [#148]), on `main`: a tutorial held to its sample by a test, four how-to guides, four reference
@@ -141,13 +144,22 @@ Tracking workflow mirrors from `docs/roadmap.md` (*Debt and open points*, below)
   the cache's eviction, the object streams' weight, the tentative index's rollback, the probe's room — and left the rest
   to the review: 27 were killed by the suite as it stood, 4 of them once compiled without warnings as errors; 12 by tests
   the step wrote, 3 of them after the second opinion overturned their first verdict; 12 were classed equivalent, one in
-  cost only, each verdict checked by a second agent; none was filed ([#347]).
+  cost only, each verdict checked by a second agent; none was filed ([#347]). Batch 21's first pull request built 92
+  over its scan, walk, sweep, delimiting, stream confirmation and read budget, expansion and encryption at opening: 50
+  killed by the suite, 7 of them by a hang, 2 by tests outside the runner's class filter; 34 by tests the step wrote,
+  each re-run on the final commit; 6 classed equivalent, each checked by a second agent; 1 filed, told apart only by a
+  file of `Array.MaxLength` bytes ([#353]); and 1 gone with the code it mutated, a second resolution of `/Encrypt`,
+  once the second agent overturned its equivalence and the maintainer chose to remove it ([#352]). The step also found
+  two defects, filed in [#356] and [#358].
 - **Review rounds**: since 2026-11-11 (ADR 54) a finding's severity follows its effect and whether real files have its
   input; a pull request's rounds stop at the first with no blocker and no major, at the eighth at the latest, and a
   batch pays at most six issues. Batch 19's 13 rounds, measured, are in
   [Where a batch's time goes](research/2026-11-session-speed.md). Batch 20 stopped at its first round: seven lenses, 21
   findings, the one major refuted as [#171]'s, 5 minors and 15 nits, whose texts and tests the final pass fixed and the
-  rest filed as [#348] to [#350] ([#347]).
+  rest filed as [#348] to [#350] ([#347]). Batch 21's first pull request stopped at its fifth: round 1, six lenses,
+  29 findings — 11 blockers, all the new scan's cost, 1 major, an unbalanced parenthesis the maintainer settled —;
+  rounds 2 to 4, one or two blockers each in the code the round before wrote; round 5, 3 minors and a nit; the rest
+  filed as [#353] to [#358] ([#352]).
 - **CI**: green on [#347]'s branch at `0423a7f`, the integration suite against qpdf, the .NET 11 island and the site
   included; `Remote corpus` run 111 green on it at `3dfdf9d`, whose library code the branch keeps. Before it, green on
   `main` at `21a0298` (CI run 927), and on [#344]'s branch at `2c7cf01`
@@ -500,7 +512,9 @@ One pull request per batch, each design question put to the maintainer after mea
        in [#344], `Remote corpus` run 109 green on its branch (journal of 2026-11-03).
    20. [#189], with [#276] and [#320] — done, in [#347], `Remote corpus` run 111 green on its branch (journal of
        2026-11-12).
-   21. [#154] and [#171], with [#348] and [#350], which batch 20 filed.
+   21. [#154] and [#171], with [#348] and [#350], which batch 20 filed, and [#327] — in two pull requests by area, as
+       the maintainer chose on 2026-11-13: the rebuild in [#352], open, which closes all but [#171]; the searches near
+       an offset and a row next, from the same branch once [#352] merges, which closes [#171].
    22. [#132], with [#218], [#229] and [#260].
    23. [#141] — done in [#254], brought forward with [#144] at the maintainer's request on 2026-10-15 (journal of
        2026-10-15).
@@ -569,7 +583,11 @@ One pull request per batch, each design question put to the maintainer after mea
    which object streams the expansion takes in and reads the scan's pieces at their edges; [#349], the reasons and cases
    the probe's check of where a rebuild serves a member leaves, with [#162], whose findings' texts it rewords; and [#351],
    a last definition that reads as nothing, which the maintainer filed on 2026-11-12, with [#163], the reader at its
-   guards and cuts.
+   guards and cuts. Batch 21's first pull request filed seven, all under M02, which the maintainer places: [#353],
+   headers the walk refuses that a load reads; [#354], encryption's edges at opening; [#355], a cross-reference stream's
+   dictionary read in a fixed window; [#356], the expansion's order; [#357], a string a cut leaves open closing on an
+   update; [#358], where a piece starts still changing what the scan takes; and [#359], an encrypted document's
+   references into its object streams called missing after a rebuild.
 5. Slice 4 ([#60]) in two pull requests, streams then fonts, after the decisions it waits on: the severity of a font
    that is not embedded, the standard 14's aliases, where text is "meant to be extractable", how the rules that need
    content are left out and shown so, and the tools that referee both families.
@@ -845,3 +863,11 @@ Until 2026-09-27 this section was a table whose rows were numbered T01 to T40; t
 [#349]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/349
 [#350]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/350
 [#351]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/351
+[#352]: https://github.com/AdCodicem/AdCodicem.Pdf/pull/352
+[#353]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/353
+[#354]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/354
+[#355]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/355
+[#356]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/356
+[#357]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/357
+[#358]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/358
+[#359]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/359
