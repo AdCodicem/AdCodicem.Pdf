@@ -7,17 +7,17 @@ namespace AdCodicem.Pdf.Benchmarks;
 
 /// <summary>
 /// Measures the rebuild's scan for objects, which reads an object header back from each <c>obj</c> keyword of a file it
-/// rebuilds the index of, comments between the header's tokens read as a load reads them (#261).
+/// rebuilds the index of, and delimits each object it takes as a load lexes its value (#171).
 /// </summary>
 /// <remarks>
 /// <para>
-/// Each file's <c>startxref</c> names nothing, so opening it rebuilds its index. A header is read back from its <c>obj</c>:
-/// a run of digits over the white space after it, and, where that white space holds an end of line and the line it ends
-/// holds a <c>%</c>, the line lexed from its start, its last tokens taken. A sound file or plain headers cost what reading
-/// runs of digits costs; a comment between a header's tokens has its line lexed; a long comment line before each
-/// <c>obj</c>, or a string holding a <c>%</c> on the line before it, has that line lexed at each <c>obj</c>, once, as the
-/// walk enters a line only through the white space after it. Every shape costs time linear in the file, and allocates
-/// nothing for it but the index.
+/// Each file's <c>startxref</c> names nothing, so opening it rebuilds its index. The scan searches the file a megabyte at a
+/// time for <c>obj</c>; it reads a header back from each, over digits, signs, white space and comments, from no further back
+/// than where the object before it ends; it sweeps each line once, from where it last stood, to tell whether a comment or a
+/// string holds the header; and it lexes the value of each object it takes, so that a header another object holds is none.
+/// A sound file or plain headers cost what reading the headers and their values costs; a comment between a header's
+/// tokens, a long comment line before each <c>obj</c>, or a string holding a <c>%</c> on the line before it, is swept once.
+/// Every shape costs time linear in the file, and allocates nothing for it but the index.
 /// </para>
 /// <para>
 /// The <c>trailer</c> keyword the generated files end with names the catalog, which the rebuild merges; the scan for

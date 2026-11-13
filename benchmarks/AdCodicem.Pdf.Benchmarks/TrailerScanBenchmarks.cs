@@ -5,24 +5,19 @@ using BenchmarkDotNet.Attributes;
 namespace AdCodicem.Pdf.Benchmarks;
 
 /// <summary>
-/// Measures the rebuild's scan for trailers, which parses what follows each <c>trailer</c> keyword of a file it rebuilds
-/// the index of, on 12,000 keywords whose values each lie past a long comment (#49, #171).
+/// Measures the rebuild's scan for trailers on 12,000 <c>trailer</c> keywords that two long comment lines hold (#49, #171).
 /// </summary>
 /// <remarks>
 /// <para>
 /// The file holds a catalog and an empty page tree, then two comment lines of 6,000 <c>trailer %</c> each, each line
 /// followed by the <see cref="Tail"/> on a line of its own. It has no <c>startxref</c>, so opening it rebuilds its index.
-/// The scan reads a 64 KB window at each keyword (#49), and each keyword's value lies past the rest of its comment line, up
-/// to 54 KB of it. The white space and comments after a keyword are skipped once, for the parse to start past them and for
-/// a note to name where a reference starts: a parse that started at the keyword would lex them a second time, whatever the
-/// value.
+/// Each keyword lies in the comment its line opens: the scan sweeps the line once and takes none of them for a trailer
+/// (#171), where it once parsed past each, reading a 64 KB window at each (#49). With no trailer, the rebuild finds the
+/// catalog by searching for it.
 /// </para>
 /// <para>
-/// A reference after a keyword is noted and not followed (#171), and the diagnostics keep 10 entries: a note quotes the
-/// keyword's offset and the reference's number only when it is kept, so the thousands dropped format nothing. A dictionary
-/// is merged, its parse reading on past it for a <c>stream</c> keyword, over the next comment line where one follows.
-/// <c>null</c> is neither noted nor merged. The benchmark holds the scan's constant factor, not its cost in the keywords,
-/// which is #49's.
+/// The diagnostics keep 10 entries. The benchmark holds that comments hide the keywords at a cost linear in the file,
+/// whatever value follows the lines.
 /// </para>
 /// </remarks>
 [MemoryDiagnoser]
@@ -36,8 +31,8 @@ public class TrailerScanBenchmarks
     private byte[] _document = [];
 
     /// <summary>
-    /// Gets or sets the value written after each comment line, and so after each of its keywords: a reference, which the
-    /// scan notes; <c>null</c>, which it passes over; or a dictionary, which it merges.
+    /// Gets or sets the value written after each comment line: a reference, <c>null</c> or a dictionary, which no keyword the
+    /// scan takes comes before.
     /// </summary>
     [Params("5 0 R", "null", "<< /Size 3 >>")]
     public string Tail { get; set; } = "5 0 R";
