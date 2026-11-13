@@ -1293,12 +1293,14 @@ public class WindowEdgeTests
     [Theory]
     [InlineData("5 0 obj\n<< /Length 24 >>\nstream\n4 0 obj (in data) endobj\nendstream\nendobj\n")]
     [InlineData("5 0 obj\n12 0 R\nendobj\n4 0 obj\n(written again)\nendobj\n")]
+    [InlineData("5 0 obj\n<< /A 1 % >> /B 2\n/S (\n4 0 obj (in a string)\n) >>\nendobj\n")]
     public void An_object_the_end_of_a_piece_of_the_rebuild_s_scan_cuts_is_read_as_one_it_holds_whole(string objects)
     {
-        // Object 5 — a stream whose data, which its direct length an endstream confirms, spells a header; a reference — is
-        // slid across the end of the scan's first piece, so that the piece ends inside each of its tokens in turn: the
-        // stream keyword after the dictionary, the generation of the reference. The scan reads a value its piece cuts again
-        // from its header, and takes what it takes from a piece that holds the object whole (#171).
+        // Object 5 — a stream whose data, which its direct length an endstream confirms, spells a header; a reference;
+        // a dictionary whose string spells a header, after a comment that holds >> — is slid across the end of the
+        // scan's first piece, so that the piece ends inside each of its tokens in turn: the stream keyword after the
+        // dictionary, the generation of the reference, the comment. The scan reads a value its piece cuts again from
+        // its header, and takes what it takes from a piece that holds the object whole (#171).
         var whole = Read(Build(objects, 2));
 
         for (var start = (1024 * 1024) - 40 - objects.Length; start < 1024 * 1024; start++)

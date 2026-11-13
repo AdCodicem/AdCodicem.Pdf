@@ -4256,11 +4256,13 @@ public class DocumentReaderTests
     [InlineData("stream data whose direct /Length endstream confirms", false)]
     [InlineData("a string", false)]
     [InlineData("a string that holds endobj", true)]
+    [InlineData("a string the end of the file leaves open", true)]
     [InlineData("a string a comment holding the word obj comes before", true)]
     [InlineData("a comment between objects", false)]
     [InlineData("a comment the end-of-file marker opens before a stream's endstream", false)]
     [InlineData("stream data whose /Length is an object", true)]
     [InlineData("stream data whose direct /Length is wrong", true)]
+    [InlineData("a comment after stream data whose direct /Length is wrong, the end of the scan's piece parting its endstream", false)]
     [InlineData("nothing: written between objects", true)]
     public void A_rebuild_takes_no_header_another_object_holds(string where, bool injected)
     {
@@ -4268,10 +4270,11 @@ public class DocumentReaderTests
         // marked /Injected, lies where the case says. The scan delimits each object it takes, as a load reads it: a header
         // inside another object's value, or inside data its length confirms, is none, nor one a comment holds; object 2 is
         // then the file's own page tree. Where the length is not confirmed, the data ends at the next header, as a load's
-        // search ends it, and the header there is taken, the last definition winning (#171). A string that holds endobj
-        // runs past its object's end, as one an unbalanced parenthesis runs on does, and delimits nothing: the header on
-        // the line after its start is taken as the bytes give it. So it is where a comment that holds the word obj comes
-        // between the object's header and its value.
+        // search ends it, and the header there is taken, the last definition winning (#171); past its endstream, wherever
+        // the end of the scan's piece parts the keyword, a comment hides one again. A string that holds endobj, or one the
+        // end of the file leaves open, runs past its object's end, as one an unbalanced parenthesis runs on does, and
+        // delimits nothing: the header on the line after its start is taken as the bytes give it. So it is where a comment
+        // that holds the word obj comes between the object's header and its value.
         const string Injected = "2 0 obj\n<< /Type /Pages /Kids [] /Count 0 /Injected true >>\nendobj\n";
         var file = new HandWrittenFile();
         file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>");
@@ -4290,6 +4293,9 @@ public class DocumentReaderTests
             case "a string that holds endobj":
                 file.Object(5, $"(\n{Injected})");
                 break;
+            case "a string the end of the file leaves open":
+                file.Raw("5 0 obj\n(\n" + Injected[..Injected.IndexOf("endobj", StringComparison.Ordinal)]);
+                break;
             case "a string a comment holding the word obj comes before":
                 file.Object(5, "% the value of obj 5\n(\n" + Injected[..Injected.IndexOf("endobj", StringComparison.Ordinal)] + ")");
                 break;
@@ -4305,6 +4311,10 @@ public class DocumentReaderTests
                 break;
             case "stream data whose direct /Length is wrong":
                 file.Object(5, $"<< /Length 3 >>\nstream\n{Injected}\nendstream");
+                break;
+            case "a comment after stream data whose direct /Length is wrong, the end of the scan's piece parting its endstream":
+                file.Raw("%" + new string('-', (1024 * 1024) - 200 - (int)file.Position) + "\n5 0 obj\n<< /Length 3 >>\nstream\n");
+                file.Raw(new string('d', (1024 * 1024) - 5 - (int)file.Position) + "\nendstream\nendobj\n% " + Injected.Replace("\n", " ", StringComparison.Ordinal) + "\n");
                 break;
             default:
                 file.Raw(Injected);
@@ -4366,16 +4376,19 @@ public class DocumentReaderTests
         document.Diagnostics.Should().NotContain(d => d.Code == PdfDiagnosticCodes.TrailerRootRecovered);
     }
 
-    [Theory]
+    [Theory(Timeout = 60_000)]
     [InlineData("[ true (\n{2}\n) ]", false)]
     [InlineData("<< /Flag true /Odd ) /Note (\n{2}\n) >>", false)]
     [InlineData("(\n{2}\nendobjects)", false)]
     [InlineData("(\n{2}\nsendobj)", false)]
+    [InlineData("<< % objects\n/Note (\n{2}\n) >>", false)]
+    [InlineData("<< % subobj\n/Note (\n{2}\n) >>", false)]
     [InlineData("(endobj\n{2}\n)", true)]
     [InlineData("(\n{2}\nendobj)", true)]
     [InlineData("true (\n{2}\n)", true)]
     [InlineData(") (\n{2}\n)", true)]
-    public void A_rebuild_delimits_an_object_as_a_load_lexes_its_value(string value, bool injected)
+    [InlineData("<< % obj\n/Note (\n{2}\n) >>", true)]
+    public async Task A_rebuild_delimits_an_object_as_a_load_lexes_its_value(string value, bool injected)
     {
         // Object 5's value holds, on a line of its own inside a string, a second page tree, object 2 again, marked /Injected.
         // The scan delimits object 5 as a load lexes it: a keyword or a stray parenthesis inside a container is one of its
@@ -4383,6 +4396,8 @@ public class DocumentReaderTests
         // hides the header. A string that holds endobj as a word runs past its object's end and delimits nothing; a value
         // that ends with its first token, true, leaves the string after it between objects, and one no load reads, a stray
         // parenthesis, has what follows its header read as the bytes give it: the header on its own line is taken (#171).
+        // A comment inside a container is read to its end of line, past the obj of a longer word; one that holds obj
+        // as a word, which the scan may take for a header's, leaves the value undelimited too.
         const string Injected = "2 0 obj\n<< /Type /Pages /Kids [] /Count 0 /Injected true >>";
         var file = new HandWrittenFile();
         file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>");
@@ -4390,7 +4405,7 @@ public class DocumentReaderTests
         file.Object(3, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] >>");
         file.Object(5, value.Replace("{2}", Injected, StringComparison.Ordinal));
         file.Raw("trailer\n<< /Root 1 0 R >>\nstartxref\n9\n%%EOF\n");
-        using var document = PdfDocument.Open(file.Bytes);
+        using var document = await Task.Run(() => PdfDocument.Open(file.Bytes), TestContext.Current.CancellationToken);
 
         document.WasRepaired.Should().BeTrue();
         document.GetObject(new PdfObjectId(2)).AsDictionary().Required().ContainsKey(PdfName.Get("Injected")).Should().Be(injected);
@@ -4594,6 +4609,33 @@ public class DocumentReaderTests
     }
 
     [Theory]
+    [InlineData(1, "real seven")]
+    [InlineData(100, "inner")]
+    public void Once_the_scan_has_read_what_it_may_past_lengths_only_a_first_read_confirms_a_length(int blanks, string seven)
+    {
+        // Twenty stream headers of object 9, each with a direct /Length ending in one run of 12,000 spaces, spend what the
+        // scan's reads past declared lengths may read before stream 4, which ends the file, its data spelling object 7 again.
+        // An endstream the first read past its length reaches with the end of the file confirms it; white space longer than
+        // that read leaves it unconfirmed, and the header its data spells is taken. No read asks for a byte the file lacks.
+        var file = new HandWrittenFile();
+        file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>");
+        file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>");
+        file.Object(7, "(real seven)");
+        file.Raw("trailer\n<< /Root 1 0 R >>\n");
+
+        for (var i = 0; i < 20; i++)
+        {
+            file.Raw("9 0 obj<</Length 0000000720>>stream\n");
+        }
+
+        file.Raw(new string(' ', 12_000) + "x\n4 0 obj\n<< /Length 23 >>\nstream\n7 0 obj (inner) endobj\n" + new string(' ', blanks) + "endstream");
+        using var document = PdfDocument.Open(new StrictCountingSource(file.Bytes), options: null, ownsSource: true);
+
+        document.WasRepaired.Should().BeTrue();
+        document.GetObject(new PdfObjectId(7)).AsText().Should().Be(seven);
+    }
+
+    [Theory]
     [InlineData(4096, null)]
     [InlineData(16 * 1024 * 1024, "nine")]
     public void A_header_whose_tokens_run_back_past_MaxObjectLength_from_its_obj_is_none(int maxObjectLength, string? nine)
@@ -4636,6 +4678,28 @@ public class DocumentReaderTests
 
         document.WasRepaired.Should().BeTrue();
         document.GetObject(new PdfObjectId(6)).AsText().Should().Be(six);
+    }
+
+    [Fact]
+    public void A_value_its_piece_cuts_is_read_again_from_its_header_once_where_twice_what_the_piece_held_holds_it()
+    {
+        // Object 5, an array of 100 KB that a later definition replaces, so that no load reads it, starts 80 KB before the end
+        // of the scan's first piece, which cuts it. The scan reads it again from its header in a window twice what the piece
+        // held of it, which holds it: once, and not first in a window no larger than what the piece held, which cuts it
+        // again (#171).
+        var file = new HandWrittenFile();
+        file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>");
+        file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>");
+        file.Raw("%" + new string('-', (1024 * 1024) - (80 * 1024) - (int)file.Position) + "\n");
+        var five = file.Object(5, "[ " + string.Concat(Enumerable.Repeat("1 ", 50 * 1024)) + "]");
+        file.Object(5, "null");
+        file.Raw("trailer\n<< /Root 1 0 R >>\nstartxref\n9\n%%EOF\n");
+        using var source = new CountingSource(file.Bytes);
+
+        using var document = PdfDocument.Open(source, options: null, ownsSource: false);
+
+        document.WasRepaired.Should().BeTrue();
+        source.Offsets.Should().ContainSingle(offset => offset == five);
     }
 
     [Theory]

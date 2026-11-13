@@ -3435,7 +3435,8 @@ public class CrossReferenceRuleTests
         // Object 4, which the catalog names, ends the file somewhere in its stream. In the last shape, 9,000 bytes of data,
         // past the window the object is parsed through, are followed by white space to the end of the file, longer than the
         // first read after the data: the search for endstream read it to the end, and asked the source for the no bytes
-        // there, which a source may refuse as it may any read past its end (#167).
+        // there, which a source may refuse as it may any read past its end (#167). Data its length ends the file with past
+        // the first megabyte, which the rebuild's scan reads at once, leaves no byte after it to read either.
         const string Head = "4 0 obj\n<< /Length 5 >>\nstream";
         var blanks = new string(' ', IO.PdfObjectParser.EndObjLookahead + 1);
 
@@ -3448,6 +3449,8 @@ public class CrossReferenceRuleTests
             ("the data, short of its length", PdfTemplate.Build(PdfTemplate.SoundEndingWith("4 0 obj\n<< /Length 50 >>\nstream\nhello\n"))),
             ("white space after long data", PdfTemplate.Build(PdfTemplate.SoundEndingWith(
                 "4 0 obj\n<< /Length 9000 >>\nstream\n" + new string('a', 9000) + blanks))),
+            ("the data, its length past the scan's first piece", PdfTemplate.Build(PdfTemplate.SoundEndingWith(
+                "4 0 obj\n<< /Length 1100000 >>\nstream\n" + new string('a', 1_100_000)))),
         ]);
     }
 
