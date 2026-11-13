@@ -900,14 +900,14 @@ internal sealed partial class PdfFileReader
             {
                 var lineStart = span[..(index + 1)].LastIndexOfAny((byte)'\r', (byte)'\n') + 1;
 
+                // A line that starts the bytes may start before them, where a % they do not hold may make it a comment.
+                if (lineStart == 0 && !startsData)
+                {
+                    return HeaderWalk.Undecided;
+                }
+
                 if (span[lineStart..(index + 1)].Contains((byte)'%'))
                 {
-                    // A line that starts the bytes may start before them, where a string or a token may begin.
-                    if (lineStart == 0 && !startsData)
-                    {
-                        return HeaderWalk.Undecided;
-                    }
-
                     if (!numbers.TakeLine(span[..(index + 1)], lineStart))
                     {
                         return HeaderWalk.None;
