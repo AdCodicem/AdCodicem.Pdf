@@ -336,8 +336,9 @@ takes is delimited as a load reads it — its value, the strings and comments it
 `endstream` confirms its direct `/Length` —, and a header or a `trailer` keyword within is none, nor is one that starts
 in a comment or a string between objects, so that an attached PDF written as it is, or a string that quotes a header or
 says `trailer`, adds nothing to the map or the trailer ([#171](https://github.com/AdCodicem/AdCodicem.Pdf/issues/171)).
-A string that runs past its object's end delimits nothing: one that holds `endobj` — a parenthesis some writers leave
-unescaped and unbalanced runs a string into the objects after it —, or one the end of a cut file leaves open.
+A string that runs past its object's end delimits nothing, and hides none of the objects it runs into: one that holds
+`endobj` — a parenthesis some writers leave unescaped and unbalanced runs a string into the objects after it —, or one
+the end of a cut file leaves open.
 The data of a stream whose length it cannot confirm — an indirect `/Length`, or one no `endstream` follows — ends for it
 where a load's search for that stream's end stops: at the first header, which it takes, or at the first `endstream`,
 before which it reads no comment. What follows the header of an object it cannot delimit — its value past
