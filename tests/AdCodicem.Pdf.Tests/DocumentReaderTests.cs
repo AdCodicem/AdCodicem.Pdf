@@ -4350,6 +4350,96 @@ public class DocumentReaderTests
         document.Diagnostics.Should().NotContain(d => d.Code == PdfDiagnosticCodes.TrailerRootRecovered);
     }
 
+    [Theory]
+    [InlineData("[ true (\n{2}\n) ]", false)]
+    [InlineData("<< /Flag true /Odd ) /Note (\n{2}\n) >>", false)]
+    [InlineData("(\n{2}\nendobjects)", false)]
+    [InlineData("(\n{2}\nsendobj)", false)]
+    [InlineData("(endobj\n{2}\n)", true)]
+    [InlineData("(\n{2}\nendobj)", true)]
+    [InlineData("true (\n{2}\n)", true)]
+    [InlineData(") (\n{2}\n)", true)]
+    public void A_rebuild_delimits_an_object_as_a_load_lexes_its_value(string value, bool injected)
+    {
+        // Object 5's value holds, on a line of its own inside a string, a second page tree, object 2 again, marked /Injected.
+        // The scan delimits object 5 as a load lexes it: a keyword or a stray parenthesis inside a container is one of its
+        // tokens, and endobj inside a string a word only where no regular character runs into it, so the string, delimited,
+        // hides the header. A string that holds endobj as a word runs past its object's end and delimits nothing; a value
+        // that ends with its first token, true, leaves the string after it between objects, and one no load reads, a stray
+        // parenthesis, has what follows its header read as the bytes give it: the header on its own line is taken (#171).
+        const string Injected = "2 0 obj\n<< /Type /Pages /Kids [] /Count 0 /Injected true >>";
+        var file = new HandWrittenFile();
+        file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>");
+        file.Object(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>");
+        file.Object(3, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] >>");
+        file.Object(5, value.Replace("{2}", Injected, StringComparison.Ordinal));
+        file.Raw("trailer\n<< /Root 1 0 R >>\nstartxref\n9\n%%EOF\n");
+        using var document = PdfDocument.Open(file.Bytes);
+
+        document.WasRepaired.Should().BeTrue();
+        document.GetObject(new PdfObjectId(2)).AsDictionary().Required().ContainsKey(PdfName.Get("Injected")).Should().Be(injected);
+    }
+
+    [Theory]
+    [InlineData(4096, null)]
+    [InlineData(16 * 1024 * 1024, "nine")]
+    public void A_header_whose_tokens_run_back_past_MaxObjectLength_from_its_obj_is_none(int maxObjectLength, string? nine)
+    {
+        // Object 9's number lies more than a megabyte of spaces before its generation, past the start of the scan's piece:
+        // the scan reads it again from further back, no further than MaxObjectLength from its obj, as a load reads an
+        // object no further. Under the default it is object 9; under 4 KB it is none, unreported (#171).
+        var file = new HandWrittenFile();
+        file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>");
+        file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>");
+        file.Raw("9" + new string(' ', 1100 * 1024) + "0 obj\n(nine)\nendobj\n");
+        file.Raw("trailer\n<< /Root 1 0 R >>\nstartxref\n9\n%%EOF\n");
+        var options = new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxObjectLength = maxObjectLength } };
+        using var document = PdfDocument.Open(file.Bytes, options);
+
+        var text = (document.GetObject(new PdfObjectId(9)) as PdfString)?.ToText();
+
+        document.WasRepaired.Should().BeTrue();
+        text.Should().Be(nine);
+    }
+
+    [Theory]
+    [InlineData(64 * 1024, "injected six")]
+    [InlineData(16 * 1024 * 1024, "six")]
+    public void An_object_longer_than_MaxObjectLength_delimits_nothing(int maxObjectLength, string six)
+    {
+        // Object 5, an array of 100 KB that the end of the scan's first piece cuts, holds on a line of its own inside a string
+        // a second object 6. The scan reads a value its piece cuts again from its header, in windows eight times larger each
+        // time, within MaxObjectLength: under the default, object 5 is delimited and hides the header; under 64 KB it is
+        // not, and what follows its header is read as the bytes give it: object 6 is defined again (#171).
+        var file = new HandWrittenFile();
+        file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>");
+        file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>");
+        file.Object(6, "(six)");
+        file.Raw("%" + new string('-', (1024 * 1024) - 300 - (int)file.Position) + "\n");
+        file.Object(5, "[ (\n6 0 obj\n(injected six)\n) " + string.Concat(Enumerable.Repeat("1 ", 50 * 1024)) + "]");
+        file.Raw("trailer\n<< /Root 1 0 R >>\nstartxref\n9\n%%EOF\n");
+        var options = new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxObjectLength = maxObjectLength } };
+        using var document = PdfDocument.Open(file.Bytes, options);
+
+        document.WasRepaired.Should().BeTrue();
+        document.GetObject(new PdfObjectId(6)).AsText().Should().Be(six);
+    }
+
+    [Fact]
+    public void An_obj_that_starts_the_data_has_no_header_before_it()
+    {
+        // Bytes before the file's header open with "obj": the scan meets it at the very start of the data, where no number
+        // lies before it, and takes no header there; the objects after are the file's (#171).
+        var file = new HandWrittenFile(prefix: "obj\n");
+        file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>");
+        file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>");
+        file.Raw("trailer\n<< /Root 1 0 R >>\nstartxref\n9\n%%EOF\n");
+        using var document = PdfDocument.Open(file.Bytes);
+
+        document.WasRepaired.Should().BeTrue();
+        document.Catalog.IsOfType(PdfName.Catalog).Should().BeTrue();
+    }
+
     [Fact]
     public void A_header_whose_line_starts_in_the_object_before_it_is_read_from_where_that_object_ends()
     {
