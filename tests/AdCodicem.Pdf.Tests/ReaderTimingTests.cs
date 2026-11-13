@@ -688,14 +688,17 @@ public class ReaderTimingTests
     [InlineData("headers whose lengths end in one run of white space")]
     [InlineData("headers whose integer value a string left open follows")]
     [InlineData("headers whose dictionary a string left open follows")]
+    [InlineData("headers whose integer value comment lines of headers follow")]
+    [InlineData("headers in the comments of a stream whose length is an object")]
     public void A_rebuild_s_scan_of_four_times_the_bytes_takes_about_four_times_the_time(string shape)
     {
         // The rebuild's scan searched again for the next obj after each trailer keyword, to the end of its piece where none
         // came; lexed the value of each header inside a string left open to the end of its piece; and read the white space
         // after each stream's direct length as far as it ran; and lexed whole the string after a value it looked past, an
-        // integer's or a dictionary's, again for each header inside it. Each cost what the file held after it: four times
-        // the bytes took 17, 32 and 10 times as long, the open string 77 s against 2.4 s, the strings after values 40 s for
-        // a megabyte. Each byte is now searched, lexed and read past a length a bounded number of times, and four times the
+        // integer's or a dictionary's, again for each header inside it, and the comment lines after it, which a header the
+        // scan takes may lie in — after the end-of-file marker, or in the data of a stream whose length it cannot confirm.
+        // Each cost what the file held after it: four times the bytes took 17, 32 and 10 times as long, the open string 77 s
+        // against 2.4 s, the strings after values 40 s for a megabyte, the comment lines 62 s. Each byte is now searched, lexed and read past a length a bounded number of times, and four times the
         // bytes take about four times as long (#171). The measure is the ratio, the best opening of each, run in turn.
         var small = ScanShape(shape, 1);
         var large = ScanShape(shape, 4);
@@ -720,12 +723,20 @@ public class ReaderTimingTests
         static byte[] ScanShape(string shape, int scale)
         {
             var text = new StringBuilder("%PDF-1.7\n1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n2 0 obj\n<< /Type /Pages /Kids [] /Count 0 >>\nendobj\n");
+
+            if (shape == "headers in the comments of a stream whose length is an object")
+            {
+                text.Append("4 0 obj <</Length 5 0 R>>stream\n");
+            }
+
             var (unit, length) = shape switch
             {
                 "trailer keywords and no object after them" => ("trailer oxj\n", 256 * 1024),
                 "headers inside one string left open" => ("3 0 obj [(\n", 256 * 1024),
                 "headers whose integer value a string left open follows" => ("3 0 obj 5 <\n", 256 * 1024),
                 "headers whose dictionary a string left open follows" => ("3 0 obj<<>> (\n", 256 * 1024),
+                "headers whose integer value comment lines of headers follow" => ("%%EOF 3 0 obj 5\n", 256 * 1024),
+                "headers in the comments of a stream whose length is an object" => ("% 3 0 obj 5\n", 256 * 1024),
                 _ => ("3 0 obj << /Length 65536 >>\nstream\n", 32 * 1024),
             };
 

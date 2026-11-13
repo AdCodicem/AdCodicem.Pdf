@@ -4446,6 +4446,51 @@ public class DocumentReaderTests
         document.GetObject(new PdfObjectId(9)).AsText().Should().Be("real nine");
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void An_object_past_MaxObjectLength_is_let_go_at_the_bound_wherever_its_piece_ends(bool nearThePieceEnd)
+    {
+        // Object 5's string runs about 4.5 KB, past a MaxObjectLength of 4 KB, and holds past the bound a stream 2 whose data,
+        // its length confirmed, spells object 3 again. The scan took the headers within what it had lexed of object 5
+        // undelimited: as far as the string's end where the piece held it, where stream 2's header lay, and object 3 was
+        // defined again; only to the bound where the piece cut it. It lexes no more than the bound wherever the piece ends:
+        // stream 2 is delimited, and its data hides object 3's header (#171).
+        var file = new HandWrittenFile();
+        file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>");
+        file.Object(3, "(real three)");
+
+        if (nearThePieceEnd)
+        {
+            file.Raw("%" + new string('-', (1024 * 1024) - 1000 - (int)file.Position) + "\n");
+        }
+
+        file.Object(5, "(" + new string('x', 4200) + "\n2 0 obj << /Length 23 >> stream\n3 0 obj (inner) endobj\nendstream\n" + new string('x', 200) + ")");
+        file.Raw("trailer\n<< /Root 1 0 R >>\nstartxref\n9\n%%EOF\n");
+        var options = new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxObjectLength = 4096 } };
+        using var document = PdfDocument.Open(file.Bytes, options);
+
+        document.WasRepaired.Should().BeTrue();
+        document.GetObject(new PdfObjectId(3)).AsText().Should().Be("real three");
+    }
+
+    [Fact]
+    public void A_stream_whose_endstream_a_long_run_of_letters_follows_is_confirmed_as_a_load_confirms_it()
+    {
+        // Stream 4's direct length is right, and "endstream" is glued to sixty letters: a load lexes them as one token after
+        // the data, and confirms the length. The scan gave up on a token longer than its read and left the length
+        // unconfirmed, and the header the data spells replaced the catalog. It reads the token to its end (#171).
+        var file = new HandWrittenFile();
+        file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>");
+        file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>");
+        file.Raw("4 0 obj\n<< /Length 32 >>\nstream\n1 0 obj << /Type /Fake >> endobj\nendstream" + new string('X', 60) + "\nendobj\n");
+        file.Raw("trailer\n<< /Root 1 0 R >>\nstartxref\n9\n%%EOF\n");
+        using var document = PdfDocument.Open(file.Bytes);
+
+        document.WasRepaired.Should().BeTrue();
+        document.Catalog.IsOfType(PdfName.Catalog).Should().BeTrue();
+    }
+
     [Fact]
     public void An_object_a_piece_cuts_is_delimited_under_a_MaxObjectLength_smaller_than_a_first_window()
     {
