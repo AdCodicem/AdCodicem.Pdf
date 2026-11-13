@@ -506,7 +506,8 @@ internal sealed partial class PdfFileReader
 
     /// <summary>
     /// Gives where the token that starts at <paramref name="position"/> ends, the <c>endstream</c> keyword a stream's data
-    /// ends at, whole as a load lexes it — "endstreamx" too —; or -1 where none starts.
+    /// ends at, whole as a load lexes it — "endstreamx" too —; or -1 where none starts, or where its token runs past a first
+    /// read once the scan's reads past declared lengths have read as much as they may (<see cref="RegularRunEnd"/>).
     /// </summary>
     private long EndStreamTokenEnd(long position)
     {
