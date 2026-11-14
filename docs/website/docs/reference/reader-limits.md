@@ -108,10 +108,10 @@ there. Raise PdfReaderLimits.MaxDecodedStreamLength to read past it.
   ([#329](https://github.com/AdCodicem/AdCodicem.Pdf/issues/329)). A section a limit cut is where it was named, and is
   not looked for near there, as a section that is not there is.
 - Past `MaxIndexEntries` places, the scan the searches near an offset ask for keeps no more, and answers only before
-  the first it left out. A search near an entry's offset, or near an offset the chain names, that reaches past there
-  goes without it: it reports `limit.index-entries` once a document, where the first place left out starts — apart
-  from the index's own report, which may come beside it at another position —, and takes a header or a section it
-  finds there as the bytes give it, which the validator reports as `xref.entry-unconfirmed` or
+  the first it left out. A search near an entry's offset, or near an offset the chain names, that finds a header or a
+  keyword past there goes without it: it reports `limit.index-entries` once a document, where the first place left out
+  starts — apart from the index's own report, which may come beside it at another position —, and takes a header or a
+  section it finds there as the bytes give it, which the validator reports as `xref.entry-unconfirmed` or
   `xref.section-unconfirmed`. A rebuild never reports it: where that scan does not answer, the rebuild scans the file
   again, and serves and reports what it would have.
 - An object cut at `MaxObjectLength` is kept as far as the bound, and the catalog among them: the reader takes the

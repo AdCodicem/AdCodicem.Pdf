@@ -567,8 +567,8 @@ internal sealed partial class PdfFileReader
     /// confirmed data of a stream, nor one whose number the bytes' start cuts, but one glued to an end-of-file marker before
     /// them (#171). The memo is asked for only where the bytes hold a header of the number at all, read back from its
     /// <c>obj</c> as the scan reads one: an offset with none near it costs no scan. A header past where the memo is whole
-    /// (<see cref="ScanMemo.WholeUntil"/>) is taken as the bytes give it, raw; where the bytes reach there, the memo's bound
-    /// is reported if <paramref name="reportsBound"/> (<see cref="ReachScanMemoBound"/>).
+    /// (<see cref="ScanMemo.WholeUntil"/>) is taken as the bytes give it, raw; where the bytes hold one there, the memo's
+    /// bound is reported if <paramref name="reportsBound"/> (<see cref="ReachScanMemoBound"/>).
     /// </para>
     /// <para>
     /// A clean candidate ranks before a raw one. Within the best rank, a candidate is supported where the row just before
@@ -582,14 +582,14 @@ internal sealed partial class PdfFileReader
     /// </remarks>
     /// <param name="number">The object's number.</param>
     /// <param name="entry">The regular entry that places it.</param>
-    /// <param name="reportsBound">Whether the memo's bound is reported where the bytes searched reach it.</param>
+    /// <param name="reportsBound">Whether the memo's bound is reported where a header of the number lies past it.</param>
     /// <param name="actualOffset">Where the header chosen starts: its number, at the first sign of a run of signs (#327).</param>
     /// <param name="generation">The generation the header chosen gives.</param>
     /// <param name="kind">How the scan takes the header chosen.</param>
     /// <param name="vouched">Whether the choice is vouched for.</param>
     /// <exception cref="PdfLimitExceededException">
-    /// The bytes searched reach past where the memo is whole, the bound is reported, and the document was opened to throw on
-    /// a guard.
+    /// A header of the number lies past where the memo is whole, the bound is reported, and the document was opened to throw
+    /// on a guard.
     /// </exception>
     private bool TryFindObjectHeader(
         int number, XRefEntry entry, bool reportsBound, out long actualOffset, out int generation, out ScannedPlaceKind kind, out bool vouched)
@@ -662,21 +662,17 @@ internal sealed partial class PdfFileReader
         }
 
         var memo = GetScanMemo();
-
-        if (reportsBound && start + length > memo.WholeUntil)
-        {
-            ReachScanMemoBound();
-        }
-
         Span<ScannedPlaceKind> kinds = stackalloc ScannedPlaceKind[MaxNearbyHeaders];
         var candidates = 0;
         var clean = 0;
+        var pastMemo = false;
 
         for (var i = 0; i < count; i++)
         {
             if (positions[i] >= memo.WholeUntil)
             {
                 kinds[i] = ScannedPlaceKind.Raw;
+                pastMemo = true;
             }
             else if (memo.TryGetHeaderAt(positions[i], out var header) && header.Number == number)
             {
@@ -691,6 +687,13 @@ internal sealed partial class PdfFileReader
 
             candidates++;
             clean += kinds[i] == ScannedPlaceKind.Clean ? 1 : 0;
+        }
+
+        // A guard is reached where it changes what is read (ADR 34): here, where a header lies past where the memo is whole,
+        // taken without its word. A window that reaches past there but holds no header there has the memo's word for each.
+        if (reportsBound && pastMemo)
+        {
+            ReachScanMemoBound();
         }
 
         var best = -1;

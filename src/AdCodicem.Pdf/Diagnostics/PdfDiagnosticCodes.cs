@@ -417,9 +417,10 @@ public static class PdfDiagnosticCodes
     /// <summary>
     /// The index holds <see cref="Documents.PdfReaderLimits.MaxIndexEntries"/> object numbers, and took no more: the
     /// objects past them, in the order the reader met them, were not indexed, and read as null. Or a search near an
-    /// entry's offset, or near an offset the chain names, reached past what the scan for objects it asks for keeps — that
-    /// many object headers and keywords —: a header or a section it found past there is taken as the bytes give it. Each
-    /// is reported once a document, apart from the other, the second where the first place the scan left out starts.
+    /// entry's offset, or near an offset the chain names, found a header or a keyword past what the scan for objects it
+    /// asks for keeps — that many object headers and keywords —: a header or a section it found past there is taken as the
+    /// bytes give it. Each is reported once a document, apart from the other, the second where the first place the scan
+    /// left out starts.
     /// </summary>
     public const string LimitIndexEntries = "limit.index-entries";
 
