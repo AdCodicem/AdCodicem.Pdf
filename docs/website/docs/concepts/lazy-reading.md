@@ -356,9 +356,10 @@ the end of a cut file leaves open.
 The data of a stream whose length it cannot confirm — an indirect `/Length`, or one no `endstream` follows — ends for it
 where a load's search for that stream's end stops: at the first header, which it takes, or at the first `endstream`,
 before which it reads no comment; but a stream that lost its `endstream`, whose data a load ends at its direct `/Length`
-or at its object's `endobj`, ends there for it too, and what follows is read between objects. What follows the header of an object it cannot delimit — its value past
-`MaxObjectLength`, or none a load reads — is read as the bytes give it too, and a header within what was read of it is
-taken undelimited, so that no byte is lexed for one object after another. Where the pieces it reads the file in start
+or at its object's `endobj`, ends there for it too, and what follows is read between objects. What follows the header
+of an object it cannot delimit — its value past `MaxObjectLength`, or none a load reads — is read as the bytes give it
+too, and a header within what was read of it is taken undelimited, so that no byte is lexed for one object after
+another. Where the pieces it reads the file in start
 changes nothing of what it takes. It reads the file to its end — or, where a search near a row or an offset had the
 file scanned before it, and that scan kept every header it took, in the order it took them, which a scan past
 `MaxIndexEntries` places does not, takes what that scan found, reading nothing again —, and holds no more numbers than
@@ -477,17 +478,17 @@ as [the same guide](../guides/tune-reader-memory.md#read-a-streams-data-once) sh
 
 The searches near an object's row and near a section's offset make a trade of their own. To tell what lies inside
 another object, they ask for the scan that rebuilds a damaged map: it is made the first time one of them needs it, once
-a document, from the file's start, and what it takes is kept, so that what they find depends on nothing read before — 16
-bytes a header or `xref` keyword, 24 for a cross-reference stream's header, each definition of a number counted, up to
-`MaxIndexEntries` places, about 201 MB at most at the default ([Reader limits](reader-limits.md)). It keeps no more past
-that bound; and where a source gives fewer bytes than asked, which ends the data
+a document, from the file's start, and what it takes is kept, so that what they find depends on nothing read before —
+each definition of a number counted, up to `MaxIndexEntries` places, under 25 bytes a place, about 201 MB at most at the
+default ([Reader limits](../reference/reader-limits.md#the-limits)). It keeps no more past that bound; and where a source
+answers a read that tells what the scan takes with fewer bytes than asked, which ends the data
 ([#52](https://github.com/AdCodicem/AdCodicem.Pdf/issues/52)), what it keeps is whole only up to the last object it
 passed before that end. Past there, a search cannot tell what lies inside another object: it takes a header of the
 object near a row, or a section near an offset, as the bytes give it, and the validator reports the entry as
-`xref.entry-unconfirmed`, or the section as `xref.section-unconfirmed`; past the bound, short of that end, the search
-reports `limit.index-entries` too, once a document — a search near an offset only for a place it tries. A sound document pays
-nothing for the scan, nor does a row with no header of its object near it, nor a search whose places are all passed over
-or named by the chain. A document whose chain or rows are a few bytes off pays one scan of the whole file, about 0.56 µs
+`xref.entry-unconfirmed`, or the section as `xref.section-unconfirmed`; past the bound, short of that end, where raising
+the bound would let the scan answer, the search reports `limit.index-entries` too, once a document — a search near an
+offset only for a place it tries. A sound document pays nothing for the scan, nor does a row with no header of its
+object near it, nor a search whose places are all passed over or named by the chain. A document whose chain or rows are a few bytes off pays one scan of the whole file, about 0.56 µs
 an object — 279 ms, and 36 MB read, for a 34 MB file of 500,000 objects —; where it is the chain that is off, the scan
 runs as the document opens. A rebuild after that scan takes what it found rather than scan again, where it kept every
 header it took, in the order it took them; otherwise it scans again, and a rebuild that runs first makes none, a search
