@@ -316,6 +316,12 @@ internal sealed partial class PdfFileReader
                 _relocationCandidatesTried++;
             }
 
+            // The memo's bound is reached for a place tried without its word, not for one the bound on places leaves untried.
+            if (check == PlaceCheck.PastMemo)
+            {
+                ReachScanMemoBound();
+            }
+
             var attempt = new XRefSectionRecord(section.NamedBy, candidate, section.NamedFrom);
             var indexMark = MarkIndex();
             XRefSectionState state;
@@ -570,8 +576,9 @@ internal sealed partial class PdfFileReader
     /// there is unconfirmed (<see cref="ScannedPlaceKind.Raw"/>). The memo holds every place the scan takes only before
     /// <see cref="ScanMemo.WholeUntil"/> — short of the places it could hold, and of where a window the source gave
     /// shorter than asked ended the scan —: a place at or past there is tried without its word, the guard reached where
-    /// the memo left places out (<see cref="ReachScanMemoBound"/>), a section found there is unconfirmed, and one that
-    /// cannot be read declares a section only where its token starts its line as a load lexes it
+    /// the memo left places out once the search tries it, within <see cref="MaxRelocationCandidates"/>, and not for a
+    /// place that bound leaves untried (<see cref="ReachScanMemoBound"/>), a section found there is unconfirmed, and one
+    /// that cannot be read declares a section only where its token starts its line as a load lexes it
     /// (<see cref="IsScannedToken"/>). A place the chain names — what a hybrid table's <c>/XRefStm</c> read in the
     /// stream's place, which its <c>/Prev</c>'s search takes, and the place that <c>/Prev</c> names — is not asked: it
     /// is read as the chain reads what it names, and judged by its line where it cannot be read. The memo is made the
@@ -591,7 +598,6 @@ internal sealed partial class PdfFileReader
 
         if (place >= memo.WholeUntil)
         {
-            ReachScanMemoBound();
             return PlaceCheck.PastMemo;
         }
 
