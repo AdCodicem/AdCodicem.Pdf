@@ -174,7 +174,8 @@ public sealed record PdfReaderLimits
     /// once the chain is read. The same bound applies to what the reader keeps of the scan of the file that the
     /// searches near an entry's offset and near an offset the chain names ask for, once a document — the object headers
     /// and keywords it takes, 16 bytes each at most —: what the scan takes past it is not kept, and a search that
-    /// reaches past there reads the bytes as they come, and reports the code once more, apart from the index's report.
+    /// finds a header or a keyword past there reads the bytes as they come, and reports the code once more, apart from
+    /// the index's report.
     /// </remarks>
     /// <exception cref="ArgumentOutOfRangeException">The value is zero or less.</exception>
     public int MaxIndexEntries
