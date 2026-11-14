@@ -110,8 +110,9 @@ there. Raise PdfReaderLimits.MaxDecodedStreamLength to read past it.
   not looked for near there, as a section that is not there is.
 - Past `MaxIndexEntries` places, the scan the searches near an offset ask for keeps no more, and answers only before
   the first it left out. A search near an entry's offset that finds a header of the object past there, or a search near
-  an offset the chain names that tries a place past there — among the 32 places it may try, below —, goes without it:
-  it reports `limit.index-entries` once a document, where the first place left out starts — apart from the index's own
+  an offset the chain names that tries a place past there — among the 32 places it may try, below —, goes without it,
+  and, short of where a source that gave fewer bytes than asked ended what the scan keeps, past which raising the bound
+  would not let it answer, reports `limit.index-entries` once a document, where the first place left out starts — apart from the index's own
   report, which may come beside it at another position —, and takes a header or a section it finds there as the bytes
   give it, which the validator reports as `xref.entry-unconfirmed` or `xref.section-unconfirmed`. A rebuild never
   reports it: where that scan does not answer, the rebuild scans the file again, and serves and reports what it would

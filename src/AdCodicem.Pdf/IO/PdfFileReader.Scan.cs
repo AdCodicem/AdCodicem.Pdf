@@ -42,10 +42,12 @@ internal sealed partial class PdfFileReader
     }
 
     /// <summary>
-    /// Reports that the memo of the scan for objects is not whole, for a caller that has to go without its word at or past
-    /// <see cref="ScanMemo.WholeUntil"/>: <see cref="PdfReaderLimits.MaxIndexEntries"/> reached where the first place the memo
-    /// left out starts (<see cref="ScanMemo.FullAt"/>), once a document; a document opened to throw on a guard throws each time
-    /// a caller has to go without it. Nothing where the memo is whole, or not made.
+    /// Reports that the memo of the scan for objects is not whole, for a caller that has to go without its word at one of
+    /// <paramref name="positions"/>, where its bound alone keeps it from answering (<see cref="ScanMemo.IsPastBound"/>):
+    /// <see cref="PdfReaderLimits.MaxIndexEntries"/> reached where the first place the memo left out starts
+    /// (<see cref="ScanMemo.FullAt"/>), once a document; a document opened to throw on a guard throws each time a caller has
+    /// to go without it there. Nothing where the memo is whole, or not made, nor for a place past where a window the source
+    /// gave shorter than asked left it whole, which raising the bound would not let it answer for.
     /// </summary>
     /// <remarks>
     /// Nothing else reports the memo's bound: a rebuild scans the file again where the memo is not whole, and serves what it
@@ -56,10 +58,14 @@ internal sealed partial class PdfFileReader
     /// bound is made wherever it lies, and a rebuild that withdraws what it reported withdraws this report too, for it to be
     /// made again.
     /// </remarks>
-    /// <exception cref="PdfLimitExceededException">The memo is not whole, and the document was opened to throw on a guard.</exception>
-    internal void ReachScanMemoBound()
+    /// <param name="positions">Where the places the caller goes without the memo's word at start; -1 for none.</param>
+    /// <exception cref="PdfLimitExceededException">
+    /// The bound keeps the memo from answering at one of <paramref name="positions"/>, and the document was opened to throw on
+    /// a guard.
+    /// </exception>
+    internal void ReachScanMemoBound(ReadOnlySpan<long> positions)
     {
-        if (_scanMemo is not { IsWhole: false } memo || _limitsReached.Contains(ScanMemoBoundReported))
+        if (_scanMemo is not { IsWhole: false } memo || _limitsReached.Contains(ScanMemoBoundReported) || !IsAnyPastBound(memo, positions))
         {
             return;
         }
@@ -71,6 +77,19 @@ internal sealed partial class PdfFileReader
             $"The scan for objects recorded {CountText.Grouped(_guard.Bound(PdfLimit.IndexEntries), "object header or keyword", "object headers and keywords")}; those past them were not recorded.",
             memo.FullAt);
         _limitsReached.Add(ScanMemoBoundReported);
+
+        static bool IsAnyPastBound(ScanMemo memo, ReadOnlySpan<long> positions)
+        {
+            foreach (var position in positions)
+            {
+                if (memo.IsPastBound(position))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
     }
 
     /// <summary>
@@ -200,8 +219,7 @@ internal sealed partial class PdfFileReader
             // for only for a memo, and their search keeps where it stands in the scan's state.
             var objAt = -2;
             var trailerAt = -2;
-            scan.PieceXRefFrom = (int)(scan.XRefFrom - windowStart);
-            scan.PieceXRefAt = memo is null ? -1 : -2;
+            scan.StartPiece(windowStart, span.Length, asked);
 
             while (true)
             {
@@ -1222,6 +1240,18 @@ internal sealed partial class PdfFileReader
         {
             EndStreamAt = -1;
             Memo = memo;
+        }
+
+        /// <summary>
+        /// Starts the searches of the piece that starts at <paramref name="windowStart"/> and holds <paramref name="length"/>
+        /// of the <paramref name="asked"/> bytes the scan asked for: the search for <c>xref</c> keywords, for a memo, from
+        /// where it stands; and the memo learns where a piece shorter than asked ends (<see cref="ScanMemo.Builder.ReadPiece"/>).
+        /// </summary>
+        public void StartPiece(long windowStart, int length, int asked)
+        {
+            PieceXRefFrom = (int)(XRefFrom - windowStart);
+            PieceXRefAt = Memo is null ? -1 : -2;
+            Memo?.ReadPiece(length < asked ? windowStart + length : long.MaxValue);
         }
 
         /// <summary>

@@ -735,7 +735,7 @@ internal sealed partial class PdfFileReader
         // taken without its word. A window that reaches past there but holds no header there has the memo's word for each.
         if (reportsBound && pastMemo)
         {
-            ReachScanMemoBound();
+            ReachScanMemoBound(positions[..count]);
         }
 
         var best = -1;

@@ -484,8 +484,8 @@ that bound; and where a source gives fewer bytes than asked, which ends the data
 ([#52](https://github.com/AdCodicem/AdCodicem.Pdf/issues/52)), what it keeps is whole only up to the last object it
 passed before that end. Past there, a search cannot tell what lies inside another object: it takes a header of the
 object near a row, or a section near an offset, as the bytes give it, and the validator reports the entry as
-`xref.entry-unconfirmed`, or the section as `xref.section-unconfirmed`; past the bound, the search reports
-`limit.index-entries` too, once a document — a search near an offset only for a place it tries. A sound document pays
+`xref.entry-unconfirmed`, or the section as `xref.section-unconfirmed`; past the bound, short of that end, the search
+reports `limit.index-entries` too, once a document — a search near an offset only for a place it tries. A sound document pays
 nothing for the scan, nor does a row with no header of its object near it, nor a search whose places are all passed over
 or named by the chain. A document whose chain or rows are a few bytes off pays one scan of the whole file, about 0.56 µs
 an object — 279 ms, and 36 MB read, for a 34 MB file of 500,000 objects —; where it is the chain that is off, the scan

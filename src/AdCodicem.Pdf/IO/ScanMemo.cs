@@ -39,7 +39,8 @@ namespace AdCodicem.Pdf.IO;
 /// of many keywords, fills the memo with an index far from full. Once it holds that many, the memo takes no more, and
 /// is whole only before where the first place it could not hold lies (<see cref="WholeUntil"/>). The memo reports
 /// nothing: a rebuild scans the file again where it is not whole, and serves what it would have, and the guard is
-/// reported by a caller that has to go without its word past there (<see cref="PdfFileReader.ReachScanMemoBound"/>).
+/// reported by a caller that has to go without its word past there, for a place its bound alone keeps it from answering
+/// (<see cref="IsPastBound"/>, <see cref="PdfFileReader.ReachScanMemoBound"/>).
 /// </para>
 /// </remarks>
 internal sealed class ScanMemo
@@ -67,12 +68,19 @@ internal sealed class ScanMemo
     /// <summary>The slots, sorted by where each starts, as many as the memo uses.</summary>
     private readonly Slot[] _slots;
 
-    private ScanMemo(Slot[] slots, int count, long fullAt, long wholeUntil, bool inScanOrder, ScannedTrailers? trailers)
+    /// <summary>Where the memo's bound left it whole: before <see cref="FullAt"/>, or where the floor given then was sooner.</summary>
+    private readonly long _boundUntil;
+
+    /// <summary>Where windows the source gave shorter than asked left the memo whole (<see cref="Builder.EndAt"/>).</summary>
+    private readonly long _shortUntil;
+
+    private ScanMemo(Slot[] slots, int count, long fullAt, long boundUntil, long shortUntil, bool inScanOrder, ScannedTrailers? trailers)
     {
         _slots = slots;
         Count = count;
         FullAt = fullAt;
-        WholeUntil = wholeUntil;
+        _boundUntil = boundUntil;
+        _shortUntil = shortUntil;
         InScanOrder = inScanOrder;
         Trailers = trailers;
     }
@@ -99,7 +107,7 @@ internal sealed class ScanMemo
     /// bytes the scan's last object left to read anew start, since a header the scan takes afterward, or one whose
     /// <c>obj</c> lies past the data read, may run back to them.
     /// </summary>
-    public long WholeUntil { get; }
+    public long WholeUntil => Math.Min(_boundUntil, _shortUntil);
 
     /// <summary>
     /// Gets a value indicating whether the memo holds its places in the order the scan took them, so that a rebuild can take
@@ -109,6 +117,14 @@ internal sealed class ScanMemo
 
     /// <summary>Gets where the trailers the scan notes lie, where the memo is whole; null otherwise.</summary>
     public ScannedTrailers? Trailers { get; }
+
+    /// <summary>
+    /// Determines whether the memo does not answer at <paramref name="position"/> for its bound alone: the place lies at or
+    /// past where the first place it could not hold left it whole, and before where any window the source gave shorter than
+    /// asked did — raising <see cref="PdfReaderLimits.MaxIndexEntries"/> lets it answer there. The bound is reported, and
+    /// blamed, only for such a place (<see cref="PdfFileReader.ReachScanMemoBound"/>).
+    /// </summary>
+    public bool IsPastBound(long position) => position >= _boundUntil && position < _shortUntil;
 
     /// <summary>
     /// Gets the headers the memo holds that start at <paramref name="from"/> or past it and before <paramref name="to"/>,
@@ -231,7 +247,9 @@ internal sealed class ScanMemo
         private int _used;
         private int _count;
         private long _fullAt = -1;
-        private long _wholeUntil = long.MaxValue;
+        private long _boundUntil = long.MaxValue;
+        private long _shortUntil = long.MaxValue;
+        private long _pieceEnd = long.MaxValue;
         private bool _inScanOrder = true;
 
         /// <summary>Gets a value indicating whether the memo still holds every place the scan took.</summary>
@@ -266,7 +284,15 @@ internal sealed class ScanMemo
         /// <param name="position">Where the data the window holds ends.</param>
         /// <param name="floor">Where the bytes the scan's last object left to read anew start: a header whose <c>obj</c> lies
         /// past the data read, which the scan cannot take, may start as far back as them.</param>
-        public void EndAt(long position, long floor) => _wholeUntil = Math.Min(_wholeUntil, Math.Min(position, floor));
+        public void EndAt(long position, long floor) => _shortUntil = Math.Min(_shortUntil, Math.Min(position, floor));
+
+        /// <summary>
+        /// Notes where the piece the scan reads from now on ends, where the source gave it shorter than asked, which holds the
+        /// end of the data (#52); <see cref="long.MaxValue"/> for a whole piece. The scan ends the memo there where it stops
+        /// at the piece's end (<see cref="EndAt"/>); should the memo fill within the piece first, it is not whole past the
+        /// piece's end either, which raising its bound would not let it pass (<see cref="ScanMemo.IsPastBound"/>).
+        /// </summary>
+        public void ReadPiece(long end) => _pieceEnd = end;
 
         /// <summary>
         /// Completes the memo once the scan has ended: its slots trimmed to those it uses, and, where it is whole, the
@@ -285,7 +311,7 @@ internal sealed class ScanMemo
                 trailers.Streams.TrimExcess();
             }
 
-            return new ScanMemo(_slots, _count, _fullAt, _wholeUntil, _inScanOrder, IsWhole ? trailers : null);
+            return new ScanMemo(_slots, _count, _fullAt, _boundUntil, _shortUntil, _inScanOrder, IsWhole ? trailers : null);
         }
 
         /// <summary>
@@ -305,7 +331,8 @@ internal sealed class ScanMemo
             if (_count >= bound)
             {
                 _fullAt = position;
-                _wholeUntil = Math.Min(_wholeUntil, Math.Min(position, floor));
+                _boundUntil = Math.Min(position, floor);
+                _shortUntil = Math.Min(_shortUntil, _pieceEnd);
                 return false;
             }
 

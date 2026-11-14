@@ -321,7 +321,7 @@ internal sealed partial class PdfFileReader
             // The memo's bound is reached for a place tried without its word, not for one the bound on places leaves untried.
             if (check == PlaceCheck.PastMemo)
             {
-                ReachScanMemoBound();
+                ReachScanMemoBound([candidate]);
             }
 
             var attempt = new XRefSectionRecord(section.NamedBy, candidate, section.NamedFrom);
