@@ -696,12 +696,15 @@ public class CorpusReadingTests
 
     /// <summary>
     /// Lazy opening is promised for documents whose index can be read as written: rebuilding one means
-    /// scanning the whole file, by definition.
+    /// scanning the whole file, by definition. A cross-reference section the chain names away from its place is
+    /// found by that same scan, so a document expected to report one is left out too.
     /// </summary>
     public static TheoryData<string> LargeDocuments =>
         Theory(Corpus.PathsWhere(document =>
             (document.Features.Contains("many-pages") || document.Features.Contains("dct-image"))
-            && !document.Expect.IndexRebuilt));
+            && !document.Expect.IndexRebuilt
+            && !document.Expect.Findings.Contains(PdfValidationRuleIds.XRefSectionShifted)
+            && !document.Expect.Findings.Contains(PdfValidationRuleIds.XRefSectionUnconfirmed)));
 
     public static TheoryData<string> DamagedDocuments =>
         Theory(Corpus.PathsWhere(document => !document.Expect.Clean));
