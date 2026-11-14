@@ -560,6 +560,38 @@ public class ScannedPlacesTests
     }
 
     [Theory]
+    [InlineData(2)]
+    [InlineData(4)]
+    [InlineData(7)]
+    public void A_header_that_follows_an_object_with_no_value_lies_past_where_the_memo_is_whole_wherever_a_short_read_cuts_it(int cut)
+    {
+        // Object 5's header has no value, and object 12's header follows it directly (#230), read through a source whose
+        // reads end the given count of bytes into object 12's header: past its number, past its generation, or inside its obj
+        // keyword. The scan takes the window for the end of the data, and object 5's value as ending where object 12's header
+        // may start: the memo is whole only before it. The search near object 12's row, 3 bytes off, serves the header as the
+        // bytes give it, a choice it cannot vouch for; object 7, past it, is read at its row, and nothing is rebuilt (#52).
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long> { [1] = file.Object(1, Catalog), [2] = file.Object(2, Pages) };
+        rows[3] = file.Padding(3, 4000);
+        rows[5] = file.Position;
+        file.Raw("5 0 obj\n");
+        var twelve = file.Object(12, "(twelve)");
+        rows[12] = twelve + 3;
+        rows[7] = file.Object(7, "(after)");
+        file.Table(13, rows, "/Size 13 /Root 1 0 R");
+        using var document = PdfDocument.Open(new CappedReadSource(file.Bytes, (int)twelve + cut), options: null, ownsSource: true);
+
+        var served = document.GetObject(new PdfObjectId(12)).AsText();
+        var seven = document.GetObject(new PdfObjectId(7)).AsText();
+        var memo = document.Reader.GetScanMemo();
+
+        (served, seven, document.WasRepaired).Should().Be(("twelve", "after", false));
+        (memo.IsWhole, memo.WholeUntil, memo.TryGetHeaderAt(twelve, out _)).Should().Be((true, twelve, false));
+        new PdfValidator().Validate(document).Findings.Where(finding => finding.Location.Object == new PdfObjectId(12))
+            .Select(finding => (finding.RuleId, finding.Severity)).Should().Equal((PdfValidationRuleIds.XRefEntryUnconfirmed, PdfValidationSeverity.Error));
+    }
+
+    [Theory]
     [InlineData(1)]
     [InlineData(2)]
     [InlineData(3)]
