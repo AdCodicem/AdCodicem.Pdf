@@ -1,3 +1,4 @@
+using System.Runtime.CompilerServices;
 using System.Runtime.ExceptionServices;
 using AdCodicem.Pdf.Diagnostics;
 using AdCodicem.Pdf.Documents;
@@ -190,15 +191,15 @@ internal sealed partial class PdfFileReader
             var searchEnd = endsData ? span.Length : span.Length - 1;
             var objFrom = (int)(scan.ObjFrom - windowStart);
             var trailerFrom = (int)(scan.TrailerFrom - windowStart);
-            var xrefFrom = (int)(scan.XRefFrom - windowStart);
             var jumped = false;
 
             // The next obj, trailer and xref keyword in the bytes searched, each found once and kept until the search passes
             // it: -1 when none lies past where its search stands, -2 before the first search. The xref keywords are looked
-            // for only for a memo.
+            // for only for a memo, and their search keeps where it stands in the scan's state.
             var objAt = -2;
             var trailerAt = -2;
-            var xrefAt = memo is null ? -1 : -2;
+            scan.PieceXRefFrom = (int)(scan.XRefFrom - windowStart);
+            scan.PieceXRefAt = memo is null ? -1 : -2;
 
             while (true)
             {
@@ -214,22 +215,22 @@ internal sealed partial class PdfFileReader
                     trailerAt = trailerAt < 0 ? -1 : trailerFrom + trailerAt;
                 }
 
-                if (xrefAt != -1)
+                if (scan.PieceXRefAt != -1)
                 {
-                    if (xrefAt < xrefFrom)
+                    if (scan.PieceXRefAt < scan.PieceXRefFrom)
                     {
-                        xrefAt = xrefFrom < searchEnd ? span[xrefFrom..searchEnd].IndexOf(XRefKeyword) : -1;
-                        xrefAt = xrefAt < 0 ? -1 : xrefFrom + xrefAt;
+                        scan.PieceXRefAt = scan.PieceXRefFrom < searchEnd ? span[scan.PieceXRefFrom..searchEnd].IndexOf(XRefKeyword) : -1;
+                        scan.PieceXRefAt = scan.PieceXRefAt < 0 ? -1 : scan.PieceXRefFrom + scan.PieceXRefAt;
                     }
 
-                    if (xrefAt >= 0 && (objAt < 0 || xrefAt < objAt) && (trailerAt < 0 || xrefAt < trailerAt))
+                    if (scan.PieceXRefAt >= 0 && (objAt < 0 || scan.PieceXRefAt < objAt) && (trailerAt < 0 || scan.PieceXRefAt < trailerAt))
                     {
-                        if (!NoteXRefKeyword(span, windowStart, xrefAt, ref scan, memo!))
+                        if (!NoteXRefKeyword(span, windowStart, scan.PieceXRefAt, ref scan, memo!))
                         {
                             return reached;
                         }
 
-                        xrefFrom = xrefAt + XRefKeyword.Length;
+                        scan.PieceXRefFrom = scan.PieceXRefAt + XRefKeyword.Length;
                         continue;
                     }
                 }
@@ -307,7 +308,7 @@ internal sealed partial class PdfFileReader
                 if (scan.ObjFrom - windowStart <= searchEnd)
                 {
                     objFrom = (int)(scan.ObjFrom - windowStart);
-                    trailerFrom = xrefFrom = objFrom;
+                    trailerFrom = scan.PieceXRefFrom = objFrom;
                     continue;
                 }
 
@@ -333,7 +334,7 @@ internal sealed partial class PdfFileReader
                 // that piece's search for obj does, within the bytes it reads before it.
                 scan.ObjFrom = windowStart + Math.Max(objFrom, searchEnd - (ObjKeyword.Length - 1));
                 scan.TrailerFrom = windowStart + Math.Max(trailerFrom, searchEnd - (TrailerKeyword.Length - 1));
-                scan.XRefFrom = windowStart + Math.Max(xrefFrom, searchEnd - (XRefKeyword.Length - 1));
+                scan.XRefFrom = windowStart + Math.Max(scan.PieceXRefFrom, searchEnd - (XRefKeyword.Length - 1));
             }
 
             scan.Resume = Math.Min(scan.ObjFrom, scan.TrailerFrom);
@@ -423,8 +424,13 @@ internal sealed partial class PdfFileReader
     /// told by (<see cref="IsHiddenAhead"/>): a header whose comment between its tokens holds the keyword is told as it was
     /// before the scan looked for it.
     /// </para>
+    /// <para>
+    /// Kept out of the scan's loop, which only a scan for a memo calls it from, for the reason the search for these keywords
+    /// keeps where it stands in the scan's state (<see cref="ScanState.PieceXRefAt"/>).
+    /// </para>
     /// </remarks>
     /// <returns>False where the memo can hold the keyword no more; true otherwise.</returns>
+    [MethodImpl(MethodImplOptions.NoInlining)]
     private bool NoteXRefKeyword(ReadOnlySpan<byte> span, long windowStart, int keyword, ref ScanState scan, ScanMemo.Builder memo)
     {
         var end = keyword + XRefKeyword.Length;
@@ -1095,6 +1101,22 @@ internal sealed partial class PdfFileReader
 
         /// <summary>Where the search for the next <c>xref</c> keyword starts, for a memo.</summary>
         public long XRefFrom;
+
+        /// <summary>Where the search for the next <c>xref</c> keyword stands in the piece the scan reads, for a memo.</summary>
+        public int PieceXRefFrom;
+
+        /// <summary>
+        /// Where the next <c>xref</c> keyword lies in the piece the scan reads: -1 when none lies past where its search stands,
+        /// -2 before the first search; -1 throughout a rebuild's scan, which looks for none.
+        /// </summary>
+        /// <remarks>
+        /// Kept here with <see cref="PieceXRefFrom"/> rather than in locals of the scan's loop: the compiler inlines less in a
+        /// method the more locals it holds, and with these two, and <see cref="NoteXRefKeyword"/> inlined, it left out of the
+        /// loop the lexer that reads back the line of a header whose tokens a comment parts
+        /// (<see cref="HeaderNumbers.TakeLine"/>); the rebuild of a file of such lines ran about a tenth slower
+        /// (<c>ObjectScanBenchmarks</c>).
+        /// </remarks>
+        public int PieceXRefAt;
 
         /// <summary>Where the sweep for comments and strings has reached.</summary>
         public long SweptTo;
