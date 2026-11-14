@@ -279,6 +279,7 @@ internal sealed partial class PdfFileReader : IPdfObjectSource, IPdfStreamDataPr
 
     private static ReadOnlySpan<byte> ObjKeyword => "obj"u8;
     private static ReadOnlySpan<byte> TrailerKeyword => "trailer"u8;
+    private static ReadOnlySpan<byte> XRefKeyword => "xref"u8;
     private static ReadOnlySpan<byte> StartXRefKeyword => "startxref"u8;
     private static ReadOnlySpan<byte> HeaderMarker => "%PDF-"u8;
 
@@ -572,6 +573,12 @@ internal sealed partial class PdfFileReader : IPdfObjectSource, IPdfStreamDataPr
     /// theirs.
     /// </summary>
     private long _scanGapBytes;
+
+    /// <summary>
+    /// What the rebuild's scan for objects takes of the file, made the first time a rebuild or a search needs it, and kept for
+    /// the document's life (<see cref="GetScanMemo"/>); null before.
+    /// </summary>
+    private ScanMemo? _scanMemo;
 
     /// <summary>
     /// How many times a load answered null because the object was being loaded already, or because the object
@@ -1390,8 +1397,8 @@ internal sealed partial class PdfFileReader : IPdfObjectSource, IPdfStreamDataPr
     /// <summary>
     /// Closes the reader as its document is disposed: whatever asks it for an object or for a stream's data from now on
     /// is refused with an <see cref="ObjectDisposedException"/> that names the document, and what it kept — the objects
-    /// it cached, the object streams it decoded, its index, what it noted of each object it read, the source — is let go,
-    /// though a reference the caller holds keeps the reader itself. Closing it again does nothing.
+    /// it cached, the object streams it decoded, its index, the memo of its scan, what it noted of each object it read,
+    /// the source — is let go, though a reference the caller holds keeps the reader itself. Closing it again does nothing.
     /// </summary>
     internal void Close()
     {
@@ -1420,6 +1427,7 @@ internal sealed partial class PdfFileReader : IPdfObjectSource, IPdfStreamDataPr
         _objectStreamBytes = 0;
         _xref.Release();
         _chainIndex = null;
+        _scanMemo = null;
         _cutTrailer = null;
 
         // What it noted of each object grows with a damaged file, past what the file weighs: nothing reads it once closed.

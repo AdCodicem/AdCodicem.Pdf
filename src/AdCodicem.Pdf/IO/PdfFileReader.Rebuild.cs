@@ -81,6 +81,7 @@ internal sealed partial class PdfFileReader
         _xref.Clear();
         ForgetWhatWasRead();
         var redefinitions = new Redefinitions();
+        var madeMemo = false;
 
         try
         {
@@ -88,8 +89,7 @@ internal sealed partial class PdfFileReader
             // opened to throw on one throws once the index is whole, not half-way through rebuilding it: one abandoned mid-way
             // would leave the document unable to find the objects it had not reached. The first guard reached is the one
             // thrown.
-            var trailers = new ScannedTrailers();
-            var reached = ScanForObjects(redefinitions, trailers);
+            var reached = IndexScannedObjects(redefinitions, out var trailers, out madeMemo);
             MergeScannedTrailers(trailers);
             ReportEncryptFoundLate();
 
@@ -119,6 +119,13 @@ internal sealed partial class PdfFileReader
             WithdrawReportsSince(reports);
             _indexFullAt = indexFullAt;
             _unfinishedRebuild = new RebuildAwaitingScan(kept);
+
+            // A memo this rebuild made goes with what it reported, for the rebuild run again to make it again, and report it.
+            if (madeMemo)
+            {
+                _scanMemo = null;
+            }
+
             throw;
         }
     }
