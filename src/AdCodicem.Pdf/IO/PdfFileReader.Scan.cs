@@ -8,14 +8,15 @@ namespace AdCodicem.Pdf.IO;
 internal sealed partial class PdfFileReader
 {
     /// <summary>
-    /// Gets what the rebuild's scan for objects takes of the file (<see cref="ScanForObjects"/>): the memo a rebuild made, or,
-    /// before any rebuild, one made now by scanning the file from its start, kept for the document's life.
+    /// Gets what the rebuild's scan for objects takes of the file (<see cref="ScanForObjects"/>): a memo made the first time it
+    /// is asked for, by scanning the file from its start, and kept for the document's life.
     /// </summary>
     /// <remarks>
     /// <para>
     /// The memo depends on nothing read before it: the scan starts from the file's start, with its own budget for reads past
-    /// declared lengths, and indexes nothing. Making it reads the whole file once, the first time it is asked for; it is kept
-    /// only once that scan has run to its end, and the source failing the scan leaves none, for the next call to scan again.
+    /// declared lengths, and indexes nothing. Making it reads the whole file once, the first time it is asked for, a rebuild
+    /// run before or not, since a rebuild makes none (<see cref="IndexScannedObjects"/>); it is kept only once that scan has
+    /// run to its end, and the source failing the scan leaves none, for the next call to scan again.
     /// </para>
     /// <para>
     /// It may be asked for while the caller holds a window of the source, and within a load: the scan reads through windows
@@ -73,10 +74,14 @@ internal sealed partial class PdfFileReader
 
     /// <summary>
     /// Indexes, for a rebuild, the object headers the scan for objects takes (<see cref="ScanForObjects"/>), and gives where
-    /// the trailers it meets lie: from the memo of the scan where it holds every header in the order the scan takes them, as
-    /// that scan would; otherwise by scanning the file, the memo made on the way where there is none yet, and kept once that
-    /// scan has run to its end.
+    /// the trailers it meets lie: from the memo of the scan where one was made that holds every header in the order the scan
+    /// takes them, as that scan would; otherwise by scanning the file, which makes no memo.
     /// </summary>
+    /// <remarks>
+    /// The memo serves the searches near a row and near an offset, which run before a rebuild; once the index is rebuilt it
+    /// comes from the scan, and what still asks for the memo makes it (<see cref="GetScanMemo"/>). A rebuild that made one
+    /// would make every rebuild pay for a use that rarely comes.
+    /// </remarks>
     /// <param name="redefinitions">Receives the numbers defined again.</param>
     /// <param name="trailers">Receives where the trailers the scan meets lie.</param>
     /// <returns>The exception a document opened to throw asked for, held until the index is whole; or null.</returns>
@@ -95,17 +100,8 @@ internal sealed partial class PdfFileReader
             return replayed;
         }
 
-        // A memo that is not whole, or not in the scan's order, is left as it is: the scan runs as it ran before there was one.
         trailers = new ScannedTrailers();
-        var making = _scanMemo is null ? new ScanMemo.Builder(_guard.Bound(PdfLimit.IndexEntries)) : null;
-        var reached = ScanForObjects(making, redefinitions, trailers);
-
-        if (making is not null)
-        {
-            _scanMemo = making.Complete(trailers);
-        }
-
-        return reached;
+        return ScanForObjects(memo: null, redefinitions, trailers);
     }
 
     /// <summary>
@@ -133,9 +129,9 @@ internal sealed partial class PdfFileReader
     /// <summary>
     /// Scans the file for every object header it holds outside another object, read once each, to its end, and records what
     /// it takes: for a rebuild, the headers into the index, the last definition of a number winning, under the generation its
-    /// header gives (<see cref="IndexScannedHeader"/>); into a memo, each header and each <c>xref</c> keyword with how it took
-    /// them; and, for the trailers a rebuild merges, where each <c>trailer</c> keyword and each cross-reference stream it takes
-    /// lies.
+    /// header gives (<see cref="IndexScannedHeader"/>); or, for a memo, each header and each <c>xref</c> keyword with how it
+    /// took them; and, for the trailers a rebuild merges, where each <c>trailer</c> keyword and each cross-reference stream it
+    /// takes lies.
     /// </summary>
     /// <remarks>
     /// <para>
@@ -166,13 +162,12 @@ internal sealed partial class PdfFileReader
     /// whatever came before it, and one for a number it lacks is left out. A number defined again takes no room, so a file
     /// that repeats one header millions of times hides nothing behind them. The scan's time follows the file's length: each
     /// byte is searched, swept and walked back over a bounded number of times, and what it keeps the index's bound and the
-    /// memo's (<see cref="ScanMemo"/>). Once the memo can hold no more, a scan that only makes it stops, and a rebuild's scans
-    /// on as it does with no memo to make.
+    /// memo's (<see cref="ScanMemo"/>). A scan for a memo stops at the first place the memo can no longer hold.
     /// </para>
     /// </remarks>
-    /// <param name="memo">Receives what the scan takes; null for a rebuild that has a memo already, which it cannot use.</param>
-    /// <param name="redefinitions">Receives the numbers defined again; null for a scan that only makes a memo, and indexes
-    /// nothing.</param>
+    /// <param name="memo">Receives what the scan takes; null for a rebuild's scan, which looks for no <c>xref</c> keyword.</param>
+    /// <param name="redefinitions">Receives the numbers defined again, for a rebuild's scan; null for a scan for a memo, which
+    /// indexes nothing.</param>
     /// <param name="trailers">Receives where the trailers the scan meets lie.</param>
     /// <returns>The exception a document opened to throw asked for, held until the index is whole; or null.</returns>
     private ExceptionDispatchInfo? ScanForObjects(ScanMemo.Builder? memo, Redefinitions? redefinitions, ScannedTrailers trailers)
@@ -206,19 +201,6 @@ internal sealed partial class PdfFileReader
 
             while (true)
             {
-                // Past its bound the memo takes nothing more: a scan that only makes it is done, and a rebuild's no longer
-                // looks for what only the memo takes.
-                if (memo is { IsWhole: false })
-                {
-                    if (redefinitions is null)
-                    {
-                        return reached;
-                    }
-
-                    memo = null;
-                    xrefAt = -1;
-                }
-
                 if (objAt != -1 && objAt < objFrom)
                 {
                     objAt = objFrom < searchEnd ? span[objFrom..searchEnd].IndexOf(ObjKeyword) : -1;
@@ -236,22 +218,33 @@ internal sealed partial class PdfFileReader
                     trailerAt = trailerAt < 0 ? -1 : trailerFrom + trailerAt;
                 }
 
-                if (xrefAt != -1 && xrefAt < xrefFrom)
+                if (xrefAt != -1)
                 {
-                    xrefAt = xrefFrom < searchEnd ? span[xrefFrom..searchEnd].IndexOf(XRefKeyword) : -1;
-                    xrefAt = xrefAt < 0 ? -1 : xrefFrom + xrefAt;
-                }
+                    if (xrefAt < xrefFrom)
+                    {
+                        xrefAt = xrefFrom < searchEnd ? span[xrefFrom..searchEnd].IndexOf(XRefKeyword) : -1;
+                        xrefAt = xrefAt < 0 ? -1 : xrefFrom + xrefAt;
+                    }
 
-                if (xrefAt >= 0 && (objAt < 0 || xrefAt < objAt) && (trailerAt < 0 || xrefAt < trailerAt))
-                {
-                    NoteXRefKeyword(span, windowStart, xrefAt, ref scan, memo!);
-                    xrefFrom = xrefAt + XRefKeyword.Length;
-                    continue;
+                    if (xrefAt >= 0 && (objAt < 0 || xrefAt < objAt) && (trailerAt < 0 || xrefAt < trailerAt))
+                    {
+                        if (!NoteXRefKeyword(span, windowStart, xrefAt, ref scan, memo!))
+                        {
+                            return reached;
+                        }
+
+                        xrefFrom = xrefAt + XRefKeyword.Length;
+                        continue;
+                    }
                 }
 
                 if (trailerAt >= 0 && (objAt < 0 || trailerAt < objAt))
                 {
-                    NoteTrailerKeyword(span, windowStart, trailerAt, ref scan, trailers, memo);
+                    if (!NoteTrailerKeyword(span, windowStart, trailerAt, ref scan, trailers, memo))
+                    {
+                        return reached;
+                    }
+
                     trailerFrom = trailerAt + TrailerKeyword.Length;
                     continue;
                 }
@@ -281,12 +274,14 @@ internal sealed partial class PdfFileReader
                     continue;
                 }
 
-                if (redefinitions is not null)
+                if (memo is null)
                 {
-                    IndexScannedHeader(at, number, generation, redefinitions, ref reached);
+                    IndexScannedHeader(at, number, generation, redefinitions!, ref reached);
                 }
-
-                memo?.TryAddHeader(at, number, generation, at < scan.RawUntil ? ScannedPlaceKind.Raw : ScannedPlaceKind.Clean, scan.TokensFrom);
+                else if (!memo.TryAddHeader(at, number, generation, at < scan.RawUntil ? ScannedPlaceKind.Raw : ScannedPlaceKind.Clean, scan.TokensFrom))
+                {
+                    return reached;
+                }
 
                 // A header within what the delimiting of an object it could not delimit read is not delimited again.
                 var extent = default(ObjectExtent);
@@ -394,7 +389,8 @@ internal sealed partial class PdfFileReader
     /// after it, and counts it in the memo: a keyword a load lexes as one, which neither a regular character nor a comment
     /// around it makes part of a longer word or of a comment.
     /// </summary>
-    private void NoteTrailerKeyword(
+    /// <returns>False where the memo can hold the keyword no more; true otherwise.</returns>
+    private bool NoteTrailerKeyword(
         ReadOnlySpan<byte> span, long windowStart, int keyword, ref ScanState scan, ScannedTrailers trailers, ScanMemo.Builder? memo)
     {
         var end = keyword + TrailerKeyword.Length;
@@ -403,11 +399,11 @@ internal sealed partial class PdfFileReader
             (end < span.Length && PdfCharacters.IsRegular(span[end])) ||
             IsHidden(span, windowStart, windowStart + keyword, ref scan))
         {
-            return;
+            return true;
         }
 
         trailers.Keywords.Add(windowStart + end);
-        memo?.TryAddTrailer(windowStart + keyword, scan.TokensFrom);
+        return memo?.TryAddTrailer(windowStart + keyword, scan.TokensFrom) ?? true;
     }
 
     /// <summary>
@@ -428,7 +424,8 @@ internal sealed partial class PdfFileReader
     /// before the scan looked for it.
     /// </para>
     /// </remarks>
-    private void NoteXRefKeyword(ReadOnlySpan<byte> span, long windowStart, int keyword, ref ScanState scan, ScanMemo.Builder memo)
+    /// <returns>False where the memo can hold the keyword no more; true otherwise.</returns>
+    private bool NoteXRefKeyword(ReadOnlySpan<byte> span, long windowStart, int keyword, ref ScanState scan, ScanMemo.Builder memo)
     {
         var end = keyword + XRefKeyword.Length;
 
@@ -437,7 +434,7 @@ internal sealed partial class PdfFileReader
         if ((keyword > 0 && !PdfCharacters.EndsToken(span[keyword - 1]) && !EndsEndOfFileMarker(span, keyword - 1)) ||
             (end < span.Length && PdfCharacters.IsRegular(span[end])))
         {
-            return;
+            return true;
         }
 
         var position = windowStart + keyword;
@@ -445,10 +442,10 @@ internal sealed partial class PdfFileReader
 
         if (!raw && IsHiddenAhead(span, windowStart, position, ref scan))
         {
-            return;
+            return true;
         }
 
-        memo.TryAddXRefKeyword(position, raw ? ScannedPlaceKind.Raw : ScannedPlaceKind.Clean, scan.TokensFrom);
+        return memo.TryAddXRefKeyword(position, raw ? ScannedPlaceKind.Raw : ScannedPlaceKind.Clean, scan.TokensFrom);
     }
 
     /// <summary>
@@ -461,15 +458,6 @@ internal sealed partial class PdfFileReader
         if (position < scan.RawUntil)
         {
             return false;
-        }
-
-        // Where the sweep ahead stopped short of the position, it stands where the scan's own would once swept that far: the
-        // bytes it swept are not swept again.
-        if (scan.AheadTo > scan.SweptTo && scan.AheadTo <= position)
-        {
-            scan.SweptTo = scan.AheadTo;
-            scan.Line = scan.AheadLine;
-            scan.StringDepth = scan.AheadDepth;
         }
 
         Sweep(span, windowStart, position, scan.RawUntil, ref scan.SweptTo, ref scan.Line, ref scan.StringDepth);
@@ -485,9 +473,9 @@ internal sealed partial class PdfFileReader
     /// The scan's sweep moves forward only, and a header is told by where it stands once swept to the header's start: swept
     /// past a keyword that lies in a comment between a header's tokens, it would tell that header otherwise. The sweep ahead
     /// starts where the scan's own stands whenever that one has caught up with it or been moved past it, and from where it
-    /// stopped otherwise, each byte swept so by it once; the scan's own sweep, asked for a position the sweep ahead has
-    /// reached, takes up where it stopped (<see cref="IsHidden"/>): a byte is swept twice only where a header starts before a
-    /// keyword the sweep ahead reached, and twice at most.
+    /// stopped otherwise, so that each sweep crosses a byte once at most. The scan's own sweep does not take up where the
+    /// sweep ahead stopped: a scan that looks for no keyword, a rebuild's, then sweeps as it did before any scan looked for
+    /// one, with no test of the sweep ahead for each header.
     /// </remarks>
     private bool IsHiddenAhead(ReadOnlySpan<byte> span, long windowStart, long position, ref ScanState scan)
     {
