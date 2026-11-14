@@ -263,7 +263,7 @@ internal sealed partial class PdfFileReader
 
                 if (walk == HeaderWalk.Undecided)
                 {
-                    walk = ReadHeaderFurtherBack(windowStart + objAt, scan.TokensFrom, out number, out generation, out at);
+                    walk = ReadHeaderFurtherBack(windowStart + objAt, scan.TokensFrom, memo, out number, out generation, out at);
                 }
 
                 if (walk != HeaderWalk.Header || IsHidden(span, windowStart, at, ref scan))
@@ -356,9 +356,19 @@ internal sealed partial class PdfFileReader
     /// load reads no further. A walk stops at the first byte that is none of a header's, the keyword before it at the
     /// furthest, and its windows, each eight times the one before, read at most about nine times the bytes it crosses, or
     /// the stretch back to <paramref name="tokensFrom"/>: walks that start at different keywords cross different bytes, and
-    /// at most a few start in each piece.
+    /// at most a few start in each piece. A window the source gives shorter than asked holds the end of the data (#52), which
+    /// the keyword then lies past: the walk ends there with no header, and the scan goes on past the keyword, a memo whole
+    /// only before <paramref name="tokensFrom"/>, where the header it did not read may start
+    /// (<see cref="ScanMemo.Builder.EndAt"/>).
     /// </remarks>
-    private HeaderWalk ReadHeaderFurtherBack(long objPosition, long tokensFrom, out int number, out int generation, out long at)
+    /// <param name="objPosition">Where the keyword starts in the file.</param>
+    /// <param name="tokensFrom">Where the bytes the scan's last object left to read anew start.</param>
+    /// <param name="memo">Receives where the data a short window holds ends; null for a rebuild's scan.</param>
+    /// <param name="number">The object number the header gives.</param>
+    /// <param name="generation">The generation the header gives.</param>
+    /// <param name="at">Where the header starts in the file.</param>
+    private HeaderWalk ReadHeaderFurtherBack(
+        long objPosition, long tokensFrom, ScanMemo.Builder? memo, out int number, out int generation, out long at)
     {
         var bound = Math.Min(Math.Min(_guard.Bound(PdfLimit.Object), Array.MaxLength - ObjKeyword.Length - 1L), objPosition - tokensFrom);
         var before = (long)ScanLead;
@@ -369,6 +379,15 @@ internal sealed partial class PdfFileReader
             var start = objPosition - before;
             var end = Math.Min(_source.Length, objPosition + ObjKeyword.Length + 1);
             using var window = _source.GetWindow(start, (int)(end - start));
+
+            if (window.Length < end - start)
+            {
+                memo?.EndAt(start + window.Length, tokensFrom);
+                number = generation = 0;
+                at = -1;
+                return HeaderWalk.None;
+            }
+
             var walk = ReadHeaderBackwards(
                 window.Memory.Span, (int)before, startsData: start == tokensFrom, signsBeforeUnknown: false, out number, out generation, out var headerStart, out _);
             at = start + headerStart;
