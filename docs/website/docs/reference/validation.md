@@ -58,8 +58,8 @@ crafted for it can still make the report depend on what was read before, in thre
   on the thread.
 - A value an object stream's decoding reads — its `/Type`, `/N`, `/First`, `/Filter` or `/DecodeParms` — held by a
   stream that lies on a loop, or any such value of a stream on a loop itself, depends on which stream of the loop was
-  decoded first, and so do the verdicts of `xref.object-stream-broken`, `xref.entry-broken` and `xref.entry-shifted`
-  ([#313](https://github.com/AdCodicem/AdCodicem.Pdf/issues/313)).
+  decoded first, and so do the verdicts of `xref.object-stream-broken`, `xref.entry-broken`, `xref.entry-shifted`
+  and `xref.entry-unconfirmed` ([#313](https://github.com/AdCodicem/AdCodicem.Pdf/issues/313)).
 
 [Validation](../concepts/validation.md#reading-limits-and-exceptions) explains why.
 

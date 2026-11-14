@@ -74,9 +74,10 @@ internal sealed partial class PdfFileReader : IPdfObjectSource, IPdfStreamDataPr
     /// wherever the offset falls: a header from the first digit of its number to the end of its <c>obj</c> keyword, a
     /// classic table's <c>xref</c> keyword from its first byte to its last. Near the file's start the search reaches no
     /// further past the offset than elsewhere, where a window clamped there once reached up to twice the radius past it
-    /// (#197); nothing is looked for near an offset more than the radius before the file's start. The byte before the
-    /// window is read as well, so that a number its start cuts — <c>14 0 obj</c> read from its <c>4</c> — is not taken
-    /// for a header that starts there.
+    /// (#197); nothing is looked for near an offset more than the radius before the file's start. The bytes before the
+    /// window are read as well — one for a section, and for an object as many as an end-of-file marker has, to which a
+    /// writer may glue a header —, so that a number its start cuts — <c>14 0 obj</c> read from its <c>4</c> — is not
+    /// taken for a header that starts there.
     /// </remarks>
     internal const int NearbySearchRadius = 512;
 
