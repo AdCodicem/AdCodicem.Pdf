@@ -31,9 +31,10 @@ document instead, in [Read or refuse a document that reaches a limit](../guides/
 for — an object, or one the newest `/Size` numbers —, up to about 80 when a rebuild grew it and about 96 for numbers
 spread far apart, so 335 MB or more at the default bound. While the chain is read, the numbers whose rows it refused,
 which the bound counts with the index, are held apart as well: about 60 bytes a number allocated as that set grows, let
-go once the chain is read. Validating a document costs about 3 µs and 350 bytes allocated an object, so a document near
-the bound takes about 24 s and 3 GB to validate. An application that validates uploads can lower it to the documents it
-accepts.
+go once the chain is read. A scan of the file, which a rebuild runs once a document, keeps 16 bytes at most for each
+object header and keyword it takes, within the same bound. Validating a document costs about 3 µs and 350 bytes
+allocated an object, so a document near the bound takes about 24 s and 3 GB to validate. An application that validates
+uploads can lower it to the documents it accepts.
 
 A value of zero or less is refused with an `ArgumentOutOfRangeException`. A length above `Array.MaxLength`
 is taken as `Array.MaxLength`: a decoded stream, and a stream's data read at once, are held in one piece, and no

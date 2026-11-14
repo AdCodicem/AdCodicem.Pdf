@@ -171,7 +171,9 @@ public sealed record PdfReaderLimits
     /// document can cost, which follows its index: about 24 seconds and 3 GB near the default. While the cross-reference
     /// chain is read, the numbers whose rows it refused, which the bound counts with the index, are held apart as well, each
     /// with an int that tells which section refused it: about 60 bytes a number allocated in all as that set grows, let go
-    /// once the chain is read.
+    /// once the chain is read. The same bound applies to what the reader keeps of a scan of the file, once one is needed —
+    /// the object headers and keywords it takes, 16 bytes each at most —: reaching it there reports the same code, at the
+    /// first it does not keep, unless the index reported it already.
     /// </remarks>
     /// <exception cref="ArgumentOutOfRangeException">The value is zero or less.</exception>
     public int MaxIndexEntries
