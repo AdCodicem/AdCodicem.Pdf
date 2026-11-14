@@ -2271,6 +2271,74 @@ public class CrossReferenceChainTests
             .Select(finding => (finding.RuleId, finding.Location.Position)).Should().Contain((PdfValidationRuleIds.XRefSectionUnconfirmed, keyword));
     }
 
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    [InlineData(true, true)]
+    public void The_scan_s_memo_reaches_its_bound_for_a_place_past_it_the_search_tries_not_for_one_the_places_a_document_may_try_leave(
+        bool spent, bool throwOnLimit)
+    {
+        // Objects 1 to 42, then 40 more definitions of object 42, fill the rebuild's scan memo at MaxIndexEntries 60 and leave
+        // the index room for every number; the newest table's /Prev names a place 2 bytes into the first table, which lies
+        // past where the memo is whole. The search there tries the table without the scan's word: the memo's bound is
+        // reached once, where the first place it left out starts, and the section is found, unconfirmed; a document opened
+        // to throw on a guard throws there. Where the newest table's /XRefStm names a place inside object 22, the search
+        // there tries 32 objects, no section, and spends the places a document may try: the table is left untried, the
+        // section reported missing, and the memo's bound is not reached, nor thrown (#171, ADR 34).
+        var text = new StringBuilder("%PDF-1.5\n");
+        var rows = new long[43];
+        rows[1] = Append(text, "1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n");
+        rows[2] = Append(text, "2 0 obj\n<< /Type /Pages /Kids [] /Count 0 >>\nendobj\n");
+
+        for (var number = 3; number <= 42; number++)
+        {
+            rows[number] = Append(text, Invariant($"{number} 0 obj\n{number}\nendobj\n"));
+        }
+
+        var definitions = new List<long>();
+
+        for (var i = 0; i < 40; i++)
+        {
+            definitions.Add(Append(text, Invariant($"42 0 obj\n{i}\nendobj\n")));
+        }
+
+        rows[42] = definitions[^1];
+        text.Append('%').Append('-', 600).Append('\n');
+        var oldest = Append(text, "xref\n0 43\n0000000000 65535 f \n" + string.Concat(rows.Skip(1).Select(at => Invariant($"{at:D10} 00000 n \n"))) + "trailer\n<< /Size 43 /Root 1 0 R >>\nstartxref\n");
+        text.Append(Invariant($"{oldest}\n%%EOF\n"));
+        var stream = rows[22] + 3;
+        var newest = Append(text, Invariant($"xref\n0 1\n0000000000 65535 f \ntrailer\n<< /Size 43 /Root 1 0 R /Prev {oldest + 2}{(spent ? Invariant($" /XRefStm {stream}") : "")} >>\nstartxref\n"));
+        text.Append(Invariant($"{newest}\n%%EOF\n"));
+        var file = Encoding.Latin1.GetBytes(text.ToString());
+        var options = new PdfReaderOptions { ThrowOnLimit = throwOnLimit, Limits = PdfReaderLimits.Default with { MaxIndexEntries = 60 } };
+
+        // The memo holds the 42 first definitions and 18 of the others: the next one is the first place it left out.
+        var leftOut = definitions[18];
+
+        if (throwOnLimit && !spent)
+        {
+            var thrown = FluentActions.Invoking(() => PdfDocument.Open(file, options)).Should().Throw<PdfLimitExceededException>().Which;
+            (thrown.LimitName, thrown.Position).Should().Be((nameof(PdfReaderLimits.MaxIndexEntries), leftOut));
+            return;
+        }
+
+        using var document = PdfDocument.Open(file, options);
+
+        document.Diagnostics.Select(diagnostic => (diagnostic.Code, diagnostic.Position)).Should().Equal(
+            spent
+                ? [
+                    (PdfDiagnosticCodes.XRefSectionMissing, stream),
+                    (PdfDiagnosticCodes.XRefSectionMissing, oldest + 2),
+                    (PdfDiagnosticCodes.XRefRebuilt, -1L),
+                    (PdfDiagnosticCodes.ObjectRedefined, -1L),
+                ]
+                : [(PdfDiagnosticCodes.LimitIndexEntries, leftOut), (PdfDiagnosticCodes.XRefOffsetAdjusted, oldest)]);
+        var last = document.Reader.Structure.Sections[^1];
+        (last.State, last.Unconfirmed).Should().Be(spent ? (XRefSectionState.NotFound, false) : (XRefSectionState.Relocated, true));
+        document.GetObject(new PdfObjectId(42)).Should().BeOfType<PdfInteger>().Which.Value.Should().Be(39);
+    }
+
     [Fact]
     public void An_xref_keyword_on_a_line_that_starts_before_the_bytes_searched_is_lexed_from_the_line_s_start()
     {
