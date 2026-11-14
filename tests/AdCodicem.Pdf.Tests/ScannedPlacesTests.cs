@@ -570,6 +570,52 @@ public class ScannedPlacesTests
                 (PdfValidationRuleIds.XRefSectionUnconfirmed, PdfValidationSeverity.Error, keyword));
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void A_header_whose_walk_back_a_short_read_ends_is_not_taken_and_the_scan_goes_on_past_it(bool rebuildFirst)
+    {
+        // Read through a source that gives at most 1 MiB a read, each piece of the scan whole: past 800,000 bytes that hold no
+        // header, object 5's number is followed by 300,000 spaces before its generation and its obj keyword, which lies in the
+        // scan's second piece. Reading the header back from there asks for more than the source gives: the window comes back
+        // short, the end of what the source holds there (#52), and the scan takes no header there but goes on past it, a memo
+        // whole only before where the page tree's value ends, where the header it could not read may start. Object 6's row
+        // lies 3 bytes past its header, and object 7's outside the file: the search near the row serves 6 as the bytes give
+        // it, and the rebuild, run before the memo was made or after it, indexes 6 and not 5.
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long> { [1] = file.Object(1, Catalog), [2] = file.Object(2, Pages) };
+        file.Raw(new string('x', 800_000) + "\n");
+        var five = file.Position;
+        file.Raw("5" + new string(' ', 300_000) + "0 obj\n(five)\nendobj\n");
+        var six = file.Object(6, "(six)");
+        rows[6] = six + 3;
+        rows[7] = 9_999_999;
+        file.Table(8, rows, "/Size 8 /Root 1 0 R");
+        using var document = PdfDocument.Open(new CappedReadSource(file.Bytes, 1 << 20), options: null, ownsSource: true);
+
+        if (rebuildFirst)
+        {
+            document.GetObject(new PdfObjectId(7));
+        }
+
+        var served = document.GetObject(new PdfObjectId(6)).AsText();
+        document.GetObject(new PdfObjectId(7));
+        var memo = document.Reader.GetScanMemo();
+
+        served.Should().Be("six");
+        document.WasRepaired.Should().BeTrue();
+        document.Diagnostics.Should().Contain(entry => entry.Code == PdfDiagnosticCodes.XRefRebuilt);
+        document.Diagnostics.Any(entry => entry.Code == PdfDiagnosticCodes.XRefOffsetAdjusted && entry.Position == six).Should().Be(!rebuildFirst);
+        document.GetObject(new PdfObjectId(5)).Should().BeSameAs(PdfNull.Instance);
+        document.Reader.Index.TryGet(5, out _).Should().BeFalse();
+        document.Reader.Index.TryGet(6, out var entry).Should().BeTrue();
+        document.Reader.PositionOf(entry).Should().Be(six);
+        memo.IsWhole.Should().BeTrue();
+        memo.WholeUntil.Should().Be(rows[2] + "2 0 obj\n".Length + Pages.Length);
+        memo.TryGetHeaderAt(five, out _).Should().BeFalse();
+        memo.TryGetHeaderAt(six, out _).Should().BeTrue();
+    }
+
     [Fact]
     public void A_whole_memo_or_none_has_no_bound_to_report()
     {
