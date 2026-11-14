@@ -1013,7 +1013,9 @@ internal sealed partial class PdfFileReader
 
     /// <summary>
     /// Delimits a value that starts with the integer <paramref name="first"/>: the integer alone, a reference, or nothing,
-    /// where it starts the next object's header.
+    /// where it starts the next object's header — or may, the end of the data reached within the tokens after it: bytes
+    /// a source gave short of may hold the rest of that header, which the scan cannot take, and whose start then bounds
+    /// where its memo is whole (<see cref="ScanMemo.Builder.EndAt"/>).
     /// </summary>
     private static ObjectBounds DelimitInteger(ref PdfLexer lexer, ReadOnlySpan<byte> bytes, bool endsData, PdfToken first)
     {
@@ -1036,7 +1038,7 @@ internal sealed partial class PdfFileReader
                 break;
         }
 
-        return new ObjectBounds(BoundsKind.Value, first.End, -1, -1, false);
+        return new ObjectBounds(BoundsKind.Value, lexer.Position >= bytes.Length ? first.Start : first.End, -1, -1, false);
     }
 
     /// <summary>
