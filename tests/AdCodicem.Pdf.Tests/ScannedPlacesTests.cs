@@ -494,7 +494,7 @@ public class ScannedPlacesTests
             ? (PdfValidationRuleIds.XRefEntryUnconfirmed, PdfValidationSeverity.Error)
             : (PdfValidationRuleIds.XRefEntryShifted, PdfValidationSeverity.Warning));
         finding.Message.Should().EndWith(shortReads
-            ? "which it cannot tell lies between objects: it lies past where a source that gave fewer bytes than asked ended its scan for objects."
+            ? "which it cannot tell lies between objects: it lies past the last object its scan for objects passed before the end of a read that a source answered with fewer bytes than asked."
             : past
                 ? "which it cannot tell lies between objects: it lies past the places its scan for objects records within PdfReaderLimits.MaxIndexEntries. Raising the limit lets it tell."
                 : string.Create(CultureInfo.InvariantCulture, $"the object starts 5 bytes before it, at offset {row - 5}."));
@@ -554,7 +554,7 @@ public class ScannedPlacesTests
         document.Diagnostics.Select(entry => (entry.Code, entry.Position)).Should().Equal((PdfDiagnosticCodes.XRefOffsetAdjusted, four));
         var finding = new PdfValidator().Validate(document).Findings.Should().ContainSingle(finding => finding.Location.Object == new PdfObjectId(4)).Which;
         (finding.RuleId, finding.Severity).Should().Be((PdfValidationRuleIds.XRefEntryUnconfirmed, PdfValidationSeverity.Error));
-        finding.Message.Should().Contain("a source that gave fewer bytes than asked").And.NotContain("MaxIndexEntries");
+        finding.Message.Should().EndWith("it lies past the last object its scan for objects passed before the end of a read that a source answered with fewer bytes than asked.");
     }
 
     [Theory]
