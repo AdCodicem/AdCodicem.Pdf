@@ -375,7 +375,8 @@ internal sealed partial class PdfFileReader
     /// (<see cref="ScanMemo.Builder.EndAt"/>).
     /// </summary>
     /// <remarks>
-    /// The rebuild's scan asks it of a direct <c>/Length</c>, which it reads itself: the next object an index places, which
+    /// The rebuild's scan asks it of a direct <c>/Length</c>, which it reads itself, and of an indirect one whose object it reads
+    /// from the file's bytes (<see cref="EndDataAtLengthObject"/>): the next object an index places, which
     /// also stops a load's search, is not looked at, for the scan reads nothing of an index. The data is read from the file as
     /// a load past its window reads it, with the scan's reads past declared lengths (<see cref="_scanGapBytes"/>); once those
     /// have read <see cref="EndStreamSearchPasses"/> times the length of the file, no search is made.
