@@ -582,10 +582,11 @@ internal sealed partial class PdfFileReader
     /// digits all the same. A place the scan takes as the bytes give it, in the data of a stream whose length is not
     /// confirmed or in what a string that runs past its object runs into, is tried as any other, and a section found
     /// there is unconfirmed (<see cref="ScannedPlaceKind.Raw"/>). The memo holds every place the scan takes only before
-    /// <see cref="ScanMemo.WholeUntil"/> — short of the places it could hold, and of where a window the source gave
-    /// shorter than asked ended the scan —: a place at or past there is tried without its word, the guard reached where
-    /// the memo left places out once the search tries it, within <see cref="MaxRelocationCandidates"/>, and not for a
-    /// place that bound leaves untried (<see cref="ReachScanMemoBound"/>), and a section found there is unconfirmed. A
+    /// <see cref="ScanMemo.WholeUntil"/> — short of the places it could hold, and of the last object the scan passed
+    /// before the end of a read that the source answered with fewer bytes than asked —: a place at or past there is tried
+    /// without its word, the guard reached once the search tries it, within <see cref="MaxRelocationCandidates"/>, not for
+    /// a place that bound leaves untried, and only where the memo's bound alone keeps it from answering
+    /// (<see cref="ReachScanMemoBound"/>), and a section found there is unconfirmed. A
     /// place the chain names — what a hybrid table's <c>/XRefStm</c> read in the stream's place, which its
     /// <c>/Prev</c>'s search takes, and the place that <c>/Prev</c> names — is not asked: it is read as the chain reads
     /// what it names. Wherever the place is, one that cannot be read declares a section only where its token starts its

@@ -34,11 +34,12 @@ which the bound counts with the index, are held apart as well: about 60 bytes a 
 go once the chain is read. A rebuild keeps nothing of its scan of the file but the index. The scan of the file that the
 searches near an entry's offset and near an offset the chain names ask for, once a document
 ([Lazy reading](../concepts/lazy-reading.md#the-cost-of-the-trade)), keeps, within the same bound, each object header
-and keyword it takes, each definition of a number counted where the index counts the number once: at most 16 bytes for a
-header or an `xref` keyword, 24 for a cross-reference stream's header, and 8 for a `trailer` keyword — 201 MB at most at
-the default —, and allocates about three to four times what it keeps while it grows. Validating a document costs about 3
-µs and 350 bytes allocated an object, so a document near the bound takes about 24 s and 3 GB to validate. An application
-that validates uploads can lower it to the documents it accepts.
+and keyword it takes, each definition of a number counted where the index counts the number once: under 25 bytes a
+place, about 201 MB at most at the default, and from two to five times what it keeps allocated while it grows
+([`MaxIndexEntries`](api/AdCodicem.Pdf.Documents.PdfReaderLimits.md#AdCodicem_Pdf_Documents_PdfReaderLimits_MaxIndexEntries)
+says what each place costs). Validating a document costs about 3 µs and 350 bytes allocated an object, so a document
+near the bound takes about 24 s and 3 GB to validate. An application that validates uploads can lower it to the
+documents it accepts.
 
 A value of zero or less is refused with an `ArgumentOutOfRangeException`. A length above `Array.MaxLength`
 is taken as `Array.MaxLength`: a decoded stream, and a stream's data read at once, are held in one piece, and no
@@ -111,12 +112,12 @@ there. Raise PdfReaderLimits.MaxDecodedStreamLength to read past it.
 - Past `MaxIndexEntries` places, the scan the searches near an offset ask for keeps no more, and answers only before
   the first it left out. A search near an entry's offset that finds a header of the object past there, or a search near
   an offset the chain names that tries a place past there — among the 32 places it may try, below —, goes without it,
-  and, short of the last object the scan passed before the end of a read that a source answered with fewer bytes than
-  asked, past which raising the bound would not let it answer, reports `limit.index-entries` once a document, where the first place left out starts — apart from the index's own
-  report, which may come beside it at another position —, and takes a header or a section it finds there as the bytes
-  give it, which the validator reports as `xref.entry-unconfirmed` or `xref.section-unconfirmed`. A rebuild never
-  reports it: where that scan does not answer, the rebuild scans the file again, and serves and reports what it would
-  have.
+  and takes a header or a section it finds there as the bytes give it, which the validator reports as
+  `xref.entry-unconfirmed` or `xref.section-unconfirmed`. It reports `limit.index-entries` once a document, where the
+  first place left out starts — apart from the index's own report, which may come beside it at another position —, for
+  a place short of the last object the scan passed before the end of a read that a source answered with fewer bytes
+  than asked: past there, raising the bound would not let the scan answer. A rebuild never reports it: where that scan
+  does not answer, the rebuild scans the file again, and serves and reports what it would have.
 - An object cut at `MaxObjectLength` is kept as far as the bound, and the catalog among them: the reader takes the
   object `/Root` names for the catalog as it read it, rather than look for another or rebuild the index, until you raise
   the limit ([#175](https://github.com/AdCodicem/AdCodicem.Pdf/issues/175)). The validator judges nothing of what an

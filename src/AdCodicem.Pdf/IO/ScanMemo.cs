@@ -11,15 +11,19 @@ namespace AdCodicem.Pdf.IO;
 /// </summary>
 /// <remarks>
 /// <para>
-/// A place is held in a slot of 16 bytes: where it starts, the object number, and the generation with the kind. Places of
-/// one number, generation and kind that the scan takes one after another at one distance — a header written again and
-/// again, as hostile files repeat one by the million — are held as a run, in two slots however many they are. The slots
-/// are one array, grown by doubling as the scan adds to it, never past the bound, and trimmed once it ends. A memo that
-/// is whole keeps the trailers too (<see cref="Trailers"/>): 8 bytes for each <c>trailer</c> keyword, which takes no
-/// slot, and 8 for each cross-reference stream's header beside its slot, in lists trimmed once the scan ends, which keep
-/// at most a ninth more room than they use. A place so costs 24 bytes at most, for a cross-reference stream's header, and
-/// 16 for any other header or an <c>xref</c> keyword, that room aside. A query is a binary search over the slots, and
-/// allocates nothing.
+/// A place is held in a slot of 16 bytes: where it starts, the object number, and the generation with the kind. Places
+/// of one number, generation and kind that the scan takes one after another at one distance — a header written again
+/// and again, as hostile files repeat one by the million — are held as a run, in two slots however many they are. The
+/// slots are one array, grown by doubling as the scan adds to it, never past the bound, and trimmed once it ends. A
+/// memo that is whole keeps the trailers too (<see cref="Trailers"/>): 8 bytes for each <c>trailer</c> keyword, which
+/// takes no slot, and 8 for each cross-reference stream's header beside its slot, in lists grown by doubling and
+/// trimmed once the scan ends, which keep up to a ninth more room than they use. A place so costs 16 bytes at most for
+/// a header or an <c>xref</c> keyword, under 9 for a <c>trailer</c> keyword, and under 25 for a cross-reference
+/// stream's header: about 201 MB at most at the default bound, where the slots take 134 MB and the list of those
+/// streams' headers, which holds no more than the bound, 67 MB. While they grow, the array and the lists allocate from
+/// two to five times what the memo keeps once they are trimmed — twice where they end full, five times where they end
+/// just past a doubling —, beyond the 1 KB of the first slots. A query is a binary search over the slots, and allocates
+/// nothing.
 /// </para>
 /// <para>
 /// The places are held sorted by position, and the scan takes them in that order but for a header whose tokens run back
@@ -33,7 +37,7 @@ namespace AdCodicem.Pdf.IO;
 /// (ADR 34): the places grow with the headers and keywords a file writes, which a valid file writes as many of as it
 /// likes — an incrementally updated file writes each object it changes again —, so that only a file that holds that many
 /// reaches it. The bound is the index's, so that the one guard a caller sizes for what the reader holds of a document's
-/// objects sizes the memo too, at less than the index's own cost: 24 bytes a place at most, where the index takes 40
+/// objects sizes the memo too, at less than the index's own cost: under 25 bytes a place, where the index takes 40
 /// bytes and more for each number it may hold. The two do not count alike — the index each number once, the memo every
 /// header, a number defined again included, and every keyword —, so that a file of many definitions of few numbers, or
 /// of many keywords, fills the memo with an index far from full. Once it holds that many, the memo takes no more, and
