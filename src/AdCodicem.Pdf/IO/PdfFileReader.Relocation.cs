@@ -355,7 +355,7 @@ internal sealed partial class PdfFileReader
                 (state == XRefSectionState.Malformed &&
                     (attempt.CutByValue ||
                         ((attempt.TypedXRef || attempt.Kind == XRefSectionKind.Table) &&
-                            StartsItsLine(check, window.Span, start - lead, lead, candidate)))))
+                            StartsItsLine(window.Span, start - lead, lead, candidate, passedOver: null)))))
             {
                 _xref.KeepTentative();
                 section.RelocateTo(attempt);
@@ -382,7 +382,7 @@ internal sealed partial class PdfFileReader
 
                     foreach (var (typed, typedCheck) in typedPassedOver)
                     {
-                        if (typed == passed && StartsItsLine(typedCheck, window.Span, start - lead, lead, passed))
+                        if (typed == passed && StartsItsLine(window.Span, start - lead, lead, passed, typedCheck))
                         {
                             var headerAt = start - lead + HeaderTokenStart(window.Span, lead, (int)(passed - (start - lead)));
                             (_streamsPassedOver ??= []).Add(
@@ -626,29 +626,36 @@ internal sealed partial class PdfFileReader
 
     /// <summary>
     /// Determines whether the place the search near an offset tried at <paramref name="candidate"/> starts with a token that
-    /// declares a section where it cannot be read, the keyword <c>xref</c> or an object's header, and whether a
-    /// cross-reference stream it passes over there is reported (<see cref="ReportStreamsPassedOver"/>): one whose token
-    /// starts its line as a load lexes it (<see cref="IsTokenOnItsLine"/>), from its first sign where its number is
-    /// written with a run of signs that starts with a <c>+</c> (<see cref="HeaderTokenStart"/>), wherever it lies; where
-    /// the line starts too far back to tell, one the scan for objects takes between objects
-    /// (<see cref="PlaceCheck.Clean"/>).
+    /// declares a section where it cannot be read, the keyword <c>xref</c> or an object's header, or, asked with what the
+    /// scan's memo said of a cross-reference stream it passes over there, whether that stream is reported
+    /// (<see cref="ReportStreamsPassedOver"/>): one whose token starts its line as a load lexes it
+    /// (<see cref="IsTokenOnItsLine"/>), from its first sign where its number is written with a run of signs that starts
+    /// with a <c>+</c> (<see cref="HeaderTokenStart"/>), wherever it lies. Where the line starts too far back to tell, a
+    /// place that cannot be read declares no section, whatever the memo says of it, and the search goes on; a stream
+    /// passed over is reported where the scan for objects takes it between objects (<see cref="PlaceCheck.Clean"/>).
     /// </summary>
     /// <remarks>
     /// That the scan takes the place does not answer it where the line can be lexed (<see cref="CheckPlace"/>): where the
     /// scan reads the bytes as they come — in the data of a stream whose length it cannot confirm, comments unread there,
     /// or past a string that runs past its object —, it takes the word or a header that a comment or a string on its line
     /// holds, and between objects it takes what follows an end-of-file marker <c>%%EOF</c> on its line, which a load lexes
-    /// as part of that comment. Between objects, it sweeps every other comment and string as a load lexes them: its word
-    /// stands where the line test cannot tell, for a place it takes there, and for no other.
+    /// as part of that comment. Where the line test cannot tell, the memo does not tell that word from a token either:
+    /// taken for a section that cannot be read, it would end the search short of a section a few bytes on, and what the
+    /// file serves would hang on how long the line is. A section that reads is taken without the line test. A stream
+    /// passed over only words a diagnostic: the memo's word stands for it, for a place the scan takes between objects,
+    /// where it sweeps every comment and string as a load lexes them but what follows such a marker, and for no other.
     /// </remarks>
-    /// <param name="check">What the scan's memo said of the place.</param>
     /// <param name="span">The bytes searched, and the byte before them where the window holds one.</param>
     /// <param name="spanStart">Where <paramref name="span"/> starts in the file.</param>
     /// <param name="from">Where the bytes searched start in <paramref name="span"/>.</param>
     /// <param name="candidate">Where the place starts in the file, within the bytes searched.</param>
-    private bool StartsItsLine(PlaceCheck check, ReadOnlySpan<byte> span, long spanStart, int from, long candidate) =>
+    /// <param name="passedOver">
+    /// What the scan's memo said of a cross-reference stream passed over, asked whether it is reported; null for a place
+    /// that cannot be read, asked whether it declares a section.
+    /// </param>
+    private bool StartsItsLine(ReadOnlySpan<byte> span, long spanStart, int from, long candidate, PlaceCheck? passedOver) =>
         IsTokenOnItsLine(span, spanStart, HeaderTokenStart(span, from, (int)(candidate - spanStart))) ??
-        check == PlaceCheck.Clean;
+        passedOver == PlaceCheck.Clean;
 
     /// <summary>
     /// Determines whether a token starts at <paramref name="at"/> in <paramref name="span"/>, the line it lies in lexed from
