@@ -151,8 +151,10 @@ internal sealed partial class PdfFileReader
     /// end — an unbalanced parenthesis left unescaped, which runs it into the next objects, or the end of a cut file —
     /// delimits nothing (<see cref="IsRunaway"/>). A stream whose length the scan cannot confirm, an indirect <c>/Length</c>
     /// or a wrong one, has its data end where a load searching for its end would stop: at the first header after it, or at
-    /// its <c>endstream</c>; the headers and keywords before that <c>endstream</c> are taken as the bytes give them, comments
-    /// unread (<see cref="ScannedPlaceKind.Raw"/>). An object the scan cannot delimit has what follows its header read as the
+    /// its <c>endstream</c>; the headers and keywords before that <c>endstream</c> — or before where a load ends the data of
+    /// a direct <c>/Length</c> no <c>endstream</c> follows, at that length or at the object's <c>endobj</c>
+    /// (<see cref="DataEndWithoutEndStream"/>) — are taken as the bytes give them, comments unread
+    /// (<see cref="ScannedPlaceKind.Raw"/>). An object the scan cannot delimit has what follows its header read as the
     /// bytes give it, and the headers within what its delimiting read are taken undelimited, so that no byte is lexed for
     /// one object after another. Between objects, a comment or a string runs to the end of its line, and a header or a
     /// keyword that starts inside one is none (<see cref="SweepLine"/>). A keyword counts as a whole token
@@ -699,7 +701,8 @@ internal sealed partial class PdfFileReader
     /// <summary>
     /// Says where the stream whose header starts at <paramref name="at"/> ends: past the <c>endstream</c> that follows its
     /// direct <c>/Length</c>, white space and comments between, as many as there are, read as a load reads them (#174); or,
-    /// its length not confirmed, unknown.
+    /// its length not confirmed, where a load ends its data, as far as the file's bytes tell
+    /// (<see cref="DataEndWithoutEndStream"/>), or nowhere they tell.
     /// </summary>
     /// <remarks>
     /// The white space a first read cannot see past is read on with the scan's own reads past declared lengths, which
@@ -745,11 +748,17 @@ internal sealed partial class PdfFileReader
                 var next = NextSignificant(dataEnd, ref _scanGapBytes, PdfObjectParser.EndObjLookahead);
                 keywordEnd = next >= 0 ? EndStreamTokenEnd(next) : -1;
             }
+
+            if (keywordEnd < 0)
+            {
+                return new ObjectExtent(
+                    ExtentKind.UnconfirmedStream, DataEndWithoutEndStream(dataStart, dataEnd, ref _scanGapBytes), dataStart, bounds.CrossReferenceStream);
+            }
         }
 
         return keywordEnd >= 0
             ? new ObjectExtent(ExtentKind.Stream, keywordEnd, dataStart, bounds.CrossReferenceStream)
-            : new ObjectExtent(ExtentKind.UnconfirmedStream, dataStart, dataStart, bounds.CrossReferenceStream);
+            : new ObjectExtent(ExtentKind.UnconfirmedStream, -1, dataStart, bounds.CrossReferenceStream);
     }
 
     /// <summary>
@@ -1169,7 +1178,8 @@ internal sealed partial class PdfFileReader
 
         /// <summary>
         /// Where the bytes the scan reads as they give them, no comment nor string swept, end: the data of a stream whose
-        /// length it could not confirm, at its first <c>endstream</c>, or a string that runs past its object's end.
+        /// length it could not confirm, where a load ends it as far as the file's bytes tell, or at its first
+        /// <c>endstream</c>, or a string that runs past its object's end.
         /// </summary>
         public long RawUntil;
 
@@ -1210,7 +1220,7 @@ internal sealed partial class PdfFileReader
                     var buffered = extent.DataStart >= windowStart && extent.DataStart - windowStart < span.Length
                         ? span[(int)(extent.DataStart - windowStart)..]
                         : [];
-                    RawUntil = Math.Max(RawUntil, reader.FindEndStream(extent.DataStart, buffered, ref EndStreamAt));
+                    RawUntil = Math.Max(RawUntil, extent.End >= 0 ? extent.End : reader.FindEndStream(extent.DataStart, buffered, ref EndStreamAt));
                     ObjFrom = TrailerFrom = XRefFrom = TokensFrom = extent.DataStart;
                     SweptTo = Math.Max(SweptTo, RawUntil);
                     Line = LineState.Tokens;
@@ -1275,7 +1285,8 @@ internal sealed partial class PdfFileReader
     /// <summary>What a scan's delimiting of an object found (<see cref="DelimitObject"/>).</summary>
     /// <param name="Kind">How far the object was delimited.</param>
     /// <param name="End">Where the object's value or data ends in the file: past the value, past <c>endstream</c>, or, for a
-    /// stream whose length is not confirmed, where its data starts.</param>
+    /// stream whose length is not confirmed, where a load ends its data as far as the file's bytes tell
+    /// (<see cref="DataEndWithoutEndStream"/>), -1 where they do not.</param>
     /// <param name="DataStart">Where a stream's data starts in the file; -1 for another value.</param>
     /// <param name="CrossReferenceStream">Whether the object is a stream whose dictionary gives <c>/Type /XRef</c>.</param>
     private readonly record struct ObjectExtent(ExtentKind Kind, long End, long DataStart, bool CrossReferenceStream);

@@ -27,10 +27,25 @@ public class ScannedPlacesTests
     [InlineData("a header in the data of a stream whose length an endstream confirms", null)]
     [InlineData("a header in the data of a stream whose length is an object", "Raw")]
     [InlineData("a header in what a string that holds endobj runs into", "Raw")]
+    [InlineData("a header past the endobj that follows the declared length of a stream with no endstream", "Clean")]
+    [InlineData("a header that follows the declared length of a stream with no endstream", "Clean")]
+    [InlineData("a header past the endobj that ends a stream with no endstream whose declared length runs into it", "Clean")]
+    [InlineData("a header that a stream with no endstream declares a length past", "Raw")]
+    [InlineData("a header past the endobj of a stream with no endstream that declares a length past the header", "Clean")]
     public void A_header_is_recorded_where_the_scan_takes_it_with_how_it_took_it(string shape, string? kind)
     {
         var text = shape switch
         {
+            "a header past the endobj that follows the declared length of a stream with no endstream" =>
+                "5 0 obj\n<< /Length 10 >>\nstream\n0123456789\nendobj\n9 0 obj\n(nine)\nendobj\n",
+            "a header that follows the declared length of a stream with no endstream" =>
+                "5 0 obj\n<< /Length 10 >>\nstream\n0123456789\n9 0 obj\n(nine)\nendobj\n",
+            "a header past the endobj that ends a stream with no endstream whose declared length runs into it" =>
+                "5 0 obj\n<< /Length 13 >>\nstream\n0123456789\nendobj\n9 0 obj\n(nine)\nendobj\n",
+            "a header that a stream with no endstream declares a length past" =>
+                "5 0 obj\n<< /Length 40 >>\nstream\n0123456789\n9 0 obj\n(nine)\nendobj\n",
+            "a header past the endobj of a stream with no endstream that declares a length past the header" =>
+                "5 0 obj\n<< /Length 20 >>\nstream\n0123456789\nendobj\n9 0 obj\n(nine)\nendobj\n",
             "a header between objects" => "9 0 obj\n(nine)\nendobj\n",
             "a header whose number is written with a sign" => "+9 0 obj\n(nine)\nendobj\n",
             "a header in a comment between objects" => "% 9 0 obj\n",
@@ -69,6 +84,8 @@ public class ScannedPlacesTests
     [InlineData("a keyword glued to an end-of-file marker", "Clean")]
     [InlineData("a keyword after a closing bracket", "Clean")]
     [InlineData("a keyword in the data of a stream whose length is an object", "Raw")]
+    [InlineData("a keyword in the data of a stream whose endstream follows past its declared length", "Raw")]
+    [InlineData("a keyword past the endobj that follows the declared length of a stream with no endstream", "Clean")]
     [InlineData("a keyword in a comment", null)]
     [InlineData("a keyword in a string between objects", null)]
     [InlineData("a keyword inside an object", null)]
@@ -84,6 +101,10 @@ public class ScannedPlacesTests
             "a keyword after a closing bracket" => ("[1]xref\n", "xref"),
             "a keyword in the data of a stream whose length is an object" =>
                 ("5 0 obj\n<< /Length 6 0 R >>\nstream\nxref\nendstream\nendobj\n6 0 obj\n5\nendobj\n", "xref"),
+            "a keyword in the data of a stream whose endstream follows past its declared length" =>
+                ("5 0 obj\n<< /Length 4 >>\nstream\n0123 xref\nendstream\nendobj\n", "xref"),
+            "a keyword past the endobj that follows the declared length of a stream with no endstream" =>
+                ("5 0 obj\n<< /Length 4 >>\nstream\n0123\nendobj\nxref\n", "xref"),
             "a keyword in a comment" => ("% xref\n", "xref"),
             "a keyword in a string between objects" => ("(see xref)\n", "xref"),
             "a keyword inside an object" => ("9 0 obj\n(an xref)\nendobj\n", "xref"),
