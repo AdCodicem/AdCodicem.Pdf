@@ -100,8 +100,8 @@ internal sealed partial class PdfFileReader : IPdfObjectSource, IPdfStreamDataPr
 
     /// <summary>
     /// What <see cref="HeaderAt"/> gives, and what a placement gives for the number at the offset
-    /// (<see cref="HeaderPlacement.NumberAtOffset"/>), where a header read at an entry's row starts on a number the row cuts
-    /// (<see cref="RowCutsNumber"/>): <c>4 0 obj</c> read in <c>14 0 obj</c>.
+    /// (<see cref="HeaderPlacement.NumberAtOffset"/>), where an entry's row cuts a number (<see cref="RowCutsNumber"/>):
+    /// <c>14 0 obj</c> named from its <c>4</c>.
     /// </summary>
     internal const long HeaderCutsNumber = -3;
 

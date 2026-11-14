@@ -1531,11 +1531,24 @@ public class CrossReferenceRuleTests
         },
         {
             "4 0 obj\n(real four)\nendobj\n14 0 obj\n(fourteen)\nendobj\n", "14 0 obj", 1, 0, PdfValidationRuleIds.XRefEntryShifted,
-            "where it cuts the number of an object header; the object starts 28 bytes before it"
+            "where it cuts a number; the object starts 28 bytes before it"
         },
         {
-            "14 0 obj\n(fourteen)\nendobj\n", "14 0 obj", 1, 0, PdfValidationRuleIds.XRefEntryBroken,
-            "where it cuts the number of an object header, and the object is not within 512 bytes of it."
+            "4 0 obj\n(old four)\nendobj\nstartxref\n1234 0 obj\n(new four)\nendobj\n", "4 0 obj\n(new", 0, 0, PdfValidationRuleIds.XRefEntryShifted,
+            "where it cuts a number; the object starts 39 bytes before it"
+        },
+        {
+            "3 0 obj\n(three)\nendobj\nstartxref\n1234 0 obj\n(update four)\nendobj\n", "4 0 obj\n(update", 0, 0,
+            PdfValidationRuleIds.XRefEntryUnconfirmed,
+            "where the object's header is glued to the digits before it, which the reader cannot tell from an offset that cuts another header's number; no other definition of the object lies within 512 bytes of it, and the reader takes that header."
+        },
+        {
+            "14 0 obj\n(fourteen)\nendobj\n", "14 0 obj", 1, 0, PdfValidationRuleIds.XRefEntryUnconfirmed,
+            "where the object's header is glued to the digits before it"
+        },
+        {
+            "214 0 obj\n(two hundred fourteen)\nendobj\n", "14 0 obj", 0, 0, PdfValidationRuleIds.XRefEntryBroken,
+            "where it cuts a number, and the object is not within 512 bytes of it."
         },
     };
 
@@ -1548,7 +1561,9 @@ public class CrossReferenceRuleTests
         // as far from their headers, or where that header is the only one of the object the rebuild's scan takes between
         // objects, the file designates it: a warning. Where it is the nearest of several no row beside it confirms, or one the
         // scan takes only as the bytes give them — in the data of a stream whose length is not confirmed —, the reader chose
-        // it: an error (ADR 45). A row that cuts the number of another header is said to (#171).
+        // it: an error (ADR 45). A row that cuts a number is said to (#171); where no other definition lies near it, the header
+        // written there is taken, glued to the digits before it, which the reader cannot tell from a row inside another
+        // header's number: an error too.
         var (file, row) = NearbyFiles.FourNear(body, anchor, shift, neighborShift);
 
         var finding = Validate(file).Findings.Should().ContainSingle(finding => finding.Location.Object == new PdfObjectId(4)).Which;
@@ -3386,6 +3401,38 @@ public class CrossReferenceRuleTests
         document.Diagnostics.Should().Contain(diagnostic => diagnostic.Code == PdfDiagnosticCodes.LimitObject && diagnostic.Position == row);
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void A_header_written_at_a_row_that_cuts_a_number_reaches_the_object_guard_once_the_search_near_it_found_nothing(bool throwOnLimit)
+    {
+        // Object 4's row lands on the 4 of 14, which two hundred blanks follow before 0 obj; the reader reads no object past
+        // 128 bytes. The search near the row finds no header of object 4: a load reads the row as written then, and reaches
+        // the guard on the blanks, or throws there when opened to throw on one. Settling and the validator say what a load
+        // does, the guard included, before any load.
+        var (file, row) = NearbyFiles.FourNear("14" + new string(' ', 200) + "0 obj\n(fourteen)\nendobj\n", "4 ", 0);
+        var options = new PdfReaderOptions { ThrowOnLimit = throwOnLimit, Limits = PdfReaderLimits.Default with { MaxObjectLength = 128 } };
+        using var loaded = PdfDocument.Open(file, options);
+        using var validated = PdfDocument.Open(file, options);
+
+        var findings = new PdfValidator().Validate(validated).Findings.Where(finding => finding.Location.Object == new PdfObjectId(4));
+
+        findings.Select(finding => (finding.RuleId, finding.Location)).Should().Equal(
+            (PdfValidationRuleIds.XRefCheckedInPart, PdfValidationLocation.OfObject(new PdfObjectId(4), row)));
+        validated.Diagnostics.Count(diagnostic => diagnostic.Code == PdfDiagnosticCodes.LimitObject && diagnostic.Position == row)
+            .Should().Be(throwOnLimit ? 0 : 1);
+
+        if (throwOnLimit)
+        {
+            FluentActions.Invoking(() => loaded.GetObject(new PdfObjectId(4))).Should().Throw<PdfLimitExceededException>()
+                .Which.Position.Should().Be(row);
+            return;
+        }
+
+        loaded.GetObject(new PdfObjectId(4)).Should().BeOfType<PdfNull>();
+        loaded.Diagnostics.Should().ContainSingle(diagnostic => diagnostic.Code == PdfDiagnosticCodes.LimitObject && diagnostic.Position == row);
+    }
+
     [Fact]
     public void Settling_reports_the_object_guard_where_the_header_found_near_a_row_reaches_it()
     {
@@ -3632,13 +3679,16 @@ public class CrossReferenceRuleTests
     }
 
     [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public void Entries_left_undecided_once_the_probe_has_read_its_fill_are_said_not_checked_in_one_finding(bool nearby)
+    [InlineData("nothing")]
+    [InlineData("a header two bytes past its row")]
+    [InlineData("a header at a row that cuts a number")]
+    public void Entries_left_undecided_once_the_probe_has_read_its_fill_are_said_not_checked_in_one_finding(string six)
     {
         // Rows 3, 4 and 5 place their objects in one comment of 100 KB, which each reads to its end: the first two read twice
         // the file's length, and the third is left undecided. Row 6 places its object two bytes before a header that runs
-        // past a first read: the search near the row finds it, and reading it would read more (#175).
+        // past a first read: the search near the row finds it, and reading it would read more (#175). Or row 6 lands on the 6
+        // of such a header of object 16: the search finds no header of object 6, and reading the row as written would read
+        // more.
         var file = new HandWrittenFile();
         var rows = new Dictionary<int, long>
         {
@@ -3649,13 +3699,14 @@ public class CrossReferenceRuleTests
         file.Raw("%" + new string('c', 100 * 1024) + "\n");
         rows[3] = rows[4] = rows[5] = comment;
 
-        if (nearby)
+        if (six != "nothing")
         {
-            rows[6] = file.Position;
-            file.Raw("x\n6 0" + new string(' ', 100) + "obj\n(six)\nendobj\n");
+            var cut = six == "a header at a row that cuts a number";
+            rows[6] = file.Position + (cut ? 3 : 0);
+            file.Raw((cut ? "x\n16 0" : "x\n6 0") + new string(' ', 100) + "obj\n(six)\nendobj\n");
         }
 
-        var size = nearby ? 7 : 6;
+        var size = six == "nothing" ? 6 : 7;
         file.Table(size, rows, string.Create(CultureInfo.InvariantCulture, $"/Size {size} /Root 1 0 R"));
         using var document = PdfDocument.Open(file.Bytes);
 
@@ -3666,9 +3717,9 @@ public class CrossReferenceRuleTests
         notChecked.Location.Should().Be(PdfValidationLocation.OfObject(new PdfObjectId(5), comment));
         notChecked.Message.Should().Be(
             "The validator stopped reading object headers where entries place them once it had read twice the file's length of them, past the first bytes of each: " +
-            (nearby
-                ? "the entries of 2 objects it had not decided by then, the first object 5's, were not checked."
-                : "the entry of object 5, which it had not decided by then, was not checked."));
+            (six == "nothing"
+                ? "the entry of object 5, which it had not decided by then, was not checked."
+                : "the entries of 2 objects it had not decided by then, the first object 5's, were not checked."));
     }
 
     [Theory]

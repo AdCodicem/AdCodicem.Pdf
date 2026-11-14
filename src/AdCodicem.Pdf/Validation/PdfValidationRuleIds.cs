@@ -151,7 +151,10 @@ public static class PdfValidationRuleIds
     /// to it in the file's index are shifted alike to; or a header that scan takes only as the bytes give it — in the data
     /// of a stream whose length no <c>endstream</c> confirms, or past a string that runs past its object —, or past where
     /// that scan's record is whole — past the places it records within <see cref="Documents.PdfReaderLimits.MaxIndexEntries"/>,
-    /// or past where a source that gave fewer bytes than asked ended it. <see cref="PdfValidationSeverity.Error"/>.
+    /// or past where a source that gave fewer bytes than asked ended it. Where the offset cuts a number — a digit before it,
+    /// a digit or a sign at it — and no other definition of the object lies within those bytes, the reader takes the header
+    /// written there, glued to the digits before it, which it cannot tell from an offset that lands inside another header's
+    /// number. <see cref="PdfValidationSeverity.Error"/>.
     /// </summary>
     public const string XRefEntryUnconfirmed = "xref.entry-unconfirmed";
 

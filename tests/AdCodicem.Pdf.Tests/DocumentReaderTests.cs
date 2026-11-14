@@ -565,14 +565,19 @@ public class DocumentReaderTests
     [Theory]
     [InlineData("4 0 obj\n(real four)\nendobj\n14 0 obj\n(fourteen)\nendobj\n", "14 0 obj", 1, "4 0 obj\n(real", "real four")]
     [InlineData("4 0 obj\n(real four)\nendobj\n1+4 0 obj\n(cut)\nendobj\n", "+4 0 obj", 0, "4 0 obj\n(real", "real four")]
+    [InlineData("4 0 obj\n(old four)\nendobj\nstartxref\n1234 0 obj\n(new four)\nendobj\n", "4 0 obj\n(new", 0, "4 0 obj\n(old", "old four")]
+    [InlineData("3 0 obj\n(three)\nendobj\nstartxref\n1234 0 obj\n(update four)\nendobj\n", "4 0 obj\n(update", 0, null, "update four")]
+    [InlineData("14 0 obj\n(fourteen)\nendobj\n", "14 0 obj", 1, null, "fourteen")]
     [InlineData("3 0 obj\n(three)\nendobj4 0 obj\n(glued four)\nendobj\n", "4 0 obj\n(glued", 0, null, "glued four")]
-    public void A_row_that_cuts_a_number_holds_no_header_and_the_object_is_looked_for_near_it(
+    public void A_row_that_cuts_a_number_is_read_as_written_only_where_no_other_header_of_its_object_lies_near_it(
         string body, string anchor, long shift, string? servedAt, string served)
     {
         // Object 4's row lands on the 4 of 14 0 obj, or on the sign of 1+4 0 obj: a load lexing from the row read the end of
         // another number for object 4's, and served what follows as object 4 in silence. A digit before the row and a digit or
-        // a sign at it cut a number: the row holds no header, and object 4 is looked for near it. A header glued to the endobj
-        // before it is read where its row places it.
+        // a sign at it cut a number, and object 4 is looked for near the row first. Where no other header of it lies near, the
+        // row is read as written, as other readers read it: an update appended with no end of line to a file cut after the
+        // digits of its startxref is served, and so is the end of 14 0 obj, which nothing tells from it. A header glued to the
+        // endobj before it cuts no number, and is read where its row places it.
         var (file, _) = NearbyFiles.FourNear(body, anchor, shift);
         using var document = PdfDocument.Open(file);
 
