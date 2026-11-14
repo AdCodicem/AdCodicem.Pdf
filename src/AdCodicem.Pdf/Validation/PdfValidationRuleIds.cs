@@ -136,6 +136,13 @@ public static class PdfValidationRuleIds
     public const string XRefEntryShifted = "xref.entry-shifted";
 
     /// <summary>
+    /// An in-use entry places its object where there is no header of it, and the reader takes a header of the object near
+    /// it that the file does not designate: one of several definitions within 512 bytes of the offset that no entry next to
+    /// it confirms, or one that may lie inside another object's data. <see cref="PdfValidationSeverity.Error"/>.
+    /// </summary>
+    public const string XRefEntryUnconfirmed = "xref.entry-unconfirmed";
+
+    /// <summary>
     /// An entry's generation is not the one its object is written with: readers that match generations read the
     /// object as missing. <see cref="PdfValidationSeverity.Warning"/>.
     /// </summary>

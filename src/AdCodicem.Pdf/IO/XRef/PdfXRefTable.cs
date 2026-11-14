@@ -444,7 +444,16 @@ internal sealed class PdfXRefTable : IEnumerable<KeyValuePair<int, XRefEntry>>
     /// index rather than a pass over it. An entry replaced keeps the offset
     /// it gave among them: the answer is always an offset some entry of the table gave, if not the entry it holds now.
     /// </remarks>
-    public long FirstOffsetAfter(long offset)
+    public long FirstOffsetAfter(long offset) => Sorted().FirstAfter(offset);
+
+    /// <summary>
+    /// Gets the largest offset an entry in use written directly gives that is smaller than <paramref name="offset"/>, or -1
+    /// when none is, from the offsets <see cref="FirstOffsetAfter"/> sorts.
+    /// </summary>
+    public long LastOffsetBefore(long offset) => Sorted().LastBefore(offset);
+
+    /// <summary>Gets the offsets the entries in use written directly give, sorted the first time they are asked for.</summary>
+    private SortedOffsets Sorted()
     {
         if (_offsets is null)
         {
@@ -473,7 +482,7 @@ internal sealed class PdfXRefTable : IEnumerable<KeyValuePair<int, XRefEntry>>
             _offsets = new SortedOffsets(offsets);
         }
 
-        return _offsets.FirstAfter(offset);
+        return _offsets;
     }
 
     /// <summary>

@@ -104,7 +104,7 @@ internal sealed partial class PdfFileReader
     /// </summary>
     private bool LoadFindsWhereEntryPlaces(int number, XRefEntry entry)
     {
-        var placement = PlaceHeader(number, entry, _settlingReading!);
+        var placement = PlaceHeader(number, entry, _settlingReading!, reportsBound: !_guard.ThrowsOnLimit);
 
         // A load that reaches the guard on a header reports it and looks on; one opened to throw on a guard throws there,
         // and rebuilds nothing, which settling leaves to a load that asks for the object.
@@ -138,9 +138,12 @@ internal sealed partial class PdfFileReader
     /// <summary>
     /// Says what a load of object <paramref name="number"/> finds where <paramref name="entry"/> places it, as
     /// <see cref="LoadRegularObject"/> looks: its header at the offset the entry gives, read as <see cref="TryParseNumberedAt"/>
-    /// reads it; else the first header of that number near the offset, which what a load parses there must confirm; else
-    /// none. Nothing is parsed past a header, reported or recorded: the guard a load would reach on the way is said, not
-    /// reported. Settling and the validator's probe of the cross-reference entries decide each entry through it, alike.
+    /// reads it, unless the offset cuts a number (<see cref="RowCutsNumber"/>); else the header of that number the search near
+    /// the offset chooses (<see cref="TryFindObjectHeader"/>), which what a load parses there must confirm, and whether that
+    /// search vouches for it; else none. Nothing is parsed past a header, reported or recorded: the guard a load would reach
+    /// on the way is said, not reported, but the bound of the scan's memo, which the search reports where
+    /// <paramref name="reportsBound"/> asks. Settling and the validator's probe of the cross-reference entries decide each
+    /// entry through it, alike.
     /// </summary>
     /// <param name="number">The object's number.</param>
     /// <param name="entry">The regular entry that places it.</param>
@@ -148,7 +151,8 @@ internal sealed partial class PdfFileReader
     /// What the pass may still consume past the first window of each header, which what they consume is taken from — a
     /// header that would need more is <see cref="HeaderPlace.Undecided"/> —, and the run of white space it crossed.
     /// </param>
-    internal HeaderPlacement PlaceHeader(int number, XRefEntry entry, HeaderReading reading)
+    /// <param name="reportsBound">Whether the search near the offset reports the bound of the scan's memo, as a load does.</param>
+    internal HeaderPlacement PlaceHeader(int number, XRefEntry entry, HeaderReading reading, bool reportsBound = false)
     {
         var offset = PositionOf(entry);
         long atOffset = 0;
@@ -156,7 +160,7 @@ internal sealed partial class PdfFileReader
 
         if (IsInFile(offset))
         {
-            var found = HeaderAt(offset, number, reading, out var generation, out var start);
+            var found = HeaderAt(offset, number, reading, out var generation, out var start, atRow: !entry.FoundByReader);
 
             if (found == HeaderReadingSpent)
             {
@@ -187,7 +191,7 @@ internal sealed partial class PdfFileReader
         var nowhere = new HeaderPlacement(
             guardAtOffset ? HeaderPlace.PastGuard : HeaderPlace.NotFound, offset, -1, atOffset, guardAtOffset);
 
-        if (!TryFindObjectHeader(number, offset, out var nearby, out _))
+        if (!TryFindObjectHeader(number, entry, reportsBound, out var nearby, out _, out var kind, out var vouched))
         {
             return nowhere;
         }
@@ -200,7 +204,7 @@ internal sealed partial class PdfFileReader
         {
             HeaderReadingSpent => new HeaderPlacement(HeaderPlace.Undecided, offset, -1, atOffset, guardAtOffset),
             HeaderPastGuard => new HeaderPlacement(HeaderPlace.PastGuard, nearby, -1, atOffset, guardAtOffset),
-            _ when near == number => new HeaderPlacement(HeaderPlace.Nearby, nearby, nearGeneration, atOffset, guardAtOffset),
+            _ when near == number => new HeaderPlacement(HeaderPlace.Nearby, nearby, nearGeneration, atOffset, guardAtOffset, vouched, kind),
             _ => nowhere,
         };
     }
@@ -211,7 +215,9 @@ internal sealed partial class PdfFileReader
     /// runs past them or may have been cut at their edge, up to <see cref="PdfReaderLimits.MaxObjectLength"/> —, with its
     /// generation and where it starts; 0 where no header is; or <see cref="HeaderPastGuard"/> where the header still runs
     /// past the largest window, where a load reaches that guard; or <see cref="HeaderReadingSpent"/> where reading it further
-    /// would consume more than <paramref name="reading"/> has left. Nothing is parsed past the header, reported or recorded.
+    /// would consume more than <paramref name="reading"/> has left; or, where <paramref name="atRow"/>,
+    /// <see cref="HeaderCutsNumber"/> where a header read at the offset starts on a number the offset cuts, the byte before it
+    /// read with the first window. Nothing is parsed past the header, reported or recorded.
     /// </summary>
     /// <remarks>
     /// <para>
@@ -240,10 +246,12 @@ internal sealed partial class PdfFileReader
     /// other bytes: it may hold no line end.
     /// </para>
     /// </remarks>
-    private long HeaderAt(long offset, int expected, HeaderReading reading, out long generation, out long start)
+    private long HeaderAt(long offset, int expected, HeaderReading reading, out long generation, out long start, bool atRow = false)
     {
         generation = -1;
         start = offset;
+        var byteBefore = atRow && offset > 0 ? ByteBeforeRow : 0;
+        var cutsNumber = false;
 
         // What a load reads from the offset at most: its largest window, or the rest of the file.
         var reach = Math.Min(offset + _guard.Bound(PdfLimit.Object), _source.Length);
@@ -327,8 +335,17 @@ internal sealed partial class PdfFileReader
                 length = (int)(free - origin);
             }
 
-            using var window = _source.GetWindow(origin, length);
+            // Only a first window that starts at the offset reads the byte before it: past white space, none starts on a number.
+            byteBefore = origin == offset ? byteBefore : 0;
+            using var window = _source.GetWindow(origin - byteBefore, length + byteBefore);
             var span = window.Memory.Span;
+
+            if (byteBefore > 0)
+            {
+                cutsNumber = RowCutsNumber(span);
+                span = span[Math.Min(byteBefore, span.Length)..];
+                byteBefore = 0;
+            }
 
             // A source that gives nothing where its length says bytes lie ends there, as a load reads it: no header.
             if (span.IsEmpty)
@@ -408,7 +425,7 @@ internal sealed partial class PdfFileReader
                         {
                             generation = written;
                             start = numberStart;
-                            return number;
+                            return cutsNumber ? HeaderCutsNumber : number;
                         }
 
                         return HeaderPastGuard;
@@ -458,7 +475,7 @@ internal sealed partial class PdfFileReader
 
                     generation = written;
                     start = numberStart;
-                    return number;
+                    return cutsNumber ? HeaderCutsNumber : number;
                 }
 
                 if (lexed == 0)

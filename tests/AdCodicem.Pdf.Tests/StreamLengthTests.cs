@@ -51,7 +51,7 @@ public class StreamLengthTests
 
         var stream = document.GetObject(new PdfObjectId(StreamNumber)).AsStream().Required();
 
-        (source.BytesRead - beforeLoading).Should().Be(Window + PdfObjectParser.EndObjLookahead, "the window, then the bytes after the declared length");
+        (source.BytesRead - beforeLoading).Should().Be(Window + PdfFileReader.ByteBeforeRow + PdfObjectParser.EndObjLookahead, "the window, then the bytes after the declared length");
         stream.Data.Length.Should().Be(data.Length);
         document.Diagnostics.Should().BeEmpty();
         document.Reader.TryGetStreamLengthFault(StreamNumber, out _).Should().BeFalse("a sound stream records nothing");
@@ -169,7 +169,7 @@ public class StreamLengthTests
 
         document.GetObject(new PdfObjectId(StreamNumber)).AsStream().Required().Data.Length.Should().Be("short data".Length);
 
-        (source.BytesRead - beforeLoading).Should().Be(Window + PdfObjectParser.EndObjLookahead, "the file past the window is not searched");
+        (source.BytesRead - beforeLoading).Should().Be(Window + PdfFileReader.ByteBeforeRow + PdfObjectParser.EndObjLookahead, "the file past the window is not searched");
         document.Diagnostics.Should().ContainSingle().Which.Message.Should().Be(
             Invariant($"The stream declared {3 * Window} bytes, and no endstream follows its data before the next object, at {HeaderOf(file, 6)}: its object's endobj ends it, after 10 bytes."));
     }
@@ -983,7 +983,7 @@ public class StreamLengthTests
 
         var stream = document.GetObject(new PdfObjectId(StreamNumber)).AsStream().Required();
 
-        (source.BytesRead - beforeLoading).Should().BeLessThanOrEqualTo(Window + PdfObjectParser.EndObjLookahead);
+        (source.BytesRead - beforeLoading).Should().BeLessThanOrEqualTo(Window + PdfFileReader.ByteBeforeRow + PdfObjectParser.EndObjLookahead);
         stream.Data.Length.Should().Be(length);
         document.Diagnostics.Should().BeEmpty();
     }
@@ -1005,7 +1005,7 @@ public class StreamLengthTests
 
         var stream = document.GetObject(new PdfObjectId(StreamNumber)).AsStream().Required();
 
-        (source.BytesRead - beforeLoading).Should().BeLessThanOrEqualTo(Window + PdfObjectParser.EndObjLookahead);
+        (source.BytesRead - beforeLoading).Should().BeLessThanOrEqualTo(Window + PdfFileReader.ByteBeforeRow + PdfObjectParser.EndObjLookahead);
         stream.Data.Length.Should().Be(data.Length);
         document.Diagnostics.Should().BeEmpty();
     }
@@ -1041,7 +1041,7 @@ public class StreamLengthTests
 
         again.Should().NotBeSameAs(first, "the cache let the stream go, and it was parsed again");
         again.AsStream().Required().Data.Length.Should().Be(data.Length);
-        (source.BytesRead - beforeAgain).Should().BeLessThanOrEqualTo(Window + PdfObjectParser.EndObjLookahead, "the file is not searched again");
+        (source.BytesRead - beforeAgain).Should().BeLessThanOrEqualTo(Window + PdfFileReader.ByteBeforeRow + PdfObjectParser.EndObjLookahead, "the file is not searched again");
         document.Diagnostics.Should().ContainSingle().Which.Code.Should().Be(PdfDiagnosticCodes.StreamLengthInvalid);
         document.Reader.TryGetStreamLengthFault(StreamNumber, out var fault).Should().BeTrue();
         fault.Found.Should().Be(data.Length);
@@ -1948,7 +1948,7 @@ public class StreamLengthTests
 
         var beforeAgain = source.BytesRead;
         document.GetObject(new PdfObjectId(StreamNumber)).AsStream().Required().Data.Length.Should().Be(Length - 100);
-        (source.BytesRead - beforeAgain).Should().BeLessThanOrEqualTo(Window + PdfObjectParser.EndObjLookahead);
+        (source.BytesRead - beforeAgain).Should().BeLessThanOrEqualTo(Window + PdfFileReader.ByteBeforeRow + PdfObjectParser.EndObjLookahead);
     }
 
     [Fact]
@@ -2483,7 +2483,8 @@ public class StreamLengthTests
         var beforeLoading = source.BytesRead;
 
         document.GetObject(new PdfObjectId(StreamNumber)).AsStream().Required().RawLength.Should().Be((int)(file.Length - DataStartOf(file, StreamNumber)));
-        (source.BytesRead - beforeLoading).Should().Be(file.Length - HeaderOf(file, StreamNumber), "the window, which reaches the end of the file, and nothing after it");
+        (source.BytesRead - beforeLoading).Should().Be(
+            file.Length - HeaderOf(file, StreamNumber) + PdfFileReader.ByteBeforeRow, "the window, which reaches the end of the file, and nothing after it");
         document.Reader.EndStreamSearchBytes.Should().Be(0);
     }
 
@@ -2759,7 +2760,7 @@ public class StreamLengthTests
 
         var before = source.BytesRead;
         document.GetObject(new PdfObjectId(4)).AsStream().Required().RawLength.Should().Be(length);
-        (source.BytesRead - before).Should().BeLessThanOrEqualTo(PdfFileReader.InitialObjectWindow + PdfObjectParser.EndObjLookahead);
+        (source.BytesRead - before).Should().BeLessThanOrEqualTo(PdfFileReader.InitialObjectWindow + PdfFileReader.ByteBeforeRow + PdfObjectParser.EndObjLookahead);
         document.Diagnostics.Should().BeEmpty();
         document.Reader.IsEndObjMissing(4, out _).Should().BeFalse();
     }

@@ -64,6 +64,7 @@ public sealed class ValidationProfile
             new HybridStreamWrongRule(),
             new EntryBrokenRule(),
             new EntryShiftedRule(),
+            new EntryUnconfirmedRule(),
             new GenerationMismatchRule(),
             new ObjectStreamCircularRule(),
             new ObjectStreamBrokenRule(),

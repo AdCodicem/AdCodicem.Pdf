@@ -12,6 +12,22 @@ namespace AdCodicem.Pdf.Tests;
 /// </summary>
 internal static class NearbyFiles
 {
+    /// <summary>Object 4 written twice, <c>(old four)</c> then <c>(new four)</c>, 227 bytes apart, a comment between them.</summary>
+    public static readonly string OldAndNewFour =
+        "4 0 obj\n(old four)\nendobj\n%" + new string('x', 200) + "\n4 0 obj\n(new four)\nendobj\n";
+
+    /// <summary>Object 4 written twice, <c>(before)</c> then <c>(after)</c>, 66 bytes apart, a comment between them.</summary>
+    public static readonly string TiedFours = "4 0 obj\n(before)\nendobj\n%" + new string('z', 40) + "\n4 0 obj\n(after)\nendobj\n";
+
+    /// <summary>
+    /// Objects 3, 4, <c>(first four)</c>, and 5, then a comment, then object 4 written again, <c>(second four)</c>, 153 bytes
+    /// past the first: 53 bytes past where a row 100 bytes past the first points, and no object starts as far past the
+    /// headers of 3 and 5.
+    /// </summary>
+    public static readonly string FoursAmongNeighbors =
+        "3 0 obj\n(three)\nendobj\n4 0 obj\n(first four)\nendobj\n5 0 obj\n(five)\nendobj\n%" + new string('x', 101) +
+        "\n4 0 obj\n(second four)\nendobj\n";
+
     /// <summary>
     /// A one-page document indexed by one classic table, whose row of the page, object 3, gives <paramref name="row"/>
     /// while the page's header starts at <paramref name="at"/>.
@@ -87,6 +103,41 @@ internal static class NearbyFiles
         var text = Encoding.Latin1.GetString(file.Bytes);
         return Encoding.Latin1.GetBytes(
             text.Replace(string.Create(CultureInfo.InvariantCulture, $"startxref\n{table}\n"), "startxref\n9\n", StringComparison.Ordinal));
+    }
+
+    /// <summary>
+    /// A file that starts with <paramref name="junk"/>, before its header, then holds the catalog, an empty page tree, and
+    /// <paramref name="body"/>, written as it is, indexed by a classic table: object 4's row gives where
+    /// <paramref name="anchor"/> starts in the body, <paramref name="shift"/> bytes on; the rows of objects 3 and 5, where
+    /// the body writes their first headers at a line's start, <paramref name="neighborShift"/> bytes on, or none where it
+    /// writes none. Gives the file and the position of the row's offset in it, counted from the file's first byte.
+    /// </summary>
+    public static (byte[] File, long Row) FourNear(string body, string anchor, long shift, long neighborShift = 0, string junk = "")
+    {
+        var file = new HandWrittenFile(prefix: junk);
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"),
+        };
+        var start = file.Position;
+        file.Raw(body);
+
+        foreach (var number in (int[])[3, 5])
+        {
+            var header = ("\n" + body).IndexOf(string.Create(CultureInfo.InvariantCulture, $"\n{number} 0 obj"), StringComparison.Ordinal);
+
+            if (header >= 0)
+            {
+                rows[number] = start + header + neighborShift;
+            }
+        }
+
+        var anchored = body.IndexOf(anchor, StringComparison.Ordinal);
+        anchored.Should().BeGreaterThanOrEqualTo(0, $"the body holds '{anchor}'");
+        rows[4] = start + anchored + shift;
+        file.Table(6, rows, "/Size 6 /Root 1 0 R");
+        return (file.Bytes, junk.Length + rows[4]);
     }
 
     /// <summary>

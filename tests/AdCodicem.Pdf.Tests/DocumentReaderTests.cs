@@ -489,6 +489,114 @@ public class DocumentReaderTests
         }
     }
 
+    /// <summary>
+    /// Object 4 written more than once near its row: the body, where the row points, how far the rows of objects 3 and 5 are
+    /// shifted from their headers, and the definition served, which a load of it relocates to.
+    /// </summary>
+    public static readonly TheoryData<string, string, long, long, string, string> DefinitionsNearARow = new()
+    {
+        { NearbyFiles.OldAndNewFour, "4 0 obj\n(new", 3, 0, "4 0 obj\n(new", "new four" },
+        { NearbyFiles.OldAndNewFour, "4 0 obj\n(new", -3, 0, "4 0 obj\n(new", "new four" },
+        { NearbyFiles.TiedFours, "4 0 obj\n(before", 33, 0, "4 0 obj\n(before", "before" },
+        { NearbyFiles.FoursAmongNeighbors, "4 0 obj\n(first", 100, 100, "4 0 obj\n(first", "first four" },
+        { NearbyFiles.FoursAmongNeighbors, "4 0 obj\n(first", 100, 0, "4 0 obj\n(second", "second four" },
+    };
+
+    [Theory]
+    [MemberData(nameof(DefinitionsNearARow))]
+    public void Of_the_definitions_near_a_row_the_one_the_rows_beside_it_are_shifted_from_is_served_else_the_nearest(
+        string body, string anchor, long shift, long neighborShift, string servedAt, string served)
+    {
+        // The search near a row once served the first header of the number its bytes held: an older definition an update
+        // replaced, a few bytes off the newer one's row (#171). It serves the one as far from the row as the headers of the
+        // objects beside it are from their own rows, where one is; otherwise the nearest, the one before the row on a tie.
+        var (file, _) = NearbyFiles.FourNear(body, anchor, shift, neighborShift);
+        using var document = PdfDocument.Open(file);
+
+        document.GetObject(new PdfObjectId(4)).Should().BeOfType<PdfString>().Which.ToText().Should().Be(served);
+        document.WasRepaired.Should().BeFalse();
+        document.Diagnostics.Should().ContainSingle().Which.Should().Match<PdfDiagnostic>(
+            report => report.Code == PdfDiagnosticCodes.XRefOffsetAdjusted && report.Position == PdfTemplate.OffsetOf(file, servedAt));
+    }
+
+    /// <summary>
+    /// Object 4's row near a header of object 4 inside another object, or a comment, or past where the window's start cuts an
+    /// end-of-file marker: the body, where the row points, and the definition served, or null where the index is rebuilt,
+    /// with what it serves.
+    /// </summary>
+    public static readonly TheoryData<string, string, long, string?, string?> HeadersInsideOtherObjects = new()
+    {
+        { "4 0 obj\n(four)\nendobj\n3 0 obj\n(quoted: 4 0 obj (fake))\nendobj\n", "4 0 obj (fake", 3, "4 0 obj\n(four", "four" },
+        { "3 0 obj\n(see\n4 0 obj (fake)\nin the old file)\nendobj\n4 0 obj\n(four)\nendobj\n", "4 0 obj (fake", 2, "4 0 obj\n(four", "four" },
+        { "% 4 0 obj (fake) endobj\n4 0 obj\n(four)\nendobj\n", "4 0 obj (fake", 3, "4 0 obj\n(four", "four" },
+        { "% 4 0 obj (four) endobj\n", "% 4 0 obj", 0, null, null },
+        { AttachedFile(41) + "4 0 obj\n(four)\nendobj\n", "4 0 obj\n(attached", 5, "4 0 obj\n(four", "four" },
+        { AttachedFile(81) + "4 0 obj\n(four)\nendobj\n", "4 0 obj\n(attached", 5, "4 0 obj\n(four", "four" },
+        { AttachedFile(81), "4 0 obj\n(attached", 5, "4 0 obj\n(attached", "attached" },
+        { "%%EOF4 0 obj\n(four)\nendobj\n%" + new string('p', 600) + "\n", "4 0 obj\n(four", 512, "4 0 obj\n(four", "four" },
+        { "%%EOF4 0 obj\n(four)\nendobj\n%" + new string('p', 600) + "\n", "4 0 obj\n(four", 511, "4 0 obj\n(four", "four" },
+        { "%%EOF4 0 obj\n(four)\nendobj\n%" + new string('p', 600) + "\n", "4 0 obj\n(four", 513, null, "four" },
+    };
+
+    [Theory]
+    [MemberData(nameof(HeadersInsideOtherObjects))]
+    public void The_search_near_a_row_takes_only_the_headers_the_rebuild_s_scan_takes(
+        string body, string anchor, long shift, string? servedAt, string? served)
+    {
+        // A header of object 4 in a string, one line or several, in the confirmed data of a stream, or in a comment, is
+        // another object's bytes, as the rebuild's scan reads them: the search near the row passes it for the object's own
+        // header, or the index is rebuilt where there is none (#171). One in the data of a stream whose length is not
+        // confirmed is taken as the bytes give it, after any the scan takes between objects. A header glued to an end-of-file
+        // marker that the window's start cuts is found, as the scan finds it, where its number starts within 512 bytes of the
+        // row.
+        var (file, _) = NearbyFiles.FourNear(body, anchor, shift);
+        using var document = PdfDocument.Open(file);
+
+        (document.GetObject(new PdfObjectId(4)) as PdfString)?.ToText().Should().Be(served);
+        document.WasRepaired.Should().Be(servedAt is null);
+
+        if (servedAt is not null)
+        {
+            document.Diagnostics.Should().ContainSingle().Which.Should().Match<PdfDiagnostic>(
+                report => report.Code == PdfDiagnosticCodes.XRefOffsetAdjusted && report.Position == PdfTemplate.OffsetOf(file, servedAt));
+        }
+    }
+
+    [Theory]
+    [InlineData("4 0 obj\n(real four)\nendobj\n14 0 obj\n(fourteen)\nendobj\n", "14 0 obj", 1, "4 0 obj\n(real", "real four")]
+    [InlineData("4 0 obj\n(real four)\nendobj\n1+4 0 obj\n(cut)\nendobj\n", "+4 0 obj", 0, "4 0 obj\n(real", "real four")]
+    [InlineData("3 0 obj\n(three)\nendobj4 0 obj\n(glued four)\nendobj\n", "4 0 obj\n(glued", 0, null, "glued four")]
+    public void A_row_that_cuts_a_number_holds_no_header_and_the_object_is_looked_for_near_it(
+        string body, string anchor, long shift, string? servedAt, string served)
+    {
+        // Object 4's row lands on the 4 of 14 0 obj, or on the sign of 1+4 0 obj: a load lexing from the row read the end of
+        // another number for object 4's, and served what follows as object 4 in silence. A digit before the row and a digit or
+        // a sign at it cut a number: the row holds no header, and object 4 is looked for near it. A header glued to the endobj
+        // before it is read where its row places it.
+        var (file, _) = NearbyFiles.FourNear(body, anchor, shift);
+        using var document = PdfDocument.Open(file);
+
+        document.GetObject(new PdfObjectId(4)).Should().BeOfType<PdfString>().Which.ToText().Should().Be(served);
+        document.WasRepaired.Should().BeFalse();
+
+        if (servedAt is null)
+        {
+            document.Diagnostics.Should().BeEmpty();
+        }
+        else
+        {
+            document.Diagnostics.Should().ContainSingle().Which.Should().Match<PdfDiagnostic>(
+                report => report.Code == PdfDiagnosticCodes.XRefOffsetAdjusted && report.Position == PdfTemplate.OffsetOf(file, servedAt));
+        }
+    }
+
+    /// <summary>
+    /// Object 3, a stream of <paramref name="length"/> declared bytes that holds a small file written as it is, its own
+    /// object 4 among it: 41 bytes, which its <c>endstream</c> confirms, or more, which nothing confirms.
+    /// </summary>
+    private static string AttachedFile(int length) =>
+        string.Create(CultureInfo.InvariantCulture, $"3 0 obj\n<< /Length {length} >>\nstream\n%PDF-1.4\n4 0 obj\n(attached)\nendobj\n%%EOF\nendstream\nendobj\n");
+
     [Fact]
     public void Rebuilds_the_index_of_a_file_that_has_none()
     {

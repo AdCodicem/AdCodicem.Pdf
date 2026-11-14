@@ -1502,6 +1502,62 @@ public class CrossReferenceRuleTests
             : $"The entry of object 4 gives offset {At + before}, where there is no object header, and the object is not within 512 bytes of it.");
     }
 
+    /// <summary>
+    /// Object 4's row near headers of object 4: the body, where the row points, how far the rows of objects 3 and 5 are
+    /// shifted from their headers, and the rule that judges object 4's entry, with what its finding says.
+    /// </summary>
+    public static readonly TheoryData<string, string, long, long, string, string> EntriesNearDefinitions = new()
+    {
+        {
+            NearbyFiles.OldAndNewFour, "4 0 obj\n(new", 3, 0, PdfValidationRuleIds.XRefEntryUnconfirmed,
+            "where there is no object header; the object is defined more than once within 512 bytes of it, and the reader takes the nearest definition, 3 bytes before it"
+        },
+        {
+            NearbyFiles.TiedFours, "4 0 obj\n(before", 33, 0, PdfValidationRuleIds.XRefEntryUnconfirmed,
+            "the reader takes the nearest definition, 33 bytes before it"
+        },
+        {
+            NearbyFiles.FoursAmongNeighbors, "4 0 obj\n(first", 100, 100, PdfValidationRuleIds.XRefEntryShifted,
+            "where there is no object header; the object starts 100 bytes before it"
+        },
+        {
+            NearbyFiles.FoursAmongNeighbors, "4 0 obj\n(first", 100, 0, PdfValidationRuleIds.XRefEntryUnconfirmed,
+            "the reader takes the nearest definition, 53 bytes after it"
+        },
+        {
+            "3 0 obj\n<< /Length 81 >>\nstream\n%PDF-1.4\n4 0 obj\n(attached)\nendobj\n%%EOF\nendstream\nendobj\n", "4 0 obj\n(attached", 5, 0,
+            PdfValidationRuleIds.XRefEntryUnconfirmed,
+            "where there is no object header; the reader takes the header 5 bytes before it"
+        },
+        {
+            "4 0 obj\n(real four)\nendobj\n14 0 obj\n(fourteen)\nendobj\n", "14 0 obj", 1, 0, PdfValidationRuleIds.XRefEntryShifted,
+            "where it cuts the number of an object header; the object starts 28 bytes before it"
+        },
+        {
+            "14 0 obj\n(fourteen)\nendobj\n", "14 0 obj", 1, 0, PdfValidationRuleIds.XRefEntryBroken,
+            "where it cuts the number of an object header, and the object is not within 512 bytes of it."
+        },
+    };
+
+    [Theory]
+    [MemberData(nameof(EntriesNearDefinitions))]
+    public void An_entry_relocated_to_a_header_the_file_does_not_designate_is_unconfirmed(
+        string body, string anchor, long shift, long neighborShift, string ruleId, string said)
+    {
+        // The reader serves the definition of object 4 the search near its row chooses. Where the rows beside it are shifted
+        // as far from their headers, or where that header is the only one of the object the rebuild's scan takes between
+        // objects, the file designates it: a warning. Where it is the nearest of several no row beside it confirms, or one the
+        // scan takes only as the bytes give them — in the data of a stream whose length is not confirmed —, the reader chose
+        // it: an error (ADR 45). A row that cuts the number of another header is said to (#171).
+        var (file, row) = NearbyFiles.FourNear(body, anchor, shift, neighborShift);
+
+        var finding = Validate(file).Findings.Should().ContainSingle(finding => finding.Location.Object == new PdfObjectId(4)).Which;
+
+        finding.RuleId.Should().Be(ruleId);
+        finding.Location.Position.Should().Be(row);
+        finding.Message.Should().StartWith(Invariant($"The entry of object 4 gives offset {row}, ")).And.Contain(said);
+    }
+
     [Theory]
     [InlineData(-5, "no object header", "5 bytes after it")]
     [InlineData(2, "no object header", "2 bytes before it")]
@@ -3056,10 +3112,11 @@ public class CrossReferenceRuleTests
     {
         // #182: the older stream's /Length names object 10, whose entry lies 2 bytes before its header. The chain once
         // corrected that entry as it read the stream, and the probe judged the corrected one. The /Length is read once the
-        // chain is, behind a copy of the index as the file wrote it.
+        // chain is, behind a copy of the index as the file wrote it. Object 10's header follows the data of stream 5, whose
+        // endstream is lost: the scan takes it as the bytes give it, and the reader cannot vouch for the header it relocates to.
         var file = StreamLengthTests.LengthObjectOffItsEntry(out var tenAt);
 
-        var finding = Validate(file).Findings.Should().ContainSingle(finding => finding.RuleId == PdfValidationRuleIds.XRefEntryShifted
+        var finding = Validate(file).Findings.Should().ContainSingle(finding => finding.RuleId == PdfValidationRuleIds.XRefEntryUnconfirmed
             && finding.Location.Object == new PdfObjectId(10)).Which;
 
         finding.Message.Should().Contain(string.Create(CultureInfo.InvariantCulture, $"offset {tenAt - 2}"));

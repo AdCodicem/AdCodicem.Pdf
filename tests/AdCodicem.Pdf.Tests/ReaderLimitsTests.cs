@@ -3579,7 +3579,7 @@ public class ReaderLimitsTests
 
         document.GetObject(new PdfObjectId(3)).AsArray().Required();
 
-        (source.BytesRead - before).Should().BeLessThanOrEqualTo(4096);
+        (source.BytesRead - before).Should().BeLessThanOrEqualTo(4096 + PdfFileReader.ByteBeforeRow);
     }
 
     [Fact]

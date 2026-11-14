@@ -430,6 +430,22 @@ public sealed class HeaderOffsetTests
         Relocations(document).Should().ContainSingle().Which.Position.Should().Be(0);
     }
 
+    [Theory]
+    [InlineData("")]
+    [InlineData("junk-junk")]
+    public void The_rows_beside_an_entry_are_shifted_alike_from_headers_counted_from_the_file_s_header(string junk)
+    {
+        // The rows of objects 3, 4 and 5 all point 100 bytes past their headers, the file starting with junk or not; object 4
+        // is written again 53 bytes past its row. The rows beside 4's count from the file's header, as 4's does: the header
+        // they shift from is found where they place it, the junk counted, and object 4 is served from the definition 100
+        // bytes before its row, not the nearer one.
+        var (file, row) = NearbyFiles.FourNear(NearbyFiles.FoursAmongNeighbors, "4 0 obj\n(first", 100, neighborShift: 100, junk: junk);
+        using var document = PdfDocument.Open(file);
+
+        document.GetObject(new PdfObjectId(4)).Should().BeOfType<PdfString>().Which.ToText().Should().Be("first four");
+        Relocations(document).Should().ContainSingle().Which.Position.Should().Be(row - 100);
+    }
+
     [Fact]
     public void A_section_found_near_where_prev_names_it_before_the_header_is_read_where_it_was_found()
     {

@@ -98,6 +98,25 @@ internal sealed partial class PdfFileReader : IPdfObjectSource, IPdfStreamDataPr
     private const long HeaderReadingSpent = -2;
 
     /// <summary>
+    /// What <see cref="HeaderAt"/> gives, and what a placement gives for the number at the offset
+    /// (<see cref="HeaderPlacement.NumberAtOffset"/>), where a header read at an entry's row starts on a number the row cuts
+    /// (<see cref="RowCutsNumber"/>): <c>4 0 obj</c> read in <c>14 0 obj</c>.
+    /// </summary>
+    internal const long HeaderCutsNumber = -3;
+
+    /// <summary>
+    /// How many bytes a reading of an entry's row reads before it, with its first window: the byte that tells a row that cuts
+    /// a number (<see cref="RowCutsNumber"/>).
+    /// </summary>
+    internal const int ByteBeforeRow = 1;
+
+    /// <summary>
+    /// How many headers of one number the bytes the search near a row reads can hold: a header takes 8 bytes at least,
+    /// <c>1 0 obj</c> and the byte that ends its keyword, since a number glued to it makes it no keyword (#189).
+    /// </summary>
+    private const int MaxNearbyHeaders = (2 * NearbySearchRadius / 8) + 1;
+
+    /// <summary>
     /// How many times the file's length a pass that reads the header of every entry of an index consumes at most, over all
     /// the headers it reads, past the first <see cref="HeaderCheckWindow"/> bytes of each: <see cref="SettleIndex"/>'s, which
     /// rebuilds the index past it, in one pass over the file, rather than read on; and each validation's probe of the
