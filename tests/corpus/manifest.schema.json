@@ -310,6 +310,7 @@
               "xref.entry-type-reserved",
               "xref.section-not-found",
               "xref.section-shifted",
+              "xref.section-unconfirmed",
               "xref.subsection-missing",
               "xref.chain-loop",
               "xref.hybrid-stream-wrong",
