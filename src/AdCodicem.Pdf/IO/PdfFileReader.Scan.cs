@@ -136,10 +136,11 @@ internal sealed partial class PdfFileReader
     /// <remarks>
     /// <para>
     /// The scan reads the file forward, a piece of <see cref="ScanChunkSize"/> bytes at a time, the last byte of a piece
-    /// read only to tell an <c>obj</c>, an <c>xref</c> or a <c>trailer</c> that ends the bytes searched from a longer word. A
-    /// header is read back from its <c>obj</c> as a load lexes it (<see cref="ReadHeaderBackwards"/>); one whose walk reaches
-    /// the start of the piece undecided is read again from further back, as far as it takes: where a piece starts changes
-    /// nothing of what the scan takes (#171).
+    /// read only to tell an <c>obj</c>, an <c>xref</c> or a <c>trailer</c> that ends the bytes searched from a longer word; a
+    /// keyword that runs past the bytes searched is the next piece's to find whole, each search resuming as far back as such
+    /// a keyword starts. A header is read back from its <c>obj</c> as a load lexes it (<see cref="ReadHeaderBackwards"/>);
+    /// one whose walk reaches the start of the piece undecided is read again from further back, as far as it takes: where a
+    /// piece starts changes nothing of what the scan takes (#171).
     /// </para>
     /// <para>
     /// Each object the scan takes is delimited as a load reads it (<see cref="DelimitObject"/>): its value, the strings and
@@ -205,11 +206,6 @@ internal sealed partial class PdfFileReader
                 {
                     objAt = objFrom < searchEnd ? span[objFrom..searchEnd].IndexOf(ObjKeyword) : -1;
                     objAt = objAt < 0 ? -1 : objFrom + objAt;
-                }
-
-                if (trailerFrom < objFrom)
-                {
-                    trailerFrom = objFrom;
                 }
 
                 if (trailerAt != -1 && trailerAt < trailerFrom)
@@ -326,13 +322,12 @@ internal sealed partial class PdfFileReader
 
             if (!jumped)
             {
-                // A keyword that starts within the bytes searched but runs past them is the next window's to find.
+                // A keyword that starts within the bytes searched but runs past them is the next window's to find, which reads it
+                // whole. The searches for trailer and xref follow the search for obj only past the objects the scan passes, so
+                // that the next piece does not move them past such a keyword: each resumes at most a few bytes before where
+                // that piece's search for obj does, within the bytes it reads before it.
                 scan.ObjFrom = windowStart + Math.Max(objFrom, searchEnd - (ObjKeyword.Length - 1));
                 scan.TrailerFrom = windowStart + Math.Max(trailerFrom, searchEnd - (TrailerKeyword.Length - 1));
-
-                // The search for xref follows the search for obj only past the objects the scan passes, so that a keyword the
-                // end of the bytes searched cuts is found by the next piece, which reads it whole: it resumes at most three
-                // bytes before where that piece's search for obj does, within the bytes it reads before it.
                 scan.XRefFrom = windowStart + Math.Max(xrefFrom, searchEnd - (XRefKeyword.Length - 1));
             }
 
