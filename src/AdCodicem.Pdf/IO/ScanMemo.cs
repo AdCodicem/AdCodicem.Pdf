@@ -5,7 +5,8 @@ namespace AdCodicem.Pdf.IO;
 /// <summary>
 /// What the rebuild's scan for objects takes of a file, kept for the document's life so that the file is scanned once: each
 /// object header and each <c>xref</c> keyword the scan takes, sorted by where each starts, each with how the scan took it
-/// (<see cref="ScannedPlaceKind"/>), and where the trailers it notes lie (<see cref="Trailers"/>).
+/// (<see cref="ScannedPlaceKind"/>), and where the trailers it notes lie (<see cref="Trailers"/>). The scan records it
+/// through a <see cref="Builder"/>, which completes it; once complete, it changes no more.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -29,8 +30,9 @@ namespace AdCodicem.Pdf.IO;
 /// reaches it. The bound is the index's: the index takes as many numbers for the same file, at 40 bytes and more each, so
 /// that the guard that sets what the index may hold sets what the memo may hold too, at less than half. Once it holds
 /// that many, the memo takes no more, and is whole only before where the first place it could not hold lies
-/// (<see cref="WholeUntil"/>); the reader reports the guard there, under
-/// <see cref="Diagnostics.PdfDiagnosticCodes.LimitIndexEntries"/>.
+/// (<see cref="WholeUntil"/>). The memo reports nothing: a rebuild scans the file again where it is not whole, and the
+/// guard is reported by a caller that has to go without its word past there
+/// (<see cref="PdfFileReader.ReachScanMemoBound"/>).
 /// </para>
 /// </remarks>
 internal sealed class ScanMemo
@@ -52,21 +54,24 @@ internal sealed class ScanMemo
     /// </summary>
     private const int RunEndFlag = 1 << 19;
 
-    /// <summary>How many slots the memo makes room for first.</summary>
+    /// <summary>How many slots a builder makes room for first.</summary>
     private const int FirstCapacity = 64;
 
-    private readonly int _bound;
-    private Slot[] _slots = [];
-    private int _used;
+    /// <summary>The slots, sorted by where each starts, as many as the memo uses.</summary>
+    private readonly Slot[] _slots;
 
-    /// <summary>Starts a memo that holds at most <paramref name="bound"/> places.</summary>
-    public ScanMemo(int bound)
+    private ScanMemo(Slot[] slots, int count, long fullAt, long wholeUntil, bool inScanOrder, ScannedTrailers? trailers)
     {
-        _bound = bound;
+        _slots = slots;
+        Count = count;
+        FullAt = fullAt;
+        WholeUntil = wholeUntil;
+        InScanOrder = inScanOrder;
+        Trailers = trailers;
     }
 
     /// <summary>Gets how many places the memo holds, <c>trailer</c> keywords counted.</summary>
-    public int Count { get; private set; }
+    public int Count { get; }
 
     /// <summary>
     /// Gets a value indicating whether the memo holds every place the scan takes: it never had to leave one out for
@@ -78,29 +83,29 @@ internal sealed class ScanMemo
     /// Gets where the first place the memo could not hold starts, the scan taking it once the memo held as many as it may;
     /// -1 while it is whole.
     /// </summary>
-    public long FullAt { get; private set; } = -1;
+    public long FullAt { get; }
 
     /// <summary>
     /// Gets the position before which the memo holds every place the scan takes: <see cref="long.MaxValue"/> while it is
     /// whole, and otherwise where the first place it could not hold starts, or where the bytes the scan's last object left
     /// to read anew start, when they start sooner, since a header the scan takes afterward may run back to them.
     /// </summary>
-    public long WholeUntil { get; private set; } = long.MaxValue;
+    public long WholeUntil { get; }
 
     /// <summary>
     /// Gets a value indicating whether the memo holds its places in the order the scan took them, so that a rebuild can take
     /// its headers as its scan would: a header put back among places taken before it breaks the order.
     /// </summary>
-    public bool InScanOrder { get; private set; } = true;
+    public bool InScanOrder { get; }
 
-    /// <summary>Gets where the trailers the scan notes lie, once the memo is complete and whole; null otherwise.</summary>
-    public ScannedTrailers? Trailers { get; private set; }
+    /// <summary>Gets where the trailers the scan notes lie, where the memo is whole; null otherwise.</summary>
+    public ScannedTrailers? Trailers { get; }
 
     /// <summary>
     /// Gets the headers the memo holds that start at <paramref name="from"/> or past it and before <paramref name="to"/>,
     /// in the order of their positions.
     /// </summary>
-    public HeaderRange HeadersWithin(long from, long to) => new(_slots.AsSpan(0, _used), from, to);
+    public HeaderRange HeadersWithin(long from, long to) => new(_slots, from, to);
 
     /// <summary>Determines whether the memo holds a header that starts at <paramref name="position"/>, and gives it.</summary>
     public bool TryGetHeaderAt(long position, out ScannedHeader header)
@@ -132,203 +137,12 @@ internal sealed class ScanMemo
     }
 
     /// <summary>
-    /// Adds the header the scan took at <paramref name="position"/>; false where the memo, or the place, is past what it may
-    /// hold (<see cref="TryCount"/>).
-    /// </summary>
-    public bool TryAddHeader(long position, int number, int generation, ScannedPlaceKind kind, long floor) =>
-        TryAdd(position, number, generation | FlagOf(kind), floor);
-
-    /// <summary>
-    /// Adds the <c>xref</c> keyword the scan took at <paramref name="position"/>; false where the memo, or the place, is past
-    /// what it may hold (<see cref="TryCount"/>).
-    /// </summary>
-    public bool TryAddXRefKeyword(long position, ScannedPlaceKind kind, long floor) =>
-        TryAdd(position, 0, KeywordFlag | FlagOf(kind), floor);
-
-    /// <summary>
-    /// Counts the <c>trailer</c> keyword the scan noted at <paramref name="position"/>, which <see cref="Trailers"/> holds
-    /// once the memo is complete; false where the memo, or the keyword, is past what it may hold (<see cref="TryCount"/>).
-    /// </summary>
-    public bool TryAddTrailer(long position, long floor) => TryCount(position, floor);
-
-    /// <summary>
-    /// Ends the memo once the scan has ended: its slots trimmed to those it uses, and, where it is whole, the trailers the
-    /// scan noted kept with it.
-    /// </summary>
-    public void Complete(ScannedTrailers trailers)
-    {
-        if (_slots.Length != _used)
-        {
-            Array.Resize(ref _slots, _used);
-        }
-
-        if (IsWhole)
-        {
-            trailers.Keywords.TrimExcess();
-            trailers.Streams.TrimExcess();
-            Trailers = trailers;
-        }
-    }
-
-    /// <summary>
-    /// Counts one more place, at <paramref name="position"/>: false where the memo holds as many as it may, or has already
-    /// left one out, which it then no longer takes.
-    /// </summary>
-    /// <param name="position">Where the place starts.</param>
-    /// <param name="floor">Where the bytes the scan's last object left to read anew start: no place the scan takes later
-    /// starts before them.</param>
-    private bool TryCount(long position, long floor)
-    {
-        if (!IsWhole)
-        {
-            return false;
-        }
-
-        if (Count >= _bound)
-        {
-            FullAt = position;
-            WholeUntil = Math.Min(position, floor);
-            return false;
-        }
-
-        Count++;
-        return true;
-    }
-
-    private bool TryAdd(long position, int value, int traits, long floor)
-    {
-        if (!TryCount(position, floor))
-        {
-            return false;
-        }
-
-        if (_used > 0 && position <= _slots[_used - 1].Start)
-        {
-            Insert(position, value, traits);
-        }
-        else if (!TryExtendRun(position, value, traits))
-        {
-            Replace(_used, 0, [new Slot(position, value, traits)]);
-        }
-
-        return true;
-    }
-
-    /// <summary>
-    /// Takes the place at <paramref name="position"/>, past every place held, into a run with the last: the next of a run
-    /// whose distance it keeps, or the second of a place like it, the two then a run.
-    /// </summary>
-    private bool TryExtendRun(long position, int value, int traits)
-    {
-        if (_used == 0)
-        {
-            return false;
-        }
-
-        var last = _slots[_used - 1];
-
-        if ((last.Traits & RunEndFlag) != 0)
-        {
-            var head = _slots[_used - 2];
-
-            if (head.Value != value || head.Traits != (traits | RunFlag) || position - last.Start != last.Value)
-            {
-                return false;
-            }
-
-            _slots[_used - 1].Start = position;
-            return true;
-        }
-
-        if (last.Value != value || last.Traits != traits || position - last.Start > int.MaxValue)
-        {
-            return false;
-        }
-
-        _slots[_used - 1].Traits |= RunFlag;
-        Replace(_used, 0, [new Slot(position, (int)(position - last.Start), RunEndFlag)]);
-        return true;
-    }
-
-    /// <summary>
-    /// Puts the place at <paramref name="position"/>, which the scan took after a place that starts at it or past it, in its
-    /// place among those held: a run it falls within is split around it.
-    /// </summary>
-    private void Insert(long position, int value, int traits)
-    {
-        InScanOrder = false;
-
-        var index = After(_slots.AsSpan(0, _used), position);
-        Span<Slot> parts = stackalloc Slot[5];
-        var length = 0;
-        var removed = 0;
-
-        if (index > 0 && (_slots[index - 1].Traits & RunFlag) != 0)
-        {
-            // The run's places up to the new one, the new one, and the run's places past it: each part of the run a place
-            // alone where it keeps one, and a run where it keeps more.
-            var head = _slots[index - 1];
-            var end = _slots[index];
-            var lastBefore = head.Start + ((position - head.Start) / end.Value * end.Value);
-            var firstAfter = lastBefore + end.Value;
-            var alone = head.Traits & ~RunFlag;
-
-            parts[length++] = lastBefore == head.Start ? new Slot(head.Start, head.Value, alone) : head;
-
-            if (lastBefore != head.Start)
-            {
-                parts[length++] = new Slot(lastBefore, end.Value, RunEndFlag);
-            }
-
-            parts[length++] = new Slot(position, value, traits);
-
-            if (firstAfter == end.Start)
-            {
-                parts[length++] = new Slot(end.Start, head.Value, alone);
-            }
-            else
-            {
-                parts[length++] = new Slot(firstAfter, head.Value, head.Traits);
-                parts[length++] = end;
-            }
-
-            index--;
-            removed = 2;
-        }
-        else
-        {
-            parts[length++] = new Slot(position, value, traits);
-        }
-
-        Replace(index, removed, parts[..length]);
-    }
-
-    /// <summary>
-    /// Replaces the <paramref name="removed"/> slots at <paramref name="index"/> with <paramref name="parts"/>, making room
-    /// by doubling: the slots never outnumber the places, so that the memo makes room for no more than it may hold.
-    /// </summary>
-    private void Replace(int index, int removed, ReadOnlySpan<Slot> parts)
-    {
-        var needed = _used - removed + parts.Length;
-
-        if (needed > _slots.Length)
-        {
-            var doubled = Math.Min(Math.Max(FirstCapacity, 2L * _slots.Length), Math.Min(_bound, Array.MaxLength));
-            Array.Resize(ref _slots, (int)Math.Max(needed, doubled));
-        }
-
-        Array.Copy(_slots, index + removed, _slots, index + parts.Length, _used - index - removed);
-        parts.CopyTo(_slots.AsSpan(index));
-        _used = needed;
-    }
-
-    /// <summary>
     /// Finds the place that starts at <paramref name="position"/>, and gives its value — its object number — and its
     /// traits.
     /// </summary>
     private bool TryFind(long position, out int value, out int traits)
     {
-        var slots = _slots.AsSpan(0, _used);
+        ReadOnlySpan<Slot> slots = _slots;
         var index = After(slots, position) - 1;
         value = 0;
         traits = 0;
@@ -396,6 +210,217 @@ internal sealed class ScanMemo
     private static int FlagOf(ScannedPlaceKind kind) => kind == ScannedPlaceKind.Raw ? RawFlag : 0;
 
     private static ScannedPlaceKind KindOf(int traits) => (traits & RawFlag) != 0 ? ScannedPlaceKind.Raw : ScannedPlaceKind.Clean;
+
+    /// <summary>
+    /// Records what the scan takes, place by place in the order it takes them, and completes the memo once the scan has
+    /// ended (<see cref="Complete"/>), after which it is let go.
+    /// </summary>
+    /// <param name="bound">How many places the memo holds at most.</param>
+    internal sealed class Builder(int bound)
+    {
+        private Slot[] _slots = [];
+        private int _used;
+        private int _count;
+        private long _fullAt = -1;
+        private long _wholeUntil = long.MaxValue;
+        private bool _inScanOrder = true;
+
+        /// <summary>Gets a value indicating whether the memo still holds every place the scan took.</summary>
+        public bool IsWhole => _fullAt < 0;
+
+        /// <summary>
+        /// Adds the header the scan took at <paramref name="position"/>; false where the memo, or the place, is past what it
+        /// may hold (<see cref="TryCount"/>).
+        /// </summary>
+        public bool TryAddHeader(long position, int number, int generation, ScannedPlaceKind kind, long floor) =>
+            TryAdd(position, number, generation | FlagOf(kind), floor);
+
+        /// <summary>
+        /// Adds the <c>xref</c> keyword the scan took at <paramref name="position"/>; false where the memo, or the place, is
+        /// past what it may hold (<see cref="TryCount"/>).
+        /// </summary>
+        public bool TryAddXRefKeyword(long position, ScannedPlaceKind kind, long floor) =>
+            TryAdd(position, 0, KeywordFlag | FlagOf(kind), floor);
+
+        /// <summary>
+        /// Counts the <c>trailer</c> keyword the scan noted at <paramref name="position"/>, which the memo's
+        /// <see cref="ScanMemo.Trailers"/> holds once complete; false where the memo, or the keyword, is past what it may hold
+        /// (<see cref="TryCount"/>).
+        /// </summary>
+        public bool TryAddTrailer(long position, long floor) => TryCount(position, floor);
+
+        /// <summary>
+        /// Completes the memo once the scan has ended: its slots trimmed to those it uses, and, where it is whole, the
+        /// trailers the scan noted kept with it.
+        /// </summary>
+        public ScanMemo Complete(ScannedTrailers trailers)
+        {
+            if (_slots.Length != _used)
+            {
+                Array.Resize(ref _slots, _used);
+            }
+
+            if (IsWhole)
+            {
+                trailers.Keywords.TrimExcess();
+                trailers.Streams.TrimExcess();
+            }
+
+            return new ScanMemo(_slots, _count, _fullAt, _wholeUntil, _inScanOrder, IsWhole ? trailers : null);
+        }
+
+        /// <summary>
+        /// Counts one more place, at <paramref name="position"/>: false where the memo holds as many as it may, or has
+        /// already left one out, which it then no longer takes.
+        /// </summary>
+        /// <param name="position">Where the place starts.</param>
+        /// <param name="floor">Where the bytes the scan's last object left to read anew start: no place the scan takes later
+        /// starts before them.</param>
+        private bool TryCount(long position, long floor)
+        {
+            if (!IsWhole)
+            {
+                return false;
+            }
+
+            if (_count >= bound)
+            {
+                _fullAt = position;
+                _wholeUntil = Math.Min(position, floor);
+                return false;
+            }
+
+            _count++;
+            return true;
+        }
+
+        private bool TryAdd(long position, int value, int traits, long floor)
+        {
+            if (!TryCount(position, floor))
+            {
+                return false;
+            }
+
+            if (_used > 0 && position <= _slots[_used - 1].Start)
+            {
+                Insert(position, value, traits);
+            }
+            else if (!TryExtendRun(position, value, traits))
+            {
+                Replace(_used, 0, [new Slot(position, value, traits)]);
+            }
+
+            return true;
+        }
+
+        /// <summary>
+        /// Takes the place at <paramref name="position"/>, past every place held, into a run with the last: the next of a run
+        /// whose distance it keeps, or the second of a place like it, the two then a run.
+        /// </summary>
+        private bool TryExtendRun(long position, int value, int traits)
+        {
+            if (_used == 0)
+            {
+                return false;
+            }
+
+            var last = _slots[_used - 1];
+
+            if ((last.Traits & RunEndFlag) != 0)
+            {
+                var head = _slots[_used - 2];
+
+                if (head.Value != value || head.Traits != (traits | RunFlag) || position - last.Start != last.Value)
+                {
+                    return false;
+                }
+
+                _slots[_used - 1].Start = position;
+                return true;
+            }
+
+            if (last.Value != value || last.Traits != traits || position - last.Start > int.MaxValue)
+            {
+                return false;
+            }
+
+            _slots[_used - 1].Traits |= RunFlag;
+            Replace(_used, 0, [new Slot(position, (int)(position - last.Start), RunEndFlag)]);
+            return true;
+        }
+
+        /// <summary>
+        /// Puts the place at <paramref name="position"/>, which the scan took after a place that starts at it or past it, in
+        /// its place among those held: a run it falls within is split around it.
+        /// </summary>
+        private void Insert(long position, int value, int traits)
+        {
+            _inScanOrder = false;
+
+            var index = After(_slots.AsSpan(0, _used), position);
+            Span<Slot> parts = stackalloc Slot[5];
+            var length = 0;
+            var removed = 0;
+
+            if (index > 0 && (_slots[index - 1].Traits & RunFlag) != 0)
+            {
+                // The run's places up to the new one, the new one, and the run's places past it: each part of the run a place
+                // alone where it keeps one, and a run where it keeps more.
+                var head = _slots[index - 1];
+                var end = _slots[index];
+                var lastBefore = head.Start + ((position - head.Start) / end.Value * end.Value);
+                var firstAfter = lastBefore + end.Value;
+                var alone = head.Traits & ~RunFlag;
+
+                parts[length++] = lastBefore == head.Start ? new Slot(head.Start, head.Value, alone) : head;
+
+                if (lastBefore != head.Start)
+                {
+                    parts[length++] = new Slot(lastBefore, end.Value, RunEndFlag);
+                }
+
+                parts[length++] = new Slot(position, value, traits);
+
+                if (firstAfter == end.Start)
+                {
+                    parts[length++] = new Slot(end.Start, head.Value, alone);
+                }
+                else
+                {
+                    parts[length++] = new Slot(firstAfter, head.Value, head.Traits);
+                    parts[length++] = end;
+                }
+
+                index--;
+                removed = 2;
+            }
+            else
+            {
+                parts[length++] = new Slot(position, value, traits);
+            }
+
+            Replace(index, removed, parts[..length]);
+        }
+
+        /// <summary>
+        /// Replaces the <paramref name="removed"/> slots at <paramref name="index"/> with <paramref name="parts"/>, making
+        /// room by doubling: the slots never outnumber the places, so that the memo makes room for no more than it may hold.
+        /// </summary>
+        private void Replace(int index, int removed, ReadOnlySpan<Slot> parts)
+        {
+            var needed = _used - removed + parts.Length;
+
+            if (needed > _slots.Length)
+            {
+                var doubled = Math.Min(Math.Max(FirstCapacity, 2L * _slots.Length), Math.Min(bound, Array.MaxLength));
+                Array.Resize(ref _slots, (int)Math.Max(needed, doubled));
+            }
+
+            Array.Copy(_slots, index + removed, _slots, index + parts.Length, _used - index - removed);
+            parts.CopyTo(_slots.AsSpan(index));
+            _used = needed;
+        }
+    }
 
     /// <summary>The headers of the memo within a range (<see cref="HeadersWithin"/>), to enumerate with <c>foreach</c>.</summary>
     internal readonly ref struct HeaderRange

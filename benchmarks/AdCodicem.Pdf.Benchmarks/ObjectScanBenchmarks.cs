@@ -17,7 +17,9 @@ namespace AdCodicem.Pdf.Benchmarks;
 /// string holds the header; and it lexes the value of each object it takes, so that a header another object holds is none.
 /// A sound file or plain headers cost what reading the headers and their values costs; a comment between a header's
 /// tokens, a long comment line before each <c>obj</c>, or a string holding a <c>%</c> on the line before it, is swept once.
-/// Every shape costs time linear in the file, and allocates nothing for it but the index.
+/// Every shape costs time linear in the file, and allocates nothing for it but the index and what the reader keeps of what
+/// the scan takes, 16 bytes at most for each header and each <c>xref</c> keyword (<c>ScanMemo</c>): a file of lines of
+/// <c>xref</c> keywords holds no header, and costs the scan noting each keyword.
 /// </para>
 /// <para>
 /// The <c>trailer</c> keyword the generated files end with names the catalog, which the rebuild merges; the scan for
@@ -37,10 +39,10 @@ public class ObjectScanBenchmarks
     /// <summary>
     /// Gets or sets what the file holds: a sound document of 1,000 pages; objects whose headers are plain; objects whose
     /// headers hold a comment between the number and the generation; lines of a 60-byte comment each, each followed by a
-    /// line <c>0 obj</c>; or lines of a string holding a <c>%</c> before a number and a comment, each followed by a line
-    /// <c>0 obj</c>.
+    /// line <c>0 obj</c>; lines of a string holding a <c>%</c> before a number and a comment, each followed by a line
+    /// <c>0 obj</c>; or lines of an <c>xref</c> keyword, at two distances in turn, so that no two keywords are held as one.
     /// </summary>
-    [Params("sound", "plain-headers", "comment-headers", "comment-lines", "percent-strings")]
+    [Params("sound", "plain-headers", "comment-headers", "comment-lines", "percent-strings", "xref-lines")]
     public string Shape { get; set; } = "sound";
 
     [GlobalSetup]
@@ -52,6 +54,7 @@ public class ObjectScanBenchmarks
             "comment-headers" => Headers(" % a comment\n0 obj\n(x)\nendobj\n"),
             "comment-lines" => Lines("%" + new string('c', 60) + "\n0 obj\n"),
             "percent-strings" => Lines("(50%) 4 % x\n0 obj\n"),
+            "xref-lines" => Lines("xref\nxref 0\n"),
             _ => throw new InvalidOperationException($"No shape {Shape}."),
         };
 
