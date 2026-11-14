@@ -12,16 +12,20 @@ internal sealed partial class PdfFileReader
     /// before any rebuild, one made now by scanning the file from its start, kept for the document's life.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// The memo depends on nothing read before it: the scan starts from the file's start, with its own budget for reads past
-    /// declared lengths, and indexes nothing. It may be asked for while the caller holds a window of the source: the scan reads
-    /// through windows of its own, each given back before it returns, and no window of a source invalidates another — a
-    /// source in memory lends slices of its bytes, one on a file rents each window a buffer of its own
-    /// (<see cref="PdfFileSource.GetWindow"/>). The source failing the scan leaves no memo, for the next call to scan again.
+    /// declared lengths, and indexes nothing. Making it reads the whole file once, the first time it is asked for; it is kept
+    /// only once that scan has run to its end, and the source failing the scan leaves none, for the next call to scan again.
+    /// </para>
+    /// <para>
+    /// It may be asked for while the caller holds a window of the source, and within a load: the scan reads through windows
+    /// of its own, each given back before it returns, and no window of a source invalidates another — a source in memory
+    /// lends slices of its bytes, one on a file rents each window a buffer of its own (<see cref="PdfFileSource.GetWindow"/>)
+    /// —; it loads no object, touches neither the index nor what was read, and reports nothing. A memo past its bound is
+    /// not whole (<see cref="ScanMemo.WholeUntil"/>): a caller that has to go without its word at or past there reports the
+    /// guard where it does (<see cref="ReachScanMemoBound"/>).
+    /// </para>
     /// </remarks>
-    /// <exception cref="PdfLimitExceededException">
-    /// The memo reached <see cref="PdfReaderLimits.MaxIndexEntries"/> as it was made, and the document was opened to throw on
-    /// a guard: the memo is kept as far as the guard let it be, and the exception is thrown once, by the call that made it.
-    /// </exception>
     internal ScanMemo GetScanMemo()
     {
         if (_scanMemo is { } memo)
@@ -29,28 +33,55 @@ internal sealed partial class PdfFileReader
             return memo;
         }
 
-        memo = new ScanMemo(_guard.Bound(PdfLimit.IndexEntries));
+        var builder = new ScanMemo.Builder(_guard.Bound(PdfLimit.IndexEntries));
         var trailers = new ScannedTrailers();
-        ScanForObjects(memo, redefinitions: null, trailers);
-        memo.Complete(trailers);
-        _scanMemo = memo;
-        ReportScanMemoFull(memo)?.Throw();
-        return memo;
+        ScanForObjects(builder, redefinitions: null, trailers);
+        return _scanMemo = builder.Complete(trailers);
+    }
+
+    /// <summary>
+    /// Reports that the memo of the scan for objects is not whole, for a caller that has to go without its word at or past
+    /// <see cref="ScanMemo.WholeUntil"/>: <see cref="PdfReaderLimits.MaxIndexEntries"/> reached where the first place the memo
+    /// left out starts (<see cref="ScanMemo.FullAt"/>), once a document; a document opened to throw on a guard throws each time
+    /// a caller has to go without it. Nothing where the memo is whole, or not made.
+    /// </summary>
+    /// <remarks>
+    /// Nothing else reports the memo's bound: a rebuild scans the file again where the memo is not whole, and serves what it
+    /// would have served, so that the bound changes nothing until a caller has to go without the memo's word. The report
+    /// counts among no read's guards (<see cref="_guardsReached"/>): the memo tells where places lie, not what they hold, and a
+    /// read the caller weighs by the guards it reached is not told that a guard cut its value. Among the guards reported
+    /// (<see cref="_limitsReached"/>) it is held under a place no byte of the file has, so that the index's own report of the
+    /// bound is made wherever it lies, and a rebuild that withdraws what it reported withdraws this report too, for it to be
+    /// made again.
+    /// </remarks>
+    /// <exception cref="PdfLimitExceededException">The memo is not whole, and the document was opened to throw on a guard.</exception>
+    internal void ReachScanMemoBound()
+    {
+        if (_scanMemo is not { IsWhole: false } memo || _limitsReached.Contains(ScanMemoBoundReported))
+        {
+            return;
+        }
+
+        // Thrown before it is held as reported: a document that throws on a guard throws each time.
+        _guard.Reach(
+            PdfLimit.IndexEntries,
+            _diagnostics,
+            $"The scan for objects recorded {CountText.Grouped(_guard.Bound(PdfLimit.IndexEntries), "object header or keyword", "object headers and keywords")}; those past them were not recorded.",
+            memo.FullAt);
+        _limitsReached.Add(ScanMemoBoundReported);
     }
 
     /// <summary>
     /// Indexes, for a rebuild, the object headers the scan for objects takes (<see cref="ScanForObjects"/>), and gives where
     /// the trailers it meets lie: from the memo of the scan where it holds every header in the order the scan takes them, as
-    /// that scan would; otherwise by scanning the file, the memo made on the way where there is none yet.
+    /// that scan would; otherwise by scanning the file, the memo made on the way where there is none yet, and kept once that
+    /// scan has run to its end.
     /// </summary>
     /// <param name="redefinitions">Receives the numbers defined again.</param>
     /// <param name="trailers">Receives where the trailers the scan meets lie.</param>
-    /// <param name="madeMemo">Whether the scan made the memo.</param>
     /// <returns>The exception a document opened to throw asked for, held until the index is whole; or null.</returns>
-    private ExceptionDispatchInfo? IndexScannedObjects(Redefinitions redefinitions, out ScannedTrailers trailers, out bool madeMemo)
+    private ExceptionDispatchInfo? IndexScannedObjects(Redefinitions redefinitions, out ScannedTrailers trailers)
     {
-        madeMemo = false;
-
         if (_scanMemo is { Trailers: { } noted, InScanOrder: true } memo)
         {
             ExceptionDispatchInfo? replayed = null;
@@ -66,15 +97,12 @@ internal sealed partial class PdfFileReader
 
         // A memo that is not whole, or not in the scan's order, is left as it is: the scan runs as it ran before there was one.
         trailers = new ScannedTrailers();
-        var making = _scanMemo is null ? new ScanMemo(_guard.Bound(PdfLimit.IndexEntries)) : null;
+        var making = _scanMemo is null ? new ScanMemo.Builder(_guard.Bound(PdfLimit.IndexEntries)) : null;
         var reached = ScanForObjects(making, redefinitions, trailers);
 
         if (making is not null)
         {
-            making.Complete(trailers);
-            _scanMemo = making;
-            madeMemo = true;
-            reached ??= ReportScanMemoFull(making);
+            _scanMemo = making.Complete(trailers);
         }
 
         return reached;
@@ -100,37 +128,6 @@ internal sealed partial class PdfFileReader
         {
             _xref.Set(number, XRefEntry.Found(at - _headerOffset, generation));
         }
-    }
-
-    /// <summary>
-    /// Reports that the memo of the scan for objects left out a place for <see cref="PdfReaderLimits.MaxIndexEntries"/>, where
-    /// the first it left out starts; and gives the exception a document opened to throw asked for, or null.
-    /// </summary>
-    /// <remarks>
-    /// One report of the guard names the property that lifts the index's bound and the memo's alike: where the index reported
-    /// it already — the chain filled it, or the scan that made the memo did, which reports before this —, the memo does not
-    /// report it again.
-    /// </remarks>
-    private ExceptionDispatchInfo? ReportScanMemoFull(ScanMemo memo)
-    {
-        if (memo.IsWhole || _indexFullAt >= 0)
-        {
-            return null;
-        }
-
-        try
-        {
-            ReachLimit(
-                PdfLimit.IndexEntries,
-                $"The scan for objects recorded {CountText.Grouped(_guard.Bound(PdfLimit.IndexEntries), "object header or keyword", "object headers and keywords")}; those past them were not recorded.",
-                memo.FullAt);
-        }
-        catch (PdfLimitExceededException exception)
-        {
-            return ExceptionDispatchInfo.Capture(exception);
-        }
-
-        return null;
     }
 
     /// <summary>
@@ -169,7 +166,8 @@ internal sealed partial class PdfFileReader
     /// whatever came before it, and one for a number it lacks is left out. A number defined again takes no room, so a file
     /// that repeats one header millions of times hides nothing behind them. The scan's time follows the file's length: each
     /// byte is searched, swept and walked back over a bounded number of times, and what it keeps the index's bound and the
-    /// memo's (<see cref="ScanMemo"/>). A scan that only makes a memo stops once the memo can hold no more.
+    /// memo's (<see cref="ScanMemo"/>). Once the memo can hold no more, a scan that only makes it stops, and a rebuild's scans
+    /// on as it does with no memo to make.
     /// </para>
     /// </remarks>
     /// <param name="memo">Receives what the scan takes; null for a rebuild that has a memo already, which it cannot use.</param>
@@ -177,7 +175,7 @@ internal sealed partial class PdfFileReader
     /// nothing.</param>
     /// <param name="trailers">Receives where the trailers the scan meets lie.</param>
     /// <returns>The exception a document opened to throw asked for, held until the index is whole; or null.</returns>
-    private ExceptionDispatchInfo? ScanForObjects(ScanMemo? memo, Redefinitions? redefinitions, ScannedTrailers trailers)
+    private ExceptionDispatchInfo? ScanForObjects(ScanMemo.Builder? memo, Redefinitions? redefinitions, ScannedTrailers trailers)
     {
         ExceptionDispatchInfo? reached = null;
         var scan = new ScanState();
@@ -208,9 +206,17 @@ internal sealed partial class PdfFileReader
 
             while (true)
             {
-                if (redefinitions is null && !memo!.IsWhole)
+                // Past its bound the memo takes nothing more: a scan that only makes it is done, and a rebuild's no longer
+                // looks for what only the memo takes.
+                if (memo is { IsWhole: false })
                 {
-                    return reached;
+                    if (redefinitions is null)
+                    {
+                        return reached;
+                    }
+
+                    memo = null;
+                    xrefAt = -1;
                 }
 
                 if (objAt != -1 && objAt < objFrom)
@@ -228,11 +234,6 @@ internal sealed partial class PdfFileReader
                 {
                     trailerAt = trailerFrom < searchEnd ? span[trailerFrom..searchEnd].IndexOf(TrailerKeyword) : -1;
                     trailerAt = trailerAt < 0 ? -1 : trailerFrom + trailerAt;
-                }
-
-                if (xrefFrom < objFrom)
-                {
-                    xrefFrom = objFrom;
                 }
 
                 if (xrefAt != -1 && xrefAt < xrefFrom)
@@ -334,8 +335,9 @@ internal sealed partial class PdfFileReader
                 scan.ObjFrom = windowStart + Math.Max(objFrom, searchEnd - (ObjKeyword.Length - 1));
                 scan.TrailerFrom = windowStart + Math.Max(trailerFrom, searchEnd - (TrailerKeyword.Length - 1));
 
-                // Where the search for xref resumes lies at most a byte before where the next piece's search resumes, and so
-                // within what that piece reads before it.
+                // The search for xref follows the search for obj only past the objects the scan passes, so that a keyword the
+                // end of the bytes searched cuts is found by the next piece, which reads it whole: it resumes at most three
+                // bytes before where that piece's search for obj does, within the bytes it reads before it.
                 scan.XRefFrom = windowStart + Math.Max(xrefFrom, searchEnd - (XRefKeyword.Length - 1));
             }
 
@@ -393,7 +395,7 @@ internal sealed partial class PdfFileReader
     /// around it makes part of a longer word or of a comment.
     /// </summary>
     private void NoteTrailerKeyword(
-        ReadOnlySpan<byte> span, long windowStart, int keyword, ref ScanState scan, ScannedTrailers trailers, ScanMemo? memo)
+        ReadOnlySpan<byte> span, long windowStart, int keyword, ref ScanState scan, ScannedTrailers trailers, ScanMemo.Builder? memo)
     {
         var end = keyword + TrailerKeyword.Length;
 
@@ -426,7 +428,7 @@ internal sealed partial class PdfFileReader
     /// before the scan looked for it.
     /// </para>
     /// </remarks>
-    private void NoteXRefKeyword(ReadOnlySpan<byte> span, long windowStart, int keyword, ref ScanState scan, ScanMemo memo)
+    private void NoteXRefKeyword(ReadOnlySpan<byte> span, long windowStart, int keyword, ref ScanState scan, ScanMemo.Builder memo)
     {
         var end = keyword + XRefKeyword.Length;
 

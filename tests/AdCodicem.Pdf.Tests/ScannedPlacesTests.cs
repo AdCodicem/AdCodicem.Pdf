@@ -111,6 +111,32 @@ public class ScannedPlacesTests
         }
     }
 
+    [Theory]
+    [InlineData(1_048_569)]
+    [InlineData(1_048_570)]
+    [InlineData(1_048_571)]
+    [InlineData(1_048_572)]
+    [InlineData(1_048_573)]
+    [InlineData(1_048_574)]
+    [InlineData(1_048_575)]
+    public void An_xref_keyword_is_recorded_wherever_it_starts_against_the_end_of_a_piece_of_the_scan(int at)
+    {
+        // The scan reads the file a mebibyte at a time, the last byte of a piece read only to tell a keyword that ends the
+        // bytes searched: a table whose keyword starts within the first piece's last seven bytes, the keyword ending within
+        // the bytes searched, past them or at the piece's last byte, is recorded as one anywhere else.
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long> { [1] = file.Object(1, Catalog), [2] = file.Object(2, Pages) };
+        file.Raw(new string(' ', at - (int)file.Position - 1) + "\n");
+        var table = file.Table(3, rows, "/Size 3 /Root 1 0 R");
+
+        using var document = PdfDocument.Open(file.Bytes);
+        var memo = document.Reader.GetScanMemo();
+
+        table.Should().Be(at);
+        memo.TryGetXRefKeywordAt(at, out var kind).Should().BeTrue();
+        kind.Should().Be(ScannedPlaceKind.Clean);
+    }
+
     [Fact]
     public void A_header_whose_comment_between_its_tokens_holds_an_xref_keyword_is_taken_and_the_keyword_is_not()
     {
@@ -233,8 +259,9 @@ public class ScannedPlacesTests
     {
         // MaxIndexEntries of 8: the index holds four numbers, while the scan takes the headers of 1 and 2, twenty older ones
         // of 3, the newest of 3, a keyword and a trailer keyword. The memo holds the first eight places, and stops being whole
-        // where the ninth starts, which is reported once; the rebuild, made before the memo or past it, still serves the
-        // newest definition of 3.
+        // where the ninth starts; the rebuild, made before the memo or past it, scans the file again, serves the newest
+        // definition of 3, and reports no guard, as none cut what it serves. A caller that goes without the memo's word past
+        // there reports the guard, once.
         var file = Repeated(repeats == "one header repeated at one distance", out var definitions);
         var options = new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxIndexEntries = 8 } };
 
@@ -245,6 +272,7 @@ public class ScannedPlacesTests
 
         document.WasRepaired.Should().BeTrue();
         document.GetObject(new PdfObjectId(3)).AsText().Should().Be("newest");
+        document.Diagnostics.Should().NotContain(entry => entry.Code.StartsWith("limit.", StringComparison.Ordinal));
         (made ?? memo).Should().BeSameAs(memo);
         memo.IsWhole.Should().BeFalse();
         memo.Count.Should().Be(8);
@@ -254,6 +282,10 @@ public class ScannedPlacesTests
         memo.TryGetHeaderAt(definitions[5], out _).Should().BeTrue();
         memo.TryGetHeaderAt(definitions[6], out _).Should().BeFalse();
         Headers(memo, 0, long.MaxValue).Should().HaveCount(8);
+
+        document.Reader.ReachScanMemoBound();
+        document.Reader.ReachScanMemoBound();
+
         var report = document.Diagnostics.Should().ContainSingle(entry => entry.Code == PdfDiagnosticCodes.LimitIndexEntries).Which;
         report.Position.Should().Be(definitions[6]);
         report.Message.Should().Be(
@@ -261,76 +293,144 @@ public class ScannedPlacesTests
     }
 
     [Fact]
-    public void A_memo_past_its_bound_is_not_reported_again_where_the_index_reported_the_bound()
+    public void An_updated_file_whose_places_outnumber_the_bound_but_not_its_numbers_rebuilds_with_no_guard_reached()
     {
-        // MaxIndexEntries of 2: the chain fills the index, which is reported, and the memo, asked for, fills too, which the
-        // one report covers.
-        var file = Repeated(alike: false, out _);
-        var options = new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxIndexEntries = 2 } };
+        // Three objects, the third defined again by two updates, each with its table and trailer: eleven places for three
+        // numbers. Under a bound of 5, opened to throw on a guard, the rebuild the broken startxref sets off throws nothing,
+        // and serves the newest definition.
+        var file = new StringBuilder("%PDF-1.4\n1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n")
+            .Append("2 0 obj\n<< /Type /Pages /Kids [] /Count 0 >>\nendobj\n3 0 obj\n(first)\nendobj\n");
 
-        using var document = PdfDocument.Open(file, options);
-        var memo = document.Reader.GetScanMemo();
+        foreach (var update in new[] { "second", "third" })
+        {
+            file.Append("xref\n0 1\n0000000000 65535 f \ntrailer\n<< /Root 1 0 R /Size 4 >>\nstartxref\n999999\n%%EOF\n")
+                .Append(CultureInfo.InvariantCulture, $"3 0 obj\n({update})\nendobj\n");
+        }
 
-        memo.IsWhole.Should().BeFalse();
-        document.Diagnostics.Should().ContainSingle(entry => entry.Code == PdfDiagnosticCodes.LimitIndexEntries)
-            .Which.Message.Should().StartWith("The index reached 2 entries;");
+        file.Append("xref\n0 1\n0000000000 65535 f \ntrailer\n<< /Root 1 0 R /Size 4 >>\nstartxref\n999999\n%%EOF\n");
+        var options = new PdfReaderOptions { ThrowOnLimit = true, Limits = PdfReaderLimits.Default with { MaxIndexEntries = 5 } };
+
+        using var document = PdfDocument.Open(Encoding.Latin1.GetBytes(file.ToString()), options);
+
+        document.WasRepaired.Should().BeTrue();
+        document.GetObject(new PdfObjectId(3)).AsText().Should().Be("third");
+        document.Diagnostics.Should().NotContain(entry => entry.Code.StartsWith("limit.", StringComparison.Ordinal));
+        document.Reader.GetScanMemo().IsWhole.Should().BeFalse();
     }
 
     [Fact]
-    public void A_memo_past_its_bound_throws_once_for_a_document_opened_to_throw_on_a_guard()
+    public void The_memo_reports_its_bound_apart_from_the_index_which_reports_its_own_where_both_fill()
     {
-        // Asked for, the memo throws the guard as it is made, and is kept as far as the guard let it be; made by a rebuild,
-        // the guard is thrown once the index is whole, and the rebuild serves the newest definition.
+        // Objects 1 to 10, a table for 1 to 3 whose row for 3 lies outside the file: under a bound of 5, the memo, asked for
+        // first, and the index the read of 3 rebuilds both fill at the header of 6. The index reports its bound as the
+        // rebuild reaches it, and the memo its own once a caller goes without its word: neither hides the other.
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long> { [1] = file.Object(1, Catalog), [2] = file.Object(2, Pages), [3] = 999_999 };
+        var sixth = 0L;
+
+        for (var number = 3; number <= 10; number++)
+        {
+            var at = file.Object(number, string.Create(CultureInfo.InvariantCulture, $"(object {number})"));
+            sixth = number == 6 ? at : sixth;
+        }
+
+        file.Table(4, rows, "/Size 4 /Root 1 0 R");
+        var options = new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxIndexEntries = 5 } };
+
+        using var document = PdfDocument.Open(file.Bytes, options);
+        var memo = document.Reader.GetScanMemo();
+        document.GetObject(new PdfObjectId(3)).AsText().Should().Be("object 3");
+        document.Reader.ReachScanMemoBound();
+
+        memo.FullAt.Should().Be(sixth);
+        document.WasRepaired.Should().BeTrue();
+        var reports = document.Diagnostics.Where(entry => entry.Code == PdfDiagnosticCodes.LimitIndexEntries).ToList();
+        reports.Select(entry => entry.Position).Should().Equal(sixth, sixth);
+        reports[0].Message.Should().StartWith("The index reached 5 entries;");
+        reports[1].Message.Should().StartWith("The scan for objects recorded 5 object headers and keywords;");
+    }
+
+    [Fact]
+    public void A_memo_past_its_bound_throws_only_where_a_caller_goes_without_it_for_a_document_opened_to_throw_on_a_guard()
+    {
+        // Asked for, the memo throws nothing as it is made; the caller that goes without its word throws each time. Made by
+        // a rebuild, it throws nothing either, and the rebuild serves the newest definition.
         var file = Repeated(alike: false, out var definitions);
         var options = new PdfReaderOptions { ThrowOnLimit = true, Limits = PdfReaderLimits.Default with { MaxIndexEntries = 8 } };
 
         using (var asked = PdfDocument.Open(file, options))
         {
-            var thrown = FluentActions.Invoking(() => asked.Reader.GetScanMemo()).Should().Throw<PdfLimitExceededException>().Which;
-            thrown.LimitName.Should().Be(nameof(PdfReaderLimits.MaxIndexEntries));
-            thrown.Position.Should().Be(definitions[6]);
             asked.Reader.GetScanMemo().FullAt.Should().Be(definitions[6]);
+
+            for (var call = 0; call < 2; call++)
+            {
+                var thrown = FluentActions.Invoking(asked.Reader.ReachScanMemoBound).Should().Throw<PdfLimitExceededException>().Which;
+                thrown.LimitName.Should().Be(nameof(PdfReaderLimits.MaxIndexEntries));
+                thrown.Position.Should().Be(definitions[6]);
+            }
         }
 
         using var rebuilt = PdfDocument.Open(file, options);
-        FluentActions.Invoking(() => rebuilt.GetObject(new PdfObjectId(4))).Should().Throw<PdfLimitExceededException>()
-            .Which.Position.Should().Be(definitions[6]);
+        rebuilt.GetObject(new PdfObjectId(4)).Should().BeOfType<PdfNull>();
         rebuilt.GetObject(new PdfObjectId(3)).AsText().Should().Be("newest");
         rebuilt.Reader.GetScanMemo().IsWhole.Should().BeFalse();
     }
 
     [Fact]
-    public void A_memo_a_rebuild_the_source_fails_made_is_made_again_and_reported_again()
+    public void A_whole_memo_or_none_has_no_bound_to_report()
     {
-        // The source fails the rebuild as it merges the trailer, past the scan: what the rebuild reported is withdrawn, the
-        // memo it made with it, and the read that runs the rebuild again makes the memo again and reports its bound once.
-        var file = Repeated(alike: false, out var definitions);
+        // A whole memo, and a document that has made none, report nothing, opened to throw on a guard or not.
+        var file = Updated(out _);
+        var options = new PdfReaderOptions { ThrowOnLimit = true };
+
+        using var unmade = PdfDocument.Open(file, options);
+        unmade.Reader.ReachScanMemoBound();
+        using var whole = PdfDocument.Open(file, options);
+        whole.Reader.GetScanMemo().IsWhole.Should().BeTrue();
+        whole.Reader.ReachScanMemoBound();
+
+        unmade.Diagnostics.Should().NotContain(entry => entry.Code == PdfDiagnosticCodes.LimitIndexEntries);
+        whole.Diagnostics.Should().NotContain(entry => entry.Code == PdfDiagnosticCodes.LimitIndexEntries);
+    }
+
+    [Fact]
+    public void A_memo_a_rebuild_made_is_kept_when_the_source_fails_past_the_scan_and_the_rebuild_run_again_takes_it()
+    {
+        // The source fails the rebuild as it merges the trailer, past the scan, which ran to its end: what the rebuild
+        // reported is withdrawn, and the read that runs the rebuild again takes the memo the failed one made, with the index,
+        // the objects and the diagnostics of a rebuild the source never failed.
+        var file = Updated(out _);
         var trailer = Encoding.Latin1.GetString(file).LastIndexOf("trailer", StringComparison.Ordinal) + "trailer".Length;
         using var source = new FailingSource(file);
-        var options = new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxIndexEntries = 8 } };
-        using var document = PdfDocument.Open(source, options, ownsSource: false);
+        using var document = PdfDocument.Open(source, options: null, ownsSource: false);
         source.FailAt = trailer;
 
         FluentActions.Invoking(() => document.GetObject(new PdfObjectId(4))).Should().Throw<IOException>();
+        var memo = document.Reader.GetScanMemo();
+        document.GetObject(new PdfObjectId(4));
 
-        document.Diagnostics.Should().NotContain(entry => entry.Code == PdfDiagnosticCodes.LimitIndexEntries);
-        document.GetObject(new PdfObjectId(3)).AsText().Should().Be("newest");
-        document.Diagnostics.Should().ContainSingle(entry => entry.Code == PdfDiagnosticCodes.LimitIndexEntries)
-            .Which.Position.Should().Be(definitions[6]);
+        using var sound = PdfDocument.Open(file);
+        sound.GetObject(new PdfObjectId(4));
+
+        document.Reader.GetScanMemo().Should().BeSameAs(memo);
+        memo.IsWhole.Should().BeTrue();
+        document.Diagnostics.Should().Equal(sound.Diagnostics);
+        Entries(document).Should().Equal(Entries(sound));
+        document.GetObject(new PdfObjectId(3)).AsText().Should().Be("three, updated");
     }
 
     [Fact]
     public void Places_of_one_header_at_one_distance_are_read_back_one_by_one()
     {
-        var memo = new ScanMemo(100);
+        var builder = new ScanMemo.Builder(100);
 
         foreach (var at in new long[] { 100, 108, 116, 124 })
         {
-            memo.TryAddHeader(at, 7, 0, ScannedPlaceKind.Clean, floor: 0).Should().BeTrue();
+            builder.TryAddHeader(at, 7, 0, ScannedPlaceKind.Clean, floor: 0).Should().BeTrue();
         }
 
-        memo.TryAddHeader(200, 8, 65_535, ScannedPlaceKind.Raw, floor: 0).Should().BeTrue();
-        memo.Complete(new ScannedTrailers());
+        builder.TryAddHeader(200, 8, 65_535, ScannedPlaceKind.Raw, floor: 0).Should().BeTrue();
+        var memo = builder.Complete(new ScannedTrailers());
 
         memo.Count.Should().Be(5);
         memo.IsWhole.Should().BeTrue();
@@ -365,7 +465,7 @@ public class ScannedPlacesTests
     [InlineData("a distance past what an int holds")]
     public void Places_that_differ_from_a_run_are_held_apart_from_it(string shape)
     {
-        var memo = new ScanMemo(100);
+        var builder = new ScanMemo.Builder(100);
         var stride = shape == "a distance past what an int holds" ? 3_000_000_000L : 8;
         var third = shape switch
         {
@@ -379,9 +479,10 @@ public class ScannedPlacesTests
 
         foreach (var place in places)
         {
-            memo.TryAddHeader(place.Position, place.Number, place.Generation, place.Kind, floor: 0).Should().BeTrue();
+            builder.TryAddHeader(place.Position, place.Number, place.Generation, place.Kind, floor: 0).Should().BeTrue();
         }
 
+        var memo = builder.Complete(new ScannedTrailers());
         Headers(memo, 0, long.MaxValue).Should().Equal(places);
 
         foreach (var place in places)
@@ -404,16 +505,17 @@ public class ScannedPlacesTests
     public void A_place_taken_before_the_last_is_put_in_its_place_and_splits_the_run_it_falls_within(long position)
     {
         // A run of seven places of 7, from 100 to 148, eight bytes apart, then a header of 9 the scan took after it.
-        var memo = new ScanMemo(100);
+        var builder = new ScanMemo.Builder(100);
         var run = new List<ScannedHeader>();
 
         for (var at = 100L; at <= 148; at += 8)
         {
-            memo.TryAddHeader(at, 7, 0, ScannedPlaceKind.Clean, floor: 0).Should().BeTrue();
+            builder.TryAddHeader(at, 7, 0, ScannedPlaceKind.Clean, floor: 0).Should().BeTrue();
             run.Add(Header(at, 7));
         }
 
-        memo.TryAddHeader(position, 9, 0, ScannedPlaceKind.Raw, floor: 0).Should().BeTrue();
+        builder.TryAddHeader(position, 9, 0, ScannedPlaceKind.Raw, floor: 0).Should().BeTrue();
+        var memo = builder.Complete(new ScannedTrailers());
 
         var inserted = new ScannedHeader(position, 9, 0, ScannedPlaceKind.Raw);
         var expected = run.Where(header => header.Position <= position).Append(inserted).Concat(run.Where(header => header.Position > position)).ToList();
@@ -436,12 +538,14 @@ public class ScannedPlacesTests
     [Fact]
     public void Xref_keywords_are_found_where_they_start_and_are_no_headers()
     {
-        var memo = new ScanMemo(100);
-        memo.TryAddXRefKeyword(10, ScannedPlaceKind.Clean, floor: 0).Should().BeTrue();
-        memo.TryAddXRefKeyword(20, ScannedPlaceKind.Clean, floor: 0).Should().BeTrue();
-        memo.TryAddXRefKeyword(30, ScannedPlaceKind.Clean, floor: 0).Should().BeTrue();
-        memo.TryAddHeader(40, 5, 0, ScannedPlaceKind.Clean, floor: 0).Should().BeTrue();
-        memo.TryAddXRefKeyword(50, ScannedPlaceKind.Raw, floor: 0).Should().BeTrue();
+        var builder = new ScanMemo.Builder(100);
+        builder.TryAddXRefKeyword(10, ScannedPlaceKind.Clean, floor: 0).Should().BeTrue();
+        builder.TryAddXRefKeyword(20, ScannedPlaceKind.Clean, floor: 0).Should().BeTrue();
+        builder.TryAddXRefKeyword(30, ScannedPlaceKind.Clean, floor: 0).Should().BeTrue();
+        builder.TryAddHeader(40, 5, 0, ScannedPlaceKind.Clean, floor: 0).Should().BeTrue();
+        builder.TryAddXRefKeyword(50, ScannedPlaceKind.Raw, floor: 0).Should().BeTrue();
+
+        var memo = builder.Complete(new ScannedTrailers());
 
         Headers(memo, 0, long.MaxValue).Should().Equal(Header(40, 5));
         Headers(memo, 15, long.MaxValue).Should().Equal(Header(40, 5));
@@ -458,15 +562,17 @@ public class ScannedPlacesTests
     [Fact]
     public void A_memo_takes_no_place_past_its_bound_and_is_whole_only_before_the_first_it_left_out()
     {
-        var memo = new ScanMemo(3);
-        memo.TryAddHeader(10, 1, 0, ScannedPlaceKind.Clean, floor: 0).Should().BeTrue();
-        memo.TryAddTrailer(20, floor: 15).Should().BeTrue();
-        memo.TryAddXRefKeyword(30, ScannedPlaceKind.Clean, floor: 25).Should().BeTrue();
+        var builder = new ScanMemo.Builder(3);
+        builder.TryAddHeader(10, 1, 0, ScannedPlaceKind.Clean, floor: 0).Should().BeTrue();
+        builder.TryAddTrailer(20, floor: 15).Should().BeTrue();
+        builder.TryAddXRefKeyword(30, ScannedPlaceKind.Clean, floor: 25).Should().BeTrue();
+        builder.IsWhole.Should().BeTrue();
 
-        memo.TryAddHeader(40, 2, 0, ScannedPlaceKind.Clean, floor: 35).Should().BeFalse();
-        memo.TryAddHeader(50, 3, 0, ScannedPlaceKind.Clean, floor: 45).Should().BeFalse();
-        memo.TryAddTrailer(60, floor: 55).Should().BeFalse();
-        memo.Complete(new ScannedTrailers());
+        builder.TryAddHeader(40, 2, 0, ScannedPlaceKind.Clean, floor: 35).Should().BeFalse();
+        builder.IsWhole.Should().BeFalse();
+        builder.TryAddHeader(50, 3, 0, ScannedPlaceKind.Clean, floor: 45).Should().BeFalse();
+        builder.TryAddTrailer(60, floor: 55).Should().BeFalse();
+        var memo = builder.Complete(new ScannedTrailers());
 
         memo.Count.Should().Be(3);
         memo.IsWhole.Should().BeFalse();
@@ -476,10 +582,10 @@ public class ScannedPlacesTests
         Headers(memo, 0, long.MaxValue).Should().Equal(Header(10, 1));
         memo.TryGetXRefKeywordAt(30, out _).Should().BeTrue();
 
-        var past = new ScanMemo(1);
+        var past = new ScanMemo.Builder(1);
         past.TryAddHeader(10, 1, 0, ScannedPlaceKind.Clean, floor: 0).Should().BeTrue();
         past.TryAddHeader(40, 2, 0, ScannedPlaceKind.Clean, floor: 60).Should().BeFalse();
-        past.WholeUntil.Should().Be(40);
+        past.Complete(new ScannedTrailers()).WholeUntil.Should().Be(40);
     }
 
     private static ScannedHeader Header(long at, int number) => new(at, number, 0, ScannedPlaceKind.Clean);

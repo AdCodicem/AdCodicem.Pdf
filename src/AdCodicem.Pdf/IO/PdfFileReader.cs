@@ -299,6 +299,12 @@ internal sealed partial class PdfFileReader : IPdfObjectSource, IPdfStreamDataPr
     private readonly HashSet<(PdfLimit Limit, long Position)> _limitsReached = new(SeededComparer.Instance);
 
     /// <summary>
+    /// What the report of the memo's bound is held under among the guards reported (<see cref="ReachScanMemoBound"/>): a place
+    /// no byte of the file has, so that it is told apart from the index's report of the same bound wherever that lies.
+    /// </summary>
+    private static readonly (PdfLimit Limit, long Position) ScanMemoBoundReported = (PdfLimit.IndexEntries, long.MinValue);
+
+    /// <summary>
     /// The object stream members <see cref="PdfReaderLimits.MaxObjectLength"/> cut, by where their stream's data starts and
     /// their number, each reported once: a stream defined again, which a rebuild may serve, is another place.
     /// </summary>
