@@ -11,7 +11,8 @@ namespace AdCodicem.Pdf.Validation.Rules;
 /// A writer's arithmetic a few bytes off — IBM's QMF manual names its main table 12 bytes past it — is found by
 /// readers that look nearby, as the reader does within 512 bytes, and by those that rebuild the index: they agree
 /// about the file, which is wrong all the same. Only white space between the offset and the section is
-/// <see cref="PdfValidationRuleIds.XRefOffsetImprecise"/>'s.
+/// <see cref="PdfValidationRuleIds.XRefOffsetImprecise"/>'s, and a section found where the file does not confirm it
+/// <see cref="PdfValidationRuleIds.XRefSectionUnconfirmed"/>'s.
 /// </remarks>
 internal sealed class SectionShiftedRule : IValidationRule
 {
@@ -28,7 +29,7 @@ internal sealed class SectionShiftedRule : IValidationRule
         {
             // Found there and read, or found there and kept from being read by a guard, the section's own fault (#263); past
             // the report's room, counted, its finding not written (#168).
-            if (!section.WasRelocated || !context.HasRoomFor(this))
+            if (!section.WasRelocated || section.Unconfirmed || !context.HasRoomFor(this))
             {
                 continue;
             }

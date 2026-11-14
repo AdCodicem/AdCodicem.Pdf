@@ -105,6 +105,15 @@ public static class PdfValidationRuleIds
     public const string XRefSectionShifted = "xref.section-shifted";
 
     /// <summary>
+    /// A cross-reference section a <c>/Prev</c> or an <c>/XRefStm</c> names is not where it is named, and the reader takes
+    /// one near it that the file does not confirm: found only where it may lie inside another object — in the data of a
+    /// stream whose length is not confirmed, or past a string that runs past its object —, or past the places the reader's
+    /// scan for objects records within <see cref="Documents.PdfReaderLimits.MaxIndexEntries"/>.
+    /// <see cref="PdfValidationSeverity.Error"/>.
+    /// </summary>
+    public const string XRefSectionUnconfirmed = "xref.section-unconfirmed";
+
+    /// <summary>
     /// A classic cross-reference table holds no subsection: its <c>trailer</c> keyword follows its <c>xref</c> keyword.
     /// <see cref="PdfValidationSeverity.Warning"/>.
     /// </summary>

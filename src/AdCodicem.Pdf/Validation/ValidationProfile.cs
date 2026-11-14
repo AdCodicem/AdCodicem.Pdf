@@ -59,6 +59,7 @@ public sealed class ValidationProfile
             new ReservedTypeRule(),
             new SectionNotFoundRule(),
             new SectionShiftedRule(),
+            new SectionUnconfirmedRule(),
             new SubsectionMissingRule(),
             new ChainLoopRule(),
             new HybridStreamWrongRule(),

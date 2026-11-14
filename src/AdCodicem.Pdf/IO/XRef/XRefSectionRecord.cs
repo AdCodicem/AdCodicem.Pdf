@@ -50,6 +50,13 @@ internal sealed class XRefSectionRecord
     /// </summary>
     public bool WasRelocated => Offset != NamedOffset;
 
+    /// <summary>
+    /// Gets a value indicating whether the section was found moved where the rebuild's scan for objects cannot confirm that
+    /// a section starts: in the data of a stream whose length is not confirmed, past a string that runs past its object, or
+    /// past the places the scan's memo holds (<see cref="ScannedPlaceKind.Raw"/>, <see cref="ScanMemo.WholeUntil"/>).
+    /// </summary>
+    public bool Unconfirmed { get; set; }
+
     /// <summary>Gets what became of the section.</summary>
     public XRefSectionState State { get; set; }
 
