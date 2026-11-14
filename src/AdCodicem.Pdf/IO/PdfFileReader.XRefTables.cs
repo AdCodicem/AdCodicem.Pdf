@@ -398,8 +398,7 @@ internal sealed partial class PdfFileReader
                 // A table the guard cut is kept, its rows read as far as the guard let them, the guard's, whatever the index
                 // holds (ADR 34), and what its trailer names is judged as a whole read judges it (#264). At the offset a link
                 // names, its keyword is the table's own; a place the search near an offset tries is read so too, and taken as
-                // any place that reads, whole or in part, is, whatever its line — its keyword in a comment or a string there
-                // among them, which declares nothing (#171).
+                // any place that reads, whole or in part, is.
                 return true;
             }
 

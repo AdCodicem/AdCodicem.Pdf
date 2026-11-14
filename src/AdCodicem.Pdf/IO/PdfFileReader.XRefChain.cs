@@ -552,9 +552,9 @@ internal sealed partial class PdfFileReader
     /// <summary>
     /// Reports each cross-reference stream the search near the offset a hybrid table's <c>/Prev</c> names passed over as
     /// possibly that table's own, another section taken first, that declares itself one — its dictionary gives
-    /// <c>/Type /XRef</c>, and its header is a token a load reads from the start of its line — and that the chain has not
-    /// reached, at its header or inside its object number (<see cref="_streamsPassedOver"/>): it may hold that table's rows,
-    /// which the index then lacks (#156). None is reported where one of the reader's limits left part of the chain unread,
+    /// <c>/Type /XRef</c> — and that the chain has not reached, at its header or inside its object number
+    /// (<see cref="_streamsPassedOver"/>): it may hold that table's rows, which the index then lacks (#156). None is
+    /// reported where one of the reader's limits left part of the chain unread,
     /// nor anywhere in the document where <see cref="PdfReaderLimits.MaxTrailerLength"/> may have hidden a link the
     /// chain would have followed, or cut what would end it (<see cref="_guardMayHideLink"/>): where white space and
     /// comments at an offset the chain names run past it, which turned the reading of the section there into the search
@@ -609,13 +609,9 @@ internal sealed partial class PdfFileReader
     /// through the table that names it. What it costs is a look at the records of the sections the chain reached, and at
     /// as many positions as the header's object number has bytes for each stream: nothing is read here, and no stream is
     /// read to report it, its dictionary having been parsed in the search's window when it was passed over, and its
-    /// number's signs and digits scanned there when the search took another section, as its line was lexed — in that
-    /// window, or, where the line starts before the bytes searched, in those bytes read again with as many as
-    /// <see cref="LineStartSearchLength"/> bytes before them, one window more for each such stream
-    /// (<see cref="IsTokenOnItsLine"/>), a line that starts farther back declaring nothing, and the stream then not
-    /// reported. Reported once for each stream, at the stream, however many searches passed over it; the index is not left
-    /// incomplete for it, nor is anything looked for in its place: whether it is the table's own is unknown, and no link
-    /// the chain read reaches it.
+    /// number's signs and digits scanned there when the search took another section. Reported once for each stream, at
+    /// the stream, however many searches passed over it; the index is not left incomplete for it, nor is anything
+    /// looked for in its place: whether it is the table's own is unknown, and no link the chain read reaches it.
     /// </remarks>
     private void ReportStreamsPassedOver()
     {

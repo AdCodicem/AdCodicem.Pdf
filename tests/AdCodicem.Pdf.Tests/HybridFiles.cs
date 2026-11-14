@@ -1104,14 +1104,21 @@ internal static class HybridFiles
     /// reads; where it is 5,000, more than 4,096 bytes before them. Where <paramref name="comesBack"/> says so, object 9
     /// reads, giving <c>/Size 22</c> and <c>/Index [9 1]</c>, its row freeing object 9; the comment runs on to 600 dashes,
     /// which leaves object 5 and the oldest table out of the search's reach; and the update's table indexes the first three
-    /// objects too: the search comes back to object 9 once no other place holds a section, and takes it.
+    /// objects too: the search comes back to object 9 once no other place holds a section, and takes it. Where
+    /// <paramref name="strayKeywords"/> says so, two lines that hold the <c>xref</c> keyword alone follow object 4.
     /// </summary>
     public static (byte[] File, long Oldest, long Stream, long Place, long Newest) PrevFallingInsideAStreamOnALongLine(
-        int lead, bool lineBroken, bool comesBack = false)
+        int lead, bool lineBroken, bool comesBack = false, bool strayKeywords = false)
     {
         var file = new HandWrittenFile(version: "1.5");
         var (catalog, pages, page) = Page(file);
         var four = file.Object(4, "(four)");
+
+        if (strayKeywords)
+        {
+            file.Raw("xref\nxref\n");
+        }
+
         var stream = file.Position;
         var rows = StreamRows((1, four, 0), (1, stream, 0));
         file.Object(21, Invariant($"<< /Type /XRef /Size 22 /W [1 4 2] /Index [4 1 21 1] /Length {rows.Length} >>\nstream\n{rows}\nendstream"));

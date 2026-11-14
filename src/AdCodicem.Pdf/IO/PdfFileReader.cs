@@ -154,14 +154,14 @@ internal sealed partial class PdfFileReader : IPdfObjectSource, IPdfStreamDataPr
     private const int MaxRelocationCandidates = 32;
 
     /// <summary>
-    /// How far before the bytes searched near an offset the end of line that starts a place's line is looked for, read with
-    /// those bytes again where the line starts before them, to tell a place that starts with a token from one a comment or
-    /// a string holds (<see cref="IsTokenOnItsLine"/>): a place that cannot be read, which declares a section only where it
-    /// starts with such a token, and a cross-reference stream passed over near a hybrid table's <c>/Prev</c>, which is
-    /// reported only where its header is one (<see cref="ReportStreamsPassedOver"/>). Where no end of line lies within
-    /// them, and the file starts farther back, the place declares no section, and the stream is not reported. Not a guard
-    /// a valid file can reach (ADR 34): the search runs only near an offset that names no section, and a valid file's
-    /// sections are where its chain names them.
+    /// How far before the bytes searched near an offset the end of line that starts a place's line is looked for, read
+    /// with those bytes again where the line starts before them, to tell a place past the scan's memo that starts with
+    /// a token from one a comment or a string holds (<see cref="IsTokenOnItsLine"/>): one that cannot be read declares
+    /// a section only where it starts with such a token, and a cross-reference stream passed over near a hybrid table's
+    /// <c>/Prev</c> is reported only where its header is one (<see cref="ReportStreamsPassedOver"/>). Where no end of
+    /// line lies within them, and the file starts farther back, the place declares no section, and the stream is not
+    /// reported. Not a guard a valid file can reach (ADR 34): the search runs only near an offset that names no
+    /// section, and a valid file's sections are where its chain names them.
     /// </summary>
     private const int LineStartSearchLength = 4096;
 
@@ -682,14 +682,14 @@ internal sealed partial class PdfFileReader : IPdfObjectSource, IPdfStreamDataPr
     private int _relocationCandidatesTried;
 
     /// <summary>
-    /// The cross-reference streams the search near the offset a hybrid table's <c>/Prev</c> names passed over as possibly
-    /// that table's own and never came back to, another section taken first, that declare themselves one — the dictionary
-    /// gives <c>/Type /XRef</c>, and the header is a token a load reads from the start of its line —: where each header's
-    /// token starts, at the first sign of the run its number is written with where that run starts with a <c>+</c>
-    /// (<see cref="HeaderTokenStart"/>), where its object number ends, the offset the <c>/Prev</c> names, and the table.
-    /// Null while there is none. Each the chain has not reached, at its header or inside its object number, is reported
-    /// once the chain is read, but where one of the reader's limits left part of the chain unread, or may have hidden a
-    /// link the chain would have followed or cut what would end it (<see cref="_guardMayHideLink"/>,
+    /// The cross-reference streams the search near the offset a hybrid table's <c>/Prev</c> names passed over as
+    /// possibly that table's own and never came back to, another section taken first, that declare themselves one — the
+    /// dictionary gives <c>/Type /XRef</c> —: where each header's token starts, at the first sign of the run its number
+    /// is written with where that run starts with a <c>+</c> (<see cref="HeaderTokenStart"/>), where its object number
+    /// ends, the offset the <c>/Prev</c> names, and the table. Null while there is none. Each the chain has not
+    /// reached, at its header or inside its object number, is reported once the chain is read, but where one of the
+    /// reader's limits left part of the chain unread, or may have hidden a link the chain would have followed or cut
+    /// what would end it (<see cref="_guardMayHideLink"/>,
     /// <see cref="ReportStreamsPassedOver"/>).
     /// </summary>
     /// <remarks>
