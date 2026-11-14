@@ -447,6 +447,28 @@ public class ScannedPlacesTests
         document.Diagnostics[1].Position.Should().Be(row - 5);
     }
 
+    [Theory]
+    [InlineData(0)]
+    [InlineData(4096)]
+    public void The_memo_holds_no_place_past_where_a_source_that_gives_fewer_bytes_than_asked_ended_the_scan(int cap)
+    {
+        // Past the catalog and the page tree, 6,000 bytes of comment come before object 3, read through a source that gives
+        // every byte asked for, or at most 4,096 bytes a read, as a source over a store of blocks may. The scan takes a window
+        // shorter than asked for the end of the data there, and its memo, whole, holds nothing past it: no place there is
+        // vouched for. Read whole, the memo holds every place to the file's end (#52).
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long> { [1] = file.Object(1, Catalog), [2] = file.Object(2, Pages) };
+        file.Raw("%" + new string('-', 5998) + "\n");
+        rows[3] = file.Object(3, "(three)");
+        file.Table(4, rows, "/Size 4 /Root 1 0 R");
+        PdfFileSource source = cap > 0 ? new CappedReadSource(file.Bytes, cap) : PdfFileSource.FromMemory(file.Bytes);
+        using var document = PdfDocument.Open(source, options: null, ownsSource: true);
+
+        var memo = document.Reader.GetScanMemo();
+
+        (memo.IsWhole, memo.WholeUntil, memo.TryGetHeaderAt(rows[3], out _)).Should().Be(cap > 0 ? (true, cap, false) : (true, long.MaxValue, true));
+    }
+
     [Fact]
     public void A_whole_memo_or_none_has_no_bound_to_report()
     {

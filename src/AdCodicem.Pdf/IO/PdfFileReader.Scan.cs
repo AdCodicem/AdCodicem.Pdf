@@ -317,6 +317,11 @@ internal sealed partial class PdfFileReader
 
             if (endsData && !jumped)
             {
+                if (windowStart + span.Length < _source.Length)
+                {
+                    memo?.EndAt(windowStart + span.Length);
+                }
+
                 break;
             }
 
@@ -410,8 +415,8 @@ internal sealed partial class PdfFileReader
     /// A token starts at the keyword where the byte before it ends one, as a header's number starts
     /// (<see cref="PdfCharacters.EndsToken"/>) — white space, or a delimiter that ends a token or stands alone —, or ends the
     /// end-of-file marker a writer glues an update to, and no regular character follows it: the end of <c>startxref</c>, a
-    /// name <c>/xref</c> and the word <c>xrefs</c> are none, as the search near an offset reads a place's token from its
-    /// line (<see cref="IsTokenOnItsLine"/>).
+    /// name <c>/xref</c> and the word <c>xrefs</c> are none: the search near an offset tries no place the memo does not
+    /// hold (<see cref="CheckPlace"/>).
     /// </para>
     /// <para>
     /// Whether a comment or a string holds it is swept apart from the sweep the headers and the <c>trailer</c> keywords are

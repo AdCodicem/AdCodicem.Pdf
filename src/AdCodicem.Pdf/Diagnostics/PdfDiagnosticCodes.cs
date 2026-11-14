@@ -122,11 +122,12 @@ public static class PdfDiagnosticCodes
     /// section near that offset, which the search took first; the chain did not reach the stream, at its header or inside
     /// its object number: a reading from inside the number reads the same stream where it reads a header there, and where
     /// it reads none, as from the 0 of a number 20, the search near that place finds the stream moved (#156). Only a stream
-    /// that declares itself one is reported: its dictionary gives <c>/Type /XRef</c>, and its header is a token a load
-    /// reads from the start of its line, not in a comment or a string there. A header whose object number is written with a
-    /// run of signs that starts with a <c>+</c>, which a load reads as its first sign, is such a token from that sign,
-    /// where the stream is said to start; one a <c>-</c> starts is no object's header (#327). Nothing is reported where one
-    /// of the reader's limits left part of the chain unread — the number of its sections, a section it cut before the
+    /// that declares itself one is reported: its dictionary gives <c>/Type /XRef</c>, and the search tried it, as a
+    /// place the rebuild's scan for objects takes, not one inside another object's stream data, string or comment
+    /// (#171). A header whose object number is written with a run of signs that starts with a <c>+</c>, which a load
+    /// reads as its first sign, is said to start at that sign; one a <c>-</c> starts is no object's header (#327).
+    /// Nothing is reported where one of the reader's limits left part of the chain unread — the number of its sections,
+    /// a section it cut before the
     /// section said what it is, rows, a trailer, an object a value the rows or a link are read with leads to, or an index
     /// it filled —, the limit's report standing for what it left unread. Nor is anything reported anywhere in the document
     /// where <see cref="Documents.PdfReaderLimits.MaxTrailerLength"/> may have hidden a link the chain would have followed,
