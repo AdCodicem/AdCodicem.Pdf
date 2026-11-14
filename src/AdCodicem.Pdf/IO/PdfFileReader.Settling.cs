@@ -191,7 +191,7 @@ internal sealed partial class PdfFileReader
         var nowhere = new HeaderPlacement(
             guardAtOffset ? HeaderPlace.PastGuard : HeaderPlace.NotFound, offset, -1, atOffset, guardAtOffset);
 
-        if (!TryFindObjectHeader(number, entry, reportsBound, out var nearby, out _, out var kind, out var vouched))
+        if (!TryFindObjectHeader(number, entry, reportsBound, out var nearby, out _, out var confirmation))
         {
             return nowhere;
         }
@@ -204,7 +204,7 @@ internal sealed partial class PdfFileReader
         {
             HeaderReadingSpent => new HeaderPlacement(HeaderPlace.Undecided, offset, -1, atOffset, guardAtOffset),
             HeaderPastGuard => new HeaderPlacement(HeaderPlace.PastGuard, nearby, -1, atOffset, guardAtOffset),
-            _ when near == number => new HeaderPlacement(HeaderPlace.Nearby, nearby, nearGeneration, atOffset, guardAtOffset, vouched, kind),
+            _ when near == number => new HeaderPlacement(HeaderPlace.Nearby, nearby, nearGeneration, atOffset, guardAtOffset, confirmation),
             _ => nowhere,
         };
     }
