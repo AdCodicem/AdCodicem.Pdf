@@ -177,7 +177,7 @@ internal sealed partial class PdfFileReader
     private ExceptionDispatchInfo? ScanForObjects(ScanMemo.Builder? memo, Redefinitions? redefinitions, ScannedTrailers trailers)
     {
         ExceptionDispatchInfo? reached = null;
-        var scan = new ScanState();
+        var scan = new ScanState(memo);
         _scanGapBytes = 0;
 
         while (scan.Resume < _source.Length)
@@ -287,12 +287,7 @@ internal sealed partial class PdfFileReader
 
                 if (at >= scan.UndelimitedUntil)
                 {
-                    extent = DelimitObject(at, at >= windowStart ? span[(int)(at - windowStart)..] : [], endsData, out var lexedTo);
-
-                    if (extent.Kind is ExtentKind.Unknown or ExtentKind.RunawayString)
-                    {
-                        scan.UndelimitedUntil = lexedTo;
-                    }
+                    extent = DelimitObject(at, at >= windowStart ? span[(int)(at - windowStart)..] : [], endsData, ref scan);
                 }
 
                 if (extent.CrossReferenceStream)
@@ -487,7 +482,7 @@ internal sealed partial class PdfFileReader
             return false;
         }
 
-        Sweep(span, windowStart, position, scan.RawUntil, ref scan.SweptTo, ref scan.Line, ref scan.StringDepth);
+        Sweep(span, windowStart, position, scan.RawUntil, ref scan.SweptTo, ref scan.Line, ref scan.StringDepth, scan.Memo, scan.TokensFrom);
         return scan.Line != LineState.Tokens;
     }
 
@@ -513,7 +508,7 @@ internal sealed partial class PdfFileReader
             scan.AheadDepth = scan.StringDepth;
         }
 
-        Sweep(span, windowStart, position, scan.RawUntil, ref scan.AheadTo, ref scan.AheadLine, ref scan.AheadDepth);
+        Sweep(span, windowStart, position, scan.RawUntil, ref scan.AheadTo, ref scan.AheadLine, ref scan.AheadDepth, scan.Memo, scan.TokensFrom);
         return scan.AheadLine != LineState.Tokens;
     }
 
@@ -522,10 +517,20 @@ internal sealed partial class PdfFileReader
     /// or a string opens, and where it closes. Each byte is swept once: from the window where it holds them, from the file
     /// before it — a header found further back than its piece, or bytes no header nor keyword asked for while the piece
     /// before held them —, a piece at a time. The data of a stream whose length the scan could not confirm, before
-    /// <paramref name="rawUntil"/>, is not swept.
+    /// <paramref name="rawUntil"/>, is not swept. A window the source gives shorter than asked holds the end of the data
+    /// (#52): what the sweep tells past it is not what the file holds, and a memo is whole only before there, or before
+    /// <paramref name="floor"/> where sooner (<see cref="ScanMemo.Builder.EndAt"/>).
     /// </summary>
     private void Sweep(
-        ReadOnlySpan<byte> span, long windowStart, long to, long rawUntil, ref long sweptTo, ref LineState line, ref int depth)
+        ReadOnlySpan<byte> span,
+        long windowStart,
+        long to,
+        long rawUntil,
+        ref long sweptTo,
+        ref LineState line,
+        ref int depth,
+        ScanMemo.Builder? memo,
+        long floor)
     {
         var from = Math.Max(sweptTo, rawUntil);
 
@@ -540,7 +545,13 @@ internal sealed partial class PdfFileReader
 
             // The bytes after a piece's are read with it, as far as they tell an end-of-file marker that starts within it.
             var length = (int)Math.Min(ScanChunkSize - (EndOfFileMarker.Length - 1), Math.Min(to, windowStart) - from);
-            using var window = _source.GetWindow(from, (int)Math.Min(length + EndOfFileMarker.Length - 1L, _source.Length - from));
+            var asked = (int)Math.Min(length + EndOfFileMarker.Length - 1L, _source.Length - from);
+            using var window = _source.GetWindow(from, asked);
+
+            if (window.Length < asked)
+            {
+                memo?.EndAt(from + window.Length, floor);
+            }
 
             if (window.Length == 0)
             {
@@ -648,13 +659,16 @@ internal sealed partial class PdfFileReader
     /// a stream's is read for <c>/Length</c> and <c>/Type</c>. A value that runs past the bytes given is read again in a window
     /// from its header, eight times larger each time, as long as it stays within
     /// <see cref="PdfReaderLimits.MaxObjectLength"/>, the bound a load reads it within; past it, or where the header or
-    /// value is not one a load reads, the object is not delimited, and what follows its header is read as the bytes give it.
+    /// value is not one a load reads, the object is not delimited, and what follows its header is read as the bytes give it,
+    /// the headers within what its lexing read taken undelimited (<see cref="ScanState.UndelimitedUntil"/>). A window the
+    /// source gives shorter than asked holds the end of the data (#52), and ends a memo there
+    /// (<see cref="ScanMemo.Builder.EndAt"/>).
     /// </remarks>
     /// <param name="at">Where the header starts in the file.</param>
     /// <param name="buffered">The bytes from <paramref name="at"/> the scan holds already.</param>
     /// <param name="buffersToEnd">Whether <paramref name="buffered"/> runs to the end of the file.</param>
-    /// <param name="lexedTo">Where, in the file, the lexing of an object not delimited stopped.</param>
-    private ObjectExtent DelimitObject(long at, ReadOnlySpan<byte> buffered, bool buffersToEnd, out long lexedTo)
+    /// <param name="scan">Where the scan stands.</param>
+    private ObjectExtent DelimitObject(long at, ReadOnlySpan<byte> buffered, bool buffersToEnd, ref ScanState scan)
     {
         var bound = (long)_guard.Bound(PdfLimit.Object);
 
@@ -675,7 +689,7 @@ internal sealed partial class PdfFileReader
         {
             if (lexed >= bound)
             {
-                lexedTo = at + lexed;
+                scan.UndelimitedUntil = at + lexed;
                 return default;
             }
 
@@ -683,19 +697,31 @@ internal sealed partial class PdfFileReader
             using var window = _source.GetWindow(at, asked);
             var toEnd = window.Length < asked || at + window.Length >= _source.Length;
             lexed = window.Length;
+
+            if (window.Length < asked)
+            {
+                scan.Memo?.EndAt(at + window.Length, scan.TokensFrom);
+            }
+
             bounds = DelimitWithin(window.Memory.Span, toEnd);
             size *= 8;
         }
 
         // What a load reads of the object, its header and value or its stream's dictionary, lies within the guard's bound.
-        lexedTo = at + Math.Max(bounds.End, bounds.DataStart);
-        return bounds.Kind switch
+        var extent = bounds.Kind switch
         {
             BoundsKind.Value when bounds.End <= bound => new ObjectExtent(ExtentKind.Value, at + bounds.End, -1, false),
-            BoundsKind.Stream when bounds.DataStart <= bound => ConfirmStream(at, bounds, buffered),
+            BoundsKind.Stream when bounds.DataStart <= bound => ConfirmStream(at, bounds, buffered, ref scan),
             BoundsKind.Runaway when bounds.End <= bound => new ObjectExtent(ExtentKind.RunawayString, at + bounds.End, -1, false),
             _ => default,
         };
+
+        if (extent.Kind is ExtentKind.Unknown or ExtentKind.RunawayString)
+        {
+            scan.UndelimitedUntil = at + Math.Max(bounds.End, bounds.DataStart);
+        }
+
+        return extent;
     }
 
     /// <summary>
@@ -715,7 +741,8 @@ internal sealed partial class PdfFileReader
     /// <param name="at">Where the header starts in the file.</param>
     /// <param name="bounds">What the lexing of the header and dictionary found.</param>
     /// <param name="buffered">The bytes from <paramref name="at"/> the scan holds already.</param>
-    private ObjectExtent ConfirmStream(long at, ObjectBounds bounds, ReadOnlySpan<byte> buffered)
+    /// <param name="scan">Where the scan stands.</param>
+    private ObjectExtent ConfirmStream(long at, ObjectBounds bounds, ReadOnlySpan<byte> buffered, ref ScanState scan)
     {
         var dataStart = at + bounds.DataStart;
         var dataEnd = dataStart + bounds.Length;
@@ -752,7 +779,7 @@ internal sealed partial class PdfFileReader
             if (keywordEnd < 0)
             {
                 return new ObjectExtent(
-                    ExtentKind.UnconfirmedStream, DataEndWithoutEndStream(dataStart, dataEnd, ref _scanGapBytes), dataStart, bounds.CrossReferenceStream);
+                    ExtentKind.UnconfirmedStream, DataEndWithoutEndStream(dataStart, dataEnd, ref scan), dataStart, bounds.CrossReferenceStream);
             }
         }
 
@@ -1188,9 +1215,13 @@ internal sealed partial class PdfFileReader
         /// <summary>Where the last <c>endstream</c> the scan searched for lies, or -1 before any search.</summary>
         public long EndStreamAt;
 
-        public ScanState()
+        /// <summary>Receives what a scan for a memo takes; null for a rebuild's scan.</summary>
+        public ScanMemo.Builder? Memo;
+
+        public ScanState(ScanMemo.Builder? memo)
         {
             EndStreamAt = -1;
+            Memo = memo;
         }
 
         /// <summary>
