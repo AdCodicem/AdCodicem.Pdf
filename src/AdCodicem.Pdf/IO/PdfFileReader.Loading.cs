@@ -1212,7 +1212,9 @@ internal sealed partial class PdfFileReader
             var last = default(PdfToken);
             var before = default(PdfToken);
 
-            for (var token = lexer.Read(); token.Kind != PdfTokenKind.EndOfInput; token = lexer.Read())
+            // One call to the lexer: the rebuild's scan inlines this walk in its loop, where the compiler weighs each call
+            // apart, and took in the first of two while it left out the other, the one each token after the first goes through.
+            while (lexer.Read() is { Kind: not PdfTokenKind.EndOfInput } token)
             {
                 before = last;
                 last = token;
