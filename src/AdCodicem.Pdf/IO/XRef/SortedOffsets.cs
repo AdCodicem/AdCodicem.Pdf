@@ -62,6 +62,28 @@ internal sealed class SortedOffsets
         return first;
     }
 
+    /// <summary>Gets the largest offset smaller than <paramref name="position"/>, or -1 when none is.</summary>
+    public long LastBefore(long position)
+    {
+        Sort();
+
+        var last = -1L;
+
+        foreach (var run in _runs)
+        {
+            // The place the offset would go is preceded by the last smaller one, whether the offset is in the run or not.
+            var index = Array.BinarySearch(run, position);
+            index = (index >= 0 ? index : ~index) - 1;
+
+            if (index >= 0 && run[index] > last)
+            {
+                last = run[index];
+            }
+        }
+
+        return last;
+    }
+
     /// <summary>Sorts the offsets added since the last lookup into a run, and merges runs until each is more than twice the next.</summary>
     private void Sort()
     {

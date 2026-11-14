@@ -103,14 +103,14 @@ internal sealed partial class PdfFileReader
                 string.Create(
                     CultureInfo.InvariantCulture, $"The entry of object {id.Number} places it at offset {DescribeOffset(entry.Offset)}, outside the file."));
         }
-        else if (TryParseObjectAt(id.Number, offset, out var atRecordedOffset))
+        else if (TryParseObjectAt(id.Number, offset, out var atRecordedOffset, atRow: !entry.FoundByReader))
         {
             return atRecordedOffset;
         }
 
         // Offsets are commonly off by a few bytes in files from careless tools, so the neighborhood is
         // searched before the index is given up on entirely.
-        if (TryFindObjectHeader(id.Number, offset, out var nearby, out var generation) &&
+        if (TryFindObjectHeader(id.Number, entry, reportsBound: true, out var nearby, out var generation, out _, out _) &&
             TryParseObjectAt(id.Number, nearby, out var relocated))
         {
             _diagnostics.Repair(
@@ -141,10 +141,11 @@ internal sealed partial class PdfFileReader
 
     /// <summary>
     /// Parses object <paramref name="number"/> at an exact offset, growing the window while the object runs
-    /// past its end. Returns false when nothing with that number is there.
+    /// past its end. Returns false when nothing with that number is there, nor, where the offset is an entry's row
+    /// (<paramref name="atRow"/>), when the row cuts a number (<see cref="RowCutsNumber"/>).
     /// </summary>
-    private bool TryParseObjectAt(int number, long offset, out PdfObject value, long recordedAt = RecordedAnywhere) =>
-        TryParseNumberedAt(offset, number, PdfLimit.Object, out value, out _, out _, out _, out _, recordedAt: recordedAt);
+    private bool TryParseObjectAt(int number, long offset, out PdfObject value, long recordedAt = RecordedAnywhere, bool atRow = false) =>
+        TryParseNumberedAt(offset, number, PdfLimit.Object, out value, out _, out _, out _, out _, recordedAt: recordedAt, atRow: atRow);
 
     /// <summary>
     /// Parses what starts at an exact offset — object <paramref name="number"/>, any object for
@@ -186,6 +187,10 @@ internal sealed partial class PdfFileReader
     /// length, a cut — to be noted: <see cref="RecordedAnywhere"/>, <see cref="RecordedNowhere"/>, or the place of the
     /// definition the reader serves, which a reading where the chain places the object may not be (#255).
     /// </param>
+    /// <param name="atRow">
+    /// Whether the offset is a row the file gives, which holds no header where it cuts a number (<see cref="RowCutsNumber"/>):
+    /// the byte before it is read with the first window.
+    /// </param>
     private bool TryParseNumberedAt(
         long offset,
         int number,
@@ -197,7 +202,8 @@ internal sealed partial class PdfFileReader
         out bool syntaxFault,
         int initialWindow = InitialObjectWindow,
         Func<PdfObject, bool>? keep = null,
-        long recordedAt = RecordedAnywhere)
+        long recordedAt = RecordedAnywhere,
+        bool atRow = false)
     {
         value = PdfNull.Instance;
         foundNumber = 0;
@@ -213,16 +219,29 @@ internal sealed partial class PdfFileReader
         var maxWindow = _guard.Bound(limit);
         var windowSize = Math.Min(initialWindow, maxWindow);
         var mark = _pending.GetMark();
+        var lead = atRow && offset > 0 ? ByteBeforeRow : 0;
 
         try
         {
             while (true)
             {
-                using var window = _source.GetWindow(offset, windowSize);
+                using var window = _source.GetWindow(offset - lead, windowSize + lead);
+                var bytes = window.Memory;
+
+                if (lead > 0)
+                {
+                    if (RowCutsNumber(bytes.Span))
+                    {
+                        return false;
+                    }
+
+                    bytes = bytes[Math.Min(lead, bytes.Length)..];
+                    lead = 0;
+                }
 
                 // A window that ends where the file does cut nothing, however long it is: what it holds is all there is.
-                var cut = window.Length == windowSize && offset + window.Length < _source.Length;
-                var parser = new PdfObjectParser(window.Memory, offset, this, _pending, this, endsData: !cut);
+                var cut = bytes.Length == windowSize && offset + bytes.Length < _source.Length;
+                var parser = new PdfObjectParser(bytes, offset, this, _pending, this, endsData: !cut);
                 PdfObject parsed;
 
                 if (number == DirectObject)
@@ -280,7 +299,7 @@ internal sealed partial class PdfFileReader
                     // the guard's (ADR 34), and what it found of a stream is dropped with the cut.
                     syntaxFault = SyntaxFaultSince(_pending, mark);
                     ReachLimit(limit, LimitSubject(number, maxWindow), offset);
-                    MarkCutByGuard(parsed, offset + window.Length);
+                    MarkCutByGuard(parsed, offset + bytes.Length);
 
                     // What the chain reads of a cross-reference stream is the section's, which records its cut: the object of that
                     // number a load reads is noted when it is read (#175).
@@ -535,20 +554,51 @@ internal sealed partial class PdfFileReader
         }
     }
 
-    private bool TryFindObjectHeader(int number, long approximateOffset, out long actualOffset, out int generation) =>
-        TryFindObjectHeader(_source, number, approximateOffset, out actualOffset, out generation);
-
     /// <summary>
-    /// Looks for the header of object <paramref name="number"/> within <see cref="NearbySearchRadius"/> bytes either
-    /// side of <paramref name="approximateOffset"/>, where careless writers leave an object their index misplaced,
-    /// and gives the first found, with the generation it gives: a header lying whole within them, from the first digit
-    /// of its number to the end of its <c>obj</c> keyword, however near the file's start the offset falls (#197).
+    /// Looks for the header of object <paramref name="number"/> near the offset <paramref name="entry"/> gives, where careless
+    /// writers leave an object their index misplaced, and chooses one, with the generation it gives.
     /// </summary>
-    internal static bool TryFindObjectHeader(
-        PdfFileSource source, int number, long approximateOffset, out long actualOffset, out int generation)
+    /// <remarks>
+    /// <para>
+    /// The bytes searched are those within <see cref="NearbySearchRadius"/> either side of the offset, however near the file's
+    /// start it falls (#197); a header counts where it lies whole within them, from the first byte of its number to the end of
+    /// its <c>obj</c> keyword. The candidates are the headers of the number among them that the rebuild's scan takes
+    /// (<see cref="GetScanMemo"/>), clean or raw (<see cref="ScannedPlaceKind"/>): none inside a string, a comment or the
+    /// confirmed data of a stream, nor one whose number the bytes' start cuts, but one glued to an end-of-file marker before
+    /// them (#171). The memo is asked for only where the bytes hold a header of the number at all, read back from its
+    /// <c>obj</c> as the scan reads one: an offset with none near it costs no scan. A header past where the memo is whole
+    /// (<see cref="ScanMemo.WholeUntil"/>) is taken as the bytes give it, raw; where the bytes reach there, the memo's bound
+    /// is reported if <paramref name="reportsBound"/> (<see cref="ReachScanMemoBound"/>).
+    /// </para>
+    /// <para>
+    /// A clean candidate ranks before a raw one. Within the best rank, a candidate is supported where the row just before
+    /// the entry's in the chain's index as written, or the row just after it, has the header of its own object as far from it
+    /// as the candidate lies from the offset — rows a writer miscounted, or bytes inserted before them, shifted alike —, as
+    /// the memo holds it: support reads nothing. The nearest supported candidate is chosen, or the nearest of all where none
+    /// is, the one before the offset on a tie. The chosen candidate is vouched for where it is clean, and either the only
+    /// clean one or supported; otherwise the file does not designate it, and it is chosen all the same. The rows and the memo
+    /// do not depend on what was read before, and neither does the choice.
+    /// </para>
+    /// </remarks>
+    /// <param name="number">The object's number.</param>
+    /// <param name="entry">The regular entry that places it.</param>
+    /// <param name="reportsBound">Whether the memo's bound is reported where the bytes searched reach it.</param>
+    /// <param name="actualOffset">Where the header chosen starts: its number, at the first sign of a run of signs (#327).</param>
+    /// <param name="generation">The generation the header chosen gives.</param>
+    /// <param name="kind">How the scan takes the header chosen.</param>
+    /// <param name="vouched">Whether the choice is vouched for.</param>
+    /// <exception cref="PdfLimitExceededException">
+    /// The bytes searched reach past where the memo is whole, the bound is reported, and the document was opened to throw on
+    /// a guard.
+    /// </exception>
+    private bool TryFindObjectHeader(
+        int number, XRefEntry entry, bool reportsBound, out long actualOffset, out int generation, out ScannedPlaceKind kind, out bool vouched)
     {
         actualOffset = -1;
         generation = 0;
+        kind = ScannedPlaceKind.Raw;
+        vouched = false;
+        var approximateOffset = PositionOf(entry);
 
         if (approximateOffset < -NearbySearchRadius)
         {
@@ -562,47 +612,151 @@ internal sealed partial class PdfFileReader
         // lies between the offset and the file's end, which wraps for no offset the test above lets through: long.MaxValue,
         // which an entry past what a long holds gives, ends it at the file's end, and the window is empty.
         var start = Math.Max(0, approximateOffset - NearbySearchRadius);
-        var length = approximateOffset + Math.Min(NearbySearchRadius, source.Length - approximateOffset) - start;
+        var length = approximateOffset + Math.Min(NearbySearchRadius, _source.Length - approximateOffset) - start;
 
         if (length <= 0)
         {
             return false;
         }
 
-        // The byte before the window is read as well, where there is one: a header counts only where it starts inside the
-        // window, not where the window's start cuts its number — "14 0 obj" read from its "4" as object 4's.
-        // So is the byte after it, where there is one: it tells an obj that ends the window from a longer word (#189). A
-        // window shorter than asked holds the end of the data, as every window does.
-        var lead = start > 0 ? 1 : 0;
-        var trail = start + length < source.Length ? 1 : 0;
-        using var window = source.GetWindow(start - lead, (int)length + lead + trail);
-        var span = window.Memory.Span;
-        var searched = Math.Min(span.Length, (int)length + lead);
-        var searchFrom = 0;
+        Span<long> positions = stackalloc long[MaxNearbyHeaders];
+        Span<int> generations = stackalloc int[MaxNearbyHeaders];
+        var count = 0;
 
-        while (searchFrom < searched)
+        // The bytes before the window are read as well, up to an end-of-file marker's length: a header glued to the marker
+        // the window's start cuts is told from digits a longer token ends with. So is the byte after it, where there is one: it
+        // tells an obj that ends the window from a longer word (#189). A window shorter than asked holds the end of the data.
+        var lead = (int)Math.Min(start, EndOfFileMarker.Length);
+        var trail = start + length < _source.Length ? 1 : 0;
+
+        using (var window = _source.GetWindow(start - lead, (int)length + lead + trail))
         {
-            var index = span[searchFrom..searched].IndexOf(ObjKeyword);
-            if (index < 0)
+            var span = window.Memory.Span;
+            var searched = Math.Min(span.Length, (int)length + lead);
+
+            for (var from = 0; from < searched && count < MaxNearbyHeaders;)
             {
-                return false;
+                var index = span[from..searched].IndexOf(ObjKeyword);
+
+                if (index < 0)
+                {
+                    break;
+                }
+
+                var position = from + index;
+
+                if (TryReadHeaderBackwards(span, position, out var found, out var foundGeneration, out var headerStart) &&
+                    headerStart >= lead && found == number)
+                {
+                    positions[count] = start - lead + headerStart;
+                    generations[count++] = foundGeneration;
+                }
+
+                from = position + ObjKeyword.Length;
             }
-
-            var position = searchFrom + index;
-
-            if (TryReadHeaderBackwards(span, position, out var found, out var foundGeneration, out var headerStart) &&
-                headerStart >= lead && found == number)
-            {
-                actualOffset = start - lead + headerStart;
-                generation = foundGeneration;
-                return true;
-            }
-
-            searchFrom = position + ObjKeyword.Length;
         }
 
-        return false;
+        if (count == 0)
+        {
+            return false;
+        }
+
+        var memo = GetScanMemo();
+
+        if (reportsBound && start + length > memo.WholeUntil)
+        {
+            ReachScanMemoBound();
+        }
+
+        Span<ScannedPlaceKind> kinds = stackalloc ScannedPlaceKind[MaxNearbyHeaders];
+        var candidates = 0;
+        var clean = 0;
+
+        for (var i = 0; i < count; i++)
+        {
+            if (positions[i] >= memo.WholeUntil)
+            {
+                kinds[i] = ScannedPlaceKind.Raw;
+            }
+            else if (memo.TryGetHeaderAt(positions[i], out var header) && header.Number == number)
+            {
+                kinds[i] = header.Kind;
+                generations[i] = header.Generation;
+            }
+            else
+            {
+                positions[i] = -1;
+                continue;
+            }
+
+            candidates++;
+            clean += kinds[i] == ScannedPlaceKind.Clean ? 1 : 0;
+        }
+
+        var best = -1;
+        var bestSupported = false;
+
+        for (var i = 0; i < count; i++)
+        {
+            if (positions[i] < 0)
+            {
+                continue;
+            }
+
+            var supported = candidates > 1 && SharesShift(memo, entry, positions[i] - approximateOffset);
+
+            // Positions rise: of two candidates as near, the one kept first lies before the offset.
+            if (best < 0 || (kinds[i] != kinds[best] ? kinds[i] == ScannedPlaceKind.Clean
+                : supported != bestSupported ? supported
+                : Math.Abs(positions[i] - approximateOffset) < Math.Abs(positions[best] - approximateOffset)))
+            {
+                best = i;
+                bestSupported = supported;
+            }
+        }
+
+        if (best < 0)
+        {
+            return false;
+        }
+
+        actualOffset = positions[best];
+        generation = generations[best];
+        kind = kinds[best];
+        vouched = kind == ScannedPlaceKind.Clean && (clean == 1 || bestSupported);
+        return true;
     }
+
+    /// <summary>
+    /// Determines whether the row just before <paramref name="entry"/>'s in the chain's index as written, or the row just
+    /// after it, has the header of its own object <paramref name="shift"/> bytes from it, as the scan's memo holds it.
+    /// </summary>
+    private bool SharesShift(ScanMemo memo, XRefEntry entry, long shift)
+    {
+        var index = _chainIndex ?? _xref;
+        return HoldsOwnHeader(index, memo, index.LastOffsetBefore(entry.Offset), shift) ||
+            HoldsOwnHeader(index, memo, index.FirstOffsetAfter(entry.Offset), shift);
+    }
+
+    /// <summary>
+    /// Determines whether the memo holds, <paramref name="shift"/> bytes from where the offset <paramref name="row"/> names, the
+    /// header of an object <paramref name="index"/> places at that offset; false for no row, -1 or <see cref="long.MaxValue"/>.
+    /// </summary>
+    private bool HoldsOwnHeader(PdfXRefTable index, ScanMemo memo, long row, long shift) =>
+        row >= 0 && row < _source.Length &&
+        memo.TryGetHeaderAt(PositionOf(row) + shift, out var header) &&
+        index.TryGet(header.Number, out var entry) && entry.Kind == XRefEntryKind.Regular && entry.Offset == row;
+
+    /// <summary>
+    /// Determines whether a row the file gives cuts a number, <paramref name="bytes"/> starting with the byte before it: a digit
+    /// before it, and a digit or a sign at it — <c>14 0 obj</c> read from its <c>4</c>. A load lexes from the row, and would
+    /// take the number's end for an object's; a valid file has white space or a delimiter before every header, as a token
+    /// starts. Such a row holds no header, for a load, settling and the validator's probe alike, and the object is looked
+    /// for near it (<see cref="TryFindObjectHeader"/>). A place the reader found holds a header read with what precedes it,
+    /// and is not asked.
+    /// </summary>
+    private static bool RowCutsNumber(ReadOnlySpan<byte> bytes) =>
+        bytes.Length > 1 && PdfCharacters.IsDigit(bytes[0]) && (PdfCharacters.IsDigit(bytes[1]) || bytes[1] is (byte)'+' or (byte)'-');
 
     /// <summary>
     /// Reads object <paramref name="number"/> where an entry of the chain's index places it — at the offset it gives, or
@@ -621,8 +775,9 @@ internal sealed partial class PdfFileReader
         var offset = PositionOf(entry);
         var recordedAt = RecordedAtFor(number, entry);
 
-        return TryParseObjectAt(number, offset, out var value, recordedAt) ||
-            (TryFindObjectHeader(number, offset, out var nearby, out _) && TryParseObjectAt(number, nearby, out value, recordedAt))
+        return TryParseObjectAt(number, offset, out var value, recordedAt, atRow: !entry.FoundByReader) ||
+            (TryFindObjectHeader(number, entry, reportsBound: true, out var nearby, out _, out _, out _) &&
+                TryParseObjectAt(number, nearby, out value, recordedAt))
             ? value
             : null;
     }
@@ -658,8 +813,9 @@ internal sealed partial class PdfFileReader
         var guards = _guardsReached;
         var offset = PositionOf(entry);
         var recordedAt = RecordedAtFor(number, entry);
-        var found = TryParseObjectAt(number, offset, out var value, recordedAt) ||
-            (TryFindObjectHeader(number, offset, out var nearby, out _) && TryParseObjectAt(number, nearby, out value, recordedAt));
+        var found = TryParseObjectAt(number, offset, out var value, recordedAt, atRow: !entry.FoundByReader) ||
+            (TryFindObjectHeader(number, entry, reportsBound: true, out var nearby, out _, out _, out _) &&
+                TryParseObjectAt(number, nearby, out value, recordedAt));
 
         // A dictionary one of the reader's limits cut is the limit's, not the file's: what it would have said is unknown. A
         // stream's dictionary was read whole, and is the file's; what a limit cut of its data is weighed as it is decoded.

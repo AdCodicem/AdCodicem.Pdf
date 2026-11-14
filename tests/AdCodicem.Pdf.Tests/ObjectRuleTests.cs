@@ -1171,7 +1171,7 @@ public class ObjectRuleTests
 
         ObjectStreamDependencies.Run(document).CircularStreams.Should().BeEmpty();
 
-        source.Reads.GetValueOrDefault(rows[4].Field2).Should().Be(2, "the walk keeps object 4 once, lets go of it once, and reads it again once");
+        ReadsAt(source.Reads, rows[4].Field2).Should().Be(2, "the walk keeps object 4 once, lets go of it once, and reads it again once");
     }
 
     [Theory]
@@ -1216,8 +1216,8 @@ public class ObjectRuleTests
 
         ObjectStreamDependencies.Run(document).CircularStreams.Should().Equal(member ? [9] : []);
 
-        source.Reads.GetValueOrDefault(rows[3].Field2).Should().Be(1, "the walk reads the run's first object once");
-        source.Reads.GetValueOrDefault(rows[8].Field2).Should().Be(1, "the walk works the run out once, and keeps it");
+        ReadsAt(source.Reads, rows[3].Field2).Should().Be(1, "the walk reads the run's first object once");
+        ReadsAt(source.Reads, rows[8].Field2).Should().Be(1, "the walk works the run out once, and keeps it");
     }
 
     [Theory]
@@ -1278,12 +1278,12 @@ public class ObjectRuleTests
 
         foreach (var number in read)
         {
-            reads.GetValueOrDefault(rows[number].Field2).Should().Be(1, $"the walk reads object {number} of the chain once");
+            ReadsAt(reads, rows[number].Field2).Should().Be(1, $"the walk reads object {number} of the chain once");
         }
 
         if (zero >= 0)
         {
-            reads.GetValueOrDefault(zero).Should().Be(0, "the walk never reads object 0");
+            ReadsAt(reads, zero).Should().Be(0, "the walk never reads object 0");
         }
 
         Walk(cache).Read.Should().Be(keptAll, $"a cache of {cache} keeps every object the walk reads again");
@@ -4269,6 +4269,12 @@ public class ObjectRuleTests
             return false;
         }
     }
+
+    /// <summary>
+    /// Gives how many reads of <paramref name="reads"/> started where a read of the object a row places starts: the byte before
+    /// <paramref name="row"/>, which tells a row that cuts a number.
+    /// </summary>
+    private static int ReadsAt(Dictionary<long, int> reads, long row) => reads.GetValueOrDefault(row - PdfFileReader.ByteBeforeRow);
 
     /// <summary>A file in memory that counts what is read of it, and how many reads start at each offset.</summary>
     private sealed class OffsetCountingSource(byte[] data) : PdfFileSource

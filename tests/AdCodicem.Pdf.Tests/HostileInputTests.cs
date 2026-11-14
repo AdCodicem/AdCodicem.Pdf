@@ -254,7 +254,8 @@ public class HostileInputTests
 
         document.GetObject(new PdfObjectId(5)).AsStream().Required().Data.Length.Should().Be(68);
 
-        (source.BytesRead - opened).Should().BeLessThanOrEqualTo(PdfFileReader.InitialObjectWindow, "the window holds the object and what follows it");
+        (source.BytesRead - opened).Should().BeLessThanOrEqualTo(
+            PdfFileReader.InitialObjectWindow + PdfFileReader.ByteBeforeRow, "the window holds the object and what follows it");
         document.Diagnostics.Should().ContainSingle().Which.Code.Should().Be(PdfDiagnosticCodes.StreamTruncated);
         document.Reader.IsCutAtLimit(5).Should().BeFalse();
     }
@@ -2190,7 +2191,7 @@ public class HostileInputTests
         // that order. X70 does not decode alike, nor, walked again in turn, do X69, X68 and on. Under a cache of 64 objects,
         // the walk keeps the dictionaries of the last 64 that waited, X6 to X69, and reads again those of X2 to X5 when it
         // walks them again: each is read three times — by its first walk, its second and the walk that judges it —, X1's
-        // once, the others' twice (#312).
+        // once, the others' twice (#312). A read where a row places an object starts at the byte before it.
         const int Count = 70;
         var file = PackedFile([.. Enumerable.Range(0, Count).Select(x => new PackedStream(
             1000 + (2 * x),
@@ -2206,7 +2207,8 @@ public class HostileInputTests
         ObjectStreamDependencies.Run(document).CircularStreams.Should().Equal(1138);
 
         Enumerable.Range(0, Count).Select(x => 1000 + (2 * x))
-            .Where(stream => source.Windows.Count(window => window.Offset == text.IndexOf(string.Create(CultureInfo.InvariantCulture, $"\n{stream} 0 obj"), StringComparison.Ordinal) + 1) == 3)
+            .Where(stream => source.Windows.Count(window => window.Offset ==
+                text.IndexOf(string.Create(CultureInfo.InvariantCulture, $"\n{stream} 0 obj"), StringComparison.Ordinal) + 1 - PdfFileReader.ByteBeforeRow) == 3)
             .Should().Equal([1002, 1004, 1006, 1008], "the dictionaries of the 64 streams that waited last are kept, and no more");
     }
 
@@ -2848,8 +2850,10 @@ public class HostileInputTests
     public void Settling_the_index_reads_of_each_entry_no_more_than_a_load_reads_before_its_body()
     {
         // Two thousand objects, each three bytes past where its row places it. Settling the index, as the validator does
-        // before its first rule, reads at each row the first bytes of a header and the 512 bytes either side, as a load
-        // does before it relocates the object, then the header found: no more, and nothing is rebuilt (#237).
+        // before its first rule, reads at each row the first bytes of a header, with the byte before it, and the 512 bytes
+        // either side, with the end-of-file marker's length before them, as a load does before it relocates the object, then
+        // the header found; and the file once, the scan that tells which headers lie inside other objects: no more, and
+        // nothing is rebuilt (#237, #171).
         const int Count = 2000;
         var file = new HandWrittenFile();
         var rows = new Dictionary<int, long>
@@ -2871,12 +2875,45 @@ public class HostileInputTests
         document.Reader.SettleIndex();
 
         document.WasRepaired.Should().BeFalse();
-        (source.BytesRead - opened).Should().BeLessThanOrEqualTo((Count + 2) * (64L + 1024 + 64));
+        (source.BytesRead - opened).Should().BeLessThanOrEqualTo(
+            ((Count + 2) * (64L + PdfFileReader.ByteBeforeRow + "%%EOF".Length + 1024 + 64)) + file.Bytes.Length);
 
         // Settled once, the index is not looked at again.
         var settled = source.BytesRead;
         document.Reader.SettleIndex();
         source.BytesRead.Should().Be(settled);
+    }
+
+    [Theory]
+    [InlineData("4 0 obj", true)]
+    [InlineData("6 0 obj", false)]
+    public void A_row_with_no_header_of_its_object_near_it_costs_no_scan_of_the_file(string near, bool found)
+    {
+        // Object 4's row points 5 bytes past a header in the middle of 200 KB of comments: object 4's own, or object 6's.
+        // The search near the row asks the rebuild's scan which headers lie inside other objects only where the bytes it
+        // searches hold a header of the object at all, read back from its obj: that scan reads the file once; a row with
+        // none near it reads no more than the bytes searched and the headers read at the row.
+        var padding = "%" + new string('c', 100_000) + "\n";
+        var body = padding + near + "\n(" + near[..1] + ")\nendobj\n" + padding;
+        var (file, _) = NearbyFiles.FourNear(body, near, 5);
+        using var source = new StrictCountingSource(file);
+        using var document = PdfDocument.Open(source, options: null, ownsSource: false);
+        document.Reader.ChainIndex!.TryGet(4, out var entry).Should().BeTrue();
+        var before = source.BytesRead;
+
+        var placement = document.Reader.PlaceHeader(4, entry, new HeaderReading(document.Reader.HeaderReadingAllowance));
+
+        placement.Place.Should().Be(found ? HeaderPlace.Nearby : HeaderPlace.NotFound);
+        var read = source.BytesRead - before;
+
+        if (found)
+        {
+            read.Should().BeGreaterThanOrEqualTo(file.Length, "the scan reads the file");
+        }
+        else
+        {
+            read.Should().BeLessThan(4 * PdfFileReader.NearbySearchRadius, "nothing but the bytes searched and the row's header is read");
+        }
     }
 
     [Theory]
@@ -3197,7 +3234,7 @@ public class HostileInputTests
         var placement = document.Reader.PlaceHeader(3, entry, new HeaderReading(allowance));
 
         placement.Place.Should().Be(HeaderPlace.Undecided);
-        (source.BytesRead - before).Should().BeLessThanOrEqualTo(most);
+        (source.BytesRead - before).Should().BeLessThanOrEqualTo(most + PdfFileReader.ByteBeforeRow);
     }
 
     [Theory]
@@ -4067,7 +4104,8 @@ public class HostileInputTests
     {
         // M4-01: twenty objects before each of two blocks of null bytes, each row a few bytes into the block after its object,
         // which a load finds near the row. Settling crossed the shorter block again for each row into it, spent what it may
-        // read, and rebuilt an index no load rebuilds.
+        // read, and rebuilt an index no load rebuilds. Besides the blocks crossed, it reads the file once more, the scan that
+        // tells which headers lie inside other objects (#171).
         const int Objects = 20;
         var file = new HandWrittenFile();
         var rows = new Dictionary<int, long>
@@ -4105,7 +4143,7 @@ public class HostileInputTests
         document.Reader.SettleIndex();
 
         document.WasRepaired.Should().BeFalse();
-        (source.BytesRead - opened).Should().BeLessThan(bytes.Length + (2 * 64 * 1024) + (2 * Objects * (128L + (2 * PdfFileReader.NearbySearchRadius) + 64)));
+        (source.BytesRead - opened).Should().BeLessThan((2L * bytes.Length) + (2 * 64 * 1024) + (2 * Objects * (128L + (2 * PdfFileReader.NearbySearchRadius) + 64)));
         new PdfValidator().Validate(document).Findings.Should().HaveCount(2 * Objects)
             .And.OnlyContain(finding => finding.RuleId == PdfValidationRuleIds.XRefEntryShifted);
     }

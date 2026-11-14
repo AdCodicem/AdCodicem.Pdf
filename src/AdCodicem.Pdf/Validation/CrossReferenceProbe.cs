@@ -69,6 +69,7 @@ internal sealed class CrossReferenceProbe
         _reading = new HeaderReading(allowance);
         Broken = new(room);
         Shifted = new(room);
+        Unconfirmed = new(room);
         GenerationMismatches = new(room);
         NotChecked = new(room);
     }
@@ -78,6 +79,12 @@ internal sealed class CrossReferenceProbe
 
     /// <summary>Gets the entries whose object is a few bytes from where they place it, or at another index of its stream.</summary>
     public ProbeFindings Shifted { get; }
+
+    /// <summary>
+    /// Gets the entries whose object is not where they place it, and a header near it the search does not vouch for is
+    /// taken in its place (<see cref="PdfFileReader.PlaceHeader"/>).
+    /// </summary>
+    public ProbeFindings Unconfirmed { get; }
 
     /// <summary>Gets the entries whose generation is not the one their object is written with.</summary>
     public ProbeFindings GenerationMismatches { get; }
@@ -206,16 +213,20 @@ internal sealed class CrossReferenceProbe
 
             case HeaderPlace.Nearby when !placement.GuardAtOffset:
                 // The generation is the one the reader records for the object it relocates, read as a load reads it: a
-                // header longer than a first read is judged all the same (#118).
-                if (Shifted.Take())
-                {
-                    var found = !inFile ? "outside the file" :
-                        placement.NumberAtOffset > 0 ? Invariant($"where there is the header of object {placement.NumberAtOffset}") :
-                        "where there is no object header";
+                // header longer than a first read is judged all the same (#118). One the search does not vouch for is a
+                // choice the file does not designate (ADR 45).
+                var findings = placement.Vouched ? Shifted : Unconfirmed;
 
-                    Shifted.Keep(new ProbeFinding(
+                if (findings.Take())
+                {
+                    var given = Invariant($"The entry of object {number} gives offset {Named(reader, entry, offset, inFile)}, {(inFile ? WhatLiesAt(placement) : "outside the file")}");
+                    var distance = CountText.Distance(placement.Position - offset, "it");
+
+                    findings.Keep(new ProbeFinding(
                         at,
-                        Invariant($"The entry of object {number} gives offset {Named(reader, entry, offset, inFile)}, {found}; the object starts {CountText.Distance(placement.Position - offset, "it")}, at offset {placement.Position}.")));
+                        placement.Vouched ? Invariant($"{given}; the object starts {distance}, at offset {placement.Position}.")
+                        : placement.Kind == ScannedPlaceKind.Clean ? Invariant($"{given}; the object is defined more than once within {PdfFileReader.NearbySearchRadius} bytes of it, and the reader takes the nearest definition, {distance}, at offset {placement.Position}, which the entries next to it do not confirm.")
+                        : Invariant($"{given}; the reader takes the header {distance}, at offset {placement.Position}, which it cannot tell lies between objects: it may lie in the data of a stream whose length is not confirmed, or in a string that runs past its object.")));
                 }
 
                 CheckGeneration(number, entry, placement.Position, placement.Generation);
@@ -234,11 +245,9 @@ internal sealed class CrossReferenceProbe
             case HeaderPlace.NotFound:
                 if (Broken.Take())
                 {
-                    var there = placement.NumberAtOffset > 0 ? Invariant($"the header of object {placement.NumberAtOffset}") : "no object header";
-
                     Broken.Keep(new ProbeFinding(
                         at,
-                        Invariant($"The entry of object {number} gives offset {offset}, where there is {there}, and the object is not within {PdfFileReader.NearbySearchRadius} bytes of it.")));
+                        Invariant($"The entry of object {number} gives offset {offset}, {WhatLiesAt(placement)}, and the object is not within {PdfFileReader.NearbySearchRadius} bytes of it.")));
                 }
 
                 return;
@@ -264,6 +273,14 @@ internal sealed class CrossReferenceProbe
                 return;
         }
     }
+
+    /// <summary>Says what lies at the offset an entry gives, in the file, as a finding words it: built only for a finding.</summary>
+    private static string WhatLiesAt(HeaderPlacement placement) => placement.NumberAtOffset switch
+    {
+        > 0 => Invariant($"where there is the header of object {placement.NumberAtOffset}"),
+        PdfFileReader.HeaderCutsNumber => "where it cuts the number of an object header",
+        _ => "where there is no object header",
+    };
 
     /// <summary>Writes the offset an entry gives, as a finding names it: built only for a finding.</summary>
     private static string Named(PdfFileReader reader, XRefEntry entry, long offset, bool inFile) =>

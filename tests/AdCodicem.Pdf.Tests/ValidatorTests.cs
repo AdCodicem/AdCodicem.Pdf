@@ -68,6 +68,7 @@ public class ValidatorTests
             PdfValidationRuleIds.XRefHybridStreamWrong,
             PdfValidationRuleIds.XRefEntryBroken,
             PdfValidationRuleIds.XRefEntryShifted,
+            PdfValidationRuleIds.XRefEntryUnconfirmed,
             PdfValidationRuleIds.XRefGenerationMismatch,
             PdfValidationRuleIds.XRefObjectStreamCircular,
             PdfValidationRuleIds.XRefObjectStreamBroken,

@@ -134,7 +134,7 @@ public class WindowEdgeTests
             var read = source.BytesRead - beforeLoading;
             var length = stream.GetRawBytes().Length;
 
-            if (read > Window + PdfObjectParser.EndObjLookahead || length != Window - shortOfEdge - DataStart(Window - shortOfEdge) ||
+            if (read > Window + PdfFileReader.ByteBeforeRow + PdfObjectParser.EndObjLookahead || length != Window - shortOfEdge - DataStart(Window - shortOfEdge) ||
                 document.Diagnostics.Count > 0)
             {
                 failures.Add($"{shortOfEdge} bytes short: read {read} bytes, data of {length}, {document.Diagnostics.Count} diagnostics");

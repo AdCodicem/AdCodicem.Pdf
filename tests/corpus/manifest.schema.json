@@ -315,6 +315,7 @@
               "xref.hybrid-stream-wrong",
               "xref.entry-broken",
               "xref.entry-shifted",
+              "xref.entry-unconfirmed",
               "xref.generation-mismatch",
               "xref.object-stream-circular",
               "xref.object-stream-broken",

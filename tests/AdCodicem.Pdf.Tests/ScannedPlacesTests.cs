@@ -418,6 +418,35 @@ public class ScannedPlacesTests
         rebuilt.Reader.GetScanMemo().IsWhole.Should().BeFalse();
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void A_header_near_a_row_past_where_the_memo_is_whole_is_taken_as_the_bytes_give_it_and_the_bound_reported(bool throwOnLimit)
+    {
+        // MaxIndexEntries of 8: the scan takes the headers of 1 and 2, then ten definitions of 3; the memo holds no place past
+        // the sixth of them. Object 4's header, 5 bytes before its row, lies past there: the search near the row goes without
+        // the memo's word for it, reports the memo's bound, and serves the header as the bytes give it. Opened to throw on a
+        // guard, the read throws there.
+        var body = string.Concat(Enumerable.Range(0, 10).Select(index => string.Create(CultureInfo.InvariantCulture, $"3 0 obj\n({index})\nendobj\n")));
+        var (file, row) = NearbyFiles.FourNear(body + "4 0 obj\n(four)\nendobj\n", "4 0 obj", 5);
+        var options = new PdfReaderOptions { ThrowOnLimit = throwOnLimit, Limits = PdfReaderLimits.Default with { MaxIndexEntries = 8 } };
+
+        using var document = PdfDocument.Open(file, options);
+
+        if (throwOnLimit)
+        {
+            FluentActions.Invoking(() => document.GetObject(new PdfObjectId(4))).Should().Throw<PdfLimitExceededException>()
+                .Which.LimitName.Should().Be(nameof(PdfReaderLimits.MaxIndexEntries));
+            return;
+        }
+
+        document.GetObject(new PdfObjectId(4)).AsText().Should().Be("four");
+        document.WasRepaired.Should().BeFalse();
+        document.Diagnostics.Select(entry => entry.Code).Should().Equal(PdfDiagnosticCodes.LimitIndexEntries, PdfDiagnosticCodes.XRefOffsetAdjusted);
+        document.Diagnostics[0].Position.Should().Be(document.Reader.GetScanMemo().FullAt);
+        document.Diagnostics[1].Position.Should().Be(row - 5);
+    }
+
     [Fact]
     public void A_whole_memo_or_none_has_no_bound_to_report()
     {
