@@ -3,10 +3,11 @@ using AdCodicem.Pdf.Documents;
 namespace AdCodicem.Pdf.IO;
 
 /// <summary>
-/// What the rebuild's scan for objects takes of a file, kept for the document's life so that the file is scanned once: each
-/// object header and each <c>xref</c> keyword the scan takes, sorted by where each starts, each with how the scan took it
-/// (<see cref="ScannedPlaceKind"/>), and where the trailers it notes lie (<see cref="Trailers"/>). The scan records it
-/// through a <see cref="Builder"/>, which completes it; once complete, it changes no more.
+/// What the rebuild's scan for objects takes of a file, kept for the document's life so that the file is scanned for it once,
+/// a rebuild after it taking its headers from it: each object header and each <c>xref</c> keyword the scan takes, sorted by
+/// where each starts, each with how the scan took it (<see cref="ScannedPlaceKind"/>), and where the trailers it notes lie
+/// (<see cref="Trailers"/>). The scan records it through a <see cref="Builder"/>, which completes it; once complete, it
+/// changes no more.
 /// </summary>
 /// <remarks>
 /// <para>

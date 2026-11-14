@@ -7,7 +7,8 @@ namespace AdCodicem.Pdf.Benchmarks;
 
 /// <summary>
 /// Measures the rebuild's scan for objects, which reads an object header back from each <c>obj</c> keyword of a file it
-/// rebuilds the index of, and delimits each object it takes as a load lexes its value (#171).
+/// rebuilds the index of, and delimits each object it takes as a load lexes its value, and the same scan made for the memo
+/// of what it takes (#171).
 /// </summary>
 /// <remarks>
 /// <para>
@@ -17,9 +18,14 @@ namespace AdCodicem.Pdf.Benchmarks;
 /// string holds the header; and it lexes the value of each object it takes, so that a header another object holds is none.
 /// A sound file or plain headers cost what reading the headers and their values costs; a comment between a header's
 /// tokens, a long comment line before each <c>obj</c>, or a string holding a <c>%</c> on the line before it, is swept once.
-/// Every shape costs time linear in the file, and allocates nothing for it but the index and what the reader keeps of what
-/// the scan takes, 16 bytes at most for each header and each <c>xref</c> keyword (<c>ScanMemo</c>): a file of lines of
-/// <c>xref</c> keywords holds no header, and costs the scan noting each keyword.
+/// Every shape costs time linear in the file, and allocates nothing for it but the index.
+/// </para>
+/// <para>
+/// The scan for the memo, which the searches near a row and near an offset ask for, runs on a document opened outside the
+/// measurement, its index rebuilt already, since a rebuild makes no memo: it indexes nothing, also looks for each
+/// <c>xref</c> keyword, and allocates what the reader keeps of what it takes, 16 bytes at most for each header and each
+/// keyword, in an array grown by doubling and trimmed once the scan ends (<c>ScanMemo</c>). A file of lines of <c>xref</c>
+/// keywords holds no header, and costs the scan for the memo noting each keyword.
 /// </para>
 /// <para>
 /// The <c>trailer</c> keyword the generated files end with names the catalog, which the rebuild merges; the scan for
@@ -35,6 +41,8 @@ public class ObjectScanBenchmarks
     private const int LinesSize = 4 * 1024 * 1024;
 
     private byte[] _document = [];
+
+    private PdfDocument? _opened;
 
     /// <summary>
     /// Gets or sets what the file holds: a sound document of 1,000 pages; objects whose headers are plain; objects whose
@@ -64,6 +72,15 @@ public class ObjectScanBenchmarks
         using var document = PdfDocument.Open(_document);
         return document.ObjectCount;
     }
+
+    [IterationSetup(Target = nameof(ScanForMemo))]
+    public void OpenForMemo() => _opened = PdfDocument.Open(_document);
+
+    [IterationCleanup(Target = nameof(ScanForMemo))]
+    public void CloseAfterMemo() => _opened?.Dispose();
+
+    [Benchmark(Description = "Scan the file for the memo of what the rebuild's scan takes")]
+    public int ScanForMemo() => _opened!.Reader.GetScanMemo().Count;
 
     /// <summary>Gives <paramref name="file"/> with its <c>startxref</c> naming nothing, so that opening it rebuilds its index.</summary>
     private static byte[] WithoutIndex(byte[] file)

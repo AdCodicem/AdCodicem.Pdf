@@ -8,8 +8,9 @@ using AdCodicem.Pdf.Objects;
 namespace AdCodicem.Pdf.Tests;
 
 /// <summary>
-/// What the rebuild's scan for objects takes of a file is recorded once a document, whatever was read before, and a
-/// rebuild takes its headers from that record rather than scanning the file again.
+/// What the rebuild's scan for objects takes of a file is recorded once a document, the first time it is asked for, whatever
+/// was read before; a rebuild takes its headers from that record where one was made rather than scanning the file again, and
+/// makes none of its own.
 /// </summary>
 public class ScannedPlacesTests
 {
@@ -161,8 +162,8 @@ public class ScannedPlacesTests
     [Fact]
     public void The_memo_is_the_same_whatever_was_read_before_it_was_made()
     {
-        // Object 4's row lies outside the file: reading it rebuilds the index. The memo is made by the first that needs it —
-        // a request for it before any read, the rebuild, or a request after other reads —, and is the same each time.
+        // Object 4's row lies outside the file: reading it rebuilds the index. The memo is made by the first request for it —
+        // before any read, after the rebuild, or after other reads —, and is the same each time.
         var file = Updated(out _);
 
         using var asked = PdfDocument.Open(file);
@@ -189,10 +190,12 @@ public class ScannedPlacesTests
     }
 
     [Fact]
-    public void A_rebuild_takes_the_headers_from_the_memo_and_reads_no_byte_of_the_file_for_its_scan()
+    public void A_rebuild_takes_the_headers_from_a_memo_made_before_it_reading_no_byte_for_its_scan_and_makes_none_itself()
     {
         // The same rebuild, run once the memo was asked for and once before: the same index, the same objects and the same
         // diagnostics, a definition met again among them; the rebuild that takes the memo reads the file a whole length less.
+        // The one run first makes no memo: asked for after it, the memo is made by a scan of the file of its own, and is the
+        // memo asked for first.
         var file = Updated(out _);
 
         var memoFirst = new StrictCountingSource(file);
@@ -207,6 +210,9 @@ public class ScannedPlacesTests
         before = rebuildFirst.BytesRead;
         scanned.GetObject(new PdfObjectId(4));
         var scanning = rebuildFirst.BytesRead - before;
+        before = rebuildFirst.BytesRead;
+        var madeAfter = scanned.Reader.GetScanMemo();
+        var askingAfter = rebuildFirst.BytesRead - before;
 
         replayed.WasRepaired.Should().BeTrue();
         replayed.Diagnostics.Should().Equal(scanned.Diagnostics);
@@ -214,6 +220,8 @@ public class ScannedPlacesTests
         Entries(replayed).Should().Equal(Entries(scanned));
         replayed.GetObject(new PdfObjectId(3)).AsText().Should().Be("three, updated");
         scanning.Should().BeGreaterThanOrEqualTo(replaying + file.Length, "the rebuild that takes the memo scans nothing");
+        askingAfter.Should().BeGreaterThanOrEqualTo(file.Length, "the rebuild run first made no memo");
+        Describe(madeAfter, file.Length).Should().Equal(Describe(replayed.Reader.GetScanMemo(), file.Length));
     }
 
     [Fact]
@@ -253,13 +261,13 @@ public class ScannedPlacesTests
     [Theory]
     [InlineData("made before the rebuild", "headers repeated at varied distances")]
     [InlineData("made before the rebuild", "one header repeated at one distance")]
-    [InlineData("made by the rebuild", "headers repeated at varied distances")]
-    [InlineData("made by the rebuild", "one header repeated at one distance")]
+    [InlineData("asked for after the rebuild", "headers repeated at varied distances")]
+    [InlineData("asked for after the rebuild", "one header repeated at one distance")]
     public void A_memo_past_its_bound_says_where_it_stops_being_whole_and_the_newest_definition_still_wins(string when, string repeats)
     {
         // MaxIndexEntries of 8: the index holds four numbers, while the scan takes the headers of 1 and 2, twenty older ones
         // of 3, the newest of 3, a keyword and a trailer keyword. The memo holds the first eight places, and stops being whole
-        // where the ninth starts; the rebuild, made before the memo or past it, scans the file again, serves the newest
+        // where the ninth starts; the rebuild, run before the memo was asked for or after, scans the file, serves the newest
         // definition of 3, and reports no guard, as none cut what it serves. A caller that goes without the memo's word past
         // there reports the guard, once.
         var file = Repeated(repeats == "one header repeated at one distance", out var definitions);
@@ -353,8 +361,8 @@ public class ScannedPlacesTests
     [Fact]
     public void A_memo_past_its_bound_throws_only_where_a_caller_goes_without_it_for_a_document_opened_to_throw_on_a_guard()
     {
-        // Asked for, the memo throws nothing as it is made; the caller that goes without its word throws each time. Made by
-        // a rebuild, it throws nothing either, and the rebuild serves the newest definition.
+        // Asked for, the memo throws nothing as it is made; the caller that goes without its word throws each time. Asked for
+        // after a rebuild, which serves the newest definition, it throws nothing either.
         var file = Repeated(alike: false, out var definitions);
         var options = new PdfReaderOptions { ThrowOnLimit = true, Limits = PdfReaderLimits.Default with { MaxIndexEntries = 8 } };
 
@@ -394,19 +402,19 @@ public class ScannedPlacesTests
     }
 
     [Fact]
-    public void A_memo_a_rebuild_made_is_kept_when_the_source_fails_past_the_scan_and_the_rebuild_run_again_takes_it()
+    public void A_rebuild_the_source_fails_past_the_memo_s_replay_leaves_the_memo_for_the_rebuild_run_again_to_take()
     {
-        // The source fails the rebuild as it merges the trailer, past the scan, which ran to its end: what the rebuild
-        // reported is withdrawn, and the read that runs the rebuild again takes the memo the failed one made, with the index,
-        // the objects and the diagnostics of a rebuild the source never failed.
+        // The memo is asked for first; the source fails the rebuild that replays it as it merges the trailer: what the rebuild
+        // reported is withdrawn, and the read that runs the rebuild again takes the same memo, with the index, the objects and
+        // the diagnostics of a rebuild the source never failed, which scanned the file.
         var file = Updated(out _);
         var trailer = Encoding.Latin1.GetString(file).LastIndexOf("trailer", StringComparison.Ordinal) + "trailer".Length;
         using var source = new FailingSource(file);
         using var document = PdfDocument.Open(source, options: null, ownsSource: false);
+        var memo = document.Reader.GetScanMemo();
         source.FailAt = trailer;
 
         FluentActions.Invoking(() => document.GetObject(new PdfObjectId(4))).Should().Throw<IOException>();
-        var memo = document.Reader.GetScanMemo();
         document.GetObject(new PdfObjectId(4));
 
         using var sound = PdfDocument.Open(file);

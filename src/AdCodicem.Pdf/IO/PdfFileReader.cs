@@ -581,8 +581,8 @@ internal sealed partial class PdfFileReader : IPdfObjectSource, IPdfStreamDataPr
     private long _scanGapBytes;
 
     /// <summary>
-    /// What the rebuild's scan for objects takes of the file, made the first time a rebuild or a search needs it, and kept for
-    /// the document's life (<see cref="GetScanMemo"/>); null before.
+    /// What the rebuild's scan for objects takes of the file, made the first time something asks for it, and kept for the
+    /// document's life (<see cref="GetScanMemo"/>); null before.
     /// </summary>
     private ScanMemo? _scanMemo;
 
