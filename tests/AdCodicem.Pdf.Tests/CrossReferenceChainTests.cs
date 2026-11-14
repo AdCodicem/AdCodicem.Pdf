@@ -1717,13 +1717,15 @@ public class CrossReferenceChainTests
     [InlineData("%xref\n", 11)]
     [InlineData("% the xref section follows\n", 32)]
     [InlineData("6 0 obj\n(see xref)\nendobj\n", 31)]
+    [InlineData("%%EOF xref tables follow\n", 30)]
     public void The_word_xref_in_a_comment_or_a_string_near_where_an_offset_names_no_section_is_no_section_found_moved(string between, int distance)
     {
         // The newest table's /Prev names a place inside the endobj before the update's table, past which a comment or a
-        // string holds the word xref, nearer than the table. Read from that word, it is a table's keyword followed by what
-        // no table holds: it was taken for the section found moved, which cannot be read, the chain ended there, and the
-        // file was rebuilt as it opened. A load reads no keyword there, the line lexed from its start: the word is dropped
-        // as any place that holds no section, and the search goes on to the update's table (#281).
+        // string holds the word xref, nearer than the table — a comment an end-of-file marker opens among them, which the
+        // rebuild's scan passes over and takes the word past it. Read from that word, it is a table's keyword followed by
+        // what no table holds: it was taken for the section found moved, which cannot be read, the chain ended there, and
+        // the file was rebuilt as it opened. A load reads no keyword there, the line lexed from its start: the word is
+        // dropped as any place that holds no section, and the search goes on to the update's table (#171, #281).
         var (file, update, named) = NearbyFiles.UpdateBehindAStrayWord(between);
         using var document = PdfDocument.Open(file);
 
@@ -1740,10 +1742,11 @@ public class CrossReferenceChainTests
     [Theory]
     [InlineData("xref\n")]
     [InlineData(">>xref\n")]
+    [InlineData("%%EOF\nxref\n")]
     public void An_xref_keyword_a_load_reads_on_its_line_near_where_an_offset_names_no_section_is_the_section_found_moved(string between)
     {
-        // The same file, with an xref keyword where the word was: at the start of its line, or after the end of a dictionary on
-        // it, a token a load reads. What follows it is no table's: it is the section found moved, which cannot be read, and
+        // The same file, with an xref keyword where the word was: at the start of its line — the line after an end-of-file
+        // marker among them —, or after the end of a dictionary on it, a token a load reads. What follows it is no table's: it is the section found moved, which cannot be read, and
         // ends the search, as the keyword ends it where an offset names it (#281).
         var (file, update, _) = NearbyFiles.UpdateBehindAStrayWord(between);
         var keyword = update - between.Length + between.IndexOf('x', StringComparison.Ordinal);
@@ -1789,11 +1792,12 @@ public class CrossReferenceChainTests
     [InlineData("% 8 0 obj << /Type /XRef >>\n")]
     [InlineData("10 0 obj\n(see 8 0 obj << /Type /XRef >> here)\nendobj\n")]
     [InlineData("x8 0 obj << /Type /XRef >>\n")]
+    [InlineData("%%EOF 8 0 obj << /Type /XRef >>\n")]
     public void The_header_of_a_cross_reference_stream_in_a_comment_a_string_or_behind_a_letter_near_where_an_offset_names_no_section_is_no_section_found_moved(string between)
     {
         // The update frees object 3, and between where the newest table's /Prev names the update's table and where it is lies
-        // a comment or a string holding the header of an object of /Type /XRef, or such a header whose number a letter runs
-        // into. Read from its number, it is a cross-reference stream's dictionary that no stream data follows: it was taken
+        // a comment or a string holding the header of an object of /Type /XRef — a comment an end-of-file marker opens among
+        // them, past which the rebuild's scan takes the header —, or such a header whose number a letter runs into. Read from its number, it is a cross-reference stream's dictionary that no stream data follows: it was taken
         // for the section found moved, which cannot be read, the chain ended there, and the rebuild that followed served
         // object 3's old revision, which the update freed. A load reads no header there, its line lexed from its start: it is
         // dropped as any place that holds no section is, and the search goes on to the update's table (#281).
@@ -1837,10 +1841,11 @@ public class CrossReferenceChainTests
     [InlineData("+8 0 obj << /Type /XRef >>\n", 1)]
     [InlineData("++8 0 obj << /Type /XRef >>\n", 2)]
     [InlineData("+-8 0 obj << /Type /XRef >>\n", 2)]
+    [InlineData("%%EOF\n8 0 obj << /Type /XRef >>\n", 6)]
     public void The_header_of_a_cross_reference_stream_a_load_reads_near_where_an_offset_names_no_section_is_the_section_found_moved(string between, int at)
     {
         // The same file, with the header of an object of /Type /XRef where the comment was: a comment between its number and
-        // its generation, or after a stray endobj on its line, or its number written with a sign or a run of signs that
+        // its generation, or after a stray endobj on its line, or on the line after an end-of-file marker, or its number written with a sign or a run of signs that
         // starts with a +, a header a load reads. No stream data follows its dictionary: it is the section found moved,
         // which cannot be read, and ends the search, as it ends it where an offset names it (#281). The walk back from obj
         // finds a signed header at its first digit, where it is read and found: its line was asked there whether a token
@@ -1913,23 +1918,21 @@ public class CrossReferenceChainTests
     [InlineData("+5 0 obj", 512, "cut")]
     [InlineData("+5 0 obj", 513, "cut")]
     [InlineData("++5 0 obj", 514, "cut")]
-    public void A_signed_header_near_where_a_prev_names_no_section_is_read_at_its_digit_and_taken_where_it_reads_or_its_first_sign_lies_within_the_bytes_searched(
+    public void A_signed_header_near_where_a_prev_names_no_section_is_taken_at_its_digit_only_where_its_first_sign_lies_within_the_bytes_searched(
         string header, int past, string stream)
     {
         // The newest table's /Prev names a place 512 to 514 bytes past the first byte of stream 5's header, in the comment
         // that follows the stream, its number written with a sign or a run of signs that starts with a +: the stream reads,
         // its /W gives a field a negative width, or its dictionary writes a /Pad that MaxTrailerLength 160 cuts. The bytes
         // the search near that place looks at start 512 bytes before it, at the header's first sign, at a sign past it, or
-        // at its digit, the window holding the byte before them. The walk back from obj finds the header at its digit,
-        // within the bytes searched, whether or not its first sign lies within them, and the header is read there: a stream
-        // that reads is taken, found moved, and the chain goes on through its /Prev to the oldest table. Where its first
-        // sign lies within the bytes searched, the header is a token from that sign, as a load reads it, and declares
-        // itself a section: the stream that cannot be read is the section found moved, handing its /Prev on, and the one a
+        // at its digit, the window holding the byte before them. The rebuild's scan takes the header from its first sign,
+        // as a load reads it, and the search tries it where that sign lies within the bytes searched, reading it at the digit
+        // the walk back from obj finds: the stream that reads is taken, found moved, and the chain goes on through its /Prev
+        // to the oldest table; the stream that cannot be read is the section found moved, handing its /Prev on; and the one a
         // guard cut is the guard's, the chain ending there. Where it lies before them — in the one byte the window holds
-        // before them, or farther back —, the header declares nothing: neither the stream that cannot be read nor
-        // the one a guard cut is taken, the section is reported missing and the index rebuilt as the document opens, the
-        // guard reached in reading the cut one standing. Under the lowered bound, the dashes of the comment at the place
-        // named are cut too, and reported first (#197, #208, #281, #327).
+        // before them, or farther back —, the header is not tried, whatever it holds: the section is reported missing and
+        // the index rebuilt as the document opens. Under the lowered bound, the dashes of the comment at the place named are
+        // cut, and reported first (#197, #208, #281, #327).
         var entries = stream switch
         {
             "readable" => "/Type /XRef /Size 9 /Index [4 2 7 1] /W [1 4 2]",
@@ -1947,11 +1950,15 @@ public class CrossReferenceChainTests
         if (stream == "cut")
         {
             expected.Add((PdfDiagnosticCodes.LimitTrailer, named));
-            expected.Add((PdfDiagnosticCodes.LimitTrailer, digit));
         }
 
-        if (stream == "readable" || within)
+        if (within)
         {
+            if (stream == "cut")
+            {
+                expected.Add((PdfDiagnosticCodes.LimitTrailer, digit));
+            }
+
             expected.Add((PdfDiagnosticCodes.XRefOffsetAdjusted, digit));
 
             if (stream == "unreadable")
@@ -2000,98 +2007,174 @@ public class CrossReferenceChainTests
     }
 
     [Theory]
-    [InlineData("Notes on the file format.\n", "xref")]
-    [InlineData("Notes on the file format.\nThe ", "xref")]
-    [InlineData("Example:\n", "12 0 obj\n<< /Type /XRef /Size 13 /W [1 2 1] >>\nendobj\n")]
-    [InlineData("Notes on the file format.\n", "text")]
-    public void The_word_xref_or_a_cross_reference_stream_s_header_in_stream_data_short_of_where_a_prev_names_is_taken_for_the_section_found_moved(
-        string before, string word)
+    [InlineData("Notes on the file format.\n", "xref", StreamDataAfterTheWord)]
+    [InlineData("Notes on the file format.\nThe ", "xref", StreamDataAfterTheWord)]
+    [InlineData("Example:\n", "12 0 obj\n<< /Type /XRef /Size 13 /W [1 2 1] >>\nendobj\n", StreamDataAfterTheWord)]
+    [InlineData("%PDF-1.3\n%attached original\n", "xref", "\n0 1\n0000000000 65535 f \ntrailer\n<< /Size 1 >>\nstartxref\n28\n%%EOF\n")]
+    [InlineData("%PDF-1.3\n", "xref", "\n0 1\n0000000000 65535 f \ntrailer\n<< /Size 1 /Prev 12 >>\n%%EOF\n")]
+    [InlineData("Example:\n", "12 0 obj", "\n<< /Type /XRef /Size 13 /W [1 2 1] /Prev 9 /Length 3 >>\nstream\nabc\nendstream\nendobj\n")]
+    [InlineData(AttachedObjects, "xref", "\n0 3\n0000000000 65535 f \n0000000009 00000 n \n0000000058 00000 n \ntrailer\n<< /Size 3 /Root 1 0 R >>\nstartxref\n107\n%%EOF\n")]
+    [InlineData(null, "xref", "\n0 1\n0000000000 65535 f \ntrailer\n<< /Size 1 >>\nstartxref\n9\n%%EOF\n")]
+    public void The_word_xref_or_a_section_in_stream_data_short_of_where_a_prev_names_is_no_section_and_the_search_goes_on_to_the_update_s_table(
+        string? before, string word, string after)
     {
-        // Object 4, an embedded file the update writes uncompressed, holds in its data the word xref, at the start of a line
-        // or in its middle, or the header and dictionary of an object of /Type /XRef, and the newest table's /Prev names the
-        // place 2 bytes past where it starts, short of the update's table. No load lexes an embedded file's data, but the
-        // search near the offset lexes the place's line alone, from its start, and sees no stream data an earlier line opened
-        // (#171): the word, or the header, is a token there, taken for the section found moved, which cannot be read and ends
-        // the search, the update's table left unread. The chain ends there, and the index is rebuilt as the document opens,
-        // for the catalog, which only the first table indexes: object 6, which the update freed, is read as the rebuild finds
-        // it. With no such word in the data, the search goes on to the update's table, and object 6 is free.
-        var (file, at, named, update) = NearbyFiles.UpdatePastAWordInStreamData(before, word, StreamDataAfterTheWord);
+        // Object 4, an embedded file the update writes uncompressed, its length confirmed, holds in its data the word xref,
+        // at the start of a line or in its middle, the header and dictionary of an object of /Type /XRef, an attached file
+        // whose own table reads — its trailer naming no older section, or a /Prev near the first table; with objects of its
+        // own before it; or 100 KB past the attached file's start —, or a cross-reference stream it quotes, read in part;
+        // the newest table's /Prev names the place 2 bytes past where it starts, short of the update's table. The rebuild's
+        // scan takes nothing inside the stream's data, and the search near the offset tries only what the scan takes: it
+        // goes on to the update's table, which frees object 6, and nothing is rebuilt (#171).
+        var (file, _, named, update) = NearbyFiles.UpdatePastAWordInStreamData(before ?? LargeAttachment, word, after);
         using var document = PdfDocument.Open(file);
 
-        var found = document.Reader.Structure.Sections[1];
-
-        if (word == "text")
-        {
-            (found.State, found.Offset).Should().Be((XRefSectionState.Relocated, update));
-            document.Diagnostics.Should().ContainSingle().Which.Message.Should().Be(Invariant(
-                $"The cross-reference section /Prev names at offset {named} was found {update - named} bytes after it."));
-            document.GetObject(new PdfObjectId(6)).Should().BeSameAs(PdfNull.Instance);
-            document.WasRepaired.Should().BeFalse();
-            return;
-        }
-
-        (found.State, found.Kind, found.NamedOffset, found.Offset).Should().Be(
-            (XRefSectionState.Malformed, word == "xref" ? XRefSectionKind.Table : XRefSectionKind.Stream, named, at));
-        document.WasRepaired.Should().BeTrue("the catalog is the first table's alone");
-        document.Diagnostics.Select(diagnostic => diagnostic.Code).Should().Equal(
-            PdfDiagnosticCodes.XRefOffsetAdjusted, PdfDiagnosticCodes.XRefSectionUnreadable, PdfDiagnosticCodes.XRefRebuilt);
-        document.Diagnostics[0].Message.Should().Be(Invariant($"The cross-reference section /Prev names at offset {named} was found 2 bytes before it."));
-        document.Diagnostics[1].Position.Should().Be(at);
-        Text(document, 6).Should().Be("six, freed by the update");
+        var sections = document.Reader.Structure.Sections;
+        (sections.Count, sections[1].State, sections[1].Kind, sections[1].Offset).Should().Be(
+            (3, XRefSectionState.Relocated, XRefSectionKind.Table, update));
+        document.Diagnostics.Should().ContainSingle().Which.Message.Should().Be(Invariant(
+            $"The cross-reference section /Prev names at offset {named} was found {update - named} bytes after it."));
+        document.GetObject(new PdfObjectId(6)).Should().BeSameAs(PdfNull.Instance);
+        document.WasRepaired.Should().BeFalse();
+        new PdfValidator().Validate(document).Findings.Select(finding => finding.RuleId).Should().Equal(PdfValidationRuleIds.XRefSectionShifted);
     }
 
-    [Theory]
-    [InlineData("12 0 obj\n<< /Type /XRef /Size 13 /W [1 2 1] >>\nendobj\n")]
-    [InlineData("text")]
-    public void A_cross_reference_stream_s_header_in_stream_data_short_of_where_an_xrefstm_names_is_taken_for_the_stream_found_moved(string word)
+    [Fact]
+    public void A_cross_reference_stream_s_header_in_stream_data_short_of_where_an_xrefstm_names_is_no_section_and_the_search_goes_on_to_the_update_s_stream()
     {
         // As above, through the /XRefStm of the update's table, which falls short of the update's cross-reference stream, 2
         // bytes past where the header and dictionary of an object of /Type /XRef start in the data of the embedded file the
-        // update writes before it: the header is taken for the stream found moved, which cannot be read (#171). A dictionary
-        // no stream data follows refuses no number to the older sections' rows: the first table's row for object 3, which the
-        // update wrote again, stands, and object 3, read before anything sets a rebuild off, is read as the first revision
-        // wrote it. With no header in the data, the search goes on to the stream, and object 3 reads as the update wrote it.
-        var (file, at, named, stream) = NearbyFiles.HybridPastAWordInStreamData("Example:\n", word, StreamDataAfterTheWord);
+        // update writes before it: the search goes on to the stream, and object 3 reads as the update wrote it (#171).
+        var (file, _, named, stream) = NearbyFiles.HybridPastAWordInStreamData(
+            "Example:\n", "12 0 obj\n<< /Type /XRef /Size 13 /W [1 2 1] >>\nendobj\n", StreamDataAfterTheWord);
         using var document = PdfDocument.Open(file);
 
         var found = document.Reader.Structure.Sections[1];
-        found.NamedBy.Should().Be("/XRefStm");
-
-        if (word == "text")
-        {
-            (found.State, found.Kind, found.Offset).Should().Be((XRefSectionState.Relocated, XRefSectionKind.Stream, stream));
-            document.Diagnostics.Should().ContainSingle().Which.Message.Should().Be(Invariant(
-                $"The cross-reference section /XRefStm names at offset {named} was found {stream - named} bytes after it."));
-            Text(document, 3).Should().Be("three new");
-            document.WasRepaired.Should().BeFalse();
-            return;
-        }
-
-        (found.State, found.Kind, found.NamedOffset, found.Offset, found.NumbersRefused).Should().Be(
-            (XRefSectionState.Malformed, XRefSectionKind.Stream, named, at, false));
-        Text(document, 3).Should().Be("three old");
+        (found.NamedBy, found.State, found.Kind, found.Offset).Should().Be(("/XRefStm", XRefSectionState.Relocated, XRefSectionKind.Stream, stream));
+        document.Diagnostics.Should().ContainSingle().Which.Message.Should().Be(Invariant(
+            $"The cross-reference section /XRefStm names at offset {named} was found {stream - named} bytes after it."));
+        Text(document, 3).Should().Be("three new");
         document.WasRepaired.Should().BeFalse();
-        document.Diagnostics.Select(diagnostic => (diagnostic.Code, diagnostic.Position)).Should().Equal(
-            (PdfDiagnosticCodes.XRefOffsetAdjusted, at), (PdfDiagnosticCodes.XRefSectionUnreadable, at));
     }
 
     [Theory]
-    [InlineData("<< /Notes (Notes on the\n", "xref", true)]
-    [InlineData("<< /Notes (Notes on the\nThe ", "xref", true)]
+    [InlineData("xref", "9 0 R")]
+    [InlineData("12 0 obj\n<< /Type /XRef /Size 13 /W [1 2 1] >>\nendobj\n", "9 0 R")]
+    [InlineData("xref", "5")]
+    public void A_section_in_stream_data_whose_length_is_not_confirmed_is_taken_as_the_bytes_give_it_and_the_validator_calls_it_unconfirmed(
+        string word, string length)
+    {
+        // As above, object 4's /Length an indirect reference, or a direct one that falls short of its data's end: the scan
+        // cannot confirm where the data ends, and takes what it holds as the bytes give it. The word xref, or the header, is the section found moved, which cannot be read, and ends the search; the
+        // index is rebuilt, and object 6 is read as the rebuild finds it. The reader cannot vouch for the place: the validator
+        // gives an error where it gives a warning for a section found where the scan takes it between objects (ADR 45).
+        var (file, at, _) = UpdatePastAWordInStreamDataOfUnconfirmedLength("Notes on the file format.\n", word, length);
+        using var document = PdfDocument.Open(file);
+
+        var found = document.Reader.Structure.Sections[1];
+        (found.State, found.Kind, found.Offset).Should().Be(
+            (XRefSectionState.Malformed, word == "xref" ? XRefSectionKind.Table : XRefSectionKind.Stream, at));
+        document.WasRepaired.Should().BeTrue("the catalog is the first table's alone");
+        Text(document, 6).Should().Be("six, freed by the update");
+        new PdfValidator().Validate(document).Findings.Where(finding => finding.RuleId.StartsWith("xref.section", StringComparison.Ordinal))
+            .Select(finding => (finding.RuleId, finding.Severity, finding.Location.Position)).Should().Equal(
+                (PdfValidationRuleIds.XRefSectionMalformed, PdfValidationSeverity.Error, at),
+                (PdfValidationRuleIds.XRefSectionUnconfirmed, PdfValidationSeverity.Error, at));
+    }
+
+    [Theory]
+    [InlineData("endobj\n")]
+    [InlineData("9 0 obj\n12\nendobj\n")]
+    public void A_section_past_a_stream_whose_endstream_is_lost_is_shifted_where_a_load_ends_the_stream_before_it(string after)
+    {
+        // Object 4 lost its endstream: its object's endobj, or the next object's header, follows its declared length. A load
+        // ends its data there, and the update's table past it lies between objects: the newest table's /Prev, 2 bytes off,
+        // finds it shifted, a warning, as past a stream whose endstream is there (#171).
+        var text = new StringBuilder("%PDF-1.7\n");
+        var catalog = Append(text, "1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n");
+        var pages = Append(text, "2 0 obj\n<< /Type /Pages /Kids [] /Count 0 >>\nendobj\n");
+        var six = Append(text, "6 0 obj\n(six, freed by the update)\nendobj\n");
+        var oldest = Append(text, Invariant($"xref\n0 7\n0000000000 65535 f \n{catalog:D10} 00000 n \n{pages:D10} 00000 n \n0000000000 00000 f \n0000000000 00000 f \n0000000000 00000 f \n{six:D10} 00000 n \ntrailer\n<< /Size 7 /Root 1 0 R >>\nstartxref\n"));
+        text.Append(Invariant($"{oldest}\n%%EOF\n"));
+        var four = Append(text, "4 0 obj\n<< /Length 26 >>\nstream\nNotes on the file format.\n" + after);
+        var update = Append(text, Invariant($"xref\n0 1\n0000000000 65535 f \n4 1\n{four:D10} 00000 n \n6 1\n0000000000 00001 f \ntrailer\n<< /Size 10 /Root 1 0 R /Prev {oldest} >>\nstartxref\n"));
+        text.Append(Invariant($"{update}\n%%EOF\n"));
+        var newest = Append(text, Invariant($"xref\n0 1\n0000000000 65535 f \ntrailer\n<< /Size 10 /Root 1 0 R /Prev {update + 2} >>\nstartxref\n"));
+        text.Append(Invariant($"{newest}\n%%EOF\n"));
+        using var document = PdfDocument.Open(Encoding.Latin1.GetBytes(text.ToString()));
+
+        var found = document.Reader.Structure.Sections[1];
+        (found.State, found.Kind, found.Offset).Should().Be((XRefSectionState.Relocated, XRefSectionKind.Table, update));
+        document.GetObject(new PdfObjectId(6)).Should().BeSameAs(PdfNull.Instance);
+        document.WasRepaired.Should().BeFalse();
+        new PdfValidator().Validate(document).Findings.Where(finding => finding.RuleId.StartsWith("xref.section", StringComparison.Ordinal))
+            .Select(finding => (finding.RuleId, finding.Severity, finding.Location.Position)).Should().Equal(
+                (PdfValidationRuleIds.XRefSectionShifted, PdfValidationSeverity.Warning, update));
+    }
+
+    [Theory]
+    [InlineData("% ", "xref", false)]
+    [InlineData("(see the ", "xref", false)]
+    [InlineData("% ", "12 0 obj << /Type /XRef /Size 13 /W [1 2 1] >> endobj\n", false)]
+    [InlineData(" ", "xref", false, 5000)]
+    [InlineData("The ", "xref", true)]
+    [InlineData("", "12 0 obj << /Type /XRef /Size 13 /W [1 2 1] >> endobj\n", true)]
+    public void A_word_in_stream_data_whose_length_is_not_confirmed_is_the_section_found_moved_only_where_a_load_reads_it_on_its_line(
+        string lead, string word, bool taken, int letters = 0)
+    {
+        // As above, object 4's /Length an indirect reference, the word xref or the header of an object of /Type /XRef past
+        // lead on its line: in a comment or a string there, or a token a load reads, in the middle of the line or at its
+        // start. The rebuild's scan takes the data as the bytes give it, comments unread, and takes the word or the header
+        // in a comment or a string too: the search tries it, and what it reads there cannot be read. A load reads no keyword
+        // and no header in a comment or a string, the line lexed from its start: the place is dropped as any that holds no
+        // section, and the search goes on to the update's table, which frees object 6, nothing rebuilt. So is a word on a
+        // line that 5,000 letters start, too far back to lex from its start: a place that cannot be read declares nothing
+        // there, whatever the scan takes. A token a load reads is the section found moved, which cannot be read, and ends the
+        // search, the index rebuilt as the document opens (#171, #281).
+        var (file, at, update) = UpdatePastAWordInStreamDataOfUnconfirmedLength(
+            "Notes on the file format.\n" + new string('a', letters) + lead, word, "9 0 R");
+        using var document = PdfDocument.Open(file);
+
+        var found = document.Reader.Structure.Sections[1];
+        var findings = new PdfValidator().Validate(document).Findings
+            .Where(finding => finding.RuleId.StartsWith("xref.section", StringComparison.Ordinal))
+            .Select(finding => (finding.RuleId, finding.Severity, finding.Location.Position));
+
+        if (!taken)
+        {
+            (found.State, found.Kind, found.Offset).Should().Be((XRefSectionState.Relocated, XRefSectionKind.Table, update));
+            document.Diagnostics.Select(diagnostic => (diagnostic.Code, diagnostic.Position)).Should().Equal(
+                (PdfDiagnosticCodes.XRefOffsetAdjusted, update));
+            document.GetObject(new PdfObjectId(6)).Should().BeSameAs(PdfNull.Instance);
+            document.WasRepaired.Should().BeFalse();
+            findings.Should().Equal((PdfValidationRuleIds.XRefSectionShifted, PdfValidationSeverity.Warning, update));
+            return;
+        }
+
+        (found.State, found.Kind, found.Offset).Should().Be(
+            (XRefSectionState.Malformed, word == "xref" ? XRefSectionKind.Table : XRefSectionKind.Stream, at));
+        document.WasRepaired.Should().BeTrue("the catalog is the first table's alone");
+        Text(document, 6).Should().Be("six, freed by the update");
+        findings.Should().Equal(
+            (PdfValidationRuleIds.XRefSectionMalformed, PdfValidationSeverity.Error, at),
+            (PdfValidationRuleIds.XRefSectionUnconfirmed, PdfValidationSeverity.Error, at));
+    }
+
+    [Theory]
+    [InlineData("<< /Notes (Notes on the\n", "xref", false)]
+    [InlineData("<< /Notes (Notes on the\nThe ", "xref", false)]
+    [InlineData("<< /Notes (Example:\n", "12 0 obj << /Type /XRef /Size 13 /W [1 2 1] >>", false)]
     [InlineData("<< /Notes (Example:\n", "12 0 obj << /Type /XRef /Size 13 /W [1 2 1] >> endobj", true)]
-    [InlineData("<< /Notes (Notes on the ", "xref", false)]
-    public void The_word_xref_or_a_cross_reference_stream_s_header_in_a_string_short_of_where_a_prev_names_is_taken_for_the_section_found_moved_only_where_an_earlier_line_opened_the_string(
+    public void The_word_xref_or_a_cross_reference_stream_s_header_in_a_string_short_of_where_a_prev_names_is_taken_only_where_the_string_holds_endobj(
         string before, string word, bool taken)
     {
         // Object 4, which the update writes, is a dictionary whose string holds the word xref, at the start of a line or in
         // its middle, or the header and dictionary of an object of /Type /XRef, and the newest table's /Prev names the place
-        // 2 bytes past where it starts, short of the update's table. A load lexes the string whole, but the search near the
-        // offset lexes the place's line alone, from its start, and sees no string an earlier line opened (#171): the word, or
-        // the header, is a token there, taken for the section found moved, which cannot be read and ends the search, the
-        // update's table left unread. The chain ends there, and the index is rebuilt as the document opens, for the catalog,
-        // which only the first table indexes: object 6, which the update freed, is read as the rebuild finds it. With the
-        // string opened on the word's own line, the word is in it, the search goes on to the update's table, and object 6
-        // is free.
+        // 2 bytes past where it starts, short of the update's table. The scan delimits the dictionary and takes nothing its
+        // string holds: the search goes on to the update's table, and object 6 is free. A string that holds endobj delimits
+        // nothing, as a load reading it runs it on past the object's end: the header it holds is taken as the bytes give it,
+        // the section found moved, which cannot be read and ends the search, the index rebuilt as the document opens, for the
+        // catalog, which only the first table indexes, and object 6 read as the rebuild finds it; the validator calls the
+        // section unconfirmed, an error (#171, ADR 45).
         var (file, at, named, update) = NearbyFiles.UpdatePastAWordInAnObject(before, word, " tables) >>");
         using var document = PdfDocument.Open(file);
 
@@ -2107,90 +2190,233 @@ public class CrossReferenceChainTests
             return;
         }
 
-        (found.State, found.Kind, found.NamedOffset, found.Offset).Should().Be(
-            (XRefSectionState.Malformed, word == "xref" ? XRefSectionKind.Table : XRefSectionKind.Stream, named, at));
+        (found.State, found.Kind, found.NamedOffset, found.Offset).Should().Be((XRefSectionState.Malformed, XRefSectionKind.Stream, named, at));
         document.WasRepaired.Should().BeTrue("the catalog is the first table's alone");
         document.Diagnostics.Select(diagnostic => diagnostic.Code).Should().Equal(
             PdfDiagnosticCodes.XRefOffsetAdjusted, PdfDiagnosticCodes.XRefSectionUnreadable, PdfDiagnosticCodes.XRefRebuilt);
         document.Diagnostics[0].Message.Should().Be(Invariant($"The cross-reference section /Prev names at offset {named} was found 2 bytes before it."));
         document.Diagnostics[1].Position.Should().Be(at);
         Text(document, 6).Should().Be("six, freed by the update");
+        new PdfValidator().Validate(document).Findings.Select(finding => (finding.RuleId, finding.Location.Position)).Should().Contain(
+            (PdfValidationRuleIds.XRefSectionUnconfirmed, at)).And.NotContain((PdfValidationRuleIds.XRefSectionShifted, at));
+    }
+
+    [Fact]
+    public void Places_the_scan_does_not_take_are_neither_read_nor_counted_toward_the_places_a_document_may_try()
+    {
+        // Past object 4, forty comment lines each hold the word xref, more than the 32 places a document may try near offsets
+        // that name no section; the update's table follows them, and the newest table's /Prev names the place 1 byte into the
+        // first word. The rebuild's scan takes none of the words, and the search reads none of them, nor counts them: it
+        // takes the update's table, which frees object 3 (#171).
+        var text = new StringBuilder("%PDF-1.7\n");
+        var catalog = Append(text, "1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n");
+        var pages = Append(text, "2 0 obj\n<< /Type /Pages /Kids [] /Count 0 >>\nendobj\n");
+        var three = Append(text, "3 0 obj\n(three)\nendobj\n");
+        var oldest = Append(text, Invariant($"xref\n0 4\n0000000000 65535 f \n{catalog:D10} 00000 n \n{pages:D10} 00000 n \n{three:D10} 00000 n \ntrailer\n<< /Size 5 /Root 1 0 R >>\nstartxref\n"));
+        text.Append(Invariant($"{oldest}\n%%EOF\n%")).Append('-', 1198).Append('\n');
+        var four = Append(text, "4 0 obj\n(four)\nendobj\n");
+        var words = Append(text, string.Concat(Enumerable.Repeat("% xref\n", 40)));
+        var update = Append(text, Invariant($"xref\n0 1\n0000000000 65535 f \n3 1\n0000000000 00001 f \n4 1\n{four:D10} 00000 n \ntrailer\n<< /Size 5 /Root 1 0 R /Prev {oldest} >>\nstartxref\n"));
+        text.Append(Invariant($"{update}\n%%EOF\n"));
+        var newest = Append(text, Invariant($"xref\n0 1\n0000000000 65535 f \ntrailer\n<< /Size 5 /Root 1 0 R /Prev {words + 3} >>\nstartxref\n"));
+        text.Append(Invariant($"{newest}\n%%EOF\n"));
+        using var document = PdfDocument.Open(Encoding.Latin1.GetBytes(text.ToString()));
+
+        document.Reader.Structure.Sections.Select(section => (section.State, section.Offset)).Should().Equal(
+            (XRefSectionState.Read, newest), (XRefSectionState.Relocated, update), (XRefSectionState.Read, oldest));
+        document.Diagnostics.Select(diagnostic => (diagnostic.Code, diagnostic.Position)).Should().Equal((PdfDiagnosticCodes.XRefOffsetAdjusted, update));
+        document.GetObject(new PdfObjectId(3)).Should().BeSameAs(PdfNull.Instance);
     }
 
     [Theory]
-    [InlineData("an attached file's own table")]
-    [InlineData("an attached file's own table giving a /Prev")]
-    [InlineData("a cross-reference stream the data quotes, read in part")]
-    public void A_section_in_stream_data_that_reads_short_of_where_a_prev_names_is_taken_and_the_chain_goes_on_through_its_trailer(string quoted)
+    [InlineData("", true, false)]
+    [InlineData("% ", false, false)]
+    [InlineData("", false, true)]
+    public void A_cross_reference_stream_an_attached_file_quotes_near_a_hybrid_table_s_prev_is_reported_as_passed_over_only_where_a_load_reads_its_header_on_its_line(
+        string lead, bool confirmed, bool reported)
     {
-        // Object 4, an embedded file the update writes uncompressed, holds in its data an attached file whose own table
-        // reads — its trailer naming no older section, or a /Prev near the first table —, or a cross-reference stream it
-        // quotes, whose data holds fewer rows than it declares and whose /Prev lies near the first table too; the newest
-        // table's /Prev names the place 2 bytes past where it starts, short of the update's table. A place that reads, whole
-        // or in part, is taken before any line is lexed, whatever its line is: it is the section found moved, and the chain
-        // goes on through its trailer, the update's table left unread; telling stream data apart would have to be asked of
-        // such a place too (#171). The chain ends at the attached table, and the index is rebuilt as the document opens,
-        // for the catalog, which only the first table indexes; or it goes on to the first table, found near the /Prev the
-        // data gives, and object 4, which only the update's table indexes, is null — but where the stream read in part
-        // refuses the numbers it declares, the catalog's among them, and the rebuild that follows finds it. Object 6, which
-        // the update freed, is read whichever way: as the rebuild finds it, or as the first table's row gives it.
-        var (before, word, after, kind) = quoted switch
+        // The newest table's /Prev names a place 10 bytes into object 7, an embedded file whose data quotes stream 12, of
+        // /Type /XRef, which gives no /Prev, its header past lead on its line; the table's /XRefStm reads stream 6, the
+        // update's, which stream 12 would lie past, as the table's own stream may. Where the data's length is confirmed, the
+        // rebuild's scan takes nothing the data holds: the search does not try stream 12, nor report it as a stream passed
+        // over, and takes the oldest table, within reach. Where the length is an object the index lacks, the scan takes the
+        // data as the bytes give it, comments unread, and the search passes stream 12 over, for the oldest table: it is
+        // reported where a load reads its header on its line, and not where a comment holds it (#156, #171).
+        var text = new StringBuilder("%PDF-1.5\n");
+        var catalog = Append(text, "1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n");
+        var pages = Append(text, "2 0 obj\n<< /Type /Pages /Kids [] /Count 0 >>\nendobj\n");
+        var three = Append(text, "3 0 obj\n(three old)\nendobj\n");
+        var five = Append(text, "5 0 obj\n(five old)\nendobj\n");
+        var oldest = Append(text, Invariant($"xref\n0 6\n0000000000 65535 f \n{catalog:D10} 00000 n \n{pages:D10} 00000 n \n{three:D10} 00000 n \n0000000000 00001 f \n{five:D10} 00000 n \ntrailer\n<< /Size 13 /Root 1 0 R >>\nstartxref\n"));
+        text.Append(Invariant($"{oldest}\n%%EOF\n"));
+        var four = Append(text, "4 0 obj\n(four)\nendobj\n");
+        var stream = text.Length;
+        var head = "6 0 obj\n<< /Type /XRef /Size 13 /W [1 4 2] /Index [4 1 6 2] /Root 1 0 R /Length 21 >>\nstream\n";
+        var seven = stream + head.Length + 21 + "\nendstream\nendobj\n".Length;
+        text.Append(head).Append(Rows(four, stream, seven)).Append("\nendstream\nendobj\n");
+        var data = "%PDF-1.5 an attached file\n" + lead + "12 0 obj\n<< /Type /XRef /Size 13 /W [1 4 2] /Index [12 1] /Length 7 >>\nstream\n" +
+            Rows(15) + "\nendstream\nendobj\n%%EOF\n";
+        text.Append(Invariant($"7 0 obj\n<< /Type /EmbeddedFile /Length {(confirmed ? data.Length : "8 0 R")} >>\nstream\n"));
+        var quoted = text.Length + "%PDF-1.5 an attached file\n".Length + lead.Length;
+        text.Append(Invariant($"{data}\nendstream\nendobj\n"));
+        var newest = Append(text, Invariant($"xref\n0 1\n0000000000 65535 f \ntrailer\n<< /Size 13 /Root 1 0 R /Prev {seven + 10} /XRefStm {stream} >>\nstartxref\n"));
+        text.Append(Invariant($"{newest}\n%%EOF\n"));
+        using var document = PdfDocument.Open(Encoding.Latin1.GetBytes(text.ToString()));
+
+        document.Reader.Structure.Sections.Select(section => (section.NamedBy, section.State, section.Offset)).Should().Equal(
+            ("startxref", XRefSectionState.Read, newest), ("/XRefStm", XRefSectionState.Read, stream), ("/Prev", XRefSectionState.Relocated, oldest));
+        document.Diagnostics.Select(diagnostic => (diagnostic.Code, diagnostic.Position)).Should().Equal(
+            reported
+                ? [(PdfDiagnosticCodes.XRefOffsetAdjusted, oldest), (PdfDiagnosticCodes.XRefStreamPassedOver, quoted)]
+                : [(PdfDiagnosticCodes.XRefOffsetAdjusted, oldest)]);
+        Text(document, 5).Should().Be("five old");
+
+        static string Rows(params long[] offsets) =>
+            string.Concat(offsets.Select(offset => "\u0001" + Encoding.Latin1.GetString(BitConverter.GetBytes((uint)offset).Reverse().ToArray()) + "\0\0"));
+    }
+
+    [Theory]
+    [InlineData("% xref\n", "", 650)]
+    [InlineData("% xref\n", "", 0)]
+    [InlineData("% xref\n", "trailer\n<< /Size 140 >>\n", 0)]
+    [InlineData("(xref\n", ")\n", 650)]
+    public void A_table_a_comment_or_a_string_holds_short_of_where_an_xrefstm_names_is_no_section_whatever_bounds_a_table_s_length(
+        string head, string close, int maxLength)
+    {
+        // Past the update's stream 11, the word xref, in a comment or opening a string, starts a run of 40 rows for objects 100
+        // to 139, closed by a trailer, or the string's end, or by nothing; the update's /XRefStm names a place 3 bytes into the
+        // sixth row, short of stream 11. The rebuild's scan takes no table there: the search reads none, so that no bound on a
+        // table's length is reached, and finds stream 11, which indexes object 4 as the update wrote it; nothing is rebuilt
+        // (#171).
+        var text = new StringBuilder("%PDF-1.7\n");
+        var objects = new[]
         {
-            "an attached file's own table" => (
-                "%PDF-1.3\n%attached original\n",
-                "xref",
-                "\n0 1\n0000000000 65535 f \ntrailer\n<< /Size 1 >>\nstartxref\n28\n%%EOF\n",
-                XRefSectionKind.Table),
-            "an attached file's own table giving a /Prev" => (
-                "%PDF-1.3\n",
-                "xref",
-                "\n0 1\n0000000000 65535 f \ntrailer\n<< /Size 1 /Prev 12 >>\n%%EOF\n",
-                XRefSectionKind.Table),
-            _ => (
-                "Example:\n",
-                "12 0 obj",
-                "\n<< /Type /XRef /Size 13 /W [1 2 1] /Prev 9 /Length 3 >>\nstream\nabc\nendstream\nendobj\n",
-                XRefSectionKind.Stream),
+            Append(text, "1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n"),
+            Append(text, "2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n"),
+            Append(text, "3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << >> >>\nendobj\n"),
+            Append(text, "4 0 obj\n(old four)\nendobj\n"),
         };
-        var (file, at, named, update) = NearbyFiles.UpdatePastAWordInStreamData(before, word, after);
-        var first = PdfTemplate.OffsetOf(file, "xref");
-        using var document = PdfDocument.Open(file);
+        var oldest = Append(text, "xref\n0 5\n0000000000 65535 f \n" + string.Concat(objects.Select(at => Invariant($"{at:D10} 00000 n \n"))) + "trailer\n<< /Size 12 /Root 1 0 R >>\n");
+        var four = Append(text, "4 0 obj\n(new four)\nendobj\n");
+        var stream = text.Length;
+        var rows = string.Concat(new[] { four, stream }.Select(at => "\u0001" + Encoding.Latin1.GetString(BitConverter.GetBytes((uint)at).Reverse().ToArray()) + "\0\0"));
+        text.Append(Invariant($"11 0 obj\n<< /Type /XRef /Size 12 /W [1 4 2] /Index [4 1 11 1] /Length {rows.Length} >>\nstream\n{rows}\nendstream\nendobj\n"));
+        var run = Append(text, head + "100 40\n" + string.Concat(Enumerable.Repeat("0000000000 00001 f \n", 40)) + close);
+        var named = run + head.Length + "100 40\n".Length + (5 * 20) + 3;
+        var hybrid = Append(text, Invariant($"xref\n0 1\n0000000000 65535 f \ntrailer\n<< /Size 12 /Root 1 0 R /Prev {oldest} /XRefStm {named} >>\nstartxref\n"));
+        text.Append(Invariant($"{hybrid}\n%%EOF\n"));
+        var limits = maxLength > 0 ? PdfReaderLimits.Default with { MaxXRefSectionLength = maxLength } : PdfReaderLimits.Default;
+        using var document = PdfDocument.Open(Encoding.Latin1.GetBytes(text.ToString()), new PdfReaderOptions { Limits = limits });
 
-        var sections = document.Reader.Structure.Sections;
-        (sections[1].State, sections[1].Kind, sections[1].NamedOffset, sections[1].Offset).Should().Be(
-            (XRefSectionState.Relocated, kind, named, at));
-        sections.Should().NotContain(section => section.Offset == update, "the update's table is never read");
-        document.Diagnostics[0].Message.Should().Be(Invariant($"The cross-reference section /Prev names at offset {named} was found 2 bytes before it."));
-        Text(document, 6).Should().Be("six, freed by the update");
+        document.Reader.Structure.Sections.Select(section => (section.NamedBy, section.State, section.Kind, section.Offset)).Should().Equal(
+            ("startxref", XRefSectionState.Read, XRefSectionKind.Table, hybrid),
+            ("/XRefStm", XRefSectionState.Relocated, XRefSectionKind.Stream, stream),
+            ("/Prev", XRefSectionState.Read, XRefSectionKind.Table, oldest));
+        document.Diagnostics.Select(diagnostic => (diagnostic.Code, diagnostic.Position)).Should().Equal((PdfDiagnosticCodes.XRefOffsetAdjusted, stream));
+        Text(document, 4).Should().Be("new four");
+        document.WasRepaired.Should().BeFalse();
+    }
 
-        switch (quoted)
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void A_place_past_the_scan_s_memo_is_tried_by_its_line_once_the_guard_is_reached_and_a_section_found_there_is_unconfirmed(bool throwOnLimit)
+    {
+        // The keyword follows object 4's endobj on its line, and the newest table's /Prev names the place 50 bytes before it.
+        // MaxIndexEntries 4 stops the rebuild's scan recording places at object 4's header, before the keyword: the search
+        // reaches the guard there, then tries the keyword without the scan's word, a token its line reads, and takes it for
+        // the section found moved, which cannot be read; the validator calls the section unconfirmed (ADR 45). A document
+        // opened to throw on a guard throws there (#171, ADR 34).
+        var line = "4 0 obj [0] endobj xref 0 1 bad";
+        var (file, keyword) = NearbyFiles.KeywordPastALongComment(line);
+        var header = keyword - line.IndexOf("xref", StringComparison.Ordinal);
+        var options = new PdfReaderOptions { ThrowOnLimit = throwOnLimit, Limits = PdfReaderLimits.Default with { MaxIndexEntries = 4 } };
+
+        if (throwOnLimit)
         {
-            case "an attached file's own table":
-                sections.Should().HaveCount(2);
-                document.Diagnostics.Select(diagnostic => diagnostic.Code).Should().Equal(
-                    PdfDiagnosticCodes.XRefOffsetAdjusted, PdfDiagnosticCodes.XRefRebuilt);
-                document.WasRepaired.Should().BeTrue("the catalog is the first table's alone");
-                document.GetObject(new PdfObjectId(4)).Should().BeOfType<PdfStream>();
-                break;
-            case "an attached file's own table giving a /Prev":
-                (sections.Count, sections[2].State, sections[2].Offset).Should().Be((3, XRefSectionState.Relocated, first));
-                document.Diagnostics.Select(diagnostic => diagnostic.Code).Should().Equal(
-                    PdfDiagnosticCodes.XRefOffsetAdjusted, PdfDiagnosticCodes.XRefOffsetAdjusted);
-                document.WasRepaired.Should().BeFalse();
-                document.GetObject(new PdfObjectId(4)).Should().BeSameAs(PdfNull.Instance);
-                break;
-            default:
-                (sections.Count, sections[1].Incomplete, sections[2].State, sections[2].Offset).Should().Be(
-                    (3, true, XRefSectionState.Relocated, first));
-                document.Diagnostics.Select(diagnostic => diagnostic.Code).Should().Equal(
-                    PdfDiagnosticCodes.XRefOffsetAdjusted,
-                    PdfDiagnosticCodes.XRefSectionUnreadable,
-                    PdfDiagnosticCodes.XRefOffsetAdjusted,
-                    PdfDiagnosticCodes.XRefRebuilt);
-                document.WasRepaired.Should().BeTrue("the stream refused the numbers it declares, the catalog's among them");
-                document.GetObject(new PdfObjectId(4)).Should().BeOfType<PdfStream>();
-                break;
+            var thrown = FluentActions.Invoking(() => PdfDocument.Open(file, options)).Should().Throw<PdfLimitExceededException>().Which;
+            (thrown.LimitName, thrown.Position).Should().Be((nameof(PdfReaderLimits.MaxIndexEntries), header));
+            return;
         }
+
+        using var document = PdfDocument.Open(file, options);
+
+        var found = document.Reader.Structure.Sections[1];
+        (found.State, found.Offset).Should().Be((XRefSectionState.Malformed, keyword));
+        document.Diagnostics.Select(diagnostic => (diagnostic.Code, diagnostic.Position)).Should().StartWith(
+            [(PdfDiagnosticCodes.LimitIndexEntries, header), (PdfDiagnosticCodes.XRefOffsetAdjusted, keyword)]);
+        document.Diagnostics[0].Message.Should().Be(
+            "The scan for objects recorded 4 object headers and keywords; those past them were not recorded. Raise PdfReaderLimits.MaxIndexEntries to read past it.");
+        new PdfValidator().Validate(document).Findings.Where(finding => finding.Severity == PdfValidationSeverity.Error)
+            .Select(finding => (finding.RuleId, finding.Location.Position)).Should().Contain((PdfValidationRuleIds.XRefSectionUnconfirmed, keyword));
+    }
+
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    [InlineData(true, true)]
+    public void The_scan_s_memo_reaches_its_bound_for_a_place_past_it_the_search_tries_not_for_one_the_places_a_document_may_try_leave(
+        bool spent, bool throwOnLimit)
+    {
+        // Objects 1 to 42, then 40 more definitions of object 42, fill the rebuild's scan memo at MaxIndexEntries 60 and leave
+        // the index room for every number; the newest table's /Prev names a place 2 bytes into the first table, which lies
+        // past where the memo is whole. The search there tries the table without the scan's word: the memo's bound is
+        // reached once, where the first place it left out starts, and the section is found, unconfirmed; a document opened
+        // to throw on a guard throws there. Where the newest table's /XRefStm names a place inside object 22, the search
+        // there tries 32 objects, no section, and spends the places a document may try: the table is left untried, the
+        // section reported missing, and the memo's bound is not reached, nor thrown (#171, ADR 34).
+        var text = new StringBuilder("%PDF-1.5\n");
+        var rows = new long[43];
+        rows[1] = Append(text, "1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n");
+        rows[2] = Append(text, "2 0 obj\n<< /Type /Pages /Kids [] /Count 0 >>\nendobj\n");
+
+        for (var number = 3; number <= 42; number++)
+        {
+            rows[number] = Append(text, Invariant($"{number} 0 obj\n{number}\nendobj\n"));
+        }
+
+        var definitions = new List<long>();
+
+        for (var i = 0; i < 40; i++)
+        {
+            definitions.Add(Append(text, Invariant($"42 0 obj\n{i}\nendobj\n")));
+        }
+
+        rows[42] = definitions[^1];
+        text.Append('%').Append('-', 600).Append('\n');
+        var oldest = Append(text, "xref\n0 43\n0000000000 65535 f \n" + string.Concat(rows.Skip(1).Select(at => Invariant($"{at:D10} 00000 n \n"))) + "trailer\n<< /Size 43 /Root 1 0 R >>\nstartxref\n");
+        text.Append(Invariant($"{oldest}\n%%EOF\n"));
+        var stream = rows[22] + 3;
+        var newest = Append(text, Invariant($"xref\n0 1\n0000000000 65535 f \ntrailer\n<< /Size 43 /Root 1 0 R /Prev {oldest + 2}{(spent ? Invariant($" /XRefStm {stream}") : "")} >>\nstartxref\n"));
+        text.Append(Invariant($"{newest}\n%%EOF\n"));
+        var file = Encoding.Latin1.GetBytes(text.ToString());
+        var options = new PdfReaderOptions { ThrowOnLimit = throwOnLimit, Limits = PdfReaderLimits.Default with { MaxIndexEntries = 60 } };
+
+        // The memo holds the 42 first definitions and 18 of the others: the next one is the first place it left out.
+        var leftOut = definitions[18];
+
+        if (throwOnLimit && !spent)
+        {
+            var thrown = FluentActions.Invoking(() => PdfDocument.Open(file, options)).Should().Throw<PdfLimitExceededException>().Which;
+            (thrown.LimitName, thrown.Position).Should().Be((nameof(PdfReaderLimits.MaxIndexEntries), leftOut));
+            return;
+        }
+
+        using var document = PdfDocument.Open(file, options);
+
+        document.Diagnostics.Select(diagnostic => (diagnostic.Code, diagnostic.Position)).Should().Equal(
+            spent
+                ? [
+                    (PdfDiagnosticCodes.XRefSectionMissing, stream),
+                    (PdfDiagnosticCodes.XRefSectionMissing, oldest + 2),
+                    (PdfDiagnosticCodes.XRefRebuilt, -1L),
+                    (PdfDiagnosticCodes.ObjectRedefined, -1L),
+                ]
+                : [(PdfDiagnosticCodes.LimitIndexEntries, leftOut), (PdfDiagnosticCodes.XRefOffsetAdjusted, oldest)]);
+        var last = document.Reader.Structure.Sections[^1];
+        (last.State, last.Unconfirmed).Should().Be(spent ? (XRefSectionState.NotFound, false) : (XRefSectionState.Relocated, true));
+        document.GetObject(new PdfObjectId(42)).Should().BeOfType<PdfInteger>().Which.Value.Should().Be(39);
     }
 
     [Fact]
@@ -2219,15 +2445,20 @@ public class CrossReferenceChainTests
     }
 
     [Theory]
-    [InlineData(0, true)]
-    [InlineData(1, false)]
-    public void An_xref_keyword_on_a_long_line_is_a_section_found_moved_only_where_its_line_starts_within_reach_of_the_bytes_searched(
-        int farther, bool found)
+    [InlineData(0, false, true)]
+    [InlineData(1, false, false)]
+    [InlineData(0, true, true)]
+    [InlineData(1, true, false)]
+    public void An_xref_keyword_on_a_long_line_is_a_section_found_moved_only_where_its_line_starts_within_reach_whatever_the_scan_s_memo_says(
+        int farther, bool pastMemo, bool found)
     {
         // The same file, whose line holds 4,640 spaces in object 4's array, or one more: the end of line before it lies 4,096
-        // bytes before the bytes searched near the place named, or 4,097. The line is lexed from its start where that end of
-        // line lies within 4,096 bytes of them, and the keyword, a token there, is the section found moved; farther back,
-        // the place declares nothing, and is dropped as any place that holds no section is (#281).
+        // bytes before the bytes searched near the place named, or 4,097. The rebuild's scan takes the keyword between
+        // objects; where MaxIndexEntries 4 stops the scan's memo at object 4's header, the search tries it without the scan's
+        // word. Either way, what follows it cannot be read: the line is lexed from its start where that end of line lies
+        // within 4,096 bytes of the bytes searched, and the keyword, a token there, is the section found moved; farther back,
+        // the place declares nothing, though the scan takes it between objects, and is dropped as any place that holds no
+        // section is (#171, #281).
         var file = new HandWrittenFile();
         var catalog = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>");
         var pages = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>");
@@ -2241,12 +2472,55 @@ public class CrossReferenceChainTests
         file.Table(3, new() { [1] = catalog, [2] = pages }, Invariant($"/Size 3 /Root 1 0 R /Prev {keyword - 50}"));
         var searched = keyword - 50 - PdfFileReader.NearbySearchRadius - 1;
         (searched - (lineStart - 1)).Should().Be(4096 + farther, "the end of line before the line lies that far before the bytes searched");
-        using var document = PdfDocument.Open(file.Bytes);
+        using var document = PdfDocument.Open(file.Bytes, PastTheScanMemo(pastMemo, 4));
 
         var section = document.Reader.Structure.Sections[1];
         section.State.Should().Be(found ? XRefSectionState.Malformed : XRefSectionState.NotFound);
         section.Offset.Should().Be(found ? keyword : keyword - 50);
         document.Diagnostics.Select(diagnostic => diagnostic.Code).Contains(PdfDiagnosticCodes.XRefSectionUnreadable).Should().Be(found);
+        document.Diagnostics.Select(diagnostic => diagnostic.Code).Contains(PdfDiagnosticCodes.LimitIndexEntries).Should().Be(pastMemo);
+    }
+
+    [Theory]
+    [InlineData("xref tables follow", 1000)]
+    [InlineData("xref tables follow", 6000)]
+    [InlineData("8 0 obj << /Type /XRef >>", 1000)]
+    [InlineData("8 0 obj << /Type /XRef >>", 6000)]
+    public void What_follows_an_end_of_file_marker_at_the_end_of_a_long_line_near_where_an_offset_names_no_section_is_no_section_found_moved(
+        string quoted, int length)
+    {
+        // Object 20's dictionary runs on one line of about 1,000 or 6,000 bytes, which ends with an end-of-file marker and,
+        // past it, the word xref or the header of an object of /Type /XRef; the update's table, which frees object 6, starts
+        // the next line, and the newest table's /Prev names the place 2 bytes past where the word or the header starts. The
+        // rebuild's scan takes what follows the marker between objects, which a load lexes as part of the marker's comment,
+        // and what is read there cannot be read. Its line, lexed from its start within 4,096 bytes of the bytes searched,
+        // holds no token there; farther back, where the line test cannot tell, the place declares nothing all the same. It is
+        // dropped as any place that holds no section is, whatever the line's length, and the search goes on to the update's
+        // table: object 6 stays free, nothing rebuilt (#171, #281).
+        var file = new HandWrittenFile();
+        var catalog = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>");
+        var pages = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>");
+        var six = file.Object(6, "(six, freed by the update)");
+        var oldest = file.Table(7, new() { [1] = catalog, [2] = pages, [6] = six }, "/Size 7 /Root 1 0 R");
+        var twenty = file.Position;
+        file.Raw("20 0 obj\n<< /Junk [" + string.Concat(Enumerable.Repeat(" 1", length / 2)) + " ] >> endobj %%EOF ");
+        var named = file.Position + 2;
+        file.Raw(quoted + "\n");
+        var update = file.Position;
+        file.Raw(Invariant($"xref\n0 1\n0000000000 65535 f \n6 1\n0000000000 00001 f \n20 1\n{twenty:D10} 00000 n \ntrailer\n<< /Size 21 /Root 1 0 R /Prev {oldest} >>\nstartxref\n{update}\n%%EOF\n"));
+        var newest = file.Position;
+        file.Raw(Invariant($"xref\n0 1\n0000000000 65535 f \ntrailer\n<< /Size 21 /Root 1 0 R /Prev {named} >>\nstartxref\n{newest}\n%%EOF\n"));
+        using var document = PdfDocument.Open(file.Bytes);
+
+        document.Reader.Structure.Sections.Select(section => (section.NamedBy, section.State, section.Offset)).Should().Equal(
+            ("startxref", XRefSectionState.Read, newest), ("/Prev", XRefSectionState.Relocated, update), ("/Prev", XRefSectionState.Read, oldest));
+        document.Diagnostics.Select(diagnostic => (diagnostic.Code, diagnostic.Position)).Should().Equal((PdfDiagnosticCodes.XRefOffsetAdjusted, update));
+        document.GetObject(new PdfObjectId(6)).Should().BeSameAs(PdfNull.Instance);
+        document.WasRepaired.Should().BeFalse();
+        new PdfValidator().Validate(document).Findings
+            .Where(finding => finding.RuleId.StartsWith("xref.section", StringComparison.Ordinal))
+            .Select(finding => (finding.RuleId, finding.Severity, finding.Location.Position))
+            .Should().Equal((PdfValidationRuleIds.XRefSectionShifted, PdfValidationSeverity.Warning, update));
     }
 
     [Theory]
@@ -2374,14 +2648,15 @@ public class CrossReferenceChainTests
     public async Task A_line_the_source_gives_short_of_the_place_as_it_is_read_again_declares_nothing_and_the_file_opens(string cut)
     {
         // The line before object 6, inside whose endobj the newest table's /Prev names the update's table, is a comment of 700
-        // letters past 6,000 bytes of comment, which holds the word xref some 40 bytes before the place named: the line starts
-        // before the bytes searched near the place, and is read again from 4,096 bytes before them. The file is cut short as
-        // that read is made: before its first byte, before the bytes searched, or 10 bytes before the word. The read was
-        // taken to give every byte asked for: the first two threw out of the opening, the third lexed the end of the bytes
-        // given forever. Bytes given that end at or before the place are all the file holds there: the word declares nothing,
-        // as where its line starts farther back, and the search goes on, to the update's table, which the cut took too; the
-        // section is missing (#281).
-        var (file, _, named) = NearbyFiles.UpdateAfterAStrayLine("%" + new string('a', 700) + " xref see the table below\n", gap: 6000);
+        // letters past 6,000 bytes of comment and two stray xref keywords, which holds the word xref some 40 bytes before the
+        // place named; MaxIndexEntries 7 stops the scan's memo at the second keyword, and the search tries the word without
+        // the scan's word: the line starts before the bytes searched near the place, and is read again from 4,096 bytes
+        // before them. The file is cut short as that read is made: before its first byte, before the bytes searched, or 10
+        // bytes before the word. The read was taken to give every byte asked for: the first two threw out of the opening, the
+        // third lexed the end of the bytes given forever. Bytes given that end at or before the place are all the file holds
+        // there: the word declares nothing, as where its line starts farther back, and the search goes on, to the update's
+        // table, which the cut took too; the section is missing (#171, #281).
+        var (file, _, named) = NearbyFiles.UpdateAfterAStrayLine(StrayKeywords + "%" + new string('a', 700) + " xref see the table below\n", gap: 6000);
         var word = Encoding.Latin1.GetString(file).IndexOf(" xref see", StringComparison.Ordinal) + 1;
         var readAgain = named - PdfFileReader.NearbySearchRadius - 1 - 4096;
         using var source = new CutShortSource(file);
@@ -2394,7 +2669,7 @@ public class CrossReferenceChainTests
 
         var (state, offset, codes) = await Within(() =>
         {
-            using var document = PdfDocument.Open(source, options: null, ownsSource: false);
+            using var document = PdfDocument.Open(source, PastTheScanMemo(true, 7), ownsSource: false);
             var section = document.Reader.Structure.Sections[1];
             return (section.State, section.Offset, document.Diagnostics.Select(diagnostic => diagnostic.Code).ToArray());
         });
@@ -2408,10 +2683,12 @@ public class CrossReferenceChainTests
     public async Task A_source_that_gives_4096_bytes_a_read_finds_the_section_past_the_word_xref_on_a_line_read_again()
     {
         // The file of the theory above, with no cut, read through a source that gives at most 4,096 bytes a read, as a source
-        // over a store of blocks may. The line read again from 4,096 bytes before the bytes searched comes back short of the
-        // word, and the reading lexed the end of the bytes given forever. The bytes given are all the file holds there: the
-        // word declares nothing, and the search goes on to the update's table, 65 bytes past the place named, which frees
-        // object 4, as a source that gives every byte asked for finds it (#52, #281).
+        // over a store of blocks may. The rebuild's scan takes the first window shorter than asked for the end of the data,
+        // and its memo holds nothing past it: the search tries the word without the scan's word, and its line, read again from
+        // 4,096 bytes before the bytes searched, comes back short of the word, where the reading lexed the end of the bytes
+        // given forever. The bytes given are all the file holds there: the word declares nothing, and the search goes on to the
+        // update's table, 65 bytes past the place named, which frees object 4, as a source that gives every byte asked for
+        // finds it (#52, #281).
         var (file, update, named) = NearbyFiles.UpdateAfterAStrayLine("%" + new string('a', 700) + " xref see the table below\n", gap: 6000);
 
         var (state, offset, messages, four, repaired) = await Within(() =>
@@ -2439,8 +2716,9 @@ public class CrossReferenceChainTests
     public async Task An_xref_keyword_is_a_section_found_moved_where_the_source_gives_its_first_byte_as_its_line_is_read_again(int past)
     {
         // The keyword follows the endobj of object 4, an array of 400 zeros written on one line past a comment of 5,000 bytes,
-        // and the newest table's /Prev names the place 50 bytes before it: the line starts before the bytes searched near the
-        // place, and is read again from 4,096 bytes before them. The file is cut short as that read is made, at the keyword
+        // and the newest table's /Prev names the place 50 bytes before it; MaxIndexEntries 4 stops the scan's memo at object
+        // 4's header, and the search tries the keyword without the scan's word: the line starts before the bytes searched near
+        // the place, and is read again from 4,096 bytes before them. The file is cut short as that read is made, at the keyword
         // or one byte past it. Whether a token starts at a place is told by the bytes before it and its first: given, the
         // keyword is the section found moved, which cannot be read; not given, the bytes given end at the place, which the
         // reading lexed the end of forever, and the keyword declares nothing, the section missing (#281).
@@ -2451,7 +2729,7 @@ public class CrossReferenceChainTests
 
         var (state, offset) = await Within(() =>
         {
-            using var document = PdfDocument.Open(source, options: null, ownsSource: false);
+            using var document = PdfDocument.Open(source, PastTheScanMemo(true, 4), ownsSource: false);
             var section = document.Reader.Structure.Sections[1];
             return (section.State, section.Offset);
         });
@@ -8184,7 +8462,9 @@ public class CrossReferenceChainTests
         // /XRefStm names stream 10. Where MaxIndexEntries fills the index at that table's rows, its /XRefStm went unread, and
         // stream 10 was reported as one the chain did not read: the guard's cut, made the file's. A full index hides what the
         // table names, and the limit's report stands for it: nothing is reported of the stream passed over (#156, #264, ADR
-        // 34). With room for 6 entries or more, the chain reads stream 10 through that /XRefStm.
+        // 34). With room for 6 entries or more, the chain reads stream 10 through that /XRefStm. The same bound stops the
+        // rebuild's scan recording places short of those the search tries, which it tries without the scan's word, the
+        // guard reported where the first place left out starts.
         var (file, first, second, table, newest) = HybridFiles.NamingTheFirstStreamAndFallingShortOfTheSecond();
         var limits = maxIndexEntries > 0 ? PdfReaderLimits.Default with { MaxIndexEntries = maxIndexEntries } : PdfReaderLimits.Default;
         using var document = PdfDocument.Open(file, new PdfReaderOptions { Limits = limits });
@@ -8207,8 +8487,8 @@ public class CrossReferenceChainTests
         document.Diagnostics.Select(diagnostic => diagnostic.Code).Should().Equal(
             maxIndexEntries switch
             {
-                4 => [PdfDiagnosticCodes.LimitIndexEntries, PdfDiagnosticCodes.XRefOffsetAdjusted],
-                6 => [PdfDiagnosticCodes.XRefOffsetAdjusted, PdfDiagnosticCodes.LimitIndexEntries],
+                4 => [PdfDiagnosticCodes.LimitIndexEntries, PdfDiagnosticCodes.LimitIndexEntries, PdfDiagnosticCodes.XRefOffsetAdjusted],
+                6 => [PdfDiagnosticCodes.LimitIndexEntries, PdfDiagnosticCodes.XRefOffsetAdjusted, PdfDiagnosticCodes.LimitIndexEntries],
                 _ => [PdfDiagnosticCodes.XRefOffsetAdjusted],
             });
     }
@@ -8880,29 +9160,32 @@ public class CrossReferenceChainTests
     }
 
     [Theory]
-    [InlineData(600, false, true)]
-    [InlineData(600, true, true)]
-    [InlineData(5000, false, false)]
-    public void A_stream_passed_over_near_a_hybrid_table_s_prev_is_reported_only_where_its_line_starts_within_the_reach_of_the_line_test(
-        int lead, bool lineBroken, bool reported)
+    [InlineData(5000, false, false, true)]
+    [InlineData(600, false, true, true)]
+    [InlineData(600, true, true, true)]
+    [InlineData(5000, false, true, false)]
+    public void A_stream_passed_over_near_a_hybrid_table_s_prev_is_reported_where_the_scan_takes_it_or_past_its_memo_where_its_line_starts_within_reach(
+        int lead, bool lineBroken, bool pastMemo, bool reported)
     {
         // As above, the table's /Prev falls 20 bytes into object 9, of /Type /XRef, which gives no /Prev: the search passes
         // it over as possibly the table's own, and takes the oldest table. Its header follows object 8 on a line that starts
-        // 600 bytes before it, before the bytes the search reads: the line test reads those again with as many as 4,096
-        // bytes before them, lexes the line from its start, and finds the header a token there, which is reported. An end
-        // of line before the header starts its line within the bytes searched, reported alike. A line that starts more than
-        // 4,096 bytes before them declares nothing, as for a place that cannot be read, and object 9 is not reported (#156,
-        // #171).
-        var (file, oldest, stream, at, newest) = HybridFiles.PrevFallingInsideAStreamOnALongLine(lead, lineBroken);
-        using var document = PdfDocument.Open(file);
+        // 600 or 5,000 bytes before it, before the bytes the search reads: the rebuild's scan takes it between objects, and it
+        // is reported. Where MaxIndexEntries 7 stops the scan's memo at two stray xref keywords before object 21, the search
+        // tries the header without the scan's word: the line test reads the bytes searched again with as many as 4,096 bytes
+        // before them, lexes the line from its start, and finds the header a token there, which is reported. An end of line
+        // before the header starts its line within the bytes searched, reported alike. A line that starts more than 4,096
+        // bytes before them declares nothing, as for a place that cannot be read, and object 9 is not reported (#156, #171).
+        var (file, oldest, stream, at, newest) = HybridFiles.PrevFallingInsideAStreamOnALongLine(lead, lineBroken, strayKeywords: pastMemo);
+        using var document = PdfDocument.Open(file, PastTheScanMemo(pastMemo, 7));
 
         document.Reader.Structure.Sections.Select(section => (section.NamedBy, section.State, section.Kind, section.Offset)).Should().Equal(
             ("startxref", XRefSectionState.Read, XRefSectionKind.Table, newest),
             ("/XRefStm", XRefSectionState.Read, XRefSectionKind.Stream, stream),
             ("/Prev", XRefSectionState.Relocated, XRefSectionKind.Table, oldest));
-        document.Diagnostics.Select(diagnostic => diagnostic.Code).Should().Equal(
+        document.Diagnostics.Where(diagnostic => diagnostic.Code != PdfDiagnosticCodes.LimitIndexEntries).Select(diagnostic => diagnostic.Code).Should().Equal(
             reported ? [PdfDiagnosticCodes.XRefOffsetAdjusted, PdfDiagnosticCodes.XRefStreamPassedOver] : [PdfDiagnosticCodes.XRefOffsetAdjusted]);
         document.Diagnostics[^1].Position.Should().Be(reported ? at : oldest);
+        document.Diagnostics.Select(diagnostic => diagnostic.Code).Contains(PdfDiagnosticCodes.LimitIndexEntries).Should().Be(pastMemo);
         Text(document, 5).Should().Be("old five");
         document.WasRepaired.Should().BeFalse();
     }
@@ -8946,12 +9229,13 @@ public class CrossReferenceChainTests
     public void A_place_near_a_hybrid_table_s_prev_that_no_other_section_stands_beside_is_taken_only_where_it_reads_or_declares_itself_a_section(string place)
     {
         // As above, the oldest table out of the search's reach: the search comes back to object 9 once no other place holds
-        // a section, and takes it where it reads, whatever its line is, or where it declares itself a cross-reference stream
-        // though it cannot be read; it drops a header a comment or a string holds on its line, and a stream that gives only a
-        // /W, where they cannot be read, and the section is reported missing (#171, #281). A header a string holds is no
-        // object for the rebuild either, which neither takes nor loads it (#171).
+        // a section, and takes it where it reads, or where it declares itself a cross-reference stream though it cannot be
+        // read; it drops a stream that gives only a /W, where it cannot be read, and the section is reported missing (#281).
+        // A header a comment or a string holds on its line, readable or not, is no object the rebuild's scan takes, and the
+        // search does not read it: the section is missing, and nothing of the header's reading is reported (#171).
         var (file, _, _, at, _) = HybridFiles.PrevFallingShortOfAPlacePastTheStream(place, alone: true);
-        var reads = place.StartsWith("a readable", StringComparison.Ordinal);
+        var hidden = place.EndsWith("in a comment", StringComparison.Ordinal) || place.EndsWith("in a string", StringComparison.Ordinal);
+        var reads = place.StartsWith("a readable", StringComparison.Ordinal) && !hidden;
         var taken = reads || place == "a header on its line";
         using var document = PdfDocument.Open(file);
 
@@ -8966,7 +9250,7 @@ public class CrossReferenceChainTests
                 ? [PdfDiagnosticCodes.XRefOffsetAdjusted, PdfDiagnosticCodes.XRefRebuilt]
                 : taken
                     ? [PdfDiagnosticCodes.StreamTruncated, PdfDiagnosticCodes.XRefOffsetAdjusted, PdfDiagnosticCodes.XRefSectionUnreadable, PdfDiagnosticCodes.XRefRebuilt]
-                    : place == "a header in a string"
+                    : hidden
                         ? [PdfDiagnosticCodes.XRefSectionMissing, PdfDiagnosticCodes.XRefRebuilt]
                         : [PdfDiagnosticCodes.StreamTruncated, PdfDiagnosticCodes.XRefSectionMissing, PdfDiagnosticCodes.XRefRebuilt]);
     }
@@ -9885,12 +10169,71 @@ public class CrossReferenceChainTests
         """;
 
     /// <summary>
+    /// Writes a document saved twice: the first table indexes the catalog, an empty page tree and object 6; past 1,200 bytes
+    /// of comment, the update writes object 4, an uncompressed embedded file whose <c>/Length</c> is
+    /// <paramref name="length"/> and whose data is <paramref name="before"/>, <paramref name="word"/>, which starts at
+    /// <c>Word</c>, and <see cref="StreamDataAfterTheWord"/>, then object 9, the data's length, and its table, at
+    /// <c>Update</c>, which frees object 6; the newest table names through <c>/Prev</c> the place 2 bytes past where the
+    /// word starts.
+    /// </summary>
+    private static (byte[] File, long Word, long Update) UpdatePastAWordInStreamDataOfUnconfirmedLength(string before, string word, string length)
+    {
+        var text = new StringBuilder("%PDF-1.7\n");
+        var catalog = Append(text, "1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n");
+        var pages = Append(text, "2 0 obj\n<< /Type /Pages /Kids [] /Count 0 >>\nendobj\n");
+        var six = Append(text, "6 0 obj\n(six, freed by the update)\nendobj\n");
+        var oldest = Append(text, Invariant($"xref\n0 7\n0000000000 65535 f \n{catalog:D10} 00000 n \n{pages:D10} 00000 n \n0000000000 00000 f \n0000000000 00000 f \n0000000000 00000 f \n{six:D10} 00000 n \ntrailer\n<< /Size 7 /Root 1 0 R >>\nstartxref\n"));
+        text.Append(Invariant($"{oldest}\n%%EOF\n%")).Append('-', 1198).Append('\n');
+        var data = before + word + StreamDataAfterTheWord;
+        var four = Append(text, Invariant($"4 0 obj\n<< /Type /EmbeddedFile /Length {length} >>\nstream\n"));
+        var at = text.Length + before.Length;
+        text.Append(data).Append("\nendstream\nendobj\n");
+        var nine = Append(text, Invariant($"9 0 obj\n{data.Length}\nendobj\n"));
+        var update = Append(text, Invariant($"xref\n0 1\n0000000000 65535 f \n4 1\n{four:D10} 00000 n \n6 1\n0000000000 00001 f \n9 1\n{nine:D10} 00000 n \ntrailer\n<< /Size 10 /Root 1 0 R /Prev {oldest} >>\nstartxref\n"));
+        text.Append(Invariant($"{update}\n%%EOF\n"));
+        var newest = Append(text, Invariant($"xref\n0 1\n0000000000 65535 f \ntrailer\n<< /Size 10 /Root 1 0 R /Prev {at + 2} >>\nstartxref\n"));
+        text.Append(Invariant($"{newest}\n%%EOF\n"));
+        return (Encoding.Latin1.GetBytes(text.ToString()), at, update);
+    }
+
+    /// <summary>Appends <paramref name="part"/> to <paramref name="text"/>, and gives where it starts.</summary>
+    private static long Append(StringBuilder text, string part)
+    {
+        var at = text.Length;
+        text.Append(part);
+        return at;
+    }
+
+    /// <summary>
+    /// Gives the options that open a document with <see cref="PdfReaderLimits.MaxIndexEntries"/> at <paramref name="bound"/>,
+    /// which stops the rebuild's scan recording places short of where the search near an offset tries them, where
+    /// <paramref name="pastMemo"/> says so; null otherwise.
+    /// </summary>
+    private static PdfReaderOptions? PastTheScanMemo(bool pastMemo, int bound) =>
+        pastMemo ? new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxIndexEntries = bound } } : null;
+
+    /// <summary>
     /// What follows the word, or the header, in the data of the embedded file that
     /// <see cref="NearbyFiles.UpdatePastAWordInStreamData"/> and <see cref="NearbyFiles.HybridPastAWordInStreamData"/> write:
     /// the rest of a line of notes, a line more and a comment, which put the section past the data farther from the place
     /// named than the word is, within the search near it.
     /// </summary>
-    private static readonly string StreamDataAfterTheWord = " tables list offsets; see section 7.5.4.\nEnd of notes.\n%" + new string('x', 60);
+    private const string StreamDataAfterTheWord = " tables list offsets; see section 7.5.4.\nEnd of notes.\n%xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx";
+
+    /// <summary>
+    /// Two xref keywords between objects, which no section follows: two places the rebuild's scan records, which fill its
+    /// memo early under a bound that leaves the index room for every number.
+    /// </summary>
+    private const string StrayKeywords = "xref\nxref\n";
+
+    /// <summary>
+    /// An attached file whose catalog and page tree come before the table that follows it: their headers lie in the data
+    /// of the embedded file that holds it.
+    /// </summary>
+    private const string AttachedObjects = "%PDF-1.4\n1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n2 0 obj\n<< /Type /Pages /Kids [] /Count 0 >>\nendobj\n";
+
+    /// <summary>An attached file whose table, which follows it, lies 100 KB past its start.</summary>
+    private static readonly string LargeAttachment = "%PDF-1.4\n%" + string.Concat(Enumerable.Repeat(new string('y', 99) + "\n", 1000));
 
     private enum Offset
     {

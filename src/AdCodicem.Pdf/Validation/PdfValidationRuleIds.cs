@@ -105,6 +105,16 @@ public static class PdfValidationRuleIds
     public const string XRefSectionShifted = "xref.section-shifted";
 
     /// <summary>
+    /// A cross-reference section a <c>/Prev</c> or an <c>/XRefStm</c> names is not where it is named, and the reader takes
+    /// one near it that the file does not confirm: found only where it may lie inside another object — in the data of a
+    /// stream whose length is not confirmed, or past a string that runs past its object —, or past where what the reader's
+    /// scan for objects keeps is whole — past the places it records within
+    /// <see cref="Documents.PdfReaderLimits.MaxIndexEntries"/>, or past the last object it passed before the end of a read
+    /// that a source answered with fewer bytes than asked. <see cref="PdfValidationSeverity.Error"/>.
+    /// </summary>
+    public const string XRefSectionUnconfirmed = "xref.section-unconfirmed";
+
+    /// <summary>
     /// A classic cross-reference table holds no subsection: its <c>trailer</c> keyword follows its <c>xref</c> keyword.
     /// <see cref="PdfValidationSeverity.Warning"/>.
     /// </summary>
@@ -134,6 +144,21 @@ public static class PdfValidationRuleIds
     /// <see cref="PdfValidationSeverity.Warning"/>.
     /// </summary>
     public const string XRefEntryShifted = "xref.entry-shifted";
+
+    /// <summary>
+    /// An in-use entry leads the reader to a header of its object the file does not designate, which it serves the
+    /// object from all the same. Where the offset holds no header of the object, the reader takes one within 512 bytes
+    /// either side of it: the nearest of several definitions its scan for objects takes between objects, none of which
+    /// the entries next to it in the file's index are shifted alike to; or a header that scan takes only as the bytes
+    /// give it — in the data of a stream whose length no <c>endstream</c> confirms, or past a string that runs past its
+    /// object —, or past where what that scan keeps is whole — past the places it records within
+    /// <see cref="Documents.PdfReaderLimits.MaxIndexEntries"/>, or past the last object it passed before the end of a read
+    /// that a source answered with fewer bytes than asked. Where the offset cuts a number — a digit before it, a digit or
+    /// a sign at it — and no other definition of the object lies within those bytes, the reader takes the header written
+    /// there, glued to the digits before it, which it cannot tell from an offset that lands inside another header's
+    /// number. <see cref="PdfValidationSeverity.Error"/>.
+    /// </summary>
+    public const string XRefEntryUnconfirmed = "xref.entry-unconfirmed";
 
     /// <summary>
     /// An entry's generation is not the one its object is written with: readers that match generations read the

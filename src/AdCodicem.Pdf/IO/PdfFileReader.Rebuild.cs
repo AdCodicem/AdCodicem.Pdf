@@ -88,8 +88,7 @@ internal sealed partial class PdfFileReader
             // opened to throw on one throws once the index is whole, not half-way through rebuilding it: one abandoned mid-way
             // would leave the document unable to find the objects it had not reached. The first guard reached is the one
             // thrown.
-            var trailers = new ScannedTrailers();
-            var reached = ScanForObjects(redefinitions, trailers);
+            var reached = IndexScannedObjects(redefinitions, out var trailers);
             MergeScannedTrailers(trailers);
             ReportEncryptFoundLate();
 

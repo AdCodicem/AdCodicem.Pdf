@@ -171,7 +171,16 @@ public sealed record PdfReaderLimits
     /// document can cost, which follows its index: about 24 seconds and 3 GB near the default. While the cross-reference
     /// chain is read, the numbers whose rows it refused, which the bound counts with the index, are held apart as well, each
     /// with an int that tells which section refused it: about 60 bytes a number allocated in all as that set grows, let go
-    /// once the chain is read.
+    /// once the chain is read. The same bound applies to what the reader keeps of the scan of the file that the
+    /// searches near an entry's offset and near an offset the chain names ask for, once a document: the object headers
+    /// and keywords it takes, each definition of a number and each keyword counted, 16 bytes at most for a header or an
+    /// <c>xref</c> keyword, under 9 for a <c>trailer</c> keyword and under 25 for a cross-reference stream's header —
+    /// the lists that hold the last two keep up to a ninth more room than they use —, about 201 MB at most at the
+    /// default, and from two to five times what it keeps allocated while it grows. What the scan takes past it is not
+    /// kept, and a search that has to go without it there — one near an entry's offset that finds a header of the
+    /// object there, or one near an offset the chain names that tries a place there — takes what it finds as the bytes
+    /// give it, and reports the code once more, apart from the index's report, where raising the bound would let it
+    /// tell (<see cref="Diagnostics.PdfDiagnosticCodes.LimitIndexEntries"/>).
     /// </remarks>
     /// <exception cref="ArgumentOutOfRangeException">The value is zero or less.</exception>
     public int MaxIndexEntries

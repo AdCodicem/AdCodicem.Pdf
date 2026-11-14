@@ -151,14 +151,15 @@ internal sealed partial class PdfFileReader
     private bool EndObjFollows(long dataStart, long declaredEnd, ReadOnlySpan<byte> buffered) =>
         (declaredEnd - dataStart <= buffered.Length
             ? StreamEnds.IsEndObjAt(buffered, (int)(declaredEnd - dataStart), reachesEndOfFile: dataStart + buffered.Length >= _source.Length)
-            : null) ?? IsEndObjAt(declaredEnd);
+            : null) ?? IsEndObjAt(declaredEnd, ref _endStreamSearchBytes);
 
     /// <summary>
     /// Determines whether an <c>endobj</c> keyword, whole, follows <paramref name="absoluteOffset"/>, where a stream's declared
     /// length ends, after white space and comments, a comment only after white space (<see cref="StreamEnds.SkipGap"/>):
-    /// the end of a stream's object that has no <c>endstream</c>.
+    /// the end of a stream's object that has no <c>endstream</c>. White space that runs past a first read is read on with
+    /// the reads <paramref name="spent"/> counts.
     /// </summary>
-    private bool IsEndObjAt(long absoluteOffset)
+    private bool IsEndObjAt(long absoluteOffset, ref long spent)
     {
         if (absoluteOffset < 0 || absoluteOffset >= _source.Length)
         {
@@ -173,7 +174,7 @@ internal sealed partial class PdfFileReader
             return decided;
         }
 
-        var next = NextSignificant(absoluteOffset);
+        var next = NextSignificant(absoluteOffset, ref spent, PdfObjectParser.EndObjLookahead);
         return next >= 0 && IsEndObjKeywordAt(next);
     }
 
@@ -335,6 +336,7 @@ internal sealed partial class PdfFileReader
             nextObject ?? _source.Length,
             deferred,
             readsFile,
+            ref _endStreamSearchBytes,
             out var header,
             out var searched,
             out var endObjSeen,
@@ -357,6 +359,59 @@ internal sealed partial class PdfFileReader
                 ObjectEnd = objectEnd,
                 HeaderStopped = header >= 0,
             };
+    }
+
+    /// <summary>
+    /// Gives where a load ends the data of the stream that starts at <paramref name="dataStart"/>, whose declared length ends
+    /// at <paramref name="declaredEnd"/> and no <c>endstream</c> follows, as far as the file's bytes tell, where the load's
+    /// search finds no <c>endstream</c> before the first object header they hold after the data's start, or before their
+    /// end where they hold none (<see cref="SearchEndStream"/>): at the declared length, where it ends at that header or
+    /// before it, and the object's <c>endobj</c> follows it or ends the data nowhere else; at the object's <c>endobj</c>,
+    /// which only white space and comments part from that header or from the end of the file, otherwise
+    /// (<see cref="PdfObjectParser.FinishWithoutEndStream"/>). -1 where the search finds an <c>endstream</c>, or is not
+    /// made, or where the declared length runs past that header and no <c>endobj</c> ends the data before it: a load then
+    /// ends the data at that header, which the bytes cannot tell from one the data holds. -1 too where a window the source
+    /// gives empty ends the search, which holds the end of the data there (#52), and ends a memo there
+    /// (<see cref="ScanMemo.Builder.EndAt"/>).
+    /// </summary>
+    /// <remarks>
+    /// The rebuild's scan asks it of a direct <c>/Length</c>, which it reads itself: the next object an index places, which
+    /// also stops a load's search, is not looked at, for the scan reads nothing of an index. The data is read from the file as
+    /// a load past its window reads it, with the scan's reads past declared lengths (<see cref="_scanGapBytes"/>); once those
+    /// have read <see cref="EndStreamSearchPasses"/> times the length of the file, no search is made.
+    /// </remarks>
+    /// <param name="dataStart">Where the data starts in the file.</param>
+    /// <param name="declaredEnd">Where the declared length ends in the file.</param>
+    /// <param name="scan">Where the scan stands.</param>
+    private long DataEndWithoutEndStream(long dataStart, long declaredEnd, ref ScanState scan)
+    {
+        var before = _scanGapBytes;
+        var found = SearchEndStream(
+            dataStart,
+            [],
+            _source.Length,
+            deferred: false,
+            readsFile: _scanGapBytes < EndStreamSearchPasses * _source.Length,
+            ref _scanGapBytes,
+            out var header,
+            out var searched,
+            out _,
+            out var objectEnd);
+
+        if (found >= 0 || !searched)
+        {
+            return -1;
+        }
+
+        // A search no header stopped read to the end of the file, unless a window the source gave empty ended it.
+        if (header < 0 && _scanGapBytes - before < _source.Length - dataStart)
+        {
+            scan.Memo?.EndAt(dataStart, scan.TokensFrom);
+            return -1;
+        }
+
+        var fits = declaredEnd <= (header >= 0 ? header : _source.Length);
+        return fits && (objectEnd < 0 || IsEndObjAt(declaredEnd, ref _scanGapBytes)) ? declaredEnd : objectEnd;
     }
 
     /// <inheritdoc/>
@@ -632,6 +687,7 @@ internal sealed partial class PdfFileReader
     /// <param name="limit">Where the next object the index places starts, or the end of the file.</param>
     /// <param name="deferred">Whether the stream's <c>/Length</c> is one the chain could not read, which no header stops.</param>
     /// <param name="readsFile">Whether the file past the bytes the parser holds may be read.</param>
+    /// <param name="spent">Counts the bytes read from the file.</param>
     /// <param name="header">Where the header that stopped the search starts, or -1.</param>
     /// <param name="searched">Whether the search reached where it stops, rather than the end of what it might read.</param>
     /// <param name="endObjSeen">Whether the bytes searched, before a header that stopped the search, hold an <c>endobj</c>.</param>
@@ -645,6 +701,7 @@ internal sealed partial class PdfFileReader
         long limit,
         bool deferred,
         bool readsFile,
+        ref long spent,
         out long header,
         out bool searched,
         out bool endObjSeen,
@@ -707,7 +764,7 @@ internal sealed partial class PdfFileReader
         {
             using var window = _source.GetWindow(position, (int)Math.Min(size, end - position));
             var span = window.Memory.Span;
-            _endStreamSearchBytes += span.Length;
+            spent += span.Length;
 
             if (span.IsEmpty)
             {

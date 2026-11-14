@@ -122,11 +122,14 @@ public static class PdfDiagnosticCodes
     /// section near that offset, which the search took first; the chain did not reach the stream, at its header or inside
     /// its object number: a reading from inside the number reads the same stream where it reads a header there, and where
     /// it reads none, as from the 0 of a number 20, the search near that place finds the stream moved (#156). Only a stream
-    /// that declares itself one is reported: its dictionary gives <c>/Type /XRef</c>, and its header is a token a load
-    /// reads from the start of its line, not in a comment or a string there. A header whose object number is written with a
-    /// run of signs that starts with a <c>+</c>, which a load reads as its first sign, is such a token from that sign,
-    /// where the stream is said to start; one a <c>-</c> starts is no object's header (#327). Nothing is reported where one
-    /// of the reader's limits left part of the chain unread — the number of its sections, a section it cut before the
+    /// that declares itself one is reported: its dictionary gives <c>/Type /XRef</c>, the search tried it, as a place the
+    /// rebuild's scan for objects takes — not one inside another object's stream data, string or comment, as far as that
+    /// scan's record reaches (#171) —, and its header is a token a load reads from the start of its line, not in a
+    /// comment or a string there. A header whose object number is written with a run of signs that starts with a
+    /// <c>+</c>, which a load reads as its first sign, is said to start at that sign; one a <c>-</c> starts is no
+    /// object's header (#327).
+    /// Nothing is reported where one of the reader's limits left part of the chain unread — the number of its sections,
+    /// a section it cut before the
     /// section said what it is, rows, a trailer, an object a value the rows or a link are read with leads to, or an index
     /// it filled —, the limit's report standing for what it left unread. Nor is anything reported anywhere in the document
     /// where <see cref="Documents.PdfReaderLimits.MaxTrailerLength"/> may have hidden a link the chain would have followed,
@@ -415,7 +418,12 @@ public static class PdfDiagnosticCodes
 
     /// <summary>
     /// The index holds <see cref="Documents.PdfReaderLimits.MaxIndexEntries"/> object numbers, and took no more: the
-    /// objects past them, in the order the reader met them, were not indexed, and read as null.
+    /// objects past them, in the order the reader met them, were not indexed, and read as null. Or a search near an
+    /// entry's offset found a header of the object, or a search near an offset the chain names tried a place, past what
+    /// the scan for objects it asks for keeps — that many object headers and keywords — and short of the last object it
+    /// passed before the end of a read that a source answered with fewer bytes than asked, past which raising the bound
+    /// would not let it keep more: a header or a section it found past there is taken as the bytes give it. Each is
+    /// reported once a document, apart from the other, the second where the first place the scan left out starts.
     /// </summary>
     public const string LimitIndexEntries = "limit.index-entries";
 

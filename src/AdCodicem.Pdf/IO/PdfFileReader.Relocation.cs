@@ -23,21 +23,17 @@ internal sealed partial class PdfFileReader
     /// links. Found, the section's record takes what was read there — a section that cannot be read too, which is not
     /// found to be read, and which the chain reports where it was found, as where it is named —; not found, it keeps
     /// what the named offset held. A place is a guess: a table's <c>xref</c> keyword, or an object that declares a
-    /// cross-reference stream and no other type. One that reads, whole or in part, is taken whatever its line is — in
-    /// stream data too, an attached file's own table or a cross-reference stream the data quotes, the chain going on
-    /// through its trailer (#171). One that cannot be read is the section all the same, the search ending there, where
-    /// it declared itself one — the keyword, or the header of an object that gives <c>/Type /XRef</c>, before a fault
-    /// or a guard's cut, a token a load reads from the start of its line, outside stream data and strings an earlier
-    /// line opened, in which the word or such a header is taken wherever its line, lexed alone, reads it as a token
-    /// (#171), not a word in a comment or a string there, nor digits a regular byte runs into
-    /// (<see cref="IsTokenOnItsLine"/>); a header whose number is written with a run of signs that starts with a
-    /// <c>+</c> is a token from its first sign, as a load reads it, and one a <c>-</c> starts declares nothing (#327) —, as
-    /// at the offset named, so that no older section farther off stands for its lost rows in silence (#281), or where a
-    /// value it is read with led to an object a guard cut (#263). An object that only gives a <c>/W</c>, or a dictionary
-    /// a guard cut before it said what it is, may be anything, and is dropped, the search going on to the next place —
-    /// near the offset a hybrid table's <c>/Prev</c> names, such an object that may be the table's own, as below, is
-    /// passed over first, and is not reported where the search takes another section before it comes back to it. Two
-    /// kinds of place are passed over, and count toward no limit: where the section was named, which holds no section
+    /// cross-reference stream and no other type, tried or skipped as <see cref="CheckPlace"/> says. One that reads, whole
+    /// or in part, is taken. One that cannot be read is the section all the same, the search ending there, where it
+    /// declared itself one — the keyword, or the header of an object that gives <c>/Type /XRef</c>, before a fault or a
+    /// guard's cut, its token starting its line
+    /// (<see cref="StartsItsLine"/>) —, as at the offset named, so that no older section farther off stands for its lost
+    /// rows in silence (#281), or where a value it is read with led to an object a guard cut (#263). An object that only
+    /// gives a <c>/W</c>, or a dictionary a guard cut before it said what it is, may be anything, and is dropped, the
+    /// search going on to the next place — near the offset a hybrid table's <c>/Prev</c> names, such an object that may
+    /// be the table's own, as below, is passed over first, and is not reported where the search takes another section
+    /// before it comes back to it.
+    /// Two kinds of place are passed over, and count toward no limit: where the section was named, which holds no section
     /// that reads; and every place where a section the chain reached starts — read where it was named, or found moved,
     /// or lost there though it declares itself one; for a header whose number is written with a run of signs, where the
     /// digits of a stream the chain reached from a <c>+</c> of that run, or from the digit past it, start past the signs
@@ -86,14 +82,13 @@ internal sealed partial class PdfFileReader
     /// <c>/Prev</c>, as with places to spare; where a nearer place is left unread, the bound stops the search before it.
     /// One the search does not come back to, another section taken first, is reported once the chain is read, where it
     /// declares itself a section, as a place a fault of the file keeps from being read is taken only where it does — its
-    /// dictionary gives <c>/Type /XRef</c>, and its header is a token a load reads from the start of its line, from its
-    /// first sign where its number is written with a run of signs that starts with a <c>+</c>, where it is reported —,
-    /// where the chain has not reached it, at its header or inside its object number, and where none of the reader's
-    /// limits left part of the chain unread, nor may have hidden a link the chain would have followed, as white space
-    /// past a trailer's window that turned the chain's reading of a section it names into a search may, or a cut of the
-    /// reading at an offset the chain names, whatever it cut (<see cref="ReportStreamsPassedOver"/>):
-    /// an object that gives only a <c>/W</c>, or a header a comment or a string on its line holds, is not, whether it
-    /// reads or not. The search is never asked for a section that is there and cannot be read
+    /// dictionary gives <c>/Type /XRef</c>, and its header starts its line (<see cref="StartsItsLine"/>) —, at its first
+    /// sign where its number is written with a run of signs that starts with a <c>+</c>, where the chain has not reached
+    /// it, at its header or inside its object number, and where none of the reader's limits left part of the chain
+    /// unread, nor may have hidden a link the chain would have followed, as white space past a trailer's window that
+    /// turned the chain's reading of a section it names into a search may, or a cut of the reading at an offset the chain
+    /// names, whatever it cut (<see cref="ReportStreamsPassedOver"/>): an object that gives only a <c>/W</c> is not,
+    /// whether it reads or not. The search is never asked for a section that is there and cannot be read
     /// (<see cref="DeclaresItselfASection"/>): what is near it is another.
     /// </remarks>
     /// <param name="offset">The offset that names the section, as written.</param>
@@ -196,9 +191,9 @@ internal sealed partial class PdfFileReader
         // that was not counted yet.
         var uncountedAt = -1;
 
-        // The places passed over whose dictionary gives /Type /XRef, which may be reported where the search does not come
-        // back to them; null while there is none.
-        List<long>? typedPassedOver = null;
+        // The places passed over whose dictionary gives /Type /XRef, with what the scan's memo said of each, which may be
+        // reported where the search does not come back to them; null while there is none.
+        List<(long At, PlaceCheck Check)>? typedPassedOver = null;
 
         for (var i = 0; i < candidates.Count; i++)
         {
@@ -221,8 +216,7 @@ internal sealed partial class PdfFileReader
             // that number is the same bytes for both — the dictionary, the data —: the header is that stream's, told as
             // that stream is, from where its reading started, rather than as another stream before it or past it. That
             // start may lie before the bytes the window holds: the look for a section the chain reached takes it as it is,
-            // the stream reached there, and the line test, which no window answers there, has it declare nothing
-            // (HeaderTokenStart, IsTokenOnItsLine).
+            // the stream reached there.
             if (NumberRunsInto(window.Span, start - lead, candidate, streamStart, streamDigits))
             {
                 candidate = streamStart;
@@ -288,6 +282,17 @@ internal sealed partial class PdfFileReader
                 }
             }
 
+            // What the chain names is read as it names it; any other place is asked of the scan's memo first, and one the scan
+            // does not take is no section: nothing is read there, nor counted (CheckPlace).
+            var check = candidate == takeAt || candidate == leaveAt
+                ? PlaceCheck.Named
+                : CheckPlace(window.Span, start - lead, lead, candidate);
+
+            if (check == PlaceCheck.Skipped)
+            {
+                continue;
+            }
+
             // Each place counts once, at its first reading: a place passed over and put back is tried again uncounted, even
             // once the bound stops new places, a place already counted, so that the places tried stay within twice the bound;
             // the stream the /XRefStm read, put back unread, is counted where it is read, and the bound may stop it. Once the
@@ -313,6 +318,12 @@ internal sealed partial class PdfFileReader
                 _relocationCandidatesTried++;
             }
 
+            // The memo's bound is reached for a place tried without its word, not for one the bound on places leaves untried.
+            if (check == PlaceCheck.PastMemo)
+            {
+                ReachScanMemoBound([candidate]);
+            }
+
             var attempt = new XRefSectionRecord(section.NamedBy, candidate, section.NamedFrom);
             var indexMark = MarkIndex();
             XRefSectionState state;
@@ -336,32 +347,19 @@ internal sealed partial class PdfFileReader
             // keyword, /Type /XRef —, before a guard's cut or a fault (#281), or where a guard cut an object a value it is read
             // with leads to (#263): found where it was moved, it is reported there, as where it is named, rather than passed
             // over for an older section farther off, whose rows would stand for its lost ones in silence. A value cut is a
-            // guard's cut. A place that said nothing of what it is — an object that gives only a /W, a dictionary a guard cut
-            // before it said, the word xref or a header in a comment or a string, or digits a regular byte runs into — may be
-            // anything, and is dropped as any other is, with what it read through. The place's line is lexed as a load lexes
-            // the line's own tokens: stream data, or a string, that an earlier line opened is not seen, and the word xref or
-            // such a header in stream data is taken for the section found moved wherever its line, lexed alone, reads it as a
-            // token, its middle included (#171). A header whose number is written with a run of signs that starts with a +,
-            // which the walk back from obj finds at its first digit, is a token from that sign, as a load reads it: its line
-            // is asked about there, and the place, found at the digit, is read and taken there, as the walk found it; a run
-            // that starts with a - makes no object's number, and declares nothing (#327). A place that reads, whole or in
-            // part, is taken before any line is lexed, whatever its line is — an attached file's own table, or a
-            // cross-reference stream the data quotes, in stream data among them —, and the chain goes on through its trailer
-            // (#171). Near the offset a hybrid table's /Prev names, a cross-reference stream the data quotes may be passed
-            // over as the table's own all the same: where the search takes another section first, one that gives /Type /XRef,
-            // its header a token its line reads, lexed alone, is reported as a stream passed over, at a place that holds no
-            // section of the file (#171).
+            // guard's cut. A place that said nothing of what it is — an object that gives only a /W, or a dictionary a guard cut
+            // before it said — may be anything, and is dropped as any other is, with what it read through. That the scan took
+            // the place does not tell: where it reads the bytes as they come, it takes the word in a comment or a string
+            // (StartsItsLine).
             if (state == XRefSectionState.Read ||
                 (state == XRefSectionState.Malformed &&
                     (attempt.CutByValue ||
                         ((attempt.TypedXRef || attempt.Kind == XRefSectionKind.Table) &&
-                            IsTokenOnItsLine(
-                                window.Span,
-                                start - lead,
-                                HeaderTokenStart(window.Span, lead, (int)(candidate - (start - lead))))))))
+                            StartsItsLine(window.Span, start - lead, lead, candidate, passedOver: null)))))
             {
                 _xref.KeepTentative();
                 section.RelocateTo(attempt);
+                section.Unconfirmed = check is PlaceCheck.Raw or PlaceCheck.PastMemo;
                 _diagnostics.Repair(
                     PdfDiagnosticCodes.XRefOffsetAdjusted,
                     string.Create(
@@ -372,28 +370,21 @@ internal sealed partial class PdfFileReader
                 // The streams passed over that the search does not come back to, past this place among those put back, are
                 // reported once the chain is read, where it has not reached them (ReportStreamsPassedOver) — those that
                 // declare themselves a section, as a place the search takes though a fault of the file keeps it from being
-                // read does: the dictionary gives /Type /XRef, and the header is a token a load reads from the start of its
-                // line, which the window, still open, tells — or, where the line starts before the bytes searched, those
-                // bytes read again with as many as LineStartSearchLength bytes before them tell, one window more for each
-                // such stream, no stream read (IsTokenOnItsLine). An object that gives only a /W, or a header a comment or a
-                // string on its line holds, says nothing of what it is, whether it reads or not, and is not reported. The
-                // stream the /XRefStm read, put back unread among them, is one the chain read where it starts, and is not
-                // recorded. Each is recorded where its header's token starts, as the line test asks it — at the first sign
-                // of the run its number is written with, where that run starts with a +, which the walk back from obj
-                // passes over (HeaderTokenStart, #327) —, and where its object number ends from there is kept with it, told
-                // in the window too: a link of an older section that names a place inside that number reaches the same
-                // stream.
-                for (var back = Math.Max(i + 1, inWindow); back < candidates.Count; back++)
+                // read does, its line asked only now, so that a stream the search comes back to and takes costs no read for
+                // it. The stream the /XRefStm read, put back unread among them, is one the chain read where it starts, and is
+                // not recorded. Each is recorded where its header's token starts — at the first sign of the run its number is
+                // written with, where that run starts with a +, which the walk back from obj passes over (HeaderTokenStart,
+                // #327) —, and where its object number ends from there is kept with it, told in the window: a link of an
+                // older section that names a place inside that number reaches the same stream.
+                for (var back = Math.Max(i + 1, inWindow); typedPassedOver is not null && back < candidates.Count; back++)
                 {
                     var passed = candidates[back];
 
-                    if (typedPassedOver?.Contains(passed) == true)
+                    foreach (var (typed, typedCheck) in typedPassedOver)
                     {
-                        var header = HeaderTokenStart(window.Span, lead, (int)(passed - (start - lead)));
-
-                        if (IsTokenOnItsLine(window.Span, start - lead, header))
+                        if (typed == passed && StartsItsLine(window.Span, start - lead, lead, passed, typedCheck))
                         {
-                            var headerAt = start - lead + header;
+                            var headerAt = start - lead + HeaderTokenStart(window.Span, lead, (int)(passed - (start - lead)));
                             (_streamsPassedOver ??= []).Add(
                                 (headerAt, NumberEnd(window.Span, start - lead, headerAt), absolute, section.NamedFrom));
                         }
@@ -423,15 +414,15 @@ internal sealed partial class PdfFileReader
 
             // A stream that may be the table's own was read no further than its object, and left nothing but a search for its
             // endstream: it is tried again once every other place was, read again, and not counted again toward
-            // MaxRelocationCandidates. Whether its dictionary gives /Type /XRef is kept, for where the search takes another
-            // section first.
+            // MaxRelocationCandidates. Whether its dictionary gives /Type /XRef is kept, with what the memo said of the place,
+            // for where the search takes another section first.
             if (attempt.MayBeTablesOwn)
             {
                 candidates.Add(candidate);
 
                 if (attempt.TypedXRef)
                 {
-                    (typedPassedOver ??= []).Add(candidate);
+                    (typedPassedOver ??= []).Add((candidate, check));
                 }
             }
         }
@@ -529,32 +520,33 @@ internal sealed partial class PdfFileReader
 
     /// <summary>
     /// Gives where, in <paramref name="span"/>, the token starts that a load reads the place the search near an offset
-    /// found at <paramref name="at"/> from: where a run of signs that starts with a <c>+</c> ends at that place, the run
-    /// lying within the bytes searched, its first sign, from which a load reads the header's object number; the place
-    /// itself otherwise (#327). The search asks it in two places: the line test, and the record of a stream it passes
-    /// over. Whether the chain reached the header found at the place is told by where the digits of the streams it
-    /// reached start, looked up past the run of signs the place starts with (<see cref="DigitsPastSigns"/>,
-    /// <see cref="_sectionDigitsAt"/>), not by this token's start.
+    /// found at <paramref name="at"/> from: where a run of signs that starts with a <c>+</c> ends at that place, the
+    /// run lying within the bytes searched, its first sign, from which a load reads the header's object number; the
+    /// place itself otherwise (#327), where the scan for objects places the header (<see cref="CheckPlace"/>). The
+    /// search asks it of the scan's memo, of the line test, and for the record of a stream it passes over. Whether the
+    /// chain reached the header found at the place is told by where the digits of the streams it reached start, looked
+    /// up past the run of signs the place starts with (<see cref="DigitsPastSigns"/>, <see cref="_sectionDigitsAt"/>),
+    /// not by this token's start.
     /// </summary>
     /// <remarks>
     /// The walk back from <c>obj</c> takes the digits of a header's number, and stops at the first byte that is not one, a
     /// sign among them (<see cref="TryReadHeaderBackwards"/>): the header <c>+14 0 obj</c> is found at its digit 1, though
     /// a load reads object 14 from the sign, and reads a run of signs as it reads one, the first deciding — <c>++14</c> and
-    /// <c>+-14</c> are 14 too. Asked at that digit, the line test would find the token starting before it, and the header
-    /// declaring nothing; asked here, it finds the token a load reads, the header a token on its line where it is one
-    /// (<see cref="IsTokenOnItsLine"/>), and a stream the search passes over there is recorded here
-    /// (<see cref="ReportStreamsPassedOver"/>). A run that starts with a <c>-</c> gives a negative number, no object's, and
-    /// its place is given as it is, where no token starts: it declares nothing. So does a run that does not lie within the
-    /// bytes searched, which the window holds the byte before to tell, as a header whose number starts before them counts
-    /// for nothing (#197). A place where the lexer starts a token — the keyword <c>xref</c>, or the first sign of a header
-    /// found where the walk lexed the line its number is on, which an end of line ends before <c>obj</c> and which holds a
-    /// <c>%</c> — has no sign before it, and is given as it is. A reading that started at a <c>+</c> of either run, or at
-    /// the digit past it, and read the header there, reached it all the same: the search tells it by where that reading
-    /// found the digits, past the signs of the place, wherever the run starts and whatever sign starts it
-    /// (<see cref="TryRelocateXRefSection"/>). The place may be where the reading of the stream an <c>/XRefStm</c> read
-    /// started, which a header found at the digits past a run of signs stands for (<see cref="NumberRunsInto"/>): where
-    /// that lies before the window, nothing is looked at, and it is given as it is. A look at the bytes before the place,
-    /// in the window: nothing is read for it, nor allocated.
+    /// <c>+-14</c> are 14 too. Asked at that digit, the memo and the line test would find no header starting there;
+    /// asked here, they find the token a load reads (<see cref="IsTokenOnItsLine"/>), and a stream the search passes
+    /// over there is recorded here (<see cref="ReportStreamsPassedOver"/>). A run that starts with a <c>-</c> gives a
+    /// negative number, no object's, and its place is given as it is, where no token starts: it declares nothing. So
+    /// does a run that does not lie within the bytes searched, which the window holds the byte before to tell, as a
+    /// header whose number starts before them counts for nothing (#197). A place where the lexer starts a token — the
+    /// keyword <c>xref</c>, or the first sign of a header found where the walk lexed the line its number is on, which
+    /// an end of line ends before <c>obj</c> and which holds a <c>%</c> — has no sign before it, and is given as it is.
+    /// A reading that started at a <c>+</c> of either run, or at the digit past it, and read the header there, reached
+    /// it all the same: the search tells it by where that reading found the digits, past the signs of the place,
+    /// wherever the run starts and whatever sign starts it (<see cref="TryRelocateXRefSection"/>). The place may be
+    /// where the reading of the stream an <c>/XRefStm</c> read started, which a header found at the digits past a run
+    /// of signs stands for (<see cref="NumberRunsInto"/>): where that lies before the window, nothing is looked at, and
+    /// it is given as it is. A look at the bytes before the place, in the window: nothing is read for it, nor
+    /// allocated.
     /// </remarks>
     /// <param name="span">The bytes searched, and the byte before them where the window holds one.</param>
     /// <param name="from">Where the bytes searched start in <paramref name="span"/>.</param>
@@ -575,33 +567,117 @@ internal sealed partial class PdfFileReader
     }
 
     /// <summary>
+    /// Tells whether the search near an offset tries the place it found at <paramref name="candidate"/>, one the chain does
+    /// not name, and whether a section found there is confirmed: before where the scan's memo is whole, a place is one the
+    /// rebuild's scan for objects takes (<see cref="GetScanMemo"/>), so that the word <c>xref</c> or a header inside
+    /// another object — in its stream data, or in a string or a comment —, or in a comment between objects, is no section,
+    /// and is neither read nor counted toward <see cref="MaxRelocationCandidates"/>; at or past there, a place is tried
+    /// without its word, and a section found there is unconfirmed.
+    /// </summary>
+    /// <remarks>
+    /// The keyword is asked where it starts (<see cref="ScanMemo.TryGetXRefKeywordAt"/>), and a header where the scan
+    /// places it, at the first sign of the run of signs its number is written with (<see cref="HeaderTokenStart"/>): a
+    /// header counts where that sign lies within the bytes searched, so that one whose run starts before them, or with
+    /// a <c>-</c>, which makes no object's number, is not tried (#327); the search places a header it tries at its
+    /// digits all the same. A place the scan takes as the bytes give it, in the data of a stream whose length is not
+    /// confirmed or in what a string that runs past its object runs into, is tried as any other, and a section found
+    /// there is unconfirmed (<see cref="ScannedPlaceKind.Raw"/>). The memo holds every place the scan takes only before
+    /// <see cref="ScanMemo.WholeUntil"/> — short of the places it could hold, and of the last object the scan passed
+    /// before the end of a read that the source answered with fewer bytes than asked —: a place at or past there is tried
+    /// without its word, the guard reached once the search tries it, within <see cref="MaxRelocationCandidates"/>, not for
+    /// a place that bound leaves untried, and only where the memo's bound alone keeps it from answering
+    /// (<see cref="ReachScanMemoBound"/>), and a section found there is unconfirmed. A
+    /// place the chain names — what a hybrid table's <c>/XRefStm</c> read in the stream's place, which its
+    /// <c>/Prev</c>'s search takes, and the place that <c>/Prev</c> names — is not asked: it is read as the chain reads
+    /// what it names. Wherever the place is, one that cannot be read declares a section only where its token starts its
+    /// line (<see cref="StartsItsLine"/>). The memo is made the first time a search asks it, once a document: a search
+    /// whose places are passed over, or named by the chain, scans nothing.
+    /// </remarks>
+    /// <param name="span">The bytes searched, and the byte before them where the window holds one.</param>
+    /// <param name="spanStart">Where <paramref name="span"/> starts in the file.</param>
+    /// <param name="from">Where the bytes searched start in <paramref name="span"/>.</param>
+    /// <param name="candidate">Where the place starts in the file, within the bytes searched.</param>
+    private PlaceCheck CheckPlace(ReadOnlySpan<byte> span, long spanStart, int from, long candidate)
+    {
+        var at = (int)(candidate - spanStart);
+        var keyword = span[at] == (byte)'x';
+        var place = keyword ? candidate : spanStart + HeaderTokenStart(span, from, at);
+        var memo = GetScanMemo();
+
+        if (place >= memo.WholeUntil)
+        {
+            return PlaceCheck.PastMemo;
+        }
+
+        bool held;
+        ScannedPlaceKind kind;
+
+        if (keyword)
+        {
+            held = memo.TryGetXRefKeywordAt(place, out kind);
+        }
+        else
+        {
+            held = memo.TryGetHeaderAt(place, out var header);
+            kind = header.Kind;
+        }
+
+        return !held ? PlaceCheck.Skipped : kind == ScannedPlaceKind.Raw ? PlaceCheck.Raw : PlaceCheck.Clean;
+    }
+
+    /// <summary>
+    /// Determines whether the place the search near an offset tried at <paramref name="candidate"/> starts with a token that
+    /// declares a section where it cannot be read, the keyword <c>xref</c> or an object's header, or, asked with what the
+    /// scan's memo said of a cross-reference stream it passes over there, whether that stream is reported
+    /// (<see cref="ReportStreamsPassedOver"/>): one whose token starts its line as a load lexes it
+    /// (<see cref="IsTokenOnItsLine"/>), from its first sign where its number is written with a run of signs that starts
+    /// with a <c>+</c> (<see cref="HeaderTokenStart"/>), wherever it lies. Where the line starts too far back to tell, a
+    /// place that cannot be read declares no section, whatever the memo says of it, and the search goes on; a stream
+    /// passed over is reported where the scan for objects takes it between objects (<see cref="PlaceCheck.Clean"/>).
+    /// </summary>
+    /// <remarks>
+    /// That the scan takes the place does not answer it where the line can be lexed (<see cref="CheckPlace"/>): where the
+    /// scan reads the bytes as they come — in the data of a stream whose length it cannot confirm, comments unread there,
+    /// or past a string that runs past its object —, it takes the word or a header that a comment or a string on its line
+    /// holds, and between objects it takes what follows an end-of-file marker <c>%%EOF</c> on its line, which a load lexes
+    /// as part of that comment. Where the line test cannot tell, the memo does not tell that word from a token either:
+    /// taken for a section that cannot be read, it would end the search short of a section a few bytes on, and what the
+    /// file serves would hang on how long the line is. A section that reads is taken without the line test. A stream
+    /// passed over only words a diagnostic: the memo's word stands for it, for a place the scan takes between objects,
+    /// where it sweeps every comment and string as a load lexes them but what follows such a marker, and for no other.
+    /// </remarks>
+    /// <param name="span">The bytes searched, and the byte before them where the window holds one.</param>
+    /// <param name="spanStart">Where <paramref name="span"/> starts in the file.</param>
+    /// <param name="from">Where the bytes searched start in <paramref name="span"/>.</param>
+    /// <param name="candidate">Where the place starts in the file, within the bytes searched.</param>
+    /// <param name="passedOver">
+    /// What the scan's memo said of a cross-reference stream passed over, asked whether it is reported; null for a place
+    /// that cannot be read, asked whether it declares a section.
+    /// </param>
+    private bool StartsItsLine(ReadOnlySpan<byte> span, long spanStart, int from, long candidate, PlaceCheck? passedOver) =>
+        IsTokenOnItsLine(span, spanStart, HeaderTokenStart(span, from, (int)(candidate - spanStart))) ??
+        passedOver == PlaceCheck.Clean;
+
+    /// <summary>
     /// Determines whether a token starts at <paramref name="at"/> in <paramref name="span"/>, the line it lies in lexed from
-    /// its start as a load of the line's own tokens reads it, stream data and a string a line before it opened unseen: the
-    /// <c>xref</c> a place the search near an offset tried starts with is a table's keyword there, and the number an object's
-    /// header starts with is that header's, either of which declares a section — not a word or a header a comment or a
-    /// string on that line holds, nor digits a regular byte before them runs into (#281). A header's number is asked from
-    /// where a load reads it: its first sign, where it is written with a run of signs that starts with a <c>+</c>, and its
-    /// first digit otherwise, so that a run that starts with a <c>-</c>, which makes no object's number, declares nothing
-    /// (<see cref="HeaderTokenStart"/>, #327).
+    /// its start as a load of the line's own tokens reads it: not a word or a header a comment or a string on that line
+    /// holds, nor digits a regular byte before them runs into (#281); null where the line starts too far back to tell.
+    /// Asked of a place that cannot be read, and of a stream passed over, wherever the scan's memo places it
+    /// (<see cref="StartsItsLine"/>).
     /// </summary>
     /// <remarks>
     /// The line starts past the last end of line before the place, or at the file's start. Where it starts before the bytes
     /// searched, the end of line before it is looked for within <see cref="LineStartSearchLength"/> bytes before them, read
     /// again with them as far as the source gives them, and the line is lexed from its start: a comment whose <c>%</c>, or a
     /// string whose <c>(</c>, lies before the bytes searched is seen. Where none lies within them, and the file starts
-    /// farther back, the place declares nothing, and is dropped as any that holds no section is. So is a place the bytes
-    /// given end at or before: a source that gives fewer bytes than asked is at the end of the file there (#52), and a token
-    /// starts at the place only where its first byte is given, which, with the bytes before it, tells whether one does.
-    /// Stream data, or a string, that an earlier line opened is not seen, as in an object's header (#171): in stream data,
-    /// the word <c>xref</c>, or the header of an object of <c>/Type /XRef</c>, is taken wherever a load of that line alone
-    /// reads it as a token, its middle included. It is asked only of a place that cannot be read, and of a stream of
-    /// <c>/Type /XRef</c> passed over as possibly a hybrid table's own that the search does not come back to, which is
-    /// reported only where it declares itself so (<see cref="ReportStreamsPassedOver"/>): one that reads, whole or in part,
-    /// is taken before any line is lexed, whatever its line is, in stream data too (#171). The bytes lexed run from the
-    /// line's start to the end of the first token that ends past the place — through the comment that holds it and the
-    /// white space and comments after it, or to the end of the string that holds it —, within the bytes searched and those
-    /// read back before them: at most <see cref="LineStartSearchLength"/> bytes more than the bytes searched, once for each
-    /// such place, which <see cref="MaxRelocationCandidates"/> bounds, and one window more read at most for each.
+    /// farther back, the line test cannot tell. A place the bytes given end at or before declares nothing: a source that
+    /// gives fewer bytes than asked is at the end of the file there (#52), and a token starts at the place only where its
+    /// first byte is given, which, with the bytes before it, tells whether one does.
+    /// Stream data, or a string, that an earlier line opened is not seen. The bytes lexed run from the line's start to the
+    /// end of the first token that ends past the place — through the comment that holds it and the white space and comments
+    /// after it, or to the end of the string that holds it —, within the bytes searched and those read back before them: at
+    /// most <see cref="LineStartSearchLength"/> bytes more than the bytes searched, once for each such place, which
+    /// <see cref="MaxRelocationCandidates"/> bounds, and one window more read at most for each.
     /// </remarks>
     /// <param name="span">The bytes searched.</param>
     /// <param name="spanStart">Where <paramref name="span"/> starts in the file.</param>
@@ -609,7 +685,7 @@ internal sealed partial class PdfFileReader
     /// Where the token a load reads the place from starts in <paramref name="span"/> (<see cref="HeaderTokenStart"/>);
     /// negative where it lies before <paramref name="span"/>, which declares nothing.
     /// </param>
-    private bool IsTokenOnItsLine(ReadOnlySpan<byte> span, long spanStart, int at)
+    private bool? IsTokenOnItsLine(ReadOnlySpan<byte> span, long spanStart, int at)
     {
         // A place before the bytes the window holds — the stream an /XRefStm read from a sign, whose header the search
         // found at the digits past a run of signs the window does not hold (NumberRunsInto) — is not lexed: it declares
@@ -642,7 +718,12 @@ internal sealed partial class PdfFileReader
 
         var endOfLine = bytes[..before].LastIndexOfAny((byte)'\r', (byte)'\n');
 
-        return (endOfLine >= 0 || from == 0) && StartsToken(bytes, endOfLine + 1, before + at);
+        if (endOfLine < 0 && from > 0)
+        {
+            return null;
+        }
+
+        return StartsToken(bytes, endOfLine + 1, before + at);
     }
 
     /// <summary>
@@ -701,6 +782,25 @@ internal sealed partial class PdfFileReader
     /// What the reading of a place refused, whether the index was incomplete before it, and whether a guard had cut the chain.
     /// </summary>
     private readonly record struct IndexMark(List<int> Refused, bool Incomplete, bool CutByGuard);
+
+    /// <summary>What the scan's memo says of a place the search near an offset found (<see cref="CheckPlace"/>).</summary>
+    private enum PlaceCheck
+    {
+        /// <summary>The scan does not take it: it is no section, and is not tried.</summary>
+        Skipped,
+
+        /// <summary>The scan takes it between objects.</summary>
+        Clean,
+
+        /// <summary>The scan takes it as the bytes give it: a section found there is unconfirmed.</summary>
+        Raw,
+
+        /// <summary>It lies past the memo's places: tried without the scan's word, a section found there unconfirmed.</summary>
+        PastMemo,
+
+        /// <summary>The chain names it: tried without asking the memo.</summary>
+        Named,
+    }
 
     /// <summary>
     /// Collects where a cross-reference section could start in <paramref name="span"/>: an <c>xref</c> keyword

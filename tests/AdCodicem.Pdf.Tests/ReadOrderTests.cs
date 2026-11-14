@@ -1514,6 +1514,42 @@ public class ReadOrderTests
     }
 
     [Theory]
+    [InlineData("nothing", false)]
+    [InlineData("the objects beside it", false)]
+    [InlineData("a validation", false)]
+    [InlineData("nothing", true)]
+    [InlineData("the objects beside it", true)]
+    [InlineData("a validation", true)]
+    public void The_definition_served_for_a_row_off_its_object_is_the_same_whatever_was_read_before_it(string before, bool glued)
+    {
+        // The rows of objects 3, 4 and 5 point 100 bytes past their headers, and object 4 is written again 53 bytes past its
+        // row. Reading 3 and 5 first relocates them, which changes the index the reader reads with: the rows beside 4's are
+        // taken from the index as the file wrote it, and the header of each from the scan's memo, so that 4 is served from
+        // the same definition, and judged alike, whatever was read first (#171). So is object 4's header glued to the digits
+        // before its row, with no other definition near it, the rows of 3 and 5 two bytes past their headers.
+        var (file, _) = glued
+            ? NearbyFiles.FourNear("3 0 obj\n(three)\nendobj\nstartxref\n1234 0 obj\n(first four)\nendobj\n5 0 obj\n(five)\nendobj\n", "4 0 obj\n(first", 0, neighborShift: 2)
+            : NearbyFiles.FourNear(NearbyFiles.FoursAmongNeighbors, "4 0 obj\n(first", 100, neighborShift: 100);
+        var expected = Findings(PdfDocument.Open(file), validations: 1);
+        using var document = PdfDocument.Open(file);
+
+        if (before == "a validation")
+        {
+            new PdfValidator().Validate(document);
+        }
+        else if (before != "nothing")
+        {
+            document.GetObject(new PdfObjectId(3)).Should().BeOfType<PdfString>();
+            document.GetObject(new PdfObjectId(5)).Should().BeOfType<PdfString>();
+        }
+
+        document.GetObject(new PdfObjectId(4)).Should().BeOfType<PdfString>().Which.ToText().Should().Be("first four");
+        new PdfValidator().Validate(document).Findings.Select(finding => finding.ToString()).Should().Equal(expected);
+        expected.Should().Contain(finding => finding.StartsWith(
+            glued ? "Error xref.entry-unconfirmed at object 4 0" : "Warning xref.entry-shifted at object 4 0", StringComparison.Ordinal));
+    }
+
+    [Theory]
     [InlineData("inside another object")]
     [InlineData("outside the file")]
     public void An_entry_whose_object_a_read_would_not_find_has_the_index_rebuilt_before_the_first_rule(string where)

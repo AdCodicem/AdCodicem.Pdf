@@ -135,8 +135,8 @@ no room to load reads as null, which `syntax.depth-exceeded` reports, and the re
 ([#312](https://github.com/AdCodicem/AdCodicem.Pdf/issues/312)). In the last, an object stream's decoding reads a
 value — its `/Type`, `/N`, `/First`, `/Filter` or `/DecodeParms` — held by a stream that lies on a loop, or the stream
 lies on a loop itself. What the reader serves of that value depends on which stream of the loop it decoded first, and
-so do the verdicts of `xref.object-stream-broken`, `xref.entry-broken` and `xref.entry-shifted`
-([#313](https://github.com/AdCodicem/AdCodicem.Pdf/issues/313)).
+so do the verdicts of `xref.object-stream-broken`, `xref.entry-broken`, `xref.entry-shifted` and
+`xref.entry-unconfirmed` ([#313](https://github.com/AdCodicem/AdCodicem.Pdf/issues/313)).
 
 The cross-reference rules read where each entry of the file's index places its object as a load reads it, and decide
 what a load would find there as settling decides it, through one function of the reader — a few dozen bytes of its

@@ -70,13 +70,15 @@ internal sealed partial class PdfFileReader : IPdfObjectSource, IPdfStreamDataPr
     /// missing.
     /// </summary>
     /// <remarks>
-    /// Within the radius means lying whole between the offset less the radius and the offset plus it, clamped to the file,
-    /// wherever the offset falls: a header from the first digit of its number to the end of its <c>obj</c> keyword, a
-    /// classic table's <c>xref</c> keyword from its first byte to its last. Near the file's start the search reaches no
-    /// further past the offset than elsewhere, where a window clamped there once reached up to twice the radius past it
-    /// (#197); nothing is looked for near an offset more than the radius before the file's start. The byte before the
-    /// window is read as well, so that a number its start cuts — <c>14 0 obj</c> read from its <c>4</c> — is not taken
-    /// for a header that starts there.
+    /// Within the radius means lying whole between the offset less the radius and the offset plus it, clamped to the
+    /// file, wherever the offset falls: a header from where a load starts its number's token — its first digit, or the
+    /// first sign of the run of signs it is written with (#327) — to the end of its <c>obj</c> keyword, a classic
+    /// table's <c>xref</c> keyword from its first byte to its last. Near the file's start the search reaches no further
+    /// past the offset than elsewhere, where a window clamped there once reached up to twice the radius past it (#197);
+    /// nothing is looked for near an offset more than the radius before the file's start. The bytes before the window
+    /// are read as well — one for a section, and for an object as many as an end-of-file marker has, to which a writer
+    /// may glue a header —, so that a number its start cuts — <c>14 0 obj</c> read from its <c>4</c> — is not taken for
+    /// a header that starts there.
     /// </remarks>
     internal const int NearbySearchRadius = 512;
 
@@ -96,6 +98,25 @@ internal sealed partial class PdfFileReader : IPdfObjectSource, IPdfStreamDataPr
     /// What <see cref="HeaderAt"/> gives where reading a header further would consume more than its caller has left.
     /// </summary>
     private const long HeaderReadingSpent = -2;
+
+    /// <summary>
+    /// What <see cref="HeaderAt"/> gives, and what a placement gives for the number at the offset
+    /// (<see cref="HeaderPlacement.NumberAtOffset"/>), where an entry's row cuts a number (<see cref="RowCutsNumber"/>):
+    /// <c>14 0 obj</c> named from its <c>4</c>.
+    /// </summary>
+    internal const long HeaderCutsNumber = -3;
+
+    /// <summary>
+    /// How many bytes a reading of an entry's row reads before it, with its first window: the byte that tells a row that cuts
+    /// a number (<see cref="RowCutsNumber"/>).
+    /// </summary>
+    internal const int ByteBeforeRow = 1;
+
+    /// <summary>
+    /// How many headers of one number the bytes the search near a row reads can hold: a header takes 8 bytes at least,
+    /// <c>1 0 obj</c> and the byte that ends its keyword, since a number glued to it makes it no keyword (#189).
+    /// </summary>
+    private const int MaxNearbyHeaders = (2 * NearbySearchRadius / 8) + 1;
 
     /// <summary>
     /// How many times the file's length a pass that reads the header of every entry of an index consumes at most, over all
@@ -135,14 +156,14 @@ internal sealed partial class PdfFileReader : IPdfObjectSource, IPdfStreamDataPr
     private const int MaxRelocationCandidates = 32;
 
     /// <summary>
-    /// How far before the bytes searched near an offset the end of line that starts a place's line is looked for, read with
-    /// those bytes again where the line starts before them, to tell a place that starts with a token from one a comment or
-    /// a string holds (<see cref="IsTokenOnItsLine"/>): a place that cannot be read, which declares a section only where it
-    /// starts with such a token, and a cross-reference stream passed over near a hybrid table's <c>/Prev</c>, which is
-    /// reported only where its header is one (<see cref="ReportStreamsPassedOver"/>). Where no end of line lies within
-    /// them, and the file starts farther back, the place declares no section, and the stream is not reported. Not a guard
-    /// a valid file can reach (ADR 34): the search runs only near an offset that names no section, and a valid file's
-    /// sections are where its chain names them.
+    /// How far before the bytes searched near an offset the end of line that starts a place's line is looked for, read
+    /// with those bytes again where the line starts before them, so that the line is lexed from its start
+    /// (<see cref="IsTokenOnItsLine"/>): the line test judges every place the search tries that cannot be read — one the
+    /// chain names, one past where the scan's memo is whole, and one the memo holds — and every cross-reference stream it
+    /// passes over that may be reported (<see cref="StartsItsLine"/>, <see cref="ReportStreamsPassedOver"/>). Where no end
+    /// of line lies within them, and the file starts farther back, the test cannot tell, and <see cref="StartsItsLine"/>
+    /// says what stands then. Not a guard a valid file can reach (ADR 34): the search runs only near an offset that names
+    /// no section, and a valid file's sections are where its chain names them.
     /// </summary>
     private const int LineStartSearchLength = 4096;
 
@@ -279,6 +300,7 @@ internal sealed partial class PdfFileReader : IPdfObjectSource, IPdfStreamDataPr
 
     private static ReadOnlySpan<byte> ObjKeyword => "obj"u8;
     private static ReadOnlySpan<byte> TrailerKeyword => "trailer"u8;
+    private static ReadOnlySpan<byte> XRefKeyword => "xref"u8;
     private static ReadOnlySpan<byte> StartXRefKeyword => "startxref"u8;
     private static ReadOnlySpan<byte> HeaderMarker => "%PDF-"u8;
 
@@ -296,6 +318,12 @@ internal sealed partial class PdfFileReader : IPdfObjectSource, IPdfStreamDataPr
 
     /// <summary>The guards already reported, and where: an object read again is not reported again.</summary>
     private readonly HashSet<(PdfLimit Limit, long Position)> _limitsReached = new(SeededComparer.Instance);
+
+    /// <summary>
+    /// What the report of the memo's bound is held under among the guards reported (<see cref="ReachScanMemoBound"/>): a place
+    /// no byte of the file has, so that it is told apart from the index's report of the same bound wherever that lies.
+    /// </summary>
+    private static readonly (PdfLimit Limit, long Position) ScanMemoBoundReported = (PdfLimit.IndexEntries, long.MinValue);
 
     /// <summary>
     /// The object stream members <see cref="PdfReaderLimits.MaxObjectLength"/> cut, by where their stream's data starts and
@@ -574,6 +602,12 @@ internal sealed partial class PdfFileReader : IPdfObjectSource, IPdfStreamDataPr
     private long _scanGapBytes;
 
     /// <summary>
+    /// What the rebuild's scan for objects takes of the file, made the first time something asks for it, and kept for the
+    /// document's life (<see cref="GetScanMemo"/>); null before.
+    /// </summary>
+    private ScanMemo? _scanMemo;
+
+    /// <summary>
     /// How many times a load answered null because the object was being loaded already, or because the object
     /// stream holding it was: that null says nothing of the object, and is not cached (#51).
     /// </summary>
@@ -650,14 +684,14 @@ internal sealed partial class PdfFileReader : IPdfObjectSource, IPdfStreamDataPr
     private int _relocationCandidatesTried;
 
     /// <summary>
-    /// The cross-reference streams the search near the offset a hybrid table's <c>/Prev</c> names passed over as possibly
-    /// that table's own and never came back to, another section taken first, that declare themselves one — the dictionary
-    /// gives <c>/Type /XRef</c>, and the header is a token a load reads from the start of its line —: where each header's
-    /// token starts, at the first sign of the run its number is written with where that run starts with a <c>+</c>
-    /// (<see cref="HeaderTokenStart"/>), where its object number ends, the offset the <c>/Prev</c> names, and the table.
-    /// Null while there is none. Each the chain has not reached, at its header or inside its object number, is reported
-    /// once the chain is read, but where one of the reader's limits left part of the chain unread, or may have hidden a
-    /// link the chain would have followed or cut what would end it (<see cref="_guardMayHideLink"/>,
+    /// The cross-reference streams the search near the offset a hybrid table's <c>/Prev</c> names passed over as
+    /// possibly that table's own and never came back to, another section taken first, that declare themselves one — the
+    /// dictionary gives <c>/Type /XRef</c> —: where each header's token starts, at the first sign of the run its number
+    /// is written with where that run starts with a <c>+</c> (<see cref="HeaderTokenStart"/>), where its object number
+    /// ends, the offset the <c>/Prev</c> names, and the table. Null while there is none. Each the chain has not
+    /// reached, at its header or inside its object number, is reported once the chain is read, but where one of the
+    /// reader's limits left part of the chain unread, or may have hidden a link the chain would have followed or cut
+    /// what would end it (<see cref="_guardMayHideLink"/>,
     /// <see cref="ReportStreamsPassedOver"/>).
     /// </summary>
     /// <remarks>
@@ -1390,8 +1424,8 @@ internal sealed partial class PdfFileReader : IPdfObjectSource, IPdfStreamDataPr
     /// <summary>
     /// Closes the reader as its document is disposed: whatever asks it for an object or for a stream's data from now on
     /// is refused with an <see cref="ObjectDisposedException"/> that names the document, and what it kept — the objects
-    /// it cached, the object streams it decoded, its index, what it noted of each object it read, the source — is let go,
-    /// though a reference the caller holds keeps the reader itself. Closing it again does nothing.
+    /// it cached, the object streams it decoded, its index, the memo of its scan, what it noted of each object it read,
+    /// the source — is let go, though a reference the caller holds keeps the reader itself. Closing it again does nothing.
     /// </summary>
     internal void Close()
     {
@@ -1420,6 +1454,7 @@ internal sealed partial class PdfFileReader : IPdfObjectSource, IPdfStreamDataPr
         _objectStreamBytes = 0;
         _xref.Release();
         _chainIndex = null;
+        _scanMemo = null;
         _cutTrailer = null;
 
         // What it noted of each object grows with a damaged file, past what the file weighs: nothing reads it once closed.
