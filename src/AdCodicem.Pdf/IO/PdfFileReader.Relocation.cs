@@ -23,10 +23,10 @@ internal sealed partial class PdfFileReader
     /// links. Found, the section's record takes what was read there — a section that cannot be read too, which is not
     /// found to be read, and which the chain reports where it was found, as where it is named —; not found, it keeps
     /// what the named offset held. A place is a guess: a table's <c>xref</c> keyword, or an object that declares a
-    /// cross-reference stream and no other type, tried only where the rebuild's scan for objects takes it
-    /// (<see cref="CheckPlace"/>). One that reads, whole or in part, is taken. One that cannot be read is the section all
-    /// the same, the search ending there, where it declared itself one — the keyword, or the header of an object that
-    /// gives <c>/Type /XRef</c>, before a fault or a guard's cut, its token starting its line
+    /// cross-reference stream and no other type, tried or skipped as <see cref="CheckPlace"/> says. One that reads, whole
+    /// or in part, is taken. One that cannot be read is the section all the same, the search ending there, where it
+    /// declared itself one — the keyword, or the header of an object that gives <c>/Type /XRef</c>, before a fault or a
+    /// guard's cut, its token starting its line
     /// (<see cref="StartsItsLine"/>) —, as at the offset named, so that no older section farther off stands for its lost
     /// rows in silence (#281), or where a value it is read with led to an object a guard cut (#263). An object that only
     /// gives a <c>/W</c>, or a dictionary a guard cut before it said what it is, may be anything, and is dropped, the
@@ -568,10 +568,11 @@ internal sealed partial class PdfFileReader
 
     /// <summary>
     /// Tells whether the search near an offset tries the place it found at <paramref name="candidate"/>, one the chain does
-    /// not name, and whether a section found there is confirmed: a place is one the rebuild's scan for objects takes
-    /// (<see cref="GetScanMemo"/>), so that the word <c>xref</c> or a header inside another object — in its stream data, or
-    /// in a string or a comment —, or in a comment between objects, is no section, and is neither read nor counted toward
-    /// <see cref="MaxRelocationCandidates"/>.
+    /// not name, and whether a section found there is confirmed: before where the scan's memo is whole, a place is one the
+    /// rebuild's scan for objects takes (<see cref="GetScanMemo"/>), so that the word <c>xref</c> or a header inside
+    /// another object — in its stream data, or in a string or a comment —, or in a comment between objects, is no section,
+    /// and is neither read nor counted toward <see cref="MaxRelocationCandidates"/>; at or past there, a place is tried
+    /// without its word, and a section found there is unconfirmed.
     /// </summary>
     /// <remarks>
     /// The keyword is asked where it starts (<see cref="ScanMemo.TryGetXRefKeywordAt"/>), and a header where the scan

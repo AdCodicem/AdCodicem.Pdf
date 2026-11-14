@@ -7,8 +7,9 @@ namespace AdCodicem.Pdf.IO.XRef;
 internal enum HeaderConfirmation : byte
 {
     /// <summary>
-    /// The header lies where the entry places it, or the search near the offset vouches for the one it chose: the only one of
-    /// the object its scan takes between objects there, or the one the entries next to it are shifted alike to.
+    /// The header lies where the entry places it, or the search near the offset vouches for the one it chose: one its scan
+    /// takes between objects there, and either the only such header of the object or the one the entries next to it are
+    /// shifted alike to.
     /// </summary>
     Vouched,
 
