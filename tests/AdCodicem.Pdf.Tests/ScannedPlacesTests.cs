@@ -4,6 +4,7 @@ using AdCodicem.Pdf.Diagnostics;
 using AdCodicem.Pdf.Documents;
 using AdCodicem.Pdf.IO;
 using AdCodicem.Pdf.Objects;
+using AdCodicem.Pdf.Validation;
 
 namespace AdCodicem.Pdf.Tests;
 
@@ -423,23 +424,32 @@ public class ScannedPlacesTests
     [InlineData("past where the memo is whole", true)]
     [InlineData("before where the memo is whole, the bytes searched reaching past it", false)]
     [InlineData("before where the memo is whole, the bytes searched reaching past it", true)]
+    [InlineData("past where a source that gives fewer bytes than asked ended the scan", false)]
+    [InlineData("past where a source that gives fewer bytes than asked ended the scan", true)]
     public void The_search_near_a_row_reports_the_memo_s_bound_only_where_it_finds_a_header_past_where_the_memo_is_whole(
         string header, bool throwOnLimit)
     {
         // MaxIndexEntries of 8: the scan takes the headers of 1 and 2, then ten definitions of 3, and object 4's header after
         // them or before; the memo holds no place past the eighth the scan takes. Object 4's header lies 5 bytes before its
         // row. Past there, the search near the row goes without the memo's word for it, reports the memo's bound, and serves
-        // the header as the bytes give it; opened to throw on a guard, the read throws there. Before there, the memo answers
-        // for it, though the bytes searched reach past there: the bound changed nothing read, and is not reported.
-        var past = header == "past where the memo is whole";
+        // the header as the bytes give it, a choice it cannot vouch for; opened to throw on a guard, the read throws there.
+        // Before there, the memo answers for it, though the bytes searched reach past there: the bound changed nothing read,
+        // and is not reported. Past 6,000 bytes of comment read through a source that gives at most 4,096 bytes a read, the
+        // memo is whole but holds nothing past where the scan's short window ended it (#52): the header is served as the
+        // bytes give it all the same, and no guard is reported or thrown, none having cut the memo.
+        var shortReads = header == "past where a source that gives fewer bytes than asked ended the scan";
+        var past = header != "before where the memo is whole, the bytes searched reaching past it";
+        var boundReached = past && !shortReads;
         var four = "4 0 obj\n(four)\nendobj\n";
         var threes = string.Concat(Enumerable.Range(0, 10).Select(index => string.Create(CultureInfo.InvariantCulture, $"3 0 obj\n({index})\nendobj\n")));
-        var (file, row) = NearbyFiles.FourNear(past ? threes + four : four + threes, "4 0 obj", 5);
+        var body = shortReads ? "%" + new string('-', 5998) + "\n" + four : past ? threes + four : four + threes;
+        var (file, row) = NearbyFiles.FourNear(body, "4 0 obj", 5);
         var options = new PdfReaderOptions { ThrowOnLimit = throwOnLimit, Limits = PdfReaderLimits.Default with { MaxIndexEntries = 8 } };
+        PdfFileSource source = shortReads ? new CappedReadSource(file, 4096) : PdfFileSource.FromMemory(file);
 
-        using var document = PdfDocument.Open(file, options);
+        using var document = PdfDocument.Open(source, options, ownsSource: true);
 
-        if (past && throwOnLimit)
+        if (boundReached && throwOnLimit)
         {
             FluentActions.Invoking(() => document.GetObject(new PdfObjectId(4))).Should().Throw<PdfLimitExceededException>()
                 .Which.LimitName.Should().Be(nameof(PdfReaderLimits.MaxIndexEntries));
@@ -449,13 +459,17 @@ public class ScannedPlacesTests
         document.GetObject(new PdfObjectId(4)).AsText().Should().Be("four");
         var memo = document.Reader.GetScanMemo();
         var adjusted = (PdfDiagnosticCodes.XRefOffsetAdjusted, row - 5);
-        IEnumerable<(string, long)> reported = past ? [(PdfDiagnosticCodes.LimitIndexEntries, memo.FullAt), adjusted] : [adjusted];
+        IEnumerable<(string, long)> reported = boundReached ? [(PdfDiagnosticCodes.LimitIndexEntries, memo.FullAt), adjusted] : [adjusted];
 
         document.WasRepaired.Should().BeFalse();
-        memo.IsWhole.Should().BeFalse();
+        memo.IsWhole.Should().Be(shortReads);
         memo.WholeUntil.Should().BeLessThan(row + PdfFileReader.NearbySearchRadius, "the bytes searched reach past where the memo is whole");
         (row - 5 >= memo.WholeUntil).Should().Be(past);
         document.Diagnostics.Select(entry => (entry.Code, entry.Position)).Should().Equal(reported);
+        new PdfValidator().Validate(document).Findings.Where(finding => finding.Location.Object == new PdfObjectId(4))
+            .Select(finding => (finding.RuleId, finding.Severity)).Should().Equal(past
+                ? (PdfValidationRuleIds.XRefEntryUnconfirmed, PdfValidationSeverity.Error)
+                : (PdfValidationRuleIds.XRefEntryShifted, PdfValidationSeverity.Warning));
     }
 
     [Theory]
