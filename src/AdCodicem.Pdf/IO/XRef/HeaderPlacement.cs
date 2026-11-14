@@ -15,16 +15,14 @@ namespace AdCodicem.Pdf.IO.XRef;
 /// Whether what lies at the offset still runs past <see cref="Documents.PdfReaderLimits.MaxObjectLength"/>, where a load
 /// reaches that guard before it looks near the offset.
 /// </param>
-/// <param name="Vouched">
-/// For <see cref="HeaderPlace.Nearby"/>, whether the search near the offset vouches for the header it chose
-/// (<see cref="PdfFileReader.PlaceHeader"/>); true for any other place.
+/// <param name="Confirmation">
+/// For <see cref="HeaderPlace.Nearby"/>, whether the search near the offset vouches for the header it chose, and why not where
+/// it does not (<see cref="PdfFileReader.PlaceHeader"/>); <see cref="HeaderConfirmation.Vouched"/> for any other place.
 /// </param>
-/// <param name="Kind">For <see cref="HeaderPlace.Nearby"/>, how the rebuild's scan takes the header chosen.</param>
 internal readonly record struct HeaderPlacement(
     HeaderPlace Place,
     long Position,
     long Generation,
     long NumberAtOffset,
     bool GuardAtOffset,
-    bool Vouched = true,
-    ScannedPlaceKind Kind = ScannedPlaceKind.Clean);
+    HeaderConfirmation Confirmation = HeaderConfirmation.Vouched);

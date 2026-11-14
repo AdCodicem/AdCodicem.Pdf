@@ -437,7 +437,8 @@ public class ScannedPlacesTests
         // Before there, the memo answers for it, though the bytes searched reach past there: the bound changed nothing read,
         // and is not reported. Past 6,000 bytes of comment read through a source that gives at most 4,096 bytes a read, the
         // memo is whole but holds nothing past where the scan's short window ended it (#52): the header is served as the
-        // bytes give it all the same, and no guard is reported or thrown, none having cut the memo.
+        // bytes give it all the same, and no guard is reported or thrown, none having cut the memo. The validator's finding
+        // names what stopped the memo.
         var shortReads = header == "past where a source that gives fewer bytes than asked ended the scan";
         var past = header != "before where the memo is whole, the bytes searched reaching past it";
         var boundReached = past && !shortReads;
@@ -467,10 +468,15 @@ public class ScannedPlacesTests
         memo.WholeUntil.Should().BeLessThan(row + PdfFileReader.NearbySearchRadius, "the bytes searched reach past where the memo is whole");
         (row - 5 >= memo.WholeUntil).Should().Be(past);
         document.Diagnostics.Select(entry => (entry.Code, entry.Position)).Should().Equal(reported);
-        new PdfValidator().Validate(document).Findings.Where(finding => finding.Location.Object == new PdfObjectId(4))
-            .Select(finding => (finding.RuleId, finding.Severity)).Should().Equal(past
-                ? (PdfValidationRuleIds.XRefEntryUnconfirmed, PdfValidationSeverity.Error)
-                : (PdfValidationRuleIds.XRefEntryShifted, PdfValidationSeverity.Warning));
+        var finding = new PdfValidator().Validate(document).Findings.Should().ContainSingle(finding => finding.Location.Object == new PdfObjectId(4)).Which;
+        (finding.RuleId, finding.Severity).Should().Be(past
+            ? (PdfValidationRuleIds.XRefEntryUnconfirmed, PdfValidationSeverity.Error)
+            : (PdfValidationRuleIds.XRefEntryShifted, PdfValidationSeverity.Warning));
+        finding.Message.Should().EndWith(shortReads
+            ? "which it cannot tell lies between objects: it lies past where a source that gave fewer bytes than asked ended its scan for objects."
+            : past
+                ? "which it cannot tell lies between objects: it lies past the places its scan for objects records within PdfReaderLimits.MaxIndexEntries. Raising the limit lets it tell."
+                : string.Create(CultureInfo.InvariantCulture, $"the object starts 5 bytes before it, at offset {row - 5}."));
     }
 
     [Theory]

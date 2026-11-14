@@ -1510,11 +1510,11 @@ public class CrossReferenceRuleTests
     {
         {
             NearbyFiles.OldAndNewFour, "4 0 obj\n(new", 3, 0, PdfValidationRuleIds.XRefEntryUnconfirmed,
-            "where there is no object header; the object is defined more than once within 512 bytes of it, and the reader takes the nearest definition, 3 bytes before it"
+            "where there is no object header; the object is defined more than once within 512 bytes of it, and the reader takes the nearest of the definitions its scan for objects takes between objects, 3 bytes before it"
         },
         {
             NearbyFiles.TiedFours, "4 0 obj\n(before", 33, 0, PdfValidationRuleIds.XRefEntryUnconfirmed,
-            "the reader takes the nearest definition, 33 bytes before it"
+            "the reader takes the nearest of the definitions its scan for objects takes between objects, 33 bytes before it"
         },
         {
             NearbyFiles.FoursAmongNeighbors, "4 0 obj\n(first", 100, 100, PdfValidationRuleIds.XRefEntryShifted,
@@ -1522,7 +1522,7 @@ public class CrossReferenceRuleTests
         },
         {
             NearbyFiles.FoursAmongNeighbors, "4 0 obj\n(first", 100, 0, PdfValidationRuleIds.XRefEntryUnconfirmed,
-            "the reader takes the nearest definition, 53 bytes after it"
+            "the reader takes the nearest of the definitions its scan for objects takes between objects, 53 bytes after it"
         },
         {
             "3 0 obj\n<< /Length 81 >>\nstream\n%PDF-1.4\n4 0 obj\n(attached)\nendobj\n%%EOF\nendstream\nendobj\n", "4 0 obj\n(attached", 5, 0,

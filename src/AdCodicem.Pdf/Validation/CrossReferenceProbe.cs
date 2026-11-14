@@ -215,18 +215,11 @@ internal sealed class CrossReferenceProbe
                 // The generation is the one the reader records for the object it relocates, read as a load reads it: a
                 // header longer than a first read is judged all the same (#118). One the search does not vouch for is a
                 // choice the file does not designate (ADR 45).
-                var findings = placement.Vouched ? Shifted : Unconfirmed;
+                var findings = placement.Confirmation == HeaderConfirmation.Vouched ? Shifted : Unconfirmed;
 
                 if (findings.Take())
                 {
-                    var given = Invariant($"The entry of object {number} gives offset {Named(reader, entry, offset, inFile)}, {(inFile ? WhatLiesAt(placement) : "outside the file")}");
-                    var distance = CountText.Distance(placement.Position - offset, "it");
-
-                    findings.Keep(new ProbeFinding(
-                        at,
-                        placement.Vouched ? Invariant($"{given}; the object starts {distance}, at offset {placement.Position}.")
-                        : placement.Kind == ScannedPlaceKind.Clean ? Invariant($"{given}; the object is defined more than once within {PdfFileReader.NearbySearchRadius} bytes of it, and the reader takes the nearest definition, {distance}, at offset {placement.Position}, which the entries next to it do not confirm.")
-                        : Invariant($"{given}; the reader takes the header {distance}, at offset {placement.Position}, which it cannot tell lies between objects: it may lie in the data of a stream whose length is not confirmed, or in a string that runs past its object.")));
+                    findings.Keep(new ProbeFinding(at, Relocation(reader, number, entry, offset, inFile, placement)));
                 }
 
                 CheckGeneration(number, entry, placement.Position, placement.Generation);
@@ -272,6 +265,25 @@ internal sealed class CrossReferenceProbe
 
                 return;
         }
+    }
+
+    /// <summary>
+    /// Says where the reader takes the header of object <paramref name="number"/> that is not where its entry places it, and,
+    /// where it does not vouch for it, why: built only for a finding.
+    /// </summary>
+    private static string Relocation(PdfFileReader reader, int number, XRefEntry entry, long offset, bool inFile, HeaderPlacement placement)
+    {
+        var given = Invariant($"The entry of object {number} gives offset {Named(reader, entry, offset, inFile)}, {(inFile ? WhatLiesAt(placement) : "outside the file")}");
+        var taken = Invariant($"{CountText.Distance(placement.Position - offset, "it")}, at offset {placement.Position}");
+
+        return placement.Confirmation switch
+        {
+            HeaderConfirmation.Vouched => Invariant($"{given}; the object starts {taken}."),
+            HeaderConfirmation.Ambiguous => Invariant($"{given}; the object is defined more than once within {PdfFileReader.NearbySearchRadius} bytes of it, and the reader takes the nearest of the definitions its scan for objects takes between objects, {taken}, which the entries next to it do not confirm."),
+            HeaderConfirmation.Raw => Invariant($"{given}; the reader takes the header {taken}, which it cannot tell lies between objects: it may lie in the data of a stream whose length is not confirmed, or in a string that runs past its object."),
+            HeaderConfirmation.PastScan when reader.GetScanMemo().IsWhole => Invariant($"{given}; the reader takes the header {taken}, which it cannot tell lies between objects: it lies past where a source that gave fewer bytes than asked ended its scan for objects."),
+            _ => Invariant($"{given}; the reader takes the header {taken}, which it cannot tell lies between objects: it lies past the places its scan for objects records within PdfReaderLimits.MaxIndexEntries. Raising the limit lets it tell."),
+        };
     }
 
     /// <summary>Says what lies at the offset an entry gives, in the file, as a finding words it: built only for a finding.</summary>

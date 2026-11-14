@@ -110,7 +110,7 @@ internal sealed partial class PdfFileReader
 
         // Offsets are commonly off by a few bytes in files from careless tools, so the neighborhood is
         // searched before the index is given up on entirely.
-        if (TryFindObjectHeader(id.Number, entry, reportsBound: true, out var nearby, out var generation, out _, out _) &&
+        if (TryFindObjectHeader(id.Number, entry, reportsBound: true, out var nearby, out var generation, out _) &&
             TryParseObjectAt(id.Number, nearby, out var relocated))
         {
             _diagnostics.Repair(
@@ -585,19 +585,17 @@ internal sealed partial class PdfFileReader
     /// <param name="reportsBound">Whether the memo's bound is reported where a header of the number lies past it.</param>
     /// <param name="actualOffset">Where the header chosen starts: its number, at the first sign of a run of signs (#327).</param>
     /// <param name="generation">The generation the header chosen gives.</param>
-    /// <param name="kind">How the scan takes the header chosen.</param>
-    /// <param name="vouched">Whether the choice is vouched for.</param>
+    /// <param name="confirmation">Whether the choice is vouched for, and why not where it is not.</param>
     /// <exception cref="PdfLimitExceededException">
     /// A header of the number lies past where the memo is whole, the bound is reported, and the document was opened to throw
     /// on a guard.
     /// </exception>
     private bool TryFindObjectHeader(
-        int number, XRefEntry entry, bool reportsBound, out long actualOffset, out int generation, out ScannedPlaceKind kind, out bool vouched)
+        int number, XRefEntry entry, bool reportsBound, out long actualOffset, out int generation, out HeaderConfirmation confirmation)
     {
         actualOffset = -1;
         generation = 0;
-        kind = ScannedPlaceKind.Raw;
-        vouched = false;
+        confirmation = HeaderConfirmation.Raw;
         var approximateOffset = PositionOf(entry);
 
         if (approximateOffset < -NearbySearchRadius)
@@ -725,8 +723,9 @@ internal sealed partial class PdfFileReader
 
         actualOffset = positions[best];
         generation = generations[best];
-        kind = kinds[best];
-        vouched = kind == ScannedPlaceKind.Clean && (clean == 1 || bestSupported);
+        confirmation = kinds[best] == ScannedPlaceKind.Raw
+            ? actualOffset >= memo.WholeUntil ? HeaderConfirmation.PastScan : HeaderConfirmation.Raw
+            : clean == 1 || bestSupported ? HeaderConfirmation.Vouched : HeaderConfirmation.Ambiguous;
         return true;
     }
 
@@ -779,7 +778,7 @@ internal sealed partial class PdfFileReader
         var recordedAt = RecordedAtFor(number, entry);
 
         return TryParseObjectAt(number, offset, out var value, recordedAt, atRow: !entry.FoundByReader) ||
-            (TryFindObjectHeader(number, entry, reportsBound: true, out var nearby, out _, out _, out _) &&
+            (TryFindObjectHeader(number, entry, reportsBound: true, out var nearby, out _, out _) &&
                 TryParseObjectAt(number, nearby, out value, recordedAt))
             ? value
             : null;
@@ -817,7 +816,7 @@ internal sealed partial class PdfFileReader
         var offset = PositionOf(entry);
         var recordedAt = RecordedAtFor(number, entry);
         var found = TryParseObjectAt(number, offset, out var value, recordedAt, atRow: !entry.FoundByReader) ||
-            (TryFindObjectHeader(number, entry, reportsBound: true, out var nearby, out _, out _, out _) &&
+            (TryFindObjectHeader(number, entry, reportsBound: true, out var nearby, out _, out _) &&
                 TryParseObjectAt(number, nearby, out value, recordedAt));
 
         // A dictionary one of the reader's limits cut is the limit's, not the file's: what it would have said is unknown. A
