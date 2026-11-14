@@ -1562,7 +1562,7 @@ public class CrossReferenceRuleTests
 
     [Theory]
     [MemberData(nameof(EntriesNearDefinitions))]
-    public void An_entry_relocated_to_a_header_the_file_does_not_designate_is_unconfirmed(
+    public void An_entry_near_definitions_of_its_object_is_shifted_where_the_file_designates_the_one_taken_unconfirmed_where_the_reader_chose_it_and_broken_where_none_lies_near(
         string body, string anchor, long shift, long neighborShift, string ruleId, string said)
     {
         // The reader serves the definition of object 4 the search near its row chooses. Where the rows beside it are shifted
@@ -1571,7 +1571,8 @@ public class CrossReferenceRuleTests
         // scan takes only as the bytes give them — in the data of a stream whose length is not confirmed —, the reader chose
         // it: an error (ADR 45). A row that cuts a number is said to (#171); where no other definition lies near it, the header
         // written there is taken, glued to the digits before it, which the reader cannot tell from a row inside another
-        // header's number: an error too.
+        // header's number: an error too. Where the number it cuts is another object's, and no header of object 4 lies near
+        // it, the entry is broken.
         var (file, row) = NearbyFiles.FourNear(body, anchor, shift, neighborShift);
 
         var finding = Validate(file).Findings.Should().ContainSingle(finding => finding.Location.Object == new PdfObjectId(4)).Which;
