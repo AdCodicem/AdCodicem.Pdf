@@ -320,7 +320,7 @@ internal sealed partial class PdfFileReader
             {
                 if (windowStart + span.Length < _source.Length)
                 {
-                    memo?.EndAt(windowStart + span.Length);
+                    memo?.EndAt(windowStart + span.Length, scan.TokensFrom);
                 }
 
                 break;

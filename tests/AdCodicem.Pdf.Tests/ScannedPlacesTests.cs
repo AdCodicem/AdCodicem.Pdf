@@ -3,6 +3,7 @@ using System.Text;
 using AdCodicem.Pdf.Diagnostics;
 using AdCodicem.Pdf.Documents;
 using AdCodicem.Pdf.IO;
+using AdCodicem.Pdf.IO.XRef;
 using AdCodicem.Pdf.Objects;
 using AdCodicem.Pdf.Validation;
 
@@ -479,8 +480,9 @@ public class ScannedPlacesTests
     {
         // Past the catalog and the page tree, 6,000 bytes of comment come before object 3, read through a source that gives
         // every byte asked for, or at most 4,096 bytes a read, as a source over a store of blocks may. The scan takes a window
-        // shorter than asked for the end of the data there, and its memo, whole, holds nothing past it: no place there is
-        // vouched for. Read whole, the memo holds every place to the file's end (#52).
+        // shorter than asked for the end of the data there, and its memo, whole, holds nothing past it, nor past where the
+        // page tree's value ends, as far back as a header whose obj lies past the end may start: no place there is vouched
+        // for. Read whole, the memo holds every place to the file's end (#52).
         var file = new HandWrittenFile();
         var rows = new Dictionary<int, long> { [1] = file.Object(1, Catalog), [2] = file.Object(2, Pages) };
         file.Raw("%" + new string('-', 5998) + "\n");
@@ -490,8 +492,82 @@ public class ScannedPlacesTests
         using var document = PdfDocument.Open(source, options: null, ownsSource: true);
 
         var memo = document.Reader.GetScanMemo();
+        var pagesEnd = rows[2] + "2 0 obj\n".Length + Pages.Length;
 
-        (memo.IsWhole, memo.WholeUntil, memo.TryGetHeaderAt(rows[3], out _)).Should().Be(cap > 0 ? (true, cap, false) : (true, long.MaxValue, true));
+        (memo.IsWhole, memo.WholeUntil, memo.TryGetHeaderAt(rows[3], out _)).Should().Be(cap > 0 ? (true, pagesEnd, false) : (true, long.MaxValue, true));
+    }
+
+    [Theory]
+    [InlineData(1)]
+    [InlineData(3)]
+    [InlineData(6)]
+    public void A_header_the_end_of_a_short_read_cuts_lies_past_where_the_memo_is_whole_and_is_served_as_the_bytes_give_it(int before)
+    {
+        // Read through a source that gives at most 4,096 bytes a read, object 4's header starts the given count of bytes
+        // before the end of the scan's first window, its obj keyword ending past it, and its row lies 3 bytes past it. The
+        // scan takes the window for the end of the data and cannot take the header, which may start as far back as where
+        // object 3's value ends: the memo is whole only before there. The search near the row serves the header as the bytes
+        // give it, a choice it cannot vouch for; object 5, past the end, is read at its row, and nothing is rebuilt (#52).
+        const int Cap = 4096;
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long> { [1] = file.Object(1, Catalog), [2] = file.Object(2, Pages) };
+        rows[3] = file.Padding(3, (int)(Cap - before - file.Position - "3 0 obj\n()\nendobj\n".Length));
+        var header = file.Object(4, "(four)");
+        rows[4] = header + 3;
+        rows[5] = file.Object(5, "(five)");
+        file.Table(6, rows, "/Size 6 /Root 1 0 R");
+        using var document = PdfDocument.Open(new CappedReadSource(file.Bytes, Cap), options: null, ownsSource: true);
+
+        var four = document.GetObject(new PdfObjectId(4)).AsText();
+        var five = document.GetObject(new PdfObjectId(5)).AsText();
+        var memo = document.Reader.GetScanMemo();
+
+        header.Should().Be(Cap - before);
+        (four, five, document.WasRepaired).Should().Be(("four", "five", false));
+        document.Diagnostics.Select(entry => (entry.Code, entry.Position)).Should().Equal((PdfDiagnosticCodes.XRefOffsetAdjusted, header));
+        memo.IsWhole.Should().BeTrue();
+        memo.WholeUntil.Should().BeInRange(rows[3] + 1, header);
+        memo.TryGetHeaderAt(rows[3], out _).Should().BeTrue();
+        new PdfValidator().Validate(document).Findings.Where(finding => finding.Location.Object == new PdfObjectId(4))
+            .Select(finding => (finding.RuleId, finding.Severity)).Should().Equal((PdfValidationRuleIds.XRefEntryUnconfirmed, PdfValidationSeverity.Error));
+    }
+
+    [Theory]
+    [InlineData(1)]
+    [InlineData(2)]
+    [InlineData(3)]
+    public void An_xref_keyword_the_end_of_a_short_read_cuts_lies_past_where_the_memo_is_whole_and_its_section_is_taken_unconfirmed(int before)
+    {
+        // Read through a source that gives at most 4,096 bytes a read, the first table's xref keyword starts the given count of
+        // bytes before the end of the scan's first window, and the update's /Prev names the place 2 bytes into it. The scan
+        // cannot take the keyword the window cuts, and its memo is whole only before where object 3's value ends: the search
+        // near the offset tries the keyword without the memo's word, and takes the section, which the reader cannot vouch for
+        // (#52).
+        const int Cap = 4096;
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long> { [1] = file.Object(1, Catalog), [2] = file.Object(2, Pages) };
+        var padding = (int)(Cap - before - file.Position - "3 0 obj\n()\nendobj\n".Length);
+        rows[3] = file.Padding(3, padding);
+        var keyword = file.Table(4, rows, "/Size 4 /Root 1 0 R");
+        var named = keyword + 2;
+        var four = file.Object(4, "(four)");
+        var update = file.Position;
+        file.Raw(string.Create(
+            CultureInfo.InvariantCulture,
+            $"xref\n0 1\n0000000000 65535 f \n4 1\n{four:D10} 00000 n \ntrailer\n<< /Size 5 /Root 1 0 R /Prev {named} >>\nstartxref\n{update}\n%%EOF\n"));
+        using var document = PdfDocument.Open(new CappedReadSource(file.Bytes, Cap), options: null, ownsSource: true);
+
+        var section = document.Reader.Structure.Sections[1];
+
+        keyword.Should().Be(Cap - before);
+        (section.State, section.Offset).Should().Be((XRefSectionState.Relocated, keyword));
+        document.Diagnostics.Should().ContainSingle().Which.Message.Should().Be(string.Create(
+            CultureInfo.InvariantCulture, $"The cross-reference section /Prev names at offset {named} was found 2 bytes before it."));
+        document.GetObject(new PdfObjectId(3)).AsText().Should().Be(new string('x', padding));
+        document.WasRepaired.Should().BeFalse();
+        new PdfValidator().Validate(document).Findings.Where(finding => finding.RuleId.StartsWith("xref.section", StringComparison.Ordinal))
+            .Select(finding => (finding.RuleId, finding.Severity, finding.Location.Position)).Should().Equal(
+                (PdfValidationRuleIds.XRefSectionUnconfirmed, PdfValidationSeverity.Error, keyword));
     }
 
     [Fact]
@@ -704,6 +780,30 @@ public class ScannedPlacesTests
         past.TryAddHeader(10, 1, 0, ScannedPlaceKind.Clean, floor: 0).Should().BeTrue();
         past.TryAddHeader(40, 2, 0, ScannedPlaceKind.Clean, floor: 60).Should().BeFalse();
         past.Complete(new ScannedTrailers()).WholeUntil.Should().Be(40);
+    }
+
+    [Theory]
+    [InlineData(30L, 25L, false, 25L)]
+    [InlineData(30L, 35L, false, 30L)]
+    [InlineData(30L, 25L, true, 25L)]
+    public void A_short_read_leaves_the_memo_whole_only_before_the_end_of_the_data_or_where_a_header_it_cuts_may_start(
+        long end, long floor, bool fillsAfter, long wholeUntil)
+    {
+        // A window shorter than asked ends the data the scan read; a header whose obj lies past there may start as far back as
+        // where the bytes the scan's last object left to read anew start. A memo that fills afterward, the scan going on past
+        // a header it could not read back, is whole no further.
+        var builder = new ScanMemo.Builder(1);
+        builder.TryAddHeader(10, 1, 0, ScannedPlaceKind.Clean, floor: 0).Should().BeTrue();
+        builder.EndAt(end, floor);
+
+        if (fillsAfter)
+        {
+            builder.TryAddHeader(40, 2, 0, ScannedPlaceKind.Clean, floor: 35).Should().BeFalse();
+        }
+
+        var memo = builder.Complete(new ScannedTrailers());
+
+        (memo.IsWhole, memo.WholeUntil).Should().Be((!fillsAfter, wholeUntil));
     }
 
     private static ScannedHeader Header(long at, int number) => new(at, number, 0, ScannedPlaceKind.Clean);
