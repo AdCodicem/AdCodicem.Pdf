@@ -88,10 +88,10 @@ internal sealed class ScanMemo
 
     /// <summary>
     /// Gets the position before which the memo holds every place the scan takes: <see cref="long.MaxValue"/> while it is
-    /// whole and the scan read the file to its end; where a window the source gave shorter than asked ended the scan, the
-    /// end of the data there (#52), short of the file's length; and where the first place it could not hold starts, or where
-    /// the bytes the scan's last object left to read anew start, when they start sooner, since a header the scan takes
-    /// afterward may run back to them.
+    /// whole and the scan read the file to its end; otherwise where the first place it could not hold starts, or where a
+    /// window the source gave shorter than asked ended the data the scan read (#52) — or, where they start sooner, where the
+    /// bytes the scan's last object left to read anew start, since a header the scan takes afterward, or one whose
+    /// <c>obj</c> lies past the data read, may run back to them.
     /// </summary>
     public long WholeUntil { get; }
 
@@ -253,10 +253,14 @@ internal sealed class ScanMemo
         public bool TryAddTrailer(long position, long floor) => TryCount(position, floor);
 
         /// <summary>
-        /// Notes that the scan ended at <paramref name="position"/>, short of the file's length, where a window the source
-        /// gave shorter than asked holds the end of the data: the memo holds no place past it.
+        /// Notes that a window the source gave shorter than asked ended the data the scan read at
+        /// <paramref name="position"/>, short of where it asked to read (#52): the memo holds every place the scan takes only
+        /// before there, or before <paramref name="floor"/> where sooner.
         /// </summary>
-        public void EndAt(long position) => _wholeUntil = Math.Min(_wholeUntil, position);
+        /// <param name="position">Where the data the window holds ends.</param>
+        /// <param name="floor">Where the bytes the scan's last object left to read anew start: a header whose <c>obj</c> lies
+        /// past the data read, which the scan cannot take, may start as far back as them.</param>
+        public void EndAt(long position, long floor) => _wholeUntil = Math.Min(_wholeUntil, Math.Min(position, floor));
 
         /// <summary>
         /// Completes the memo once the scan has ended: its slots trimmed to those it uses, and, where it is whole, the
@@ -295,7 +299,7 @@ internal sealed class ScanMemo
             if (_count >= bound)
             {
                 _fullAt = position;
-                _wholeUntil = Math.Min(position, floor);
+                _wholeUntil = Math.Min(_wholeUntil, Math.Min(position, floor));
                 return false;
             }
 
