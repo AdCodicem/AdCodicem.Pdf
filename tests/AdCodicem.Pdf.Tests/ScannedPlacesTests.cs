@@ -138,6 +138,40 @@ public class ScannedPlacesTests
         kind.Should().Be(ScannedPlaceKind.Clean);
     }
 
+    [Theory]
+    [InlineData(1_048_568)]
+    [InlineData(1_048_569)]
+    [InlineData(1_048_570)]
+    [InlineData(1_048_571)]
+    [InlineData(1_048_572)]
+    [InlineData(1_048_573)]
+    [InlineData(1_048_574)]
+    [InlineData(1_048_575)]
+    public void A_trailer_keyword_is_taken_wherever_it_starts_against_the_end_of_a_piece_of_the_scan(int at)
+    {
+        // A trailer keyword that starts within the first piece's last eight bytes, ending within the bytes searched, past them
+        // or at the piece's last byte, is taken as one anywhere else: the rebuild merges its dictionary, keys only it holds
+        // among them, and the memo holds the same places wherever it lies.
+        var file = new HandWrittenFile();
+        file.Object(1, Catalog);
+        file.Object(2, Pages);
+        file.Object(3, "<< /Title (three) >>");
+        file.Raw(new string(' ', at - (int)file.Position - 1) + "\n");
+        file.Raw("trailer\n<< /Size 4 /Root 1 0 R /Info 3 0 R /ID [<01> <02>] >>\nstartxref\n99999999\n%%EOF\n");
+
+        using var document = PdfDocument.Open(file.Bytes);
+        var memo = document.Reader.GetScanMemo();
+
+        Encoding.Latin1.GetString(file.Bytes).IndexOf("trailer", StringComparison.Ordinal).Should().Be(at);
+        document.WasRepaired.Should().BeTrue();
+        document.Diagnostics.Should().NotContain(entry => entry.Code == PdfDiagnosticCodes.TrailerRootRecovered);
+        document.Trailer.GetRaw(PdfName.Info).Should().BeOfType<PdfReference>().Which.Id.Should().Be(new PdfObjectId(3));
+        document.Trailer.ContainsKey(PdfName.ID).Should().BeTrue();
+        memo.Count.Should().Be(4);
+        memo.IsWhole.Should().BeTrue();
+        memo.Trailers!.Keywords.Should().Equal(at + "trailer".Length);
+    }
+
     [Fact]
     public void A_header_whose_comment_between_its_tokens_holds_an_xref_keyword_is_taken_and_the_keyword_is_not()
     {
