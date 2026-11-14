@@ -1538,6 +1538,18 @@ public class CrossReferenceRuleTests
             PdfValidationRuleIds.XRefEntryShifted, "where there is no object header; the object starts 3 bytes before it"
         },
         {
+            "3 0 obj\n<< /Length 5 0 R >>\nstream\n0123456789\nendobj\n5 0 obj\n10\nendobj\n4 0 obj\n(four)\nendobj\n", "4 0 obj", 3, 0,
+            PdfValidationRuleIds.XRefEntryShifted, "where there is no object header; the object starts 3 bytes before it"
+        },
+        {
+            "5 0 obj\n10\nendobj\n3 0 obj\n<< /Length 5 0 R >>\nstream\n0123456789\n4 0 obj\n(four)\nendobj\n", "4 0 obj", 3, 0,
+            PdfValidationRuleIds.XRefEntryShifted, "where there is no object header; the object starts 3 bytes before it"
+        },
+        {
+            "3 0 obj\n<< /Length 5 0 R >>\nstream\n0123456789\nendobj\n4 0 obj\n(four)\nendobj\n5 0 obj\n10\nendobj\n", "4 0 obj", 3, 0,
+            PdfValidationRuleIds.XRefEntryUnconfirmed, "where there is no object header; the reader takes the header 3 bytes before it"
+        },
+        {
             "4 0 obj\n(real four)\nendobj\n14 0 obj\n(fourteen)\nendobj\n", "14 0 obj", 1, 0, PdfValidationRuleIds.XRefEntryShifted,
             "where it cuts a number; the object starts 28 bytes before it"
         },

@@ -32,10 +32,46 @@ public class ScannedPlacesTests
     [InlineData("a header past the endobj that ends a stream with no endstream whose declared length runs into it", "Clean")]
     [InlineData("a header that a stream with no endstream declares a length past", "Raw")]
     [InlineData("a header past the endobj of a stream with no endstream that declares a length past the header", "Clean")]
+    [InlineData("a header that holds the indirect length of the stream with no endstream before it", "Clean")]
+    [InlineData("a header that holds the indirect length of the stream before it, whose endstream and endobj are lost", "Clean")]
+    [InlineData("a header past a stream with no endstream whose indirect length the object before the stream holds", "Clean")]
+    [InlineData("a header past a stream with no endstream or endobj whose indirect length the object before it holds", "Clean")]
+    [InlineData("a header past a stream with no endstream whose indirect length another object holds", "Raw")]
+    [InlineData("a header of another generation than the one the indirect length of the stream before it names", "Raw")]
+    [InlineData("a header that holds a real number where the stream before it names its length", "Raw")]
+    [InlineData("a header that holds a negative number where the stream before it names its length", "Raw")]
+    [InlineData("a header past the endobj of a stream with no endstream whose indirect length runs past the header", "Clean")]
+    [InlineData("a header that a stream with no endstream declares an indirect length past", "Raw")]
+    [InlineData("a header after an endobj in the data of a stream whose indirect length the object before it holds", "Raw")]
+    [InlineData("a header in a file the data of a stream holds whose indirect length the object before it holds", "Raw")]
     public void A_header_is_recorded_where_the_scan_takes_it_with_how_it_took_it(string shape, string? kind)
     {
         var text = shape switch
         {
+            "a header that holds the indirect length of the stream with no endstream before it" =>
+                "5 0 obj\n<< /Length 9 0 R >>\nstream\n0123456789\nendobj\n9 0 obj\n10\nendobj\n",
+            "a header that holds the indirect length of the stream before it, whose endstream and endobj are lost" =>
+                "5 0 obj\n<< /Length 9 0 R >>\nstream\n0123456789\n9 0 obj\n10\nendobj\n",
+            "a header past a stream with no endstream whose indirect length the object before the stream holds" =>
+                "8 0 obj\n10\nendobj\n5 0 obj\n<< /Length 8 0 R >>\nstream\n0123456789\nendobj\n9 0 obj\n(nine)\nendobj\n",
+            "a header past a stream with no endstream or endobj whose indirect length the object before it holds" =>
+                "8 0 obj\n10\nendobj\n5 0 obj\n<< /Length 8 0 R >>\nstream\n0123456789\n9 0 obj\n(nine)\nendobj\n",
+            "a header past a stream with no endstream whose indirect length another object holds" =>
+                "5 0 obj\n<< /Length 8 0 R >>\nstream\n0123456789\nendobj\n9 0 obj\n10\nendobj\n",
+            "a header of another generation than the one the indirect length of the stream before it names" =>
+                "5 0 obj\n<< /Length 9 1 R >>\nstream\n0123456789\nendobj\n9 0 obj\n10\nendobj\n",
+            "a header that holds a real number where the stream before it names its length" =>
+                "5 0 obj\n<< /Length 9 0 R >>\nstream\n0123456789\nendobj\n9 0 obj\n10.0\nendobj\n",
+            "a header that holds a negative number where the stream before it names its length" =>
+                "5 0 obj\n<< /Length 9 0 R >>\nstream\n0123456789\nendobj\n9 0 obj\n-10\nendobj\n",
+            "a header past the endobj of a stream with no endstream whose indirect length runs past the header" =>
+                "8 0 obj\n40\nendobj\n5 0 obj\n<< /Length 8 0 R >>\nstream\n0123456789\nendobj\n9 0 obj\n(nine)\nendobj\n",
+            "a header that a stream with no endstream declares an indirect length past" =>
+                "8 0 obj\n40\nendobj\n5 0 obj\n<< /Length 8 0 R >>\nstream\n0123456789\n9 0 obj\n(nine)\nendobj\n",
+            "a header after an endobj in the data of a stream whose indirect length the object before it holds" =>
+                "8 0 obj\n22\nendobj\n5 0 obj\n<< /Length 8 0 R >>\nstream\nq endobj\n9 0 obj (x) Q\nendstream\nendobj\n",
+            "a header in a file the data of a stream holds whose indirect length the object before it holds" =>
+                "8 0 obj\n37\nendobj\n5 0 obj\n<< /Length 8 0 R >>\nstream\n%PDF-1.4\n9 0 obj\n(inner)\nendobj\n%%EOF\nendstream\nendobj\n",
             "a header past the endobj that follows the declared length of a stream with no endstream" =>
                 "5 0 obj\n<< /Length 10 >>\nstream\n0123456789\nendobj\n9 0 obj\n(nine)\nendobj\n",
             "a header that follows the declared length of a stream with no endstream" =>
@@ -86,6 +122,8 @@ public class ScannedPlacesTests
     [InlineData("a keyword in the data of a stream whose length is an object", "Raw")]
     [InlineData("a keyword in the data of a stream whose endstream follows past its declared length", "Raw")]
     [InlineData("a keyword past the endobj that follows the declared length of a stream with no endstream", "Clean")]
+    [InlineData("a keyword past the object that holds the indirect length of the stream with no endstream before it", "Clean")]
+    [InlineData("a keyword between a stream with no endstream and the object after it that holds its length", "Raw")]
     [InlineData("a keyword in a comment", null)]
     [InlineData("a keyword in a string between objects", null)]
     [InlineData("a keyword inside an object", null)]
@@ -105,6 +143,10 @@ public class ScannedPlacesTests
                 ("5 0 obj\n<< /Length 4 >>\nstream\n0123 xref\nendstream\nendobj\n", "xref"),
             "a keyword past the endobj that follows the declared length of a stream with no endstream" =>
                 ("5 0 obj\n<< /Length 4 >>\nstream\n0123\nendobj\nxref\n", "xref"),
+            "a keyword past the object that holds the indirect length of the stream with no endstream before it" =>
+                ("5 0 obj\n<< /Length 9 0 R >>\nstream\n0123\nendobj\n9 0 obj\n4\nendobj\nxref\n", "xref"),
+            "a keyword between a stream with no endstream and the object after it that holds its length" =>
+                ("5 0 obj\n<< /Length 9 0 R >>\nstream\n0123\nendobj\nxref\n9 0 obj\n4\nendobj\n", "xref"),
             "a keyword in a comment" => ("% xref\n", "xref"),
             "a keyword in a string between objects" => ("(see xref)\n", "xref"),
             "a keyword inside an object" => ("9 0 obj\n(an xref)\nendobj\n", "xref"),

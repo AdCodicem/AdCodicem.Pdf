@@ -355,8 +355,9 @@ A string that runs past its object's end delimits nothing, and hides none of the
 the end of a cut file leaves open.
 The data of a stream whose length it cannot confirm — an indirect `/Length`, or one no `endstream` follows — ends for it
 where a load's search for that stream's end stops: at the first header, which it takes, or at the first `endstream`,
-before which it reads no comment; but a stream that lost its `endstream`, whose data a load ends at its direct `/Length`
-or at its object's `endobj`, ends there for it too, and what follows is read between objects. What follows the header
+before which it reads no comment; but a stream that lost its `endstream`, whose data a load ends at its `/Length` — a
+direct one, or an indirect one whose object the file's bytes give just before the stream or first after its data — or
+at its object's `endobj`, ends there for it too, and what follows is read between objects. What follows the header
 of an object it cannot delimit — its value past `MaxObjectLength`, or none a load reads — is read as the bytes give it
 too, and a header within what was read of it is taken undelimited, so that no byte is lexed for one object after
 another. Where the pieces it reads the file in start
