@@ -304,8 +304,8 @@ those bytes are the file's own section or another object's; so is a section foun
 it lies — a place the chain itself names among them —, a place that cannot be read declares a section only where its
 token starts its line as a load lexes it, the line read again as far as 4,096 bytes before the bytes searched where it
 starts before them, so that a word or a header a comment or a string on its line holds declares nothing, as a load
-reads it, even where the scan takes it: a place whose line starts farther back declares a section
-only where the scan takes it between objects, one that the bytes a source gives end at or before declares nothing
+reads it, even where the scan takes it: a place whose line starts farther back declares none, whatever the scan takes
+there, nor does one that the bytes a source gives end at or before
 ([#52](https://github.com/AdCodicem/AdCodicem.Pdf/issues/52)), and the search goes on past either, as past any place
 that holds no section. An object at the offset that gives a `/W` and another `/Type` and does not read as a section — a
 CIDFont —, with no section near it, is no section, and is reported missing; where `startxref` names one, it holds no

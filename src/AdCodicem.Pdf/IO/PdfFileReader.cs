@@ -161,9 +161,9 @@ internal sealed partial class PdfFileReader : IPdfObjectSource, IPdfStreamDataPr
     /// (<see cref="IsTokenOnItsLine"/>): the line test judges every place the search tries that cannot be read — one the
     /// chain names, one past where the scan's memo is whole, and one the memo holds — and every cross-reference stream it
     /// passes over that may be reported (<see cref="StartsItsLine"/>, <see cref="ReportStreamsPassedOver"/>). Where no end
-    /// of line lies within them, and the file starts farther back, the test cannot tell, and the memo's word stands for a
-    /// place the scan takes between objects, and for no other. Not a guard a valid file can reach (ADR 34): the search
-    /// runs only near an offset that names no section, and a valid file's sections are where its chain names them.
+    /// of line lies within them, and the file starts farther back, the test cannot tell, and <see cref="StartsItsLine"/>
+    /// says what stands then. Not a guard a valid file can reach (ADR 34): the search runs only near an offset that names
+    /// no section, and a valid file's sections are where its chain names them.
     /// </summary>
     private const int LineStartSearchLength = 4096;
 
