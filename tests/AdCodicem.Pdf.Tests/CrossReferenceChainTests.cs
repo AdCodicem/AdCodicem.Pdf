@@ -2082,6 +2082,36 @@ public class CrossReferenceChainTests
     }
 
     [Theory]
+    [InlineData("endobj\n")]
+    [InlineData("9 0 obj\n12\nendobj\n")]
+    public void A_section_past_a_stream_whose_endstream_is_lost_is_shifted_where_a_load_ends_the_stream_before_it(string after)
+    {
+        // Object 4 lost its endstream: its object's endobj, or the next object's header, follows its declared length. A load
+        // ends its data there, and the update's table past it lies between objects: the newest table's /Prev, 2 bytes off,
+        // finds it shifted, a warning, as past a stream whose endstream is there (#171).
+        var text = new StringBuilder("%PDF-1.7\n");
+        var catalog = Append(text, "1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n");
+        var pages = Append(text, "2 0 obj\n<< /Type /Pages /Kids [] /Count 0 >>\nendobj\n");
+        var six = Append(text, "6 0 obj\n(six, freed by the update)\nendobj\n");
+        var oldest = Append(text, Invariant($"xref\n0 7\n0000000000 65535 f \n{catalog:D10} 00000 n \n{pages:D10} 00000 n \n0000000000 00000 f \n0000000000 00000 f \n0000000000 00000 f \n{six:D10} 00000 n \ntrailer\n<< /Size 7 /Root 1 0 R >>\nstartxref\n"));
+        text.Append(Invariant($"{oldest}\n%%EOF\n"));
+        var four = Append(text, "4 0 obj\n<< /Length 26 >>\nstream\nNotes on the file format.\n" + after);
+        var update = Append(text, Invariant($"xref\n0 1\n0000000000 65535 f \n4 1\n{four:D10} 00000 n \n6 1\n0000000000 00001 f \ntrailer\n<< /Size 10 /Root 1 0 R /Prev {oldest} >>\nstartxref\n"));
+        text.Append(Invariant($"{update}\n%%EOF\n"));
+        var newest = Append(text, Invariant($"xref\n0 1\n0000000000 65535 f \ntrailer\n<< /Size 10 /Root 1 0 R /Prev {update + 2} >>\nstartxref\n"));
+        text.Append(Invariant($"{newest}\n%%EOF\n"));
+        using var document = PdfDocument.Open(Encoding.Latin1.GetBytes(text.ToString()));
+
+        var found = document.Reader.Structure.Sections[1];
+        (found.State, found.Kind, found.Offset).Should().Be((XRefSectionState.Relocated, XRefSectionKind.Table, update));
+        document.GetObject(new PdfObjectId(6)).Should().BeSameAs(PdfNull.Instance);
+        document.WasRepaired.Should().BeFalse();
+        new PdfValidator().Validate(document).Findings.Where(finding => finding.RuleId.StartsWith("xref.section", StringComparison.Ordinal))
+            .Select(finding => (finding.RuleId, finding.Severity, finding.Location.Position)).Should().Equal(
+                (PdfValidationRuleIds.XRefSectionShifted, PdfValidationSeverity.Warning, update));
+    }
+
+    [Theory]
     [InlineData("% ", "xref", false)]
     [InlineData("(see the ", "xref", false)]
     [InlineData("% ", "12 0 obj << /Type /XRef /Size 13 /W [1 2 1] >> endobj\n", false)]

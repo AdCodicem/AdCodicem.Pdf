@@ -11,8 +11,8 @@ internal enum ScannedPlaceKind : byte
 
     /// <summary>
     /// Taken as the bytes give it, no comment nor string swept there: in the data of a stream whose length the scan could
-    /// not confirm, before the first <c>endstream</c> after it, or in what a string that runs past its object's end runs
-    /// into.
+    /// not confirm, before the first <c>endstream</c> after it or where a load ends that data as far as the file's bytes
+    /// tell, or in what a string that runs past its object's end runs into.
     /// </summary>
     Raw,
 }

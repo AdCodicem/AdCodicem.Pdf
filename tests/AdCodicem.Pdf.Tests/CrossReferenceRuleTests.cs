@@ -1530,6 +1530,14 @@ public class CrossReferenceRuleTests
             "where there is no object header; the reader takes the header 5 bytes before it"
         },
         {
+            "3 0 obj\n<< /Length 10 >>\nstream\n0123456789\nendobj\n4 0 obj\n(four)\nendobj\n", "4 0 obj", 3, 0,
+            PdfValidationRuleIds.XRefEntryShifted, "where there is no object header; the object starts 3 bytes before it"
+        },
+        {
+            "3 0 obj\n<< /Length 10 >>\nstream\n0123456789\n4 0 obj\n(four)\nendobj\n", "4 0 obj", 3, 0,
+            PdfValidationRuleIds.XRefEntryShifted, "where there is no object header; the object starts 3 bytes before it"
+        },
+        {
             "4 0 obj\n(real four)\nendobj\n14 0 obj\n(fourteen)\nendobj\n", "14 0 obj", 1, 0, PdfValidationRuleIds.XRefEntryShifted,
             "where it cuts a number; the object starts 28 bytes before it"
         },
@@ -3127,11 +3135,10 @@ public class CrossReferenceRuleTests
     {
         // #182: the older stream's /Length names object 10, whose entry lies 2 bytes before its header. The chain once
         // corrected that entry as it read the stream, and the probe judged the corrected one. The /Length is read once the
-        // chain is, behind a copy of the index as the file wrote it. Object 10's header follows the data of stream 5, whose
-        // endstream is lost: the scan takes it as the bytes give it, and the reader cannot vouch for the header it relocates to.
+        // chain is, behind a copy of the index as the file wrote it.
         var file = StreamLengthTests.LengthObjectOffItsEntry(out var tenAt);
 
-        var finding = Validate(file).Findings.Should().ContainSingle(finding => finding.RuleId == PdfValidationRuleIds.XRefEntryUnconfirmed
+        var finding = Validate(file).Findings.Should().ContainSingle(finding => finding.RuleId == PdfValidationRuleIds.XRefEntryShifted
             && finding.Location.Object == new PdfObjectId(10)).Which;
 
         finding.Message.Should().Contain(string.Create(CultureInfo.InvariantCulture, $"offset {tenAt - 2}"));
