@@ -348,8 +348,8 @@ public class ScannedPlacesTests
         memo.TryGetHeaderAt(definitions[6], out _).Should().BeFalse();
         Headers(memo, 0, long.MaxValue).Should().HaveCount(8);
 
-        document.Reader.ReachScanMemoBound();
-        document.Reader.ReachScanMemoBound();
+        document.Reader.ReachScanMemoBound([definitions[5], definitions[6]]);
+        document.Reader.ReachScanMemoBound([definitions[6]]);
 
         var report = document.Diagnostics.Should().ContainSingle(entry => entry.Code == PdfDiagnosticCodes.LimitIndexEntries).Which;
         report.Position.Should().Be(definitions[6]);
@@ -405,7 +405,7 @@ public class ScannedPlacesTests
         using var document = PdfDocument.Open(file.Bytes, options);
         var memo = document.Reader.GetScanMemo();
         document.GetObject(new PdfObjectId(3)).AsText().Should().Be("object 3");
-        document.Reader.ReachScanMemoBound();
+        document.Reader.ReachScanMemoBound([sixth]);
 
         memo.FullAt.Should().Be(sixth);
         document.WasRepaired.Should().BeTrue();
@@ -429,7 +429,7 @@ public class ScannedPlacesTests
 
             for (var call = 0; call < 2; call++)
             {
-                var thrown = FluentActions.Invoking(asked.Reader.ReachScanMemoBound).Should().Throw<PdfLimitExceededException>().Which;
+                var thrown = FluentActions.Invoking(() => asked.Reader.ReachScanMemoBound([definitions[6]])).Should().Throw<PdfLimitExceededException>().Which;
                 thrown.LimitName.Should().Be(nameof(PdfReaderLimits.MaxIndexEntries));
                 thrown.Position.Should().Be(definitions[6]);
             }
@@ -498,6 +498,63 @@ public class ScannedPlacesTests
             : past
                 ? "which it cannot tell lies between objects: it lies past the places its scan for objects records within PdfReaderLimits.MaxIndexEntries. Raising the limit lets it tell."
                 : string.Create(CultureInfo.InvariantCulture, $"the object starts 5 bytes before it, at offset {row - 5}."));
+    }
+
+    [Theory]
+    [InlineData("its bound, then a short read", false)]
+    [InlineData("its bound, then a short read", true)]
+    [InlineData("a short read, then its bound", false)]
+    [InlineData("a short read, then its bound", true)]
+    public void The_memo_s_bound_is_neither_reported_nor_blamed_for_a_header_past_where_a_short_read_ended_the_memo(string stops, bool throwOnLimit)
+    {
+        // The memo fills within a piece the source gives short, 4,096 bytes a read, before object 4's header, which lies past
+        // the piece; or, read through a source that gives at most 1 MiB a read, the walk back from object 5's obj keyword,
+        // whose number lies 300,000 spaces before it, comes back short first, and the memo fills afterwards, past object 4's
+        // header. Object 4's row lies 3 bytes past its header. Raising MaxIndexEntries would not let the memo answer there:
+        // the search serves the header as the bytes give it, reports no guard, throws none, and the validator's finding
+        // names the short read (#52).
+        var boundFirst = stops == "its bound, then a short read";
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long> { [1] = file.Object(1, Catalog), [2] = file.Object(2, Pages) };
+        var pagesEnd = rows[2] + "2 0 obj\n".Length + Pages.Length;
+
+        if (boundFirst)
+        {
+            for (var index = 0; index < 30; index++)
+            {
+                file.Object(5, string.Create(CultureInfo.InvariantCulture, $"({index})"));
+            }
+
+            file.Padding(6, 6000);
+        }
+        else
+        {
+            file.Raw(new string('x', 800_000) + "\n");
+            file.Raw("5" + new string(' ', 300_000) + "0 obj\n(five)\nendobj\n");
+        }
+
+        var four = file.Object(4, "(four)");
+        rows[4] = four + 3;
+
+        for (var index = 0; index < (boundFirst ? 0 : 10); index++)
+        {
+            file.Object(8, string.Create(CultureInfo.InvariantCulture, $"({index})"));
+        }
+
+        file.Table(9, rows, "/Size 9 /Root 1 0 R");
+        var options = new PdfReaderOptions { ThrowOnLimit = throwOnLimit, Limits = PdfReaderLimits.Default with { MaxIndexEntries = boundFirst ? 20 : 12 } };
+        using var document = PdfDocument.Open(new CappedReadSource(file.Bytes, boundFirst ? 4096 : 1 << 20), options, ownsSource: true);
+
+        var served = document.GetObject(new PdfObjectId(4)).AsText();
+        var memo = document.Reader.GetScanMemo();
+
+        (served, document.WasRepaired).Should().Be(("four", false));
+        (memo.IsWhole, four >= memo.WholeUntil, memo.IsPastBound(four)).Should().Be((false, true, false));
+        (memo.FullAt < four).Should().Be(boundFirst);
+        document.Diagnostics.Select(entry => (entry.Code, entry.Position)).Should().Equal((PdfDiagnosticCodes.XRefOffsetAdjusted, four));
+        var finding = new PdfValidator().Validate(document).Findings.Should().ContainSingle(finding => finding.Location.Object == new PdfObjectId(4)).Which;
+        (finding.RuleId, finding.Severity).Should().Be((PdfValidationRuleIds.XRefEntryUnconfirmed, PdfValidationSeverity.Error));
+        finding.Message.Should().Contain("a source that gave fewer bytes than asked").And.NotContain("MaxIndexEntries");
     }
 
     [Theory]
@@ -798,10 +855,10 @@ public class ScannedPlacesTests
         var options = new PdfReaderOptions { ThrowOnLimit = true };
 
         using var unmade = PdfDocument.Open(file, options);
-        unmade.Reader.ReachScanMemoBound();
+        unmade.Reader.ReachScanMemoBound([0, long.MaxValue]);
         using var whole = PdfDocument.Open(file, options);
         whole.Reader.GetScanMemo().IsWhole.Should().BeTrue();
-        whole.Reader.ReachScanMemoBound();
+        whole.Reader.ReachScanMemoBound([0, long.MaxValue]);
 
         unmade.Diagnostics.Should().NotContain(entry => entry.Code == PdfDiagnosticCodes.LimitIndexEntries);
         whole.Diagnostics.Should().NotContain(entry => entry.Code == PdfDiagnosticCodes.LimitIndexEntries);
