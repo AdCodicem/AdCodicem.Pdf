@@ -592,6 +592,121 @@ public class ScannedPlacesTests
     }
 
     [Theory]
+    [InlineData("the sweep for comments, short of an end-of-file marker's tail", "twelve")]
+    [InlineData("the sweep for comments, short and then empty", "twelve")]
+    [InlineData("the delimiting of an object its piece cuts", "inner")]
+    [InlineData("the search for the end of a stream whose endstream is lost", "twelve")]
+    public void A_header_past_a_read_of_the_scan_that_gives_fewer_bytes_than_asked_lies_past_where_the_memo_is_whole(string read, string served)
+    {
+        // Past the catalog and the page tree, a megabyte and more of comment lines, read through a source that gives every
+        // read whole but one: the scan's sweep from the file across the comments, which ends just short of the end-of-file
+        // marker that object 12's header follows on its line, or gives a hundred bytes and then none; or the read again of a
+        // stream whose dictionary its piece cuts, whose data holds object 12's header. Or, with no comment lines, the first
+        // read of the search for the end of a stream that lost its endstream, which gives none. The window holds the end of
+        // the data there (#52): the memo is whole only before where the page tree's value ends, and the search near object
+        // 12's row, 3 bytes off, serves the header as the bytes give it, a choice it cannot vouch for, nothing rebuilt.
+        const int Piece = 1 << 20;
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long> { [1] = file.Object(1, Catalog), [2] = file.Object(2, Pages) };
+        var pagesEnd = rows[2] + "2 0 obj\n".Length + Pages.Length;
+        long twelve;
+        long shortAt;
+        int shortCount;
+
+        if (read == "the search for the end of a stream whose endstream is lost")
+        {
+            file.Raw("5 0 obj\n<< /Length 10 >>\nstream\n");
+            shortAt = file.Position;
+            shortCount = 0;
+            file.Raw("0123456789\nendobj\n");
+            twelve = file.Object(12, "(twelve)");
+        }
+        else if (read == "the delimiting of an object its piece cuts")
+        {
+            PadWithComments(file, Piece - 20);
+            shortAt = file.Position;
+            shortCount = 30;
+            file.Raw("9 0 obj\n<< /Length 24 >>\nstream\n");
+            twelve = file.Position;
+            file.Raw("12 0 obj (inner) endobj\n\nendstream\nendobj\n");
+        }
+        else if (read == "the sweep for comments, short of an end-of-file marker's tail")
+        {
+            PadWithComments(file, Piece - 96);
+            var marker = file.Position;
+            file.Raw("%%EOF" + new string(' ', 100));
+            shortAt = pagesEnd;
+            shortCount = (int)(marker + 3 - pagesEnd);
+            twelve = file.Object(12, "(twelve)");
+        }
+        else
+        {
+            PadWithComments(file, Piece + (Piece / 4));
+            shortAt = pagesEnd;
+            shortCount = 100;
+            twelve = file.Object(12, "(twelve)");
+        }
+
+        rows[12] = twelve + 3;
+        rows[7] = file.Object(7, "(after)");
+        file.Table(13, rows, "/Size 13 /Root 1 0 R");
+        var given = new HashSet<long>();
+        var source = new ShortCountSource(file.Bytes, (offset, held) =>
+            held <= shortCount || !given.Add(offset) ? held
+            : offset == shortAt ? shortCount
+            : offset == shortAt + shortCount && read == "the sweep for comments, short and then empty" ? 0
+            : held);
+        using var document = PdfDocument.Open(source, options: null, ownsSource: true);
+
+        var twelveServed = document.GetObject(new PdfObjectId(12)).AsText();
+        var seven = document.GetObject(new PdfObjectId(7)).AsText();
+        var memo = document.Reader.GetScanMemo();
+
+        (twelveServed, seven, document.WasRepaired).Should().Be((served, "after", false));
+        (memo.IsWhole, memo.WholeUntil).Should().Be((true, pagesEnd));
+        new PdfValidator().Validate(document).Findings.Where(finding => finding.Location.Object == new PdfObjectId(12))
+            .Select(finding => (finding.RuleId, finding.Severity)).Should().Equal((PdfValidationRuleIds.XRefEntryUnconfirmed, PdfValidationSeverity.Error));
+    }
+
+    [Fact]
+    public void An_xref_keyword_past_a_sweep_ahead_that_gives_fewer_bytes_than_asked_lies_past_where_the_memo_is_whole_and_its_section_is_taken_unconfirmed()
+    {
+        // Past the catalog and the page tree, a megabyte of comment lines, then the end-of-file marker, and on its line the
+        // first table, which the update's /Prev names 2 bytes into. The source gives every read whole but the scan's sweep
+        // ahead to the keyword, which ends just short of the marker's tail: the window holds the end of the data there (#52),
+        // the memo is whole only before where the page tree's value ends, and the search near the offset tries the keyword
+        // without the memo's word and takes the section, which the reader cannot vouch for.
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long> { [1] = file.Object(1, Catalog), [2] = file.Object(2, Pages) };
+        var pagesEnd = rows[2] + "2 0 obj\n".Length + Pages.Length;
+        PadWithComments(file, (1 << 20) - 96);
+        var marker = file.Position;
+        file.Raw("%%EOF" + new string(' ', 100));
+        var keyword = file.Table(3, rows, "/Size 3 /Root 1 0 R");
+        var three = file.Object(3, "(three)");
+        var update = file.Position;
+        file.Raw(string.Create(
+            CultureInfo.InvariantCulture,
+            $"xref\n0 1\n0000000000 65535 f \n3 1\n{three:D10} 00000 n \ntrailer\n<< /Size 4 /Root 1 0 R /Prev {keyword + 2} >>\nstartxref\n{update}\n%%EOF\n"));
+        var shortCount = (int)(marker + 3 - pagesEnd);
+        var given = new HashSet<long>();
+        var source = new ShortCountSource(file.Bytes, (offset, held) =>
+            held > shortCount && offset == pagesEnd && given.Add(offset) ? shortCount : held);
+        using var document = PdfDocument.Open(source, options: null, ownsSource: true);
+
+        var section = document.Reader.Structure.Sections[1];
+        var memo = document.Reader.GetScanMemo();
+
+        (section.State, section.Offset).Should().Be((XRefSectionState.Relocated, keyword));
+        document.GetObject(new PdfObjectId(3)).AsText().Should().Be("three");
+        document.WasRepaired.Should().BeFalse();
+        (memo.IsWhole, memo.WholeUntil, memo.TryGetXRefKeywordAt(keyword, out _)).Should().Be((true, pagesEnd, false));
+        new PdfValidator().Validate(document).Findings.Where(finding => finding.RuleId.StartsWith("xref.section", StringComparison.Ordinal))
+            .Select(finding => (finding.RuleId, finding.Severity, finding.Location.Position)).Should().Equal(
+                (PdfValidationRuleIds.XRefSectionUnconfirmed, PdfValidationSeverity.Error, keyword));
+    }
+
+    [Theory]
     [InlineData(1)]
     [InlineData(2)]
     [InlineData(3)]
@@ -962,6 +1077,22 @@ public class ScannedPlacesTests
     /// Writes a sound file of objects 1 and 2, then <paramref name="text"/>, then its table, and gives where the byte
     /// <paramref name="place"/> bytes into the text lies.
     /// </summary>
+    /// <summary>Writes comment lines of 80 bytes into <paramref name="file"/>, the last shorter, up to <paramref name="end"/>.</summary>
+    private static void PadWithComments(HandWrittenFile file, long end)
+    {
+        var line = "% " + new string('a', 77) + "\n";
+
+        while (file.Position + line.Length <= end)
+        {
+            file.Raw(line);
+        }
+
+        if (file.Position < end)
+        {
+            file.Raw(new string('%', (int)(end - file.Position - 1)) + "\n");
+        }
+    }
+
     private static (byte[] File, long At) Sound(string text, int place)
     {
         var file = new HandWrittenFile();

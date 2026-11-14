@@ -370,23 +370,29 @@ internal sealed partial class PdfFileReader
     /// which only white space and comments part from that header or from the end of the file, otherwise
     /// (<see cref="PdfObjectParser.FinishWithoutEndStream"/>). -1 where the search finds an <c>endstream</c>, or is not
     /// made, or where the declared length runs past that header and no <c>endobj</c> ends the data before it: a load then
-    /// ends the data at that header, which the bytes cannot tell from one the data holds.
+    /// ends the data at that header, which the bytes cannot tell from one the data holds. -1 too where a window the source
+    /// gives empty ends the search, which holds the end of the data there (#52), and ends a memo there
+    /// (<see cref="ScanMemo.Builder.EndAt"/>).
     /// </summary>
     /// <remarks>
     /// The rebuild's scan asks it of a direct <c>/Length</c>, which it reads itself: the next object an index places, which
     /// also stops a load's search, is not looked at, for the scan reads nothing of an index. The data is read from the file as
-    /// a load past its window reads it, each read counted in <paramref name="spent"/>; once that has reached
-    /// <see cref="EndStreamSearchPasses"/> times the length of the file, no search is made.
+    /// a load past its window reads it, with the scan's reads past declared lengths (<see cref="_scanGapBytes"/>); once those
+    /// have read <see cref="EndStreamSearchPasses"/> times the length of the file, no search is made.
     /// </remarks>
-    private long DataEndWithoutEndStream(long dataStart, long declaredEnd, ref long spent)
+    /// <param name="dataStart">Where the data starts in the file.</param>
+    /// <param name="declaredEnd">Where the declared length ends in the file.</param>
+    /// <param name="scan">Where the scan stands.</param>
+    private long DataEndWithoutEndStream(long dataStart, long declaredEnd, ref ScanState scan)
     {
+        var before = _scanGapBytes;
         var found = SearchEndStream(
             dataStart,
             [],
             _source.Length,
             deferred: false,
-            readsFile: spent < EndStreamSearchPasses * _source.Length,
-            ref spent,
+            readsFile: _scanGapBytes < EndStreamSearchPasses * _source.Length,
+            ref _scanGapBytes,
             out var header,
             out var searched,
             out _,
@@ -397,8 +403,15 @@ internal sealed partial class PdfFileReader
             return -1;
         }
 
+        // A search no header stopped read to the end of the file, unless a window the source gave empty ended it.
+        if (header < 0 && _scanGapBytes - before < _source.Length - dataStart)
+        {
+            scan.Memo?.EndAt(dataStart, scan.TokensFrom);
+            return -1;
+        }
+
         var fits = declaredEnd <= (header >= 0 ? header : _source.Length);
-        return fits && (objectEnd < 0 || IsEndObjAt(declaredEnd, ref spent)) ? declaredEnd : objectEnd;
+        return fits && (objectEnd < 0 || IsEndObjAt(declaredEnd, ref _scanGapBytes)) ? declaredEnd : objectEnd;
     }
 
     /// <inheritdoc/>
