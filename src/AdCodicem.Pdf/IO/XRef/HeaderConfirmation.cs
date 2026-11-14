@@ -20,4 +20,10 @@ internal enum HeaderConfirmation : byte
 
     /// <summary>A header past where the scan's memo is whole (<see cref="ScanMemo.WholeUntil"/>), taken as the bytes give it.</summary>
     PastScan,
+
+    /// <summary>
+    /// The header at a row that cuts a number (<see cref="PdfFileReader.HeaderCutsNumber"/>), read as written where the search
+    /// near the row finds no header of the object.
+    /// </summary>
+    Glued,
 }

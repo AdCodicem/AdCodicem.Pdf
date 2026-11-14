@@ -81,8 +81,8 @@ internal sealed class CrossReferenceProbe
     public ProbeFindings Shifted { get; }
 
     /// <summary>
-    /// Gets the entries whose object is not where they place it, and a header near it the search does not vouch for is
-    /// taken in its place (<see cref="PdfFileReader.PlaceHeader"/>).
+    /// Gets the entries that lead the reader to a header of their object it does not vouch for
+    /// (<see cref="PdfFileReader.PlaceHeader"/>).
     /// </summary>
     public ProbeFindings Unconfirmed { get; }
 
@@ -200,7 +200,7 @@ internal sealed class CrossReferenceProbe
 
         switch (placement.Place)
         {
-            case HeaderPlace.AtOffset:
+            case HeaderPlace.AtOffset when placement.Confirmation == HeaderConfirmation.Vouched:
                 if (placement.Position > offset && ImpreciseCount++ == 0)
                 {
                     FirstImprecise = new ProbeFinding(
@@ -211,9 +211,9 @@ internal sealed class CrossReferenceProbe
                 CheckGeneration(number, entry, placement.Position, placement.Generation);
                 return;
 
-            case HeaderPlace.Nearby when !placement.GuardAtOffset:
+            case HeaderPlace.AtOffset or HeaderPlace.Nearby when !placement.GuardAtOffset:
                 // The generation is the one the reader records for the object it relocates, read as a load reads it: a
-                // header longer than a first read is judged all the same (#118). One the search does not vouch for is a
+                // header longer than a first read is judged all the same (#118). A header the reader does not vouch for is a
                 // choice the file does not designate (ADR 45).
                 var findings = placement.Confirmation == HeaderConfirmation.Vouched ? Shifted : Unconfirmed;
 
@@ -268,11 +268,16 @@ internal sealed class CrossReferenceProbe
     }
 
     /// <summary>
-    /// Says where the reader takes the header of object <paramref name="number"/> that is not where its entry places it, and,
-    /// where it does not vouch for it, why: built only for a finding.
+    /// Says where the reader takes the header of object <paramref name="number"/> its entry does not place exactly, and, where
+    /// it does not vouch for it, why: built only for a finding.
     /// </summary>
     private static string Relocation(PdfFileReader reader, int number, XRefEntry entry, long offset, bool inFile, HeaderPlacement placement)
     {
+        if (placement.Confirmation == HeaderConfirmation.Glued)
+        {
+            return Invariant($"The entry of object {number} gives offset {offset}, where the object's header is glued to the digits before it, which the reader cannot tell from an offset that cuts another header's number; no other definition of the object lies within {PdfFileReader.NearbySearchRadius} bytes of it, and the reader takes that header.");
+        }
+
         var given = Invariant($"The entry of object {number} gives offset {Named(reader, entry, offset, inFile)}, {(inFile ? WhatLiesAt(placement) : "outside the file")}");
         var taken = Invariant($"{CountText.Distance(placement.Position - offset, "it")}, at offset {placement.Position}");
 
@@ -290,7 +295,7 @@ internal sealed class CrossReferenceProbe
     private static string WhatLiesAt(HeaderPlacement placement) => placement.NumberAtOffset switch
     {
         > 0 => Invariant($"where there is the header of object {placement.NumberAtOffset}"),
-        PdfFileReader.HeaderCutsNumber => "where it cuts the number of an object header",
+        PdfFileReader.HeaderCutsNumber => "where it cuts a number",
         _ => "where there is no object header",
     };
 

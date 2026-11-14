@@ -83,7 +83,7 @@ internal sealed partial class PdfFileReader
 
     /// <summary>
     /// Loads an object <paramref name="entry"/> places, in at most three attempts: where the index says, in the
-    /// neighborhood, and wherever a rebuilt index says.
+    /// neighborhood — in the order <see cref="TryParseWhereEntryPlaces"/> takes them —, and wherever a rebuilt index says.
     /// </summary>
     /// <remarks>
     /// The attempts are counted rather than chained. An earlier version let relocation call back into
@@ -103,16 +103,14 @@ internal sealed partial class PdfFileReader
                 string.Create(
                     CultureInfo.InvariantCulture, $"The entry of object {id.Number} places it at offset {DescribeOffset(entry.Offset)}, outside the file."));
         }
-        else if (TryParseObjectAt(id.Number, offset, out var atRecordedOffset, atRow: !entry.FoundByReader))
-        {
-            return atRecordedOffset;
-        }
 
-        // Offsets are commonly off by a few bytes in files from careless tools, so the neighborhood is
-        // searched before the index is given up on entirely.
-        if (TryFindObjectHeader(id.Number, entry, reportsBound: true, out var nearby, out var generation, out _) &&
-            TryParseObjectAt(id.Number, nearby, out var relocated))
+        if (TryParseWhereEntryPlaces(id.Number, entry, RecordedAnywhere, out var found, out var nearby, out var generation))
         {
+            if (nearby < 0)
+            {
+                return found;
+            }
+
             _diagnostics.Repair(
                 PdfDiagnosticCodes.XRefOffsetAdjusted,
                 string.Create(CultureInfo.InvariantCulture, $"Object {id.Number} was found {CountText.Distance(nearby - offset, "where the index said")}."),
@@ -122,7 +120,7 @@ internal sealed partial class PdfFileReader
             // first, which would make the index depend on the order objects were asked for (#118).
             PreserveChainIndex();
             _xref.Set(id.Number, XRefEntry.Found(nearby - _headerOffset, generation));
-            return relocated;
+            return found;
         }
 
         if (_repaired)
@@ -141,11 +139,52 @@ internal sealed partial class PdfFileReader
 
     /// <summary>
     /// Parses object <paramref name="number"/> at an exact offset, growing the window while the object runs
-    /// past its end. Returns false when nothing with that number is there, nor, where the offset is an entry's row
-    /// (<paramref name="atRow"/>), when the row cuts a number (<see cref="RowCutsNumber"/>).
+    /// past its end. Returns false when nothing with that number is there.
     /// </summary>
-    private bool TryParseObjectAt(int number, long offset, out PdfObject value, long recordedAt = RecordedAnywhere, bool atRow = false) =>
-        TryParseNumberedAt(offset, number, PdfLimit.Object, out value, out _, out _, out _, out _, recordedAt: recordedAt, atRow: atRow);
+    private bool TryParseObjectAt(int number, long offset, out PdfObject value, long recordedAt = RecordedAnywhere) =>
+        TryParseNumberedAt(offset, number, PdfLimit.Object, out value, out _, out _, out _, out _, recordedAt: recordedAt);
+
+    /// <summary>
+    /// Parses object <paramref name="number"/> where <paramref name="entry"/> places it, as a load looks for it: at the offset
+    /// it gives, unless that is a row the file gives that cuts a number (<see cref="RowCutsNumber"/>); else at the header the
+    /// search near the offset chooses (<see cref="TryFindObjectHeader"/>), which <paramref name="nearby"/> gives; else, where
+    /// the row cuts a number and that search finds no header of the object, at the row as written.
+    /// </summary>
+    /// <remarks>
+    /// Offsets are commonly off by a few bytes in files from careless tools, so the neighborhood is searched before the index
+    /// is given up on entirely. A row that cuts a number may land inside the number of another object's header, the object's
+    /// own lying near it; or on a header glued to the digits before it — an update appended with no end of line to a file
+    /// cut after a digit —, which the bytes do not tell from the first. Where the search finds no other header of the
+    /// object, the row is read as written, as a reader that lexes from it reads it, and the validator says the reader cannot
+    /// vouch for it (<see cref="Validation.PdfValidationRuleIds.XRefEntryUnconfirmed"/>).
+    /// </remarks>
+    /// <param name="number">The object's number.</param>
+    /// <param name="entry">The regular entry that places it.</param>
+    /// <param name="recordedAt">Where the object's header must start for what the reading notes by its number to be noted.</param>
+    /// <param name="value">The object read.</param>
+    /// <param name="nearby">Where the header the search near the offset chose starts; -1 where it was read at the offset.</param>
+    /// <param name="generation">The generation the header the search chose gives.</param>
+    private bool TryParseWhereEntryPlaces(
+        int number, XRefEntry entry, long recordedAt, out PdfObject value, out long nearby, out int generation)
+    {
+        var offset = PositionOf(entry);
+        nearby = -1;
+
+        if (TryParseNumberedAt(
+            offset, number, PdfLimit.Object, out value, out var found, out _, out _, out _, recordedAt: recordedAt, atRow: !entry.FoundByReader))
+        {
+            generation = 0;
+            return true;
+        }
+
+        if (TryFindObjectHeader(number, entry, reportsBound: true, out var header, out generation, out _))
+        {
+            nearby = header;
+            return TryParseObjectAt(number, header, out value, recordedAt);
+        }
+
+        return found == HeaderCutsNumber && TryParseObjectAt(number, offset, out value, recordedAt);
+    }
 
     /// <summary>
     /// Parses what starts at an exact offset — object <paramref name="number"/>, any object for
@@ -166,7 +205,10 @@ internal sealed partial class PdfFileReader
     /// <param name="number">The object's number, <see cref="AnyObject"/> or <see cref="DirectObject"/>.</param>
     /// <param name="limit">The guard that bounds the window.</param>
     /// <param name="value">The object read.</param>
-    /// <param name="foundNumber">The number of the object found, even when <paramref name="keep"/> refuses it.</param>
+    /// <param name="foundNumber">
+    /// The number of the object found, even when <paramref name="keep"/> refuses it; <see cref="HeaderCutsNumber"/> where
+    /// <paramref name="atRow"/> and the row cuts a number, where nothing is read.
+    /// </param>
     /// <param name="headerAt">Where in the file the object read starts, past the white space and comments before it.</param>
     /// <param name="digitsAt">
     /// Where in the file the digits of the object's number start, past the run of signs it is written with, where it is
@@ -232,6 +274,7 @@ internal sealed partial class PdfFileReader
                 {
                     if (RowCutsNumber(bytes.Span))
                     {
+                        foundNumber = (int)HeaderCutsNumber;
                         return false;
                     }
 
@@ -753,9 +796,9 @@ internal sealed partial class PdfFileReader
     /// Determines whether a row the file gives cuts a number, <paramref name="bytes"/> starting with the byte before it: a digit
     /// before it, and a digit or a sign at it — <c>14 0 obj</c> read from its <c>4</c>. A load lexes from the row, and would
     /// take the number's end for an object's; a valid file has white space or a delimiter before every header, as a token
-    /// starts. Such a row holds no header, for a load, settling and the validator's probe alike, and the object is looked
-    /// for near it (<see cref="TryFindObjectHeader"/>). A place the reader found holds a header read with what precedes it,
-    /// and is not asked.
+    /// starts. Such a row is read only once the search near it has found no header of the object, for a load, settling and
+    /// the validator's probe alike (<see cref="TryParseWhereEntryPlaces"/>). A place the reader found holds a header read
+    /// with what precedes it, and is not asked.
     /// </summary>
     private static bool RowCutsNumber(ReadOnlySpan<byte> bytes) =>
         bytes.Length > 1 && PdfCharacters.IsDigit(bytes[0]) && (PdfCharacters.IsDigit(bytes[1]) || bytes[1] is (byte)'+' or (byte)'-');
@@ -772,17 +815,8 @@ internal sealed partial class PdfFileReader
     /// </remarks>
     /// <param name="number">The object's number.</param>
     /// <param name="entry">The regular entry of the chain's index that places it.</param>
-    internal PdfObject? ReadWhereChainPlaces(int number, XRefEntry entry)
-    {
-        var offset = PositionOf(entry);
-        var recordedAt = RecordedAtFor(number, entry);
-
-        return TryParseObjectAt(number, offset, out var value, recordedAt, atRow: !entry.FoundByReader) ||
-            (TryFindObjectHeader(number, entry, reportsBound: true, out var nearby, out _, out _) &&
-                TryParseObjectAt(number, nearby, out value, recordedAt))
-            ? value
-            : null;
-    }
+    internal PdfObject? ReadWhereChainPlaces(int number, XRefEntry entry) =>
+        TryParseWhereEntryPlaces(number, entry, RecordedAtFor(number, entry), out var value, out _, out _) ? value : null;
 
     /// <summary>
     /// Reads which objects the object stream <paramref name="number"/> holds, in order, from the header its data
@@ -813,11 +847,7 @@ internal sealed partial class PdfFileReader
         streamMembers = [];
 
         var guards = _guardsReached;
-        var offset = PositionOf(entry);
-        var recordedAt = RecordedAtFor(number, entry);
-        var found = TryParseObjectAt(number, offset, out var value, recordedAt, atRow: !entry.FoundByReader) ||
-            (TryFindObjectHeader(number, entry, reportsBound: true, out var nearby, out _, out _) &&
-                TryParseObjectAt(number, nearby, out value, recordedAt));
+        var found = TryParseWhereEntryPlaces(number, entry, RecordedAtFor(number, entry), out var value, out _, out _);
 
         // A dictionary one of the reader's limits cut is the limit's, not the file's: what it would have said is unknown. A
         // stream's dictionary was read whole, and is the file's; what a limit cut of its data is weighed as it is decoded.
