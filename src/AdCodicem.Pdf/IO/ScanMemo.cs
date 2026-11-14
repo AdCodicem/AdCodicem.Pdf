@@ -14,8 +14,12 @@ namespace AdCodicem.Pdf.IO;
 /// A place is held in a slot of 16 bytes: where it starts, the object number, and the generation with the kind. Places of
 /// one number, generation and kind that the scan takes one after another at one distance — a header written again and
 /// again, as hostile files repeat one by the million — are held as a run, in two slots however many they are. The slots
-/// are one array, grown by doubling as the scan adds to it and trimmed once it ends: a memo holds 16 bytes a place at
-/// most. A query is a binary search over the slots, and allocates nothing.
+/// are one array, grown by doubling as the scan adds to it, never past the bound, and trimmed once it ends. A memo that
+/// is whole keeps the trailers too (<see cref="Trailers"/>): 8 bytes for each <c>trailer</c> keyword, which takes no
+/// slot, and 8 for each cross-reference stream's header beside its slot, in lists trimmed once the scan ends, which keep
+/// at most a ninth more room than they use. A place so costs 24 bytes at most, for a cross-reference stream's header, and
+/// 16 for any other header or an <c>xref</c> keyword, that room aside. A query is a binary search over the slots, and
+/// allocates nothing.
 /// </para>
 /// <para>
 /// The places are held sorted by position, and the scan takes them in that order but for a header whose tokens run back
@@ -28,12 +32,14 @@ namespace AdCodicem.Pdf.IO;
 /// It holds at most <see cref="PdfReaderLimits.MaxIndexEntries"/> places, <c>trailer</c> keywords counted with them. A guard
 /// (ADR 34): the places grow with the headers and keywords a file writes, which a valid file writes as many of as it
 /// likes — an incrementally updated file writes each object it changes again —, so that only a file that holds that many
-/// reaches it. The bound is the index's: the index takes as many numbers for the same file, at 40 bytes and more each, so
-/// that the guard that sets what the index may hold sets what the memo may hold too, at less than half. Once it holds
-/// that many, the memo takes no more, and is whole only before where the first place it could not hold lies
-/// (<see cref="WholeUntil"/>). The memo reports nothing: a rebuild scans the file again where it is not whole, and the
-/// guard is reported by a caller that has to go without its word past there
-/// (<see cref="PdfFileReader.ReachScanMemoBound"/>).
+/// reaches it. The bound is the index's, so that the one guard a caller sizes for what the reader holds of a document's
+/// objects sizes the memo too, at less than the index's own cost: 24 bytes a place at most, where the index takes 40
+/// bytes and more for each number it may hold. The two do not count alike — the index each number once, the memo every
+/// header, a number defined again included, and every keyword —, so that a file of many definitions of few numbers, or
+/// of many keywords, fills the memo with an index far from full. Once it holds that many, the memo takes no more, and
+/// is whole only before where the first place it could not hold lies (<see cref="WholeUntil"/>). The memo reports
+/// nothing: a rebuild scans the file again where it is not whole, and serves what it would have, and the guard is
+/// reported by a caller that has to go without its word past there (<see cref="PdfFileReader.ReachScanMemoBound"/>).
 /// </para>
 /// </remarks>
 internal sealed class ScanMemo

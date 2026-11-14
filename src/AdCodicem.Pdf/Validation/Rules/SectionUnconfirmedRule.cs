@@ -8,12 +8,12 @@ namespace AdCodicem.Pdf.Validation.Rules;
 /// <c>/XRefStm</c> names, found near where it is named, is found where the file confirms that a section starts.
 /// </summary>
 /// <remarks>
-/// The reader looks for such a section within 512 bytes of where it is named, and tries only the places its scan for
-/// objects takes. Where the one it takes lies in the data of a stream whose length is not confirmed, or in what a string
-/// that runs past its object runs into, the bytes may be another object's — an attached file's own table, a stream the data
-/// quotes —, or the reader went without the scan's word, past what it records: the choice is the reader's, not the file's,
-/// and the reader cannot vouch that it reads what was written, an error (ADR 45). A section found where the scan takes it
-/// between objects is <see cref="PdfValidationRuleIds.XRefSectionShifted"/>'s.
+/// The cases are <see cref="PdfValidationRuleIds.XRefSectionUnconfirmed"/>'s. Where the section the reader takes near the
+/// offset lies in bytes its scan for objects takes as they come, they may be another object's — an attached file's own
+/// table, a stream the data quotes —, and past where what the scan keeps is whole the reader goes without its word: the
+/// choice is the reader's, not the file's, and the reader cannot vouch that it reads what was written, an error (ADR 45).
+/// A section found where the scan takes it between objects, before there, is
+/// <see cref="PdfValidationRuleIds.XRefSectionShifted"/>'s.
 /// </remarks>
 internal sealed class SectionUnconfirmedRule : IValidationRule
 {

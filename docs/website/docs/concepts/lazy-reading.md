@@ -189,15 +189,18 @@ An object, or a section a `/Prev` or a `/XRefStm` names, that lies a few bytes f
 nearby (`xref.offset-adjusted`), and the map is not rebuilt for it: within 512 bytes either side, however near the
 file's start that falls ([#197](https://github.com/AdCodicem/AdCodicem.Pdf/issues/197)), comments between its header's
 tokens included, as a load reads them ([#261](https://github.com/AdCodicem/AdCodicem.Pdf/issues/261)). Neither search
-takes what lies inside another object: both try only the headers and `xref` keywords the scan that rebuilds a
-damaged map takes, below, never one in a string, a comment or a stream's data an `endstream` confirms
-([#171](https://github.com/AdCodicem/AdCodicem.Pdf/issues/171)). An object is found at the header of its number that the
-rows next to its own are shifted alike to, else at the nearest, the one before its row on a tie; a row that cuts a
-number — `14 0 obj` named from its `4` — holds no header, and the object is looked for near it. Where the search
-cannot vouch for its choice — several definitions near the row and no row beside it shifted alike, or a header the
-scan takes only as the bytes give it —, it serves the object all the same, and the validator reports the entry as
-`xref.entry-unconfirmed`. What that scan costs, and when it runs, is under
-[The cost of the trade](#the-cost-of-the-trade).
+takes what lies inside another object: both try only the headers and `xref` keywords the scan that rebuilds a damaged
+map takes, below, never one in a string, a comment or a stream's data an `endstream` confirms
+([#171](https://github.com/AdCodicem/AdCodicem.Pdf/issues/171)), as far as what that scan keeps reaches —
+[The cost of the trade](#the-cost-of-the-trade) says how far, when the scan runs and what it costs. An object is found
+at the header of its number that the rows next to its own are shifted alike to, else at the nearest, the one before its
+row on a tie, a header the scan takes between objects ranking before one it takes as the bytes give it. A row that cuts
+a number — `14 0 obj` named from its `4` — is read only where the search near it finds no header of the object, and then
+as written, as a header glued to the digits before it — an update appended with no end of line to a file cut after a
+digit —, which the reader cannot tell from a row that lands inside another header's number. Where the reader cannot
+vouch for the header it takes — that one, the nearest of several definitions near the row with no row beside it shifted
+alike, or a header the scan takes only as the bytes give it —, it serves the object all the same, and the validator
+reports the entry as `xref.entry-unconfirmed`.
 
 A section an offset names short of its first token, white space and comments between, is read where it is named — a
 cross-reference stream from its object's header, a classic table through a window that opens at the offset, so that the
@@ -230,7 +233,8 @@ for another section, which the chain does not reach, at its header or inside its
 chain is read (`xref.stream-passed-over`), the map left as it is: if it is the table's own, the map the chain read lacks
 what only it indexes, found only by a rebuild for another cause. It is reported only where it declares itself a
 cross-reference stream — its dictionary gives `/Type /XRef`, and the search tried it, as a place the scan that
-rebuilds a damaged map takes, never one inside another stream's data, a string or a comment, its header counting from
+rebuilds a damaged map takes, never one inside another stream's data, a string or a comment as far as what that scan
+keeps reaches, above, its header counting from
 its first sign where its number is written with a run of signs that starts with a `+`, where the stream is then
 reported, one a `-` starts being no object's header
 ([#327](https://github.com/AdCodicem/AdCodicem.Pdf/issues/327)) —, as a place a fault of the file keeps from being read
@@ -283,10 +287,11 @@ there, and otherwise the section is reported missing a few bytes from that strea
 declares itself one — an `xref` keyword, or a stream whose dictionary gives `/Type /XRef` — and cannot be read: it is
 reported where it is, any section near it being another ([#281](https://github.com/AdCodicem/AdCodicem.Pdf/issues/281)).
 Where the offset holds no section, the search near it, nearest first, tries only the places the scan that rebuilds a
-damaged map takes: the word `xref`, or a header, inside another object — in a stream's data an `endstream` confirms,
-a string or a comment — or in a comment or a string between objects is no place, is never read, and counts toward
-nothing, so that an attached file's own table, or a cross-reference stream the data quotes, is neither taken nor
-reported as passed over ([#171](https://github.com/AdCodicem/AdCodicem.Pdf/issues/171)). The search ends at a place
+damaged map takes, as far as what that scan keeps reaches, above: the word `xref`, or a header, inside another object —
+in a stream's data an `endstream` confirms, a string or a comment — or in a comment or a string between objects is no
+place, is never read, and counts toward nothing, so that an attached file's own table, or a cross-reference stream the
+data quotes, is neither taken nor reported as passed over
+([#171](https://github.com/AdCodicem/AdCodicem.Pdf/issues/171)). The search ends at a place
 that declares itself a section and cannot be read — an `xref` keyword, or the header of a stream of `/Type /XRef`,
 not digits a regular character runs into, a header whose number is written with a run of signs that starts with a `+`
 counting from its first sign, as a load reads it, where that sign lies within the bytes searched, and one a `-` starts
@@ -295,14 +300,14 @@ section found moved, reported where it was found, rather than passed over for an
 would stand for its lost ones in silence. Where the scan takes the bytes as they come — the data of a stream whose
 length no `endstream` confirms, or what a string that runs past its object runs into —, a section found there is taken
 all the same, and the validator reports it as `xref.section-unconfirmed`, an error: the reader cannot tell whether
-those bytes are the file's own section or another object's. Past the places that scan records — `MaxIndexEntries`
-of them, a guard reported as `limit.index-entries` once a search reaches past it, or as far as a source that gave fewer
-bytes than asked let it read ([#52](https://github.com/AdCodicem/AdCodicem.Pdf/issues/52)) —, and at the places the
-chain itself names, a place that cannot be read declares a section only where its token starts its line as a load
-lexes it, the line read again as far as 4,096 bytes before the bytes searched where it starts before them: a place
-whose line starts farther back declares nothing, as does one that the bytes a source gives end at or before, and the
-search goes on past it, as past any place that holds no section; a section found past the scan's places is
-unconfirmed too. An object at the offset that gives a `/W` and another `/Type` and does not read as a section — a
+those bytes are the file's own section or another object's; so is a section found past what the scan keeps. Wherever
+it lies — a place the chain itself names among them —, a place that cannot be read declares a section only where its
+token starts its line as a load lexes it, the line read again as far as 4,096 bytes before the bytes searched where it
+starts before them, so that a word or a header a comment or a string on its line holds declares nothing, as a load
+reads it, even where the scan takes it: a place whose line starts farther back declares a section
+only where the scan takes it between objects, one that the bytes a source gives end at or before declares nothing
+([#52](https://github.com/AdCodicem/AdCodicem.Pdf/issues/52)), and the search goes on past either, as past any place
+that holds no section. An object at the offset that gives a `/W` and another `/Type` and does not read as a section — a
 CIDFont —, with no section near it, is no section, and is reported missing; where `startxref` names one, it holds no
 section either, and its dictionary is no trailer. The section `startxref` names is not looked for nearby: when it is not
 where `startxref` says, the map is rebuilt.
@@ -353,8 +358,10 @@ where a load's search for that stream's end stops: at the first header, which it
 before which it reads no comment. What follows the header of an object it cannot delimit — its value past
 `MaxObjectLength`, or none a load reads — is read as the bytes give it too, and a header within what was read of it is
 taken undelimited, so that no byte is lexed for one object after another. Where the pieces it reads the file in start
-changes nothing of what it takes. It reads the file to its end — or, where a search near an offset had the file scanned
-before it, takes what that scan found, reading nothing again —, and holds no more numbers than the map may: a header for
+changes nothing of what it takes. It reads the file to its end — or, where a search near a row or an offset had the
+file scanned before it, and that scan kept every header it took, in the order it took them, which a scan past
+`MaxIndexEntries` places does not, takes what that scan found, reading nothing again —, and holds no more numbers than
+the map may: a header for
 a number it holds already takes no room, so that a million copies of one object hide nothing behind them, and the first
 number past `MaxIndexEntries` is reported once (`limit.index-entries`). A rebuild of a chain a limit had cut keeps the
 entries the chain read for the numbers the scan did not find, rather than losing them. Whether it runs as the document
@@ -469,13 +476,21 @@ as [the same guide](../guides/tune-reader-memory.md#read-a-streams-data-once) sh
 
 The searches near an object's row and near a section's offset make a trade of their own. To tell what lies inside
 another object, they ask for the scan that rebuilds a damaged map: it is made the first time one of them needs it, once
-a document, from the file's start, and what it takes is kept — 16 bytes a header or keyword, within
-`MaxIndexEntries` —, so that what they find depends on nothing read before. A sound document pays nothing for it, nor
-does a row with no header of its object near it, nor a search whose places are all passed over or named by the chain.
-A document whose chain or rows are a few bytes off pays one scan of the whole file, about 0.56 µs an object — 279 ms,
-and 36 MB read, for a 34 MB file of 500,000 objects —; where it is the chain that is off, the scan runs as the
-document opens. A rebuild after that scan takes what it found rather than scan again; a rebuild that runs first makes
-none, and a search after it pays its own scan.
+a document, from the file's start, and what it takes is kept, so that what they find depends on nothing read before — 16
+bytes a header or `xref` keyword, 24 for a cross-reference stream's header, each definition of a number counted, up to
+`MaxIndexEntries` places, about 201 MB at most at the default ([Reader limits](reader-limits.md)). It keeps no more past
+that bound; and where a source gives fewer bytes than asked, which ends the data
+([#52](https://github.com/AdCodicem/AdCodicem.Pdf/issues/52)), what it keeps is whole only up to the last object it
+passed before that end. Past there, a search cannot tell what lies inside another object: it takes a header of the
+object near a row, or a section near an offset, as the bytes give it, and the validator reports the entry as
+`xref.entry-unconfirmed`, or the section as `xref.section-unconfirmed`; past the bound, the search reports
+`limit.index-entries` too, once a document — a search near an offset only for a place it tries. A sound document pays
+nothing for the scan, nor does a row with no header of its object near it, nor a search whose places are all passed over
+or named by the chain. A document whose chain or rows are a few bytes off pays one scan of the whole file, about 0.56 µs
+an object — 279 ms, and 36 MB read, for a 34 MB file of 500,000 objects —; where it is the chain that is off, the scan
+runs as the document opens. A rebuild after that scan takes what it found rather than scan again, where it kept every
+header it took, in the order it took them; otherwise it scans again, and a rebuild that runs first makes none, a search
+after it paying its own scan.
 
 The same options carry the [reader limits](reader-limits.md), which bound what one file may make the reader
 hold.

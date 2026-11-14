@@ -70,14 +70,15 @@ internal sealed partial class PdfFileReader : IPdfObjectSource, IPdfStreamDataPr
     /// missing.
     /// </summary>
     /// <remarks>
-    /// Within the radius means lying whole between the offset less the radius and the offset plus it, clamped to the file,
-    /// wherever the offset falls: a header from the first digit of its number to the end of its <c>obj</c> keyword, a
-    /// classic table's <c>xref</c> keyword from its first byte to its last. Near the file's start the search reaches no
-    /// further past the offset than elsewhere, where a window clamped there once reached up to twice the radius past it
-    /// (#197); nothing is looked for near an offset more than the radius before the file's start. The bytes before the
-    /// window are read as well — one for a section, and for an object as many as an end-of-file marker has, to which a
-    /// writer may glue a header —, so that a number its start cuts — <c>14 0 obj</c> read from its <c>4</c> — is not
-    /// taken for a header that starts there.
+    /// Within the radius means lying whole between the offset less the radius and the offset plus it, clamped to the
+    /// file, wherever the offset falls: a header from where a load starts its number's token — its first digit, or the
+    /// first sign of the run of signs it is written with (#327) — to the end of its <c>obj</c> keyword, a classic
+    /// table's <c>xref</c> keyword from its first byte to its last. Near the file's start the search reaches no further
+    /// past the offset than elsewhere, where a window clamped there once reached up to twice the radius past it (#197);
+    /// nothing is looked for near an offset more than the radius before the file's start. The bytes before the window
+    /// are read as well — one for a section, and for an object as many as an end-of-file marker has, to which a writer
+    /// may glue a header —, so that a number its start cuts — <c>14 0 obj</c> read from its <c>4</c> — is not taken for
+    /// a header that starts there.
     /// </remarks>
     internal const int NearbySearchRadius = 512;
 
@@ -156,13 +157,13 @@ internal sealed partial class PdfFileReader : IPdfObjectSource, IPdfStreamDataPr
 
     /// <summary>
     /// How far before the bytes searched near an offset the end of line that starts a place's line is looked for, read
-    /// with those bytes again where the line starts before them, to tell a place past the scan's memo that starts with
-    /// a token from one a comment or a string holds (<see cref="IsTokenOnItsLine"/>): one that cannot be read declares
-    /// a section only where it starts with such a token, and a cross-reference stream passed over near a hybrid table's
-    /// <c>/Prev</c> is reported only where its header is one (<see cref="ReportStreamsPassedOver"/>). Where no end of
-    /// line lies within them, and the file starts farther back, the place declares no section, and the stream is not
-    /// reported. Not a guard a valid file can reach (ADR 34): the search runs only near an offset that names no
-    /// section, and a valid file's sections are where its chain names them.
+    /// with those bytes again where the line starts before them, so that the line is lexed from its start
+    /// (<see cref="IsTokenOnItsLine"/>): the line test judges every place the search tries that cannot be read — one the
+    /// chain names, one past where the scan's memo is whole, and one the memo holds — and every cross-reference stream it
+    /// passes over that may be reported (<see cref="StartsItsLine"/>, <see cref="ReportStreamsPassedOver"/>). Where no end
+    /// of line lies within them, and the file starts farther back, the test cannot tell, and the memo's word stands for a
+    /// place the scan takes between objects, and for no other. Not a guard a valid file can reach (ADR 34): the search
+    /// runs only near an offset that names no section, and a valid file's sections are where its chain names them.
     /// </summary>
     private const int LineStartSearchLength = 4096;
 

@@ -230,8 +230,9 @@ internal sealed partial class PdfFileReader
     /// definition the reader serves, which a reading where the chain places the object may not be (#255).
     /// </param>
     /// <param name="atRow">
-    /// Whether the offset is a row the file gives, which holds no header where it cuts a number (<see cref="RowCutsNumber"/>):
-    /// the byte before it is read with the first window.
+    /// Whether the offset is a row the file gives, which is not read where it cuts a number (<see cref="RowCutsNumber"/>):
+    /// the byte before it is read with the first window, and a cut row gives <see cref="HeaderCutsNumber"/>, for its caller to
+    /// search near it first (<see cref="TryParseWhereEntryPlaces"/>).
     /// </param>
     private bool TryParseNumberedAt(
         long offset,
@@ -603,15 +604,15 @@ internal sealed partial class PdfFileReader
     /// </summary>
     /// <remarks>
     /// <para>
-    /// The bytes searched are those within <see cref="NearbySearchRadius"/> either side of the offset, however near the file's
-    /// start it falls (#197); a header counts where it lies whole within them, from the first byte of its number to the end of
-    /// its <c>obj</c> keyword. The candidates are the headers of the number among them that the rebuild's scan takes
-    /// (<see cref="GetScanMemo"/>), clean or raw (<see cref="ScannedPlaceKind"/>): none inside a string, a comment or the
-    /// confirmed data of a stream, nor one whose number the bytes' start cuts, but one glued to an end-of-file marker before
-    /// them (#171). The memo is asked for only where the bytes hold a header of the number at all, read back from its
-    /// <c>obj</c> as the scan reads one: an offset with none near it costs no scan. A header past where the memo is whole
-    /// (<see cref="ScanMemo.WholeUntil"/>) is taken as the bytes give it, raw; where the bytes hold one there, the memo's
-    /// bound is reported if <paramref name="reportsBound"/> (<see cref="ReachScanMemoBound"/>).
+    /// The bytes searched are those within <see cref="NearbySearchRadius"/> either side of the offset, however near the
+    /// file's start it falls (#197); a header counts where it lies whole within them, as the radius says. The
+    /// candidates are the headers of the number among them that the rebuild's scan takes (<see cref="GetScanMemo"/>),
+    /// clean or raw (<see cref="ScannedPlaceKind"/>): none inside a string, a comment or the confirmed data of a
+    /// stream, nor one whose number the bytes' start cuts, but one glued to an end-of-file marker before them (#171).
+    /// The memo is asked for only where the bytes hold a header of the number at all, read back from its <c>obj</c> as
+    /// the scan reads one: an offset with none near it costs no scan. A header past where the memo is whole
+    /// (<see cref="ScanMemo.WholeUntil"/>) is taken as the bytes give it, raw; where the bytes hold one there, the
+    /// memo's bound is reported if <paramref name="reportsBound"/> (<see cref="ReachScanMemoBound"/>).
     /// </para>
     /// <para>
     /// A clean candidate ranks before a raw one. Within the best rank, a candidate is supported where the row just before

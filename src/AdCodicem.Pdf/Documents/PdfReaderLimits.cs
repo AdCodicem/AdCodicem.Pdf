@@ -172,10 +172,12 @@ public sealed record PdfReaderLimits
     /// chain is read, the numbers whose rows it refused, which the bound counts with the index, are held apart as well, each
     /// with an int that tells which section refused it: about 60 bytes a number allocated in all as that set grows, let go
     /// once the chain is read. The same bound applies to what the reader keeps of the scan of the file that the
-    /// searches near an entry's offset and near an offset the chain names ask for, once a document — the object headers
-    /// and keywords it takes, 16 bytes each at most —: what the scan takes past it is not kept, and a search that
-    /// finds a header or a keyword past there reads the bytes as they come, and reports the code once more, apart from
-    /// the index's report.
+    /// searches near an entry's offset and near an offset the chain names ask for, once a document: the object headers
+    /// and keywords it takes, each definition of a number and each keyword counted, 24 bytes for a cross-reference
+    /// stream's header and 16 or fewer for any other, about 201 MB at most at the default. What the scan takes past it
+    /// is not kept, and a search that has to go without it there — one near an entry's offset that finds a header of
+    /// the object there, or one near an offset the chain names that tries a place there — takes what it finds as the
+    /// bytes give it, and reports the code once more, apart from the index's report.
     /// </remarks>
     /// <exception cref="ArgumentOutOfRangeException">The value is zero or less.</exception>
     public int MaxIndexEntries
