@@ -571,7 +571,7 @@ internal sealed partial class PdfFileReader
                     return;
                 }
 
-                EndDataWithLength(span, windowStart, scan.TokensFrom, length, position, position, inData, ref scan);
+                EndDataWithLength(span, windowStart, scan.TokensFrom, length, position, position, ref scan);
             }
         }
 
@@ -581,7 +581,7 @@ internal sealed partial class PdfFileReader
             var dataStart = scan.PendingFrom;
             scan.PendingFrom = scan.PendingObject = -1;
             scan.Memo?.AwaitedFrom = long.MaxValue;
-            EndDataWithLength(span, windowStart, dataStart, length, position, Math.Min(position, scan.PendingUntil), position < scan.RawUntil, ref scan);
+            EndDataWithLength(span, windowStart, dataStart, length, position, Math.Min(position, scan.PendingUntil), ref scan);
         }
     }
 
@@ -630,27 +630,28 @@ internal sealed partial class PdfFileReader
     /// <paramref name="revisedTo"/> are held as taken between objects (<see cref="ScanMemo.Builder.TakeClean"/>). An
     /// <c>endstream</c> after the length, first bytes past it that do not tell — white space or comments that run past
     /// them among them (<see cref="SignificantPastLength"/>) —, or the scan's reads past declared lengths at their bound,
-    /// leaves the data as it is; and so does a length read from a header in that data (<paramref name="inData"/>)
-    /// that leaves bytes other than white space and comments before the header the load's search stops at, no
-    /// <c>endobj</c> after it nor before that header, where the data's first <c>endstream</c> ends the stream as far as the
-    /// bytes tell — no <c>stream</c> keyword starts between <paramref name="position"/> and it, within
-    /// <see cref="ScanChunkSize"/> bytes of there, a longer stretch taken as holding one
-    /// (<see cref="StartsStreamWithin"/>) —: that header may be an object the data holds, an attached file's, and the
-    /// stream is read as intact.
+    /// leaves the data as it is; and so does, where the scan still reads that data at <paramref name="position"/>, a first
+    /// <c>endstream</c> of the data that ends the stream as far as the bytes tell — an <c>endobj</c> follows it
+    /// (<see cref="IsEndObjAt"/>), and no <c>stream</c> keyword starts between <paramref name="position"/> and it, within
+    /// <see cref="ScanChunkSize"/> bytes of there, a longer stretch taken as holding one (<see cref="StartsStreamWithin"/>)
+    /// —, wherever the length ends the data: read from the file's bytes, it may be no length of the stream's — the last
+    /// values the scan passed may hold an older revision's object of its number, or an attached file's, and the data a
+    /// header of that number, an attached file's —, and the stream is read as intact.
     /// </summary>
     /// <remarks>
     /// The memo took those places as the bytes give them, in what the scan read as data: a header or a keyword that a
     /// comment or a string between objects would hide there is held, not left out, and the scan read no object anew from
     /// there. A rebuild's scan, which keeps no kind, takes the same headers either way.
     /// </remarks>
-    private void EndDataWithLength(ReadOnlySpan<byte> span, long windowStart, long dataStart, long length, long position, long revisedTo, bool inData, ref ScanState scan)
+    private void EndDataWithLength(ReadOnlySpan<byte> span, long windowStart, long dataStart, long length, long position, long revisedTo, ref ScanState scan)
     {
         var declaredEnd = length <= _source.Length - dataStart ? dataStart + length : _source.Length + 1;
         var next = SignificantPastLength(span, windowStart, declaredEnd);
 
         if (next < 0 ||
             DataEndWithoutEndStream(dataStart, declaredEnd, ref scan, out var resume) is not (var end and >= 0) ||
-            (inData && resume > end && next < resume && scan.RawUntil < _source.Length && !StartsStreamWithin(span, windowStart, position, scan.RawUntil)))
+            (position < scan.RawUntil && scan.RawUntil < _source.Length && !StartsStreamWithin(span, windowStart, position, scan.RawUntil) &&
+             IsEndObjAt(scan.RawUntil + StreamEnds.EndStreamKeyword.Length, ref _scanGapBytes)))
         {
             return;
         }
