@@ -156,6 +156,17 @@ if whole, though the cut may have parted its digits ([#328](https://github.com/A
 Nor is the `/Prev` of a cross-reference stream judged where a guard's cut of a value its rows are read with ends the
 chain at it ([#329](https://github.com/AdCodicem/AdCodicem.Pdf/issues/329)).
 
+Amended on 2026-11-15, by the maintainer, while [#171](https://github.com/AdCodicem/AdCodicem.Pdf/issues/171) was
+fixed: the rebuild's scan counts its own reads past streams' declared lengths apart from the loads' searches, against
+the same `EndStreamSearchPasses` multiple, and reads the value of a stream's indirect `/Length` from the file's bytes,
+never through an index. A valid file can lead that read astray: a stream's data may hold an attached file's object of
+the length's number, whose integer ends the data anywhere in the file — many streams' in one run of white space, which
+reading on past each length would cross once for each. Past such a length the scan reads only the 64 bytes of a first
+read, uncounted, and leaves the data as the bytes give it where they do not show at once that no `endstream` follows.
+The constant's reason then covers the scan's counted reads of a valid file's own streams, about twice the file; the
+streams an attached file's bytes spell in data the scan does not confirm, which it reads as objects, count too, and
+can still reach it.
+
 ## Context
 
 Invariant 4 treats everything read from a file as hostile: no allocation, loop or recursion is sized by a
