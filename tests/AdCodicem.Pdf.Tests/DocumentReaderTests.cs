@@ -444,7 +444,7 @@ public class DocumentReaderTests
     [InlineData("4 0 obj", "% %%EOF", false)]
     [InlineData("4 0 obj", "((\\\n9 0 %\\\n%) trailer \\\nobj ", false)]
     [InlineData("4 0\n%endstream %trailer\nobj", "5 0 obj\n<< /Length 3 >>\nstream\n", true)]
-    [InlineData("4 0 obj", "5 0 obj\n<< /Length 3 >>\nstream\n9 0 obj (nine) endobj\n(endstream endobj ", true)]
+    [InlineData("4 0 obj", "5 0 obj\n<< /Length 6 0 R >>\nstream\n9 0 obj (nine) endobj\n(endstream endobj ", true)]
     public void A_rebuild_reads_the_line_of_a_header_between_objects_as_a_load_lexes_it(string header, string before, bool found)
     {
         // The line a header starts on is lexed as a load lexes it: a header a comment or a string holds is none, nor digits a
@@ -452,8 +452,9 @@ public class DocumentReaderTests
         // comment that ends with itself: a writer that appends an update with no end of line after it glues the update's
         // first header to it, as pdfcpu does. A string's parentheses balance, and a backslash carries it past the end of its
         // line: what the lines it crosses seem to hold, a header or a comment, is the string's. In the data of a stream whose
-        // length is not confirmed, up to its first endstream, no comment or string opens: a header that starts there is taken
-        // whatever comments its tokens hold, and the line after that endstream is read from it.
+        // length is not confirmed, no comment or string opens: a header that starts there is taken whatever comments its
+        // tokens hold; and where the bytes do not give the length — an indirect one whose object the file lacks —, the data
+        // runs to its first endstream, and the line after it is read from it.
         var file = NearbyFiles.FourWrittenAs(header, startxrefLost: true, before: before);
         using var document = PdfDocument.Open(file);
 
