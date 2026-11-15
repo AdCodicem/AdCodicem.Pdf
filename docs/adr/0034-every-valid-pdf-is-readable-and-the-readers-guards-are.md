@@ -156,16 +156,21 @@ if whole, though the cut may have parted its digits ([#328](https://github.com/A
 Nor is the `/Prev` of a cross-reference stream judged where a guard's cut of a value its rows are read with ends the
 chain at it ([#329](https://github.com/AdCodicem/AdCodicem.Pdf/issues/329)).
 
-Amended on 2026-11-15, by the maintainer, while [#171](https://github.com/AdCodicem/AdCodicem.Pdf/issues/171) was
-fixed: the rebuild's scan counts its own reads past streams' declared lengths apart from the loads' searches, against
-the same `EndStreamSearchPasses` multiple, and reads the value of a stream's indirect `/Length` from the file's bytes,
-never through an index. A valid file can lead that read astray: a stream's data may hold an attached file's object of
-the length's number, whose integer ends the data anywhere in the file — many streams' in one run of white space, which
-reading on past each length would cross once for each. Past such a length the scan reads only the 64 bytes of a first
-read, uncounted, and leaves the data as the bytes give it where they do not show at once that no `endstream` follows.
-The constant's reason then covers the scan's counted reads of a valid file's own streams, about twice the file; the
-streams an attached file's bytes spell in data the scan does not confirm, which it reads as objects, count too, and
-can still reach it.
+Amended on 2026-11-15, by the maintainer, while [#171](https://github.com/AdCodicem/AdCodicem.Pdf/issues/171) was fixed:
+the rebuild's scan counts its own reads past streams' declared lengths apart from the loads' searches, against the same
+`EndStreamSearchPasses` multiple, and reads the value of a stream's indirect `/Length` from the file's bytes, never
+through an index. A valid file can lead that read astray: the objects before a stream may hold an older revision's
+object of the length's number, and its data an attached file's, whose integer ends the data anywhere in the file — many
+streams' in one run of white space, which reading on past each length would cross once for each. Past such a length the
+scan reads the 64 bytes of a first read, uncounted, and no further: where they show at once that no `endstream` follows,
+the search for where a load with that length ends the data follows, from the data's start, its reads counted; otherwise
+the scan leaves the data as the bytes give it. The constant's reason covers the scan's counted reads of a valid file's
+own streams, about twice the file; but the streams an attached file's bytes spell in data the scan does not confirm,
+which it reads as objects, count too, and can reach it on a valid file, after which a later stream whose length a first
+read cannot confirm has the headers its data spells taken. By the maintainer's choice, the constant stays internal all
+the same: a known exception to the rule of the Decision that a bound a valid file can reach becomes a guard, tracked by
+[#361](https://github.com/AdCodicem/AdCodicem.Pdf/issues/361), which says what would pay it — a guard alone would not,
+since one reached would still leave that later stream unconfirmed.
 
 ## Context
 
@@ -269,7 +274,8 @@ guard: active by default, reported when it is reached, and lifted by an option.
   two, and a caller would raise two records to read one file.
 - **Bounds only an invalid or hostile file reaches stay internal constants**, each with the reason it cannot
   refuse a valid document. A new bound is classified when it is added: if a valid file can reach it, it
-  becomes an option, a code and a test.
+  becomes an option, a code and a test — but for `EndStreamSearchPasses`, which the rebuild's scan can spend on a valid
+  file, a known exception ([#361](https://github.com/AdCodicem/AdCodicem.Pdf/issues/361), amended on 2026-11-15).
 - **The corpus proves it.** A corpus entry may give the limits it is opened with, in `readerLimits`; the USGS
   map is opened with a decoded-stream bound of 512 MB and must read whole. Every other document is tested
   with the defaults.
