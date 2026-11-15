@@ -214,11 +214,13 @@ internal sealed partial class PdfFileReader : IPdfObjectSource, IPdfStreamDataPr
     /// parser holds, and white space after a declared length is read no further than a first read.
     /// </summary>
     /// <remarks>
-    /// Not a guard a valid file reaches (ADR 34), argued here once for every read it counts. A valid file is read past
-    /// the parser's window in four ways only. Three read the data or what follows it: a cross-reference stream whose
-    /// <c>/Length</c> the chain cannot read (#220) is searched once to its <c>endstream</c>; a stream whose
-    /// <c>/Length</c> a guard cut or left out of the index (#224) is searched once to its <c>endstream</c>, or to a
-    /// header its data spells, which leaves the data up to it to the guard; and white space after a declared length
+    /// Not a guard (ADR 34). No valid file reaches it through the loads' searches, argued here once for every read they
+    /// count; through the rebuild's scan, which counts its own reads apart, one can, a known exception the maintainer
+    /// chose to keep (#361), argued last. The loads read a valid file past the parser's window in four ways only. Three
+    /// read the data or what follows it: a cross-reference stream whose <c>/Length</c> the chain cannot read (#220) is
+    /// searched once to its <c>endstream</c>; a stream whose <c>/Length</c> a guard cut or left out of the index (#224)
+    /// is searched once to its <c>endstream</c>, or to a header its data spells, which leaves the data up to it to the
+    /// guard; and white space after a declared length
     /// that runs past a first read is read on once for each place, and past an <c>endstream</c> once for each keyword
     /// however many places lead to it (#174). The data of different streams lies apart, and so do the runs of white
     /// space after them: together those reads cover the file once, and one read past each — about twice the file —, but
@@ -245,13 +247,24 @@ internal sealed partial class PdfFileReader : IPdfObjectSource, IPdfStreamDataPr
     /// read in proportion to the file, as a window keeps the parsing of their dictionaries. Which streams keep their
     /// declared length unsearched past it depends on the order they are read in: crafted files reach it, and no
     /// document of the corpus comes near, whose searches read 0.35 of a file at most. The rebuild's scan counts its own
-    /// reads apart, against the same multiple (<see cref="_scanGapBytes"/>). Of a valid file it reads the white space after
-    /// each length a stream's header declares, the runs after different streams apart; and, where it never meets the
-    /// object of a stream's indirect <c>/Length</c> in the bytes, that stream's data about once, to find where a load that
-    /// cannot read the length ends it and to tell that the stream is intact (<see cref="EndAwaitedData"/>): about the file
-    /// twice at most. The rest it counts — the search for where a load ends data whose <c>endstream</c> does not follow its
-    /// length, the reads that tell such data from an intact stream's (<see cref="StartsStreamWithin"/>), the regular
-    /// characters glued to an <c>endstream</c> — only an invalid stream makes.
+    /// reads apart, against the same multiple (<see cref="_scanGapBytes"/>). A valid file's own streams spend about
+    /// twice the file of it: each read crosses its own stream's object, about once and once more as its reads double,
+    /// and the objects of different streams lie apart. The read past a direct length crosses the white space before
+    /// that stream's <c>endstream</c> (<see cref="ConfirmStream"/>); the search for where a load ends the data, made
+    /// where the length the scan read from the file's bytes is not the stream's own or where it never meets the
+    /// length's object, crosses that stream's data from its start (<see cref="DataEndWithoutEndStream"/>); the reads
+    /// that tell such data from an intact stream's cross the stretch from a place in it to its first <c>endstream</c>,
+    /// at most (<see cref="StartsStreamWithin"/>); and a read for an <c>endobj</c> after a length or after that
+    /// <c>endstream</c> is a single first read, uncounted, unless white space within the object runs past it
+    /// (<see cref="IsEndObjAt"/>). The regular characters glued to an <c>endstream</c> that it reads on through
+    /// (<see cref="RegularRunEnd"/>) no valid stream has. But the scan reads the data of a stream whose length it does
+    /// not confirm as objects, and the streams an attached file's bytes spell there are counted too: their lengths may
+    /// all end in one run of white space that each read past them crosses, or each be followed by its own run that
+    /// three reads cross — the read past the length, the search, the read for an <c>endobj</c> —, or their searches may
+    /// each cross the rest of the attached data. Those can reach the bound on a valid file, after which a later
+    /// stream's direct length that a first read cannot confirm is left unconfirmed and the headers its data spells are
+    /// taken (#361): a known exception to ADR 34's rule, which the maintainer chose to keep an internal constant until
+    /// that issue is paid.
     /// </remarks>
     internal const int EndStreamSearchPasses = 4;
 

@@ -176,7 +176,12 @@ are kept as 4,096 ranges at most — those of the sections read so far that meet
 joined as it is lost to the last one lost where the two meet —, past which every number the newer sections do not give
 is looked for by rebuilding the index: a valid file's sections lose none ([#208](https://github.com/AdCodicem/AdCodicem.Pdf/issues/208),
 [#210](https://github.com/AdCodicem/AdCodicem.Pdf/issues/210)). Those stay internal constants, since lifting them would
-let nothing more be read, and each says where it is declared why no valid file reaches it.
+let nothing more be read, and each says where it is declared why no valid file reaches it — but for one, a known gap
+([#361](https://github.com/AdCodicem/AdCodicem.Pdf/issues/361)). The scan that rebuilds the index counts what it reads
+past streams' declared lengths apart, against the same four times the file: a valid file's own streams spend about twice
+the file of it, but the streams an attached file's bytes spell inside a stream's data the scan does not confirm count
+too, and can spend all of it. Past that point, a rebuild of a valid file — one that a limit you lowered sent the reader
+into among them — may serve an object that a later stream's data spells and the file does not define.
 
 A new bound is classified when it is added ([ADR 34](/project/adr/every-valid-pdf-is-readable-and-the-readers-guards-are)):
 if a valid file can reach it, it becomes a limit, with its code and its test.

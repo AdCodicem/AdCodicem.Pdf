@@ -361,9 +361,11 @@ that lost its `endstream`, whose data a load ends at its `/Length` or at its obj
 and what follows is read between objects, the header a load's search for that `endstream` stops at taken as the data's
 where the declared length runs past it. An indirect `/Length` counts so where the file's bytes give its object: one of
 the last eight objects other than streams before the stream, or the first object after it that gives it, until the scan
-has to wait for another stream's in its turn, or reaches the end of the file; and since that object may be an attached
-file's rather than the length's, the scan reads 64 bytes past the length it holds, no more: an `endstream` there, or
-white space or comments that run on past them, leave the data read as the bytes give it, up to its first `endstream`.
+has to wait for another stream's in its turn, or reaches the end of the file; and since that object may be an older
+revision's or an attached file's rather than the length's, the scan reads only 64 bytes past the length it holds to tell
+whether an `endstream` follows: one there, or white space or comments that run on past them, leave the data read as the
+bytes give it, up to its first `endstream`; anything else has it search the data from its start, as a load does, for
+where that load ends it.
 Where it finds none so — the damage took it too, it lies elsewhere, or it holds no lone integer —, the data ends where
 a load that cannot read that length ends it: at its object's `endobj`, or else at the header that load's search stops
 at, which is read between objects. Where the scan learns where such data ends only past headers it took in it — the
@@ -373,9 +375,10 @@ whose own objects may give its length's number,
 waits for no object where neither the last objects before it nor the first in its data give that length — though a
 stream that already waits for its own length's object may take one of that file's objects, past its first `endstream`,
 for it —; and where the
-scan finds that object in the data, or finds none, it may take the data for an attached file's, which its first
-`endstream` ends where no other stream's `stream` keyword comes before it, the scan reading 1 MB at most to tell: a
-longer stretch counts as holding one. Such data,
+scan takes that object among the last objects before the stream or in the data, or finds none, it may take the data for
+an attached file's, which its first `endstream` ends where no other stream's `stream` keyword comes before it — and,
+where the scan took a length, where an `endobj` follows that `endstream` —, the scan reading 1 MB at most for that
+keyword: a longer stretch counts as holding one. Such data,
 like any the scan does not end so, is read as the bytes give it up to the first `endstream`, and a header or a section
 the searches near a row or an offset find there is unconfirmed. What follows the header
 of an object it cannot delimit — its value past `MaxObjectLength`, or none a load reads — is read as the bytes give it
@@ -383,8 +386,8 @@ too, and a header within what was read of it is taken undelimited, so that no by
 another. Where the pieces it reads the file in start
 changes nothing of what it takes, but in three hand-made shapes
 ([#358](https://github.com/AdCodicem/AdCodicem.Pdf/issues/358)), and, near the bound of what it reads past declared
-lengths, which streams it confirms: what it reads to tell a stream from an intact one counts only past the bytes it
-holds. It reads the file to its end — or, where a search near a row or an offset had the
+lengths — four times the file, which a valid file can reach ([Reader limits](reader-limits.md#bounds-only-a-damaged-file-reaches)) —,
+which streams it confirms: what it reads to tell a stream from an intact one counts only past the bytes it holds. It reads the file to its end — or, where a search near a row or an offset had the
 file scanned before it, and that scan kept every header it took, in the order it took them, which a scan past
 `MaxIndexEntries` places does not, takes what that scan found, reading nothing again —, and holds no more numbers than
 the map may: a header for
