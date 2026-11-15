@@ -528,7 +528,7 @@ public class ReaderLimitsTests
     [Theory]
     [InlineData("white space")]
     [InlineData("white space and comment lines")]
-    public void A_valid_file_a_guard_sends_into_a_rebuild_serves_no_object_a_stream_s_data_spells_whatever_lengths_that_data_gives(string run)
+    public void A_valid_file_a_guard_sends_into_a_rebuild_serves_no_object_a_stream_s_data_spells_after_lengths_taken_from_attached_data_that_end_in_one_run_of_white_space(string run)
     {
         // Eight attached streams, each with an indirect /Length whose object follows it, hold first in their data an object
         // of that length's number, an attached file's, whose integer ends the data in one run of 64 KiB between objects. A
