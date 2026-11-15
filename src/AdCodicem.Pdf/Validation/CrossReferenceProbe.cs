@@ -285,7 +285,7 @@ internal sealed class CrossReferenceProbe
         {
             HeaderConfirmation.Vouched => Invariant($"{given}; the object starts {taken}."),
             HeaderConfirmation.Ambiguous => Invariant($"{given}; the object is defined more than once within {PdfFileReader.NearbySearchRadius} bytes of it, and the reader takes the nearest of the definitions its scan for objects takes between objects, {taken}, which the entries next to it do not confirm."),
-            HeaderConfirmation.Raw => Invariant($"{given}; the reader takes the header {taken}, which it cannot tell lies between objects: it may lie in the data of a stream whose length is not confirmed, or in a string that runs past its object."),
+            HeaderConfirmation.Raw => Invariant($"{given}; the reader takes the header {taken}, which it cannot tell lies between objects: it may lie in the data of a stream whose length its scan for objects does not confirm, which it does only for a direct /Length an endstream follows, or in a string that runs past its object."),
             HeaderConfirmation.PastScan when !reader.GetScanMemo().IsPastBound(placement.Position) => Invariant($"{given}; the reader takes the header {taken}, which it cannot tell lies between objects: it lies past the last object its scan for objects passed before the end of a read that a source answered with fewer bytes than asked."),
             _ => Invariant($"{given}; the reader takes the header {taken}, which it cannot tell lies between objects: it lies past the places its scan for objects records within PdfReaderLimits.MaxIndexEntries. Raising the limit lets it tell."),
         };

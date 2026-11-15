@@ -190,8 +190,8 @@ nearby (`xref.offset-adjusted`), and the map is not rebuilt for it: within 512 b
 file's start that falls ([#197](https://github.com/AdCodicem/AdCodicem.Pdf/issues/197)), comments between its header's
 tokens included, as a load reads them ([#261](https://github.com/AdCodicem/AdCodicem.Pdf/issues/261)). Neither search
 takes what lies inside another object: both try only the headers and `xref` keywords the scan that rebuilds a damaged
-map takes, below, never one in a string, a comment or a stream's data an `endstream` confirms
-([#171](https://github.com/AdCodicem/AdCodicem.Pdf/issues/171)), as far as what that scan keeps reaches —
+map takes, below, never one in a string, a comment or the data of a stream whose direct `/Length` an `endstream`
+confirms ([#171](https://github.com/AdCodicem/AdCodicem.Pdf/issues/171)), as far as what that scan keeps reaches —
 [The cost of the trade](#the-cost-of-the-trade) says how far, when the scan runs and what it costs. An object is found
 at the header of its number that the rows next to its own are shifted alike to, else at the nearest, the one before its
 row on a tie, a header the scan takes between objects ranking before one it takes as the bytes give it. A row that cuts
@@ -288,9 +288,9 @@ declares itself one — an `xref` keyword, or a stream whose dictionary gives `/
 reported where it is, any section near it being another ([#281](https://github.com/AdCodicem/AdCodicem.Pdf/issues/281)).
 Where the offset holds no section, the search near it, nearest first, tries only the places the scan that rebuilds a
 damaged map takes, as far as what that scan keeps reaches, above: the word `xref`, or a header, inside another object —
-in a stream's data an `endstream` confirms, a string or a comment — or in a comment or a string between objects is no
-place, is never read, and counts toward nothing, so that an attached file's own table, or a cross-reference stream the
-data quotes, is neither taken nor reported as passed over
+in the data of a stream whose direct `/Length` an `endstream` confirms, a string or a comment — or in a comment or a
+string between objects is no place, is never read, and counts toward nothing, so that an attached file's own table,
+or a cross-reference stream the data quotes, is neither taken nor reported as passed over
 ([#171](https://github.com/AdCodicem/AdCodicem.Pdf/issues/171)). The search ends at a place
 that declares itself a section and cannot be read — an `xref` keyword, or the header of a stream of `/Type /XRef`,
 not digits a regular character runs into, a header whose number is written with a run of signs that starts with a `+`
@@ -298,9 +298,10 @@ counting from its first sign, as a load reads it, where that sign lies within th
 declaring nothing ([#327](https://github.com/AdCodicem/AdCodicem.Pdf/issues/327)) —, as at one it reads: that is the
 section found moved, reported where it was found, rather than passed over for an older section farther off whose rows
 would stand for its lost ones in silence. Where the scan takes the bytes as they come — the data of a stream whose
-length no `endstream` confirms, or what a string that runs past its object runs into —, a section found there is taken
-all the same, and the validator reports it as `xref.section-unconfirmed`, an error: the reader cannot tell whether
-those bytes are the file's own section or another object's; so is a section found past what the scan keeps. Wherever
+length it does not confirm, which it does only for a direct `/Length` an `endstream` follows, or what a string that
+runs past its object runs into —, a section found there is taken all the same, and the validator reports it as
+`xref.section-unconfirmed`, an error: the reader cannot tell whether those bytes are the file's own section or another
+object's; so is a section found past what the scan keeps. Wherever
 it lies — a place the chain itself names among them —, a place that cannot be read declares a section only where its
 token starts its line as a load lexes it, the line read again as far as 4,096 bytes before the bytes searched where it
 starts before them, so that a word or a header a comment or a string on its line holds declares nothing, as a load
@@ -353,11 +354,14 @@ says `trailer`, adds nothing to the map or the trailer ([#171](https://github.co
 A string that runs past its object's end delimits nothing, and hides none of the objects it runs into: one that holds
 `endobj` — a parenthesis some writers leave unescaped and unbalanced runs a string into the objects after it —, or one
 the end of a cut file leaves open.
-The data of a stream whose length it cannot confirm — an indirect `/Length`, or one no `endstream` follows — ends for it
-where a load's search for that stream's end stops: at the first header, which it takes, or at the first `endstream`,
-before which it reads no comment; but a stream that lost its `endstream`, whose data a load ends at its `/Length` — a
-direct one, or an indirect one whose object the file's bytes give just before the stream or first after its data — or
-at its object's `endobj`, ends there for it too, and what follows is read between objects. What follows the header
+The data of a stream whose length it does not confirm — it confirms only a direct `/Length` an `endstream` follows — it
+reads as the bytes give it, up to the first `endstream`, taking the headers there and reading no comment; but a stream
+that lost its `endstream`, whose data a load ends at its `/Length` or at its object's `endobj`, ends there for it too,
+and what follows is read between objects, the header a load's search for that `endstream` stops at taken as the data's
+where the declared length runs past it. An indirect `/Length` counts so where the file's bytes give its object: one of
+the last eight objects other than streams before the stream, or the first object after it that gives it, before another
+stream whose length's object it looks for. Elsewhere, the data is read as the bytes give it up to the first `endstream`,
+and a header or a section the searches near a row or an offset find there is unconfirmed. What follows the header
 of an object it cannot delimit — its value past `MaxObjectLength`, or none a load reads — is read as the bytes give it
 too, and a header within what was read of it is taken undelimited, so that no byte is lexed for one object after
 another. Where the pieces it reads the file in start

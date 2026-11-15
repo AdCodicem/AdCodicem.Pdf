@@ -169,13 +169,14 @@ internal sealed partial class PdfFileReader
     /// What lies within is the object's, and the scan goes on past it: a header or a keyword there — an attached file's own
     /// objects written as they are, a string that quotes a header — is none (#171). A string that runs past its object's
     /// end — an unbalanced parenthesis left unescaped, which runs it into the next objects, or the end of a cut file —
-    /// delimits nothing (<see cref="IsRunaway"/>). A stream whose length the scan cannot confirm, an indirect <c>/Length</c>
-    /// or a wrong one, has its data end where a load searching for its end would stop: at the first header after it, or at
-    /// its <c>endstream</c>; the headers and keywords before that <c>endstream</c> — or before where a load ends the data of
-    /// a <c>/Length</c> no <c>endstream</c> follows, a direct one or one the object it names gives in the file's bytes
-    /// (<see cref="EndDataAtLengthObject"/>), the scan reading on between objects from where the load's search for it stops
-    /// or from the <c>endobj</c> that ends it (<see cref="DataEndWithoutEndStream"/>) — are taken as the bytes give them,
-    /// comments unread (<see cref="ScannedPlaceKind.Raw"/>). An object the scan cannot delimit has what follows its header
+    /// delimits nothing (<see cref="IsRunaway"/>). A stream whose length the scan does not confirm — it confirms only a
+    /// direct <c>/Length</c> an <c>endstream</c> follows, as far as the bytes tell (<see cref="ConfirmStream"/>) — has its
+    /// data read as the bytes give it, comments unread, the headers and keywords there taken
+    /// (<see cref="ScannedPlaceKind.Raw"/>): up to its first <c>endstream</c>; or, where no <c>endstream</c> follows a
+    /// direct <c>/Length</c>, or an indirect one whose object the scan reads in the file's bytes
+    /// (<see cref="EndDataAtLengthObject"/>), up to where a load ends the data, the scan reading on between objects from
+    /// where <see cref="DataEndWithoutEndStream"/> says, and holding as taken between objects what it took past that end
+    /// before it learned it (<see cref="EndDataWithLength"/>). An object the scan cannot delimit has what follows its header
     /// read as the bytes give it, and the headers within what its delimiting read are taken undelimited, so that no byte is
     /// lexed for one object after another. Between objects, a comment or a string runs to the end of its line, and a header
     /// or a keyword that starts inside one is none (<see cref="SweepLine"/>). A keyword counts as a whole token
@@ -527,8 +528,9 @@ internal sealed partial class PdfFileReader
     /// The object is read from the file's bytes alone, never through an index, so that a scan for the memo and a rebuild's
     /// take the same, whatever was read before. It is read once at each header or keyword the scan meets while it awaits
     /// one, from the window the scan holds, and one stream is awaited at a time. One the scan never meets while it awaits
-    /// it — more than <see cref="ScanState.ValueCount"/> values before the stream, or past a stream awaited in its turn —
-    /// leaves the data read as the bytes give it up to its first <c>endstream</c>.
+    /// it — more than <see cref="ScanState.ValueCount"/> values before the stream, or past a stream awaited in its turn —,
+    /// or that holds anything but a non-negative integer, leaves the data read as the bytes give it up to its first
+    /// <c>endstream</c>.
     /// </remarks>
     [MethodImpl(MethodImplOptions.NoInlining)]
     private void EndDataAtLengthObject(ReadOnlySpan<byte> span, long windowStart, long position, ref ScanState scan)
@@ -910,8 +912,10 @@ internal sealed partial class PdfFileReader
     /// its length not confirmed, where a load ends its data, as far as the file's bytes tell, where they show that no
     /// <c>endstream</c> follows the length, a length past the end of the file too (<see cref="DataEndWithoutEndStream"/>),
     /// or nowhere they tell yet: a read the source gives short of the keyword leaves the stream unconfirmed
-    /// (<see cref="EndStreamUndecided"/>), and an indirect <c>/Length</c> is read from its object once the scan meets the
-    /// first header or <c>trailer</c> keyword past the data's start (<see cref="EndDataAtLengthObject"/>).
+    /// (<see cref="EndStreamUndecided"/>), and so does a missing <c>/Length</c>, or a direct one that is no length; an
+    /// indirect one is read from its object, which the scan looks for from the first header or <c>trailer</c> keyword past
+    /// the data's start on (<see cref="EndDataAtLengthObject"/>), where no stretch it reads as the bytes give them reaches
+    /// past that start.
     /// </summary>
     /// <remarks>
     /// The white space a first read cannot see past is read on with the scan's own reads past declared lengths, which
@@ -988,7 +992,7 @@ internal sealed partial class PdfFileReader
     /// <param name="span">The window the scan holds.</param>
     /// <param name="windowStart">Where the window starts in the file.</param>
     /// <param name="position">Where the header starts in the file.</param>
-    /// <param name="lengthObject">The object the <c>/Length</c> names (<see cref="PackObject"/>), or -1.</param>
+    /// <param name="lengthObject">The object the <c>/Length</c> names (<see cref="PackObject"/>), or -1 for none.</param>
     /// <param name="length">The integer the object holds, where it is one.</param>
     private bool TryReadLengthObject(ReadOnlySpan<byte> span, long windowStart, long position, long lengthObject, out long length)
     {
@@ -1023,7 +1027,9 @@ internal sealed partial class PdfFileReader
 
     /// <summary>
     /// Gives an object number and generation as one value, the number times 65,536 plus the generation; or -1 for a pair no
-    /// object holds (<see cref="PdfObjectId.MaxNumber"/>, <see cref="PdfObjectId.MaxGeneration"/>).
+    /// reference may name (<see cref="PdfObjectId.MaxNumber"/>, <see cref="PdfObjectId.MaxGeneration"/>). Number 0, which
+    /// a reference may name, the head of the free list, packs as any other: it matches no header the scan takes, whose
+    /// number is 1 at least, so that the scan never meets such a length's object.
     /// </summary>
     private static long PackObject(long number, long generation) =>
         number is >= 0 and <= PdfObjectId.MaxNumber && generation is >= 0 and <= PdfObjectId.MaxGeneration ? (number << 16) | generation : -1;

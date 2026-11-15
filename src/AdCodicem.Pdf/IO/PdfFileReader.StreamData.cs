@@ -373,10 +373,10 @@ internal sealed partial class PdfFileReader
     /// search stops otherwise, what the length leaves of the data between taken as it is, neither a comment nor a string
     /// that would hide what follows. At the object's <c>endobj</c>, which only white space and comments part from where the
     /// search stops, read on from there. Where the search stops, where the declared length runs past it and no
-    /// <c>endobj</c> ends the data before it: the header there is taken as the data's, which may hold it — the value given
-    /// lies a byte past where it starts —, and what follows is read on between objects. -1 where the search finds an
-    /// <c>endstream</c>, or is not made; -1 too where a window the source gives empty ends the search, which holds the end
-    /// of the data there (#52), and ends a memo there (<see cref="ScanMemo.Builder.EndAt"/>).
+    /// <c>endobj</c> ends the data before it: the header there, where there is one, is taken as the data's, which may hold
+    /// it — the value given lies a byte past where it starts —, and what follows is read on between objects. -1 where the
+    /// search finds an <c>endstream</c>, or is not made; -1 too where a window the source gives empty ends the search,
+    /// which holds the end of the data there (#52), and ends a memo there (<see cref="ScanMemo.Builder.EndAt"/>).
     /// </summary>
     /// <remarks>
     /// The rebuild's scan asks it of a direct <c>/Length</c>, which it reads itself, and of an indirect one whose object it reads
