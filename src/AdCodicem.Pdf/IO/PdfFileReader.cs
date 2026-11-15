@@ -245,12 +245,11 @@ internal sealed partial class PdfFileReader : IPdfObjectSource, IPdfStreamDataPr
     /// read in proportion to the file, as a window keeps the parsing of their dictionaries. Which streams keep their
     /// declared length unsearched past it depends on the order they are read in: crafted files reach it, and no
     /// document of the corpus comes near, whose searches read 0.35 of a file at most. The rebuild's scan counts its own
-    /// reads apart, against the same multiple (<see cref="_scanGapBytes"/>). Of a valid file it reads the white space after each
-    /// length a stream's header declares, or that the object of its indirect <c>/Length</c> gives where its data holds a
-    /// header before its <c>endstream</c>, from a first read of 64 bytes for the latter, the runs after different streams
-    /// apart; and, where it never meets that object in the bytes, that data about once, to find where a load that cannot
-    /// read the length ends it and to tell that the stream is intact (<see cref="EndAwaitedData"/>): about the file twice
-    /// at most. The rest it counts — the search for where a load ends data whose <c>endstream</c> does not follow its
+    /// reads apart, against the same multiple (<see cref="_scanGapBytes"/>). Of a valid file it reads the white space after
+    /// each length a stream's header declares, the runs after different streams apart; and, where it never meets the
+    /// object of a stream's indirect <c>/Length</c> in the bytes, that stream's data about once, to find where a load that
+    /// cannot read the length ends it and to tell that the stream is intact (<see cref="EndAwaitedData"/>): about the file
+    /// twice at most. The rest it counts — the search for where a load ends data whose <c>endstream</c> does not follow its
     /// length, the reads that tell such data from an intact stream's (<see cref="StartsStreamWithin"/>), the regular
     /// characters glued to an <c>endstream</c> — only an invalid stream makes.
     /// </remarks>
@@ -601,15 +600,18 @@ internal sealed partial class PdfFileReader : IPdfObjectSource, IPdfStreamDataPr
     private long _endStreamSearchBytes;
 
     /// <summary>
-    /// How many bytes the rebuild's scan read for streams since it started: past their declared lengths to confirm them,
-    /// and through the data of one that lost its <c>endstream</c> to end it where a load does
-    /// (<see cref="DataEndWithoutEndStream"/>), reads that count every byte they take from the file, those the scan's
-    /// window holds included, that search reading from the data's start; and to tell such a stream from one read as
-    /// intact (<see cref="StartsStreamWithin"/>), counted only past the bytes that window holds, which it searches first.
-    /// First reads that tell a place at once — of 64 bytes at most after a direct length, at an <c>endstream</c>, where
-    /// an <c>endobj</c> may follow a length and at a length's object, and of 5 at a stream's data's start — are not among
-    /// them. Which <see cref="EndStreamSearchPasses"/> bounds apart from the loads' searches, so that what the scan reads
-    /// leaves them theirs.
+    /// How many bytes the rebuild's scan read for streams since it started, which <see cref="EndStreamSearchPasses"/> bounds
+    /// apart from the loads' searches, so that what the scan reads leaves them theirs: the white space and comments a first
+    /// read cannot see past, after a direct length to confirm it (<see cref="ConfirmStream"/>), with the regular characters
+    /// glued to an <c>endstream</c> there (<see cref="RegularRunEnd"/>), and after a declared length an <c>endobj</c> may
+    /// follow (<see cref="IsEndObjAt"/>); the data of a stream whose <c>endstream</c> does not follow its length, or whose
+    /// length's object the scan never reads, searched from its start to end it where a load does
+    /// (<see cref="DataEndWithoutEndStream"/>), every byte it takes counted, those the scan's window holds included; and
+    /// the reads that tell such data from an intact stream's (<see cref="StartsStreamWithin"/>), counted only past the
+    /// bytes that window holds, which it searches first. First reads that tell a place at once are not among them: of 64
+    /// bytes at most after a direct length, after a length the scan took from the file's bytes, read no further
+    /// (<see cref="SignificantPastLength"/>), at an <c>endstream</c>, where an <c>endobj</c> may follow a length and at a
+    /// length's object, and of 5 at a stream's data's start.
     /// </summary>
     private long _scanGapBytes;
 

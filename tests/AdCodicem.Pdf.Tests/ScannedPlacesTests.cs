@@ -34,6 +34,7 @@ public class ScannedPlacesTests
     [InlineData("a header past the endobj of a stream with no endstream that declares a length past the header", "Clean")]
     [InlineData("a header that holds the indirect length of the stream with no endstream before it", "Clean")]
     [InlineData("a header that holds the indirect length of the stream before it, whose endstream and endobj are lost", "Clean")]
+    [InlineData("a header that holds the indirect length of the stream before it, whose endstream and endobj are lost, an endstream in a string past it", "Clean")]
     [InlineData("a header past a stream with no endstream whose indirect length the object before the stream holds", "Clean")]
     [InlineData("a header past a stream with no endstream or endobj whose indirect length the object before it holds", "Clean")]
     [InlineData("a header past a stream with no endstream whose indirect length names an object the file lacks", "Clean")]
@@ -112,6 +113,8 @@ public class ScannedPlacesTests
                 "5 0 obj\n<< /Length 9 0 R >>\nstream\n0123456789\nendobj\n9 0 obj\n10\nendobj\n",
             "a header that holds the indirect length of the stream before it, whose endstream and endobj are lost" =>
                 "5 0 obj\n<< /Length 9 0 R >>\nstream\n0123456789\n9 0 obj\n10\nendobj\n",
+            "a header that holds the indirect length of the stream before it, whose endstream and endobj are lost, an endstream in a string past it" =>
+                "5 0 obj\n<< /Length 9 0 R >>\nstream\n0123456789\n9 0 obj\n10\nendobj\n6 0 obj\n(endstream)\nendobj\n",
             "a header past a stream with no endstream whose indirect length the object before the stream holds" =>
                 "8 0 obj\n10\nendobj\n5 0 obj\n<< /Length 8 0 R >>\nstream\n0123456789\nendobj\n9 0 obj\n(nine)\nendobj\n",
             "a header past a stream with no endstream or endobj whose indirect length the object before it holds" =>
@@ -916,24 +919,30 @@ public class ScannedPlacesTests
     {
         // An intact stream whose data holds an attached file's text, an endobj and then a header of object 9, whose own
         // definition follows the stream, its row 3 bytes past the header the data holds. The source gives every read whole
-        // but the first at the endstream keyword, which it gives short within the keyword: the bytes do not tell that no
-        // endstream follows, and the stream's data is read as the bytes give it, not ended at the endobj it holds. The header
-        // in the data is taken as such, and the search near the row serves object 9's own definition, which it vouches for.
-        const string Data = "q\nendobj\n9 0 obj\n(inner nine)\nendobj\nQ";
+        // but the first that starts where the scan reads past the declared length for an endstream: at the keyword, past
+        // the white space a first read holds, for the direct length; at the data's end, for the indirect one, whose stream
+        // crosses the end of the scan's first piece so that the scan reads there from the source. It gives that read short
+        // within the keyword: the bytes do not tell that no endstream follows, and the stream's data is read as the bytes
+        // give it, not ended at the endobj it holds. The header in the data is taken as such, and the search near the row
+        // serves object 9's own definition, which it vouches for.
+        const int Piece = 1 << 20;
         var direct = length != "an indirect length";
+        var data = "q\nendobj\n9 0 obj\n(inner nine)\nendobj\nQ" + (direct ? string.Empty : new string('Q', 200));
         var file = new HandWrittenFile();
         var rows = new Dictionary<int, long> { [1] = file.Object(1, Catalog), [2] = file.Object(2, Pages) };
 
         if (!direct)
         {
-            rows[8] = file.Object(8, Data.Length.ToString(CultureInfo.InvariantCulture));
+            PadWithComments(file, Piece - 200);
+            rows[8] = file.Object(8, data.Length.ToString(CultureInfo.InvariantCulture));
         }
 
         var stream = file.Position;
         file.Raw(string.Create(
             CultureInfo.InvariantCulture,
-            $"4 0 obj\n<< /Length {(direct ? Data.Length.ToString(CultureInfo.InvariantCulture) : "8 0 R")} >>\nstream\n{Data}"));
+            $"4 0 obj\n<< /Length {(direct ? data.Length.ToString(CultureInfo.InvariantCulture) : "8 0 R")} >>\nstream\n{data}"));
         var inner = stream + Encoding.Latin1.GetString(file.Bytes[(int)stream..]).IndexOf("9 0 obj", StringComparison.Ordinal);
+        var dataEnd = file.Position;
         file.Raw((direct ? new string(' ', 80) : "\n") + "endstream\nendobj\n");
         var keyword = file.Position - "endstream\nendobj\n".Length;
         rows[4] = stream;
@@ -941,7 +950,8 @@ public class ScannedPlacesTests
         var outer = file.Object(9, "(outer nine)");
         file.Table(10, rows, "/Size 10 /Root 1 0 R");
         var given = new HashSet<long>();
-        var source = new ShortCountSource(file.Bytes, (offset, held) => offset == keyword && given.Add(offset) ? 4 : held);
+        var cut = direct ? keyword : dataEnd;
+        var source = new ShortCountSource(file.Bytes, (offset, held) => offset == cut && given.Add(offset) ? 4 : held);
         using var document = PdfDocument.Open(source, options: null, ownsSource: true);
 
         var nine = document.GetObject(new PdfObjectId(9)).AsText();
