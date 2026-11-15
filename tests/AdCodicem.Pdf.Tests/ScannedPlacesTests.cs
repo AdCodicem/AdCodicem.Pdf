@@ -39,7 +39,8 @@ public class ScannedPlacesTests
     [InlineData("a header past a stream with no endstream whose indirect length names an object the file lacks", "Clean")]
     [InlineData("a header past a stream with no endstream or endobj whose indirect length names an object the file lacks", "Clean")]
     [InlineData("a header in the data of an intact stream whose indirect length names an object the file lacks", "Raw")]
-    [InlineData("a header in the data of an intact stream whose length names another generation than its object's", "Raw")]
+    [InlineData("a header in the data of an intact stream that the length an object of its length's number holds runs past", "Raw")]
+    [InlineData("a header past a stream with no endstream or endobj whose length names another generation than the object past it", "Clean")]
     [InlineData("a header in the data of an intact stream whose length names an object that holds a real number", "Raw")]
     [InlineData("a header in the data of an intact stream whose length names an object that holds a negative number", "Raw")]
     [InlineData("a header past the endobj of a stream with no endstream whose indirect length runs past the header", "Clean")]
@@ -121,8 +122,10 @@ public class ScannedPlacesTests
                 "5 0 obj\n<< /Length 8 0 R >>\nstream\n0123456789\n9 0 obj\n(nine)\nendobj\n",
             "a header in the data of an intact stream whose indirect length names an object the file lacks" =>
                 "5 0 obj\n<< /Length 8 0 R >>\nstream\n0123 9 0 obj (x) endobj\nendstream\nendobj\n",
-            "a header in the data of an intact stream whose length names another generation than its object's" =>
+            "a header in the data of an intact stream that the length an object of its length's number holds runs past" =>
                 "5 0 obj\n<< /Length 8 1 R >>\nstream\n0123 9 0 obj (x) endobj\nendstream\nendobj\n8 0 obj\n10\nendobj\n",
+            "a header past a stream with no endstream or endobj whose length names another generation than the object past it" =>
+                "5 0 obj\n<< /Length 8 1 R >>\nstream\n0123456789\n9 0 obj\n(nine)\nendobj\n8 0 obj\n40\nendobj\n",
             "a header in the data of an intact stream whose length names an object that holds a real number" =>
                 "5 0 obj\n<< /Length 8 0 R >>\nstream\n0123 9 0 obj (x) endobj\nendstream\nendobj\n8 0 obj\n10.0\nendobj\n",
             "a header in the data of an intact stream whose length names an object that holds a negative number" =>
