@@ -620,9 +620,9 @@ public class ScannedPlacesTests
             ? (PdfValidationRuleIds.XRefEntryUnconfirmed, PdfValidationSeverity.Error)
             : (PdfValidationRuleIds.XRefEntryShifted, PdfValidationSeverity.Warning));
         finding.Message.Should().EndWith(shortReads
-            ? "which it cannot tell lies between objects: it lies past the last object its scan for objects passed before the end of a read that a source answered with fewer bytes than asked."
+            ? "which it cannot tell lies between objects: it lies past the last object its scan for objects passed before the end of a read that a source answered with fewer bytes than asked, or, where that read ended while the scan awaited the object of a stream's indirect /Length, past that stream's data's start."
             : past
-                ? "which it cannot tell lies between objects: it lies past the places its scan for objects records within PdfReaderLimits.MaxIndexEntries. Raising the limit lets it tell."
+                ? "which it cannot tell lies between objects: it lies past the places its scan for objects records within PdfReaderLimits.MaxIndexEntries, or, where the scan reached that bound while it awaited the object of a stream's indirect /Length, past that stream's data's start. Raising the limit lets it tell."
                 : string.Create(CultureInfo.InvariantCulture, $"the object starts 5 bytes before it, at offset {row - 5}."));
     }
 
@@ -680,7 +680,7 @@ public class ScannedPlacesTests
         document.Diagnostics.Select(entry => (entry.Code, entry.Position)).Should().Equal((PdfDiagnosticCodes.XRefOffsetAdjusted, four));
         var finding = new PdfValidator().Validate(document).Findings.Should().ContainSingle(finding => finding.Location.Object == new PdfObjectId(4)).Which;
         (finding.RuleId, finding.Severity).Should().Be((PdfValidationRuleIds.XRefEntryUnconfirmed, PdfValidationSeverity.Error));
-        finding.Message.Should().EndWith("it lies past the last object its scan for objects passed before the end of a read that a source answered with fewer bytes than asked.");
+        finding.Message.Should().EndWith("it lies past the last object its scan for objects passed before the end of a read that a source answered with fewer bytes than asked, or, where that read ended while the scan awaited the object of a stream's indirect /Length, past that stream's data's start.");
     }
 
     [Theory]

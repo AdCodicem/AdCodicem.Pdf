@@ -165,9 +165,9 @@ one's objects each lie before the next one starts: the reader reads each no furt
 order ends where it breaks it. A sound stream's `endstream` follows its declared length; where it does not, or the
 `/Length` gives none, the reader searches the file for it past the bytes it parsed the object through, rather than parse
 the object through a larger window, so that a stream's data — and the end-of-line after its `stream` keyword — never
-counts toward its object's length. A document's
-searches read four times the file at most: a valid file is read past those bytes only for the data of a cross-reference
-stream whose `/Length` the chain cannot read yet, for the data of a stream whose `/Length` a guard cut or left out of the
+counts toward its object's length. None of a
+document's searches starts once they have read four times the file: a valid file is read past those bytes only for
+the data of a cross-reference stream whose `/Length` the chain cannot read yet, for the data of a stream whose `/Length` a guard cut or left out of the
 index, and for white space and comments after a declared length, about twice the file — three times over the white
 space a cross-reference stream's search takes as data that its length, once read, is read on through —, and for the
 proof that an `endstream` found under a hidden `/Length` is the stream's own, about three times the file in all. The

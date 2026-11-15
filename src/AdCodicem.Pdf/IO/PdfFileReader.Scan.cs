@@ -161,7 +161,11 @@ internal sealed partial class PdfFileReader
     /// keyword that runs past the bytes searched is the next piece's to find whole, each search resuming as far back as such
     /// a keyword starts. A header is read back from its <c>obj</c> as a load lexes it (<see cref="ReadHeaderBackwards"/>);
     /// one whose walk reaches the start of the piece undecided is read again from further back, as far as it takes: where a
-    /// piece starts changes nothing of what the scan takes (#171).
+    /// piece starts changes nothing of what the scan takes (#171), but for three hand-made shapes (#358) and for the reads
+    /// that tell a stream from an intact one, which count only what they read past the bytes the scan holds
+    /// (<see cref="StartsStreamWithin"/>): where a piece ends changes what they spend of the scan's reads past declared
+    /// lengths, and, once those near their bound (<see cref="EndStreamSearchPasses"/>), which streams after them the scan
+    /// confirms or ends.
     /// </para>
     /// <para>
     /// Each object the scan takes is delimited as a load reads it (<see cref="DelimitObject"/>): its value, the strings and
@@ -528,7 +532,9 @@ internal sealed partial class PdfFileReader
     /// reads as that stream's data before the data of the first stream it meets there (<see cref="ScanState.PendingUntil"/>),
     /// and takes the first that gives it; a stream awaited in its turn, or the end of the file, ends the wait without it
     /// (<see cref="EndAwaitedData"/>). Data that starts with a PDF file's header, an attached file's, whose objects are its
-    /// own, is read as intact where neither gives it, nothing awaited (<see cref="StartsPdfFile"/>).
+    /// own, is read as intact where neither gives it, nothing awaited for it (<see cref="StartsPdfFile"/>); a stream the
+    /// scan awaits already goes on trying the headers past that data's first <c>endstream</c>, and may take one of the
+    /// attached file's objects there for its length's object.
     /// </summary>
     /// <remarks>
     /// The object is read from the file's bytes alone, never through an index, so that a scan for the memo and a rebuild's
@@ -586,8 +592,9 @@ internal sealed partial class PdfFileReader
     /// (<see cref="DataEndWithoutEndStream"/>), and the places the memo took from there to where what the scan read as that
     /// data stops being that stream's (<see cref="ScanState.PendingUntil"/>) are held as taken between objects
     /// (<see cref="ScanMemo.Builder.TakeClean"/>) — unless what it read so stops short of the end of the file with no
-    /// <c>stream</c> keyword starting in it from the data's end (<see cref="StartsStreamWithin"/>): the data may hold an
-    /// attached file's objects, and the stream is read as intact.
+    /// <c>stream</c> keyword starting in it from the data's end, within <see cref="ScanChunkSize"/> bytes of there, a
+    /// longer stretch taken as holding one (<see cref="StartsStreamWithin"/>): the data may hold an attached file's
+    /// objects, and the stream is read as intact.
     /// </summary>
     private void EndAwaitedData(ReadOnlySpan<byte> span, long windowStart, ref ScanState scan)
     {
@@ -625,7 +632,8 @@ internal sealed partial class PdfFileReader
     /// bound, leaves the data as it is; and so does a length read from a header in that data (<paramref name="inData"/>)
     /// that leaves bytes other than white space and comments before the header the load's search stops at, no
     /// <c>endobj</c> after it nor before that header, where the data's first <c>endstream</c> ends the stream as far as the
-    /// bytes tell — no <c>stream</c> keyword starts between <paramref name="position"/> and it
+    /// bytes tell — no <c>stream</c> keyword starts between <paramref name="position"/> and it, within
+    /// <see cref="ScanChunkSize"/> bytes of there, a longer stretch taken as holding one
     /// (<see cref="StartsStreamWithin"/>) —: that header may be an object the data holds, an attached file's, and the
     /// stream is read as intact.
     /// </summary>
@@ -676,13 +684,14 @@ internal sealed partial class PdfFileReader
 
     /// <summary>
     /// Determines whether a <c>stream</c> keyword, a whole token, starts at <paramref name="from"/> or past it and before
-    /// <paramref name="to"/> — the stream of another object, whose <c>endstream</c> the data's first one may be —, or
-    /// whether that stretch runs past the <see cref="ScanChunkSize"/> bytes from there searched to tell. They are
-    /// searched up to the first keyword that answers: those the scan holds (<paramref name="span"/>) as they are, then the
-    /// file's, in reads that grow from <see cref="PdfObjectParser.EndObjLookahead"/> to <see cref="EndStreamSearchChunk"/>
-    /// bytes, each twice the one before, counted with the scan's reads past declared lengths (<see cref="_scanGapBytes"/>).
-    /// False where no keyword starts there, where the source gives a read shorter than asked, or where those reads have
-    /// read as much as they may: the stream is then read as intact.
+    /// <paramref name="to"/> — the stream of another object, whose <c>endstream</c> the data's first one may be —,
+    /// searching the <see cref="ScanChunkSize"/> bytes at most from the byte before <paramref name="from"/>: a stretch that
+    /// runs past them is taken as holding one, though they hold none. They are searched up to the first keyword that
+    /// answers: those the scan holds (<paramref name="span"/>) as they are, then the file's, in reads that grow from
+    /// <see cref="PdfObjectParser.EndObjLookahead"/> to <see cref="EndStreamSearchChunk"/> bytes, each twice the one
+    /// before, counted with the scan's reads past declared lengths (<see cref="_scanGapBytes"/>). False where the bytes
+    /// searched reach <paramref name="to"/> with no keyword starting before it, where the source gives a read shorter
+    /// than asked, or where those reads have read as much as they may: the stream is then read as intact.
     /// </summary>
     private bool StartsStreamWithin(ReadOnlySpan<byte> span, long windowStart, long from, long to)
     {
