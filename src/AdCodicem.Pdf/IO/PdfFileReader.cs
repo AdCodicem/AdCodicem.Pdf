@@ -595,7 +595,8 @@ internal sealed partial class PdfFileReader : IPdfObjectSource, IPdfStreamDataPr
     private long _endStreamSearchBytes;
 
     /// <summary>
-    /// How many bytes the rebuild's scan read past streams' declared lengths to confirm them, which
+    /// How many bytes the rebuild's scan read past streams' declared lengths to confirm them, and past the bytes it holds to
+    /// tell a stream that lost its <c>endstream</c> from one read as intact (<see cref="StartsStreamWithin"/>), which
     /// <see cref="EndStreamSearchPasses"/> bounds apart from the loads' searches, so that what the scan reads leaves them
     /// theirs.
     /// </summary>

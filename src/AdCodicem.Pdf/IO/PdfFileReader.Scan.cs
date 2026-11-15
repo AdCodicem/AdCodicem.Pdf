@@ -553,7 +553,7 @@ internal sealed partial class PdfFileReader
                     return;
                 }
 
-                EndDataWithLength(scan.TokensFrom, length, position, position, inData, ref scan);
+                EndDataWithLength(span, windowStart, scan.TokensFrom, length, position, position, inData, ref scan);
                 return;
             }
         }
@@ -563,7 +563,7 @@ internal sealed partial class PdfFileReader
         {
             var dataStart = scan.PendingFrom;
             scan.PendingFrom = scan.PendingObject = -1;
-            EndDataWithLength(dataStart, length, position, Math.Min(position, scan.PendingUntil), position < scan.RawUntil, ref scan);
+            EndDataWithLength(span, windowStart, dataStart, length, position, Math.Min(position, scan.PendingUntil), position < scan.RawUntil, ref scan);
         }
     }
 
@@ -586,14 +586,14 @@ internal sealed partial class PdfFileReader
     /// comment or a string between objects would hide there is held, not left out, and the scan read no object anew from
     /// there. A rebuild's scan, which keeps no kind, takes the same headers either way.
     /// </remarks>
-    private void EndDataWithLength(long dataStart, long length, long position, long revisedTo, bool inData, ref ScanState scan)
+    private void EndDataWithLength(ReadOnlySpan<byte> span, long windowStart, long dataStart, long length, long position, long revisedTo, bool inData, ref ScanState scan)
     {
         var declaredEnd = length <= _source.Length - dataStart ? dataStart + length : _source.Length + 1;
         var next = NextSignificant(declaredEnd, ref _scanGapBytes, PdfObjectParser.EndObjLookahead);
 
         if (next < 0 || EndStreamTokenEnd(next) != -1 ||
             DataEndWithoutEndStream(dataStart, declaredEnd, ref scan, out var resume) is not (var end and >= 0) ||
-            (inData && resume > end && next < resume && scan.RawUntil < _source.Length && !StartsStreamWithin(position, scan.RawUntil)))
+            (inData && resume > end && next < resume && scan.RawUntil < _source.Length && !StartsStreamWithin(span, windowStart, position, scan.RawUntil)))
         {
             return;
         }
@@ -629,21 +629,68 @@ internal sealed partial class PdfFileReader
     /// <summary>
     /// Determines whether a <c>stream</c> keyword, a whole token, starts at <paramref name="from"/> or past it and before
     /// <paramref name="to"/> — the stream of another object, whose <c>endstream</c> the one at <paramref name="to"/> may
-    /// be —, or whether that stretch runs past the piece of <see cref="ScanChunkSize"/> bytes read from there to tell: the
-    /// stretch is read once, in one window. False where no keyword starts there, or where the source gives the window
-    /// shorter than asked.
+    /// be —, or whether that stretch runs past the <see cref="ScanChunkSize"/> bytes from there searched to tell. They are
+    /// searched up to the first keyword that answers: those the scan holds (<paramref name="span"/>) as they are, then the
+    /// file's, in reads that grow from <see cref="PdfObjectParser.EndObjLookahead"/> to <see cref="EndStreamSearchChunk"/>
+    /// bytes, each twice the one before, counted with the scan's reads past declared lengths (<see cref="_scanGapBytes"/>).
+    /// False where no keyword starts there, where the source gives a read shorter than asked, or where those reads have
+    /// read as much as they may: the stream is then read as intact.
     /// </summary>
-    private bool StartsStreamWithin(long from, long to)
+    private bool StartsStreamWithin(ReadOnlySpan<byte> span, long windowStart, long from, long to)
+    {
+        var start = Math.Max(0, from - 1);
+        var end = start + Math.Min(ScanChunkSize, Math.Min(_source.Length, to + "stream"u8.Length) - start);
+        var held = start >= windowStart && start - windowStart < span.Length ? span[(int)(start - windowStart)..] : [];
+        held = held[..(int)Math.Min(held.Length, end - start)];
+
+        if (HoldsStreamKeyword(held, start, from, to))
+        {
+            return true;
+        }
+
+        var position = start + held.Length;
+
+        for (var size = PdfObjectParser.EndObjLookahead; position < end; size = Math.Min(2 * size, EndStreamSearchChunk))
+        {
+            if (_scanGapBytes >= EndStreamSearchPasses * _source.Length)
+            {
+                return false;
+            }
+
+            // Each read repeats a keyword the bytes before it cut, with the byte before it and the one after.
+            var pieceStart = Math.Max(start, position - ("stream"u8.Length + 1));
+            var asked = (int)Math.Min(size, end - pieceStart);
+            using var window = _source.GetWindow(pieceStart, asked);
+            _scanGapBytes += window.Length;
+
+            if (HoldsStreamKeyword(window.Memory.Span, pieceStart, from, to))
+            {
+                return true;
+            }
+
+            if (window.Length < asked)
+            {
+                return false;
+            }
+
+            position = pieceStart + asked;
+        }
+
+        return end < to;
+    }
+
+    /// <summary>
+    /// Determines whether <paramref name="piece"/>, the file's bytes from <paramref name="pieceStart"/>, holds a
+    /// <c>stream</c> keyword that starts at <paramref name="from"/> or past it and before <paramref name="to"/>, a whole
+    /// token: one that ends the piece is whole only where the file ends with it, and one the piece starts with is not told.
+    /// </summary>
+    private bool HoldsStreamKeyword(ReadOnlySpan<byte> piece, long pieceStart, long from, long to)
     {
         var keyword = "stream"u8;
-        var start = Math.Max(0, from - 1);
-        var asked = (int)Math.Min(ScanChunkSize, Math.Min(_source.Length, to + keyword.Length) - start);
-        using var window = _source.GetWindow(start, asked);
-        var span = window.Memory.Span;
 
-        for (var at = 0; at < span.Length; at++)
+        for (var at = 0; at < piece.Length; at++)
         {
-            var found = span[at..].IndexOf(keyword);
+            var found = piece[at..].IndexOf(keyword);
 
             if (found < 0)
             {
@@ -653,14 +700,14 @@ internal sealed partial class PdfFileReader
             at += found;
             var end = at + keyword.Length;
 
-            if (start + at >= from && start + at < to && (at == 0 || !PdfCharacters.IsRegular(span[at - 1])) &&
-                (end < span.Length ? !PdfCharacters.IsRegular(span[end]) : start + end >= _source.Length))
+            if (pieceStart + at >= from && pieceStart + at < to && at > 0 && !PdfCharacters.IsRegular(piece[at - 1]) &&
+                (end < piece.Length ? !PdfCharacters.IsRegular(piece[end]) : pieceStart + end >= _source.Length))
             {
                 return true;
             }
         }
 
-        return span.Length == asked && start + asked < to;
+        return false;
     }
 
     /// <summary>

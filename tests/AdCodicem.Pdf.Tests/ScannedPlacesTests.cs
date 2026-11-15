@@ -911,6 +911,59 @@ public class ScannedPlacesTests
             .Select(finding => (finding.RuleId, finding.Severity)).Should().Equal((PdfValidationRuleIds.XRefEntryShifted, PdfValidationSeverity.Warning));
     }
 
+    [Theory]
+    [InlineData("no stream keyword, 600,000 bytes before its endstream", 0, "Raw")]
+    [InlineData("a stream keyword, 300,000 bytes on", 0, "Clean")]
+    [InlineData("a stream keyword, 300,000 bytes on, the first read past the piece given short", 0, "Raw")]
+    [InlineData("no stream keyword, a megabyte and more before its endstream", 0, "Clean")]
+    [InlineData("no stream keyword, a megabyte and more before its endstream", 20, "Raw")]
+    public void A_stream_whose_data_starts_with_its_length_s_object_is_told_from_an_intact_one_by_what_it_may_read_past_the_scan_s_piece(
+        string past, int headers, string kind)
+    {
+        // Stream 5 starts 300 bytes before the scan's first piece ends. Its indirect length names object 6, whose header its
+        // data holds first, with a length that leaves bytes before that header, and object 9's header after it; its first
+        // endstream lies past the piece. Whether a stream keyword starts between object 6's header and that endstream tells
+        // an intact stream, an attached file's, whose header of object 9 is Raw, from one whose length object 6 holds, past
+        // which object 9's header is Clean: the scan reads the file past its piece for it, in reads that grow, up to the
+        // first keyword, and takes a stretch longer than a megabyte for one that holds a keyword. A read the source gives
+        // short leaves the stream read as intact, and so do the scan's reads past declared lengths, spent while it reads
+        // there: stream headers before it, whose direct lengths end where one run of 256 KiB of white space starts, each
+        // read that run, and the twentieth leaves less than the stretch.
+        const int Piece = 1 << 20;
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long> { [1] = file.Object(1, Catalog), [2] = file.Object(2, Pages) };
+
+        for (var i = 0; i < headers; i++)
+        {
+            file.Raw(string.Create(CultureInfo.InvariantCulture, $"8 0 obj<</Length {36 * (headers - i - 1):D10}>>stream\n"));
+        }
+
+        if (headers > 0)
+        {
+            file.Raw(new string(' ', 256 * 1024) + "x\n");
+        }
+
+        PadWithComments(file, Piece - 300);
+        file.Raw("5 0 obj\n<< /Length 6 0 R >>\nstream\n%PDF-1.4\n6 0 obj\n5\nendobj\n");
+        var inner = file.Position;
+        file.Raw("9 0 obj\n(inner)\nendobj\n");
+        file.Raw(past.StartsWith("a stream keyword", StringComparison.Ordinal)
+            ? new string('x', 300_000) + "\nstream\n" + new string('x', 300_000)
+            : new string('x', past.Contains("a megabyte", StringComparison.Ordinal) ? Piece + 1000 : 600_000));
+        file.Raw("\nendstream\nendobj\n");
+        file.Object(6, "49");
+        file.Table(3, rows, "/Size 3 /Root 1 0 R");
+        var cut = past.EndsWith("given short", StringComparison.Ordinal);
+        var source = new ShortCountSource(file.Bytes, (offset, held) => cut && offset == Piece - 7 ? 3 : held);
+        using var document = PdfDocument.Open(source, options: null, ownsSource: true);
+
+        var memo = document.Reader.GetScanMemo();
+
+        (document.WasRepaired, source.ShortReads).Should().Be((false, cut ? 1 : 0));
+        memo.TryGetHeaderAt(inner, out var header).Should().BeTrue();
+        header.Should().Be(new ScannedHeader(inner, 9, 0, Enum.Parse<ScannedPlaceKind>(kind)));
+    }
+
     [Fact]
     public void An_xref_keyword_past_a_sweep_ahead_that_gives_fewer_bytes_than_asked_lies_past_where_the_memo_is_whole_and_its_section_is_taken_unconfirmed()
     {
