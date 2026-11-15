@@ -628,8 +628,9 @@ internal sealed partial class PdfFileReader
     /// between objects from where the load says (<see cref="DataEndWithoutEndStream"/>), as for a direct <c>/Length</c>,
     /// where it still reads that data at <paramref name="position"/>; and the places the memo took from that end to
     /// <paramref name="revisedTo"/> are held as taken between objects (<see cref="ScanMemo.Builder.TakeClean"/>). An
-    /// <c>endstream</c> after the length, a read that does not tell, or the scan's reads past declared lengths at their
-    /// bound, leaves the data as it is; and so does a length read from a header in that data (<paramref name="inData"/>)
+    /// <c>endstream</c> after the length, first bytes past it that do not tell — white space or comments that run past
+    /// them among them (<see cref="SignificantPastLength"/>) —, or the scan's reads past declared lengths at their bound,
+    /// leaves the data as it is; and so does a length read from a header in that data (<paramref name="inData"/>)
     /// that leaves bytes other than white space and comments before the header the load's search stops at, no
     /// <c>endobj</c> after it nor before that header, where the data's first <c>endstream</c> ends the stream as far as the
     /// bytes tell — no <c>stream</c> keyword starts between <paramref name="position"/> and it, within
@@ -645,9 +646,9 @@ internal sealed partial class PdfFileReader
     private void EndDataWithLength(ReadOnlySpan<byte> span, long windowStart, long dataStart, long length, long position, long revisedTo, bool inData, ref ScanState scan)
     {
         var declaredEnd = length <= _source.Length - dataStart ? dataStart + length : _source.Length + 1;
-        var next = NextSignificant(declaredEnd, ref _scanGapBytes, PdfObjectParser.EndObjLookahead);
+        var next = SignificantPastLength(span, windowStart, declaredEnd);
 
-        if (next < 0 || EndStreamTokenEnd(next) != -1 ||
+        if (next < 0 ||
             DataEndWithoutEndStream(dataStart, declaredEnd, ref scan, out var resume) is not (var end and >= 0) ||
             (inData && resume > end && next < resume && scan.RawUntil < _source.Length && !StartsStreamWithin(span, windowStart, position, scan.RawUntil)))
         {
@@ -661,6 +662,37 @@ internal sealed partial class PdfFileReader
             scan.RawUntil = end;
             scan.SweptTo = Math.Max(resume, scan.TokensFrom);
         }
+    }
+
+    /// <summary>
+    /// Gives where the first byte at or past <paramref name="declaredEnd"/>, where a length the scan read from the file's
+    /// bytes ends a stream's data, lies that is neither white space nor part of a comment, a comment only after white space
+    /// (<see cref="StreamEnds.SkipGap"/>), where the <see cref="PdfObjectParser.EndObjLookahead"/> bytes there show that no
+    /// <c>endstream</c> starts at it — from the window the scan holds where it holds them —; the length of the file where
+    /// the file ends first, a declared end past it too; -1 where an <c>endstream</c> starts there, or where those bytes do
+    /// not tell: white space or comments that run past them, a keyword they cut, a read the source gives short.
+    /// </summary>
+    /// <remarks>
+    /// Those first bytes alone are read, and not counted with the scan's reads past declared lengths
+    /// (<see cref="_scanGapBytes"/>), as at a length's object: that length may be no length of the stream's — a valid
+    /// file's stream may hold, in its data, an object of its length's number, an attached file's —, and may end the data
+    /// anywhere in the file, many streams' data in one run of white space, which reading on would cross once for each.
+    /// </remarks>
+    private long SignificantPastLength(ReadOnlySpan<byte> span, long windowStart, long declaredEnd)
+    {
+        if (declaredEnd >= _source.Length)
+        {
+            return _source.Length;
+        }
+
+        Span<byte> bytes = stackalloc byte[PdfObjectParser.EndObjLookahead];
+        var wanted = (int)Math.Min(bytes.Length, _source.Length - declaredEnd);
+        ReadOnlySpan<byte> held = declaredEnd >= windowStart && declaredEnd - windowStart + wanted <= span.Length
+            ? span.Slice((int)(declaredEnd - windowStart), wanted)
+            : bytes[.._source.Read(declaredEnd, bytes[..wanted])];
+        return StreamEnds.ReadEnd(held, declaredEnd + held.Length >= _source.Length).Kind == StreamEndKind.None
+            ? declaredEnd + StreamEnds.SkipGap(held, 0)
+            : -1;
     }
 
     /// <summary>

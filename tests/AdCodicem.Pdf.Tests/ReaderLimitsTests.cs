@@ -525,6 +525,60 @@ public class ReaderLimitsTests
         document.ObjectCount.Should().Be(50);
     }
 
+    [Theory]
+    [InlineData("white space")]
+    [InlineData("white space and comment lines")]
+    public void A_valid_file_a_guard_sends_into_a_rebuild_serves_no_object_a_stream_s_data_spells_whatever_lengths_that_data_gives(string run)
+    {
+        // Eight attached streams, each with an indirect /Length whose object follows it, hold first in their data an object
+        // of that length's number, an attached file's, whose integer ends the data in one run of 64 KiB between objects. A
+        // stream after the run, with a direct /Length and 70 bytes of white space before its endstream, holds data that spells
+        // object 77, which the file does not define. MaxXRefSectionLength cuts the table, and the rebuild's scan takes each
+        // attached stream's length from the object its data holds: past that length it reads the first bytes alone, which do
+        // not tell, and leaves the data as it is. Read on through the run for each stream, its reads past declared lengths
+        // would have reached their bound before the last stream, whose endstream it would no longer have seen past its white
+        // space, and object 77 would have been taken from that stream's data.
+        const int Streams = 8;
+        var filler = run == "white space"
+            ? new string(' ', 64 * 1024)
+            : " \n" + string.Concat(Enumerable.Repeat("% " + new string('-', 61) + "\n", 1024));
+        var (_, dataStarts, runStart) = Build(null, 0);
+        var (file, _, _) = Build(dataStarts, runStart);
+        var options = new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxXRefSectionLength = 16 } };
+
+        using var document = PdfDocument.Open(file, options);
+
+        document.GetObject(new PdfObjectId(77)).Should().BeSameAs(PdfNull.Instance);
+        document.WasRepaired.Should().BeTrue();
+        document.Diagnostics.Should().Contain(diagnostic => diagnostic.Code == PdfDiagnosticCodes.LimitXRefSectionLength);
+
+        (byte[] File, long[] DataStarts, long RunStart) Build(long[]? starts, long runAt)
+        {
+            var pdf = new HandWrittenFile();
+            var rows = new Dictionary<int, long> { [1] = pdf.Object(1, Catalog), [2] = pdf.Object(2, Pages) };
+            var written = new long[Streams];
+
+            for (var i = 0; i < Streams; i++)
+            {
+                var (number, length) = (10 + (2 * i), 11 + (2 * i));
+                var pointsTo = starts is null ? 0 : runAt - starts[i];
+                var data = string.Create(CultureInfo.InvariantCulture, $"{length} 0 obj\n{pointsTo:D10}\nendobj\nattached bytes\n");
+                rows[number] = pdf.Position;
+                pdf.Raw(string.Create(CultureInfo.InvariantCulture, $"{number} 0 obj\n<< /Type /EmbeddedFile /Length {length} 0 R >>\nstream\n"));
+                written[i] = pdf.Position;
+                pdf.Raw(data + "endstream\nendobj\n");
+                rows[length] = pdf.Object(length, data.Length.ToString(CultureInfo.InvariantCulture));
+            }
+
+            var at = pdf.Position;
+            pdf.Raw(filler + "\n");
+            rows[30] = pdf.Position;
+            pdf.Raw("30 0 obj\n<< /Length 24 >>\nstream\n77 0 obj\n(inner)\nendobj\n" + new string(' ', 70) + "\nendstream\nendobj\n");
+            pdf.Table(31, rows, "/Size 31 /Root 1 0 R");
+            return (pdf.Bytes, written, at);
+        }
+    }
+
     [Fact]
     public void A_rebuild_that_reaches_the_entry_guard_finishes_the_index_before_it_throws()
     {
