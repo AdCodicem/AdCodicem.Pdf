@@ -36,10 +36,12 @@ public class ScannedPlacesTests
     [InlineData("a header that holds the indirect length of the stream before it, whose endstream and endobj are lost", "Clean")]
     [InlineData("a header past a stream with no endstream whose indirect length the object before the stream holds", "Clean")]
     [InlineData("a header past a stream with no endstream or endobj whose indirect length the object before it holds", "Clean")]
-    [InlineData("a header past a stream with no endstream whose indirect length another object holds", "Raw")]
-    [InlineData("a header of another generation than the one the indirect length of the stream before it names", "Raw")]
-    [InlineData("a header that holds a real number where the stream before it names its length", "Raw")]
-    [InlineData("a header that holds a negative number where the stream before it names its length", "Raw")]
+    [InlineData("a header past a stream with no endstream whose indirect length names an object the file lacks", "Clean")]
+    [InlineData("a header past a stream with no endstream or endobj whose indirect length names an object the file lacks", "Clean")]
+    [InlineData("a header in the data of an intact stream whose indirect length names an object the file lacks", "Raw")]
+    [InlineData("a header in the data of an intact stream whose length names another generation than its object's", "Raw")]
+    [InlineData("a header in the data of an intact stream whose length names an object that holds a real number", "Raw")]
+    [InlineData("a header in the data of an intact stream whose length names an object that holds a negative number", "Raw")]
     [InlineData("a header past the endobj of a stream with no endstream whose indirect length runs past the header", "Clean")]
     [InlineData("a header that a stream with no endstream declares an indirect length past", "Raw")]
     [InlineData("a header after an endobj in the data of a stream whose indirect length the object before it holds", "Raw")]
@@ -60,7 +62,9 @@ public class ScannedPlacesTests
     [InlineData("a header in the data of an intact stream whose first header holds an integer as its indirect length's object", "Raw")]
     [InlineData("a header in the data of a stream the data of a stream with no endstream holds, its length's object past both", "Raw")]
     [InlineData("a header in what a string that runs past its object's end runs into, past a stream with no endstream", "Raw")]
-    [InlineData("a header past a stream with no endstream, a stream with no endstream whose length is awaited in its turn after it", "Raw")]
+    [InlineData("a header past a stream with no endstream, a stream with no endstream whose length is awaited in its turn after it", "Clean")]
+    [InlineData("a header past a stream with no endstream whose length's object is where a stream after it resolves its own", "Clean")]
+    [InlineData("a header in an attached PDF file that holds an object of its stream's length's number past its first endstream", "Raw")]
     [InlineData("a header in a comment between a stream with no endstream and the object a few objects on that holds its length", "Clean")]
     public void A_header_is_recorded_where_the_scan_takes_it_with_how_it_took_it(string shape, string? kind)
     {
@@ -111,14 +115,24 @@ public class ScannedPlacesTests
                 "8 0 obj\n10\nendobj\n5 0 obj\n<< /Length 8 0 R >>\nstream\n0123456789\nendobj\n9 0 obj\n(nine)\nendobj\n",
             "a header past a stream with no endstream or endobj whose indirect length the object before it holds" =>
                 "8 0 obj\n10\nendobj\n5 0 obj\n<< /Length 8 0 R >>\nstream\n0123456789\n9 0 obj\n(nine)\nendobj\n",
-            "a header past a stream with no endstream whose indirect length another object holds" =>
+            "a header past a stream with no endstream whose indirect length names an object the file lacks" =>
                 "5 0 obj\n<< /Length 8 0 R >>\nstream\n0123456789\nendobj\n9 0 obj\n10\nendobj\n",
-            "a header of another generation than the one the indirect length of the stream before it names" =>
-                "5 0 obj\n<< /Length 9 1 R >>\nstream\n0123456789\nendobj\n9 0 obj\n10\nendobj\n",
-            "a header that holds a real number where the stream before it names its length" =>
-                "5 0 obj\n<< /Length 9 0 R >>\nstream\n0123456789\nendobj\n9 0 obj\n10.0\nendobj\n",
-            "a header that holds a negative number where the stream before it names its length" =>
-                "5 0 obj\n<< /Length 9 0 R >>\nstream\n0123456789\nendobj\n9 0 obj\n-10\nendobj\n",
+            "a header past a stream with no endstream or endobj whose indirect length names an object the file lacks" =>
+                "5 0 obj\n<< /Length 8 0 R >>\nstream\n0123456789\n9 0 obj\n(nine)\nendobj\n",
+            "a header in the data of an intact stream whose indirect length names an object the file lacks" =>
+                "5 0 obj\n<< /Length 8 0 R >>\nstream\n0123 9 0 obj (x) endobj\nendstream\nendobj\n",
+            "a header in the data of an intact stream whose length names another generation than its object's" =>
+                "5 0 obj\n<< /Length 8 1 R >>\nstream\n0123 9 0 obj (x) endobj\nendstream\nendobj\n8 0 obj\n10\nendobj\n",
+            "a header in the data of an intact stream whose length names an object that holds a real number" =>
+                "5 0 obj\n<< /Length 8 0 R >>\nstream\n0123 9 0 obj (x) endobj\nendstream\nendobj\n8 0 obj\n10.0\nendobj\n",
+            "a header in the data of an intact stream whose length names an object that holds a negative number" =>
+                "5 0 obj\n<< /Length 8 0 R >>\nstream\n0123 9 0 obj (x) endobj\nendstream\nendobj\n8 0 obj\n-10\nendobj\n",
+            "a header past a stream with no endstream whose length's object is where a stream after it resolves its own" =>
+                "5 0 obj\n<< /Length 8 0 R >>\nstream\n0123456789\nendobj\n9 0 obj\n(endstream)\nendobj\n6 0 obj\n4\nendobj\n"
+                + "7 0 obj\n<< /Length 6 0 R >>\nstream\n0123\nendobj\n8 0 obj\n10\nendobj\n",
+            "a header in an attached PDF file that holds an object of its stream's length's number past its first endstream" =>
+                "5 0 obj\n<< /Length 6 0 R >>\nstream\n%PDF-1.4\n9 0 obj\n(inner)\nendobj\n7 0 obj\n<< /Length 3 >>\nstream\nabc\nendstream\nendobj\n"
+                + "6 0 obj\n3\nendobj\n%%EOF\nendstream\nendobj\n6 0 obj\n106\nendobj\n",
             "a header past the endobj of a stream with no endstream whose indirect length runs past the header" =>
                 "8 0 obj\n40\nendobj\n5 0 obj\n<< /Length 8 0 R >>\nstream\n0123456789\nendobj\n9 0 obj\n(nine)\nendobj\n",
             "a header that a stream with no endstream declares an indirect length past" =>
@@ -691,6 +705,34 @@ public class ScannedPlacesTests
         var pagesEnd = rows[2] + "2 0 obj\n".Length + Pages.Length;
 
         (memo.IsWhole, memo.WholeUntil, memo.TryGetHeaderAt(rows[3], out _)).Should().Be(cap > 0 ? (true, pagesEnd, false) : (true, long.MaxValue, true));
+    }
+
+    [Fact]
+    public void A_memo_a_short_read_ends_while_a_stream_s_length_is_awaited_holds_before_where_it_is_whole_what_a_whole_read_does()
+    {
+        // Object 5 lost its endstream, and the object that holds its length lies past 6,000 bytes of comment, past the end of
+        // the first read a source that gives at most 4,096 bytes a read answers: read whole, the memo holds object 9's header,
+        // between the two, as taken between objects; read short, it is whole only before object 5's data, where the scan
+        // would have held it so too (#52).
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long> { [1] = file.Object(1, Catalog), [2] = file.Object(2, Pages) };
+        file.Raw("5 0 obj\n<< /Length 8 0 R >>\nstream\n");
+        var data = file.Position;
+        file.Raw("0123456789\nendobj\n");
+        rows[9] = file.Object(9, "(nine)");
+        file.Raw("%" + new string('-', 5998) + "\n");
+        file.Raw("8 0 obj\n10\nendobj\n");
+        file.Table(10, rows, "/Size 10 /Root 1 0 R");
+        using var whole = PdfDocument.Open(file.Bytes);
+        using var capped = PdfDocument.Open(new CappedReadSource(file.Bytes, 4096), options: null, ownsSource: true);
+
+        var full = whole.Reader.GetScanMemo();
+        var cut = capped.Reader.GetScanMemo();
+
+        full.TryGetHeaderAt(rows[9], out var nine).Should().BeTrue();
+        nine.Kind.Should().Be(ScannedPlaceKind.Clean);
+        cut.WholeUntil.Should().Be(data);
+        Headers(cut, 0, cut.WholeUntil).Should().Equal(Headers(full, 0, cut.WholeUntil));
     }
 
     [Theory]
@@ -1369,6 +1411,31 @@ public class ScannedPlacesTests
         var memo = builder.Complete(new ScannedTrailers());
 
         (memo.IsWhole, memo.WholeUntil).Should().Be((!fillsAfter, wholeUntil));
+    }
+
+    [Theory]
+    [InlineData("a short read", 20L, 20L)]
+    [InlineData("the bound", 20L, 20L)]
+    [InlineData("a short read", long.MaxValue, 25L)]
+    [InlineData("the bound", long.MaxValue, 35L)]
+    public void A_memo_ended_while_a_stream_s_length_is_awaited_is_whole_only_before_the_stream_s_data(string end, long awaitedFrom, long wholeUntil)
+    {
+        // The scan may yet hold the places it took past the data's start of a stream whose length's object it awaits as taken
+        // between objects: a memo that a short read or its bound ends meanwhile is whole only before that start.
+        var builder = new ScanMemo.Builder(1);
+        builder.TryAddHeader(10, 1, 0, ScannedPlaceKind.Clean, floor: 0).Should().BeTrue();
+        builder.AwaitedFrom = awaitedFrom;
+
+        if (end == "a short read")
+        {
+            builder.EndAt(30, floor: 25);
+        }
+        else
+        {
+            builder.TryAddHeader(40, 2, 0, ScannedPlaceKind.Clean, floor: 35).Should().BeFalse();
+        }
+
+        builder.Complete(new ScannedTrailers()).WholeUntil.Should().Be(wholeUntil);
     }
 
     private static ScannedHeader Header(long at, int number) => new(at, number, 0, ScannedPlaceKind.Clean);
