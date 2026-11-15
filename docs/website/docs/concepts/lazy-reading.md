@@ -367,14 +367,21 @@ it: at its object's `endobj`, or else at the header that load's search stops at,
 the scan learns where such data ends only past headers it took in it — the length's object written after them, or none
 found —, it keeps them, and counts them as found between objects, though a comment or a string there would have hidden
 them. A stream whose data starts with `%PDF-`, an attached PDF file whose own objects may give its length's number,
-waits for no object; and where the scan finds that object in the data, or finds none, it may take the data for an
-attached file's, which its first `endstream` ends where no other stream's `stream` keyword comes before it. Such data,
+waits for no object where neither the last objects before it nor the first in its data give that length — though a
+stream that already waits for its own length's object may take one of that file's objects, past its first `endstream`,
+for it —; and where the
+scan finds that object in the data, or finds none, it may take the data for an attached file's, which its first
+`endstream` ends where no other stream's `stream` keyword comes before it, the scan reading 1 MB at most to tell: a
+longer stretch counts as holding one. Such data,
 like any the scan does not end so, is read as the bytes give it up to the first `endstream`, and a header or a section
 the searches near a row or an offset find there is unconfirmed. What follows the header
 of an object it cannot delimit — its value past `MaxObjectLength`, or none a load reads — is read as the bytes give it
 too, and a header within what was read of it is taken undelimited, so that no byte is lexed for one object after
 another. Where the pieces it reads the file in start
-changes nothing of what it takes. It reads the file to its end — or, where a search near a row or an offset had the
+changes nothing of what it takes, but in three hand-made shapes
+([#358](https://github.com/AdCodicem/AdCodicem.Pdf/issues/358)), and, near the bound of what it reads past declared
+lengths, which streams it confirms: what it reads to tell a stream from an intact one counts only past the bytes it
+holds. It reads the file to its end — or, where a search near a row or an offset had the
 file scanned before it, and that scan kept every header it took, in the order it took them, which a scan past
 `MaxIndexEntries` places does not, takes what that scan found, reading nothing again —, and holds no more numbers than
 the map may: a header for

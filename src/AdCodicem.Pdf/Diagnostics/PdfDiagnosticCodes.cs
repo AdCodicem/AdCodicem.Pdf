@@ -309,8 +309,9 @@ public static class PdfDiagnosticCodes
     /// directly or in a new object stream (ISO 32000-1, 7.5.6) —, and, of a number one object stream lists twice, the first
     /// listed (#189). Only the definition kept of an object stream's own number is read for members: the object streams are
     /// taken in from the last written to the first, so that one whose number a later object stream lists gives none (#348).
-    /// A header the rebuild's scan finds inside another object — a stream's data, a string, a comment — is no definition
-    /// (#171).
+    /// A header the rebuild's scan finds inside another object — a string, a comment, or the data of a stream whose direct
+    /// <c>/Length</c> an <c>endstream</c> confirms — is no definition (#171); one in any other stream's data, or in what a
+    /// string that runs past its object runs into, it takes as the bytes give it, and counts.
     /// </summary>
     public const string ObjectRedefined = "object.redefined";
 
@@ -419,11 +420,13 @@ public static class PdfDiagnosticCodes
     /// <summary>
     /// The index holds <see cref="Documents.PdfReaderLimits.MaxIndexEntries"/> object numbers, and took no more: the
     /// objects past them, in the order the reader met them, were not indexed, and read as null. Or a search near an
-    /// entry's offset found a header of the object, or a search near an offset the chain names tried a place, past what
-    /// the scan for objects it asks for keeps — that many object headers and keywords — and short of the last object it
-    /// passed before the end of a read that a source answered with fewer bytes than asked, past which raising the bound
-    /// would not let it keep more: a header or a section it found past there is taken as the bytes give it. Each is
-    /// reported once a document, apart from the other, the second where the first place the scan left out starts.
+    /// entry's offset found a header of the object, or a search near an offset the chain names tried a place, past where
+    /// what the scan for objects it asks for keeps is whole — that many object headers and keywords, or, where the scan
+    /// reached that many while it awaited the object of a stream's indirect <c>/Length</c>, that stream's data's start —
+    /// and short of where the end of a read that a source answered with fewer bytes than asked left it whole, past which
+    /// raising the bound would not let it answer: a header or a section it found past there is taken as the bytes give
+    /// it. Each is reported once a document, apart from the other, the second where the first place the scan left out
+    /// starts.
     /// </summary>
     public const string LimitIndexEntries = "limit.index-entries";
 

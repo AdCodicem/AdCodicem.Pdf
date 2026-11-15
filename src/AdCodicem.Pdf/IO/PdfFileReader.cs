@@ -245,7 +245,7 @@ internal sealed partial class PdfFileReader : IPdfObjectSource, IPdfStreamDataPr
     /// read in proportion to the file, as a window keeps the parsing of their dictionaries. Which streams keep their
     /// declared length unsearched past it depends on the order they are read in: crafted files reach it, and no
     /// document of the corpus comes near, whose searches read 0.35 of a file at most. The rebuild's scan counts its own
-    /// reads past the bytes it holds apart, against the same multiple. Of a valid file it reads the white space after each
+    /// reads apart, against the same multiple (<see cref="_scanGapBytes"/>). Of a valid file it reads the white space after each
     /// length a stream's header declares, or that the object of its indirect <c>/Length</c> gives where its data holds a
     /// header before its <c>endstream</c>, from a first read of 64 bytes for the latter, the runs after different streams
     /// apart; and, where it never meets that object in the bytes, that data about once, to find where a load that cannot
@@ -601,11 +601,15 @@ internal sealed partial class PdfFileReader : IPdfObjectSource, IPdfStreamDataPr
     private long _endStreamSearchBytes;
 
     /// <summary>
-    /// How many bytes the rebuild's scan read past the bytes it holds for streams since it started: past their declared
-    /// lengths to confirm them, through the data of one that lost its <c>endstream</c> to end it where a load does
-    /// (<see cref="DataEndWithoutEndStream"/>), and to tell such a stream from one read as intact
-    /// (<see cref="StartsStreamWithin"/>); which <see cref="EndStreamSearchPasses"/> bounds apart from the loads' searches,
-    /// so that what the scan reads leaves them theirs.
+    /// How many bytes the rebuild's scan read for streams since it started: past their declared lengths to confirm them,
+    /// and through the data of one that lost its <c>endstream</c> to end it where a load does
+    /// (<see cref="DataEndWithoutEndStream"/>), reads that count every byte they take from the file, those the scan's
+    /// window holds included, that search reading from the data's start; and to tell such a stream from one read as
+    /// intact (<see cref="StartsStreamWithin"/>), counted only past the bytes that window holds, which it searches first.
+    /// First reads that tell a place at once — of 64 bytes at most after a direct length, at an <c>endstream</c>, where
+    /// an <c>endobj</c> may follow a length and at a length's object, and of 5 at a stream's data's start — are not among
+    /// them. Which <see cref="EndStreamSearchPasses"/> bounds apart from the loads' searches, so that what the scan reads
+    /// leaves them theirs.
     /// </summary>
     private long _scanGapBytes;
 
