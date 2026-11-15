@@ -291,6 +291,24 @@ internal sealed class ScanMemo
         public void EndAt(long position, long floor) => _shortUntil = Math.Min(_shortUntil, Math.Min(position, floor));
 
         /// <summary>
+        /// Holds the places the scan took at <paramref name="from"/> or past it and before <paramref name="to"/> as taken
+        /// between objects (<see cref="ScannedPlaceKind.Clean"/>): the scan took them as the bytes give them, in what it read
+        /// as the data of a stream whose end it learned only once past them (<see cref="PdfFileReader.ScanForObjects"/>). A
+        /// run that holds places on both sides of either bound keeps its kind for all of them, as a hostile file alone writes
+        /// one: a header written again and again at one distance across the end of such data.
+        /// </summary>
+        public void TakeClean(long from, long to)
+        {
+            for (var index = After(_slots.AsSpan(0, _used), from, atToo: true); index < _used && _slots[index].Start < to; index++)
+            {
+                if ((_slots[index].Traits & RunFlag) == 0 || _slots[index + 1].Start < to)
+                {
+                    _slots[index].Traits &= ~RawFlag;
+                }
+            }
+        }
+
+        /// <summary>
         /// Notes where the piece the scan reads from now on ends, where the source gave it shorter than asked, which holds the
         /// end of the data (#52); <see cref="long.MaxValue"/> for a whole piece. The scan ends the memo there where it stops
         /// at the piece's end (<see cref="EndAt"/>); should the memo fill within the piece first, it is not whole past the
