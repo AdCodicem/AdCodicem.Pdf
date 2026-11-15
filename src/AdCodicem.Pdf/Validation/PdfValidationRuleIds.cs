@@ -110,7 +110,8 @@ public static class PdfValidationRuleIds
     /// stream whose length the reader's scan for objects does not confirm, which it does only for a direct <c>/Length</c>
     /// an <c>endstream</c> follows, or past a string that runs past its object —, or past where what that scan keeps is
     /// whole — past the places it records within <see cref="Documents.PdfReaderLimits.MaxIndexEntries"/>, or past the last
-    /// object it passed before the end of a read that a source answered with fewer bytes than asked.
+    /// object it passed before the end of a read that a source answered with fewer bytes than asked, or, where either ends
+    /// what it keeps while it awaits the object of a stream's indirect <c>/Length</c>, past that stream's data's start.
     /// <see cref="PdfValidationSeverity.Error"/>.
     /// </summary>
     public const string XRefSectionUnconfirmed = "xref.section-unconfirmed";
@@ -154,10 +155,11 @@ public static class PdfValidationRuleIds
     /// give it — in the data of a stream whose length it does not confirm, which it does only for a direct <c>/Length</c>
     /// an <c>endstream</c> follows, or past a string that runs past its object —, or past where what that scan keeps is
     /// whole — past the places it records within <see cref="Documents.PdfReaderLimits.MaxIndexEntries"/>, or past the last
-    /// object it passed before the end of a read that a source answered with fewer bytes than asked. Where the offset cuts
-    /// a number — a digit before it, a digit or a sign at it — and no other definition of the object lies within those
-    /// bytes, the reader takes the header written there, glued to the digits before it, which it cannot tell from an offset
-    /// that lands inside another header's number. <see cref="PdfValidationSeverity.Error"/>.
+    /// object it passed before the end of a read that a source answered with fewer bytes than asked, or, where either ends
+    /// what it keeps while it awaits the object of a stream's indirect <c>/Length</c>, past that stream's data's start.
+    /// Where the offset cuts a number — a digit before it, a digit or a sign at it — and no other definition of the object
+    /// lies within those bytes, the reader takes the header written there, glued to the digits before it, which it cannot
+    /// tell from an offset that lands inside another header's number. <see cref="PdfValidationSeverity.Error"/>.
     /// </summary>
     public const string XRefEntryUnconfirmed = "xref.entry-unconfirmed";
 

@@ -583,7 +583,8 @@ internal sealed partial class PdfFileReader
     /// confirmed or in what a string that runs past its object runs into, is tried as any other, and a section found
     /// there is unconfirmed (<see cref="ScannedPlaceKind.Raw"/>). The memo holds every place the scan takes only before
     /// <see cref="ScanMemo.WholeUntil"/> — short of the places it could hold, and of the last object the scan passed
-    /// before the end of a read that the source answered with fewer bytes than asked —: a place at or past there is tried
+    /// before the end of a read that the source answered with fewer bytes than asked, and, where either came while it
+    /// awaited a stream's length's object, of that stream's data —: a place at or past there is tried
     /// without its word, the guard reached once the search tries it, within <see cref="MaxRelocationCandidates"/>, not for
     /// a place that bound leaves untried, and only where the memo's bound alone keeps it from answering
     /// (<see cref="ReachScanMemoBound"/>), and a section found there is unconfirmed. A

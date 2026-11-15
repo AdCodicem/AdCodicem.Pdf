@@ -177,10 +177,11 @@ public sealed record PdfReaderLimits
     /// <c>xref</c> keyword, under 9 for a <c>trailer</c> keyword and under 25 for a cross-reference stream's header —
     /// the lists that hold the last two keep up to a ninth more room than they use —, about 201 MB at most at the
     /// default, and from two to five times what it keeps allocated while it grows. What the scan takes past it is not
-    /// kept, and a search that has to go without it there — one near an entry's offset that finds a header of the
-    /// object there, or one near an offset the chain names that tries a place there — takes what it finds as the bytes
-    /// give it, and reports the code once more, apart from the index's report, where raising the bound would let it
-    /// tell (<see cref="Diagnostics.PdfDiagnosticCodes.LimitIndexEntries"/>).
+    /// kept, nor what it took from the data of a stream whose length's object it then awaited, which that object could
+    /// show to end sooner; a search that has to go without it there — one near an entry's offset that finds a header of
+    /// the object there, or one near an offset the chain names that tries a place there — takes what it finds as the
+    /// bytes give it, and reports the code once more, apart from the index's report, where raising the bound would let
+    /// it tell (<see cref="Diagnostics.PdfDiagnosticCodes.LimitIndexEntries"/>).
     /// </remarks>
     /// <exception cref="ArgumentOutOfRangeException">The value is zero or less.</exception>
     public int MaxIndexEntries

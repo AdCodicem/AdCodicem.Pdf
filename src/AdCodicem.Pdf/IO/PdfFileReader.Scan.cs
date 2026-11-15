@@ -527,15 +527,16 @@ internal sealed partial class PdfFileReader
     /// keyword it meets after — the one where a stream after it reads its own length too —, between objects, or in what it
     /// reads as that stream's data before the data of the first stream it meets there (<see cref="ScanState.PendingUntil"/>),
     /// and takes the first that gives it; a stream awaited in its turn, or the end of the file, ends the wait without it
-    /// (<see cref="EndAwaitedData"/>). The data of an attached PDF file, which starts with its header, is read as intact,
-    /// its length's object not awaited: the objects it holds are the attached file's (<see cref="StartsPdfFile"/>).
+    /// (<see cref="EndAwaitedData"/>). Data that starts with a PDF file's header, an attached file's, whose objects are its
+    /// own, is read as intact where neither gives it, nothing awaited (<see cref="StartsPdfFile"/>).
     /// </summary>
     /// <remarks>
     /// The object is read from the file's bytes alone, never through an index, so that a scan for the memo and a rebuild's
     /// take the same, whatever was read before. It is read once at each header or keyword the scan meets while it awaits
     /// one, from the window the scan holds, and one stream is awaited at a time. One the scan never meets while it awaits
-    /// it — more than <see cref="ScanState.ValueCount"/> values before the stream, or past a stream awaited in its turn —,
-    /// or that holds anything but a non-negative integer, leaves the data to end where a load ends it without a length.
+    /// it — lost with the <c>endstream</c>, more than <see cref="ScanState.ValueCount"/> values before the stream, or past
+    /// a stream awaited in its turn —, or that holds anything but a non-negative integer, leaves the data to end where a
+    /// load ends it without a length.
     /// </remarks>
     [MethodImpl(MethodImplOptions.NoInlining)]
     private void EndDataAtLengthObject(ReadOnlySpan<byte> span, long windowStart, long position, ref ScanState scan)
@@ -581,12 +582,12 @@ internal sealed partial class PdfFileReader
     /// <summary>
     /// Ends the wait for the length's object of the stream the scan awaits it for, if any
     /// (<see cref="ScanState.PendingFrom"/>), none of the headers and keywords it met giving it: the data ends where a load
-    /// ends the data of a stream whose length's object it cannot read (<see cref="DataEndWithoutEndStream"/>), and the
-    /// places the memo took from there to where what the scan read as that data stops being that stream's
-    /// (<see cref="ScanState.PendingUntil"/>) are held as taken between objects (<see cref="ScanMemo.Builder.TakeClean"/>)
-    /// — unless an <c>endstream</c> ends what it read so, no <c>stream</c> keyword starting between the data's end and
-    /// there (<see cref="StartsStreamWithin"/>): the data holds an attached file's objects, and the stream is read as
-    /// intact.
+    /// ends the data of a stream whose length's object it cannot read, as far as the file's bytes tell
+    /// (<see cref="DataEndWithoutEndStream"/>), and the places the memo took from there to where what the scan read as that
+    /// data stops being that stream's (<see cref="ScanState.PendingUntil"/>) are held as taken between objects
+    /// (<see cref="ScanMemo.Builder.TakeClean"/>) — unless what it read so stops short of the end of the file with no
+    /// <c>stream</c> keyword starting in it from the data's end (<see cref="StartsStreamWithin"/>): the data may hold an
+    /// attached file's objects, and the stream is read as intact.
     /// </summary>
     private void EndAwaitedData(ReadOnlySpan<byte> span, long windowStart, ref ScanState scan)
     {

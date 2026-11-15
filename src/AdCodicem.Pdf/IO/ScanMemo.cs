@@ -42,7 +42,9 @@ namespace AdCodicem.Pdf.IO;
 /// bytes and more for each number it may hold. The two do not count alike — the index each number once, the memo every
 /// header, a number defined again included, and every keyword —, so that a file of many definitions of few numbers, or
 /// of many keywords, fills the memo with an index far from full. Once it holds that many, the memo takes no more, and
-/// is whole only before where the first place it could not hold lies (<see cref="WholeUntil"/>). The memo reports
+/// is whole only before where the first place it could not hold lies, or before the data of a stream whose length's
+/// object the scan then awaited, where sooner: the scan may yet have held what it took there as taken between objects
+/// (<see cref="WholeUntil"/>). The memo reports
 /// nothing: a rebuild scans the file again where it is not whole, and serves what it would have, and the guard is
 /// reported by a caller that has to go without its word past there, for a place its bound alone keeps it from answering
 /// (<see cref="IsPastBound"/>, <see cref="PdfFileReader.ReachScanMemoBound"/>).
@@ -73,7 +75,10 @@ internal sealed class ScanMemo
     /// <summary>The slots, sorted by where each starts, as many as the memo uses.</summary>
     private readonly Slot[] _slots;
 
-    /// <summary>Where the memo's bound left it whole: before <see cref="FullAt"/>, or where the floor given then was sooner.</summary>
+    /// <summary>
+    /// Where the memo's bound left it whole: before <see cref="FullAt"/>, or where the floor given then, or the data of the
+    /// stream whose length's object the scan awaited then (<see cref="Builder.AwaitedFrom"/>), starts sooner.
+    /// </summary>
     private readonly long _boundUntil;
 
     /// <summary>Where windows the source gave shorter than asked left the memo whole (<see cref="Builder.EndAt"/>).</summary>

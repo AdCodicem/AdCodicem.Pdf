@@ -8,8 +8,8 @@ internal enum ScannedPlaceKind : byte
     /// strings it swept between them; or past where a load ends the data of a stream that lost its <c>endstream</c>: before
     /// where the load's search for it stops, in what a declared length short of the data leaves of it, which is not swept
     /// (<see cref="PdfFileReader.DataEndWithoutEndStream"/>), or where the scan took it as the bytes give it, in what it read
-    /// as that data before it met the object that holds the stream's indirect <c>/Length</c>
-    /// (<see cref="ScanMemo.Builder.TakeClean"/>).
+    /// as that data before it met the object that holds the stream's indirect <c>/Length</c>, or ended its wait for that
+    /// object without it, the header the data then ends at included (<see cref="ScanMemo.Builder.TakeClean"/>).
     /// </summary>
     Clean,
 
