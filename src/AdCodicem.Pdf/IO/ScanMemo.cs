@@ -110,7 +110,9 @@ internal sealed class ScanMemo
     /// whole and the scan read the file to its end; otherwise where the first place it could not hold starts, or where a
     /// window the source gave shorter than asked ended the data the scan read (#52) — or, where they start sooner, where the
     /// bytes the scan's last object left to read anew start, since a header the scan takes afterward, or one whose
-    /// <c>obj</c> lies past the data read, may run back to them.
+    /// <c>obj</c> lies past the data read, may run back to them; or where the data of a stream whose length's object the
+    /// scan awaited then starts, since it may yet hold the places past there as taken between objects
+    /// (<see cref="Builder.AwaitedFrom"/>).
     /// </summary>
     public long WholeUntil => Math.Min(_boundUntil, _shortUntil);
 
@@ -284,12 +286,20 @@ internal sealed class ScanMemo
         /// <summary>
         /// Notes that a window the source gave shorter than asked ended the data the scan read at
         /// <paramref name="position"/>, short of where it asked to read (#52): the memo holds every place the scan takes only
-        /// before there, or before <paramref name="floor"/> where sooner.
+        /// before there, or before <paramref name="floor"/> or <see cref="AwaitedFrom"/> where sooner.
         /// </summary>
         /// <param name="position">Where the data the window holds ends.</param>
         /// <param name="floor">Where the bytes the scan's last object left to read anew start: a header whose <c>obj</c> lies
         /// past the data read, which the scan cannot take, may start as far back as them.</param>
-        public void EndAt(long position, long floor) => _shortUntil = Math.Min(_shortUntil, Math.Min(position, floor));
+        public void EndAt(long position, long floor) => _shortUntil = Math.Min(_shortUntil, Math.Min(Math.Min(position, floor), AwaitedFrom));
+
+        /// <summary>
+        /// Gets or sets where the data of the stream whose length's object the scan awaits starts, or
+        /// <see cref="long.MaxValue"/> for none: the scan may yet hold the places it took past there as taken between objects
+        /// (<see cref="TakeClean"/>), so that a memo it ends sooner is whole only before there (<see cref="EndAt"/>,
+        /// <see cref="TryCount"/>).
+        /// </summary>
+        public long AwaitedFrom { get; set; } = long.MaxValue;
 
         /// <summary>
         /// Holds the places the scan took at <paramref name="from"/> or past it and before <paramref name="to"/> as taken
@@ -339,7 +349,8 @@ internal sealed class ScanMemo
 
         /// <summary>
         /// Counts one more place, at <paramref name="position"/>: false where the memo holds as many as it may, or has
-        /// already left one out, which it then no longer takes.
+        /// already left one out, which it then no longer takes, whole only before the place, <paramref name="floor"/> or
+        /// <see cref="AwaitedFrom"/>, the soonest.
         /// </summary>
         /// <param name="position">Where the place starts.</param>
         /// <param name="floor">Where the bytes the scan's last object left to read anew start: no place the scan takes later
@@ -354,7 +365,7 @@ internal sealed class ScanMemo
             if (_count >= bound)
             {
                 _fullAt = position;
-                _boundUntil = Math.Min(position, floor);
+                _boundUntil = Math.Min(Math.Min(position, floor), AwaitedFrom);
                 _shortUntil = Math.Min(_shortUntil, _pieceEnd);
                 return false;
             }
