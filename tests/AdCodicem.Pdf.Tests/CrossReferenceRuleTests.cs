@@ -1547,7 +1547,22 @@ public class CrossReferenceRuleTests
         },
         {
             "3 0 obj\n<< /Length 5 0 R >>\nstream\n0123456789\nendobj\n4 0 obj\n(four)\nendobj\n5 0 obj\n10\nendobj\n", "4 0 obj", 3, 0,
-            PdfValidationRuleIds.XRefEntryUnconfirmed, "where there is no object header; the reader takes the header 3 bytes before it"
+            PdfValidationRuleIds.XRefEntryShifted, "where there is no object header; the object starts 3 bytes before it"
+        },
+        {
+            "5 0 obj\n10\nendobj\n6 0 obj\n<< /Length 3 >>\nstream\nabc\nendstream\nendobj\n3 0 obj\n<< /Length 5 0 R >>\nstream\n0123456789\nendobj\n"
+            + "4 0 obj\n(four)\nendobj\n", "4 0 obj", 3, 0,
+            PdfValidationRuleIds.XRefEntryShifted, "where there is no object header; the object starts 3 bytes before it"
+        },
+        {
+            "3 0 obj\n<< /Length 5 0 R >>\nstream\n0123456789\nendobj\n4 0 obj\n(four)\nendobj\n6 0 obj\n<< /Length 3 >>\nstream\nabc\nendstream\nendobj\n"
+            + "5 0 obj\n10\nendobj\n", "4 0 obj", 3, 0,
+            PdfValidationRuleIds.XRefEntryShifted, "where there is no object header; the object starts 3 bytes before it"
+        },
+        {
+            "3 0 obj\n<< /Length 5 0 R >>\nstream\n%PDF-1.4 5 0 obj\n5\nendobj\n4 0 obj\n(inner)\nendobj\nendstream\nendobj\n5 0 obj\n49\nendobj\n"
+            + "4 0 obj\n(four)\nendobj\n", "4 0 obj\n(four)", -30, 0,
+            PdfValidationRuleIds.XRefEntryShifted, "where there is no object header; the object starts 30 bytes after it"
         },
         {
             "3 0 obj\n<< /Length 20 >>\nstream\n0123456789\n4 0 obj\n(four)\nendobj\n", "4 0 obj", 3, 0,

@@ -53,10 +53,38 @@ public class ScannedPlacesTests
     [InlineData("a header on the line of a comment the data of a stream with no endstream opens past its declared length", "Clean")]
     [InlineData("a header on the line of a string the data of a stream with no endstream opens past its indirect length", "Clean")]
     [InlineData("a header in a string past the endobj that follows the declared length of a stream with no endstream", null)]
+    [InlineData("a header between a stream with no endstream and the object a few objects on that holds its indirect length", "Clean")]
+    [InlineData("a header past a stream with no endstream whose indirect length a value before a stream before it holds", "Clean")]
+    [InlineData("a header between a stream with no endstream and a stream before the object that holds its indirect length", "Clean")]
+    [InlineData("a header before a stream whose data holds a header of the object that holds the indirect length past both", "Clean")]
+    [InlineData("a header in the data of an intact stream whose first header holds an integer as its indirect length's object", "Raw")]
+    [InlineData("a header in the data of a stream the data of a stream with no endstream holds, its length's object past both", "Raw")]
+    [InlineData("a header in what a string that runs past its object's end runs into, past a stream with no endstream", "Raw")]
+    [InlineData("a header past a stream with no endstream, a stream with no endstream whose length is awaited in its turn after it", "Raw")]
+    [InlineData("a header in a comment between a stream with no endstream and the object a few objects on that holds its length", "Clean")]
     public void A_header_is_recorded_where_the_scan_takes_it_with_how_it_took_it(string shape, string? kind)
     {
         var text = shape switch
         {
+            "a header between a stream with no endstream and the object a few objects on that holds its indirect length" =>
+                "5 0 obj\n<< /Length 8 0 R >>\nstream\n0123456789\nendobj\n7 0 obj\n(seven)\nendobj\n9 0 obj\n(nine)\nendobj\n8 0 obj\n10\nendobj\n",
+            "a header past a stream with no endstream whose indirect length a value before a stream before it holds" =>
+                "8 0 obj\n10\nendobj\n6 0 obj\n<< /Length 3 >>\nstream\nabc\nendstream\nendobj\n5 0 obj\n<< /Length 8 0 R >>\nstream\n0123456789\nendobj\n9 0 obj\n(nine)\nendobj\n",
+            "a header between a stream with no endstream and a stream before the object that holds its indirect length" =>
+                "5 0 obj\n<< /Length 8 0 R >>\nstream\n0123456789\nendobj\n9 0 obj\n(nine)\nendobj\n6 0 obj\n<< /Length 3 >>\nstream\nabc\nendstream\nendobj\n8 0 obj\n10\nendobj\n",
+            "a header before a stream whose data holds a header of the object that holds the indirect length past both" =>
+                "5 0 obj\n<< /Length 8 0 R >>\nstream\n0123456789\nendobj\n9 0 obj\n(nine)\nendobj\n6 0 obj\n<< /Length 4 0 R >>\nstream\n8 0 obj\n99\nendobj\nendstream\nendobj\n8 0 obj\n10\nendobj\n",
+            "a header in the data of an intact stream whose first header holds an integer as its indirect length's object" =>
+                "5 0 obj\n<< /Length 6 0 R >>\nstream\n%PDF-1.4\n6 0 obj\n5\nendobj\n9 0 obj\n(inner)\nendobj\nendstream\nendobj\n6 0 obj\n49\nendobj\n",
+            "a header in the data of a stream the data of a stream with no endstream holds, its length's object past both" =>
+                "5 0 obj\n<< /Length 8 0 R >>\nstream\n0123456789\nendobj\n6 0 obj\n<< /Length 7 0 R >>\nstream\n9 0 obj\n(nine)\nendobj\nendstream\nendobj\n8 0 obj\n10\nendobj\n",
+            "a header in what a string that runs past its object's end runs into, past a stream with no endstream" =>
+                "5 0 obj\n<< /Length 8 0 R >>\nstream\n0123456789\nendobj\n7 0 obj\n(a ( b\nendobj\n9 0 obj\n(nine)\nendobj\n) )\nendobj\n8 0 obj\n10\nendobj\n",
+            "a header past a stream with no endstream, a stream with no endstream whose length is awaited in its turn after it" =>
+                "5 0 obj\n<< /Length 8 0 R >>\nstream\n0123456789\nendobj\n9 0 obj\n(nine)\nendobj\n6 0 obj\n<< /Length 3 >>\nstream\nabc\nendstream\nendobj\n"
+                + "4 0 obj\n<< /Length 7 0 R >>\nstream\n0123\nendobj\n3 0 obj\n(three)\nendobj\n8 0 obj\n10\nendobj\n",
+            "a header in a comment between a stream with no endstream and the object a few objects on that holds its length" =>
+                "5 0 obj\n<< /Length 8 0 R >>\nstream\n0123456789\nendobj\n% 9 0 obj\n7 0 obj\n(seven)\nendobj\n8 0 obj\n10\nendobj\n",
             "a header past the object whose header a stream with no endstream declares a length past" =>
                 "5 0 obj\n<< /Length 40 >>\nstream\n0123456789\n8 0 obj\n(eight)\nendobj\n9 0 obj\n(nine)\nendobj\n",
             "a header past the object whose header a stream with no endstream declares an indirect length past" =>
@@ -150,7 +178,9 @@ public class ScannedPlacesTests
     [InlineData("a keyword in the data of a stream whose endstream follows past its declared length", "Raw")]
     [InlineData("a keyword past the endobj that follows the declared length of a stream with no endstream", "Clean")]
     [InlineData("a keyword past the object that holds the indirect length of the stream with no endstream before it", "Clean")]
-    [InlineData("a keyword between a stream with no endstream and the object after it that holds its length", "Raw")]
+    [InlineData("a keyword between a stream with no endstream and the object after it that holds its length", "Clean")]
+    [InlineData("a keyword between a stream with no endstream and the object a few objects on that holds its length", "Clean")]
+    [InlineData("a keyword past a stream with no endstream whose indirect length the object before it holds", "Clean")]
     [InlineData("a keyword past the object whose header a stream with no endstream declares a length past", "Clean")]
     [InlineData("a keyword past the object after a stream with no endstream that declares a length past the end of the file", "Clean")]
     [InlineData("a keyword on the line of a string the data of a stream with no endstream opens past its declared length", "Clean")]
@@ -177,6 +207,10 @@ public class ScannedPlacesTests
                 ("5 0 obj\n<< /Length 9 0 R >>\nstream\n0123\nendobj\n9 0 obj\n4\nendobj\nxref\n", "xref"),
             "a keyword between a stream with no endstream and the object after it that holds its length" =>
                 ("5 0 obj\n<< /Length 9 0 R >>\nstream\n0123\nendobj\nxref\n9 0 obj\n4\nendobj\n", "xref"),
+            "a keyword between a stream with no endstream and the object a few objects on that holds its length" =>
+                ("5 0 obj\n<< /Length 9 0 R >>\nstream\n0123\nendobj\nxref\n7 0 obj\n(seven)\nendobj\n9 0 obj\n4\nendobj\n", "xref"),
+            "a keyword past a stream with no endstream whose indirect length the object before it holds" =>
+                ("9 0 obj\n4\nendobj\n5 0 obj\n<< /Length 9 0 R >>\nstream\n0123\nendobj\nxref\n", "xref"),
             "a keyword past the object whose header a stream with no endstream declares a length past" =>
                 ("5 0 obj\n<< /Length 40 >>\nstream\n0123\n8 0 obj\n(eight)\nendobj\nxref\n", "xref"),
             "a keyword past the object after a stream with no endstream that declares a length past the end of the file" =>
@@ -1156,6 +1190,55 @@ public class ScannedPlacesTests
 
         memo.TryGetHeaderAt(position, out var at9).Should().BeTrue();
         at9.Should().Be(inserted);
+    }
+
+    [Theory]
+    [InlineData(50L, 104L)]
+    [InlineData(104L, 141L)]
+    [InlineData(100L, 148L)]
+    [InlineData(100L, 149L)]
+    [InlineData(90L, 165L)]
+    [InlineData(116L, 200L)]
+    [InlineData(200L, 300L)]
+    [InlineData(150L, 50L)]
+    public void Places_held_as_taken_between_objects_between_two_bounds_keep_their_kind_in_a_run_a_bound_cuts(long from, long to)
+    {
+        // A run of seven places of 7 taken as the bytes give them, from 100 to 148, eight bytes apart, then a keyword at 160
+        // and a header of 9 at 170 taken so too: those from the first bound on and before the second are held as taken
+        // between objects, but for the places of a run that also holds places on the other side of a bound.
+        var builder = new ScanMemo.Builder(100);
+        var headers = new List<ScannedHeader>();
+
+        for (var at = 100L; at <= 148; at += 8)
+        {
+            builder.TryAddHeader(at, 7, 0, ScannedPlaceKind.Raw, floor: 0).Should().BeTrue();
+            headers.Add(new ScannedHeader(at, 7, 0, ScannedPlaceKind.Raw));
+        }
+
+        builder.TryAddXRefKeyword(160, ScannedPlaceKind.Raw, floor: 0).Should().BeTrue();
+        builder.TryAddHeader(170, 9, 0, ScannedPlaceKind.Raw, floor: 0).Should().BeTrue();
+        headers.Add(new ScannedHeader(170, 9, 0, ScannedPlaceKind.Raw));
+
+        builder.TakeClean(from, to);
+        var memo = builder.Complete(new ScannedTrailers());
+
+        var runWithin = from <= 100 && to > 148;
+        var expected = headers
+            .Select(header => header.Position >= from && header.Position < to && (header.Number != 7 || runWithin) ? header with { Kind = ScannedPlaceKind.Clean } : header)
+            .ToList();
+        memo.Count.Should().Be(9);
+        Headers(memo, 0, long.MaxValue).Should().Equal(expected);
+        Headers(memo, 117, 165).Should().Equal(expected.Where(header => header.Position is >= 117 and < 165));
+
+        foreach (var header in expected)
+        {
+            memo.TryGetHeaderAt(header.Position, out var found).Should().BeTrue();
+            found.Should().Be(header);
+        }
+
+        memo.TryGetHeaderAt(112, out _).Should().BeFalse();
+        memo.TryGetXRefKeywordAt(160, out var keyword).Should().BeTrue();
+        keyword.Should().Be(160 >= from && 160 < to ? ScannedPlaceKind.Clean : ScannedPlaceKind.Raw);
     }
 
     [Fact]
