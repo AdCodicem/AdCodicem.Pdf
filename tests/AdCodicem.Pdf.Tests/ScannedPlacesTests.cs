@@ -1365,10 +1365,6 @@ public class ScannedPlacesTests
         return entries;
     }
 
-    /// <summary>
-    /// Writes a sound file of objects 1 and 2, then <paramref name="text"/>, then its table, and gives where the byte
-    /// <paramref name="place"/> bytes into the text lies.
-    /// </summary>
     /// <summary>Writes comment lines of 80 bytes into <paramref name="file"/>, the last shorter, up to <paramref name="end"/>.</summary>
     private static void PadWithComments(HandWrittenFile file, long end)
     {
@@ -1385,6 +1381,10 @@ public class ScannedPlacesTests
         }
     }
 
+    /// <summary>
+    /// Writes a sound file of objects 1 and 2, then <paramref name="text"/>, then its table, and gives where the byte
+    /// <paramref name="place"/> bytes into the text lies.
+    /// </summary>
     private static (byte[] File, long At) Sound(string text, int place)
     {
         var file = new HandWrittenFile();
