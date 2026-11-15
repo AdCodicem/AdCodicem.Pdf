@@ -60,8 +60,9 @@ line a comment ends is read from its start, as the scan that rebuilds a damaged 
 a damaged stream's data, which no load lexes, and that scan reads the data of a stream whose length it cannot confirm
 as the bytes give it too, taking such a header, so that the two agree
 ([#171](https://github.com/AdCodicem/AdCodicem.Pdf/issues/171)); between objects, it takes no header that starts in a
-comment or a string. A regular character, or a `(`, `<`, `/` or `%` that opens a
-string, a name or a comment, glued before the number makes no header, here or for that scan — but for the end-of-file
+comment or a string, but where it took it first as a stream's data
+([Lazy reading](lazy-reading.md#what-opening-actually-does)). A regular character, or a `(`, `<`, `/` or `%` that opens
+a string, a name or a comment, glued before the number makes no header, here or for that scan — but for the end-of-file
 marker, which that scan reads as a comment that ends with itself, taking `%%EOF1 0 obj` for object 1's header, as a
 writer that appends an update with no end of line leaves it; a sign before the number makes none here, where that scan
 reads a number written with signs as the lexer reads it, the first sign deciding
