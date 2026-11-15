@@ -361,12 +361,15 @@ that lost its `endstream`, whose data a load ends at its `/Length` or at its obj
 and what follows is read between objects, the header a load's search for that `endstream` stops at taken as the data's
 where the declared length runs past it. An indirect `/Length` counts so where the file's bytes give its object: one of
 the last eight objects other than streams before the stream, or the first object after it that gives it, until the scan
-has to wait for another stream's in its turn, or reaches the end of the file. Where it finds none so — the damage took
-it too, it lies elsewhere, or it holds no lone integer —, the data ends where a load that cannot read that length ends
-it: at its object's `endobj`, or else at the header that load's search stops at, which is read between objects. Where
-the scan learns where such data ends only past headers it took in it — the length's object written after them, or none
-found —, it keeps them, and counts them as found between objects, though a comment or a string there would have hidden
-them. A stream whose data starts with `%PDF-`, an attached PDF file whose own objects may give its length's number,
+has to wait for another stream's in its turn, or reaches the end of the file; and since that object may be an attached
+file's rather than the length's, the scan reads 64 bytes past the length it holds, no more: an `endstream` there, or
+white space or comments that run on past them, leave the data read as the bytes give it, up to its first `endstream`.
+Where it finds none so — the damage took it too, it lies elsewhere, or it holds no lone integer —, the data ends where
+a load that cannot read that length ends it: at its object's `endobj`, or else at the header that load's search stops
+at, which is read between objects. Where the scan learns where such data ends only past headers it took in it — the
+length's object written after them, or none found —, it keeps them, and counts them as found between objects, though
+a comment or a string there would have hidden them. A stream whose data starts with `%PDF-`, an attached PDF file
+whose own objects may give its length's number,
 waits for no object where neither the last objects before it nor the first in its data give that length — though a
 stream that already waits for its own length's object may take one of that file's objects, past its first `endstream`,
 for it —; and where the

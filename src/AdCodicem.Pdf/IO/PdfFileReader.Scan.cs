@@ -670,7 +670,7 @@ internal sealed partial class PdfFileReader
     /// (<see cref="StreamEnds.SkipGap"/>), where the <see cref="PdfObjectParser.EndObjLookahead"/> bytes there show that no
     /// <c>endstream</c> starts at it — from the window the scan holds where it holds them —; the length of the file where
     /// the file ends first, a declared end past it too; -1 where an <c>endstream</c> starts there, or where those bytes do
-    /// not tell: white space or comments that run past them, a keyword they cut, a read the source gives short.
+    /// not tell: white space or comments that run past them, or past a read the source gives short, a keyword they cut.
     /// </summary>
     /// <remarks>
     /// Those first bytes alone are read, and not counted with the scan's reads past declared lengths
