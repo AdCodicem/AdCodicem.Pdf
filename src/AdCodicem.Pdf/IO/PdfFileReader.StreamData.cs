@@ -154,10 +154,10 @@ internal sealed partial class PdfFileReader
             : null) ?? IsEndObjAt(declaredEnd, ref _endStreamSearchBytes);
 
     /// <summary>
-    /// Determines whether an <c>endobj</c> keyword, whole, follows <paramref name="absoluteOffset"/>, where a stream's declared
-    /// length ends, after white space and comments, a comment only after white space (<see cref="StreamEnds.SkipGap"/>):
-    /// the end of a stream's object that has no <c>endstream</c>. White space that runs past a first read is read on with
-    /// the reads <paramref name="spent"/> counts.
+    /// Determines whether an <c>endobj</c> keyword, whole, follows <paramref name="absoluteOffset"/> after white space and
+    /// comments, a comment only after white space (<see cref="StreamEnds.SkipGap"/>): where a stream's declared length ends,
+    /// the end of a stream's object that has no <c>endstream</c>; past an <c>endstream</c>, the end of the object it ends.
+    /// White space that runs past a first read is read on with the reads <paramref name="spent"/> counts.
     /// </summary>
     private bool IsEndObjAt(long absoluteOffset, ref long spent)
     {

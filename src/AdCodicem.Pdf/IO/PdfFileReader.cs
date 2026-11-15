@@ -603,15 +603,16 @@ internal sealed partial class PdfFileReader : IPdfObjectSource, IPdfStreamDataPr
     /// How many bytes the rebuild's scan read for streams since it started, which <see cref="EndStreamSearchPasses"/> bounds
     /// apart from the loads' searches, so that what the scan reads leaves them theirs: the white space and comments a first
     /// read cannot see past, after a direct length to confirm it (<see cref="ConfirmStream"/>), with the regular characters
-    /// glued to an <c>endstream</c> there (<see cref="RegularRunEnd"/>), and after a declared length an <c>endobj</c> may
-    /// follow (<see cref="IsEndObjAt"/>); the data of a stream whose <c>endstream</c> does not follow its length, or whose
-    /// length's object the scan never reads, searched from its start to end it where a load does
+    /// glued to an <c>endstream</c> there (<see cref="RegularRunEnd"/>), and after a declared length, or the first
+    /// <c>endstream</c> of data the scan may read as intact, an <c>endobj</c> may follow (<see cref="IsEndObjAt"/>); the
+    /// data of a stream whose <c>endstream</c> does not follow its length, or whose length's object the scan never reads,
+    /// searched from its start to end it where a load does
     /// (<see cref="DataEndWithoutEndStream"/>), every byte it takes counted, those the scan's window holds included; and
     /// the reads that tell such data from an intact stream's (<see cref="StartsStreamWithin"/>), counted only past the
     /// bytes that window holds, which it searches first. First reads that tell a place at once are not among them: of 64
     /// bytes at most after a direct length, after a length the scan took from the file's bytes, read no further
-    /// (<see cref="SignificantPastLength"/>), at an <c>endstream</c>, where an <c>endobj</c> may follow a length and at a
-    /// length's object, and of 5 at a stream's data's start.
+    /// (<see cref="SignificantPastLength"/>), at an <c>endstream</c>, where an <c>endobj</c> may follow a length or such an
+    /// <c>endstream</c>, and at a length's object, and of 5 at a stream's data's start.
     /// </summary>
     private long _scanGapBytes;
 

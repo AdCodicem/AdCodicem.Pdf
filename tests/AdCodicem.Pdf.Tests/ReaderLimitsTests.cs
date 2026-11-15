@@ -579,6 +579,63 @@ public class ReaderLimitsTests
         }
     }
 
+    [Theory]
+    [InlineData("an older revision", "%", 40)]
+    [InlineData("an older revision", "(", 40)]
+    [InlineData("an older revision", "%", 9)]
+    [InlineData("an older revision", "%", 3)]
+    [InlineData("an earlier attached file", "%", 40)]
+    [InlineData("the attached file itself", "%", 40)]
+    public void A_valid_file_a_guard_sends_into_a_rebuild_reads_whole_a_stream_another_object_of_its_length_s_number_would_cut(
+        string writer, string last, int value)
+    {
+        // Object 14, an attached form written uncompressed, holds an object header in its data, and its indirect /Length
+        // names object 11, written after it. Another object 11 comes first — one an older revision wrote, which the update
+        // redefines; one an attached PDF holds in an earlier stream's data; or one the form holds before that header —, and
+        // its value ends the data past that header, at it, or short of it with bytes of the data between. The data's last
+        // line ends in a comment or an open string right before endstream, which ISO 32000 only recommends an end of line
+        // before, and object 13 follows endobj on that line. MaxXRefSectionLength cuts the table, and the rebuild's scan
+        // takes that other object 11 for the length: ending the data where a load given it does would read the rest of the
+        // data between objects, where the comment or the string would hide object 13.
+        const string Form = "99 0 obj\n<< /FDF << /F (a.pdf) /Fields [] >> >>\nendobj\nplain text the attached form carries\n";
+        var other = string.Create(CultureInfo.InvariantCulture, $"11 0 obj\n{value}\nendobj\n");
+        var data = "%FDF-1.2\n" + (writer == "the attached file itself" ? other : "") + Form + last;
+        var pdf = new HandWrittenFile();
+        var rows = new Dictionary<int, long> { [1] = pdf.Object(1, Catalog), [2] = pdf.Object(2, Pages) };
+        var trailer = "/Size 15 /Root 1 0 R";
+
+        if (writer == "an older revision")
+        {
+            rows[14] = pdf.Position;
+            pdf.Raw("14 0 obj\n<< /Type /EmbeddedFile /Length 11 0 R >>\nstream\n" + new string('x', value - 1) + "\nendstream\nendobj\n");
+            rows[11] = pdf.Position;
+            pdf.Raw(other);
+            rows[13] = pdf.Object(13, "(old)");
+            trailer += string.Create(CultureInfo.InvariantCulture, $" /Prev {pdf.Table(15, rows, trailer)}");
+        }
+        else if (writer == "an earlier attached file")
+        {
+            var inner = "%PDF-1.4\n1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n" + other + "%%EOF\n";
+            rows[10] = pdf.Position;
+            pdf.Raw("10 0 obj\n<< /Type /EmbeddedFile /Length 12 0 R >>\nstream\n" + inner + "endstream\nendobj\n");
+            rows[12] = pdf.Object(12, inner.Length.ToString(CultureInfo.InvariantCulture));
+        }
+
+        rows[14] = pdf.Position;
+        pdf.Raw("14 0 obj\n<< /Type /EmbeddedFile /Length 11 0 R >>\nstream\n" + data + "endstream endobj ");
+        rows[13] = pdf.Position;
+        pdf.Raw("13 0 obj (real) endobj\n");
+        rows[11] = pdf.Object(11, data.Length.ToString(CultureInfo.InvariantCulture));
+        pdf.Table(15, rows, trailer);
+        var options = new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxXRefSectionLength = 16 } };
+
+        using var document = PdfDocument.Open(pdf.Bytes, options);
+
+        document.GetObject(new PdfObjectId(13)).AsText().Should().Be("real");
+        document.WasRepaired.Should().BeTrue();
+        document.Diagnostics.Should().Contain(diagnostic => diagnostic.Code == PdfDiagnosticCodes.LimitXRefSectionLength);
+    }
+
     [Fact]
     public void A_rebuild_that_reaches_the_entry_guard_finishes_the_index_before_it_throws()
     {
