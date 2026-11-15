@@ -617,9 +617,9 @@ internal sealed partial class PdfFileReader : IPdfObjectSource, IPdfStreamDataPr
     /// apart from the loads' searches, so that what the scan reads leaves them theirs: the white space and comments a first
     /// read cannot see past, after a direct length to confirm it (<see cref="ConfirmStream"/>), with the regular characters
     /// glued to an <c>endstream</c> there (<see cref="RegularRunEnd"/>), and after a declared length, or the first
-    /// <c>endstream</c> of data the scan may read as intact, an <c>endobj</c> may follow (<see cref="IsEndObjAt"/>); the
-    /// data of a stream whose <c>endstream</c> does not follow its length, or whose length's object the scan never reads,
-    /// searched from its start to end it where a load does
+    /// <c>endstream</c> of data whose places the memo may hold as an intact stream's, an <c>endobj</c> may follow
+    /// (<see cref="IsEndObjAt"/>); the data of a stream whose <c>endstream</c> does not follow its length, or whose length's
+    /// object the scan never reads, searched from its start for where a load ends it
     /// (<see cref="DataEndWithoutEndStream"/>), every byte it takes counted, those the scan's window holds included; and
     /// the reads that tell such data from an intact stream's (<see cref="StartsStreamWithin"/>), counted only past the
     /// bytes that window holds, which it searches first. First reads that tell a place at once are not among them: of 64

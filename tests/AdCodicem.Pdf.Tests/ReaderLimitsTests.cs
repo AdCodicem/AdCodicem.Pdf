@@ -580,29 +580,61 @@ public class ReaderLimitsTests
     }
 
     [Theory]
-    [InlineData("an older revision", "%", 40)]
-    [InlineData("an older revision", "(", 40)]
-    [InlineData("an older revision", "%", 9)]
-    [InlineData("an older revision", "%", 3)]
-    [InlineData("an earlier attached file", "%", 40)]
-    [InlineData("the attached file itself", "%", 40)]
-    public void A_valid_file_a_guard_sends_into_a_rebuild_reads_whole_a_stream_another_object_of_its_length_s_number_would_cut(
-        string writer, string last, int value)
+    [InlineData("an older revision", "%", 40, "")]
+    [InlineData("an older revision", "(", 40, "")]
+    [InlineData("an older revision", "%", 9, "")]
+    [InlineData("an older revision", "%", 3, "")]
+    [InlineData("an earlier attached file", "%", 40, "")]
+    [InlineData("the attached file itself", "%", 40, "")]
+    [InlineData("an older revision", "%", 40, "a note that names the data stream it fills")]
+    [InlineData("the attached file itself", "%", 40, "a note that names the data stream it fills")]
+    [InlineData("the attached file, past its first object", "%", 40, "a note that names the data stream it fills")]
+    [InlineData("an older revision", "% a note that ends at endstream and no sooner ", 40, "")]
+    [InlineData("the attached file itself", "( a note that ends at endstream and no sooner ", 40, "")]
+    [InlineData("an older revision", "%", 40, "over a mebibyte of plain text")]
+    [InlineData("the attached file itself", "%", 40, "over a mebibyte of plain text")]
+    [InlineData("an older revision", "", 40, "a header in a comment whose string runs over a header of object 12")]
+    [InlineData("an older revision", "%", 40, "a stream header in a comment whose dictionary spells endstream")]
+    [InlineData("an older revision", "%", 40, "a stream whose dictionary spells endstream and whose length an object in its data holds")]
+    [InlineData("an older revision", "", 40, "a trailer keyword past the first endstream, in a comment between a header's tokens")]
+    [InlineData("an older revision", "", 40, "a trailer keyword past the first endstream, in a comment between the tokens of a header whose string holds a header of object 12")]
+    public void A_valid_file_a_guard_sends_into_a_rebuild_serves_the_objects_defined_before_and_after_a_stream_another_object_of_its_length_s_number_would_cut(
+        string writer, string last, int value, string text)
     {
         // Object 14, an attached form written uncompressed, holds an object header in its data, and its indirect /Length
         // names object 11, written after it. Another object 11 comes first — one an older revision wrote, which the update
-        // redefines; one an attached PDF holds in an earlier stream's data; or one the form holds before that header —, and
-        // its value ends the data past that header, at it, or short of it with bytes of the data between. The data's last
-        // line ends in a comment or an open string right before endstream, which ISO 32000 only recommends an end of line
-        // before, and object 13 follows endobj on that line. MaxXRefSectionLength cuts the table, and the rebuild's scan
-        // takes that other object 11 for the length: ending the data where a load given it does would read the rest of the
-        // data between objects, where the comment or the string would hide object 13.
+        // redefines; one an attached PDF holds in an earlier stream's data; or one the form holds before that header or
+        // after it —, and its value ends the data past that header, at it, or short of it with bytes of the data between.
+        // The data's last line holds a comment or an open string, right before endstream, which ISO 32000 only recommends
+        // an end of line before, or before a word endstream of the form's own text, and object 13 follows endobj on that
+        // line. The form's text may name a stream in a word, run past a mebibyte, spell a header of object 12, defined
+        // before object 14, inside a string, or spell streams and a trailer keyword of its own. MaxXRefSectionLength cuts
+        // the table, and the rebuild's scan takes that other object 11 for the length: ending the data where a load given
+        // it does would read the rest of the data between objects, where a comment or a string would hide object 13, or
+        // a string end before a header of object 12. The scan reads the data as the bytes give it, up to its first
+        // endstream, whatever the length says.
         const string Form = "99 0 obj\n<< /FDF << /F (a.pdf) /Fields [] >> >>\nendobj\nplain text the attached form carries\n";
         var other = string.Create(CultureInfo.InvariantCulture, $"11 0 obj\n{value}\nendobj\n");
-        var data = "%FDF-1.2\n" + (writer == "the attached file itself" ? other : "") + Form + last;
+        var note = text switch
+        {
+            "a note that names the data stream it fills" => "a note about the data stream it fills\n",
+            "over a mebibyte of plain text" => string.Concat(Enumerable.Repeat("plain text the attached form carries, line after line of it\n", 18_000)),
+            "a header in a comment whose string runs over a header of object 12" =>
+                "% 98 0 obj (a string that runs on\n12 0 obj (attached) on to here) about the data stream the form fills\n",
+            "a stream header in a comment whose dictionary spells endstream" =>
+                "% 98 0 obj << /Length 97 0 R /X (endstream) >> stream\nplain text the attached form carries\n",
+            "a stream whose dictionary spells endstream and whose length an object in its data holds" =>
+                "98 0 obj << /Length 97 0 R /X (endstream) >> stream\n97 0 obj 3 endobj\nplain text about the data stream it fills\n",
+            "a trailer keyword past the first endstream, in a comment between a header's tokens" => "4 0\n%endstream %trailer\nobj (one\n%) ",
+            "a trailer keyword past the first endstream, in a comment between the tokens of a header whose string holds a header of object 12" =>
+                "4 0\n%endstream %trailer\nobj (line one\n12 0 obj (attached)\nline two)\nendobj\nplain text\n",
+            _ => "",
+        };
+        var data = "%FDF-1.2\n" + (writer == "the attached file itself" ? other : "") + Form + (writer == "the attached file, past its first object" ? other : "") +
+            note + last;
         var pdf = new HandWrittenFile();
-        var rows = new Dictionary<int, long> { [1] = pdf.Object(1, Catalog), [2] = pdf.Object(2, Pages) };
-        var trailer = "/Size 15 /Root 1 0 R";
+        var rows = new Dictionary<int, long> { [1] = pdf.Object(1, Catalog), [2] = pdf.Object(2, Pages), [12] = pdf.Object(12, "(early)") };
+        var trailer = "/Size 16 /Root 1 0 R";
 
         if (writer == "an older revision")
         {
@@ -611,14 +643,94 @@ public class ReaderLimitsTests
             rows[11] = pdf.Position;
             pdf.Raw(other);
             rows[13] = pdf.Object(13, "(old)");
-            trailer += string.Create(CultureInfo.InvariantCulture, $" /Prev {pdf.Table(15, rows, trailer)}");
+            trailer += string.Create(CultureInfo.InvariantCulture, $" /Prev {pdf.Table(16, rows, trailer)}");
         }
         else if (writer == "an earlier attached file")
         {
             var inner = "%PDF-1.4\n1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n" + other + "%%EOF\n";
             rows[10] = pdf.Position;
-            pdf.Raw("10 0 obj\n<< /Type /EmbeddedFile /Length 12 0 R >>\nstream\n" + inner + "endstream\nendobj\n");
-            rows[12] = pdf.Object(12, inner.Length.ToString(CultureInfo.InvariantCulture));
+            pdf.Raw("10 0 obj\n<< /Type /EmbeddedFile /Length 15 0 R >>\nstream\n" + inner + "endstream\nendobj\n");
+            rows[15] = pdf.Object(15, inner.Length.ToString(CultureInfo.InvariantCulture));
+        }
+
+        rows[14] = pdf.Position;
+        pdf.Raw("14 0 obj\n<< /Type /EmbeddedFile /Length 11 0 R >>\nstream\n" + data + "endstream endobj ");
+        rows[13] = pdf.Position;
+        pdf.Raw("13 0 obj (real) endobj\n");
+        rows[11] = pdf.Object(11, data.Length.ToString(CultureInfo.InvariantCulture));
+        pdf.Table(16, rows, trailer);
+        var options = new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxXRefSectionLength = 16 } };
+
+        using var document = PdfDocument.Open(pdf.Bytes, options);
+
+        document.GetObject(new PdfObjectId(13)).AsText().Should().Be("real");
+        document.GetObject(new PdfObjectId(12)).AsText().Should().Be("early");
+        document.WasRepaired.Should().BeTrue();
+        document.Diagnostics.Should().Contain(diagnostic => diagnostic.Code == PdfDiagnosticCodes.LimitXRefSectionLength);
+    }
+
+    [Theory]
+    [InlineData("a prose endstream before it, its data's last line a comment", "no other object")]
+    [InlineData("a prose endstream before it, its data's last line a comment", "an older revision")]
+    [InlineData("a prose endstream before it, its data's last line an open string", "no other object")]
+    [InlineData("a prose endstream before it, its data's last line an open string", "an older revision")]
+    [InlineData("the endstream of a stream of its own before it", "no other object")]
+    [InlineData("the endstream of a stream of its own before it", "an older revision")]
+    [InlineData("an attached PDF file that lost an endstream, its last line a comment", "no other object")]
+    [InlineData("an attached PDF file that lost an endstream, its last line a comment", "an older revision")]
+    [InlineData("a dictionary that spells endstream before it", "no other object")]
+    [InlineData("a dictionary that spells endstream before it", "an older revision")]
+    [InlineData("a dictionary that spells endstream before it", "the attached file itself")]
+    [InlineData("a dictionary that spells endstream before it, a commented header whose string runs over a header of object 12", "an older revision")]
+    [InlineData("a dictionary that spells endstream before it, in the data of a stream whose length an object holds", "an older revision")]
+    public void A_valid_file_a_guard_sends_into_a_rebuild_serves_the_objects_defined_before_and_after_a_stream_whose_data_spells_a_stream_with_a_wrong_direct_length(
+        string shape, string writer)
+    {
+        // Object 14, an attached file written uncompressed, has an indirect /Length naming object 11, written after it, and
+        // its data spells a stream of its own with a direct /Length that no endstream follows, past a first endstream of the
+        // data: a word of prose, the endstream of a stream before it, or one its dictionary spells, so that its data starts
+        // past it; or the attached file is a PDF file whose second stream lost its endstream. Object 11 may come first as
+        // well — one an older revision wrote, which the update redefines, or one the attached file holds —, or not at all.
+        // The data's last line holds a comment or an open string, right before endstream, and object 13 follows endobj on
+        // that line; or the data spells a header of object 12, defined before object 14, inside a string a commented header
+        // opens. MaxXRefSectionLength cuts the table: the rebuild's scan, which reads the data of object 14 as the bytes give
+        // it up to its first endstream, reads the stream spelled past it as the bytes give it up to the next endstream, as
+        // a load given no more than its bytes does, whatever its direct /Length says. Ending that data where a load given
+        // the length does would read the rest between objects, where the comment or the string would hide object 13, or a
+        // string end before the header of object 12.
+        const string Spelled = "5 0 obj\n<< /Length 3 >>\nstream\nabcdefgh\n99 0 obj\n(x)\nendobj\n";
+        const string Form = "%FDF-1.2\n99 0 obj\n<< /FDF << /F (a.pdf) /Fields [] >> >>\nendobj\n";
+        const string Cut = "98 0 obj << /Length 5 /X (endstream) >> stream\nabc\n97 0 obj (x) endobj\n";
+        var data = shape switch
+        {
+            "a prose endstream before it, its data's last line a comment" =>
+                "Attached notes.\nThis text quotes the word endstream in plain prose.\n" + Spelled + "% a note ",
+            "a prose endstream before it, its data's last line an open string" =>
+                "Attached notes.\nThis text quotes the word endstream in plain prose.\n" + Spelled + "( a note ",
+            "the endstream of a stream of its own before it" =>
+                "Attached notes.\n6 0 obj\n<< /Length 4 >>\nstream\nwxyz\nendstream\nendobj\n" + Spelled + "% a note ",
+            "an attached PDF file that lost an endstream, its last line a comment" =>
+                "%PDF-1.4\n31 0 obj\n<< /Length 10 >>\nstream\n0123456789\nendstream\nendobj\n32 0 obj\n<< /Length 60 >>\nstream\n" +
+                "BT /F1 12 Tf (cut) Tj ET\n33 0 obj\n<< /Type /Catalog >>\nendobj\ntrailer\n<< /Root 33 0 R >>\n%%EOF\n% end ",
+            "a dictionary that spells endstream before it" =>
+                Form.Replace("%FDF-1.2\n", writer == "the attached file itself" ? "%FDF-1.2\n11 0 obj\n40\nendobj\n" : "%FDF-1.2\n", StringComparison.Ordinal) +
+                Cut + "plain text\n%",
+            "a dictionary that spells endstream before it, a commented header whose string runs over a header of object 12" =>
+                Form + Cut + "% 50 0 obj (a string that runs on\n12 0 obj (attached) still the string) the end\nplain text\n",
+            _ => Form + "98 0 obj << /Length 97 0 R /X (endstream) >> stream\n96 0 obj << /Length 5 /Y (endstream) >> stream\nabc\n" +
+                "95 0 obj (x) endobj\nplain text\n%",
+        };
+        var pdf = new HandWrittenFile();
+        var rows = new Dictionary<int, long> { [1] = pdf.Object(1, Catalog), [2] = pdf.Object(2, Pages), [12] = pdf.Object(12, "(early)") };
+        var trailer = "/Size 15 /Root 1 0 R";
+
+        if (writer == "an older revision")
+        {
+            rows[14] = pdf.Position;
+            pdf.Raw("14 0 obj\n<< /Type /EmbeddedFile /Length 11 0 R >>\nstream\n" + new string('x', 39) + "\nendstream\nendobj\n");
+            rows[11] = pdf.Object(11, "40");
+            rows[13] = pdf.Object(13, "(old)");
+            trailer += string.Create(CultureInfo.InvariantCulture, $" /Prev {pdf.Table(15, rows, trailer)}");
         }
 
         rows[14] = pdf.Position;
@@ -632,6 +744,7 @@ public class ReaderLimitsTests
         using var document = PdfDocument.Open(pdf.Bytes, options);
 
         document.GetObject(new PdfObjectId(13)).AsText().Should().Be("real");
+        document.GetObject(new PdfObjectId(12)).AsText().Should().Be("early");
         document.WasRepaired.Should().BeTrue();
         document.Diagnostics.Should().Contain(diagnostic => diagnostic.Code == PdfDiagnosticCodes.LimitXRefSectionLength);
     }

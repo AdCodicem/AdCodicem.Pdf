@@ -5,11 +5,13 @@ internal enum ScannedPlaceKind : byte
 {
     /// <summary>
     /// Taken between objects, where the scan reads tokens: outside every object it delimited, and outside the comments and
-    /// strings it swept between them; or past where a load ends the data of a stream that lost its <c>endstream</c>: before
-    /// where the load's search for it stops, in what a declared length short of the data leaves of it, which is not swept
-    /// (<see cref="PdfFileReader.DataEndWithoutEndStream"/>), or where the scan took it as the bytes give it, in what it read
-    /// as that data before it met the object that holds the stream's indirect <c>/Length</c>, or ended its wait for that
-    /// object without it, the header the data then ends at included (<see cref="ScanMemo.Builder.TakeClean"/>).
+    /// strings it swept between them; or taken as the bytes give it, in the data of a stream whose length the scan does not
+    /// confirm, which it reads up to its first <c>endstream</c>, past where a load ends that data where the bytes show
+    /// that no <c>endstream</c> follows the length: a direct <c>/Length</c>
+    /// (<see cref="PdfFileReader.DataEndWithoutEndStream"/>), the length the object that holds an indirect one gives, the
+    /// scan meeting that object before the place or past it, or none, the scan ending its wait for that object without
+    /// it, the header a load then ends the data at included (<see cref="ScanMemo.Builder.TakeClean"/>). There, a place a
+    /// comment or a string between objects would hide is held too: the data is not swept.
     /// </summary>
     Clean,
 
