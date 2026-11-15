@@ -44,10 +44,37 @@ public class ScannedPlacesTests
     [InlineData("a header that a stream with no endstream declares an indirect length past", "Raw")]
     [InlineData("a header after an endobj in the data of a stream whose indirect length the object before it holds", "Raw")]
     [InlineData("a header in a file the data of a stream holds whose indirect length the object before it holds", "Raw")]
+    [InlineData("a header past the object whose header a stream with no endstream declares a length past", "Clean")]
+    [InlineData("a header past the object whose header a stream with no endstream declares an indirect length past", "Clean")]
+    [InlineData("a header past the object that holds the indirect length its stream with no endstream declares past it", "Clean")]
+    [InlineData("a header past the endobj of a stream with no endstream that declares a length past the end of the file", "Clean")]
+    [InlineData("a header past the endobj of a stream with no endstream whose indirect length runs past the end of the file", "Clean")]
+    [InlineData("a header on the line of a string the data of a stream with no endstream opens past its declared length", "Clean")]
+    [InlineData("a header on the line of a comment the data of a stream with no endstream opens past its declared length", "Clean")]
+    [InlineData("a header on the line of a string the data of a stream with no endstream opens past its indirect length", "Clean")]
+    [InlineData("a header in a string past the endobj that follows the declared length of a stream with no endstream", null)]
     public void A_header_is_recorded_where_the_scan_takes_it_with_how_it_took_it(string shape, string? kind)
     {
         var text = shape switch
         {
+            "a header past the object whose header a stream with no endstream declares a length past" =>
+                "5 0 obj\n<< /Length 40 >>\nstream\n0123456789\n8 0 obj\n(eight)\nendobj\n9 0 obj\n(nine)\nendobj\n",
+            "a header past the object whose header a stream with no endstream declares an indirect length past" =>
+                "7 0 obj\n40\nendobj\n5 0 obj\n<< /Length 7 0 R >>\nstream\n0123456789\n8 0 obj\n(eight)\nendobj\n9 0 obj\n(nine)\nendobj\n",
+            "a header past the object that holds the indirect length its stream with no endstream declares past it" =>
+                "5 0 obj\n<< /Length 8 0 R >>\nstream\n0123456789\n8 0 obj\n40\nendobj\n9 0 obj\n(nine)\nendobj\n",
+            "a header past the endobj of a stream with no endstream that declares a length past the end of the file" =>
+                "5 0 obj\n<< /Length 99999 >>\nstream\n0123456789\nendobj\n9 0 obj\n(nine)\nendobj\n",
+            "a header past the endobj of a stream with no endstream whose indirect length runs past the end of the file" =>
+                "8 0 obj\n99999\nendobj\n5 0 obj\n<< /Length 8 0 R >>\nstream\n0123456789\nendobj\n9 0 obj\n(nine)\nendobj\n",
+            "a header on the line of a string the data of a stream with no endstream opens past its declared length" =>
+                "5 0 obj\n<< /Length 5 >>\nstream\n01234(abc 9 0 obj\n(nine)\nendobj\n",
+            "a header on the line of a comment the data of a stream with no endstream opens past its declared length" =>
+                "5 0 obj\n<< /Length 5 >>\nstream\n01234%abc 9 0 obj\n(nine)\nendobj\n",
+            "a header on the line of a string the data of a stream with no endstream opens past its indirect length" =>
+                "8 0 obj\n5\nendobj\n5 0 obj\n<< /Length 8 0 R >>\nstream\n01234(abc 9 0 obj\n(nine)\nendobj\n",
+            "a header in a string past the endobj that follows the declared length of a stream with no endstream" =>
+                "5 0 obj\n<< /Length 5 >>\nstream\n01234\nendobj (abc 9 0 obj\n(nine)\nendobj\n",
             "a header that holds the indirect length of the stream with no endstream before it" =>
                 "5 0 obj\n<< /Length 9 0 R >>\nstream\n0123456789\nendobj\n9 0 obj\n10\nendobj\n",
             "a header that holds the indirect length of the stream before it, whose endstream and endobj are lost" =>
@@ -124,6 +151,9 @@ public class ScannedPlacesTests
     [InlineData("a keyword past the endobj that follows the declared length of a stream with no endstream", "Clean")]
     [InlineData("a keyword past the object that holds the indirect length of the stream with no endstream before it", "Clean")]
     [InlineData("a keyword between a stream with no endstream and the object after it that holds its length", "Raw")]
+    [InlineData("a keyword past the object whose header a stream with no endstream declares a length past", "Clean")]
+    [InlineData("a keyword past the object after a stream with no endstream that declares a length past the end of the file", "Clean")]
+    [InlineData("a keyword on the line of a string the data of a stream with no endstream opens past its declared length", "Clean")]
     [InlineData("a keyword in a comment", null)]
     [InlineData("a keyword in a string between objects", null)]
     [InlineData("a keyword inside an object", null)]
@@ -147,6 +177,12 @@ public class ScannedPlacesTests
                 ("5 0 obj\n<< /Length 9 0 R >>\nstream\n0123\nendobj\n9 0 obj\n4\nendobj\nxref\n", "xref"),
             "a keyword between a stream with no endstream and the object after it that holds its length" =>
                 ("5 0 obj\n<< /Length 9 0 R >>\nstream\n0123\nendobj\nxref\n9 0 obj\n4\nendobj\n", "xref"),
+            "a keyword past the object whose header a stream with no endstream declares a length past" =>
+                ("5 0 obj\n<< /Length 40 >>\nstream\n0123\n8 0 obj\n(eight)\nendobj\nxref\n", "xref"),
+            "a keyword past the object after a stream with no endstream that declares a length past the end of the file" =>
+                ("5 0 obj\n<< /Length 99999 >>\nstream\n0123\nendobj\n9 0 obj\n(nine)\nendobj\nxref\n", "xref"),
+            "a keyword on the line of a string the data of a stream with no endstream opens past its declared length" =>
+                ("5 0 obj\n<< /Length 4 >>\nstream\n0123(abc xref\n", "xref"),
             "a keyword in a comment" => ("% xref\n", "xref"),
             "a keyword in a string between objects" => ("(see xref)\n", "xref"),
             "a keyword inside an object" => ("9 0 obj\n(an xref)\nendobj\n", "xref"),
@@ -767,6 +803,80 @@ public class ScannedPlacesTests
             .Select(finding => (finding.RuleId, finding.Severity)).Should().Equal((PdfValidationRuleIds.XRefEntryUnconfirmed, PdfValidationSeverity.Error));
     }
 
+    [Theory]
+    [InlineData(20)]
+    [InlineData(1000)]
+    public void A_stream_that_lost_its_end_at_the_end_of_what_a_source_holds_ends_the_memo_however_much_its_search_read(int extra)
+    {
+        // The source says it holds more bytes than it does, as a caller's may: a read past them gives none (#52). The last
+        // object, a stream, lost its endstream and endobj, and its row lies 3 bytes past its header. The search for where its
+        // data ends reads windows that each repeat a few bytes of the one before, more than the source says it holds past the
+        // data's start, then meets one the source gives empty: the memo is whole only before where the page tree's value
+        // ends, and the search near the row serves the stream, a choice it cannot vouch for.
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long> { [1] = file.Object(1, Catalog), [2] = file.Object(2, Pages) };
+        var pagesEnd = rows[2] + "2 0 obj\n".Length + Pages.Length;
+        rows[5] = file.Position + 3;
+        file.Raw("5 0 obj\n<< /Length 10 >>\nstream\n0123456789\n");
+        file.Table(6, rows, "/Size 6 /Root 1 0 R");
+        using var document = PdfDocument.Open(new OverlongSource(file.Bytes, extra), options: null, ownsSource: true);
+
+        var stream = document.GetObject(new PdfObjectId(5));
+        var memo = document.Reader.GetScanMemo();
+
+        stream.Should().BeOfType<PdfStream>();
+        (memo.IsWhole, memo.WholeUntil).Should().Be((true, pagesEnd));
+        new PdfValidator().Validate(document).Findings.Where(finding => finding.Location.Object == new PdfObjectId(5))
+            .Select(finding => (finding.RuleId, finding.Severity)).Should().Equal((PdfValidationRuleIds.XRefEntryUnconfirmed, PdfValidationSeverity.Error));
+    }
+
+    [Theory]
+    [InlineData("an indirect length")]
+    [InlineData("a direct length that white space past a first read follows")]
+    public void A_read_short_of_the_endstream_after_a_declared_length_leaves_the_data_unconfirmed_not_ended_at_an_endobj_it_holds(string length)
+    {
+        // An intact stream whose data holds an attached file's text, an endobj and then a header of object 9, whose own
+        // definition follows the stream, its row 3 bytes past the header the data holds. The source gives every read whole
+        // but the first at the endstream keyword, which it gives short within the keyword: the bytes do not tell that no
+        // endstream follows, and the stream's data is read as the bytes give it, not ended at the endobj it holds. The header
+        // in the data is taken as such, and the search near the row serves object 9's own definition, which it vouches for.
+        const string Data = "q\nendobj\n9 0 obj\n(inner nine)\nendobj\nQ";
+        var direct = length != "an indirect length";
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long> { [1] = file.Object(1, Catalog), [2] = file.Object(2, Pages) };
+
+        if (!direct)
+        {
+            rows[8] = file.Object(8, Data.Length.ToString(CultureInfo.InvariantCulture));
+        }
+
+        var stream = file.Position;
+        file.Raw(string.Create(
+            CultureInfo.InvariantCulture,
+            $"4 0 obj\n<< /Length {(direct ? Data.Length.ToString(CultureInfo.InvariantCulture) : "8 0 R")} >>\nstream\n{Data}"));
+        var inner = stream + Encoding.Latin1.GetString(file.Bytes[(int)stream..]).IndexOf("9 0 obj", StringComparison.Ordinal);
+        file.Raw((direct ? new string(' ', 80) : "\n") + "endstream\nendobj\n");
+        var keyword = file.Position - "endstream\nendobj\n".Length;
+        rows[4] = stream;
+        rows[9] = inner + 3;
+        var outer = file.Object(9, "(outer nine)");
+        file.Table(10, rows, "/Size 10 /Root 1 0 R");
+        var given = new HashSet<long>();
+        var source = new ShortCountSource(file.Bytes, (offset, held) => offset == keyword && given.Add(offset) ? 4 : held);
+        using var document = PdfDocument.Open(source, options: null, ownsSource: true);
+
+        var nine = document.GetObject(new PdfObjectId(9)).AsText();
+        var memo = document.Reader.GetScanMemo();
+
+        (nine, source.ShortReads).Should().Be(("outer nine", 1));
+        memo.TryGetHeaderAt(inner, out var header).Should().BeTrue();
+        header.Kind.Should().Be(ScannedPlaceKind.Raw);
+        memo.TryGetHeaderAt(outer, out var own).Should().BeTrue();
+        own.Kind.Should().Be(ScannedPlaceKind.Clean);
+        new PdfValidator().Validate(document).Findings.Where(finding => finding.Location.Object == new PdfObjectId(9))
+            .Select(finding => (finding.RuleId, finding.Severity)).Should().Equal((PdfValidationRuleIds.XRefEntryShifted, PdfValidationSeverity.Warning));
+    }
+
     [Fact]
     public void An_xref_keyword_past_a_sweep_ahead_that_gives_fewer_bytes_than_asked_lies_past_where_the_memo_is_whole_and_its_section_is_taken_unconfirmed()
     {
@@ -1242,6 +1352,26 @@ public class ScannedPlacesTests
         rows[4] = 999_999;
         file.Table(5, rows, "/Size 5 /Root 1 0 R");
         return file.Bytes;
+    }
+
+    /// <summary>A file read from memory that says it holds more bytes than it does: a read past them gives none.</summary>
+    private sealed class OverlongSource(byte[] data, int extra) : PdfFileSource
+    {
+        /// <inheritdoc/>
+        public override long Length => data.Length + extra;
+
+        /// <inheritdoc/>
+        public override int Read(long offset, Span<byte> buffer)
+        {
+            if (offset < 0 || offset >= data.Length)
+            {
+                return 0;
+            }
+
+            var count = (int)Math.Min(buffer.Length, data.Length - offset);
+            data.AsSpan((int)offset, count).CopyTo(buffer);
+            return count;
+        }
     }
 
     /// <summary>A file read from memory whose read starting at one offset fails once, with an I/O error.</summary>
