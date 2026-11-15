@@ -5207,20 +5207,28 @@ public class DocumentReaderTests
     [InlineData("small streams whose length is an object")]
     [InlineData("headers inside one string left open")]
     [InlineData("headers whose lengths end in one run of white space")]
+    [InlineData("streams that lost their endstream, each with its length's object first in its data")]
     public void A_rebuild_reads_the_file_a_few_times_at_most_whatever_its_objects_repeat(string shape)
     {
         // Each stream whose length the scan cannot confirm read a megabyte from the file to find its endstream however near
         // it lay; each header inside a string left open had its value lexed, from the file, in windows up to MaxObjectLength;
-        // each stream whose direct length ends in a run of white space read the whole run. Each read again what the one
-        // before had read, and a file of 256 KB read gigabytes. The scan searches the bytes it holds first, lexes no byte
-        // for one object after another, and reads the white space after a length as a load does, once for each place, with
-        // the searches for endstream: what it reads follows the file (#171).
+        // each stream whose direct length ends in a run of white space read the whole run; each stream that lost its
+        // endstream, the object its length names the first header its data holds, read the file from there to the endstream
+        // that ends the file's streams, up to a megabyte, to tell whether a stream keyword starts before it. Each read again
+        // what the one before had read, and a file of 256 KB read gigabytes. The scan searches the bytes it holds first,
+        // lexes no byte for one object after another, and reads the white space after a length as a load does, once for each
+        // place, with the searches for endstream: what it reads follows the file (#171). The lengths name nine objects in
+        // turn, so that none is among the last values the scan passed.
         var text = new StringBuilder("%PDF-1.7\n1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n2 0 obj\n<< /Type /Pages /Kids [] /Count 0 >>\nendobj\n");
         var (unit, until, tail) = shape switch
         {
             "small streams whose length is an object" =>
                 ("3 0 obj <</Length 4 0 R>>stream\nx\nendstream\nendobj\n4 0 obj 1 endobj\n", 256 * 1024, string.Empty),
             "headers inside one string left open" => ("3 0 obj [(\n", 1024 * 1024, new string('x', 2 * 1024 * 1024)),
+            "streams that lost their endstream, each with its length's object first in its data" => (
+                string.Concat(Enumerable.Range(4, 9).Select(n => string.Create(CultureInfo.InvariantCulture, $"3 0 obj <</Length {n} 0 R>>stream\nABCDEFGH\n{n} 0 obj 2 endobj\n"))),
+                256 * 1024,
+                "5 0 obj <</Length 3>>stream\nabc\nendstream\nendobj"),
             _ => ("3 0 obj << /Length 262144 >>\nstream\n", 256 * 1024, new string(' ', 512 * 1024)),
         };
 
