@@ -291,8 +291,8 @@ damaged map takes, as far as what that scan keeps reaches, above: the word `xref
 in the data of a stream whose direct `/Length` an `endstream` confirms, a string or a comment — or in a comment or a
 string between objects is no place, is never read, and counts toward nothing, so that an attached file's own table,
 or a cross-reference stream the data quotes, is neither taken nor reported as passed over
-([#171](https://github.com/AdCodicem/AdCodicem.Pdf/issues/171)) — but for one the scan took first as a stream's data,
-learning only past it that the data ends before it, below, which is a place. The search ends at a place
+([#171](https://github.com/AdCodicem/AdCodicem.Pdf/issues/171)) — but for one the scan takes in a stream's data past
+where a load ends it, below, which is a place. The search ends at a place
 that declares itself a section and cannot be read — an `xref` keyword, or the header of a stream of `/Type /XRef`,
 not digits a regular character runs into, a header whose number is written with a run of signs that starts with a `+`
 counting from its first sign, as a load reads it, where that sign lies within the bytes searched, and one a `-` starts
@@ -356,21 +356,22 @@ A string that runs past its object's end delimits nothing, and hides none of the
 `endobj` — a parenthesis some writers leave unescaped and unbalanced runs a string into the objects after it —, or one
 the end of a cut file leaves open.
 The data of a stream whose length it does not confirm — it confirms only a direct `/Length` an `endstream` follows — it
-reads as the bytes give it, up to the first `endstream`, taking the headers there and reading no comment; but a stream
-that lost its `endstream`, whose data a load ends at its `/Length` or at its object's `endobj`, ends there for it too,
-and what follows is read between objects, the header a load's search for that `endstream` stops at taken as the data's
-where the declared length runs past it. An indirect `/Length` counts so where the file's bytes give its object: one of
-the last eight objects other than streams before the stream, or the first object after it that gives it, until the scan
-has to wait for another stream's in its turn, or reaches the end of the file; and since that object may be an older
-revision's or an attached file's rather than the length's, the scan reads only 64 bytes past the length it holds to tell
-whether an `endstream` follows: one there, or white space or comments that run on past them, leave the data read as the
-bytes give it, up to its first `endstream`; anything else has it search the data from its start, as a load does, for
-where that load ends it.
-Where it finds none so — the damage took it too, it lies elsewhere, or it holds no lone integer —, the data ends where
-a load that cannot read that length ends it: at its object's `endobj`, or else at the header that load's search stops
-at, which is read between objects. Where the scan learns where such data ends only past headers it took in it — the
-length's object written after them, or none found —, it keeps them, and counts them as found between objects, though
-a comment or a string there would have hidden them. A stream whose data starts with `%PDF-`, an attached PDF file
+reads as the bytes give it, up to the first `endstream`, taking the headers there and reading no comment, whatever that
+length says: a length it cannot confirm may be no length of the stream's — a direct one in bytes an attached file
+spells, an indirect one whose object is an older revision's or an attached file's —, and a rebuild serves the same
+objects whatever such a length says, but near the bound of what the scan reads past declared lengths, below. It changes
+only how the headers and sections the scan takes there count. Where no `endstream` follows a direct `/Length`, or an
+indirect one whose object the file's bytes give — one of the last eight objects other than streams before the stream,
+or the first object after it that gives it, until the scan has to wait for another stream's in its turn, or reaches the
+end of the file —, the scan searches the data from its start, as a load does, for where that load ends it: at the
+length, at its object's `endobj`, or at the header that load's search for the `endstream` stops at, which counts as the
+data's where the declared length runs past it. What the scan takes past there counts as found between objects, up to
+the data of the next stream it meets or what a string that runs past its object's end runs into, though a comment or a
+string there would have hidden it between objects. Past an indirect length it reads only 64 bytes to tell whether an
+`endstream` follows: one there, or white space or comments that run on past them, leave what it takes counted as found
+in the data. Where it finds no such object — the damage took it too, it lies elsewhere, or it holds no lone integer —,
+what it took past where a load that cannot read that length ends the data — at its object's `endobj`, or else at the
+header that load's search stops at — counts so. A stream whose data starts with `%PDF-`, an attached PDF file
 whose own objects may give its length's number,
 waits for no object where neither the last objects before it nor the first in its data give that length — though a
 stream that already waits for its own length's object may take one of that file's objects, past its first `endstream`,
@@ -378,16 +379,17 @@ for it —; and where the
 scan takes that object among the last objects before the stream or in the data, or finds none, it may take the data for
 an attached file's, which its first `endstream` ends where no other stream's `stream` keyword comes before it — and,
 where the scan took a length, where an `endobj` follows that `endstream` —, the scan reading 1 MB at most for that
-keyword: a longer stretch counts as holding one. Such data,
-like any the scan does not end so, is read as the bytes give it up to the first `endstream`, and a header or a section
+keyword: a longer stretch counts as holding one. What the scan takes in such data,
+as in any data whose headers do not count so, counts as found in the data, and a header or a section
 the searches near a row or an offset find there is unconfirmed. What follows the header
 of an object it cannot delimit — its value past `MaxObjectLength`, or none a load reads — is read as the bytes give it
 too, and a header within what was read of it is taken undelimited, so that no byte is lexed for one object after
 another. Where the pieces it reads the file in start
 changes nothing of what it takes, but in three hand-made shapes
 ([#358](https://github.com/AdCodicem/AdCodicem.Pdf/issues/358)), and, near the bound of what it reads past declared
-lengths — four times the file, which a valid file can reach ([Reader limits](reader-limits.md#bounds-only-a-damaged-file-reaches)) —,
-which streams it confirms: what it reads to tell a stream from an intact one counts only past the bytes it holds. It reads the file to its end — or, where a search near a row or an offset had the
+lengths — four times the file, which a valid file can reach ([Reader limits](reader-limits.md#bounds-that-stay-internal)) —,
+which streams it confirms, and how it counts what it takes in the data of the others: what it reads to tell a stream
+from an intact one counts only past the bytes it holds. It reads the file to its end — or, where a search near a row or an offset had the
 file scanned before it, and that scan kept every header it took, in the order it took them, which a scan past
 `MaxIndexEntries` places does not, takes what that scan found, reading nothing again —, and holds no more numbers than
 the map may: a header for
@@ -511,7 +513,7 @@ default ([Reader limits](../reference/reader-limits.md#the-limits)). It keeps no
 answers a read that tells what the scan takes with fewer bytes than asked, which ends the data
 ([#52](https://github.com/AdCodicem/AdCodicem.Pdf/issues/52)), what it keeps is whole only up to the last object it
 passed before that end — either way, only up to the data of a stream whose length's object it then awaited, which that
-object could still show to end sooner. Past there, a search cannot tell what lies inside another object: it takes a
+object could still show a load to end sooner. Past there, a search cannot tell what lies inside another object: it takes a
 header of the object near a row, or a section near an offset, as the bytes give it, and the validator reports the entry
 as `xref.entry-unconfirmed`, or the section as `xref.section-unconfirmed`; past the bound, short of that end, where
 raising the bound would let the scan answer, the search reports `limit.index-entries` too, once a document — a search

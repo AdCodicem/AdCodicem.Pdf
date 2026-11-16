@@ -6,8 +6,9 @@ namespace AdCodicem.Pdf.IO;
 /// What the rebuild's scan for objects takes of a file, kept for the document's life so that the file is scanned for it once,
 /// a rebuild after it taking its headers from it: each object header and each <c>xref</c> keyword the scan takes, sorted by
 /// where each starts, each with how the scan took it (<see cref="ScannedPlaceKind"/>) — one it took as the bytes give it,
-/// in what it read as a stream's data, held as taken between objects where it learned, past it, that a load ends that data
-/// before it (<see cref="Builder.TakeClean"/>) —, and where the trailers it notes lie (<see cref="Trailers"/>). The scan
+/// in what it read as a stream's data, held as taken between objects past where a load ends that data, where the bytes
+/// show that no <c>endstream</c> follows the stream's length, the scan learning it before the place or past it
+/// (<see cref="Builder.TakeClean"/>) —, and where the trailers it notes lie (<see cref="Trailers"/>). The scan
 /// records it through a <see cref="Builder"/>, which completes it; once complete, it changes no more.
 /// </summary>
 /// <remarks>
@@ -309,7 +310,8 @@ internal sealed class ScanMemo
         /// <summary>
         /// Holds the places the scan took at <paramref name="from"/> or past it and before <paramref name="to"/> as taken
         /// between objects (<see cref="ScannedPlaceKind.Clean"/>): the scan took them as the bytes give them, in what it read
-        /// as the data of a stream whose end it learned only once past them (<see cref="PdfFileReader.ScanForObjects"/>). A
+        /// as the data of a stream, past where a load ends that data, which it learned only once past them
+        /// (<see cref="PdfFileReader.ScanForObjects"/>). A
         /// run that holds places on both sides of either bound keeps its kind for all of them, as a hostile file alone writes
         /// one: a header written again and again at one distance across the end of such data.
         /// </summary>

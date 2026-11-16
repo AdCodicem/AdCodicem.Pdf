@@ -247,14 +247,19 @@ internal sealed partial class PdfFileReader : IPdfObjectSource, IPdfStreamDataPr
     /// read in proportion to the file, as a window keeps the parsing of their dictionaries. Which streams keep their
     /// declared length unsearched past it depends on the order they are read in: crafted files reach it, and no
     /// document of the corpus comes near, whose searches read 0.35 of a file at most. The rebuild's scan counts its own
-    /// reads apart, against the same multiple (<see cref="_scanGapBytes"/>). A valid file's own streams spend about
-    /// twice the file of it: each read crosses its own stream's object, about once and once more as its reads double,
-    /// and the objects of different streams lie apart. The read past a direct length crosses the white space before
-    /// that stream's <c>endstream</c> (<see cref="ConfirmStream"/>); the search for where a load ends the data, made
-    /// where the length the scan read from the file's bytes is not the stream's own or where it never meets the
-    /// length's object, crosses that stream's data from its start (<see cref="DataEndWithoutEndStream"/>); the reads
-    /// that tell such data from an intact stream's cross the stretch from a place in it to its first <c>endstream</c>,
-    /// at most (<see cref="StartsStreamWithin"/>); and a read for an <c>endobj</c> after a length or after that
+    /// reads apart, against the same multiple (<see cref="_scanGapBytes"/>). Of those, only the reads past a direct
+    /// length, which confirm it or not, decide what the scan takes (<see cref="ConfirmStream"/>): what the others find
+    /// decides only how its memo counts the places it takes in the data of a stream it does not confirm, as taken there
+    /// or between objects (<see cref="ScanState.KindUntil"/>), and the scan reads that data as the bytes give it, up to
+    /// its first <c>endstream</c>, whatever they find. A valid file's own streams spend about twice the file of it: each
+    /// read crosses its own stream's object, about once and once more as its reads double, and the objects of different
+    /// streams lie apart. The read past a direct length crosses the white space before that stream's <c>endstream</c>;
+    /// the search for where a load ends the data crosses that stream's data from its start
+    /// (<see cref="DataEndWithoutEndStream"/>) — made after a direct length no <c>endstream</c> follows, which no valid
+    /// stream has, after an indirect one the scan read from the file's bytes where none follows it, which may be another
+    /// object's than the stream's own length, and where the scan never meets the length's object —; the reads that tell
+    /// such data from an intact stream's cross the stretch from a place in it to its first <c>endstream</c>, at most
+    /// (<see cref="StartsStreamWithin"/>); and a read for an <c>endobj</c> after a length or after that
     /// <c>endstream</c> is a single first read, uncounted, unless white space within the object runs past it
     /// (<see cref="IsEndObjAt"/>). The regular characters glued to an <c>endstream</c> that it reads on through
     /// (<see cref="RegularRunEnd"/>) no valid stream has. But the scan reads the data of a stream whose length it does
@@ -263,8 +268,8 @@ internal sealed partial class PdfFileReader : IPdfObjectSource, IPdfStreamDataPr
     /// three reads cross — the read past the length, the search, the read for an <c>endobj</c> —, or their searches may
     /// each cross the rest of the attached data. Those can reach the bound on a valid file, after which a later
     /// stream's direct length that a first read cannot confirm is left unconfirmed and the headers its data spells are
-    /// taken (#361): a known exception to ADR 34's rule, which the maintainer chose to keep an internal constant until
-    /// that issue is paid.
+    /// taken (#361) — the one way the reads made for the memo can change what the scan takes —: a known exception to
+    /// ADR 34's rule, which the maintainer chose to keep an internal constant until that issue is paid.
     /// </remarks>
     internal const int EndStreamSearchPasses = 4;
 

@@ -1151,9 +1151,9 @@ public class ScannedPlacesTests
         // an intact stream, an attached file's, whose header of object 9 is Raw, from one whose length object 6 holds, past
         // which object 9's header is Clean: the scan reads the file past its piece for it, in reads that grow, up to the
         // first keyword, and takes a stretch longer than a megabyte for one that holds a keyword. A read the source gives
-        // short leaves the stream read as intact, and so do the scan's reads past declared lengths, spent while it reads
-        // there: stream headers before it, whose direct lengths end where one run of 256 KiB of white space starts, each
-        // read that run, and the twentieth leaves less than the stretch.
+        // short leaves object 9's header Raw, as in an intact stream, and so do the scan's reads past declared lengths,
+        // spent while it reads there: stream headers before it, whose direct lengths end where one run of 256 KiB of white
+        // space starts, each read that run, and the twentieth leaves less than the stretch.
         const int Piece = 1 << 20;
         var file = new HandWrittenFile();
         var rows = new Dictionary<int, long> { [1] = file.Object(1, Catalog), [2] = file.Object(2, Pages) };
