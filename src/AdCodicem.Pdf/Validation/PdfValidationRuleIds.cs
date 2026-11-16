@@ -132,6 +132,12 @@ public static class PdfValidationRuleIds
     public const string XRefChainLoop = "xref.chain-loop";
 
     /// <summary>
+    /// The chain of cross-reference sections, each read whole, indexes no object, not even the free head of the list, and
+    /// the index is rebuilt by scanning the file. <see cref="PdfValidationSeverity.Error"/>.
+    /// </summary>
+    public const string XRefChainEmpty = "xref.chain-empty";
+
+    /// <summary>
     /// A hybrid file's table names through <c>/XRefStm</c> no cross-reference stream of its revision, and what only that
     /// stream indexes is lost. <see cref="PdfValidationSeverity.Error"/>.
     /// </summary>

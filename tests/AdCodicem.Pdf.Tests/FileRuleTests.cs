@@ -280,19 +280,26 @@ public class FileRuleTests
     }
 
     [Fact]
-    public void A_trailer_keyword_followed_by_no_dictionary_is_malformed_and_the_catalog_found_without_a_rebuild()
+    public void A_trailer_keyword_followed_by_no_dictionary_is_malformed_and_its_table_read_in_part_the_catalog_found_among_its_rows()
     {
+        // The keyword followed by no dictionary loses the trailer, and with it the older sections it would name: the table is
+        // read in part, the catalog found among its rows, and the index rebuilt only once the validation settles it (#322).
         var file = PdfTemplate.SoundWith("<< /Size 4 /Root 1 0 R >>", "/Size 4 /Root 1 0 R >>");
         using var document = PdfDocument.Open(file);
 
+        document.WasRepaired.Should().BeFalse("what the table lost is looked for when it is asked for");
+        document.Diagnostics.Select(diagnostic => diagnostic.Code).Should().Equal(
+            PdfDiagnosticCodes.XRefSectionUnreadable, PdfDiagnosticCodes.TrailerRootRecovered);
+        document.Diagnostics[0].Message.Should().Be(
+            $"The cross-reference table startxref names at offset {PdfTemplate.OffsetOf(file, "xref")} was read only in part: its trailer keyword is followed by no dictionary; the rows read were kept, and what only the sections its trailer would name index is looked for by rebuilding the index.");
+
         var report = new PdfValidator().Validate(document);
 
+        report.Findings.Should().ContainSingle();
         var finding = Single(report, PdfValidationRuleIds.FileTrailerMalformed);
         finding.Severity.Should().Be(PdfValidationSeverity.Error);
         finding.Message.Should().Be($"The trailer keyword at offset {PdfTemplate.OffsetOf(file, "trailer")} is not followed by a dictionary.");
-        report.Contains(PdfValidationRuleIds.FileRootInvalid).Should().BeFalse("a trailer that could not be read has no /Root to judge");
-        document.WasRepaired.Should().BeFalse("the index is sound, and the catalog is among its objects");
-        document.Diagnostics.Contains(PdfDiagnosticCodes.TrailerRootRecovered).Should().BeTrue();
+        document.Diagnostics.Count(diagnostic => diagnostic.Code == PdfDiagnosticCodes.TrailerRootRecovered).Should().Be(1);
     }
 
     [Theory]

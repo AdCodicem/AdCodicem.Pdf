@@ -123,6 +123,28 @@ public class CorpusValidationTests
     }
 
     [Theory]
+    [MemberData(nameof(AllDocuments))]
+    public void Every_document_rebuilt_as_it_opens_earns_an_error_but_where_a_limit_caused_the_rebuild(string file)
+    {
+        // A rebuild at opening means the reader cannot vouch that it reads what was written (ADR 45): some rule says why, an
+        // empty chain's included (#218). A rebuild a reader limit set off is the limit's, which xref.checked-in-part says.
+        var entry = Corpus.Get(file);
+        var options = CorpusReadingTests.OptionsFor(entry) with { ThrowOnEncrypted = false };
+        using var document = PdfDocument.Open(Corpus.PathOf(entry.File), options);
+
+        if (!document.WasRepaired || document.Diagnostics.Any(diagnostic => diagnostic.Code.StartsWith("limit.", StringComparison.Ordinal)))
+        {
+            return;
+        }
+
+        var report = new PdfValidator().Validate(document);
+
+        report.Findings.Should().Contain(
+            finding => finding.Severity == PdfValidationSeverity.Error,
+            $"{entry.Name} is rebuilt as it opens, and the validator reported {Describe(report)}");
+    }
+
+    [Theory]
     [MemberData(nameof(WellFormedDocuments))]
     public void Well_formed_documents_have_no_errors(string file)
     {

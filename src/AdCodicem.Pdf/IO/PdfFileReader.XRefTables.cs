@@ -45,7 +45,7 @@ internal sealed partial class PdfFileReader
 
         if (!IsInFile(absolute))
         {
-            // Reported once, by what the chain makes of it: a missing section, or a rebuild for the first.
+            // Reported once, by what the chain makes of it: a missing section, the first among them (#323).
             section.Fault = "lies outside the file";
             section.State = XRefSectionState.NotFound;
             return section.State;
@@ -255,22 +255,17 @@ internal sealed partial class PdfFileReader
 
                     if (trailer is not null)
                     {
-                        MergeSectionTrailer(trailer, section);
+                        TakeTrailer(trailer, section, absolute, out previous, out hybrid);
                     }
-
-                    // A table an /XRefStm names, where ISO 32000-1 names a cross-reference stream (Table 19), stands in its
-                    // place: as a hybrid file's stream's own /Prev, what its trailer names is not read, to name a section
-                    // missing or end the chain for a guard, the chain going on through the table that names it.
-                    if (trailer is not null && section.NamedBy != "/XRefStm")
+                    else if (section.TrailerFault == XRefTrailerFault.NotADictionary && !section.TrailerCutByLimit &&
+                        section.NamedBy != "/XRefStm")
                     {
-                        previous = SectionOffset(trailer, PdfName.Prev, absolute, out var previousHidden);
-                        hybrid = SectionOffset(trailer, PdfName.XRefStm, absolute, out var streamHidden);
-                        section.ChainHiddenByGuard = streamHidden ?? previousHidden;
-                        section.ChainHiddenAtStream = streamHidden is not null;
-
-                        // A stream a guard hid holds rows newer than the older sections': the chain ends with it, as with a
-                        // stream a guard cut, since their rows would stand for the stream's.
-                        previous = streamHidden is null ? previous : -1;
+                        // The keyword followed by no dictionary loses the trailer, and with it the older sections its /Prev
+                        // would name: the table is read in part, as one the end of the file cuts after a row, its rows kept
+                        // and what only those sections index looked for by rebuilding the index — the section startxref names
+                        // as one a /Prev names, whatever catalog its rows hold (#322). A table an /XRefStm names loses no
+                        // link that way: its trailer's are not followed.
+                        section.Incomplete = true;
                     }
 
                     return true;
@@ -288,20 +283,26 @@ internal sealed partial class PdfFileReader
 
                     if (token.Kind == PdfTokenKind.DictionaryStart)
                     {
-                        // The rows run into a dictionary no trailer keyword introduces: the trailer is missing,
-                        // whatever that dictionary holds.
+                        // The rows run into a dictionary no trailer keyword introduces: the trailer is missing, and the
+                        // dictionary, where the trailer would be, is read as it, its /Prev and /XRefStm followed and its /Root,
+                        // /Encrypt and /ID kept, which a rebuild, finding trailers by their keyword, would lose (#322).
+                        var found = ReadTrailer(window.Memory, absolute, token.Start, windowFull, section);
                         section.TrailerFault = XRefTrailerFault.Missing;
                         section.TrailerPosition = absolute + token.Start;
-                    }
-                    else
-                    {
-                        // What follows a token that starts no subsection cannot be known: rows misread from it on, or none.
-                        section.SubsectionsUnknown = true;
-                        section.Fault ??= string.Create(
-                            CultureInfo.InvariantCulture,
-                            $"it holds {DescribeToken(token)} at offset {absolute + token.Start}, where a subsection or the trailer should start");
+
+                        if (found is not null)
+                        {
+                            TakeTrailer(found, section, absolute, out previous, out hybrid);
+                        }
+
+                        return true;
                     }
 
+                    // What follows a token that starts no subsection cannot be known: rows misread from it on, or none.
+                    section.SubsectionsUnknown = true;
+                    section.Fault ??= string.Create(
+                        CultureInfo.InvariantCulture,
+                        $"it holds {DescribeToken(token)} at offset {absolute + token.Start}, where a subsection or the trailer should start");
                     return false;
                 }
 
@@ -385,9 +386,10 @@ internal sealed partial class PdfFileReader
                     section.TrailerPosition = _source.Length;
                     section.SubsectionsUnknown = true;
 
+                    // Read before no row, the table lacks its trailer, which is the trailer's fault, not one of its own: the
+                    // validator says it once (#325).
                     if (section.HighestNumber < 0)
                     {
-                        section.Fault ??= "the file ends before its trailer";
                         return false;
                     }
 
@@ -426,7 +428,8 @@ internal sealed partial class PdfFileReader
     /// <para>
     /// The search ends at the trailer keyword, at a dictionary no keyword introduces, or at the end of the file; the last
     /// two are a missing trailer, as they are where no guard stopped the reader, unless something no table holds came
-    /// first, which is then all the section is judged by. The file is read a megabyte at a time, each piece once and every
+    /// first, which is then all the section is judged by. A dictionary the rows run into is read as the trailer, as where
+    /// no guard stopped the reader (#322). The file is read a megabyte at a time, each piece once and every
     /// byte of it looked at before the next is read, however many comments or stray bytes it holds; what starts within a
     /// piece's last bytes, which may run past its end, starts the next. The search is made once a document: the chain
     /// ends at the section it is made for.
@@ -525,22 +528,25 @@ internal sealed partial class PdfFileReader
             position = start + at;
         }
 
-        if (found < 0)
+        // Rows that end in the file's end lack their trailer; rows that end in something but a dictionary are judged by it
+        // alone.
+        if (found < 0 && (stray >= 0 || dictionary < 0))
         {
-            // Rows that end in the file's end, or in a dictionary no keyword introduces, lack their trailer; rows that end in
-            // something else are judged by it alone.
             if (stray < 0)
             {
                 section.TrailerFault = XRefTrailerFault.Missing;
             }
 
-            section.TrailerPosition = stray >= 0 ? stray : dictionary >= 0 ? dictionary : _source.Length;
+            section.TrailerPosition = stray >= 0 ? stray : _source.Length;
             return;
         }
 
-        section.TrailerPosition = found;
+        // A dictionary the rows run into with no keyword before it lacks the keyword, and is read as the trailer, as where the
+        // rows are read whole (#322).
+        section.TrailerPosition = found >= 0 ? found : dictionary;
         var guards = _guardsReached;
-        _ = TryParseNumberedAt(found + TrailerKeyword.Length, DirectObject, PdfLimit.Trailer, out var value, out _, out _, out _, out var syntaxFault);
+        _ = TryParseNumberedAt(
+            found >= 0 ? found + TrailerKeyword.Length : dictionary, DirectObject, PdfLimit.Trailer, out var value, out _, out _, out _, out var syntaxFault);
 
         if (_guardsReached != guards)
         {
@@ -548,11 +554,48 @@ internal sealed partial class PdfFileReader
             section.TrailerCutByLimit = true;
         }
 
-        if (JudgeTrailer(value, syntaxFault, section) is { } trailer)
+        var trailer = JudgeTrailer(value, syntaxFault, section);
+
+        if (found < 0)
+        {
+            section.TrailerFault = XRefTrailerFault.Missing;
+        }
+
+        if (trailer is not null)
         {
             MergeSectionTrailer(trailer, section);
             JudgeLinksPastGuard(trailer, section);
         }
+    }
+
+    /// <summary>
+    /// Merges the trailer of the classic table <paramref name="section"/> into the document's, and gives the offsets its
+    /// <c>/Prev</c> and its <c>/XRefStm</c> name for the chain to follow, or -1.
+    /// </summary>
+    /// <remarks>
+    /// A table an <c>/XRefStm</c> names, where ISO 32000-1 names a cross-reference stream (Table 19), stands in its place: as
+    /// a hybrid file's stream's own <c>/Prev</c>, what its trailer names is not read, to name a section missing or end the
+    /// chain for a guard, the chain going on through the table that names it.
+    /// </remarks>
+    private void TakeTrailer(PdfDictionary trailer, XRefSectionRecord section, long absolute, out long previous, out long hybrid)
+    {
+        previous = -1;
+        hybrid = -1;
+        MergeSectionTrailer(trailer, section);
+
+        if (section.NamedBy == "/XRefStm")
+        {
+            return;
+        }
+
+        previous = SectionOffset(trailer, PdfName.Prev, absolute, out var previousHidden);
+        hybrid = SectionOffset(trailer, PdfName.XRefStm, absolute, out var streamHidden);
+        section.ChainHiddenByGuard = streamHidden ?? previousHidden;
+        section.ChainHiddenAtStream = streamHidden is not null;
+
+        // A stream a guard hid holds rows newer than the older sections': the chain ends with it, as with a stream a guard
+        // cut, since their rows would stand for the stream's.
+        previous = streamHidden is null ? previous : -1;
     }
 
     /// <summary>

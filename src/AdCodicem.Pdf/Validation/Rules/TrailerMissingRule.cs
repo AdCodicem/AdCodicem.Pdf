@@ -8,9 +8,11 @@ namespace AdCodicem.Pdf.Validation.Rules;
 /// <c>trailer</c> keyword and a dictionary.
 /// </summary>
 /// <remarks>
-/// Without the keyword a table's rows run into whatever follows: qpdf finds no trailer and rebuilds the index, as the
-/// reader does, and neither can vouch that it then reads what was written: an error (ADR 45). A cross-reference stream carries its
-/// trailer in its own dictionary, and cannot lose it this way.
+/// Without the keyword a table's rows run into whatever follows: qpdf finds no trailer and rebuilds the index; the reader
+/// reads a dictionary the rows run into as the table's trailer, its own guess (#322), and, where the file ends instead,
+/// looks for what the lost trailer would name by rebuilding the index. Neither can vouch that it then reads what was
+/// written: an error (ADR 45). A cross-reference stream carries its trailer in its own dictionary, and cannot lose it this
+/// way.
 /// </remarks>
 internal sealed class TrailerMissingRule : IValidationRule
 {

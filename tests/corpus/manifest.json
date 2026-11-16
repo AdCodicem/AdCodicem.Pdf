@@ -17792,10 +17792,8 @@
       "expect": {
         "pages": null,
         "clean": false,
-        "indexRebuilt": true,
-        "requiredDiagnostics": [
-          "xref.rebuilt"
-        ],
+        "indexRebuilt": false,
+        "requiredDiagnostics": [],
         "findings": [
           "file.trailer-missing"
         ],

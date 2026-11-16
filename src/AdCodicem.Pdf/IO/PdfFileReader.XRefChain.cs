@@ -218,6 +218,8 @@ internal sealed partial class PdfFileReader
                 namedWithPrevious = null;
             }
 
+            var guards = _guardsReached;
+
             if (TryReadXRefSection(section.Offset, section, out var previous, out var hybrid) != XRefSectionState.Read)
             {
                 // The first section is where startxref says, and one that is not there leaves no index to
@@ -227,6 +229,7 @@ internal sealed partial class PdfFileReader
                 {
                     // What gives a /W and says it is another type holds no section, as where a /Prev names it (#281).
                     NoSectionWhereAnotherType(section);
+                    ReportFirstSectionLost(section, guardMet: _guardsReached != guards);
                     return false;
                 }
 
@@ -539,9 +542,11 @@ internal sealed partial class PdfFileReader
         }
 
         // A chain that indexed nothing leaves the whole file to a rebuild, which reads every object: no stream passed over is
-        // left unread then.
+        // left unread then. One read to its end, each section whole and no guard met, gave nothing a section's fault explains,
+        // which the validator says (#218).
         if (_xref.Count == 0)
         {
+            _structure.ChainEmpty = !_indexIncomplete && !_cutByGuard;
             return false;
         }
 
@@ -1424,9 +1429,7 @@ internal sealed partial class PdfFileReader
 
         _indexIncomplete = true;
 
-        // Every fault but a table's missing trailer keyword is described where it is met: rows that run into a
-        // dictionary, or into the end of the file, are the one left.
-        var fault = section.Fault ?? "its rows are not followed by the trailer keyword";
+        var fault = UnreadableFault(section);
 
         // A stream whose numbers were refused says what becomes of them, and one whose /Prev the chain goes on through says
         // so (#208, #210). The rows read before the fault stand but for those the section refused and the numbers a newer
@@ -1515,7 +1518,8 @@ internal sealed partial class PdfFileReader
 
     /// <summary>
     /// Reports a section of the chain kept though read only in part — a row that is no row ended a subsection of a table,
-    /// a stream holds fewer rows than it declares, the end of the file cuts a table before its trailer, a row was refused —,
+    /// a stream holds fewer rows than it declares, the end of the file cuts a table before its trailer, a table's trailer
+    /// keyword is followed by no dictionary (#322), a row was refused —,
     /// and marks the index incomplete; or reports a classic table that holds no subsection, read as indexing nothing.
     /// </summary>
     /// <remarks>
@@ -1628,7 +1632,13 @@ internal sealed partial class PdfFileReader
             // known ends the chain where startxref or a /Prev names it, however many ranges it lost: what only that rest, or
             // the sections its trailer would name, index is the rebuild's, which the message says unless a newer section
             // refused every number before the chain came to the table, which it says instead.
-            said = (section.Fault ?? "the file ends before its trailer") + (noneStands
+            // A trailer keyword followed by no dictionary loses the trailer, and the older sections it would name, as the end
+            // of the file does, after whatever row fault came first (#322).
+            var trailerLost = section.TrailerFault == XRefTrailerFault.NotADictionary;
+            var fault = trailerLost
+                ? (section.Fault is { } rowFault ? rowFault + ", and its trailer keyword is followed by no dictionary" : "its trailer keyword is followed by no dictionary")
+                : section.Fault ?? "the file ends before its trailer";
+            said = fault + (noneStands
                 ? "; none of the rows read stands, " + EveryNumberRefused
                 : "; the rows read were kept" + KeptButFor(section) + (section.SubsectionsUnknown
                     ? (naming == "/XRefStm"
@@ -1636,7 +1646,11 @@ internal sealed partial class PdfFileReader
                         : ", and what only the rest of the table, or the sections its trailer would name, index is looked for by rebuilding the index")
                     : (everyRefused
                         ? EveryOtherObject
-                        : ", and the objects the rest of that subsection numbers are looked for by rebuilding the index where no section read before it indexes them, rather than taken from an older section's rows")));
+                        : trailerLost
+                            ? (section.Fault is null
+                                ? ", and what only the sections its trailer would name index is looked for by rebuilding the index"
+                                : ", and what only the rest of that subsection, or the sections its trailer would name, index is looked for by rebuilding the index")
+                            : ", and the objects the rest of that subsection numbers are looked for by rebuilding the index where no section read before it indexes them, rather than taken from an older section's rows")));
         }
         else if (section.RefusedRow is { } refused)
         {
@@ -1799,6 +1813,60 @@ internal sealed partial class PdfFileReader
             _rowsLostPast = true;
         }
     }
+
+    /// <summary>
+    /// Reports the section <c>startxref</c> names that the chain could not read, the whole index to be rebuilt for it: one
+    /// that is there and cannot be read, as <see cref="PdfDiagnosticCodes.XRefSectionUnreadable"/>, and an offset that holds
+    /// no section, as <see cref="PdfDiagnosticCodes.XRefSectionMissing"/> (#323). A section a guard met in reading it — cut
+    /// it, or hid what lies at the offset — is the guard's, whose report names it.
+    /// </summary>
+    /// <remarks>
+    /// The section is not looked for near the offset, as one a <c>/Prev</c> names is: the rebuild that follows finds every
+    /// section the file holds. What became of it is the validator's to judge (<see cref="FileStructure.Sections"/>).
+    /// </remarks>
+    /// <param name="section">The record of the section <c>startxref</c> names.</param>
+    /// <param name="guardMet">Whether a guard was reached as the section was read.</param>
+    private void ReportFirstSectionLost(XRefSectionRecord section, bool guardMet)
+    {
+        if (guardMet || section.CutByLimit)
+        {
+            return;
+        }
+
+        if (section.State == XRefSectionState.Malformed)
+        {
+            _diagnostics.Warn(
+                PdfDiagnosticCodes.XRefSectionUnreadable,
+                string.Create(
+                    CultureInfo.InvariantCulture,
+                    $"{SectionNamed(section, "startxref")} is there but cannot be read: {UnreadableFault(section)}. The whole index is rebuilt by scanning the file."),
+                section.Offset);
+            return;
+        }
+
+        var inFile = IsInFile(section.Offset);
+        _diagnostics.Warn(
+            PdfDiagnosticCodes.XRefSectionMissing,
+            inFile
+                ? string.Create(
+                    CultureInfo.InvariantCulture,
+                    $"The cross-reference section startxref names at offset {section.Offset} is not there; the whole index is rebuilt by scanning the file.")
+                : string.Create(
+                    CultureInfo.InvariantCulture,
+                    $"The cross-reference section startxref names at offset {DescribeOffset(section.WrittenOffset)} lies outside the file, which is {_source.Length:N0} bytes long; the whole index is rebuilt by scanning the file."),
+            inFile ? section.Offset : section.NamedFrom);
+    }
+
+    /// <summary>
+    /// Gives what keeps <paramref name="section"/>, which the chain names and could not read, from being read, in words: its
+    /// own fault, or, a classic table the end of the file cuts before its first row, the trailer it lacks.
+    /// </summary>
+    /// <remarks>
+    /// A table's own faults are described where they are met. One that read no row and lacks its trailer has none of its
+    /// own: the trailer's fault is its record's (<see cref="XRefSectionRecord.TrailerFault"/>), which the validator reports
+    /// once (#325). A table whose rows run into a dictionary is read, the dictionary taken for its trailer (#322).
+    /// </remarks>
+    private static string UnreadableFault(XRefSectionRecord section) => section.Fault ?? "the file ends before its trailer";
 
     /// <summary>
     /// Reports a section of the chain that could not be found, and marks the index incomplete: at the offset it was
