@@ -446,6 +446,33 @@ public sealed class HeaderOffsetTests
         Relocations(document).Should().ContainSingle().Which.Position.Should().Be(row - 100);
     }
 
+    [Theory]
+    [InlineData(0)]
+    [InlineData(50)]
+    public void The_row_before_an_entry_confirms_a_definition_where_it_is_the_index_s_lowest_the_header_s_own_offset_included(long lowest)
+    {
+        // Object 4 is written first, (early four), 14 or 64 bytes before its row, then object 3, then object 4 again, (first
+        // four), 100 bytes past the row. Object 3's row, the lowest of the index, gives 0, the header's own offset, or 50: 100
+        // bytes before its header, as 4's row lies before (first four). That row before 4's confirms the farther definition,
+        // which is served, and which the file designates, wherever the index's lowest offset lies.
+        var file = new HandWrittenFile();
+        file.Object(4, "(early four)");
+        file.Raw("%" + new string('x', (int)(100 + lowest - file.Position - "%\n".Length)) + "\n");
+        var rows = new Dictionary<int, long> { [3] = file.Object(3, "(three)") - 100 };
+        var four = file.Object(4, "(first four)");
+        rows[4] = four - 100;
+        rows[1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>");
+        rows[2] = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>");
+        file.Table(5, rows, "/Size 5 /Root 1 0 R");
+        using var document = PdfDocument.Open(file.Bytes);
+
+        rows[3].Should().Be(lowest);
+        document.GetObject(new PdfObjectId(4)).Should().BeOfType<PdfString>().Which.ToText().Should().Be("first four");
+        Relocations(document).Should().ContainSingle().Which.Position.Should().Be(four);
+        new PdfValidator().Validate(document).Findings.Should().ContainSingle(finding => finding.Location.Object == new PdfObjectId(4))
+            .Which.RuleId.Should().Be(PdfValidationRuleIds.XRefEntryShifted);
+    }
+
     [Fact]
     public void A_section_found_near_where_prev_names_it_before_the_header_is_read_where_it_was_found()
     {

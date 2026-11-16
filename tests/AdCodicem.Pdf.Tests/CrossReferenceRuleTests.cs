@@ -1642,6 +1642,36 @@ public class CrossReferenceRuleTests
         finding.Message.Should().StartWith(Invariant($"The entry of object 4 gives offset {row}, ")).And.Contain(said);
     }
 
+    [Fact]
+    public void An_entry_naming_the_last_byte_of_the_file_inside_a_number_is_said_to_cut_it()
+    {
+        // Object 4's row names the file's last byte, the 2 of a comment, %12, written after the end-of-file marker: the byte
+        // before it is a digit, and the row cuts a number, though no byte follows it. No header of object 4 lies anywhere.
+        static byte[] WithRow(long row)
+        {
+            var written = new HandWrittenFile();
+            var rows = new Dictionary<int, long>
+            {
+                [1] = written.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),
+                [2] = written.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"),
+                [4] = row,
+            };
+            written.Table(5, rows, "/Size 5 /Root 1 0 R");
+            written.Raw("%12");
+            return written.Bytes;
+        }
+
+        // A row is ten digits whatever offset it gives: the file is as long whatever row 4 gives.
+        var last = WithRow(0).Length - 1;
+        var file = WithRow(last);
+
+        var finding = Validate(file).Findings.Should().ContainSingle(finding => finding.Location.Object == new PdfObjectId(4)).Which;
+
+        finding.RuleId.Should().Be(PdfValidationRuleIds.XRefEntryBroken);
+        finding.Location.Position.Should().Be(last);
+        finding.Message.Should().Be(Invariant($"The entry of object 4 gives offset {last}, where it cuts a number, and the object is not within 512 bytes of it."));
+    }
+
     [Theory]
     [InlineData(-5, "no object header", "5 bytes after it")]
     [InlineData(2, "no object header", "2 bytes before it")]
@@ -3546,6 +3576,36 @@ public class CrossReferenceRuleTests
             $"The entry of object 4 gives offset {row}, where there is no object header, and the object is not within 512 bytes of it."));
         report.Contains(PdfValidationRuleIds.XRefCheckedInPart).Should().BeFalse();
         document.Diagnostics.Should().NotContain(diagnostic => diagnostic.Code == PdfDiagnosticCodes.LimitObject);
+    }
+
+    [Fact]
+    public void A_row_inside_white_space_a_row_before_it_crossed_is_read_from_where_the_white_space_ends_and_no_byte_before()
+    {
+        // Object 3's row names the first of 100 blanks before object 4, and object 4's row the eleventh. Reading 3's row
+        // crosses the blanks, and 3 is found just before them; 4's row reads on from where they end, where its header starts,
+        // as a load finds it, and reads no byte before there: past white space, no row cuts a number. A source that gives
+        // nothing for a read that starts at the last of the blanks is never asked for one: 4's entry is imprecise, not shifted.
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"),
+        };
+        file.Object(3, "(three)");
+        rows[3] = file.Position;
+        rows[4] = file.Position + 10;
+        file.Raw(new string(' ', 100));
+        var four = file.Object(4, "(four)");
+        file.Table(5, rows, "/Size 5 /Root 1 0 R");
+        var source = new ShortCountSource(file.Bytes, (offset, held) => offset == four - 1 ? 0 : held);
+        using var document = PdfDocument.Open(source, options: null, ownsSource: true);
+
+        var findings = new PdfValidator().Validate(document).Findings;
+
+        findings.Where(finding => finding.Location.Object?.Number is 3 or 4).Select(finding => (finding.RuleId, finding.Location)).Should().Equal(
+            (PdfValidationRuleIds.XRefEntryShifted, PdfValidationLocation.OfObject(new PdfObjectId(3), rows[3])),
+            (PdfValidationRuleIds.XRefOffsetImprecise, PdfValidationLocation.OfObject(new PdfObjectId(4), rows[4])));
+        source.ShortReads.Should().Be(0);
     }
 
     [Fact]

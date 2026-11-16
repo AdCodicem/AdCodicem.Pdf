@@ -329,6 +329,56 @@ public class DocumentReaderTests
         document.Diagnostics.Should().NotContain(diagnostic => diagnostic.Message.StartsWith("Object 4 ", StringComparison.Ordinal));
     }
 
+    [Fact]
+    public void A_row_at_the_file_s_second_byte_reads_its_first_too_and_takes_no_number_it_cuts_for_a_header()
+    {
+        // The file has no header: its offsets count from its first byte, where object 12 starts, as its row gives. Object 2's
+        // row gives 1, the 2 of 12. The byte before a row is read with it wherever there is one, by a load and by the
+        // validator alike: the first row has none, and names object 12's header exactly; the second cuts a number, and object 2
+        // is found near it, where it lies, rather than object 12's body served as object 2's (#171).
+        var file = PdfTemplate.Build("""
+            12 0 obj
+            (twelve)
+            endobj
+            2 0 obj
+            (two)
+            endobj
+            1 0 obj
+            << /Type /Catalog /Pages 3 0 R >>
+            endobj
+            3 0 obj
+            << /Type /Pages /Kids [] /Count 0 >>
+            endobj
+            xref
+            0 4
+            {free}
+            {row:1}
+            {row:12:0:1}
+            {row:3}
+            12 1
+            {row:12}
+            trailer
+            << /Size 13 /Root 1 0 R >>
+            startxref
+            {xref:1}
+            %%EOF
+
+            """);
+        var two = PdfTemplate.OffsetOf(file, "2 0 obj\n(two)");
+        using var document = PdfDocument.Open(file);
+
+        document.GetObject(new PdfObjectId(2)).AsText().Should().Be("two");
+        document.GetObject(new PdfObjectId(12)).AsText().Should().Be("twelve");
+        document.WasRepaired.Should().BeFalse();
+        document.Diagnostics.Select(diagnostic => (diagnostic.Code, diagnostic.Position)).Should().Equal(
+            (PdfDiagnosticCodes.HeaderMissing, 0L), (PdfDiagnosticCodes.XRefOffsetAdjusted, two));
+        new PdfValidator().Validate(document).Findings.Where(finding => finding.Location.Object is not null)
+            .Select(finding => (finding.Location.Object, finding.RuleId, finding.Message)).Should().Equal((
+                new PdfObjectId(2),
+                PdfValidationRuleIds.XRefEntryShifted,
+                string.Create(CultureInfo.InvariantCulture, $"The entry of object 2 gives offset 1, where it cuts a number; the object starts {two - 1} bytes after it, at offset {two}.")));
+    }
+
     /// <summary>
     /// Headers of object 4 with comments between their tokens, each after what precedes it on its line, or on the line before
     /// it — which ISO 32000-1 allows (7.2.3), and a load reads (#175).
@@ -501,6 +551,14 @@ public class DocumentReaderTests
         { NearbyFiles.TiedFours, "4 0 obj\n(before", 33, 0, "4 0 obj\n(before", "before" },
         { NearbyFiles.FoursAmongNeighbors, "4 0 obj\n(first", 100, 100, "4 0 obj\n(first", "first four" },
         { NearbyFiles.FoursAmongNeighbors, "4 0 obj\n(first", 100, 0, "4 0 obj\n(second", "second four" },
+        {
+            NearbyFiles.FarFourAndFiveRowAtTheEnd(0).Body, "4 0 obj\n(near", 5, NearbyFiles.FarFourAndFiveRowAtTheEnd(0).NeighborShift,
+            "4 0 obj\n(near", "near four"
+        },
+        {
+            NearbyFiles.FarFourAndFiveRowAtTheEnd(1).Body, "4 0 obj\n(near", 5, NearbyFiles.FarFourAndFiveRowAtTheEnd(1).NeighborShift,
+            "4 0 obj\n(near", "near four"
+        },
     };
 
     [Theory]
@@ -510,7 +568,8 @@ public class DocumentReaderTests
     {
         // The search near a row once served the first header of the number its bytes held: an older definition an update
         // replaced, a few bytes off the newer one's row (#171). It serves the one as far from the row as the headers of the
-        // objects beside it are from their own rows, where one is; otherwise the nearest, the one before the row on a tie.
+        // objects beside it are from their own rows, where one is; otherwise the nearest, the one before the row on a tie. A
+        // row at the end of the file or past it places no object, and confirms none, whatever header lies as far from it.
         var (file, _) = NearbyFiles.FourNear(body, anchor, shift, neighborShift);
         using var document = PdfDocument.Open(file);
 
@@ -518,6 +577,81 @@ public class DocumentReaderTests
         document.WasRepaired.Should().BeFalse();
         document.Diagnostics.Should().ContainSingle().Which.Should().Match<PdfDiagnostic>(
             report => report.Code == PdfDiagnosticCodes.XRefOffsetAdjusted && report.Position == PdfTemplate.OffsetOf(file, servedAt));
+    }
+
+    [Fact]
+    public void Of_the_definitions_near_the_lowest_row_of_the_index_the_nearest_is_served_an_entry_written_minus_one_being_no_row_before_it()
+    {
+        // Object 4 is written twice before the catalog and the page tree: (near four) 5 bytes before its row, the lowest the
+        // index gives in the file, and (far four) 41 bytes past it. No row lies before 4's, and the one after it, the
+        // catalog's, has no header at either distance. Object 7's row is written -1, and its header lies 40 bytes into the
+        // file, as far past the offset -1 names as (far four) lies past 4's row: -1 is no row, and confirms nothing. The
+        // nearer definition is served.
+        var file = new HandWrittenFile();
+        file.Raw("%" + new string('-', 29) + "\n");
+        var seven = file.Object(7, "(seven)");
+        var near = file.Object(4, "(near four)");
+        var row = near + 5;
+        file.Raw("%" + new string('-', (int)(row + seven + 1 - file.Position - "%\n".Length)) + "\n");
+        var far = file.Object(4, "(far four)");
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"),
+            [4] = row,
+            [7] = -1,
+        };
+        file.Table(8, rows, "/Size 8 /Root 1 0 R");
+        using var document = PdfDocument.Open(file.Bytes);
+
+        (far - row).Should().Be(seven + 1, "-1 names the offset a byte before the header");
+        document.GetObject(new PdfObjectId(4)).Should().BeOfType<PdfString>().Which.ToText().Should().Be("near four");
+        document.WasRepaired.Should().BeFalse();
+        document.Diagnostics.Should().ContainSingle().Which.Should().Match<PdfDiagnostic>(
+            report => report.Code == PdfDiagnosticCodes.XRefOffsetAdjusted && report.Position == near);
+    }
+
+    [Fact]
+    public void A_search_near_a_row_that_finds_a_single_header_of_its_object_sorts_none_of_the_index_s_offsets()
+    {
+        // Twenty thousand objects, each at its row but objects 4 and 5, whose rows lie 5 bytes past their headers. Object 5 is
+        // read first, outside the measure: the reader relocates it, and copies the chain's index as it does. The search near
+        // 4's row then finds one header of 4, and serves it: with nothing to choose between, the rows beside the entry are not
+        // asked whether they are shifted as far, which would sort the offsets of the whole index, 8 bytes each.
+        const int Objects = 20_000;
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"),
+        };
+
+        for (var number = 3; number < Objects; number++)
+        {
+            rows[number] = file.Object(number, string.Create(CultureInfo.InvariantCulture, $"({number})")) + (number is 4 or 5 ? 5 : 0);
+        }
+
+        file.Table(Objects, rows, string.Create(CultureInfo.InvariantCulture, $"/Size {Objects} /Root 1 0 R"));
+        var bytes = file.Bytes;
+
+        var allocated = Allocations.Least(
+            () =>
+            {
+                var opened = PdfDocument.Open(bytes);
+                opened.GetObject(new PdfObjectId(5));
+                return opened;
+            },
+            opened => opened.GetObject(new PdfObjectId(4)),
+            out var document,
+            out var four);
+
+        using (document)
+        {
+            four.AsText().Should().Be("4");
+            document.Diagnostics.Where(entry => entry.Code == PdfDiagnosticCodes.XRefOffsetAdjusted).Select(entry => entry.Position)
+                .Should().Equal(rows[5] - 5, rows[4] - 5);
+            allocated.Should().BeLessThan(Objects * sizeof(long) / 2, "no offset of the index is sorted");
+        }
     }
 
     /// <summary>
@@ -594,6 +728,32 @@ public class DocumentReaderTests
             document.Diagnostics.Should().ContainSingle().Which.Should().Match<PdfDiagnostic>(
                 report => report.Code == PdfDiagnosticCodes.XRefOffsetAdjusted && report.Position == PdfTemplate.OffsetOf(file, servedAt));
         }
+    }
+
+    [Theory]
+    [InlineData(null, "where it cuts a number")]
+    [InlineData(0, "where there is no object header")]
+    [InlineData(1, "where there is no object header")]
+    public void A_row_whose_read_from_the_byte_before_it_comes_back_short_finds_no_header_there_and_its_object_near_it(int? given, string said)
+    {
+        // Object 4's row lands on the 4 of 14 0 obj, and its own header lies 28 bytes before it. Read whole, the byte before
+        // the row and the byte at it tell that the row cuts a number. The source gives the reads that start at the byte before
+        // the row no byte, or that byte alone, as a caller's may (#52): the reader takes what it is given as all the file holds
+        // there, weighs no byte the reads did not give, and finds no header at the row. A load serves object 4 from its own
+        // header near the row either way, and the validator calls the entry shifted from what it read there.
+        var (file, row) = NearbyFiles.FourNear("4 0 obj\n(real four)\nendobj\n14 0 obj\n(fourteen)\nendobj\n", "14 0 obj", 1);
+        var four = PdfTemplate.OffsetOf(file, "4 0 obj\n(real");
+        using var source = new ShortCountSource(file, (offset, held) => offset == row - PdfFileReader.ByteBeforeRow && given is { } count ? count : held);
+        using var document = PdfDocument.Open(source, options: null, ownsSource: false);
+
+        document.GetObject(new PdfObjectId(4)).AsText().Should().Be("real four");
+        document.WasRepaired.Should().BeFalse();
+        document.Diagnostics.Select(diagnostic => (diagnostic.Code, diagnostic.Position)).Should().Equal((PdfDiagnosticCodes.XRefOffsetAdjusted, four));
+        new PdfValidator().Validate(document).Findings.Where(finding => finding.Location.Object == new PdfObjectId(4))
+            .Select(finding => (finding.RuleId, finding.Message)).Should().Equal((
+                PdfValidationRuleIds.XRefEntryShifted,
+                string.Create(CultureInfo.InvariantCulture, $"The entry of object 4 gives offset {row}, {said}; the object starts {row - four} bytes before it, at offset {four}.")));
+        (source.ShortReads > 0).Should().Be(given is not null);
     }
 
     /// <summary>
@@ -4569,6 +4729,7 @@ public class DocumentReaderTests
     [InlineData("1 2 (\n{2}\n)", true)]
     [InlineData(") (\n{2}\n)", true)]
     [InlineData("<< % obj\n/Note (\n{2}\n) >>", true)]
+    [InlineData("[ (\n6 0 obj (six\n{2}\n)\n) stream ]", true)]
     public async Task A_rebuild_delimits_an_object_as_a_load_lexes_its_value(string value, bool injected)
     {
         // Object 5's value holds, on a line of its own inside a string, a second page tree, object 2 again, marked /Injected.
@@ -4579,7 +4740,9 @@ public class DocumentReaderTests
         // leaves the string after it between objects, and one no load reads, a stray parenthesis, has what follows its
         // header read as the bytes give it: the header on its own line is taken (#171).
         // A comment inside a container is read to its end of line, past the obj of a longer word; one that holds obj
-        // as a word, which the scan may take for a header's, leaves the value undelimited too.
+        // as a word, which the scan may take for a header's, leaves the value undelimited too. So does the keyword stream
+        // inside a container: a header within what the lexing read, object 6's, is taken undelimited, its own string, which
+        // holds object 2's header, hiding nothing, for no byte is lexed for one object after another.
         const string Injected = "2 0 obj\n<< /Type /Pages /Kids [] /Count 0 /Injected true >>";
         var file = new HandWrittenFile();
         file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>");
@@ -4913,20 +5076,26 @@ public class DocumentReaderTests
     }
 
     [Theory]
-    [InlineData(0, "nine")]
-    [InlineData(-1, "inner nine")]
-    public void An_object_that_ends_the_file_is_delimited_under_a_MaxObjectLength_as_long_as_it(int slack, string nine)
+    [InlineData("<< /S ({x}\n9 0 obj\n(inner nine)\n) >>\n", 0, "nine")]
+    [InlineData("<< /S ({x}\n9 0 obj\n(inner nine)\n) >>\n", -1, "inner nine")]
+    [InlineData("<< /S ({x}\n9 0 obj\n(inner nine)\n) >>\nstream\n", 0, "nine")]
+    [InlineData("<< /S ({x}\n9 0 obj\n(inner nine)\n) >>\nstream\n", -1, "inner nine")]
+    [InlineData("<< /S ({x}\n8 0 obj (eight\n9 0 obj\n(inner nine)\n)\n) >>\n", -1, "inner nine")]
+    public void An_object_that_ends_the_file_is_delimited_under_a_MaxObjectLength_as_long_as_it(string value, int slack, string nine)
     {
-        // Object 5, the last in a file cut after its dictionary, holds on a line of its own inside a string a second object 9.
-        // Under a MaxObjectLength as long as object 5, the scan lexes it to the end of the file and delimits it: it hides the
-        // header. A byte shorter, object 5 runs past the bound, and object 9 is defined again (#171).
+        // Object 5, the last in a file cut after its dictionary, or after the stream keyword that follows it, holds on a line
+        // of its own inside a string a second object 9. Under a MaxObjectLength as long as object 5, the scan lexes it to the
+        // end of the file and delimits it, a stream whose data starts where the file ends too: it hides the header. A byte
+        // shorter, object 5 runs past the bound, and object 9 is defined again: what the scan lexed of object 5 is taken as
+        // the bytes give it, no header there delimited, so that object 8's string, which holds object 9's header there, hides
+        // nothing (#171).
         var file = new HandWrittenFile();
         file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>");
         file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>");
         file.Object(9, "(nine)");
         file.Raw("trailer\n<< /Root 1 0 R >>\n");
         var five = file.Position;
-        file.Raw("5 0 obj\n<< /S (" + new string('x', 200) + "\n9 0 obj\n(inner nine)\n) >>\n");
+        file.Raw("5 0 obj\n" + value.Replace("{x}", new string('x', 200), StringComparison.Ordinal));
         var options = new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxObjectLength = (int)(file.Position - five) + slack } };
         using var document = PdfDocument.Open(file.Bytes, options);
 

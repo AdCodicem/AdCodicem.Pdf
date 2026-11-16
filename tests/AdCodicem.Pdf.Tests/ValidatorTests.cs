@@ -370,6 +370,7 @@ public class ValidatorTests
 
     [Theory]
     [InlineData("section faults", PdfValidationRuleIds.XRefSectionShifted, 256)]
+    [InlineData("sections the reader cannot vouch for", PdfValidationRuleIds.XRefSectionUnconfirmed, 256)]
     [InlineData("section faults", PdfValidationRuleIds.FileTrailerMalformed, 256)]
     [InlineData("a trailer keyword followed by no dictionary", PdfValidationRuleIds.FileTrailerMalformed, 256)]
     [InlineData("a trailer without its keyword", PdfValidationRuleIds.FileTrailerMissing, 256)]
@@ -678,12 +679,14 @@ public class ValidatorTests
                 PdfReaderLimits.Default),
             ["object faults"] = (ObjectFaults(), PdfReaderLimits.Default),
             ["index faults"] = (IndexFaults(), PdfReaderLimits.Default),
+            ["entries the reader cannot vouch for"] = (UnconfirmedEntries(), PdfReaderLimits.Default),
             ["headers past the object guard"] = (HeadersPastTheGuard(), PdfReaderLimits.Default with { MaxObjectLength = 16 * 1024 }),
             ["entries left undecided"] = (UndecidedEntries(), PdfReaderLimits.Default),
             ["object streams the object guard cuts"] = (ObjectStreamsPastTheGuard(), PdfReaderLimits.Default with { MaxObjectLength = 1024 }),
             ["streams in an object stream only a rebuild places"] = (StreamsOnlyARebuildPlaces(), PdfReaderLimits.Default),
             ["object stream faults"] = (ObjectStreamFaults(), PdfReaderLimits.Default),
             ["section faults"] = (SectionFaults(), PdfReaderLimits.Default),
+            ["sections the reader cannot vouch for"] = (UnconfirmedSections(), PdfReaderLimits.Default with { MaxIndexEntries = 8 }),
             ["a trailer without its keyword"] = (SectionFaults(keyword: false), PdfReaderLimits.Default),
             ["a trailer keyword followed by no dictionary"] = (
                 PdfTemplate.SoundWith("<< /Size 4 /Root 1 0 R >>", "/Size 4 /Root 1 0 R >>"), PdfReaderLimits.Default),
@@ -790,6 +793,28 @@ public class ValidatorTests
         }
 
         file.Table(12, rows, "/Size 12 /Root 1 0 R");
+        return file.Bytes;
+    }
+
+    /// <summary>
+    /// Three entries that each give the offset of the last digit of a header's number, 13, 14 and 15, where the header of
+    /// their object, 3, 4 and 5, is glued to the digit before it: the reader takes it, and cannot vouch for it.
+    /// </summary>
+    private static byte[] UnconfirmedEntries()
+    {
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"),
+        };
+
+        for (var number = 3; number <= 5; number++)
+        {
+            rows[number] = file.Object(number + 10, "(glued)") + 1;
+        }
+
+        file.Table(6, rows, "/Size 6 /Root 1 0 R");
         return file.Bytes;
     }
 
@@ -949,6 +974,39 @@ public class ValidatorTests
 
         text.Append(CultureInfo.InvariantCulture, $"startxref\n{previous}\n%%EOF\n");
         return Encoding.Latin1.GetBytes(text.ToString());
+    }
+
+    /// <summary>
+    /// Ten definitions of object 3, then a classic table and three updates, each a table that frees nothing but object 0,
+    /// whose <c>/Prev</c> names the table before it 2 bytes into its <c>xref</c> keyword: under a bound of 8 places, the
+    /// scan's memo is whole only before the tables, and each is found moved where the reader cannot vouch for it.
+    /// </summary>
+    private static byte[] UnconfirmedSections()
+    {
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"),
+        };
+
+        for (var index = 0; index < 10; index++)
+        {
+            rows.TryAdd(3, file.Object(3, string.Create(CultureInfo.InvariantCulture, $"({index})")));
+        }
+
+        var table = file.Table(4, rows, "/Size 4 /Root 1 0 R");
+
+        for (var update = 0; update < 3; update++)
+        {
+            var at = file.Position;
+            file.Raw(string.Create(
+                CultureInfo.InvariantCulture,
+                $"xref\n0 1\n0000000000 65535 f \ntrailer\n<< /Size 4 /Root 1 0 R /Prev {table + 2} >>\nstartxref\n{at}\n%%EOF\n"));
+            table = at;
+        }
+
+        return file.Bytes;
     }
 
     /// <summary>
