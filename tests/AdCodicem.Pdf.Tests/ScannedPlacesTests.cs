@@ -47,6 +47,10 @@ public class ScannedPlacesTests
     [InlineData("a header past a stream with no endstream whose indirect length names an object the file lacks", "Clean")]
     [InlineData("a header past a stream with no endstream or endobj whose indirect length names an object the file lacks", "Clean")]
     [InlineData("a header in the data of an intact stream whose indirect length names an object the file lacks", "Raw")]
+    [InlineData("a header in the data of a stream with no endstream whose indirect length names a negative object number", "Raw")]
+    [InlineData("a header in the data of a stream with no endstream whose indirect length names an object number past the largest", "Raw")]
+    [InlineData("a header in the data of a stream with no endstream whose indirect length names a negative generation", "Raw")]
+    [InlineData("a header in the data of a stream with no endstream whose indirect length names a generation past the largest", "Raw")]
     [InlineData("a header in the data of an intact stream that the length an object of its length's number holds runs past", "Raw")]
     [InlineData("a header past a stream with no endstream or endobj whose length names another generation than the object past it", "Clean")]
     [InlineData("a header in the data of an intact stream whose length names an object that holds a real number", "Raw")]
@@ -249,6 +253,18 @@ public class ScannedPlacesTests
                 "5 0 obj\n<< /Length 8 0 R >>\nstream\n0123456789\n9 0 obj\n(nine)\nendobj\n",
             "a header in the data of an intact stream whose indirect length names an object the file lacks" =>
                 "5 0 obj\n<< /Length 8 0 R >>\nstream\n0123 9 0 obj (x) endobj\nendstream\nendobj\n",
+
+            // Stream 5's indirect length names a pair no reference may name, which a load reads as a direct length, here one no
+            // stream can have or one past the end of the file: the scan has no object to look for, reads the data as the bytes
+            // give it up to its first endstream, here the end of the file, and holds object 9's header as taken there.
+            "a header in the data of a stream with no endstream whose indirect length names a negative object number" =>
+                "5 0 obj\n<< /Length -8 0 R >>\nstream\n0123456789\n9 0 obj\n(nine)\nendobj\n",
+            "a header in the data of a stream with no endstream whose indirect length names an object number past the largest" =>
+                "5 0 obj\n<< /Length 2147483648 0 R >>\nstream\n0123456789\n9 0 obj\n(nine)\nendobj\n",
+            "a header in the data of a stream with no endstream whose indirect length names a negative generation" =>
+                "5 0 obj\n<< /Length 99999 -1 R >>\nstream\n0123456789\n9 0 obj\n(nine)\nendobj\n",
+            "a header in the data of a stream with no endstream whose indirect length names a generation past the largest" =>
+                "5 0 obj\n<< /Length 99999 65536 R >>\nstream\n0123456789\n9 0 obj\n(nine)\nendobj\n",
             "a header in the data of an intact stream that the length an object of its length's number holds runs past" =>
                 "5 0 obj\n<< /Length 8 1 R >>\nstream\n0123 9 0 obj (x) endobj\nendstream\nendobj\n8 0 obj\n10\nendobj\n",
             "a header past a stream with no endstream or endobj whose length names another generation than the object past it" =>
@@ -1459,6 +1475,42 @@ public class ScannedPlacesTests
         (memo.IsWhole, memo.WholeUntil).Should().Be((true, pagesEnd));
         new PdfValidator().Validate(document).Findings.Where(finding => finding.Location.Object == new PdfObjectId(12))
             .Select(finding => (finding.RuleId, finding.Severity)).Should().Equal((PdfValidationRuleIds.XRefEntryUnconfirmed, PdfValidationSeverity.Error));
+    }
+
+    [Fact]
+    public void A_rebuild_whose_search_for_where_a_load_ends_a_stream_s_data_is_given_no_byte_takes_serves_and_says_what_a_whole_read_does()
+    {
+        // The file has no startxref: opening rebuilds the index, and no memo is made. Stream 5 lost its endstream, and the
+        // source gives no byte of the first read of the scan's search for where a load ends its data past its direct
+        // length, as a caller's may (#52). That search decides only how a memo counts places, and a rebuild's scan keeps
+        // none: the rebuild takes, serves and says what one whose reads are all whole does.
+        var file = new HandWrittenFile();
+        file.Object(1, Catalog);
+        file.Object(2, Pages);
+        file.Raw("5 0 obj\n<< /Length 10 >>\nstream\n");
+        var dataStart = file.Position;
+        file.Raw("0123456789\nendobj\n");
+        file.Object(12, "(twelve)");
+        file.Raw("trailer\n<< /Size 13 /Root 1 0 R >>\n%%EOF\n");
+        var bytes = file.Bytes;
+        var given = new HashSet<long>();
+        var source = new ShortCountSource(bytes, (offset, held) => offset == dataStart && given.Add(offset) ? 0 : held);
+        using var emptied = PdfDocument.Open(source, options: null, ownsSource: true);
+        using var whole = PdfDocument.Open(bytes);
+
+        source.ShortReads.Should().Be(1);
+
+        foreach (var document in new[] { emptied, whole })
+        {
+            document.WasRepaired.Should().BeTrue();
+            document.Catalog.Should().NotBeNull();
+            document.GetObject(new PdfObjectId(12)).AsText().Should().Be("twelve");
+            var five = document.GetObject(new PdfObjectId(5)).Should().BeOfType<PdfStream>().Subject;
+            Encoding.Latin1.GetString(five.GetRawBytes().Span).Should().Be("0123456789");
+        }
+
+        emptied.Diagnostics.Should().Equal(whole.Diagnostics);
+        Entries(emptied).Should().Equal(Entries(whole));
     }
 
     [Theory]

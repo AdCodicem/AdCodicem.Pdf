@@ -1710,6 +1710,29 @@ public class CrossReferenceRuleTests
             $"The entry of object 4 gives offset {at + 2}, where there is no object header; the object starts 2 bytes before it, at offset {at}.");
     }
 
+    [Theory]
+    [InlineData(0)]
+    [InlineData(3)]
+    public void An_entry_near_a_header_whose_read_from_its_start_comes_back_short_is_broken(int given)
+    {
+        // Object 4's entry gives the offset two bytes past its header, which the search near the entry finds in the bytes it
+        // reads from before the header. The source gives a read that starts at the header no byte, or 4 0 alone, as a
+        // caller's may (#52): the reader takes what it is given as all the file holds there, where a load parses no header,
+        // and the entry is broken. Settling, which decides each entry as a load of its object would, rebuilds the index.
+        var file = NearbyFiles.FourWrittenAs("4 0 obj", shift: 2);
+        var header = PdfTemplate.OffsetOf(file, "4 0 obj");
+        var source = new ShortCountSource(file, (offset, held) => offset == header ? given : held);
+        using var document = PdfDocument.Open(source, options: null, ownsSource: true);
+        var repairedOnOpening = document.WasRepaired;
+
+        var findings = new PdfValidator().Validate(document).Findings;
+
+        findings.Where(finding => finding.Location.Object == new PdfObjectId(4)).Select(finding => (finding.RuleId, finding.Message)).Should().Equal((
+            PdfValidationRuleIds.XRefEntryBroken,
+            Invariant($"The entry of object 4 gives offset {header + 2}, where there is no object header, and the object is not within 512 bytes of it.")));
+        (repairedOnOpening, document.WasRepaired, source.ShortReads > 0).Should().Be((false, true, true));
+    }
+
     [Fact]
     public void An_entry_naming_the_object_before_its_own_is_shifted_from_that_object_s_header()
     {
