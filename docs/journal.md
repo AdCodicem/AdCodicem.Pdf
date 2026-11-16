@@ -7,6 +7,33 @@ to about thirty lines each; the unabridged text is the
 [journal of `e38ebbc`](https://github.com/AdCodicem/AdCodicem.Pdf/blob/e38ebbc471b86779c3f6ac5b320ca1ecd531b2c1/docs/status.md#journal). A session reads an entry when it needs the
 reason for a past decision. A new entry is short, about thirty lines; the detail is in the pull request's body.
 
+## 2026-11-16 — Batch 22, first pull request: why the chain leaves the index to a rebuild at opening ([#218], [#322], [#323], [#325])
+
+- **The question.** Measured on `main` at `7e8dd24`, twice, identical: a chain each of whose sections reads whole and
+  indexes nothing was rebuilt at opening with no finding ([#218]); a table whose `trailer` keyword no dictionary
+  follows was read as sound, what older sections index reading as null ([#322]); the section `startxref` names, there
+  and unreadable or missing, left only `xref.rebuilt` ([#323]); `xref.section-malformed` was silent where the trailer
+  was at fault too ([#325]).
+- **Settled with the maintainer** (2026-11-16, each as recommended): the batch's seven issues in two pull requests by
+  area, the chain first, the catalog after a rebuild ([#132], [#229], [#260]) next; a new Error rule,
+  `xref.chain-empty`; a table whose trailer keyword no dictionary follows read in part, the first section included;
+  a dictionary the rows run into with no keyword read as the trailer; `xref.section-missing` for a `startxref` that
+  names no section; after round 1, fixing its three minors — regressions on hand-made shapes — in a second round.
+- **What changed.** Such a keyword-less dictionary is the table's trailer — its `/Prev` followed, its `/Root`,
+  `/Encrypt` and `/ID` kept, which a rebuild lost — and the table is read in part, no older row standing for a number
+  it does not give, rows having perhaps been lost with the keyword. The first section's loss is reported before the
+  rebuild. `xref.section-malformed` names a section's own fault whatever its trailer's.
+- **Review** (ADR 54): two rounds. Round 1, five lenses: one major claimed, a refuter downgrading it to a nit, 3
+  minors, about twenty nits. Round 2, three lenses over the fixes: no blocker, major or minor; the final pass fixed the
+  texts. Filed: [#375] to [#379].
+- **Mutation** (ADR 53 amended): 23 mutants over the defenses among the changed lines; 18 killed by the suite, 4 by
+  tests the step wrote, 1 equivalent, checked by a second agent.
+- **Checks.** 12,206 unit tests, 12,203 passed and 3 skipped; the timing and memory tests alone; the patch's 114
+  coverable lines whole; the site; the corpus differential over 408 documents: no finding nor object changes, 65 gain
+  `xref.section-missing` at opening, 5 `xref.section-unreadable`, iPRES `t04-008` and `t04-009` read in part.
+- **For callers.** A rebuild at opening now says why in the diagnostics; an encrypted file whose `trailer` keyword is
+  lost keeps its `/Encrypt`, refused rather than read as ciphertext; a new Error rule judges an empty chain.
+
 ## 2026-11-16 — Batch 21, second pull request: what lies inside another object, told in the searches near a row and near an offset ([#171])
 
 - **The question.** Measured on `main`: a header or a cross-reference section inside a string, a stream's data or a
@@ -1000,3 +1027,8 @@ The detail is in git and in the pull requests; what still matters is in the reco
 [#372]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/372
 [#373]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/373
 [#374]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/374
+[#375]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/375
+[#376]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/376
+[#377]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/377
+[#378]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/378
+[#379]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/379
