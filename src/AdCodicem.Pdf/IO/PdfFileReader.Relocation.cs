@@ -634,7 +634,7 @@ internal sealed partial class PdfFileReader
     /// (<see cref="IsTokenOnItsLine"/>), from its first sign where its number is written with a run of signs that starts
     /// with a <c>+</c> (<see cref="HeaderTokenStart"/>), wherever it lies. Where the line starts too far back to tell, a
     /// place that cannot be read declares no section, whatever the memo says of it, and the search goes on; a stream
-    /// passed over is reported where the scan for objects takes it between objects (<see cref="PlaceCheck.Clean"/>).
+    /// passed over is reported where the scan's memo counts it as taken between objects (<see cref="PlaceCheck.Clean"/>).
     /// </summary>
     /// <remarks>
     /// That the scan takes the place does not answer it where the line can be lexed (<see cref="CheckPlace"/>): where the
@@ -644,8 +644,10 @@ internal sealed partial class PdfFileReader
     /// as part of that comment. Where the line test cannot tell, the memo does not tell that word from a token either:
     /// taken for a section that cannot be read, it would end the search short of a section a few bytes on, and what the
     /// file serves would hang on how long the line is. A section that reads is taken without the line test. A stream
-    /// passed over only words a diagnostic: the memo's word stands for it, for a place the scan takes between objects,
-    /// where it sweeps every comment and string as a load lexes them but what follows such a marker, and for no other.
+    /// passed over only words a diagnostic: the memo's word stands for it, for a place the memo counts as taken between
+    /// objects — where the scan sweeps every comment and string as a load lexes them but what follows such a marker, or
+    /// past where a load ends the data of a stream that lost its <c>endstream</c>, which the scan does not sweep —, and for
+    /// no other.
     /// </remarks>
     /// <param name="span">The bytes searched, and the byte before them where the window holds one.</param>
     /// <param name="spanStart">Where <paramref name="span"/> starts in the file.</param>
@@ -790,10 +792,13 @@ internal sealed partial class PdfFileReader
         /// <summary>The scan does not take it: it is no section, and is not tried.</summary>
         Skipped,
 
-        /// <summary>The scan takes it between objects.</summary>
+        /// <summary>The scan's memo counts it as taken between objects (<see cref="ScannedPlaceKind.Clean"/>).</summary>
         Clean,
 
-        /// <summary>The scan takes it as the bytes give it: a section found there is unconfirmed.</summary>
+        /// <summary>
+        /// The scan's memo counts it as taken only as the bytes give it (<see cref="ScannedPlaceKind.Raw"/>): a section found
+        /// there is unconfirmed.
+        /// </summary>
         Raw,
 
         /// <summary>It lies past the memo's places: tried without the scan's word, a section found there unconfirmed.</summary>

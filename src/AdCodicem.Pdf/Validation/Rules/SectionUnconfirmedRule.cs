@@ -9,11 +9,13 @@ namespace AdCodicem.Pdf.Validation.Rules;
 /// </summary>
 /// <remarks>
 /// The cases are <see cref="PdfValidationRuleIds.XRefSectionUnconfirmed"/>'s. Where the section the reader takes near the
-/// offset lies in bytes its scan for objects takes as they come, they may be another object's — an attached file's own
-/// table, a stream the data quotes —, and past where what the scan keeps is whole the reader goes without its word: the
-/// choice is the reader's, not the file's, and the reader cannot vouch that it reads what was written, an error (ADR 45).
-/// A section found where the scan takes it between objects, before there, is
-/// <see cref="PdfValidationRuleIds.XRefSectionShifted"/>'s.
+/// offset lies in bytes its scan for objects takes as they come and does not count as found between objects, they may be
+/// another object's — an attached file's own table, a stream the data quotes —, and past where what the scan keeps is
+/// whole the reader goes without its word: the choice is the reader's, not the file's, and the reader cannot vouch that it
+/// reads what was written, an error (ADR 45). A section found where the scan counts what it takes as found between
+/// objects, before there, is <see cref="PdfValidationRuleIds.XRefSectionShifted"/>'s: past where a load ends the data of
+/// a stream that lost its <c>endstream</c> too, so that the loss of that keyword does not make an error of every section
+/// shifted in the bytes it leaves to the next <c>endstream</c>.
 /// </remarks>
 internal sealed class SectionUnconfirmedRule : IValidationRule
 {

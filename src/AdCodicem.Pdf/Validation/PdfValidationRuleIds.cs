@@ -105,13 +105,15 @@ public static class PdfValidationRuleIds
     public const string XRefSectionShifted = "xref.section-shifted";
 
     /// <summary>
-    /// A cross-reference section a <c>/Prev</c> or an <c>/XRefStm</c> names is not where it is named, and the reader takes
-    /// one near it that the file does not confirm: found only where it may lie inside another object — in the data of a
-    /// stream whose length the reader's scan for objects does not confirm, which it does only for a direct <c>/Length</c>
-    /// an <c>endstream</c> follows, or past a string that runs past its object —, or past where what that scan keeps is
-    /// whole — past the places it records within <see cref="Documents.PdfReaderLimits.MaxIndexEntries"/>, or past the last
-    /// object it passed before the end of a read that a source answered with fewer bytes than asked, or, where either ends
-    /// what it keeps while it awaits the object of a stream's indirect <c>/Length</c>, past that stream's data's start.
+    /// A cross-reference section a <c>/Prev</c> or an <c>/XRefStm</c> names is not where it is named, and the reader
+    /// takes one near it that the file does not confirm: found only where it may lie inside another object and the
+    /// reader's scan for objects does not count what it takes as found between objects — in the data of a stream whose
+    /// length that scan does not confirm, which it does only for a direct <c>/Length</c> an <c>endstream</c> follows,
+    /// short of where a load ends the data of a stream that lost its <c>endstream</c>, as far as the bytes it reads
+    /// tell, or past a string that runs past its object —, or past where what that scan keeps is whole — past the
+    /// places it records within <see cref="Documents.PdfReaderLimits.MaxIndexEntries"/>, or past the last object it
+    /// passed before the end of a read that a source answered with fewer bytes than asked, or, where either ends what
+    /// it keeps while it awaits the object of a stream's indirect <c>/Length</c>, past that stream's data's start.
     /// <see cref="PdfValidationSeverity.Error"/>.
     /// </summary>
     public const string XRefSectionUnconfirmed = "xref.section-unconfirmed";
@@ -150,16 +152,18 @@ public static class PdfValidationRuleIds
     /// <summary>
     /// An in-use entry leads the reader to a header of its object the file does not designate, which it serves the
     /// object from all the same. Where the offset holds no header of the object, the reader takes one within 512 bytes
-    /// either side of it: the nearest of several definitions its scan for objects takes between objects, none of which
-    /// the entries next to it in the file's index are shifted alike to; or a header that scan takes only as the bytes
-    /// give it — in the data of a stream whose length it does not confirm, which it does only for a direct <c>/Length</c>
-    /// an <c>endstream</c> follows, or past a string that runs past its object —, or past where what that scan keeps is
-    /// whole — past the places it records within <see cref="Documents.PdfReaderLimits.MaxIndexEntries"/>, or past the last
-    /// object it passed before the end of a read that a source answered with fewer bytes than asked, or, where either ends
-    /// what it keeps while it awaits the object of a stream's indirect <c>/Length</c>, past that stream's data's start.
-    /// Where the offset cuts a number — a digit before it, a digit or a sign at it — and no other definition of the object
-    /// lies within those bytes, the reader takes the header written there, glued to the digits before it, which it cannot
-    /// tell from an offset that lands inside another header's number. <see cref="PdfValidationSeverity.Error"/>.
+    /// either side of it: the nearest of several definitions its scan for objects counts as found between objects, none
+    /// of which the entries next to it in the file's index are shifted alike to; or a header that scan takes only as
+    /// the bytes give it and does not count so — in the data of a stream whose length it does not confirm, which it
+    /// does only for a direct <c>/Length</c> an <c>endstream</c> follows, short of where a load ends the data of a
+    /// stream that lost its <c>endstream</c>, as far as the bytes it reads tell, or past a string that runs past its
+    /// object —, or past where what that scan keeps is whole — past the places it records within
+    /// <see cref="Documents.PdfReaderLimits.MaxIndexEntries"/>, or past the last object it passed before the end of a
+    /// read that a source answered with fewer bytes than asked, or, where either ends what it keeps while it awaits the
+    /// object of a stream's indirect <c>/Length</c>, past that stream's data's start. Where the offset cuts a number —
+    /// a digit before it, a digit or a sign at it — and no other definition of the object lies within those bytes, the
+    /// reader takes the header written there, glued to the digits before it, which it cannot tell from an offset that
+    /// lands inside another header's number. <see cref="PdfValidationSeverity.Error"/>.
     /// </summary>
     public const string XRefEntryUnconfirmed = "xref.entry-unconfirmed";
 

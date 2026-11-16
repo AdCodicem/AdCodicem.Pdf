@@ -194,13 +194,13 @@ map takes, below, never one in a string, a comment or the data of a stream whose
 confirms ([#171](https://github.com/AdCodicem/AdCodicem.Pdf/issues/171)), as far as what that scan keeps reaches —
 [The cost of the trade](#the-cost-of-the-trade) says how far, when the scan runs and what it costs. An object is found
 at the header of its number that the rows next to its own are shifted alike to, else at the nearest, the one before its
-row on a tie, a header the scan takes between objects ranking before one it takes as the bytes give it. A row that cuts
+row on a tie, a header the scan counts as found between objects, below, ranking before one it does not. A row that cuts
 a number — `14 0 obj` named from its `4` — is read only where the search near it finds no header of the object, and then
 as written, as a header glued to the digits before it — an update appended with no end of line to a file cut after a
 digit —, which the reader cannot tell from a row that lands inside another header's number. Where the reader cannot
 vouch for the header it takes — that one, the nearest of several definitions near the row with no row beside it shifted
-alike, or a header the scan takes only as the bytes give it —, it serves the object all the same, and the validator
-reports the entry as `xref.entry-unconfirmed`.
+alike, or a header the scan does not count so —, it serves the object all the same, and the validator reports the entry
+as `xref.entry-unconfirmed`.
 
 A section an offset names short of its first token, white space and comments between, is read where it is named — a
 cross-reference stream from its object's header, a classic table through a window that opens at the offset, so that the
@@ -298,10 +298,11 @@ not digits a regular character runs into, a header whose number is written with 
 counting from its first sign, as a load reads it, where that sign lies within the bytes searched, and one a `-` starts
 declaring nothing ([#327](https://github.com/AdCodicem/AdCodicem.Pdf/issues/327)) —, as at one it reads: that is the
 section found moved, reported where it was found, rather than passed over for an older section farther off whose rows
-would stand for its lost ones in silence. Where the scan takes the bytes as they come — the data of a stream whose
-length it does not confirm, which it does only for a direct `/Length` an `endstream` follows, or what a string that
-runs past its object runs into —, a section found there is taken all the same, and the validator reports it as
-`xref.section-unconfirmed`, an error: the reader cannot tell whether those bytes are the file's own section or another
+would stand for its lost ones in silence. Where the scan takes the bytes as they come and does not count what it takes
+as found between objects, below — the data of a stream whose length it does not confirm, which it does only for a
+direct `/Length` an `endstream` follows, or what a string that runs past its object runs into —, a section found there
+is taken all the same, and the validator reports it as `xref.section-unconfirmed`, an error: the reader cannot tell
+whether those bytes are the file's own section or another
 object's; so is a section found past what the scan keeps. Wherever
 it lies — a place the chain itself names among them —, a place that cannot be read declares a section only where its
 token starts its line as a load lexes it, the line read again as far as 4,096 bytes before the bytes searched where it

@@ -167,17 +167,20 @@ follows — as the bytes give it, up to its first `endstream`, whatever the leng
 scan's memo counts the places it takes there, as found in the data or between objects. Past an indirect length read
 from the file's bytes the scan reads the 64 bytes of a first read, uncounted, and no further; where they, or the reads
 made past a direct length to confirm it, show that no `endstream` follows, the search for where a load with that length
-ends the data follows, from the data's start, its reads counted; and, for an indirect length, the reads that tell that
-data from an intact stream's — whether a `stream` keyword comes before its first `endstream`, and, where the scan read
-the length, an `endobj` after it — follow, counted past the bytes the scan holds. The memo counts what the scan takes past where that load ends the
-data as found between objects, unless the data reads as intact. The constant's reason covers the scan's counted reads
-of a valid file's own streams, about twice the file; but the streams an attached file's bytes spell in data the scan
-does not confirm, which it reads as objects, count too, and can reach it on a valid file, after which a later stream
-whose direct length a first read cannot confirm is left unconfirmed and has the headers its data spells taken: the one
-way the reads made for the memo can change what the scan takes. By the maintainer's choice, the constant stays
-internal all the same: a known exception to the rule of the Decision that a bound a valid file can reach becomes a
-guard, tracked by [#361](https://github.com/AdCodicem/AdCodicem.Pdf/issues/361), which says what would pay it — a guard
-alone would not, since one reached would still leave that later stream unconfirmed.
+ends the data follows, from the data's start, its reads counted; and, for an indirect length the scan reads while it
+still reads that data, at the header or keyword where it reads it — among the last values it passed, or in the data —,
+or never reads, the reads that tell that data from an intact stream's — whether a `stream` keyword comes before its
+first `endstream`, and, where the scan read the length, an `endobj` after it — follow, counted past the bytes the scan
+holds; a length's object the scan meets past the data, where a writer usually puts it, has no such reads. The memo
+counts what the scan takes past where that load ends the data as found between objects, unless those reads show the data
+intact. The constant's reason covers the scan's counted reads of a valid file's own streams, about twice the file; but
+the streams an attached file's bytes spell in data the scan does not confirm, which it reads as objects, count too, and
+can reach it on a valid file, after which a later stream whose direct length a first read cannot confirm is left
+unconfirmed and has the headers its data spells taken: the one way the reads made for the memo can change what the scan
+takes. By the maintainer's choice, the constant stays internal all the same: a known exception to the rule of the
+Decision that a bound a valid file can reach becomes a guard, tracked by
+[#361](https://github.com/AdCodicem/AdCodicem.Pdf/issues/361), which says what would pay it — a guard alone would not,
+since one reached would still leave that later stream unconfirmed.
 
 ## Context
 
