@@ -433,6 +433,14 @@ benchmark run on `main`). The rebuild's scan for trailers past 12,000 keywords t
 ms over a reference or a null and 408 to 447 ms over a dictionary, against 258 to 288 ms and 473 to 475 ms on `main`
 (`TrailerScanBenchmarks`, a medium job, twice, alternated).
 
+Batch 21's second pull request ([#360]) leaves the rebuild where `main` has it: every shape within the runs' spread,
+allocations equal to the byte (`ObjectScanBenchmarks`, a medium job, `main` and `6a5a4df` alternated twice, one process
+at a time) — a sound thousand-page document 3.7 and 3.8 ms against 4.5 and 3.9, 100,000 plain headers 53.4 and 49.6
+against 52.4 and 53.8, 4 MB of lines of a string holding a `%` 41.8 and 44.7 against 50.2 and 46.2. The scan for the
+memo, which only a search makes, takes 2.1 to 3.4 ms over the sound document, 19 to 21 ms over the plain headers and
+42 ms over the strings. The JIT no longer inlines the lexer in two of the scan's three compiles, where `main` does, at
+no cost the benchmark tells ([#374]).
+
 Batch 21's first pull request ([#352]) makes the rebuild's scan delimit each object it takes, which costs time in
 every shape and allocates what it did (`ObjectScanBenchmarks`, a medium job, one process at a time, `0dc139f` against
 `main`): a sound thousand-page document rebuilt in 4.9 ms against 4.1, 100,000 plain headers in 69 ms against 51, as
@@ -619,12 +627,13 @@ One pull request per batch, each design question put to the maintainer after mea
    headers the walk refuses that a load reads; [#354], encryption's edges at opening; [#355], a cross-reference stream's
    dictionary read in a fixed window; [#356], the expansion's order; [#357], a string a cut leaves open closing on an
    update; [#358], where a piece starts still changing what the scan takes; and [#359], an encrypted document's
-   references into its object streams called missing after a rebuild. Its second filed twelve, all under M02: [#361],
+   references into its object streams called missing after a rebuild. Its second filed thirteen, all under M02: [#361],
    the reads past declared lengths, the one channel by which a length the scan cannot confirm still changes what it
    takes; [#362] and [#363], the data of a stream the scan cannot confirm read as the bytes give it — headers in
    comments there taken in time in their square, and a valid file read after a guard serving an attached file's object
    or merging its trailer —, both as on `main`; [#365] to [#372], the final passes' minors whose fixes change behavior;
-   and [#373], the memo's growth past 2^30 slots, which only a file of gigabytes tells.
+   [#373], the memo's growth past 2^30 slots, which only a file of gigabytes tells; and [#374], the lexer the JIT no
+   longer inlines in the scan's loop.
 5. Slice 4 ([#60]) in two pull requests, streams then fonts, after the decisions it waits on: the severity of a font
    that is not embedded, the standard 14's aliases, where text is "meant to be extractable", how the rules that need
    content are left out and shown so, and the tools that referee both families.
@@ -921,3 +930,4 @@ Until 2026-09-27 this section was a table whose rows were numbered T01 to T40; t
 [#371]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/371
 [#372]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/372
 [#373]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/373
+[#374]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/374
