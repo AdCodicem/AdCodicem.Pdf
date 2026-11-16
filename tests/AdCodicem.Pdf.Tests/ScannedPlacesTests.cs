@@ -75,6 +75,10 @@ public class ScannedPlacesTests
     [InlineData("a header in data a length an earlier object of its number gives cuts, a string a header there a comment holds runs over", null)]
     [InlineData("a header past data a length an earlier object of its number gives cuts, where a stream a comment there holds ends", "Clean")]
     [InlineData("a header past where a load ends the data of a stream whose dictionary, in data a length an earlier object gives cuts, spells endstream", "Clean")]
+    [InlineData("a header that starts where the declared length of a stream with no endstream ends", "Clean")]
+    [InlineData("a header in the data of a stream whose indirect length's object follows a stream whose first header lies past its endstream", "Clean")]
+    [InlineData("a header in the data of a stream whose indirect length's object starts where a stream with no endstream after it declares its data ends", "Clean")]
+    [InlineData("a header in the data of a stream whose indirect length a value in the data of a stream the scan does not confirm holds", "Raw")]
     public void A_header_is_recorded_where_the_scan_takes_it_with_how_it_took_it(string shape, string? kind)
     {
         var text = shape switch
@@ -130,6 +134,25 @@ public class ScannedPlacesTests
                 "5 0 obj\n<< /Length 5 >>\nstream\n01234%abc 9 0 obj\n(nine)\nendobj\n",
             "a header on the line of a string the data of a stream with no endstream opens past its indirect length" =>
                 "8 0 obj\n5\nendobj\n5 0 obj\n<< /Length 8 0 R >>\nstream\n01234(abc 9 0 obj\n(nine)\nendobj\n",
+            "a header that starts where the declared length of a stream with no endstream ends" =>
+                "5 0 obj\n<< /Length 11 >>\nstream\n0123456789\n9 0 obj\n(nine)\nendobj\n",
+
+            // Stream 5's data holds a header, its length's object comes last, and a load with the length it holds ends the
+            // data before that header. Stream 6, after it, has its own indirect length: it awaits nothing where its first
+            // header lies past its endstream, and the scan goes on awaiting stream 5's length's object; nor where stream 6
+            // declares a direct length that ends where that object's header starts, the scan meeting the object past where
+            // it counts places as taken in data. The memo then holds the header in stream 5's data as taken between objects.
+            "a header in the data of a stream whose indirect length's object follows a stream whose first header lies past its endstream" =>
+                "5 0 obj\n<< /Length 7 0 R >>\nstream\n0123 9 0 obj (x) endobj\nendstream\nendobj\n6 0 obj\n<< /Length 8 0 R >>\nstream\nabc\nendstream\nendobj\n"
+                + "4 0 obj (four) endobj\n7 0 obj\n3\nendobj\n",
+            "a header in the data of a stream whose indirect length's object starts where a stream with no endstream after it declares its data ends" =>
+                "5 0 obj\n<< /Length 7 0 R >>\nstream\n0123 9 0 obj (x) endobj\nendstream\nendobj\n6 0 obj\n<< /Length 11 >>\nstream\n0123456789\n7 0 obj\n3\nendobj\n",
+
+            // Stream 6 lies in stream 5's data, which the scan reads as the bytes give it up to its first endstream, and the
+            // value before it, object 8, holds a length short of the header its data holds: a length read there changes no
+            // kind, and the header stays held as taken in that data.
+            "a header in the data of a stream whose indirect length a value in the data of a stream the scan does not confirm holds" =>
+                "5 0 obj\n<< /Length 7 0 R >>\nstream\n8 0 obj\n5\nendobj\n6 0 obj\n<< /Length 8 0 R >>\nstream\n0123456789 9 0 obj (nine) endobj\nendstream x\nendobj\n",
             "a header in a string past the endobj that follows the declared length of a stream with no endstream" =>
                 "5 0 obj\n<< /Length 5 >>\nstream\n01234\nendobj (abc 9 0 obj\n(nine)\nendobj\n",
             "a header in a comment past the endobj that follows the declared length of a stream with no endstream" =>
@@ -233,6 +256,7 @@ public class ScannedPlacesTests
     [InlineData("a keyword past the object whose header a stream with no endstream declares a length past", "Clean")]
     [InlineData("a keyword past the object after a stream with no endstream that declares a length past the end of the file", "Clean")]
     [InlineData("a keyword on the line of a string the data of a stream with no endstream opens past its declared length", "Clean")]
+    [InlineData("a keyword that starts where the declared length of a stream with no endstream ends", "Clean")]
     [InlineData("a keyword in a comment", null)]
     [InlineData("a keyword in a string between objects", null)]
     [InlineData("a keyword inside an object", null)]
@@ -266,6 +290,8 @@ public class ScannedPlacesTests
                 ("5 0 obj\n<< /Length 99999 >>\nstream\n0123\nendobj\n9 0 obj\n(nine)\nendobj\nxref\n", "xref"),
             "a keyword on the line of a string the data of a stream with no endstream opens past its declared length" =>
                 ("5 0 obj\n<< /Length 4 >>\nstream\n0123(abc xref\n", "xref"),
+            "a keyword that starts where the declared length of a stream with no endstream ends" =>
+                ("5 0 obj\n<< /Length 5 >>\nstream\n0123\nxref\n", "xref"),
             "a keyword in a comment" => ("% xref\n", "xref"),
             "a keyword in a string between objects" => ("(see xref)\n", "xref"),
             "a keyword inside an object" => ("9 0 obj\n(an xref)\nendobj\n", "xref"),
@@ -1078,6 +1104,36 @@ public class ScannedPlacesTests
         own.Kind.Should().Be(ScannedPlaceKind.Clean);
         new PdfValidator().Validate(document).Findings.Where(finding => finding.Location.Object == new PdfObjectId(9))
             .Select(finding => (finding.RuleId, finding.Severity)).Should().Equal((PdfValidationRuleIds.XRefEntryShifted, PdfValidationSeverity.Warning));
+    }
+
+    [Fact]
+    public void A_stream_no_endstream_follows_to_the_end_of_the_file_is_not_read_on_to_tell_it_from_an_intact_one()
+    {
+        // Stream 5 starts 300 bytes before the scan's first piece ends, and no endstream follows it, 600,000 bytes on to the
+        // end of the file. Object 8, the value before it, holds a length short of the header its data holds: the memo holds
+        // that header as taken between objects. With no endstream after the data, no intact stream can hold it, and the scan
+        // reads nothing to tell one: past its first piece, it reads the file twice — once searching for the data's first
+        // endstream, once in its next piece —, and the few bytes of the search for where a load ends the data.
+        const int Piece = 1 << 20;
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long> { [1] = file.Object(1, Catalog), [2] = file.Object(2, Pages) };
+        PadWithComments(file, Piece - 300);
+        rows[8] = file.Object(8, "5");
+        file.Raw("5 0 obj\n<< /Length 8 0 R >>\nstream\n01234567\n");
+        var inner = file.Position;
+        file.Raw("9 0 obj (nine) endobj\n" + new string('x', 600_000) + "\n");
+        file.Table(9, rows, "/Size 9 /Root 1 0 R");
+        var bytes = file.Bytes;
+        var source = new StrictCountingSource(bytes);
+        using var document = PdfDocument.Open(source, options: null, ownsSource: false);
+
+        var before = source.BytesRead;
+        var memo = document.Reader.GetScanMemo();
+        var read = source.BytesRead - before;
+
+        memo.TryGetHeaderAt(inner, out var header).Should().BeTrue();
+        header.Should().Be(new ScannedHeader(inner, 9, 0, ScannedPlaceKind.Clean));
+        read.Should().BeLessThan(Piece + (2L * (bytes.Length - Piece)) + 4096);
     }
 
     [Theory]
