@@ -1008,6 +1008,8 @@ internal static class HybridFiles
     /// same in a string that object 8 opens on that line; <c>"a stream of no type"</c>, a stream that gives only that
     /// <c>/W</c>, its header beginning its line, and no <c>/Size</c>; <c>"a header on its line"</c>, a stream of
     /// <c>/Type /XRef</c> and no <c>/Size</c>, its header beginning its line, or written behind a string there, as below;
+    /// <c>"a header on its line past a stream of no type"</c>, the same past object 10, a stream that gives only that
+    /// <c>/W</c> and three bytes of data, its header beginning its line, no <c>/Size</c> and no <c>/Prev</c>;
     /// or, where it reads, <c>"a readable header in a comment"</c>, <c>"a readable stream of no type"</c> and <c>"a
     /// readable header on its line"</c>, which give <c>/Index [9 1]</c>, <c>/Size 10</c> and the one row of 3 bytes their
     /// data holds, freeing object 9; or <c>"a long header on its line"</c>, the readable one whose dictionary writes, right
@@ -1040,6 +1042,7 @@ internal static class HybridFiles
         file.Object(21, Invariant($"<< /Type /XRef /Size 22 /W [1 4 2] /Index [4 1 21 1] /Length {rows.Length} >>\nstream\n{rows}\nendstream"));
         const string Row9 = "/Size 10 /Index [9 1] /W [1 1 1] /Length 3";
         const string Data9 = "\n\u0000\u0000\u0000\nendstream\nendobj\n";
+        const string NoType = "10 0 obj << /W [1 1 1] /Length 3 >> stream" + Data9;
         var line = file.Position;
         var (at, written) = place switch
         {
@@ -1047,6 +1050,7 @@ internal static class HybridFiles
             "a header in a string" => (line + 9, "8 0 obj\n(9 0 obj << /Type /XRef /W [1 1 1] >> stream)\nendobj\n"),
             "a stream of no type" => (line, "9 0 obj << /W [1 1 1] >> stream\n"),
             "a header on its line" => (line, header + " << /Type /XRef /W [1 1 1] >> stream\n"),
+            "a header on its line past a stream of no type" => (line + NoType.Length, NoType + header + " << /Type /XRef /W [1 1 1] >> stream\n"),
             "a readable header in a comment" => (line + 2, "% 9 0 obj << /Type /XRef " + Row9 + " >> stream" + Data9),
             "a readable stream of no type" => (line, "9 0 obj\n<< " + Row9 + " >>\nstream" + Data9),
             "a long header on its line" => (line, header + "\n<< /Type /XRef /Pad (" + new string('x', 298) + ") " + Row9 + " >>\nstream" + Data9),

@@ -690,6 +690,7 @@ public class ReaderTimingTests
     [InlineData("headers whose dictionary a string left open follows")]
     [InlineData("headers whose integer value comment lines of headers follow")]
     [InlineData("headers in the comments of a stream whose length is an object")]
+    [InlineData("streams whose length's object before each ends their data before a header in it")]
     public void A_rebuild_s_scan_of_four_times_the_bytes_takes_about_four_times_the_time(string shape)
     {
         // The rebuild's scan searched again for the next obj after each trailer keyword, to the end of its piece where none
@@ -699,7 +700,10 @@ public class ReaderTimingTests
         // scan takes may lie in — after the end-of-file marker, or in the data of a stream whose length it cannot confirm.
         // Each cost what the file held after it: four times the bytes took 17, 32 and 10 times as long, the open string 77 s
         // against 2.4 s, the strings after values 40 s for a megabyte, the comment lines 62 s. Each byte is now searched, lexed and read past a length a bounded number of times, and four times the
-        // bytes take about four times as long (#171). The measure is the ratio, the best opening of each, run in turn.
+        // bytes take about four times as long (#171). So is a stream whose length's object ends its data before a header in
+        // it: the search for a stream keyword from that header stops at the data's first endstream, where searching the rest
+        // of the piece for each such stream would cost what the piece holds after it. The measure is the ratio, the best
+        // opening of each, run in turn.
         var small = ScanShape(shape, 1);
         var large = ScanShape(shape, 4);
 
@@ -737,6 +741,8 @@ public class ReaderTimingTests
                 "headers whose dictionary a string left open follows" => ("3 0 obj<<>> (\n", 256 * 1024),
                 "headers whose integer value comment lines of headers follow" => ("%%EOF 3 0 obj 5\n", 256 * 1024),
                 "headers in the comments of a stream whose length is an object" => ("% 3 0 obj 5\n", 256 * 1024),
+                "streams whose length's object before each ends their data before a header in it" =>
+                    ("8 0 obj\n5\nendobj\n5 0 obj\n<< /Length 8 0 R >>\nstream\n01234\n9 0 obj (x) endobj\nendstream\nendobj\n", 256 * 1024),
                 _ => ("3 0 obj << /Length 65536 >>\nstream\n", 32 * 1024),
             };
 
@@ -751,6 +757,56 @@ public class ReaderTimingTests
             }
 
             return Encoding.Latin1.GetBytes(text.Append("\ntrailer\n<< /Root 1 0 R >>\n%%EOF\n").ToString());
+        }
+    }
+
+    [Fact]
+    public void A_scan_for_the_memo_of_four_times_the_objects_before_a_table_takes_about_four_times_the_time()
+    {
+        // Small objects, then the table, all within the scan's first piece: the scan for the memo finds the table's xref
+        // keyword once and keeps where it lies while it passes the objects before it, rather than searching the bytes up to
+        // it again past each object, which would cost what the piece holds after that object. Four times the objects then
+        // take about four times as long, where searching again would take sixteen. The measure is the ratio, the best scan
+        // of each, run in turn, each in a document of its own, which makes its memo once.
+        const int Small = 15_000;
+        const int Large = 4 * Small;
+        var small = ObjectsBeforeTable(Small);
+        var large = ObjectsBeforeTable(Large);
+
+        var (smallTime, largeTime) = BestOfEach(() => Scan(small), () => Scan(large));
+
+        largeTime.Should().BeLessThan(
+            smallTime * 8,
+            "four times the objects must cost about four times the time ({0} for {1:N0}, {2} for {3:N0})",
+            smallTime,
+            Small,
+            largeTime,
+            Large);
+
+        static void Scan(byte[] file)
+        {
+            using var document = PdfDocument.Open(file);
+            document.Reader.GetScanMemo().IsWhole.Should().BeTrue();
+            document.WasRepaired.Should().BeFalse();
+        }
+
+        static byte[] ObjectsBeforeTable(int objects)
+        {
+            // 17 bytes an object: 60,000 of them and the table lie within the scan's first piece, a mebibyte.
+            var file = new HandWrittenFile();
+            var rows = new Dictionary<int, long>
+            {
+                [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),
+                [2] = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"),
+            };
+
+            for (var i = 0; i < objects; i++)
+            {
+                file.Object(3, "1");
+            }
+
+            file.Table(3, rows, "/Size 3 /Root 1 0 R");
+            return file.Bytes;
         }
     }
 

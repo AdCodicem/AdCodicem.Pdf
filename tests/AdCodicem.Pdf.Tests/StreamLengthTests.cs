@@ -277,6 +277,25 @@ public class StreamLengthTests
     }
 
     [Fact]
+    public void The_read_for_an_endobj_past_white_space_after_a_declared_length_no_endstream_follows_counts_with_the_searches()
+    {
+        // Stream 5's data runs past the window, and 100,000 spaces follow its declared length, then its object's endobj, with
+        // no endstream: the read for an endstream past the length, the search for one from the data's start, and the read
+        // for the endobj that keeps the length each cross those spaces, and each counts with the searches, which
+        // EndStreamSearchPasses bounds.
+        const int Blanks = 100_000;
+        var data = Data(3 * Window);
+        var file = Document((StreamNumber, Stream(data.Length, data, end: new string(' ', Blanks))), (6, "(after)"));
+        using var document = PdfDocument.Open(file);
+
+        var stream = document.GetObject(new PdfObjectId(StreamNumber)).AsStream().Required();
+
+        stream.Data.Length.Should().Be(data.Length);
+        document.Reader.EndStreamSearchBytes.Should().BeGreaterThanOrEqualTo(3L * Blanks)
+            .And.BeLessThan(PdfFileReader.EndStreamSearchPasses * file.Length, "the searches read all they were asked for");
+    }
+
+    [Fact]
     public void Data_of_no_length_is_read_from_no_source()
     {
         // A source that does not hold the file in memory was asked to read the no bytes of a stream of /Length 0, which it

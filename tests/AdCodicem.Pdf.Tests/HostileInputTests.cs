@@ -2916,6 +2916,45 @@ public class HostileInputTests
         }
     }
 
+    [Fact]
+    public void The_search_near_a_row_reads_the_radius_either_side_of_it_with_an_end_of_file_marker_s_length_before_and_a_byte_after()
+    {
+        // Object 4's row lies 300 bytes past its header, inside a comment, far from the file's start and from its end: the
+        // search near the row reads, in one window, the 512 bytes either side of it; the five before them, as many as an
+        // end-of-file marker holds, which tell a header glued to one the window's start cuts (#171); and the byte after them,
+        // which tells an obj that ends them from a longer word (#189).
+        const long At = 805;
+        const int Radius = PdfFileReader.NearbySearchRadius;
+        var row = At + 300;
+        using var source = new WindowLoggingSource(NearbyFiles.HeaderNear(4, At, row));
+        using var document = PdfDocument.Open(source, options: null, ownsSource: false);
+
+        document.GetObject(new PdfObjectId(4)).AsText().Should().Be("near");
+        source.Windows.Should().Contain((row - Radius - "%%EOF".Length, (2 * Radius) + "%%EOF".Length + 1));
+    }
+
+    [Fact]
+    public void The_search_near_an_entry_512_bytes_or_more_past_the_file_s_end_reads_no_byte_of_the_file()
+    {
+        // The page's entry gives an offset 512 bytes past the file's end, or 1,000: no byte of the file lies within 512 bytes
+        // of it, and the search near it reads none, not even the bytes it reads before a window, before the index is rebuilt,
+        // which finds the page (#197). The file is read alike either way.
+        var length = NearbyFiles.PageNamedAt(0, 200).Length;
+
+        Windows(length + PdfFileReader.NearbySearchRadius).Should().Equal(Windows(length + 1000));
+
+        List<(long Offset, int Length)> Windows(long row)
+        {
+            var file = NearbyFiles.PageNamedAt(row, 200);
+            file.Should().HaveCount(length);
+            using var source = new WindowLoggingSource(file);
+            using var document = PdfDocument.Open(source, options: null, ownsSource: false);
+            document.GetObject(new PdfObjectId(3)).AsDictionary().IsOfType(PdfName.Page).Should().BeTrue();
+            document.WasRepaired.Should().BeTrue();
+            return source.Windows;
+        }
+    }
+
     [Theory]
     [InlineData("a comment line")]
     [InlineData("blanks")]

@@ -141,6 +141,25 @@ internal static class NearbyFiles
     }
 
     /// <summary>
+    /// Object 4 written twice, <c>(far four)</c> then <c>(near four)</c>, then object 5, the last object, for
+    /// <see cref="FourNear"/> with a row 5 bytes past <c>(near four)</c>: the body, and the shift of 5's row from its header
+    /// that gives the end of the file, or <paramref name="pastEnd"/> bytes past it, as far as <c>(far four)</c> lies before
+    /// 4's row.
+    /// </summary>
+    public static (string Body, long NeighborShift) FarFourAndFiveRowAtTheEnd(int pastEnd)
+    {
+        const string Far = "4 0 obj\n(far four)\nendobj\n";
+
+        // Rows are ten digits, and the startxref three, whatever comment parts the fours: what follows 5's header is as long.
+        var (measured, _) = FourNear(Body(0), "4 0 obj\n(near", 5);
+        var shift = measured.Length - PdfTemplate.OffsetOf(measured, "5 0 obj") + pastEnd;
+        return (Body(shift - (Far.Length + "%\n".Length + 5)), shift);
+
+        static string Body(long comment) =>
+            Far + "%" + new string('-', (int)comment) + "\n4 0 obj\n(near four)\nendobj\n5 0 obj\n(five)\nendobj\n";
+    }
+
+    /// <summary>
     /// A file that starts with <paramref name="junk"/>, before its header, then holds the catalog, an empty page tree and, past
     /// 1,200 bytes of comment, object 4, <c>(four)</c>, whose row gives the offset of the file's byte at
     /// <paramref name="position"/>, counted from the file's first byte.

@@ -2318,24 +2318,31 @@ public class CrossReferenceChainTests
     }
 
     [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public void A_place_past_the_scan_s_memo_is_tried_by_its_line_once_the_guard_is_reached_and_a_section_found_there_is_unconfirmed(bool throwOnLimit)
+    [InlineData("4 0 obj [0] endobj xref 0 1 bad", false)]
+    [InlineData("4 0 obj [0] endobj xref 0 1 bad", true)]
+    [InlineData("4 0 obj [0]xref 0 1 bad", false)]
+    [InlineData("4 0 obj [0]xref 0 1 bad", true)]
+    public void A_place_past_the_scan_s_memo_is_tried_by_its_line_once_the_guard_is_reached_and_a_section_found_there_is_unconfirmed(
+        string line, bool throwOnLimit)
     {
         // The keyword follows object 4's endobj on its line, and the newest table's /Prev names the place 50 bytes before it.
         // MaxIndexEntries 4 stops the rebuild's scan recording places at object 4's header, before the keyword: the search
         // reaches the guard there, then tries the keyword without the scan's word, a token its line reads, and takes it for
         // the section found moved, which cannot be read; the validator calls the section unconfirmed (ADR 45). A document
-        // opened to throw on a guard throws there (#171, ADR 34).
-        var line = "4 0 obj [0] endobj xref 0 1 bad";
+        // opened to throw on a guard throws there (#171, ADR 34). Glued to the array that ends object 4's value, which no
+        // endobj follows, the keyword starts where the bytes object 4 leaves to read anew start, and MaxIndexEntries 5 stops
+        // the memo at the keyword itself: the memo stops being whole just where the keyword starts, which is tried without
+        // its word there as further on.
+        var glued = !line.Contains("endobj", StringComparison.Ordinal);
         var (file, keyword) = NearbyFiles.KeywordPastALongComment(line);
-        var header = keyword - line.IndexOf("xref", StringComparison.Ordinal);
-        var options = new PdfReaderOptions { ThrowOnLimit = throwOnLimit, Limits = PdfReaderLimits.Default with { MaxIndexEntries = 4 } };
+        var leftOut = glued ? keyword : keyword - line.IndexOf("xref", StringComparison.Ordinal);
+        var bound = glued ? 5 : 4;
+        var options = new PdfReaderOptions { ThrowOnLimit = throwOnLimit, Limits = PdfReaderLimits.Default with { MaxIndexEntries = bound } };
 
         if (throwOnLimit)
         {
             var thrown = FluentActions.Invoking(() => PdfDocument.Open(file, options)).Should().Throw<PdfLimitExceededException>().Which;
-            (thrown.LimitName, thrown.Position).Should().Be((nameof(PdfReaderLimits.MaxIndexEntries), header));
+            (thrown.LimitName, thrown.Position).Should().Be((nameof(PdfReaderLimits.MaxIndexEntries), leftOut));
             return;
         }
 
@@ -2343,12 +2350,50 @@ public class CrossReferenceChainTests
 
         var found = document.Reader.Structure.Sections[1];
         (found.State, found.Offset).Should().Be((XRefSectionState.Malformed, keyword));
+        var memo = document.Reader.GetScanMemo();
+        (memo.FullAt, memo.WholeUntil == keyword).Should().Be((leftOut, glued));
         document.Diagnostics.Select(diagnostic => (diagnostic.Code, diagnostic.Position)).Should().StartWith(
-            [(PdfDiagnosticCodes.LimitIndexEntries, header), (PdfDiagnosticCodes.XRefOffsetAdjusted, keyword)]);
-        document.Diagnostics[0].Message.Should().Be(
-            "The scan for objects recorded 4 object headers and keywords; those past them were not recorded. Raise PdfReaderLimits.MaxIndexEntries to read past it.");
+            [(PdfDiagnosticCodes.LimitIndexEntries, leftOut), (PdfDiagnosticCodes.XRefOffsetAdjusted, keyword)]);
+        document.Diagnostics[0].Message.Should().Be(Invariant(
+            $"The scan for objects recorded {bound} object headers and keywords; those past them were not recorded. Raise PdfReaderLimits.MaxIndexEntries to read past it."));
         new PdfValidator().Validate(document).Findings.Where(finding => finding.Severity == PdfValidationSeverity.Error)
             .Select(finding => (finding.RuleId, finding.Location.Position)).Should().Contain((PdfValidationRuleIds.XRefSectionUnconfirmed, keyword));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void A_table_a_hybrid_table_s_xrefstm_read_that_the_search_near_its_prev_takes_past_the_scan_s_memo_reaches_no_guard(bool throwOnLimit)
+    {
+        // The newest table's /XRefStm names the oldest table, read in the stream's place, and its /Prev the place 2 bytes into
+        // object 5's header, just before that table. The search there tries object 5, which the rebuild's scan's memo holds
+        // and which holds no section, then comes to the oldest table, which it takes as the /XRefStm read it, without asking
+        // the memo. Under MaxIndexEntries 5 the memo holds no place past object 5, the table's keyword the first it leaves
+        // out: its bound keeps the search from nothing it reads, and is neither reported nor thrown (#171, ADR 34).
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"),
+        };
+        file.Object(3, "(three)");
+        file.Object(4, "(four)");
+        var five = file.Object(5, "(five)");
+        var oldest = file.Table(3, rows, "/Size 3 /Root 1 0 R");
+        var newest = file.Table(1, new(), Invariant($"/Size 3 /Root 1 0 R /Prev {five + 2} /XRefStm {oldest}"));
+        var options = new PdfReaderOptions { ThrowOnLimit = throwOnLimit, Limits = PdfReaderLimits.Default with { MaxIndexEntries = 5 } };
+
+        using var document = PdfDocument.Open(file.Bytes, options);
+
+        document.Reader.Structure.Sections.Select(section => (section.NamedBy, section.State, section.Offset)).Should().Equal(
+            ("startxref", XRefSectionState.Read, newest),
+            ("/XRefStm", XRefSectionState.NamedAgain, oldest),
+            ("/Prev", XRefSectionState.Relocated, oldest));
+        document.Diagnostics.Select(diagnostic => (diagnostic.Code, diagnostic.Position)).Should().Equal(
+            (PdfDiagnosticCodes.XRefHybridStreamLost, oldest), (PdfDiagnosticCodes.XRefOffsetAdjusted, oldest));
+        var memo = document.Reader.GetScanMemo();
+        (memo.IsWhole, memo.FullAt).Should().Be((false, oldest));
+        document.WasRepaired.Should().BeFalse();
     }
 
     [Theory]
@@ -9078,6 +9123,7 @@ public class CrossReferenceChainTests
     [InlineData("a readable stream of no type", false, "9 0 obj")]
     [InlineData("a readable header in a comment", false, "9 0 obj")]
     [InlineData("a header on its line", true, "9 0 obj")]
+    [InlineData("a header on its line past a stream of no type", true, "9 0 obj")]
     [InlineData("a readable header on its line", true, "9 0 obj")]
     [InlineData("a header on its line", true, "+9 0 obj")]
     [InlineData("a header on its line", true, "++9 0 obj")]
@@ -9098,7 +9144,8 @@ public class CrossReferenceChainTests
         // which may be anything, readable or not — places the search drops where a fault of the file keeps them from being
         // read, and takes where they read. Only a place that declares itself a cross-reference stream, as one the search
         // takes though a fault of the file keeps it from being read does — its dictionary gives /Type /XRef, and its header is
-        // a token its line reads —, is reported (#156, #171). A header whose number is written with a sign or a run of signs
+        // a token its line reads —, is reported (#156, #171): past object 10, a stream that gives only a /W and no /Prev,
+        // which the search passes over too, object 9 alone is. A header whose number is written with a sign or a run of signs
         // that starts with a +, which a load reads as object 9, is such a token from its first sign, and is reported there,
         // wherever the walk back from obj found it: at its digit, or, where the line its number is on, which an end of line
         // ends before obj, holds a % — a comment that ends that line —, at that sign, the walk lexing that line. Found at its

@@ -26,17 +26,24 @@ public class ScannedPlacesTests
     [InlineData("a header in a string between objects", null)]
     [InlineData("a header in the data of a stream whose length an endstream confirms", null)]
     [InlineData("a header in the data of a stream whose length is an object", "Raw")]
+    [InlineData("a header after another in the data of an intact stream whose indirect length's object follows it", "Raw")]
     [InlineData("a header in what a string that holds endobj runs into", "Raw")]
     [InlineData("a header past the endobj that follows the declared length of a stream with no endstream", "Clean")]
     [InlineData("a header that follows the declared length of a stream with no endstream", "Clean")]
+    [InlineData("a header that follows the declared length of a stream with no endstream, once the scan has read what it may past lengths", "Raw")]
     [InlineData("a header past the endobj that ends a stream with no endstream whose declared length runs into it", "Clean")]
     [InlineData("a header that a stream with no endstream declares a length past", "Raw")]
     [InlineData("a header past the endobj of a stream with no endstream that declares a length past the header", "Clean")]
     [InlineData("a header that holds the indirect length of the stream with no endstream before it", "Clean")]
+    [InlineData("a header that holds the indirect length of the stream with no endstream before it, sixty-one objects before the stream", "Clean")]
     [InlineData("a header that holds the indirect length of the stream before it, whose endstream and endobj are lost", "Clean")]
     [InlineData("a header that holds the indirect length of the stream before it, whose endstream and endobj are lost, an endstream in a string past it", "Clean")]
     [InlineData("a header past a stream with no endstream whose indirect length the object before the stream holds", "Clean")]
     [InlineData("a header past a stream with no endstream or endobj whose indirect length the object before it holds", "Clean")]
+    [InlineData("a header past where the value before a stream ends its data, the value's endobj ending 63 bytes past its header", "Clean")]
+    [InlineData("a header in data the value before its stream would end before it, the value's endobj ending 64 bytes past its header", "Raw")]
+    [InlineData("a header past where the value before a stream ends its data, white space a first read after that end holds between", "Clean")]
+    [InlineData("a header in data the value before its stream would end before it, white space longer than a first read after that end between", "Raw")]
     [InlineData("a header past a stream with no endstream whose indirect length names an object the file lacks", "Clean")]
     [InlineData("a header past a stream with no endstream or endobj whose indirect length names an object the file lacks", "Clean")]
     [InlineData("a header in the data of an intact stream whose indirect length names an object the file lacks", "Raw")]
@@ -52,7 +59,10 @@ public class ScannedPlacesTests
     [InlineData("a header past the object whose header a stream with no endstream declares an indirect length past", "Clean")]
     [InlineData("a header past the object that holds the indirect length its stream with no endstream declares past it", "Clean")]
     [InlineData("a header past the endobj of a stream with no endstream that declares a length past the end of the file", "Clean")]
+    [InlineData("a header in the data of a stream with no endstream that declares a length past the end of the file", "Raw")]
     [InlineData("a header past the endobj of a stream with no endstream whose indirect length runs past the end of the file", "Clean")]
+    [InlineData("a header past the endobj of a stream with no endstream whose indirect length is the largest integer", "Clean")]
+    [InlineData("a header past the endobj of a stream with no endstream whose direct length is the largest integer", "Clean")]
     [InlineData("a header on the line of a string the data of a stream with no endstream opens past its declared length", "Clean")]
     [InlineData("a header on the line of a comment the data of a stream with no endstream opens past its declared length", "Clean")]
     [InlineData("a header on the line of a string the data of a stream with no endstream opens past its indirect length", "Clean")]
@@ -79,6 +89,10 @@ public class ScannedPlacesTests
     [InlineData("a header in the data of a stream whose indirect length's object follows a stream whose first header lies past its endstream", "Clean")]
     [InlineData("a header in the data of a stream whose indirect length's object starts where a stream with no endstream after it declares its data ends", "Clean")]
     [InlineData("a header in the data of a stream whose indirect length a value in the data of a stream the scan does not confirm holds", "Raw")]
+    [InlineData("a header in the data of a stream that a walk back over comment lines reads after its length's object, past the data's first endstream", "Raw")]
+    [InlineData("a header that holds the indirect length of a stream whose data starts where the direct length of the stream holding it ends", "Clean")]
+    [InlineData("a header past what a string that runs past its object's end runs into, in the data of a stream with no length", "Raw")]
+    [InlineData("a header past where a stream with no endstream declares its data ends, in the data of a stream with no length", "Raw")]
     public void A_header_is_recorded_where_the_scan_takes_it_with_how_it_took_it(string shape, string? kind)
     {
         var text = shape switch
@@ -126,8 +140,14 @@ public class ScannedPlacesTests
                 "5 0 obj\n<< /Length 8 0 R >>\nstream\n0123456789\n8 0 obj\n40\nendobj\n9 0 obj\n(nine)\nendobj\n",
             "a header past the endobj of a stream with no endstream that declares a length past the end of the file" =>
                 "5 0 obj\n<< /Length 99999 >>\nstream\n0123456789\nendobj\n9 0 obj\n(nine)\nendobj\n",
+            "a header in the data of a stream with no endstream that declares a length past the end of the file" =>
+                "5 0 obj\n<< /Length 99999 >>\nstream\n0123456789\n9 0 obj\n(nine)\nendobj\n",
             "a header past the endobj of a stream with no endstream whose indirect length runs past the end of the file" =>
                 "8 0 obj\n99999\nendobj\n5 0 obj\n<< /Length 8 0 R >>\nstream\n0123456789\nendobj\n9 0 obj\n(nine)\nendobj\n",
+            "a header past the endobj of a stream with no endstream whose indirect length is the largest integer" =>
+                "8 0 obj\n9223372036854775807\nendobj\n5 0 obj\n<< /Length 8 0 R >>\nstream\n0123456789\nendobj\n9 0 obj\n(nine)\nendobj\n",
+            "a header past the endobj of a stream with no endstream whose direct length is the largest integer" =>
+                "5 0 obj\n<< /Length 9223372036854775807 >>\nstream\n0123456789\nendobj\n9 0 obj\n(nine)\nendobj\n",
             "a header on the line of a string the data of a stream with no endstream opens past its declared length" =>
                 "5 0 obj\n<< /Length 5 >>\nstream\n01234(abc 9 0 obj\n(nine)\nendobj\n",
             "a header on the line of a comment the data of a stream with no endstream opens past its declared length" =>
@@ -155,6 +175,30 @@ public class ScannedPlacesTests
             // taken in data.
             "a header in the data of a stream whose indirect length a value in the data of a stream the scan does not confirm holds" =>
                 "5 0 obj\n<< /Length 7 0 R >>\nstream\n8 0 obj\n5\nendobj\n6 0 obj\n<< /Length 8 0 R >>\nstream\n0123456789 9 0 obj (nine) endobj\nendstream x\nendobj\n",
+
+            // Object 8, which holds stream 5's length, lies on a comment line past the data's first endstream, where the scan
+            // no longer counts places as taken in the data: the length ends the data before object 4's header, which the memo
+            // then holds as taken between objects, and leaves that count where it stands. Object 9's header starts before
+            // that endstream, its tokens parted by the comment lines of that endstream and of object 8, and the scan takes it
+            // after object 8's: as taken in the data, where it lies.
+            "a header in the data of a stream that a walk back over comment lines reads after its length's object, past the data's first endstream" =>
+                "5 0 obj\n<< /Length 8 0 R >>\nstream\n0123456789\n4 0 obj (four) endobj\n+9\n% endstream\n% 8 0 obj 10 endobj\n0 obj\n(nine)\nendobj\n",
+
+            // Stream 5's direct length, which no endstream follows, ends its data where the data of stream 6, whose header it
+            // holds, starts: the sign before 6 keeps a load's search for endstream from taking it for a header, so that the
+            // length ends the data there. No place past that start is counted as taken in data, so the scan reads stream 6's
+            // length's object at the first header past it, and holds that header, past where that length ends stream 6's
+            // data, as taken between objects.
+            "a header that holds the indirect length of a stream whose data starts where the direct length of the stream holding it ends" =>
+                "5 0 obj\n<< /Length 36 >>\nstream\n+6 0 obj << /Length 9 0 R >> stream\n0123456789\n9 0 obj\n5\nendobj\nendstream x\nendobj\n",
+
+            // Stream 5 has no length, and the scan reads its data as the bytes give it up to its first endstream, or to the end
+            // of the file where none follows: neither a string in it that runs past its object's end, nor the direct length
+            // of a stream in it that no endstream follows, ends that data where it ends, before object 9's header.
+            "a header past what a string that runs past its object's end runs into, in the data of a stream with no length" =>
+                "5 0 obj\n<< >>\nstream\n7 0 obj\n(a ( b\nendobj\n) )\nendobj\n9 0 obj\n(nine)\nendobj\n",
+            "a header past where a stream with no endstream declares its data ends, in the data of a stream with no length" =>
+                "5 0 obj\n<< >>\nstream\n6 0 obj\n<< /Length 3 >>\nstream\nabcdefgh\n9 0 obj\n(nine)\nendobj\nendstream\nendobj\n",
             "a header in a string past the endobj that follows the declared length of a stream with no endstream" =>
                 "5 0 obj\n<< /Length 5 >>\nstream\n01234\nendobj (abc 9 0 obj\n(nine)\nendobj\n",
             "a header in a comment past the endobj that follows the declared length of a stream with no endstream" =>
@@ -165,6 +209,12 @@ public class ScannedPlacesTests
                 "8 0 obj\n5\nendobj\n5 0 obj\n<< /Length 8 0 R >>\nstream\n01234\nendobj % 9 0 obj\n(nine)\nendobj\n",
             "a header that holds the indirect length of the stream with no endstream before it" =>
                 "5 0 obj\n<< /Length 9 0 R >>\nstream\n0123456789\nendobj\n9 0 obj\n10\nendobj\n",
+
+            // Sixty-one objects of as many numbers before stream 5, which form no run: the memo holds sixty-four places, as many
+            // as it first makes room for, when object 9's header ends the stream's data past the last of them.
+            "a header that holds the indirect length of the stream with no endstream before it, sixty-one objects before the stream" =>
+                string.Concat(Enumerable.Range(10, 61).Select(number => string.Create(CultureInfo.InvariantCulture, $"{number * 10} 0 obj\n({number})\nendobj\n")))
+                + "5 0 obj\n<< /Length 9 0 R >>\nstream\n0123456789\nendobj\n9 0 obj\n10\nendobj\n",
             "a header that holds the indirect length of the stream before it, whose endstream and endobj are lost" =>
                 "5 0 obj\n<< /Length 9 0 R >>\nstream\n0123456789\n9 0 obj\n10\nendobj\n",
             "a header that holds the indirect length of the stream before it, whose endstream and endobj are lost, an endstream in a string past it" =>
@@ -173,6 +223,26 @@ public class ScannedPlacesTests
                 "8 0 obj\n10\nendobj\n5 0 obj\n<< /Length 8 0 R >>\nstream\n0123456789\nendobj\n9 0 obj\n(nine)\nendobj\n",
             "a header past a stream with no endstream or endobj whose indirect length the object before it holds" =>
                 "8 0 obj\n10\nendobj\n5 0 obj\n<< /Length 8 0 R >>\nstream\n0123456789\n9 0 obj\n(nine)\nendobj\n",
+
+            // Object 8, the value before stream 5, holds the length of the data before object 9's header, and its endobj ends
+            // 63 or 64 bytes past its header; the data's first endstream lies past object 9, and no endobj follows it. The scan
+            // takes the length only where the bytes it reads of object 8 show its endobj whole, the byte past it with it, and
+            // then ends the data before object 9's header; its endobj ending on the last byte read, it takes none, awaits the
+            // length's object without meeting it, and keeps the header held as taken in the data up to that endstream.
+            "a header past where the value before a stream ends its data, the value's endobj ending 63 bytes past its header" =>
+                "8 0 obj\n10" + new string(' ', 47) + "endobj\n5 0 obj\n<< /Length 8 0 R >>\nstream\n0123456789\nendobj\n9 0 obj\n(nine)\nendobj\nendstream x\nendobj\n",
+            "a header in data the value before its stream would end before it, the value's endobj ending 64 bytes past its header" =>
+                "8 0 obj\n10" + new string(' ', 48) + "endobj\n5 0 obj\n<< /Length 8 0 R >>\nstream\n0123456789\nendobj\n9 0 obj\n(nine)\nendobj\nendstream x\nendobj\n",
+
+            // Object 8, the value before stream 5, holds the length of the data before 50 or 100 spaces and object 9's header;
+            // the data's first endstream lies past object 9, and no endobj follows it. The first bytes read past that length,
+            // all white space, do not tell whether an endstream follows it: the length leaves the kinds as they are, and the
+            // header stays held as taken in the data up to that endstream. Bytes that show none hold it as taken between
+            // objects.
+            "a header past where the value before a stream ends its data, white space a first read after that end holds between" =>
+                "8 0 obj\n10\nendobj\n5 0 obj\n<< /Length 8 0 R >>\nstream\n0123456789" + new string(' ', 50) + "\n9 0 obj (nine) endobj\nendstream x\nendobj\n",
+            "a header in data the value before its stream would end before it, white space longer than a first read after that end between" =>
+                "8 0 obj\n10\nendobj\n5 0 obj\n<< /Length 8 0 R >>\nstream\n0123456789" + new string(' ', 100) + "\n9 0 obj (nine) endobj\nendstream x\nendobj\n",
             "a header past a stream with no endstream whose indirect length names an object the file lacks" =>
                 "5 0 obj\n<< /Length 8 0 R >>\nstream\n0123456789\nendobj\n9 0 obj\n10\nendobj\n",
             "a header past a stream with no endstream or endobj whose indirect length names an object the file lacks" =>
@@ -205,6 +275,14 @@ public class ScannedPlacesTests
                 "5 0 obj\n<< /Length 10 >>\nstream\n0123456789\nendobj\n9 0 obj\n(nine)\nendobj\n",
             "a header that follows the declared length of a stream with no endstream" =>
                 "5 0 obj\n<< /Length 10 >>\nstream\n0123456789\n9 0 obj\n(nine)\nendobj\n",
+
+            // Twenty stream headers of object 6, their direct lengths ending in one run of 12,000 spaces that a letter and an
+            // endstream follow, spend what the scan's reads past declared lengths may read, four times the file, before
+            // stream 5: no search then learns where a load ends stream 5's data, which no endstream follows, and the memo
+            // counts places as taken in it up to the end of the file.
+            "a header that follows the declared length of a stream with no endstream, once the scan has read what it may past lengths" =>
+                string.Concat(Enumerable.Repeat("6 0 obj<</Length 0000000720>>stream\n", 20)) + new string(' ', 12_000) + "x\nendstream\nendobj\n"
+                + "5 0 obj\n<< /Length 10 >>\nstream\n0123456789\n9 0 obj\n(nine)\nendobj\n",
             "a header past the endobj that ends a stream with no endstream whose declared length runs into it" =>
                 "5 0 obj\n<< /Length 13 >>\nstream\n0123456789\nendobj\n9 0 obj\n(nine)\nendobj\n",
             "a header that a stream with no endstream declares a length past" =>
@@ -219,6 +297,12 @@ public class ScannedPlacesTests
                 "5 0 obj\n<< /Length 22 >>\nstream\n9 0 obj (inner) endobj\nendstream\nendobj\n",
             "a header in the data of a stream whose length is an object" =>
                 "5 0 obj\n<< /Length 6 0 R >>\nstream\n9 0 obj (inner) endobj\nendstream\nendobj\n6 0 obj\n22\nendobj\n",
+
+            // Object 6 holds the length of stream 5's data, which an endstream follows: met past the data, it leaves the places
+            // the data holds as taken there, past the data's first header too, where a load ends the data of a stream no
+            // endstream follows.
+            "a header after another in the data of an intact stream whose indirect length's object follows it" =>
+                "5 0 obj\n<< /Length 6 0 R >>\nstream\n4 0 obj (four) endobj\n9 0 obj (inner) endobj\nendstream\nendobj\n6 0 obj\n44\nendobj\n",
             _ => "5 0 obj\n(a ( b\nendobj\n9 0 obj\n(nine)\nendobj\n) )\nendobj\n",
         };
         var place = text.Contains("+9", StringComparison.Ordinal) ? text.IndexOf("+9", StringComparison.Ordinal) : text.IndexOf("9 0 obj", StringComparison.Ordinal);
@@ -244,11 +328,93 @@ public class ScannedPlacesTests
         }
     }
 
+    [Fact]
+    public void A_header_taken_after_a_length_s_object_met_where_the_memo_stops_counting_places_in_data_and_starting_before_it_is_held_as_taken_in_data()
+    {
+        // Stream 5's indirect length names object 7, which comes last: the scan awaits it past stream 5's data. Stream 6's
+        // direct length, which no endstream follows, ends its data where object 7's header starts, on a comment line, in a
+        // string of object 4 that runs past the bound on objects: the scan delimits neither object, and reads tokens on from
+        // where stream 6's data starts. Object 7's length ends stream 5's data before the header there, which the memo then
+        // holds as taken between objects, and leaves where it counts places as taken in data where it met object 7. Object
+        // 8's header, whose tokens that comment line parts, starts in stream 6's data before there, and the scan takes it
+        // after object 7's: as taken in that data.
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long> { [1] = file.Object(1, Catalog), [2] = file.Object(2, Pages) };
+        var inner = file.Position + "5 0 obj\n<< /Length 7 0 R >>\nstream\n0123 ".Length;
+        file.Raw("5 0 obj\n<< /Length 7 0 R >>\nstream\n0123 9 0 obj (x) endobj\nendstream\nendobj\n");
+        var data = file.Position + "6 0 obj\n<< /Length 17 >>\nstream\n".Length;
+        file.Raw("6 0 obj\n<< /Length 17 >>\nstream\n+4 0 obj (\n8 0\n% 7 0 obj 3 endobj\nobj\n" + new string('a', 300) + "\n");
+        file.Table(3, rows, "/Size 3 /Root 1 0 R");
+
+        using var document = PdfDocument.Open(file.Bytes, new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxObjectLength = 256 } });
+        var memo = document.Reader.GetScanMemo();
+
+        memo.TryGetHeaderAt(inner, out var cut).Should().BeTrue();
+        cut.Should().Be(new ScannedHeader(inner, 9, 0, ScannedPlaceKind.Clean));
+        memo.TryGetHeaderAt(data + 17, out var length).Should().BeTrue();
+        length.Should().Be(new ScannedHeader(data + 17, 7, 0, ScannedPlaceKind.Clean));
+        memo.TryGetHeaderAt(data + 11, out var header).Should().BeTrue();
+        header.Should().Be(new ScannedHeader(data + 11, 8, 0, ScannedPlaceKind.Raw));
+    }
+
+    [Theory]
+    [InlineData("the first value the scan passed, eight values before the stream", "Raw")]
+    [InlineData("the first value the scan passed, nine values before the stream", "Clean")]
+    [InlineData("the first value the scan passed, eight values before the stream, the last of them a newer object 8 that holds 10", "Clean")]
+    [InlineData("the file's first object, past the bound a load reads an object within, seven values before the stream", "Clean")]
+    public void A_stream_s_indirect_length_is_read_from_the_newest_of_the_last_eight_values_the_scan_passed_that_is_its_object(string where, string kind)
+    {
+        // Stream 5 lost its endstream and endobj, and its indirect length names object 8, the file's first object, whose value,
+        // 40, runs past object 9's header in its data: where the scan reads object 8 among the last eight values it passed,
+        // the newest first, the memo holds that header as taken in the data. Nine values back, or where the scan passed it as
+        // no value, it awaits object 8 past the stream, never meets it, and holds the header as taken between objects, where
+        // a load with no length ends the data; so it does where a newer object 8 among those eight holds 10, which ends the
+        // data before the header. Objects 1 and 2 come last, after the first value, and short enough for the bound.
+        var bounded = where.Contains("past the bound", StringComparison.Ordinal);
+        var newer = where.Contains("a newer object 8", StringComparison.Ordinal);
+        var others = where.Contains("nine values", StringComparison.Ordinal) ? 8 : newer ? 6 : 7;
+        var file = new HandWrittenFile();
+
+        // Spaces put object 8's endobj past a bound of 48 bytes, yet within the 64 bytes a length's object is read in: only
+        // its not being a value the scan passed keeps it from giving the length.
+        file.Raw("8 0 obj\n40" + new string(' ', bounded ? 34 : 0) + "\nendobj\n");
+
+        for (var number = 10; number < 10 + others; number++)
+        {
+            file.Object(number, string.Create(CultureInfo.InvariantCulture, $"({number})"));
+        }
+
+        if (newer)
+        {
+            file.Object(8, "10");
+        }
+
+        file.Raw("5 0 obj\n<< /Length 8 0 R >>\nstream\n0123456789\n");
+        var at = file.Position;
+        file.Raw("9 0 obj\n(nine)\nendobj\n");
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "<</Type/Catalog/Pages 2 0 R>>"),
+            [2] = file.Object(2, "<</Type/Pages/Kids[]/Count 0>>"),
+        };
+        file.Table(3, rows, "/Size 3 /Root 1 0 R");
+
+        using var document = PdfDocument.Open(
+            file.Bytes, bounded ? new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxObjectLength = 48 } } : null);
+        var memo = document.Reader.GetScanMemo();
+
+        document.WasRepaired.Should().BeFalse();
+        (memo.IsWhole, memo.InScanOrder).Should().Be((true, true));
+        memo.TryGetHeaderAt(at, out var header).Should().BeTrue();
+        header.Should().Be(new ScannedHeader(at, 9, 0, Enum.Parse<ScannedPlaceKind>(kind)));
+    }
+
     [Theory]
     [InlineData("a keyword between objects", "Clean")]
     [InlineData("a keyword glued to an end-of-file marker", "Clean")]
     [InlineData("a keyword after a closing bracket", "Clean")]
     [InlineData("a keyword in the data of a stream whose length is an object", "Raw")]
+    [InlineData("a keyword in the data of a stream whose length is an object, its dictionary running past the scan's first piece", "Raw")]
     [InlineData("a keyword in the data of a stream whose endstream follows past its declared length", "Raw")]
     [InlineData("a keyword past the endobj that follows the declared length of a stream with no endstream", "Clean")]
     [InlineData("a keyword past the object that holds the indirect length of the stream with no endstream before it", "Clean")]
@@ -259,6 +425,7 @@ public class ScannedPlacesTests
     [InlineData("a keyword past the object after a stream with no endstream that declares a length past the end of the file", "Clean")]
     [InlineData("a keyword on the line of a string the data of a stream with no endstream opens past its declared length", "Clean")]
     [InlineData("a keyword that starts where the declared length of a stream with no endstream ends", "Clean")]
+    [InlineData("a keyword past a stream whose data runs past the end of a piece of the scan", "Clean")]
     [InlineData("a keyword in a comment", null)]
     [InlineData("a keyword in a string between objects", null)]
     [InlineData("a keyword inside an object", null)]
@@ -274,6 +441,8 @@ public class ScannedPlacesTests
             "a keyword after a closing bracket" => ("[1]xref\n", "xref"),
             "a keyword in the data of a stream whose length is an object" =>
                 ("5 0 obj\n<< /Length 6 0 R >>\nstream\nxref\nendstream\nendobj\n6 0 obj\n5\nendobj\n", "xref"),
+            "a keyword in the data of a stream whose length is an object, its dictionary running past the scan's first piece" =>
+                ("5 0 obj\n<< /Length 6 0 R /Pad (" + new string('p', 1_100_000) + ") >>\nstream\nxref\nendstream\nendobj\n6 0 obj\n5\nendobj\n", "xref"),
             "a keyword in the data of a stream whose endstream follows past its declared length" =>
                 ("5 0 obj\n<< /Length 4 >>\nstream\n0123 xref\nendstream\nendobj\n", "xref"),
             "a keyword past the endobj that follows the declared length of a stream with no endstream" =>
@@ -294,6 +463,8 @@ public class ScannedPlacesTests
                 ("5 0 obj\n<< /Length 4 >>\nstream\n0123(abc xref\n", "xref"),
             "a keyword that starts where the declared length of a stream with no endstream ends" =>
                 ("5 0 obj\n<< /Length 5 >>\nstream\n0123\nxref\n", "xref"),
+            "a keyword past a stream whose data runs past the end of a piece of the scan" =>
+                ("5 0 obj\n<< /Length 1100000 >>\nstream\n" + new string('d', 1_100_000) + "\nendstream\nendobj\nxref\n", "xref"),
             "a keyword in a comment" => ("% xref\n", "xref"),
             "a keyword in a string between objects" => ("(see xref)\n", "xref"),
             "a keyword inside an object" => ("9 0 obj\n(an xref)\nendobj\n", "xref"),
@@ -403,6 +574,70 @@ public class ScannedPlacesTests
         document.Reader.Index.TryGet(9, out var entry).Should().BeTrue();
         document.Reader.PositionOf(entry).Should().Be(at);
         document.GetObject(new PdfObjectId(9)).AsText().Should().Be("nine");
+    }
+
+    [Fact]
+    public void A_header_taken_second_that_starts_before_the_first_place_taken_is_put_back_before_it_and_a_rebuild_scans_again()
+    {
+        // The file's first object: its number, then an end-of-file marker an xref keyword is glued to, then its generation and
+        // obj on the next line. Between objects, the marker ends its comment, so that the keyword is a token the scan takes
+        // first, before the obj; a load lexes the marker's line as one comment, so that the header is object 9's, and starts
+        // before the keyword. The memo puts the header back in its place, each found where it starts, and a rebuild scans the
+        // file again.
+        var file = new HandWrittenFile();
+        var header = file.Position;
+        file.Raw("9 %%EOFxref\n0 obj\n(nine)\nendobj\n");
+        var keyword = header + "9 %%EOF".Length;
+        var rows = new Dictionary<int, long> { [1] = file.Object(1, Catalog), [2] = file.Object(2, Pages), [4] = 999_999 };
+        file.Table(5, rows, "/Size 5 /Root 1 0 R");
+        var bytes = file.Bytes;
+
+        var source = new StrictCountingSource(bytes);
+        using var document = PdfDocument.Open(source, options: null, ownsSource: false);
+        var memo = document.Reader.GetScanMemo();
+        var before = source.BytesRead;
+        document.GetObject(new PdfObjectId(4));
+
+        memo.InScanOrder.Should().BeFalse();
+        memo.TryGetXRefKeywordAt(keyword, out var kind).Should().BeTrue();
+        kind.Should().Be(ScannedPlaceKind.Clean);
+        memo.TryGetHeaderAt(header, out var nine).Should().BeTrue();
+        nine.Should().Be(new ScannedHeader(header, 9, 0, ScannedPlaceKind.Clean));
+        document.WasRepaired.Should().BeTrue();
+        (source.BytesRead - before).Should().BeGreaterThanOrEqualTo(bytes.Length, "the rebuild scans the file again");
+    }
+
+    [Fact]
+    public void Xref_keywords_a_megabyte_past_the_last_object_are_told_from_comments_with_one_read_of_the_bytes_before_their_piece()
+    {
+        // Past the catalog and the page tree, a megabyte of comment lines, then ten xref keywords, one a line, and the table,
+        // all in the scan's second piece. The sweep ahead that tells each keyword from a comment reads the comment lines
+        // before that piece once, for the first keyword, and goes on from where it stopped for the next; the scan's own sweep
+        // reads them once more, for the table's trailer keyword: besides the file, the scan reads the bytes before the
+        // keywords' piece twice, not again for each keyword.
+        const int Piece = 1 << 20;
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long> { [1] = file.Object(1, Catalog), [2] = file.Object(2, Pages) };
+        PadWithComments(file, Piece + 100);
+        var keywords = new List<long>();
+
+        for (var index = 0; index < 10; index++)
+        {
+            keywords.Add(file.Position);
+            file.Raw("xref\n");
+        }
+
+        keywords.Add(file.Table(3, rows, "/Size 3 /Root 1 0 R"));
+        var bytes = file.Bytes;
+        var source = new StrictCountingSource(bytes);
+        using var document = PdfDocument.Open(source, options: null, ownsSource: false);
+
+        var before = source.BytesRead;
+        var memo = document.Reader.GetScanMemo();
+        var read = source.BytesRead - before;
+
+        keywords.Where(keyword => !memo.TryGetXRefKeywordAt(keyword, out _)).Should().BeEmpty();
+        read.Should().BeLessThan(bytes.Length + (2L * Piece), "each sweep reads the bytes before the keywords' piece once");
     }
 
     [Fact]
@@ -689,31 +924,127 @@ public class ScannedPlacesTests
         rebuilt.Reader.GetScanMemo().IsWhole.Should().BeFalse();
     }
 
+    [Fact]
+    public void A_memo_that_stops_being_whole_at_the_file_s_first_byte_reports_its_bound_and_a_rebuild_after_it_scans_the_file_again()
+    {
+        // Before its header, the file starts with object 7's header, whose number and generation eight lines part, each an
+        // end-of-file marker an xref keyword is glued to: a load lexes each line as a comment, while the scan takes each
+        // keyword as a token, then the header, which starts at the file's first byte, ninth. Under a bound of 8, the memo
+        // stops being whole there and holds no header. Object 5's row lies 3 bytes past its header: the search near it makes
+        // the memo, serves the header as the bytes give it, and reports the bound where the memo stopped. Object 4's row lies
+        // outside the file: its read rebuilds the index, which takes no header from a memo that is not whole, scans the file
+        // again, and serves every object, object 7 before the header among them.
+        var junk = "7\n" + string.Concat(Enumerable.Repeat("%%EOFxref\n", 8)) + "0 obj\n(seven)\nendobj\n";
+        var file = new HandWrittenFile(prefix: junk);
+        var rows = new Dictionary<int, long> { [1] = file.Object(1, Catalog), [2] = file.Object(2, Pages) };
+        rows[5] = file.Object(5, "(five)") + 3;
+        rows[4] = 999_999;
+        file.Table(8, rows, "/Size 8 /Root 1 0 R");
+        var options = new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxIndexEntries = 8 } };
+
+        using var document = PdfDocument.Open(file.Bytes, options);
+
+        document.GetObject(new PdfObjectId(5)).AsText().Should().Be("five");
+        document.WasRepaired.Should().BeFalse();
+        document.Diagnostics.Should().ContainSingle(entry => entry.Code == PdfDiagnosticCodes.LimitIndexEntries).Which.Position.Should().Be(0);
+
+        document.GetObject(new PdfObjectId(4)).Should().BeOfType<PdfNull>();
+
+        document.WasRepaired.Should().BeTrue();
+        document.GetObject(new PdfObjectId(5)).AsText().Should().Be("five");
+        document.GetObject(new PdfObjectId(7)).AsText().Should().Be("seven");
+    }
+
+    [Theory]
+    [InlineData("an object header")]
+    [InlineData("an xref keyword")]
+    [InlineData("a trailer keyword")]
+    public void A_scan_for_the_memo_reads_no_further_than_the_first_place_the_memo_cannot_hold(string place)
+    {
+        // Past the catalog and the page tree, ten places of one kind — definitions of object 3, xref keywords or trailer
+        // keywords —, then comment lines to 2 MiB, and the table. Under a bound of 8, the memo holds the two headers and the
+        // first six places, and leaves out the seventh, in the scan's first piece: the scan stops there, having read that
+        // piece alone, rather than reading on to the end of the file for places the memo can no longer hold.
+        const int Piece = 1 << 20;
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long> { [1] = file.Object(1, Catalog), [2] = file.Object(2, Pages) };
+        var places = new List<long>();
+
+        for (var index = 0; index < 10; index++)
+        {
+            places.Add(file.Position);
+
+            if (place == "an object header")
+            {
+                file.Object(3, string.Create(CultureInfo.InvariantCulture, $"({index})"));
+            }
+            else
+            {
+                file.Raw(place == "an xref keyword" ? "xref\n" : "trailer\n");
+            }
+        }
+
+        PadWithComments(file, 2 * Piece);
+        file.Table(3, rows, "/Size 3 /Root 1 0 R");
+        var source = new StrictCountingSource(file.Bytes);
+        var options = new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxIndexEntries = 8 } };
+        using var document = PdfDocument.Open(source, options, ownsSource: false);
+
+        var before = source.BytesRead;
+        var memo = document.Reader.GetScanMemo();
+        var read = source.BytesRead - before;
+
+        (memo.IsWhole, memo.FullAt).Should().Be((false, places[6]));
+        read.Should().BeLessThanOrEqualTo(Piece, "the scan reads its first piece, and stops at the place the memo leaves out");
+    }
+
     [Theory]
     [InlineData("past where the memo is whole", false)]
     [InlineData("past where the memo is whole", true)]
+    [InlineData("past where the memo is whole and past the first piece the scan reads", false)]
+    [InlineData("past where the memo is whole and past the first piece the scan reads", true)]
+    [InlineData("where the memo stops being whole, glued to the value of the object before it", false)]
+    [InlineData("where the memo stops being whole, glued to the value of the object before it", true)]
     [InlineData("before where the memo is whole, the bytes searched reaching past it", false)]
     [InlineData("before where the memo is whole, the bytes searched reaching past it", true)]
     [InlineData("past where a source that gives fewer bytes than asked ended the scan", false)]
     [InlineData("past where a source that gives fewer bytes than asked ended the scan", true)]
+    [InlineData("before where the memo is whole, past a stream whose indirect length's object the scan met before the memo filled", false)]
+    [InlineData("before where the memo is whole, past a stream whose indirect length's object the scan met before the memo filled", true)]
     public void The_search_near_a_row_reports_the_memo_s_bound_only_where_it_finds_a_header_past_where_the_memo_is_whole(
         string header, bool throwOnLimit)
     {
-        // MaxIndexEntries of 8: the scan takes the headers of 1 and 2, then ten definitions of 3, and object 4's header after
-        // them or before; the memo holds no place past the eighth the scan takes. Object 4's header lies 5 bytes before its
-        // row. Past there, the search near the row goes without the memo's word for it, reports the memo's bound, and serves
-        // the header as the bytes give it, a choice it cannot vouch for; opened to throw on a guard, the read throws there.
-        // Before there, the memo answers for it, though the bytes searched reach past there: the bound changed nothing read,
-        // and is not reported. Past 6,000 bytes of comment read through a source that gives at most 4,096 bytes a read, the
-        // memo is whole but holds nothing past where the scan's short window ended it (#52): the header is served as the
-        // bytes give it all the same, and no guard is reported or thrown, none having cut the memo. The validator's finding
-        // names what stopped the memo.
+        // MaxIndexEntries of 8: the scan takes the headers of 1 and 2, then ten definitions of 3, and object 4's header
+        // after them or before; the memo holds no place past the eighth the scan takes. Object 4's header lies 5 bytes
+        // before its row. Past there, the search near the row goes without the memo's word for it, reports the memo's
+        // bound, and serves the header as the bytes give it, a choice it cannot vouch for; opened to throw on a guard,
+        // the read throws there. Glued to the value of the sixth definition of 3, which no endobj ends, object 4's
+        // header is the ninth place the scan takes and starts where that value ends: the memo stops being whole just
+        // where the header starts, and the search goes without its word there as further on. Before where the memo is
+        // whole, the memo answers for it, though the bytes searched reach past there: the bound changed nothing read,
+        // and is not reported. So it does past the data of a stream that lost its endstream, whose indirect length's
+        // object the scan awaited from object 4's header and met after it, before the memo filled: the wait over, where
+        // that data starts bounds the memo no more. Past 6,000 bytes of comment read through a source that gives at
+        // most 4,096 bytes a read, the memo is whole but holds nothing past where the scan's short window ended it
+        // (#52): the header is served as the bytes give it all the same, and no guard is reported or thrown, none
+        // having cut the memo. The validator's finding names what stopped the memo. Past 1.1 MB of comment, beyond the first
+        // piece the scan reads, which the source gives whole, the memo's bound alone keeps it from answering all the same:
+        // the bound is reported, as within that piece.
         var shortReads = header == "past where a source that gives fewer bytes than asked ended the scan";
-        var past = header != "before where the memo is whole, the bytes searched reaching past it";
+        var past = !header.StartsWith("before", StringComparison.Ordinal);
+        var glued = header == "where the memo stops being whole, glued to the value of the object before it";
         var boundReached = past && !shortReads;
         var four = "4 0 obj\n(four)\nendobj\n";
-        var threes = string.Concat(Enumerable.Range(0, 10).Select(index => string.Create(CultureInfo.InvariantCulture, $"3 0 obj\n({index})\nendobj\n")));
-        var body = shortReads ? "%" + new string('-', 5998) + "\n" + four : past ? threes + four : four + threes;
+        var threes = Enumerable.Range(0, 10).Select(index => string.Create(CultureInfo.InvariantCulture, $"3 0 obj\n({index})\nendobj\n")).ToArray();
+        var body = header switch
+        {
+            "past where a source that gives fewer bytes than asked ended the scan" => "%" + new string('-', 5998) + "\n" + four,
+            "before where the memo is whole, the bytes searched reaching past it" => four + string.Concat(threes),
+            "past where the memo is whole" => string.Concat(threes) + four,
+            "past where the memo is whole and past the first piece the scan reads" => string.Concat(threes) + "%" + new string('-', 1_100_000) + "\n" + four,
+            "where the memo stops being whole, glued to the value of the object before it" => string.Concat(threes[..5]) + "3 0 obj\n(5)" + four,
+            _ => "5 0 obj\n<< /Length 6 0 R >>\nstream\n0123456789\nendobj\n" + four + "6 0 obj\n10\nendobj\n" + string.Concat(threes),
+        };
         var (file, row) = NearbyFiles.FourNear(body, "4 0 obj", 5);
         var options = new PdfReaderOptions { ThrowOnLimit = throwOnLimit, Limits = PdfReaderLimits.Default with { MaxIndexEntries = 8 } };
         PdfFileSource source = shortReads ? new CappedReadSource(file, 4096) : PdfFileSource.FromMemory(file);
@@ -732,6 +1063,11 @@ public class ScannedPlacesTests
         var adjusted = (PdfDiagnosticCodes.XRefOffsetAdjusted, row - 5);
         IEnumerable<(string, long)> reported = boundReached ? [(PdfDiagnosticCodes.LimitIndexEntries, memo.FullAt), adjusted] : [adjusted];
 
+        if (glued)
+        {
+            (memo.FullAt, memo.WholeUntil).Should().Be((row - 5, row - 5));
+        }
+
         document.WasRepaired.Should().BeFalse();
         memo.IsWhole.Should().Be(shortReads);
         memo.WholeUntil.Should().BeLessThan(row + PdfFileReader.NearbySearchRadius, "the bytes searched reach past where the memo is whole");
@@ -749,31 +1085,92 @@ public class ScannedPlacesTests
     }
 
     [Theory]
+    [InlineData("the entry after object 4's", false)]
+    [InlineData("the entry after object 4's", true)]
+    [InlineData("the entry before object 4's", false)]
+    [InlineData("the entry before object 4's", true)]
+    public void The_memo_s_bound_for_a_header_found_near_a_row_is_reported_by_settling_as_a_load_reports_it_and_never_by_the_probe_of_the_entries(
+        string outside, bool throwOnLimit)
+    {
+        // MaxIndexEntries of 8: the scan takes the headers of 1 and 2, then ten definitions of 3, and object 4's header, past
+        // the eighth place, 5 bytes before its row. Nothing is read before the validation, which settles the index before its
+        // first rule: the entry of object 5, or of object 3, places its object outside the file and has the index rebuilt, so
+        // that no rule loads object 4. Settling reaches 5's entry after 4's: it has searched near 4's row, without the memo's
+        // word, and reported the memo's bound as a load does; opened to throw on a guard, a load throws there, and settling
+        // leaves the guard to a load. Settling reaches 3's entry first, and searches nowhere near 4's row. The probe
+        // of the entries searches near the row in its turn: it says the entry is unconfirmed, and neither reports the bound
+        // nor throws, whatever settling did.
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long> { [1] = file.Object(1, Catalog), [2] = file.Object(2, Pages) };
+
+        for (var index = 0; index < 10; index++)
+        {
+            rows.TryAdd(3, file.Object(3, string.Create(CultureInfo.InvariantCulture, $"({index})")));
+        }
+
+        var four = file.Object(4, "(four)");
+        rows[4] = four + 5;
+        rows[outside == "the entry after object 4's" ? 5 : 3] = 999_999;
+        file.Table(6, rows, "/Size 6 /Root 1 0 R");
+        var options = new PdfReaderOptions { ThrowOnLimit = throwOnLimit, Limits = PdfReaderLimits.Default with { MaxIndexEntries = 8 } };
+        using var document = PdfDocument.Open(file.Bytes, options);
+
+        var report = new PdfValidator().Validate(document);
+
+        var memo = document.Reader.GetScanMemo();
+        IEnumerable<long> reported = outside == "the entry after object 4's" && !throwOnLimit ? [memo.FullAt] : [];
+        (document.WasRepaired, memo.IsPastBound(four)).Should().Be((true, true));
+        document.Diagnostics.Where(entry => entry.Code == PdfDiagnosticCodes.LimitIndexEntries).Select(entry => entry.Position).Should().Equal(reported);
+        var finding = report.Findings.Should().ContainSingle(finding => finding.Location.Object == new PdfObjectId(4)).Which;
+        (finding.RuleId, finding.Location).Should().Be(
+            (PdfValidationRuleIds.XRefEntryUnconfirmed, PdfValidationLocation.OfObject(new PdfObjectId(4), rows[4])));
+    }
+
+    [Theory]
     [InlineData("its bound, then a short read", false)]
     [InlineData("its bound, then a short read", true)]
+    [InlineData("its bound, then a short read that ends where object 4's header starts", false)]
+    [InlineData("its bound, then a short read that ends where object 4's header starts", true)]
+    [InlineData("a header of 4 in a string, its bound, then a short read", false)]
+    [InlineData("a header of 4 in a string, its bound, then a short read", true)]
     [InlineData("a short read, then its bound", false)]
     [InlineData("a short read, then its bound", true)]
     public void The_memo_s_bound_is_neither_reported_nor_blamed_for_a_header_past_where_a_short_read_ended_the_memo(string stops, bool throwOnLimit)
     {
         // The memo fills within a piece the source gives short, 4,096 bytes a read, before object 4's header, which lies past
-        // the piece; or, read through a source that gives at most 1 MiB a read, the walk back from object 5's obj keyword,
-        // whose number lies 300,000 spaces before it, comes back short first, and the memo fills afterwards, past object 4's
-        // header. Object 4's row lies 3 bytes past its header. Raising MaxIndexEntries would not let the memo answer there:
-        // the search serves the header as the bytes give it, reports no guard, throws none, and the validator's finding
-        // names the short read (#52).
-        var boundFirst = stops == "its bound, then a short read";
+        // the piece, or starts just where it ends, the first byte it does not hold; or, read through a source that gives at
+        // most 1 MiB a read, the walk back from object 5's obj keyword, whose number lies 300,000 spaces before it, comes back
+        // short first, and the memo fills afterwards, past object 4's header. Object 4's row lies 3 bytes past its header.
+        // Raising MaxIndexEntries would not let the memo answer there: the search serves the header as the bytes give it,
+        // reports no guard, throws none, and the validator's finding names the short read (#52). A string before it may hold
+        // a header of 4 within the search's reach and before where the memo is whole, which the memo does not take, the memo
+        // filling at the definition of 5 the piece's end cuts, just before object 4's header: the search drops that header,
+        // and the bound is not reported for it either.
+        const int Cap = 4096;
+        var boundFirst = stops != "a short read, then its bound";
         var file = new HandWrittenFile();
         var rows = new Dictionary<int, long> { [1] = file.Object(1, Catalog), [2] = file.Object(2, Pages) };
         var pagesEnd = rows[2] + "2 0 obj\n".Length + Pages.Length;
+        var inString = -1L;
 
-        if (boundFirst)
+        if (stops == "a header of 4 in a string, its bound, then a short read")
+        {
+            // Object 6's string holds the header on a line of its own; of the eighteen definitions of 5 after it, the last,
+            // the place past the bound, ends 4 bytes past the piece.
+            var fives = string.Concat(Enumerable.Range(0, 18).Select(index => string.Create(CultureInfo.InvariantCulture, $"5 0 obj\n({index})\nendobj\n")));
+            var padding = (int)(Cap + 4 - file.Position - fives.Length - "6 0 obj\n(\n4 0 obj\n)\nendobj\n".Length);
+            inString = file.Position + "6 0 obj\n(".Length + padding + 1;
+            file.Object(6, "(" + new string('x', padding) + "\n4 0 obj\n)");
+            file.Raw(fives);
+        }
+        else if (boundFirst)
         {
             for (var index = 0; index < 30; index++)
             {
                 file.Object(5, string.Create(CultureInfo.InvariantCulture, $"({index})"));
             }
 
-            file.Padding(6, 6000);
+            file.Padding(6, stops == "its bound, then a short read" ? 6000 : (int)(Cap - file.Position - "6 0 obj\n()\nendobj\n".Length));
         }
         else
         {
@@ -791,10 +1188,20 @@ public class ScannedPlacesTests
 
         file.Table(9, rows, "/Size 9 /Root 1 0 R");
         var options = new PdfReaderOptions { ThrowOnLimit = throwOnLimit, Limits = PdfReaderLimits.Default with { MaxIndexEntries = boundFirst ? 20 : 12 } };
-        using var document = PdfDocument.Open(new CappedReadSource(file.Bytes, boundFirst ? 4096 : 1 << 20), options, ownsSource: true);
+        using var document = PdfDocument.Open(new CappedReadSource(file.Bytes, boundFirst ? Cap : 1 << 20), options, ownsSource: true);
 
         var served = document.GetObject(new PdfObjectId(4)).AsText();
         var memo = document.Reader.GetScanMemo();
+
+        if (stops == "its bound, then a short read that ends where object 4's header starts")
+        {
+            four.Should().Be(Cap);
+        }
+
+        if (inString >= 0)
+        {
+            inString.Should().BeInRange(rows[4] - PdfFileReader.NearbySearchRadius, memo.WholeUntil - 1);
+        }
 
         (served, document.WasRepaired).Should().Be(("four", false));
         (memo.IsWhole, four >= memo.WholeUntil, memo.IsPastBound(four)).Should().Be((false, true, false));
@@ -806,19 +1213,60 @@ public class ScannedPlacesTests
     }
 
     [Theory]
-    [InlineData(0)]
-    [InlineData(4096)]
-    public void The_memo_holds_no_place_past_where_a_source_that_gives_fewer_bytes_than_asked_ended_the_scan(int cap)
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Settling_before_validation_reports_the_memo_s_bound_as_a_load_does_and_throws_nothing_for_a_document_opened_to_throw(bool throwOnLimit)
     {
-        // Past the catalog and the page tree, 6,000 bytes of comment come before object 3, read through a source that gives
-        // every byte asked for, or at most 4,096 bytes a read, as a source over a store of blocks may. The scan takes a window
-        // shorter than asked for the end of the data there, and its memo, whole, holds nothing past it, nor past where the
-        // page tree's value ends, as far back as a header whose obj lies past the end may start: no place there is vouched
-        // for. Read whole, the memo holds every place to the file's end (#52).
+        // MaxIndexEntries of 8: the scan takes the headers of 1 and 2, then ten definitions of 3, then object 4's header, past
+        // the eighth place, 5 bytes before its row; object 5's row lies outside the file. Validation settles the index before
+        // its first rule: the search near 4's row goes without the memo's word, and reports the memo's bound as a load does,
+        // before 5's row has the index rebuilt, which places object 4 at its header, where no rule reads it near its row.
+        // Opened to throw on a guard, the document throws nothing there, nor in the probe of the entries, and the finding
+        // names the bound.
         var file = new HandWrittenFile();
         var rows = new Dictionary<int, long> { [1] = file.Object(1, Catalog), [2] = file.Object(2, Pages) };
-        file.Raw("%" + new string('-', 5998) + "\n");
-        rows[3] = file.Object(3, "(three)");
+
+        for (var index = 0; index < 10; index++)
+        {
+            rows.TryAdd(3, file.Object(3, string.Create(CultureInfo.InvariantCulture, $"({index})")));
+        }
+
+        var four = file.Object(4, "(four)");
+        rows[4] = four + 5;
+        rows[5] = 999_999;
+        file.Table(6, rows, "/Size 6 /Root 1 0 R");
+        var options = new PdfReaderOptions { ThrowOnLimit = throwOnLimit, Limits = PdfReaderLimits.Default with { MaxIndexEntries = 8 } };
+        using var document = PdfDocument.Open(file.Bytes, options);
+
+        var report = new PdfValidator().Validate(document);
+
+        var memo = document.Reader.GetScanMemo();
+        IEnumerable<long> reported = throwOnLimit ? [] : [memo.FullAt];
+        (document.WasRepaired, memo.IsPastBound(four)).Should().Be((true, true));
+        document.Diagnostics.Where(entry => entry.Code == PdfDiagnosticCodes.LimitIndexEntries).Select(entry => entry.Position).Should().Equal(reported);
+        var finding = report.Findings.Should().ContainSingle(finding => finding.Location.Object == new PdfObjectId(4)).Which;
+        finding.RuleId.Should().Be(PdfValidationRuleIds.XRefEntryUnconfirmed);
+        finding.Message.Should().EndWith("it lies past the places its scan for objects records within PdfReaderLimits.MaxIndexEntries, or, where the scan reached that bound while it awaited the object of a stream's indirect /Length, past that stream's data's start. Raising the limit lets it tell.");
+    }
+
+    [Theory]
+    [InlineData(0, 6_000, 5)]
+    [InlineData(4096, 6_000, 5)]
+    [InlineData(0, 1_200_000, 5)]
+    [InlineData(0, 1_040_000, 20_000)]
+    public void The_memo_holds_no_place_past_where_a_source_that_gives_fewer_bytes_than_asked_ended_the_scan(int cap, int comment, int value)
+    {
+        // Past the catalog and the page tree, 6,000 bytes of comment, or a megabyte and more that the scan's sweep reads back
+        // from the piece before object 3's, come before object 3, a string, read through a source that gives every byte asked
+        // for, or at most 4,096 bytes a read, as a source over a store of blocks may. The scan takes a window shorter than
+        // asked for the end of the data there, and its memo, whole, holds nothing past it, nor past where the page tree's
+        // value ends, as far back as a header whose obj lies past the end may start: no place there is vouched for. Read
+        // whole, the memo holds every place to the file's end, the sweep's whole reads behind its piece included, and the
+        // whole read again from its header of a string that runs past the scan's piece (#52).
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long> { [1] = file.Object(1, Catalog), [2] = file.Object(2, Pages) };
+        file.Raw("%" + new string('-', comment - 2) + "\n");
+        rows[3] = file.Padding(3, value);
         file.Table(4, rows, "/Size 4 /Root 1 0 R");
         PdfFileSource source = cap > 0 ? new CappedReadSource(file.Bytes, cap) : PdfFileSource.FromMemory(file.Bytes);
         using var document = PdfDocument.Open(source, options: null, ownsSource: true);
@@ -927,13 +1375,15 @@ public class ScannedPlacesTests
     [Theory]
     [InlineData("the sweep for comments, short of an end-of-file marker's tail", "twelve")]
     [InlineData("the sweep for comments, short and then empty", "twelve")]
+    [InlineData("the scan's next piece, short of where its searches resume in it", "twelve")]
     [InlineData("the delimiting of an object its piece cuts", "inner")]
     [InlineData("the search for the end of a stream whose endstream is lost", "twelve")]
     public void A_header_past_a_read_of_the_scan_that_gives_fewer_bytes_than_asked_lies_past_where_the_memo_is_whole(string read, string served)
     {
         // Past the catalog and the page tree, a megabyte and more of comment lines, read through a source that gives every
         // read whole but one: the scan's sweep from the file across the comments, which ends just short of the end-of-file
-        // marker that object 12's header follows on its line, or gives a hundred bytes and then none; or the read again of a
+        // marker that object 12's header follows on its line, or gives a hundred bytes and then none; or the scan's next
+        // piece, which gives fewer bytes than the scan reads in it before where its searches resume; or the read again of a
         // stream whose dictionary its piece cuts, whose data holds object 12's header. Or, with no comment lines, the first
         // read of the search for the end of a stream that lost its endstream, which gives none. The window holds the end of
         // the data there (#52): the memo is whole only before where the page tree's value ends, and the search near object
@@ -970,6 +1420,16 @@ public class ScannedPlacesTests
             file.Raw("%%EOF" + new string(' ', 100));
             shortAt = pagesEnd;
             shortCount = (int)(marker + 3 - pagesEnd);
+            twelve = file.Object(12, "(twelve)");
+        }
+        else if (read == "the scan's next piece, short of where its searches resume in it")
+        {
+            // The first piece ends in comment lines, and the next starts 71 bytes before its end: the 64 bytes the scan reads
+            // before where its search for trailer resumes, 7 bytes before that end, the searches for obj and xref a few bytes
+            // past it.
+            PadWithComments(file, Piece + (Piece / 4));
+            shortAt = Piece - 71;
+            shortCount = 30;
             twelve = file.Object(12, "(twelve)");
         }
         else
@@ -1055,20 +1515,69 @@ public class ScannedPlacesTests
     }
 
     [Theory]
+    [InlineData("a direct length", 0)]
+    [InlineData("a direct length", 1)]
+    [InlineData("an indirect length", 0)]
+    [InlineData("an indirect length", 1)]
+    public void A_stream_length_that_ends_its_data_where_the_longest_source_ends_or_past_it_leaves_the_rebuild_to_take_the_objects_past_it(
+        string length, int past)
+    {
+        // The source says it holds long.MaxValue bytes, as many as a position can name, and holds a few hundred: its tail
+        // holds no startxref, and the document is rebuilt from the scan. Stream 3's length, in its dictionary or in object 8
+        // before it, ends its data exactly where the source says it ends, or a byte past there, ends computed with no
+        // overflow: nothing is read past the source's end, and the scan reads on through the data, whose header it takes as
+        // held in data, to the later definition of 3.
+        var direct = length == "a direct length";
+        var file = new HandWrittenFile();
+        file.Object(1, Catalog);
+        file.Object(2, Pages);
+
+        // The length is written with as many digits as the largest integer, which places the data's start.
+        var dataStart = file.Position + Opening(long.MaxValue).Length;
+        file.Raw(Opening(long.MaxValue - dataStart + past) + "0123 ");
+        var nine = file.Position;
+        file.Raw("9 0 obj (nine) endobj\nendstream\nendobj\n");
+        file.Object(3, "null");
+        file.Raw("trailer\n<< /Size 10 /Root 1 0 R >>\n%%EOF\n");
+        var bytes = file.Bytes;
+
+        using var document = PdfDocument.Open(new OverlongSource(bytes, long.MaxValue - bytes.Length), options: null, ownsSource: true);
+        var memo = document.Reader.GetScanMemo();
+
+        document.WasRepaired.Should().BeTrue();
+        document.Catalog.Should().NotBeNull();
+        document.GetObject(new PdfObjectId(9)).AsText().Should().Be("nine");
+        document.GetObject(new PdfObjectId(3)).Should().BeSameAs(PdfNull.Instance);
+        memo.TryGetHeaderAt(nine, out var header).Should().BeTrue();
+        header.Should().Be(new ScannedHeader(nine, 9, 0, ScannedPlaceKind.Raw));
+
+        string Opening(long value) => direct
+            ? string.Create(CultureInfo.InvariantCulture, $"3 0 obj\n<< /Length {value} >>\nstream\n")
+            : string.Create(CultureInfo.InvariantCulture, $"8 0 obj\n{value}\nendobj\n3 0 obj\n<< /Length 8 0 R >>\nstream\n");
+    }
+
+    [Theory]
     [InlineData("an indirect length")]
     [InlineData("a direct length that white space past a first read follows")]
+    [InlineData("a direct length that white space past a first read follows, the read on past it given empty")]
+    [InlineData("a direct length that white space past a first read follows, its endstream glued to letters past a first read")]
     public void A_read_short_of_the_endstream_after_a_declared_length_leaves_the_data_unconfirmed_not_ended_at_an_endobj_it_holds(string length)
     {
         // An intact stream whose data holds an attached file's text, an endobj and then a header of object 9, whose own
         // definition follows the stream, its row 3 bytes past the header the data holds. The source gives every read whole
-        // but the first that starts where the scan reads past the declared length for an endstream: at the keyword, past
-        // the white space a first read holds, for the direct length; at the data's end, for the indirect one, whose stream
-        // crosses the end of the scan's first piece so that the scan reads there from the source. It gives that read short
-        // within the keyword: the bytes do not tell that no endstream follows, and the stream's data is read as the bytes
-        // give it, not ended at the endobj it holds. The header in the data is taken as such, and the search near the row
-        // serves object 9's own definition, which it vouches for.
+        // but one, the first where the scan reads past the declared length for an endstream. For the indirect length,
+        // whose stream crosses the end of the scan's first piece so that the scan reads at the data's end from the source,
+        // it gives the first read there short within the keyword. For the direct length, it gives the first read at the
+        // keyword, past the white space a first read holds, short within it; or the first read from the data's end, on
+        // past the white space the scan's piece holds, empty; or, where the keyword is glued to more letters than the read
+        // at it holds, the next read of the run empty, so that where the token ends is never read. The bytes do not tell
+        // that no endstream follows, and the stream's data is read as the bytes give it, not ended at the endobj it holds.
+        // The header in the data is taken as such, and the search near the row serves object 9's own definition, which it
+        // vouches for.
         const int Piece = 1 << 20;
         var direct = length != "an indirect length";
+        var empty = length.EndsWith("given empty", StringComparison.Ordinal);
+        var glued = length.Contains("glued", StringComparison.Ordinal);
         var data = "q\nendobj\n9 0 obj\n(inner nine)\nendobj\nQ" + (direct ? string.Empty : new string('Q', 200));
         var file = new HandWrittenFile();
         var rows = new Dictionary<int, long> { [1] = file.Object(1, Catalog), [2] = file.Object(2, Pages) };
@@ -1085,15 +1594,15 @@ public class ScannedPlacesTests
             $"4 0 obj\n<< /Length {(direct ? data.Length.ToString(CultureInfo.InvariantCulture) : "8 0 R")} >>\nstream\n{data}"));
         var inner = stream + Encoding.Latin1.GetString(file.Bytes[(int)stream..]).IndexOf("9 0 obj", StringComparison.Ordinal);
         var dataEnd = file.Position;
-        file.Raw((direct ? new string(' ', 80) : "\n") + "endstream\nendobj\n");
-        var keyword = file.Position - "endstream\nendobj\n".Length;
+        var keyword = dataEnd + (direct ? 80 : 1);
+        file.Raw((direct ? new string(' ', 80) : "\n") + "endstream" + (glued ? new string('X', 100) : string.Empty) + "\nendobj\n");
         rows[4] = stream;
         rows[9] = inner + 3;
         var outer = file.Object(9, "(outer nine)");
         file.Table(10, rows, "/Size 10 /Root 1 0 R");
         var given = new HashSet<long>();
-        var cut = direct ? keyword : dataEnd;
-        var source = new ShortCountSource(file.Bytes, (offset, held) => offset == cut && given.Add(offset) ? 4 : held);
+        var cut = !direct || empty ? dataEnd : glued ? keyword + PdfObjectParser.EndObjLookahead : keyword;
+        var source = new ShortCountSource(file.Bytes, (offset, held) => offset == cut && given.Add(offset) ? (empty || glued ? 0 : 4) : held);
         using var document = PdfDocument.Open(source, options: null, ownsSource: true);
 
         var nine = document.GetObject(new PdfObjectId(9)).AsText();
@@ -1109,19 +1618,134 @@ public class ScannedPlacesTests
     }
 
     [Fact]
-    public void A_stream_no_endstream_follows_to_the_end_of_the_file_is_not_read_on_to_tell_it_from_an_intact_one()
+    public void A_length_s_object_looked_for_at_a_trailer_keyword_near_the_end_of_the_file_is_read_with_no_byte_asked_past_it()
+    {
+        // Stream 5 lost its endstream, and its indirect length names object 8, which the file lacks: the scan looks for that
+        // object at the first header or trailer keyword past the data's start, here the table's trailer keyword, which starts
+        // fewer bytes before the end of the file than the scan reads of a length's object. It asks for no byte past the end,
+        // which a source may refuse (#167), and holds the table's xref keyword as taken in the data, which runs to the end of
+        // the file as the bytes give it.
+        var (file, _) = Sound("5 0 obj\n<< /Length 8 0 R >>\nstream\n0123456789\nendobj\n", 0);
+        var written = Encoding.Latin1.GetString(file);
+        var table = written.LastIndexOf("\nxref\n", StringComparison.Ordinal) + 1;
+        using var document = PdfDocument.Open(new StrictCountingSource(file), options: null, ownsSource: true);
+
+        var memo = document.Reader.GetScanMemo();
+
+        (file.Length - written.LastIndexOf("trailer", StringComparison.Ordinal)).Should().BeLessThan(PdfObjectParser.EndObjLookahead);
+        (document.WasRepaired, memo.IsWhole).Should().Be((false, true));
+        memo.TryGetXRefKeywordAt(table, out var kind).Should().BeTrue();
+        kind.Should().Be(ScannedPlaceKind.Raw);
+    }
+
+    [Theory]
+    [InlineData(1)]
+    [InlineData(7)]
+    public void A_length_that_ends_a_stream_s_data_where_white_space_runs_to_the_end_of_the_file_is_told_no_endstream_follows_from_the_bytes_the_scan_holds(int fromEnd)
+    {
+        // Object 8, the value before stream 5, holds a length that runs past object 4's header, the first its data holds, to
+        // the file's last end of line, or to the one before its end-of-file marker: only white space, and that comment,
+        // follow it to the end of the file, so no endstream does, and a load ends the data a byte past object 4's header.
+        // The memo holds object 9's header, past there, as taken between objects. The scan's piece holds those last bytes:
+        // the source, which would give none where the length ends, is not asked for them.
+        static string Text(long length) => string.Create(
+            CultureInfo.InvariantCulture,
+            $"8 0 obj\n{length:D6}\nendobj\n5 0 obj\n<< /Length 8 0 R >>\nstream\n0123456789\n4 0 obj (four) endobj\n9 0 obj\n(nine)\nendobj\n");
+        var (draft, dataStart) = Sound(Text(0), Text(0).IndexOf("0123456789", StringComparison.Ordinal));
+        var text = Text(draft.Length - fromEnd - dataStart);
+        var (file, at) = Sound(text, text.IndexOf("9 0 obj", StringComparison.Ordinal));
+        var source = new ShortCountSource(file, (offset, held) => offset == file.Length - fromEnd ? 0 : held);
+        using var document = PdfDocument.Open(source, options: null, ownsSource: true);
+
+        var memo = document.Reader.GetScanMemo();
+
+        (document.WasRepaired, source.ShortReads).Should().Be((false, 0));
+        memo.TryGetHeaderAt(at, out var header).Should().BeTrue();
+        header.Should().Be(new ScannedHeader(at, 9, 0, ScannedPlaceKind.Clean));
+    }
+
+    [Theory]
+    [InlineData("past a direct length", "Clean")]
+    [InlineData("past the first endstream of data the value before its stream ends", "Raw")]
+    public void The_scan_reads_through_white_space_past_a_declared_length_or_an_endstream_with_its_own_reads_leaving_the_loads_theirs(string where, string kind)
+    {
+        // A hundred spaces, more than a first read holds, then an endobj. Past stream 5's direct length, which no endstream
+        // follows: the scan reads through them to find that no endstream follows, and again to find that the endobj ends the
+        // data where a load ends it, and object 9's header, past it, is held as taken between objects. Past the first
+        // endstream of stream 5's data, which object 9's header holds before it, where object 8, the value before the stream,
+        // ends that data before the header: the scan reads through them to find that the endobj ends the stream there, which
+        // may be an intact one, and the header stays held as taken in its data. Each read counts with the scan's own reads
+        // past declared lengths, and the loads' searches for endstream keep all they may read.
+        var text = where == "past a direct length"
+            ? "5 0 obj\n<< /Length 10 >>\nstream\n0123456789" + new string(' ', 100) + "\nendobj\n9 0 obj\n(nine)\nendobj\n"
+            : "8 0 obj\n10\nendobj\n5 0 obj\n<< /Length 8 0 R >>\nstream\n0123456789\n9 0 obj (nine) endobj\nendstream" + new string(' ', 100) + "endobj\n";
+        var (file, at) = Sound(text, text.IndexOf("9 0 obj", StringComparison.Ordinal));
+        using var document = PdfDocument.Open(file);
+
+        var memo = document.Reader.GetScanMemo();
+
+        memo.TryGetHeaderAt(at, out var header).Should().BeTrue();
+        header.Should().Be(new ScannedHeader(at, 9, 0, Enum.Parse<ScannedPlaceKind>(kind)));
+        document.Reader.EndStreamSearchBytes.Should().Be(0);
+    }
+
+    [Theory]
+    [InlineData(0, "Raw")]
+    [InlineData(1, "Clean")]
+    public void Data_a_direct_length_no_endstream_follows_is_searched_for_where_a_load_ends_it_only_while_the_scan_s_reads_past_declared_lengths_are_short_of_their_bound(
+        int longer, string kind)
+    {
+        // Thirty stream headers of 36 bytes, each the first bytes of the data of the one before, whose direct lengths all end
+        // where 64 spaces start, a letter after them, and no endstream anywhere; the data of the last holds objects 9 and 4,
+        // and object 6 follows the letter. Each stream reads on through the spaces its first read cannot see past, 192 bytes,
+        // and searches its data for where a load ends it, 20 bytes, up to the header that starts that data: once the last has
+        // read through the spaces, the scan's reads past declared lengths come to 6,340 bytes, four times a file of 1,585,
+        // their bound. The last's data is then not searched, and the memo counts what the scan takes past its start as taken
+        // in data. One byte more of file, and the search ends that data a byte past object 9's header, which stops it:
+        // objects 4 and 6 are held as taken between objects.
+        const int Headers = 30;
+        const string Inner = "0123456789\n9 0 obj (nine) endobj\n4 0 obj (four) endobj\n";
+        var text = new StringBuilder();
+
+        for (var i = 0; i < Headers; i++)
+        {
+            text.Append(CultureInfo.InvariantCulture, $"8 0 obj<</Length {(36 * (Headers - i - 1)) + Inner.Length:D10}>>stream\n");
+        }
+
+        text.Append(Inner).Append(' ', 64).Append("x\n6 0 obj (six) endobj\n");
+        var length = ((((192 + 20) * Headers) - 20) / PdfFileReader.EndStreamSearchPasses) + longer;
+        text.Append('%', length - Sound(text.ToString(), 0).File.Length - 1).Append('\n');
+        var shape = text.ToString();
+        var (file, four) = Sound(shape, shape.IndexOf("4 0 obj", StringComparison.Ordinal));
+        var six = four + shape.IndexOf("6 0 obj", StringComparison.Ordinal) - shape.IndexOf("4 0 obj", StringComparison.Ordinal);
+        using var document = PdfDocument.Open(file);
+
+        var memo = document.Reader.GetScanMemo();
+
+        file.Length.Should().Be(length);
+        memo.TryGetHeaderAt(four, out var header).Should().BeTrue();
+        header.Should().Be(new ScannedHeader(four, 4, 0, Enum.Parse<ScannedPlaceKind>(kind)));
+        memo.TryGetHeaderAt(six, out header).Should().BeTrue();
+        header.Should().Be(new ScannedHeader(six, 6, 0, Enum.Parse<ScannedPlaceKind>(kind)));
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(400)]
+    public void A_stream_no_endstream_follows_to_the_end_of_the_file_is_not_read_on_to_tell_it_from_an_intact_one(int spaces)
     {
         // Stream 5 starts 300 bytes before the scan's first piece ends, and no endstream follows it, 600,000 bytes on to the
-        // end of the file. Object 8, the value before it, holds a length short of the header its data holds: the memo holds
-        // that header as taken between objects. With no endstream after the data, no intact stream can hold it, and the scan
-        // reads nothing to tell one: past its first piece, it reads the file twice — once searching for the data's first
-        // endstream, once in its next piece —, and the few bytes of the search for where a load ends the data.
+        // end of the file. Object 8, the value before it, holds a length short of the header its data holds, in that piece,
+        // or, past spaces, in the next, which no longer holds the bytes past that length: the memo holds that header as taken
+        // between objects. With no endstream after the data, no intact stream can hold it, and the scan reads nothing to tell
+        // one: past its first piece, it reads the file twice — once searching for the data's first endstream, once in its
+        // next piece —, and the few bytes of the search for where a load ends the data.
         const int Piece = 1 << 20;
         var file = new HandWrittenFile();
         var rows = new Dictionary<int, long> { [1] = file.Object(1, Catalog), [2] = file.Object(2, Pages) };
         PadWithComments(file, Piece - 300);
         rows[8] = file.Object(8, "5");
-        file.Raw("5 0 obj\n<< /Length 8 0 R >>\nstream\n01234567\n");
+        file.Raw("5 0 obj\n<< /Length 8 0 R >>\nstream\n01234567\n" + new string(' ', spaces));
         var inner = file.Position;
         file.Raw("9 0 obj (nine) endobj\n" + new string('x', 600_000) + "\n");
         file.Table(9, rows, "/Size 9 /Root 1 0 R");
@@ -1133,29 +1757,140 @@ public class ScannedPlacesTests
         var memo = document.Reader.GetScanMemo();
         var read = source.BytesRead - before;
 
+        (inner > Piece).Should().Be(spaces > 0);
         memo.TryGetHeaderAt(inner, out var header).Should().BeTrue();
         header.Should().Be(new ScannedHeader(inner, 9, 0, ScannedPlaceKind.Clean));
         read.Should().BeLessThan(Piece + (2L * (bytes.Length - Piece)) + 4096);
     }
 
+    [Fact]
+    public void A_stream_s_indirect_length_is_looked_for_at_no_more_than_the_last_eight_values_the_scan_passed_however_many_it_passed()
+    {
+        // A thousand values end 300 bytes before the scan's first piece does. Stream 5, past that piece, names object 8, which
+        // the file lacks, for its length, and its data holds a header: the scan looks for object 8 there among the last values
+        // it passed, each read from the file, for they lie before the piece it holds. What it reads besides the file once
+        // stays within a few kilobytes: the last eight values, not the thousand.
+        const int Piece = 1 << 20;
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long> { [1] = file.Object(1, Catalog), [2] = file.Object(2, Pages) };
+        var values = string.Concat(Enumerable.Range(10, 1000).Select(number => string.Create(CultureInfo.InvariantCulture, $"{number} 0 obj\n0\nendobj\n")));
+        PadWithComments(file, Piece - 300 - values.Length);
+        file.Raw(values);
+        PadWithComments(file, Piece + 100);
+        file.Raw("5 0 obj\n<< /Length 8 0 R >>\nstream\n0123 ");
+        var inner = file.Position;
+        file.Raw("9 0 obj (nine) endobj\nendstream\nendobj\n");
+        file.Table(3, rows, "/Size 3 /Root 1 0 R");
+        var bytes = file.Bytes;
+        var source = new StrictCountingSource(bytes);
+        using var document = PdfDocument.Open(source, options: null, ownsSource: false);
+
+        var before = source.BytesRead;
+        var memo = document.Reader.GetScanMemo();
+        var read = source.BytesRead - before;
+
+        memo.TryGetHeaderAt(inner, out var header).Should().BeTrue();
+        header.Should().Be(new ScannedHeader(inner, 9, 0, ScannedPlaceKind.Raw));
+        read.Should().BeLessThan(bytes.Length + 4096);
+    }
+
+    [Fact]
+    public void A_search_for_a_stream_keyword_past_the_scan_s_piece_stops_within_one_of_its_largest_reads_past_the_keyword()
+    {
+        // Stream 5, as in the theory below, starts 300 bytes before the scan's first piece ends, its data holding first the
+        // header of object 6, its length's object, with a length that leaves bytes before that header; a stream keyword
+        // starts 300,000 bytes past the piece, before the data's first endstream. The scan reads the file past its piece for
+        // that keyword in reads that grow, each twice the one before, up to 64 KiB, and stops at the read that holds it:
+        // besides its two pieces, the search for the data's first endstream and a few short reads, it reads the stretch up to
+        // the keyword and less than one of those largest reads past it.
+        const int Piece = 1 << 20;
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long> { [1] = file.Object(1, Catalog), [2] = file.Object(2, Pages) };
+        PadWithComments(file, Piece - 300);
+        file.Raw("5 0 obj\n<< /Length 6 0 R >>\nstream\n%PDF-1.4\n6 0 obj\n5\nendobj\n");
+        var inner = file.Position;
+        file.Raw("9 0 obj\n(inner)\nendobj\n" + new string('x', 300_000) + "\n");
+        var keyword = file.Position;
+        file.Raw("stream\n" + new string('x', 300_000) + "\nendstream\nendobj\n");
+        file.Object(6, "49");
+        file.Table(3, rows, "/Size 3 /Root 1 0 R");
+        var bytes = file.Bytes;
+        var source = new StrictCountingSource(bytes);
+        using var document = PdfDocument.Open(source, options: null, ownsSource: false);
+
+        var before = source.BytesRead;
+        var memo = document.Reader.GetScanMemo();
+        var read = source.BytesRead - before;
+
+        memo.TryGetHeaderAt(inner, out var header).Should().BeTrue();
+        header.Should().Be(new ScannedHeader(inner, 9, 0, ScannedPlaceKind.Clean));
+        read.Should().BeLessThan(Piece + (2L * (bytes.Length - Piece)) + (keyword - Piece) + PdfFileReader.EndStreamSearchChunk + 4096);
+    }
+
+    [Fact]
+    public void A_search_for_a_stream_keyword_ends_with_the_read_that_reaches_the_end_of_the_file()
+    {
+        // Object 5 lost its endstream, and the object that holds its length is never met: the scan awaits it to the end of
+        // the file. Read through a source that gives at most three bytes fewer than the file holds a read, the scan's window
+        // ends on object 7's stream keyword, which the file's bytes go on as streamabc, no keyword (#52). The wait ends with a
+        // search for a keyword from object 7's header, 63 bytes before the end of the file, whose first read reaches that end
+        // and finds none: the search reads no more, not even the last bytes again, as many as a keyword and the byte before.
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long> { [1] = file.Object(1, Catalog), [2] = file.Object(2, Pages) };
+        file.Raw("%" + new string('-', 5998) + "\n");
+        rows[5] = file.Position;
+        file.Raw("5 0 obj\n<< /Length 8 0 R >>\nstream\n0123456789\n");
+        file.Table(9, rows, "/Size 9 /Root 1 0 R");
+        var seven = file.Position;
+        file.Raw("7 0 obj\n<<" + new string(' ', 41) + ">>\nstreamabc");
+        var bytes = file.Bytes;
+        var offsets = new List<long>();
+        var source = new ShortCountSource(bytes, (offset, held) =>
+        {
+            offsets.Add(offset);
+            return bytes.Length - 3;
+        });
+        using var document = PdfDocument.Open(source, options: null, ownsSource: true);
+
+        document.Reader.GetScanMemo();
+
+        (seven, source.ShortReads).Should().Be((bytes.Length - 63, 1));
+        offsets.Should().Contain(seven - 1).And.NotContain(offset => offset >= bytes.Length - "\nstream".Length);
+    }
+
     [Theory]
     [InlineData("no stream keyword, 600,000 bytes before its endstream", 0, "Raw")]
+    [InlineData("no stream keyword, 600,000 bytes before its endstream, the word upstream past its length's object", 0, "Raw")]
+    [InlineData("no stream keyword, 600,000 bytes before its endstream, a word that holds stream where the first read past the piece starts", 0, "Raw")]
+    [InlineData("no stream keyword, its endstream a megabyte past the byte before its length's object", 0, "Raw")]
+    [InlineData("no stream keyword, its endstream a megabyte past its length's object", 0, "Clean")]
     [InlineData("a stream keyword, 300,000 bytes on", 0, "Clean")]
+    [InlineData("a stream keyword that ends the scan's piece", 0, "Clean")]
     [InlineData("a stream keyword, 300,000 bytes on, the first read past the piece given short", 0, "Raw")]
+    [InlineData("a stream keyword, 300,000 bytes on, in the read before which the scan's reads past declared lengths reach four times the file", 20, "Raw", 300, 403_308)]
+    [InlineData("a stream keyword, 300,000 bytes on, in the read before which the scan's reads past declared lengths fall four bytes short of four times the file", 20, "Clean", 300, 403_309)]
     [InlineData("no stream keyword, a megabyte and more before its endstream", 0, "Clean")]
+    [InlineData("no stream keyword, a megabyte and more before its endstream, the end of the file within a read past the megabyte", 0, "Clean", 2000)]
     [InlineData("no stream keyword, a megabyte and more before its endstream", 20, "Raw")]
     public void A_stream_whose_data_starts_with_its_length_s_object_is_told_from_an_intact_one_by_what_it_may_read_past_the_scan_s_piece(
-        string past, int headers, string kind)
+        string past, int headers, string kind, int lead = 300, int padding = 0)
     {
-        // Stream 5 starts 300 bytes before the scan's first piece ends. Its indirect length names object 6, whose header its
-        // data holds first, with a length that leaves bytes before that header, and object 9's header after it; its first
-        // endstream lies past the piece. Whether a stream keyword starts between object 6's header and that endstream tells
-        // an intact stream, an attached file's, whose header of object 9 is Raw, from one whose length object 6 holds, past
-        // which object 9's header is Clean: the scan reads the file past its piece for it, in reads that grow, up to the
-        // first keyword, and takes a stretch longer than a megabyte for one that holds a keyword. A read the source gives
-        // short leaves object 9's header Raw, as in an intact stream, and so do the scan's reads past declared lengths,
-        // spent while it reads there: stream headers before it, whose direct lengths end where one run of 256 KiB of white
-        // space starts, each read that run, and the twentieth leaves less than the stretch.
+        // Stream 5 starts 300 bytes before the scan's first piece ends, or 2,000. Its indirect length names object 6, whose
+        // header its data holds first, with a length that leaves bytes before that header, and object 9's header after it;
+        // its first endstream lies past the piece. Whether a stream keyword starts between object 6's header and that
+        // endstream tells an intact stream, an attached file's, whose header of object 9 is Raw, from one whose length object
+        // 6 holds, past which object 9's header is Clean: the scan reads the file past its piece for it, in reads that grow,
+        // up to the first keyword. It searches a megabyte from the byte before object 6's header, all of a stretch that ends
+        // there, and takes a longer stretch, a byte longer too, for one that holds a keyword, however near the end of the file
+        // its last read comes. A word that holds stream holds no keyword, upstream in object 9's string, or one whose stream
+        // starts where the first read past the piece does, which that read does not tell; a keyword the piece ends with is
+        // told by the read past the piece, which repeats it with the byte after. A read the source gives short leaves object
+        // 9's header Raw, as in an intact stream, and so do the scan's reads past declared lengths, spent while it reads
+        // there: stream headers before it, whose direct lengths end where one run of 256 KiB of white space starts, each read
+        // that run, and the twentieth leaves less than the stretch. Past them, white space before the table sets where those
+        // reads reach four times the length of the file: 403,308 bytes make them reach it just before the read that holds a
+        // keyword 300,000 bytes on, which the scan then does not make; one byte more leaves them four bytes short, and the
+        // scan makes it.
         const int Piece = 1 << 20;
         var file = new HandWrittenFile();
         var rows = new Dictionary<int, long> { [1] = file.Object(1, Catalog), [2] = file.Object(2, Pages) };
@@ -1170,15 +1905,31 @@ public class ScannedPlacesTests
             file.Raw(new string(' ', 256 * 1024) + "x\n");
         }
 
-        PadWithComments(file, Piece - 300);
-        file.Raw("5 0 obj\n<< /Length 6 0 R >>\nstream\n%PDF-1.4\n6 0 obj\n5\nendobj\n");
+        PadWithComments(file, Piece - lead);
+        file.Raw("5 0 obj\n<< /Length 6 0 R >>\nstream\n%PDF-1.4\n");
+        var lengthObject = file.Position;
+        file.Raw("6 0 obj\n5\nendobj\n");
         var inner = file.Position;
-        file.Raw("9 0 obj\n(inner)\nendobj\n");
-        file.Raw(past.StartsWith("a stream keyword", StringComparison.Ordinal)
-            ? new string('x', 300_000) + "\nstream\n" + new string('x', 300_000)
-            : new string('x', past.Contains("a megabyte", StringComparison.Ordinal) ? Piece + 1000 : 600_000));
+        file.Raw(past.Contains("upstream", StringComparison.Ordinal) ? "9 0 obj\n(upstream)\nendobj\n" : "9 0 obj\n(inner)\nendobj\n");
+
+        if (past.EndsWith("where the first read past the piece starts", StringComparison.Ordinal))
+        {
+            file.Raw(new string('x', (int)(Piece - "\nstream".Length - file.Position)) + "stream");
+        }
+
+        file.Raw(past switch
+        {
+            _ when past.StartsWith("a stream keyword that ends", StringComparison.Ordinal) =>
+                new string('x', (int)(Piece - "\nstream".Length - file.Position)) + "\nstream\n" + new string('x', 300_000),
+            _ when past.StartsWith("a stream keyword", StringComparison.Ordinal) => new string('x', 300_000) + "\nstream\n" + new string('x', 300_000),
+            _ when past.Contains("a megabyte past", StringComparison.Ordinal) =>
+                new string('x', (int)(lengthObject - (past.Contains("the byte before", StringComparison.Ordinal) ? 1 : 0) + Piece - "\n".Length - file.Position)),
+            _ when past.Contains("a megabyte", StringComparison.Ordinal) => new string('x', Piece + 1000),
+            _ => new string('x', 600_000),
+        });
         file.Raw("\nendstream\nendobj\n");
         file.Object(6, "49");
+        file.Raw(new string(' ', padding));
         file.Table(3, rows, "/Size 3 /Root 1 0 R");
         var cut = past.EndsWith("given short", StringComparison.Ordinal);
         var source = new ShortCountSource(file.Bytes, (offset, held) => cut && offset == Piece - 7 ? 3 : held);
@@ -1189,6 +1940,73 @@ public class ScannedPlacesTests
         (document.WasRepaired, source.ShortReads).Should().Be((false, cut ? 1 : 0));
         memo.TryGetHeaderAt(inner, out var header).Should().BeTrue();
         header.Should().Be(new ScannedHeader(inner, 9, 0, Enum.Parse<ScannedPlaceKind>(kind)));
+    }
+
+    [Theory]
+    [InlineData(false, "Clean")]
+    [InlineData(true, "Raw")]
+    public void A_stream_whose_length_s_object_the_scan_awaits_into_a_later_piece_is_told_from_an_intact_one_by_the_file_s_bytes_before_that_piece(
+        bool shortRead, string kind)
+    {
+        // Stream 5's indirect length names object 8, which comes last: the scan awaits it past stream 5's data, which a load
+        // ends at the endobj after its ten bytes, and stops awaiting it at stream 4, past a megabyte of comment lines, in a
+        // later piece, where stream 4 awaits its own. A stream keyword between where a load ends stream 5's data and where
+        // stream 6's data starts tells that object 9's header, which the scan took in what it read as stream 5's data, lies
+        // between objects: the scan searches for one from the byte before that end, which its piece no longer holds, reading
+        // the file there, and finds stream 6's. A source that gives that read short leaves the header held as taken in the
+        // data (#52).
+        const int Piece = 1 << 20;
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long> { [1] = file.Object(1, Catalog), [2] = file.Object(2, Pages) };
+        file.Raw("5 0 obj\n<< /Length 8 0 R >>\nstream\n");
+        var dataEnd = file.Position + "0123456789".Length;
+        file.Raw("0123456789\nendobj\n");
+        var nine = file.Object(9, "(nine)");
+        file.Raw("6 0 obj\n<< /Length 3 >>\nstream\nabc\nendstream\nendobj\n");
+        PadWithComments(file, file.Position + Piece);
+        file.Raw("4 0 obj\n<< /Length 7 0 R >>\nstream\n0123\nendobj\n");
+        file.Object(3, "(three)");
+        file.Object(8, "10");
+        file.Table(3, rows, "/Size 3 /Root 1 0 R");
+        var source = new ShortCountSource(file.Bytes, (offset, held) => shortRead && offset == dataEnd - 1 ? 3 : held);
+        using var document = PdfDocument.Open(source, options: null, ownsSource: true);
+
+        var memo = document.Reader.GetScanMemo();
+
+        (document.WasRepaired, source.ShortReads).Should().Be((false, shortRead ? 1 : 0));
+        memo.TryGetHeaderAt(nine, out var header).Should().BeTrue();
+        header.Should().Be(new ScannedHeader(nine, 9, 0, Enum.Parse<ScannedPlaceKind>(kind)));
+    }
+
+    [Theory]
+    [InlineData(64, 0, "Clean")]
+    [InlineData(63, 1, "Raw")]
+    public void A_length_s_object_is_read_from_the_scan_s_piece_where_the_piece_holds_all_the_bytes_read_of_it_and_from_the_source_otherwise(
+        int before, int shortReads, string kind)
+    {
+        // Stream 5's indirect length names object 9, whose header follows its ten bytes and starts 64 bytes before the scan's
+        // first piece ends, as many as the scan reads of a length's object, or 63; the stream's endstream and endobj are lost,
+        // an endstream in a string past it. Where the piece holds those bytes to the last, the scan reads object 9 from it, and
+        // holds the header as taken between objects, as a load with the length it holds ends the data before it. Otherwise
+        // it reads them from the source, which gives a read that starts at the header 12 bytes, short of its endobj: it then
+        // takes no length, and the header stays held as taken in the data (#52).
+        const int Piece = 1 << 20;
+        const string Stream = "5 0 obj\n<< /Length 9 0 R >>\nstream\n0123456789\n";
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long> { [1] = file.Object(1, Catalog), [2] = file.Object(2, Pages) };
+        PadWithComments(file, Piece - before - Stream.Length);
+        file.Raw(Stream);
+        var nine = file.Position;
+        file.Raw("9 0 obj\n10\nendobj\n6 0 obj\n(endstream)\nendobj\n");
+        file.Table(3, rows, "/Size 3 /Root 1 0 R");
+        var source = new ShortCountSource(file.Bytes, (offset, held) => offset == nine ? 12 : held);
+        using var document = PdfDocument.Open(source, options: null, ownsSource: true);
+
+        var memo = document.Reader.GetScanMemo();
+
+        (nine, document.WasRepaired, source.ShortReads).Should().Be((Piece - before, false, shortReads));
+        memo.TryGetHeaderAt(nine, out var header).Should().BeTrue();
+        header.Should().Be(new ScannedHeader(nine, 9, 0, Enum.Parse<ScannedPlaceKind>(kind)));
     }
 
     [Fact]
@@ -1227,6 +2045,46 @@ public class ScannedPlacesTests
         new PdfValidator().Validate(document).Findings.Where(finding => finding.RuleId.StartsWith("xref.section", StringComparison.Ordinal))
             .Select(finding => (finding.RuleId, finding.Severity, finding.Location.Position)).Should().Equal(
                 (PdfValidationRuleIds.XRefSectionUnconfirmed, PdfValidationSeverity.Error, keyword));
+    }
+
+    [Fact]
+    public void An_xref_keyword_where_the_scan_s_own_sweep_stands_with_the_sweep_ahead_is_told_as_the_scan_s_own_sweep_tells_it()
+    {
+        // Past the page tree, the end-of-file marker's line, a megabyte of comment lines, then an xref keyword, a trailer
+        // keyword, a second xref keyword and the table. The source gives the first read at the page tree's end, the sweep
+        // ahead's to the first keyword, short within the marker; the reads from there no further than a place on the
+        // marker's line; and none from that place (#52). The sweep ahead, which the short read leaves in a comment, stops
+        // there and hides the first keyword; the scan's own sweep, which reads the marker whole, stops there too for the
+        // trailer keyword. Caught up with, the sweep ahead takes up the state the scan's own stands in: the second keyword
+        // and the table's lie between objects. Under a bound of 4, the memo holds the second and fills at the table's; the
+        // rebuild that object 3's row, outside the file, sets off scans the file again rather than replaying a memo that is
+        // not whole.
+        const int Piece = 1 << 20;
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long> { [1] = file.Object(1, Catalog), [2] = file.Object(2, Pages) };
+        var pagesEnd = rows[2] + "2 0 obj\n".Length + Pages.Length;
+        var marker = file.Position;
+        file.Raw("%%EOF" + new string(' ', 100) + "\n");
+        PadWithComments(file, Piece + 100);
+        file.Raw("xref\ntrailer\nxref\n");
+        rows[3] = 9_999_999;
+        var table = file.Table(4, rows, "/Size 4 /Root 1 0 R");
+        var (cut, stop) = (marker + 3, marker + 90);
+        var given = new HashSet<long>();
+        var source = new ShortCountSource(file.Bytes, (offset, held) =>
+            offset == pagesEnd && held > cut - offset && given.Add(offset) ? (int)(cut - offset)
+            : offset >= pagesEnd && offset < stop ? (int)(stop - offset)
+            : offset == stop ? 0
+            : held);
+        var options = new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxIndexEntries = 4 } };
+        using var document = PdfDocument.Open(source, options, ownsSource: true);
+
+        var memo = document.Reader.GetScanMemo();
+        var shortReads = source.ShortReads;
+        document.GetObject(new PdfObjectId(3));
+
+        (memo.IsWhole, memo.FullAt, memo.WholeUntil).Should().Be((false, table, pagesEnd));
+        source.ShortReads.Should().BeGreaterThan(shortReads, "the rebuild scans the file again");
     }
 
     [Theory]
@@ -1331,6 +2189,67 @@ public class ScannedPlacesTests
     }
 
     [Fact]
+    public void A_whole_memo_keeps_the_trailers_in_trimmed_lists_and_one_past_its_bound_trims_none_of_the_lists_it_lets_go()
+    {
+        // Past the catalog and the page tree, ten thousand trailer keywords, then the file's cross-reference stream. The whole
+        // memo keeps where they lie in lists that keep no more than a ninth more room than they use. Under a bound that objects
+        // 1 and 2 and the keywords fill, the memo leaves the stream's header out and keeps no trailers: it makes no trimmed copy
+        // of the lists it lets go, and so allocates about that copy less than the whole memo.
+        const int Keywords = 10_000;
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, (int Type, long Field2, int Field3)>
+        {
+            [1] = (1, file.Object(1, Catalog), 0),
+            [2] = (1, file.Object(2, Pages), 0),
+        };
+        file.Raw(string.Concat(Enumerable.Repeat("trailer\n", Keywords)));
+        file.CrossReferenceStream(3, 4, rows, "/Root 1 0 R");
+        var bytes = file.Bytes;
+        var bounded = new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxIndexEntries = Keywords + 2 } };
+
+        var wholeAllocated = Allocations.Least(() => PdfDocument.Open(bytes), document => document.Reader.GetScanMemo(), out var wholeDocument, out var whole);
+        var cutAllocated = Allocations.Least(() => PdfDocument.Open(bytes, bounded), document => document.Reader.GetScanMemo(), out var cutDocument, out var cut);
+
+        using (wholeDocument)
+        using (cutDocument)
+        {
+            whole.IsWhole.Should().BeTrue();
+            whole.Trailers!.Keywords.Should().HaveCount(Keywords);
+            whole.Trailers.Streams.Should().ContainSingle();
+            whole.Trailers.Keywords.Capacity.Should().BeLessThanOrEqualTo(whole.Trailers.Keywords.Count * 10 / 9);
+            whole.Trailers.Streams.Capacity.Should().BeLessThanOrEqualTo(whole.Trailers.Streams.Count * 10 / 9);
+            cut.IsWhole.Should().BeFalse();
+            cut.Count.Should().Be(Keywords + 2);
+            cut.Trailers.Should().BeNull();
+            (wholeAllocated - cutAllocated).Should().BeGreaterThanOrEqualTo(
+                Keywords * sizeof(long) / 2, "a memo past its bound trims no list it lets go ({0} bytes against {1})", wholeAllocated, cutAllocated);
+        }
+    }
+
+    [Theory]
+    [InlineData(1_000, 64)]
+    [InlineData(100, 100)]
+    public void A_memo_whose_places_end_filling_the_room_its_slots_grew_to_allocates_less_than_one_a_place_short_of_it(int bound, int places)
+    {
+        // The slots grow by doubling from the first 64, never past the bound, and are trimmed once the scan ends: a memo whose
+        // places end filling the room the last growth made, the first 64 slots or the bound, keeps that array, where one a
+        // place short of it allocates its trimmed copy too.
+        var options = new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxIndexEntries = bound } };
+        var fullFile = Alternating(places);
+        var shortFile = Alternating(places - 1);
+
+        var full = Allocations.Least(() => PdfDocument.Open(fullFile, options), document => document.Reader.GetScanMemo(), out var fullDocument, out var fullMemo);
+        var oneShort = Allocations.Least(() => PdfDocument.Open(shortFile, options), document => document.Reader.GetScanMemo(), out var shortDocument, out var shortMemo);
+
+        using (fullDocument)
+        using (shortDocument)
+        {
+            (fullMemo.Count, fullMemo.IsWhole, shortMemo.Count, shortMemo.IsWhole).Should().Be((places, true, places - 1, true));
+            full.Should().BeLessThan(oneShort, "a memo that ends with its room full trims nothing ({0} bytes against {1})", full, oneShort);
+        }
+    }
+
+    [Fact]
     public void A_rebuild_the_source_fails_past_the_memo_s_replay_leaves_the_memo_for_the_rebuild_run_again_to_take()
     {
         // The memo is asked for first; the source fails the rebuild that replays it as it merges the trailer: what the rebuild
@@ -1354,6 +2273,27 @@ public class ScannedPlacesTests
         document.Diagnostics.Should().Equal(sound.Diagnostics);
         Entries(document).Should().Equal(Entries(sound));
         document.GetObject(new PdfObjectId(3)).AsText().Should().Be("three, updated");
+    }
+
+    [Fact]
+    public void Headers_repeated_at_the_longest_distance_a_run_holds_take_no_more_room_than_at_a_distance_a_byte_shorter()
+    {
+        // Object 7 defined a hundred times, each a stream whose direct length an endstream confirms, so that the scan reads
+        // none of its data: a file of 200 GB of which the source holds a few hundred bytes. A distance as long as an int holds
+        // is the longest a run holds: the headers are held as one run there, as at a distance a byte shorter, and making the
+        // memo allocates as much at either.
+        const int Repeats = 100;
+        var longest = Allocations.Least(() => RepeatedStreams(int.MaxValue, Repeats), document => document.Reader.GetScanMemo(), out var atLongest, out var memo);
+        var shorter = Allocations.Least(() => RepeatedStreams(int.MaxValue - 1, Repeats), document => document.Reader.GetScanMemo(), out var atShorter, out _);
+
+        using (atLongest)
+        using (atShorter)
+        {
+            var positions = Headers(memo, 0, long.MaxValue).Where(header => header.Number == 7).Select(header => header.Position).ToList();
+            positions.Should().Equal(Enumerable.Range(0, Repeats).Select(i => positions[0] + ((long)i * int.MaxValue)));
+            memo.IsWhole.Should().BeTrue();
+            longest.Should().BeLessThan(shorter + 1024, "the headers are held as one run at either distance ({0} against {1} bytes)", longest, shorter);
+        }
     }
 
     [Fact]
@@ -1687,6 +2627,30 @@ public class ScannedPlacesTests
     }
 
     /// <summary>
+    /// Writes a file of <paramref name="headers"/> object headers, each a place the memo holds in a slot of its own: objects 1
+    /// and 2, then objects 3 and 4 defined again and again in turn, then the file's cross-reference stream 5, which names the
+    /// last definitions in six rows however many headers the file writes, so that the index stays far below the memo's bound.
+    /// </summary>
+    private static byte[] Alternating(int headers)
+    {
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, (int Type, long Field2, int Field3)>
+        {
+            [1] = (1, file.Object(1, Catalog), 0),
+            [2] = (1, file.Object(2, Pages), 0),
+        };
+
+        for (var header = 3; header < headers; header++)
+        {
+            var number = 3 + (header % 2);
+            rows[number] = (1, file.Object(number, "null"), 0);
+        }
+
+        file.CrossReferenceStream(5, 6, rows, "/Root 1 0 R");
+        return file.Bytes;
+    }
+
+    /// <summary>
     /// Writes a sound file of objects 1 and 2, then <paramref name="text"/>, then its table, and gives where the byte
     /// <paramref name="place"/> bytes into the text lies.
     /// </summary>
@@ -1742,8 +2706,74 @@ public class ScannedPlacesTests
         return file.Bytes;
     }
 
+    /// <summary>
+    /// Opens a file whose object 7 is defined <paramref name="repeats"/> times, each a stream whose direct length an endstream
+    /// confirms, its header <paramref name="distance"/> bytes past the one before, its data zeros the source does not hold.
+    /// </summary>
+    private static PdfDocument RepeatedStreams(int distance, int repeats)
+    {
+        const string End = "\nendstream\nendobj\n";
+        var catalog = $"1 0 obj\n{Catalog}\nendobj\n";
+        var head = Encoding.Latin1.GetBytes("%PDF-1.7\n" + catalog + $"2 0 obj\n{Pages}\nendobj\n");
+        var dataLength = distance - Opening(0).Length - End.Length;
+        var opening = Encoding.Latin1.GetBytes(Opening(dataLength));
+        var end = Encoding.Latin1.GetBytes(End);
+        List<(long At, byte[] Bytes)> pieces = [(0, head)];
+
+        for (var i = 0; i < repeats; i++)
+        {
+            var at = head.Length + ((long)i * distance);
+            pieces.Add((at, opening));
+            pieces.Add((at + opening.Length + dataLength, end));
+        }
+
+        var table = head.Length + ((long)repeats * distance);
+        var tail = Encoding.Latin1.GetBytes(string.Create(
+            CultureInfo.InvariantCulture,
+            $"xref\n0 3\n0000000000 65535 f \n0000000009 00000 n \n{9 + catalog.Length:D10} 00000 n \ntrailer\n<< /Size 3 /Root 1 0 R >>\nstartxref\n{table}\n%%EOF\n"));
+        pieces.Add((table, tail));
+        return PdfDocument.Open(new SparseSource(table + tail.Length, pieces), options: null, ownsSource: true);
+
+        static string Opening(long length) => string.Create(CultureInfo.InvariantCulture, $"7 0 obj\n<< /Length {length:D10} >>\nstream\n");
+    }
+
+    /// <summary>
+    /// A file that says it holds <paramref name="length"/> bytes and holds only <paramref name="pieces"/>, each where it starts:
+    /// every other byte reads as zero.
+    /// </summary>
+    private sealed class SparseSource(long length, List<(long At, byte[] Bytes)> pieces) : PdfFileSource
+    {
+        /// <inheritdoc/>
+        public override long Length => length;
+
+        /// <inheritdoc/>
+        public override int Read(long offset, Span<byte> buffer)
+        {
+            if (offset < 0 || offset >= length)
+            {
+                return 0;
+            }
+
+            var read = buffer[..(int)Math.Min(buffer.Length, length - offset)];
+            read.Clear();
+
+            foreach (var (at, bytes) in pieces)
+            {
+                var from = Math.Max(at, offset);
+                var to = Math.Min(at + bytes.Length, offset + read.Length);
+
+                if (from < to)
+                {
+                    bytes.AsSpan((int)(from - at), (int)(to - from)).CopyTo(read[(int)(from - offset)..]);
+                }
+            }
+
+            return read.Length;
+        }
+    }
+
     /// <summary>A file read from memory that says it holds more bytes than it does: a read past them gives none.</summary>
-    private sealed class OverlongSource(byte[] data, int extra) : PdfFileSource
+    private sealed class OverlongSource(byte[] data, long extra) : PdfFileSource
     {
         /// <inheritdoc/>
         public override long Length => data.Length + extra;
