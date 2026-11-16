@@ -7,7 +7,7 @@ to about thirty lines each; the unabridged text is the
 [journal of `e38ebbc`](https://github.com/AdCodicem/AdCodicem.Pdf/blob/e38ebbc471b86779c3f6ac5b320ca1ecd531b2c1/docs/status.md#journal). A session reads an entry when it needs the
 reason for a past decision. A new entry is short, about thirty lines; the detail is in the pull request's body.
 
-## 2026-11-16 — Batch 22, first pull request: why the chain leaves the index to a rebuild at opening ([#218], [#322], [#323], [#325])
+## 2026-11-16 — Batch 22, first pull request: why the chain leaves the index to a rebuild at opening ([#380])
 
 - **The question.** Measured on `main` at `7e8dd24`, twice, identical: a chain each of whose sections reads whole and
   indexes nothing was rebuilt at opening with no finding ([#218]); a table whose `trailer` keyword no dictionary
@@ -28,8 +28,10 @@ reason for a past decision. A new entry is short, about thirty lines; the detail
   texts. Filed: [#375] to [#379].
 - **Mutation** (ADR 53 amended): 23 mutants over the defenses among the changed lines; 18 killed by the suite, 4 by
   tests the step wrote, 1 equivalent, checked by a second agent.
-- **Checks.** 12,206 unit tests, 12,203 passed and 3 skipped; the timing and memory tests alone; the patch's 114
-  coverable lines whole; the site; the corpus differential over 408 documents: no finding nor object changes, 65 gain
+- **The issues.** [#218], [#322], [#323] and [#325]; the catalog's three, [#132], [#229] and [#260], in the next.
+- **Checks.** CI green, the integration suite and the .NET 11 island included; `Remote corpus` run 118 green; 12,206
+  unit tests, 12,203 passed and 3 skipped; the timing and memory tests alone; the patch's 114 coverable lines whole;
+  the site; the corpus differential over 408 documents: no finding nor object changes, 65 gain
   `xref.section-missing` at opening, 5 `xref.section-unreadable`, iPRES `t04-008` and `t04-009` read in part.
 - **For callers.** A rebuild at opening now says why in the diagnostics; an encrypted file whose `trailer` keyword is
   lost keeps its `/Encrypt`, refused rather than read as ciphertext; a new Error rule judges an empty chain.
@@ -1032,3 +1034,4 @@ The detail is in git and in the pull requests; what still matters is in the reco
 [#377]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/377
 [#378]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/378
 [#379]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/379
+[#380]: https://github.com/AdCodicem/AdCodicem.Pdf/pull/380

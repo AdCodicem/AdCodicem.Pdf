@@ -30,8 +30,8 @@ Tracking workflow mirrors from `docs/roadmap.md` (*Debt and open points*, below)
   which definition a rebuild keeps and what a place the search near a section drops leaves, in [#347]; the twenty-first,
   [#154] and [#171] with [#327], [#348] and [#350], in two pull requests by area, the rebuild in [#352] on 2026-11-13,
   the searches near an offset and a row in [#360] on 2026-11-16; the twenty-second, seven issues, in two pull requests
-  by area as the maintainer chose on 2026-11-16: the chain at opening, [#218], [#322], [#323] and [#325], in a pull
-  request open from `ccr-58590f36-j4xou9`, then the catalog after a rebuild, [#132], [#229] and [#260]. Then the
+  by area as the maintainer chose on 2026-11-16: the chain at opening, [#218], [#322], [#323] and [#325], in [#380],
+  open, then the catalog after a rebuild, [#132], [#229] and [#260]. Then the
   other batches, slices 4 to 6 ([#60] to [#62]); then the milestone's adversarial review, slice 7 ([#137], ADR 46), once
   every other issue filed under M02 is closed. The debts come from the reader's own work, the threat model's first
   version ([#135], `docs/threat-model.md`), M01's review after the fact ([#136], `docs/reviews/M01.md`), the planning of
@@ -49,8 +49,9 @@ Tracking workflow mirrors from `docs/roadmap.md` (*Debt and open points*, below)
   pages — the validation rules among them, moved from the project documents — with the API reference under them, and
   four explanations. Outside any milestone.
 - **Last milestone closed**: **M01 — Object model and tolerant reading**
-- **Tests**: 12,206 unit on batch 22's first pull request's branch at `de0482b`, with 240 of the 242 remote documents
-  fetched, 12,203 passed and 3 skipped; the 54 timing and memory tests alone; the integration suite to be run by CI.
+- **Tests**: 12,206 unit on [#380]'s branch at `de0482b`, with 240 of the 242 remote documents fetched, 12,203 passed
+  and 3 skipped — on the committed corpus, 9,297, 9,273 passed and 24 skipped, at the commit after it —; the 54 timing
+  and memory tests alone; the integration suite green in CI, and `Remote corpus` run 118 over all 242.
   Before it, 8,644 unit on [#352]'s branch at `7a91f02`, on the committed corpus, 8,620 passed and 24 skipped; with
   235 of the 242 remote documents fetched, 11,267 at `0dc139f`, 11,264 passed and 3 skipped; the 52 timing and memory
   tests alone; the integration suite green in CI, and `Remote corpus` run 113's acceptance tests and referee checks
@@ -68,8 +69,9 @@ Tracking workflow mirrors from `docs/roadmap.md` (*Debt and open points*, below)
   container at `26ce787`, run class by class, 3,754 passed and 6 skipped where qpdf cannot walk a damaged document's
   pages; and `Remote corpus` run 109's 11,155 acceptance tests and 3,760 referee checks, on the library code
   [#344] ends with.
-- **Coverage**: on batch 22's first pull request's branch at `de0482b`, counted from the unit suite's report by Codecov's
-  rule, 100 % of the patch: its 114 coverable lines whole. Before it, on [#352]'s branch at `0dc139f`, as Codecov
+- **Coverage**: on [#380]'s branch, counted from the unit suite's report by Codecov's rule, 100 % of the patch: its 114
+  coverable lines whole, on the committed corpus alone too, once a test took the branch only a remote document had
+  (Codecov had reported 99.12 % at `c367676`, one line partial). Before it, on [#352]'s branch at `0dc139f`, as Codecov
   reports it, 99.52 % of the patch; of its 624 coverable
   lines, measured at `7a91f02`, 621 whole and 3 partial, branches no input takes and their proofs checked by a second
   agent — an `obj` at the start of the bytes the header walk is given with `startsData` false, which no caller passes
@@ -193,7 +195,9 @@ Tracking workflow mirrors from `docs/roadmap.md` (*Debt and open points*, below)
   five lenses, no blocker and one major claimed, which its refuter downgraded to a nit, 3 minors and about twenty
   nits — the minors regressions on hand-made shapes, which the maintainer chose to fix in a second round —; round 2,
   three lenses over those fixes, no blocker, major or minor; the rest filed as [#375] to [#379].
-- **CI**: green on [#360]'s branch at `e2f2275`, the integration suite against qpdf, the .NET 11 island and the site
+- **CI**: green on [#380]'s branch at `c367676`, the integration suite against qpdf, the .NET 11 island and the site
+  included; `Remote corpus` run 118 green on it at `de0482b`, whose library code the branch keeps. Before it, green on
+  [#360]'s branch at `e2f2275`, the integration suite against qpdf, the .NET 11 island and the site
   included; `Remote corpus` run 117 green on it at `6a5a4df`, whose library code the branch keeps but for two comments;
   the patch's coverage 99.5 % as Codecov counts it. Before it, green on [#352]'s branch at `7a91f02`, the integration suite against qpdf, the .NET 11 island and the site
   included; `Remote corpus` run 113 green on it at `0dc139f`, whose library code the branch keeps. Before it, green on
@@ -572,8 +576,8 @@ One pull request per batch, each design question put to the maintainer after mea
        and a row in [#360], merged on 2026-11-16 (journal of 2026-11-16).
    22. [#132], with [#218], [#229] and [#260], and [#322], [#323] and [#325], which batch 19 filed — seven issues, in two
        pull requests by area, as the maintainer chose on 2026-11-16: the chain at opening, [#218], [#322], [#323] and
-       [#325], in a pull request open from `ccr-58590f36-j4xou9`, `Remote corpus` run on its branch; then the catalog
-       after a rebuild, [#132], [#229] and [#260].
+       [#325], in [#380], open, `Remote corpus` run 118 green on its branch; then the catalog after a rebuild, [#132],
+       [#229] and [#260].
    23. [#141] — done in [#254], brought forward with [#144] at the maintainer's request on 2026-10-15 (journal of
        2026-10-15).
    24. [#169]; [#144], its batch's other half, done in [#254] with [#141].
@@ -958,3 +962,4 @@ Until 2026-09-27 this section was a table whose rows were numbered T01 to T40; t
 [#377]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/377
 [#378]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/378
 [#379]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/379
+[#380]: https://github.com/AdCodicem/AdCodicem.Pdf/pull/380
