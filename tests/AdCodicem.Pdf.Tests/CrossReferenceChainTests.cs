@@ -583,6 +583,24 @@ public class CrossReferenceChainTests
         document.WasRepaired.Should().Be(said is not null);
     }
 
+    [Fact]
+    public void A_table_whose_row_is_no_row_and_whose_trailer_keyword_no_dictionary_follows_is_reported_for_both()
+    {
+        // startxref names a table whose row for object 4 is no row, which ends its subsection, and whose trailer keyword is
+        // followed by an array: the report names the row, then the trailer lost, and what the rest of the subsection and the
+        // older table the trailer would name index is looked for by rebuilding the index (#322).
+        var file = PdfTemplate.Build(PartialFiles.FirstTrailer(
+            "0 5\n{free}\n{row:1}\n{row:2}\n{row:3}\njunk junk junk\n", "trailer\n[ /Size 5 /Prev {xref:1} ]"));
+        var table = StartXRef(file);
+        var junk = PdfTemplate.OffsetOf(file, "junk");
+
+        using var document = PdfDocument.Open(file);
+
+        document.Diagnostics.Should().ContainSingle(d => d.Code == PdfDiagnosticCodes.XRefSectionUnreadable).Which.Message.Should().Be(Invariant(
+            $"The cross-reference table startxref names at offset {table} was read only in part: the row for object 4, at offset {junk}, is not an offset, a generation and n or f, and its trailer keyword is followed by no dictionary; the rows read were kept, and what only the rest of that subsection, or the sections its trailer would name, index is looked for by rebuilding the index."));
+        Text(document, 4).Should().Be("object 4");
+    }
+
     [Theory]
     [InlineData(false, null, null)]
     [InlineData(true, null, "which was read as its trailer")]
