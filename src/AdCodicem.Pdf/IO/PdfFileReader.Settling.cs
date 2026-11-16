@@ -211,8 +211,8 @@ internal sealed partial class PdfFileReader
             };
         }
 
-        // The search reads a header backwards from an "obj"; a load parses forwards from where it starts, and refuses what
-        // the search took — "4 0 objection" —, or reaches the guard on it.
+        // The search reads a header backwards from an "obj", as a load lexes it; a load parses forwards from where it starts,
+        // and finds no header there where the source gives that read short (#52), or reaches the guard on it.
         var near = HeaderAt(nearby, number, reading, out var nearGeneration, out _);
 
         return near switch
