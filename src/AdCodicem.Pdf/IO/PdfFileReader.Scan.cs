@@ -1599,7 +1599,8 @@ internal sealed partial class PdfFileReader
         /// method the more locals it holds, and with these two, and <see cref="NoteXRefKeyword"/> inlined, it left out of the
         /// loop the lexer that reads back the line of a header whose tokens a comment parts
         /// (<see cref="HeaderNumbers.TakeLine"/>); the rebuild of a file of such lines ran about a tenth slower
-        /// (<c>ObjectScanBenchmarks</c>).
+        /// (<c>ObjectScanBenchmarks</c>). The method has grown since, and its optimized compiles leave that lexer out of the
+        /// loop all the same, at no cost the benchmark tells (#374).
         /// </remarks>
         public int PieceXRefAt;
 
