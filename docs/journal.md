@@ -7,6 +7,42 @@ to about thirty lines each; the unabridged text is the
 [journal of `e38ebbc`](https://github.com/AdCodicem/AdCodicem.Pdf/blob/e38ebbc471b86779c3f6ac5b320ca1ecd531b2c1/docs/status.md#journal). A session reads an entry when it needs the
 reason for a past decision. A new entry is short, about thirty lines; the detail is in the pull request's body.
 
+## 2026-11-16 — Batch 21, second pull request: what lies inside another object, told in the searches near a row and near an offset ([#171])
+
+- **The question.** Measured on `main`: a header or a cross-reference section inside a string, a stream's data or a
+  comment stood for the file's own in the search near an entry's row and in the search near an offset the chain names,
+  and a window's start could cut a header's number ([#171]). The rebuild's half came in [#352].
+- **What it does.** The rebuild's own scan, made once per document and only when a search needs it, is kept as a memo of
+  the headers, `xref` keywords and trailers it takes, each held as taken between objects or in another object's bytes,
+  16 bytes a place, bounded by `MaxIndexEntries` as a guard; a rebuild after a search replays it. The search near a row
+  ranks clean candidates first, then the one its neighboring rows support, then the nearest; the search near an offset
+  skips a place the scan does not take, reading nothing there. A choice the reader cannot vouch for is the validator's
+  Error, under two new rules, `xref.entry-unconfirmed` and `xref.section-unconfirmed`; the object served is the same
+  either way. A `trailer` keyword the scan's piece cut, once skipped, is merged.
+- **Settled with the maintainer.** The memo from one scan; the nearest supported candidate; an Error under a rule of its
+  own; every round 4 finding fixed, the batch passing its 1,000 lines of `src/` (about 1,340 at the end); the read past
+  a length taken from the bytes bounded, after the final pass reopened the loop; [#361] filed rather than an eighth fix
+  of the read budget; today, the overflow below fixed in the pull request.
+- **Review** (ADR 54): eight rounds — 18 findings in round 1 (1 blocker, 1 major), 10 in round 2 (1 major), 17 in round
+  3 (3 majors), 12 in round 4 (4 blockers, 2 majors), 9 in round 5, which stopped the loop until the final pass found a
+  blocker on a valid hand-made file; 6 in round 6 (2 blockers, 1 major), 9 in round 7 (5 blockers, one cause: a length
+  read from the bytes that cut a stream's data), 8 in round 8 (1 minor, 7 nits). Round 8's rule: a length the scan
+  cannot confirm changes only how the memo counts places. Filed: [#361] to [#363], [#365] to [#372]; [#353], [#358],
+  [#361] and [#372] commented.
+- **Mutation** (ADR 53 amended): 396 mutants over the defenses among the changed lines. 247 killed by the suite, 6 of
+  them by a hang, each timing-only kill re-run alone (one survived it); 115 by tests the step wrote, 2 of them timing
+  rows, each re-run on the final commit; 32 equivalent, each checked by a second agent, which overturned 6 first
+  verdicts; 2 filed, told apart only past 2^30 slots ([#373]). The step found a defect `main` had not: a length past the
+  end of a source that says it holds `long.MaxValue` bytes overflowed, and opening threw; fixed, its 7 mutants run, 1
+  equivalent.
+- **Checks.** `Remote corpus` run 117 green; CI green; 11,688 unit tests, the timing ones alone; the rebuild's
+  benchmarks within `main`'s spread, allocations equal; the JIT's lost inlining of the lexer in the scan filed as
+  [#374]; the patch's coverage 99.5 % as Codecov counts it, its three lines a guard no call reaches and an arm a value
+  returned before never takes.
+- **For callers.** A search near a row or an offset no longer takes a header or a section another object holds for the
+  file's own; two new Error rules say where the reader could not vouch for its choice. A document whose searches ask for
+  the memo pays one scan of the file; a sound one, nothing.
+
 ## 2026-11-13 — Batch 21, first pull request: what a rebuild takes, and encryption decided at opening ([#154], [#171], [#327], [#348], [#350])
 
 - **The question.** Measured on `main` at `7bccd5b`, twice, identical: a rebuild took any header the bytes spelled — in
@@ -951,3 +987,16 @@ The detail is in git and in the pull requests; what still matters is in the reco
 [#357]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/357
 [#358]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/358
 [#359]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/359
+[#361]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/361
+[#362]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/362
+[#363]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/363
+[#365]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/365
+[#366]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/366
+[#367]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/367
+[#368]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/368
+[#369]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/369
+[#370]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/370
+[#371]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/371
+[#372]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/372
+[#373]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/373
+[#374]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/374

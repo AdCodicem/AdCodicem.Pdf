@@ -180,7 +180,9 @@ Tracking workflow mirrors from `docs/roadmap.md` (*Debt and open points*, below)
   hand-made file and the maintainer chose to bound the read it made; 6 and 9 in rounds 6 and 7, 2 and 5 blockers; round 8,
   a rule by construction — a length the scan cannot confirm changes only how its memo counts places —, 1 minor and 7 nits;
   the rest filed as [#361] to [#363] and [#365] to [#372] ([#360]).
-- **CI**: green on [#352]'s branch at `7a91f02`, the integration suite against qpdf, the .NET 11 island and the site
+- **CI**: green on [#360]'s branch at `e2f2275`, the integration suite against qpdf, the .NET 11 island and the site
+  included; `Remote corpus` run 117 green on it at `6a5a4df`, whose library code the branch keeps but for two comments;
+  the patch's coverage 99.5 % as Codecov counts it. Before it, green on [#352]'s branch at `7a91f02`, the integration suite against qpdf, the .NET 11 island and the site
   included; `Remote corpus` run 113 green on it at `0dc139f`, whose library code the branch keeps. Before it, green on
   [#347]'s branch at `0423a7f`, the integration suite against qpdf, the .NET 11 island and the site
   included; `Remote corpus` run 111 green on it at `3dfdf9d`, whose library code the branch keeps. Before it, green on
