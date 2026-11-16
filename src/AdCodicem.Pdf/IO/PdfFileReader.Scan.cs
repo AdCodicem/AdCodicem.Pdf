@@ -660,7 +660,7 @@ internal sealed partial class PdfFileReader
     /// </remarks>
     private void EndDataWithLength(ReadOnlySpan<byte> span, long windowStart, long dataStart, long length, long position, long revisedTo, ref ScanState scan)
     {
-        var declaredEnd = length <= _source.Length - dataStart ? dataStart + length : _source.Length + 1;
+        var declaredEnd = DeclaredEnd(dataStart, length);
         var next = SignificantPastLength(span, windowStart, declaredEnd);
 
         if (next < 0 ||
@@ -679,6 +679,16 @@ internal sealed partial class PdfFileReader
             scan.KindUntil = Math.Min(scan.KindUntil, end);
         }
     }
+
+    /// <summary>
+    /// Gives where a declared length ends a stream's data that starts at <paramref name="dataStart"/>: past the end of the
+    /// file for a length that runs past it, which no <c>endstream</c> follows — a byte past it, or, for a source that says
+    /// it holds as many bytes as a position can name, that last position, which no sum overflows.
+    /// </summary>
+    /// <param name="dataStart">Where the data starts in the file.</param>
+    /// <param name="length">The declared length; a negative one gives a position before the data's start.</param>
+    private long DeclaredEnd(long dataStart, long length) =>
+        length <= _source.Length - dataStart ? dataStart + length : _source.Length < long.MaxValue ? _source.Length + 1 : long.MaxValue;
 
     /// <summary>
     /// Gives where the first byte at or past <paramref name="declaredEnd"/>, where a length the scan read from the file's
@@ -1090,8 +1100,7 @@ internal sealed partial class PdfFileReader
     {
         var dataStart = at + bounds.DataStart;
 
-        // A length that runs past the end of the file declares an end past it, which no endstream follows.
-        var dataEnd = bounds.Length <= _source.Length - dataStart ? dataStart + bounds.Length : _source.Length + 1;
+        var dataEnd = DeclaredEnd(dataStart, bounds.Length);
         var keywordEnd = -1L;
         scan.LengthObject = bounds.Length < 0 && scan.KindUntil <= dataStart ? bounds.LengthObject : -1;
         scan.PendingUntil = Math.Min(scan.PendingUntil, dataStart);
