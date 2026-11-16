@@ -104,6 +104,28 @@ public class SortedOffsetsTests
         new SortedOffsets([]).FirstAfter(0).Should().Be(long.MaxValue, "an index with no offset places nothing");
     }
 
+    [Theory]
+    [InlineData(25, 20)]
+    [InlineData(30, 25)]
+    [InlineData(26, 25)]
+    [InlineData(40, 30)]
+    [InlineData(41, 40)]
+    [InlineData(10, -1)]
+    [InlineData(5, -1)]
+    public void The_last_offset_before_a_position_is_found_whether_the_position_is_held_or_not_in_one_run_or_across_runs(long position, long expected)
+    {
+        // The same offsets kept in one run, or in two — 25 added to the others given at once, and sorted at the lookup into
+        // a run of its own, too short to merge with theirs —: whether the position is an offset held, in either run, or
+        // falls between two, the answer is the largest offset smaller than it, which the other run may hold, or -1 where
+        // none is.
+        var one = new SortedOffsets([40, 10, 30, 25, 20]);
+        var two = new SortedOffsets([40, 10, 30, 20]);
+        two.Add(25);
+
+        (one.LastBefore(position), two.LastBefore(position)).Should().Be((expected, expected));
+        (one.RunCount, two.RunCount).Should().Be((1, 2));
+    }
+
     [Fact]
     public void An_index_finds_the_offsets_of_objects_written_directly_and_keeps_them_up_to_date()
     {
