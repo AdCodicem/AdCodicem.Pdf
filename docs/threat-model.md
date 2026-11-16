@@ -404,6 +404,27 @@ Known gaps:
   trailer an attached text spells in a comment — an `/Encrypt` there makes `Open` throw `PdfEncryptedException` on an
   unencrypted file —: the rebuild's scan reads the data of a stream whose length it cannot confirm, an indirect one or a
   direct one no `endstream` follows, as the bytes give it, comments unread, and takes the headers and keywords there.
+- [#365] A header or a keyword written in a comment or a string past where a load ends the data of a stream that lost
+  its `endstream` is held as taken between objects, since the scan does not sweep that data: with a row a few bytes off
+  it, the search near the row serves the comment's text, where `main` serves the real object.
+- [#366] An attached file's objects can be held as taken between objects: where the attached file's own first object
+  gives the stream's indirect length, where a length's object the scan never meets ends the data at the attached file's
+  first header and a `stream` token follows, or where an intact attached stream runs past a piece (`StartsStreamWithin`
+  takes a longer stretch as holding a keyword). With a row nearer the attached object than the real one, the search
+  near the row serves it.
+- [#367] Under a source that answers short, the search for a stream's first `endstream` reads a short window as no
+  `endstream` up to the end of the file and ends no memo, so the places past a length taken from the bytes are held as
+  taken between objects where whole reads hold them in the data; and the memo's bound can be blamed for a place a short
+  read keeps it from answering, or the reverse.
+- [#369] The search near a row walks back from each `obj` as from the start of the data: a string holding `%` that opens
+  before the bytes searched hides a header the scan takes, and the memo is not asked.
+- [#370] The search near a cross-reference section's offset ranks the places it finds by distance alone: an `xref`
+  keyword in the data of a stream the scan does not confirm, nearer the offset than the real section, is taken, its
+  section reported unconfirmed.
+- [#372] Where the scan cannot learn where a load ends a lost `endstream`'s data — the length's object lost with it, a
+  second lost `endstream` in the first one's data, an attached PDF that lost its own —, the memo holds what follows as
+  taken in the data, and the entries or sections after it are reported unconfirmed, an error, where `main` warns; the
+  objects served are the same.
 
 ### Resolving objects and object streams
 
@@ -456,6 +477,8 @@ Known gaps:
   by the maintainer's choice, past which a later stream whose direct length a first read cannot confirm is left
   unconfirmed and the headers its data spells taken, so that a rebuild a reported guard forced may serve an object the
   file does not define.
+- [#368] A load's search for a lost `endstream` stops at the next object the index places, at that row's offset as
+  written: a row shifted back into the stream's data cuts the data there, and what it encodes past that point is lost.
 - [#280] Streams sharing a stretch of the file each read it again from a source not in memory: time, not memory,
   bounded per read by `MaxStreamLength` alone.
 - [#138] A stream searched for its `endstream` can keep a length that depends on the object read first.
@@ -891,3 +914,10 @@ before it writes code.
 [#361]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/361
 [#362]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/362
 [#363]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/363
+[#365]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/365
+[#366]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/366
+[#367]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/367
+[#368]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/368
+[#369]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/369
+[#370]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/370
+[#372]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/372
