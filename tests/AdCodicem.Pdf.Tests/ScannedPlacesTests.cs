@@ -148,9 +148,11 @@ public class ScannedPlacesTests
             "a header in the data of a stream whose indirect length's object starts where a stream with no endstream after it declares its data ends" =>
                 "5 0 obj\n<< /Length 7 0 R >>\nstream\n0123 9 0 obj (x) endobj\nendstream\nendobj\n6 0 obj\n<< /Length 11 >>\nstream\n0123456789\n7 0 obj\n3\nendobj\n",
 
-            // Stream 6 lies in stream 5's data, which the scan reads as the bytes give it up to its first endstream, and the
-            // value before it, object 8, holds a length short of the header its data holds: a length read there changes no
-            // kind, and the header stays held as taken in that data.
+            // Stream 6 lies in stream 5's data, which the scan reads as the bytes give it up to its first endstream, and
+            // whose places the memo counts as taken there past stream 6's data's start, stream 5's length's object never
+            // met: the scan does not look for stream 6's length's object there, so that object 8, the value before it,
+            // which holds a length short of the header stream 6's data holds, is never read, and that header stays held as
+            // taken in data.
             "a header in the data of a stream whose indirect length a value in the data of a stream the scan does not confirm holds" =>
                 "5 0 obj\n<< /Length 7 0 R >>\nstream\n8 0 obj\n5\nendobj\n6 0 obj\n<< /Length 8 0 R >>\nstream\n0123456789 9 0 obj (nine) endobj\nendstream x\nendobj\n",
             "a header in a string past the endobj that follows the declared length of a stream with no endstream" =>
