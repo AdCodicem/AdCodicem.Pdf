@@ -446,11 +446,24 @@ internal static class ChainFiles
     /// A hybrid file: a classic table indexes the catalog, the page tree and object 6, which holds the offset of
     /// cross-reference stream 7; its trailer's <c>/XRefStm</c> is <paramref name="xrefStm"/>, in which <c>{offset}</c>
     /// stands for that offset. Only the stream indexes the page, object 3. Object 6's value comes after
-    /// <paramref name="padding"/> spaces.
+    /// <paramref name="padding"/> spaces. With <paramref name="older"/>, an older revision writes object 3 as
+    /// <c>(old three)</c>, indexed by an older table the hybrid table's <c>/Prev</c> names.
     /// </summary>
-    public static byte[] HybridNamingItsStream(string xrefStm, int padding = 0)
+    public static byte[] HybridNamingItsStream(string xrefStm, int padding = 0, bool older = false)
     {
         using var file = new Writer("1.5");
+        var prev = string.Empty;
+
+        if (older)
+        {
+            file.Object(3, "(old three)");
+            var oldest = file.Position;
+            file.Text(string.Create(
+                CultureInfo.InvariantCulture,
+                $"xref\n0 1\n0000000000 65535 f\r\n3 1\n{file.OffsetOf(3):D10} 00000 n\r\ntrailer\n<< /Size 4 >>\n"));
+            prev = string.Create(CultureInfo.InvariantCulture, $" /Prev {oldest}");
+        }
+
         file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>");
         file.Object(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>");
         file.Object(3, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << >> >>");
@@ -466,7 +479,7 @@ internal static class ChainFiles
         var named = xrefStm.Replace("{offset}", stream.ToString(CultureInfo.InvariantCulture), StringComparison.Ordinal);
         file.Text(string.Create(
             CultureInfo.InvariantCulture,
-            $"xref\n0 3\n0000000000 65535 f\r\n{file.OffsetOf(1):D10} 00000 n\r\n{file.OffsetOf(2):D10} 00000 n\r\n6 1\n{six:D10} 00000 n\r\ntrailer\n<< /Size 7 /Root 1 0 R /XRefStm {named} >>\nstartxref\n{xref}\n%%EOF\n"));
+            $"xref\n0 3\n0000000000 65535 f\r\n{file.OffsetOf(1):D10} 00000 n\r\n{file.OffsetOf(2):D10} 00000 n\r\n6 1\n{six:D10} 00000 n\r\ntrailer\n<< /Size 7 /Root 1 0 R /XRefStm {named}{prev} >>\nstartxref\n{xref}\n%%EOF\n"));
         return file.ToArray();
     }
 
