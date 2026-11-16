@@ -2965,6 +2965,21 @@ public class GuardCutValueTests
     }
 
     [Fact]
+    public void A_hybrid_table_whose_stream_a_guard_hid_ends_the_chain_though_its_prev_names_an_older_section()
+    {
+        // The hybrid table's /XRefStm, object 6, is cut before its value, and its /Prev names an older table that writes object
+        // 3, which only the hidden stream indexes in the newer revision: the stream's rows are newer than the older table's,
+        // which would stand for them, so the chain ends at the table, object 3 reading as null until the guard is lifted.
+        var file = ChainFiles.HybridNamingItsStream("6 0 R", padding: 3000, older: true);
+
+        using var document = PdfDocument.Open(file, ObjectGuard);
+
+        document.Reader.Structure.Sections.Should().ContainSingle();
+        document.GetObject(new PdfObjectId(3)).Should().BeSameAs(PdfNull.Instance);
+        document.WasRepaired.Should().BeFalse();
+    }
+
+    [Fact]
     public void A_prev_naming_an_object_whose_header_a_guard_cut_ends_the_chain_as_the_guard_s()
     {
         // The newer table's /Prev is object 9, which holds the older table's offset; 3,000 blanks part its generation from

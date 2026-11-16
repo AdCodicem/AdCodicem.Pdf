@@ -384,6 +384,7 @@ public class ValidatorTests
     [InlineData("older sections the object guard hides", PdfValidationRuleIds.XRefCheckedInPart, 256)]
     [InlineData("object streams the index lacks", PdfValidationRuleIds.XRefObjectStreamBroken, 256)]
     [InlineData("page tree faults", PdfValidationRuleIds.PageTreePageOrphaned, 384)]
+    [InlineData("an empty chain", PdfValidationRuleIds.XRefChainEmpty, 256)]
     public void A_rule_that_writes_its_own_findings_writes_none_once_the_report_is_full(string file, string ruleId, int budget)
     {
         // #168: a rule that writes its findings itself asks the report for room before it writes each, and counts one the
@@ -689,6 +690,10 @@ public class ValidatorTests
             ["section faults"] = (SectionFaults(), PdfReaderLimits.Default),
             ["sections the reader cannot vouch for"] = (UnconfirmedSections(), PdfReaderLimits.Default with { MaxIndexEntries = 8 }),
             ["a trailer without its keyword"] = (SectionFaults(keyword: false), PdfReaderLimits.Default),
+            ["an empty chain"] = (
+                PdfTemplate.Build(PdfTemplate.Sound[..PdfTemplate.Sound.IndexOf("xref\n", StringComparison.Ordinal)] +
+                    "xref\n0 0\ntrailer\n<< /Size 4 /Root 1 0 R >>\nstartxref\n{xref:1}\n%%EOF\n"),
+                PdfReaderLimits.Default),
             ["a trailer keyword followed by no dictionary"] = (
                 PdfTemplate.SoundWith("<< /Size 4 /Root 1 0 R >>", "/Size 4 /Root 1 0 R >>"), PdfReaderLimits.Default),
             ["sections refusing a row"] = (SectionsRefusingARow(), PdfReaderLimits.Default),

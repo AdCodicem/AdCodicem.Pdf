@@ -1600,6 +1600,42 @@ public class ReaderLimitsTests
         document.Diagnostics.Select(entry => entry.Code).Should().Equal(PdfDiagnosticCodes.LimitXRefSectionLength);
     }
 
+    [Fact]
+    public void A_trailer_keyword_followed_by_what_a_trailer_guard_cuts_leaves_the_table_the_guard_s_not_read_in_part()
+    {
+        // The table's window, which MaxXRefSectionLength bounds, cuts the array after the trailer keyword, and MaxTrailerLength
+        // cuts it again where it is read from a window of its own: what follows the keyword may be a dictionary past the cut,
+        // and the table is the guard's, not one whose trailer is lost (#322).
+        var file = PdfTemplate.Build(PdfTemplate.Sound.Replace(
+            "<< /Size 4 /Root 1 0 R >>", "[ (" + new string('x', 300) + ") ]", StringComparison.Ordinal));
+        var limits = PdfReaderLimits.Default with { MaxXRefSectionLength = 128, MaxTrailerLength = 64 };
+
+        using var document = PdfDocument.Open(file, new PdfReaderOptions { Limits = limits });
+
+        var section = document.Reader.Structure.Sections.Should().ContainSingle().Which;
+        section.TrailerCutByLimit.Should().BeTrue();
+        section.Incomplete.Should().BeFalse();
+        document.Diagnostics.Select(entry => entry.Code).Should().Contain(PdfDiagnosticCodes.LimitTrailer)
+            .And.NotContain(PdfDiagnosticCodes.XRefSectionUnreadable);
+    }
+
+    [Fact]
+    public void A_table_read_in_part_for_a_row_whose_trailer_a_guard_cut_is_not_said_to_have_lost_its_trailer()
+    {
+        // The table's last row is no row, which reads it in part; the array after its trailer keyword is cut as above. Whether
+        // a dictionary lay past the cut is the guard's to hide: the report names the row alone (#322).
+        var file = PdfTemplate.Build(PdfTemplate.Sound
+            .Replace("{row:3}", "XXXXXXXXXX 00000 n ", StringComparison.Ordinal)
+            .Replace("<< /Size 4 /Root 1 0 R >>", "[ (" + new string('x', 300) + ") ]", StringComparison.Ordinal));
+        var limits = PdfReaderLimits.Default with { MaxXRefSectionLength = 128, MaxTrailerLength = 64 };
+
+        using var document = PdfDocument.Open(file, new PdfReaderOptions { Limits = limits });
+
+        document.Reader.Structure.Sections.Should().ContainSingle().Which.TrailerCutByLimit.Should().BeTrue();
+        document.Diagnostics.Should().ContainSingle(entry => entry.Code == PdfDiagnosticCodes.XRefSectionUnreadable).Which.Message
+            .Should().Contain("the row for object 3").And.NotContain("trailer keyword is followed by no dictionary");
+    }
+
     [Theory]
     [InlineData("<< /Size", "missing")]
     [InlineData("startxref 0 << /Size", "the keyword startxref")]
