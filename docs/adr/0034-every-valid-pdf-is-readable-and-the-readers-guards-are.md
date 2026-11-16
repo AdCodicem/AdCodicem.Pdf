@@ -161,16 +161,23 @@ the rebuild's scan counts its own reads past streams' declared lengths apart fro
 `EndStreamSearchPasses` multiple, and reads the value of a stream's indirect `/Length` from the file's bytes, never
 through an index. A valid file can lead that read astray: the objects before a stream may hold an older revision's
 object of the length's number, and its data an attached file's, whose integer ends the data anywhere in the file — many
-streams' in one run of white space, which reading on past each length would cross once for each. Past such a length the
-scan reads the 64 bytes of a first read, uncounted, and no further: where they show at once that no `endstream` follows,
-the search for where a load with that length ends the data follows, from the data's start, its reads counted; otherwise
-the scan leaves the data as the bytes give it. The constant's reason covers the scan's counted reads of a valid file's
-own streams, about twice the file; but the streams an attached file's bytes spell in data the scan does not confirm,
-which it reads as objects, count too, and can reach it on a valid file, after which a later stream whose length a first
-read cannot confirm has the headers its data spells taken. By the maintainer's choice, the constant stays internal all
-the same: a known exception to the rule of the Decision that a bound a valid file can reach becomes a guard, tracked by
-[#361](https://github.com/AdCodicem/AdCodicem.Pdf/issues/361), which says what would pay it — a guard alone would not,
-since one reached would still leave that later stream unconfirmed.
+streams' in one run of white space, which reading on past each length would cross once for each. So the scan always
+leaves the data of a stream whose length it cannot confirm — such an indirect one, or a direct one no `endstream`
+follows — as the bytes give it, up to its first `endstream`, whatever the length says; the length sets only how the
+scan's memo counts the places it takes there, as found in the data or between objects. Past an indirect length read
+from the file's bytes the scan reads the 64 bytes of a first read, uncounted, and no further; where they, or the reads
+made past a direct length to confirm it, show that no `endstream` follows, the search for where a load with that length
+ends the data follows, from the data's start, its reads counted; and, for an indirect length, the reads that tell that
+data from an intact stream's — whether a `stream` keyword comes before its first `endstream`, and, where the scan read
+the length, an `endobj` after it — follow, counted past the bytes the scan holds. The memo counts what the scan takes past where that load ends the
+data as found between objects, unless the data reads as intact. The constant's reason covers the scan's counted reads
+of a valid file's own streams, about twice the file; but the streams an attached file's bytes spell in data the scan
+does not confirm, which it reads as objects, count too, and can reach it on a valid file, after which a later stream
+whose direct length a first read cannot confirm is left unconfirmed and has the headers its data spells taken: the one
+way the reads made for the memo can change what the scan takes. By the maintainer's choice, the constant stays
+internal all the same: a known exception to the rule of the Decision that a bound a valid file can reach becomes a
+guard, tracked by [#361](https://github.com/AdCodicem/AdCodicem.Pdf/issues/361), which says what would pay it — a guard
+alone would not, since one reached would still leave that later stream unconfirmed.
 
 ## Context
 
@@ -289,7 +296,9 @@ guard: active by default, reported when it is reached, and lifted by an option.
 - A caller holding a valid but exceptional file can read it, and learns from the report which property to
   raise; a caller holding untrusted input keeps every protection without knowing it has one.
 - Every bound now needs a decision, recorded where it is declared: an option with its code and its test, or
-  an internal constant with the reason no valid file reaches it. The option surface grows with the reader.
+  an internal constant with the reason no valid file reaches it — but for `EndStreamSearchPasses`, a known exception
+  ([#361](https://github.com/AdCodicem/AdCodicem.Pdf/issues/361), amended on 2026-11-15). The option surface grows with
+  the reader.
 - The defaults are judgments about what is exceptional, and one is already known to be crossed by a real
   document: a large-format scan decodes past 256 MB. They can be revised without breaking a caller, who may
   always set them.
