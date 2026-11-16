@@ -94,9 +94,9 @@ public static class PdfDiagnosticCodes
     /// A classic cross-reference table the chain names holds no subsection: its <c>trailer</c> keyword follows its
     /// <c>xref</c> keyword, where ISO 32000-1 (7.5.4) has one or more subsections follow it. It was read as indexing nothing,
     /// as a table whose one subsection is <c>0 0</c> is, and nothing is rebuilt for it (#222) — unless no section of the
-    /// chain indexes anything, which rebuilds the index as the document opens and the validator reports as
-    /// <c>xref.chain-empty</c> (#218). It is reported whatever else became of the table, its trailer keyword followed by no
-    /// dictionary too (#322). The report is placed at the table.
+    /// chain indexes anything, which rebuilds the index as the document opens, the validator reporting it as
+    /// <c>xref.chain-empty</c> where every section was read whole (#218). It is reported whatever else became of the table,
+    /// its trailer keyword followed by no dictionary too, which reads it in part (#322). The report is placed at the table.
     /// </summary>
     public const string XRefSectionEmpty = "xref.section-empty";
 
