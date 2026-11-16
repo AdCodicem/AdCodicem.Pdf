@@ -63,7 +63,11 @@ internal sealed class XRefSectionRecord
     /// <summary>Gets the form of the section, once the reader saw enough of it to tell.</summary>
     public XRefSectionKind Kind { get; set; }
 
-    /// <summary>Gets what made the section unreadable, or incomplete, in words; null when nothing did.</summary>
+    /// <summary>
+    /// Gets what made the section unreadable, or incomplete, in words, of its own; null when nothing did. A trailer's fault
+    /// is <see cref="TrailerFault"/>'s: a classic table the end of the file cuts before its first row, or whose trailer is lost
+    /// or lacks its keyword, has none of its own for that (#322, #325).
+    /// </summary>
     public string? Fault { get; set; }
 
     /// <summary>
@@ -97,8 +101,10 @@ internal sealed class XRefSectionRecord
     /// Gets a value indicating whether the section's own reading lost rows through the file's fault, the rows before the
     /// fault kept: a classic table's row that is no row, which ends its subsection; a classic table the end of the file cuts
     /// before its trailer, once it read a row; a cross-reference stream that holds fewer rows than it declares — where a
-    /// value they are read with is one a guard cut too, beside which the data holds too few whatever the value holds. The
-    /// section was read only in part (#207, #210).
+    /// value they are read with is one a guard cut too, beside which the data holds too few whatever the value holds. Or a
+    /// classic table lost its trailer, and the sections it would name, to a <c>trailer</c> keyword followed by no
+    /// dictionary, or may have lost rows with a keyword its rows run into a dictionary without (#322). The section was read
+    /// only in part (#207, #210).
     /// </summary>
     public bool Incomplete { get; set; }
 
@@ -109,7 +115,8 @@ internal sealed class XRefSectionRecord
     /// its <c>trailer</c> keyword too (#207). A row for any number may lie there, and the reader refuses every number to the
     /// rows of the sections the chain reads after the table: for a table an <c>/XRefStm</c> names, whose trailer's links are
     /// not followed, the chain goes on through the table that names it (#156, #210). Rows that run into a dictionary no
-    /// trailer keyword introduces end where the trailer starts, which is known.
+    /// trailer keyword introduces may have lost rows with the keyword, a damaged block ending where a subsection would
+    /// start: what lies before that dictionary cannot be known either, though it is read as the trailer (#322).
     /// </summary>
     public bool SubsectionsUnknown { get; set; }
 

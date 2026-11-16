@@ -129,8 +129,8 @@ The map is rebuilt by scanning the whole file, once at most, and never while the
   or the end of the file cuts a table before its trailer, or within its `trailer` keyword, once it read a row
   ([#207](https://github.com/AdCodicem/AdCodicem.Pdf/issues/207),
   [#210](https://github.com/AdCodicem/AdCodicem.Pdf/issues/210)), or its `trailer` keyword is followed by no dictionary,
-  which loses its trailer and the sections it would name, whatever catalog its rows hold
-  ([#322](https://github.com/AdCodicem/AdCodicem.Pdf/issues/322)); a `/Prev` loops back on the chain
+  which loses its trailer and the sections it would name, whatever catalog its rows hold, or its rows run into a dictionary
+  with no keyword before it, below ([#322](https://github.com/AdCodicem/AdCodicem.Pdf/issues/322)); a `/Prev` loops back on the chain
   (`xref.chain-cycle`); or a hybrid file's table names through `/XRefStm` no cross-reference stream of its revision — a
   classic table, one that cannot be read among them, a section the chain reads through `/Prev` or `startxref`, or what
   the table's own `/Prev` reaches too, whatever offset each writes: the same, one in the white space before that
@@ -319,9 +319,10 @@ CIDFont —, with no section near it, is no section, and is reported missing; wh
 section either, and its dictionary is no trailer. The section `startxref` names is not looked for nearby: when it is not
 where `startxref` says, it is reported missing and the map is rebuilt
 ([#323](https://github.com/AdCodicem/AdCodicem.Pdf/issues/323)). A classic table whose rows run into a dictionary with
-no `trailer` keyword before it is read whole, that dictionary taken for its trailer — its `/Prev` followed, its `/Root`,
-`/Encrypt` and `/ID` kept, which a rebuild, finding trailers by their keyword, would lose —, and the validator says the
-trailer is missing ([#322](https://github.com/AdCodicem/AdCodicem.Pdf/issues/322)).
+no `trailer` keyword before it takes that dictionary for its trailer — its `/Prev` followed, its `/Root`, `/Encrypt` and
+`/ID` kept, which a rebuild, finding trailers by their keyword, would lose —, and is read in part all the same, rows
+having perhaps been lost with the keyword: no older section's row stands for a number it does not give, and the validator
+says the trailer is missing ([#322](https://github.com/AdCodicem/AdCodicem.Pdf/issues/322)).
 
 A rebuilt map keeps, of each number, the definition [`object.redefined`](../reference/diagnostics.md) names — the one
 the file writes last, an object stream's members counting where the stream lies, as an update appends what it changes —,

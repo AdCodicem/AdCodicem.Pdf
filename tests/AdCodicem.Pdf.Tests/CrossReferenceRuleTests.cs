@@ -4380,6 +4380,57 @@ public class CrossReferenceRuleTests
         findings.Should().NotContain(PdfValidationRuleIds.XRefChainEmpty);
     }
 
+    [Fact]
+    public void A_chain_that_gives_no_row_once_a_guard_was_met_is_the_guard_s_not_empty()
+    {
+        // The newest table indexes nothing, and its /Prev names a comment that runs past MaxTrailerLength: the guard is met, and
+        // the search near the offset takes the older table, which indexes nothing either. What the guard hid may be a section
+        // that indexes the file's objects: the chain is not said empty (#218).
+        var chain = "xref\n0 0\ntrailer\n<< /Size 4 /Root 1 0 R >>\n%" + new string(' ', 300) +
+            "\nxref\n0 0\ntrailer\n<< /Size 4 /Root 1 0 R /Prev 0000000000 >>\nstartxref\n{xref:2}\n%%EOF\n";
+        var text = Encoding.Latin1.GetString(PdfTemplate.Build(PdfTemplate.Sound[..PdfTemplate.Sound.IndexOf("xref\n", StringComparison.Ordinal)] + chain));
+        var file = Encoding.Latin1.GetBytes(text.Replace(
+            "0000000000 >>", text.IndexOf('%', 10).ToString("D10", CultureInfo.InvariantCulture) + " >>", StringComparison.Ordinal));
+        var options = new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxTrailerLength = 100 } };
+        using var document = PdfDocument.Open(file, options);
+
+        var findings = new PdfValidator().Validate(document).Findings.Select(finding => finding.RuleId).ToList();
+
+        document.Diagnostics.Select(d => d.Code).Should().Contain(PdfDiagnosticCodes.LimitTrailer);
+        document.WasRepaired.Should().BeTrue();
+        findings.Should().NotContain(PdfValidationRuleIds.XRefChainEmpty);
+    }
+
+    [Fact]
+    public void A_hybrid_stream_two_tables_name_counts_once_among_the_sections_of_an_empty_chain()
+    {
+        // Two tables that index nothing name one cross-reference stream of /Size 0 through /XRefStm, the newer copying the
+        // older's: three sections, the naming again no section of its own (#156, #218).
+        var chain = "xref\n0 0\ntrailer\n<< /Size 5 /Root 1 0 R /XRefStm {off:4} >>\n" +
+            "4 0 obj\n<< /Type /XRef /Size 0 /W [1 4 2] /Length 0 >>\nstream\n\nendstream\nendobj\n" +
+            "xref\n0 0\ntrailer\n<< /Size 5 /Root 1 0 R /XRefStm {off:4} /Prev {xref:1} >>\nstartxref\n{xref:2}\n%%EOF\n";
+        var file = PdfTemplate.Build(PdfTemplate.Sound[..PdfTemplate.Sound.IndexOf("xref\n", StringComparison.Ordinal)] + chain);
+        var newest = PdfTemplate.OffsetOf(file, "xref\n0 0", 2);
+
+        var finding = Single(Validate(file), PdfValidationRuleIds.XRefChainEmpty);
+
+        finding.Message.Should().Be(Invariant(
+            $"None of the 3 cross-reference sections of the chain startxref names at offset {newest} indexes an object, not even object 0, the head of the list of free objects: the index was rebuilt by scanning the file."));
+    }
+
+    [Fact]
+    public void An_empty_chain_is_counted_and_not_written_once_the_report_is_full()
+    {
+        var file = PdfTemplate.Build(PdfTemplate.Sound[..PdfTemplate.Sound.IndexOf("xref\n", StringComparison.Ordinal)] +
+            "xref\n0 0\ntrailer\n<< /Size 4 /Root 1 0 R >>\nstartxref\n{xref:1}\n%%EOF\n");
+        using var document = PdfDocument.Open(file);
+
+        var report = new PdfValidator(new PdfValidatorOptions { FindingCapacity = 0 }).Validate(document);
+
+        report.Findings.Should().BeEmpty();
+        report.ErrorCount.Should().Be(1);
+    }
+
     [Theory]
     [InlineData("")]
     [InlineData("0 0\n")]
@@ -4430,9 +4481,10 @@ public class CrossReferenceRuleTests
     public void A_section_with_a_fault_of_its_own_is_malformed_whatever_its_trailer_s_fault(
         string update, string at, string trailerRule, string? malformed)
     {
-        // A /Prev stream whose dictionary holds a stray parenthesis and whose /W gives a negative width; a /Prev table whose row
-        // for object 5 is no row and whose rows run into a dictionary with no trailer keyword; and the same table with no bad
-        // row, whose only fault is its trailer's (#325).
+        // A /Prev stream whose dictionary holds a stray parenthesis and whose /W gives a negative width, which cannot be read
+        // for a fault of its own whatever its trailer's (#325); a /Prev table whose row for object 5 is no row and whose rows
+        // then run into a dictionary with no trailer keyword, read in part (#322), malformed for its row; and the same table
+        // with no bad row, whose only fault is its trailer's.
         var file = PdfTemplate.Build(PartialFiles.OverOldest(update));
         var section = PdfTemplate.OffsetOf(file, at);
 

@@ -53,6 +53,7 @@ internal sealed partial class PdfFileReader
     /// <param name="startOffset">The offset <c>startxref</c> gives.</param>
     private bool TryReadXRefChain(long startOffset)
     {
+        var guards = _guardsReached;
         var visited = new HashSet<long>(SeededComparer.Instance);
 
         // The record of what the chain named, or read, first at each position it reached: where each section was named,
@@ -218,7 +219,7 @@ internal sealed partial class PdfFileReader
                 namedWithPrevious = null;
             }
 
-            var guards = _guardsReached;
+            var sectionGuards = _guardsReached;
 
             if (TryReadXRefSection(section.Offset, section, out var previous, out var hybrid) != XRefSectionState.Read)
             {
@@ -229,7 +230,7 @@ internal sealed partial class PdfFileReader
                 {
                     // What gives a /W and says it is another type holds no section, as where a /Prev names it (#281).
                     NoSectionWhereAnotherType(section);
-                    ReportFirstSectionLost(section, guardMet: _guardsReached != guards);
+                    ReportFirstSectionLost(section, guardMet: _guardsReached != sectionGuards);
                     return false;
                 }
 
@@ -542,11 +543,12 @@ internal sealed partial class PdfFileReader
         }
 
         // A chain that indexed nothing leaves the whole file to a rebuild, which reads every object: no stream passed over is
-        // left unread then. One read to its end, each section whole and no guard met, gave nothing a section's fault explains,
-        // which the validator says (#218).
+        // left unread then. One read to its end, each section whole and no guard met — one may hide where a section lies, as
+        // white space past MaxTrailerLength at an offset does —, gave nothing a section's fault explains, which the validator
+        // says (#218).
         if (_xref.Count == 0)
         {
-            _structure.ChainEmpty = !_indexIncomplete && !_cutByGuard;
+            _structure.ChainEmpty = !_indexIncomplete && !_cutByGuard && _guardsReached == guards;
             return false;
         }
 
@@ -1575,6 +1577,18 @@ internal sealed partial class PdfFileReader
     /// <param name="naming">What named the section: <c>startxref</c>, <c>/Prev</c> or <c>/XRefStm</c>.</param>
     private void ReportSectionReadInPart(XRefSectionRecord section, string naming)
     {
+        // A table that holds no subsection is said so whatever else became of it: its trailer keyword followed by no
+        // dictionary too, which reads it in part (#322).
+        if (section.NoSubsection)
+        {
+            _diagnostics.Repair(
+                PdfDiagnosticCodes.XRefSectionEmpty,
+                string.Create(
+                    CultureInfo.InvariantCulture,
+                    $"{SectionNamed(section, naming)} holds no subsection: its trailer keyword follows its xref keyword. It was read as indexing nothing."),
+                section.Offset);
+        }
+
         string said;
 
         // Where a newer section refused every number before the chain came to the section, none of its rows stands, and
@@ -1633,15 +1647,27 @@ internal sealed partial class PdfFileReader
             // the sections its trailer would name, index is the rebuild's, which the message says unless a newer section
             // refused every number before the chain came to the table, which it says instead.
             // A trailer keyword followed by no dictionary loses the trailer, and the older sections it would name, as the end
-            // of the file does, after whatever row fault came first (#322).
-            var trailerLost = section.TrailerFault == XRefTrailerFault.NotADictionary;
-            var fault = trailerLost
-                ? (section.Fault is { } rowFault ? rowFault + ", and its trailer keyword is followed by no dictionary" : "its trailer keyword is followed by no dictionary")
-                : section.Fault ?? "the file ends before its trailer";
+            // of the file does; a dictionary the rows run into with no keyword is read as the trailer, though rows may have been
+            // lost before it. Either is said after whatever row fault came first (#322). A trailer a guard cut is the guard's.
+            var trailerLost = section.TrailerFault == XRefTrailerFault.NotADictionary && !section.TrailerCutByLimit;
+            var keywordLost = section.TrailerFault == XRefTrailerFault.Missing && section.TrailerPosition < _source.Length;
+            var trailerSaid = trailerLost
+                ? "its trailer keyword is followed by no dictionary"
+                : keywordLost
+                    ? (section.Trailer is null
+                        ? "its rows run into a dictionary with no trailer keyword before it, which could not be read as its trailer"
+                        : "its rows run into a dictionary with no trailer keyword before it, which was read as its trailer")
+                    : null;
+            var fault = (section.Fault, trailerSaid) switch
+            {
+                ({ } rowFault, { } trailerFault) => rowFault + ", and " + trailerFault,
+                (null, { } trailerFault) => trailerFault,
+                _ => section.Fault ?? "the file ends before its trailer",
+            };
             said = fault + (noneStands
                 ? "; none of the rows read stands, " + EveryNumberRefused
                 : "; the rows read were kept" + KeptButFor(section) + (section.SubsectionsUnknown
-                    ? (naming == "/XRefStm"
+                    ? (naming == "/XRefStm" || keywordLost
                         ? EveryOtherObject
                         : ", and what only the rest of the table, or the sections its trailer would name, index is looked for by rebuilding the index")
                     : (everyRefused
@@ -1671,16 +1697,6 @@ internal sealed partial class PdfFileReader
         }
         else
         {
-            if (section.NoSubsection)
-            {
-                _diagnostics.Repair(
-                    PdfDiagnosticCodes.XRefSectionEmpty,
-                    string.Create(
-                        CultureInfo.InvariantCulture,
-                        $"{SectionNamed(section, naming)} holds no subsection: its trailer keyword follows its xref keyword. It was read as indexing nothing."),
-                    section.Offset);
-            }
-
             return;
         }
 

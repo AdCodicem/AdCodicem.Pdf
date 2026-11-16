@@ -124,10 +124,11 @@ public class CorpusValidationTests
 
     [Theory]
     [MemberData(nameof(AllDocuments))]
-    public void Every_document_rebuilt_as_it_opens_earns_an_error_but_where_a_limit_caused_the_rebuild(string file)
+    public void Every_document_rebuilt_as_it_opens_earns_an_error_unless_a_limit_was_reached(string file)
     {
         // A rebuild at opening means the reader cannot vouch that it reads what was written (ADR 45): some rule says why, an
-        // empty chain's included (#218). A rebuild a reader limit set off is the limit's, which xref.checked-in-part says.
+        // empty chain's included (#218). A rebuild a reader limit set off is the limit's, which xref.checked-in-part says; a
+        // document where one was reached is left out, the report not telling which set the rebuild off.
         var entry = Corpus.Get(file);
         var options = CorpusReadingTests.OptionsFor(entry) with { ThrowOnEncrypted = false };
         using var document = PdfDocument.Open(Corpus.PathOf(entry.File), options);

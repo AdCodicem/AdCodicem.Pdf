@@ -9,7 +9,9 @@ namespace AdCodicem.Pdf.Validation.Rules;
 /// <remarks>
 /// A table whose <c>trailer</c> keyword follows its <c>xref</c> keyword is read as indexing nothing, as a table whose one
 /// subsection is <c>0 0</c> is, which ISO 32000-1 allows: the reader reads the file as written and rebuilds nothing for it,
-/// so the fault is a warning (ADR 45), though an update that indexes nothing may have lost what it meant to index (#222).
+/// so the fault is a warning (ADR 45), though an update that indexes nothing may have lost what it meant to index (#222). A
+/// chain none of whose sections indexes anything is rebuilt, which <see cref="PdfValidationRuleIds.XRefChainEmpty"/> says
+/// (#218).
 /// Other readers part: qpdf calls the table's syntax invalid and reconstructs the file, PyMuPDF and PDFBox read it.
 /// </remarks>
 internal sealed class SubsectionMissingRule : IValidationRule

@@ -33,7 +33,11 @@ public static class PdfDiagnosticCodes
     /// one —, lies outside the file, or is named by a value that is not an offset. The objects only it
     /// indexes are missing from the index, which is rebuilt by scanning the file when one of them is asked for. The report
     /// is placed at the offset the section was named at, or, when that offset lies outside the file or the value is not an
-    /// offset, at the section whose trailer named it.
+    /// offset, at the section whose trailer named it. The section <c>startxref</c> names is not looked for nearby: where
+    /// nothing at the offset reads as a section, or it lies outside the file, the report says the whole index is rebuilt by
+    /// scanning the file, which it is as the document opens, and is placed at the offset, or, outside the file, at the
+    /// <c>startxref</c> keyword (#323). A section one of the reader's limits met as it was read is the limit's, whose report
+    /// stands for it.
     /// </summary>
     public const string XRefSectionMissing = "xref.section-missing";
 
@@ -58,12 +62,18 @@ public static class PdfDiagnosticCodes
     /// hides (#208). A classic table an <c>/XRefStm</c> names, past which the chain goes on through the table that names
     /// it, leaves no older section's row standing for the rest of the subsection its fault ended, nor, where what follows
     /// the fault cannot be known — a subsection header that is no header, a stray token, the end of the file —, for any
-    /// number its rows do not give (#156).
+    /// number its rows do not give (#156). The section <c>startxref</c> names that is there and cannot be read hands nothing
+    /// on: the report says the whole index is rebuilt by scanning the file, which it is as the document opens, unless one of
+    /// the reader's limits met the section as it was read, whose report stands for it (#323).
     /// Or the section, the one <c>startxref</c> names among them, was read only in part, and kept, the chain going on from
     /// it where its trailer was read (#207, #210): a row that is no row ended a subsection of a table, a cross-reference
     /// stream holds fewer rows than it declares, the end of the file cuts a table before its trailer or within its
-    /// <c>trailer</c> keyword, or a row that gives an object in use what no entry can hold was refused alone, its object
-    /// rebuilt where no row read before it — a newer section's, or the section's own for the same number — indexes it. The
+    /// <c>trailer</c> keyword, a table's <c>trailer</c> keyword is followed by no dictionary, which loses the trailer and the
+    /// sections it would name, whatever catalog its rows hold, a table's rows run into a dictionary with no <c>trailer</c>
+    /// keyword before it, which is read as its trailer though rows may have been lost before it, so that no older section's
+    /// row stands for a number the table does not give (#322), or a row that gives an object in use what no entry can hold
+    /// was refused alone, its object rebuilt where no row read before it — a newer section's, or the section's own for the
+    /// same number — indexes it. The
     /// rows read were kept, but for those it refused itself, which the message says without naming them beside the fault it
     /// names, and those whose numbers a newer section refused — none of them, where a newer section refused every number —,
     /// and the message says which, and what was lost: the objects the lost rows would index, which no older section's row
@@ -74,16 +84,19 @@ public static class PdfDiagnosticCodes
     /// rest of the table, or the sections its trailer would name, index is looked for, the same objects, unless a newer
     /// section refused every number before the chain came to it, which the message says instead —, and those only the
     /// sections a lost trailer would name index, are missing from the index, rebuilt when one of them is asked for. The
-    /// report is placed at the section, once, one fault in its message: the first that lost rows, else the end of the file
-    /// before its trailer, else the first row it refused, which is not named beside either of the others.
+    /// report is placed at the section, once, one fault in its message — the first that lost rows, else the end of the file
+    /// before its trailer, else the first row it refused, which is not named beside either of the others —, and beside it
+    /// what became of the trailer, where its keyword is followed by no dictionary or its rows run into one with no keyword.
     /// </summary>
     public const string XRefSectionUnreadable = "xref.section-unreadable";
 
     /// <summary>
     /// A classic cross-reference table the chain names holds no subsection: its <c>trailer</c> keyword follows its
     /// <c>xref</c> keyword, where ISO 32000-1 (7.5.4) has one or more subsections follow it. It was read as indexing nothing,
-    /// as a table whose one subsection is <c>0 0</c> is, and nothing is rebuilt for it (#222). The report is placed at the
-    /// table.
+    /// as a table whose one subsection is <c>0 0</c> is, and nothing is rebuilt for it (#222) — unless no section of the
+    /// chain indexes anything, which rebuilds the index as the document opens and the validator reports as
+    /// <c>xref.chain-empty</c> (#218). It is reported whatever else became of the table, its trailer keyword followed by no
+    /// dictionary too (#322). The report is placed at the table.
     /// </summary>
     public const string XRefSectionEmpty = "xref.section-empty";
 

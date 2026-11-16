@@ -285,10 +285,15 @@ internal sealed partial class PdfFileReader
                     {
                         // The rows run into a dictionary no trailer keyword introduces: the trailer is missing, and the
                         // dictionary, where the trailer would be, is read as it, its /Prev and /XRefStm followed and its /Root,
-                        // /Encrypt and /ID kept, which a rebuild, finding trailers by their keyword, would lose (#322).
+                        // /Encrypt and /ID kept, which a rebuild, finding trailers by their keyword, would lose. Whether rows
+                        // were lost before it with the keyword cannot be known — a damaged block may end where a subsection
+                        // would start —: the table is read in part, as one whose rest is unknown, no older section's row
+                        // standing for a number it does not give (#322).
                         var found = ReadTrailer(window.Memory, absolute, token.Start, windowFull, section);
                         section.TrailerFault = XRefTrailerFault.Missing;
                         section.TrailerPosition = absolute + token.Start;
+                        section.Incomplete = true;
+                        section.SubsectionsUnknown = true;
 
                         if (found is not null)
                         {

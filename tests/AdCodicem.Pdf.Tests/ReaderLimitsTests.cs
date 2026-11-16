@@ -1622,8 +1622,12 @@ public class ReaderLimitsTests
 
         if (judged == "missing")
         {
+            // Read as the trailer, as where no guard stopped the reader (#322): its /Root leads to the catalog, which no search
+            // looks for.
             section.TrailerFault.Should().Be(XRefTrailerFault.Missing);
             section.Fault.Should().BeNull();
+            document.Trailer.GetRaw(PdfName.Root).Should().BeOfType<PdfReference>();
+            document.Diagnostics.Select(entry => entry.Code).Should().Equal(PdfDiagnosticCodes.LimitXRefSectionLength);
             findings.Should().ContainSingle(finding => finding.RuleId == PdfValidationRuleIds.FileTrailerMissing);
             findings.Should().NotContain(finding => finding.RuleId == PdfValidationRuleIds.XRefSectionMalformed);
         }
