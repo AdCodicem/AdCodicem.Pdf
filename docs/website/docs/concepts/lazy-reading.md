@@ -108,6 +108,8 @@ The map is rebuilt by scanning the whole file, once at most, and never while the
 
 - at opening, when `startxref` cannot be found or read, when the section it names cannot be read, when the
   chain indexes nothing, or when `/Root` leads to no catalog and no object of the map is one. A section `startxref`
+  names that is not there, or is there and cannot be read, is reported before the rebuild (`xref.section-missing`,
+  `xref.section-unreadable`, [#323](https://github.com/AdCodicem/AdCodicem.Pdf/issues/323)). A section `startxref`
   names that was read only in part, below, is kept: the map is rebuilt for it only as the next case says, when an
   object it lost is asked for;
 - when an object the map lacks is asked for, by opening or after it, while the map may have lost entries: a
@@ -126,7 +128,9 @@ The map is rebuilt by scanning the whole file, once at most, and never while the
   guard cut — decoded to its end, or as far as a filter decoded it before a fault — holds fewer rows than it declares,
   or the end of the file cuts a table before its trailer, or within its `trailer` keyword, once it read a row
   ([#207](https://github.com/AdCodicem/AdCodicem.Pdf/issues/207),
-  [#210](https://github.com/AdCodicem/AdCodicem.Pdf/issues/210)); a `/Prev` loops back on the chain
+  [#210](https://github.com/AdCodicem/AdCodicem.Pdf/issues/210)), or its `trailer` keyword is followed by no dictionary,
+  which loses its trailer and the sections it would name, whatever catalog its rows hold
+  ([#322](https://github.com/AdCodicem/AdCodicem.Pdf/issues/322)); a `/Prev` loops back on the chain
   (`xref.chain-cycle`); or a hybrid file's table names through `/XRefStm` no cross-reference stream of its revision — a
   classic table, one that cannot be read among them, a section the chain reads through `/Prev` or `startxref`, or what
   the table's own `/Prev` reaches too, whatever offset each writes: the same, one in the white space before that
@@ -313,7 +317,11 @@ there, nor does one that the bytes a source gives end at or before
 that holds no section. An object at the offset that gives a `/W` and another `/Type` and does not read as a section — a
 CIDFont —, with no section near it, is no section, and is reported missing; where `startxref` names one, it holds no
 section either, and its dictionary is no trailer. The section `startxref` names is not looked for nearby: when it is not
-where `startxref` says, the map is rebuilt.
+where `startxref` says, it is reported missing and the map is rebuilt
+([#323](https://github.com/AdCodicem/AdCodicem.Pdf/issues/323)). A classic table whose rows run into a dictionary with
+no `trailer` keyword before it is read whole, that dictionary taken for its trailer — its `/Prev` followed, its `/Root`,
+`/Encrypt` and `/ID` kept, which a rebuild, finding trailers by their keyword, would lose —, and the validator says the
+trailer is missing ([#322](https://github.com/AdCodicem/AdCodicem.Pdf/issues/322)).
 
 A rebuilt map keeps, of each number, the definition [`object.redefined`](../reference/diagnostics.md) names — the one
 the file writes last, an object stream's members counting where the stream lies, as an update appends what it changes —,

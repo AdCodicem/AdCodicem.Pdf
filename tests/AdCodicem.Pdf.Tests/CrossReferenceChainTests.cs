@@ -253,13 +253,18 @@ public class CrossReferenceChainTests
     }
 
     [Fact]
-    public void Reports_a_startxref_past_the_end_of_the_file_as_the_rebuild_alone()
+    public void Reports_a_startxref_past_the_end_of_the_file_as_a_missing_section_before_the_rebuild()
     {
+        // The reader says why it rebuilds the whole index, at the startxref keyword, the offset lying outside the file (#323).
         var file = PdfTemplate.Build(PdfTemplate.Sound.Replace("{xref:1}", "99999999", StringComparison.Ordinal));
 
         using var document = PdfDocument.Open(file);
 
-        document.Diagnostics.Select(d => d.Code).Should().Equal(PdfDiagnosticCodes.XRefRebuilt);
+        document.Diagnostics.Select(d => d.Code).Should().Equal(PdfDiagnosticCodes.XRefSectionMissing, PdfDiagnosticCodes.XRefRebuilt);
+        document.Diagnostics[0].Position.Should().Be(PdfTemplate.OffsetOf(file, "startxref"));
+        document.Diagnostics[0].Message.Should().Be(string.Create(
+            CultureInfo.InvariantCulture,
+            $"The cross-reference section startxref names at offset 99999999 lies outside the file, which is {file.Length:N0} bytes long; the whole index is rebuilt by scanning the file."));
         document.Catalog.Should().NotBeNull();
     }
 
@@ -476,24 +481,140 @@ public class CrossReferenceChainTests
                 $"The cross-reference table /Prev names at offset {original} is there but cannot be read: it holds the keyword tr#1Biler at offset {trailer},"));
     }
 
-    [Fact]
-    public void Reports_a_table_whose_rows_run_into_a_dictionary_with_no_trailer_keyword_as_unreadable()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Reads_the_dictionary_a_table_s_rows_run_into_with_no_trailer_keyword_as_its_trailer(bool first)
     {
-        var (file, original) = Updated();
-        var text = Encoding.Latin1.GetString(file);
-        var trailer = text.IndexOf("trailer", StringComparison.Ordinal);
-        file = Encoding.Latin1.GetBytes(string.Concat(text.AsSpan(0, trailer), "       ", text.AsSpan(trailer + 7)));
+        // The update's table, or the original's, which its /Prev names, loses its trailer keyword: the dictionary its rows run
+        // into is read as its trailer, its /Prev followed and its /Root kept, and the trailer said missing by the validator
+        // alone (#322).
+        var (sound, original) = Updated();
+        var text = Encoding.Latin1.GetString(sound);
+        var trailer = first ? text.LastIndexOf("trailer", StringComparison.Ordinal) : text.IndexOf("trailer", StringComparison.Ordinal);
+        var file = Encoding.Latin1.GetBytes(string.Concat(text.AsSpan(0, trailer), "       ", text.AsSpan(trailer + 7)));
+        using var keyworded = PdfDocument.Open(sound);
+        var soundFindings = new PdfValidator().Validate(keyworded).Findings.Select(finding => finding.RuleId).ToList();
 
         using var document = PdfDocument.Open(file);
 
-        var report = document.Diagnostics.Should().ContainSingle().Which;
-        report.Code.Should().Be(PdfDiagnosticCodes.XRefSectionUnreadable);
-        report.Position.Should().Be(original);
-        report.Message.Should().StartWith(string.Create(
-            CultureInfo.InvariantCulture,
-            $"The cross-reference table /Prev names at offset {original} is there but cannot be read: its rows are not followed by the trailer keyword."));
+        document.Diagnostics.Should().BeEmpty();
         ReadsWhole(document);
         document.WasRepaired.Should().BeFalse();
+        var sections = document.Reader.Structure.Sections;
+        sections.Should().HaveCount(2);
+        var section = sections[first ? 0 : 1];
+        section.Offset.Should().Be(first ? StartXRef(file) : original);
+        section.State.Should().Be(XRefSectionState.Read);
+        section.TrailerFault.Should().Be(XRefTrailerFault.Missing);
+        new PdfValidator().Validate(document).Findings.Select(finding => finding.RuleId).Should().Equal(
+            [PdfValidationRuleIds.FileTrailerMissing, .. soundFindings]);
+    }
+
+    [Theory]
+    [InlineData("trailer\n[ /Size 5 /Prev {xref:1} ]", true, false)]
+    [InlineData("trailer\n<< /Size 5 /Prev {xref:1} >>", false, false)]
+    [InlineData("<< /Size 5 /Prev {xref:1} >>", false, true)]
+    public void A_table_a_prev_names_whose_trailer_keyword_no_dictionary_follows_is_read_in_part_and_what_older_sections_index_found(
+        string trailer, bool lost, bool keywordMissing)
+    {
+        // The middle table's trailer keyword is followed by an array, by its dictionary, or the keyword is missing before
+        // the dictionary. An array loses the trailer, and the oldest table its /Prev names: the table is read in part, and
+        // object 4, which only the oldest table indexes, is found by rebuilding the index when it is asked for (#322).
+        var file = PdfTemplate.Build(PartialFiles.MiddleTrailer(trailer));
+        var middle = PdfTemplate.OffsetOf(file, "xref\n3 1");
+
+        using var document = PdfDocument.Open(file);
+
+        document.Diagnostics.Select(d => (d.Code, d.Position)).Should().Equal(
+            lost ? [(PdfDiagnosticCodes.XRefSectionUnreadable, middle)] : []);
+
+        if (lost)
+        {
+            document.Diagnostics[0].Message.Should().Be(Invariant(
+                $"The cross-reference table /Prev names at offset {middle} was read only in part: its trailer keyword is followed by no dictionary; the rows read were kept, and what only the sections its trailer would name index is looked for by rebuilding the index."));
+        }
+
+        document.Reader.Structure.Sections.Should().HaveCount(lost ? 2 : 3);
+        document.Reader.Structure.Sections[1].TrailerFault.Should().Be(
+            lost ? XRefTrailerFault.NotADictionary : keywordMissing ? XRefTrailerFault.Missing : XRefTrailerFault.None);
+        Text(document, 3).Should().Be("object 3");
+        document.WasRepaired.Should().BeFalse();
+        Text(document, 4).Should().Be("object 4");
+        document.WasRepaired.Should().Be(lost);
+    }
+
+    [Theory]
+    [InlineData("0 4\n{free}\n{row:1}\n{row:2}\n{row:3}\n", "trailer\n[ /Size 5 /Prev {xref:1} ]", true, false)]
+    [InlineData("3 1\n{row:3}\n", "trailer\n[ /Size 5 /Prev {xref:1} ]", true, true)]
+    [InlineData("0 4\n{free}\n{row:1}\n{row:2}\n{row:3}\n", "trailer\n<< /Size 5 /Root 1 0 R /Prev {xref:1} >>", false, false)]
+    [InlineData("3 1\n{row:3}\n", "<< /Size 5 /Root 1 0 R /Prev {xref:1} >>", false, false)]
+    public void A_table_startxref_names_whose_trailer_keyword_no_dictionary_follows_is_read_in_part_whatever_catalog_its_rows_hold(
+        string rows, string trailer, bool lost, bool rebuiltAtOpening)
+    {
+        // startxref names a table whose trailer keyword is followed by an array, or by its dictionary, or that lacks the keyword
+        // before it. The array loses the trailer, its /Root and the older table its /Prev names: the table is read in part as
+        // one a /Prev names is, the catalog found among its rows, or, where they hold none, by rebuilding the index as the
+        // document opens, and object 4, which only the older table indexes, found by rebuilding it (#322).
+        var file = PdfTemplate.Build(PartialFiles.FirstTrailer(rows, trailer));
+        var table = StartXRef(file);
+
+        using var document = PdfDocument.Open(file);
+
+        var codes = document.Diagnostics.Select(d => d.Code).ToList();
+        codes.Contains(PdfDiagnosticCodes.XRefSectionUnreadable).Should().Be(lost);
+        codes.Contains(PdfDiagnosticCodes.TrailerRootRecovered).Should().Be(lost && !rebuiltAtOpening, "a rebuild takes the older trailer's /Root");
+        document.WasRepaired.Should().Be(rebuiltAtOpening);
+
+        if (lost)
+        {
+            document.Diagnostics[0].Message.Should().Be(Invariant(
+                $"The cross-reference table startxref names at offset {table} was read only in part: its trailer keyword is followed by no dictionary; the rows read were kept, and what only the sections its trailer would name index is looked for by rebuilding the index."));
+        }
+
+        document.Catalog!.IsOfType(PdfName.Catalog).Should().BeTrue();
+        Text(document, 3).Should().Be("object 3");
+        Text(document, 4).Should().Be("object 4");
+        document.WasRepaired.Should().Be(lost);
+    }
+
+    [Theory]
+    [InlineData("6 0 obj\n<< /Type /XRef /Size 7 /W [1 -4 2] /Root 1 0 R /Prev {xref:1} /Length 0 >>\nstream\n\nendstream\nendobj\nstartxref\n{off:6}\n%%EOF\n", "6 0 obj", "stream", "its /W gives a field a negative width")]
+    [InlineData("xref\nfoo bar\ntrailer\n<< /Size 6 /Root 1 0 R /Prev {xref:1} >>\nstartxref\n{xref:2}\n%%EOF\n", "xref\nfoo", "table", "it holds the keyword foo at offset {foo}, where a subsection or the trailer should start")]
+    public void A_section_startxref_names_that_is_there_and_cannot_be_read_is_reported_before_the_whole_index_is_rebuilt(
+        string update, string at, string kind, string fault)
+    {
+        // startxref names a cross-reference stream whose /W gives a negative width, or a table that holds a stray keyword where
+        // a subsection should start. The whole index is rebuilt, as before; the reader now says why (#323).
+        var file = PdfTemplate.Build(PartialFiles.OverOldest(update));
+        var section = PdfTemplate.OffsetOf(file, at);
+        var said = fault.Contains("{foo}", StringComparison.Ordinal)
+            ? fault.Replace("{foo}", Invariant($"{PdfTemplate.OffsetOf(file, "foo")}"), StringComparison.Ordinal)
+            : fault;
+
+        using var document = PdfDocument.Open(file);
+
+        document.Diagnostics.Select(d => d.Code).Should().StartWith([PdfDiagnosticCodes.XRefSectionUnreadable, PdfDiagnosticCodes.XRefRebuilt]);
+        document.Diagnostics[0].Position.Should().Be(section);
+        document.Diagnostics[0].Message.Should().Be(Invariant(
+            $"The cross-reference {kind} startxref names at offset {section} is there but cannot be read: {said}. The whole index is rebuilt by scanning the file."));
+        Text(document, 5).Should().Be("only in the oldest");
+    }
+
+    [Fact]
+    public void A_startxref_naming_an_object_that_is_no_section_is_reported_as_a_missing_section_before_the_whole_index_is_rebuilt()
+    {
+        // startxref names the catalog's header: no section is there, and the reader says so before it rebuilds the index (#323).
+        var file = PdfTemplate.Build(PdfTemplate.Sound.Replace("{xref:1}", "{off:1}", StringComparison.Ordinal));
+        var catalog = PdfTemplate.OffsetOf(file, "1 0 obj");
+
+        using var document = PdfDocument.Open(file);
+
+        document.Diagnostics.Select(d => (d.Code, d.Position)).Should().Equal(
+            (PdfDiagnosticCodes.XRefSectionMissing, catalog), (PdfDiagnosticCodes.XRefRebuilt, -1L));
+        document.Diagnostics[0].Message.Should().Be(Invariant(
+            $"The cross-reference section startxref names at offset {catalog} is not there; the whole index is rebuilt by scanning the file."));
+        document.Catalog!.IsOfType(PdfName.Catalog).Should().BeTrue();
     }
 
     [Fact]
@@ -1086,7 +1207,11 @@ public class CrossReferenceChainTests
             (stream, XRefSectionState.Malformed, "its data could not be decoded"));
         document.Reader.Structure.Sections[0].UndecodedReports.Should().BeNull(
             "what the decoding reported stands beside a section the chain names, and no mark is kept to drop it");
-        document.Diagnostics.Select(diagnostic => diagnostic.Code).Should().Equal(decoding, PdfDiagnosticCodes.XRefRebuilt);
+        document.Diagnostics.Select(diagnostic => diagnostic.Code).Should().Equal(
+            decoding, PdfDiagnosticCodes.XRefSectionUnreadable, PdfDiagnosticCodes.XRefRebuilt);
+        document.Diagnostics[1].Message.Should().Be(string.Create(
+            CultureInfo.InvariantCulture,
+            $"The cross-reference stream startxref names at offset {stream} is there but cannot be read: its data could not be decoded. The whole index is rebuilt by scanning the file."));
         Text(document, 3).Should().Be("three, as the oldest table gives it");
 
         var finding = new PdfValidator().Validate(document).Findings.Should().ContainSingle().Which;
@@ -1128,7 +1253,9 @@ public class CrossReferenceChainTests
         Text(document, 4).Should().Be("new four");
         document.WasRepaired.Should().Be(damagedAt is not null);
         document.Diagnostics.Select(diagnostic => diagnostic.Code).Should().Equal(
-            damagedAt is null ? [] : [PdfDiagnosticCodes.FilterFailed, PdfDiagnosticCodes.XRefRebuilt, PdfDiagnosticCodes.ObjectRedefined]);
+            damagedAt is null
+                ? []
+                : [PdfDiagnosticCodes.FilterFailed, PdfDiagnosticCodes.XRefSectionUnreadable, PdfDiagnosticCodes.XRefRebuilt, PdfDiagnosticCodes.ObjectRedefined]);
     }
 
     [Fact]
@@ -1144,7 +1271,7 @@ public class CrossReferenceChainTests
         using var document = PdfDocument.Open(file);
 
         document.Diagnostics.Select(diagnostic => diagnostic.Code).Should().Equal(
-            PdfDiagnosticCodes.FilterFailed, PdfDiagnosticCodes.XRefRebuilt);
+            PdfDiagnosticCodes.FilterFailed, PdfDiagnosticCodes.XRefSectionUnreadable, PdfDiagnosticCodes.XRefRebuilt);
         document.WasRepaired.Should().BeTrue();
         document.GetObject(new PdfObjectId(1)).AsDictionary().Required().IsOfType(PdfName.Catalog).Should().BeTrue();
 
@@ -3047,7 +3174,8 @@ public class CrossReferenceChainTests
 
         using var document = PdfDocument.Open(file);
 
-        document.Diagnostics.Select(d => d.Code).Where(code => code != PdfDiagnosticCodes.SyntaxKeyRepeated).Should().StartWith([PdfDiagnosticCodes.XRefRebuilt]);
+        document.Diagnostics.Select(d => d.Code).Where(code => code != PdfDiagnosticCodes.SyntaxKeyRepeated).Should().StartWith(
+            [another ? PdfDiagnosticCodes.XRefSectionMissing : PdfDiagnosticCodes.XRefSectionUnreadable, PdfDiagnosticCodes.XRefRebuilt]);
         var section = document.Reader.Structure.Sections.Should().ContainSingle().Which;
         section.Offset.Should().Be(at);
 
@@ -5130,7 +5258,7 @@ public class CrossReferenceChainTests
     [InlineData("6 1\n{six}2147483647 2\n{seven}trailer\n<< /Size 8 >>\n", "the subsection header at offset {at} numbers its rows past object 2147483647", "2147483647", false, true, false, false)]
     [InlineData("6 2\n{six}{seven}/Bad\ntrailer\n<< /Size 8 >>\n", "it holds a name at offset {at}, where a subsection or the trailer should start", "/Bad", false, true, true, false)]
     [InlineData("6 1\n", "the file ends before its trailer", "", false, true, false, true)]
-    [InlineData("6 2\n{six}junk junk junk\n<< /Size 8 >>\n", "the row for object 7, at offset {at}, is not an offset, a generation and n or f", "junk", false, false, false, true)]
+    [InlineData("6 2\n{six}junk junk junk\n<< /Size 8 >>\n", "the row for object 7, at offset {at}, is not an offset, a generation and n or f", "junk", true, false, false, true)]
     [InlineData("6 2\n{six}junk junk junk\ntrailer\n<< /Size 8 >>\n", "the row for object 7, at offset {at}, is not an offset, a generation and n or f", "junk", true, false, false, false)]
     public void A_table_an_xrefstm_names_that_cannot_be_read_leaves_no_older_row_standing_for_what_it_lost(
         string rows, string fault, string needle, bool read, bool every, bool sevenGiven, bool trailerMissing)
@@ -5169,16 +5297,12 @@ public class CrossReferenceChainTests
         Text(document, 3).Should().Be("only in the oldest");
 
         // A table whose rows, after any bad row, run into a dictionary, or whose subsection header the end of the file
-        // follows, is said to miss its trailer, and every other one to be malformed; whether a bad row before a missing
-        // trailer is said malformed too is #325's to settle, and is not held here.
+        // follows, is said to miss its trailer; one with a fault of its own is said malformed too, whatever its trailer's
+        // fault (#325).
         var findings = new PdfValidator().Validate(document).Findings.Select(finding => finding.RuleId).ToList();
         findings.Should().Contain(PdfValidationRuleIds.XRefHybridStreamWrong);
-        findings.Should().Contain(trailerMissing ? PdfValidationRuleIds.FileTrailerMissing : PdfValidationRuleIds.XRefSectionMalformed);
-
-        if (!trailerMissing)
-        {
-            findings.Should().NotContain(PdfValidationRuleIds.FileTrailerMissing);
-        }
+        findings.Contains(PdfValidationRuleIds.FileTrailerMissing).Should().Be(trailerMissing);
+        findings.Contains(PdfValidationRuleIds.XRefSectionMalformed).Should().Be(needle.Length > 0);
     }
 
     [Fact]

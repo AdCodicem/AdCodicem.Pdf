@@ -27,7 +27,7 @@ namespace AdCodicem.Pdf.Validation;
 /// follows the largest of them
 /// rather than their sum, each member whose bytes hold <c>stream</c> parsed as a load parses it. It probes
 /// the index the file's chain gave, as the reader first read it — not one the reader has corrected or rebuilt since —,
-/// and nothing of it when the chain gave none: the file rules have then said the index is unusable, and every entry would
+/// and nothing of it when the chain gave none: the file and cross-reference rules have then said why, and every entry would
 /// only say it again. Of the index a rebuild made, it judges the members written as a stream that it places where the
 /// chain's places nothing — or, the chain stopped short by a guard, where the part of it the reader read places nothing —,
 /// which the reader reads as null and no entry of the file's the reader read would name (#161, #202); and, of the objects

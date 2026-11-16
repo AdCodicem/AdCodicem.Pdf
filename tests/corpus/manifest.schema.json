@@ -313,6 +313,7 @@
               "xref.section-unconfirmed",
               "xref.subsection-missing",
               "xref.chain-loop",
+              "xref.chain-empty",
               "xref.hybrid-stream-wrong",
               "xref.entry-broken",
               "xref.entry-shifted",

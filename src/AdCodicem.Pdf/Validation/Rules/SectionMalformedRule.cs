@@ -11,8 +11,10 @@ namespace AdCodicem.Pdf.Validation.Rules;
 /// <remarks>
 /// A section that is there and cannot be read, or that holds fewer rows than it declares, leaves objects out of the
 /// index, to be found by scanning the file — the first section unreadable, the reader rebuilds the whole index —,
-/// after which it cannot vouch that it reads what was written: an error (ADR 45). A trailer at fault is <see cref="PdfValidationRuleIds.FileTrailerMissing"/>'s or
-/// <see cref="PdfValidationRuleIds.FileTrailerMalformed"/>'s, and a section one of the reader's limits cut is not
+/// after which it cannot vouch that it reads what was written: an error (ADR 45). A section whose only fault is its trailer's
+/// is <see cref="PdfValidationRuleIds.FileTrailerMissing"/>'s or <see cref="PdfValidationRuleIds.FileTrailerMalformed"/>'s;
+/// one that cannot be read for a fault of its own is this rule's too, whatever its trailer's (#325). A section one of the
+/// reader's limits cut is not
 /// malformed (ADR 34): <see cref="PdfValidationRuleIds.XRefCheckedInPart"/> says it was not checked whole. What the reader
 /// read of such a section — a row it refused before the cut, what it met past the rows reading on to the trailer — is the
 /// file's all the same.
@@ -37,7 +39,10 @@ internal sealed class SectionMalformedRule : IValidationRule
                 continue;
             }
 
-            var unreadable = section.State == XRefSectionState.Malformed && section.TrailerFault == XRefTrailerFault.None;
+            // A section that cannot be read for a fault of its own is so whatever its trailer's fault, which has its own
+            // finding; one whose only fault is its trailer's has that finding alone (#325).
+            var unreadable = section.State == XRefSectionState.Malformed &&
+                (section.Fault is not null || section.TrailerFault == XRefTrailerFault.None);
             // A section read whole is faulty for what it lacks, or else for the first row it refused; one that cannot be read
             // is so for what stopped it, which a refused row never is.
             var readFault = section.Fault ?? section.RefusedRow;

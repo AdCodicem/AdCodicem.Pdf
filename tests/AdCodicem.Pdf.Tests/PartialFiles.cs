@@ -121,6 +121,124 @@ internal static class PartialFiles
         """;
 
     /// <summary>
+    /// #207's shape with its middle table whole: the catalog, an empty page tree and object 4, <c>(object 4)</c>, then a table
+    /// that indexes object 4 alone; object 3, <c>(object 3)</c>, then a table that indexes it, followed by
+    /// <paramref name="trailer"/>, whose <c>/Prev</c> names the older table; and an update whose table indexes the catalog and
+    /// the page tree and names the middle table through <c>/Prev</c>.
+    /// </summary>
+    public static string MiddleTrailer(string trailer) => """
+        %PDF-1.7
+        1 0 obj
+        << /Type /Catalog /Pages 2 0 R >>
+        endobj
+        2 0 obj
+        << /Type /Pages /Kids [] /Count 0 >>
+        endobj
+        4 0 obj
+        (object 4)
+        endobj
+        xref
+        0 1
+        {free}
+        4 1
+        {row:4}
+        trailer
+        << /Size 5 >>
+        3 0 obj
+        (object 3)
+        endobj
+        xref
+        3 1
+        {row:3}
+
+        """ + trailer + """
+
+        xref
+        0 3
+        {free}
+        {row:1}
+        {row:2}
+        trailer
+        << /Size 5 /Root 1 0 R /Prev {xref:2} >>
+        startxref
+        {xref:3}
+        %%EOF
+
+        """;
+
+    /// <summary>
+    /// #207's shape where <c>startxref</c> names a whole table, of <paramref name="rows"/>, followed by
+    /// <paramref name="trailer"/>, whose <c>/Prev</c> names an older table that indexes the catalog, the page tree and object 4,
+    /// and gives <c>/Root</c>.
+    /// </summary>
+    public static string FirstTrailer(string rows, string trailer) => """
+        %PDF-1.7
+        1 0 obj
+        << /Type /Catalog /Pages 2 0 R >>
+        endobj
+        2 0 obj
+        << /Type /Pages /Kids [] /Count 0 >>
+        endobj
+        4 0 obj
+        (object 4)
+        endobj
+        xref
+        0 3
+        {free}
+        {row:1}
+        {row:2}
+        4 1
+        {row:4}
+        trailer
+        << /Size 5 /Root 1 0 R >>
+        3 0 obj
+        (object 3)
+        endobj
+        xref
+
+        """ + rows + trailer + """
+
+        startxref
+        {xref:2}
+        %%EOF
+
+        """;
+
+    /// <summary>
+    /// A one-page document whose classic table indexes objects 1 to 3, the page tree's, and object 5,
+    /// <c>(only in the oldest)</c>, then <paramref name="update"/>: a section and the <c>startxref</c> that names it.
+    /// </summary>
+    public static string OverOldest(string update) => """
+        %PDF-1.7
+        1 0 obj
+        << /Type /Catalog /Pages 2 0 R >>
+        endobj
+        2 0 obj
+        << /Type /Pages /Kids [3 0 R] /Count 1 >>
+        endobj
+        3 0 obj
+        << /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << >> >>
+        endobj
+        5 0 obj
+        (only in the oldest)
+        endobj
+        xref
+        0 4
+        {free}
+        {row:1}
+        {row:2}
+        {row:3}
+        5 1
+        {row:5}
+        trailer
+        << /Size 6 /Root 1 0 R >>
+        startxref
+        {xref:1}
+        %%EOF
+
+        """ + update;
+
+    /// <summary>
     /// #210's shape: the catalog, an empty page tree, objects 3 and 4, and a table of their rows whose last, object 4's,
     /// ends in <c>x</c>, followed by its trailer; when <paramref name="updated"/>, an update's table that indexes nothing
     /// names it through <c>/Prev</c>, and <c>startxref</c> names it otherwise.

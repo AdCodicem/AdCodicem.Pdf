@@ -53,10 +53,17 @@ internal sealed class FileStructure
     public IReadOnlyList<XRefSectionRecord> Sections => _sections;
 
     /// <summary>
-    /// Gets a value indicating whether the chain gave an index — its first section read —, so that the index the
-    /// document started from is the file's own.
+    /// Gets a value indicating whether the chain gave an index — its first section read, and a row of it or of a section it
+    /// names indexed —, so that the index the document started from is the file's own.
     /// </summary>
     public bool ChainRead { get; set; }
+
+    /// <summary>
+    /// Gets a value indicating whether the chain was read to its end, each section it named read whole and no guard met,
+    /// and gave the index no row — not even the free head of the list ISO 32000-1 makes a file's table hold (7.5.4) —, so
+    /// that the index was rebuilt as the document opened with no section at fault (#218).
+    /// </summary>
+    public bool ChainEmpty { get; set; }
 
     /// <summary>
     /// Gets where the chain named again, through <see cref="LoopNamedBy"/>, what it had already reached; -1 when it never

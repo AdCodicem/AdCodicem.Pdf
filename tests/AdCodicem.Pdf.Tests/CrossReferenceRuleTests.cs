@@ -2906,7 +2906,7 @@ public class CrossReferenceRuleTests
             new string(' ', 100));
         using var document = PdfDocument.Open(bytes);
 
-        document.Diagnostics.Select(entry => entry.Code).Should().Equal(PdfDiagnosticCodes.XRefRebuilt);
+        document.Diagnostics.Select(entry => entry.Code).Should().Equal(PdfDiagnosticCodes.XRefSectionMissing, PdfDiagnosticCodes.XRefRebuilt);
         Single(new PdfValidator().Validate(document), PdfValidationRuleIds.FileStartXRefWrong).Message.Should().EndWith(
             "which holds neither the xref keyword nor an object.");
     }
@@ -4331,6 +4331,120 @@ public class CrossReferenceRuleTests
         document.WasRepaired.Should().BeTrue();
         findings.Should().Equal(expected is null ? [] : [expected]);
         (document.GetObject(new PdfObjectId(7)) == PdfNull.Instance).Should().Be(expected is not null);
+    }
+
+    [Theory]
+    [InlineData("4 0 obj\n<< /Type /XRef /Size 0 /W [1 4 2] /Root 1 0 R /Length 0 >>\nstream\n\nendstream\nendobj\nstartxref\n{off:4}\n%%EOF\n", "stream", 1)]
+    [InlineData("4 0 obj\n<< /Type /XRef /Size 5 /Index [0 0] /W [1 4 2] /Root 1 0 R /Length 0 >>\nstream\n\nendstream\nendobj\nstartxref\n{off:4}\n%%EOF\n", "stream", 1)]
+    [InlineData("4 0 obj\n<< /Type /XRef /Size 0 /W [1 4 2] /Root 1 0 R /Filter /ASCIIHexDecode /Length 15 >>\nstream\n0000000000FFFF>\nendstream\nendobj\nstartxref\n{off:4}\n%%EOF\n", "stream", 1)]
+    [InlineData("xref\n0 0\ntrailer\n<< /Size 4 /Root 1 0 R >>\nstartxref\n{xref:1}\n%%EOF\n", "table", 1)]
+    [InlineData("xref\ntrailer\n<< /Size 4 /Root 1 0 R >>\nstartxref\n{xref:1}\n%%EOF\n", "table", 1)]
+    [InlineData("xref\n0 0\ntrailer\n<< /Size 4 /Root 1 0 R >>\nstartxref\n{xref:1}\n%%EOF\nxref\n0 0\ntrailer\n<< /Size 4 /Root 1 0 R /Prev {xref:1} >>\nstartxref\n{xref:2}\n%%EOF\n", "table", 2)]
+    public void A_chain_each_of_whose_sections_reads_whole_and_indexes_nothing_is_empty(string chain, string kind, int sections)
+    {
+        // A stream of /Size 0, one whose /Index numbers nothing, one of /Size 0 over a row, a table of one subsection 0 0, one
+        // of none, and two such tables chained: the chain gives the index no row, not even object 0's, and the reader rebuilds
+        // it as the document opens, with no section at fault (#218).
+        var file = PdfTemplate.Build(PdfTemplate.Sound[..PdfTemplate.Sound.IndexOf("xref\n", StringComparison.Ordinal)] + chain);
+        using var document = PdfDocument.Open(file);
+        var first = document.Reader.Structure.Sections[0].Offset;
+
+        var finding = Single(new PdfValidator().Validate(document), PdfValidationRuleIds.XRefChainEmpty);
+
+        document.WasRepaired.Should().BeTrue();
+        document.Catalog!.IsOfType(PdfName.Catalog).Should().BeTrue();
+        finding.Severity.Should().Be(PdfValidationSeverity.Error);
+        finding.Location.Position.Should().Be(first);
+        finding.Message.Should().Be(sections == 1
+            ? Invariant($"The cross-reference {kind} startxref names at offset {first} indexes no object, not even object 0, the head of the list of free objects: the index was rebuilt by scanning the file.")
+            : Invariant($"None of the {sections} cross-reference sections of the chain startxref names at offset {first} indexes an object, not even object 0, the head of the list of free objects: the index was rebuilt by scanning the file."));
+    }
+
+    [Theory]
+    [InlineData("4 0 obj\n<< /Type /XRef /Size 6 /W [1 4 2] /Root 1 0 R /Length 0 >>\nstream\n\nendstream\nendobj\nstartxref\n{off:4}\n%%EOF\n", 0, PdfValidationRuleIds.XRefSectionMalformed)]
+    [InlineData("xref\n0 0\ntrailer\n<< /Size 4 /Root 1 0 R /Prev 99999 >>\nstartxref\n{xref:1}\n%%EOF\n", 0, PdfValidationRuleIds.XRefSectionNotFound)]
+    [InlineData("xref\n0 0\ntrailer\n<< /Size 4 /Root 1 0 R /Prev {xref:1} >>\nstartxref\n{xref:1}\n%%EOF\n", 0, PdfValidationRuleIds.XRefChainLoop)]
+    [InlineData("xref\n0 0\ntrailer\n<< /Size 4 /Root 1 0 R >>\nstartxref\n{xref:1}\n%%EOF\nxref\n0 0\ntrailer\n<< /Size 4 /Root 1 0 R /Prev {xref:1} >>\nstartxref\n{xref:2}\n%%EOF\n", 1, PdfValidationRuleIds.XRefCheckedInPart)]
+    public void A_chain_that_gives_no_row_for_a_fault_another_rule_names_is_not_empty(string chain, int maxSections, string rule)
+    {
+        // A stream that holds none of the rows it declares, a /Prev that names no section, a /Prev that loops back, and a chain
+        // MaxXRefSectionCount stops: each gives the index no row for a fault its own rule names (#218).
+        var file = PdfTemplate.Build(PdfTemplate.Sound[..PdfTemplate.Sound.IndexOf("xref\n", StringComparison.Ordinal)] + chain);
+        var options = maxSections > 0 ? new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxXRefSectionCount = maxSections } } : null;
+        using var document = PdfDocument.Open(file, options);
+
+        var findings = new PdfValidator().Validate(document).Findings.Select(finding => finding.RuleId).ToList();
+
+        document.WasRepaired.Should().BeTrue();
+        findings.Should().Contain(rule);
+        findings.Should().NotContain(PdfValidationRuleIds.XRefChainEmpty);
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("0 0\n")]
+    public void An_update_that_indexes_nothing_over_a_whole_table_leaves_the_chain_not_empty(string subsections)
+    {
+        var file = PdfTemplate.Build(PartialFiles.EmptyUpdate(subsections));
+
+        Validate(file).Findings.Select(finding => finding.RuleId).Should().NotContain(PdfValidationRuleIds.XRefChainEmpty);
+    }
+
+    [Theory]
+    [InlineData("trailer\n[ /Size 5 /Prev {xref:1} ]", PdfValidationRuleIds.FileTrailerMalformed)]
+    [InlineData("trailer\n<< /Size 5 /Prev {xref:1} >>", null)]
+    [InlineData("<< /Size 5 /Prev {xref:1} >>", PdfValidationRuleIds.FileTrailerMissing)]
+    public void A_table_a_prev_names_whose_trailer_keyword_no_dictionary_follows_has_its_trailer_found_malformed_and_no_size_judged(
+        string trailer, string? rule)
+    {
+        // The middle table's trailer keyword is followed by an array, by its dictionary, or the keyword is missing. The array
+        // ends the chain short of the oldest table, which alone indexes object 4: /Size, which counts it, is not judged (#322).
+        var findings = Validate(PdfTemplate.Build(PartialFiles.MiddleTrailer(trailer))).Findings.Select(finding => finding.RuleId);
+
+        findings.Should().Equal(rule is null ? [] : [rule]);
+    }
+
+    [Theory]
+    [InlineData("0 4\n{free}\n{row:1}\n{row:2}\n{row:3}\n", "trailer\n[ /Size 5 /Prev {xref:1} ]", PdfValidationRuleIds.FileTrailerMalformed)]
+    [InlineData("3 1\n{row:3}\n", "trailer\n[ /Size 5 /Prev {xref:1} ]", PdfValidationRuleIds.FileTrailerMalformed)]
+    [InlineData("0 4\n{free}\n{row:1}\n{row:2}\n{row:3}\n", "trailer\n<< /Size 5 /Root 1 0 R /Prev {xref:1} >>", null)]
+    [InlineData("3 1\n{row:3}\n", "<< /Size 5 /Root 1 0 R /Prev {xref:1} >>", PdfValidationRuleIds.FileTrailerMissing)]
+    public void A_table_startxref_names_whose_trailer_keyword_no_dictionary_follows_has_its_trailer_found_malformed(
+        string rows, string trailer, string? rule)
+    {
+        var findings = Validate(PdfTemplate.Build(PartialFiles.FirstTrailer(rows, trailer))).Findings.Select(finding => finding.RuleId);
+
+        findings.Should().Equal(rule is null ? [] : [rule]);
+    }
+
+    [Theory]
+    [InlineData(
+        "6 0 obj\n<< /Type /XRef /Size 7 ) /W [1 -4 2] /Root 1 0 R /Prev {xref:1} /Length 0 >>\nstream\n\nendstream\nendobj\nxref\n0 1\n{free}\ntrailer\n<< /Size 7 /Root 1 0 R /Prev {off:6} >>\nstartxref\n{xref:2}\n%%EOF\n",
+        "6 0 obj", PdfValidationRuleIds.FileTrailerMalformed, "The cross-reference stream at offset {at} cannot be read: its /W gives a field a negative width.")]
+    [InlineData(
+        "xref\n0 1\n{free}\n5 1\njunk junk junk\n<< /Size 6 /Root 1 0 R /Prev {xref:1} >>\nxref\n0 1\n{free}\ntrailer\n<< /Size 6 /Root 1 0 R /Prev {xref:2} >>\nstartxref\n{xref:3}\n%%EOF\n",
+        "xref\n0 1\n0000000000 65535 f \n5 1", PdfValidationRuleIds.FileTrailerMissing, "The cross-reference table at offset {at} is malformed: the row for object 5, at offset {junk}, is not an offset, a generation and n or f.")]
+    [InlineData(
+        "xref\n0 1\n{free}\n<< /Size 6 /Root 1 0 R /Prev {xref:1} >>\nxref\n0 1\n{free}\ntrailer\n<< /Size 6 /Root 1 0 R /Prev {xref:2} >>\nstartxref\n{xref:3}\n%%EOF\n",
+        "xref\n0 1\n0000000000 65535 f \n<<", PdfValidationRuleIds.FileTrailerMissing, null)]
+    public void A_section_with_a_fault_of_its_own_is_malformed_whatever_its_trailer_s_fault(
+        string update, string at, string trailerRule, string? malformed)
+    {
+        // A /Prev stream whose dictionary holds a stray parenthesis and whose /W gives a negative width; a /Prev table whose row
+        // for object 5 is no row and whose rows run into a dictionary with no trailer keyword; and the same table with no bad
+        // row, whose only fault is its trailer's (#325).
+        var file = PdfTemplate.Build(PartialFiles.OverOldest(update));
+        var section = PdfTemplate.OffsetOf(file, at);
+
+        var report = Validate(file);
+
+        Single(report, trailerRule);
+        report.Findings.Where(finding => finding.RuleId == PdfValidationRuleIds.XRefSectionMalformed).Select(finding => finding.Message).Should().Equal(
+            malformed is null
+                ? []
+                : [malformed
+                    .Replace("{at}", Invariant($"{section}"), StringComparison.Ordinal)
+                    .Replace("{junk}", update.Contains("junk", StringComparison.Ordinal) ? Invariant($"{PdfTemplate.OffsetOf(file, "junk")}") : string.Empty, StringComparison.Ordinal)]);
     }
 
     private static string Invariant(FormattableString text) => text.ToString(CultureInfo.InvariantCulture);

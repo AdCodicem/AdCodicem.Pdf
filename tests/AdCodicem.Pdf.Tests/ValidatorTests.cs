@@ -66,6 +66,7 @@ public class ValidatorTests
             PdfValidationRuleIds.XRefSectionUnconfirmed,
             PdfValidationRuleIds.XRefSubsectionMissing,
             PdfValidationRuleIds.XRefChainLoop,
+            PdfValidationRuleIds.XRefChainEmpty,
             PdfValidationRuleIds.XRefHybridStreamWrong,
             PdfValidationRuleIds.XRefEntryBroken,
             PdfValidationRuleIds.XRefEntryShifted,
