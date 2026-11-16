@@ -11,7 +11,8 @@ namespace AdCodicem.Pdf.Validation.Rules;
 /// Pointing anywhere else, it leaves the file's index out of reach, and the reader rebuilds one by scanning: an
 /// error, as <see cref="PdfValidationRuleIds.FileStartXRefMissing"/> is (ADR 45). White space before the
 /// section is not this rule's but <see cref="PdfValidationRuleIds.XRefOffsetImprecise"/>'s; a section that is
-/// there and cannot be read is <see cref="PdfValidationRuleIds.XRefSectionMalformed"/>'s.
+/// there and cannot be read is <see cref="PdfValidationRuleIds.XRefSectionMalformed"/>'s, or, a table whose only fault is
+/// its trailer's, <see cref="PdfValidationRuleIds.FileTrailerMissing"/>'s (#325).
 /// </remarks>
 internal sealed class StartXRefWrongRule : IValidationRule
 {

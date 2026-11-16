@@ -42,7 +42,14 @@ internal sealed class ChainEmptyRule : IValidationRule
 
         var first = structure.Sections[0];
         var kind = first.Kind == XRefSectionKind.Stream ? "stream" : "table";
-        var count = structure.Sections.Count;
+
+        // The sections read, not the namings: a hybrid file's stream a later table names again counts once (#156).
+        var count = 0;
+
+        foreach (var section in structure.Sections)
+        {
+            count += section.State is XRefSectionState.Read or XRefSectionState.Relocated ? 1 : 0;
+        }
         var what = count == 1
             ? string.Create(CultureInfo.InvariantCulture, $"The cross-reference {kind} startxref names at offset {first.Offset} indexes no object")
             : string.Create(

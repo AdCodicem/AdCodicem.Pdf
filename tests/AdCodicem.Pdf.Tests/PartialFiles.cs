@@ -205,6 +205,33 @@ internal static class PartialFiles
         """;
 
     /// <summary>
+    /// A document saved twice. The first revision writes the catalog, an empty page tree, object 3 <c>(old three)</c> and
+    /// object 4 <c>(old four)</c>, and a table that indexes them. The update writes objects 3 and 4 again, <c>(new three)</c>
+    /// and <c>(new four)</c>, and a table, which <c>startxref</c> names, of the subsections <c>0 1</c>, <c>3 1</c> and
+    /// <c>4 1</c>, then its trailer, whose <c>/Prev</c> names the first table — the subsection <c>4 1</c> and the trailer
+    /// keyword blanked when <paramref name="blanked"/>, as a damaged block that ends where a subsection starts leaves them,
+    /// the rows then running into the trailer's dictionary; and <paramref name="trailer"/> written in the trailer's place.
+    /// </summary>
+    public static (byte[] File, long Update) BlankedSubsectionOverOlderRows(bool blanked, string? trailer = null)
+    {
+        var file = new HandWrittenFile();
+        var catalog = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>");
+        var pages = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>");
+        var oldThree = file.Object(3, "(old three)");
+        var oldFour = file.Object(4, "(old four)");
+        var oldest = file.Table(5, new() { [1] = catalog, [2] = pages, [3] = oldThree, [4] = oldFour }, "/Size 5 /Root 1 0 R");
+        var three = file.Object(3, "(new three)");
+        var four = file.Object(4, "(new four)");
+        var update = file.Position;
+        var lost = string.Create(CultureInfo.InvariantCulture, $"4 1\n{four:D10} 00000 n \ntrailer\n");
+        var rows = string.Create(CultureInfo.InvariantCulture, $"xref\n0 1\n0000000000 65535 f \n3 1\n{three:D10} 00000 n \n");
+        file.Raw(rows + (blanked ? new string(' ', lost.Length) : lost));
+        file.Raw((trailer ?? string.Create(CultureInfo.InvariantCulture, $"<< /Size 5 /Root 1 0 R /Prev {oldest} >>")) + "\n");
+        file.Raw(string.Create(CultureInfo.InvariantCulture, $"startxref\n{update}\n%%EOF\n"));
+        return (file.Bytes, update);
+    }
+
+    /// <summary>
     /// A one-page document whose classic table indexes objects 1 to 3, the page tree's, and object 5,
     /// <c>(only in the oldest)</c>, then <paramref name="update"/>: a section and the <c>startxref</c> that names it.
     /// </summary>

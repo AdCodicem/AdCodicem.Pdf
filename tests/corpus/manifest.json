@@ -371,7 +371,8 @@
         "clean": false,
         "indexRebuilt": true,
         "requiredDiagnostics": [
-          "xref.rebuilt"
+          "xref.rebuilt",
+          "xref.section-missing"
         ],
         "findings": [
           "file.startxref-wrong"
@@ -1066,7 +1067,8 @@
         "requiredDiagnostics": [
           "xref.rebuilt",
           "stream.length-invalid",
-          "filter.checksum-mismatch"
+          "filter.checksum-mismatch",
+          "xref.section-missing"
         ],
         "findings": [
           "file.startxref-wrong"
@@ -5271,7 +5273,8 @@
         "indexRebuilt": true,
         "requiredDiagnostics": [
           "xref.rebuilt",
-          "object.redefined"
+          "object.redefined",
+          "xref.section-missing"
         ],
         "findings": [
           "file.startxref-wrong"
@@ -7332,7 +7335,8 @@
         "clean": false,
         "indexRebuilt": true,
         "requiredDiagnostics": [
-          "xref.rebuilt"
+          "xref.rebuilt",
+          "xref.section-missing"
         ],
         "findings": [
           "file.startxref-wrong"
@@ -8586,7 +8590,8 @@
         "indexRebuilt": true,
         "requiredDiagnostics": [
           "xref.rebuilt",
-          "filter.checksum-mismatch"
+          "filter.checksum-mismatch",
+          "xref.section-missing"
         ],
         "findings": [
           "file.startxref-wrong"
@@ -8629,7 +8634,8 @@
         "indexRebuilt": true,
         "requiredDiagnostics": [
           "xref.rebuilt",
-          "filter.checksum-mismatch"
+          "filter.checksum-mismatch",
+          "xref.section-missing"
         ],
         "findings": [
           "file.startxref-wrong"
@@ -8820,7 +8826,8 @@
         "indexRebuilt": true,
         "requiredDiagnostics": [
           "xref.rebuilt",
-          "filter.checksum-mismatch"
+          "filter.checksum-mismatch",
+          "xref.section-missing"
         ],
         "findings": [
           "file.startxref-wrong"
@@ -8905,7 +8912,8 @@
         "requiredDiagnostics": [
           "xref.rebuilt",
           "filter.checksum-mismatch",
-          "object.redefined"
+          "object.redefined",
+          "xref.section-missing"
         ],
         "findings": [
           "file.startxref-wrong"
@@ -9924,7 +9932,8 @@
         "indexRebuilt": true,
         "requiredDiagnostics": [
           "xref.rebuilt",
-          "filter.checksum-mismatch"
+          "filter.checksum-mismatch",
+          "xref.section-missing"
         ],
         "findings": [
           "file.startxref-wrong"
@@ -10516,7 +10525,8 @@
         "clean": false,
         "indexRebuilt": true,
         "requiredDiagnostics": [
-          "xref.rebuilt"
+          "xref.rebuilt",
+          "xref.section-missing"
         ],
         "findings": [
           "file.startxref-wrong"
@@ -10645,7 +10655,8 @@
         "requiredDiagnostics": [
           "xref.rebuilt",
           "filter.checksum-mismatch",
-          "object.redefined"
+          "object.redefined",
+          "xref.section-missing"
         ],
         "findings": [
           "file.startxref-wrong"
@@ -10788,7 +10799,8 @@
         "indexRebuilt": true,
         "requiredDiagnostics": [
           "xref.rebuilt",
-          "filter.checksum-mismatch"
+          "filter.checksum-mismatch",
+          "xref.section-missing"
         ],
         "findings": [
           "file.startxref-wrong"
@@ -10831,7 +10843,8 @@
         "indexRebuilt": true,
         "requiredDiagnostics": [
           "xref.rebuilt",
-          "filter.checksum-mismatch"
+          "filter.checksum-mismatch",
+          "xref.section-missing"
         ],
         "findings": [
           "file.startxref-wrong"
@@ -13163,7 +13176,8 @@
         "indexRebuilt": true,
         "requiredDiagnostics": [
           "xref.rebuilt",
-          "filter.checksum-mismatch"
+          "filter.checksum-mismatch",
+          "xref.section-missing"
         ],
         "findings": [
           "file.startxref-wrong"
@@ -13534,7 +13548,8 @@
         "indexRebuilt": true,
         "requiredDiagnostics": [
           "xref.rebuilt",
-          "filter.checksum-mismatch"
+          "filter.checksum-mismatch",
+          "xref.section-missing"
         ],
         "findings": [
           "file.startxref-wrong"
@@ -13577,7 +13592,8 @@
         "indexRebuilt": true,
         "requiredDiagnostics": [
           "xref.rebuilt",
-          "filter.checksum-mismatch"
+          "filter.checksum-mismatch",
+          "xref.section-missing"
         ],
         "findings": [
           "file.startxref-wrong"
@@ -13627,7 +13643,8 @@
         "requiredDiagnostics": [
           "xref.rebuilt",
           "filter.checksum-mismatch",
-          "object.redefined"
+          "object.redefined",
+          "xref.section-missing"
         ],
         "findings": [
           "file.startxref-wrong"
@@ -13732,7 +13749,8 @@
         "indexRebuilt": true,
         "requiredDiagnostics": [
           "xref.rebuilt",
-          "filter.checksum-mismatch"
+          "filter.checksum-mismatch",
+          "xref.section-missing"
         ],
         "findings": [
           "file.startxref-wrong"
@@ -13921,7 +13939,8 @@
         "clean": false,
         "indexRebuilt": true,
         "requiredDiagnostics": [
-          "xref.rebuilt"
+          "xref.rebuilt",
+          "xref.section-missing"
         ],
         "findings": [
           "file.header-version-invalid",
@@ -13976,7 +13995,8 @@
         "indexRebuilt": true,
         "requiredDiagnostics": [
           "header.missing",
-          "xref.rebuilt"
+          "xref.rebuilt",
+          "xref.section-missing"
         ],
         "findings": [
           "file.header-missing",
@@ -14084,7 +14104,8 @@
         "indexRebuilt": true,
         "requiredDiagnostics": [
           "header.missing",
-          "xref.rebuilt"
+          "xref.rebuilt",
+          "xref.section-missing"
         ],
         "findings": [
           "file.header-missing",
@@ -14139,7 +14160,8 @@
         "indexRebuilt": true,
         "requiredDiagnostics": [
           "header.missing",
-          "xref.rebuilt"
+          "xref.rebuilt",
+          "xref.section-missing"
         ],
         "findings": [
           "file.header-missing",
@@ -14193,7 +14215,8 @@
         "clean": false,
         "indexRebuilt": true,
         "requiredDiagnostics": [
-          "xref.rebuilt"
+          "xref.rebuilt",
+          "xref.section-missing"
         ],
         "findings": [
           "file.startxref-wrong"
@@ -14295,7 +14318,8 @@
         "clean": false,
         "indexRebuilt": true,
         "requiredDiagnostics": [
-          "xref.rebuilt"
+          "xref.rebuilt",
+          "xref.section-missing"
         ],
         "findings": [
           "file.startxref-wrong",
@@ -14395,7 +14419,8 @@
         "clean": false,
         "indexRebuilt": true,
         "requiredDiagnostics": [
-          "xref.rebuilt"
+          "xref.rebuilt",
+          "xref.section-missing"
         ],
         "findings": [
           "file.startxref-wrong",
@@ -14449,7 +14474,8 @@
         "clean": false,
         "indexRebuilt": true,
         "requiredDiagnostics": [
-          "xref.rebuilt"
+          "xref.rebuilt",
+          "xref.section-missing"
         ],
         "findings": [
           "file.startxref-wrong",
@@ -14503,7 +14529,8 @@
         "clean": false,
         "indexRebuilt": true,
         "requiredDiagnostics": [
-          "xref.rebuilt"
+          "xref.rebuilt",
+          "xref.section-missing"
         ],
         "findings": [
           "file.startxref-wrong",
@@ -14557,7 +14584,8 @@
         "clean": false,
         "indexRebuilt": true,
         "requiredDiagnostics": [
-          "xref.rebuilt"
+          "xref.rebuilt",
+          "xref.section-missing"
         ],
         "findings": [
           "file.startxref-wrong",
@@ -14657,7 +14685,8 @@
         "clean": false,
         "indexRebuilt": true,
         "requiredDiagnostics": [
-          "xref.rebuilt"
+          "xref.rebuilt",
+          "xref.section-missing"
         ],
         "findings": [
           "file.startxref-wrong",
@@ -14764,7 +14793,8 @@
         "clean": false,
         "indexRebuilt": true,
         "requiredDiagnostics": [
-          "xref.rebuilt"
+          "xref.rebuilt",
+          "xref.section-missing"
         ],
         "findings": [
           "file.startxref-wrong",
@@ -14815,7 +14845,8 @@
         "clean": false,
         "indexRebuilt": true,
         "requiredDiagnostics": [
-          "xref.rebuilt"
+          "xref.rebuilt",
+          "xref.section-missing"
         ],
         "findings": [
           "file.startxref-wrong",
@@ -14917,7 +14948,8 @@
         "clean": false,
         "indexRebuilt": true,
         "requiredDiagnostics": [
-          "xref.rebuilt"
+          "xref.rebuilt",
+          "xref.section-missing"
         ],
         "findings": [
           "file.startxref-wrong",
@@ -15019,7 +15051,8 @@
         "clean": false,
         "indexRebuilt": true,
         "requiredDiagnostics": [
-          "xref.rebuilt"
+          "xref.rebuilt",
+          "xref.section-missing"
         ],
         "findings": [
           "file.startxref-wrong",
@@ -15124,7 +15157,8 @@
         "clean": false,
         "indexRebuilt": true,
         "requiredDiagnostics": [
-          "xref.rebuilt"
+          "xref.rebuilt",
+          "xref.section-missing"
         ],
         "findings": [
           "file.startxref-wrong",
@@ -15229,7 +15263,8 @@
         "clean": false,
         "indexRebuilt": true,
         "requiredDiagnostics": [
-          "xref.rebuilt"
+          "xref.rebuilt",
+          "xref.section-missing"
         ],
         "findings": [
           "file.startxref-wrong",
@@ -15283,7 +15318,8 @@
         "clean": false,
         "indexRebuilt": true,
         "requiredDiagnostics": [
-          "xref.rebuilt"
+          "xref.rebuilt",
+          "xref.section-missing"
         ],
         "findings": [
           "file.startxref-wrong",
@@ -15379,7 +15415,8 @@
         "clean": false,
         "indexRebuilt": true,
         "requiredDiagnostics": [
-          "xref.rebuilt"
+          "xref.rebuilt",
+          "xref.section-missing"
         ],
         "findings": [
           "file.startxref-wrong",
@@ -15433,7 +15470,8 @@
         "clean": false,
         "indexRebuilt": true,
         "requiredDiagnostics": [
-          "xref.rebuilt"
+          "xref.rebuilt",
+          "xref.section-missing"
         ],
         "findings": [
           "file.startxref-wrong",
@@ -15487,7 +15525,8 @@
         "clean": false,
         "indexRebuilt": true,
         "requiredDiagnostics": [
-          "xref.rebuilt"
+          "xref.rebuilt",
+          "xref.section-missing"
         ],
         "findings": [
           "file.startxref-wrong"
@@ -15585,7 +15624,8 @@
         "clean": false,
         "indexRebuilt": true,
         "requiredDiagnostics": [
-          "xref.rebuilt"
+          "xref.rebuilt",
+          "xref.section-missing"
         ],
         "findings": [
           "file.startxref-wrong",
@@ -15636,7 +15676,8 @@
         "clean": false,
         "indexRebuilt": true,
         "requiredDiagnostics": [
-          "xref.rebuilt"
+          "xref.rebuilt",
+          "xref.section-missing"
         ],
         "findings": [
           "file.startxref-wrong",
@@ -15690,7 +15731,8 @@
         "clean": false,
         "indexRebuilt": true,
         "requiredDiagnostics": [
-          "xref.rebuilt"
+          "xref.rebuilt",
+          "xref.section-missing"
         ],
         "findings": [
           "file.startxref-wrong"
@@ -15743,7 +15785,8 @@
         "clean": false,
         "indexRebuilt": true,
         "requiredDiagnostics": [
-          "xref.rebuilt"
+          "xref.rebuilt",
+          "xref.section-missing"
         ],
         "findings": [
           "file.startxref-wrong",
@@ -15847,7 +15890,8 @@
         "clean": false,
         "indexRebuilt": true,
         "requiredDiagnostics": [
-          "xref.rebuilt"
+          "xref.rebuilt",
+          "xref.section-missing"
         ],
         "findings": [
           "file.startxref-wrong"
@@ -15949,7 +15993,8 @@
         "indexRebuilt": true,
         "requiredDiagnostics": [
           "xref.rebuilt",
-          "xref.offset-adjusted"
+          "xref.offset-adjusted",
+          "xref.section-missing"
         ],
         "findings": [
           "file.header-offset",
@@ -16005,7 +16050,8 @@
         "indexRebuilt": true,
         "requiredDiagnostics": [
           "xref.rebuilt",
-          "xref.offset-adjusted"
+          "xref.offset-adjusted",
+          "xref.section-missing"
         ],
         "findings": [
           "file.header-offset",
@@ -16061,7 +16107,8 @@
         "indexRebuilt": true,
         "requiredDiagnostics": [
           "xref.rebuilt",
-          "xref.offset-adjusted"
+          "xref.offset-adjusted",
+          "xref.section-missing"
         ],
         "findings": [
           "file.header-offset",
@@ -16117,7 +16164,8 @@
         "indexRebuilt": true,
         "requiredDiagnostics": [
           "xref.rebuilt",
-          "xref.offset-adjusted"
+          "xref.offset-adjusted",
+          "xref.section-missing"
         ],
         "findings": [
           "file.header-offset",
@@ -16221,7 +16269,8 @@
         "indexRebuilt": true,
         "requiredDiagnostics": [
           "xref.rebuilt",
-          "xref.offset-adjusted"
+          "xref.offset-adjusted",
+          "xref.section-missing"
         ],
         "findings": [
           "file.header-offset",
@@ -16274,7 +16323,8 @@
         "indexRebuilt": true,
         "requiredDiagnostics": [
           "xref.rebuilt",
-          "xref.offset-adjusted"
+          "xref.offset-adjusted",
+          "xref.section-missing"
         ],
         "findings": [
           "file.header-offset",
@@ -16327,7 +16377,8 @@
         "indexRebuilt": true,
         "requiredDiagnostics": [
           "xref.rebuilt",
-          "xref.offset-adjusted"
+          "xref.offset-adjusted",
+          "xref.section-missing"
         ],
         "findings": [
           "file.header-offset",
@@ -16380,7 +16431,8 @@
         "indexRebuilt": true,
         "requiredDiagnostics": [
           "xref.rebuilt",
-          "xref.offset-adjusted"
+          "xref.offset-adjusted",
+          "xref.section-missing"
         ],
         "findings": [
           "file.header-offset",
@@ -16433,7 +16485,8 @@
         "indexRebuilt": true,
         "requiredDiagnostics": [
           "xref.rebuilt",
-          "xref.offset-adjusted"
+          "xref.offset-adjusted",
+          "xref.section-missing"
         ],
         "findings": [
           "file.header-offset",
@@ -16537,7 +16590,8 @@
         "indexRebuilt": true,
         "requiredDiagnostics": [
           "xref.rebuilt",
-          "xref.offset-adjusted"
+          "xref.offset-adjusted",
+          "xref.section-missing"
         ],
         "findings": [
           "file.header-offset",
@@ -16590,7 +16644,8 @@
         "indexRebuilt": true,
         "requiredDiagnostics": [
           "xref.rebuilt",
-          "xref.offset-adjusted"
+          "xref.offset-adjusted",
+          "xref.section-missing"
         ],
         "findings": [
           "file.header-offset",
@@ -16645,7 +16700,8 @@
         "indexRebuilt": true,
         "requiredDiagnostics": [
           "xref.rebuilt",
-          "xref.offset-adjusted"
+          "xref.offset-adjusted",
+          "xref.section-missing"
         ],
         "findings": [
           "file.header-offset",
@@ -16699,7 +16755,8 @@
         "clean": false,
         "indexRebuilt": true,
         "requiredDiagnostics": [
-          "xref.rebuilt"
+          "xref.rebuilt",
+          "xref.section-missing"
         ],
         "findings": [
           "file.startxref-wrong",
@@ -16753,7 +16810,8 @@
         "clean": false,
         "indexRebuilt": true,
         "requiredDiagnostics": [
-          "xref.rebuilt"
+          "xref.rebuilt",
+          "xref.section-missing"
         ],
         "findings": [
           "file.startxref-wrong",
@@ -16809,7 +16867,8 @@
         "indexRebuilt": true,
         "requiredDiagnostics": [
           "xref.rebuilt",
-          "xref.offset-adjusted"
+          "xref.offset-adjusted",
+          "xref.section-missing"
         ],
         "findings": [
           "file.header-offset",
@@ -16864,7 +16923,8 @@
         "clean": false,
         "indexRebuilt": true,
         "requiredDiagnostics": [
-          "xref.rebuilt"
+          "xref.rebuilt",
+          "xref.section-missing"
         ],
         "findings": [
           "file.startxref-wrong"
@@ -16916,7 +16976,8 @@
         "clean": false,
         "indexRebuilt": true,
         "requiredDiagnostics": [
-          "xref.rebuilt"
+          "xref.rebuilt",
+          "xref.section-missing"
         ],
         "findings": [
           "file.startxref-wrong"
@@ -16969,7 +17030,8 @@
         "clean": false,
         "indexRebuilt": true,
         "requiredDiagnostics": [
-          "xref.rebuilt"
+          "xref.rebuilt",
+          "xref.section-missing"
         ],
         "findings": [
           "file.startxref-wrong"
@@ -17022,7 +17084,8 @@
         "clean": false,
         "indexRebuilt": true,
         "requiredDiagnostics": [
-          "xref.rebuilt"
+          "xref.rebuilt",
+          "xref.section-unreadable"
         ],
         "findings": [
           "xref.section-malformed"
@@ -17075,7 +17138,8 @@
         "clean": false,
         "indexRebuilt": true,
         "requiredDiagnostics": [
-          "xref.rebuilt"
+          "xref.rebuilt",
+          "xref.section-unreadable"
         ],
         "findings": [
           "xref.section-malformed"
@@ -17128,7 +17192,8 @@
         "clean": false,
         "indexRebuilt": true,
         "requiredDiagnostics": [
-          "xref.rebuilt"
+          "xref.rebuilt",
+          "xref.section-unreadable"
         ],
         "findings": [
           "xref.section-malformed"
@@ -17181,7 +17246,8 @@
         "clean": false,
         "indexRebuilt": true,
         "requiredDiagnostics": [
-          "xref.rebuilt"
+          "xref.rebuilt",
+          "xref.section-unreadable"
         ],
         "findings": [
           "xref.section-malformed"
@@ -17335,7 +17401,8 @@
         "clean": false,
         "indexRebuilt": true,
         "requiredDiagnostics": [
-          "xref.rebuilt"
+          "xref.rebuilt",
+          "xref.section-unreadable"
         ],
         "findings": [
           "xref.section-malformed"
@@ -17688,7 +17755,8 @@
         "clean": false,
         "indexRebuilt": true,
         "requiredDiagnostics": [
-          "xref.rebuilt"
+          "xref.rebuilt",
+          "xref.section-missing"
         ],
         "findings": [
           "file.startxref-wrong"
@@ -17741,7 +17809,8 @@
         "clean": false,
         "indexRebuilt": true,
         "requiredDiagnostics": [
-          "xref.rebuilt"
+          "xref.rebuilt",
+          "xref.section-missing"
         ],
         "findings": [
           "file.startxref-wrong"
@@ -17793,7 +17862,9 @@
         "pages": null,
         "clean": false,
         "indexRebuilt": false,
-        "requiredDiagnostics": [],
+        "requiredDiagnostics": [
+          "xref.section-unreadable"
+        ],
         "findings": [
           "file.trailer-missing"
         ],
@@ -17842,7 +17913,8 @@
         "clean": false,
         "indexRebuilt": false,
         "requiredDiagnostics": [
-          "trailer.root-recovered"
+          "trailer.root-recovered",
+          "xref.section-unreadable"
         ],
         "findings": [
           "file.trailer-malformed"
@@ -18358,7 +18430,8 @@
         "clean": false,
         "indexRebuilt": true,
         "requiredDiagnostics": [
-          "xref.rebuilt"
+          "xref.rebuilt",
+          "xref.section-missing"
         ],
         "findings": [
           "file.startxref-wrong"
