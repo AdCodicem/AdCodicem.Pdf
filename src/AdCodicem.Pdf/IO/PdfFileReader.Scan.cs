@@ -545,12 +545,14 @@ internal sealed partial class PdfFileReader
     /// length's object.
     /// </summary>
     /// <remarks>
-    /// The object is read from the file's bytes alone, never through an index, so that a scan for the memo and a rebuild's
-    /// do the same, whatever was read before; and what it gives changes nothing of what either takes. It is read once at
-    /// each header or keyword the scan meets while it awaits one, from the window the scan holds, and one stream is awaited
-    /// at a time. One the scan never meets while it awaits it — lost with the <c>endstream</c>, more than
-    /// <see cref="ScanState.ValueCount"/> values before the stream, or past a stream awaited in its turn —, or that holds
-    /// anything but a non-negative integer, leaves the memo's kinds to turn where a load ends the data without a length.
+    /// The object is read from the file's bytes alone, never through an index, so that a scan for the memo and a
+    /// rebuild's do the same, whatever was read before; and what it gives changes nothing of what either takes, but
+    /// through what the reads made to learn where a load ends the data spend of the scan's reads past declared lengths
+    /// (<see cref="ScanState.KindUntil"/>). It is read once at each header or keyword the scan meets while it awaits
+    /// one, from the window the scan holds, and one stream is awaited at a time. One the scan never meets while it
+    /// awaits it — lost with the <c>endstream</c>, more than <see cref="ScanState.ValueCount"/> values before the
+    /// stream, or past a stream awaited in its turn —, or that holds anything but a non-negative integer, leaves the
+    /// memo's kinds to turn where a load ends the data without a length.
     /// </remarks>
     [MethodImpl(MethodImplOptions.NoInlining)]
     private void EndDataAtLengthObject(ReadOnlySpan<byte> span, long windowStart, long position, ref ScanState scan)
@@ -653,7 +655,8 @@ internal sealed partial class PdfFileReader
     /// <remarks>
     /// The memo holds those places as the scan takes them, as the bytes give them: a header or a keyword that a comment or
     /// a string between objects would hide there is held, not left out. A rebuild's scan, which keeps no kind, takes the
-    /// same headers whatever the length says.
+    /// same headers whatever the length says, but through what the reads made here spend of its reads past declared
+    /// lengths (<see cref="ScanState.KindUntil"/>).
     /// </remarks>
     private void EndDataWithLength(ReadOnlySpan<byte> span, long windowStart, long dataStart, long length, long position, long revisedTo, ref ScanState scan)
     {
@@ -1638,7 +1641,8 @@ internal sealed partial class PdfFileReader
         /// The scan itself takes and hides by <see cref="RawUntil"/> alone, so that such a length, which may be another
         /// object's than the stream's, changes nothing of what it takes, but through what the reads made to learn where a
         /// load ends the data spend of its reads past declared lengths (#361). Never past <see cref="RawUntil"/>: where a
-        /// load ends the data only ever lowers it below where <see cref="RawUntil"/> stands.
+        /// load ends the data sets it below where <see cref="RawUntil"/> stands — a direct length's end raises it there
+        /// where the scan passes the stream (<see cref="Passed"/>), never lowering it, and an indirect one's only lowers it.
         /// </summary>
         public long KindUntil;
 
@@ -1660,8 +1664,9 @@ internal sealed partial class PdfFileReader
         public long ValuesPassed;
 
         /// <summary>
-        /// The object that holds the indirect <c>/Length</c> of the stream whose data the scan reads as the bytes give them, no
-        /// stretch read so before it reaching past the data's start, until the scan meets the first header or <c>trailer</c>
+        /// The object that holds the indirect <c>/Length</c> of the stream whose data the scan reads as the bytes give them,
+        /// where no stretch whose places the memo counts as taken in data reaches past the data's start
+        /// (<see cref="KindUntil"/>, <see cref="ConfirmStream"/>), until the scan meets the first header or <c>trailer</c>
         /// keyword past that start (<see cref="EndDataAtLengthObject"/>); -1 otherwise.
         /// </summary>
         public long LengthObject;
