@@ -1566,7 +1566,7 @@ internal sealed partial class PdfFileReader
     /// <para>
     /// A classic table whose <c>trailer</c> keyword follows its <c>xref</c> keyword indexes nothing, as one whose one
     /// subsection is <c>0 0</c> does, which ISO 32000-1 allows: it is read as written and reported, the index left whole, and
-    /// nothing rebuilt for it (#222).
+    /// nothing rebuilt for it (#222) — unless its trailer is lost too, which reads it in part (#322).
     /// </para>
     /// <para>
     /// A section found moved is named by both offsets, the one that names it and where it was found
@@ -1643,9 +1643,10 @@ internal sealed partial class PdfFileReader
             // read in part lost rows to a row that is no row, or to the end of the file: the rest of the subsection the fault
             // ended is all the first loses where the next subsection or the trailer follows; where the end of the file cuts the
             // table, after a fault too, the trailer is lost, and with it the sections it would name. One whose rest cannot be
-            // known ends the chain where startxref or a /Prev names it, however many ranges it lost: what only that rest, or
-            // the sections its trailer would name, index is the rebuild's, which the message says unless a newer section
-            // refused every number before the chain came to the table, which it says instead.
+            // known and whose trailer is lost ends the chain where startxref or a /Prev names it, however many ranges it lost:
+            // what only that rest, or the sections its trailer would name, index is the rebuild's, which the message says unless
+            // a newer section refused every number before the chain came to the table, which it says instead. One whose rows
+            // run into a dictionary with no keyword goes on through that dictionary's links, every number refused (#322).
             // A trailer keyword followed by no dictionary loses the trailer, and the older sections it would name, as the end
             // of the file does; a dictionary the rows run into with no keyword is read as the trailer, though rows may have been
             // lost before it. Either is said after whatever row fault came first (#322). A trailer a guard cut is the guard's.
@@ -1783,8 +1784,9 @@ internal sealed partial class PdfFileReader
     /// the table holds past where its reading stopped cannot be known (<see cref="XRefSectionRecord.SubsectionsUnknown"/>).
     /// </summary>
     /// <remarks>
-    /// A table <c>startxref</c> or a <c>/Prev</c> names whose rest cannot be known ends the chain, its trailer lost or
-    /// unread: no older section's row is read after it, whatever it refuses.
+    /// A table <c>startxref</c> or a <c>/Prev</c> names whose rest cannot be known, its trailer lost or unread, ends the chain:
+    /// no older section's row is read after it, whatever it refuses. One whose rows run into a dictionary with no keyword,
+    /// read as its trailer, goes on through that dictionary's links, every older row refused (#322).
     /// </remarks>
     private void RefuseRowsLost(XRefSectionRecord section)
     {

@@ -116,7 +116,8 @@ internal sealed class XRefSectionRecord
     /// rows of the sections the chain reads after the table: for a table an <c>/XRefStm</c> names, whose trailer's links are
     /// not followed, the chain goes on through the table that names it (#156, #210). Rows that run into a dictionary no
     /// trailer keyword introduces may have lost rows with the keyword, a damaged block ending where a subsection would
-    /// start: what lies before that dictionary cannot be known either, though it is read as the trailer (#322).
+    /// start: what lies before that dictionary cannot be known either, though it is read as the trailer, the chain going on
+    /// through its links (#322).
     /// </summary>
     public bool SubsectionsUnknown { get; set; }
 
