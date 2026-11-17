@@ -17,8 +17,9 @@ namespace AdCodicem.Pdf.Validation.Rules;
 /// </para>
 /// <para>
 /// It judges the trailer the file's chain gave, merged across its sections as readers merge them, and <c>/Root</c>
-/// as it was before the reader looked for a catalog. A trailer that could not be read at all, or an index the chain
-/// did not give, is another rule's to report, and a catalog one of the reader's limits left out of the index
+/// as it was before the reader looked for a catalog. A trailer that could not be read at all is another rule's to report.
+/// Where the chain gave no index, it judges the trailer the rebuild merged from those the file holds, and only where the
+/// reader found no catalog at all: a document with none has no way in (#132). A catalog one of the reader's limits left out of the index
 /// <see cref="PdfValidationRuleIds.XRefCheckedInPart"/>'s. A catalog one of them cut is not judged: what it lacks may lie
 /// past the cut, and the reader's report names the limit. Nor is a <c>/Root</c> the trailers lack where one of them kept a
 /// trailer from being read whole: it may lie past the cut, or in an older trailer the chain stopped short of.
@@ -36,8 +37,15 @@ internal sealed class RootInvalidRule : IValidationRule
     public void Check(ValidationContext context)
     {
         var structure = context.Structure;
+        var reader = context.Document.Reader;
 
-        if (!structure.ChainRead || !structure.TrailerRead || structure.RootUsable)
+        if (!structure.ChainRead)
+        {
+            CheckRebuiltTrailer(context, reader);
+            return;
+        }
+
+        if (!structure.TrailerRead || structure.RootUsable)
         {
             return;
         }
@@ -61,38 +69,88 @@ internal sealed class RootInvalidRule : IValidationRule
             return;
         }
 
-        // The reader's, not the structure's: a rebuild run after the document opened may have taken another.
-        var catalog = context.Document.Reader.CatalogFoundAs;
-        var found = catalog > 0
-            ? string.Create(CultureInfo.InvariantCulture, $" The reader took object {catalog}, which is one, for the catalog.")
-            : " No object of the file is a catalog.";
         var trailer = structure.Sections.Count > 0
             ? PdfValidationLocation.AtPosition(structure.Sections[0].TrailerLocation)
             : default;
+        ReportRoot(context, structure.RootAsWritten, structure.RootResolved, trailer, "The trailer has no /Root.", Found(context, reader));
+    }
 
+    /// <summary>
+    /// Judges, where the chain gave no index, the trailer the rebuild merged from those the file holds, only where the reader
+    /// found no catalog at all: a catalog it found, through that trailer's <c>/Root</c> or by searching, is the file's
+    /// enough for the rebuild's own report, and the rules that judge what made the chain unreadable say why (#132). A
+    /// <c>/Root</c> one of the reader's limits cut, or left out of the index, is taken as read.
+    /// </summary>
+    private void CheckRebuiltTrailer(ValidationContext context, PdfFileReader reader)
+    {
+        if (reader.HasCatalog || reader.CatalogFoundAs > 0 || reader.RootLeadsPastGuard)
+        {
+            return;
+        }
+
+        var root = context.Document.Trailer.GetRaw(PdfName.Root);
+        var resolved = root is PdfReference reference ? context.Document.GetObject(reference.Id) : null;
+        ReportRoot(context, root, resolved, default, "No trailer of the file gives /Root.", Found(context, reader));
+    }
+
+    /// <summary>
+    /// Reports <paramref name="root"/>, the <c>/Root</c> judged, which <paramref name="resolved"/> is what it led to, and
+    /// ends the message with <paramref name="found"/>.
+    /// </summary>
+    private void ReportRoot(
+        ValidationContext context, PdfObject? root, PdfObject? resolved, PdfValidationLocation trailer, string none, string found)
+    {
         // An entry whose value is null is one the dictionary does not have (ISO 32000-1, 7.3.7).
-        switch (structure.RootAsWritten)
+        switch (root)
         {
             case null or PdfNull:
-                Report(context, trailer, "The trailer has no /Root." + found);
+                Report(context, trailer, none + found);
                 break;
 
             case PdfReference reference:
+                // Led to nothing through the chain's index, the object may be one a rebuild found since: the chain does not
+                // place it, which is not the file's not holding it (#132).
+                var what = resolved is null or PdfNull && context.Document.GetObject(reference.Id) is not PdfNull
+                    ? "the cross-reference chain does not place"
+                    : Describe(resolved);
                 Report(
                     context,
                     PdfValidationLocation.OfObject(reference.Id),
                     string.Create(
                         CultureInfo.InvariantCulture,
-                        $"The trailer's /Root names object {reference.Id.Number} {reference.Id.Generation}, which {Describe(structure.RootResolved)}.{found}"));
+                        $"The trailer's /Root names object {reference.Id.Number} {reference.Id.Generation}, which {what}.{found}"));
                 break;
 
             default:
-                Report(
-                    context,
-                    trailer,
-                    $"The trailer's /Root is {Kind(structure.RootAsWritten)}, not a reference to the document catalog.{found}");
+                Report(context, trailer, $"The trailer's /Root is {Kind(root)}, not a reference to the document catalog.{found}");
                 break;
         }
+    }
+
+    /// <summary>
+    /// Gives the last sentence of a finding: what the reader knows of the catalog — the one it took, the one a rebuild made
+    /// <c>/Root</c> lead to, or none among the objects it could read whole, a guard having cut some, or none at all (#260).
+    /// </summary>
+    /// <remarks>
+    /// The reader's, not the structure's: a rebuild run after the document opened may have taken another.
+    /// </remarks>
+    private static string Found(ValidationContext context, PdfFileReader reader)
+    {
+        if (reader.CatalogFoundAs is > 0 and var catalog)
+        {
+            return string.Create(CultureInfo.InvariantCulture, $" The reader took object {catalog}, which is one, for the catalog.");
+        }
+
+        if (reader.HasCatalog)
+        {
+            return context.Document.Trailer.GetRaw(PdfName.Root) is PdfReference rebuilt
+                ? string.Create(CultureInfo.InvariantCulture, $" The reader rebuilt the index, through which /Root leads to object {rebuilt.Id.Number}, which is one.")
+                : " The reader rebuilt the index, whose trailer gives one.";
+        }
+
+        return reader.CatalogCandidateCut
+            ? " No object the reader read whole is a catalog: one of the reader's limits cut some, which its report names."
+            : " No object of the file is a catalog.";
     }
 
     private void Report(ValidationContext context, PdfValidationLocation location, string message) =>

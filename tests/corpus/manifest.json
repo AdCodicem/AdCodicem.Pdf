@@ -14219,7 +14219,8 @@
           "xref.section-missing"
         ],
         "findings": [
-          "file.startxref-wrong"
+          "file.startxref-wrong",
+          "file.root-invalid"
         ],
         "catalogRecoverable": false,
         "hasExtractableText": false,

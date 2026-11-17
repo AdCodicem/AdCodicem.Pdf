@@ -5737,4 +5737,54 @@ public class DocumentReaderTests
 
         document.Diagnostics.Select(entry => entry.Code).Should().Equal(unboundedCodes).And.NotContain(PdfDiagnosticCodes.LimitDecodedStream);
     }
+
+    [Theory]
+    [InlineData(1500)]
+    [InlineData(0)]
+    public void A_catalog_whose_own_load_rebuilds_the_index_is_found_by_the_search_the_rebuild_runs(int shift)
+    {
+        // /Root names object 4, which is no catalog. Searching the index, the reader loads object 1, the catalog, whose row is
+        // 1,500 bytes off, past the search near a row: the load rebuilds the index, and the rebuild's own search, run once the
+        // load returns, takes it; the search the load interrupted stops there. Reported once either way (#229).
+        var template = """
+            %PDF-1.7
+            1 0 obj
+            << /Type /Catalog /Pages 2 0 R >>
+            endobj
+            2 0 obj
+            << /Type /Pages /Kids [3 0 R] /Count 1 >>
+            endobj
+            3 0 obj
+            << /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << >> >>
+            endobj
+            4 0 obj
+            << /Foo 1 ) >>
+            endobj
+
+            """ + "%" + new string('c', 2000) + "\n" + """
+            xref
+            0 5
+            {free}
+            {row:1:0:SHIFT}
+            {row:2}
+            {row:3}
+            {row:4}
+            trailer
+            << /Size 5 /Root 4 0 R >>
+            startxref
+            {xref:1}
+            %%EOF
+
+            """;
+        var file = PdfTemplate.Build(template.Replace("SHIFT", shift.ToString(CultureInfo.InvariantCulture), StringComparison.Ordinal));
+
+        using var document = PdfDocument.Open(file);
+
+        document.WasRepaired.Should().Be(shift > 0);
+        document.Diagnostics.Where(entry => entry.Code == PdfDiagnosticCodes.TrailerRootRecovered).Should().ContainSingle()
+            .Which.Message.Should().EndWith("the catalog was found as object 1.");
+        document.Trailer.GetRaw(PdfName.Root).Should().BeOfType<PdfReference>().Which.Id.Should().Be(new PdfObjectId(1));
+        new PdfValidator().Validate(document).Findings.Single(finding => finding.RuleId == PdfValidationRuleIds.FileRootInvalid)
+            .Message.Should().EndWith("The reader took object 1, which is one, for the catalog.");
+    }
 }

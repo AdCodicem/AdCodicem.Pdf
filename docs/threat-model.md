@@ -378,7 +378,7 @@ Known gaps:
 - [#332] A `/Prev` a few bytes off a stream a newer table's `/XRefStm` read never takes it, passing it over as reached,
   whether the table's own `/XRefStm` names it again or not. Where the search takes the table's own stream past it, which
   gives no `/Prev`, the chain ends there, and where the catalog is lost with the older sections the index is rebuilt as
-  the document opens and the validator says the file holds none (`file.root-invalid`, [#260]); where it finds nothing
+  the document opens, which finds it, and `file.root-invalid` names the catalog only the rebuild found ([#260]); where it finds nothing
   else within the 512 bytes searched, the section is reported missing, the index rebuilt, and the validator says it is
   not found (`xref.section-not-found`), where `main` reads the chain whole.
 - [#333] An older revision's cross-reference stream before the one a hybrid table's `/XRefStm` read, nearer the offset the
@@ -386,8 +386,8 @@ Known gaps:
   read. Where the stream gives a `/Prev`, the chain goes on through it, what only the table indexes reading as null,
   nothing rebuilt, nothing reported but the section found moved. Where it gives none, the chain ends there, what only
   the sections it skips index reading as null or as the stream's older revision, unless the catalog is lost with them:
-  the index is then rebuilt as the document opens, and the validator says the file holds no catalog
-  (`file.root-invalid`, [#260]). Where the stream the `/XRefStm` read, and every stream past it, gives no `/Prev` or the
+  the index is then rebuilt as the document opens, which finds it, and `file.root-invalid` names the catalog only the
+  rebuild found ([#260]). Where the stream the `/XRefStm` read, and every stream past it, gives no `/Prev` or the
   table's, a first revision's stream may be taken farther off within the 512 bytes searched, the revisions between lost
   with nothing reported but the section found moved and the streams passed over, where `main` rebuilt the index as the
   document opened and served them.
@@ -583,11 +583,6 @@ Known gaps:
 - [#169] Once the diagnostics are full, a guard reached is neither reported nor seen, and the validator blames the file
   for the reader's cut.
 - [#173] The Arlington walk takes a reference to a reference for a missing key.
-- [#132] A document with no catalog at all earns no finding when its index was rebuilt at opening.
-- [#229] A catalog whose own load rebuilds the index is tested by neither search for it: the trailer keeps a `/Root`
-  that is no catalog, and `file.root-invalid` says no object is one.
-- [#260] `file.root-invalid` says no object of the file is a catalog when one may lie past a guard, or when a rebuild
-  made `/Root` one.
 - [#321] A hybrid table that names through `/XRefStm` an older revision's cross-reference stream two or more revisions
   late has that stream read before the revisions between, its rows standing over theirs, and no rule yet judges where
   the recorded namings lie ([#156]).
@@ -797,7 +792,6 @@ before it writes code.
 [#125]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/125
 [#128]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/128
 [#129]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/129
-[#132]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/132
 [#135]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/135
 [#138]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/138
 [#141]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/141
@@ -857,7 +851,6 @@ before it writes code.
 [#221]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/221
 [#222]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/222
 [#224]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/224
-[#229]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/229
 [#230]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/230
 [#237]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/237
 [#241]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/241
