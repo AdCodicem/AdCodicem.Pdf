@@ -457,8 +457,8 @@ public class FileRuleTests
     [InlineData("/Root 1", "The trailer's /Root is a number, not a reference to the document catalog.")]
     [InlineData("/Root /Catalog", "The trailer's /Root is a name, not a reference to the document catalog.")]
     [InlineData("/Root 3 0 R", "The trailer's /Root names object 3 0, which is a dictionary of /Type /Page, not a document catalog.")]
-    [InlineData("/Root 9 0 R", "The trailer's /Root names object 9 0, which reads as null.")]
-    [InlineData("/Root 0 0 R", "The trailer's /Root names object 0 0, which reads as null.")]
+    [InlineData("/Root 9 0 R", "The trailer's /Root names object 9 0, which read as null through the cross-reference chain.")]
+    [InlineData("/Root 0 0 R", "The trailer's /Root names object 0 0, which read as null through the cross-reference chain.")]
     [InlineData("/Root null", "The trailer has no /Root.")]
     [InlineData("/Root 1.5", "The trailer's /Root is a number, not a reference to the document catalog.")]
     [InlineData("/Root (the catalog)", "The trailer's /Root is a string, not a reference to the document catalog.")]
@@ -533,7 +533,7 @@ public class FileRuleTests
         document.WasRepaired.Should().BeTrue();
         document.Diagnostics.Contains(PdfDiagnosticCodes.TrailerRootRecovered).Should().BeFalse();
         Single(report, PdfValidationRuleIds.FileRootInvalid).Message.Should().Be(
-            "The trailer's /Root names object 9 0, which reads as null. No object the reader could read is a catalog.");
+            "The trailer's /Root names object 9 0, which read as null through the cross-reference chain. No object the reader could read is a catalog.");
         Single(report, PdfValidationRuleIds.XRefEntryBroken).Location.Object.Should().Be(new PdfObjectId(1));
     }
 
@@ -589,19 +589,19 @@ public class FileRuleTests
         0, "The trailer's /Root names object 1 0, which is a dictionary of /Type /Outlines, not a document catalog." + RebuiltToOne)]
     [InlineData(
         SoundObjects + "xref\n0 1\n{free}\ntrailer\n<< /Size 4 /Root 1 0 R >>\nstartxref\n{xref:1}\n%%EOF\n",
-        0, "The trailer's /Root names object 1 0, which reads as null." + RebuiltToOne)]
+        0, "The trailer's /Root names object 1 0, which read as null through the cross-reference chain." + RebuiltToOne)]
     [InlineData(
         SoundObjects + "4 0 obj\n<< /Type /XRef /Size 4 /W [1 4 2] /Root 1 0 R /Filter /ASCIIHexDecode /Length 57 >>\nstream\n03000000000000030000000000000300000000000003000000000000>\nendstream\nendobj\nstartxref\n{off:4}\n%%EOF\n",
-        0, "The trailer's /Root names object 1 0, which reads as null." + RebuiltToOne)]
+        0, "The trailer's /Root names object 1 0, which read as null through the cross-reference chain." + RebuiltToOne)]
     [InlineData(
         Outlines + "5 0 obj\n<<                                                                                                                                                                                                        /Type /Catalog /Pages 2 0 R >>\nendobj\nxref\n0 4\n{free}\n{row:1}\n{row:2}\n{row:3}\n5 1\n{row:5}\ntrailer\n<< /Size 6 /Root 1 0 R >>\nstartxref\n{xref:1}\n%%EOF\n",
         128, "The trailer's /Root names object 1 0, which is a dictionary of /Type /Outlines, not a document catalog. No object the reader read whole is a catalog: one of the reader's limits cut some, which its report names.")]
     [InlineData(
         SoundObjects + "4 0 obj\n1 0 R\nendobj\nxref\n0 1\n{free}\ntrailer\n<< /Size 5 /Root 4 0 R >>\nstartxref\n{xref:1}\n%%EOF\n",
-        0, "The trailer's /Root names object 4 0, which reads as null." + RebuiltToOne)]
+        0, "The trailer's /Root names object 4 0, which read as null through the cross-reference chain." + RebuiltToOne)]
     [InlineData(
         Outlines + "5 0 obj\n<<                                                                                                                                                                                                        /Type /Catalog /Pages 2 0 R >>\nendobj\nxref\n0 4\n{free}\n{row:1}\n{row:2}\n{row:3}\ntrailer\n<< /Size 6 /Root 5 0 R >>\nstartxref\n{xref:1}\n%%EOF\n",
-        128, "The trailer's /Root names object 5 0, which reads as null. The reader rebuilt the index, through which /Root leads to object 5, which one of the reader's limits cut or left out of the index, and looks for no other.")]
+        128, "The trailer's /Root names object 5 0, which read as null through the cross-reference chain. The reader rebuilt the index, through which /Root leads to object 5, which one of the reader's limits cut or left out of the index, and looks for no other.")]
     [InlineData(
         Outlines + "5 0 obj\n<<                                                                                                                                                                                                        /Type /Catalog /Pages 2 0 R >>\nendobj\nxref\n0 4\n{free}\n{row:1}\n{row:2}\n{row:3}\n5 1\n{row:5}\ntrailer\n<< /Size 6 /Root 1 0 R >>\nstartxref\n{xref:1}\n%%EOF\n5 0 obj\n(short)\nendobj\n",
         128, "The trailer's /Root names object 1 0, which is a dictionary of /Type /Outlines, not a document catalog. No object the reader could read is a catalog.")]
@@ -642,11 +642,11 @@ public class FileRuleTests
     }
 
     [Fact]
-    public void A_root_the_chain_places_in_an_object_stream_that_cannot_be_decoded_is_said_to_be_placed_where_it_could_not_be_read()
+    public void A_root_the_chain_places_in_an_object_stream_that_cannot_be_decoded_reads_as_null_through_the_chain_and_the_rebuild_serves_it()
     {
         // An update places the catalog, object 1, in object stream 6, whose /FlateDecode data is no zlib data, so that it
-        // holds no object; the older revision writes the catalog directly. The rebuild serves the older definition: the chain placed /Root's object where it could
-        // not be read, which is not the chain's not placing it, nor the file's not holding it (#260).
+        // holds no object; the older revision writes the catalog directly. /Root read as null through the chain, and the
+        // rebuild serves the older definition: the finding says both, guessing no cause for the first (#260).
         var file = new HandWrittenFile();
         var catalog = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>");
         var pages = file.Object(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>");
@@ -662,7 +662,7 @@ public class FileRuleTests
         using var document = PdfDocument.Open(file.Bytes);
 
         Single(new PdfValidator().Validate(document), PdfValidationRuleIds.FileRootInvalid).Message.Should().Be(
-            "The trailer's /Root names object 1 0, which reads as null." + RebuiltToOne);
+            "The trailer's /Root names object 1 0, which read as null through the cross-reference chain." + RebuiltToOne);
     }
 
     [Fact]
