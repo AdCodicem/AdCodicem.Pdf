@@ -1399,6 +1399,48 @@ public class WindowEdgeTests
             + line + "\ntrailer\n<< /Root 1 0 R >>\nstartxref\n9\n%%EOF\n");
     }
 
+    [Theory]
+    [InlineData(784_056)]
+    [InlineData(785_356)]
+    public void A_stream_s_data_spells_no_object_whatever_piece_of_the_rebuild_s_scan_ends_a_stretch_the_memo_s_reads_cross(int padding)
+    {
+        // A file of 4,000,000 bytes with no table. 43 stream headers, each the first bytes of the data of the one before,
+        // have direct lengths that all end where 262,144 spaces start, which the scan reads through for each to confirm it.
+        // Past a comment line of padding, stream 5's indirect /Length names object 6, the first in its data, and no endstream
+        // follows; 400,000 bytes after it hold no stream keyword before an intact stream. Stream 20's data spells object 77,
+        // and its direct length ends where a million spaces start before its endstream. Whether the read that tells stream
+        // 5's data from an intact stream's crosses those 400,000 bytes depends on whether a piece of the scan holds them:
+        // with object 6 short of the first mebibyte's end, they cross it, and counted with the reads that confirm lengths
+        // they left stream 20 unconfirmed, object 77 taken from its data; 1,300 bytes on, they did not (#361). The reads
+        // made for the memo's kinds have a budget of their own, and data the scan cannot confirm once the confirmations' is
+        // spent is read up to its first endstream, nothing taken there: object 77 is not taken at either padding.
+        const string Head = "8 0 obj << /Length 0000000 >> stream\n";
+        var text = new StringBuilder("%PDF-1.7\n1 0 obj << /Type /Catalog /Pages 2 0 R >> endobj\n2 0 obj << /Type /Pages /Kids [] /Count 0 >> endobj\n");
+        var first = text.Length;
+        var run = first + (43 * Head.Length);
+
+        for (var i = 0; i < 43; i++)
+        {
+            var length = run - (first + ((i + 1) * Head.Length));
+            text.Append(Head.Replace("0000000", length.ToString("D7", CultureInfo.InvariantCulture), StringComparison.Ordinal));
+        }
+
+        text.Append(' ', 262_144).Append("endobj\n%").Append('x', padding - 2).Append('\n')
+            .Append("5 0 obj << /Length 6 0 R >> stream\n6 0 obj 2 endobj\n").Append('y', 400_000).Append('\n')
+            .Append("9 0 obj << /Length 3 >> stream\nabc\nendstream\nendobj\n")
+            .Append("20 0 obj << /Length 24 >> stream\n77 0 obj\n(inner)\nendobj\n").Append(' ', 1_000_000).Append("\nendstream\nendobj\n");
+        const string Tail = "trailer << /Size 78 /Root 1 0 R >>\n%%EOF\n";
+        text.Append('\n').Append(' ', 4_000_000 - text.Length - Tail.Length - 1).Append(Tail);
+        var file = Encoding.Latin1.GetBytes(text.ToString());
+
+        using var document = PdfDocument.Open(file);
+
+        (file.AsSpan().IndexOf("6 0 obj 2"u8) < 1024 * 1024).Should().Be(padding == 784_056, "object 6 lies in the first piece at the shorter padding");
+        document.WasRepaired.Should().BeTrue();
+        document.GetObject(new PdfObjectId(77)).Should().BeSameAs(PdfNull.Instance);
+        document.GetObject(new PdfObjectId(9)).AsStream().Required().GetRawBytes().Length.Should().Be(3);
+    }
+
     private static string Shorten(string text) => text.Length <= 200 ? text : text[..100] + " … " + text[^100..];
 
     private static string Describe(string endOfLine) => endOfLine switch

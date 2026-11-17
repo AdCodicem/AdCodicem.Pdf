@@ -130,6 +130,9 @@ public sealed record CorpusReaderLimits
 
     /// <summary>The most filters a stream's data passes through.</summary>
     public int? MaxFilterChainLength { get; init; }
+
+    /// <summary>How many times the length of the file a rebuild may read past streams' declared lengths.</summary>
+    public int? MaxRebuildReadPasses { get; init; }
 }
 
 /// <summary>One entry of the corpus manifest.</summary>

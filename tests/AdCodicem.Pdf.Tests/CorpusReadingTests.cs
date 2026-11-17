@@ -592,6 +592,7 @@ public class CorpusReadingTests
             Raises(raised.MaxTrailerLength, limits.MaxTrailerLength, PdfReaderLimits.Default.MaxTrailerLength, file);
             Raises(raised.MaxIndexEntries, limits.MaxIndexEntries, PdfReaderLimits.Default.MaxIndexEntries, file);
             Raises(raised.MaxFilterChainLength, limits.MaxFilterChainLength, PdfReaderLimits.Default.MaxFilterChainLength, file);
+            Raises(raised.MaxRebuildReadPasses, limits.MaxRebuildReadPasses, PdfReaderLimits.Default.MaxRebuildReadPasses, file);
             limits.Should().NotBe(PdfReaderLimits.Default, $"{file}: readerLimits raises at least one limit");
         }
 
@@ -660,6 +661,7 @@ public class CorpusReadingTests
             MaxTrailerLength = raised.MaxTrailerLength ?? limits.MaxTrailerLength,
             MaxIndexEntries = raised.MaxIndexEntries ?? limits.MaxIndexEntries,
             MaxFilterChainLength = raised.MaxFilterChainLength ?? limits.MaxFilterChainLength,
+            MaxRebuildReadPasses = raised.MaxRebuildReadPasses ?? limits.MaxRebuildReadPasses,
         };
     }
 
@@ -674,7 +676,8 @@ public class CorpusReadingTests
             || (raised.MaxXRefSectionCount != defaults.MaxXRefSectionCount && message.Contains("PdfReaderLimits.MaxXRefSectionCount", StringComparison.Ordinal))
             || (raised.MaxTrailerLength != defaults.MaxTrailerLength && message.Contains("PdfReaderLimits.MaxTrailerLength", StringComparison.Ordinal))
             || (raised.MaxIndexEntries != defaults.MaxIndexEntries && message.Contains("PdfReaderLimits.MaxIndexEntries", StringComparison.Ordinal))
-            || (raised.MaxFilterChainLength != defaults.MaxFilterChainLength && message.Contains("PdfReaderLimits.MaxFilterChainLength", StringComparison.Ordinal));
+            || (raised.MaxFilterChainLength != defaults.MaxFilterChainLength && message.Contains("PdfReaderLimits.MaxFilterChainLength", StringComparison.Ordinal))
+            || (raised.MaxRebuildReadPasses != defaults.MaxRebuildReadPasses && message.Contains("PdfReaderLimits.MaxRebuildReadPasses", StringComparison.Ordinal));
     }
 
     /// <summary>

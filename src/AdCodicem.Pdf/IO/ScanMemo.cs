@@ -85,7 +85,8 @@ internal sealed class ScanMemo
     /// <summary>Where windows the source gave shorter than asked left the memo whole (<see cref="Builder.EndAt"/>).</summary>
     private readonly long _shortUntil;
 
-    private ScanMemo(Slot[] slots, int count, long fullAt, long boundUntil, long shortUntil, bool inScanOrder, ScannedTrailers? trailers)
+    private ScanMemo(
+        Slot[] slots, int count, long fullAt, long boundUntil, long shortUntil, bool inScanOrder, bool readsBounded, ScannedTrailers? trailers)
     {
         _slots = slots;
         Count = count;
@@ -93,6 +94,7 @@ internal sealed class ScanMemo
         _boundUntil = boundUntil;
         _shortUntil = shortUntil;
         InScanOrder = inScanOrder;
+        ReadsBounded = readsBounded;
         Trailers = trailers;
     }
 
@@ -127,6 +129,14 @@ internal sealed class ScanMemo
     /// its headers as its scan would: a header put back among places taken before it breaks the order.
     /// </summary>
     public bool InScanOrder { get; }
+
+    /// <summary>
+    /// Gets a value indicating whether the scan's reads past declared lengths reached
+    /// <see cref="PdfReaderLimits.MaxRebuildReadPasses"/>, and it read the data of the streams it could not confirm after
+    /// that as intact: the memo reports nothing, and a rebuild scans the file again, which reports the guard, rather than
+    /// take its headers from the memo.
+    /// </summary>
+    public bool ReadsBounded { get; }
 
     /// <summary>Gets where the trailers the scan notes lie, where the memo is whole; null otherwise.</summary>
     public ScannedTrailers? Trailers { get; }
@@ -269,6 +279,12 @@ internal sealed class ScanMemo
         public bool IsWhole => _fullAt < 0;
 
         /// <summary>
+        /// Gets or sets a value indicating whether the scan's reads past declared lengths reached their bound
+        /// (<see cref="ScanMemo.ReadsBounded"/>).
+        /// </summary>
+        public bool ReadsBounded { get; set; }
+
+        /// <summary>
         /// Adds the header the scan took at <paramref name="position"/>; false where the memo, or the place, is past what it
         /// may hold (<see cref="TryCount"/>).
         /// </summary>
@@ -351,7 +367,7 @@ internal sealed class ScanMemo
                 trailers.Streams.TrimExcess();
             }
 
-            return new ScanMemo(_slots, _count, _fullAt, _boundUntil, _shortUntil, _inScanOrder, IsWhole ? trailers : null);
+            return new ScanMemo(_slots, _count, _fullAt, _boundUntil, _shortUntil, _inScanOrder, ReadsBounded, IsWhole ? trailers : null);
         }
 
         /// <summary>

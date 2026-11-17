@@ -448,4 +448,13 @@ public static class PdfDiagnosticCodes
     /// and decoding stopped before the first past them: the data is what the filters within the bound decoded.
     /// </summary>
     public const string LimitFilterChain = "limit.filter-chain";
+
+    /// <summary>
+    /// A rebuild of the index read past streams' declared lengths, to confirm them, as many times the length of the file
+    /// as <see cref="Documents.PdfReaderLimits.MaxRebuildReadPasses"/> lets it: from then on, a stream whose length a first
+    /// read cannot confirm was not confirmed, and the data of each stream the scan could not confirm was read up to its
+    /// first <c>endstream</c>, the object headers there not taken. Reported once for each rebuild, where the data starts
+    /// of the first stream the bound left so.
+    /// </summary>
+    public const string LimitRebuildReads = "limit.rebuild-reads";
 }

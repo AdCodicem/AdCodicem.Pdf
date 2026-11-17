@@ -13,7 +13,7 @@ saying which bounds a sound file could reach, and follows [8](0008-facade-immuta
 in making them options on an immutable record.
 
 Implemented by `PdfReaderLimits`, `PdfReaderOptions.Limits` and `PdfReaderOptions.ThrowOnLimit`,
-`PdfLimitExceededException`, the eight `limit.*` codes of `PdfDiagnosticCodes`, the `readerLimits` field of
+`PdfLimitExceededException`, the nine `limit.*` codes of `PdfDiagnosticCodes`, the `readerLimits` field of
 `tests/corpus/manifest.json`, and `ReaderLimitsTests`.
 
 Amended on 2026-09-27, by the maintainer, while M08 was specified: one record bounds every hostile read, the
@@ -182,6 +182,19 @@ Decision that a bound a valid file can reach becomes a guard, tracked by
 [#361](https://github.com/AdCodicem/AdCodicem.Pdf/issues/361), which says what would pay it — a guard alone would not,
 since one reached would still leave that later stream unconfirmed.
 
+Amended on 2026-11-17, by the maintainer, while [#361](https://github.com/AdCodicem/AdCodicem.Pdf/issues/361) was fixed:
+the exception the amendment before this one recorded is closed. A ninth guard, `MaxRebuildReadPasses` (4,
+`limit.rebuild-reads`), bounds the rebuild's scan's reads that confirm streams' direct lengths, as a multiple of the
+file's length, the product held at the most a position can name. Past it, the scan reads the data of each stream it
+cannot confirm up to its first `endstream`, nothing taken there, rather than as objects, so that the streams an attached
+file's bytes spell there no longer spend it, and a later stream's data spells nothing the scan takes; what the guard
+still changes is the data of an attached file that holds an `endstream` of its own before the stream's, past which the
+scan takes what follows. It is reported once a rebuild, where the data starts of the first stream it left so, and a
+rebuild that reaches it finishes the index before it throws. The reads that decide only how the scan's memo counts the
+places it takes have a budget of their own, four times the file, an internal constant: what the scan takes does not hang
+on them, and only the searches near a row or an offset that is off — no valid file's — read those kinds. The loads'
+searches stay bounded by `EndStreamSearchPasses`, an internal constant whose reason covers every read they count.
+
 ## Context
 
 Invariant 4 treats everything read from a file as hostile: no allocation, loop or recursion is sized by a
@@ -209,6 +222,7 @@ claims; neither bounded what it was said to, and the 2026-10-14 amendment made t
 | A trailer | 64 KB | A trailer is a few hundred bytes in practice; nothing forbids more. A cross-reference stream's dictionary is its trailer: its `/Index` holds two numbers per subsection, and a document updated in many scattered places has thousands |
 | The entries of the index | 8,388,607 | The informative annex C of ISO 32000-1 gives Acrobat's limit as 8,388,607 objects, and PDF/A-1 to 3 make it normative; PDF 2.0 sets none, and PDFium raised its own past it for documents of about six million. Each entry the index holds costs 40 bytes numbered in order, up to about 80 when a rebuild grew it and about 96 for numbers spread far apart, so the default holds 335 MB of index or more (amended on 2026-10-28, [#155](https://github.com/AdCodicem/AdCodicem.Pdf/issues/155)) |
 | The filters a stream's data passes through | 64 | ISO 32000 sets no limit on how many filters a `/Filter` array names; real streams name one to three, `/Crypt` among them, and qpdf reads three thousand |
+| A rebuild's reads past streams' declared lengths, to confirm them | 4 times the file | A valid file's own streams take about twice the file; but the data of a stream whose `/Length` is indirect, which the scan cannot confirm and reads as objects, may hold an attached file's bytes that spell streams, whose lengths may all end in one run of white space that each read past them crosses (amended on 2026-11-17, [#361](https://github.com/AdCodicem/AdCodicem.Pdf/issues/361)) |
 
 None of these was an option. Until T21, T23 and T31 some were not even reported, or were reported as damage
 in the file: the map's image came out as "a Flate stream was truncated".
@@ -226,9 +240,9 @@ hands its output out a piece at a time can read the stream (T28).
 We will read every PDF that is valid under ISO 32000, and treat each bound a valid file can exceed as a
 guard: active by default, reported when it is reached, and lifted by an option.
 
-- **The options.** `PdfReaderOptions.Limits` is a `PdfReaderLimits`, an immutable record with the eight bounds
+- **The options.** `PdfReaderOptions.Limits` is a `PdfReaderLimits`, an immutable record with the nine bounds
   of the table: `MaxDecodedStreamLength`, `MaxStreamLength`, `MaxObjectLength`, `MaxXRefSectionLength`, `MaxXRefSectionCount`,
-  `MaxTrailerLength`, `MaxIndexEntries` and `MaxFilterChainLength`. `PdfReaderLimits.Default` keeps the values above;
+  `MaxTrailerLength`, `MaxIndexEntries`, `MaxFilterChainLength` and `MaxRebuildReadPasses`. `PdfReaderLimits.Default` keeps the values above;
   `PdfReaderLimits.Unbounded` takes the implementation's maximums — `Array.MaxLength` for a length,
   `int.MaxValue` for a count. A value of zero or less is refused; a value above the implementation's maximum is
   taken as that maximum.
@@ -237,7 +251,7 @@ guard: active by default, reported when it is reached, and lifted by an option.
   choosing `Unbounded`.
 - **Reaching a guard** keeps what fits within it, as the reader does today, and reports it as a warning
   under a code of its own — `limit.decoded-stream`, `limit.stream-length`, `limit.object`, `limit.xref-section-length`,
-  `limit.xref-section-count`, `limit.trailer`, `limit.index-entries`, `limit.filter-chain` — whose message names the property that
+  `limit.xref-section-count`, `limit.trailer`, `limit.index-entries`, `limit.filter-chain`, `limit.rebuild-reads` — whose message names the property that
   lifts it. What the parser met at the cut is the reader's, not the file's, and is dropped in favor of the guard; so is a
   value that leads to an object a guard cut or left out of the index (amended on 2026-10-23). An object, a section or a
   trailer is reported once, however often it is read again; a stream, by the first of its filters that stopped there,
@@ -284,8 +298,8 @@ guard: active by default, reported when it is reached, and lifted by an option.
   two, and a caller would raise two records to read one file.
 - **Bounds only an invalid or hostile file reaches stay internal constants**, each with the reason it cannot
   refuse a valid document. A new bound is classified when it is added: if a valid file can reach it, it
-  becomes an option, a code and a test — but for `EndStreamSearchPasses`, which the rebuild's scan can spend on a valid
-  file, a known exception ([#361](https://github.com/AdCodicem/AdCodicem.Pdf/issues/361), amended on 2026-11-15).
+  becomes an option, a code and a test — the exception made on 2026-11-15 for the rebuild's scan's share of
+  `EndStreamSearchPasses` closed on 2026-11-17 ([#361](https://github.com/AdCodicem/AdCodicem.Pdf/issues/361)).
 - **The corpus proves it.** A corpus entry may give the limits it is opened with, in `readerLimits`; the USGS
   map is opened with a decoded-stream bound of 512 MB and must read whole. Every other document is tested
   with the defaults.
@@ -299,9 +313,8 @@ guard: active by default, reported when it is reached, and lifted by an option.
 - A caller holding a valid but exceptional file can read it, and learns from the report which property to
   raise; a caller holding untrusted input keeps every protection without knowing it has one.
 - Every bound now needs a decision, recorded where it is declared: an option with its code and its test, or
-  an internal constant with the reason no valid file reaches it — but for `EndStreamSearchPasses`, a known exception
-  ([#361](https://github.com/AdCodicem/AdCodicem.Pdf/issues/361), amended on 2026-11-15). The option surface grows with
-  the reader.
+  an internal constant with the reason no valid file reaches it — the exception made on 2026-11-15 closed on 2026-11-17
+  ([#361](https://github.com/AdCodicem/AdCodicem.Pdf/issues/361)). The option surface grows with the reader.
 - The defaults are judgments about what is exceptional, and one is already known to be crossed by a real
   document: a large-format scan decodes past 256 MB. They can be revised without breaking a caller, who may
   always set them.

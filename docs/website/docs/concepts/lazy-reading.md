@@ -369,8 +369,9 @@ The data of a stream whose length it does not confirm — it confirms only a dir
 reads as the bytes give it, up to the first `endstream`, taking the headers there and reading no comment, whatever that
 length says: a length it cannot confirm may be no length of the stream's — a direct one in bytes an attached file
 spells, an indirect one whose object is an older revision's or an attached file's —, and a rebuild serves the same
-objects whatever such a length says, but near the bound of what the scan reads past declared lengths, below. It changes
-only how the headers and sections the scan takes there count. Where no `endstream` follows a direct `/Length`, or an
+objects whatever such a length says. It changes only how the headers and sections the scan takes there count. Once the
+reads that confirm lengths reach `MaxRebuildReadPasses` times the file, though, the scan reads such data up to its first
+`endstream` and takes nothing there ([Reader limits](../reference/reader-limits.md)). Where no `endstream` follows a direct `/Length`, or an
 indirect one whose object the file's bytes give — one of the last eight objects other than streams before the stream,
 or the first object after it that gives it, until the scan has to wait for another stream's in its turn, or reaches the
 end of the file —, the scan searches the data from its start, as a load does, for where that load ends it: at the
@@ -396,12 +397,13 @@ of an object it cannot delimit — its value past `MaxObjectLength`, or none a l
 too, and a header within what was read of it is taken undelimited, so that no byte is lexed for one object after
 another. Where the pieces it reads the file in start
 changes nothing of what it takes, but in three hand-made shapes
-([#358](https://github.com/AdCodicem/AdCodicem.Pdf/issues/358)), and, near the bound of what it reads past declared
-lengths — four times the file, which a valid file can reach ([Reader limits](reader-limits.md#bounds-that-stay-internal)) —,
-which streams it confirms, and how it counts what it takes in the data of the others: what it reads to tell a stream
-from an intact one counts only past the bytes it holds. It reads the file to its end — or, where a search near a row or an offset had the
-file scanned before it, and that scan kept every header it took, in the order it took them, which a scan past
-`MaxIndexEntries` places does not, takes what that scan found, reading nothing again —, and holds no more numbers than
+([#358](https://github.com/AdCodicem/AdCodicem.Pdf/issues/358)), and, near the bound of what it reads to tell a stream
+from an intact one — four times the file, its own ([Reader limits](reader-limits.md#bounds-that-stay-internal)) —, how
+it counts what it takes in the data of the streams after them: those reads count only past the bytes it holds
+([#361](https://github.com/AdCodicem/AdCodicem.Pdf/issues/361)). It reads the file to its end — or, where a search near
+a row or an offset had the file scanned before it, and that scan kept every header it took, in the order it took them,
+which a scan past `MaxIndexEntries` places does not, nor one that reached `MaxRebuildReadPasses`, takes what that scan
+found, reading nothing again —, and holds no more numbers than
 the map may: a header for
 a number it holds already takes no room, so that a million copies of one object hide nothing behind them, and the first
 number past `MaxIndexEntries` is reported once (`limit.index-entries`). A rebuild of a chain a limit had cut keeps the
