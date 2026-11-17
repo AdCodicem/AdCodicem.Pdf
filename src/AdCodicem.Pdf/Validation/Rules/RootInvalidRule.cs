@@ -72,7 +72,9 @@ internal sealed class RootInvalidRule : IValidationRule
         var trailer = structure.Sections.Count > 0
             ? PdfValidationLocation.AtPosition(structure.Sections[0].TrailerLocation)
             : default;
-        ReportRoot(context, structure.RootAsWritten, structure.RootResolved, trailer, "The trailer has no /Root.", Found(context, reader));
+        // /Root as it resolved when the document opened, through the chain's index, which a rebuild may have changed since.
+        ReportRoot(
+            context, structure.RootAsWritten, structure.RootResolved, "read as null through the cross-reference chain", trailer, "The trailer has no /Root.", Found(context, reader));
     }
 
     /// <summary>
@@ -93,15 +95,15 @@ internal sealed class RootInvalidRule : IValidationRule
         var root = context.Document.Trailer.GetRaw(PdfName.Root);
         var resolved = root is PdfReference reference ? reference.Resolve() : null;
         var trailer = reader.TrailerLocation >= 0 ? PdfValidationLocation.AtPosition(reader.TrailerLocation) : default;
-        ReportRoot(context, root, resolved, trailer, "No trailer the reader read gives /Root.", Found(context, reader));
+        ReportRoot(context, root, resolved, "reads as null", trailer, "No trailer the reader read gives /Root.", Found(context, reader));
     }
 
     /// <summary>
-    /// Reports <paramref name="root"/>, the <c>/Root</c> judged, which <paramref name="resolved"/> is what it led to, and
-    /// ends the message with <paramref name="found"/>.
+    /// Reports <paramref name="root"/>, the <c>/Root</c> judged, which <paramref name="resolved"/> is what it led to —
+    /// <paramref name="asNull"/> saying how, where it led to nothing —, and ends the message with <paramref name="found"/>.
     /// </summary>
     private void ReportRoot(
-        ValidationContext context, PdfObject? root, PdfObject? resolved, PdfValidationLocation trailer, string none, string found)
+        ValidationContext context, PdfObject? root, PdfObject? resolved, string asNull, PdfValidationLocation trailer, string none, string found)
     {
         // An entry whose value is null is one the dictionary does not have (ISO 32000-1, 7.3.7).
         switch (root)
@@ -116,7 +118,7 @@ internal sealed class RootInvalidRule : IValidationRule
                     PdfValidationLocation.OfObject(reference.Id),
                     string.Create(
                         CultureInfo.InvariantCulture,
-                        $"The trailer's /Root names object {reference.Id.Number} {reference.Id.Generation}, which {Describe(resolved)}.{found}"));
+                        $"The trailer's /Root names object {reference.Id.Number} {reference.Id.Generation}, which {(resolved is null or PdfNull ? asNull : Describe(resolved))}.{found}"));
                 break;
 
             default:
@@ -168,9 +170,8 @@ internal sealed class RootInvalidRule : IValidationRule
     private void Report(ValidationContext context, PdfValidationLocation location, string message) =>
         context.Report(this, location, message, "Point /Root at the document catalog, as an indirect reference.");
 
-    private static string Describe(PdfObject? resolved) => resolved switch
+    private static string Describe(PdfObject resolved) => resolved switch
     {
-        null or PdfNull => "reads as null",
         PdfStream => "is a stream, not a document catalog",
         PdfDictionary dictionary when dictionary.GetName(PdfName.Type) is { } type =>
             $"is a dictionary of /Type {FileQuote.Name(type)}, not a document catalog",
