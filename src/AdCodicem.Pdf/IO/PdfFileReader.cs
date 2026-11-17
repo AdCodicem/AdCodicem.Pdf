@@ -98,6 +98,12 @@ internal sealed partial class PdfFileReader : IPdfObjectSource, IPdfStreamDataPr
     private const long HeaderPastGuard = -1;
 
     /// <summary>
+    /// What <see cref="HeaderEndingData"/> gives where a row lies too near the edge of the window for the bytes it holds to say
+    /// whether a header starts there.
+    /// </summary>
+    private const int RowUndecided = -2;
+
+    /// <summary>
     /// What <see cref="HeaderAt"/> gives where reading a header further would consume more than its caller has left.
     /// </summary>
     private const long HeaderReadingSpent = -2;

@@ -13,9 +13,8 @@ namespace AdCodicem.Pdf.Validation.Rules;
 /// <para>
 /// The objects checked are those the reader read, reached from the trailer; what follows an object one of the reader's
 /// limits cut is not seen, nor what follows a stream whose declared length no <c>endstream</c> nor <c>endobj</c> follows,
-/// kept with its object's end unknown, nor what follows a value whose next token lies past the window the reader read it
-/// in, where that window holds the header of the next object the index places, which ends it (#362). An object stream's
-/// members have no <c>endobj</c> of their own.
+/// kept with its object's end unknown, nor what lies past a header the index places that ends an object's data, the reader
+/// reading the object up to it (#362). An object stream's members have no <c>endobj</c> of their own.
 /// </para>
 /// </remarks>
 internal sealed class EndObjMissingRule : IValidationRule

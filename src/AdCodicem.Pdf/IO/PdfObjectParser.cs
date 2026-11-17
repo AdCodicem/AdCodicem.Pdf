@@ -59,16 +59,16 @@ internal ref struct PdfObjectParser
     /// </summary>
     private readonly bool _endsData;
 
+    /// <summary>
+    /// Whether the buffer ends where the header of the next object the reader's indexes place starts, which ended the data
+    /// of the object being read (#362): what it cuts short is reported as that header's doing.
+    /// </summary>
+    private readonly bool _endsAtHeader;
+
     private PdfLexer _lexer;
 
     /// <summary>Whether the parse met the end of its buffer, where it may have cut an object short.</summary>
     private bool _truncated;
-
-    /// <summary>
-    /// Whether the end of the buffer cut nothing of the last indirect object read but the token after its value
-    /// (<see cref="IsTruncatedAfterValue"/>).
-    /// </summary>
-    private bool _truncatedAfterValue;
 
     /// <summary>
     /// Whether the end of the data was reported already: a cut leaves every construct around it open, and is reported
@@ -145,6 +145,18 @@ internal ref struct PdfObjectParser
     /// <summary>Where the header of the last indirect object <see cref="TryReadIndirectObject"/> read starts, in the buffer.</summary>
     private int _headerStart;
 
+    /// <summary>Where the value of the last indirect object <see cref="TryReadIndirectObject"/> read starts (<see cref="ValueStart"/>).</summary>
+    private int _valueStart;
+
+    /// <summary>Where the parse of the last indirect object <see cref="TryReadIndirectObject"/> read stopped (<see cref="ReadEnd"/>).</summary>
+    private int _readEnd;
+
+    /// <summary>
+    /// Where the <c>stream</c> keyword of the first stream whose data the last indirect object <see cref="TryReadIndirectObject"/>
+    /// read starts, in the buffer, or -1 when it read none (<see cref="StreamAt"/>).
+    /// </summary>
+    private int _streamAt = -1;
+
     /// <summary>
     /// Where the digits of the object number of the last indirect object <see cref="TryReadIndirectObject"/> read start, in
     /// the buffer (<see cref="HeaderDigits"/>).
@@ -170,6 +182,10 @@ internal ref struct PdfObjectParser
     /// parse stops at its <c>stream</c> keyword, the dictionary given as it was read, and <see cref="StoppedAtStream"/> says
     /// so, <see cref="StreamStop"/> where, and <see cref="StreamStopDepth"/> inside how many containers.
     /// </param>
+    /// <param name="endsAtHeader">
+    /// Whether the bytes end where the header of the next object the reader's indexes place starts, rather than where the file
+    /// does; with <paramref name="endsData"/>, what that end cuts short is reported, and names that header (#362).
+    /// </param>
     public PdfObjectParser(
         ReadOnlyMemory<byte> memory,
         long baseOffset = 0,
@@ -178,7 +194,8 @@ internal ref struct PdfObjectParser
         IPdfStreamDataProvider? streamData = null,
         bool endsData = true,
         IPdfFileEdge? fileEdge = null,
-        bool readsStreams = true)
+        bool readsStreams = true,
+        bool endsAtHeader = false)
     {
         _memory = memory;
         _lexer = new PdfLexer(memory.Span);
@@ -189,6 +206,7 @@ internal ref struct PdfObjectParser
         _fileEdge = fileEdge ?? streamData;
         _endsData = endsData;
         _readsStreams = readsStreams;
+        _endsAtHeader = endsAtHeader;
     }
 
     /// <summary>
@@ -235,14 +253,6 @@ internal ref struct PdfObjectParser
     public readonly bool IsTruncated => _truncated;
 
     /// <summary>
-    /// Gets a value indicating whether the last indirect object <see cref="TryReadIndirectObject"/> read was whole in the
-    /// buffer, its value read up to its last token, and only the token after it lay past the end of the buffer: a larger
-    /// buffer, which <see cref="IsTruncated"/> asks for, could say no more than whether <c>endobj</c> follows the value — or,
-    /// after a dictionary, <c>stream</c>, which makes it a stream's.
-    /// </summary>
-    public readonly bool IsTruncatedAfterValue => _truncatedAfterValue;
-
-    /// <summary>
     /// Gets a value indicating whether a parse that reads no stream stopped at a <c>stream</c> keyword after a dictionary,
     /// every container it had open ending there. An object stream member's parse does when the member is written as a
     /// stream, or holds one: a dictionary followed by <c>stream</c>, which an object stream cannot hold (ISO 32000-1 7.5.7),
@@ -271,6 +281,26 @@ internal ref struct PdfObjectParser
 
     /// <summary>Gets where the header of the last indirect object <see cref="TryReadIndirectObject"/> read starts, in the buffer.</summary>
     public readonly int HeaderStart => _headerStart;
+
+    /// <summary>
+    /// Gets where the value of the last indirect object <see cref="TryReadIndirectObject"/> read starts, in the buffer: right
+    /// after its <c>obj</c> keyword.
+    /// </summary>
+    public readonly int ValueStart => _valueStart;
+
+    /// <summary>
+    /// Gets where the parse of the last indirect object <see cref="TryReadIndirectObject"/> read stopped, in the buffer: the end
+    /// of the token after its value — its <c>endobj</c>, or what took its place —, or of the <c>endobj</c> an empty object reads
+    /// as its value. Past a stream's <c>stream</c> keyword (<see cref="StreamAt"/>), the bytes were not read as tokens.
+    /// </summary>
+    public readonly int ReadEnd => _readEnd;
+
+    /// <summary>
+    /// Gets where the <c>stream</c> keyword of the first stream whose data the last indirect object
+    /// <see cref="TryReadIndirectObject"/> read starts, in the buffer — its value's own, or one inside it —; -1 when it read
+    /// none. What follows it is that stream's data, which the reader serves from the file, not tokens.
+    /// </summary>
+    public readonly int StreamAt => _streamAt;
 
     /// <summary>
     /// Gets where the digits of the object number of the last indirect object <see cref="TryReadIndirectObject"/> read
@@ -338,7 +368,7 @@ internal ref struct PdfObjectParser
     {
         id = default;
         value = PdfNull.Instance;
-        _truncatedAfterValue = false;
+        _streamAt = -1;
 
         var start = _lexer.Position;
         var number = _lexer.Read();
@@ -376,6 +406,7 @@ internal ref struct PdfObjectParser
 
         // An empty object, "2 0 obj endobj", reads its endobj as its value, and says so; that endobj is its own.
         var beforeValue = _lexer.Position;
+        _valueStart = beforeValue;
         var empty = _lexer.Read().IsKeyword("endobj"u8);
         _lexer.Position = beforeValue;
 
@@ -384,12 +415,14 @@ internal ref struct PdfObjectParser
 
         if (empty)
         {
+            _readEnd = _lexer.Position;
             _endObj = EndObjState.Present;
             return true;
         }
 
         var afterValue = _lexer.Position;
         var next = _lexer.Read();
+        _readEnd = next.End;
 
         // A header a window's edge left undecided ended the value, or a reference the edge cut after its generation: what
         // follows it is the edge's, not seen (#224, #230).
@@ -414,8 +447,6 @@ internal ref struct PdfObjectParser
             // buffer, and the reader serves it from the file.
             if (value is not PdfStream && unseen)
             {
-                // A larger buffer reads the value alike, unless its parse met the edge or the edge ended it.
-                _truncatedAfterValue = !_truncated && !_headerUndecided && !_lookAheadCut;
                 _truncated = true;
             }
 
@@ -816,6 +847,11 @@ internal ref struct PdfObjectParser
                 _streamStop = next.Start;
                 _streamStopDepth = depth;
                 return dictionary;
+            }
+
+            if (_streamAt < 0)
+            {
+                _streamAt = next.Start;
             }
 
             return ReadStream(dictionary);
@@ -1701,7 +1737,7 @@ internal ref struct PdfObjectParser
     /// <summary>Gets what ended the buffer, as a report of what it cut short names it.</summary>
     private readonly string End => _member switch
     {
-        null => "The file ended",
+        null => _endsAtHeader ? "The next object the index places started" : "The file ended",
         { EndsAtNextMember: true } => "The next member of the object stream started",
         _ => "The object stream's decoded data ended",
     };

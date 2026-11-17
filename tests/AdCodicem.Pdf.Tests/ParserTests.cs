@@ -131,6 +131,23 @@ public class ParserTests
     }
 
     [Theory]
+    [InlineData("7 0 obj\nnull\nendobj\n", -1)]
+    [InlineData("7 0 obj endobj\n", -1)]
+    [InlineData("7 0 obj\n[<< /Length 1 >>\nstream\na\nendstream\n<< /Length 1 >>\nstream\nb\nendstream]\nendobj\n", 25)]
+    public void Gives_where_an_objects_value_starts_where_its_parse_stopped_and_where_the_first_stream_it_read_starts(
+        string text, int streamAt)
+    {
+        // What the reader needs to tell whether a header the index places lies in what the parse read as tokens (#362).
+        var parser = new PdfObjectParser(Encoding.ASCII.GetBytes(text));
+
+        parser.TryReadIndirectObject(out _, out _).Should().BeTrue();
+
+        parser.ValueStart.Should().Be("7 0 obj".Length);
+        parser.ReadEnd.Should().Be(text.LastIndexOf("endobj", StringComparison.Ordinal) + "endobj".Length);
+        parser.StreamAt.Should().Be(streamAt);
+    }
+
+    [Theory]
     [InlineData("7 0 obj\nnull\nendobj\n", 0, 0, 7)]
     [InlineData("  007 0 obj\nnull\nendobj\n", 2, 2, 7)]
     [InlineData("% a note\n+14 0 obj\nnull\nendobj\n", 9, 10, 14)]
