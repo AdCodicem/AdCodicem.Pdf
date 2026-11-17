@@ -715,7 +715,12 @@ internal sealed partial class PdfFileReader
     /// <param name="mark">Where the attempt's entries start in the pending diagnostics.</param>
     /// <param name="syntaxOnly">Whether only the faults of the syntax are kept, the rest dropped with a guard's cut.</param>
     private void KeepPending(PdfDiagnosticsMark mark, bool syntaxOnly = false) =>
-        _pending.MoveTo(_diagnostics, mark, (this, syntaxOnly), static (entry, state) => state.Item1.IsKept(entry, state.syntaxOnly));
+        _pending.MoveTo(
+            _diagnostics,
+            mark,
+            (this, syntaxOnly),
+            static (entry, state) => state.Item1.IsKept(entry, state.syntaxOnly),
+            static (code, state) => !state.syntaxOnly || code.StartsWith(SyntaxCodePrefix, StringComparison.Ordinal));
 
     /// <summary>Determines whether <paramref name="entry"/> goes into the document's diagnostics.</summary>
     private bool IsKept(PdfDiagnostic entry, bool syntaxOnly)
@@ -731,10 +736,13 @@ internal sealed partial class PdfFileReader
         return _diagnostics.IsFull || _syntaxReported.Add(entry);
     }
 
-    /// <summary>Determines whether a syntax error was recorded since <paramref name="mark"/>, or may have been, the capacity reached.</summary>
+    /// <summary>
+    /// Determines whether a syntax error was recorded since <paramref name="mark"/>, kept or dropped: an entry the capacity
+    /// dropped is one only under a syntax code, so that a full record does not make another report a fault of the syntax (#169).
+    /// </summary>
     private static bool SyntaxFaultSince(PdfDiagnostics diagnostics, PdfDiagnosticsMark mark)
     {
-        if (diagnostics.SuppressedCount > mark.Suppressed)
+        if (diagnostics.DroppedSince(mark, SyntaxCodePrefix))
         {
             return true;
         }

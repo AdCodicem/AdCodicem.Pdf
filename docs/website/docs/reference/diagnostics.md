@@ -68,13 +68,13 @@ between two calls you make, entries are only added, after those it held.
 
 | Member | What it is |
 |---|---|
-| `Count`, the indexer, enumeration | The entries kept. An enumeration gives those recorded when it began: what a read or a validation records meanwhile, one the loop makes included, `Count` counts at once and the next enumeration gives, and the enumeration never throws for it. Once it has ended, it stays ended, whatever is recorded after. A `PdfFileSource` of your own, stepping an enumeration from inside a read whose rebuild withdraws what it reported and reports again, reads, up to the count the enumeration began with, the entries held at those places, which may be those reported again; its `Current` stays the entry it advanced to, whatever is withdrawn or reported at that place after. A rebuild the source fails withdraws what it reported past the point it runs again from — its scan's start, or, for a finish a read under way waited for, the scan's end — before the failure leaves the call that ran it, and reports that again when the next read or validation runs it again; `xref.rebuilt`, reported as the rebuild begins, stays, as `WasRepaired` does, and is not reported again |
-| `Capacity` | The most entries kept: `PdfReaderOptions.DiagnosticCapacity` for a document, 1,000 by default |
+| `Count`, the indexer, enumeration | The entries kept, at most `Capacity`. An enumeration gives those recorded when it began: what a read or a validation records meanwhile, one the loop makes included, `Count` counts at once and the next enumeration gives, and the enumeration never throws for it. Once it has ended, it stays ended, whatever is recorded after. A `PdfFileSource` of your own, stepping an enumeration from inside a read whose rebuild withdraws what it reported and reports again, reads, up to the count the enumeration began with, the entries held at those places, which may be those reported again; its `Current` stays the entry it advanced to, whatever is withdrawn or reported at that place after. A rebuild the source fails withdraws what it reported past the point it runs again from — its scan's start, or, for a finish a read under way waited for, the scan's end — before the failure leaves the call that ran it, and reports that again when the next read or validation runs it again; `xref.rebuilt`, reported as the rebuild begins, stays, as `WasRepaired` does, and is not reported again |
+| `Capacity` | The most entries kept: `PdfReaderOptions.DiagnosticCapacity` for a document, 1,000 by default; zero keeps none, and a negative value is refused |
 | `SuppressedCount` | How many entries were dropped because `Capacity` was reached; they are counted, not kept |
-| `HasRepairs` | Whether any entry is a `Repair` |
-| `HasWarnings` | Whether any entry is a `Warning` |
-| `HasConformanceLoss` | Whether any entry is a `ConformanceLoss` |
-| `Contains(code)` | Whether any entry carries the code, compared ordinally |
+| `HasRepairs` | Whether any entry, kept or dropped, is a `Repair` |
+| `HasWarnings` | Whether any entry, kept or dropped, is a `Warning` |
+| `HasConformanceLoss` | Whether any entry, kept or dropped, is a `ConformanceLoss` |
+| `Contains(code)` | Whether any entry, kept or dropped, carries the code, compared ordinally: a guard reached past the capacity still answers under its `limit.*` code |
 | `Add`, `Repair`, `Warn` | Record an entry; the library's own, public so that a caller can collect its own. Nothing stops them yet from writing into a document's own record ([#310](https://github.com/AdCodicem/AdCodicem.Pdf/issues/310)) |
 
 `new PdfDiagnostics()` collects what decoding one stream reports, when it is passed to `Decode`:

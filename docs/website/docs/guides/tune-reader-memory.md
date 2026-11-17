@@ -25,7 +25,8 @@ var options = new PdfReaderOptions
 using var document = PdfDocument.Open("catalog.pdf", options);
 ```
 
-Measure before and after: the cache only pays off when the same objects are read again. A stream in the cache holds
+The cache keeps at least 64 objects: a smaller value reads as 64. Measure before and after: the cache only pays off
+when the same objects are read again. A stream in the cache holds
 its dictionary and where its data lies, not the data: its size does not weigh on the cache.
 
 ## Read a stream's data once
@@ -56,8 +57,9 @@ raise it.
 
 ## Keep more diagnostics
 
-A document keeps 1,000 diagnostic entries by default, and counts the rest in `Diagnostics.SuppressedCount`. When you
-need every entry of a badly damaged file, raise the bound:
+A document keeps 1,000 diagnostic entries by default, and counts the rest in `Diagnostics.SuppressedCount`;
+`Contains`, `HasRepairs`, `HasWarnings` and `HasConformanceLoss` answer for those too, so a guard reached past the bound
+is still seen. When you need every entry of a badly damaged file, raise the bound:
 
 ```csharp
 var options = new PdfReaderOptions { DiagnosticCapacity = 5_000 };

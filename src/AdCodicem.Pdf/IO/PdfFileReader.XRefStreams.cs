@@ -311,7 +311,7 @@ internal sealed partial class PdfFileReader
 
                 if (holds is not { } rows)
                 {
-                    section.UndecodedReports = candidate && file == DataUndecoded ? besideCut : null;
+                    section.UndecodedReports = candidate && file == DataUndecoded ? new(besideCut) : null;
                     return XRefSectionState.Malformed;
                 }
 
@@ -482,7 +482,7 @@ internal sealed partial class PdfFileReader
             if (undecoded)
             {
                 section.Fault = DataUndecoded;
-                section.UndecodedReports = candidate ? decoding : null;
+                section.UndecodedReports = candidate ? new(decoding) : null;
                 return XRefSectionState.Malformed;
             }
 

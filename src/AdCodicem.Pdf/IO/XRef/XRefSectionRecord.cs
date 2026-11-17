@@ -1,3 +1,4 @@
+using System.Runtime.CompilerServices;
 using AdCodicem.Pdf.Diagnostics;
 using AdCodicem.Pdf.Objects;
 
@@ -180,9 +181,10 @@ internal sealed class XRefSectionRecord
     /// a cross-reference stream was decoded at a place the section may have been moved to, where its filters decoded nothing
     /// of it; null otherwise. A place that declares no section is dropped, and what that decoding reported goes with it, the
     /// diagnostics rolled back to this mark beside the guards it reached: what reading the stream's dictionary reported
-    /// stands, as for any place dropped (#221).
+    /// stands, as for any place dropped (#221). The mark is boxed, which only such a place pays for: every section is
+    /// recorded, a file's thousands of namings included, and few need a mark.
     /// </summary>
-    public PdfDiagnosticsMark? UndecodedReports { get; set; }
+    public StrongBox<PdfDiagnosticsMark>? UndecodedReports { get; set; }
 
     /// <summary>
     /// Gets a value indicating whether the stream's dictionary gives a <c>/Type</c> that names another type than
