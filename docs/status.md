@@ -32,8 +32,8 @@ Tracking workflow mirrors from `docs/roadmap.md` (*Debt and open points*, below)
   [#154] and [#171] with [#327], [#348] and [#350], in two pull requests by area, the rebuild in [#352] on 2026-11-13,
   the searches near an offset and a row in [#360] on 2026-11-16; the twenty-second, seven issues, in two pull requests
   by area as the maintainer chose on 2026-11-16: the chain at opening, [#218], [#322], [#323] and [#325], in [#380]
-  that day, then the catalog after a rebuild, [#132], [#229] and [#260], in [#382] on 2026-11-17. Then the
-  other batches, slices 4 to 6 ([#60] to [#62]); then the milestone's adversarial review, slice 7 ([#137], ADR 46), once
+  that day, then the catalog after a rebuild, [#132], [#229] and [#260], in [#382] on 2026-11-17; the twenty-fourth,
+  [#169], what a full diagnostics record still answers for, in [#384]. Then the other batches, slices 4 to 6 ([#60] to [#62]); then the milestone's adversarial review, slice 7 ([#137], ADR 46), once
   every other issue filed under M02 is closed. The debts come from the reader's own work, the threat model's first
   version ([#135], `docs/threat-model.md`), M01's review after the fact ([#136], `docs/reviews/M01.md`), the planning of
   step 4 ([#199] to [#202]), its second batch ([#207] to [#210]), its third ([#212]), its fifth ([#215], [#216]), its
@@ -42,7 +42,7 @@ Tracking workflow mirrors from `docs/roadmap.md` (*Debt and open points*, below)
   fifteenth ([#273] to [#277]), its sixteenth ([#279] to [#283], [#287] to [#290], [#292] to [#296]), its seventeenth
   ([#307]), its eighteenth ([#309], [#312] to [#315], [#317]), its nineteenth ([#320] to [#330], [#332], [#333],
   [#336], [#342]), its twentieth ([#348] to [#351]), its twenty-first ([#353] to [#359], [#361] to [#363], [#365] to
-  [#374]) and its twenty-second ([#375] to [#379], [#381]); [#123] moved to M20.
+  [#374]), its twenty-second ([#375] to [#379], [#381]) and its twenty-fourth ([#385]); [#123] moved to M20.
   The seventeenth filed [#305] and [#306] under M23, the eighteenth [#310] under
   M03 and [#311] under M23, the nineteenth [#331] under M03 and [#343] under M23; [#367] and [#373], which the
   twenty-first filed under M02, moved to M03 and M23 on 2026-11-17.
@@ -51,7 +51,10 @@ Tracking workflow mirrors from `docs/roadmap.md` (*Debt and open points*, below)
   pages — the validation rules among them, moved from the project documents — with the API reference under them, and
   four explanations. Outside any milestone.
 - **Last milestone closed**: **M01 — Object model and tolerant reading**
-- **Tests**: 12,231 unit on [#382]'s branch at `f72cff6`, with 240 of the 242 remote documents fetched, 12,228 passed
+- **Tests**: 12,214 unit on [#384]'s branch at `7aa8ac7`, with 235 of the 242 remote documents fetched — the container
+  reached neither web.archive.org nor a GitHub release for the other seven —, 12,211 passed and 3 skipped; the 54 timing
+  and memory tests alone; the integration suite green in CI; `Remote corpus` run 122 green over all 242. Before it, 12,231 unit
+  on [#382]'s branch at `f72cff6`, with 240 of the 242 remote documents fetched, 12,228 passed
   and 3 skipped — on the committed corpus, 9,321, 9,297 passed and 24 skipped —; the 54 timing and memory tests alone;
   `Remote corpus` run 120 over all 242. Before it, 12,206 unit on [#380]'s branch at `de0482b`, with 240 of the 242
   remote documents fetched, 12,203 passed
@@ -74,7 +77,8 @@ Tracking workflow mirrors from `docs/roadmap.md` (*Debt and open points*, below)
   container at `26ce787`, run class by class, 3,754 passed and 6 skipped where qpdf cannot walk a damaged document's
   pages; and `Remote corpus` run 109's 11,155 acceptance tests and 3,760 referee checks, on the library code
   [#344] ends with.
-- **Coverage**: on [#382]'s branch at `f72cff6`, counted from the unit suite's report by Codecov's rule, 100 % of the
+- **Coverage**: on [#384]'s branch, as Codecov reports it, every modified and coverable line of the patch covered.
+  Before it, on [#382]'s branch at `f72cff6`, counted from the unit suite's report by Codecov's rule, 100 % of the
   patch: its 40 coverable lines whole, on the committed corpus alone too. Before it, on [#380]'s branch, counted the
   same way, 100 % of the patch: its 114
   coverable lines whole, on the committed corpus alone too, once a test took the branch only a remote document had
@@ -598,8 +602,9 @@ One pull request per batch, each design question put to the maintainer after mea
        branch.
    23. [#141] — done in [#254], brought forward with [#144] at the maintainer's request on 2026-10-15 (journal of
        2026-10-15).
-   24. [#169]; [#144], its batch's other half, done in [#254] with [#141]. Batch 33 follows it, brought forward by the
-       maintainer on 2026-11-17 for the denial of service it pays ([#362]).
+   24. [#169] — done, in [#384], `Remote corpus` run 122 green on its branch (journal of 2026-11-17); [#144], its batch's other
+       half, done in [#254] with [#141]. It filed [#385], which waits to be placed. Batch 33 follows it, brought forward by
+       the maintainer on 2026-11-17 for the denial of service it pays ([#362]).
    25. [#181].
    26. [#162], with [#250].
    27. [#163], `MaxDepth` and `MaxNestedLoads` made guards, as the maintainer decided, with [#262].
@@ -999,3 +1004,5 @@ Until 2026-09-27 this section was a table whose rows were numbered T01 to T40; t
 [#380]: https://github.com/AdCodicem/AdCodicem.Pdf/pull/380
 [#381]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/381
 [#382]: https://github.com/AdCodicem/AdCodicem.Pdf/pull/382
+[#384]: https://github.com/AdCodicem/AdCodicem.Pdf/pull/384
+[#385]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/385
