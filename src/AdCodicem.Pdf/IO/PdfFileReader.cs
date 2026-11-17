@@ -217,9 +217,11 @@ internal sealed partial class PdfFileReader : IPdfObjectSource, IPdfStreamDataPr
     /// parser holds, and white space after a declared length is read no further than a first read.
     /// </summary>
     /// <remarks>
-    /// Not a guard (ADR 34). No valid file reaches it through the loads' searches, argued here once for every read they
-    /// count; through the rebuild's scan, which counts its own reads apart, one can, a known exception the maintainer
-    /// chose to keep (#361), argued last. The loads read a valid file past the parser's window in four ways only. Three
+    /// Not a guard (ADR 34): no valid file reaches it, argued here once for every read the loads' searches count. It bounds
+    /// those alone: the rebuild's scan counts its reads apart, those that confirm a stream's direct length against
+    /// <see cref="PdfReaderLimits.MaxRebuildReadPasses"/>, a guard (<see cref="_scanGapBytes"/>), and those that decide
+    /// only how its memo counts the places it takes against <see cref="MemoKindReadPasses"/>
+    /// (<see cref="_scanKindBytes"/>). The loads read a valid file past the parser's window in four ways only. Three
     /// read the data or what follows it: a cross-reference stream whose <c>/Length</c> the chain cannot read (#220) is
     /// searched once to its <c>endstream</c>; a stream whose <c>/Length</c> a guard cut or left out of the index (#224)
     /// is searched once to its <c>endstream</c>, or to a header its data spells, which leaves the data up to it to the
@@ -249,32 +251,28 @@ internal sealed partial class PdfFileReader : IPdfObjectSource, IPdfStreamDataPr
     /// after it for one — and the index as written does not place, which only a rebuilt one does. This keeps what they
     /// read in proportion to the file, as a window keeps the parsing of their dictionaries. Which streams keep their
     /// declared length unsearched past it depends on the order they are read in: crafted files reach it, and no
-    /// document of the corpus comes near, whose searches read 0.35 of a file at most. The rebuild's scan counts its own
-    /// reads apart, against the same multiple (<see cref="_scanGapBytes"/>). Of those, only the reads past a direct
-    /// length, which confirm it or not, decide what the scan takes (<see cref="ConfirmStream"/>): what the others find
-    /// decides only how its memo counts the places it takes in the data of a stream it does not confirm, as taken there
-    /// or between objects (<see cref="ScanState.KindUntil"/>), and the scan reads that data as the bytes give it, up to
-    /// its first <c>endstream</c>, whatever they find. A valid file's own streams spend about twice the file of it: each
-    /// read crosses its own stream's object, about once and once more as its reads double, and the objects of different
-    /// streams lie apart. The read past a direct length crosses the white space before that stream's <c>endstream</c>;
-    /// the search for where a load ends the data crosses that stream's data from its start
-    /// (<see cref="DataEndWithoutEndStream"/>) — made after a direct length no <c>endstream</c> follows, which no valid
-    /// stream has, after an indirect one the scan read from the file's bytes where none follows it, which may be another
-    /// object's than the stream's own length, and where the scan never meets the length's object —; the reads that tell
-    /// such data from an intact stream's cross the stretch from a place in it to its first <c>endstream</c>, at most
-    /// (<see cref="StartsStreamWithin"/>); and a read for an <c>endobj</c> after a length or after that
-    /// <c>endstream</c> is a single first read, uncounted, unless white space within the object runs past it
-    /// (<see cref="IsEndObjAt"/>). The regular characters glued to an <c>endstream</c> that it reads on through
-    /// (<see cref="RegularRunEnd"/>) no valid stream has. But the scan reads the data of a stream whose length it does
-    /// not confirm as objects, and the streams an attached file's bytes spell there are counted too: their lengths may
-    /// all end in one run of white space that each read past them crosses, or each be followed by its own run that
-    /// three reads cross — the read past the length, the search, the read for an <c>endobj</c> —, or their searches may
-    /// each cross the rest of the attached data. Those can reach the bound on a valid file, after which a later
-    /// stream's direct length that a first read cannot confirm is left unconfirmed and the headers its data spells are
-    /// taken (#361) — the one way the reads made for the memo can change what the scan takes —: a known exception to
-    /// ADR 34's rule, which the maintainer chose to keep an internal constant until that issue is paid.
+    /// document of the corpus comes near, whose searches read 0.35 of a file at most.
     /// </remarks>
     internal const int EndStreamSearchPasses = 4;
+
+    /// <summary>
+    /// How many times the length of the file the rebuild's scan may read, past the bytes it holds, to decide only how its
+    /// memo counts the places it takes in the data of a stream it does not confirm, as taken there or between objects
+    /// (<see cref="ScanState.KindUntil"/>, <see cref="_scanKindBytes"/>): the search for where a load ends that data
+    /// (<see cref="DataEndWithoutEndStream"/>), the reads that tell it from an intact stream's
+    /// (<see cref="StartsStreamWithin"/>), and the reads for an <c>endobj</c> made for them (<see cref="IsEndObjAt"/>).
+    /// Once they have read that much, the memo leaves the places it took in such data as taken there, as where those reads
+    /// cannot tell.
+    /// </summary>
+    /// <remarks>
+    /// Not a guard (ADR 34): it changes no valid file's objects, nor any verdict on one. The scan reads that data as the
+    /// bytes give it, up to its first <c>endstream</c>, whatever those reads find, and a rebuild takes its headers so,
+    /// kinds or not; their budget is their own, apart from the confirmations' (#361), so that they never change which
+    /// streams the scan confirms, nor, through where a piece of the scan ends, what it takes. Only the searches near an
+    /// entry's offset and near an offset the chain names read the kinds, and they run only where a row or an offset is
+    /// off — no valid file's — to choose among the places they find.
+    /// </remarks>
+    private const int MemoKindReadPasses = 4;
 
     /// <summary>
     /// How many bytes the first read of each step of an <c>endstream</c>'s proof reads (<see cref="EndStreamFollower"/>):
@@ -621,21 +619,28 @@ internal sealed partial class PdfFileReader : IPdfObjectSource, IPdfStreamDataPr
     private long _endStreamSearchBytes;
 
     /// <summary>
-    /// How many bytes the rebuild's scan read for streams since it started, which <see cref="EndStreamSearchPasses"/> bounds
-    /// apart from the loads' searches, so that what the scan reads leaves them theirs: the white space and comments a first
-    /// read cannot see past, after a direct length to confirm it (<see cref="ConfirmStream"/>), with the regular characters
-    /// glued to an <c>endstream</c> there (<see cref="RegularRunEnd"/>), and after a declared length, or the first
-    /// <c>endstream</c> of data whose places the memo may hold as an intact stream's, an <c>endobj</c> may follow
-    /// (<see cref="IsEndObjAt"/>); the data of a stream whose <c>endstream</c> does not follow its length, or whose length's
-    /// object the scan never reads, searched from its start for where a load ends it
-    /// (<see cref="DataEndWithoutEndStream"/>), every byte it takes counted, those the scan's window holds included; and
-    /// the reads that tell such data from an intact stream's (<see cref="StartsStreamWithin"/>), counted only past the
-    /// bytes that window holds, which it searches first. First reads that tell a place at once are not among them: of 64
-    /// bytes at most after a direct length, after a length the scan took from the file's bytes, read no further
+    /// How many bytes the rebuild's scan read since it started to confirm the direct lengths of streams
+    /// (<see cref="ConfirmStream"/>), which <see cref="PdfReaderLimits.MaxRebuildReadPasses"/> bounds
+    /// (<see cref="ScanReadBound"/>), apart from the loads' searches and from the reads made for the memo's kinds: the white
+    /// space and comments past a direct length that a first read of <see cref="PdfObjectParser.EndObjLookahead"/> bytes,
+    /// uncounted, cannot see past, and the regular characters glued to an <c>endstream</c> there
+    /// (<see cref="RegularRunEnd"/>). These alone decide which streams the scan confirms.
+    /// </summary>
+    private long _scanGapBytes;
+
+    /// <summary>
+    /// How many bytes the rebuild's scan read since it started to decide only how its memo counts the places it takes in
+    /// the data of a stream it does not confirm, which <see cref="MemoKindReadPasses"/> bounds: the data searched from its
+    /// start for where a load ends it (<see cref="DataEndWithoutEndStream"/>), every byte it takes counted, those the
+    /// scan's window holds included; the reads that tell such data from an intact stream's
+    /// (<see cref="StartsStreamWithin"/>), counted only past the bytes that window holds, which it searches first; and the
+    /// white space past a declared length, or past the first <c>endstream</c> of such data, that a first read cannot see
+    /// past for an <c>endobj</c> (<see cref="IsEndObjAt"/>). First reads that tell a place at once are not among them: of
+    /// 64 bytes at most after a length the scan took from the file's bytes, read no further
     /// (<see cref="SignificantPastLength"/>), at an <c>endstream</c>, where an <c>endobj</c> may follow a length or such an
     /// <c>endstream</c>, and at a length's object, and of 5 at a stream's data's start.
     /// </summary>
-    private long _scanGapBytes;
+    private long _scanKindBytes;
 
     /// <summary>
     /// What the rebuild's scan for objects takes of the file, made the first time something asks for it, and kept for the

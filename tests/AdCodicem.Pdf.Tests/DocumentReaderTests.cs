@@ -4931,10 +4931,11 @@ public class DocumentReaderTests
     [InlineData(70, "inner")]
     public void A_run_of_letters_glued_to_an_endstream_confirms_no_length_once_the_scan_has_read_what_it_may_past_lengths(int headers, string seven)
     {
-        // Stream headers of object 9, each with a direct /Length ending in one run of 12,000 spaces, come before stream 4,
-        // whose length is right and whose endstream is glued to 300,000 letters, its data spelling object 7 again. Alone,
-        // stream 4 is confirmed, the run read to its end. After the headers, the scan's reads past declared lengths reach
-        // what they may while they read the run: the length is not confirmed, and the header its data spells is taken.
+        // Stream headers of object 9, each with a direct /Length ending in one run of 12,000 spaces that a letter and an
+        // endstream follow, come before stream 4, whose length is right and whose endstream is glued to 300,000 letters, its
+        // data spelling an endstream and object 7 again. Alone, stream 4 is confirmed, the run read to its end. After the
+        // headers, the scan's reads past declared lengths reach what they may while they read the run: the length is not
+        // confirmed, the data is read up to its first endstream, and the header past it is taken (#361), the guard reported.
         var file = new HandWrittenFile();
         file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>");
         file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>");
@@ -4945,12 +4946,14 @@ public class DocumentReaderTests
             file.Raw(string.Create(CultureInfo.InvariantCulture, $"9 0 obj<</Length {headers * 36:D10}>>stream\n"));
         }
 
-        file.Raw(new string(' ', 12_000) + "x\n4 0 obj\n<< /Length 23 >>\nstream\n7 0 obj (inner) endobj\nendstream" + new string('X', 300_000));
+        file.Raw(new string(' ', 12_000) + "x\nendstream\nendobj\n4 0 obj\n<< /Length 33 >>\nstream\nendstream\n7 0 obj (inner) endobj\nendstream" +
+            new string('X', 300_000));
         file.Raw("\nendobj\ntrailer\n<< /Root 1 0 R >>\nstartxref\n9\n%%EOF\n");
         using var document = PdfDocument.Open(file.Bytes);
 
         document.WasRepaired.Should().BeTrue();
         document.GetObject(new PdfObjectId(7)).AsText().Should().Be(seven);
+        document.Diagnostics.Contains(PdfDiagnosticCodes.LimitRebuildReads).Should().Be(headers > 0);
     }
 
     [Theory(Timeout = 60_000)]
@@ -4986,10 +4989,11 @@ public class DocumentReaderTests
     [InlineData(100, "inner")]
     public void Once_the_scan_has_read_what_it_may_past_lengths_only_a_first_read_confirms_a_length(int blanks, string seven)
     {
-        // Twenty stream headers of object 9, each with a direct /Length ending in one run of 12,000 spaces, spend what the
-        // scan's reads past declared lengths may read before stream 4, which ends the file, its data spelling object 7 again.
-        // An endstream the first read past its length reaches with the end of the file confirms it; white space longer than
-        // that read leaves it unconfirmed, and the header its data spells is taken. No read asks for a byte the file lacks.
+        // Twenty stream headers of object 9, each with a direct /Length ending in one run of 12,000 spaces that a letter and
+        // an endstream follow, spend what the scan's reads past declared lengths may read before stream 4, which ends the
+        // file, its data spelling an endstream and object 7 again. An endstream the first read past its length reaches with
+        // the end of the file confirms it; white space longer than that read leaves it unconfirmed, its data read up to its
+        // first endstream, and the header past it is taken (#361). No read asks for a byte the file lacks.
         var file = new HandWrittenFile();
         file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>");
         file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>");
@@ -5001,7 +5005,8 @@ public class DocumentReaderTests
             file.Raw("9 0 obj<</Length 0000000720>>stream\n");
         }
 
-        file.Raw(new string(' ', 12_000) + "x\n4 0 obj\n<< /Length 23 >>\nstream\n7 0 obj (inner) endobj\n" + new string(' ', blanks) + "endstream");
+        file.Raw(new string(' ', 12_000) + "x\nendstream\nendobj\n4 0 obj\n<< /Length 33 >>\nstream\nendstream\n7 0 obj (inner) endobj\n" +
+            new string(' ', blanks) + "endstream");
         using var document = PdfDocument.Open(new StrictCountingSource(file.Bytes), options: null, ownsSource: true);
 
         document.WasRepaired.Should().BeTrue();

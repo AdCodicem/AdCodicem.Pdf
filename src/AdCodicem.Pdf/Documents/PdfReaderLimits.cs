@@ -40,6 +40,7 @@ public sealed record PdfReaderLimits
         MaxTrailerLength = int.MaxValue,
         MaxIndexEntries = int.MaxValue,
         MaxFilterChainLength = int.MaxValue,
+        MaxRebuildReadPasses = int.MaxValue,
     };
 
     /// <summary>
@@ -217,6 +218,44 @@ public sealed record PdfReaderLimits
             field = value;
         }
     } = 64;
+
+    /// <summary>
+    /// Gets how many times the length of the file a rebuild of the index may read past streams' declared lengths to confirm
+    /// them, as it scans the file for object headers. Defaults to 4: a valid file's own streams take about twice the file at
+    /// most, while hostile stream headers by the million, whose lengths all end in one long run of white space, would make
+    /// the scan read that run once for each.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The scan confirms a stream's direct <c>/Length</c> where an <c>endstream</c> follows it, and reads on through the
+    /// white space and comments past the length that a first read of 64 bytes cannot see past, and through the regular
+    /// characters glued to such an <c>endstream</c>: those reads count toward the bound. A valid stream's <c>endstream</c>
+    /// follows its length, the reads that find it cross the white space before it about twice as their reads double, and
+    /// the streams of a valid file lie apart. But the scan cannot confirm the data of a stream whose length is indirect,
+    /// and reads it as objects: the streams an attached file's bytes spell there count too, and a valid file can reach
+    /// the bound with them — their lengths may all end in one run of white space, which each read past them crosses.
+    /// </para>
+    /// <para>
+    /// Once the scan has read as much as the bound lets it, a stream whose length a first read cannot confirm is not
+    /// confirmed, and the scan reads the data of every stream it cannot confirm from then on as an intact stream's, up to
+    /// its first <c>endstream</c>, the object headers there not taken: the headers of an attached file whose data holds an
+    /// <c>endstream</c> of its own before the stream's are then taken past that keyword, and a comment there may hide the
+    /// objects after the stream. Reaching it reports <see cref="Diagnostics.PdfDiagnosticCodes.LimitRebuildReads"/>, once
+    /// for each rebuild, where the data starts of the first stream the bound left so; with
+    /// <see cref="PdfReaderOptions.ThrowOnLimit"/>, the rebuild finishes the index first and throws after. The bound is
+    /// taken against the file's length as the reader's source gives it, the product held at the most a position can name.
+    /// </para>
+    /// </remarks>
+    /// <exception cref="ArgumentOutOfRangeException">The value is zero or less.</exception>
+    public int MaxRebuildReadPasses
+    {
+        get;
+        init
+        {
+            ArgumentOutOfRangeException.ThrowIfNegativeOrZero(value, nameof(MaxRebuildReadPasses));
+            field = value;
+        }
+    } = 4;
 
     private static int Length(int value, [System.Runtime.CompilerServices.CallerMemberName] string? property = null)
     {

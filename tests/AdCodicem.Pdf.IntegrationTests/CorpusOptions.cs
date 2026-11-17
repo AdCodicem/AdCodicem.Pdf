@@ -25,6 +25,7 @@ internal static class CorpusOptions
                 MaxTrailerLength = raised.MaxTrailerLength ?? limits.MaxTrailerLength,
                 MaxIndexEntries = raised.MaxIndexEntries ?? limits.MaxIndexEntries,
                 MaxFilterChainLength = raised.MaxFilterChainLength ?? limits.MaxFilterChainLength,
+                MaxRebuildReadPasses = raised.MaxRebuildReadPasses ?? limits.MaxRebuildReadPasses,
             };
         }
 

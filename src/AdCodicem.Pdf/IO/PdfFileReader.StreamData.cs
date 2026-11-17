@@ -151,15 +151,16 @@ internal sealed partial class PdfFileReader
     private bool EndObjFollows(long dataStart, long declaredEnd, ReadOnlySpan<byte> buffered) =>
         (declaredEnd - dataStart <= buffered.Length
             ? StreamEnds.IsEndObjAt(buffered, (int)(declaredEnd - dataStart), reachesEndOfFile: dataStart + buffered.Length >= _source.Length)
-            : null) ?? IsEndObjAt(declaredEnd, ref _endStreamSearchBytes);
+            : null) ?? IsEndObjAt(declaredEnd, ref _endStreamSearchBytes, EndStreamSearchPasses * _source.Length);
 
     /// <summary>
     /// Determines whether an <c>endobj</c> keyword, whole, follows <paramref name="absoluteOffset"/> after white space and
     /// comments, a comment only after white space (<see cref="StreamEnds.SkipGap"/>): where a stream's declared length ends,
     /// the end of a stream's object that has no <c>endstream</c>; past an <c>endstream</c>, the end of the object it ends.
-    /// White space that runs past a first read is read on with the reads <paramref name="spent"/> counts.
+    /// White space that runs past a first read is read on with the reads <paramref name="spent"/> counts, as long as they
+    /// are short of <paramref name="bound"/>.
     /// </summary>
-    private bool IsEndObjAt(long absoluteOffset, ref long spent)
+    private bool IsEndObjAt(long absoluteOffset, ref long spent, long bound)
     {
         if (absoluteOffset < 0 || absoluteOffset >= _source.Length)
         {
@@ -174,7 +175,7 @@ internal sealed partial class PdfFileReader
             return decided;
         }
 
-        var next = NextSignificant(absoluteOffset, ref spent, PdfObjectParser.EndObjLookahead);
+        var next = NextSignificant(absoluteOffset, ref spent, bound, PdfObjectParser.EndObjLookahead);
         return next >= 0 && IsEndObjKeywordAt(next);
     }
 
@@ -186,21 +187,21 @@ internal sealed partial class PdfFileReader
     /// after it twice the one before, up to <see cref="EndStreamSearchChunk"/>.
     /// </summary>
     private long NextSignificant(long position, int firstRead = PdfObjectParser.EndObjLookahead) =>
-        NextSignificant(position, ref _endStreamSearchBytes, firstRead);
+        NextSignificant(position, ref _endStreamSearchBytes, EndStreamSearchPasses * _source.Length, firstRead);
 
     /// <summary>
     /// Gives where the first byte at or after <paramref name="position"/> lies that is neither white space nor part of a
     /// comment, as <see cref="NextSignificant(long, int)"/> does, its reads counted in <paramref name="spent"/>, which
-    /// <see cref="EndStreamSearchPasses"/> times the length of the file bounds.
+    /// <paramref name="bound"/> bounds.
     /// </summary>
-    private long NextSignificant(long position, ref long spent, int firstRead)
+    private long NextSignificant(long position, ref long spent, long bound, int firstRead)
     {
         var size = firstRead;
         var inComment = false;
 
         while (position < _source.Length)
         {
-            if (spent >= EndStreamSearchPasses * _source.Length)
+            if (spent >= bound)
             {
                 return -1;
             }
@@ -386,8 +387,8 @@ internal sealed partial class PdfFileReader
     /// (<see cref="ScanState.KindUntil"/>), never what the scan takes: a length the scan cannot confirm may be no length of
     /// the stream's, and the scan reads the data as the bytes give it, up to its first <c>endstream</c>
     /// (<see cref="ScanState.RawUntil"/>). The data is read from the file as a load past its window reads it, with the
-    /// scan's reads past declared lengths (<see cref="_scanGapBytes"/>); once those have read
-    /// <see cref="EndStreamSearchPasses"/> times the length of the file, no search is made.
+    /// reads made for the memo's kinds (<see cref="_scanKindBytes"/>); once those have read as much as
+    /// <see cref="MemoKindReadPasses"/> lets them, no search is made.
     /// </remarks>
     /// <param name="dataStart">Where the data starts in the file.</param>
     /// <param name="declaredEnd">Where the declared length ends in the file, past its end for a length that runs past it;
@@ -400,8 +401,8 @@ internal sealed partial class PdfFileReader
             [],
             _source.Length,
             deferred: false,
-            readsFile: _scanGapBytes < EndStreamSearchPasses * _source.Length,
-            ref _scanGapBytes,
+            readsFile: _scanKindBytes < MemoKindReadBound,
+            ref _scanKindBytes,
             out var header,
             out var searched,
             out _,
@@ -426,7 +427,7 @@ internal sealed partial class PdfFileReader
             return objectEnd >= 0 ? objectEnd : Math.Min(declaredEnd == long.MaxValue ? stop : stop + 1, _source.Length);
         }
 
-        var endObjFollows = IsEndObjAt(declaredEnd, ref _scanGapBytes);
+        var endObjFollows = IsEndObjAt(declaredEnd, ref _scanKindBytes, MemoKindReadBound);
         return endObjFollows || objectEnd < 0 ? declaredEnd : objectEnd;
     }
 

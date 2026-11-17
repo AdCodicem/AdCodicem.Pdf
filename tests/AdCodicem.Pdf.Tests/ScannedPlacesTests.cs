@@ -30,7 +30,7 @@ public class ScannedPlacesTests
     [InlineData("a header in what a string that holds endobj runs into", "Raw")]
     [InlineData("a header past the endobj that follows the declared length of a stream with no endstream", "Clean")]
     [InlineData("a header that follows the declared length of a stream with no endstream", "Clean")]
-    [InlineData("a header that follows the declared length of a stream with no endstream, once the scan has read what it may past lengths", "Raw")]
+    [InlineData("a header that follows the declared length of a stream with no endstream, once the scan has read what it may past lengths", null)]
     [InlineData("a header past the endobj that ends a stream with no endstream whose declared length runs into it", "Clean")]
     [InlineData("a header that a stream with no endstream declares a length past", "Raw")]
     [InlineData("a header past the endobj of a stream with no endstream that declares a length past the header", "Clean")]
@@ -294,8 +294,8 @@ public class ScannedPlacesTests
 
             // Twenty stream headers of object 6, their direct lengths ending in one run of 12,000 spaces that a letter and an
             // endstream follow, spend what the scan's reads past declared lengths may read, four times the file, before
-            // stream 5: no search then learns where a load ends stream 5's data, which no endstream follows, and the memo
-            // counts places as taken in it up to the end of the file.
+            // stream 5: the scan then reads stream 5's data, which no endstream follows, as an intact stream's, up to the
+            // end of the file, and takes nothing there (#361).
             "a header that follows the declared length of a stream with no endstream, once the scan has read what it may past lengths" =>
                 string.Concat(Enumerable.Repeat("6 0 obj<</Length 0000000720>>stream\n", 20)) + new string(' ', 12_000) + "x\nendstream\nendobj\n"
                 + "5 0 obj\n<< /Length 10 >>\nstream\n0123456789\n9 0 obj\n(nine)\nendobj\n",
@@ -1742,20 +1742,21 @@ public class ScannedPlacesTests
     }
 
     [Theory]
-    [InlineData(0, "Raw")]
+    [InlineData(0, null)]
     [InlineData(1, "Clean")]
-    public void Data_a_direct_length_no_endstream_follows_is_searched_for_where_a_load_ends_it_only_while_the_scan_s_reads_past_declared_lengths_are_short_of_their_bound(
-        int longer, string kind)
+    public void Data_a_direct_length_no_endstream_follows_is_read_up_to_its_first_endstream_once_the_scan_s_reads_past_declared_lengths_reach_their_bound(
+        int longer, string? kind)
     {
-        // Thirty stream headers of 36 bytes, each the first bytes of the data of the one before, whose direct lengths all end
+        // Forty stream headers of 36 bytes, each the first bytes of the data of the one before, whose direct lengths all end
         // where 64 spaces start, a letter after them, and no endstream anywhere; the data of the last holds objects 9 and 4,
-        // and object 6 follows the letter. Each stream reads on through the spaces its first read cannot see past, 192 bytes,
-        // and searches its data for where a load ends it, 20 bytes, up to the header that starts that data: once the last has
-        // read through the spaces, the scan's reads past declared lengths come to 6,340 bytes, four times a file of 1,585,
-        // their bound. The last's data is then not searched, and the memo counts what the scan takes past its start as taken
-        // in data. One byte more of file, and the search ends that data a byte past object 9's header, which stops it:
-        // objects 4 and 6 are held as taken between objects.
-        const int Headers = 30;
+        // and object 6 follows the letter. Each stream reads on through the spaces its first read cannot see past, 192 bytes:
+        // once the last has read through them, the scan's reads past declared lengths come to 7,680 bytes, four times a file
+        // of 1,920, their bound. The scan then reads the last's data, which it cannot confirm, as an intact stream's, up to
+        // the end of the file, which holds no endstream, and takes nothing there (#361). One byte more of file, and it reads
+        // that data as the bytes give it: the search for where a load ends it, which the memo's kinds alone hang on and which
+        // has a budget of its own, ends it a byte past object 9's header, and objects 4 and 6 are held as taken between
+        // objects.
+        const int Headers = 40;
         const string Inner = "0123456789\n9 0 obj (nine) endobj\n4 0 obj (four) endobj\n";
         var text = new StringBuilder();
 
@@ -1765,7 +1766,7 @@ public class ScannedPlacesTests
         }
 
         text.Append(Inner).Append(' ', 64).Append("x\n6 0 obj (six) endobj\n");
-        var length = ((((192 + 20) * Headers) - 20) / PdfFileReader.EndStreamSearchPasses) + longer;
+        var length = (192 * Headers / PdfFileReader.EndStreamSearchPasses) + longer;
         text.Append('%', length - Sound(text.ToString(), 0).File.Length - 1).Append('\n');
         var shape = text.ToString();
         var (file, four) = Sound(shape, shape.IndexOf("4 0 obj", StringComparison.Ordinal));
@@ -1775,10 +1776,14 @@ public class ScannedPlacesTests
         var memo = document.Reader.GetScanMemo();
 
         file.Length.Should().Be(length);
-        memo.TryGetHeaderAt(four, out var header).Should().BeTrue();
-        header.Should().Be(new ScannedHeader(four, 4, 0, Enum.Parse<ScannedPlaceKind>(kind)));
-        memo.TryGetHeaderAt(six, out header).Should().BeTrue();
-        header.Should().Be(new ScannedHeader(six, 6, 0, Enum.Parse<ScannedPlaceKind>(kind)));
+        memo.TryGetHeaderAt(four, out var header).Should().Be(kind is not null);
+        memo.TryGetHeaderAt(six, out var sixth).Should().Be(kind is not null);
+
+        if (kind is not null)
+        {
+            header.Should().Be(new ScannedHeader(four, 4, 0, Enum.Parse<ScannedPlaceKind>(kind)));
+            sixth.Should().Be(new ScannedHeader(six, 6, 0, Enum.Parse<ScannedPlaceKind>(kind)));
+        }
     }
 
     [Theory]
@@ -1919,11 +1924,11 @@ public class ScannedPlacesTests
     [InlineData("a stream keyword, 300,000 bytes on", 0, "Clean")]
     [InlineData("a stream keyword that ends the scan's piece", 0, "Clean")]
     [InlineData("a stream keyword, 300,000 bytes on, the first read past the piece given short", 0, "Raw")]
-    [InlineData("a stream keyword, 300,000 bytes on, in the read before which the scan's reads past declared lengths reach four times the file", 20, "Raw", 300, 403_308)]
+    [InlineData("a stream keyword, 300,000 bytes on, in the read before which the scan's reads past declared lengths reach four times the file", 20, "Clean", 300, 403_308)]
     [InlineData("a stream keyword, 300,000 bytes on, in the read before which the scan's reads past declared lengths fall four bytes short of four times the file", 20, "Clean", 300, 403_309)]
     [InlineData("no stream keyword, a megabyte and more before its endstream", 0, "Clean")]
     [InlineData("no stream keyword, a megabyte and more before its endstream, the end of the file within a read past the megabyte", 0, "Clean", 2000)]
-    [InlineData("no stream keyword, a megabyte and more before its endstream", 20, "Raw")]
+    [InlineData("no stream keyword, a megabyte and more before its endstream", 20, "Clean")]
     public void A_stream_whose_data_starts_with_its_length_s_object_is_told_from_an_intact_one_by_what_it_may_read_past_the_scan_s_piece(
         string past, int headers, string kind, int lead = 300, int padding = 0)
     {
@@ -1937,12 +1942,11 @@ public class ScannedPlacesTests
         // its last read comes. A word that holds stream holds no keyword, upstream in object 9's string, or one whose stream
         // starts where the first read past the piece does, which that read does not tell; a keyword the piece ends with is
         // told by the read past the piece, which repeats it with the byte after. A read the source gives short leaves object
-        // 9's header Raw, as in an intact stream, and so do the scan's reads past declared lengths, spent while it reads
-        // there: stream headers before it, whose direct lengths end where one run of 256 KiB of white space starts, each read
-        // that run, and the twentieth leaves less than the stretch. Past them, white space before the table sets where those
-        // reads reach four times the length of the file: 403,308 bytes make them reach it just before the read that holds a
-        // keyword 300,000 bytes on, which the scan then does not make; one byte more leaves them four bytes short, and the
-        // scan makes it.
+        // 9's header Raw, as in an intact stream. The scan's reads past declared lengths do not: stream headers before it,
+        // whose direct lengths end where one run of 256 KiB of white space starts, each read that run, and white space before
+        // the table sets where they come near four times the length of the file — 403,308 bytes, where they reached it,
+        // counted with these reads, just before the read that holds a keyword 300,000 bytes on, or one byte more —, but
+        // these reads have a budget of their own, and the scan makes that read, and the megabyte's, either way (#361).
         const int Piece = 1 << 20;
         var file = new HandWrittenFile();
         var rows = new Dictionary<int, long> { [1] = file.Object(1, Catalog), [2] = file.Object(2, Pages) };

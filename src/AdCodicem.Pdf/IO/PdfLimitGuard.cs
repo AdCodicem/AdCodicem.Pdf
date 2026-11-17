@@ -42,6 +42,7 @@ internal sealed class PdfLimitGuard(PdfReaderLimits limits, bool throwOnLimit, P
         PdfLimit.XRefSectionCount => limits.MaxXRefSectionCount,
         PdfLimit.IndexEntries => limits.MaxIndexEntries,
         PdfLimit.FilterChain => limits.MaxFilterChainLength,
+        PdfLimit.RebuildReads => limits.MaxRebuildReadPasses,
         _ => limits.MaxTrailerLength,
     };
 
@@ -55,7 +56,9 @@ internal sealed class PdfLimitGuard(PdfReaderLimits limits, bool throwOnLimit, P
     {
         var name = Name(limit);
         var bound = Bound(limit);
-        var ceiling = limit is PdfLimit.XRefSectionCount or PdfLimit.IndexEntries or PdfLimit.FilterChain ? int.MaxValue : Array.MaxLength;
+        var ceiling = limit is PdfLimit.XRefSectionCount or PdfLimit.IndexEntries or PdfLimit.FilterChain or PdfLimit.RebuildReads
+            ? int.MaxValue
+            : Array.MaxLength;
         var message = bound >= ceiling
             ? $"{what} PdfReaderLimits.{name} is already at the most the reader can hold."
             : $"{what} Raise PdfReaderLimits.{name} to read past it.";
@@ -94,6 +97,7 @@ internal sealed class PdfLimitGuard(PdfReaderLimits limits, bool throwOnLimit, P
         PdfLimit.XRefSectionCount => PdfDiagnosticCodes.LimitXRefSectionCount,
         PdfLimit.IndexEntries => PdfDiagnosticCodes.LimitIndexEntries,
         PdfLimit.FilterChain => PdfDiagnosticCodes.LimitFilterChain,
+        PdfLimit.RebuildReads => PdfDiagnosticCodes.LimitRebuildReads,
         _ => PdfDiagnosticCodes.LimitTrailer,
     };
 
@@ -106,6 +110,7 @@ internal sealed class PdfLimitGuard(PdfReaderLimits limits, bool throwOnLimit, P
         PdfLimit.XRefSectionCount => nameof(PdfReaderLimits.MaxXRefSectionCount),
         PdfLimit.IndexEntries => nameof(PdfReaderLimits.MaxIndexEntries),
         PdfLimit.FilterChain => nameof(PdfReaderLimits.MaxFilterChainLength),
+        PdfLimit.RebuildReads => nameof(PdfReaderLimits.MaxRebuildReadPasses),
         _ => nameof(PdfReaderLimits.MaxTrailerLength),
     };
 }

@@ -22,7 +22,7 @@ public class ReaderLimitsTests
 
     /// <summary>A guard for each bound of <see cref="PdfReaderLimits"/>, the trailer's reached two ways.</summary>
     public static TheoryData<string> Guards =>
-        ["decoded stream", "stream length", "object", "section length", "section count", "trailer", "cross-reference stream", "index entries", "filter chain"];
+        ["decoded stream", "stream length", "object", "section length", "section count", "trailer", "cross-reference stream", "index entries", "filter chain", "rebuild reads"];
 
     [Fact]
     public void The_defaults_are_the_bounds_the_reader_kept_before_they_were_options()
@@ -37,6 +37,7 @@ public class ReaderLimitsTests
         limits.MaxTrailerLength.Should().Be(64 * 1024);
         limits.MaxIndexEntries.Should().Be(8_388_607);
         limits.MaxFilterChainLength.Should().Be(64);
+        limits.MaxRebuildReadPasses.Should().Be(4);
         PdfReaderOptions.Default.Limits.Should().BeSameAs(limits);
         PdfReaderOptions.Default.ThrowOnLimit.Should().BeFalse();
     }
@@ -54,6 +55,7 @@ public class ReaderLimitsTests
         limits.MaxTrailerLength.Should().Be(Array.MaxLength);
         limits.MaxIndexEntries.Should().Be(int.MaxValue);
         limits.MaxFilterChainLength.Should().Be(int.MaxValue);
+        limits.MaxRebuildReadPasses.Should().Be(int.MaxValue);
     }
 
     [Fact]
@@ -80,6 +82,7 @@ public class ReaderLimitsTests
     [InlineData(nameof(PdfReaderLimits.MaxTrailerLength), -1)]
     [InlineData(nameof(PdfReaderLimits.MaxIndexEntries), 0)]
     [InlineData(nameof(PdfReaderLimits.MaxFilterChainLength), -1)]
+    [InlineData(nameof(PdfReaderLimits.MaxRebuildReadPasses), 0)]
     public void A_limit_of_zero_or_less_is_refused_and_named(string limit, int value)
     {
         var setting = () => With(PdfReaderLimits.Default, limit, value);
@@ -100,6 +103,7 @@ public class ReaderLimitsTests
             MaxTrailerLength = int.MaxValue,
             MaxIndexEntries = int.MaxValue,
             MaxFilterChainLength = int.MaxValue,
+            MaxRebuildReadPasses = int.MaxValue,
         };
 
         limits.Should().Be(PdfReaderLimits.Unbounded);
@@ -153,6 +157,7 @@ public class ReaderLimitsTests
                 MaxXRefSectionCount = int.MaxValue - 1,
                 MaxIndexEntries = int.MaxValue - 1,
                 MaxFilterChainLength = int.MaxValue - 1,
+                MaxRebuildReadPasses = int.MaxValue - 1,
             },
             throwOnLimit: false);
 
@@ -164,6 +169,8 @@ public class ReaderLimitsTests
         justBelow.Reach(PdfLimit.IndexEntries, diagnostics, "Cut.", 11);
         unbounded.Reach(PdfLimit.FilterChain, diagnostics, "Cut.", 12);
         justBelow.Reach(PdfLimit.FilterChain, diagnostics, "Cut.", 13);
+        unbounded.Reach(PdfLimit.RebuildReads, diagnostics, "Cut.", 14);
+        justBelow.Reach(PdfLimit.RebuildReads, diagnostics, "Cut.", 15);
 
         diagnostics.Select(entry => entry.Message).Should().Equal(
             "Cut. PdfReaderLimits.MaxDecodedStreamLength is already at the most the reader can hold.",
@@ -173,7 +180,9 @@ public class ReaderLimitsTests
             "Cut. PdfReaderLimits.MaxIndexEntries is already at the most the reader can hold.",
             "Cut. Raise PdfReaderLimits.MaxIndexEntries to read past it.",
             "Cut. PdfReaderLimits.MaxFilterChainLength is already at the most the reader can hold.",
-            "Cut. Raise PdfReaderLimits.MaxFilterChainLength to read past it.");
+            "Cut. Raise PdfReaderLimits.MaxFilterChainLength to read past it.",
+            "Cut. PdfReaderLimits.MaxRebuildReadPasses is already at the most the reader can hold.",
+            "Cut. Raise PdfReaderLimits.MaxRebuildReadPasses to read past it.");
     }
 
     [Theory]
@@ -206,6 +215,7 @@ public class ReaderLimitsTests
     [InlineData("section count", "The cross-reference chain has more than 1 section; the older ones were not read.")]
     [InlineData("cross-reference stream", "The dictionary of the object read as a cross-reference stream runs past 1 byte; only what lies within it was read.")]
     [InlineData("filter chain", "The /Filter entry names more than 1 filter; decoding stopped after the first.")]
+    [InlineData("rebuild reads", "Past streams' declared lengths, the scan for objects read the length of the file; the data of each stream it could not confirm after that was read up to its first endstream, the object headers there not taken.")]
     public void A_guard_set_to_one_says_its_bound_in_the_singular(string guard, string reported)
     {
         // Each guard at one, the least it takes, reached on the file of its own case: the bound it names is said in the
@@ -230,7 +240,8 @@ public class ReaderLimitsTests
         using var document = PdfDocument.Open(@case.File, new PdfReaderOptions { Limits = @case.Raised });
 
         @case.Read(document).Should().Be(@case.Whole);
-        document.Diagnostics.Should().BeEmpty($"a sound file read within its guards reports nothing ({guard})");
+        document.Diagnostics.Select(entry => entry.Code).Should().Equal(
+            @case.WholeReports, $"a sound file read within its guards reports nothing but the damage that sets off a rebuild ({guard})");
     }
 
     [Theory]
@@ -603,6 +614,110 @@ public class ReaderLimitsTests
             pdf.Table(31, rows, "/Size 31 /Root 1 0 R");
             return (pdf.Bytes, written, at);
         }
+    }
+
+    [Theory]
+    [InlineData("whose lengths end in one run of white space", 8)]
+    [InlineData("of no length, each before a run of white space of its own", 16)]
+    [InlineData("of no length, each before a run of white space of its own", 40)]
+    [InlineData("that lost their endstream, glued to a sign", 32)]
+    [InlineData("that lost their endstream, glued to an end-of-file marker", 32)]
+    [InlineData("that lost their endstream, before a mebibyte of text", 5)]
+    public void A_valid_file_a_guard_sends_into_a_rebuild_serves_no_object_a_stream_s_data_spells_after_streams_an_attached_file_s_bytes_spell(
+        string spelled, int count)
+    {
+        // Object 10, an attached file with an indirect /Length, spells streams in its data: their direct lengths end where
+        // one run of a mebibyte of spaces starts; or they have no length, and 64 KiB of spaces follow each before an endobj;
+        // or a sign or an end-of-file marker is glued to their headers, and no endstream follows their data, which may
+        // run on through a mebibyte of text. Object 30, after it, has a direct length 70 spaces before its endstream, which
+        // a first read cannot see past, and its data spells object 77, which the file does not define. MaxXRefSectionLength
+        // cuts the table, and the rebuild's scan reads object 10's data as objects: the reads past the spelled streams'
+        // lengths, and, for the memo's kinds, the searches for where a load ends their data, spent the reads that confirm
+        // lengths, and the scan, which could not confirm object 30, took object 77 from its data (#361). The memo's reads
+        // have a budget of their own, and data the scan cannot confirm once the confirmations' is spent is read up to its
+        // first endstream, nothing taken there.
+        var data = new StringBuilder();
+        const int Each = 42;
+
+        for (var i = 0; i < count; i++)
+        {
+            var number = 20 + i;
+            data.Append(spelled switch
+            {
+                "whose lengths end in one run of white space" => string.Create(
+                    CultureInfo.InvariantCulture, $"{number} 0 obj\n<< /Length {(Each * count) - ((Each * i) + 38):D7} >>\nstream\nabc\n"),
+                "of no length, each before a run of white space of its own" => string.Create(
+                    CultureInfo.InvariantCulture, $"{number} 0 obj\n<< /Length 0 >>\nstream\n{new string(' ', 64 * 1024)}endobj\n"),
+                "that lost their endstream, glued to an end-of-file marker" => string.Create(
+                    CultureInfo.InvariantCulture, $"%%EOF{number} 0 obj\n<< /Length 5 >>\nstream\nabcdefgh\n"),
+                _ => string.Create(CultureInfo.InvariantCulture, $"+{number} 0 obj\n<< /Length 5 >>\nstream\nabcdefgh\n"),
+            });
+        }
+
+        data.Append(spelled switch
+        {
+            "whose lengths end in one run of white space" => new string(' ', 1024 * 1024) + "attached tail\n",
+            "that lost their endstream, before a mebibyte of text" => new string('t', 1024 * 1024) + "\n",
+            _ => "\n",
+        });
+        var pdf = new HandWrittenFile();
+        var rows = new Dictionary<int, long> { [1] = pdf.Object(1, Catalog), [2] = pdf.Object(2, Pages) };
+        rows[10] = pdf.Position;
+        pdf.Raw("10 0 obj\n<< /Type /EmbeddedFile /Length 11 0 R >>\nstream\n" + data + "endstream\nendobj\n");
+        rows[11] = pdf.Object(11, data.Length.ToString(CultureInfo.InvariantCulture));
+        rows[30] = pdf.Position;
+        pdf.Raw("30 0 obj\n<< /Length 24 >>\nstream\n77 0 obj\n(inner)\nendobj\n" + new string(' ', 70) + "\nendstream\nendobj\n");
+        pdf.Table(31, rows, "/Size 31 /Root 1 0 R");
+        var options = new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxXRefSectionLength = 16 } };
+
+        using var document = PdfDocument.Open(pdf.Bytes, options);
+
+        document.GetObject(new PdfObjectId(77)).Should().BeSameAs(PdfNull.Instance);
+        document.GetObject(new PdfObjectId(30)).AsStream().Required().GetRawBytes().Length.Should().Be(24);
+        document.WasRepaired.Should().BeTrue();
+        document.Diagnostics.Should().Contain(diagnostic => diagnostic.Code == PdfDiagnosticCodes.LimitXRefSectionLength);
+    }
+
+    [Fact]
+    public void A_rebuild_after_the_scan_s_memo_reached_the_read_guard_scans_again_and_reports_it()
+    {
+        // The guard's case, its objects indexed by a table whose /Prev names no section, so that a lookup of object 31,
+        // which the table does not number, rebuilds the index. The scan's memo, made first, reaches MaxRebuildReadPasses
+        // and reports nothing; the rebuild does not take its headers from it, scans the file again, and reports the guard
+        // where its own scan reaches it.
+        const string Head = "20 0 obj\n<< /Length 0000000 >>\nstream\nabc\n";
+        var spelled = new StringBuilder();
+
+        for (var i = 0; i < 6; i++)
+        {
+            var length = ((6 - i) * Head.Length) - (Head.Length - "abc\n".Length);
+            spelled.Append(Head.Replace("20 0", string.Create(CultureInfo.InvariantCulture, $"{20 + i} 0"), StringComparison.Ordinal)
+                .Replace("0000000", length.ToString("D7", CultureInfo.InvariantCulture), StringComparison.Ordinal));
+        }
+
+        var data = spelled.Append(' ', 64 * 1024).Append("attached tail\n").ToString();
+        const string Inner = "%PDF-1.4\n5 0 obj\n<< /Length 3 >>\nstream\nabc\nendstream\nendobj\n% the attached file's last line";
+        var pdf = new HandWrittenFile();
+        var rows = new Dictionary<int, long> { [1] = pdf.Object(1, Catalog), [2] = pdf.Object(2, Pages) };
+        rows[10] = pdf.Position;
+        pdf.Raw("10 0 obj\n<< /Type /EmbeddedFile /Length 11 0 R >>\nstream\n" + data + "endstream\nendobj\n");
+        rows[11] = pdf.Object(11, data.Length.ToString(CultureInfo.InvariantCulture));
+        rows[30] = pdf.Position;
+        pdf.Raw(string.Create(CultureInfo.InvariantCulture, $"30 0 obj\n<< /Type /EmbeddedFile /Length {Inner.Length} >>\nstream\n{Inner}") +
+            new string(' ', 70) + "endstream endobj 31 0 obj (real) endobj\n");
+        pdf.Table(31, rows, "/Size 31 /Root 1 0 R /Prev 1 0 R");
+        var file = pdf.Bytes;
+        using var document = PdfDocument.Open(file);
+
+        var memo = document.Reader.GetScanMemo();
+        var reportedBefore = document.Diagnostics.Contains(PdfDiagnosticCodes.LimitRebuildReads);
+        var real = document.GetObject(new PdfObjectId(31));
+
+        (memo.ReadsBounded, reportedBefore).Should().Be((true, false));
+        real.Should().BeSameAs(PdfNull.Instance);
+        document.WasRepaired.Should().BeTrue();
+        document.Diagnostics.Should().ContainSingle(entry => entry.Code == PdfDiagnosticCodes.LimitRebuildReads)
+            .Which.Position.Should().Be(OffsetOf(file, "24 0 obj") + Head.Length - "abc\n".Length);
     }
 
     [Theory]
@@ -4358,6 +4473,7 @@ public class ReaderLimitsTests
         nameof(PdfReaderLimits.MaxTrailerLength) => limits with { MaxTrailerLength = value },
         nameof(PdfReaderLimits.MaxIndexEntries) => limits with { MaxIndexEntries = value },
         nameof(PdfReaderLimits.MaxFilterChainLength) => limits with { MaxFilterChainLength = value },
+        nameof(PdfReaderLimits.MaxRebuildReadPasses) => limits with { MaxRebuildReadPasses = value },
         _ => throw new ArgumentOutOfRangeException(nameof(limit), limit, "Not a reader limit."),
     };
 
@@ -4371,6 +4487,7 @@ public class ReaderLimitsTests
         nameof(PdfReaderLimits.MaxTrailerLength) => limits.MaxTrailerLength,
         nameof(PdfReaderLimits.MaxIndexEntries) => limits.MaxIndexEntries,
         nameof(PdfReaderLimits.MaxFilterChainLength) => limits.MaxFilterChainLength,
+        nameof(PdfReaderLimits.MaxRebuildReadPasses) => limits.MaxRebuildReadPasses,
         _ => throw new ArgumentOutOfRangeException(nameof(limit), limit, "Not a reader limit."),
     };
 
@@ -4483,8 +4600,9 @@ public class ReaderLimitsTests
         Encoding.Latin1.GetString(file).IndexOf(text, StringComparison.Ordinal);
 
     /// <summary>
-    /// A sound document that reaches one guard: the limits that reach it, the limits that read it whole, what
-    /// reading it observes, and what the guard reports.
+    /// A sound document that reaches one guard — but for the damage that sets off a rebuild, for a guard only a rebuild
+    /// reaches —: the limits that reach it, the limits that read it whole, what reading it observes, what the guard
+    /// reports, and what a whole read still does (<see cref="WholeReports"/>).
     /// </summary>
     private sealed record Case(
         string LimitName,
@@ -4499,6 +4617,12 @@ public class ReaderLimitsTests
         bool ThrowsOnOpening,
         bool ReportsNothingElse)
     {
+        /// <summary>
+        /// Gets the codes a read under the raised limits reports, in order: the damage that sets off a rebuild, and what the
+        /// rebuild indexes.
+        /// </summary>
+        public string[] WholeReports { get; init; } = [];
+
         public static Case For(string guard) => guard switch
         {
             "decoded stream" => DecodedStream(),
@@ -4510,6 +4634,7 @@ public class ReaderLimitsTests
             "cross-reference stream" => LongXRefStreamDictionary(),
             "index entries" => ManyObjects(),
             "filter chain" => LongFilterChain(),
+            "rebuild reads" => ManySpelledStreams(),
             _ => throw new ArgumentOutOfRangeException(nameof(guard), guard, "Not a guard."),
         };
 
@@ -4728,6 +4853,54 @@ public class ReaderLimitsTests
                 OffsetOf(file, "xref\n"),
                 ThrowsOnOpening: true,
                 ReportsNothingElse: true);
+        }
+
+        private static Case ManySpelledStreams()
+        {
+            // A file with no cross-reference table, which the reader rebuilds. Object 10, an attached file with an indirect
+            // /Length, spells six streams in its data whose direct lengths all end where 64 KiB of spaces start: the scan,
+            // which cannot confirm object 10, reads its data as objects, and reads through the spaces for each spelled stream
+            // to confirm it, four times the file by the fifth, which it leaves unconfirmed. Object 30, an attached PDF file,
+            // has a direct length 70 spaces before its endstream, which a first read cannot see past; its data holds a stream
+            // of its own, and ends in a comment that runs on to object 31 on endstream's line. Once the guard is reached, the
+            // scan reads its data up to its first endstream, the inner one, and the comment after it hides object 31. The
+            // rebuild indexes the spelled streams, whose lengths no endstream follows, whatever the guard.
+            const int Spelled = 6;
+            const int Run = 64 * 1024;
+            const string Head = "20 0 obj\n<< /Length 0000000 >>\nstream\nabc\n";
+            var spelled = new StringBuilder();
+
+            for (var i = 0; i < Spelled; i++)
+            {
+                var length = ((Spelled - i) * Head.Length) - (Head.Length - "abc\n".Length);
+                spelled.Append(Head.Replace("20 0", string.Create(CultureInfo.InvariantCulture, $"{20 + i} 0"), StringComparison.Ordinal)
+                    .Replace("0000000", length.ToString("D7", CultureInfo.InvariantCulture), StringComparison.Ordinal));
+            }
+
+            var data = spelled.Append(' ', Run).Append("attached tail\n").ToString();
+            const string Inner = "%PDF-1.4\n5 0 obj\n<< /Length 3 >>\nstream\nabc\nendstream\nendobj\n% the attached file's last line";
+            var text = new StringBuilder("%PDF-1.7\n1 0 obj\n" + Catalog + "\nendobj\n2 0 obj\n" + Pages + "\nendobj\n")
+                .Append("10 0 obj\n<< /Type /EmbeddedFile /Length 11 0 R >>\nstream\n").Append(data).Append("endstream\nendobj\n")
+                .Append(CultureInfo.InvariantCulture, $"11 0 obj\n{data.Length}\nendobj\n")
+                .Append(CultureInfo.InvariantCulture, $"30 0 obj\n<< /Type /EmbeddedFile /Length {Inner.Length} >>\nstream\n{Inner}")
+                .Append(' ', 70).Append("endstream endobj 31 0 obj (real) endobj\ntrailer\n<< /Root 1 0 R >>\n%%EOF\n");
+            var file = Encoding.Latin1.GetBytes(text.ToString());
+
+            return new Case(
+                nameof(PdfReaderLimits.MaxRebuildReadPasses),
+                PdfDiagnosticCodes.LimitRebuildReads,
+                file,
+                PdfReaderLimits.Default,
+                PdfReaderLimits.Default with { MaxRebuildReadPasses = 64 },
+                document => document.GetObject(new PdfObjectId(31)) is PdfString real ? real.AsText()! : "null",
+                "real",
+                "Past streams' declared lengths, the scan for objects read 4 times the length of the file; the data of each stream it could not confirm after that was read up to its first endstream, the object headers there not taken.",
+                OffsetOf(file, "24 0 obj") + Head.Length - "abc\n".Length,
+                ThrowsOnOpening: true,
+                ReportsNothingElse: false)
+            {
+                WholeReports = [PdfDiagnosticCodes.XRefRebuilt, .. Enumerable.Repeat(PdfDiagnosticCodes.StreamLengthInvalid, Spelled)],
+            };
         }
 
         private static byte[] Replace(byte[] file, string text, string replacement)

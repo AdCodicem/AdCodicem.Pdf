@@ -27,6 +27,9 @@ internal enum PdfLimit
     /// <summary>How many filters a stream's data may pass through.</summary>
     FilterChain,
 
+    /// <summary>How many times the length of the file a rebuild's scan may read past streams' declared lengths.</summary>
+    RebuildReads,
+
     /// <summary>
     /// How long a trailer, or a cross-reference stream's dictionary, may be: the last, which every switch over the guards
     /// takes as its default arm.

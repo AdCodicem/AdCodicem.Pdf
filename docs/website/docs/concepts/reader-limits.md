@@ -38,8 +38,9 @@ it, and a file that kills the process is the worst outcome a document reader can
 
 Some of those bounds are reachable by a sound document: a large-format scan decodes past the 256 MB a stream may
 decode to by default, and stored without a filter its data would run past the 256 MB the reader reads of one stream at
-once; a file saved incrementally a thousand times has a thousand cross-reference sections; and nothing
-in PDF 2.0 forbids more objects than the 8,388,607 the index holds by default. A bound like that is a **guard**. It is on by default, so an application that opens files it did not produce is
+once; a file saved incrementally a thousand times has a thousand cross-reference sections; nothing
+in PDF 2.0 forbids more objects than the 8,388,607 the index holds by default; and a rebuild of a file whose attached
+data spells streams can read past their lengths, to confirm them, many times the file. A bound like that is a **guard**. It is on by default, so an application that opens files it did not produce is
 protected without configuring anything; it is reported under its own `limit.*` code when a document reaches it; and
 its message names the option that lifts it, so that the document stays readable by whoever needs to read it.
 
@@ -176,21 +177,20 @@ are kept as 4,096 ranges at most — those of the sections read so far that meet
 joined as it is lost to the last one lost where the two meet —, past which every number the newer sections do not give
 is looked for by rebuilding the index: a valid file's sections lose none ([#208](https://github.com/AdCodicem/AdCodicem.Pdf/issues/208),
 [#210](https://github.com/AdCodicem/AdCodicem.Pdf/issues/210)). Those stay internal constants, since lifting them would
-let nothing more be read, and each says where it is declared why no valid file reaches it — but for one, a known gap
-([#361](https://github.com/AdCodicem/AdCodicem.Pdf/issues/361)). The scan that rebuilds the index counts what it reads
-past streams' declared lengths apart, against the same four times the file: a valid file's own streams spend about twice
-the file of it, but the streams an attached file's bytes spell inside a stream's data the scan does not confirm count
-too, and can spend all of it. Most of those reads decide nothing of what a rebuild serves, only how the searches near a
-row or an offset rank and report a header found in such data ([Lazy reading](lazy-reading.md#what-opening-actually-does));
-but past that point the scan no longer confirms a later stream's direct `/Length` that a first read cannot, and a rebuild
-of a valid file — one that a limit you lowered sent the reader into among them — may serve an object that stream's data
-spells and the file does not define.
+let nothing more be read, and each says where it is declared why no valid file reaches it. The scan that rebuilds the
+index counts what it reads past streams' declared lengths apart, and two ways. The reads that confirm a stream's direct
+`/Length` decide which streams it confirms: a valid file's own streams spend about twice the file of them, but the
+streams an attached file's bytes spell inside a stream's data the scan does not confirm count too, and can spend four
+times the file, so they are a guard, `MaxRebuildReadPasses`; once it is reached, the scan reads the data of each stream
+it cannot confirm up to its first `endstream`, rather than as objects. The reads that tell only how the searches near a
+row or an offset rank a header found in such data ([Lazy reading](lazy-reading.md#what-opening-actually-does)) have four
+times the file of their own, an internal constant: what a rebuild serves does not hang on them, and those searches run
+only where a row or an offset is off ([#361](https://github.com/AdCodicem/AdCodicem.Pdf/issues/361)).
 
 A new bound is classified when it is added ([ADR 34](/project/adr/every-valid-pdf-is-readable-and-the-readers-guards-are)):
-if a valid file can reach it, it becomes a limit, with its code and its test — but for the scan's share of the
-searches' bound above, a known exception until [#361](https://github.com/AdCodicem/AdCodicem.Pdf/issues/361) is paid.
+if a valid file can reach it, it becomes a limit, with its code and its test.
 
-Besides that exception, one kind stays an internal constant though a valid file reaches it: a bound on what the library
+One kind stays an internal constant though a valid file reaches it: a bound on what the library
 repeats of what it read, not on what it reads. A message quotes at most 127 bytes of a name, which PDF 2.0 lets be
 longer, and the whole name stays in the document; there is nothing more to read by lifting it. Its declaration says
 so instead ([How a message quotes the file](../reference/diagnostics.md#how-a-message-quotes-the-file)).
