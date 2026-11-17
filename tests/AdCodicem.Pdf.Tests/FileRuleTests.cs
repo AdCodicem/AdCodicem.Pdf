@@ -718,6 +718,51 @@ public class FileRuleTests
     }
 
     [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void A_document_rebuilt_as_it_opens_whose_root_a_guard_cut_is_not_judged_for_its_catalog(bool member)
+    {
+        // startxref names no section, and the catalog /Root names is cut: MaxObjectLength cuts it before its /Type, or
+        // MaxDecodedStreamLength cuts the data of the object stream that holds it before it starts. The reader takes the
+        // cut object as read and looks for no other, and its report names the guard (#132, ADR 34).
+        byte[] file;
+        PdfReaderLimits limits;
+
+        if (member)
+        {
+            file = new TestPdfBuilder()
+                .WithObject(4, "(" + new string('x', 300) + ")")
+                .WithObject(1, "<< /Type /Catalog /Pages 2 0 R >>")
+                .WithObject(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>")
+                .WithObject(3, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 1 1] /Resources << >> >>")
+                .BuildWithXRefStream(rootNumber: 1, compressedObjects: [4, 1], compressObjectStream: true);
+            limits = PdfReaderLimits.Default with { MaxDecodedStreamLength = 100 };
+        }
+        else
+        {
+            file = PdfTemplate.Build(
+                SoundObjects.Replace("<< /Type /Catalog", "<<" + new string(' ', 200) + "/Type /Catalog", StringComparison.Ordinal) +
+                "xref\n0 4\n{free}\n{row:1}\n{row:2}\n{row:3}\ntrailer\n<< /Size 4 /Root 1 0 R >>\nstartxref\n9\n%%EOF\n");
+            limits = PdfReaderLimits.Default with { MaxObjectLength = 128 };
+        }
+
+        var text = Encoding.Latin1.GetString(file);
+        var startXRef = text.LastIndexOf("startxref\n", StringComparison.Ordinal) + "startxref\n".Length;
+        file = Encoding.Latin1.GetBytes(string.Concat(text.AsSpan(0, startXRef), "99999", text.AsSpan(text.IndexOf('\n', startXRef))));
+        using var document = PdfDocument.Open(file, new PdfReaderOptions { Limits = limits });
+
+        var report = new PdfValidator().Validate(document);
+
+        document.Reader.Structure.ChainRead.Should().BeFalse();
+        document.Reader.IsCutAtLimit(1).Should().BeTrue();
+        document.Reader.RootLeadsPastGuard.Should().BeTrue();
+        document.Reader.HasCatalog.Should().BeFalse();
+        document.Reader.ObjectsLeftOutByGuard.Should().Be(!member, "a regular object a guard cut may be an object stream past the cut; a member is none");
+        report.Contains(PdfValidationRuleIds.FileRootInvalid).Should().BeFalse(string.Join("; ", report.Findings));
+        document.Diagnostics.Should().Contain(diagnostic => diagnostic.Code.StartsWith("limit.", StringComparison.Ordinal));
+    }
+
+    [Theory]
     [InlineData("<< /Type /Outlines >>", "/Root 5 0 R", "The trailer's /Root names object 5 0, which reads as null. No object the reader could read is a catalog.")]
     [InlineData("<< /Type /Outlines >>", "", "No trailer the reader read gives /Root. No object the reader could read is a catalog.")]
     [InlineData("<< /Type /Catalog /Pages 2 0 R >>", "/Root 1 0 R", null)]
