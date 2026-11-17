@@ -72,7 +72,8 @@ value the guard cut, and are the guard's: the chain ends at that section, as whe
 section's rows would stand for them.
 
 What a guard leaves out of the cross-reference index — the oldest sections of a long chain, the rows past a long
-table's bound, the objects past the most the index holds — is no damage either. Those objects read as null, unknown
+table's bound, the objects past the most the index holds, the objects whose headers a rebuild's scan does not take once
+it has read past streams' lengths as much as `MaxRebuildReadPasses` lets it — is no damage either. Those objects read as null, unknown
 rather than missing, until you raise the limit; the reader does not rebuild the index for them, as it would for a file
 whose index is broken, since a rebuild would report a sound file as damaged and could lose what the chain had read.
 
@@ -184,8 +185,9 @@ streams an attached file's bytes spell inside a stream's data the scan does not 
 times the file, so they are a guard, `MaxRebuildReadPasses`; once it is reached, the scan reads the data of each stream
 it cannot confirm up to its first `endstream`, rather than as objects. The reads that tell only how the searches near a
 row or an offset rank a header found in such data ([Lazy reading](lazy-reading.md#what-opening-actually-does)) have four
-times the file of their own, an internal constant: what a rebuild serves does not hang on them, and those searches run
-only where a row or an offset is off ([#361](https://github.com/AdCodicem/AdCodicem.Pdf/issues/361)).
+times the file of their own, an internal constant: what a rebuild serves does not hang on them, a rebuild's own scan
+makes none of them, and those searches run only where a row or an offset is off
+([#361](https://github.com/AdCodicem/AdCodicem.Pdf/issues/361)).
 
 A new bound is classified when it is added ([ADR 34](/project/adr/every-valid-pdf-is-readable-and-the-readers-guards-are)):
 if a valid file can reach it, it becomes a limit, with its code and its test.

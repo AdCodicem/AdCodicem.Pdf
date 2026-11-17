@@ -413,14 +413,17 @@ internal sealed partial class PdfFileReader
     /// <summary>
     /// Reports, for a rebuild's scan, that its reads past declared lengths reached
     /// <see cref="PdfReaderLimits.MaxRebuildReadPasses"/> where the data of the stream that starts at
-    /// <paramref name="position"/> is read as an intact stream's for it, and holds the exception a document opened to throw
-    /// asked for in <paramref name="reached"/>, unless one is held already: the rebuild finishes first. A scan for the memo,
-    /// which reports nothing, notes it in the memo instead (<see cref="ScanMemo.Builder.ReadsBounded"/>).
+    /// <paramref name="position"/> is read as an intact stream's for it, marks the index the rebuild makes as stopped short
+    /// by a guard there (<see cref="_rebuildReadsBoundedAt"/>), and holds the exception a document opened to throw asked for
+    /// in <paramref name="reached"/>, unless one is held already: the rebuild finishes first. A scan for the memo, which
+    /// reports nothing, notes it in the memo instead (<see cref="ScanMemo.Builder.ReadsBounded"/>).
     /// </summary>
     /// <remarks>
     /// The report counts among no read's guards (<see cref="_guardsReached"/>): the scan's reads decide where places lie,
-    /// not what a value holds, and a load that set the rebuild off is not told that a guard cut its value. A rebuild the
-    /// source fails withdraws it with the rest of what it reported, and the rebuild run again scans, and reports, again.
+    /// not what a value holds, and a load that set the rebuild off is not told that a guard cut its value. What the index
+    /// lacks is the guard's all the same, as where it filled: whether the file holds such an object is unknown
+    /// (<see cref="ObjectPresence.Unindexed"/>). A rebuild the source fails withdraws the report with the rest of what it
+    /// reported, and the rebuild run again scans, and reports, again.
     /// </remarks>
     private void ReachScanReadBound(long position, ScanMemo.Builder? memo, ref ExceptionDispatchInfo? reached)
     {
@@ -430,6 +433,7 @@ internal sealed partial class PdfFileReader
             return;
         }
 
+        _rebuildReadsBoundedAt = position;
         var passes = _guard.Bound(PdfLimit.RebuildReads);
         var read = passes == 1 ? "the length of the file" : string.Create(CultureInfo.InvariantCulture, $"{passes:N0} times the length of the file");
         var what = $"Past streams' declared lengths, the scan for objects read {read}; the data of each stream it could not confirm after that was read up to its first endstream, the object headers there not taken.";
@@ -578,8 +582,9 @@ internal sealed partial class PdfFileReader
     /// line (<see cref="LineState"/>), the scan sweeping the bytes between where it last stood and there. Within the data
     /// of a stream whose length the scan could not confirm, up to its first <c>endstream</c>
     /// (<see cref="ScanState.RawUntil"/>), nothing is, whatever that length says: a direct one, or an indirect one whose
-    /// object the scan reads in the file's bytes, which it looks for here first (<see cref="EndDataAtLengthObject"/>),
-    /// changes only how the memo holds what the scan takes (<see cref="ScanState.KindUntil"/>).
+    /// object a scan for a memo reads in the file's bytes, which it looks for here first
+    /// (<see cref="EndDataAtLengthObject"/>), changes only how the memo holds what the scan takes
+    /// (<see cref="ScanState.KindUntil"/>).
     /// </summary>
     private bool IsHidden(ReadOnlySpan<byte> span, long windowStart, long position, ref ScanState scan)
     {
@@ -723,8 +728,8 @@ internal sealed partial class PdfFileReader
     /// </summary>
     /// <remarks>
     /// The memo holds those places as the scan takes them, as the bytes give them: a header or a keyword that a comment or
-    /// a string between objects would hide there is held, not left out. A rebuild's scan, which keeps no kind, takes the
-    /// same headers whatever the length says: the reads made here have a budget of their own (<see cref="_scanKindBytes"/>).
+    /// a string between objects would hide there is held, not left out. A rebuild's scan, which keeps no kind, reads no
+    /// length's object, and never comes here (<see cref="ConfirmStream"/>).
     /// </remarks>
     private void EndDataWithLength(ReadOnlySpan<byte> span, long windowStart, long dataStart, long length, long position, long revisedTo, ref ScanState scan)
     {
@@ -1144,9 +1149,10 @@ internal sealed partial class PdfFileReader
     /// its length not confirmed, where the memo stops counting the places the scan takes in its data as taken there
     /// (<see cref="ScanState.KindUntil"/>): where a load ends its data, as far as the file's bytes tell, where they show
     /// that no <c>endstream</c> follows the length, a length past the end of the file too
-    /// (<see cref="DataEndWithoutEndStream"/>), or nowhere they tell yet. The scan itself reads an unconfirmed stream's data
-    /// as the bytes give it, up to its first <c>endstream</c>, wherever a load ends it (<see cref="ScanState.Passed"/>). A
-    /// read the source gives short of the keyword leaves the stream unconfirmed (<see cref="EndStreamUndecided"/>), and so
+    /// (<see cref="DataEndWithoutEndStream"/>), or nowhere they tell yet — nowhere, for a rebuild's scan, which keeps no
+    /// memo, makes no read for its kinds, and reads no length's object. The scan itself reads an unconfirmed stream's
+    /// data as the bytes give it, up to its first <c>endstream</c>, wherever a load ends it (<see cref="ScanState.Passed"/>).
+    /// A read the source gives short of the keyword leaves the stream unconfirmed (<see cref="EndStreamUndecided"/>), and so
     /// does a missing <c>/Length</c>, or a direct one that is no length; an indirect one is read from its object, which the
     /// scan looks for from the first header or <c>trailer</c> keyword past the data's start on
     /// (<see cref="EndDataAtLengthObject"/>), where no stretch whose places the memo counts as taken in data reaches past
@@ -1172,7 +1178,11 @@ internal sealed partial class PdfFileReader
 
         var dataEnd = DeclaredEnd(dataStart, bounds.Length);
         var keywordEnd = -1L;
-        scan.LengthObject = bounds.Length < 0 && scan.KindUntil <= dataStart ? bounds.LengthObject : -1;
+
+        // What a length the scan cannot confirm says decides only the memo's kinds: a rebuild's scan, which keeps none,
+        // reads neither the length's object nor where a load ends the data (#361).
+        var awaitsLength = scan.Memo is not null && bounds.Length < 0 && scan.KindUntil <= dataStart;
+        scan.LengthObject = awaitsLength ? bounds.LengthObject : -1;
         scan.PendingUntil = Math.Min(scan.PendingUntil, dataStart);
 
         if (bounds.Length >= 0 && dataEnd < _source.Length)
@@ -1209,7 +1219,7 @@ internal sealed partial class PdfFileReader
             return new ObjectExtent(ExtentKind.Stream, keywordEnd, dataStart, bounds.CrossReferenceStream);
         }
 
-        if (bounds.Length < 0 || keywordEnd == EndStreamUndecided)
+        if (bounds.Length < 0 || keywordEnd == EndStreamUndecided || scan.Memo is null)
         {
             return new ObjectExtent(ExtentKind.UnconfirmedStream, -1, dataStart, bounds.CrossReferenceStream);
         }
@@ -1719,10 +1729,10 @@ internal sealed partial class PdfFileReader
         /// length ends the stream's data before it — a direct one (<see cref="ConfirmStream"/>), or an indirect one whose
         /// object the scan read in the file's bytes (<see cref="EndDataWithLength"/>, <see cref="EndDataAtLengthObject"/>).
         /// The scan itself takes and hides by <see cref="RawUntil"/> alone, so that such a length, which may be another
-        /// object's than the stream's, changes nothing of what it takes, but through what the reads made to learn where a
-        /// load ends the data spend of its reads past declared lengths (#361). Never past <see cref="RawUntil"/>: where a
-        /// load ends the data sets it below where <see cref="RawUntil"/> stands — a direct length's end raises it there
-        /// where the scan passes the stream (<see cref="Passed"/>), never lowering it, and an indirect one's only lowers it.
+        /// object's than the stream's, changes nothing of what it takes; a rebuild's scan, which keeps no memo, does not
+        /// learn where a load ends the data (#361). Never past <see cref="RawUntil"/>: where a load ends the data sets it
+        /// below where <see cref="RawUntil"/> stands — a direct length's end raises it there where the scan passes the
+        /// stream (<see cref="Passed"/>), never lowering it, and an indirect one's only lowers it.
         /// </summary>
         public long KindUntil;
 

@@ -27,7 +27,8 @@ internal enum ObjectPresence : byte
 
     /// <summary>
     /// The index holds no entry for the object, and one of the reader's guards stopped it short: part of the
-    /// cross-reference chain went unread, or the index reached <see cref="Documents.PdfReaderLimits.MaxIndexEntries"/>.
+    /// cross-reference chain went unread, the index reached <see cref="Documents.PdfReaderLimits.MaxIndexEntries"/>, or the
+    /// scan of the rebuild that made it reached <see cref="Documents.PdfReaderLimits.MaxRebuildReadPasses"/>.
     /// Whether the file holds the object is unknown, and a reference to it reads as null until the guard is lifted.
     /// </summary>
     Unindexed,

@@ -721,6 +721,72 @@ public class ReaderLimitsTests
     }
 
     [Theory]
+    [InlineData(31, 4, true, "Unindexed")]
+    [InlineData(99, 4, true, "Unindexed")]
+    [InlineData(31, 64, false, "Defined")]
+    [InlineData(99, 64, false, "Missing")]
+    public void An_object_a_rebuild_s_scan_left_out_of_the_index_at_the_read_guard_is_unknown_rather_than_missing(
+        int named, int passes, bool reached, string presence)
+    {
+        // The guard's case, its catalog naming object 31, or object 99, which the file does not define, under /Lang. Once the
+        // rebuild's scan has read past the spelled streams' lengths as much as MaxRebuildReadPasses lets it, it reads object
+        // 30's data up to the inner endstream, and the comment after it hides object 31: whether the file holds an object
+        // the rebuilt index lacks is then unknown, as where any guard left it out of the index, and the validator says the
+        // index was checked in part where the scan reached the guard, rather than judge the reference missing. Raised, the
+        // guard reads object 31, and object 99 is missing.
+        var file = Encoding.Latin1.GetBytes(Encoding.Latin1.GetString(Case.For("rebuild reads").File).Replace(
+            Catalog, string.Create(CultureInfo.InvariantCulture, $"<< /Type /Catalog /Pages 2 0 R /Lang {named} 0 R >>"), StringComparison.Ordinal));
+        using var document = PdfDocument.Open(file, new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxRebuildReadPasses = passes } });
+
+        var findings = new PdfValidator().Validate(document).Findings;
+        var reports = document.Diagnostics.Where(entry => entry.Code == PdfDiagnosticCodes.LimitRebuildReads).Select(entry => (long?)entry.Position);
+
+        document.WasRepaired.Should().BeTrue();
+        document.Reader.GetPresence(named).Should().Be(Enum.Parse<ObjectPresence>(presence));
+        reports.Should().HaveCount(reached ? 1 : 0);
+        findings.Where(finding => finding.RuleId == PdfValidationRuleIds.XRefCheckedInPart).Select(finding => finding.Location.Position)
+            .Should().Equal(reports);
+        findings.Any(finding => finding.RuleId == PdfValidationRuleIds.ObjectReferenceMissing).Should().Be(presence == "Missing");
+    }
+
+    [Theory]
+    [InlineData("a sign", 5)]
+    [InlineData("a sign", 32)]
+    [InlineData("an end-of-file marker", 32)]
+    public void A_rebuild_s_scan_makes_none_of_the_reads_that_decide_only_how_a_memo_counts_what_it_takes(string glued, int count)
+    {
+        // Object 10, an attached file with an indirect /Length, spells streams in its data that lost their endstream, each
+        // header glued to a sign or to an end-of-file marker, which the scan takes and a load's search does not stop at,
+        // before a mebibyte of text. MaxXRefSectionLength cuts the table, and the rebuild's scan reads object 10's data as
+        // objects. The search for where a load ends each spelled stream's data, which decides only how a memo would count the
+        // places the scan takes, crossed the mebibyte for each: five times the file, beside the scan's own reading and the
+        // loads the rebuild's finish makes. A rebuild's scan keeps no memo, and makes no such read (#361): opening reads less
+        // than the reads that confirm lengths may, which these streams do not spend.
+        var data = new StringBuilder();
+
+        for (var i = 0; i < count; i++)
+        {
+            data.Append(glued == "a sign" ? "+" : "%%EOF").Append(CultureInfo.InvariantCulture, $"{20 + i} 0 obj\n<< /Length 5 >>\nstream\nabcdefgh\n");
+        }
+
+        data.Append('t', 1024 * 1024).Append('\n');
+        var pdf = new HandWrittenFile();
+        var rows = new Dictionary<int, long> { [1] = pdf.Object(1, Catalog), [2] = pdf.Object(2, Pages) };
+        rows[10] = pdf.Position;
+        pdf.Raw("10 0 obj\n<< /Type /EmbeddedFile /Length 11 0 R >>\nstream\n" + data + "endstream\nendobj\n");
+        rows[11] = pdf.Object(11, data.Length.ToString(CultureInfo.InvariantCulture));
+        pdf.Table(31, rows, "/Size 31 /Root 1 0 R");
+        var file = pdf.Bytes;
+        using var source = new StrictCountingSource(file);
+
+        using var document = PdfDocument.Open(source, new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxXRefSectionLength = 16 } }, ownsSource: false);
+
+        document.WasRepaired.Should().BeTrue();
+        document.Diagnostics.Should().Contain(diagnostic => diagnostic.Code == PdfDiagnosticCodes.LimitXRefSectionLength);
+        source.BytesRead.Should().BeLessThan(PdfReaderLimits.Default.MaxRebuildReadPasses * (long)file.Length);
+    }
+
+    [Theory]
     [InlineData("an older revision", "%", 40, "")]
     [InlineData("an older revision", "(", 40, "")]
     [InlineData("an older revision", "%", 9, "")]
