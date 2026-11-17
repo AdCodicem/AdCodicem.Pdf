@@ -949,8 +949,8 @@ internal sealed partial class PdfFileReader
     /// It runs on the index the chain gave, and on a rebuilt one. Loading a candidate from the chain's index can
     /// rebuild it — the candidate's entry being broken —, and the rebuild runs a search of its own, once the load in flight
     /// returns, over the rebuilt index, the candidate among it: the search it interrupted stops there, over the numbers it
-    /// copied before it began (#229). A candidate one of the reader's limits cut before it could say whether it is a
-    /// catalog is noted (<see cref="CatalogCandidateCut"/>): a catalog may lie past the cut.
+    /// copied before it began (#229). A candidate one of the reader's limits cut is noted (<see cref="CatalogCandidateCut"/>):
+    /// a catalog may lie past the cut, and one taken from what lies before it is not read whole either.
     /// </remarks>
     private ExceptionDispatchInfo? FindCatalog()
     {
@@ -981,8 +981,9 @@ internal sealed partial class PdfFileReader
                 break;
             }
 
-            // A dictionary a guard cut may give /Type /Catalog past the cut, or be a stream whose dictionary does.
-            _catalogCandidateCut |= !isCatalog && IsCutAtLimit(number);
+            // A dictionary a guard cut may give /Type /Catalog past the cut, or be a stream whose dictionary does; one taken for
+            // giving it before the cut is read only in part all the same.
+            _catalogCandidateCut |= IsCutAtLimit(number);
 
             if (isCatalog)
             {

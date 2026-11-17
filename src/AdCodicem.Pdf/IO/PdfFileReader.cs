@@ -1269,8 +1269,8 @@ internal sealed partial class PdfFileReader : IPdfObjectSource, IPdfStreamDataPr
     internal int CatalogFoundAs => _catalogFoundAs;
 
     /// <summary>
-    /// Gets a value indicating whether the last search for a catalog passed over an object one of the reader's limits cut
-    /// before it could say whether it is one: a catalog may lie past the cut, and the limit's report names it (#260).
+    /// Gets a value indicating whether the last search for a catalog met an object one of the reader's limits cut: a catalog
+    /// may lie past the cut, the one it took read only in part, and the limit's report names it (#260).
     /// </summary>
     internal bool CatalogCandidateCut => _catalogCandidateCut;
 
