@@ -199,9 +199,8 @@ internal sealed partial class PdfFileReader
     /// diagnostics — with the real ones reported once per attempt. What nested loads report, such as a
     /// relocated <c>/Length</c> object, goes straight to the document's diagnostics and stays there. An object
     /// that still runs past the window once the guard allows no larger one is kept as far as it was read, and
-    /// the guard is reported in place of what the cut made the parser notice. One whose value the window holds whole, the
-    /// token after it alone past the edge, is not read again where the window holds the next object's header
-    /// (<see cref="WindowHoldsNextHeader"/>).
+    /// the guard is reported in place of what the cut made the parser notice. An object whose data a header the indexes place
+    /// ends is read up to that header, and no further (<see cref="HeaderEndingData"/>).
     /// </remarks>
     /// <param name="offset">Where the object starts in the file.</param>
     /// <param name="number">The object's number, <see cref="AnyObject"/> or <see cref="DirectObject"/>.</param>
@@ -266,6 +265,10 @@ internal sealed partial class PdfFileReader
         var mark = _pending.GetMark();
         var lead = atRow && offset > 0 ? ByteBeforeRow : 0;
 
+        // Whether a window as large as the one a load starts with cut the object's parse: only then may a header the indexes
+        // place end its data, wherever the windows read after it end (#362).
+        var cutPastFirstWindow = false;
+
         try
         {
             while (true)
@@ -324,12 +327,36 @@ internal sealed partial class PdfFileReader
                 }
 
                 var lengthFault = parser.LengthFault;
+                var truncated = parser.IsTruncated && cut;
+                cutPastFirstWindow |= truncated && windowSize >= InitialObjectWindow;
+                var endedAtHeader = false;
 
-                // Each object the index places in a long run of comments would otherwise read every line after it to find the
-                // token after its value: a rebuild, which loads them all, would take time in the square of the lines (#362).
-                var endsAtNextHeader = parser.IsTruncatedAfterValue && cut && WindowHoldsNextHeader(number, offset, bytes.Span);
+                // Each object the index places in a long run of comments, or of a string's lines, would otherwise read every
+                // line after it to find where its value ends: a rebuild, which loads them all, or a validation, would take
+                // time in the square of the lines (#362).
+                if (cutPastFirstWindow && number > 0)
+                {
+                    var end = HeaderEndingData(number, offset, bytes.Span, in parser, truncated, !cut);
 
-                if (parser.IsTruncated && cut && !endsAtNextHeader)
+                    if (end >= 0)
+                    {
+                        // The data ends there: what the header cut is the file's, and reported as its doing.
+                        _pending.RollBack(mark);
+                        parser = new PdfObjectParser(bytes[..end], offset, this, _pending, this, endsAtHeader: true);
+                        _ = parser.TryReadIndirectObject(out _, out parsed);
+                        lengthFault = null;
+                        truncated = false;
+                        endedAtHeader = true;
+                    }
+                    else if (end == RowUndecided && !truncated && windowSize < maxWindow)
+                    {
+                        _pending.RollBack(mark);
+                        windowSize = (int)Math.Min((long)windowSize * 8, maxWindow);
+                        continue;
+                    }
+                }
+
+                if (truncated)
                 {
                     if (windowSize < maxWindow)
                     {
@@ -372,9 +399,10 @@ internal sealed partial class PdfFileReader
                 syntaxFault |= SyntaxFaultSince(_pending, mark);
                 KeepPending(mark);
 
-                // A reading of a definition the reader no longer serves notes nothing of the number (#255).
+                // A reading of a definition the reader no longer serves notes nothing of the number (#255). An endobj a header
+                // the indexes place keeps from view is neither found nor missing.
                 var noted = Records(recordedAt, offset + parser.HeaderStart);
-                RecordEndObj(noted ? number : DirectObject, foundNumber, parser.EndObj, cut, offset);
+                RecordEndObj(noted ? number : DirectObject, foundNumber, parser.EndObj, cut || endedAtHeader, offset);
                 RecordStreamLength(noted ? number : DirectObject, foundNumber, parsed, lengthFault);
                 value = parsed;
                 headerAt = offset + parser.HeaderStart;
@@ -390,45 +418,142 @@ internal sealed partial class PdfFileReader
     }
 
     /// <summary>
-    /// Determines whether <paramref name="bytes"/>, read from <paramref name="offset"/> for object <paramref name="number"/>,
-    /// already hold the header of the next object the indexes place after that offset, and <see cref="HeaderCheckWindow"/>
-    /// bytes from where it starts. Where they do, an object whose value they hold whole, the token after it alone past their
-    /// edge, is kept as read rather than read again in a larger window (<see cref="TryParseNumberedAt"/>): what lies past
-    /// the value is that next object's, and the object ends where it starts, as it ends the containers an object left open
-    /// (#230). Its <c>endobj</c> is then unseen, recorded neither found nor missing, and no guard is reached for it; a
-    /// dictionary whose <c>stream</c> keyword lies past that header is read as a dictionary.
+    /// Finds where the data of object <paramref name="number"/>, read from <paramref name="offset"/> through
+    /// <paramref name="bytes"/>, ends at the header of another object the indexes place, which its parse read past without
+    /// seeing it as tokens: the first row the indexes give past where the object's value starts, the object's own aside, at
+    /// which an object header starts exactly, as the search near an offset and the rebuild's scan read one
+    /// (<see cref="TryReadHeaderBackwards"/>), if no token of the parse starts there — the header lies in a comment, inside a
+    /// token, or past the window's edge. Gives where in <paramref name="bytes"/> it starts; -1 where there is none;
+    /// <see cref="RowUndecided"/> where a row lies too near the edge of <paramref name="bytes"/>, which must hold it and
+    /// <see cref="HeaderCheckWindow"/> bytes past it, for them to say.
     /// </summary>
     /// <remarks>
-    /// The next object is the one <see cref="NextObjectStart"/> places, or, where the index was rebuilt after the chain was
-    /// read, the nearer of that one and the next the rebuilt index places, which alone places what only the rebuild found.
-    /// Its row counts only where the bytes spell an object header that starts exactly there, as the search near an offset and
-    /// the rebuild's scan read one (<see cref="TryReadHeaderBackwards"/>): a row shifted into the gap after the value stops
-    /// no larger window, and what follows the value is read. No valid file places a header inside another object.
+    /// <para>
+    /// A load reads such an object up to that header (<see cref="TryParseNumberedAt"/>), as if its data ended there, and no
+    /// further: the value the header cuts is kept as cut, reported as the end of the data reports it — a string that runs
+    /// on, a dictionary or an array left open, a value missing, read as null rather than as the next object's number —; a
+    /// dictionary whose <c>stream</c> keyword lies past it is a dictionary; its <c>endobj</c> is unseen, recorded neither
+    /// found nor missing unless another token follows the value before the header; and no guard is reached for it. Without
+    /// it, every object a long run of such lines places read every line after it, its window grown until the value ended,
+    /// and a rebuild, which loads every object it places, or a validation, which loads them all, took time in the square of
+    /// the lines (#362). No valid file is read so: no index of one places a header inside another object, and a row a few
+    /// bytes off starts no header.
+    /// </para>
+    /// <para>
+    /// The rule holds where a window as large as the one a load starts with, <see cref="InitialObjectWindow"/>, cuts the
+    /// object's parse, and then wherever the windows read after it end, the answer depending on positions alone: which row is
+    /// the first, and whether it lies before the end of the token after the value, and before the <c>stream</c> keyword of
+    /// the first stream the parse read, whose data the reader serves from the file and no row ends — a rebuilt index can
+    /// place headers inside an unconfirmed stream's data. A window too small to hold that row and
+    /// <see cref="HeaderCheckWindow"/> bytes past it grows. Where <see cref="PdfReaderLimits.MaxObjectLength"/> keeps the
+    /// window from holding them, or from being as large as the one a load starts with, the object is read as it was without
+    /// the rule: the guard is reached where the window's edge cuts the parse.
+    /// </para>
+    /// <para>
+    /// The rows are those of <see cref="SearchIndex"/>, and, where the index was rebuilt after the chain was read, of the
+    /// rebuilt index, which alone places what only the rebuild found; each index's entry of the object is stepped over. Only
+    /// rows inside <paramref name="bytes"/> are asked for, each a logarithm of the index, and a row whose
+    /// <see cref="HeaderCheckWindow"/> bytes hold no <c>obj</c> leads to the first row that may, so that the search reads
+    /// <paramref name="bytes"/> about once, and walks back from each <c>obj</c> once.
+    /// </para>
     /// </remarks>
-    private bool WindowHoldsNextHeader(int number, long offset, ReadOnlySpan<byte> bytes)
+    /// <param name="number">The object read.</param>
+    /// <param name="offset">Where in the file <paramref name="bytes"/> start.</param>
+    /// <param name="bytes">The window the object was parsed through.</param>
+    /// <param name="parser">The parse of the object through <paramref name="bytes"/>.</param>
+    /// <param name="truncated">Whether the window's edge cut that parse.</param>
+    /// <param name="endsFile">Whether <paramref name="bytes"/> end where the file does.</param>
+    private int HeaderEndingData(
+        int number, long offset, ReadOnlySpan<byte> bytes, in PdfObjectParser parser, bool truncated, bool endsFile)
     {
-        var next = NextObjectStart(number, offset) ?? long.MaxValue;
+        // Rows from where the value starts up to where the parse stopped reading tokens: the window's edge where it cut the
+        // parse, else the end of the token after the value, and never past a stream keyword.
+        var until = truncated ? bytes.Length : Math.Min(parser.ReadEnd, bytes.Length);
 
-        if (_repaired && !ReferenceEquals(SearchIndex, _xref))
+        if (parser.StreamAt >= 0)
         {
-            var rebuilt = _xref.FirstOffsetAfter(offset - _headerOffset);
+            until = Math.Min(until, parser.StreamAt);
+        }
 
-            if (rebuilt < _source.Length - _headerOffset)
+        var index = SearchIndex;
+        var rebuilt = _repaired && !ReferenceEquals(index, _xref) ? _xref : null;
+        var own = OwnOffset(index, number);
+        var ownRebuilt = rebuilt is null ? long.MinValue : OwnOffset(rebuilt, number);
+        var start = offset - _headerOffset;
+        var room = endsFile ? bytes.Length : bytes.Length - HeaderCheckWindow;
+        var searched = (int)Math.Min(bytes.Length, (long)until + HeaderCheckWindow);
+        var from = parser.ValueStart;
+        var walked = -1;
+        var walkedHeader = -1;
+
+        while (from < until)
+        {
+            var row = index.FirstOffsetAfter(start + from - 1);
+
+            if (rebuilt is not null)
             {
-                next = Math.Min(next, rebuilt + _headerOffset);
+                row = Math.Min(row, rebuilt.FirstOffsetAfter(start + from - 1));
             }
+
+            if (row == long.MaxValue || row - start >= until)
+            {
+                return -1;
+            }
+
+            var at = (int)(row - start);
+
+            if (row == own || row == ownRebuilt)
+            {
+                from = at + 1;
+                continue;
+            }
+
+            if (at >= room)
+            {
+                return RowUndecided;
+            }
+
+            var obj = bytes[at..searched].IndexOf(ObjKeyword);
+
+            if (obj < 0)
+            {
+                // No row before the window's last bytes holds an obj in reach: what is left is undecided, or nothing.
+                from = room;
+                continue;
+            }
+
+            obj += at;
+
+            if (obj - at > HeaderCheckWindow - ObjKeyword.Length)
+            {
+                // No row before this one's reach of that obj holds one in its own.
+                from = obj - (HeaderCheckWindow - ObjKeyword.Length);
+                continue;
+            }
+
+            if (obj != walked)
+            {
+                walked = obj;
+                walkedHeader = TryReadHeaderBackwards(bytes, obj, out _, out _, out var header) ? header : -1;
+            }
+
+            if (walkedHeader == at)
+            {
+                // The parse saw it, where a token starts there: it ended the value there or read it as the value, and the
+                // rows past it lie past what the parse read.
+                return StartsToken(bytes, parser.ValueStart, at) ? -1 : at;
+            }
+
+            // Up to that obj, a row starts a header only where the walk from it ended.
+            from = walkedHeader > at ? walkedHeader : obj + 1;
         }
 
-        // The byte after the obj keyword is held too: it tells obj from a longer word.
-        if (next - offset >= bytes.Length - HeaderCheckWindow)
-        {
-            return false;
-        }
-
-        var at = (int)(next - offset);
-        var keyword = bytes.Slice(at, HeaderCheckWindow).IndexOf(ObjKeyword);
-        return keyword >= 0 && TryReadHeaderBackwards(bytes, at + keyword, out _, out _, out var headerStart) && headerStart == at;
+        return -1;
     }
+
+    /// <summary>Gives the offset <paramref name="index"/>'s entry of object <paramref name="number"/> places it at, where it places it.</summary>
+    private static long OwnOffset(PdfXRefTable index, int number) =>
+        index.TryGet(number, out var own) && own.Kind == XRefEntryKind.Regular ? own.Offset : long.MinValue;
 
     /// <summary>
     /// Parses object <paramref name="id"/> at an exact offset, as <see cref="TryParseNumberedAt"/> does, but keeps nothing of the

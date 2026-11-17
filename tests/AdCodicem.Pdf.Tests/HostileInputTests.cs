@@ -4563,24 +4563,35 @@ public class HostileInputTests
     }
 
     [Theory]
-    [InlineData(CommentHeadersPlacedBy.ScanOfStreamData)]
-    [InlineData(CommentHeadersPlacedBy.ScanOfRunawayString)]
-    [InlineData(CommentHeadersPlacedBy.Table)]
-    public void Objects_a_run_of_comment_lines_holds_the_headers_of_are_read_without_reading_the_lines_after_each(
-        CommentHeadersPlacedBy shape)
+    [InlineData(CommentHeadersPlacedBy.ScanOfStreamData, "% ", " << /A [1 2 3] >>", "<<dictionary of 1>>")]
+    [InlineData(CommentHeadersPlacedBy.ScanOfRunawayString, "% ", " << /A [1 2 3] >>", "<<dictionary of 1>>")]
+    [InlineData(CommentHeadersPlacedBy.Table, "% ", " << /A [1 2 3] >>", "<<dictionary of 1>>")]
+    [InlineData(CommentHeadersPlacedBy.Table, "% ", " 5", "5")]
+    [InlineData(CommentHeadersPlacedBy.ScanOfStreamData, "% ", " 5", "5")]
+    [InlineData(CommentHeadersPlacedBy.Table, "% ", " 12 0", "12")]
+    [InlineData(CommentHeadersPlacedBy.Table, "% ", "", "null")]
+    [InlineData(CommentHeadersPlacedBy.ScanOfStreamData, "% ", "", "null")]
+    [InlineData(CommentHeadersPlacedBy.Table, "% ", " << /A [1 2 3]", "<<dictionary of 1>>")]
+    [InlineData(CommentHeadersPlacedBy.Table, "% ", " [1 2 3", "[array of 3]")]
+    [InlineData(CommentHeadersPlacedBy.Table, "", " (abc", "\"abc\\n\"")]
+    [InlineData(CommentHeadersPlacedBy.TableWithDecoys, "% ", " << /A [1 2 3] >>", "<<dictionary of 1>>")]
+    public void Objects_whose_headers_a_run_of_comment_or_string_lines_holds_are_read_without_reading_the_lines_after_each(
+        CommentHeadersPlacedBy shape, string lead, string body, string read)
     {
-        // Lines "% N 0 obj << /A [1 2 3] >>" whose headers the index places: each object's load read every line after it for
-        // the token after its value, its window grown eight times over, and opening, which loads every object a rebuild
-        // places, or validating, which loads every object, took time in the square of the lines (#362).
+        // Lines "% N 0 obj ..." or "N 0 obj (abc" whose headers the index places: each object's load read every line after it
+        // to find where its value ends, its window grown eight times over, and opening, which loads every object a rebuild
+        // places, or validating, which loads every object, took time in the square of the lines. The next line's header ends
+        // each object's data, whatever its value, and a row that starts no header before it does not keep it from ending
+        // there (#362).
         const int Lines = 1_000;
 
-        var small = ReadCommentHeaders(shape, Lines);
-        var large = ReadCommentHeaders(shape, 4 * Lines);
+        var small = ReadHeaderLines(shape, lead, body, read, Lines);
+        var large = ReadHeaderLines(shape, lead, body, read, 4 * Lines);
 
         large.Should().BeLessThan(
             8 * small, "four times the lines must cost about four times the bytes read ({0:N0} for {1:N0})", small, Lines);
 
-        static long ReadCommentHeaders(CommentHeadersPlacedBy shape, int lines)
+        static long ReadHeaderLines(CommentHeadersPlacedBy shape, string lead, string body, string read, int lines)
         {
             var file = new HandWrittenFile();
             var rows = new Dictionary<int, long>
@@ -4598,23 +4609,33 @@ public class HostileInputTests
 
             for (var k = 0; k < lines; k++)
             {
-                file.Raw("% ");
+                file.Raw(lead);
                 rows[100 + k] = file.Position;
-                file.Raw(string.Create(CultureInfo.InvariantCulture, $"{100 + k} 0 obj << /A [1 2 3] >>\n"));
+                var header = string.Create(CultureInfo.InvariantCulture, $"{100 + k} 0 obj");
+
+                if (shape == CommentHeadersPlacedBy.TableWithDecoys)
+                {
+                    // A row that starts no header, past where the value starts: the first row after the object's own.
+                    rows[100 + lines + k] = file.Position + header.Length + 3;
+                }
+
+                file.Raw(header + body + "\n");
             }
 
             file.Raw(shape == CommentHeadersPlacedBy.ScanOfRunawayString
                 ? ") endobj\n"
                 : "6 0 obj << /Length 3 >> stream\nabc\nendstream\nendobj\n");
             rows[7] = file.Object(7, "(seven)");
+            var scanned = shape is CommentHeadersPlacedBy.ScanOfStreamData or CommentHeadersPlacedBy.ScanOfRunawayString;
 
-            if (shape == CommentHeadersPlacedBy.Table)
+            if (scanned)
             {
-                file.Table(100 + lines, rows, string.Create(CultureInfo.InvariantCulture, $"/Size {100 + lines} /Root 1 0 R"));
+                file.Raw("trailer\n<< /Root 1 0 R >>\n%%EOF\n");
             }
             else
             {
-                file.Raw("trailer\n<< /Root 1 0 R >>\n%%EOF\n");
+                var size = 100 + (2 * lines);
+                file.Table(size, rows, string.Create(CultureInfo.InvariantCulture, $"/Size {size} /Root 1 0 R"));
             }
 
             using var source = new StrictCountingSource(file.Bytes);
@@ -4624,13 +4645,20 @@ public class HostileInputTests
             {
                 _ = new PdfValidator().Validate(document);
             }
-
-            document.WasRepaired.Should().Be(shape != CommentHeadersPlacedBy.Table);
-
-            foreach (var number in new[] { 100, 100 + (lines / 2), 99 + lines })
+            else if (shape == CommentHeadersPlacedBy.TableWithDecoys)
             {
-                document.GetObject(new PdfObjectId(number)).AsDictionary().Required().GetRaw(PdfName.Get("A"))
-                    .AsArray().Required().Count.Should().Be(3);
+                for (var k = 0; k < lines; k++)
+                {
+                    _ = document.GetObject(new PdfObjectId(100 + k));
+                }
+            }
+
+            document.WasRepaired.Should().Be(scanned);
+
+            // Objects the window a load starts with does not hold to the end of the lines, which it cuts.
+            foreach (var number in new[] { 100, 100 + (lines / 4) })
+            {
+                document.GetObject(new PdfObjectId(number)).ToString().Should().Be(read);
             }
 
             document.GetObject(new PdfObjectId(7)).AsText().Should().Be("seven");
@@ -4638,7 +4666,7 @@ public class HostileInputTests
         }
     }
 
-    /// <summary>What places the headers a run of comment lines holds.</summary>
+    /// <summary>What places the headers a run of lines holds.</summary>
     public enum CommentHeadersPlacedBy
     {
         /// <summary>A rebuild's scan, in the data of a stream before them that has no <c>endstream</c>.</summary>
@@ -4649,6 +4677,9 @@ public class HostileInputTests
 
         /// <summary>A table whose rows place each header where the line holds it.</summary>
         Table,
+
+        /// <summary>A table as <see cref="Table"/>, with a row past each header's value that starts no header.</summary>
+        TableWithDecoys,
     }
 
     [Fact]
