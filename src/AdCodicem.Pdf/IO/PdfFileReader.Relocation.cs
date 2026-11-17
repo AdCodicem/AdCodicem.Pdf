@@ -409,7 +409,7 @@ internal sealed partial class PdfFileReader
             // stream meeting it again would not make it again (#221).
             if (attempt.UndecodedReports is { } decoding)
             {
-                _diagnostics.RollBackBesideLimits(decoding);
+                _diagnostics.RollBackBesideLimits(decoding.Value);
             }
 
             // A stream that may be the table's own was read no further than its object, and left nothing but a search for its

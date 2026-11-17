@@ -34,6 +34,9 @@ internal sealed partial class PdfFileReader : IPdfObjectSource, IPdfStreamDataPr
     /// <summary>What the codes of the faults of the object syntax start with.</summary>
     private const string SyntaxCodePrefix = "syntax.";
 
+    /// <summary>The fewest parsed objects the cache keeps, whatever <see cref="PdfReaderOptions.ObjectCacheCapacity"/> asks.</summary>
+    private const int MinimumCacheCapacity = 64;
+
     /// <summary>
     /// How much of a section is read first to tell a classic table from a cross-reference stream: a read that holds
     /// white space and comments alone, or a first token its edge may cut, is read again eight times larger, as far as a
@@ -892,7 +895,7 @@ internal sealed partial class PdfFileReader : IPdfObjectSource, IPdfStreamDataPr
         _diagnostics = diagnostics;
         _guard = guard;
         _pending = new PdfDiagnostics { Capacity = diagnostics.Capacity, KeptIn = diagnostics };
-        _cacheCapacity = Math.Max(64, cacheCapacity);
+        _cacheCapacity = Math.Max(MinimumCacheCapacity, cacheCapacity);
         _ownsSource = ownsSource;
 
         Initialize();

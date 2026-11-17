@@ -68,7 +68,7 @@ public class DiagnosticsTests
         pending.RollBack(kept);
         pending.LimitsReached.Should().Be(1);
 
-        pending.MoveTo(target, mark, 0, static (_, _) => false);
+        pending.MoveTo(target, mark, 0, static (_, _) => false, static (_, _) => false);
         pending.LimitsReached.Should().Be(0);
         target.LimitsReached.Should().Be(1);
         target.SuppressedCount.Should().Be(2);
@@ -307,7 +307,7 @@ public class DiagnosticsTests
                     from.MoveTo(target, moved);
                     break;
                 case "moved in through what a filter keeps":
-                    from.MoveTo(target, moved, 0, static (_, _) => true);
+                    from.MoveTo(target, moved, 0, static (_, _) => true, static (_, _) => true);
                     break;
                 default:
                     from.MoveDecodingReportsTo(target, moved);
@@ -423,6 +423,142 @@ public class DiagnosticsTests
         diagnostics.HasWarnings.Should().BeTrue();
         diagnostics.HasConformanceLoss.Should().BeTrue();
         diagnostics.HasRepairs.Should().BeFalse();
+    }
+
+    [Theory]
+    [InlineData(PdfDiagnosticSeverity.Information)]
+    [InlineData(PdfDiagnosticSeverity.Repair)]
+    [InlineData(PdfDiagnosticSeverity.Warning)]
+    [InlineData(PdfDiagnosticSeverity.ConformanceLoss)]
+    public void Answers_for_an_entry_the_capacity_dropped_as_for_one_it_kept(PdfDiagnosticSeverity severity)
+    {
+        var diagnostics = new PdfDiagnostics { Capacity = 0 };
+
+        diagnostics.Add(severity, "a.code", "Dropped.");
+
+        diagnostics.Count.Should().Be(0);
+        diagnostics.SuppressedCount.Should().Be(1);
+        diagnostics.Contains("a.code").Should().BeTrue();
+        diagnostics.Contains("another.code").Should().BeFalse();
+        diagnostics.HasRepairs.Should().Be(severity == PdfDiagnosticSeverity.Repair);
+        diagnostics.HasWarnings.Should().Be(severity == PdfDiagnosticSeverity.Warning);
+        diagnostics.HasConformanceLoss.Should().Be(severity == PdfDiagnosticSeverity.ConformanceLoss);
+    }
+
+    [Fact]
+    public void Refuses_a_negative_capacity()
+    {
+        var negative = () => new PdfDiagnostics { Capacity = -1 };
+
+        negative.Should().Throw<ArgumentOutOfRangeException>();
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Rolling_back_forgets_only_what_the_capacity_dropped_since_the_mark(bool keptInAnother)
+    {
+        var diagnostics = keptInAnother ? new PdfDiagnostics { Capacity = 0, KeptIn = new PdfDiagnostics() } : new PdfDiagnostics { Capacity = 0 };
+        diagnostics.Warn("before", "Dropped before the mark.");
+        var mark = diagnostics.GetMark();
+
+        diagnostics.Warn("before", "Dropped again after it.");
+        diagnostics.Repair("after", "Dropped after it.");
+        diagnostics.RollBack(mark);
+
+        diagnostics.Contains("before").Should().BeTrue();
+        diagnostics.Contains("after").Should().BeFalse();
+        diagnostics.HasWarnings.Should().BeTrue();
+        diagnostics.HasRepairs.Should().BeFalse();
+    }
+
+    [Fact]
+    public void Rolling_back_beside_the_guards_keeps_the_guards_the_capacity_dropped_and_forgets_the_rest()
+    {
+        var diagnostics = new PdfDiagnostics { Capacity = 0 };
+        var mark = diagnostics.GetMark();
+
+        diagnostics.Repair("first", "Dropped.");
+        diagnostics.ReachLimit(PdfDiagnosticCodes.LimitDecodedStream, "Cut.", 3);
+        diagnostics.Add(PdfDiagnosticSeverity.ConformanceLoss, "second", "Dropped.");
+        diagnostics.RollBackBesideLimits(mark);
+
+        diagnostics.Contains(PdfDiagnosticCodes.LimitDecodedStream).Should().BeTrue();
+        diagnostics.Contains("first").Should().BeFalse();
+        diagnostics.Contains("second").Should().BeFalse();
+        diagnostics.HasWarnings.Should().BeTrue();
+        diagnostics.HasRepairs.Should().BeFalse();
+        diagnostics.HasConformanceLoss.Should().BeFalse();
+    }
+
+    [Theory]
+    [InlineData("moved in")]
+    [InlineData("moved in through what a filter keeps")]
+    [InlineData("moved in by a decoding")]
+    public void Moving_answers_in_the_target_for_what_the_capacity_dropped_since_the_mark(string came)
+    {
+        var target = new PdfDiagnostics();
+        var from = new PdfDiagnostics { Capacity = 0, KeptIn = target };
+        from.Warn("before", "Dropped before the mark.");
+        var mark = from.GetMark();
+        from.Repair("after", "Dropped after it.");
+
+        switch (came)
+        {
+            case "moved in":
+                from.MoveTo(target, mark);
+                break;
+            case "moved in through what a filter keeps":
+                from.MoveTo(target, mark, 0, static (_, _) => true, static (_, _) => true);
+                break;
+            default:
+                from.MoveDecodingReportsTo(target, mark);
+                break;
+        }
+
+        target.Count.Should().Be(0);
+        target.Contains("after").Should().BeTrue();
+        target.Contains("before").Should().BeFalse();
+        target.HasRepairs.Should().BeTrue();
+        target.HasWarnings.Should().BeFalse();
+        from.Contains("after").Should().BeFalse();
+        from.Contains("before").Should().BeTrue();
+    }
+
+    [Fact]
+    public void Moving_through_a_filter_answers_in_the_target_only_for_the_dropped_codes_it_keeps()
+    {
+        var target = new PdfDiagnostics();
+        var from = new PdfDiagnostics { Capacity = 0, KeptIn = target };
+        var mark = from.GetMark();
+        from.Warn("syntax.kept", "Dropped.");
+        from.Repair("stream.left", "Dropped.");
+
+        from.MoveTo(target, mark, 0, static (_, _) => true, static (code, _) => code.StartsWith("syntax.", StringComparison.Ordinal));
+
+        target.Contains("syntax.kept").Should().BeTrue();
+        target.Contains("stream.left").Should().BeFalse();
+        target.HasRepairs.Should().BeFalse();
+        target.SuppressedCount.Should().Be(2);
+    }
+
+    [Fact]
+    public void A_nested_move_answers_in_the_target_for_a_code_the_outer_attempt_dropped_too()
+    {
+        // The outer attempt is dropped after the nested one was moved: what the nested one met is the target's, though the
+        // outer attempt had dropped the same code before it.
+        var target = new PdfDiagnostics();
+        var pending = new PdfDiagnostics { Capacity = 0, KeptIn = target };
+        var outer = pending.GetMark();
+        pending.Warn("met", "Dropped by the outer attempt.");
+        var nested = pending.GetMark();
+        pending.Warn("met", "Dropped by the nested one.");
+
+        pending.MoveTo(target, nested);
+        pending.RollBack(outer);
+
+        target.Contains("met").Should().BeTrue();
+        pending.Contains("met").Should().BeFalse();
     }
 
     [Fact]

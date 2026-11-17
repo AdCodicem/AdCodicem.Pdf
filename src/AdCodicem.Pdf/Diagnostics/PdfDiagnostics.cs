@@ -17,6 +17,13 @@ namespace AdCodicem.Pdf.Diagnostics;
 /// <see cref="HasRepairs"/>, <see cref="HasWarnings"/>, <see cref="HasConformanceLoss"/> and <see cref="Contains(string)"/>
 /// answer for every entry recorded so far (#167).
 /// </para>
+/// <para>
+/// The record is bounded: it keeps at most <see cref="Capacity"/> entries, and counts the rest in
+/// <see cref="SuppressedCount"/>. <see cref="Count"/>, the indexer and an enumeration give the entries kept;
+/// <see cref="HasRepairs"/>, <see cref="HasWarnings"/>, <see cref="HasConformanceLoss"/> and <see cref="Contains(string)"/>
+/// answer for every entry, kept or dropped, as a validation report's counts do, so that a guard reached past the capacity
+/// is still seen under its <c>limit.*</c> code (#169).
+/// </para>
 /// </remarks>
 public sealed class PdfDiagnostics : IReadOnlyList<PdfDiagnostic>
 {
@@ -42,10 +49,38 @@ public sealed class PdfDiagnostics : IReadOnlyList<PdfDiagnostic>
     private PdfDiagnostics? _decodings;
 
     /// <summary>
-    /// Gets the largest number of entries kept. A pathological file can produce an unbounded
-    /// number of observations; beyond this limit they are counted but not stored.
+    /// The severity and code of the entries <see cref="Capacity"/> dropped, so that <see cref="Contains(string)"/> and the
+    /// <c>Has</c> properties answer for them too; null until an entry is dropped. A pair is noted when it is not noted already
+    /// past <see cref="_droppedFrom"/>, so that the note holds a pair per severity and code dropped, and, on an instance kept
+    /// in another, as many again for each mark still open on it.
     /// </summary>
-    public int Capacity { get; init; } = 1000;
+    private List<(PdfDiagnosticSeverity Severity, string Code)>? _dropped;
+
+    /// <summary>
+    /// Where <see cref="_dropped"/> is looked in before a pair is noted. It stays 0 on an instance kept as it is, whose marks
+    /// are not all closed, so that the note does not grow with them; there, a rollback keeps exactly the pairs dropped before
+    /// its mark, the first drop of each being noted. On an instance kept in another, every mark is closed by a rollback or a
+    /// move, and this is where the note stood at the mark last taken or closed: past any mark still open lie the pairs
+    /// dropped since it, each of them, which a move takes into the instance it keeps them in (#169).
+    /// </summary>
+    private int _droppedFrom;
+
+    /// <summary>
+    /// Gets the largest number of entries kept. A pathological file can produce an unbounded
+    /// number of observations; beyond this limit they are counted in <see cref="SuppressedCount"/>, and their severities and
+    /// codes are noted for <see cref="Contains(string)"/> and the <c>Has</c> properties, but they are not stored. Defaults to
+    /// 1,000; zero keeps none.
+    /// </summary>
+    /// <exception cref="ArgumentOutOfRangeException">The value is negative.</exception>
+    public int Capacity
+    {
+        get;
+        init
+        {
+            ArgumentOutOfRangeException.ThrowIfNegative(value);
+            field = value;
+        }
+    } = 1000;
 
     /// <inheritdoc/>
     public int Count => _entries.Count;
@@ -79,13 +114,19 @@ public sealed class PdfDiagnostics : IReadOnlyList<PdfDiagnostic>
     /// <inheritdoc/>
     public PdfDiagnostic this[int index] => _entries[index];
 
-    /// <summary>Gets a value indicating whether the file needed repairing.</summary>
+    /// <summary>Gets a value indicating whether the file needed repairing: whether any entry, kept or dropped, is a repair.</summary>
     public bool HasRepairs => Contains(PdfDiagnosticSeverity.Repair);
 
-    /// <summary>Gets a value indicating whether anything worrying was observed.</summary>
+    /// <summary>
+    /// Gets a value indicating whether anything worrying was observed: whether any entry, kept or dropped, is a warning, a
+    /// guard's <c>limit.*</c> report among them.
+    /// </summary>
     public bool HasWarnings => Contains(PdfDiagnosticSeverity.Warning);
 
-    /// <summary>Gets a value indicating whether a conformance guarantee was lost.</summary>
+    /// <summary>
+    /// Gets a value indicating whether a conformance guarantee was lost: whether any entry, kept or dropped, is a conformance
+    /// loss.
+    /// </summary>
     public bool HasConformanceLoss => Contains(PdfDiagnosticSeverity.ConformanceLoss);
 
     /// <summary>Records an observation.</summary>
@@ -100,6 +141,7 @@ public sealed class PdfDiagnostics : IReadOnlyList<PdfDiagnostic>
                 _limitsSuppressed++;
             }
 
+            NoteDropped(severity, code);
             return;
         }
 
@@ -126,7 +168,7 @@ public sealed class PdfDiagnostics : IReadOnlyList<PdfDiagnostic>
     /// still holds as moved in the reports decodings moved in since: a mark of an instance decodings report into is taken
     /// by <see cref="GetMarkWithDecodingReports"/>.
     /// </summary>
-    internal PdfDiagnosticsMark GetMark() => new(_entries.Count, _suppressed, _limits, _limitsSuppressed);
+    internal PdfDiagnosticsMark GetMark() => new(_entries.Count, _suppressed, _limits, _limitsSuppressed, OpenDropped());
 
     /// <summary>
     /// Records where the entries stand, and which of them decodings of streams moved in: rolled back to, this instance
@@ -134,7 +176,7 @@ public sealed class PdfDiagnostics : IReadOnlyList<PdfDiagnostic>
     /// it records, so it is taken where it is rare, not in a loop.
     /// </summary>
     internal PdfDiagnosticsMark GetMarkWithDecodingReports() =>
-        new(_entries.Count, _suppressed, _limits, _limitsSuppressed, new Dictionary<PdfDiagnostic, int>(_decodingReports ?? []));
+        new(_entries.Count, _suppressed, _limits, _limitsSuppressed, OpenDropped(), new Dictionary<PdfDiagnostic, int>(_decodingReports ?? []));
 
     /// <summary>Drops every entry recorded since <paramref name="mark"/>, suppressed ones and guards reached included.</summary>
     internal void RollBack(PdfDiagnosticsMark mark)
@@ -143,6 +185,8 @@ public sealed class PdfDiagnostics : IReadOnlyList<PdfDiagnostic>
         _suppressed = mark.Suppressed;
         _limits = mark.Limits;
         _limitsSuppressed = mark.LimitsSuppressed;
+        _dropped?.RemoveRange(mark.Dropped, _dropped.Count - mark.Dropped);
+        CloseDropped(mark);
 
         // Copied: the mark keeps what it recorded, whatever this instance holds next.
         if (mark.DecodingReports is { } held)
@@ -190,6 +234,24 @@ public sealed class PdfDiagnostics : IReadOnlyList<PdfDiagnostic>
         _entries.RemoveRange(kept, _entries.Count - kept);
         _suppressed = mark.Suppressed + _limitsSuppressed - mark.LimitsSuppressed;
 
+        // The guards' codes the capacity dropped since the mark stay noted, as their count stays.
+        if (_dropped is { } dropped)
+        {
+            var noted = mark.Dropped;
+
+            for (var i = mark.Dropped; i < dropped.Count; i++)
+            {
+                if (dropped[i].Code.StartsWith("limit.", StringComparison.Ordinal))
+                {
+                    dropped[noted++] = dropped[i];
+                }
+            }
+
+            dropped.RemoveRange(noted, dropped.Count - noted);
+        }
+
+        CloseDropped(mark);
+
         if (held is not null)
         {
             _decodingReports = held;
@@ -211,19 +273,25 @@ public sealed class PdfDiagnostics : IReadOnlyList<PdfDiagnostic>
         target._suppressed += _suppressed - mark.Suppressed;
         target._limits += _limits - mark.Limits;
         target._limitsSuppressed += _limitsSuppressed - mark.LimitsSuppressed;
+        MoveDroppedTo(target, mark, 0, static (_, _) => true);
         RollBack(mark);
     }
 
     /// <summary>
     /// Moves the entries recorded since <paramref name="mark"/> that <paramref name="keep"/> keeps into
-    /// <paramref name="target"/>, which applies its own capacity, counts there those this instance dropped, and drops the
-    /// rest.
+    /// <paramref name="target"/>, which applies its own capacity, counts there those this instance dropped, notes there the
+    /// codes of those <paramref name="keepDropped"/> keeps, and drops the rest.
     /// </summary>
     /// <param name="target">The diagnostics the entries kept go to.</param>
     /// <param name="mark">Where the entries to move start.</param>
-    /// <param name="state">What <paramref name="keep"/> needs besides the entry, so that it captures nothing.</param>
+    /// <param name="state">What <paramref name="keep"/> and <paramref name="keepDropped"/> need, so that they capture nothing.</param>
     /// <param name="keep">Whether an entry is kept.</param>
-    internal void MoveTo<TState>(PdfDiagnostics target, PdfDiagnosticsMark mark, TState state, Func<PdfDiagnostic, TState, bool> keep)
+    /// <param name="keepDropped">
+    /// Whether a code this instance dropped is noted as met: what <paramref name="keep"/> decides by the code alone, the
+    /// entry's message being gone.
+    /// </param>
+    internal void MoveTo<TState>(
+        PdfDiagnostics target, PdfDiagnosticsMark mark, TState state, Func<PdfDiagnostic, TState, bool> keep, Func<string, TState, bool> keepDropped)
     {
         for (var i = mark.Count; i < _entries.Count; i++)
         {
@@ -238,6 +306,7 @@ public sealed class PdfDiagnostics : IReadOnlyList<PdfDiagnostic>
         target._suppressed += _suppressed - mark.Suppressed;
         target._limits += _limits - mark.Limits;
         target._limitsSuppressed += _limitsSuppressed - mark.LimitsSuppressed;
+        MoveDroppedTo(target, mark, state, keepDropped);
         RollBack(mark);
     }
 
@@ -285,10 +354,32 @@ public sealed class PdfDiagnostics : IReadOnlyList<PdfDiagnostic>
         target._suppressed += _suppressed - mark.Suppressed;
         target._limits += _limits - mark.Limits;
         target._limitsSuppressed += _limitsSuppressed - mark.LimitsSuppressed;
+        MoveDroppedTo(target, mark, 0, static (_, _) => true);
         RollBack(mark);
     }
 
-    /// <summary>Determines whether any entry carries the given code.</summary>
+    /// <summary>
+    /// Determines whether an entry whose code starts with <paramref name="prefix"/> was dropped since
+    /// <paramref name="mark"/>, on an instance kept in another, whose note holds past each open mark every pair dropped since
+    /// it (<see cref="_droppedFrom"/>).
+    /// </summary>
+    internal bool DroppedSince(PdfDiagnosticsMark mark, string prefix)
+    {
+        if (_dropped is { } dropped)
+        {
+            for (var i = mark.Dropped; i < dropped.Count; i++)
+            {
+                if (dropped[i].Code.StartsWith(prefix, StringComparison.Ordinal))
+                {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    /// <summary>Determines whether any entry, kept or dropped, carries the given code, compared ordinally.</summary>
     public bool Contains(string code)
     {
         foreach (var entry in _entries)
@@ -296,6 +387,17 @@ public sealed class PdfDiagnostics : IReadOnlyList<PdfDiagnostic>
             if (string.Equals(entry.Code, code, StringComparison.Ordinal))
             {
                 return true;
+            }
+        }
+
+        if (_dropped is { } dropped)
+        {
+            foreach (var pair in dropped)
+            {
+                if (string.Equals(pair.Code, code, StringComparison.Ordinal))
+                {
+                    return true;
+                }
             }
         }
 
@@ -312,7 +414,76 @@ public sealed class PdfDiagnostics : IReadOnlyList<PdfDiagnostic>
             }
         }
 
+        if (_dropped is { } dropped)
+        {
+            foreach (var pair in dropped)
+            {
+                if (pair.Severity == severity)
+                {
+                    return true;
+                }
+            }
+        }
+
         return false;
+    }
+
+    /// <summary>Notes that an entry of <paramref name="severity"/> under <paramref name="code"/> was dropped.</summary>
+    private void NoteDropped(PdfDiagnosticSeverity severity, string code)
+    {
+        var dropped = _dropped ??= [];
+
+        for (var i = _droppedFrom; i < dropped.Count; i++)
+        {
+            if (dropped[i].Severity == severity && string.Equals(dropped[i].Code, code, StringComparison.Ordinal))
+            {
+                return;
+            }
+        }
+
+        dropped.Add((severity, code));
+    }
+
+    /// <summary>Returns how far the note of what was dropped runs, where a mark taken now starts on it (<see cref="_droppedFrom"/>).</summary>
+    private int OpenDropped()
+    {
+        var noted = _dropped?.Count ?? 0;
+
+        if (KeptIn is not null)
+        {
+            _droppedFrom = noted;
+        }
+
+        return noted;
+    }
+
+    /// <summary>Starts the note again where <paramref name="mark"/> started on it, the mark closed (<see cref="_droppedFrom"/>).</summary>
+    private void CloseDropped(PdfDiagnosticsMark mark)
+    {
+        if (KeptIn is not null)
+        {
+            _droppedFrom = mark.Dropped;
+        }
+    }
+
+    /// <summary>
+    /// Notes in <paramref name="target"/> the severities and codes this instance dropped since <paramref name="mark"/> that
+    /// <paramref name="keep"/> keeps.
+    /// </summary>
+    private void MoveDroppedTo<TState>(PdfDiagnostics target, PdfDiagnosticsMark mark, TState state, Func<string, TState, bool> keep)
+    {
+        if (_dropped is not { } dropped)
+        {
+            return;
+        }
+
+        for (var i = mark.Dropped; i < dropped.Count; i++)
+        {
+            if (keep(dropped[i].Code, state))
+            {
+                target.NoteDropped(dropped[i].Severity, dropped[i].Code);
+            }
+        }
     }
 
     /// <summary>

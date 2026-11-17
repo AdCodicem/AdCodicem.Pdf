@@ -8,12 +8,35 @@ public sealed record PdfReaderOptions
 
     /// <summary>
     /// Gets the number of parsed objects kept in memory. Objects beyond this are re-read from the file
-    /// when they are needed again, which is the trade the reader makes to keep memory predictable.
+    /// when they are needed again, which is the trade the reader makes to keep memory predictable. Defaults to 8,192; the
+    /// reader keeps at least 64, a smaller value reading as 64.
     /// </summary>
-    public int ObjectCacheCapacity { get; init; } = 8192;
+    /// <exception cref="ArgumentOutOfRangeException">The value is negative.</exception>
+    public int ObjectCacheCapacity
+    {
+        get;
+        init
+        {
+            ArgumentOutOfRangeException.ThrowIfNegative(value);
+            field = value;
+        }
+    } = 8192;
 
-    /// <summary>Gets the largest number of diagnostic entries kept for one document.</summary>
-    public int DiagnosticCapacity { get; init; } = 1000;
+    /// <summary>
+    /// Gets the largest number of diagnostic entries kept for one document (<see cref="Diagnostics.PdfDiagnostics.Capacity"/>):
+    /// past it, entries are counted, and still answer <see cref="Diagnostics.PdfDiagnostics.Contains(string)"/> and the
+    /// <c>Has</c> properties, but are not kept. Defaults to 1,000; zero keeps none.
+    /// </summary>
+    /// <exception cref="ArgumentOutOfRangeException">The value is negative.</exception>
+    public int DiagnosticCapacity
+    {
+        get;
+        init
+        {
+            ArgumentOutOfRangeException.ThrowIfNegative(value);
+            field = value;
+        }
+    } = 1000;
 
     /// <summary>
     /// Gets a value indicating whether opening an encrypted document fails. Decryption arrives with the

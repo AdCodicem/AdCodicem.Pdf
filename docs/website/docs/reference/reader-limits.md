@@ -49,7 +49,8 @@ runtime allocates a larger one.
 ## When a limit is reached
 
 The reader keeps what fits and reports a warning under the limit's own code, whose message names the property to
-raise:
+raise. Once the diagnostics are full, the report is counted rather than kept, and `Diagnostics.Contains` and
+`HasWarnings` still answer for it ([`PdfDiagnostics`](diagnostics.md#pdfdiagnostics)):
 
 ```text
 Warning limit.decoded-stream at 48213: The /FlateDecode data decodes to more than 256 MB; decoding stopped

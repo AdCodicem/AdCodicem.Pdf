@@ -114,6 +114,30 @@ public class ReaderLimitsTests
     }
 
     [Fact]
+    public void The_options_refuse_a_negative_capacity()
+    {
+        var diagnostics = () => PdfReaderOptions.Default with { DiagnosticCapacity = -1 };
+        var cache = () => PdfReaderOptions.Default with { ObjectCacheCapacity = -1 };
+
+        diagnostics.Should().Throw<ArgumentOutOfRangeException>();
+        cache.Should().Throw<ArgumentOutOfRangeException>();
+    }
+
+    [Theory]
+    [InlineData(0, 64)]
+    [InlineData(63, 64)]
+    [InlineData(64, 64)]
+    [InlineData(65, 65)]
+    public void The_cache_keeps_at_least_64_objects_whatever_the_options_ask(int asked, int kept)
+    {
+        using var document = PdfDocument.Open(
+            new TestPdfBuilder().WithObject(1, Catalog).WithObject(2, "<< /Type /Pages /Kids [] /Count 0 >>").BuildClassic(rootNumber: 1),
+            PdfReaderOptions.Default with { ObjectCacheCapacity = asked });
+
+        document.Reader.CacheCapacity.Should().Be(kept);
+    }
+
+    [Fact]
     public void A_guard_already_at_the_most_the_reader_can_hold_does_not_ask_to_be_raised()
     {
         // Past about 2 GB a stream cannot be held in one piece, whatever the options (issue #48): the report says so

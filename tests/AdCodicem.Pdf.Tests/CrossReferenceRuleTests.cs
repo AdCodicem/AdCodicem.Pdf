@@ -2728,6 +2728,64 @@ public class CrossReferenceRuleTests
             $"One of the reader's limits stopped it reading the cross-reference section at offset {PdfTemplate.OffsetOf(file, "\n5 0 obj") + 1} whole: what lies past the limit was not checked.");
     }
 
+    [Theory]
+    [InlineData("cross-reference stream")]
+    [InlineData("object stream header")]
+    [InlineData("object stream dictionary")]
+    [InlineData("member")]
+    public void A_cut_the_diagnostics_have_no_room_to_report_is_still_the_guard_s_and_its_code_still_answers(string cut)
+    {
+        // Each guard's report is dropped: the cut is still the guard's, said to be checked in part where the index or a
+        // header lost what lies past it, and a member so cut is not judged; the guard's code still answers (#169).
+        var (file, limits, code) = cut switch
+        {
+            "cross-reference stream" => (
+                XRefStreamBuilder().BuildWithXRefStream(rootNumber: 1, compressXRefStream: true),
+                PdfReaderLimits.Default with { MaxDecodedStreamLength = 20 },
+                PdfDiagnosticCodes.LimitDecodedStream),
+            "object stream header" => (
+                XRefStreamBuilder().BuildWithXRefStream(rootNumber: 1, compressedObjects: [2, 3], compressObjectStream: true),
+                PdfReaderLimits.Default with { MaxDecodedStreamLength = 4 },
+                PdfDiagnosticCodes.LimitDecodedStream),
+            "object stream dictionary" => (XRefStreamFile(), PdfReaderLimits.Default with { MaxObjectLength = 32 }, PdfDiagnosticCodes.LimitObject),
+            _ => (
+                new TestPdfBuilder()
+                    .WithObject(1, "<< /Type /Catalog /Pages 2 0 R >>")
+                    .WithObject(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>")
+                    .WithObject(3, $"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << >> /Pad ({new string('x', 400)}) >>")
+                    .BuildWithXRefStream(rootNumber: 1, compressedObjects: [2, 3], compressObjectStream: true),
+                PdfReaderLimits.Default with { MaxObjectLength = 128 },
+                PdfDiagnosticCodes.LimitObject),
+        };
+        using var document = PdfDocument.Open(file, new PdfReaderOptions { Limits = limits, DiagnosticCapacity = 0 });
+
+        var findings = new PdfValidator().Validate(document).Findings;
+
+        findings.Select(finding => finding.RuleId).Should().Equal(cut == "member" ? [] : [PdfValidationRuleIds.XRefCheckedInPart]);
+        document.Diagnostics.Count.Should().Be(0);
+        document.Diagnostics.Contains(code).Should().BeTrue();
+        document.Diagnostics.HasWarnings.Should().BeTrue();
+    }
+
+    [Theory]
+    [InlineData(1000, false)]
+    [InlineData(0, false)]
+    [InlineData(0, true)]
+    public void A_cross_reference_stream_s_dictionary_is_judged_by_its_own_syntax_whatever_room_the_diagnostics_have(int capacity, bool strayValue)
+    {
+        // A /Length 5 bytes too long is reported as the chain parses the stream, and is no syntax error: with no room for its
+        // report, the dictionary was said not to be well formed (#169). A stray value is one, room or not.
+        var file = strayValue
+            ? Replace(XRefStreamFile(), "/W [1 4 2]", "/W [1 4 2] 7")
+            : Replace(XRefStreamFile(), "/Root 1 0 R /Length 42", "/Root 1 0 R /Length 47");
+        using var document = PdfDocument.Open(file, new PdfReaderOptions { DiagnosticCapacity = capacity });
+
+        var findings = new PdfValidator().Validate(document).Findings;
+
+        findings.Select(finding => finding.RuleId).Should().Equal(strayValue ? [PdfValidationRuleIds.FileTrailerMalformed] : []);
+        document.Diagnostics.Contains(strayValue ? PdfDiagnosticCodes.SyntaxUnexpectedToken : PdfDiagnosticCodes.StreamLengthInvalid).Should().BeTrue();
+    }
+
     [Fact]
     public void An_index_the_entry_bound_filled_is_said_once_to_be_checked_in_part()
     {
