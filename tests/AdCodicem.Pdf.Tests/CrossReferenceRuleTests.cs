@@ -2729,14 +2729,19 @@ public class CrossReferenceRuleTests
     }
 
     [Theory]
-    [InlineData("cross-reference stream")]
-    [InlineData("object stream header")]
-    [InlineData("object stream dictionary")]
-    [InlineData("member")]
-    public void A_cut_the_diagnostics_have_no_room_to_report_is_still_the_guard_s_and_its_code_still_answers(string cut)
+    [InlineData("cross-reference stream", false)]
+    [InlineData("cross-reference stream", true)]
+    [InlineData("object stream header", false)]
+    [InlineData("object stream header", true)]
+    [InlineData("object stream dictionary", false)]
+    [InlineData("object stream dictionary", true)]
+    [InlineData("member", false)]
+    [InlineData("member", true)]
+    public void A_cut_the_diagnostics_have_no_room_to_report_is_still_the_guard_s_and_its_code_still_answers(string cut, bool filled)
     {
-        // Each guard's report is dropped: the cut is still the guard's, said to be checked in part where the index or a
-        // header lost what lies past it, and a member so cut is not judged; the guard's code still answers (#169).
+        // The record has no room for the guard's report: none given, or 1,000 entries an update's trailer filled first. The
+        // validator finds what it finds with room to spare — the cut said to be checked in part where the index or a header
+        // lost what lies past it, a member so cut not judged —, and the guard's code still answers (#169).
         var (file, limits, code) = cut switch
         {
             "cross-reference stream" => (
@@ -2757,32 +2762,43 @@ public class CrossReferenceRuleTests
                 PdfReaderLimits.Default with { MaxObjectLength = 128 },
                 PdfDiagnosticCodes.LimitObject),
         };
-        using var document = PdfDocument.Open(file, new PdfReaderOptions { Limits = limits, DiagnosticCapacity = 0 });
+        file = filled ? FilledFirst(file) : file;
+        var options = new PdfReaderOptions { Limits = limits, DiagnosticCapacity = filled ? 1000 : 0 };
+        using var document = PdfDocument.Open(file, options);
+        using var roomy = PdfDocument.Open(file, options with { DiagnosticCapacity = int.MaxValue });
 
-        var findings = new PdfValidator().Validate(document).Findings;
+        var findings = FindingsOf(document);
 
-        findings.Select(finding => finding.RuleId).Should().Equal(cut == "member" ? [] : [PdfValidationRuleIds.XRefCheckedInPart]);
-        document.Diagnostics.Count.Should().Be(0);
+        findings.Should().Equal(FindingsOf(roomy));
+        findings.Any(finding => finding.RuleId == PdfValidationRuleIds.XRefCheckedInPart).Should().Be(cut != "member");
+        document.Diagnostics.Select(entry => entry.Code).Should().NotContain(code);
         document.Diagnostics.Contains(code).Should().BeTrue();
         document.Diagnostics.HasWarnings.Should().BeTrue();
     }
 
     [Theory]
-    [InlineData(1000, false)]
-    [InlineData(0, false)]
-    [InlineData(0, true)]
-    public void A_cross_reference_stream_s_dictionary_is_judged_by_its_own_syntax_whatever_room_the_diagnostics_have(int capacity, bool strayValue)
+    [InlineData(false, false)]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    [InlineData(true, true)]
+    public void A_cross_reference_stream_s_dictionary_is_judged_by_its_own_syntax_whatever_room_the_diagnostics_have(bool filled, bool strayValue)
     {
         // A /Length 5 bytes too long is reported as the chain parses the stream, and is no syntax error: with no room for its
-        // report, the dictionary was said not to be well formed (#169). A stray value is one, room or not.
+        // report, the dictionary was said not to be well formed (#169). A stray value is one, room or not. The record has no
+        // room: none given, or 1,000 entries an update's trailer filled first.
         var file = strayValue
             ? Replace(XRefStreamFile(), "/W [1 4 2]", "/W [1 4 2] 7")
             : Replace(XRefStreamFile(), "/Root 1 0 R /Length 42", "/Root 1 0 R /Length 47");
-        using var document = PdfDocument.Open(file, new PdfReaderOptions { DiagnosticCapacity = capacity });
+        var stream = PdfTemplate.OffsetOf(file, "\n5 0 obj") + 1;
+        file = filled ? FilledFirst(file) : file;
+        var options = new PdfReaderOptions { DiagnosticCapacity = filled ? 1000 : 0 };
+        using var document = PdfDocument.Open(file, options);
+        using var roomy = PdfDocument.Open(file, options with { DiagnosticCapacity = int.MaxValue });
 
-        var findings = new PdfValidator().Validate(document).Findings;
+        var findings = FindingsOf(document);
 
-        findings.Select(finding => finding.RuleId).Should().Equal(strayValue ? [PdfValidationRuleIds.FileTrailerMalformed] : []);
+        findings.Should().Equal(FindingsOf(roomy));
+        findings.Any(finding => finding.RuleId == PdfValidationRuleIds.FileTrailerMalformed && finding.Position == stream).Should().Be(strayValue);
         document.Diagnostics.Contains(strayValue ? PdfDiagnosticCodes.SyntaxUnexpectedToken : PdfDiagnosticCodes.StreamLengthInvalid).Should().BeTrue();
     }
 
@@ -4607,6 +4623,22 @@ public class CrossReferenceRuleTests
             var report = new PdfValidator().Validate(document);
             return string.Join("; ", report.Findings) + " | " + string.Join("; ", document.Diagnostics);
         }
+    }
+
+    /// <summary>The findings a validation of <paramref name="document"/> gives, each by its rule, severity, place and words.</summary>
+    private static (string RuleId, PdfValidationSeverity Severity, long? Position, string Message)[] FindingsOf(PdfDocument document) =>
+        [.. new PdfValidator().Validate(document).Findings.Select(finding => (finding.RuleId, finding.Severity, finding.Location.Position, finding.Message))];
+
+    /// <summary>
+    /// <paramref name="file"/> updated with its catalog again, under a trailer that gives one key 1,100 times: reading the
+    /// newest section first, the reader holds 1,000 diagnostics before it reads the file's own.
+    /// </summary>
+    private static byte[] FilledFirst(byte[] file)
+    {
+        var content = Encoding.Latin1.GetString(
+            TestPdfBuilder.AppendIncrementalUpdate(file, rootNumber: 1, [(1, "<< /Type /Catalog /Pages 2 0 R >>")]));
+        var trailer = content.LastIndexOf("/Root 1 0 R /Prev", StringComparison.Ordinal);
+        return Encoding.Latin1.GetBytes(content[..trailer] + string.Concat(Enumerable.Repeat("/K 1 ", 1100)) + content[trailer..]);
     }
 
     private static byte[] Replace(byte[] file, string text, string replacement)

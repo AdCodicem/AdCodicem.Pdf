@@ -59,7 +59,8 @@ raise it.
 
 A document keeps 1,000 diagnostic entries by default, and counts the rest in `Diagnostics.SuppressedCount`;
 `Contains`, `HasRepairs`, `HasWarnings` and `HasConformanceLoss` answer for those too, so a guard reached past the bound
-is still seen. When you need every entry of a badly damaged file, raise the bound:
+is still seen ([`PdfDiagnostics`](../reference/diagnostics.md#pdfdiagnostics)). When you need every entry of a badly
+damaged file, raise the bound:
 
 ```csharp
 var options = new PdfReaderOptions { DiagnosticCapacity = 5_000 };
