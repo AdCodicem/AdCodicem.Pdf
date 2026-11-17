@@ -1,6 +1,6 @@
 ---
 title: Reader limits
-description: The bounds on what a file may make the reader hold — their defaults, codes and what is kept — and the bounds that cannot be lifted.
+description: The bounds on what a file may make the reader hold or read — their defaults, codes and what is kept — and the bounds that cannot be lifted.
 ---
 
 # Reader limits

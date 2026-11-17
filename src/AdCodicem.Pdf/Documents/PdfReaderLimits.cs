@@ -1,7 +1,7 @@
 namespace AdCodicem.Pdf.Documents;
 
 /// <summary>
-/// The reader's guards: bounds on what a file may make the reader hold, set against hostile input, which a
+/// The reader's guards: bounds on what a file may make the reader hold or read, set against hostile input, which a
 /// document valid under the specification can nonetheless exceed.
 /// </summary>
 /// <remarks>

@@ -9,7 +9,7 @@ description: How the reader keeps every valid PDF readable while treating every 
 Every PDF that is valid under the specification can be read. That promise has to live alongside another:
 a file arriving from outside your system is treated as hostile, and a few kilobytes of it must not be able
 to make the reader hold gigabytes. The two meet in the **reader limits**: bounds on what a file may make the
-reader hold, on by default, each of which you can raise. The [reference](../reference/reader-limits.md) lists them;
+reader hold or read, on by default, each of which you can raise. The [reference](../reference/reader-limits.md) lists them;
 [Read or refuse a document that reaches a limit](../guides/handle-reader-limits.md) says what to do when one is
 reached.
 
