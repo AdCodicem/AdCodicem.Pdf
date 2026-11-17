@@ -1,5 +1,6 @@
 using System.Globalization;
 using AdCodicem.Pdf.IO;
+using AdCodicem.Pdf.IO.XRef;
 using AdCodicem.Pdf.Objects;
 
 namespace AdCodicem.Pdf.Validation.Rules;
@@ -19,8 +20,8 @@ namespace AdCodicem.Pdf.Validation.Rules;
 /// It judges the trailer the file's chain gave, merged across its sections as readers merge them, and <c>/Root</c>
 /// as it was before the reader looked for a catalog. A trailer that could not be read at all is another rule's to report.
 /// Where the chain gave no index, it judges the trailer the rebuild merged from those the file holds, and only where the
-/// reader found no catalog at all: a document with none has no way in (#132). A catalog one of the reader's limits left out of the index
-/// <see cref="PdfValidationRuleIds.XRefCheckedInPart"/>'s. A catalog one of them cut is not judged: what it lacks may lie
+/// reader found no catalog at all: a document with none has no way in (#132). A catalog one of the reader's limits left
+/// out of the index is <see cref="PdfValidationRuleIds.XRefCheckedInPart"/>'s. A catalog one of them cut is not judged: what it lacks may lie
 /// past the cut, and the reader's report names the limit. Nor is a <c>/Root</c> the trailers lack where one of them kept a
 /// trailer from being read whole: it may lie past the cut, or in an older trailer the chain stopped short of.
 /// </para>
@@ -79,18 +80,21 @@ internal sealed class RootInvalidRule : IValidationRule
     /// Judges, where the chain gave no index, the trailer the rebuild merged from those the file holds, only where the reader
     /// found no catalog at all: a catalog it found, through that trailer's <c>/Root</c> or by searching, is the file's
     /// enough for the rebuild's own report, and the rules that judge what made the chain unreadable say why (#132). A
-    /// <c>/Root</c> one of the reader's limits cut, or left out of the index, is taken as read.
+    /// <c>/Root</c> one of the reader's limits cut is taken as read, and where one of them left objects out of the rebuilt
+    /// index — the index filled, or an object stream it cut — the catalog may be among them: neither is judged.
     /// </summary>
     private void CheckRebuiltTrailer(ValidationContext context, PdfFileReader reader)
     {
-        if (reader.HasCatalog || reader.CatalogFoundAs > 0 || reader.RootLeadsPastGuard)
+        // A catalog a search takes becomes /Root: having one covers it.
+        if (reader.HasCatalog || reader.RootLeadsPastGuard || reader.ObjectsLeftOutByGuard)
         {
             return;
         }
 
         var root = context.Document.Trailer.GetRaw(PdfName.Root);
         var resolved = root is PdfReference reference ? context.Document.GetObject(reference.Id) : null;
-        ReportRoot(context, root, resolved, default, "No trailer of the file gives /Root.", Found(context, reader));
+        var trailer = reader.TrailerLocation >= 0 ? PdfValidationLocation.AtPosition(reader.TrailerLocation) : default;
+        ReportRoot(context, root, resolved, trailer, "No trailer the reader read gives /Root.", Found(context, reader));
     }
 
     /// <summary>
@@ -108,11 +112,7 @@ internal sealed class RootInvalidRule : IValidationRule
                 break;
 
             case PdfReference reference:
-                // Led to nothing through the chain's index, the object may be one a rebuild found since: the chain does not
-                // place it, which is not the file's not holding it (#132).
-                var what = resolved is null or PdfNull && context.Document.GetObject(reference.Id) is not PdfNull
-                    ? "the cross-reference chain does not place"
-                    : Describe(resolved);
+                var what = resolved is null or PdfNull ? Absent(context.Document.Reader, reference.Id) : Describe(resolved);
                 Report(
                     context,
                     PdfValidationLocation.OfObject(reference.Id),
@@ -141,16 +141,47 @@ internal sealed class RootInvalidRule : IValidationRule
             return string.Create(CultureInfo.InvariantCulture, $" The reader took object {catalog}, which is one, for the catalog.");
         }
 
+        var root = context.Document.Trailer.GetRaw(PdfName.Root);
+
         if (reader.HasCatalog)
         {
-            return context.Document.Trailer.GetRaw(PdfName.Root) is PdfReference rebuilt
-                ? string.Create(CultureInfo.InvariantCulture, $" The reader rebuilt the index, through which /Root leads to object {rebuilt.Id.Number}, which is one.")
+            return root is PdfReference rebuilt
+                ? string.Create(CultureInfo.InvariantCulture, $" The reader rebuilt the index, through which /Root leads to object {rebuilt.Target().Number}, which is one.")
                 : " The reader rebuilt the index, whose trailer gives one.";
         }
 
+        // Only a rebuild makes /Root lead to what a guard cut once the document opened, which the reader takes as read.
+        if (reader.RootLeadsPastGuard && root is PdfReference cut)
+        {
+            return string.Create(
+                CultureInfo.InvariantCulture,
+                $" The reader rebuilt the index, through which /Root leads to object {cut.Target().Number}, which one of the reader's limits cut, and takes it as read.");
+        }
+
+        // What the reader could not read — a definition a later one supersedes, an object in a stream that cannot be decoded,
+        // an object a guard cut — may be one: only what it read is said not to be.
         return reader.CatalogCandidateCut
             ? " No object the reader read whole is a catalog: one of the reader's limits cut some, which its report names."
-            : " No object of the file is a catalog.";
+            : " No object the reader could read is a catalog.";
+    }
+
+    /// <summary>
+    /// Describes what <c>/Root</c> names where it led to nothing: an object the chain's index placed and that could not be
+    /// read there, an object the chain's index does not place and a rebuild found since, an object the reader could not
+    /// produce, or one the file does not hold (#132, #260).
+    /// </summary>
+    private static string Absent(PdfFileReader reader, PdfObjectId id)
+    {
+        var placed = reader.ChainIndex?.TryGet(id.Number, out var entry) == true && entry.Kind != XRefEntryKind.Free;
+
+        return reader.GetPresence(id.Number) switch
+        {
+            ObjectPresence.Defined => placed
+                ? "the cross-reference chain places where it could not be read"
+                : "the cross-reference chain does not place",
+            ObjectPresence.Unproduced => "could not be read",
+            _ => "the file does not hold",
+        };
     }
 
     private void Report(ValidationContext context, PdfValidationLocation location, string message) =>

@@ -2280,6 +2280,8 @@ public class ReaderLimitsTests
         document.Catalog.Should().BeNull("the catalog lies past what the index holds");
         document.Reader.CatalogFoundAs.Should().Be(0, "object 7 is another object than the one /Root names");
         document.Diagnostics.Contains(PdfDiagnosticCodes.TrailerRootRecovered).Should().BeFalse();
+        new PdfValidator().Validate(document).Contains(PdfValidationRuleIds.FileRootInvalid).Should().BeFalse(
+            "a catalog a guard left out of the rebuilt index is unknown, not lacking (#132)");
     }
 
     [Fact]

@@ -445,7 +445,7 @@ public class ReadOrderTests
         document.Reader.CatalogFoundAs.Should().Be(0);
         document.Reader.Structure.CatalogFoundAs.Should().Be(20, "the reader took 20 as the document opened");
         report.Findings.Single(finding => finding.RuleId == PdfValidationRuleIds.FileRootInvalid).Message.Should().Be(
-            "The trailer's /Root names object 1 0, which is a dictionary of /Type /Foo, not a document catalog. No object of the file is a catalog.");
+            "The trailer's /Root names object 1 0, which is a dictionary of /Type /Foo, not a document catalog. No object the reader could read is a catalog.");
     }
 
     [Fact]

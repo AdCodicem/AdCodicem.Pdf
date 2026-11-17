@@ -1287,6 +1287,12 @@ internal sealed partial class PdfFileReader : IPdfObjectSource, IPdfStreamDataPr
     /// </summary>
     internal bool RootLeadsPastGuard => RootCutByGuard() || RootLeftOutByGuard();
 
+    /// <summary>
+    /// Gets a value indicating whether one of the reader's limits left objects out of the index: it filled, part of the chain
+    /// went unread, or an object stream the index places was cut before its members could be read.
+    /// </summary>
+    internal bool ObjectsLeftOutByGuard => IndexStoppedByGuard || _objectStreamsHiddenByGuard.Count > 0;
+
     /// <summary>Gets how many objects the reader keeps in its cache, at most.</summary>
     internal int CacheCapacity => _cacheCapacity;
 
