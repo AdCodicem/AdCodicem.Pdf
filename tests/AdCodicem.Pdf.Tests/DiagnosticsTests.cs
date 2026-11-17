@@ -446,6 +446,92 @@ public class DiagnosticsTests
     }
 
     [Fact]
+    public void A_code_dropped_under_two_severities_answers_for_both()
+    {
+        var diagnostics = new PdfDiagnostics { Capacity = 0 };
+
+        diagnostics.Warn("a.code", "Dropped as a warning.");
+        diagnostics.Repair("a.code", "Dropped as a repair.");
+
+        diagnostics.HasWarnings.Should().BeTrue();
+        diagnostics.HasRepairs.Should().BeTrue();
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(1000)]
+    public void A_fault_met_again_past_the_capacity_costs_nothing_more(int capacity)
+    {
+        // An object whose dictionary gives a key that is not a name 50,000 or 200,000 times: past the capacity each report is
+        // counted, and its severity and code noted once, so that both objects allocate alike (#169).
+        Allocated(200_000).Should().Be(Allocated(50_000));
+
+        long Allocated(int faults)
+        {
+            var body = new StringBuilder("<<");
+            for (var i = 0; i < faults; i++)
+            {
+                body.Append(" 1");
+            }
+
+            var file = new TestPdfBuilder()
+                .WithObject(1, "<< /Type /Catalog /Pages 2 0 R >>")
+                .WithObject(2, "<< /Type /Pages /Kids [] /Count 0 >>")
+                .WithObject(5, body.Append(" >>").ToString())
+                .BuildClassic(rootNumber: 1);
+
+            return Allocations.Least(
+                () => PdfDocument.Open(file, new PdfReaderOptions { DiagnosticCapacity = capacity }),
+                static document =>
+                {
+                    using (document)
+                    {
+                        return document!.GetObject(new PdfObjectId(5));
+                    }
+                },
+                out _,
+                out _);
+        }
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void A_document_s_record_notes_a_code_dropped_again_once_whatever_marks_it_takes(bool rolledBack)
+    {
+        // The library leaves some of its marks on a document's record open, and rolls back to others: a code dropped again
+        // after either is noted once all the same, so that ten thousand of them allocate nothing (#169).
+        var allocated = Allocations.Least(
+            static () =>
+            {
+                var diagnostics = new PdfDiagnostics { Capacity = 0 };
+                diagnostics.Warn("a.code", "Dropped before any mark.");
+                return diagnostics;
+            },
+            (PdfDiagnostics diagnostics) =>
+            {
+                for (var i = 0; i < 10_000; i++)
+                {
+                    var mark = diagnostics.GetMark();
+
+                    if (rolledBack)
+                    {
+                        diagnostics.RollBack(mark);
+                    }
+
+                    diagnostics.Warn("a.code", "Dropped again.");
+                }
+
+                return diagnostics.SuppressedCount;
+            },
+            out _,
+            out var suppressed);
+
+        suppressed.Should().Be(10_001);
+        allocated.Should().BeLessThan(1_000);
+    }
+
+    [Fact]
     public void Refuses_a_negative_capacity()
     {
         var negative = () => new PdfDiagnostics { Capacity = -1 };
