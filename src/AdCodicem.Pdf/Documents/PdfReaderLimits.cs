@@ -240,10 +240,13 @@ public sealed record PdfReaderLimits
     /// confirmed, and the scan reads the data of every stream it cannot confirm from then on as an intact stream's, up to
     /// its first <c>endstream</c>, the object headers there not taken: the headers of an attached file whose data holds an
     /// <c>endstream</c> of its own before the stream's are then taken past that keyword, and a comment there may hide the
-    /// objects after the stream. Reaching it reports <see cref="Diagnostics.PdfDiagnosticCodes.LimitRebuildReads"/>, once
-    /// for each rebuild, where the data starts of the first stream the bound left so; with
-    /// <see cref="PdfReaderOptions.ThrowOnLimit"/>, the rebuild finishes the index first and throws after. The bound is
-    /// taken against the file's length as the reader's source gives it, the product held at the most a position can name.
+    /// objects after the stream. An object the rebuilt index then lacks reads as null until the bound is raised, and whether
+    /// the file holds it is unknown, as for the other guards that leave objects out of the index: the validator says the
+    /// index was checked in part (<c>xref.checked-in-part</c>) rather than judge a reference to it missing. Reaching it
+    /// reports <see cref="Diagnostics.PdfDiagnosticCodes.LimitRebuildReads"/>, once for each rebuild, where the data starts
+    /// of the first stream the bound left so; with <see cref="PdfReaderOptions.ThrowOnLimit"/>, the rebuild finishes the
+    /// index first and throws after. The bound is taken against the file's length as the reader's source gives it, the
+    /// product held at the most a position can name.
     /// </para>
     /// </remarks>
     /// <exception cref="ArgumentOutOfRangeException">The value is zero or less.</exception>

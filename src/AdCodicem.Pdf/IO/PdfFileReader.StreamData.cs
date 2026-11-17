@@ -379,7 +379,7 @@ internal sealed partial class PdfFileReader
     /// (#52), and ends a memo there (<see cref="ScanMemo.Builder.EndAt"/>).
     /// </summary>
     /// <remarks>
-    /// The rebuild's scan asks it of a direct <c>/Length</c>, which it reads itself, and of an indirect one whose object it
+    /// The scan for a memo asks it of a direct <c>/Length</c>, which it reads itself, and of an indirect one whose object it
     /// reads from the file's bytes (<see cref="EndDataAtLengthObject"/>), a length past the end of the file too, or never
     /// reads (<see cref="EndAwaitedData"/>): the next object an index places, which also stops a load's search, is not looked
     /// at, for the scan reads nothing of an index. What it gives decides only where the scan's memo counts the places the
@@ -388,7 +388,8 @@ internal sealed partial class PdfFileReader
     /// the stream's, and the scan reads the data as the bytes give it, up to its first <c>endstream</c>
     /// (<see cref="ScanState.RawUntil"/>). The data is read from the file as a load past its window reads it, with the
     /// reads made for the memo's kinds (<see cref="_scanKindBytes"/>); once those have read as much as
-    /// <see cref="MemoKindReadPasses"/> lets them, no search is made.
+    /// <see cref="MemoKindReadPasses"/> lets them, no search is made. A rebuild's scan, which keeps no memo, asks nothing
+    /// (<see cref="ConfirmStream"/>).
     /// </remarks>
     /// <param name="dataStart">Where the data starts in the file.</param>
     /// <param name="declaredEnd">Where the declared length ends in the file, past its end for a length that runs past it;

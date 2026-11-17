@@ -369,7 +369,8 @@ The data of a stream whose length it does not confirm — it confirms only a dir
 reads as the bytes give it, up to the first `endstream`, taking the headers there and reading no comment, whatever that
 length says: a length it cannot confirm may be no length of the stream's — a direct one in bytes an attached file
 spells, an indirect one whose object is an older revision's or an attached file's —, and a rebuild serves the same
-objects whatever such a length says. It changes only how the headers and sections the scan takes there count. Once the
+objects whatever such a length says. It changes only how the headers and sections the scan takes there count, which
+the scan the searches near a row or an offset ask for learns, and a rebuild's own scan does not. Once the
 reads that confirm lengths reach `MaxRebuildReadPasses` times the file, though, the scan reads such data up to its first
 `endstream` and takes nothing there ([Reader limits](../reference/reader-limits.md)). Where no `endstream` follows a direct `/Length`, or an
 indirect one whose object the file's bytes give — one of the last eight objects other than streams before the stream,

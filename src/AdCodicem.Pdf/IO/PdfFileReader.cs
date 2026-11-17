@@ -274,9 +274,10 @@ internal sealed partial class PdfFileReader : IPdfObjectSource, IPdfStreamDataPr
     /// Not a guard (ADR 34): it changes no valid file's objects, nor any verdict on one. The scan reads that data as the
     /// bytes give it, up to its first <c>endstream</c>, whatever those reads find, and a rebuild takes its headers so,
     /// kinds or not; their budget is their own, apart from the confirmations' (#361), so that they never change which
-    /// streams the scan confirms, nor, through where a piece of the scan ends, what it takes. Only the searches near an
-    /// entry's offset and near an offset the chain names read the kinds, and they run only where a row or an offset is
-    /// off — no valid file's — to choose among the places they find.
+    /// streams the scan confirms, nor, through where a piece of the scan ends, what it takes. A rebuild's scan, which keeps
+    /// no memo, makes none of them (<see cref="ConfirmStream"/>). Only the searches near an entry's offset and near an
+    /// offset the chain names read the kinds, and they run only where a row or an offset is off — no valid file's — to
+    /// choose among the places they find.
     /// </remarks>
     private const int MemoKindReadPasses = 4;
 
@@ -635,16 +636,16 @@ internal sealed partial class PdfFileReader : IPdfObjectSource, IPdfStreamDataPr
     private long _scanGapBytes;
 
     /// <summary>
-    /// How many bytes the rebuild's scan read since it started to decide only how its memo counts the places it takes in
-    /// the data of a stream it does not confirm, which <see cref="MemoKindReadPasses"/> bounds: the data searched from its
-    /// start for where a load ends it (<see cref="DataEndWithoutEndStream"/>), every byte it takes counted, those the
-    /// scan's window holds included; the reads that tell such data from an intact stream's
-    /// (<see cref="StartsStreamWithin"/>), counted only past the bytes that window holds, which it searches first; and the
-    /// white space past a declared length, or past the first <c>endstream</c> of such data, that a first read cannot see
-    /// past for an <c>endobj</c> (<see cref="IsEndObjAt"/>). First reads that tell a place at once are not among them: of
-    /// 64 bytes at most after a length the scan took from the file's bytes, read no further
-    /// (<see cref="SignificantPastLength"/>), at an <c>endstream</c>, where an <c>endobj</c> may follow a length or such an
-    /// <c>endstream</c>, and at a length's object, and of 5 at a stream's data's start.
+    /// How many bytes the scan for a memo read since it started to decide only how the memo counts the places it takes in
+    /// the data of a stream it does not confirm, which <see cref="MemoKindReadPasses"/> bounds — a rebuild's scan, which
+    /// keeps no memo, reads none (<see cref="ConfirmStream"/>): the data searched from its start for where a load ends it
+    /// (<see cref="DataEndWithoutEndStream"/>), every byte it takes counted, those the scan's window holds included; the
+    /// reads that tell such data from an intact stream's (<see cref="StartsStreamWithin"/>), counted only past the bytes
+    /// that window holds, which it searches first; and the white space past a declared length, or past the first
+    /// <c>endstream</c> of such data, that a first read cannot see past for an <c>endobj</c> (<see cref="IsEndObjAt"/>).
+    /// First reads that tell a place at once are not among them: of 64 bytes at most after a length the scan took from the
+    /// file's bytes, read no further (<see cref="SignificantPastLength"/>), at an <c>endstream</c>, where an <c>endobj</c>
+    /// may follow a length or such an <c>endstream</c>, and at a length's object, and of 5 at a stream's data's start.
     /// </summary>
     private long _scanKindBytes;
 
@@ -883,6 +884,14 @@ internal sealed partial class PdfFileReader : IPdfObjectSource, IPdfStreamDataPr
     /// section of the chain whose row it was, or the header or object stream a rebuild found it in; -1 while it has room.
     /// </summary>
     private long _indexFullAt = -1;
+
+    /// <summary>
+    /// Where the scan of the rebuild that made the index reached <see cref="PdfReaderLimits.MaxRebuildReadPasses"/>, at the
+    /// data of the first stream it read as an intact stream's for it (<see cref="ReachScanReadBound"/>): the headers in the
+    /// data of the streams it could not confirm from there on were not taken, and the index stops short of the file; -1
+    /// while no rebuild's scan reached it.
+    /// </summary>
+    private long _rebuildReadsBoundedAt = -1;
 
     /// <summary>Whether the index filled as the chain was read, before any rebuild: the chain's index stops short of it.</summary>
     private bool _chainFilledIndex;
@@ -1221,9 +1230,10 @@ internal sealed partial class PdfFileReader : IPdfObjectSource, IPdfStreamDataPr
     /// one it reads with now —, is missing: a reference to it is null (ISO 32000-1, 7.3.10). One either index holds
     /// in use, and that the reader gave up on or lost in a rebuild, is unproduced: what went wrong is the index's
     /// or the object stream's, and the cross-reference rules report it. One the index lacks while a guard left part of the
-    /// chain unread, or filled the index, is unindexed: whether the file holds it is unknown; and so is one the reader could
-    /// not produce because the object stream that holds it is such an object. Object 0 is missing whatever its entry says:
-    /// it heads the free list and is never in use (ISO 32000-1, 7.5.4), and the reader never reads it.
+    /// chain unread, filled the index, or kept a rebuild's scan from reading the data of streams it could not confirm, is
+    /// unindexed: whether the file holds it is unknown; and so is one the reader could not produce because the object stream
+    /// that holds it is such an object. Object 0 is missing whatever its entry says: it heads the free list and is never in
+    /// use (ISO 32000-1, 7.5.4), and the reader never reads it.
     /// </remarks>
     internal ObjectPresence GetPresence(int number)
     {
@@ -1250,10 +1260,11 @@ internal sealed partial class PdfFileReader : IPdfObjectSource, IPdfStreamDataPr
     }
 
     /// <summary>
-    /// Gets a value indicating whether a guard stopped the index short of the file: it filled, or it is the chain's and a
-    /// guard left part of the chain unread. A rebuild scans the whole file, and lifts the second.
+    /// Gets a value indicating whether a guard stopped the index short of the file: it filled, the rebuild that made it read
+    /// past <see cref="PdfReaderLimits.MaxRebuildReadPasses"/> the data of streams its scan could not confirm as intact, or
+    /// it is the chain's and a guard left part of the chain unread. A rebuild scans the whole file, and lifts the third.
     /// </summary>
-    private bool IndexStoppedByGuard => _indexFull || (_cutByGuard && !_repaired);
+    private bool IndexStoppedByGuard => _indexFull || _rebuildReadsBoundedAt >= 0 || (_cutByGuard && !_repaired);
 
     /// <summary>
     /// Gets a value indicating whether a guard stopped <see cref="ChainIndex"/> short of the file: the index filled as the
@@ -1274,6 +1285,12 @@ internal sealed partial class PdfFileReader : IPdfObjectSource, IPdfStreamDataPr
     /// <see cref="FileStructure.IndexFullAt"/> keeps what it was when the document opened.
     /// </summary>
     internal long IndexFullAt => _indexFullAt;
+
+    /// <summary>
+    /// Gets where the scan of the rebuild that made the index reached <see cref="PdfReaderLimits.MaxRebuildReadPasses"/>, at
+    /// the data of the first stream it read as an intact stream's for it, or -1 while no rebuild's scan reached it.
+    /// </summary>
+    internal long RebuildReadsBoundedAt => _rebuildReadsBoundedAt;
 
     /// <summary>
     /// Gets the object the reader took for the catalog, <c>/Root</c> leading to none — as the document opened, or in a
@@ -1303,7 +1320,8 @@ internal sealed partial class PdfFileReader : IPdfObjectSource, IPdfStreamDataPr
 
     /// <summary>
     /// Gets a value indicating whether one of the reader's limits left objects out of the index: it filled, part of the chain
-    /// went unread, or an object stream the index places was cut before its members could be read.
+    /// went unread, a rebuild's scan read the data of streams it could not confirm as intact, or an object stream the index
+    /// places was cut before its members could be read.
     /// </summary>
     internal bool ObjectsLeftOutByGuard => IndexStoppedByGuard || _objectStreamsHiddenByGuard.Count > 0;
 

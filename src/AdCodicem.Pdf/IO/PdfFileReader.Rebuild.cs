@@ -78,6 +78,7 @@ internal sealed partial class PdfFileReader
         var reports = MarkReports();
         var indexFullAt = _indexFullAt;
         _indexFull = false;
+        _rebuildReadsBoundedAt = -1;
         _xref.Clear();
         ForgetWhatWasRead();
         var redefinitions = new Redefinitions();

@@ -58,6 +58,20 @@ internal sealed class CheckedInPartRule : IValidationRule
                 remedy: null);
         }
 
+        // A rebuild run after the document opened, as the index filling, is the reader's to say.
+        var readsBoundedAt = context.Document.Reader.RebuildReadsBoundedAt;
+
+        if (readsBoundedAt >= 0)
+        {
+            context.Report(
+                this,
+                PdfValidationLocation.AtPosition(readsBoundedAt),
+                string.Create(
+                    CultureInfo.InvariantCulture,
+                    $"At offset {readsBoundedAt} the rebuild's scan for objects had read past streams' declared lengths as much as PdfReaderLimits.MaxRebuildReadPasses lets it: the object headers in the data of the streams it could not confirm from there on were not indexed or checked."),
+                remedy: null);
+        }
+
         // A section's finding is written while the report has room for it, and counted past it (#168): there are as many as
         // the chain has sections.
         foreach (var section in structure.Sections)

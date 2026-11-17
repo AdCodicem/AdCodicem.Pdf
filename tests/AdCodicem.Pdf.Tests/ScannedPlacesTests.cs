@@ -1477,28 +1477,34 @@ public class ScannedPlacesTests
             .Select(finding => (finding.RuleId, finding.Severity)).Should().Equal((PdfValidationRuleIds.XRefEntryUnconfirmed, PdfValidationSeverity.Error));
     }
 
-    [Fact]
-    public void A_rebuild_whose_search_for_where_a_load_ends_a_stream_s_data_is_given_no_byte_takes_serves_and_says_what_a_whole_read_does()
+    [Theory]
+    [InlineData("a direct length")]
+    [InlineData("an indirect length the value before the stream holds")]
+    public void A_rebuild_s_scan_reads_nothing_at_a_stream_s_data_to_learn_where_a_load_ends_it_and_takes_serves_and_says_what_a_whole_read_does(
+        string length)
     {
-        // The file has no startxref: opening rebuilds the index, and no memo is made. Stream 5 lost its endstream, and the
-        // source gives no byte of the first read of the scan's search for where a load ends its data past its direct
-        // length, as a caller's may (#52). That search decides only how a memo counts places, and a rebuild's scan keeps
-        // none: the rebuild takes, serves and says what one whose reads are all whole does.
+        // The file has no startxref: opening rebuilds the index, and no memo is made. Stream 5 lost its endstream, and while
+        // the document opens the source gives no byte of a read that starts at its data, as a caller's may (#52): the first
+        // read of the search for where a load ends that data past its length, 10, direct or held by object 8 just before
+        // the stream. That search decides only how a memo counts places, and a rebuild's scan, which keeps none, reads
+        // neither the length's object nor where a load ends the data (#361): opening asks nothing there, and the rebuild
+        // takes, serves and says what one whose reads are all whole does.
         var file = new HandWrittenFile();
         file.Object(1, Catalog);
         file.Object(2, Pages);
-        file.Raw("5 0 obj\n<< /Length 10 >>\nstream\n");
+        file.Raw(length == "a direct length" ? "5 0 obj\n<< /Length 10 >>\nstream\n" : "8 0 obj\n10\nendobj\n5 0 obj\n<< /Length 8 0 R >>\nstream\n");
         var dataStart = file.Position;
         file.Raw("0123456789\nendobj\n");
         file.Object(12, "(twelve)");
         file.Raw("trailer\n<< /Size 13 /Root 1 0 R >>\n%%EOF\n");
         var bytes = file.Bytes;
-        var given = new HashSet<long>();
-        var source = new ShortCountSource(bytes, (offset, held) => offset == dataStart && given.Add(offset) ? 0 : held);
+        var opening = true;
+        var source = new ShortCountSource(bytes, (offset, held) => opening && offset == dataStart ? 0 : held);
         using var emptied = PdfDocument.Open(source, options: null, ownsSource: true);
+        opening = false;
         using var whole = PdfDocument.Open(bytes);
 
-        source.ShortReads.Should().Be(1);
+        source.ShortReads.Should().Be(0);
 
         foreach (var document in new[] { emptied, whole })
         {
