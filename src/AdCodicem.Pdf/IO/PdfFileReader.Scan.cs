@@ -332,9 +332,9 @@ internal sealed partial class PdfFileReader
                     trailers.Streams.Add(at);
                 }
 
-                // Once the reads that confirm lengths have read all they may, the data of a stream the scan cannot confirm is read
-                // as an intact stream's, up to its first endstream (#361): the guard is reached where that changes what the scan
-                // takes, once a scan.
+                // Once the reads that confirm lengths have read all they may, the data of each stream the scan cannot confirm is
+                // read as an intact stream's, up to its first endstream (#361): the guard is reported at the first such stream,
+                // once a scan, whatever its data holds.
                 var intact = extent.Kind == ExtentKind.UnconfirmedStream && _scanGapBytes >= ScanReadBound;
 
                 if (intact && !scan.ReadsBounded)

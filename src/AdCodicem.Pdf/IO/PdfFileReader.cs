@@ -272,12 +272,13 @@ internal sealed partial class PdfFileReader : IPdfObjectSource, IPdfStreamDataPr
     /// </summary>
     /// <remarks>
     /// Not a guard (ADR 34): it changes no valid file's objects, nor any verdict on one. The scan reads that data as the
-    /// bytes give it, up to its first <c>endstream</c>, whatever those reads find, and a rebuild takes its headers so,
-    /// kinds or not; their budget is their own, apart from the confirmations' (#361), so that they never change which
-    /// streams the scan confirms, nor, through where a piece of the scan ends, what it takes. A rebuild's scan, which keeps
-    /// no memo, makes none of them (<see cref="ConfirmStream"/>). Only the searches near an entry's offset and near an
-    /// offset the chain names read the kinds, and they run only where a row or an offset is off — no valid file's — to
-    /// choose among the places they find.
+    /// bytes give it, up to its first <c>endstream</c> — or, once its reads past declared lengths have reached
+    /// <see cref="PdfReaderLimits.MaxRebuildReadPasses"/>, as an intact stream's, nothing taken there —, whatever those
+    /// reads find, and a rebuild takes its headers so, kinds or not; their budget is their own, apart from the
+    /// confirmations' (#361), so that they never change which streams the scan confirms, nor, through where a piece of
+    /// the scan ends, what it takes. A rebuild's scan, which keeps no memo, makes none of them
+    /// (<see cref="ConfirmStream"/>). Only the searches near an entry's offset and near an offset the chain names read the
+    /// kinds, and they run only where a row or an offset is off — no valid file's — to choose among the places they find.
     /// </remarks>
     private const int MemoKindReadPasses = 4;
 

@@ -617,14 +617,13 @@ public class ReaderLimitsTests
     }
 
     [Theory]
-    [InlineData("whose lengths end in one run of white space", 8)]
-    [InlineData("of no length, each before a run of white space of its own", 16)]
-    [InlineData("of no length, each before a run of white space of its own", 40)]
-    [InlineData("that lost their endstream, glued to a sign", 32)]
-    [InlineData("that lost their endstream, glued to an end-of-file marker", 32)]
-    [InlineData("that lost their endstream, before a mebibyte of text", 5)]
+    [InlineData("whose lengths end in one run of white space", 8, true)]
+    [InlineData("of no length, each before a run of white space of its own", 16, false)]
+    [InlineData("that lost their endstream, glued to a sign", 32, false)]
+    [InlineData("that lost their endstream, glued to an end-of-file marker", 32, false)]
+    [InlineData("that lost their endstream, before a mebibyte of text", 5, false)]
     public void A_valid_file_a_guard_sends_into_a_rebuild_serves_no_object_a_stream_s_data_spells_after_streams_an_attached_file_s_bytes_spell(
-        string spelled, int count)
+        string spelled, int count, bool reached)
     {
         // Object 10, an attached file with an indirect /Length, spells streams in its data: their direct lengths end where
         // one run of a mebibyte of spaces starts; or they have no length, and 64 KiB of spaces follow each before an endobj;
@@ -633,9 +632,12 @@ public class ReaderLimitsTests
         // a first read cannot see past, and its data spells object 77, which the file does not define. MaxXRefSectionLength
         // cuts the table, and the rebuild's scan reads object 10's data as objects: the reads past the spelled streams'
         // lengths, and, for the memo's kinds, the searches for where a load ends their data, spent the reads that confirm
-        // lengths, and the scan, which could not confirm object 30, took object 77 from its data (#361). The memo's reads
-        // have a budget of their own, and data the scan cannot confirm once the confirmations' is spent is read up to its
-        // first endstream, nothing taken there.
+        // lengths, and the scan, which could not confirm object 30, took object 77 from its data (#361). A rebuild's scan
+        // makes none of the memo's reads, and only the reads that confirm the spelled streams' lengths count against
+        // MaxRebuildReadPasses: one run of white space all their lengths end in, which each read crosses, reaches it, and the
+        // scan reads object 30's data, which it can no longer confirm, up to its first endstream, nothing taken there; a run
+        // of its own after each, which only that stream's reads cross, does not, nor do streams that lost their endstream,
+        // and the scan confirms object 30.
         var data = new StringBuilder();
         const int Each = 42;
 
@@ -676,6 +678,7 @@ public class ReaderLimitsTests
         document.GetObject(new PdfObjectId(30)).AsStream().Required().GetRawBytes().Length.Should().Be(24);
         document.WasRepaired.Should().BeTrue();
         document.Diagnostics.Should().Contain(diagnostic => diagnostic.Code == PdfDiagnosticCodes.LimitXRefSectionLength);
+        document.Diagnostics.Contains(PdfDiagnosticCodes.LimitRebuildReads).Should().Be(reached);
     }
 
     [Fact]

@@ -35,9 +35,9 @@ codes in the diagnostics reference (`docs/website/docs/reference/diagnostics.md`
 What a caller entrusts to the library when it opens a file it did not produce:
 
 - **The process's memory.** Memory follows the heaviest object the caller touches, not the size of the file
-  (invariant 2). No allocation is sized by a value from the file without a checked bound (invariant 4). The eight
-  guards cap what a valid but exceptional file may make the reader hold. Two of the validator's walks still hold, of a
-  hostile file, more than the reader's cache ([#309], [#311]).
+  (invariant 2). No allocation is sized by a value from the file without a checked bound (invariant 4). The nine
+  guards cap what a valid but exceptional file may make the reader hold, or, for `MaxRebuildReadPasses`, read. Two of
+  the validator's walks still hold, of a hostile file, more than the reader's cache ([#309], [#311]).
 - **The process's time, and the calling thread.** The aim is that every call does work in proportion to the bytes
   it reads, under the guards. Some shapes break it today ([#181]). No call can be
   canceled yet ([M03] slice 9, [M23] slice 11). A .NET thread cannot be aborted, so a slow call holds its thread

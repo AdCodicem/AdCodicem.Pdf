@@ -1930,8 +1930,7 @@ public class ScannedPlacesTests
     [InlineData("a stream keyword, 300,000 bytes on", 0, "Clean")]
     [InlineData("a stream keyword that ends the scan's piece", 0, "Clean")]
     [InlineData("a stream keyword, 300,000 bytes on, the first read past the piece given short", 0, "Raw")]
-    [InlineData("a stream keyword, 300,000 bytes on, in the read before which the scan's reads past declared lengths reach four times the file", 20, "Clean", 300, 403_308)]
-    [InlineData("a stream keyword, 300,000 bytes on, in the read before which the scan's reads past declared lengths fall four bytes short of four times the file", 20, "Clean", 300, 403_309)]
+    [InlineData("a stream keyword, 300,000 bytes on, read whatever the scan's reads past declared lengths spent before it", 20, "Clean", 300, 403_308)]
     [InlineData("no stream keyword, a megabyte and more before its endstream", 0, "Clean")]
     [InlineData("no stream keyword, a megabyte and more before its endstream, the end of the file within a read past the megabyte", 0, "Clean", 2000)]
     [InlineData("no stream keyword, a megabyte and more before its endstream", 20, "Clean")]
@@ -1949,10 +1948,10 @@ public class ScannedPlacesTests
         // starts where the first read past the piece does, which that read does not tell; a keyword the piece ends with is
         // told by the read past the piece, which repeats it with the byte after. A read the source gives short leaves object
         // 9's header Raw, as in an intact stream. The scan's reads past declared lengths do not: stream headers before it,
-        // whose direct lengths end where one run of 256 KiB of white space starts, each read that run, and white space before
-        // the table sets where they come near four times the length of the file — 403,308 bytes, where they reached it,
-        // counted with these reads, just before the read that holds a keyword 300,000 bytes on, or one byte more —, but
-        // these reads have a budget of their own, and the scan makes that read, and the megabyte's, either way (#361).
+        // whose direct lengths end where one run of 256 KiB of white space starts, each read that run, and 403,308 bytes of
+        // white space before the table set where those reads, counted with these, reached four times the length of the file,
+        // just before the read that holds a keyword 300,000 bytes on; but these reads have a budget of their own, and the
+        // scan makes that read, and the megabyte's, whatever the reads past declared lengths spent (#361).
         const int Piece = 1 << 20;
         var file = new HandWrittenFile();
         var rows = new Dictionary<int, long> { [1] = file.Object(1, Catalog), [2] = file.Object(2, Pages) };
