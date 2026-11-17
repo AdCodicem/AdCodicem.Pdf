@@ -947,14 +947,17 @@ internal sealed partial class PdfFileReader
     /// </summary>
     /// <remarks>
     /// It runs on the index the chain gave, and on a rebuilt one. Loading a candidate from the chain's index can
-    /// rebuild it — the candidate's entry being broken —, and the rebuild runs a search of its own: the search it
-    /// interrupted stops there, over the numbers it copied before it began.
+    /// rebuild it — the candidate's entry being broken —, and the rebuild runs a search of its own, once the load in flight
+    /// returns, over the rebuilt index, the candidate among it: the search it interrupted stops there, over the numbers it
+    /// copied before it began (#229). A candidate one of the reader's limits cut before it could say whether it is a
+    /// catalog is noted (<see cref="CatalogCandidateCut"/>): a catalog may lie past the cut.
     /// </remarks>
     private ExceptionDispatchInfo? FindCatalog()
     {
         ExceptionDispatchInfo? reached = null;
         var rebuilt = _repaired;
         var numbers = _xref.CopyNumbers();
+        _catalogCandidateCut = false;
 
         foreach (var number in numbers)
         {
@@ -969,6 +972,7 @@ internal sealed partial class PdfFileReader
             catch (PdfLimitExceededException exception)
             {
                 reached ??= ExceptionDispatchInfo.Capture(exception);
+                _catalogCandidateCut = true;
                 continue;
             }
 
@@ -976,6 +980,9 @@ internal sealed partial class PdfFileReader
             {
                 break;
             }
+
+            // A dictionary a guard cut may give /Type /Catalog past the cut, or be a stream whose dictionary does.
+            _catalogCandidateCut |= !isCatalog && IsCutAtLimit(number);
 
             if (isCatalog)
             {

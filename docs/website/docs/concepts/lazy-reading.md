@@ -276,7 +276,7 @@ the chain going on through the table that names it. Four cases fall short: an ol
 revision's stream before the one the `/XRefStm` read, nearer than its own table, is taken, and where it gives no `/Prev`
 the chain ends there, what only the sections it skips index reading as null, or as the older revision the stream gives,
 nothing reported of it but the section found moved — unless the catalog is among it: the map is then rebuilt as the
-document opens, which finds it, and the validator says the file holds no catalog
+document opens, which finds it, and the validator names the catalog only the rebuild found
 ([#260](https://github.com/AdCodicem/AdCodicem.Pdf/issues/260)) —; where it gives a `/Prev`, the chain goes on through
 it, its own revision's table unread, what only that table indexes reading as null, nothing reported of it but the
 section found moved, and nothing rebuilt ([#333](https://github.com/AdCodicem/AdCodicem.Pdf/issues/333)); where the

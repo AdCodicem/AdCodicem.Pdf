@@ -697,6 +697,12 @@ internal sealed partial class PdfFileReader : IPdfObjectSource, IPdfStreamDataPr
     private int _catalogFoundAs;
 
     /// <summary>
+    /// Whether the last search for a catalog passed over an object one of the reader's limits cut before it could say whether
+    /// it is one (<see cref="FindCatalog"/>).
+    /// </summary>
+    private bool _catalogCandidateCut;
+
+    /// <summary>
     /// The object <see cref="PdfDiagnosticCodes.TrailerRootRecovered"/> last named, 0 while it named none — object 0 heads the
     /// free list, and no catalog is: a rebuild after opening sets aside the catalog a search took, and the search it runs
     /// takes the same object again, which is not reported twice.
@@ -1261,6 +1267,25 @@ internal sealed partial class PdfFileReader : IPdfObjectSource, IPdfStreamDataPr
     /// document opened.
     /// </summary>
     internal int CatalogFoundAs => _catalogFoundAs;
+
+    /// <summary>
+    /// Gets a value indicating whether the last search for a catalog passed over an object one of the reader's limits cut
+    /// before it could say whether it is one: a catalog may lie past the cut, and the limit's report names it (#260).
+    /// </summary>
+    internal bool CatalogCandidateCut => _catalogCandidateCut;
+
+    /// <summary>
+    /// Gets a value indicating whether the trailer's <c>/Root</c>, as the reader holds it now — through a rebuilt index too,
+    /// or where a search set it —, leads to a catalog: a dictionary of <c>/Type /Catalog</c>, or one that gives
+    /// <c>/Pages</c>.
+    /// </summary>
+    internal bool HasCatalog => HasUsableRoot();
+
+    /// <summary>
+    /// Gets a value indicating whether the trailer's <c>/Root</c>, as the reader holds it now, names an object one of the
+    /// reader's limits cut or left out of the index, which the reader takes as read rather than look for another.
+    /// </summary>
+    internal bool RootLeadsPastGuard => RootCutByGuard() || RootLeftOutByGuard();
 
     /// <summary>Gets how many objects the reader keeps in its cache, at most.</summary>
     internal int CacheCapacity => _cacheCapacity;

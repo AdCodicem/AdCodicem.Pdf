@@ -553,6 +553,107 @@ public class FileRuleTests
         document.Diagnostics.Where(diagnostic => diagnostic.Code == PdfDiagnosticCodes.TrailerRootRecovered).Should().ContainSingle();
     }
 
+    private const string Outlines = """
+        %PDF-1.7
+        1 0 obj
+        << /Type /Outlines >>
+        endobj
+        2 0 obj
+        << /Type /Pages /Kids [3 0 R] /Count 1 >>
+        endobj
+        3 0 obj
+        << /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << >> >>
+        endobj
+
+        """;
+
+    private const string SoundObjects = """
+        %PDF-1.7
+        1 0 obj
+        << /Type /Catalog /Pages 2 0 R >>
+        endobj
+        2 0 obj
+        << /Type /Pages /Kids [3 0 R] /Count 1 >>
+        endobj
+        3 0 obj
+        << /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << >> >>
+        endobj
+
+        """;
+
+    private const string RebuiltToOne = " The reader rebuilt the index, through which /Root leads to object 1, which is one.";
+
+    [Theory]
+    [InlineData(
+        Outlines + "xref\n0 4\n{free}\n{row:1}\n{row:2}\n{row:3}\ntrailer\n<< /Size 4 /Root 1 0 R >>\nstartxref\n{xref:1}\n%%EOF\n1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n",
+        0, "The trailer's /Root names object 1 0, which is a dictionary of /Type /Outlines, not a document catalog." + RebuiltToOne)]
+    [InlineData(
+        SoundObjects + "xref\n0 1\n{free}\ntrailer\n<< /Size 4 /Root 1 0 R >>\nstartxref\n{xref:1}\n%%EOF\n",
+        0, "The trailer's /Root names object 1 0, which the cross-reference chain does not place." + RebuiltToOne)]
+    [InlineData(
+        SoundObjects + "4 0 obj\n<< /Type /XRef /Size 4 /W [1 4 2] /Root 1 0 R /Filter /ASCIIHexDecode /Length 57 >>\nstream\n03000000000000030000000000000300000000000003000000000000>\nendstream\nendobj\nstartxref\n{off:4}\n%%EOF\n",
+        0, "The trailer's /Root names object 1 0, which the cross-reference chain does not place." + RebuiltToOne)]
+    [InlineData(
+        Outlines + "5 0 obj\n<<                                                                                                                                                                                                        /Type /Catalog /Pages 2 0 R >>\nendobj\nxref\n0 4\n{free}\n{row:1}\n{row:2}\n{row:3}\n5 1\n{row:5}\ntrailer\n<< /Size 6 /Root 1 0 R >>\nstartxref\n{xref:1}\n%%EOF\n",
+        128, "The trailer's /Root names object 1 0, which is a dictionary of /Type /Outlines, not a document catalog. No object the reader read whole is a catalog: one of the reader's limits cut some, which its report names.")]
+    public void A_root_that_leads_to_no_catalog_ends_with_what_the_reader_knows_of_the_catalog(string template, int maxObjectLength, string message)
+    {
+        // A later definition of object 1 only a rebuild finds; a chain whose only row frees object 0; a chain whose rows are
+        // all of a reserved type; and a candidate MaxObjectLength cuts before its /Type. The finding says what the reader knows:
+        // the catalog a rebuild made /Root lead to, or none among the objects it read whole (#132, #260).
+        var file = PdfTemplate.Build(template);
+        var options = maxObjectLength > 0 ? new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxObjectLength = maxObjectLength } } : null;
+        using var document = PdfDocument.Open(file, options);
+
+        Single(new PdfValidator().Validate(document), PdfValidationRuleIds.FileRootInvalid).Message.Should().Be(message);
+    }
+
+    [Fact]
+    public void A_root_only_an_older_trailer_gives_which_a_rebuild_merges_is_said_to_lead_to_the_catalog()
+    {
+        // The newest table indexes new copies of objects 2 and 3 and gives no /Root; its /Prev is a reference to a free row, so
+        // the chain never reaches the older table, which gives /Root. The rebuild merges the older trailer, and /Root leads to
+        // the catalog: the finding says so, not that no object is one (#260).
+        var file = new HandWrittenFile();
+        var catalog = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>");
+        var pages = file.Object(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>");
+        var page = file.Object(3, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << >> >>");
+        file.Table(4, new() { [1] = catalog, [2] = pages, [3] = page }, "/Size 4 /Root 1 0 R");
+        var newPages = file.Object(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>");
+        var newPage = file.Object(3, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << >> >>");
+        var newest = file.Position;
+        file.Raw(string.Create(
+            CultureInfo.InvariantCulture,
+            $"xref\n0 1\n0000000000 65535 f \n2 2\n{newPages:D10} 00000 n \n{newPage:D10} 00000 n \n21 1\n0000000000 00001 f \ntrailer\n<< /Size 22 /Prev 21 0 R >>\nstartxref\n{newest}\n%%EOF\n"));
+        using var document = PdfDocument.Open(file.Bytes);
+
+        Single(new PdfValidator().Validate(document), PdfValidationRuleIds.FileRootInvalid).Message.Should().Be("The trailer has no /Root." + RebuiltToOne);
+    }
+
+    [Theory]
+    [InlineData("<< /Type /Outlines >>", "/Root 5 0 R", "The trailer's /Root names object 5 0, which the file does not hold. No object of the file is a catalog.")]
+    [InlineData("<< /Type /Outlines >>", "", "No trailer of the file gives /Root. No object of the file is a catalog.")]
+    [InlineData("<< /Type /Catalog /Pages 2 0 R >>", "/Root 1 0 R", null)]
+    [InlineData("<< /Type /Catalog /Pages 2 0 R >>", "/Root 5 0 R", null)]
+    public void A_document_rebuilt_as_it_opens_is_judged_by_its_trailers_root_when_no_object_is_a_catalog(string one, string root, string? message)
+    {
+        // startxref names no section, and the index is rebuilt as the document opens. Where no object of the file is a catalog,
+        // the trailer the rebuild merged is judged; where its /Root leads to one, or a search finds one, the document has a way
+        // in, and the rules that judge the chain say what went wrong (#132).
+        var file = PdfTemplate.SoundWith("<< /Type /Catalog /Pages 2 0 R >>", one);
+        file = Encoding.Latin1.GetBytes(Encoding.Latin1.GetString(file)
+            .Replace("/Root 1 0 R", root, StringComparison.Ordinal)
+            .Replace(string.Create(CultureInfo.InvariantCulture, $"startxref\n{PdfTemplate.OffsetOf(file, "xref\n")}\n"), "startxref\n9\n", StringComparison.Ordinal));
+        using var document = PdfDocument.Open(file);
+
+        var report = new PdfValidator().Validate(document);
+
+        document.Reader.Structure.ChainRead.Should().BeFalse();
+        report.Contains(PdfValidationRuleIds.FileStartXRefWrong).Should().BeTrue();
+        report.Findings.Where(finding => finding.RuleId == PdfValidationRuleIds.FileRootInvalid).Select(finding => finding.Message)
+            .Should().Equal(message is null ? [] : [message]);
+    }
+
     [Theory]
     [InlineData(22, "/Type /Cata")]
     [InlineData(24, "/Type /Catalo")]
@@ -641,7 +742,7 @@ public class FileRuleTests
 
         var finding = context.ToReport(ValidationProfile.Structural).Findings.Should().ContainSingle().Which;
         finding.Location.IsDocument.Should().BeTrue();
-        finding.Message.Should().Be("The trailer has no /Root. No object of the file is a catalog.");
+        finding.Message.Should().Be("The trailer has no /Root." + RebuiltToOne);
     }
 
     [Theory]
