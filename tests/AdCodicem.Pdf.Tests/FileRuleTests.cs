@@ -717,6 +717,43 @@ public class FileRuleTests
         report.Contains(PdfValidationRuleIds.XRefCheckedInPart).Should().BeTrue();
     }
 
+    [Fact]
+    public void A_document_rebuilt_as_it_opens_whose_object_a_guard_cut_is_not_judged_for_its_catalog()
+    {
+        // MaxObjectLength cuts object 5 before its /Type, and startxref names no section. /Root names an outline: no object
+        // the reader read whole is a catalog, but the cut one may be, or an object stream that holds one (#132, ADR 34).
+        var template = Outlines + "5 0 obj\n<<" + new string(' ', 200) + "/Type /Catalog /Pages 2 0 R >>\nendobj\n" +
+            "xref\n0 4\n{free}\n{row:1}\n{row:2}\n{row:3}\ntrailer\n<< /Size 6 /Root 1 0 R >>\nstartxref\n99999\n%%EOF\n";
+        using var document = PdfDocument.Open(PdfTemplate.Build(template), CutAt(128));
+
+        var report = new PdfValidator().Validate(document);
+
+        document.Reader.Structure.ChainRead.Should().BeFalse();
+        document.Reader.IsCutAtLimit(5).Should().BeTrue();
+        document.Reader.RootLeadsPastGuard.Should().BeFalse();
+        document.Reader.ObjectsLeftOutByGuard.Should().BeTrue();
+        report.Contains(PdfValidationRuleIds.FileRootInvalid).Should().BeFalse(string.Join("; ", report.Findings));
+    }
+
+    [Fact]
+    public void A_root_the_chain_does_not_place_which_a_rebuild_leaves_out_of_its_full_index_is_said_to_lead_past_the_guard()
+    {
+        // The chain places objects 1 to 3, not object 13, which /Root names. The rebuild run as the document opens fills its
+        // index before object 13: the reader takes /Root as it leads there and looks for no other catalog (#260, ADR 34).
+        var template = Outlines +
+            string.Concat(Enumerable.Range(4, 9).Select(number => string.Create(CultureInfo.InvariantCulture, $"{number} 0 obj\n<< /F {number} >>\nendobj\n"))) +
+            "13 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\nxref\n0 4\n{free}\n{row:1}\n{row:2}\n{row:3}\ntrailer\n<< /Size 14 /Root 13 0 R >>\nstartxref\n{xref:1}\n%%EOF\n";
+        using var document = PdfDocument.Open(PdfTemplate.Build(template), new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxIndexEntries = 8 } });
+
+        var report = new PdfValidator().Validate(document);
+
+        document.Reader.Structure.ChainRead.Should().BeTrue();
+        document.Reader.IsCutAtLimit(13).Should().BeFalse();
+        Single(report, PdfValidationRuleIds.FileRootInvalid).Message.Should().Be(
+            "The trailer's /Root names object 13 0, which read as null through the cross-reference chain. The reader rebuilt the index, through which /Root leads to object 13, which one of the reader's limits cut or left out of the index, and looks for no other.");
+        report.Contains(PdfValidationRuleIds.XRefCheckedInPart).Should().BeTrue();
+    }
+
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
