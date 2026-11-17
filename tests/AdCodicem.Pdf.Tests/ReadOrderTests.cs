@@ -449,6 +449,37 @@ public class ReadOrderTests
     }
 
     [Fact]
+    public void A_catalog_a_guard_cut_which_the_search_took_is_said_to_be_cut_once_the_caller_removes_root()
+    {
+        // Opening takes catalog 20, which MaxObjectLength cuts after its /Type. Object 40's row leads nowhere: the validator
+        // rebuilds the index, which serves a later object 1, a catalog, and searches for none. Once the caller removes /Root,
+        // the finding ends with what the search that took 20 met: an object a limit cut, which the catalog it took is.
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "<< /Type /Foo >>"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>"),
+            [3] = file.Object(3, Page),
+            [20] = file.Object(20, "<< /Type /Catalog /Pages 2 0 R" + new string(' ', 2000) + ">>"),
+        };
+        rows[6] = file.Padding(6);
+        rows[40] = rows[6] + 600;
+        file.Object(40, "<< /Title (info) >>");
+        file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>");
+        file.Table(41, rows, "/Size 41 /Info 40 0 R /Root 1 0 R");
+        using var document = PdfDocument.Open(file.Bytes, new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxObjectLength = 1300 } });
+
+        document.Reader.CatalogFoundAs.Should().Be(20);
+        document.Reader.IsCutAtLimit(20).Should().BeTrue();
+        new PdfValidator().Validate(document).Findings.Single(finding => finding.RuleId == PdfValidationRuleIds.FileRootInvalid).Message.Should().Be(
+            "The trailer's /Root names object 1 0, which is a dictionary of /Type /Foo, not a document catalog. The reader rebuilt the index, through which /Root leads to object 1, which is one.");
+        document.Trailer.Remove(PdfName.Root);
+
+        new PdfValidator().Validate(document).Findings.Single(finding => finding.RuleId == PdfValidationRuleIds.FileRootInvalid).Message.Should().Be(
+            "The trailer's /Root names object 1 0, which is a dictionary of /Type /Foo, not a document catalog. No object the reader read whole is a catalog: one of the reader's limits cut some, which its report names.");
+    }
+
+    [Fact]
     public void A_candidate_a_guard_cut_as_a_rebuild_s_search_threw_is_said_to_be_cut_to_a_caller_that_goes_on()
     {
         // As above, with a later object 30 the chain does not index, a catalog MaxObjectLength cuts before its /Type, and the
