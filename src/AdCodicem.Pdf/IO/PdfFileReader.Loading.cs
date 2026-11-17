@@ -199,7 +199,9 @@ internal sealed partial class PdfFileReader
     /// diagnostics — with the real ones reported once per attempt. What nested loads report, such as a
     /// relocated <c>/Length</c> object, goes straight to the document's diagnostics and stays there. An object
     /// that still runs past the window once the guard allows no larger one is kept as far as it was read, and
-    /// the guard is reported in place of what the cut made the parser notice.
+    /// the guard is reported in place of what the cut made the parser notice. One whose value the window holds whole, the
+    /// token after it alone past the edge, is not read again where the window holds the next object's header
+    /// (<see cref="WindowHoldsNextHeader"/>).
     /// </remarks>
     /// <param name="offset">Where the object starts in the file.</param>
     /// <param name="number">The object's number, <see cref="AnyObject"/> or <see cref="DirectObject"/>.</param>
@@ -323,7 +325,11 @@ internal sealed partial class PdfFileReader
 
                 var lengthFault = parser.LengthFault;
 
-                if (parser.IsTruncated && cut)
+                // Each object the index places in a long run of comments would otherwise read every line after it to find the
+                // token after its value: a rebuild, which loads them all, would take time in the square of the lines (#362).
+                var endsAtNextHeader = parser.IsTruncatedAfterValue && cut && WindowHoldsNextHeader(number, offset, bytes.Span);
+
+                if (parser.IsTruncated && cut && !endsAtNextHeader)
                 {
                     if (windowSize < maxWindow)
                     {
@@ -381,6 +387,47 @@ internal sealed partial class PdfFileReader
             // Whatever an attempt that was not kept noticed is dropped with it, however it ended.
             _pending.RollBack(mark);
         }
+    }
+
+    /// <summary>
+    /// Determines whether <paramref name="bytes"/>, read from <paramref name="offset"/> for object <paramref name="number"/>,
+    /// already hold the header of the next object the indexes place after that offset, and <see cref="HeaderCheckWindow"/>
+    /// bytes from where it starts. Where they do, an object whose value they hold whole, the token after it alone past their
+    /// edge, is kept as read rather than read again in a larger window (<see cref="TryParseNumberedAt"/>): what lies past
+    /// the value is that next object's, and the object ends where it starts, as it ends the containers an object left open
+    /// (#230). Its <c>endobj</c> is then unseen, recorded neither found nor missing, and no guard is reached for it; a
+    /// dictionary whose <c>stream</c> keyword lies past that header is read as a dictionary.
+    /// </summary>
+    /// <remarks>
+    /// The next object is the one <see cref="NextObjectStart"/> places, or, where the index was rebuilt after the chain was
+    /// read, the nearer of that one and the next the rebuilt index places, which alone places what only the rebuild found.
+    /// Its row counts only where the bytes spell an object header that starts exactly there, as the search near an offset and
+    /// the rebuild's scan read one (<see cref="TryReadHeaderBackwards"/>): a row shifted into the gap after the value stops
+    /// no larger window, and what follows the value is read. No valid file places a header inside another object.
+    /// </remarks>
+    private bool WindowHoldsNextHeader(int number, long offset, ReadOnlySpan<byte> bytes)
+    {
+        var next = NextObjectStart(number, offset) ?? long.MaxValue;
+
+        if (_repaired && !ReferenceEquals(SearchIndex, _xref))
+        {
+            var rebuilt = _xref.FirstOffsetAfter(offset - _headerOffset);
+
+            if (rebuilt < _source.Length - _headerOffset)
+            {
+                next = Math.Min(next, rebuilt + _headerOffset);
+            }
+        }
+
+        // The byte after the obj keyword is held too: it tells obj from a longer word.
+        if (next - offset >= bytes.Length - HeaderCheckWindow)
+        {
+            return false;
+        }
+
+        var at = (int)(next - offset);
+        var keyword = bytes.Slice(at, HeaderCheckWindow).IndexOf(ObjKeyword);
+        return keyword >= 0 && TryReadHeaderBackwards(bytes, at + keyword, out _, out _, out var headerStart) && headerStart == at;
     }
 
     /// <summary>

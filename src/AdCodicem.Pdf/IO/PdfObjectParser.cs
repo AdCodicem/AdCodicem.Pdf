@@ -65,6 +65,12 @@ internal ref struct PdfObjectParser
     private bool _truncated;
 
     /// <summary>
+    /// Whether the end of the buffer cut nothing of the last indirect object read but the token after its value
+    /// (<see cref="IsTruncatedAfterValue"/>).
+    /// </summary>
+    private bool _truncatedAfterValue;
+
+    /// <summary>
     /// Whether the end of the data was reported already: a cut leaves every construct around it open, and is reported
     /// once, for the innermost.
     /// </summary>
@@ -229,6 +235,14 @@ internal ref struct PdfObjectParser
     public readonly bool IsTruncated => _truncated;
 
     /// <summary>
+    /// Gets a value indicating whether the last indirect object <see cref="TryReadIndirectObject"/> read was whole in the
+    /// buffer, its value read up to its last token, and only the token after it lay past the end of the buffer: a larger
+    /// buffer, which <see cref="IsTruncated"/> asks for, could say no more than whether <c>endobj</c> follows the value — or,
+    /// after a dictionary, <c>stream</c>, which makes it a stream's.
+    /// </summary>
+    public readonly bool IsTruncatedAfterValue => _truncatedAfterValue;
+
+    /// <summary>
     /// Gets a value indicating whether a parse that reads no stream stopped at a <c>stream</c> keyword after a dictionary,
     /// every container it had open ending there. An object stream member's parse does when the member is written as a
     /// stream, or holds one: a dictionary followed by <c>stream</c>, which an object stream cannot hold (ISO 32000-1 7.5.7),
@@ -324,6 +338,7 @@ internal ref struct PdfObjectParser
     {
         id = default;
         value = PdfNull.Instance;
+        _truncatedAfterValue = false;
 
         var start = _lexer.Position;
         var number = _lexer.Read();
@@ -399,6 +414,8 @@ internal ref struct PdfObjectParser
             // buffer, and the reader serves it from the file.
             if (value is not PdfStream && unseen)
             {
+                // A larger buffer reads the value alike, unless its parse met the edge or the edge ended it.
+                _truncatedAfterValue = !_truncated && !_headerUndecided && !_lookAheadCut;
                 _truncated = true;
             }
 

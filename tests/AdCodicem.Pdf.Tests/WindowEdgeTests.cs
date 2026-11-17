@@ -536,6 +536,46 @@ public class WindowEdgeTests
     }
 
     [Theory]
+    [InlineData(100, 0, false, false, false)]
+    [InlineData(100, -2, false, true, false)]
+    [InlineData(PdfFileReader.InitialObjectWindow - 65, 0, false, false, false)]
+    [InlineData(PdfFileReader.InitialObjectWindow - 64, 0, false, true, false)]
+    [InlineData(100, 0, true, false, false)]
+    [InlineData(100, -2, true, false, true)]
+    public void A_dictionary_whose_stream_keyword_lies_past_the_window_is_read_whole_unless_the_window_holds_the_next_header_placed(
+        int headerAt, int rowShift, bool guarded, bool stream, bool cut)
+    {
+        // Object 5's dictionary, then more comment lines than the window holds, then its stream keyword; the table places
+        // object 6 at a header a comment line holds headerAt bytes into object 5, or rowShift bytes from it. Where the window
+        // holds that header and the bytes after it, object 5 ends there, a dictionary, and reaches no guard; a row that is
+        // no header's start, or a header too near the window's edge, leaves the window to grow and read the stream (#362).
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"),
+            [ObjectNumber] = file.Position,
+        };
+        const string Head = "5 0 obj\n<< /Length 3 >>\n";
+        file.Raw(Head + "%" + new string('c', headerAt - Head.Length - 4) + "\n% ");
+        rows[6] = file.Position + rowShift;
+        file.Raw("6 0 obj << >>\n%" + new string('c', Window) + "\nstream\nabc\nendstream\nendobj\n");
+        file.Table(7, rows, "/Size 7 /Root 1 0 R");
+        var limits = PdfReaderLimits.Default;
+        using var document = PdfDocument.Open(
+            file.Bytes, new PdfReaderOptions { Limits = guarded ? limits with { MaxObjectLength = Window } : limits });
+
+        var read = document.GetObject(new PdfObjectId(ObjectNumber));
+
+        (read is PdfStream).Should().Be(stream);
+        (read is PdfStream { Dictionary: var dictionary } ? dictionary : read.AsDictionary().Required())
+            .GetInteger(PdfName.Length).Should().Be(3);
+        document.Reader.IsCutAtLimit(ObjectNumber).Should().Be(cut);
+        document.Reader.IsEndObjMissing(ObjectNumber, out _).Should().BeFalse();
+        document.Diagnostics.Select(entry => entry.Code).Should().Equal(cut ? [PdfDiagnosticCodes.LimitObject] : []);
+    }
+
+    [Theory]
     [InlineData(-40)]
     [InlineData(-20)]
     [InlineData(-3)]
