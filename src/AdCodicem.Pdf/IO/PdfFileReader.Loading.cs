@@ -199,7 +199,7 @@ internal sealed partial class PdfFileReader
     /// diagnostics — with the real ones reported once per attempt. What nested loads report, such as a
     /// relocated <c>/Length</c> object, goes straight to the document's diagnostics and stays there. An object
     /// that still runs past the window once the guard allows no larger one is kept as far as it was read, and
-    /// the guard is reported in place of what the cut made the parser notice. An object whose data a header the indexes place
+    /// the guard is reported in place of what the cut made the parser notice. An object whose data a header an index places
     /// ends is read up to that header, and no further (<see cref="HeaderEndingData"/>).
     /// </remarks>
     /// <param name="offset">Where the object starts in the file.</param>
@@ -348,11 +348,18 @@ internal sealed partial class PdfFileReader
                         truncated = false;
                         endedAtHeader = true;
                     }
-                    else if (end == RowUndecided && !truncated && windowSize < maxWindow)
+                    else if (end == RowUndecided && !truncated)
                     {
-                        _pending.RollBack(mark);
-                        windowSize = (int)Math.Min((long)windowSize * 8, maxWindow);
-                        continue;
+                        if (windowSize < maxWindow)
+                        {
+                            _pending.RollBack(mark);
+                            windowSize = (int)Math.Min((long)windowSize * 8, maxWindow);
+                            continue;
+                        }
+
+                        // The largest window the guard allows does not say whether a row starts a header: the guard is
+                        // reached, as where the window's edge cuts the parse.
+                        truncated = true;
                     }
                 }
 
@@ -419,13 +426,13 @@ internal sealed partial class PdfFileReader
 
     /// <summary>
     /// Finds where the data of object <paramref name="number"/>, read from <paramref name="offset"/> through
-    /// <paramref name="bytes"/>, ends at the header of another object the indexes place, which its parse read past without
-    /// seeing it as tokens: the first row the indexes give past where the object's value starts, the object's own aside, at
-    /// which an object header starts exactly, as the search near an offset and the rebuild's scan read one
-    /// (<see cref="TryReadHeaderBackwards"/>), if no token of the parse starts there — the header lies in a comment, inside a
-    /// token, or past the window's edge. Gives where in <paramref name="bytes"/> it starts; -1 where there is none;
-    /// <see cref="RowUndecided"/> where a row lies too near the edge of <paramref name="bytes"/>, which must hold it and
-    /// <see cref="HeaderCheckWindow"/> bytes past it, for them to say.
+    /// <paramref name="bytes"/>, ends at the header of another object an index places, which its parse read past without
+    /// seeing it as tokens: the first row past where the object's value starts — the rows of the chain's index, and, for an
+    /// object the rebuild's scan found inside another (<see cref="_foundInside"/>), those of the rebuilt index, each index's
+    /// entry of the object stepped over — from which a header lexes forward as a load reads one
+    /// (<see cref="RowLexer"/>), if no token of the parse starts there — the header lies in a comment, inside a token, or
+    /// past the window's edge. Gives where in <paramref name="bytes"/> it starts; -1 where there is none;
+    /// <see cref="RowUndecided"/> where the lexing from a row reaches the edge of <paramref name="bytes"/> undecided.
     /// </summary>
     /// <remarks>
     /// <para>
@@ -437,24 +444,25 @@ internal sealed partial class PdfFileReader
     /// it, every object a long run of such lines places read every line after it, its window grown until the value ended,
     /// and a rebuild, which loads every object it places, or a validation, which loads them all, took time in the square of
     /// the lines (#362). No valid file is read so: no index of one places a header inside another object, and a row a few
-    /// bytes off starts no header.
+    /// bytes off starts no header. A rebuilt index may, where the scan could not delimit a valid object — a string that
+    /// quotes an object's header and <c>endobj</c>, a comment that holds <c>obj</c>, an object past
+    /// <see cref="PdfReaderLimits.MaxObjectLength"/> — and took the headers it holds: only the objects found so end at the
+    /// rows it alone gives, and the valid object is read whole, its guard reached where its length passes the bound.
     /// </para>
     /// <para>
     /// The rule holds where a window as large as the one a load starts with, <see cref="InitialObjectWindow"/>, cuts the
     /// object's parse, and then wherever the windows read after it end, the answer depending on positions alone: which row is
     /// the first, and whether it lies before the end of the token after the value, and before the <c>stream</c> keyword of
     /// the first stream the parse read, whose data the reader serves from the file and no row ends — a rebuilt index can
-    /// place headers inside an unconfirmed stream's data. A window too small to hold that row and
-    /// <see cref="HeaderCheckWindow"/> bytes past it grows. Where <see cref="PdfReaderLimits.MaxObjectLength"/> keeps the
-    /// window from holding them, or from being as large as the one a load starts with, the object is read as it was without
-    /// the rule: the guard is reached where the window's edge cuts the parse.
+    /// place headers inside an unconfirmed stream's data. A window whose edge a row's lexing reaches grows; where
+    /// <see cref="PdfReaderLimits.MaxObjectLength"/> keeps it from growing, the guard is reached as where the edge cuts the
+    /// parse; where it keeps the window from being as large as the one a load starts with, the object is read as it was
+    /// without the rule.
     /// </para>
     /// <para>
-    /// The rows are those of <see cref="SearchIndex"/>, and, where the index was rebuilt after the chain was read, of the
-    /// rebuilt index, which alone places what only the rebuild found; each index's entry of the object is stepped over. Only
-    /// rows inside <paramref name="bytes"/> are asked for, each a logarithm of the index, and a row whose
-    /// <see cref="HeaderCheckWindow"/> bytes hold no <c>obj</c> leads to the first row that may, so that the search reads
-    /// <paramref name="bytes"/> about once, and walks back from each <c>obj</c> once.
+    /// Only rows inside <paramref name="bytes"/> are asked for, each a logarithm of an index, in the order of their
+    /// positions, and the lexing from each shares what the ones before learned of the white space and comments it crosses:
+    /// the search reads <paramref name="bytes"/> a bounded number of times, whatever the gaps between a header's tokens.
     /// </para>
     /// </remarks>
     /// <param name="number">The object read.</param>
@@ -475,25 +483,27 @@ internal sealed partial class PdfFileReader
             until = Math.Min(until, parser.StreamAt);
         }
 
-        var index = SearchIndex;
-        var rebuilt = _repaired && !ReferenceEquals(index, _xref) ? _xref : null;
-        var own = OwnOffset(index, number);
+        // No valid index places a header inside another object; a rebuilt one places those its scan took inside one, whose
+        // own data its rows alone may end.
+        var chain = ChainIndex;
+        var rebuilt = !ReferenceEquals(chain, _xref) && _foundInside.Contains(number) ? _xref : null;
+
+        if (chain is null && rebuilt is null)
+        {
+            return -1;
+        }
+
+        var own = chain is null ? long.MinValue : OwnOffset(chain, number);
         var ownRebuilt = rebuilt is null ? long.MinValue : OwnOffset(rebuilt, number);
         var start = offset - _headerOffset;
-        var room = endsFile ? bytes.Length : bytes.Length - HeaderCheckWindow;
-        var searched = (int)Math.Min(bytes.Length, (long)until + HeaderCheckWindow);
+        var lexer = new RowLexer(bytes, endsFile);
         var from = parser.ValueStart;
-        var walked = -1;
-        var walkedHeader = -1;
 
         while (from < until)
         {
-            var row = index.FirstOffsetAfter(start + from - 1);
-
-            if (rebuilt is not null)
-            {
-                row = Math.Min(row, rebuilt.FirstOffsetAfter(start + from - 1));
-            }
+            var row = Math.Min(
+                chain?.FirstOffsetAfter(start + from - 1) ?? long.MaxValue,
+                rebuilt?.FirstOffsetAfter(start + from - 1) ?? long.MaxValue);
 
             if (row == long.MaxValue || row - start >= until)
             {
@@ -501,51 +511,23 @@ internal sealed partial class PdfFileReader
             }
 
             var at = (int)(row - start);
+            from = at + 1;
 
             if (row == own || row == ownRebuilt)
             {
-                from = at + 1;
                 continue;
             }
 
-            if (at >= room)
+            switch (lexer.Read(at))
             {
-                return RowUndecided;
+                case RowReading.Header:
+                    // The parse saw it, where a token starts there: it ended the value there or read it as the value, and the
+                    // rows past it lie past what the parse read.
+                    return StartsToken(bytes, parser.ValueStart, at) ? -1 : at;
+
+                case RowReading.Undecided:
+                    return RowUndecided;
             }
-
-            var obj = bytes[at..searched].IndexOf(ObjKeyword);
-
-            if (obj < 0)
-            {
-                // No row before the window's last bytes holds an obj in reach: what is left is undecided, or nothing.
-                from = room;
-                continue;
-            }
-
-            obj += at;
-
-            if (obj - at > HeaderCheckWindow - ObjKeyword.Length)
-            {
-                // No row before this one's reach of that obj holds one in its own.
-                from = obj - (HeaderCheckWindow - ObjKeyword.Length);
-                continue;
-            }
-
-            if (obj != walked)
-            {
-                walked = obj;
-                walkedHeader = TryReadHeaderBackwards(bytes, obj, out _, out _, out var header) ? header : -1;
-            }
-
-            if (walkedHeader == at)
-            {
-                // The parse saw it, where a token starts there: it ended the value there or read it as the value, and the
-                // rows past it lie past what the parse read.
-                return StartsToken(bytes, parser.ValueStart, at) ? -1 : at;
-            }
-
-            // Up to that obj, a row starts a header only where the walk from it ended.
-            from = walkedHeader > at ? walkedHeader : obj + 1;
         }
 
         return -1;
@@ -554,6 +536,248 @@ internal sealed partial class PdfFileReader
     /// <summary>Gives the offset <paramref name="index"/>'s entry of object <paramref name="number"/> places it at, where it places it.</summary>
     private static long OwnOffset(PdfXRefTable index, int number) =>
         index.TryGet(number, out var own) && own.Kind == XRefEntryKind.Regular ? own.Offset : long.MinValue;
+
+    /// <summary>What lexing forward from a row says of it (<see cref="RowLexer.Read"/>).</summary>
+    private enum RowReading
+    {
+        /// <summary>No header starts at the row.</summary>
+        None,
+
+        /// <summary>A header starts at the row.</summary>
+        Header,
+
+        /// <summary>The lexing reached the edge of the bytes before it could say.</summary>
+        Undecided,
+    }
+
+    /// <summary>What a token read where a header's number may start is (<see cref="RowLexer"/>).</summary>
+    private enum RowToken
+    {
+        /// <summary>Anything but an integer.</summary>
+        Other,
+
+        /// <summary>An integer.</summary>
+        Integer,
+
+        /// <summary>A token the edge of the bytes cut, which may go on past it.</summary>
+        Cut,
+    }
+
+    /// <summary>
+    /// Lexes forward from the rows <see cref="HeaderEndingData"/> asks about, in the order of their positions, each as a load
+    /// reads a header from it: an integer whose token starts at the row — the byte before it ends a token, as for the walk
+    /// back from an <c>obj</c> keyword (<see cref="ReadHeaderBackwards"/>) —, an integer, and <c>obj</c>, as much white space
+    /// and as many comments between them as there are.
+    /// </summary>
+    /// <remarks>
+    /// Lexed apart, the rows of a comment line of headers would each cross the rest of the line, and the comment lines after
+    /// it a gap holds: time in the square of the lines. What a lexing learns is kept for the rows after it. A comment that
+    /// starts within the stretch the last one crossed ends where it did. A lexing that reaches, between tokens, an end of line
+    /// within the last gap that crossed one goes on as that gap did, to the token after it. And the second token last reached
+    /// past such a gap is read once, with the gap after it, for every row whose gap reaches it. A gap that crosses an end of
+    /// line ends at a token no earlier than the one the gaps of the rows before reached, but for a token within the comment
+    /// a gap before crossed, which only its own line reaches: what is kept is replaced only by what lies past it, but for
+    /// once each such token. A digit run is read only by the row at its start and the two before it, the white space after
+    /// it by two rows, and no other token is read but where its first byte may start an integer or <c>obj</c>: each byte is
+    /// read a bounded number of times.
+    /// </remarks>
+    private ref struct RowLexer
+    {
+        private readonly ReadOnlySpan<byte> _bytes;
+        private readonly bool _endsFile;
+
+        /// <summary>Where the stretch the last comment crossed starts: no end of line lies from there to <see cref="_commentEnd"/>.</summary>
+        private int _commentFrom;
+
+        /// <summary>Where the last comment ends, at an end of line or the end of the bytes; -1 before any.</summary>
+        private int _commentEnd;
+
+        /// <summary>Where the first end of line the last gap that crossed one crossed lies.</summary>
+        private int _gapFrom;
+
+        /// <summary>Where the token after that gap starts, or the end of the bytes; -1 before any.</summary>
+        private int _gapTo;
+
+        /// <summary>The second token last reached past a gap that crossed an end of line; -1 before any.</summary>
+        private int _secondAt;
+
+        /// <summary>What that token is.</summary>
+        private RowToken _secondToken;
+
+        /// <summary>Its value, where it is an integer.</summary>
+        private long _secondValue;
+
+        /// <summary>Where the token after it starts, or the end of the bytes, where it is an integer.</summary>
+        private int _secondNext;
+
+        /// <summary>Lexes the rows of <paramref name="bytes"/>, which end where the file does where <paramref name="endsFile"/>.</summary>
+        public RowLexer(ReadOnlySpan<byte> bytes, bool endsFile)
+        {
+            _bytes = bytes;
+            _endsFile = endsFile;
+            _commentEnd = _gapTo = _secondAt = -1;
+        }
+
+        /// <summary>Says whether a header starts at <paramref name="at"/>, a row past those asked about before.</summary>
+        public RowReading Read(int at)
+        {
+            // A row lies past where the object's value starts, never at the first byte.
+            if (!PdfCharacters.EndsToken(_bytes[at - 1]) && !EndsEndOfFileMarker(_bytes, at - 1))
+            {
+                return RowReading.None;
+            }
+
+            var first = ReadInteger(at, out var number, out var end);
+
+            if (first != RowToken.Integer || number is <= 0 or > PdfObjectId.MaxNumber)
+            {
+                return first == RowToken.Cut ? RowReading.Undecided : RowReading.None;
+            }
+
+            var second = Skip(end, out var crossed);
+
+            if (second >= _bytes.Length)
+            {
+                return AtEdge();
+            }
+
+            RowToken token;
+            long generation;
+            int third;
+
+            if (crossed && second == _secondAt)
+            {
+                (token, generation, third) = (_secondToken, _secondValue, _secondNext);
+            }
+            else
+            {
+                token = ReadInteger(second, out generation, out var secondEnd);
+                third = token == RowToken.Integer ? Skip(secondEnd, out _) : secondEnd;
+
+                // Kept only for a token past a gap that crossed an end of line, which other rows may reach: one on the row's
+                // own line is no other row's second.
+                if (crossed)
+                {
+                    (_secondAt, _secondToken, _secondValue, _secondNext) = (second, token, generation, third);
+                }
+            }
+
+            if (token != RowToken.Integer || generation is < 0 or > PdfObjectId.MaxGeneration)
+            {
+                return token == RowToken.Cut ? RowReading.Undecided : RowReading.None;
+            }
+
+            return third >= _bytes.Length ? AtEdge() : ReadsObj(third);
+        }
+
+        /// <summary>What a lexing that reaches the end of the bytes between tokens says: undecided, but at the file's end.</summary>
+        private readonly RowReading AtEdge() => _endsFile ? RowReading.None : RowReading.Undecided;
+
+        /// <summary>Reads the token at <paramref name="at"/> where its first byte may start an integer.</summary>
+        private readonly RowToken ReadInteger(int at, out long value, out int end)
+        {
+            value = 0;
+            end = at;
+
+            if (!PdfCharacters.IsDigit(_bytes[at]) && _bytes[at] is not ((byte)'+' or (byte)'-'))
+            {
+                return RowToken.Other;
+            }
+
+            var token = new PdfLexer(_bytes, at).Read();
+            end = token.End;
+            value = token.Integer;
+            return token.End >= _bytes.Length && !_endsFile ? RowToken.Cut
+                : token.Kind == PdfTokenKind.Integer ? RowToken.Integer
+                : RowToken.Other;
+        }
+
+        /// <summary>Says whether the token at <paramref name="at"/> is the keyword <c>obj</c>.</summary>
+        private readonly RowReading ReadsObj(int at)
+        {
+            var keyword = ObjKeyword;
+            var held = _bytes[at..];
+
+            if (held.Length <= keyword.Length)
+            {
+                return !keyword.StartsWith(held) ? RowReading.None
+                    : held.Length < keyword.Length ? AtEdge()
+                    : _endsFile ? RowReading.Header : RowReading.Undecided;
+            }
+
+            return held.StartsWith(keyword) && !PdfCharacters.IsRegular(held[keyword.Length]) ? RowReading.Header : RowReading.None;
+        }
+
+        /// <summary>
+        /// Skips the white space and comments from <paramref name="at"/>, right after a token, and gives where the next token
+        /// starts, or the end of the bytes; <paramref name="crossed"/> says whether they cross an end of line.
+        /// </summary>
+        private int Skip(int at, out bool crossed)
+        {
+            var firstEndOfLine = -1;
+
+            while (at < _bytes.Length)
+            {
+                var current = _bytes[at];
+
+                if (current is (byte)'\r' or (byte)'\n')
+                {
+                    if (firstEndOfLine < 0)
+                    {
+                        firstEndOfLine = at;
+                    }
+
+                    if (at >= _gapFrom && at < _gapTo)
+                    {
+                        // The last gap that crossed an end of line went on from this one, between tokens as this lexing is.
+                        at = _gapTo;
+                        break;
+                    }
+
+                    at++;
+                }
+                else if (PdfCharacters.IsWhitespace(current))
+                {
+                    at++;
+                }
+                else if (current == (byte)'%')
+                {
+                    at = CommentEnd(at);
+                }
+                else
+                {
+                    break;
+                }
+            }
+
+            crossed = firstEndOfLine >= 0;
+
+            if (crossed)
+            {
+                // The stretch from that end of line to the next token is crossed between tokens, as from any end of line in it.
+                _gapFrom = _gapTo == at ? Math.Min(_gapFrom, firstEndOfLine) : firstEndOfLine;
+                _gapTo = at;
+            }
+
+            return at;
+        }
+
+        /// <summary>Gives where the comment that starts at <paramref name="at"/> ends: its end of line, or the end of the bytes.</summary>
+        private int CommentEnd(int at)
+        {
+            if (_commentEnd >= 0 && at >= _commentFrom && at < _commentEnd)
+            {
+                return _commentEnd;
+            }
+
+            // A comment before the stretch the last crossed ends where it did, when no end of line lies before that stretch.
+            var searched = _commentEnd >= 0 && at < _commentFrom ? _bytes[at.._commentFrom] : _bytes[at..];
+            var found = searched.IndexOfAny((byte)'\r', (byte)'\n');
+            _commentEnd = found >= 0 ? at + found : searched.Length < _bytes.Length - at ? _commentEnd : _bytes.Length;
+            _commentFrom = at;
+            return _commentEnd;
+        }
+    }
 
     /// <summary>
     /// Parses object <paramref name="id"/> at an exact offset, as <see cref="TryParseNumberedAt"/> does, but keeps nothing of the
