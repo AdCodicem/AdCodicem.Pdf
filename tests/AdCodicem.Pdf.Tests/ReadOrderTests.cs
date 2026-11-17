@@ -449,6 +449,39 @@ public class ReadOrderTests
     }
 
     [Fact]
+    public void A_candidate_a_guard_cut_as_a_rebuild_s_search_threw_is_said_to_be_cut_to_a_caller_that_goes_on()
+    {
+        // As above, with a later object 30 the chain does not index, a catalog MaxObjectLength cuts before its /Type, and the
+        // document opened to throw on a guard. Reading object 40 rebuilds the index, whose search for a catalog throws on
+        // object 30 once it ends; a caller that goes on to validate is told a limit cut a candidate.
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "<< /Type /Foo >>"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>"),
+            [3] = file.Object(3, Page),
+            [20] = file.Object(20, "<< /Type /Catalog /Pages 2 0 R >>"),
+        };
+        rows[6] = file.Padding(6);
+        rows[40] = rows[6] + 600;
+        file.Object(40, "<< /Title (info) >>");
+        file.Object(20, "<< /Type /Annot /Subtype /Text /Rect [0 0 1 1] >>");
+        file.Object(30, "<<" + new string(' ', 2000) + "/Type /Catalog /Pages 2 0 R >>");
+        file.Table(41, rows, "/Size 41 /Info 40 0 R /Root 1 0 R");
+        using var document = PdfDocument.Open(
+            file.Bytes, new PdfReaderOptions { ThrowOnLimit = true, Limits = PdfReaderLimits.Default with { MaxObjectLength = 1300 } });
+
+        document.Reader.CatalogFoundAs.Should().Be(20);
+        var read = () => document.Reader.GetObject(new PdfObjectId(40));
+
+        read.Should().Throw<PdfLimitExceededException>();
+        document.WasRepaired.Should().BeTrue();
+        document.Reader.CatalogFoundAs.Should().Be(0);
+        new PdfValidator().Validate(document).Findings.Single(finding => finding.RuleId == PdfValidationRuleIds.FileRootInvalid).Message.Should().Be(
+            "The trailer's /Root names object 1 0, which is a dictionary of /Type /Foo, not a document catalog. No object the reader read whole is a catalog: one of the reader's limits cut some, which its report names.");
+    }
+
+    [Fact]
     public void A_root_a_guard_hid_as_the_document_opened_is_not_judged_once_a_rebuild_finds_it()
     {
         // /Root names object 1, which only the oldest of three sections indexes, and MaxXRefSectionCount 2 leaves that section
