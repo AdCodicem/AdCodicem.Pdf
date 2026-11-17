@@ -4575,23 +4575,28 @@ public class HostileInputTests
     [InlineData(CommentHeadersPlacedBy.Table, "% ", " [1 2 3", "[array of 3]")]
     [InlineData(CommentHeadersPlacedBy.Table, "", " (abc", "\"abc\\n\"")]
     [InlineData(CommentHeadersPlacedBy.TableWithDecoys, "% ", " << /A [1 2 3] >>", "<<dictionary of 1>>")]
+    [InlineData(CommentHeadersPlacedBy.Table, "% ", " << /A [1 2 3] >>", "<<dictionary of 1>>", Spaces70)]
+    [InlineData(CommentHeadersPlacedBy.ScanOfStreamData, "% ", " << /A [1 2 3] >>", "<<dictionary of 1>>", Spaces70)]
+    [InlineData(CommentHeadersPlacedBy.ScanOfRunawayString, "% ", " << /A [1 2 3] >>", "<<dictionary of 1>>", Spaces70)]
+    [InlineData(CommentHeadersPlacedBy.Table, "", " (abc", "\"abc\\n\"", Spaces70)]
+    [InlineData(CommentHeadersPlacedBy.Table, "", " (abc", "\"abc\\n\"", "\n% a comment line between tokens\n")]
     public void Objects_whose_headers_a_run_of_comment_or_string_lines_holds_are_read_without_reading_the_lines_after_each(
-        CommentHeadersPlacedBy shape, string lead, string body, string read)
+        CommentHeadersPlacedBy shape, string lead, string body, string read, string gap = " ")
     {
         // Lines "% N 0 obj ..." or "N 0 obj (abc" whose headers the index places: each object's load read every line after it
         // to find where its value ends, its window grown eight times over, and opening, which loads every object a rebuild
         // places, or validating, which loads every object, took time in the square of the lines. The next line's header ends
-        // each object's data, whatever its value, and a row that starts no header before it does not keep it from ending
-        // there (#362).
+        // each object's data, whatever its value and however much white space and how many comments part its tokens, and a
+        // row that starts no header before it does not keep it from ending there (#362).
         const int Lines = 1_000;
 
-        var small = ReadHeaderLines(shape, lead, body, read, Lines);
-        var large = ReadHeaderLines(shape, lead, body, read, 4 * Lines);
+        var small = ReadHeaderLines(shape, lead, body, read, gap, Lines);
+        var large = ReadHeaderLines(shape, lead, body, read, gap, 4 * Lines);
 
         large.Should().BeLessThan(
             8 * small, "four times the lines must cost about four times the bytes read ({0:N0} for {1:N0})", small, Lines);
 
-        static long ReadHeaderLines(CommentHeadersPlacedBy shape, string lead, string body, string read, int lines)
+        static long ReadHeaderLines(CommentHeadersPlacedBy shape, string lead, string body, string read, string gap, int lines)
         {
             var file = new HandWrittenFile();
             var rows = new Dictionary<int, long>
@@ -4611,7 +4616,7 @@ public class HostileInputTests
             {
                 file.Raw(lead);
                 rows[100 + k] = file.Position;
-                var header = string.Create(CultureInfo.InvariantCulture, $"{100 + k} 0 obj");
+                var header = string.Create(CultureInfo.InvariantCulture, $"{100 + k}{gap}0{gap}obj");
 
                 if (shape == CommentHeadersPlacedBy.TableWithDecoys)
                 {
@@ -4665,6 +4670,9 @@ public class HostileInputTests
             return source.BytesRead;
         }
     }
+
+    /// <summary>What parts the tokens of a header written with more white space between them than a few bytes.</summary>
+    private const string Spaces70 = "                                                                      ";
 
     /// <summary>What places the headers a run of lines holds.</summary>
     public enum CommentHeadersPlacedBy

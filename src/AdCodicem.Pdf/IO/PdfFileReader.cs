@@ -98,7 +98,7 @@ internal sealed partial class PdfFileReader : IPdfObjectSource, IPdfStreamDataPr
     private const long HeaderPastGuard = -1;
 
     /// <summary>
-    /// What <see cref="HeaderEndingData"/> gives where a row lies too near the edge of the window for the bytes it holds to say
+    /// What <see cref="HeaderEndingData"/> gives where the lexing from a row reaches the edge of the window before it can say
     /// whether a header starts there.
     /// </summary>
     private const int RowUndecided = -2;
@@ -893,6 +893,18 @@ internal sealed partial class PdfFileReader : IPdfObjectSource, IPdfStreamDataPr
     /// while no rebuild's scan reached it.
     /// </summary>
     private long _rebuildReadsBoundedAt = -1;
+
+    /// <summary>
+    /// The objects whose definition the rebuilt index serves the rebuild's scan found inside another: it took their header
+    /// in a stretch it reads as the bytes give it — the data of a stream it could not confirm, or a string that runs past
+    /// its object's end (<see cref="ScanState.RawUntil"/>) —, or within what the lexing of an object it could not delimit
+    /// read (<see cref="ScanState.UndelimitedUntil"/>). Only their data may end at a header the rebuilt index alone places
+    /// (<see cref="HeaderEndingData"/>). Emptied as a rebuild starts, filled by its scan, and kept through the finish of a
+    /// rebuild loads in flight left unfinished, whose scan it is; a rebuild run again from its scan fills it again. No
+    /// more numbers than the index holds (<see cref="PdfReaderLimits.MaxIndexEntries"/>); keyed by number as
+    /// <see cref="_cache"/> is.
+    /// </summary>
+    private readonly HashSet<int> _foundInside = new(SeededComparer.Instance);
 
     /// <summary>Whether the index filled as the chain was read, before any rebuild: the chain's index stops short of it.</summary>
     private bool _chainFilledIndex;

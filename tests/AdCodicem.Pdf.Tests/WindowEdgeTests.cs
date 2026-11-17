@@ -547,16 +547,17 @@ public class WindowEdgeTests
     [InlineData(100, 0, PdfFileReader.InitialObjectWindow, false, false)]
     [InlineData(100, -2, PdfFileReader.InitialObjectWindow, false, true)]
     [InlineData(PdfFileReader.InitialObjectWindow - 100, 0, PdfFileReader.InitialObjectWindow, false, false)]
-    [InlineData(PdfFileReader.InitialObjectWindow - 40, 0, PdfFileReader.InitialObjectWindow, false, true)]
+    [InlineData(PdfFileReader.InitialObjectWindow - 40, 0, PdfFileReader.InitialObjectWindow, false, false)]
+    [InlineData(PdfFileReader.InitialObjectWindow - 5, 0, PdfFileReader.InitialObjectWindow, false, true)]
     [InlineData(PdfFileReader.InitialObjectWindow - 40, 0, 10_000, false, false)]
     public void A_dictionary_whose_stream_keyword_lies_past_a_header_placed_in_its_comments_ends_there_wherever_the_windows_end(
         int headerAt, int rowShift, int guard, bool stream, bool cut)
     {
         // Object 5's dictionary, then more comment lines than the window holds, then its stream keyword; the table places
         // object 6 at a header a comment line holds headerAt bytes into object 5, or rowShift bytes from it. Object 5 ends at
-        // that header, a dictionary, whether the first window holds it and the bytes after it or a larger one does, and
-        // reaches no guard; a row that is no header's start leaves the stream to be read, and a guard that keeps the window
-        // from holding the header and the bytes after it is reached, as it was before (#362).
+        // that header, a dictionary, whether the first window holds its tokens or a larger one does, and reaches no guard; a
+        // row that is no header's start leaves the stream to be read, and a guard that keeps the window from holding the
+        // header's tokens is reached, as it was before (#362).
         var file = new HandWrittenFile();
         var rows = new Dictionary<int, long>
         {
@@ -612,6 +613,40 @@ public class WindowEdgeTests
         document.Diagnostics.Should().ContainSingle(entry => entry.Code == PdfDiagnosticCodes.SyntaxTruncatedObject)
             .Which.Message.Should().StartWith("The next object the index places started inside a literal string");
         document.Reader.IsEndObjMissing(ObjectNumber, out _).Should().BeFalse();
+    }
+
+    [Theory]
+    [InlineData(0, false)]
+    [InlineData(2 * PdfFileReader.InitialObjectWindow, true)]
+    public void A_header_placed_in_a_string_whose_tokens_lie_past_the_largest_window_reaches_the_guard(int guard, bool cut)
+    {
+        // Object 5's string runs past the window a load starts with and closes within one twice as large, endobj after it; the
+        // table places object 6 at a header its last line holds, whose number a comment, which holds the string's end and
+        // endobj, parts from the rest, written past that window's edge. A window that holds the header's tokens cuts the
+        // string at it; one MaxObjectLength keeps from holding them cannot say whether the header starts there, and reaches
+        // the guard, as where the window's edge cuts the parse (#362).
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"),
+            [ObjectNumber] = file.Position,
+        };
+        const string Head = "5 0 obj\n(";
+        file.Raw(Head + new string('c', Window + 100) + "\n");
+        rows[6] = file.Position;
+        file.Raw("6 %) endobj\n" + new string(' ', 2 * Window) + "\n0 obj (six) endobj\n");
+        file.Table(7, rows, "/Size 7 /Root 1 0 R");
+        var limits = PdfReaderLimits.Default;
+        using var document = PdfDocument.Open(
+            file.Bytes, new PdfReaderOptions { Limits = guard > 0 ? limits with { MaxObjectLength = guard } : limits });
+
+        var read = document.GetObject(new PdfObjectId(ObjectNumber));
+
+        read.Should().BeOfType<PdfString>().Which.Length.Should().Be(Window + 101 + (cut ? "6 %".Length : 0));
+        document.Reader.IsCutAtLimit(ObjectNumber).Should().Be(cut);
+        document.Diagnostics.Select(entry => entry.Code).Should().Equal(
+            cut ? PdfDiagnosticCodes.LimitObject : PdfDiagnosticCodes.SyntaxTruncatedObject);
     }
 
     [Fact]
