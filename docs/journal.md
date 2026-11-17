@@ -7,6 +7,19 @@ to about thirty lines each; the unabridged text is the
 [journal of `e38ebbc`](https://github.com/AdCodicem/AdCodicem.Pdf/blob/e38ebbc471b86779c3f6ac5b320ca1ecd531b2c1/docs/status.md#journal). A session reads an entry when it needs the
 reason for a past decision. A new entry is short, about thirty lines; the detail is in the pull request's body.
 
+## 2026-11-17 — The debts batches 21 and 22 filed, placed
+
+- **The question.** Twenty-six debts filed under M02 by batch 21's two pull requests and batch 22's ([#353] to
+  [#359], [#361] to [#363], [#365] to [#379], [#381]) were in no batch.
+- **Settled with the maintainer** (2026-11-17, each as recommended), by the code each shares, read from the issues'
+  bodies: five new batches, 33 to 37 — the headers the rebuild's scan takes in stream data it cannot confirm, with the
+  denial of service [#362]; the searches near a row and an offset and a data end without `endstream`; the header walk,
+  the scan's pieces and the expansion's order; a rebuild's trailer merge and encryption at opening; the chain's tables
+  and trailers since [#322]. Batch 33 runs right after batch 24. [#381] joins batch 31 with [#111], which then opens in
+  two pull requests; [#374] joins batch 30 with [#192]; [#359] goes with slice 5 ([#61]), as its body says; [#367]
+  moves to M03 with [#52], as [#331] did, and [#373] to M23, as [#343] did.
+- **For callers.** Nothing changes; `docs/status.md`, *Next concrete step*, lists the batches.
+
 ## 2026-11-17 — Batch 22, second pull request: what file.root-invalid says of the catalog after a rebuild ([#382])
 
 - **The question.** Measured on `main` at `a2f82d9`, twice, identical: a document rebuilt as it opens with no catalog
@@ -856,11 +869,13 @@ The detail is in git and in the pull requests; what still matters is in the reco
 [#47]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/47
 [#49]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/49
 [#50]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/50
+[#52]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/52
 [#53]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/53
 [#55]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/55
 [#56]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/56
 [#58]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/58
 [#60]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/60
+[#61]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/61
 [#62]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/62
 [#107]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/107
 [#108]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/108
