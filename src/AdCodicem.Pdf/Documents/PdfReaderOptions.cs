@@ -17,15 +17,14 @@ public sealed record PdfReaderOptions
         get;
         init
         {
-            ArgumentOutOfRangeException.ThrowIfNegative(value);
+            ArgumentOutOfRangeException.ThrowIfNegative(value, nameof(ObjectCacheCapacity));
             field = value;
         }
     } = 8192;
 
     /// <summary>
-    /// Gets the largest number of diagnostic entries kept for one document (<see cref="Diagnostics.PdfDiagnostics.Capacity"/>):
-    /// past it, entries are counted, and still answer <see cref="Diagnostics.PdfDiagnostics.Contains(string)"/> and the
-    /// <c>Has</c> properties, but are not kept. Defaults to 1,000; zero keeps none.
+    /// Gets the largest number of diagnostic entries kept for one document, as
+    /// <see cref="Diagnostics.PdfDiagnostics.Capacity"/> says. Defaults to 1,000; zero keeps none.
     /// </summary>
     /// <exception cref="ArgumentOutOfRangeException">The value is negative.</exception>
     public int DiagnosticCapacity
@@ -33,7 +32,7 @@ public sealed record PdfReaderOptions
         get;
         init
         {
-            ArgumentOutOfRangeException.ThrowIfNegative(value);
+            ArgumentOutOfRangeException.ThrowIfNegative(value, nameof(DiagnosticCapacity));
             field = value;
         }
     } = 1000;

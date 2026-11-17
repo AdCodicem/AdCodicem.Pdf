@@ -15,14 +15,11 @@ namespace AdCodicem.Pdf.Diagnostics;
 /// A document's record grows as the document is read, after opening too: an enumeration gives the entries recorded when
 /// it began, and the next one those recorded since, while <see cref="Count"/>, the indexer, <see cref="SuppressedCount"/>,
 /// <see cref="HasRepairs"/>, <see cref="HasWarnings"/>, <see cref="HasConformanceLoss"/> and <see cref="Contains(string)"/>
-/// answer for every entry recorded so far (#167).
+/// answer, each as it says, for what was recorded so far (#167).
 /// </para>
 /// <para>
-/// The record is bounded: it keeps at most <see cref="Capacity"/> entries, and counts the rest in
-/// <see cref="SuppressedCount"/>. <see cref="Count"/>, the indexer and an enumeration give the entries kept;
-/// <see cref="HasRepairs"/>, <see cref="HasWarnings"/>, <see cref="HasConformanceLoss"/> and <see cref="Contains(string)"/>
-/// answer for every entry, kept or dropped, as a validation report's counts do, so that a guard reached past the capacity
-/// is still seen under its <c>limit.*</c> code (#169).
+/// The record keeps at most <see cref="Capacity"/> entries. What still answers for those it drops is said by each member:
+/// <see cref="Contains(string)"/> and the <c>Has</c> properties do, as a validation report's counts do (#169).
 /// </para>
 /// </remarks>
 public sealed class PdfDiagnostics : IReadOnlyList<PdfDiagnostic>
@@ -51,8 +48,10 @@ public sealed class PdfDiagnostics : IReadOnlyList<PdfDiagnostic>
     /// <summary>
     /// The severity and code of the entries <see cref="Capacity"/> dropped, so that <see cref="Contains(string)"/> and the
     /// <c>Has</c> properties answer for them too; null until an entry is dropped. A pair is noted when it is not noted already
-    /// past <see cref="_droppedFrom"/>, so that the note holds a pair per severity and code dropped, and, on an instance kept
-    /// in another, as many again for each mark still open on it.
+    /// past <see cref="_droppedFrom"/>. On an instance kept as it is, the note holds a pair per severity and code dropped, the
+    /// codes the library reports being constants. On one kept in another, a pair is noted once more for each mark taken or
+    /// closed while an outer mark stays open: the note grows with what one attempt parses, and a rollback of the attempt's
+    /// mark ends it.
     /// </summary>
     private List<(PdfDiagnosticSeverity Severity, string Code)>? _dropped;
 
@@ -67,9 +66,8 @@ public sealed class PdfDiagnostics : IReadOnlyList<PdfDiagnostic>
 
     /// <summary>
     /// Gets the largest number of entries kept. A pathological file can produce an unbounded
-    /// number of observations; beyond this limit they are counted in <see cref="SuppressedCount"/>, and their severities and
-    /// codes are noted for <see cref="Contains(string)"/> and the <c>Has</c> properties, but they are not stored. Defaults to
-    /// 1,000; zero keeps none.
+    /// number of observations; beyond this limit they are counted in <see cref="SuppressedCount"/>, not stored, and still
+    /// answer <see cref="Contains(string)"/>. Defaults to 1,000; zero keeps none.
     /// </summary>
     /// <exception cref="ArgumentOutOfRangeException">The value is negative.</exception>
     public int Capacity
@@ -77,7 +75,7 @@ public sealed class PdfDiagnostics : IReadOnlyList<PdfDiagnostic>
         get;
         init
         {
-            ArgumentOutOfRangeException.ThrowIfNegative(value);
+            ArgumentOutOfRangeException.ThrowIfNegative(value, nameof(Capacity));
             field = value;
         }
     } = 1000;
@@ -166,7 +164,8 @@ public sealed class PdfDiagnostics : IReadOnlyList<PdfDiagnostic>
     /// <summary>
     /// Records where the entries stand, so that what follows can be kept or dropped as one. Rolled back to, this instance
     /// still holds as moved in the reports decodings moved in since: a mark of an instance decodings report into is taken
-    /// by <see cref="GetMarkWithDecodingReports"/>.
+    /// by <see cref="GetMarkWithDecodingReports"/>. Marks are closed — rolled back to, or moved from — in the reverse of the
+    /// order they were taken: a mark taken after one rolled back to is not used again.
     /// </summary>
     internal PdfDiagnosticsMark GetMark() => new(_entries.Count, _suppressed, _limits, _limitsSuppressed, OpenDropped());
 
@@ -260,7 +259,7 @@ public sealed class PdfDiagnostics : IReadOnlyList<PdfDiagnostic>
 
     /// <summary>
     /// Moves every entry recorded since <paramref name="mark"/> into <paramref name="target"/>, which applies
-    /// its own capacity, and drops them from this instance.
+    /// its own capacity, notes there the codes of those this instance dropped, and drops them from this instance.
     /// </summary>
     internal void MoveTo(PdfDiagnostics target, PdfDiagnosticsMark mark)
     {
@@ -322,7 +321,8 @@ public sealed class PdfDiagnostics : IReadOnlyList<PdfDiagnostic>
     /// applies its own capacity, but those a decoding moved there already: <paramref name="target"/> holds each once,
     /// however often the stream is decoded, and two filters of one decoding that report alike are each held (#144). A guard
     /// reached stays counted in <see cref="LimitsReached"/>, its report moved or not, so that what it cut is still known as
-    /// its; an entry the capacity dropped was counted, and a repeat of it is counted again, as any report is.
+    /// its; an entry the capacity dropped was counted, and a repeat of it is counted again, as any report is, its code noted
+    /// in <paramref name="target"/>.
     /// </summary>
     internal void MoveDecodingReportsTo(PdfDiagnostics target, PdfDiagnosticsMark mark)
     {

@@ -113,14 +113,16 @@ public class ReaderLimitsTests
         setting.Should().Throw<ArgumentNullException>();
     }
 
-    [Fact]
-    public void The_options_refuse_a_negative_capacity()
+    [Theory]
+    [InlineData(nameof(PdfReaderOptions.DiagnosticCapacity))]
+    [InlineData(nameof(PdfReaderOptions.ObjectCacheCapacity))]
+    public void The_options_refuse_a_negative_capacity(string property)
     {
-        var diagnostics = () => PdfReaderOptions.Default with { DiagnosticCapacity = -1 };
-        var cache = () => PdfReaderOptions.Default with { ObjectCacheCapacity = -1 };
+        var setting = () => property == nameof(PdfReaderOptions.DiagnosticCapacity)
+            ? PdfReaderOptions.Default with { DiagnosticCapacity = -1 }
+            : PdfReaderOptions.Default with { ObjectCacheCapacity = -1 };
 
-        diagnostics.Should().Throw<ArgumentOutOfRangeException>();
-        cache.Should().Throw<ArgumentOutOfRangeException>();
+        setting.Should().Throw<ArgumentOutOfRangeException>().WithParameterName(property);
     }
 
     [Theory]

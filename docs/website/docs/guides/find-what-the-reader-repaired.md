@@ -148,7 +148,8 @@ The loop itself is safe: it goes on over the numbers the index held when it bega
 
 The diagnostics are a returned value, not a log: store them beside the file, serialize them, or assert on them in
 your tests. A document keeps 1,000 entries at most by default; `SuppressedCount` says how many it dropped past that,
-`HasRepairs`, `HasWarnings` and `Contains` still answer for those, and `PdfReaderOptions.DiagnosticCapacity` raises the
+`HasRepairs`, `HasWarnings` and `Contains` still answer for those
+([`PdfDiagnostics`](../reference/diagnostics.md#pdfdiagnostics)), and `PdfReaderOptions.DiagnosticCapacity` raises the
 bound ([Tune the reader's memory](tune-reader-memory.md#keep-more-diagnostics)).
 
 ## See also

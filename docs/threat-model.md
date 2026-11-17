@@ -203,13 +203,15 @@ or of no byte.
 ### Reports
 
 `PdfDiagnostics` keeps `PdfReaderOptions.DiagnosticCapacity` entries (1,000) and counts the rest in `SuppressedCount`;
-`Contains` and the `Has` properties answer for the entries dropped too, from a note of each severity and code dropped,
-bounded by the codes the library reports (`PdfDiagnostics.NoteDropped`, [#169]). What the reader decides never rests on
-the kept entries alone: a guard's cut is known from the guard reached, not from its report, and a fault of the syntax
-from its code, kept or dropped (`PdfFileReader.SyntaxFaultSince`), so a full record makes no cut the file's damage and
-no other report a syntax error. Both capacities refuse a negative value, and zero keeps nothing. Held by
-`DiagnosticsTests` and `CrossReferenceRuleTests`. `PdfValidationReport` keeps `PdfValidatorOptions.FindingCapacity` findings (1,000) and counts the rest by severity and
-rule. Both bound the **number** of entries, and the validator's analyses write no more findings than there is room for
+`Contains` and the `Has` properties answer for the entries dropped too, from a note of each severity and code dropped
+(`PdfDiagnostics.NoteDropped`, [#169]). A document's note holds at most a pair per severity and code, the library's
+codes being constants; the reader's pending note grows with what one attempt parses and ends with it. What the reader
+decides never rests on the kept entries alone: a guard's cut is known from the guard reached, not from its report, and a
+fault of the syntax from its code, kept or dropped (`PdfFileReader.SyntaxFaultSince`), so a full record makes no cut the
+file's damage and no other report a syntax error. `DiagnosticCapacity`, `PdfDiagnostics.Capacity` and
+`ObjectCacheCapacity` refuse a negative value; a diagnostic capacity of zero keeps nothing, and a cache under 64 objects
+reads as 64. Held by `DiagnosticsTests`, `CrossReferenceRuleTests` and `ReaderLimitsTests`. `PdfValidationReport` keeps
+`PdfValidatorOptions.FindingCapacity` findings (1,000) and counts the rest by severity and rule. Both bound the **number** of entries, and the validator's analyses write no more findings than there is room for
 ([#168]; *The validator*, below). A count past what an `int` holds stays at `int.MaxValue`, the findings not kept
 included, which a file of tens of kilobytes decoding to gigabytes can reach.
 

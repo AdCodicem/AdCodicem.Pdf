@@ -450,7 +450,7 @@ public class DiagnosticsTests
     {
         var negative = () => new PdfDiagnostics { Capacity = -1 };
 
-        negative.Should().Throw<ArgumentOutOfRangeException>();
+        negative.Should().Throw<ArgumentOutOfRangeException>().WithParameterName(nameof(PdfDiagnostics.Capacity));
     }
 
     [Theory]
