@@ -7,6 +7,35 @@ to about thirty lines each; the unabridged text is the
 [journal of `e38ebbc`](https://github.com/AdCodicem/AdCodicem.Pdf/blob/e38ebbc471b86779c3f6ac5b320ca1ecd531b2c1/docs/status.md#journal). A session reads an entry when it needs the
 reason for a past decision. A new entry is short, about thirty lines; the detail is in the pull request's body.
 
+## 2026-11-17 — Batch 22, second pull request: what file.root-invalid says of the catalog after a rebuild ([#382])
+
+- **The question.** Measured on `main` at `a2f82d9`, twice, identical: a document rebuilt as it opens with no catalog
+  at all earned no finding — only `t02-01-001` among the 81 corpus documents whose chain is not read ([#132]); a
+  catalog whose own load rebuilds the index was found, the rebuild running its own search once the load returns since
+  [#167] — [#229]'s text no longer held, a test closes it —; and `file.root-invalid` ended "No object of the file is a
+  catalog" where a guard cut a candidate, a rebuild made `/Root` lead to the catalog, or an older trailer gave it
+  ([#260]).
+- **Settled with the maintainer** (2026-11-17, each as recommended): the trailer the rebuild merged judged only where the
+  reader found no catalog at all; after rounds 1 and 2, fixing their minors — wording on real-file shapes — in a further
+  round, the second with a neutral clause for a `/Root` that led to nothing.
+- **What changed.** Where the chain gave no index and no catalog is found, the rebuilt trailer is judged, unless a guard
+  cut `/Root` or left objects out of the rebuilt index. The finding ends with what the reader knows: the catalog it
+  took, the one a rebuild made `/Root` lead to, the object a guard cut or left out there, none among what it read whole
+  where a guard cut some, or none among what it could read. A `/Root` that led to nothing read as null through the
+  chain, or reads as null, guessing no cause. No object the reader serves changes.
+- **Review** (ADR 54): three rounds. Round 1, three lenses: no blocker or major, 3 minors — wording on real-file
+  shapes — and a nit regression. Round 2, two lenses: no blocker or major, 3 minors. Round 3, one lens: no blocker or
+  major, a minor the final pass fixed. Filed: [#381].
+- **Mutation** (ADR 53 amended): 24 mutants over the defenses among the changed lines; 18 killed by the suite, 5 by
+  tests the step wrote. The one claimed equivalent a second agent told apart through a caller that removes `/Root`, the
+  original wrong there: the search now notes every candidate a guard cut, and the suite kills that line's 2 mutants.
+- **The issues.** [#132], [#229] and [#260]; batch 22 is paid.
+- **Checks.** `Remote corpus` runs 119 and 120 green; 12,231 unit tests, 12,228 passed and 3 skipped; the timing and
+  memory tests alone; the patch's 40 coverable lines whole; the site; the corpus differential over 408 documents:
+  `t02-01-001` gains `file.root-invalid`, `t02-01-002`'s finding is worded anew, no object changes.
+- **For callers.** A document rebuilt as it opens with no catalog now earns `file.root-invalid`; its message, and that of
+  every `file.root-invalid`, ends with what the reader knows of the catalog rather than a claim about the file.
+
 ## 2026-11-16 — Batch 22, first pull request: why the chain leaves the index to a rebuild at opening ([#380])
 
 - **The question.** Measured on `main` at `7e8dd24`, twice, identical: a chain each of whose sections reads whole and
@@ -1035,3 +1064,5 @@ The detail is in git and in the pull requests; what still matters is in the reco
 [#378]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/378
 [#379]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/379
 [#380]: https://github.com/AdCodicem/AdCodicem.Pdf/pull/380
+[#381]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/381
+[#382]: https://github.com/AdCodicem/AdCodicem.Pdf/pull/382
