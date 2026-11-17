@@ -10,8 +10,9 @@ Tracking workflow mirrors from `docs/roadmap.md` (*Debt and open points*, below)
 
 - **Current milestone**: M02 — Document validation (`docs/milestones/M02.md`), in progress. Slices 1 to 3 are done: the
   engine and the report (ADR 36), twenty file and cross-reference rules under ADR 45's severities, and the object, page
-  tree and Arlington object-shape rules (ADR 44). What remains is *Next concrete step*: step 4's thirty-two batches of
-  reader and validation debts, settled with the maintainer on 2026-10-01, the first four of which, [#117], [#187],
+  tree and Arlington object-shape rules (ADR 44). What remains is *Next concrete step*: step 4's thirty-seven batches of
+  reader and validation debts, thirty-two settled with the maintainer on 2026-10-01 and five on 2026-11-17, the first
+  four of which, [#117], [#187],
   [#159] and [#193], merged with [#203] and [#211] that day and [#213] and [#214] on 2026-10-02, the fifth, [#157] and
   [#186], with [#217] that day, and the sixth, [#182] with [#215] and [#216], with [#225] on 2026-10-03, the seventh,
   [#118], with [#226] that day, the eighth, [#119] and [#172], with [#231] on 2026-10-04, the ninth, [#125] and [#126],
@@ -31,7 +32,7 @@ Tracking workflow mirrors from `docs/roadmap.md` (*Debt and open points*, below)
   [#154] and [#171] with [#327], [#348] and [#350], in two pull requests by area, the rebuild in [#352] on 2026-11-13,
   the searches near an offset and a row in [#360] on 2026-11-16; the twenty-second, seven issues, in two pull requests
   by area as the maintainer chose on 2026-11-16: the chain at opening, [#218], [#322], [#323] and [#325], in [#380]
-  that day, then the catalog after a rebuild, [#132], [#229] and [#260], in [#382], open. Then the
+  that day, then the catalog after a rebuild, [#132], [#229] and [#260], in [#382] on 2026-11-17. Then the
   other batches, slices 4 to 6 ([#60] to [#62]); then the milestone's adversarial review, slice 7 ([#137], ADR 46), once
   every other issue filed under M02 is closed. The debts come from the reader's own work, the threat model's first
   version ([#135], `docs/threat-model.md`), M01's review after the fact ([#136], `docs/reviews/M01.md`), the planning of
@@ -43,7 +44,8 @@ Tracking workflow mirrors from `docs/roadmap.md` (*Debt and open points*, below)
   [#336], [#342]), its twentieth ([#348] to [#351]), its twenty-first ([#353] to [#359], [#361] to [#363], [#365] to
   [#374]) and its twenty-second ([#375] to [#379], [#381]); [#123] moved to M20.
   The seventeenth filed [#305] and [#306] under M23, the eighteenth [#310] under
-  M03 and [#311] under M23, the nineteenth [#331] under M03 and [#343] under M23.
+  M03 and [#311] under M23, the nineteenth [#331] under M03 and [#343] under M23; [#367] and [#373], which the
+  twenty-first filed under M02, moved to M03 and M23 on 2026-11-17.
 - **User documentation**: organized along Diátaxis since 2026-09-30 ([ADR 47](adr/0047-the-user-documentation-follows-diataxis.md),
   [#148]), on `main`: a tutorial held to its sample by a test, four how-to guides, four reference
   pages — the validation rules among them, moved from the project documents — with the API reference under them, and
@@ -534,8 +536,8 @@ One pull request per batch, each design question put to the maintainer after mea
 3. [#56], with [#134] — done, merged with [#147] on 2026-09-30 (*Earlier, in brief*): what a damaged Flate stream
    decoded is kept, and a wrong checksum over whole data reported as `filter.checksum-mismatch`. The `Remote corpus`
    run [#134] asks for on the branch, run 17, was green; it closed with the merge.
-4. The reader and validation debts, in thirty-two batches settled with the maintainer on 2026-10-01 (journal of
-   2026-10-01). The ten agreed on 2026-09-29, with [#141] and [#144] placed on 2026-09-30, keep their order; the
+4. The reader and validation debts, in thirty-seven batches: thirty-two settled with the maintainer on 2026-10-01
+   (journal of 2026-10-01), five added on 2026-11-17 for the debts batches 21 and 22 filed (journal of 2026-11-17). The ten agreed on 2026-09-29, with [#141] and [#144] placed on 2026-09-30, keep their order; the
    twenty-five the threat model filed under M02 and the nine of M01's review join them where they share code or where
    their dependencies let them, the denial-of-service debts brought forward. A batch is one pull request; its design
    questions are put to the maintainer when it starts, after measuring; one that can move what a remote document gives
@@ -592,18 +594,32 @@ One pull request per batch, each design question put to the maintainer after mea
    22. [#132], with [#218], [#229] and [#260], and [#322], [#323] and [#325], which batch 19 filed — seven issues, in two
        pull requests by area, as the maintainer chose on 2026-11-16: the chain at opening, [#218], [#322], [#323] and
        [#325], in [#380], merged on 2026-11-16, `Remote corpus` run 118 green on its branch; then the catalog after a
-       rebuild, [#132], [#229] and [#260], in [#382], open, `Remote corpus` runs 119 and 120 green on its branch.
+       rebuild, [#132], [#229] and [#260], in [#382], merged on 2026-11-17, `Remote corpus` runs 119 and 120 green on its
+       branch.
    23. [#141] — done in [#254], brought forward with [#144] at the maintainer's request on 2026-10-15 (journal of
        2026-10-15).
-   24. [#169]; [#144], its batch's other half, done in [#254] with [#141].
+   24. [#169]; [#144], its batch's other half, done in [#254] with [#141]. Batch 33 follows it, brought forward by the
+       maintainer on 2026-11-17 for the denial of service it pays ([#362]).
    25. [#181].
    26. [#162], with [#250].
    27. [#163], `MaxDepth` and `MaxNestedLoads` made guards, as the maintainer decided, with [#262].
    28. [#185].
    29. [#173].
-   30. [#192].
-   31. [#107] and [#111], each a new public rule whose name and severity the maintainer gives.
+   30. [#192], with [#374].
+   31. [#107] and [#111], each a new public rule whose name and severity the maintainer gives. With [#381], which words
+       the rule [#111] widens, and [#321], [#330], [#332] and [#333], placed below, it holds seven issues and opens in
+       two pull requests: the rules, [#107], [#111] and [#381]; the searches around a hybrid table's `/XRefStm`, [#321],
+       [#330], [#332] and [#333].
    32. What remains of [#158], with [#223].
+   33. [#362], [#361], [#363], [#365], [#366] and [#372]: the headers the rebuild's scan takes in stream data it cannot
+       confirm, its memo's kinds and its read budget, the denial of service first. Run after batch 24.
+   34. [#368], [#369], [#370] and [#371]: the searches near a row and near an offset, and where a stream's data ends
+       without `endstream`.
+   35. [#353], [#357], [#358] and [#356]: the rebuild's header walk, where its scan's pieces start, and the order of the
+       object streams' expansion.
+   36. [#354] and [#355]: the trailer a rebuild merges from a cross-reference stream, and the encryption decided at
+       opening.
+   37. [#375], [#376], [#377], [#378] and [#379]: the chain's tables and trailers since [#322].
 
    Slice 4's blockers, [#141] and [#144], are paid in [#254]; nothing else filed blocks it. The four defects the
    planning found outside every issue, [#199] to [#202], and the four batch 2 found, [#207] to [#210], are filed under
@@ -660,7 +676,7 @@ One pull request per batch, each design question put to the maintainer after mea
    which object streams the expansion takes in and reads the scan's pieces at their edges; [#349], the reasons and cases
    the probe's check of where a rebuild serves a member leaves, with [#162], whose findings' texts it rewords; and [#351],
    a last definition that reads as nothing, which the maintainer filed on 2026-11-12, with [#163], the reader at its
-   guards and cuts. Batch 21's first pull request filed seven, all under M02, which the maintainer places: [#353],
+   guards and cuts. Batch 21's first pull request filed seven, all under M02: [#353],
    headers the walk refuses that a load reads; [#354], encryption's edges at opening; [#355], a cross-reference stream's
    dictionary read in a fixed window; [#356], the expansion's order; [#357], a string a cut leaves open closing on an
    update; [#358], where a piece starts still changing what the scan takes; and [#359], an encrypted document's
@@ -670,11 +686,14 @@ One pull request per batch, each design question put to the maintainer after mea
    comments there taken in time in their square, and a valid file read after a guard serving an attached file's object
    or merging its trailer —, both as on `main`; [#365] to [#372], the final passes' minors whose fixes change behavior;
    [#373], the memo's growth past 2^30 slots, which only a file of gigabytes tells; and [#374], the lexer the JIT no
-   longer inlines in the scan's loop. Batch 22's first pull request filed five, all under M02, which the
-   maintainer places: [#375], a stray dictionary taken for a table's trailer before the real one; [#376], a
+   longer inlines in the scan's loop. Batch 22's first pull request filed five, all under M02: [#375], a stray dictionary taken for a table's trailer before the real one; [#376], a
    keyword-less trailer's syntax errors unjudged; [#377], what the reader says of tables read in part in three edge
    cases; [#378], the filter guards beside an empty chain and a hybrid table's own stream refused; [#379], a trailer
-   parsed whole past `MaxTrailerLength`.
+   parsed whole past `MaxTrailerLength`. Its second filed one, [#381], the words of `file.root-invalid` after a rebuild.
+   The maintainer placed those twenty-six on 2026-11-17, by the code they share: twenty in batches 33 to 37 above;
+   [#381] in batch 31, with [#111], whose rule it words; [#374] in batch 30, with [#192], the lexer's cost; [#359] in
+   slice 5 ([#61]), the validator's encryption rule, as its body says; [#367] under M03, with [#52], whose short-read
+   contract removes it, as [#331] went; and [#373] under M23, which only a file of over 10 GB tells, as [#343] went.
 5. Slice 4 ([#60]) in two pull requests, streams then fonts, after the decisions it waits on: the severity of a font
    that is not embedded, the standard 14's aliases, where text is "meant to be extractable", how the rules that need
    content are left out and shown so, and the tools that referee both families.
