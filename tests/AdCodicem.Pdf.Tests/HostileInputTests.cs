@@ -4562,6 +4562,95 @@ public class HostileInputTests
         report.Findings.Should().Contain(finding => finding.RuleId == PdfValidationRuleIds.XRefEntryBroken);
     }
 
+    [Theory]
+    [InlineData(CommentHeadersPlacedBy.ScanOfStreamData)]
+    [InlineData(CommentHeadersPlacedBy.ScanOfRunawayString)]
+    [InlineData(CommentHeadersPlacedBy.Table)]
+    public void Objects_a_run_of_comment_lines_holds_the_headers_of_are_read_without_reading_the_lines_after_each(
+        CommentHeadersPlacedBy shape)
+    {
+        // Lines "% N 0 obj << /A [1 2 3] >>" whose headers the index places: each object's load read every line after it for
+        // the token after its value, its window grown eight times over, and opening, which loads every object a rebuild
+        // places, or validating, which loads every object, took time in the square of the lines (#362).
+        const int Lines = 1_000;
+
+        var small = ReadCommentHeaders(shape, Lines);
+        var large = ReadCommentHeaders(shape, 4 * Lines);
+
+        large.Should().BeLessThan(
+            8 * small, "four times the lines must cost about four times the bytes read ({0:N0} for {1:N0})", small, Lines);
+
+        static long ReadCommentHeaders(CommentHeadersPlacedBy shape, int lines)
+        {
+            var file = new HandWrittenFile();
+            var rows = new Dictionary<int, long>
+            {
+                [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),
+                [2] = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"),
+            };
+
+            file.Raw(shape switch
+            {
+                CommentHeadersPlacedBy.ScanOfStreamData => "5 0 obj << /Length 5 >> stream\nabcde\nendobj\n",
+                CommentHeadersPlacedBy.ScanOfRunawayString => "4 0 obj (abc endobj\n",
+                _ => string.Empty,
+            });
+
+            for (var k = 0; k < lines; k++)
+            {
+                file.Raw("% ");
+                rows[100 + k] = file.Position;
+                file.Raw(string.Create(CultureInfo.InvariantCulture, $"{100 + k} 0 obj << /A [1 2 3] >>\n"));
+            }
+
+            file.Raw(shape == CommentHeadersPlacedBy.ScanOfRunawayString
+                ? ") endobj\n"
+                : "6 0 obj << /Length 3 >> stream\nabc\nendstream\nendobj\n");
+            rows[7] = file.Object(7, "(seven)");
+
+            if (shape == CommentHeadersPlacedBy.Table)
+            {
+                file.Table(100 + lines, rows, string.Create(CultureInfo.InvariantCulture, $"/Size {100 + lines} /Root 1 0 R"));
+            }
+            else
+            {
+                file.Raw("trailer\n<< /Root 1 0 R >>\n%%EOF\n");
+            }
+
+            using var source = new StrictCountingSource(file.Bytes);
+            using var document = PdfDocument.Open(source, options: null, ownsSource: false);
+
+            if (shape == CommentHeadersPlacedBy.Table)
+            {
+                _ = new PdfValidator().Validate(document);
+            }
+
+            document.WasRepaired.Should().Be(shape != CommentHeadersPlacedBy.Table);
+
+            foreach (var number in new[] { 100, 100 + (lines / 2), 99 + lines })
+            {
+                document.GetObject(new PdfObjectId(number)).AsDictionary().Required().GetRaw(PdfName.Get("A"))
+                    .AsArray().Required().Count.Should().Be(3);
+            }
+
+            document.GetObject(new PdfObjectId(7)).AsText().Should().Be("seven");
+            return source.BytesRead;
+        }
+    }
+
+    /// <summary>What places the headers a run of comment lines holds.</summary>
+    public enum CommentHeadersPlacedBy
+    {
+        /// <summary>A rebuild's scan, in the data of a stream before them that has no <c>endstream</c>.</summary>
+        ScanOfStreamData,
+
+        /// <summary>A rebuild's scan, in the span of a string before them that runs on past its <c>endobj</c>.</summary>
+        ScanOfRunawayString,
+
+        /// <summary>A table whose rows place each header where the line holds it.</summary>
+        Table,
+    }
+
     [Fact]
     public void Opening_a_chain_of_trailers_that_never_close_reads_a_bounded_amount()
     {
