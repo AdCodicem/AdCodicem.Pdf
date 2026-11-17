@@ -208,8 +208,9 @@ Tracking workflow mirrors from `docs/roadmap.md` (*Debt and open points*, below)
   hand-made one; round 2, two lenses over the fixes, no blocker or major, 3 minors; round 3, one lens, no blocker or
   major, a minor the final pass fixed; the maintainer chose after rounds 1 and 2 to fix their minors in a further
   round; the rest filed as [#381] ([#382]).
-- **CI**: on [#382]'s branch, `Remote corpus` runs 119 and 120 green, the second at `f72cff6`, its final library code;
-  CI pending at this writing. Before it, green on [#380]'s branch at `c367676`, the integration suite against qpdf, the .NET 11 island and the site
+- **CI**: green on [#382]'s branch at `fed4109`, the integration suite against qpdf, the .NET 11 island and the site
+  included; `Remote corpus` runs 119 and 120 green on it, the second at `f72cff6`, whose library code the branch keeps;
+  the patch's coverage 100 % as Codecov counts it. Before it, green on [#380]'s branch at `c367676`, the integration suite against qpdf, the .NET 11 island and the site
   included; `Remote corpus` run 118 green on it at `de0482b`, whose library code the branch keeps. Before it, green on
   [#360]'s branch at `e2f2275`, the integration suite against qpdf, the .NET 11 island and the site
   included; `Remote corpus` run 117 green on it at `6a5a4df`, whose library code the branch keeps but for two comments;
