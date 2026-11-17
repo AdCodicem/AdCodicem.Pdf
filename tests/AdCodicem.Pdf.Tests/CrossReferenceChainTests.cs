@@ -8096,8 +8096,8 @@ public class CrossReferenceChainTests
         // gives none though the oldest table stands before it, within reach; or the middle revision's own, its table, which
         // names the oldest through /Prev, just past it. That stream lies before the stream the /XRefStm read, and is taken
         // where it comes nearest, as a first revision's would be: the chain ends there, the oldest table unread, and the index
-        // is rebuilt as the document opens, the catalog being the oldest table's alone, the validator saying the file holds
-        // none (#260). That is an accepted consequence of telling the table's own stream by where it lies: passed over as
+        // is rebuilt as the document opens, the catalog being the oldest table's alone, the validator naming the catalog only
+        // the rebuild found (#260). That is an accepted consequence of telling the table's own stream by where it lies: passed over as
         // possibly the table's own, the stream gave way to the oldest table, its revision's objects lost in silence, or to its
         // own table, which read the chain whole (#156).
         var (file, at, stream, newest) = near == "a middle revision's stream"
