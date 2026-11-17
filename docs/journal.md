@@ -7,6 +7,37 @@ to about thirty lines each; the unabridged text is the
 [journal of `e38ebbc`](https://github.com/AdCodicem/AdCodicem.Pdf/blob/e38ebbc471b86779c3f6ac5b320ca1ecd531b2c1/docs/status.md#journal). A session reads an entry when it needs the
 reason for a past decision. A new entry is short, about thirty lines; the detail is in the pull request's body.
 
+## 2026-11-17 — Batch 24: what a full diagnostics record still answers for ([#384])
+
+- **The question.** Measured on `main` at `edd3021`, twice, identical: batch 11 had paid [#169]'s reader side — a
+  cross-reference stream, object stream header or member a guard cut stays the guard's at any capacity —, but past the
+  capacity a caller could not see a guard: `HasWarnings` and `Contains` read the entries kept only. With no room, a
+  cross-reference stream whose `/Length` the chain reported earned `file.trailer-malformed`, an Error, the reader taking
+  any dropped entry for a syntax fault. The capacity options took negative values, the cache's floor of 64 unsaid.
+- **Settled with the maintainer** (2026-11-17, each as recommended): `Contains` and the `Has` properties answer for every
+  entry, kept or dropped, as a validation report does (ADR 36), with no new member; a diagnostic capacity of zero keeps
+  nothing and a negative capacity is refused; the cache's floor is documented.
+- **What changed.** Each `PdfDiagnostics` notes the severity and code of what its capacity drops — once on a document's
+  record —, through its marks, rollbacks and moves; a dropped entry is a syntax fault only under a `syntax.` code. A
+  section record boxes its rare mark, so the mark's new field costs the others nothing. No object served and no finding
+  changes on a valid file.
+- **Review** (ADR 54): one round, three lenses — the bookkeeping, with a model-based probe of 4,000 random sequences;
+  the invariants; real damage, about 77,000 damaged variants against a full record and room to spare, and the texts:
+  no blocker, major or minor, ten nits, three found twice. The final pass fixed texts and tests; the nit whose fix
+  changes code — the pending record's note growing with nested loads and kept at its peak — is filed: [#385].
+- **Mutation** (ADR 53 amended): 26 mutants over the defenses among the changed lines — the capacities' refusals, the
+  cache's floor, the note's dedupe and its window; 18 killed by the suite, 5 by tests the step wrote, 3 equivalent, a
+  second agent agreeing; two of those are named in [#385], whose fix's test kills them.
+- **The issues.** [#169]; batch 24 is paid, [#144] having gone with [#141] in [#254].
+- **Checks.** 12,214 unit tests, 12,211 passed and 3 skipped, with 235 of the 242 remote documents; the timing and
+  memory tests alone; CI green with the integration suite; the patch's coverable lines whole; `Remote corpus` run 122 green;
+  the parser and reader benchmarks against `main`, within noise; the corpus differential over 403 documents at
+  capacities 1,000, 0 and 7: no finding or kept entry changes, and at 0 and 7 `Contains` and the `Has` properties answer
+  as at 1,000; IBM's QMF manual, which passes 1,000, now answers for the `filter.*` codes it dropped.
+- **For callers.** `Contains`, `HasRepairs`, `HasWarnings` and `HasConformanceLoss` answer for entries the capacity
+  dropped; `DiagnosticCapacity`, `ObjectCacheCapacity` and `PdfDiagnostics.Capacity` throw `ArgumentOutOfRangeException`
+  for a negative value.
+
 ## 2026-11-17 — The debts batches 21 and 22 filed, placed
 
 - **The question.** Twenty-six debts filed under M02 by batch 21's two pull requests and batch 22's ([#353] to
@@ -1081,3 +1112,5 @@ The detail is in git and in the pull requests; what still matters is in the reco
 [#380]: https://github.com/AdCodicem/AdCodicem.Pdf/pull/380
 [#381]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/381
 [#382]: https://github.com/AdCodicem/AdCodicem.Pdf/pull/382
+[#384]: https://github.com/AdCodicem/AdCodicem.Pdf/pull/384
+[#385]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/385
