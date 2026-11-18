@@ -322,9 +322,10 @@ public static class PdfDiagnosticCodes
     /// directly or in a new object stream (ISO 32000-1, 7.5.6) —, and, of a number one object stream lists twice, the first
     /// listed (#189). Only the definition kept of an object stream's own number is read for members: the object streams are
     /// taken in from the last written to the first, so that one whose number a later object stream lists gives none (#348).
-    /// A header the rebuild's scan finds inside another object — a string, a comment, or the data of a stream whose direct
-    /// <c>/Length</c> an <c>endstream</c> confirms — is no definition (#171); one in any other stream's data, or in what a
-    /// string that runs past its object runs into, it takes as the bytes give it, and counts.
+    /// A header the rebuild's scan finds inside another object — a string, a comment, or the data of a stream whose length
+    /// an <c>endstream</c> confirms, a direct <c>/Length</c> or the one an indirect one's object gives (#363) — is no
+    /// definition (#171); one in any other stream's data, or in what a string that runs past its object runs into, it
+    /// takes as the bytes give it, and counts.
     /// </summary>
     public const string ObjectRedefined = "object.redefined";
 

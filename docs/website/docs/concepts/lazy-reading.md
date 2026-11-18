@@ -194,8 +194,8 @@ nearby (`xref.offset-adjusted`), and the map is not rebuilt for it: within 512 b
 file's start that falls ([#197](https://github.com/AdCodicem/AdCodicem.Pdf/issues/197)), comments between its header's
 tokens included, as a load reads them ([#261](https://github.com/AdCodicem/AdCodicem.Pdf/issues/261)). Neither search
 takes what lies inside another object: both try only the headers and `xref` keywords the scan that rebuilds a damaged
-map takes, below, never one in a string, a comment or the data of a stream whose direct `/Length` an `endstream`
-confirms ([#171](https://github.com/AdCodicem/AdCodicem.Pdf/issues/171)), as far as what that scan keeps reaches —
+map takes, below, never one in a string, a comment or the data of a stream whose length an `endstream` confirms
+([#171](https://github.com/AdCodicem/AdCodicem.Pdf/issues/171)), as far as what that scan keeps reaches —
 [The cost of the trade](#the-cost-of-the-trade) says how far, when the scan runs and what it costs. An object is found
 at the header of its number that the rows next to its own are shifted alike to, else at the nearest, the one before its
 row on a tie, a header the scan counts as found between objects, below, ranking before one it does not. A row that cuts
@@ -292,7 +292,7 @@ declares itself one — an `xref` keyword, or a stream whose dictionary gives `/
 reported where it is, any section near it being another ([#281](https://github.com/AdCodicem/AdCodicem.Pdf/issues/281)).
 Where the offset holds no section, the search near it, nearest first, tries only the places the scan that rebuilds a
 damaged map takes, as far as what that scan keeps reaches, above: the word `xref`, or a header, inside another object —
-in the data of a stream whose direct `/Length` an `endstream` confirms, a string or a comment — or in a comment or a
+in the data of a stream whose length an `endstream` confirms, a string or a comment — or in a comment or a
 string between objects is no place, is never read, and counts toward nothing, so that an attached file's own table,
 or a cross-reference stream the data quotes, is neither taken nor reported as passed over
 ([#171](https://github.com/AdCodicem/AdCodicem.Pdf/issues/171)) — but for one the scan takes in a stream's data past
@@ -303,10 +303,10 @@ counting from its first sign, as a load reads it, where that sign lies within th
 declaring nothing ([#327](https://github.com/AdCodicem/AdCodicem.Pdf/issues/327)) —, as at one it reads: that is the
 section found moved, reported where it was found, rather than passed over for an older section farther off whose rows
 would stand for its lost ones in silence. Where the scan takes the bytes as they come and does not count what it takes
-as found between objects, below — the data of a stream whose length it does not confirm, which it does only for a
-direct `/Length` an `endstream` follows, or what a string that runs past its object runs into —, a section found there
-is taken all the same, and the validator reports it as `xref.section-unconfirmed`, an error: the reader cannot tell
-whether those bytes are the file's own section or another
+as found between objects, below — in the data of a stream whose length it does not confirm, short of where a load ends
+that data, or in a comment or a string past there; in an attached file's data; or in what a string that runs past its
+object runs into —, a section found there is taken all the same, and the validator reports it as
+`xref.section-unconfirmed`, an error: the reader cannot tell whether those bytes are the file's own section or another
 object's; so is a section found past what the scan keeps. Wherever
 it lies — a place the chain itself names among them —, a place that cannot be read declares a section only where its
 token starts its line as a load lexes it, the line read again as far as 4,096 bytes before the bytes searched where it

@@ -132,10 +132,10 @@ internal sealed class ScanMemo
     public bool InScanOrder { get; }
 
     /// <summary>
-    /// Gets a value indicating whether the scan's reads past declared lengths reached
-    /// <see cref="PdfReaderLimits.MaxRebuildReadPasses"/>, and it read the data of the streams it could not confirm after
-    /// that as intact: the memo reports nothing, and a rebuild scans the file again, which reports the guard, rather than
-    /// take its headers from the memo.
+    /// Gets a value indicating whether the scan's reads that confirm streams' lengths — past direct ones, or, counted
+    /// apart, for the objects of indirect ones — reached <see cref="PdfReaderLimits.MaxRebuildReadPasses"/>, and it read
+    /// the data of the streams it could not confirm after that as intact: the memo reports nothing, and a rebuild scans
+    /// the file again, which reports the guard, rather than take its headers from the memo.
     /// </summary>
     public bool ReadsBounded { get; }
 
@@ -280,7 +280,7 @@ internal sealed class ScanMemo
         public bool IsWhole => _fullAt < 0;
 
         /// <summary>
-        /// Gets or sets a value indicating whether the scan's reads past declared lengths reached their bound
+        /// Gets or sets a value indicating whether the scan's reads that confirm streams' lengths reached their bound
         /// (<see cref="ScanMemo.ReadsBounded"/>).
         /// </summary>
         public bool ReadsBounded { get; set; }

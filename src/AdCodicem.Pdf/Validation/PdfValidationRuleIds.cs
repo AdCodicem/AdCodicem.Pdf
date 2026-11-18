@@ -108,13 +108,16 @@ public static class PdfValidationRuleIds
     /// A cross-reference section a <c>/Prev</c> or an <c>/XRefStm</c> names is not where it is named, and the reader
     /// takes one near it that the file does not confirm: found only where it may lie inside another object and the
     /// reader's scan for objects does not count what it takes as found between objects — in the data of a stream whose
-    /// length that scan does not confirm, which it does only for a direct <c>/Length</c> an <c>endstream</c> follows,
-    /// short of where a load ends the data of a stream that lost its <c>endstream</c>, as far as the bytes it reads
-    /// tell, or past a string that runs past its object —, or past where what that scan keeps is whole — past the
-    /// places it records within <see cref="Documents.PdfReaderLimits.MaxIndexEntries"/>, or past the last object it
-    /// passed before the end of a read that a source answered with fewer bytes than asked, or, where either ends what
-    /// it keeps while it awaits the object of a stream's indirect <c>/Length</c>, past that stream's data's start.
-    /// <see cref="PdfValidationSeverity.Error"/>.
+    /// length that scan does not confirm, which it does for a direct <c>/Length</c> an <c>endstream</c> follows and for
+    /// an indirect one whose object the file's bytes give where an <c>endstream</c> follows the length it holds, short
+    /// of where a load ends the data of a stream that lost its <c>endstream</c>, as far as the bytes it reads tell, and,
+    /// past there, in a comment or a string as a load reads the bytes from there; in the data of an attached file — a
+    /// stream of <c>/Type /EmbeddedFile</c>, or data that starts with <c>%PDF-</c> or <c>%FDF-</c> —, short of where its
+    /// own length ends it; or past a string that runs past its object —, or past where what that scan keeps is whole —
+    /// past the places it records within <see cref="Documents.PdfReaderLimits.MaxIndexEntries"/>, or past the last
+    /// object it passed before the end of a read that a source answered with fewer bytes than asked, or, where either
+    /// ends what it keeps while it awaits the object of a stream's indirect <c>/Length</c>, past that stream's data's
+    /// start. <see cref="PdfValidationSeverity.Error"/>.
     /// </summary>
     public const string XRefSectionUnconfirmed = "xref.section-unconfirmed";
 
@@ -161,8 +164,11 @@ public static class PdfValidationRuleIds
     /// either side of it: the nearest of several definitions its scan for objects counts as found between objects, none
     /// of which the entries next to it in the file's index are shifted alike to; or a header that scan takes only as
     /// the bytes give it and does not count so — in the data of a stream whose length it does not confirm, which it
-    /// does only for a direct <c>/Length</c> an <c>endstream</c> follows, short of where a load ends the data of a
-    /// stream that lost its <c>endstream</c>, as far as the bytes it reads tell, or past a string that runs past its
+    /// does for a direct <c>/Length</c> an <c>endstream</c> follows and for an indirect one whose object the file's
+    /// bytes give where an <c>endstream</c> follows the length it holds, short of where a load ends the data of a
+    /// stream that lost its <c>endstream</c>, as far as the bytes it reads tell, and, past there, in a comment or a
+    /// string as a load reads the bytes from there; in the data of an attached file
+    /// (<see cref="XRefSectionUnconfirmed"/>), short of where its own length ends it; or past a string that runs past its
     /// object —, or past where what that scan keeps is whole — past the places it records within
     /// <see cref="Documents.PdfReaderLimits.MaxIndexEntries"/>, or past the last object it passed before the end of a
     /// read that a source answered with fewer bytes than asked, or, where either ends what it keeps while it awaits the
