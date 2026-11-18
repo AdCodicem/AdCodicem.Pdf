@@ -770,32 +770,93 @@ public class ReaderLimitsTests
     }
 
     [Theory]
-    [InlineData(31, 4, true, "Unindexed")]
-    [InlineData(99, 4, true, "Unindexed")]
-    [InlineData(31, 64, false, "Defined")]
-    [InlineData(99, 64, false, "Missing")]
-    public void An_object_a_rebuild_s_scan_left_out_of_the_index_at_the_read_guard_is_unknown_rather_than_missing(
-        int named, int passes, bool reached, string presence)
+    [InlineData("headers", 31, 4, "24 0 obj", "Unindexed")]
+    [InlineData("headers", 99, 4, "24 0 obj", "Unindexed")]
+    [InlineData("headers", 31, 64, null, "Defined")]
+    [InlineData("headers", 99, 64, null, "Missing")]
+    [InlineData("headers past the first stream", 99, 4, "30 0 obj", "Unindexed")]
+    [InlineData("no header", 31, 4, null, "Defined")]
+    [InlineData("no header", 99, 4, null, "Missing")]
+    public void An_object_a_rebuild_s_scan_left_out_of_the_index_at_the_read_guard_is_unknown_where_the_data_it_left_unread_may_hold_it(
+        string unread, int named, int passes, string? stoppedAt, string presence)
     {
         // The guard's case, its catalog naming object 31, or object 99, which the file does not define, under /Lang. Once the
-        // rebuild's scan has read past the spelled streams' lengths as much as MaxRebuildReadPasses lets it, it reads object
-        // 30's data up to the inner endstream, and the comment after it hides object 31: whether the file holds an object
-        // the rebuilt index lacks is then unknown, as where any guard left it out of the index, and the validator says the
-        // index was checked in part where the scan reached the guard, rather than judge the reference missing. Raised, the
-        // guard reads object 31, and object 99 is missing.
-        var file = Encoding.Latin1.GetBytes(Encoding.Latin1.GetString(Case.For("rebuild reads").File).Replace(
-            Catalog, string.Create(CultureInfo.InvariantCulture, $"<< /Type /Catalog /Pages 2 0 R /Lang {named} 0 R >>"), StringComparison.Ordinal));
+        // rebuild's scan has read past the spelled streams' lengths as much as MaxRebuildReadPasses lets it, it reads the data
+        // of the streams it cannot confirm up to their first endstream: spelled stream 24's, which holds stream 25's header,
+        // then object 30's, which holds an attached file's, and the comment after its inner endstream hides object 31.
+        // Whether the file holds an object the rebuilt index lacks is then unknown, as where any guard left it out of the
+        // index, and the validator says the index was checked in part from the first data left unread that may hold a header,
+        // rather than judge the reference missing. Where stream 25's header is spoiled, that is object 30's data; where object
+        // 30 is not written either, no data left unread may hold a header: the guard is reported all the same, and object 99
+        // is missing. Raised, the guard reads object 31, and object 99 is missing.
+        var text = Encoding.Latin1.GetString(Case.For("rebuild reads").File).Replace(
+            Catalog, string.Create(CultureInfo.InvariantCulture, $"<< /Type /Catalog /Pages 2 0 R /Lang {named} 0 R >>"), StringComparison.Ordinal);
+
+        if (unread != "headers")
+        {
+            text = text.Replace("25 0 obj", "25 0 ob_", StringComparison.Ordinal);
+        }
+
+        if (unread == "no header")
+        {
+            var thirty = text.IndexOf("30 0 obj", StringComparison.Ordinal);
+            var real = text.IndexOf("31 0 obj", StringComparison.Ordinal);
+            text = text[..thirty] + new string(' ', real - thirty) + text[real..];
+        }
+
+        var file = Encoding.Latin1.GetBytes(text);
         using var document = PdfDocument.Open(file, new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxRebuildReadPasses = passes } });
 
         var findings = new PdfValidator().Validate(document).Findings;
-        var reports = document.Diagnostics.Where(entry => entry.Code == PdfDiagnosticCodes.LimitRebuildReads).Select(entry => (long?)entry.Position);
+        var reports = document.Diagnostics.Where(entry => entry.Code == PdfDiagnosticCodes.LimitRebuildReads);
+        long?[] stopped = stoppedAt is null ? [] : [text.IndexOf("stream\n", text.IndexOf(stoppedAt, StringComparison.Ordinal), StringComparison.Ordinal) + "stream\n".Length];
 
         document.WasRepaired.Should().BeTrue();
         document.Reader.GetPresence(named).Should().Be(Enum.Parse<ObjectPresence>(presence));
-        reports.Should().HaveCount(reached ? 1 : 0);
+        reports.Select(entry => entry.Position).Should().Equal(passes == 4 ? [OffsetOf(file, "24 0 obj") + 38] : []);
         findings.Where(finding => finding.RuleId == PdfValidationRuleIds.XRefCheckedInPart).Select(finding => finding.Location.Position)
-            .Should().Equal(reports);
+            .Should().Equal(stopped);
         findings.Any(finding => finding.RuleId == PdfValidationRuleIds.ObjectReferenceMissing).Should().Be(presence == "Missing");
+    }
+
+    [Theory]
+    [InlineData(4, "Unindexed", null)]
+    [InlineData(64, "Defined", PdfValidationRuleIds.XRefEntryShifted)]
+    public void An_object_the_read_guard_left_out_of_a_rebuilt_index_is_unknown_though_the_chain_s_index_places_it(
+        int passes, string presence, string? judged)
+    {
+        // The guard's case under a table whose rows each lie three bytes past the header they place, object 31's included.
+        // The search near object 31's row finds no header there, the scan it takes headers from hiding it in the comment after
+        // object 30's inner endstream once past the guard, and the rebuild that sets off hides it too. The chain's index
+        // places object 31, and the rebuilt index lacks it for the guard's reasons: whether the file holds it is unknown, not
+        // a reading the reader gave up on, and its row is not judged. Raised, the guard reads object 31, three bytes before
+        // its row.
+        using var document = PdfDocument.Open(
+            SpelledStreamsUnderShiftedRows(), new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxRebuildReadPasses = passes } });
+
+        var findings = new PdfValidator().Validate(document).Findings;
+
+        document.Reader.GetPresence(31).Should().Be(Enum.Parse<ObjectPresence>(presence));
+        findings.Where(finding => finding.Location.Object?.Number == 31).Select(finding => finding.RuleId)
+            .Should().Equal(judged is null ? [] : [judged]);
+    }
+
+    [Theory]
+    [InlineData(31)]
+    [InlineData(99)]
+    public void An_object_a_rebuilt_index_lacks_past_the_read_guard_throws_each_time_a_document_opened_to_throw_reads_it(int number)
+    {
+        // As above, reading object 31 sets the rebuild off, which reaches the guard and throws once the index is whole. Read
+        // again, object 31, or object 99, which no index places, reads as null by the guard's decision, which a document
+        // opened to throw on one is told each time it asks, as where the index filled.
+        using var document = PdfDocument.Open(SpelledStreamsUnderShiftedRows(), new PdfReaderOptions { ThrowOnLimit = true });
+        var first = () => document.GetObject(new PdfObjectId(31));
+        var again = () => document.GetObject(new PdfObjectId(number));
+
+        var thrown = first.Should().Throw<PdfLimitExceededException>().Which;
+
+        thrown.LimitName.Should().Be(nameof(PdfReaderLimits.MaxRebuildReadPasses));
+        again.Should().Throw<PdfLimitExceededException>().Which.Position.Should().Be(thrown.Position);
     }
 
     [Theory]
@@ -4710,6 +4771,29 @@ public class ReaderLimitsTests
         document.WasRepaired ? "rebuilt"
         : document.Diagnostics.Contains(PdfDiagnosticCodes.TrailerRootRecovered) ? "catalog recovered"
         : "as written";
+
+    /// <summary>
+    /// Writes the file of the guard on the rebuild's reads (<see cref="Case.For"/>) under a classic table whose rows each lie
+    /// three bytes past the header they place: objects 1, 2, 10, 11, 30 and 31.
+    /// </summary>
+    private static byte[] SpelledStreamsUnderShiftedRows()
+    {
+        var file = Case.For("rebuild reads").File;
+        var text = Encoding.Latin1.GetString(file);
+        var body = text[..text.LastIndexOf("trailer", StringComparison.Ordinal)];
+        var table = new StringBuilder("xref\n0 32\n0000000000 65535 f \n");
+
+        for (var number = 1; number < 32; number++)
+        {
+            var at = number is 1 or 2 or 10 or 11 or 30 or 31
+                ? body.IndexOf(string.Create(CultureInfo.InvariantCulture, $"{number} 0 obj"), StringComparison.Ordinal)
+                : -1;
+            table.Append(at < 0 ? "0000000000 65535 f \n" : string.Create(CultureInfo.InvariantCulture, $"{at + 3:D10} 00000 n \n"));
+        }
+
+        table.Append(CultureInfo.InvariantCulture, $"trailer\n<< /Size 32 /Root 1 0 R >>\nstartxref\n{body.Length}\n%%EOF\n");
+        return Encoding.Latin1.GetBytes(body + table);
+    }
 
     private static int OffsetOf(byte[] file, string text) =>
         Encoding.Latin1.GetString(file).IndexOf(text, StringComparison.Ordinal);

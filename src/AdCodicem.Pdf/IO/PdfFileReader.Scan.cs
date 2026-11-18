@@ -366,6 +366,13 @@ internal sealed partial class PdfFileReader
                     continue;
                 }
 
+                // The index stops short of the file only where data the scan left unread may hold a header: at the first such
+                // stream whose data, up to the endstream its passing found, holds an obj keyword.
+                if (intact && memo is null && _rebuildReadsBoundedAt < 0 && HoldsObjKeyword(extent.DataStart, scan.EndStreamAt))
+                {
+                    _rebuildReadsBoundedAt = extent.DataStart;
+                }
+
                 // The scan goes on past the object: within this window where its end lies within the bytes searched, from
                 // the next window otherwise.
                 if (scan.ObjFrom - windowStart <= searchEnd)
@@ -431,15 +438,15 @@ internal sealed partial class PdfFileReader
     /// <summary>
     /// Reports, for a rebuild's scan, that its reads past declared lengths reached
     /// <see cref="PdfReaderLimits.MaxRebuildReadPasses"/> where the data of the stream that starts at
-    /// <paramref name="position"/> is read as an intact stream's for it, marks the index the rebuild makes as stopped short
-    /// by a guard there (<see cref="_rebuildReadsBoundedAt"/>), and holds the exception a document opened to throw asked for
-    /// in <paramref name="reached"/>, unless one is held already: the rebuild finishes first. A scan for the memo, which
-    /// reports nothing, notes it in the memo instead (<see cref="ScanMemo.Builder.ReadsBounded"/>).
+    /// <paramref name="position"/> is read as an intact stream's for it, and holds the exception a document opened to throw
+    /// asked for in <paramref name="reached"/>, unless one is held already: the rebuild finishes first. A scan for the memo,
+    /// which reports nothing, notes it in the memo instead (<see cref="ScanMemo.Builder.ReadsBounded"/>).
     /// </summary>
     /// <remarks>
     /// The report counts among no read's guards (<see cref="_guardsReached"/>): the scan's reads decide where places lie,
-    /// not what a value holds, and a load that set the rebuild off is not told that a guard cut its value. What the index
-    /// lacks is the guard's all the same, as where it filled: whether the file holds such an object is unknown
+    /// not what a value holds, and a load that set the rebuild off is not told that a guard cut its value. The index stops
+    /// short of the file only once data left unread holds an <c>obj</c> keyword (<see cref="_rebuildReadsBoundedAt"/>):
+    /// what it lacks is then the guard's, as where it filled, and whether the file holds such an object unknown
     /// (<see cref="ObjectPresence.Unindexed"/>). A rebuild the source fails withdraws the report with the rest of what it
     /// reported, and the rebuild run again scans, and reports, again.
     /// </remarks>
@@ -451,19 +458,70 @@ internal sealed partial class PdfFileReader
             return;
         }
 
-        _rebuildReadsBoundedAt = position;
-        var passes = _guard.Bound(PdfLimit.RebuildReads);
-        var read = passes == 1 ? "the length of the file" : string.Create(CultureInfo.InvariantCulture, $"{passes:N0} times the length of the file");
-        var what = $"Past streams' declared lengths, the scan for objects read {read}; the data of each stream it could not confirm after that was read up to its first endstream, the object headers there not taken.";
-
         try
         {
-            _guard.Reach(PdfLimit.RebuildReads, _diagnostics, what, position);
+            _guard.Reach(PdfLimit.RebuildReads, _diagnostics, RebuildReadsMessage(), position);
         }
         catch (PdfLimitExceededException exception)
         {
             reached ??= ExceptionDispatchInfo.Capture(exception);
         }
+    }
+
+    /// <summary>Says that the rebuild's scan reached <see cref="PdfReaderLimits.MaxRebuildReadPasses"/>.</summary>
+    private string RebuildReadsMessage()
+    {
+        var passes = _guard.Bound(PdfLimit.RebuildReads);
+        var read = passes == 1 ? "the length of the file" : string.Create(CultureInfo.InvariantCulture, $"{passes:N0} times the length of the file");
+        return $"Past streams' declared lengths, the scan for objects read {read}; the data of each stream it could not confirm after that was read up to its first endstream, the object headers there not taken.";
+    }
+
+    /// <summary>
+    /// Determines whether the file holds an <c>obj</c> keyword from <paramref name="from"/> up to <paramref name="to"/>, as
+    /// the scan's walk back from one would read a header's: white space before it, and no regular character after it.
+    /// </summary>
+    /// <remarks>
+    /// Read in windows of <see cref="ScanChunkSize"/> bytes, from the byte before <paramref name="from"/> to the one at
+    /// <paramref name="to"/>, each overlapping the one before by a keyword and the bytes around it; the scan asks only until
+    /// one answers, once a rebuild, of the data of streams it reads as intact, which their passing has already searched for
+    /// their <c>endstream</c>: no more than that data is read again.
+    /// </remarks>
+    private bool HoldsObjKeyword(long from, long to)
+    {
+        var position = Math.Max(0, from - 1);
+        var stop = Math.Min(to + 1, _source.Length);
+
+        while (position < stop)
+        {
+            var asked = (int)Math.Min(ScanChunkSize, stop - position);
+            using var window = _source.GetWindow(position, asked);
+            var bytes = window.Memory.Span;
+            var index = 1;
+
+            while (index < bytes.Length && bytes[index..].IndexOf(ObjKeyword) is var found and >= 0)
+            {
+                index += found;
+                var start = position + index;
+                var after = index + ObjKeyword.Length;
+
+                if (start >= from && start + ObjKeyword.Length <= to && PdfCharacters.IsWhitespace(bytes[index - 1]) &&
+                    (after < bytes.Length ? !PdfCharacters.IsRegular(bytes[after]) : position + after >= _source.Length))
+                {
+                    return true;
+                }
+
+                index++;
+            }
+
+            if (bytes.Length < asked || position + bytes.Length >= stop)
+            {
+                return false;
+            }
+
+            position += bytes.Length - (ObjKeyword.Length + 1);
+        }
+
+        return false;
     }
 
     /// <summary>

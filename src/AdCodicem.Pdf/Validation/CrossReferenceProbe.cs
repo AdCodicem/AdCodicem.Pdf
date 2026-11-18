@@ -236,7 +236,8 @@ internal sealed class CrossReferenceProbe
                 return;
 
             case HeaderPlace.NotFound:
-                if (Broken.Take())
+                // An object a guard left out of the index the reader rebuilt is unknown, not lost: its row is not judged.
+                if (reader.GetPresence(number) != ObjectPresence.Unindexed && Broken.Take())
                 {
                     Broken.Keep(new ProbeFinding(
                         at,
