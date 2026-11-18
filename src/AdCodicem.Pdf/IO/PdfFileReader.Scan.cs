@@ -348,9 +348,9 @@ internal sealed partial class PdfFileReader
                     continue;
                 }
 
-                // The index stops short of the file only where data the scan left unread may hold a header: at the first such
-                // stream whose data, up to the endstream its passing found, holds an obj keyword.
-                if (intact && memo is null && _rebuildReadsBoundedAt < 0 && HoldsObjKeyword(extent.DataStart, scan.EndStreamAt))
+                // The index stops short of the file only where data the scan left unread holds a header it would have taken:
+                // at the first such stream's, up to the endstream its passing found.
+                if (intact && memo is null && _rebuildReadsBoundedAt < 0 && HoldsHeader(extent.DataStart, scan.EndStreamAt))
                 {
                     _rebuildReadsBoundedAt = extent.DataStart;
                 }
@@ -427,10 +427,11 @@ internal sealed partial class PdfFileReader
     /// <remarks>
     /// The report counts among no read's guards (<see cref="_guardsReached"/>): the scan's reads decide where places lie,
     /// not what a value holds, and a load that set the rebuild off is not told that a guard cut its value. The index stops
-    /// short of the file only once data left unread holds an <c>obj</c> keyword (<see cref="_rebuildReadsBoundedAt"/>):
-    /// what it lacks is then the guard's, as where it filled, and whether the file holds such an object unknown
-    /// (<see cref="ObjectPresence.Unindexed"/>). A rebuild the source fails withdraws the report with the rest of what it
-    /// reported, and the rebuild run again scans, and reports, again.
+    /// short of the file only once data left unread holds a header the scan would have taken
+    /// (<see cref="_rebuildReadsBoundedAt"/>): what it lacks is then the guard's, as where it filled, whether the file holds
+    /// such an object unknown (<see cref="ObjectPresence.Unindexed"/>), and a read of one throws again where the guard was
+    /// reported (<see cref="_rebuildReadsReportedAt"/>). A rebuild the source fails withdraws the report with the rest of
+    /// what it reported, and the rebuild run again scans, and reports, again.
     /// </remarks>
     private void ReachScanReadBound(long position, ScanMemo.Builder? memo, ref ExceptionDispatchInfo? reached)
     {
@@ -439,6 +440,8 @@ internal sealed partial class PdfFileReader
             memo.ReadsBounded = true;
             return;
         }
+
+        _rebuildReadsReportedAt = position;
 
         try
         {
@@ -459,18 +462,22 @@ internal sealed partial class PdfFileReader
     }
 
     /// <summary>
-    /// Determines whether the file holds an <c>obj</c> keyword from <paramref name="from"/> up to <paramref name="to"/>, as
-    /// the scan's walk back from one would read a header's: white space before it, and no regular character after it.
+    /// Determines whether the file holds, from <paramref name="from"/> up to <paramref name="to"/>, an object header the scan
+    /// would take were it to read that data as the bytes give it: an <c>obj</c> keyword from which it would read a header
+    /// back (<see cref="ReadHeaderBackwards"/>), from no further back than <paramref name="from"/>, where it would read
+    /// tokens anew. An <c>obj</c> no header precedes — a word in a comment or a string — holds none.
     /// </summary>
     /// <remarks>
-    /// Read in windows of <see cref="ScanChunkSize"/> bytes, from the byte before <paramref name="from"/> to the one at
-    /// <paramref name="to"/>, each overlapping the one before by a keyword and the bytes around it; the scan asks only until
-    /// one answers, once a rebuild, of the data of streams it reads as intact, which their passing has already searched for
-    /// their <c>endstream</c>: no more than that data is read again.
+    /// Read in windows of <see cref="ScanChunkSize"/> bytes, from <paramref name="from"/> to the byte at
+    /// <paramref name="to"/>, each overlapping the one before by a keyword and the byte after it; a walk back goes no
+    /// further than the window it lies in, and one that reaches the start of a window past <paramref name="from"/> undecided
+    /// is taken as a header, which may start before it. The scan asks only until one answers, once a rebuild, of the data
+    /// of streams it reads as intact, which their passing has already searched for their <c>endstream</c>: no more than
+    /// that data is read again, and the walks in a window read it a bounded number of times.
     /// </remarks>
-    private bool HoldsObjKeyword(long from, long to)
+    private bool HoldsHeader(long from, long to)
     {
-        var position = Math.Max(0, from - 1);
+        var position = from;
         var stop = Math.Min(to + 1, _source.Length);
 
         while (position < stop)
@@ -478,16 +485,16 @@ internal sealed partial class PdfFileReader
             var asked = (int)Math.Min(ScanChunkSize, stop - position);
             using var window = _source.GetWindow(position, asked);
             var bytes = window.Memory.Span;
-            var index = 1;
+            var index = 0;
 
             while (index < bytes.Length && bytes[index..].IndexOf(ObjKeyword) is var found and >= 0)
             {
                 index += found;
-                var start = position + index;
                 var after = index + ObjKeyword.Length;
 
-                if (start >= from && start + ObjKeyword.Length <= to && PdfCharacters.IsWhitespace(bytes[index - 1]) &&
-                    (after < bytes.Length ? !PdfCharacters.IsRegular(bytes[after]) : position + after >= _source.Length))
+                // A keyword whose next byte the window does not hold is the next window's to read, but at the file's end.
+                if (position + after <= to && (after < bytes.Length || position + after >= _source.Length) &&
+                    ReadHeaderBackwards(bytes, index, startsData: position == from, signsBeforeUnknown: false, out _, out _, out _, out _) != HeaderWalk.None)
                 {
                     return true;
                 }

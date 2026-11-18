@@ -797,6 +797,9 @@ public class ReaderLimitsTests
     [InlineData("headers past the first stream", 99, 4, "30 0 obj", "Unindexed")]
     [InlineData("no header", 31, 4, null, "Defined")]
     [InlineData("no header", 99, 4, null, "Missing")]
+    [InlineData("(an obj word)", 99, 4, null, "Missing")]
+    [InlineData("% an obj\nword", 99, 4, null, "Missing")]
+    [InlineData("(ab 77 0 obj)", 99, 4, "24 0 obj", "Unindexed")]
     public void An_object_a_rebuild_s_scan_left_out_of_the_index_at_the_read_guard_is_unknown_where_the_data_it_left_unread_may_hold_it(
         string unread, int named, int passes, string? stoppedAt, string presence)
     {
@@ -808,7 +811,9 @@ public class ReaderLimitsTests
         // index, and the validator says the index was checked in part from the first data left unread that may hold a header,
         // rather than judge the reference missing. Where stream 25's header is spoiled, that is object 30's data; where object
         // 30 is not written either, no data left unread may hold a header: the guard is reported all the same, and object 99
-        // is missing. Raised, the guard reads object 31, and object 99 is missing.
+        // is missing — and so it is where the last line of stream 24's data, as long as before, holds the word obj in a
+        // string or a comment, which no header precedes, but not where it holds a header in a string, which the scan would
+        // take. Raised, the guard reads object 31, and object 99 is missing.
         var text = Encoding.Latin1.GetString(Case.For("rebuild reads").File).Replace(
             Catalog, string.Create(CultureInfo.InvariantCulture, $"<< /Type /Catalog /Pages 2 0 R /Lang {named} 0 R >>"), StringComparison.Ordinal);
 
@@ -817,8 +822,13 @@ public class ReaderLimitsTests
             text = text.Replace("25 0 obj", "25 0 ob_", StringComparison.Ordinal);
         }
 
-        if (unread == "no header")
+        if (unread is not ("headers" or "headers past the first stream"))
         {
+            if (unread != "no header")
+            {
+                text = text.Replace("attached tail", unread, StringComparison.Ordinal);
+            }
+
             var thirty = text.IndexOf("30 0 obj", StringComparison.Ordinal);
             var real = text.IndexOf("31 0 obj", StringComparison.Ordinal);
             text = text[..thirty] + new string(' ', real - thirty) + text[real..];
@@ -862,14 +872,20 @@ public class ReaderLimitsTests
     }
 
     [Theory]
-    [InlineData(31)]
-    [InlineData(99)]
-    public void An_object_a_rebuilt_index_lacks_past_the_read_guard_throws_each_time_a_document_opened_to_throw_reads_it(int number)
+    [InlineData(31, true)]
+    [InlineData(99, true)]
+    [InlineData(31, false)]
+    [InlineData(99, false)]
+    public void An_object_a_rebuilt_index_lacks_past_the_read_guard_throws_each_time_a_document_opened_to_throw_reads_it(
+        int number, bool firstStreamHoldsHeader)
     {
         // As above, reading object 31 sets the rebuild off, which reaches the guard and throws once the index is whole. Read
         // again, object 31, or object 99, which no index places, reads as null by the guard's decision, which a document
-        // opened to throw on one is told each time it asks, as where the index filled.
-        using var document = PdfDocument.Open(SpelledStreamsUnderShiftedRows(), new PdfReaderOptions { ThrowOnLimit = true });
+        // opened to throw on one is told each time it asks, as where the index filled, where the guard was reported: at the
+        // first stream the guard left unread, whether its data holds a header, or stream 25's is spoiled and object 30's
+        // data, further on, is the first to hold one.
+        using var document = PdfDocument.Open(
+            SpelledStreamsUnderShiftedRows(firstStreamHoldsHeader), new PdfReaderOptions { ThrowOnLimit = true });
         var first = () => document.GetObject(new PdfObjectId(31));
         var again = () => document.GetObject(new PdfObjectId(number));
 
@@ -4796,10 +4812,16 @@ public class ReaderLimitsTests
     /// Writes the file of the guard on the rebuild's reads (<see cref="Case.For"/>) under a classic table whose rows each lie
     /// three bytes past the header they place: objects 1, 2, 10, 11, 30 and 31.
     /// </summary>
-    private static byte[] SpelledStreamsUnderShiftedRows()
+    private static byte[] SpelledStreamsUnderShiftedRows(bool firstStreamHoldsHeader = true)
     {
         var file = Case.For("rebuild reads").File;
         var text = Encoding.Latin1.GetString(file);
+
+        if (!firstStreamHoldsHeader)
+        {
+            text = text.Replace("25 0 obj", "25 0 ob_", StringComparison.Ordinal);
+        }
+
         var body = text[..text.LastIndexOf("trailer", StringComparison.Ordinal)];
         var table = new StringBuilder("xref\n0 32\n0000000000 65535 f \n");
 
