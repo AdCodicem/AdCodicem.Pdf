@@ -126,10 +126,12 @@ there. Raise PdfReaderLimits.MaxDecodedStreamLength to read past it.
   file that holds an `endstream` of its own before the stream's has the object headers past that keyword taken, and a
   comment there may hide the objects after the stream: raising the limit reads it whole
   ([`MaxRebuildReadPasses`](api/AdCodicem.Pdf.Documents.PdfReaderLimits.md#AdCodicem_Pdf_Documents_PdfReaderLimits_MaxRebuildReadPasses)
-  says what the scan counts). Where the data it so leaves unread holds an `obj` keyword, an object the rebuilt index
-  lacks reads as null and is unknown rather than missing, whatever the file's own index says of it: the validator says
-  the index was checked in part (`xref.checked-in-part`) from the first such stream, rather than report a reference to
-  it as `object.reference-missing` or its entry as `xref.entry-broken`, and `ThrowOnLimit` throws at each read of one.
+  says what the scan counts). Where the data it so leaves unread holds an object header the scan would have taken, an
+  object the rebuilt index lacks reads as null and is unknown rather than missing, whatever the file's own index says of
+  it: the validator says the index was checked in part (`xref.checked-in-part`) from the first such stream, rather than
+  report a reference to it as `object.reference-missing` or its entry as `xref.entry-broken`, and `ThrowOnLimit` throws
+  at each read of one, where the guard was reported. An `obj` that no header precedes, a word in a comment or a string,
+  holds none.
   The scan the searches near an offset ask for reaches it as the rebuild's does, and reports nothing: a rebuild after it
   scans the file again, and reports it then.
 - An object cut at `MaxObjectLength` is kept as far as the bound, and the catalog among them: the reader takes the
