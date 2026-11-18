@@ -185,8 +185,7 @@ index counts what it reads to confirm streams apart, and three ways. The reads t
 streams an attached file's bytes spell inside a stream's data the scan does not confirm count too, and can spend four
 times the file. The reads that confirm an indirect `/Length` look for its object in the file's bytes, a few objects
 before the stream or within a mebibyte past its data: a valid file's length objects lie there, but one in an object
-stream is never found, nor a length a damage made wrong confirmed, and a file of many such streams can have that
-mebibyte searched four times the file over. Both
+stream is never found, and a file of many such streams can have that mebibyte searched four times the file over. Both
 decide what a rebuild serves, so they are a guard, `MaxRebuildReadPasses`, each counted apart against it
 ([#363](https://github.com/AdCodicem/AdCodicem.Pdf/issues/363)); once either reaches it, the scan reads the data of each
 stream it cannot confirm up to its first `endstream`, rather than as objects. The reads that tell only how the searches near a

@@ -215,7 +215,7 @@ public class ReaderLimitsTests
     [InlineData("section count", "The cross-reference chain has more than 1 section; the older ones were not read.")]
     [InlineData("cross-reference stream", "The dictionary of the object read as a cross-reference stream runs past 1 byte; only what lies within it was read.")]
     [InlineData("filter chain", "The /Filter entry names more than 1 filter; decoding stopped after the first.")]
-    [InlineData("rebuild reads", "Past streams' declared lengths, the scan for objects read the length of the file; the data of each stream it could not confirm after that was read up to its first endstream, the object headers there not taken.")]
+    [InlineData("rebuild reads", "To confirm streams' lengths, the scan for objects read the length of the file; the data of each stream it could not confirm after that was read up to its first endstream, the object headers there not taken.")]
     public void A_guard_set_to_one_says_its_bound_in_the_singular(string guard, string reported)
     {
         // Each guard at one, the least it takes, reached on the file of its own case: the bound it names is said in the
@@ -5499,7 +5499,7 @@ public class ReaderLimitsTests
                 PdfReaderLimits.Default with { MaxRebuildReadPasses = 64 },
                 document => document.GetObject(new PdfObjectId(31)) is PdfString real ? real.AsText()! : "null",
                 "real",
-                "Past streams' declared lengths, the scan for objects read 4 times the length of the file; the data of each stream it could not confirm after that was read up to its first endstream, the object headers there not taken.",
+                "To confirm streams' lengths, the scan for objects read 4 times the length of the file; the data of each stream it could not confirm after that was read up to its first endstream, the object headers there not taken.",
                 OffsetOf(file, "24 0 obj") + Head.Length - "abc\n".Length,
                 ThrowsOnOpening: true,
                 ReportsNothingElse: false)
