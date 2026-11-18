@@ -859,6 +859,7 @@ public class ReaderLimitsTests
     [InlineData("a word whose obj ends the first mebibyte of the data, a letter after it", "Missing")]
     [InlineData("a word that ends in obj at the end of the first mebibyte of the data", "Missing")]
     [InlineData("a word that holds obj five bytes short of the end of the first mebibyte of the data", "Missing")]
+    [InlineData("a word that ends in obj glued to an endstream that ends the first mebibyte of the data", "Missing")]
     [InlineData("a header past a first read the source gives short", "Missing")]
     public async Task Data_a_rebuild_s_scan_reads_as_intact_past_the_read_guard_is_searched_for_a_header_up_to_its_endstream_or_the_end_of_the_file(
         string data, string presence)
@@ -871,8 +872,8 @@ public class ReaderLimitsTests
         // mebibyte at a time, each window repeating the obj keyword the one before ended with and the byte before it, up to
         // its endstream or the end of the file: where it holds one, whether the file holds object 99 is unknown; where it holds
         // none, or no data at all, object 99 is missing. An obj keyword counts where a header precedes it, the byte before it
-        // ending a token, and no regular character follows it, whichever window holds it; a read the source gives short of
-        // what was asked ends the search, as the end of the data.
+        // ending a token, and no regular character follows it, whichever window holds it, and only up to the endstream; a
+        // read the source gives short of what was asked ends the search, as the end of the data.
         const int Spelled = 24;
         const int Mebibyte = 1024 * 1024;
         const string Head = "20 0 obj\n<< /Length 0000000 >>\nstream\nabc\nendstream\nendobj\n";
@@ -904,6 +905,8 @@ public class ReaderLimitsTests
                 new string('t', Mebibyte - "obj".Length) + "obj\n" + new string('t', 1000) + Ends,
             "a word that holds obj five bytes short of the end of the first mebibyte of the data" =>
                 new string('t', Mebibyte - 5) + "obj" + new string('t', 1000) + Ends,
+            "a word that ends in obj glued to an endstream that ends the first mebibyte of the data" =>
+                new string('t', Mebibyte - 4) + "obj" + Ends[1..],
             "a header past a first read the source gives short" => new string('t', 5000) + "\n77 0 obj\n" + Ends,
             _ => string.Empty,
         });

@@ -71,16 +71,21 @@ public class ReaderTimingTests
     [InlineData("comment lines")]
     [InlineData("comment lines ending in carriage returns")]
     [InlineData("one comment line")]
+    [InlineData("one comment line, then white space")]
     [InlineData("a string")]
+    [InlineData("a string, rows that read two numbers between rows that cross to a long one")]
     public void Rows_past_a_value_whose_lexing_crosses_what_the_rows_before_it_crossed_are_read_in_linear_time(string shape)
     {
         // Object 5's dictionary, then rows the table places objects at, none of which starts a header, then a token the window
         // a load grows to cuts: comment lines "% 7 % c", a row at each 7, whose lexing crosses the lines after it to that
-        // token; one comment line of " 7 %", a row at each 7, whose comment runs to the line's end; or, in a string, comment
-        // lines "% 7", a row at each 7, whose lexing crosses the lines after it to an integer, then comment lines to the token
-        // after it. Each row's lexing goes on as the rows before it went, from the end of the comment, of the gap or of the
-        // token after the integer they reached: four times the rows take about four times as long, where lexing each row apart
-        // would take sixteen (#362). The measure is the ratio, the best of five runs of each size.
+        // token; one comment line of " 7 %", a row at each 7, whose comment runs to the line's end, then white space or not;
+        // in a string, comment lines "% 7", a row at each 7, whose lexing crosses the lines after it to an integer, then
+        // comment lines to the token after it; or, in a string, comment lines "% 8 9 % c", whose rows read two integers on
+        // their line, between lines "% 7 % c", whose rows cross every line after them to a number of many digits. Each row's
+        // lexing goes on as the rows before it went, from the end of the comment, of the gap or of the token after the integer
+        // they reached, whatever row in between read its second integer on its own line: four times the rows take about four
+        // times as long, where lexing each row apart would take sixteen (#362). The measure is the ratio, the best of five runs
+        // of each size.
         var small = RowsPastAValue(shape, 1);
         var large = RowsPastAValue(shape, 4);
 
@@ -131,19 +136,38 @@ public class ReaderTimingTests
         var start = file.Position;
         file.Raw("5 0 obj\n<< /Length 3 >>\n");
         var number = 100;
-        var window = shape == "one comment line" ? 512 * 1024 : 64 * 1024;
-        var count = (shape == "one comment line" ? 28_000 : 1_750) * scale;
-        file.Raw(shape == "one comment line" ? "%" : shape == "a string" ? "( " : string.Empty);
+        var oneLine = shape.StartsWith("one comment line", StringComparison.Ordinal);
+        var inString = shape.StartsWith("a string", StringComparison.Ordinal);
+        var pairs = shape.EndsWith("a long one", StringComparison.Ordinal);
+        var window = oneLine || pairs ? 512 * 1024 : 64 * 1024;
+        var count = shape switch
+        {
+            "one comment line" => 28_000,
+            "one comment line, then white space" => 7_000,
+            _ when pairs => 3_000,
+            _ => 1_750,
+        } * scale;
+        file.Raw(oneLine ? "%" : inString ? "( " : string.Empty);
 
         for (var i = 0; i < count; i++)
         {
-            file.Raw(shape == "one comment line" ? " " : "% ");
+            if (pairs)
+            {
+                file.Raw("% ");
+                rows[number++] = file.Position;
+                file.Raw("8 9 % c\n% ");
+                rows[number++] = file.Position;
+                file.Raw("7 % c\n");
+                continue;
+            }
+
+            file.Raw(oneLine ? " " : "% ");
             rows[number++] = file.Position;
             file.Raw(shape switch
             {
                 "comment lines" => "7 % c\n",
                 "comment lines ending in carriage returns" => "7 % c\r",
-                "one comment line" => "7 %",
+                _ when oneLine => "7 %",
                 _ => "7\n",
             });
         }
@@ -152,9 +176,11 @@ public class ReaderTimingTests
         {
             "comment lines" or "comment lines ending in carriage returns" => string.Empty,
             "one comment line" => "\n",
+            "one comment line, then white space" => "\n" + new string(' ', 12 * count),
+            _ when pairs => new string('1', 8 * count) + " ",
             _ => "5" + string.Concat(Enumerable.Repeat(" %c\n", count)) + "x ",
         });
-        file.Raw(new string('x', (int)(start + window + 1 - file.Position)) + (shape == "a string" ? ")" : string.Empty) + "\nendobj\n");
+        file.Raw(new string('x', (int)(start + window + 1 - file.Position)) + (inString ? ")" : string.Empty) + "\nendobj\n");
         file.Table(number, rows, string.Create(CultureInfo.InvariantCulture, $"/Size {number} /Root 1 0 R"));
         return file.Bytes;
     }
