@@ -545,18 +545,21 @@ public class WindowEdgeTests
     [InlineData(PdfFileReader.InitialObjectWindow - 3, 0, 0, true, false)]
     [InlineData(PdfFileReader.InitialObjectWindow - 2, 0, 0, true, false)]
     [InlineData(PdfFileReader.InitialObjectWindow - 1, 0, 0, true, false)]
+    [InlineData(PdfFileReader.InitialObjectWindow - 6, 0, 0, true, false, "6 0 xy")]
+    [InlineData(100, 0, 0, true, false, "6 % c")]
     [InlineData(100, 0, 10_000, false, false)]
     [InlineData(PdfFileReader.InitialObjectWindow - 7, 0, 10_000, false, true)]
     [InlineData(100, 0, PdfFileReader.InitialObjectWindow, false, true)]
     public void A_dictionary_whose_stream_keyword_lies_past_the_window_is_read_whole_unless_the_window_holds_a_header_placed_past_it(
-        int headerAt, int rowShift, int guard, bool stream, bool cut)
+        int headerAt, int rowShift, int guard, bool stream, bool cut, string header = "6 0 obj << >>")
     {
         // Object 5's dictionary, then more comment lines than the window holds, then its stream keyword; the table places
         // object 6 at a header a comment line holds headerAt bytes into object 5, or rowShift bytes from it. Where the window
         // holds that header's tokens and the byte after them, short of the largest window MaxObjectLength allows, object 5 is
         // kept as read, a dictionary, and reaches no guard; a row that is no header's start, or a header the window's edge
-        // cuts, leaves the window to grow and read the stream; and the largest window reaches the guard, which is reported,
-        // whatever header it holds (#362).
+        // cuts, leaves the window to grow and read the stream — and so does a row whose third token, which the edge ends, can
+        // be no obj, or whose second token lies past the edge, beyond the comments after its integer; and the largest window
+        // reaches the guard, which is reported, whatever header it holds (#362).
         var file = new HandWrittenFile();
         var rows = new Dictionary<int, long>
         {
@@ -567,7 +570,7 @@ public class WindowEdgeTests
         const string Head = "5 0 obj\n<< /Length 3 >>\n";
         file.Raw(Head + "%" + new string('c', headerAt - Head.Length - 4) + "\n% ");
         rows[6] = file.Position + rowShift;
-        file.Raw("6 0 obj << >>\n%" + new string('c', Window) + "\nstream\nabc\nendstream\nendobj\n");
+        file.Raw(header + "\n%" + new string('c', Window) + "\nstream\nabc\nendstream\nendobj\n");
         file.Table(7, rows, "/Size 7 /Root 1 0 R");
         var limits = PdfReaderLimits.Default;
         using var document = PdfDocument.Open(
@@ -645,6 +648,105 @@ public class WindowEdgeTests
 
         read.AsDictionary().Required().GetInteger(PdfName.Length).Should().Be(3);
         document.Reader.IsEndObjMissing(ObjectNumber, out _).Should().Be(!header);
+    }
+
+    [Theory]
+    [InlineData("% x|6 0 obj << >>", false)]
+    [InlineData("% %%EOF|6 0 obj << >>", true)]
+    [InlineData("% |+6 0 obj << >>", true)]
+    [InlineData("% |-6 0 obj << >>", false)]
+    [InlineData("% |6 -1 obj << >>", false)]
+    [InlineData("% |6 65536 obj << >>", false)]
+    [InlineData("% |6.5 0 obj << >>", false)]
+    [InlineData("% |6 0 xyz << >>", false)]
+    [InlineData("% |6 0 objx << >>", false)]
+    [InlineData("% |7 % a |8 % b |6 0 obj << >>", true)]
+    public void A_row_past_a_value_keeps_it_as_read_only_where_a_header_starts_at_the_row(string line, bool kept)
+    {
+        // Object 5's dictionary, then a comment line the table places objects 101 and on at, one row at each bar, then a word
+        // longer than the window. A header starts at a row as a load reads one: the byte before it ends a token, or the
+        // end-of-file marker a writer glued an update to; a positive number, signed or not; a generation within its bounds;
+        // and obj, a whole keyword. Where one does, object 5 is kept as read, a dictionary whose endobj is unseen; where none
+        // does, at that row or at the rows after it, the window grows until it holds the word, which takes the place of
+        // endobj. A row's lexing that crosses a comment another row's crossed, on the line it ends, goes on from that
+        // comment's end (#362).
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"),
+            [ObjectNumber] = file.Position,
+        };
+        file.Raw("5 0 obj\n<< /Length 3 >>\n");
+        var parts = line.Split('|');
+        file.Raw(parts[0]);
+
+        for (var k = 1; k < parts.Length; k++)
+        {
+            rows[100 + k] = file.Position;
+            file.Raw(parts[k]);
+        }
+
+        file.Raw("\n" + new string('x', 2 * Window) + "\nendobj\n");
+        file.Table(110, rows, "/Size 110 /Root 1 0 R");
+        using var document = PdfDocument.Open(file.Bytes);
+
+        var read = document.GetObject(new PdfObjectId(ObjectNumber));
+
+        read.AsDictionary().Required().GetInteger(PdfName.Length).Should().Be(3);
+        document.Reader.IsEndObjMissing(ObjectNumber, out _).Should().Be(!kept);
+    }
+
+    [Theory]
+    [InlineData("places it", true)]
+    [InlineData("marks it free", true)]
+    [InlineData("does not number it", true)]
+    [InlineData("places it", false)]
+    public void A_header_the_chain_s_index_places_past_a_value_keeps_it_as_read_after_a_rebuild_whatever_that_index_says_of_it(
+        string chain, bool placed)
+    {
+        // Object 5's dictionary, then more comment lines than the window holds, then its stream keyword; the table places
+        // object 3 at a header a comment line past the dictionary holds, or nowhere, and object 4 inside a comment, far from
+        // any header, which sets a rebuild off once read. The rebuild's scan places object 5, which the table places too, or
+        // marks free, or does not number, its /Size short of it, and not the header the comment holds. The rows asked past
+        // the value are both indexes': the chain's still places that header, which keeps object 5 as read, a dictionary,
+        // whatever that index says of object 5; where it does not, the window grows and reads the stream (#362).
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"),
+        };
+        var five = file.Position;
+        file.Raw("5 0 obj\n<< /Length 3 >>\n% ");
+
+        if (placed)
+        {
+            rows[3] = file.Position;
+        }
+
+        file.Raw("6 0 obj << >>\n%");
+        rows[4] = file.Position + (Window / 2);
+        file.Raw(new string('c', Window) + "\nstream\nabc\nendstream\nendobj\n");
+
+        if (chain == "places it")
+        {
+            rows[ObjectNumber] = five;
+        }
+
+        var size = chain == "does not number it" ? ObjectNumber : 7;
+        file.Table(size, rows, string.Create(CultureInfo.InvariantCulture, $"/Size {size} /Root 1 0 R"));
+        using var document = PdfDocument.Open(file.Bytes);
+
+        document.GetObject(new PdfObjectId(4)).Should().BeSameAs(PdfNull.Instance);
+        var read = document.GetObject(new PdfObjectId(ObjectNumber));
+
+        document.WasRepaired.Should().BeTrue();
+        document.Reader.ChainIndex.Should().NotBeNull();
+        (read is PdfStream).Should().Be(!placed);
+        (read is PdfStream { Dictionary: var dictionary } ? dictionary : read.AsDictionary().Required())
+            .GetInteger(PdfName.Length).Should().Be(3);
+        document.Reader.IsEndObjMissing(ObjectNumber, out _).Should().BeFalse();
     }
 
     [Theory]

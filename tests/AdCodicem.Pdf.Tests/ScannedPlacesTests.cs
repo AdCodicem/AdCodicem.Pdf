@@ -1934,8 +1934,10 @@ public class ScannedPlacesTests
     [InlineData("no stream keyword, a megabyte and more before its endstream", 0, "Clean")]
     [InlineData("no stream keyword, a megabyte and more before its endstream, the end of the file within a read past the megabyte", 0, "Clean", 2000)]
     [InlineData("no stream keyword, a megabyte and more before its endstream", 20, "Clean")]
+    [InlineData("no stream keyword, a megabyte and more before its endstream, past streams whose searches spent the memo's reads", 0, "Raw", 300, 50_000, 10)]
+    [InlineData("no stream keyword, a megabyte and more before its endstream, past streams whose searches spent the memo's reads, in a longer file", 0, "Clean", 300, 400_000, 10)]
     public void A_stream_whose_data_starts_with_its_length_s_object_is_told_from_an_intact_one_by_what_it_may_read_past_the_scan_s_piece(
-        string past, int headers, string kind, int lead = 300, int padding = 0)
+        string past, int headers, string kind, int lead = 300, int padding = 0, int spelled = 0)
     {
         // Stream 5 starts 300 bytes before the scan's first piece ends, or 2,000. Its indirect length names object 6, whose
         // header its data holds first, with a length that leaves bytes before that header, and object 9's header after it;
@@ -1951,7 +1953,12 @@ public class ScannedPlacesTests
         // whose direct lengths end where one run of 256 KiB of white space starts, each read that run, and 403,308 bytes of
         // white space before the table set where those reads, counted with these, reached four times the length of the file,
         // just before the read that holds a keyword 300,000 bytes on; but these reads have a budget of their own, and the
-        // scan makes that read, and the megabyte's, whatever the reads past declared lengths spent (#361).
+        // scan makes that read, and the megabyte's, whatever the reads past declared lengths spent (#361). That budget is
+        // spent by ten streams before, their headers glued to a sign, each the first bytes of the data of the one before,
+        // that lost their endstream before 800,000 bytes of text: the search for where a load ends each one's data crosses
+        // the text. With 50,000 bytes of white space before the table, the reads for the megabyte, counted with those
+        // searches, reach four times the length of the file before they cross it, and object 9's header is Raw, as in an
+        // intact stream; 400,000 bytes leave them enough to cross it.
         const int Piece = 1 << 20;
         var file = new HandWrittenFile();
         var rows = new Dictionary<int, long> { [1] = file.Object(1, Catalog), [2] = file.Object(2, Pages) };
@@ -1964,6 +1971,16 @@ public class ScannedPlacesTests
         if (headers > 0)
         {
             file.Raw(new string(' ', 256 * 1024) + "x\n");
+        }
+
+        for (var i = 0; i < spelled; i++)
+        {
+            file.Raw(string.Create(CultureInfo.InvariantCulture, $"+{20 + i} 0 obj\n<< /Length 5 >>\nstream\nabcdefgh\n"));
+        }
+
+        if (spelled > 0)
+        {
+            file.Raw(string.Concat(Enumerable.Repeat(new string('t', 99) + "\n", 8_000)) + "endstream\nendobj\n");
         }
 
         PadWithComments(file, Piece - lead);
