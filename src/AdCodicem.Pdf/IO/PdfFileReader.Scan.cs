@@ -169,8 +169,8 @@ internal sealed partial class PdfFileReader
     /// (<see cref="StartsStreamWithin"/>): where a piece ends changes what they spend of their own budget
     /// (<see cref="MemoKindReadPasses"/>), and, once it nears its bound, how the memo counts the places in the data of the
     /// streams after them, never what the scan takes (#361). The reads that confirm an indirect length count every byte they
-    /// search, from the piece or from the file (<see cref="FindLengthHeader"/>): where a piece ends changes nothing of
-    /// what they spend.
+    /// search, from the piece or from the file (<see cref="FindLengthHeader"/>), and so do the sweeps for the memo's kinds
+    /// (<see cref="SweepForKinds"/>): where a piece ends changes nothing of what they spend.
     /// </para>
     /// <para>
     /// Each object the scan takes is delimited as a load reads it (<see cref="DelimitObject"/>): its value, the strings
@@ -191,12 +191,17 @@ internal sealed partial class PdfFileReader
     /// have read as much as <see cref="PdfReaderLimits.MaxRebuildReadPasses"/> lets them, the scan reads such data as an
     /// intact stream's instead, up to its first <c>endstream</c>, nothing taken there (#361): the streams an attached
     /// file's bytes spell there would otherwise go on spending them. Where the bytes show that no <c>endstream</c>
-    /// follows such a length, the memo holds
-    /// what the scan takes past where a load ends the data as taken between objects, a header or a keyword that a
-    /// comment or a string would hide there between objects included: past where <see cref="DataEndWithoutEndStream"/>
-    /// says, for a direct <c>/Length</c>; for an indirect one, once its object, read in the file's bytes, shows it
-    /// (<see cref="EndDataAtLengthObject"/>, <see cref="EndDataWithLength"/>), or, for one whose object the scan never
-    /// reads, past where a load ends the data without a length (<see cref="EndAwaitedData"/>). An object the scan
+    /// follows such a length, the memo holds what the scan takes past where a load ends the data as taken between
+    /// objects, as a scan between objects would take it, a header or a keyword that a comment or a string between objects
+    /// holds there, swept from that end, held as taken in the data (<see cref="KindAt"/>, <see cref="TakeCleanSwept"/>):
+    /// past where <see cref="DataEndWithoutEndStream"/> says, for a direct <c>/Length</c>; for an indirect one, once its
+    /// object, read in the file's bytes, shows it (<see cref="EndDataAtLengthObject"/>, <see cref="EndDataWithLength"/>),
+    /// or, for one whose object the scan never reads, past where a load ends the data without a length, or past an
+    /// <c>xref</c> or a <c>trailer</c> keyword before it (<see cref="EndAwaitedData"/>). The data of an attached file — a
+    /// stream of <c>/Type /EmbeddedFile</c>, or data that starts with a file's header (<see cref="StartsAttachedFile"/>) —
+    /// holds objects of its own: no length's object is read inside it, it ends the wait for another stream's, and its
+    /// places stay held as taken in it but where its own length's object, met outside it, shows where it ends
+    /// (<see cref="EndAttachedData"/>). An object the scan
     /// cannot delimit has what follows its header read as the bytes give it, and the headers within what its delimiting
     /// read are taken undelimited, so that no byte is lexed for one object after another. Between objects, a comment or
     /// a string runs to the end of its line, and a header or a keyword that starts inside one is none
@@ -220,7 +225,7 @@ internal sealed partial class PdfFileReader
     private ExceptionDispatchInfo? ScanForObjects(ScanMemo.Builder? memo, Redefinitions? redefinitions, ScannedTrailers trailers)
     {
         ExceptionDispatchInfo? reached = null;
-        var scan = new ScanState(memo);
+        var scan = new ScanState(memo, trailers);
         _scanGapBytes = _scanLengthBytes = _scanKindBytes = 0;
 
         while (scan.Resume < _source.Length)
@@ -319,7 +324,7 @@ internal sealed partial class PdfFileReader
                 {
                     IndexScannedHeader(at, number, generation, redefinitions!, ref reached);
                 }
-                else if (!memo.TryAddHeader(at, number, generation, at < scan.KindUntil ? ScannedPlaceKind.Raw : ScannedPlaceKind.Clean, scan.TokensFrom))
+                else if (!memo.TryAddHeader(at, number, generation, KindAt(span, windowStart, at, ref scan, ahead: false), scan.TokensFrom))
                 {
                     return reached;
                 }
@@ -358,6 +363,13 @@ internal sealed partial class PdfFileReader
                 if (intact && memo is null && _rebuildReadsBoundedAt < 0 && HoldsHeader(extent.DataStart, scan.EndStreamAt))
                 {
                     _rebuildReadsBoundedAt = extent.DataStart;
+                }
+
+                // An object the sweep for the memo's kinds took between objects is passed by it, as the scan's own sweep
+                // passes one.
+                if (scan.KindCleanAt == at && extent.Kind is ExtentKind.Value or ExtentKind.Stream && extent.End > scan.KindSweptTo)
+                {
+                    (scan.KindSweptTo, scan.KindLine, scan.KindDepth) = (extent.End, LineState.Tokens, 0);
                 }
 
                 // The scan goes on past the object: within this window where its end lies within the bytes searched, from
@@ -644,7 +656,7 @@ internal sealed partial class PdfFileReader
             return true;
         }
 
-        return memo.TryAddXRefKeyword(position, position < scan.KindUntil ? ScannedPlaceKind.Raw : ScannedPlaceKind.Clean, scan.TokensFrom);
+        return memo.TryAddXRefKeyword(position, KindAt(span, windowStart, position, ref scan, ahead: true), scan.TokensFrom);
     }
 
     /// <summary>
@@ -683,11 +695,11 @@ internal sealed partial class PdfFileReader
     /// after it reads its own length too —, past where the memo counts places as taken in data
     /// (<see cref="ScanState.KindUntil"/>), or in what it reads as that stream's data before the data of the first stream
     /// it meets there (<see cref="ScanState.PendingUntil"/>), and takes the first that gives it; a stream awaited in its
-    /// turn, or the end of the file, ends the wait without it (<see cref="EndAwaitedData"/>). Data that starts with a PDF
-    /// file's header, an attached file's, whose objects are its own, keeps its places held as taken in it where neither
-    /// gives it, nothing awaited for it (<see cref="StartsPdfFile"/>); a stream the scan awaits already goes on trying the
-    /// headers past that data's first <c>endstream</c>, and may take one of the attached file's objects there for its
-    /// length's object.
+    /// turn — one whose data starts in the data of the stream awaited, in its place —, the data of an attached file met
+    /// there (<see cref="ConfirmStream"/>), or the end of the file, ends the wait without it (<see cref="EndAwaitedData"/>).
+    /// The data of an attached file (<see cref="StartsAttachedFile"/>), whose objects are its own, gives no length's object
+    /// from inside it: its own is one of the last values, or one the scan awaits, either taken only where the bytes where
+    /// its length ends the data show where the stream ends (<see cref="EndAttachedData"/>).
     /// </summary>
     /// <remarks>
     /// The object is read from the file's bytes alone, never through an index, so that a scan for the memo and a
@@ -696,36 +708,38 @@ internal sealed partial class PdfFileReader
     /// one, from the window the scan holds, and one stream is awaited at a time. One the scan never meets while it
     /// awaits it — lost with the <c>endstream</c>, more than <see cref="ScanState.ValueCount"/> values before the
     /// stream, or past a stream awaited in its turn —, or that holds anything but a non-negative integer, leaves the
-    /// memo's kinds to turn where a load ends the data without a length.
+    /// memo's kinds to turn where a load ends the data without a length, or, for an attached file's data, as they are.
     /// </remarks>
     [MethodImpl(MethodImplOptions.NoInlining)]
     private void EndDataAtLengthObject(ReadOnlySpan<byte> span, long windowStart, long position, ref ScanState scan)
     {
+        // Only a scan for a memo reads a length's object, or awaits one (ConfirmStream).
         long length;
 
         if (scan.LengthObject >= 0)
         {
             var lengthObject = scan.LengthObject;
+            var attached = scan.LengthAttached;
             scan.LengthObject = -1;
 
             // No object was passed since the stream: its data starts where the bytes are read anew.
             if (position < scan.KindUntil)
             {
-                var inData = !TryReadLastValue(span, windowStart, lengthObject, ref scan, out length);
+                var dataStart = scan.TokensFrom;
+                var found = TryReadLastValue(span, windowStart, lengthObject, ref scan, out length);
 
-                if (inData && !TryReadLengthObject(span, windowStart, position, lengthObject, out length))
+                if (!attached && (found || TryReadLengthObject(span, windowStart, position, lengthObject, out length)))
                 {
-                    if (!StartsPdfFile(span, windowStart, scan.TokensFrom))
-                    {
-                        EndAwaitedData(span, windowStart, ref scan);
-                        (scan.PendingObject, scan.PendingFrom, scan.PendingUntil) = (lengthObject, scan.TokensFrom, scan.KindUntil);
-                        scan.Memo?.AwaitedFrom = scan.TokensFrom;
-                    }
-
+                    EndDataWithLength(span, windowStart, dataStart, length, position, position, ref scan);
+                }
+                else if (!found || !EndAttachedData(span, windowStart, dataStart, length, position, after: false, ref scan))
+                {
+                    // The place was tried: the wait starts at the next one.
+                    EndAwaitedData(span, windowStart, ref scan);
+                    (scan.PendingObject, scan.PendingFrom, scan.PendingUntil, scan.PendingAttached) = (lengthObject, dataStart, scan.KindUntil, attached);
+                    scan.Memo!.AwaitedFrom = dataStart;
                     return;
                 }
-
-                EndDataWithLength(span, windowStart, scan.TokensFrom, length, position, position, ref scan);
             }
         }
 
@@ -733,8 +747,20 @@ internal sealed partial class PdfFileReader
             TryReadLengthObject(span, windowStart, position, scan.PendingObject, out length))
         {
             var dataStart = scan.PendingFrom;
+
+            if (scan.PendingAttached)
+            {
+                if (EndAttachedData(span, windowStart, dataStart, length, position, after: true, ref scan))
+                {
+                    (scan.PendingFrom, scan.PendingObject, scan.PendingAttached) = (-1, -1, false);
+                    scan.Memo!.AwaitedFrom = long.MaxValue;
+                }
+
+                return;
+            }
+
             scan.PendingFrom = scan.PendingObject = -1;
-            scan.Memo?.AwaitedFrom = long.MaxValue;
+            scan.Memo!.AwaitedFrom = long.MaxValue;
             EndDataWithLength(span, windowStart, dataStart, length, position, Math.Min(position, scan.PendingUntil), ref scan);
         }
     }
@@ -743,46 +769,98 @@ internal sealed partial class PdfFileReader
     /// Ends the wait for the length's object of the stream the scan awaits it for, if any
     /// (<see cref="ScanState.PendingFrom"/>), none of the headers and keywords it met giving it: the places the memo took
     /// from where a load ends the data of a stream whose length's object it cannot read, as far as the file's bytes tell
-    /// (<see cref="DataEndWithoutEndStream"/>), to where what the scan read as that data stops being that stream's
-    /// (<see cref="ScanState.PendingUntil"/>) are held as taken between objects (<see cref="ScanMemo.Builder.TakeClean"/>)
-    /// — unless what it read so stops short of the end of the file with no <c>stream</c> keyword starting in it from that
-    /// end, within <see cref="ScanChunkSize"/> bytes of there, a longer stretch taken as holding one
-    /// (<see cref="StartsStreamWithin"/>): the data may hold an attached file's objects, which the memo then keeps as taken
-    /// in it. What the scan takes, it took as the bytes give it, whatever the wait ends with.
+    /// (<see cref="DataEndWithoutEndStream"/>) — or, where sooner, from the first <c>xref</c> or <c>trailer</c> keyword the
+    /// scan took past the data's start (<see cref="FirstKeyword"/>) —, to where what the scan read as that data stops being
+    /// that stream's (<see cref="ScanState.PendingUntil"/>) are held as taken between objects but where a comment or a
+    /// string between objects holds them (<see cref="TakeCleanSwept"/>) — unless what it read so stops short of the end of
+    /// the file with no <c>stream</c> keyword starting in it from that end, within <see cref="ScanChunkSize"/> bytes of
+    /// there, a longer stretch not told (<see cref="StartsStreamWithin"/>): the data may hold an attached file's objects,
+    /// which the memo then keeps as taken in it. The data of an attached file keeps its places so whatever the wait ends
+    /// with. What the scan takes, it took as the bytes give it, whatever the wait ends with.
     /// </summary>
+    /// <remarks>
+    /// A load ends the data at the next object the index places, where the scan, which reads no index, ends it at the next
+    /// header: a section between the two — an update's table that the damage left between the data and that header — would
+    /// be held as taken in the data. The keywords are those the scan took, the memo holding the <c>xref</c> ones and the scan's own
+    /// list the <c>trailer</c> ones: no byte is read for them.
+    /// </remarks>
     private void EndAwaitedData(ReadOnlySpan<byte> span, long windowStart, ref ScanState scan)
     {
         var dataStart = scan.PendingFrom;
-        scan.PendingFrom = scan.PendingObject = -1;
+        var attached = scan.PendingAttached;
+        (scan.PendingFrom, scan.PendingObject, scan.PendingAttached) = (-1, -1, false);
 
-        if (dataStart >= 0 && DataEndWithoutEndStream(dataStart, long.MaxValue, ref scan) is var end and >= 0 && end < scan.PendingUntil &&
-            (scan.PendingUntil >= _source.Length || StartsStreamWithin(span, windowStart, end, scan.PendingUntil)))
+        if (dataStart < 0 || attached || DataEndWithoutEndStream(dataStart, long.MaxValue, ref scan) is not (var end and >= 0))
         {
-            scan.Memo?.TakeClean(end, scan.PendingUntil);
+            return;
+        }
+
+        // Only a scan for a memo awaits a length's object.
+        var from = FirstKeyword(scan.Memo!, scan.Trailers.Keywords, dataStart, Math.Min(end, scan.PendingUntil));
+
+        if (from < scan.PendingUntil &&
+            (scan.PendingUntil >= _source.Length || (end < scan.PendingUntil && StartsStreamWithin(span, windowStart, end, scan.PendingUntil))))
+        {
+            TakeCleanSwept(span, windowStart, from, scan.PendingUntil, scan.Memo!, scan.TokensFrom);
         }
     }
 
     /// <summary>
-    /// Determines whether the data that starts at <paramref name="dataStart"/> starts with a PDF file's header, <c>%PDF-</c>,
-    /// from the window the scan holds where it holds it: the data of an attached file, which holds objects of its own.
+    /// Gives where the first <c>xref</c> or <c>trailer</c> keyword the scan took at <paramref name="from"/> or past it and
+    /// before <paramref name="to"/> starts, as <paramref name="memo"/> and <paramref name="trailers"/> hold them;
+    /// <paramref name="to"/> where none does.
     /// </summary>
-    private bool StartsPdfFile(ReadOnlySpan<byte> span, long windowStart, long dataStart)
+    /// <param name="memo">Holds the <c>xref</c> keywords.</param>
+    /// <param name="trailers">Where the dictionary after each <c>trailer</c> keyword starts, right past it, in the order of the
+    /// positions, as the scan meets them.</param>
+    /// <param name="from">Where the stretch searched starts.</param>
+    /// <param name="to">Where it ends.</param>
+    private static long FirstKeyword(ScanMemo.Builder memo, List<long> trailers, long from, long to)
     {
-        Span<byte> bytes = stackalloc byte[5];
+        var first = memo.FirstXRefKeyword(from, to);
+        var index = trailers.BinarySearch(from + TrailerKeyword.Length);
+        index = index < 0 ? ~index : index;
+        return index < trailers.Count ? Math.Min(first, trailers[index] - TrailerKeyword.Length) : first;
+    }
+
+    /// <summary>
+    /// Determines whether the stream data that starts at <paramref name="dataStart"/> starts with a PDF or an FDF file's
+    /// header, <c>%PDF-</c> or <c>%FDF-</c>, after the white space the first <see cref="PdfObjectParser.EndObjLookahead"/>
+    /// bytes hold — from the window the scan holds where it holds them —: the data of an attached file, which holds objects
+    /// of its own.
+    /// </summary>
+    /// <remarks>
+    /// Those first bytes alone are read, as at a length's object, and not counted with the reads made for the memo's kinds:
+    /// one read for each stream the scan does not confirm. A header after longer white space is not told, and the data is
+    /// read as another stream's: only how the memo counts its places hangs on it.
+    /// </remarks>
+    private bool StartsAttachedFile(ReadOnlySpan<byte> span, long windowStart, long dataStart)
+    {
+        Span<byte> bytes = stackalloc byte[PdfObjectParser.EndObjLookahead];
         var wanted = (int)Math.Min(bytes.Length, _source.Length - dataStart);
         ReadOnlySpan<byte> held = dataStart >= windowStart && dataStart - windowStart + wanted <= span.Length
             ? span.Slice((int)(dataStart - windowStart), wanted)
             : bytes[.._source.Read(dataStart, bytes[..wanted])];
-        return held.SequenceEqual("%PDF-"u8);
+        var start = 0;
+
+        while (start < held.Length && PdfCharacters.IsWhitespace(held[start]))
+        {
+            start++;
+        }
+
+        held = held[start..];
+        return held.StartsWith("%PDF-"u8) || held.StartsWith("%FDF-"u8);
     }
 
     /// <summary>
     /// Holds as taken between objects what the scan takes past where a load with <paramref name="length"/> ends the data
     /// that starts at <paramref name="dataStart"/>, where the bytes show that no <c>endstream</c> follows that length, a
     /// length past the end of the file too (<see cref="DataEndWithoutEndStream"/>): the places the memo took from that end
-    /// to <paramref name="revisedTo"/> (<see cref="ScanMemo.Builder.TakeClean"/>), and, where the scan still reads that
-    /// data at <paramref name="position"/>, those it takes from that end on, up to where it next reads data as the bytes
-    /// give them (<see cref="ScanState.KindUntil"/>, which that end lowers and never raises). The scan itself reads on as
+    /// to <paramref name="revisedTo"/> (<see cref="TakeCleanSwept"/>), and, where the scan still reads that data at
+    /// <paramref name="position"/>, those it takes from that end on, up to where it next reads data as the bytes give them
+    /// (<see cref="ScanState.KindUntil"/>, which that end lowers and never raises) — but, either way, a place a comment or a
+    /// string between objects holds there, swept from that end as a scan between objects sweeps the bytes, which stays
+    /// held as taken in the data (<see cref="KindAt"/>). The scan itself reads on as
     /// before, the data as the bytes give it up to its first <c>endstream</c>: read from the file's bytes, the length may
     /// be no length of the stream's — the last values the scan passed may hold an older revision's object of its number,
     /// or an attached file's, and the data a header of that number, an attached file's —, and a scan that ended the data
@@ -792,14 +870,13 @@ internal sealed partial class PdfFileReader
     /// kinds at their bound (<see cref="MemoKindReadPasses"/>), leaves the kinds as they are; and so does, where the scan
     /// still reads that data at <paramref name="position"/>, a first <c>endstream</c> of the data that ends the stream as far as the bytes tell — an
     /// <c>endobj</c> follows it (<see cref="IsEndObjAt"/>), and no <c>stream</c> keyword starts between
-    /// <paramref name="position"/> and it, within <see cref="ScanChunkSize"/> bytes of there, a longer stretch taken as
-    /// holding one (<see cref="StartsStreamWithin"/>) —: the data may hold an attached file's objects, which the memo then
+    /// <paramref name="position"/> and it, within <see cref="ScanChunkSize"/> bytes of there, a longer stretch not told
+    /// (<see cref="StartsStreamWithin"/>) —: the data may hold an attached file's objects, which the memo then
     /// holds as taken in it.
     /// </summary>
     /// <remarks>
-    /// The memo holds those places as the scan takes them, as the bytes give them: a header or a keyword that a comment or
-    /// a string between objects would hide there is held, not left out. A rebuild's scan, which keeps no kind, reads no
-    /// length's object for them, and never comes here (<see cref="ConfirmStream"/>).
+    /// A rebuild's scan, which keeps no kind, reads no length's object for them, and never comes here
+    /// (<see cref="ConfirmStream"/>).
     /// </remarks>
     private void EndDataWithLength(ReadOnlySpan<byte> span, long windowStart, long dataStart, long length, long position, long revisedTo, ref ScanState scan)
     {
@@ -814,12 +891,111 @@ internal sealed partial class PdfFileReader
             return;
         }
 
-        scan.Memo?.TakeClean(end, revisedTo);
+        TakeCleanSwept(span, windowStart, end, revisedTo, scan.Memo!, scan.TokensFrom);
 
         // As where the scan passes a stream: that end lies past the data's first endstream only where a source reads short.
         if (position < scan.KindUntil)
         {
-            scan.KindUntil = Math.Min(scan.KindUntil, end);
+            LowerKindUntil(end, ref scan);
+        }
+    }
+
+    /// <summary>
+    /// Learns, for the memo's kinds alone, where the data of an attached file that starts at <paramref name="dataStart"/>
+    /// ends (<see cref="StartsAttachedFile"/>), from <paramref name="length"/>, read in the file's bytes at the object its
+    /// indirect <c>/Length</c> names, only where the bytes where that length ends the data end the stream: an
+    /// <c>endstream</c>, the data intact, every place the memo took within it held as taken there — those past its first
+    /// <c>endstream</c>, which the scan's own sweep told, too (<see cref="ScanMemo.Builder.TakeRaw"/>) —, and those the scan
+    /// takes in it after held so (<see cref="ScanState.KindUntil"/>, raised to there); or the end of the stream's object,
+    /// the <c>endstream</c> lost (<see cref="EndsObjectAt"/>), the places past it held as taken between objects, as past
+    /// where a load ends a stream's data (<see cref="EndDataWithLength"/>). A length's object met past the data's start (<paramref name="after"/>), which the
+    /// scan awaited, is taken only where it lies past where its length ends the data: one inside it is the attached file's.
+    /// False where the length is not taken.
+    /// </summary>
+    /// <remarks>
+    /// The bytes where the length ends the data are read once, a first read as past a length (<see cref="SignificantPastLength"/>),
+    /// and an <c>endobj</c> behind white space longer than it read on with the reads made for the memo's kinds
+    /// (<see cref="IsEndObjAt"/>).
+    /// </remarks>
+    private bool EndAttachedData(ReadOnlySpan<byte> span, long windowStart, long dataStart, long length, long position, bool after, ref ScanState scan)
+    {
+        var declaredEnd = DeclaredEnd(dataStart, length);
+
+        if (declaredEnd >= _source.Length || (after && position < declaredEnd))
+        {
+            return false;
+        }
+
+        Span<byte> bytes = stackalloc byte[PdfObjectParser.EndObjLookahead];
+        var wanted = (int)Math.Min(bytes.Length, _source.Length - declaredEnd);
+        ReadOnlySpan<byte> held = declaredEnd >= windowStart && declaredEnd - windowStart + wanted <= span.Length
+            ? span.Slice((int)(declaredEnd - windowStart), wanted)
+            : bytes[.._source.Read(declaredEnd, bytes[..wanted])];
+
+        if (StreamEnds.ReadEnd(held, declaredEnd + held.Length >= _source.Length).Kind == StreamEndKind.EndStream)
+        {
+            scan.Memo!.TakeRaw(dataStart, declaredEnd);
+            scan.KindUntil = position < declaredEnd ? Math.Max(scan.KindUntil, declaredEnd) : scan.KindUntil;
+            return true;
+        }
+
+        if (!EndsObjectAt(span, windowStart, declaredEnd))
+        {
+            return false;
+        }
+
+        TakeCleanSwept(span, windowStart, declaredEnd, after ? Math.Min(position, scan.PendingUntil) : position, scan.Memo!, scan.TokensFrom);
+
+        if (position < scan.KindUntil)
+        {
+            LowerKindUntil(declaredEnd, ref scan);
+        }
+
+        return true;
+    }
+
+    /// <summary>
+    /// Determines whether the bytes at <paramref name="declaredEnd"/>, where a length ends an attached file's data, end the
+    /// stream's object, its <c>endstream</c> lost: an <c>endobj</c> follows (<see cref="IsEndObjAt"/>), or, the
+    /// <c>endobj</c> lost too, the next object's header, after white space and comments, within the first
+    /// <see cref="PdfObjectParser.EndObjLookahead"/> bytes — from the window the scan holds where it holds them —, as a load
+    /// with that length ends the data where the next header follows it (<see cref="DataEndWithoutEndStream"/>).
+    /// </summary>
+    private bool EndsObjectAt(ReadOnlySpan<byte> span, long windowStart, long declaredEnd)
+    {
+        if (declaredEnd >= _source.Length)
+        {
+            return false;
+        }
+
+        if (IsEndObjAt(declaredEnd, ref _scanKindBytes, MemoKindReadBound))
+        {
+            return true;
+        }
+
+        Span<byte> bytes = stackalloc byte[PdfObjectParser.EndObjLookahead];
+        var wanted = (int)Math.Min(bytes.Length, _source.Length - declaredEnd);
+        ReadOnlySpan<byte> held = declaredEnd >= windowStart && declaredEnd - windowStart + wanted <= span.Length
+            ? span.Slice((int)(declaredEnd - windowStart), wanted)
+            : bytes[.._source.Read(declaredEnd, bytes[..wanted])];
+        var lexer = new PdfLexer(held, StreamEnds.SkipGap(held, 0));
+        var number = lexer.Read();
+        var generation = lexer.Read();
+        var keyword = lexer.Read();
+        return number.Kind == PdfTokenKind.Integer && generation.Kind == PdfTokenKind.Integer && keyword.IsKeyword("obj"u8) &&
+            (keyword.End < held.Length || declaredEnd + held.Length >= _source.Length);
+    }
+
+    /// <summary>
+    /// Lowers where the memo stops counting places as taken in the data (<see cref="ScanState.KindUntil"/>) to
+    /// <paramref name="end"/>, where a load ends a stream's data, the sweeps for the memo's kinds starting again from there.
+    /// </summary>
+    private static void LowerKindUntil(long end, ref ScanState scan)
+    {
+        if (end < scan.KindUntil)
+        {
+            scan.KindUntil = end;
+            scan.KindSweptTo = scan.KindAheadTo = -1;
         }
     }
 
@@ -886,15 +1062,15 @@ internal sealed partial class PdfFileReader
     /// <summary>
     /// Determines whether a <c>stream</c> keyword, a whole token, starts at <paramref name="from"/> or past it and before
     /// <paramref name="to"/> — the stream of another object, whose <c>endstream</c> the data's first one may be —,
-    /// searching the <see cref="ScanChunkSize"/> bytes at most from the byte before <paramref name="from"/>: a stretch that
-    /// runs past them is taken as holding one, though they hold none. They are searched up to the first keyword that
-    /// answers: those the scan holds (<paramref name="span"/>) as they are, then the file's, in reads that grow from
-    /// <see cref="PdfObjectParser.EndObjLookahead"/> to <see cref="EndStreamSearchChunk"/> bytes, each twice the one
-    /// before, counted with the reads made for the memo's kinds (<see cref="_scanKindBytes"/>). False where the bytes
-    /// searched reach <paramref name="to"/> with no keyword starting before it, where the source gives a read shorter
-    /// than asked, or where those reads have read as much as they may: the data may then be held as an intact stream's,
-    /// the places the memo took in it kept as taken there (<see cref="EndDataWithLength"/>, <see cref="EndAwaitedData"/>).
-    /// Only the memo's kinds hang on the answer: what the scan takes does not.
+    /// searching the <see cref="ScanChunkSize"/> bytes at most from the byte before <paramref name="from"/>. They are
+    /// searched up to the first keyword that answers: those the scan holds (<paramref name="span"/>) as they are, then the
+    /// file's, in reads that grow from <see cref="PdfObjectParser.EndObjLookahead"/> to <see cref="EndStreamSearchChunk"/>
+    /// bytes, each twice the one before, counted with the reads made for the memo's kinds (<see cref="_scanKindBytes"/>).
+    /// False where the bytes searched hold no keyword starting before <paramref name="to"/> — a stretch that runs past them
+    /// is not told —, where the source gives a read shorter than asked, or where those reads have read as much as they
+    /// may: the data may then be held as an intact stream's, an attached file's whose length's object the scan never meets
+    /// among them, the places the memo took in it kept as taken there (<see cref="EndDataWithLength"/>,
+    /// <see cref="EndAwaitedData"/>). Only the memo's kinds hang on the answer: what the scan takes does not.
     /// </summary>
     private bool StartsStreamWithin(ReadOnlySpan<byte> span, long windowStart, long from, long to)
     {
@@ -936,7 +1112,7 @@ internal sealed partial class PdfFileReader
             position = pieceStart + asked;
         }
 
-        return end < to;
+        return false;
     }
 
     /// <summary>
@@ -994,6 +1170,139 @@ internal sealed partial class PdfFileReader
 
         Sweep(span, windowStart, position, scan.RawUntil, ref scan.AheadTo, ref scan.AheadLine, ref scan.AheadDepth, scan.Memo, scan.TokensFrom);
         return scan.AheadLine != LineState.Tokens;
+    }
+
+    /// <summary>
+    /// Gives how the memo holds the place the scan takes at <paramref name="at"/> (<see cref="ScannedPlaceKind"/>): as taken
+    /// in the data before <see cref="ScanState.KindUntil"/>; past <see cref="ScanState.RawUntil"/>, where the scan's own
+    /// sweep told it, as taken between objects; between the two — past where a load ends the data of a stream whose length
+    /// the scan cannot confirm, in what the scan still reads as the bytes give them —, as taken between objects only where a
+    /// sweep of its own from where that load ends the data shows no comment nor string between objects there holding it
+    /// (<see cref="SweepForKind"/>), as a scan between objects would take it.
+    /// </summary>
+    /// <param name="span">The window the scan holds.</param>
+    /// <param name="windowStart">Where the window starts in the file.</param>
+    /// <param name="at">Where the place starts in the file.</param>
+    /// <param name="scan">Where the scan stands.</param>
+    /// <param name="ahead">Whether the place is an <c>xref</c> keyword, told by a sweep ahead, as <see cref="IsHiddenAhead"/>
+    /// tells one.</param>
+    private ScannedPlaceKind KindAt(ReadOnlySpan<byte> span, long windowStart, long at, ref ScanState scan, bool ahead) =>
+        at < scan.KindUntil ? ScannedPlaceKind.Raw
+        : at >= scan.RawUntil ? ScannedPlaceKind.Clean
+        : SweepForKind(span, windowStart, at, ref scan, ahead);
+
+    /// <summary>
+    /// Tells, for <see cref="KindAt"/>, how the memo holds the place at <paramref name="at"/>, past where a load ends a stream's
+    /// data (<see cref="ScanState.KindUntil"/>) and short of where the scan stops reading that data as the bytes give it: a
+    /// sweep from there, as the scan's own sweep runs between objects, which passes an object whose header it holds as taken
+    /// between objects as the scan's passes one, and starts again wherever <see cref="ScanState.KindUntil"/> moves; an
+    /// <c>xref</c> keyword told by a sweep ahead of it, which leaves it where it stood (<see cref="IsHiddenAhead"/>). The
+    /// sweeps read what <see cref="MemoKindReadPasses"/> lets them (<see cref="SweepForKinds"/>); past that, the place is held
+    /// as taken in the data.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private ScannedPlaceKind SweepForKind(ReadOnlySpan<byte> span, long windowStart, long at, ref ScanState scan, bool ahead)
+    {
+        if (scan.KindSweptTo < scan.KindUntil)
+        {
+            (scan.KindSweptTo, scan.KindLine, scan.KindDepth) = (scan.KindUntil, LineState.Tokens, 0);
+        }
+
+        if (!ahead)
+        {
+            if (!SweepForKinds(span, windowStart, at, ref scan.KindSweptTo, ref scan.KindLine, ref scan.KindDepth, scan.Memo, scan.TokensFrom) ||
+                scan.KindLine != LineState.Tokens)
+            {
+                return ScannedPlaceKind.Raw;
+            }
+
+            scan.KindCleanAt = at;
+            return ScannedPlaceKind.Clean;
+        }
+
+        if (scan.KindAheadTo <= scan.KindSweptTo)
+        {
+            (scan.KindAheadTo, scan.KindAheadLine, scan.KindAheadDepth) = (scan.KindSweptTo, scan.KindLine, scan.KindDepth);
+        }
+
+        return SweepForKinds(span, windowStart, at, ref scan.KindAheadTo, ref scan.KindAheadLine, ref scan.KindAheadDepth, scan.Memo, scan.TokensFrom) &&
+            scan.KindAheadLine == LineState.Tokens
+            ? ScannedPlaceKind.Clean
+            : ScannedPlaceKind.Raw;
+    }
+
+    /// <summary>
+    /// Sweeps for the memo's kinds alone, as <see cref="Sweep"/> does, the bytes from <paramref name="sweptTo"/> to
+    /// <paramref name="to"/>, each counted with the reads made for the memo's kinds (<see cref="_scanKindBytes"/>), from the
+    /// window or the file alike, so that where a piece ends changes nothing of what they spend. False, nothing swept, once
+    /// those reads have read as much as <see cref="MemoKindReadPasses"/> lets them: the places past there are held as taken
+    /// in the data. A sweep is a bounded number of passes over the bytes it crosses: from where a load ends a stream's data
+    /// to the places the scan takes before the next such end, once forward, once more where the scan learns that end past
+    /// them (<see cref="TakeCleanSwept"/>), and once ahead for the <c>xref</c> keywords.
+    /// </summary>
+    private bool SweepForKinds(
+        ReadOnlySpan<byte> span, long windowStart, long to, ref long sweptTo, ref LineState line, ref int depth, ScanMemo.Builder? memo, long floor)
+    {
+        if (to <= sweptTo)
+        {
+            return true;
+        }
+
+        if (_scanKindBytes >= MemoKindReadBound)
+        {
+            return false;
+        }
+
+        _scanKindBytes += to - sweptTo;
+        Sweep(span, windowStart, to, 0, ref sweptTo, ref line, ref depth, memo, floor);
+        return true;
+    }
+
+    /// <summary>
+    /// Holds as taken between objects the places the memo took at <paramref name="from"/>, where a load ends a stream's data,
+    /// or past it, and before <paramref name="to"/>, the scan learning that end only past them: those a sweep from there shows
+    /// no comment nor string between objects holding (<see cref="SweepForKinds"/>), a run whose first and last places it so
+    /// shows, a run across either bound keeping its kind; the others stay held as taken in the data, as do those past where
+    /// the reads made for the memo's kinds reach their bound.
+    /// </summary>
+    /// <remarks>
+    /// One sweep, forward, crosses the bytes up to the last place held once; unlike the sweep of the places the scan takes past
+    /// that end (<see cref="SweepForKind"/>), it passes no object: a string of an object there that runs over its line, as a
+    /// load reads it, is read as one the end of its line ends, which may hold a place after it as taken in the data.
+    /// </remarks>
+    /// <param name="span">The window the scan holds; empty for none.</param>
+    /// <param name="windowStart">Where the window starts in the file.</param>
+    /// <param name="from">Where a load ends the data.</param>
+    /// <param name="to">Where the places held so end.</param>
+    /// <param name="memo">Holds the places.</param>
+    /// <param name="floor">Where the bytes the scan's last object left to read anew start (<see cref="Sweep"/>).</param>
+    private void TakeCleanSwept(ReadOnlySpan<byte> span, long windowStart, long from, long to, ScanMemo.Builder memo, long floor)
+    {
+        var sweptTo = from;
+        var line = LineState.Tokens;
+        var depth = 0;
+
+        // No window held: every byte is read from the file.
+        windowStart = span.IsEmpty ? long.MaxValue : windowStart;
+
+        for (var index = memo.IndexAtOrAfter(from); memo.TryGetPlaces(index, to, out var first, out var last, out var slots); index += slots)
+        {
+            if (first < 0)
+            {
+                continue;
+            }
+
+            if (!SweepForKinds(span, windowStart, first, ref sweptTo, ref line, ref depth, memo, floor) ||
+                (line == LineState.Tokens && last != first && last < to && !SweepForKinds(span, windowStart, last, ref sweptTo, ref line, ref depth, memo, floor)))
+            {
+                return;
+            }
+
+            if (line == LineState.Tokens && last < to)
+            {
+                memo.ClearRaw(index);
+            }
+        }
     }
 
     /// <summary>
@@ -1230,7 +1539,9 @@ internal sealed partial class PdfFileReader
     /// <c>/Length</c>, or a direct one that is no length; for the memo's kinds, an indirect one the scan does not confirm
     /// is read from its object, which the scan looks for from the first header or <c>trailer</c> keyword past the data's
     /// start on (<see cref="EndDataAtLengthObject"/>), where no stretch whose places the memo counts as taken in data
-    /// reaches past that start.
+    /// reaches past that start, or where it lies in the data of the stream the scan awaits the length's object of. The data
+    /// of an attached file (<see cref="StartsAttachedFile"/>) ends that wait, and its direct length ends it only where its
+    /// object's end follows (<see cref="EndsObjectAt"/>).
     /// </summary>
     /// <remarks>
     /// The white space a first read cannot see past is read on with the scan's own reads past declared lengths, which
@@ -1253,6 +1564,7 @@ internal sealed partial class PdfFileReader
         long at, ObjectBounds bounds, ReadOnlySpan<byte> buffered, ReadOnlySpan<byte> span, long windowStart, ref ScanState scan)
     {
         var dataStart = at + bounds.DataStart;
+        var inAwaitedData = scan.PendingFrom >= 0 && !scan.PendingAttached && dataStart < scan.PendingUntil;
         scan.PendingUntil = Math.Min(scan.PendingUntil, dataStart);
 
         if (bounds.Length < 0 && ConfirmIndirectLength(dataStart, bounds.LengthObject, span, windowStart, ref scan) is var confirmed and >= 0)
@@ -1265,8 +1577,9 @@ internal sealed partial class PdfFileReader
         var keywordEnd = -1L;
 
         // What a length the scan cannot confirm says decides only the memo's kinds: a rebuild's scan, which keeps none,
-        // reads neither the length's object nor where a load ends the data (#361).
-        var awaitsLength = scan.Memo is not null && bounds.Length < 0 && scan.KindUntil <= dataStart;
+        // reads neither the length's object nor where a load ends the data (#361). A stream whose data starts in the data
+        // of the stream the scan awaits, but an attached file's, reads its own, in that stream's place.
+        var awaitsLength = scan.Memo is not null && bounds.Length < 0 && (scan.KindUntil <= dataStart || inAwaitedData);
         scan.LengthObject = awaitsLength ? bounds.LengthObject : -1;
 
         if (bounds.Length >= 0 && dataEnd < _source.Length)
@@ -1303,12 +1616,31 @@ internal sealed partial class PdfFileReader
             return new ObjectExtent(ExtentKind.Stream, keywordEnd, dataStart, bounds.CrossReferenceStream);
         }
 
-        if (bounds.Length < 0 || keywordEnd == EndStreamUndecided || scan.Memo is null)
+        if (scan.Memo is null)
         {
             return new ObjectExtent(ExtentKind.UnconfirmedStream, -1, dataStart, bounds.CrossReferenceStream);
         }
 
-        return new ObjectExtent(ExtentKind.UnconfirmedStream, DataEndWithoutEndStream(dataStart, dataEnd, ref scan), dataStart, bounds.CrossReferenceStream);
+        // The data of an attached file holds objects of its own, which no stream the scan awaits the length's object of
+        // takes for its own: it ends that wait.
+        var attached = bounds.EmbeddedFile || StartsAttachedFile(span, windowStart, dataStart);
+        scan.LengthAttached = attached;
+
+        if (attached)
+        {
+            EndAwaitedData(span, windowStart, ref scan);
+        }
+
+        if (bounds.Length < 0 || keywordEnd == EndStreamUndecided)
+        {
+            return new ObjectExtent(ExtentKind.UnconfirmedStream, -1, dataStart, bounds.CrossReferenceStream);
+        }
+
+        // An attached file's data ends where its direct length does only where its object's end follows, its endstream lost.
+        var loadEnd = attached
+            ? EndsObjectAt(span, windowStart, dataEnd) ? dataEnd : -1
+            : DataEndWithoutEndStream(dataStart, dataEnd, ref scan);
+        return new ObjectExtent(ExtentKind.UnconfirmedStream, loadEnd, dataStart, bounds.CrossReferenceStream);
     }
 
     /// <summary>
@@ -1619,14 +1951,16 @@ internal sealed partial class PdfFileReader
     /// <summary>
     /// Lexes the object header at the start of <paramref name="bytes"/> and the value after it, and says where the value
     /// ends, or, for a dictionary that <c>stream</c> follows, where its data starts, with its direct <c>/Length</c> and
-    /// whether it gives <c>/Type /XRef</c>.
+    /// whether it gives <c>/Type /XRef</c> or <c>/Type /EmbeddedFile</c>.
     /// </summary>
     /// <remarks>
     /// A value is read as the parser reads one: a reference is three tokens, and an integer that a second integer and
     /// <c>obj</c> follow is the next object's header, which ends this one where it starts, inside a container too (#230); a
     /// <c>/Length</c> that a generation and <c>R</c> follow is indirect. A keyword that ends an object or a stream inside a
     /// container, or a string that runs past its object's end (<see cref="IsRunaway"/>), leaves the value undelimited, and so
-    /// does a comment that holds the word <c>obj</c> before the value or inside it (<see cref="SkipGap"/>).
+    /// does a comment that holds the word <c>obj</c> before the value or inside it (<see cref="SkipGap"/>). A <c>/Length</c>
+    /// whose generation and <c>R</c> follow a pair no reference may name (<see cref="PackObject"/>) is direct, as a load
+    /// reads it: the number, the generation and <c>R</c> skipped as tokens no key names.
     /// </remarks>
     private static ObjectBounds DelimitWithin(ReadOnlySpan<byte> bytes, bool endsData)
     {
@@ -1684,6 +2018,7 @@ internal sealed partial class PdfFileReader
         var lengthObject = -1L;
         var lengthToken = -1;
         var crossReference = false;
+        var embedded = false;
         var count = 0;
         var lastIsInteger = false;
         var beforeIsInteger = false;
@@ -1734,10 +2069,11 @@ internal sealed partial class PdfFileReader
                     return ObjectBounds.Undelimited(token.End);
 
                 case PdfTokenKind.Keyword when inTopDictionary && lastIsInteger && beforeIsInteger && token.IsKeyword("R"u8):
-                    // A reference: a /Length whose value it is, is indirect, held by the object it names.
-                    if (lengthToken == count - 2)
+                    // A reference: a /Length whose value it is, is indirect, held by the object it names. A pair no reference
+                    // may name is none: a load reads the number as a direct length, and the rest as tokens it skips.
+                    if (lengthToken == count - 2 && PackObject(length, new PdfLexer(bytes, lastIntegerStart).Read().Integer) is var named and >= 0)
                     {
-                        lengthObject = PackObject(length, new PdfLexer(bytes, lastIntegerStart).Read().Integer);
+                        lengthObject = named;
                         length = -1;
                     }
 
@@ -1752,6 +2088,7 @@ internal sealed partial class PdfFileReader
 
                 case PdfTokenKind.Name when inTopDictionary:
                     crossReference |= key == DictionaryKey.Type && token.Text.SequenceEqual("XRef"u8);
+                    embedded |= key == DictionaryKey.Type && token.Text.SequenceEqual("EmbeddedFile"u8);
                     expectKey = true;
                     break;
 
@@ -1803,7 +2140,7 @@ internal sealed partial class PdfFileReader
             return ObjectBounds.Cut;
         }
 
-        return new ObjectBounds(BoundsKind.Stream, valueEnd, lexer.Position, length, crossReference, lengthObject);
+        return new ObjectBounds(BoundsKind.Stream, valueEnd, lexer.Position, length, crossReference, lengthObject, embedded);
     }
 
     /// <summary>
@@ -1963,6 +2300,36 @@ internal sealed partial class PdfFileReader
         public int AheadDepth;
 
         /// <summary>
+        /// Where the sweep that tells the memo's kinds past where a load ends a stream's data has reached
+        /// (<see cref="KindAt"/>): from <see cref="KindUntil"/>, up to <see cref="RawUntil"/>; -1 before it starts.
+        /// </summary>
+        public long KindSweptTo;
+
+        /// <summary>What the sweep for the memo's kinds stands in.</summary>
+        public LineState KindLine;
+
+        /// <summary>How many parentheses the string the sweep for the memo's kinds stands in has open.</summary>
+        public int KindDepth;
+
+        /// <summary>
+        /// Where the sweep for the memo's kinds ahead, which tells the <c>xref</c> keywords, has reached: it starts where the
+        /// sweep for the kinds stands, as <see cref="AheadTo"/> starts where <see cref="SweptTo"/> stands.
+        /// </summary>
+        public long KindAheadTo;
+
+        /// <summary>What the sweep for the memo's kinds ahead stands in.</summary>
+        public LineState KindAheadLine;
+
+        /// <summary>How many parentheses the string the sweep for the memo's kinds ahead stands in has open.</summary>
+        public int KindAheadDepth;
+
+        /// <summary>
+        /// Where the last header the sweep for the memo's kinds held as taken between objects starts, whose object, once
+        /// passed, it passes as the scan's own sweep passes one; -1 for none.
+        /// </summary>
+        public long KindCleanAt;
+
+        /// <summary>
         /// Where the last object the scan took ends, or where the data of a stream whose length it could not confirm starts:
         /// a load's lexer reads tokens anew from there, as from the start of the file.
         /// </summary>
@@ -1984,15 +2351,17 @@ internal sealed partial class PdfFileReader
 
         /// <summary>
         /// Where the places the memo holds stop being counted as taken as the bytes give them
-        /// (<see cref="ScannedPlaceKind.Raw"/>), past which it holds them as taken between objects: <see cref="RawUntil"/>,
-        /// but where the bytes show that no <c>endstream</c> follows a length the scan cannot confirm, where a load with that
-        /// length ends the stream's data before it — a direct one (<see cref="ConfirmStream"/>), or an indirect one whose
-        /// object the scan read in the file's bytes (<see cref="EndDataWithLength"/>, <see cref="EndDataAtLengthObject"/>).
-        /// The scan itself takes and hides by <see cref="RawUntil"/> alone, so that such a length, which may be another
-        /// object's than the stream's, changes nothing of what it takes; a rebuild's scan, which keeps no memo, does not
-        /// learn where a load ends the data (#361). Never past <see cref="RawUntil"/>: where a load ends the data sets it
-        /// below where <see cref="RawUntil"/> stands — a direct length's end raises it there where the scan passes the
-        /// stream (<see cref="Passed"/>), never lowering it, and an indirect one's only lowers it.
+        /// (<see cref="ScannedPlaceKind.Raw"/>), past which it holds them as taken between objects where no comment nor
+        /// string between objects holds them (<see cref="KindAt"/>): <see cref="RawUntil"/>, but where the bytes show that no
+        /// <c>endstream</c> follows a length the scan cannot confirm, where a load with that length ends the stream's data
+        /// before it — a direct one (<see cref="ConfirmStream"/>), or an indirect one whose object the scan read in the
+        /// file's bytes (<see cref="EndDataWithLength"/>, <see cref="EndDataAtLengthObject"/>). The scan itself takes and
+        /// hides by <see cref="RawUntil"/> alone, so that such a length, which may be another object's than the stream's,
+        /// changes nothing of what it takes; a rebuild's scan, which keeps no memo, does not learn where a load ends the data
+        /// (#361). Past <see cref="RawUntil"/> only where the length of an attached file's data, read from its object, ends
+        /// it intact past there (<see cref="EndAttachedData"/>); otherwise, where a load ends the data sets it below where
+        /// <see cref="RawUntil"/> stands — a direct length's end raises it there where the scan passes the stream
+        /// (<see cref="Passed"/>), never lowering it, and an indirect one's only lowers it.
         /// </summary>
         public long KindUntil;
 
@@ -2016,8 +2385,9 @@ internal sealed partial class PdfFileReader
         /// <summary>
         /// The object that holds the indirect <c>/Length</c> of the stream whose data the scan reads as the bytes give them,
         /// where no stretch whose places the memo counts as taken in data reaches past the data's start
-        /// (<see cref="KindUntil"/>, <see cref="ConfirmStream"/>), until the scan meets the first header or <c>trailer</c>
-        /// keyword past that start (<see cref="EndDataAtLengthObject"/>); -1 otherwise.
+        /// (<see cref="KindUntil"/>, <see cref="ConfirmStream"/>), or where that data starts in the data of the stream the
+        /// scan awaits, but an attached file's (<see cref="PendingFrom"/>), until the scan meets the first header or
+        /// <c>trailer</c> keyword past that start (<see cref="EndDataAtLengthObject"/>); -1 otherwise.
         /// </summary>
         public long LengthObject;
 
@@ -2029,6 +2399,15 @@ internal sealed partial class PdfFileReader
 
         /// <summary>Where the data of the stream the scan awaits the length's object of starts; -1 for none.</summary>
         public long PendingFrom;
+
+        /// <summary>
+        /// Whether the stream the scan awaits the length's object of holds an attached file (<see cref="StartsAttachedFile"/>),
+        /// whose places stay held as taken in it but where that object shows where its data ends (<see cref="EndAttachedData"/>).
+        /// </summary>
+        public bool PendingAttached;
+
+        /// <summary>Whether the stream whose length's object <see cref="LengthObject"/> names holds an attached file.</summary>
+        public bool LengthAttached;
 
         /// <summary>
         /// Where what the scan read as the data of the stream it awaits the length's object of stops being that stream's:
@@ -2046,10 +2425,14 @@ internal sealed partial class PdfFileReader
         /// <summary>Receives what a scan for a memo takes; null for a rebuild's scan.</summary>
         public ScanMemo.Builder? Memo;
 
-        public ScanState(ScanMemo.Builder? memo)
+        /// <summary>Receives where the trailers the scan meets lie (<see cref="FirstKeyword"/>).</summary>
+        public ScannedTrailers Trailers;
+
+        public ScanState(ScanMemo.Builder? memo, ScannedTrailers trailers)
         {
-            EndStreamAt = LengthObject = PendingObject = PendingFrom = -1;
+            EndStreamAt = LengthObject = PendingObject = PendingFrom = KindSweptTo = KindAheadTo = KindCleanAt = -1;
             Memo = memo;
+            Trailers = trailers;
         }
 
         /// <summary>
@@ -2187,9 +2570,9 @@ internal sealed partial class PdfFileReader
     /// <param name="Kind">How far the object was delimited.</param>
     /// <param name="End">Where the object's value or data ends in the file: past the value, past <c>endstream</c>, or, for a
     /// stream whose length is not confirmed, where a load ends its data as far as the file's bytes tell, a header it ends
-    /// at counted in it (<see cref="DataEndWithoutEndStream"/>), -1 where they do not: where the memo's places turn from
-    /// taken in the data to taken between objects, the scan reading that data up to its first <c>endstream</c> whatever
-    /// this says.</param>
+    /// at counted in it (<see cref="DataEndWithoutEndStream"/>) — an attached file's, where its direct length does, its
+    /// object's end following (<see cref="EndsObjectAt"/>) —, -1 where they do not: where the memo's places turn from taken in the data to taken
+    /// between objects, the scan reading that data up to its first <c>endstream</c> whatever this says.</param>
     /// <param name="DataStart">Where a stream's data starts in the file; -1 for another value.</param>
     /// <param name="CrossReferenceStream">Whether the object is a stream whose dictionary gives <c>/Type /XRef</c>.</param>
     private readonly record struct ObjectExtent(ExtentKind Kind, long End, long DataStart, bool CrossReferenceStream);
@@ -2223,8 +2606,9 @@ internal sealed partial class PdfFileReader
     /// <param name="Length">A stream's direct <c>/Length</c>, or -1.</param>
     /// <param name="CrossReferenceStream">Whether the dictionary gives <c>/Type /XRef</c>.</param>
     /// <param name="LengthObject">The object an indirect <c>/Length</c> names (<see cref="PackObject"/>), or -1.</param>
+    /// <param name="EmbeddedFile">Whether the dictionary gives <c>/Type /EmbeddedFile</c>: the stream holds an attached file.</param>
     private readonly record struct ObjectBounds(
-        BoundsKind Kind, int End, int DataStart, long Length, bool CrossReferenceStream, long LengthObject = -1)
+        BoundsKind Kind, int End, int DataStart, long Length, bool CrossReferenceStream, long LengthObject = -1, bool EmbeddedFile = false)
     {
         /// <summary>Gets bounds that say the bytes end before the value does.</summary>
         public static ObjectBounds Cut => new(BoundsKind.Cut, -1, -1, -1, false);

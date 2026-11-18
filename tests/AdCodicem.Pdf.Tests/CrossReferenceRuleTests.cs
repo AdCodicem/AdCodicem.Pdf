@@ -1595,6 +1595,24 @@ public class CrossReferenceRuleTests
         },
         {
             "3 0 obj\n<< /Length 5 >>\nstream\n01234(abc 4 0 obj\n(four)\nendobj\n", "4 0 obj", 3, 0,
+            PdfValidationRuleIds.XRefEntryUnconfirmed, "where there is no object header; the reader takes the header 3 bytes before it"
+        },
+        { NearbyFiles.FourPastALostEndStream("% "), "% 4 0 obj", 0, 0, PdfValidationRuleIds.XRefEntryShifted, "the object starts 27 bytes before it" },
+        { NearbyFiles.FourPastALostEndStream("( "), "( 4 0 obj", 0, 0, PdfValidationRuleIds.XRefEntryShifted, "the object starts 27 bytes before it" },
+        { NearbyFiles.FourInAnAttachedPdfFile, "2 0 obj << /Length 5", -1, 0, PdfValidationRuleIds.XRefEntryShifted, "the object starts" },
+        { NearbyFiles.FourInAnAttachedFdfFile, "4 0 obj (inner", -40, 0, PdfValidationRuleIds.XRefEntryShifted, "the object starts" },
+        {
+            NearbyFiles.FourPastAnAttachedFileThatLostItsEndStream, "4 0 obj (four", 3, 0,
+            PdfValidationRuleIds.XRefEntryShifted, "where there is no object header; the object starts 3 bytes before it"
+        },
+        {
+            "7 0 obj << /Length 8 -1 R >> stream\n0123456789\n4 0 obj (four) endobj\n", "4 0 obj", 3, 0,
+            PdfValidationRuleIds.XRefEntryShifted, "where there is no object header; the object starts 3 bytes before it"
+        },
+        {
+            "7 0 obj << /Length 20 0 R >> stream\n0123456789\n4 0 obj (" + new string('f', 78) + ") endobj\n9 0 obj << /Length 3 >> stream\nabc\nendstream endobj\n"
+            + "12 0 obj << /Type /EmbeddedFile /Length 13 0 R >> stream\n%PDF-1.4\n6 0 obj << /Length 3 >> stream\nabc\nendstream endobj\n20 0 obj 99999 endobj\n"
+            + "%%EOF\nendstream endobj\n", "4 0 obj", 3, 0,
             PdfValidationRuleIds.XRefEntryShifted, "where there is no object header; the object starts 3 bytes before it"
         },
         {
