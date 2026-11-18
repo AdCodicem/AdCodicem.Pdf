@@ -55,7 +55,9 @@ Tracking workflow mirrors from `docs/roadmap.md` (*Debt and open points*, below)
   pages — the validation rules among them, moved from the project documents — with the API reference under them, and
   four explanations. Outside any milestone.
 - **Last milestone closed**: **M01 — Object model and tolerant reading**
-- **Tests**: 12,214 unit on [#384]'s branch at `7aa8ac7`, with 235 of the 242 remote documents fetched — the container
+- **Tests**: 12,363 unit on [#386]'s branch at `c935daf`, with 235 of the 242 remote documents fetched, 12,360 passed
+  and 3 skipped; the 58 timing and memory tests alone; the integration suite green in CI; `Remote corpus` run 123 green
+  over all 242. Before it, 12,214 unit on [#384]'s branch at `7aa8ac7`, with 235 of the 242 remote documents fetched — the container
   reached neither web.archive.org nor a GitHub release for the other seven —, 12,211 passed and 3 skipped; the 54 timing
   and memory tests alone; the integration suite green in CI; `Remote corpus` run 122 green over all 242. Before it, 12,231 unit
   on [#382]'s branch at `f72cff6`, with 240 of the 242 remote documents fetched, 12,228 passed
@@ -81,8 +83,10 @@ Tracking workflow mirrors from `docs/roadmap.md` (*Debt and open points*, below)
   container at `26ce787`, run class by class, 3,754 passed and 6 skipped where qpdf cannot walk a damaged document's
   pages; and `Remote corpus` run 109's 11,155 acceptance tests and 3,760 referee checks, on the library code
   [#344] ends with.
-- **Coverage**: on [#384]'s branch, as Codecov reports it, every modified and coverable line of the patch covered.
-  Before it, on [#382]'s branch at `f72cff6`, counted from the unit suite's report by Codecov's rule, 100 % of the
+- **Coverage**: on [#386]'s branch at `c935daf`, as Codecov reports it, 99.53 % of the patch, one line partial: the arm
+  of `RowLexer.CommentEnd` that keeps the last comment's end, which no input takes, a second agent agreeing in the
+  mutation step. Before it, on [#384]'s branch, as Codecov reports it, every modified and coverable line of the patch
+  covered. Before it, on [#382]'s branch at `f72cff6`, counted from the unit suite's report by Codecov's rule, 100 % of the
   patch: its 40 coverable lines whole, on the committed corpus alone too. Before it, on [#380]'s branch, counted the
   same way, 100 % of the patch: its 114
   coverable lines whole, on the committed corpus alone too, once a test took the branch only a remote document had

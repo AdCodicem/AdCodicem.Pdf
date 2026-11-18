@@ -31,9 +31,13 @@ reason for a past decision. A new entry is short, about thirty lines; the detail
   kill the hangs and 68 survivors, 4 of them written when the second opinion overturned 7 of 49 equivalents; 42 stay
   equivalent; one differs only through [#388]'s defect, two only on a source near 2^63 bytes: [#390], under M23.
 - **The issues.** [#362], [#361]. Filed: [#387], [#388] and [#389] under M02, [#390] under M23.
-- **Checks.** CI green at `c8b5acb`, the integration suite, the documentation site and Codecov's patch check with it; the
-  timing and memory tests alone; `Remote corpus` run 123 green over all 242; the corpus differential over 403 documents,
-  by default and after a forced rebuild: no object or finding changes.
+- **Checks.** 12,363 unit tests at `c935daf`, 12,360 passed and 3 skipped, with 235 of the 242 remote documents; the
+  timing and memory tests alone; CI green with the integration suite and the site; 99.53 % of the patch, the one partial
+  line a branch no input takes; `Remote corpus` run 123 green; the corpus differential over 403 documents, by default
+  and after a forced rebuild: no object or finding changes. The benchmarks against `main`, alone, within noise but the
+  search past a comment holding `endstream` over 4 MB of white space, a quarter slower: the JIT held its byte loop's
+  state in memory once the search's bound became a parameter, and the loop, moved into a method of its own, is back
+  within noise.
 - **For callers.** `PdfReaderLimits.MaxRebuildReadPasses` (4; `Unbounded` lifts it; zero or less refused) and the code
   `limit.rebuild-reads`; past it, an object the index left out is unknown, and reading one throws under `ThrowOnLimit`.
 
