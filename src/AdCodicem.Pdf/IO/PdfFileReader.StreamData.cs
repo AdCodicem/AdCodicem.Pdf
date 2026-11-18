@@ -215,23 +215,11 @@ internal sealed partial class PdfFileReader
                 return -1;
             }
 
-            for (var i = 0; i < span.Length; i++)
-            {
-                var current = span[i];
+            var significant = FirstSignificant(span, ref inComment);
 
-                if (inComment)
-                {
-                    // A comment runs to the end of the line; both line endings occur in the wild.
-                    inComment = current is not ((byte)'\r' or (byte)'\n');
-                }
-                else if (current == (byte)'%')
-                {
-                    inComment = true;
-                }
-                else if (!PdfCharacters.IsWhitespace(current))
-                {
-                    return position + i;
-                }
+            if (significant >= 0)
+            {
+                return position + significant;
             }
 
             position += span.Length;
@@ -239,6 +227,43 @@ internal sealed partial class PdfFileReader
         }
 
         return _source.Length;
+    }
+
+    /// <summary>
+    /// Gives the index of the first byte of <paramref name="span"/> that is neither white space nor in a comment, or -1,
+    /// <paramref name="inComment"/> then saying whether its last line's comment runs on past it.
+    /// </summary>
+    /// <remarks>
+    /// A loop of its own, whose state the JIT keeps in registers: inside <see cref="NextSignificant(long, ref long, long, int)"/>,
+    /// whose bound is a parameter, it held the comment's state in memory, a read and a write each byte, and the search past
+    /// a comment that holds <c>endstream</c> over 4 MB of white space took about a quarter longer
+    /// (<c>StreamEndSearchBenchmarks</c>).
+    /// </remarks>
+    private static int FirstSignificant(ReadOnlySpan<byte> span, ref bool inComment)
+    {
+        var comment = inComment;
+
+        for (var i = 0; i < span.Length; i++)
+        {
+            var current = span[i];
+
+            if (comment)
+            {
+                // A comment runs to the end of the line; both line endings occur in the wild.
+                comment = current is not ((byte)'\r' or (byte)'\n');
+            }
+            else if (current == (byte)'%')
+            {
+                comment = true;
+            }
+            else if (!PdfCharacters.IsWhitespace(current))
+            {
+                return i;
+            }
+        }
+
+        inComment = comment;
+        return -1;
     }
 
     /// <summary>Determines whether <c>endobj</c>, a whole keyword, starts at <paramref name="position"/>.</summary>
