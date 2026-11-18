@@ -72,10 +72,11 @@ value the guard cut, and are the guard's: the chain ends at that section, as whe
 section's rows would stand for them.
 
 What a guard leaves out of the cross-reference index — the oldest sections of a long chain, the rows past a long
-table's bound, the objects past the most the index holds, the objects whose headers a rebuild's scan does not take once
-it has read past streams' lengths as much as `MaxRebuildReadPasses` lets it — is no damage either. Those objects read as null, unknown
-rather than missing, until you raise the limit; the reader does not rebuild the index for them, as it would for a file
-whose index is broken, since a rebuild would report a sound file as damaged and could lose what the chain had read.
+table's bound, the objects past the most the index holds, the objects whose headers a rebuild's scan may have left in
+data it no longer reads once it has read past streams' lengths as much as `MaxRebuildReadPasses` lets it — is no damage
+either. Those objects read as null, unknown rather than missing, until you raise the limit; the reader does not rebuild
+the index for them, as it would for a file whose index is broken, since a rebuild would report a sound file as damaged
+and could lose what the chain had read.
 
 The chain of cross-reference sections ends at the section a guard stopped, since an older section's rows would stand for
 those the guard left unread. Where the guard stopped its rows — cut them, or filled the index at them —, what that

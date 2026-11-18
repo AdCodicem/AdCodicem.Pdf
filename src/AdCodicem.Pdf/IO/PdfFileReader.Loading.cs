@@ -46,15 +46,25 @@ internal sealed partial class PdfFileReader
 
     /// <summary>
     /// Answers null for an object the index holds no entry for; or, for a document opened to throw on a guard, throws each
-    /// time the index <see cref="PdfReaderLimits.MaxIndexEntries"/> filled leaves one out, as an object read again past
-    /// its guard throws again.
+    /// time a guard that stopped the index short of the file leaves one out — <see cref="PdfReaderLimits.MaxIndexEntries"/>
+    /// filled it, or <see cref="PdfReaderLimits.MaxRebuildReadPasses"/> kept the scan of the rebuild that made it from
+    /// reading data that may hold it —, as an object read again past its guard throws again.
     /// </summary>
-    /// <exception cref="PdfLimitExceededException">The index is full, and the document was opened to throw on a guard.</exception>
+    /// <exception cref="PdfLimitExceededException">
+    /// The index is full, or a rebuild's scan left data unread, and the document was opened to throw on a guard.
+    /// </exception>
     private PdfNull NotIndexed()
     {
-        if (_indexFull && _guard.ThrowsOnLimit)
+        if (_guard.ThrowsOnLimit)
         {
-            _guard.Reach(PdfLimit.IndexEntries, null, IndexFullMessage(), _indexFullAt);
+            if (_indexFull)
+            {
+                _guard.Reach(PdfLimit.IndexEntries, null, IndexFullMessage(), _indexFullAt);
+            }
+            else if (_rebuildReadsBoundedAt >= 0)
+            {
+                _guard.Reach(PdfLimit.RebuildReads, null, RebuildReadsMessage(), _rebuildReadsBoundedAt);
+            }
         }
 
         return PdfNull.Instance;

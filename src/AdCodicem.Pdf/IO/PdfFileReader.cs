@@ -887,10 +887,10 @@ internal sealed partial class PdfFileReader : IPdfObjectSource, IPdfStreamDataPr
     private long _indexFullAt = -1;
 
     /// <summary>
-    /// Where the scan of the rebuild that made the index reached <see cref="PdfReaderLimits.MaxRebuildReadPasses"/>, at the
-    /// data of the first stream it read as an intact stream's for it (<see cref="ReachScanReadBound"/>): the headers in the
-    /// data of the streams it could not confirm from there on were not taken, and the index stops short of the file; -1
-    /// while no rebuild's scan reached it.
+    /// Where the scan of the rebuild that made the index, past <see cref="PdfReaderLimits.MaxRebuildReadPasses"/>, first
+    /// read as an intact stream's the data of a stream that holds an <c>obj</c> keyword (<see cref="ScanForObjects"/>):
+    /// headers there and in the data of the streams it could not confirm after it may have gone untaken, and the index
+    /// stops short of the file; -1 while no rebuild's scan left such data unread.
     /// </summary>
     private long _rebuildReadsBoundedAt = -1;
 
@@ -1243,10 +1243,10 @@ internal sealed partial class PdfFileReader : IPdfObjectSource, IPdfStreamDataPr
     /// one it reads with now —, is missing: a reference to it is null (ISO 32000-1, 7.3.10). One either index holds
     /// in use, and that the reader gave up on or lost in a rebuild, is unproduced: what went wrong is the index's
     /// or the object stream's, and the cross-reference rules report it. One the index lacks while a guard left part of the
-    /// chain unread, filled the index, or kept a rebuild's scan from reading the data of streams it could not confirm, is
-    /// unindexed: whether the file holds it is unknown; and so is one the reader could not produce because the object stream
-    /// that holds it is such an object. Object 0 is missing whatever its entry says: it heads the free list and is never in
-    /// use (ISO 32000-1, 7.5.4), and the reader never reads it.
+    /// chain unread, filled the index, or kept a rebuild's scan from reading data that holds an <c>obj</c> keyword, is
+    /// unindexed, whatever the chain's index says of it: whether the file holds it is unknown; and so is one the reader could
+    /// not produce because the object stream that holds it is such an object. Object 0 is missing whatever its entry says:
+    /// it heads the free list and is never in use (ISO 32000-1, 7.5.4), and the reader never reads it.
     /// </remarks>
     internal ObjectPresence GetPresence(int number)
     {
@@ -1264,18 +1264,21 @@ internal sealed partial class PdfFileReader : IPdfObjectSource, IPdfStreamDataPr
                 : ObjectPresence.Unproduced;
         }
 
-        if (ChainIndex?.TryGet(number, out var written) == true && written.Kind != XRefEntryKind.Free)
+        if (!indexed && IndexStoppedByGuard)
         {
-            return ObjectPresence.Unproduced;
+            return ObjectPresence.Unindexed;
         }
 
-        return !indexed && IndexStoppedByGuard ? ObjectPresence.Unindexed : ObjectPresence.Missing;
+        return ChainIndex?.TryGet(number, out var written) == true && written.Kind != XRefEntryKind.Free
+            ? ObjectPresence.Unproduced
+            : ObjectPresence.Missing;
     }
 
     /// <summary>
     /// Gets a value indicating whether a guard stopped the index short of the file: it filled, the rebuild that made it read
-    /// past <see cref="PdfReaderLimits.MaxRebuildReadPasses"/> the data of streams its scan could not confirm as intact, or
-    /// it is the chain's and a guard left part of the chain unread. A rebuild scans the whole file, and lifts the third.
+    /// past <see cref="PdfReaderLimits.MaxRebuildReadPasses"/> as intact the data of a stream its scan could not confirm
+    /// that holds an <c>obj</c> keyword (<see cref="_rebuildReadsBoundedAt"/>), or it is the chain's and a guard left part
+    /// of the chain unread. A rebuild scans the whole file, and lifts the third.
     /// </summary>
     private bool IndexStoppedByGuard => _indexFull || _rebuildReadsBoundedAt >= 0 || (_cutByGuard && !_repaired);
 
@@ -1300,8 +1303,8 @@ internal sealed partial class PdfFileReader : IPdfObjectSource, IPdfStreamDataPr
     internal long IndexFullAt => _indexFullAt;
 
     /// <summary>
-    /// Gets where the scan of the rebuild that made the index reached <see cref="PdfReaderLimits.MaxRebuildReadPasses"/>, at
-    /// the data of the first stream it read as an intact stream's for it, or -1 while no rebuild's scan reached it.
+    /// Gets where the scan of the rebuild that made the index, past <see cref="PdfReaderLimits.MaxRebuildReadPasses"/>,
+    /// first read as intact data that holds an <c>obj</c> keyword (<see cref="_rebuildReadsBoundedAt"/>), or -1.
     /// </summary>
     internal long RebuildReadsBoundedAt => _rebuildReadsBoundedAt;
 
