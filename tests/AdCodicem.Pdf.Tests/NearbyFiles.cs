@@ -29,6 +29,51 @@ internal static class NearbyFiles
         "\n4 0 obj\n(second four)\nendobj\n";
 
     /// <summary>
+    /// A stream, object 7, that lost its endstream, whose indirect length object 6 holds before it; then object 4,
+    /// <c>(real four)</c>; then a line that opens with <paramref name="opening"/>, a comment or a string, and writes object 4
+    /// again, <c>(fake four)</c>, which a load reads inside it; then an intact stream (#365).
+    /// </summary>
+    public static string FourPastALostEndStream(string opening) =>
+        "6 0 obj 10 endobj\n7 0 obj << /Length 6 0 R >> stream\n0123456789\nendobj\n4 0 obj (real four) endobj\n" + opening
+        + "4 0 obj (fake four) endobj\n8 0 obj << /Length 3 >> stream\nabc\nendstream endobj\n";
+
+    /// <summary>
+    /// Object 4, <c>(outer four)</c>, then an attached PDF file, object 12, whose indirect length object 13 holds after it,
+    /// and which writes objects of its own: 13, which holds 5, then 2, a stream, then 4, <c>(inner four)</c> (#366).
+    /// </summary>
+    public static readonly string FourInAnAttachedPdfFile = WithAttached(
+        "4 0 obj (outer four) endobj\n",
+        "12 0 obj << /Type /EmbeddedFile /Length 13 0 R >> stream\n",
+        "%PDF-1.4\n13 0 obj 5 endobj\n2 0 obj << /Length 5 >> stream\nhello\nendstream endobj\n4 0 obj (inner four) endobj\n%%EOF\n",
+        "endstream endobj\n13 0 obj LENGTH endobj\n");
+
+    /// <summary>
+    /// Object 13, which holds the length of an attached FDF file, then ten objects, then object 4, <c>(outer four)</c>, then
+    /// the attached file, object 12, which writes objects of its own, 1, then 4, <c>(inner four)</c>, then 2, a stream, and a
+    /// trailer (#366).
+    /// </summary>
+    public static readonly string FourInAnAttachedFdfFile = WithAttached(
+        "13 0 obj LENGTH endobj\n" + string.Concat(Enumerable.Range(20, 10).Select(number => string.Create(CultureInfo.InvariantCulture, $"{number} 0 obj ({number}) endobj\n")))
+        + "4 0 obj (outer four) endobj\n",
+        "12 0 obj << /Type /EmbeddedFile /Length 13 0 R >> stream\n",
+        "%FDF-1.2\n1 0 obj << /A 1 >> endobj\n4 0 obj (inner four) endobj\n2 0 obj << /Length 3 >> stream\nabc\nendstream endobj\ntrailer << /Root 1 0 R >>\n%%EOF\n",
+        "endstream endobj\n");
+
+    /// <summary>
+    /// An attached PDF file, object 12, that lost its endstream, whose indirect length object 13 holds after it; then object
+    /// 4, <c>(four)</c>, then object 16, then an intact stream (#372).
+    /// </summary>
+    public static readonly string FourPastAnAttachedFileThatLostItsEndStream = WithAttached(
+        string.Empty,
+        "12 0 obj << /Type /EmbeddedFile /Length 13 0 R >> stream\n",
+        "%PDF-1.4\n1 0 obj << /Type /Catalog >> endobj\n%%EOF\n",
+        "endobj\n13 0 obj LENGTH endobj\n4 0 obj (four) endobj\n16 0 obj (sixteen) endobj\n17 0 obj << /Length 3 >> stream\nabc\nendstream endobj\n");
+
+    /// <summary>Joins the parts of a body, <c>LENGTH</c> written as the length of <paramref name="data"/>.</summary>
+    private static string WithAttached(string before, string head, string data, string after) =>
+        (before + head + data + after).Replace("LENGTH", data.Length.ToString(CultureInfo.InvariantCulture), StringComparison.Ordinal);
+
+    /// <summary>
     /// A one-page document indexed by one classic table, whose row of the page, object 3, gives <paramref name="row"/>
     /// while the page's header starts at <paramref name="at"/>.
     /// </summary>

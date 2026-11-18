@@ -383,23 +383,27 @@ or the first object after it that gives it, until the scan has to wait for anoth
 end of the file —, the scan searches the data from its start, as a load does, for where that load ends it: at the
 length, at its object's `endobj`, or at the header that load's search for the `endstream` stops at, which counts as the
 data's where the declared length runs past it. What the scan takes past there counts as found between objects, up to
-the data of the next stream it meets or what a string that runs past its object's end runs into, though a comment or a
-string there would have hidden it between objects. Past an indirect length it reads only 64 bytes to tell whether an
-`endstream` follows: one there, or white space or comments that run on past them, leave what it takes counted as found
-in the data. Where it finds no such object — the damage took it too, it lies elsewhere, or it holds no lone integer —,
-what it took past where a load that cannot read that length ends the data — at its object's `endobj`, or else at the
-header that load's search stops at — counts so. A stream whose data starts with `%PDF-`, an attached PDF file
-whose own objects may give its length's number,
-waits for no object where neither the last objects before it nor the first in its data give that length — though a
-stream that already waits for its own length's object may take one of that file's objects, past its first `endstream`,
-for it —; and where the
-scan takes that object among the last objects before the stream or in the data, or finds none, it may take the data for
-an attached file's, which its first `endstream` ends where no other stream's `stream` keyword comes before it — and,
-where the scan took a length, where an `endobj` follows that `endstream` —, the scan reading 1 MB at most for that
-keyword: a longer stretch counts as holding one. What the scan takes in such data,
-as in any data whose headers do not count so, counts as found in the data, and a header or a section
-the searches near a row or an offset find there is unconfirmed. What follows the header
-of an object it cannot delimit — its value past `MaxObjectLength`, or none a load reads — is read as the bytes give it
+the data of the next stream it meets or what a string that runs past its object's end runs into, but what a comment or
+a string there hides between objects, as a load would read those bytes from that end
+([#365](https://github.com/AdCodicem/AdCodicem.Pdf/issues/365)). Past an indirect length it reads only 64 bytes to tell
+whether an `endstream` follows: one there, or white space or comments that run on past them, leave what it takes
+counted as found in the data. Where it finds no such object — the damage took it too, it lies elsewhere, or it holds no
+lone integer —, what it took past where a load that cannot read that length ends the data — at its object's `endobj`,
+or else at the header that load's search stops at, or at an `xref` or a `trailer` keyword before that header, where a
+load that reads the index ends it before a section
+([#372](https://github.com/AdCodicem/AdCodicem.Pdf/issues/372)) — counts so. A stream whose data starts in the data of
+the stream waiting for its length's object waits for its own in its place. The data of an attached file — a stream of
+`/Type /EmbeddedFile`, or data that starts with `%PDF-` or `%FDF-`, white space before it — holds objects of its own:
+none of them gives its length, a stream waiting for its own length's object stops waiting there, and what the scan
+takes in it counts as found in the data, but where its own length shows where it ends — an `endstream` there, the
+whole data counting so, or the end of its object, an `endobj` or, that lost too, the next object's header, what follows
+counting as found between objects ([#366](https://github.com/AdCodicem/AdCodicem.Pdf/issues/366)). Where the scan takes a length among the last objects
+before the stream or in the data, or finds none, it may take the data for an attached file's, which its first
+`endstream` ends where no other stream's `stream` keyword comes before it — and, where the scan took a length, where an
+`endobj` follows that `endstream` —, the scan reading 1 MB at most for that keyword: past it, it cannot tell, and the
+data counts as such a file's. What the scan takes in such data, as in any data whose headers do not count so, counts as
+found in the data, and a header or a section the searches near a row or an offset find there is unconfirmed. What
+follows the header of an object it cannot delimit — its value past `MaxObjectLength`, or none a load reads — is read as the bytes give it
 too, and a header within what was read of it is taken undelimited, so that no byte is lexed for one object after
 another. Where the pieces it reads the file in start
 changes nothing of what it takes, but in three hand-made shapes

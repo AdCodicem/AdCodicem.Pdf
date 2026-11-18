@@ -1,3 +1,6 @@
+using System.Globalization;
+using System.Text;
+using System.Text.RegularExpressions;
 using AdCodicem.Pdf.Documents;
 using AdCodicem.Pdf.Objects;
 using AdCodicem.Pdf.Validation;
@@ -292,6 +295,76 @@ public class CorpusValidationTests
         }
 
         document.WasRepaired.Should().Be(repaired, $"{entry.Name} was validated, and its index settled, before it was read");
+    }
+
+    [Theory]
+    [InlineData(GreekExchangeRates, "200 bytes from 150 before the endstream of the first stream past a quarter of the file whose length is indirect", PdfValidationRuleIds.XRefSectionShifted)]
+    [InlineData(DmcaSummary, "the endstream of streams 77 and 79", PdfValidationRuleIds.XRefEntryShifted)]
+    [InlineData(DmcaSummary, "the endstream and the endobj of streams 77 and 79", PdfValidationRuleIds.XRefEntryShifted)]
+    [InlineData(DmcaSummary, "the endstream of streams 77 and 79, every row then shifted 7 bytes on", PdfValidationRuleIds.XRefEntryShifted)]
+    [InlineData(DmcaSummary, "the endstream and the endobj of streams 77 and 79, every row then shifted 7 bytes on", PdfValidationRuleIds.XRefEntryShifted)]
+    public void A_corpus_document_whose_streams_lost_their_endstream_has_the_entries_and_sections_past_them_shifted_not_unconfirmed(
+        string file, string lost, string shifted)
+    {
+        // A stream with an indirect length loses its endstream: in the Greek notice, with its endobj, the object of its length
+        // and the next header, which leaves the section /Prev names, an update's, 200 bytes before where it is named, past
+        // the stream's data, and nothing tells where a load ends that data but the next header, past the section; in the
+        // DMCA summary, two of them, the second's header in the first's data, their length objects neither just before nor
+        // just after them. The scan for objects learns where a load ends each one's data — the section's keyword ends it,
+        // and the second stream is awaited in the first's place —, and holds what it takes past there as taken between
+        // objects: the sections and entries past the loss, the rows written before the loss, are shifted (#372).
+        var entry = Corpus.Get(file);
+        var options = CorpusReadingTests.OptionsFor(entry) with { ThrowOnEncrypted = false };
+        using var document = PdfDocument.Open(Lose(Corpus.Read(file), lost), options);
+
+        var report = new PdfValidator().Validate(document);
+
+        report.Findings.Should().Contain(finding => finding.RuleId == shifted, $"{entry.Name} lost {lost}, and the validator reported {Describe(report)}");
+        report.Findings.Should().NotContain(
+            finding => finding.RuleId == PdfValidationRuleIds.XRefSectionUnconfirmed || finding.RuleId == PdfValidationRuleIds.XRefEntryUnconfirmed,
+            $"{entry.Name} lost {lost}, and the validator reported {Describe(report)}");
+    }
+
+    private const string GreekExchangeRates = "vendor/eu-publications/pdflib-oj-exchange-rates-greek.pdf";
+
+    private const string DmcaSummary = "vendor/us-federal/pdfwriter3-copyright-office-dmca-summary-1998-rc4-40.pdf";
+
+    /// <summary>Gives <paramref name="bytes"/> with what <paramref name="lost"/> names cut out, and the rows shifted where it says.</summary>
+    private static byte[] Lose(byte[] bytes, string lost)
+    {
+        var text = Encoding.Latin1.GetString(bytes);
+
+        if (lost.StartsWith("200 bytes", StringComparison.Ordinal))
+        {
+            foreach (Match start in Regex.Matches(text, @">>\s*stream(\r\n|\n|\r)"))
+            {
+                var dataStart = start.Index + start.Length;
+                var header = text.LastIndexOf(" obj", start.Index, StringComparison.Ordinal);
+
+                if (dataStart > bytes.Length / 4 && Regex.IsMatch(text[header..start.Index], @"/Length\s+\d+\s+\d+\s+R"))
+                {
+                    var cut = text.IndexOf("endstream", dataStart, StringComparison.Ordinal) - 150;
+                    return [.. bytes.AsSpan(0, cut), .. bytes.AsSpan(cut + 200)];
+                }
+            }
+        }
+
+        foreach (var number in (int[])[79, 77])
+        {
+            var keyword = text.IndexOf("endstream", Regex.Match(text, string.Create(CultureInfo.InvariantCulture, $@"(?<![0-9]){number} 0 obj")).Index, StringComparison.Ordinal);
+            var end = lost.Contains("endobj", StringComparison.Ordinal)
+                ? text.IndexOf("endobj", keyword, StringComparison.Ordinal) + "endobj".Length
+                : keyword + "endstream".Length;
+            text = text[..keyword] + text[end..];
+        }
+
+        if (lost.Contains("shifted", StringComparison.Ordinal))
+        {
+            text = Regex.Replace(text, @"(?<=[\r\n])(\d{10}) (\d{5}) n(?=[ \r\n])", row => string.Create(
+                CultureInfo.InvariantCulture, $"{long.Parse(row.Groups[1].Value, CultureInfo.InvariantCulture) + 7:D10} {row.Groups[2].Value} n"));
+        }
+
+        return Encoding.Latin1.GetBytes(text);
     }
 
     [Fact]

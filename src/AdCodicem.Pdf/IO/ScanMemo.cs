@@ -7,8 +7,9 @@ namespace AdCodicem.Pdf.IO;
 /// a rebuild after it taking its headers from it: each object header and each <c>xref</c> keyword the scan takes, sorted by
 /// where each starts, each with how the scan took it (<see cref="ScannedPlaceKind"/>) — one it took as the bytes give it,
 /// in what it read as a stream's data, held as taken between objects past where a load ends that data, where the bytes
-/// show that no <c>endstream</c> follows the stream's length, the scan learning it before the place or past it
-/// (<see cref="Builder.TakeClean"/>) —, and where the trailers it notes lie (<see cref="Trailers"/>). The scan
+/// show that no <c>endstream</c> follows the stream's length and no comment nor string between objects holds it, the scan
+/// learning it before the place or past it (<see cref="Builder.ClearRaw"/>) —, and where the trailers it notes lie
+/// (<see cref="Trailers"/>). The scan
 /// records it through a <see cref="Builder"/>, which completes it; once complete, it changes no more.
 /// </summary>
 /// <remarks>
@@ -318,28 +319,92 @@ internal sealed class ScanMemo
         /// <summary>
         /// Gets or sets where the data of the stream whose length's object the scan awaits starts, or
         /// <see cref="long.MaxValue"/> for none: the scan may yet hold the places it took past there as taken between objects
-        /// (<see cref="TakeClean"/>), so that a memo it ends sooner is whole only before there (<see cref="EndAt"/>,
+        /// (<see cref="ClearRaw"/>), so that a memo it ends sooner is whole only before there (<see cref="EndAt"/>,
         /// <see cref="TryCount"/>).
         /// </summary>
         public long AwaitedFrom { get; set; } = long.MaxValue;
 
+        /// <summary>Gives the index of the first slot that starts at <paramref name="from"/> or past it.</summary>
+        public int IndexAtOrAfter(long from) => After(_slots.AsSpan(0, _used), from, atToo: true);
+
         /// <summary>
-        /// Holds the places the scan took at <paramref name="from"/> or past it and before <paramref name="to"/> as taken
-        /// between objects (<see cref="ScannedPlaceKind.Clean"/>): the scan took them as the bytes give them, in what it read
-        /// as the data of a stream, past where a load ends that data, which it learned only once past them
-        /// (<see cref="PdfFileReader.ScanForObjects"/>). A
-        /// run that holds places on both sides of either bound keeps its kind for all of them, as a hostile file alone writes
-        /// one: a header written again and again at one distance across the end of such data.
+        /// Gives the places of the slot at <paramref name="index"/>, where it starts before <paramref name="to"/>: a place
+        /// alone, <paramref name="first"/> and <paramref name="last"/> both where it starts, in one slot; a run, its first and
+        /// last places, in two; the end of a run whose first place lies before the slot, met alone, -1 for both, in one. False
+        /// past the last slot, or for one that starts at <paramref name="to"/> or past it.
         /// </summary>
-        public void TakeClean(long from, long to)
+        /// <remarks>
+        /// The scan holds places between two bounds as taken between objects a slot at a time
+        /// (<see cref="PdfFileReader.ScanForObjects"/>), from the first that starts at the lower one
+        /// (<see cref="IndexAtOrAfter"/>): a run that holds places on both sides of either bound keeps its kind for all of
+        /// them, as a hostile file alone writes one — a header written again and again at one distance across the end of a
+        /// stream's data —, and one within them takes the kind its first and last places have.
+        /// </remarks>
+        public bool TryGetPlaces(int index, long to, out long first, out long last, out int slots)
         {
-            for (var index = After(_slots.AsSpan(0, _used), from, atToo: true); index < _used && _slots[index].Start < to; index++)
+            first = last = -1;
+            slots = 1;
+
+            if (index >= _used || _slots[index].Start >= to)
             {
-                if ((_slots[index].Traits & RunFlag) == 0 || _slots[index + 1].Start < to)
+                return false;
+            }
+
+            if ((_slots[index].Traits & RunEndFlag) != 0)
+            {
+                return true;
+            }
+
+            first = last = _slots[index].Start;
+
+            if ((_slots[index].Traits & RunFlag) != 0)
+            {
+                last = _slots[index + 1].Start;
+                slots = 2;
+            }
+
+            return true;
+        }
+
+        /// <summary>
+        /// Holds the places of the slot at <paramref name="index"/>, one place or a run, as taken between objects
+        /// (<see cref="ScannedPlaceKind.Clean"/>): the scan took them as the bytes give them, in what it read as the data of a
+        /// stream, past where a load ends that data, which it learned only once past them.
+        /// </summary>
+        public void ClearRaw(int index) => _slots[index].Traits &= ~RawFlag;
+
+        /// <summary>
+        /// Holds the places the scan took at <paramref name="from"/> or past it and before <paramref name="to"/> as taken in the
+        /// data (<see cref="ScannedPlaceKind.Raw"/>): the data of an attached file, intact, whose end the scan learned only once
+        /// past them. A run that holds places on both sides of either bound keeps its kind for all of them, as
+        /// <see cref="TryGetPlaces"/> says.
+        /// </summary>
+        public void TakeRaw(long from, long to)
+        {
+            for (var index = IndexAtOrAfter(from); TryGetPlaces(index, to, out var first, out var last, out var slots); index += slots)
+            {
+                if (first >= 0 && last < to)
                 {
-                    _slots[index].Traits &= ~RawFlag;
+                    _slots[index].Traits |= RawFlag;
                 }
             }
+        }
+
+        /// <summary>
+        /// Gives where the first <c>xref</c> keyword the memo holds that starts at <paramref name="from"/> or past it and before
+        /// <paramref name="to"/> starts; <paramref name="to"/> where none does. A run of keywords counts by its first.
+        /// </summary>
+        public long FirstXRefKeyword(long from, long to)
+        {
+            for (var index = IndexAtOrAfter(from); TryGetPlaces(index, to, out var first, out _, out var slots); index += slots)
+            {
+                if (first >= 0 && (_slots[index].Traits & KeywordFlag) != 0)
+                {
+                    return first;
+                }
+            }
+
+            return to;
         }
 
         /// <summary>

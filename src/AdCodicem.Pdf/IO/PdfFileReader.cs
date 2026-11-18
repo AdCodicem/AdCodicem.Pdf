@@ -260,9 +260,9 @@ internal sealed partial class PdfFileReader : IPdfObjectSource, IPdfStreamDataPr
     /// memo counts the places it takes in the data of a stream it does not confirm, as taken there or between objects
     /// (<see cref="ScanState.KindUntil"/>, <see cref="_scanKindBytes"/>): the search for where a load ends that data
     /// (<see cref="DataEndWithoutEndStream"/>), the reads that tell it from an intact stream's
-    /// (<see cref="StartsStreamWithin"/>), and the reads for an <c>endobj</c> made for them (<see cref="IsEndObjAt"/>).
-    /// Once they have read that much, the memo leaves the places it took in such data as taken there, as where those reads
-    /// cannot tell.
+    /// (<see cref="StartsStreamWithin"/>), the reads for an <c>endobj</c> made for them (<see cref="IsEndObjAt"/>), and the
+    /// sweeps for comments and strings past where a load ends that data (<see cref="SweepForKinds"/>). Once they have read
+    /// that much, the memo leaves the places it took in such data as taken there, as where those reads cannot tell.
     /// </summary>
     /// <remarks>
     /// Not a guard (ADR 34): it changes no valid file's objects, nor any verdict on one. The scan reads that data as the
@@ -648,11 +648,13 @@ internal sealed partial class PdfFileReader : IPdfObjectSource, IPdfStreamDataPr
     /// keeps no memo, reads none (<see cref="ConfirmStream"/>): the data searched from its start for where a load ends it
     /// (<see cref="DataEndWithoutEndStream"/>), every byte it takes counted, those the scan's window holds included; the
     /// reads that tell such data from an intact stream's (<see cref="StartsStreamWithin"/>), counted only past the bytes
-    /// that window holds, which it searches first; and the white space past a declared length, or past the first
-    /// <c>endstream</c> of such data, that a first read cannot see past for an <c>endobj</c> (<see cref="IsEndObjAt"/>).
-    /// First reads that tell a place at once are not among them: of 64 bytes at most after a length the scan took from the
-    /// file's bytes, read no further (<see cref="SignificantPastLength"/>), at an <c>endstream</c>, where an <c>endobj</c>
-    /// may follow a length or such an <c>endstream</c>, and at a length's object, and of 5 at a stream's data's start.
+    /// that window holds, which it searches first; the white space past a declared length, or past the first
+    /// <c>endstream</c> of such data, that a first read cannot see past for an <c>endobj</c> (<see cref="IsEndObjAt"/>); and
+    /// the bytes swept for comments and strings past where a load ends such data (<see cref="SweepForKinds"/>), every byte
+    /// counted, those the window holds included. First reads that tell a place at once are not among them: of 64 bytes at
+    /// most after a length the scan took from the file's bytes, read no further (<see cref="SignificantPastLength"/>), at an
+    /// <c>endstream</c>, where an <c>endobj</c> may follow a length or such an <c>endstream</c>, at a length's object, and at
+    /// a stream's data's start (<see cref="StartsAttachedFile"/>).
     /// </summary>
     private long _scanKindBytes;
 
