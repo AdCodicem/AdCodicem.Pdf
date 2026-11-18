@@ -79,7 +79,6 @@ internal sealed partial class PdfFileReader
         var indexFullAt = _indexFullAt;
         _indexFull = false;
         _rebuildReadsBoundedAt = -1;
-        _foundInside.Clear();
         _xref.Clear();
         ForgetWhatWasRead();
         var redefinitions = new Redefinitions();

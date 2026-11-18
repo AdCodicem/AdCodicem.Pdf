@@ -729,28 +729,45 @@ public class ReaderLimitsTests
     [InlineData("a comment that holds obj", "a guard", 0)]
     [InlineData("a string that quotes a header past MaxObjectLength", "a guard", 16_384)]
     [InlineData("a string that quotes a header past MaxObjectLength", "damage", 16_384)]
+    [InlineData("a stream's dictionary whose string quotes a header and its endobj", "a guard", 0)]
+    [InlineData("a string that quotes a header, past an attached file cut inside a string", "a guard", 0)]
+    [InlineData("a string that quotes a header, past an attached file cut inside a string", "damage", 0)]
     public void A_valid_object_a_rebuild_s_scan_cannot_delimit_is_read_whole_whatever_headers_it_holds(
         string holding, string rebuiltBy, int objectGuard)
     {
-        // Object 5, a JavaScript action, holds the header of an object 999 the file does not define at the start of a line
-        // of its string, more than the window a load starts with into it: the string quotes that object's endobj too, or a
-        // comment in the dictionary holds the word obj, or the string runs past MaxObjectLength. The rebuild's scan cannot
-        // delimit object 5 and takes the header it holds, which the rebuilt index alone places. MaxXRefSectionLength cuts the
-        // table, or startxref names no section: either way the index is rebuilt. Only an object the scan found inside another
-        // ends at a header the rebuilt index alone places, and object 5 is read as without the rebuild, whole, or as far as
-        // its guard, which is reported (#362).
+        // Object 5, a JavaScript action, or a stream whose dictionary holds a note, holds the header of an object 999 the file
+        // does not define at the start of a line of its string, more than the window a load starts with into it: the string
+        // quotes that object's endobj too, or a comment in the dictionary holds the word obj, or the string runs past
+        // MaxObjectLength, or an attached PDF cut inside a string comes before it. The rebuild's scan cannot delimit object 5
+        // and takes the header it holds, which the rebuilt index alone places. MaxXRefSectionLength cuts the table, or
+        // startxref names no section: either way the index is rebuilt. A header inside a value is not past its end, and
+        // object 5 is read as without the rebuild, whole, or as far as its guard, which is reported (#362).
         var file = new HandWrittenFile();
+        var attached = holding.EndsWith("cut inside a string", StringComparison.Ordinal);
+        var stream = holding.StartsWith("a stream's", StringComparison.Ordinal);
         var rows = new Dictionary<int, long>
         {
-            [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R /OpenAction 5 0 R >>"),
+            [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R /OpenAction 5 0 R " + (attached ? "/Names << /EmbeddedFiles << /Names [(a.pdf) 3 0 R] >> >> " : "") + ">>"),
             [2] = file.Object(2, Pages),
         };
+
+        if (attached)
+        {
+            const string Data = "%PDF-1.4\n901 0 obj\n<< /Length 10 >>\nstream\n0123456789\nendstream\nendobj\n900 0 obj\n<< /Title (cut here";
+            rows[4] = file.Object(4, "<< /Type /EmbeddedFile /Length 7 0 R >>\nstream\n" + Data + "\nendstream");
+            rows[7] = file.Object(7, Data.Length.ToString(CultureInfo.InvariantCulture));
+            rows[3] = file.Object(3, "<< /Type /Filespec /F (a.pdf) /EF << /F 4 0 R >> >>");
+        }
+
         var after = holding.EndsWith("MaxObjectLength", StringComparison.Ordinal) ? 30_000 : 10_000;
         var script = new string('x', 12_000) + "\n999 0 obj\n<< /Quoted true >>\n" + (holding.Contains("endobj", StringComparison.Ordinal) ? "endobj\n" : "")
             + new string('y', after);
         var comment = holding == "a comment that holds obj" ? "% the quoted obj below is text\n" : string.Empty;
-        rows[5] = file.Object(5, "<< " + comment + "/S /JavaScript /JS (" + script + ") >>");
-        file.Table(6, rows, "/Size 6 /Root 1 0 R");
+        var key = stream ? "Note" : "JS";
+        rows[5] = file.Object(5, stream
+            ? "<< /Length 3 /Note (" + script + ") >>\nstream\nabc\nendstream"
+            : "<< " + comment + "/S /JavaScript /JS (" + script + ") >>");
+        file.Table(8, rows, "/Size 8 /Root 1 0 R");
         var bytes = rebuiltBy == "damage"
             ? Encoding.Latin1.GetBytes(Encoding.Latin1.GetString(file.Bytes).Replace("startxref\n", "startxref\n1", StringComparison.Ordinal))
             : file.Bytes;
@@ -758,14 +775,17 @@ public class ReaderLimitsTests
         using var document = PdfDocument.Open(
             bytes, new PdfReaderOptions { Limits = objectGuard > 0 ? limits with { MaxObjectLength = objectGuard } : limits });
 
-        var read = document.GetObject(new PdfObjectId(5)).AsDictionary().Required().GetRaw(PdfName.Get("JS"));
+        var five = document.GetObject(new PdfObjectId(5));
+        var read = (five is PdfStream { Dictionary: var dictionary } ? dictionary : five.AsDictionary().Required()).GetRaw(PdfName.Get(key));
         var codes = document.Diagnostics.Select(entry => entry.Code).ToList();
 
         document.WasRepaired.Should().BeTrue();
+        (five is PdfStream).Should().Be(stream);
         document.Reader.IsCutAtLimit(5).Should().Be(objectGuard > 0);
         read.Should().BeOfType<PdfString>().Which.Length.Should().BeGreaterThan(12_000 + 40, "the string is read past the header it quotes");
         (objectGuard > 0 || ((PdfString)read).Length == script.Length).Should().BeTrue("a string within the guard is read whole");
-        codes.Should().NotContain(PdfDiagnosticCodes.SyntaxTruncatedObject);
+        document.Diagnostics.Should().NotContain(
+            entry => entry.Code == PdfDiagnosticCodes.SyntaxTruncatedObject && entry.Position >= rows[5], "the attached file's string is cut, not object 5's");
         codes.Contains(PdfDiagnosticCodes.LimitObject).Should().Be(objectGuard > 0);
     }
 

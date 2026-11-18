@@ -104,8 +104,7 @@ internal sealed partial class PdfFileReader
     /// comes from the scan, and what still asks for the memo makes it (<see cref="GetScanMemo"/>). A rebuild that made one
     /// would make every rebuild pay for a use that rarely comes. A memo whose scan reached
     /// <see cref="PdfReaderLimits.MaxRebuildReadPasses"/> is not taken from: the memo reports nothing, and the rebuild scans
-    /// the file again, which reports the guard where its scan reaches it. A rebuild that takes its headers from the memo
-    /// notes which objects the scan found inside another as its scan would (<see cref="_foundInside"/>).
+    /// the file again, which reports the guard where its scan reaches it.
     /// </remarks>
     /// <param name="redefinitions">Receives the numbers defined again.</param>
     /// <param name="trailers">Receives where the trailers the scan meets lie.</param>
@@ -116,12 +115,10 @@ internal sealed partial class PdfFileReader
         {
             ExceptionDispatchInfo? replayed = null;
             trailers = noted;
-            var headers = memo.HeadersWithin(0, long.MaxValue).GetEnumerator();
 
-            while (headers.MoveNext())
+            foreach (var header in memo.HeadersWithin(0, long.MaxValue))
             {
-                var header = headers.Current;
-                IndexScannedHeader(header.Position, header.Number, header.Generation, headers.CurrentFoundInside, redefinitions, ref replayed);
+                IndexScannedHeader(header.Position, header.Number, header.Generation, redefinitions, ref replayed);
             }
 
             return replayed;
@@ -133,11 +130,9 @@ internal sealed partial class PdfFileReader
 
     /// <summary>
     /// Takes into a rebuilt index the header the scan took at <paramref name="at"/>: the last definition of a number wins,
-    /// under the generation its header gives, and is noted as found inside another object or not
-    /// (<see cref="_foundInside"/>).
+    /// under the generation its header gives.
     /// </summary>
-    private void IndexScannedHeader(
-        long at, int number, int generation, bool inside, Redefinitions redefinitions, ref ExceptionDispatchInfo? reached)
+    private void IndexScannedHeader(long at, int number, int generation, Redefinitions redefinitions, ref ExceptionDispatchInfo? reached)
     {
         // The last definition wins: that is what an incrementally updated file means. Its entry records the generation its
         // header gives, whatever an earlier definition gave (#118). A number the index lacks takes room in it, which it may
@@ -152,15 +147,6 @@ internal sealed partial class PdfFileReader
         if (known || HasRoomInRebuild(at, ref reached))
         {
             _xref.Set(number, XRefEntry.Found(at - _headerOffset, generation));
-
-            if (inside)
-            {
-                _foundInside.Add(number);
-            }
-            else
-            {
-                _foundInside.Remove(number);
-            }
         }
     }
 
@@ -324,15 +310,11 @@ internal sealed partial class PdfFileReader
                     continue;
                 }
 
-                // A header in a stretch the scan reads as the bytes give it, or within what the lexing of an object it could not
-                // delimit read, is one the scan found inside another object.
-                var inside = at < scan.RawUntil || at < scan.UndelimitedUntil;
-
                 if (memo is null)
                 {
-                    IndexScannedHeader(at, number, generation, inside, redefinitions!, ref reached);
+                    IndexScannedHeader(at, number, generation, redefinitions!, ref reached);
                 }
-                else if (!memo.TryAddHeader(at, number, generation, at < scan.KindUntil ? ScannedPlaceKind.Raw : ScannedPlaceKind.Clean, scan.TokensFrom, inside))
+                else if (!memo.TryAddHeader(at, number, generation, at < scan.KindUntil ? ScannedPlaceKind.Raw : ScannedPlaceKind.Clean, scan.TokensFrom))
                 {
                     return reached;
                 }

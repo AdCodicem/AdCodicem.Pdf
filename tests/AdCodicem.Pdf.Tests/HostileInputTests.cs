@@ -4563,40 +4563,36 @@ public class HostileInputTests
     }
 
     [Theory]
-    [InlineData(CommentHeadersPlacedBy.ScanOfStreamData, "% ", " << /A [1 2 3] >>", "<<dictionary of 1>>")]
-    [InlineData(CommentHeadersPlacedBy.ScanOfRunawayString, "% ", " << /A [1 2 3] >>", "<<dictionary of 1>>")]
-    [InlineData(CommentHeadersPlacedBy.Table, "% ", " << /A [1 2 3] >>", "<<dictionary of 1>>")]
-    [InlineData(CommentHeadersPlacedBy.Table, "% ", " 5", "5")]
-    [InlineData(CommentHeadersPlacedBy.ScanOfStreamData, "% ", " 5", "5")]
-    [InlineData(CommentHeadersPlacedBy.Table, "% ", " 12 0", "12")]
-    [InlineData(CommentHeadersPlacedBy.Table, "% ", "", "null")]
-    [InlineData(CommentHeadersPlacedBy.ScanOfStreamData, "% ", "", "null")]
-    [InlineData(CommentHeadersPlacedBy.Table, "% ", " << /A [1 2 3]", "<<dictionary of 1>>")]
-    [InlineData(CommentHeadersPlacedBy.Table, "% ", " [1 2 3", "[array of 3]")]
-    [InlineData(CommentHeadersPlacedBy.Table, "", " (abc", "\"abc\\n\"")]
-    [InlineData(CommentHeadersPlacedBy.TableWithDecoys, "% ", " << /A [1 2 3] >>", "<<dictionary of 1>>")]
-    [InlineData(CommentHeadersPlacedBy.Table, "% ", " << /A [1 2 3] >>", "<<dictionary of 1>>", Spaces70)]
-    [InlineData(CommentHeadersPlacedBy.ScanOfStreamData, "% ", " << /A [1 2 3] >>", "<<dictionary of 1>>", Spaces70)]
-    [InlineData(CommentHeadersPlacedBy.ScanOfRunawayString, "% ", " << /A [1 2 3] >>", "<<dictionary of 1>>", Spaces70)]
-    [InlineData(CommentHeadersPlacedBy.Table, "", " (abc", "\"abc\\n\"", Spaces70)]
-    [InlineData(CommentHeadersPlacedBy.Table, "", " (abc", "\"abc\\n\"", "\n% a comment line between tokens\n")]
-    public void Objects_whose_headers_a_run_of_comment_or_string_lines_holds_are_read_without_reading_the_lines_after_each(
-        CommentHeadersPlacedBy shape, string lead, string body, string read, string gap = " ")
+    [InlineData(CommentHeadersPlacedBy.ScanOfStreamData, " << /A [1 2 3] >>", "<<dictionary of 1>>")]
+    [InlineData(CommentHeadersPlacedBy.ScanOfRunawayString, " << /A [1 2 3] >>", "<<dictionary of 1>>")]
+    [InlineData(CommentHeadersPlacedBy.Table, " << /A [1 2 3] >>", "<<dictionary of 1>>")]
+    [InlineData(CommentHeadersPlacedBy.Table, " 5", "5")]
+    [InlineData(CommentHeadersPlacedBy.ScanOfStreamData, " 5", "5")]
+    [InlineData(CommentHeadersPlacedBy.Table, " 12 0", "12")]
+    [InlineData(CommentHeadersPlacedBy.Table, " 12 0 R", "12 0 R")]
+    [InlineData(CommentHeadersPlacedBy.Table, " /Name", "/Name")]
+    [InlineData(CommentHeadersPlacedBy.Table, " true", "true")]
+    [InlineData(CommentHeadersPlacedBy.TableWithDecoys, " << /A [1 2 3] >>", "<<dictionary of 1>>")]
+    [InlineData(CommentHeadersPlacedBy.Table, " << /A [1 2 3] >>", "<<dictionary of 1>>", Spaces70)]
+    [InlineData(CommentHeadersPlacedBy.ScanOfStreamData, " << /A [1 2 3] >>", "<<dictionary of 1>>", Spaces70)]
+    [InlineData(CommentHeadersPlacedBy.ScanOfRunawayString, " << /A [1 2 3] >>", "<<dictionary of 1>>", Spaces70)]
+    public void Objects_whose_headers_a_run_of_comment_lines_holds_are_read_without_reading_the_lines_after_each(
+        CommentHeadersPlacedBy shape, string body, string read, string gap = " ")
     {
-        // Lines "% N 0 obj ..." or "N 0 obj (abc" whose headers the index places: each object's load read every line after it
-        // to find where its value ends, its window grown eight times over, and opening, which loads every object a rebuild
-        // places, or validating, which loads every object, took time in the square of the lines. The next line's header ends
-        // each object's data, whatever its value and however much white space and how many comments part its tokens, and a
-        // row that starts no header before it does not keep it from ending there (#362).
+        // Lines "% N 0 obj ..." whose headers the index places: each object's load read every line after it for what follows
+        // its value, its window grown eight times over, and opening, which loads every object a rebuild places, or
+        // validating, which loads every object, took time in the square of the lines. A whole value is kept as read where
+        // the window holds the next line's header, however much white space parts its tokens, and a row past the value that
+        // starts no header does not keep it from counting (#362).
         const int Lines = 1_000;
 
-        var small = ReadHeaderLines(shape, lead, body, read, gap, Lines);
-        var large = ReadHeaderLines(shape, lead, body, read, gap, 4 * Lines);
+        var small = ReadHeaderLines(shape, body, read, gap, Lines);
+        var large = ReadHeaderLines(shape, body, read, gap, 4 * Lines);
 
         large.Should().BeLessThan(
             8 * small, "four times the lines must cost about four times the bytes read ({0:N0} for {1:N0})", small, Lines);
 
-        static long ReadHeaderLines(CommentHeadersPlacedBy shape, string lead, string body, string read, string gap, int lines)
+        static long ReadHeaderLines(CommentHeadersPlacedBy shape, string body, string read, string gap, int lines)
         {
             var file = new HandWrittenFile();
             var rows = new Dictionary<int, long>
@@ -4614,17 +4610,18 @@ public class HostileInputTests
 
             for (var k = 0; k < lines; k++)
             {
-                file.Raw(lead);
+                file.Raw("% ");
                 rows[100 + k] = file.Position;
-                var header = string.Create(CultureInfo.InvariantCulture, $"{100 + k}{gap}0{gap}obj");
+                var line = string.Create(CultureInfo.InvariantCulture, $"{100 + k}{gap}0{gap}obj{body}");
 
                 if (shape == CommentHeadersPlacedBy.TableWithDecoys)
                 {
-                    // A row that starts no header, past where the value starts: the first row after the object's own.
-                    rows[100 + lines + k] = file.Position + header.Length + 3;
+                    // An integer no other follows, in a comment past the value: the first row past its end starts no header.
+                    rows[100 + lines + k] = file.Position + line.Length + " % ".Length;
+                    line += " % 7 x";
                 }
 
-                file.Raw(header + body + "\n");
+                file.Raw(line + "\n");
             }
 
             file.Raw(shape == CommentHeadersPlacedBy.ScanOfRunawayString
@@ -4686,7 +4683,7 @@ public class HostileInputTests
         /// <summary>A table whose rows place each header where the line holds it.</summary>
         Table,
 
-        /// <summary>A table as <see cref="Table"/>, with a row past each header's value that starts no header.</summary>
+        /// <summary>A table as <see cref="Table"/>, with a row past each value that starts no header.</summary>
         TableWithDecoys,
     }
 

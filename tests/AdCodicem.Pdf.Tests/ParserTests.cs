@@ -131,20 +131,26 @@ public class ParserTests
     }
 
     [Theory]
-    [InlineData("7 0 obj\nnull\nendobj\n", -1)]
-    [InlineData("7 0 obj endobj\n", -1)]
-    [InlineData("7 0 obj\n[<< /Length 1 >>\nstream\na\nendstream\n<< /Length 1 >>\nstream\nb\nendstream]\nendobj\n", 25)]
-    public void Gives_where_an_objects_value_starts_where_its_parse_stopped_and_where_the_first_stream_it_read_starts(
-        string text, int streamAt)
+    [InlineData("7 0 obj << /A 1 >> % 8 0 obj", "7 0 obj << /A 1 >>")]
+    [InlineData("7 0 obj << /A 1 >> endo", "7 0 obj << /A 1 >>")]
+    [InlineData("7 0 obj << /A 1 >> strea", "7 0 obj << /A 1 >>")]
+    [InlineData("7 0 obj 12 ", "7 0 obj 12")]
+    [InlineData("7 0 obj 12 0", "7 0 obj 12")]
+    [InlineData("7 0 obj 12 0 R ", "7 0 obj 12 0 R")]
+    [InlineData("7 0 obj 12", null)]
+    [InlineData("7 0 obj << /A 1", null)]
+    [InlineData("7 0 obj (abc", null)]
+    [InlineData("7 0 obj [1 2 12 0 ob", null)]
+    [InlineData("7 0 obj << /A 1 >> endobj", "7 0 obj << /A 1 >>")]
+    [InlineData("7 0 obj << /A 1 >> endobj ", null)]
+    public void Gives_where_a_value_read_whole_ends_when_only_what_follows_it_lies_past_the_buffer(string text, string? whole)
     {
-        // What the reader needs to tell whether a header the index places lies in what the parse read as tokens (#362).
-        var parser = new PdfObjectParser(Encoding.ASCII.GetBytes(text));
+        // What the reader needs to keep a value as read rather than read it again in a larger window (#362).
+        var parser = new PdfObjectParser(Encoding.ASCII.GetBytes(text), endsData: false);
 
         parser.TryReadIndirectObject(out _, out _).Should().BeTrue();
 
-        parser.ValueStart.Should().Be("7 0 obj".Length);
-        parser.ReadEnd.Should().Be(text.LastIndexOf("endobj", StringComparison.Ordinal) + "endobj".Length);
-        parser.StreamAt.Should().Be(streamAt);
+        parser.WholeValueEnd.Should().Be(whole?.Length ?? -1);
     }
 
     [Theory]
