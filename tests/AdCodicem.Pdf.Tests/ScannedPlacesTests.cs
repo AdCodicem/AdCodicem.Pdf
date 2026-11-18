@@ -86,7 +86,7 @@ public class ScannedPlacesTests
     [InlineData("a header in what a string that runs past its object's end runs into, past a stream with no endstream", "Raw")]
     [InlineData("a header past a stream with no endstream, a stream with no endstream whose length is awaited in its turn after it", "Clean")]
     [InlineData("a header past a stream with no endstream whose length's object is where a stream after it resolves its own", "Clean")]
-    [InlineData("a header in an attached PDF file that holds an object of its stream's length's number past its first endstream", null)]
+    [InlineData("a header in an attached PDF file that holds an object of its stream's length's number past its first endstream", "Raw")]
     [InlineData("a header in a comment between a stream with no endstream and the object a few objects on that holds its length", "Clean")]
     [InlineData("a header past the first endstream of data a length an earlier object of its number gives cuts, its last line a comment", "Clean")]
     [InlineData("a header in data a length an earlier object of its number gives cuts, a string a header there a comment holds runs over", null)]
@@ -279,6 +279,9 @@ public class ScannedPlacesTests
             "a header past a stream with no endstream whose length's object is where a stream after it resolves its own" =>
                 "5 0 obj\n<< /Length 8 0 R >>\nstream\n0123456789\nendobj\n9 0 obj\n(endstream)\nendobj\n6 0 obj\n4\nendobj\n"
                 + "7 0 obj\n<< /Length 6 0 R >>\nstream\n0123\nendobj\n8 0 obj\n10\nendobj\n",
+            // The attached file's own object 6, past its first endstream, is the first header of the length's number the search
+            // for it meets: the length it holds, which no endstream follows, stops the search, and the data is read as the bytes
+            // give it, as before the search, object 6 written after the stream left unread (#363).
             "a header in an attached PDF file that holds an object of its stream's length's number past its first endstream" =>
                 "5 0 obj\n<< /Length 6 0 R >>\nstream\n%PDF-1.4\n9 0 obj\n(inner)\nendobj\n7 0 obj\n<< /Length 3 >>\nstream\nabc\nendstream\nendobj\n"
                 + "6 0 obj\n3\nendobj\n%%EOF\nendstream\nendobj\n6 0 obj\n106\nendobj\n",
