@@ -196,15 +196,17 @@ on them, and only the searches near a row or an offset that is off — no valid 
 searches stay bounded by `EndStreamSearchPasses`, an internal constant whose reason covers every read they count.
 
 Amended on 2026-11-18, by the maintainer, while [#363](https://github.com/AdCodicem/AdCodicem.Pdf/issues/363) was fixed:
-the rebuild's scan now confirms a stream's indirect `/Length` where the file's bytes give its object — one of the last
-eight values the scan passed, or the first header of its number whose object holds an integer within a mebibyte past
-the data's first `endstream` — and an `endstream` follows the length it holds. `MaxRebuildReadPasses` bounds those reads
-too, counted apart from the reads that confirm direct lengths: sharing one count let a damaged file's direct lengths
-spend what its indirect ones needed. The search's own bounds — the mebibyte, the eight values, the 64 bytes a length's
-object is read within, and what each of its reads repeats of the one before — are internal constants, by the
-maintainer's choice: a valid file reaches this search only through a rebuild that a reported guard sent it to, and
-raising that guard reads it through its index; past one of these bounds the scan reads the stream as it did before the
-search existed, never worse.
+the rebuild's scan now confirms a stream's indirect `/Length` where the file's bytes give its object and an `endstream`
+follows the length it holds: one of the last eight values the scan passed since the last trailer it met; else the first
+object header past the data's first `endstream`, when it is the length's object, or, for an attached file's data, the
+first header of the length's number within a mebibyte past it. `MaxRebuildReadPasses` still bounds only the reads that confirm direct lengths. The search's
+own reads have a budget of their own, four times the file, spent silently, and its other bounds — the eight values, the
+mebibyte, the 64 bytes a length's object is read within, and what each of its reads repeats of the one before — are
+internal constants too, by the maintainer's choice: a valid file reaches this search only through a rebuild that a
+reported guard sent it to, and raising that guard reads it through its index; past one of these bounds the scan reads
+the stream as it did before the search existed. A first version counted the search against the guard, apart from the
+direct lengths; a damaged file whose lengths sit in an object stream, as one writer puts them, then reached it on a few
+pages, and was read worse than before.
 
 ## Context
 
@@ -233,7 +235,7 @@ claims; neither bounded what it was said to, and the 2026-10-14 amendment made t
 | A trailer | 64 KB | A trailer is a few hundred bytes in practice; nothing forbids more. A cross-reference stream's dictionary is its trailer: its `/Index` holds two numbers per subsection, and a document updated in many scattered places has thousands |
 | The entries of the index | 8,388,607 | The informative annex C of ISO 32000-1 gives Acrobat's limit as 8,388,607 objects, and PDF/A-1 to 3 make it normative; PDF 2.0 sets none, and PDFium raised its own past it for documents of about six million. Each entry the index holds costs 40 bytes numbered in order, up to about 80 when a rebuild grew it and about 96 for numbers spread far apart, so the default holds 335 MB of index or more (amended on 2026-10-28, [#155](https://github.com/AdCodicem/AdCodicem.Pdf/issues/155)) |
 | The filters a stream's data passes through | 64 | ISO 32000 sets no limit on how many filters a `/Filter` array names; real streams name one to three, `/Crypt` among them, and qpdf reads three thousand |
-| A rebuild's reads to confirm streams' lengths, past direct ones and, counted apart, for the objects of indirect ones | 4 times the file, each count | A valid file's own streams take about twice the file; but the data of a stream whose length the scan cannot confirm, which it reads as objects, may hold an attached file's bytes that spell streams, whose lengths may all end in one run of white space that each read past them crosses (amended on 2026-11-17, [#361](https://github.com/AdCodicem/AdCodicem.Pdf/issues/361), and on 2026-11-18, [#363](https://github.com/AdCodicem/AdCodicem.Pdf/issues/363)) |
+| A rebuild's reads past streams' declared lengths, to confirm them | 4 times the file | A valid file's own streams take about twice the file; but the data of a stream whose length the scan cannot confirm, which it reads as objects, may hold an attached file's bytes that spell streams, whose lengths may all end in one run of white space that each read past them crosses (amended on 2026-11-17, [#361](https://github.com/AdCodicem/AdCodicem.Pdf/issues/361)) |
 
 None of these was an option. Until T21, T23 and T31 some were not even reported, or were reported as damage
 in the file: the map's image came out as "a Flate stream was truncated".
