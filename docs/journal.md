@@ -7,6 +7,36 @@ to about thirty lines each; the unabridged text is the
 [journal of `e38ebbc`](https://github.com/AdCodicem/AdCodicem.Pdf/blob/e38ebbc471b86779c3f6ac5b320ca1ecd531b2c1/docs/status.md#journal). A session reads an entry when it needs the
 reason for a past decision. A new entry is short, about thirty lines; the detail is in the pull request's body.
 
+## 2026-11-18 — Batch 33, first pull request: a load's look past a whole value, and the rebuild's read bound ([#386])
+
+- **The question.** Measured on `main` at `445d2e5`: a file of comment lines holding headers the rebuild's scan takes
+  opened in time in the square of its lines, 0.55 s at 2,500 and 6 s at 10,000 ([#362]). The scan was linear; the
+  expansion's loads were not, each one's look at the token past its value crossing every line after it, its window
+  regrown eight times over. Past four times the file's length of confirming reads, a valid file's stream data was read as
+  the bytes give it, a wrong object possibly served, and nothing reported the bound ([#361]).
+- **Settled with the maintainer** (2026-11-17, each as recommended): two pull requests by area, [#362] and [#361] first;
+  the bound made a guard, `PdfReaderLimits.MaxRebuildReadPasses`, 4, reported as `limit.rebuild-reads`. On 2026-11-18,
+  after round 3: the simple cap, no value ever cut.
+- **What changed.** A load keeps a value read whole as read, its window not regrown, where only what follows it reached
+  the edge and the first row past it, of either index, lexes forward to a header that starts at the row. Past the guard,
+  the scan reads each stream it cannot confirm as intact up to its first `endstream` and reports once; the index stops
+  short only where that data hides a header; the memo's kind reads have their own internal bound. No corpus document
+  changes, by default or after a forced rebuild.
+- **Review** (ADR 54): four rounds. Rounds 1 to 3 found 3, 2 and 2 blockers, each widening of a rule that ended an
+  object's data at a placed header bringing new ones on valid files — a string or a content stream cut after a forced
+  rebuild, a window grown to the guard. The maintainer chose the round-1 cap with its own gaps paid, values cut inside
+  them filed: [#387]. Round 4: no blocker or major, one minor, two nits; the minor and a residual whose fixes change
+  behavior are [#388] and [#389]. Real damage, about 21,000 reads a round: no change; the cap fired on no real file.
+- **Mutation** (ADR 53 amended): 302 mutants over 89 of the 242 changed lines; 180 killed by the suite, 9 hung. Tests
+  kill the hangs and 68 survivors, 4 of them written when the second opinion overturned 7 of 49 equivalents; 42 stay
+  equivalent; one differs only through [#388]'s defect, two only on a source near 2^63 bytes: [#390], under M23.
+- **The issues.** [#362], [#361]. Filed: [#387], [#388] and [#389] under M02, [#390] under M23.
+- **Checks.** CI green at `c8b5acb`, the integration suite, the documentation site and Codecov's patch check with it; the
+  timing and memory tests alone; `Remote corpus` run 123 green over all 242; the corpus differential over 403 documents,
+  by default and after a forced rebuild: no object or finding changes.
+- **For callers.** `PdfReaderLimits.MaxRebuildReadPasses` (4; `Unbounded` lifts it; zero or less refused) and the code
+  `limit.rebuild-reads`; past it, an object the index left out is unknown, and reading one throws under `ThrowOnLimit`.
+
 ## 2026-11-17 — Batch 24: what a full diagnostics record still answers for ([#384])
 
 - **The question.** Measured on `main` at `edd3021`, twice, identical: batch 11 had paid [#169]'s reader side — a
@@ -1114,3 +1144,8 @@ The detail is in git and in the pull requests; what still matters is in the reco
 [#382]: https://github.com/AdCodicem/AdCodicem.Pdf/pull/382
 [#384]: https://github.com/AdCodicem/AdCodicem.Pdf/pull/384
 [#385]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/385
+[#386]: https://github.com/AdCodicem/AdCodicem.Pdf/pull/386
+[#387]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/387
+[#388]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/388
+[#389]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/389
+[#390]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/390
