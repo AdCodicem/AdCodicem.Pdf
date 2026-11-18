@@ -850,6 +850,58 @@ public class ReaderLimitsTests
     }
 
     [Theory]
+    [InlineData("a header whose obj ends the first mebibyte of the data", "Unindexed")]
+    [InlineData("a header past the first mebibyte of the data", "Unindexed")]
+    [InlineData("no header in more than a mebibyte of data", "Missing")]
+    [InlineData("a header that ends the file, no endstream after it", "Unindexed")]
+    [InlineData("no data, the stream keyword ending the file", "Missing")]
+    public void Data_a_rebuild_s_scan_reads_as_intact_past_the_read_guard_is_searched_for_a_header_up_to_its_endstream_or_the_end_of_the_file(
+        string data, string presence)
+    {
+        // A file with no cross-reference table, its catalog naming object 99, which it does not define, under /Lang. Twenty-four
+        // streams have direct lengths that all end where 256 KiB of spaces start, each object's data ending at its own
+        // endstream: the scan reads through the spaces for each to confirm it, and reaches MaxRebuildReadPasses, after which
+        // it reads the data of the streams it cannot confirm, theirs and then stream 40's, which has no length, up to their
+        // first endstream, nothing taken there. Stream 40's data is searched for a header the scan would have taken, a
+        // mebibyte at a time, each window repeating the obj keyword the one before ended with and the byte before it, up to
+        // its endstream or the end of the file: where it holds one, whether the file holds object 99 is unknown; where it holds
+        // none, or no data at all, object 99 is missing.
+        const int Spelled = 24;
+        const int Mebibyte = 1024 * 1024;
+        const string Head = "20 0 obj\n<< /Length 0000000 >>\nstream\nabc\nendstream\nendobj\n";
+        const string Ends = "\nendstream\nendobj\n";
+        var text = new StringBuilder("%PDF-1.7\n1 0 obj\n<< /Type /Catalog /Pages 2 0 R /Lang 99 0 R >>\nendobj\n2 0 obj\n" + Pages + "\nendobj\n")
+            .Append("trailer\n<< /Root 1 0 R >>\n");
+        var run = text.Length + (Spelled * Head.Length);
+
+        for (var i = 0; i < Spelled; i++)
+        {
+            var length = run - (text.Length + Head.IndexOf("abc", StringComparison.Ordinal));
+            text.Append(Head.Replace("20 0", string.Create(CultureInfo.InvariantCulture, $"{20 + i} 0"), StringComparison.Ordinal)
+                .Replace("0000000", length.ToString("D7", CultureInfo.InvariantCulture), StringComparison.Ordinal));
+        }
+
+        text.Append(' ', 256 * 1024).Append("x\n40 0 obj\n<< >>\nstream\n");
+        var dataStart = text.Length;
+        text.Append(data switch
+        {
+            "a header whose obj ends the first mebibyte of the data" =>
+                new string('t', Mebibyte - "\n77 0 obj".Length) + "\n77 0 obj\n" + new string('t', 1000) + Ends,
+            "a header past the first mebibyte of the data" => new string('t', Mebibyte + 1000) + "\n77 0 obj\n" + Ends,
+            "no header in more than a mebibyte of data" => new string('t', Mebibyte + 1000) + Ends,
+            "a header that ends the file, no endstream after it" => "abc\n77 0 obj",
+            _ => string.Empty,
+        });
+
+        using var document = PdfDocument.Open(Encoding.Latin1.GetBytes(text.ToString()));
+
+        document.WasRepaired.Should().BeTrue();
+        document.Diagnostics.Contains(PdfDiagnosticCodes.LimitRebuildReads).Should().BeTrue();
+        document.Reader.RebuildReadsBoundedAt.Should().Be(presence == "Unindexed" ? dataStart : -1);
+        document.Reader.GetPresence(99).Should().Be(Enum.Parse<ObjectPresence>(presence));
+    }
+
+    [Theory]
     [InlineData(4, "Unindexed", null)]
     [InlineData(64, "Defined", PdfValidationRuleIds.XRefEntryShifted)]
     public void An_object_the_read_guard_left_out_of_a_rebuilt_index_is_unknown_though_the_chain_s_index_places_it(
