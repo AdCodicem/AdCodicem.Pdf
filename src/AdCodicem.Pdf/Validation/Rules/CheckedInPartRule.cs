@@ -68,7 +68,7 @@ internal sealed class CheckedInPartRule : IValidationRule
                 PdfValidationLocation.AtPosition(readsBoundedAt),
                 string.Create(
                     CultureInfo.InvariantCulture,
-                    $"At offset {readsBoundedAt} the rebuild's scan for objects had read to confirm streams' lengths, past direct ones or for the objects of indirect ones, as much as PdfReaderLimits.MaxRebuildReadPasses lets it: the object headers in the data of the streams it could not confirm from there on were not indexed or checked."),
+                    $"At offset {readsBoundedAt} the rebuild's scan for objects had read past streams' direct lengths as much as PdfReaderLimits.MaxRebuildReadPasses lets it: the object headers in the data of the streams it could not confirm from there on were not indexed or checked."),
                 remedy: null);
         }
 

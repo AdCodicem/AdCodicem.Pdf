@@ -218,10 +218,11 @@ internal sealed partial class PdfFileReader : IPdfObjectSource, IPdfStreamDataPr
     /// </summary>
     /// <remarks>
     /// Not a guard (ADR 34): no valid file reaches it, argued here once for every read the loads' searches count. It bounds
-    /// those alone: the rebuild's scan counts its reads apart, those that confirm a stream's direct length and those that
-    /// confirm an indirect one, each against <see cref="PdfReaderLimits.MaxRebuildReadPasses"/>, a guard
-    /// (<see cref="_scanGapBytes"/>, <see cref="_scanLengthBytes"/>), and those that decide only how its memo counts the
-    /// places it takes against <see cref="MemoKindReadPasses"/> (<see cref="_scanKindBytes"/>). The loads read a valid file past the parser's window in four ways only. Three
+    /// those alone: the rebuild's scan counts its reads apart, those that confirm a stream's direct length against
+    /// <see cref="PdfReaderLimits.MaxRebuildReadPasses"/>, a guard (<see cref="_scanGapBytes"/>), those that confirm an
+    /// indirect one against <see cref="LengthSearchReadPasses"/> (<see cref="_scanLengthBytes"/>), and those that decide
+    /// only how its memo counts the places it takes against <see cref="MemoKindReadPasses"/> (<see cref="_scanKindBytes"/>).
+    /// The loads read a valid file past the parser's window in four ways only. Three
     /// read the data or what follows it: a cross-reference stream whose <c>/Length</c> the chain cannot read (#220) is
     /// searched once to its <c>endstream</c>; a stream whose <c>/Length</c> a guard cut or left out of the index (#224)
     /// is searched once to its <c>endstream</c>, or to a header its data spells, which leaves the data up to it to the
@@ -266,7 +267,7 @@ internal sealed partial class PdfFileReader : IPdfObjectSource, IPdfStreamDataPr
     /// </summary>
     /// <remarks>
     /// Not a guard (ADR 34): it changes no valid file's objects, nor any verdict on one. The scan reads that data as the
-    /// bytes give it, up to its first <c>endstream</c> — or, once its reads that confirm streams' lengths have reached
+    /// bytes give it, up to its first <c>endstream</c> — or, once its reads past streams' direct lengths have reached
     /// <see cref="PdfReaderLimits.MaxRebuildReadPasses"/>, as an intact stream's, nothing taken there —, whatever those
     /// reads find, and a rebuild takes its headers so, kinds or not; their budget is their own, apart from the
     /// confirmations' (#361), so that they never change which streams the scan confirms, nor, through where a piece of
@@ -275,6 +276,26 @@ internal sealed partial class PdfFileReader : IPdfObjectSource, IPdfStreamDataPr
     /// kinds, and they run only where a row or an offset is off — no valid file's — to choose among the places they find.
     /// </remarks>
     private const int MemoKindReadPasses = 4;
+
+    /// <summary>
+    /// How many times the length of the file the rebuild's scan may read, together, to confirm streams' indirect lengths
+    /// (<see cref="ConfirmIndirectLength"/>, <see cref="_scanLengthBytes"/>): the searches past a stream's data for a header
+    /// of its length's number, and the reads past where a length so read ends the data for its <c>endstream</c>. Once they
+    /// have read that much, the scan confirms no more indirect lengths, and reads each stream it has not confirmed as
+    /// before it looked for any.
+    /// </summary>
+    /// <remarks>
+    /// Not a guard (ADR 34): a valid file reaches this search only through a rebuild, which a reported guard sent it to and
+    /// whose raising reads it through its index, and past the bound the scan reads each stream it has not confirmed as
+    /// before the search existed, its data as the bytes give it up to its first <c>endstream</c>. A valid file's searches
+    /// read little: a stream's length object lies among the last objects before it, or is the first object past it, or,
+    /// for an attached file, which holds objects of its own, a few objects on; a writer that puts it in an object stream
+    /// writes no header past the stream, and the search stops at the first one there. Their budget is their own, apart
+    /// from the reads past direct lengths that <see cref="PdfReaderLimits.MaxRebuildReadPasses"/> bounds and from the reads
+    /// made for the memo's kinds, so that they never change which direct lengths the scan confirms: the scan reports
+    /// nothing when it is spent, and the data of each stream it has not confirmed is read as it was before.
+    /// </remarks>
+    private const int LengthSearchReadPasses = 4;
 
     /// <summary>
     /// How many bytes the first read of each step of an <c>endstream</c>'s proof reads (<see cref="EndStreamFollower"/>):
@@ -633,12 +654,13 @@ internal sealed partial class PdfFileReader : IPdfObjectSource, IPdfStreamDataPr
 
     /// <summary>
     /// How many bytes the rebuild's scan read since it started to confirm the indirect lengths of streams
-    /// (<see cref="ConfirmIndirectLength"/>), which <see cref="PdfReaderLimits.MaxRebuildReadPasses"/> bounds
-    /// (<see cref="ScanReadBound"/>) apart from the reads that confirm direct lengths (<see cref="_scanGapBytes"/>): the
-    /// file searched past a stream's data for a header of its length's number, every byte searched counted, those the
+    /// (<see cref="ConfirmIndirectLength"/>), which <see cref="LengthSearchReadPasses"/> bounds
+    /// (<see cref="LengthSearchReadBound"/>) apart from the reads that confirm direct lengths (<see cref="_scanGapBytes"/>):
+    /// the file searched past a stream's data for a header of its length's number, every byte searched counted, those the
     /// scan's piece holds included, and, for each length read, the bytes read past where it ends the data for an
-    /// <c>endstream</c>. The reads of the last values the scan passed, and of the header a search finds, of
-    /// <see cref="PdfObjectParser.EndObjLookahead"/> bytes each, are not among them.
+    /// <c>endstream</c>. The reads of the last values the scan passed, of the header a search finds, and of a stream's
+    /// data's start (<see cref="StartsAttachedFile"/>), of <see cref="PdfObjectParser.EndObjLookahead"/> bytes each, are not
+    /// among them.
     /// </summary>
     private long _scanLengthBytes;
 
