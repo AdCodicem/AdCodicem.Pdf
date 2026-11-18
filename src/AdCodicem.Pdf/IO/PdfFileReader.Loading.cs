@@ -420,8 +420,9 @@ internal sealed partial class PdfFileReader
     /// and <c>R</c> lie past it as an integer; and no guard is reached for it. Without it, every object a long run of
     /// comment lines places read every line after it, its window grown until what follows its value showed, and a rebuild,
     /// which loads every object it places, or a validation, which loads them all, took time in the square of the lines
-    /// (#362). No valid file is read so: no index of one places a header past an object's value and before its
-    /// <c>endobj</c>. At the largest window the guard allows, the rule is not asked, and the guard is reached and reported
+    /// (#362). No object of a valid file is read so: the chain's index of one places no header past an object's value
+    /// and before its <c>endobj</c>, and a rebuilt index places one there only among the objects the scan takes in stream
+    /// data it cannot confirm, an attached file's, which are not the file's own. At the largest window the guard allows, the rule is not asked, and the guard is reached and reported
     /// where it cuts, so that a lower <see cref="PdfReaderLimits.MaxObjectLength"/> never changes what is served without a
     /// report (ADR 34). The rows asked are those within <paramref name="bytes"/> alone, each a logarithm of an
     /// index, in the order of their positions, and the lexing from each shares what the ones before learned of the white
