@@ -127,10 +127,46 @@ public class ScannedPlacesTests
     [InlineData("a header past a stream with no endstream whose header lies in the data of another, each length's object past both", "Clean")]
     [InlineData("a header glued to a sign past an xref keyword between a stream with no endstream, whose length's object is lost, and the next header", "Clean")]
     [InlineData("a header glued to a sign past a trailer keyword between a stream with no endstream, whose length's object is lost, and the next header", "Clean")]
+    [InlineData("a header in the data of a stream whose length's object, before it, a trailer keyword follows", "Raw")]
+    [InlineData("a header in the data of a stream whose length's object, before it, a cross-reference stream follows", "Raw")]
+    [InlineData("a header in the data of a stream whose length's object before it holds a length no endstream follows, another past it one that does", "Raw")]
+    [InlineData("a header in the data of a stream whose length's object follows the object after it", "Raw")]
+    [InlineData("a header in the data of a stream whose length's object follows a header the walk back from its obj cannot read", "Raw")]
+    [InlineData("a header in the data of a stream of type EmbeddedFile whose length's object follows the object after it", null)]
+    [InlineData("a header in an attached PDF file whose length's object follows the object after it", null)]
     public void A_header_is_recorded_where_the_scan_takes_it_with_how_it_took_it(string shape, string? kind)
     {
         var text = shape switch
         {
+            // Object 6, the length of stream 5's data, comes before a trailer keyword, or before a cross-reference stream:
+            // it is an older revision's, which may hold the length of a stream the next revision rewrote, and the scan reads
+            // no length from it (#363). No header past the data holds the length: the scan reads the data as the bytes give
+            // it.
+            "a header in the data of a stream whose length's object, before it, a trailer keyword follows" =>
+                "6 0 obj\n22\nendobj\ntrailer\n<< /Size 3 >>\n5 0 obj\n<< /Length 6 0 R >>\nstream\n9 0 obj (inner) endobj\nendstream\nendobj\n",
+            "a header in the data of a stream whose length's object, before it, a cross-reference stream follows" =>
+                "6 0 obj\n22\nendobj\n7 0 obj\n<< /Type /XRef /Size 3 /W [1 1 1] /Length 3 >>\nstream\nabc\nendstream\nendobj\n" +
+                "5 0 obj\n<< /Length 6 0 R >>\nstream\n9 0 obj (inner) endobj\nendstream\nendobj\n",
+
+            // Object 6, right before stream 5, holds a length no endstream follows: it decides, and the scan searches past
+            // the data for no other object 6, whose length an endstream follows (#363).
+            "a header in the data of a stream whose length's object before it holds a length no endstream follows, another past it one that does" =>
+                "6 0 obj\n21\nendobj\n5 0 obj\n<< /Length 6 0 R >>\nstream\n9 0 obj (inner) endobj\nendstream\nendobj\n6 0 obj\n22\nendobj\n",
+
+            // Object 6, which holds the length of stream 5's data, comes past object 4, the first header past the data: the
+            // scan tries that first header alone, in data that is no attached file's (#363), or one whose walk back from its
+            // obj runs past where the search's read starts, which it cannot read; an attached file's data holds objects of its
+            // own, and the scan reads past object 4 to object 6.
+            "a header in the data of a stream whose length's object follows the object after it" =>
+                "5 0 obj\n<< /Length 6 0 R >>\nstream\n9 0 obj (inner) endobj\nendstream\nendobj\n4 0 obj\n(four)\nendobj\n6 0 obj\n22\nendobj\n",
+            "a header in the data of a stream whose length's object follows a header the walk back from its obj cannot read" =>
+                "5 0 obj\n<< /Length 6 0 R >>\nstream\n9 0 obj (inner) endobj\nendstream\nendobj\n" + new string(' ', 100) + "4\n" +
+                string.Concat(Enumerable.Repeat("% a comment between the tokens of a header\n", 3)) + "0\nobj\n(four)\nendobj\n6 0 obj\n22\nendobj\n",
+            "a header in the data of a stream of type EmbeddedFile whose length's object follows the object after it" =>
+                "5 0 obj\n<< /Type /EmbeddedFile /Length 6 0 R >>\nstream\n9 0 obj (inner) endobj\nendstream\nendobj\n4 0 obj\n(four)\nendobj\n6 0 obj\n22\nendobj\n",
+            "a header in an attached PDF file whose length's object follows the object after it" =>
+                "5 0 obj\n<< /Length 6 0 R >>\nstream\n%PDF-1.4\n9 0 obj (inner) endobj\nendstream\nendobj\n4 0 obj\n(four)\nendobj\n6 0 obj\n31\nendobj\n",
+
             // Object 8's value, 40, ends the data past its first header, and the word stream in it keeps the data from being
             // held as intact: the memo counts what the scan takes past that end as taken between objects, the scan reading
             // the data as the bytes give it up to its first endstream, and reading on from there.
