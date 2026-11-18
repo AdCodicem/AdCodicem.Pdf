@@ -73,7 +73,7 @@ section's rows would stand for them.
 
 What a guard leaves out of the cross-reference index — the oldest sections of a long chain, the rows past a long
 table's bound, the objects past the most the index holds, the objects whose headers a rebuild's scan may have left in
-data it no longer reads once it has read past streams' lengths as much as `MaxRebuildReadPasses` lets it — is no damage
+data it no longer reads once it has read to confirm streams' lengths as much as `MaxRebuildReadPasses` lets it — is no damage
 either. Those objects read as null, unknown rather than missing, until you raise the limit; the reader does not rebuild
 the index for them, as it would for a file whose index is broken, since a rebuild would report a sound file as damaged
 and could lose what the chain had read.

@@ -27,7 +27,10 @@ internal enum PdfLimit
     /// <summary>How many filters a stream's data may pass through.</summary>
     FilterChain,
 
-    /// <summary>How many times the length of the file a rebuild's scan may read past streams' declared lengths.</summary>
+    /// <summary>
+    /// How many times the length of the file a rebuild's scan may read to confirm streams' lengths: past direct ones, and,
+    /// counted apart, for the objects of indirect ones.
+    /// </summary>
     RebuildReads,
 
     /// <summary>
