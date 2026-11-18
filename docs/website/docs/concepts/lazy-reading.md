@@ -359,19 +359,24 @@ a name or a comment, are no number ([#327](https://github.com/AdCodicem/AdCodice
 end-of-file marker `%%EOF`, a comment that ends with itself, to which a writer that appends an update with no end of
 line glues its first header: `%%EOF1 0 obj` is object 1's. It takes only what lies outside other objects: each object it
 takes is delimited as a load reads it — its value, the strings and comments it holds, and a stream's data where an
-`endstream` confirms its direct `/Length` —, and a header or a `trailer` keyword within is none, nor is one that starts
-in a comment or a string between objects, so that an attached PDF written as it is, or a string that quotes a header or
-says `trailer`, adds nothing to the map or the trailer ([#171](https://github.com/AdCodicem/AdCodicem.Pdf/issues/171)).
+`endstream` confirms its length: a direct `/Length`, or an indirect one whose object the file's bytes give, one of the
+last eight objects other than streams before the stream or a header of its number within a mebibyte past the data's
+first `endstream` ([#363](https://github.com/AdCodicem/AdCodicem.Pdf/issues/363)) —, and a header or a `trailer` keyword
+within is none, nor is one that starts in a comment or a string between objects, so that an attached PDF written as it
+is, an attached text that spells a trailer in a comment, or a string that quotes a header or says `trailer`, adds nothing
+to the map or the trailer ([#171](https://github.com/AdCodicem/AdCodicem.Pdf/issues/171)).
 A string that runs past its object's end delimits nothing, and hides none of the objects it runs into: one that holds
 `endobj` — a parenthesis some writers leave unescaped and unbalanced runs a string into the objects after it —, or one
 the end of a cut file leaves open.
-The data of a stream whose length it does not confirm — it confirms only a direct `/Length` an `endstream` follows — it
+The data of a stream whose length it does not confirm — a direct `/Length` no `endstream` follows, an indirect one whose
+object it does not find there, one in an object stream for instance, or whose length no `endstream` follows — it
 reads as the bytes give it, up to the first `endstream`, taking the headers there and reading no comment, whatever that
 length says: a length it cannot confirm may be no length of the stream's — a direct one in bytes an attached file
 spells, an indirect one whose object is an older revision's or an attached file's —, and a rebuild serves the same
 objects whatever such a length says. It changes only how the headers and sections the scan takes there count, which
 the scan the searches near a row or an offset ask for learns, and a rebuild's own scan does not. Once the
-reads that confirm lengths reach `MaxRebuildReadPasses` times the file, though, the scan reads such data up to its first
+reads that confirm direct lengths, or those that confirm indirect ones, reach `MaxRebuildReadPasses` times the file,
+though, the scan reads such data up to its first
 `endstream` and takes nothing there ([Reader limits](../reference/reader-limits.md)). Where no `endstream` follows a direct `/Length`, or an
 indirect one whose object the file's bytes give — one of the last eight objects other than streams before the stream,
 or the first object after it that gives it, until the scan has to wait for another stream's in its turn, or reaches the

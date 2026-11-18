@@ -220,25 +220,34 @@ public sealed record PdfReaderLimits
     } = 64;
 
     /// <summary>
-    /// Gets how many times the length of the file a rebuild of the index may read past streams' declared lengths to confirm
-    /// them, as it scans the file for object headers. Defaults to 4: a valid file's own streams take about twice the file at
-    /// most, while hostile stream headers by the million, whose lengths all end in one long run of white space, would make
-    /// the scan read that run once for each.
+    /// Gets how many times the length of the file a rebuild of the index may read to confirm streams' lengths, as it scans
+    /// the file for object headers: past direct lengths, and, counted apart, for the objects of indirect ones. Defaults to
+    /// 4: a valid file's own streams take about twice the file at most, while hostile stream headers by the million, whose
+    /// lengths all end in one long run of white space, would make the scan read that run once for each.
     /// </summary>
     /// <remarks>
     /// <para>
-    /// The scan confirms a stream's direct <c>/Length</c> where an <c>endstream</c> follows it, and reads on through the
-    /// white space and comments past the length that a first read of 64 bytes cannot see past, and through the regular
-    /// characters glued to such an <c>endstream</c>: those reads count toward the bound. A valid stream's <c>endstream</c>
-    /// follows its length, the reads that find it cross the white space before it about twice as their reads double, and
-    /// the streams of a valid file lie apart. But the scan cannot confirm the data of a stream whose length is indirect,
-    /// and reads it as objects: the streams an attached file's bytes spell there count too, and a valid file can reach
-    /// the bound with them — their lengths may all end in one run of white space, which each read past them crosses.
+    /// The bound holds two kinds of reads, each counted apart against it. The scan confirms a stream's direct
+    /// <c>/Length</c> where an <c>endstream</c> follows it, and reads on through the white space and comments past the
+    /// length that a first read of 64 bytes cannot see past, and through the regular characters glued to such an
+    /// <c>endstream</c>: those reads are the first kind. A valid stream's <c>endstream</c> follows its length, the reads
+    /// that find it cross the white space before it about twice as their reads double, and the streams of a valid file lie
+    /// apart. The scan confirms an indirect <c>/Length</c> where the file's bytes give its object — one of the last eight
+    /// objects other than streams before the stream, or a header of its number, read as the scan reads any, within a
+    /// mebibyte past the data's first <c>endstream</c> — and an <c>endstream</c> follows the length it holds: the bytes it
+    /// searches for that header, and those it reads past such a length, are the second kind. A valid file writes a
+    /// stream's length object a few objects before it or after it, the search reading the bytes between once for each
+    /// stream; a stream whose length object it does not find — one in an object stream, or farther than it reads —, or
+    /// whose length a damage made wrong, has a mebibyte past its data searched, and many such streams can reach the bound.
+    /// The scan cannot confirm the data of a stream whose length it does not find, and reads it as objects: the streams an
+    /// attached file's bytes spell there count too, and a valid file can reach the bound with them — their lengths may all
+    /// end in one run of white space, which each read past them crosses.
     /// </para>
     /// <para>
-    /// Once the scan has read as much as the bound lets it, a stream whose length a first read cannot confirm is not
-    /// confirmed, and the scan reads the data of every stream it cannot confirm from then on as an intact stream's, up to
-    /// its first <c>endstream</c>, the object headers there not taken: the headers of an attached file whose data holds an
+    /// Once one kind has read as much as the bound lets it, the scan confirms no more lengths of that kind than a first
+    /// read past a direct length confirms — no indirect one —, the other kind going on within its own count, and it reads
+    /// the data of every stream it cannot confirm from then on as an intact stream's, up to its first <c>endstream</c>, the
+    /// object headers there not taken: the headers of an attached file whose data holds an
     /// <c>endstream</c> of its own before the stream's are then taken past that keyword, and a comment there may hide the
     /// objects after the stream. Where the data the bound left so holds an object header the scan would have taken, an
     /// object the rebuilt index lacks reads as null until the bound is raised, and whether the file holds it is unknown, as
