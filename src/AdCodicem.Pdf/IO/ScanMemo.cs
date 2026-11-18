@@ -334,8 +334,8 @@ internal sealed class ScanMemo
         /// past the last slot, or for one that starts at <paramref name="to"/> or past it.
         /// </summary>
         /// <remarks>
-        /// The scan holds places between two bounds as taken between objects a slot at a time
-        /// (<see cref="PdfFileReader.ScanForObjects"/>), from the first that starts at the lower one
+        /// The scan holds places between two bounds as taken between objects, or as taken in the data, a slot at a time
+        /// (<see cref="PdfFileReader.TakeCleanSwept"/>, <see cref="TakeRaw"/>), from the first that starts at the lower one
         /// (<see cref="IndexAtOrAfter"/>): a run that holds places on both sides of either bound keeps its kind for all of
         /// them, as a hostile file alone writes one — a header written again and again at one distance across the end of a
         /// stream's data —, and one within them takes the kind its first and last places have.
@@ -375,9 +375,9 @@ internal sealed class ScanMemo
 
         /// <summary>
         /// Holds the places the scan took at <paramref name="from"/> or past it and before <paramref name="to"/> as taken in the
-        /// data (<see cref="ScannedPlaceKind.Raw"/>): the data of an attached file, intact, whose end the scan learned only once
-        /// past them. A run that holds places on both sides of either bound keeps its kind for all of them, as
-        /// <see cref="TryGetPlaces"/> says.
+        /// data (<see cref="ScannedPlaceKind.Raw"/>): the data of an attached file, up to where its length ends it, an
+        /// <c>endstream</c> or its object's end following, which the scan learned only once past them. A run that holds
+        /// places on both sides of either bound keeps its kind for all of them, as <see cref="TryGetPlaces"/> says.
         /// </summary>
         public void TakeRaw(long from, long to)
         {

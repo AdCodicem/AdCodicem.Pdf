@@ -359,9 +359,10 @@ a name or a comment, are no number ([#327](https://github.com/AdCodicem/AdCodice
 end-of-file marker `%%EOF`, a comment that ends with itself, to which a writer that appends an update with no end of
 line glues its first header: `%%EOF1 0 obj` is object 1's. It takes only what lies outside other objects: each object it
 takes is delimited as a load reads it — its value, the strings and comments it holds, and a stream's data where an
-`endstream` confirms its length: a direct `/Length`, or an indirect one whose object the file's bytes give, one of the
-last eight objects other than streams before the stream or a header of its number within a mebibyte past the data's
-first `endstream` ([#363](https://github.com/AdCodicem/AdCodicem.Pdf/issues/363)) —, and a header or a `trailer` keyword
+`endstream` confirms its length: a direct `/Length`, or an indirect one whose object the file's bytes give, one of a
+few objects before the stream in its revision, or the first object after it, or a later one after an attached file,
+whose data holds objects of its own ([What cannot be lifted](../reference/reader-limits.md#what-cannot-be-lifted),
+[#363](https://github.com/AdCodicem/AdCodicem.Pdf/issues/363)) —, and a header or a `trailer` keyword
 within is none, nor is one that starts in a comment or a string between objects, so that an attached PDF written as it
 is, an attached text that spells a trailer in a comment, or a string that quotes a header or says `trailer`, adds nothing
 to the map or the trailer ([#171](https://github.com/AdCodicem/AdCodicem.Pdf/issues/171)).
@@ -375,29 +376,30 @@ length says: a length it cannot confirm may be no length of the stream's — a d
 spells, an indirect one whose object is an older revision's or an attached file's —, and a rebuild serves the same
 objects whatever such a length says. It changes only how the headers and sections the scan takes there count, which
 the scan the searches near a row or an offset ask for learns, and a rebuild's own scan does not. Once the
-reads that confirm direct lengths, or those that confirm indirect ones, reach `MaxRebuildReadPasses` times the file,
-though, the scan reads such data up to its first
-`endstream` and takes nothing there ([Reader limits](../reference/reader-limits.md)). Where no `endstream` follows a direct `/Length`, or an
-indirect one whose object the file's bytes give — one of the last eight objects other than streams before the stream,
-or the first object after it that gives it, until the scan has to wait for another stream's in its turn, or reaches the
-end of the file —, the scan searches the data from its start, as a load does, for where that load ends it: at the
+reads that confirm direct lengths reach `MaxRebuildReadPasses` times the file, though, the scan reads such data up to
+its first `endstream` and takes nothing there ([Reader limits](../reference/reader-limits.md)). Where no `endstream` follows a direct `/Length`, or an
+indirect one whose object the file's bytes give — one of the few objects before the stream in its revision, or the
+first object after it that gives it, until the scan has to wait for another stream's in its turn, or reaches the end of
+the file —, the scan searches the data from its start, as a load does, for where that load ends it: at the
 length, at its object's `endobj`, or at the header that load's search for the `endstream` stops at, which counts as the
 data's where the declared length runs past it. What the scan takes past there counts as found between objects, up to
 the data of the next stream it meets or what a string that runs past its object's end runs into, but what a comment or
-a string there hides between objects, as a load would read those bytes from that end
+a string there hides between objects, as a load would read those bytes from that end — on the line of the data's first
+`endstream` too, past that keyword, where a comment or a string that holds it hides the rest of the line
 ([#365](https://github.com/AdCodicem/AdCodicem.Pdf/issues/365)). Past an indirect length it reads only 64 bytes to tell
 whether an `endstream` follows: one there, or white space or comments that run on past them, leave what it takes
 counted as found in the data. Where it finds no such object — the damage took it too, it lies elsewhere, or it holds no
 lone integer —, what it took past where a load that cannot read that length ends the data — at its object's `endobj`,
-or else at the header that load's search stops at, or at an `xref` or a `trailer` keyword before that header, where a
-load that reads the index ends it before a section
+or else at the header that load's search stops at, or at an `xref` or a `trailer` keyword that starts its line before
+that header, where a load that reads the index ends it before a section
 ([#372](https://github.com/AdCodicem/AdCodicem.Pdf/issues/372)) — counts so. A stream whose data starts in the data of
 the stream waiting for its length's object waits for its own in its place. The data of an attached file — a stream of
 `/Type /EmbeddedFile`, or data that starts with `%PDF-` or `%FDF-`, white space before it — holds objects of its own:
 none of them gives its length, a stream waiting for its own length's object stops waiting there, and what the scan
-takes in it counts as found in the data, but where its own length shows where it ends — an `endstream` there, the
-whole data counting so, or the end of its object, an `endobj` or, that lost too, the next object's header, what follows
-counting as found between objects ([#366](https://github.com/AdCodicem/AdCodicem.Pdf/issues/366)). Where the scan takes a length among the last objects
+takes in it counts as found in the data. Where its own length shows where the stream ends — an `endstream` there, or,
+that lost, the end of its object, an `endobj` or, that lost too, the next object's header —, all the data up to there
+counts so, past its first `endstream` too, and what follows as found between objects
+([#366](https://github.com/AdCodicem/AdCodicem.Pdf/issues/366)). Where the scan takes a length among the last objects
 before the stream or in the data, or finds none, it may take the data for an attached file's, which its first
 `endstream` ends where no other stream's `stream` keyword comes before it — and, where the scan took a length, where an
 `endobj` follows that `endstream` —, the scan reading 1 MB at most for that keyword: past it, it cannot tell, and the
