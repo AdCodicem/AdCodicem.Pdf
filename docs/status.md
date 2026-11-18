@@ -47,7 +47,8 @@ Tracking workflow mirrors from `docs/roadmap.md` (*Debt and open points*, below)
   [#374]), its twenty-second ([#375] to [#379], [#381]), its twenty-fourth ([#385]) and its thirty-third's first pull request
   ([#387] to [#389]); [#123] moved to M20.
   The seventeenth filed [#305] and [#306] under M23, the eighteenth [#310] under
-  M03 and [#311] under M23, the nineteenth [#331] under M03 and [#343] under M23; [#367] and [#373], which the
+  M03 and [#311] under M23, the nineteenth [#331] under M03 and [#343] under M23, the thirty-third's first pull request
+  [#390] under M23; [#367] and [#373], which the
   twenty-first filed under M02, moved to M03 and M23 on 2026-11-17.
 - **User documentation**: organized along Diátaxis since 2026-09-30 ([ADR 47](adr/0047-the-user-documentation-follows-diataxis.md),
   [#148]), on `main`: a tutorial held to its sample by a test, four how-to guides, four reference
@@ -622,7 +623,8 @@ One pull request per batch, each design question put to the maintainer after mea
    33. [#362], [#361], [#363], [#365], [#366] and [#372]: the headers the rebuild's scan takes in stream data it cannot
        confirm, its memo's kinds and its read budget, the denial of service first — in two pull requests, as the
        maintainer chose on 2026-11-17: [#362] and [#361] in [#386], open, `Remote corpus` run 123 green on its branch
-       (journal of 2026-11-18), which filed [#387] to [#389] under M02; then [#363], [#365], [#366] and [#372].
+       (journal of 2026-11-18), which filed [#387] to [#389] under M02 and [#390] under M23; then [#363], [#365], [#366]
+       and [#372].
    34. [#368], [#369], [#370] and [#371]: the searches near a row and near an offset, and where a stream's data ends
        without `endstream`.
    35. [#353], [#357], [#358] and [#356]: the rebuild's header walk, where its scan's pieces start, and the order of the
@@ -1015,3 +1017,4 @@ Until 2026-09-27 this section was a table whose rows were numbered T01 to T40; t
 [#387]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/387
 [#388]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/388
 [#389]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/389
+[#390]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/390
