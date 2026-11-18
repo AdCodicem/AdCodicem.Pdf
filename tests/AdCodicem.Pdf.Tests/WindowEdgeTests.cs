@@ -659,6 +659,7 @@ public class WindowEdgeTests
     [InlineData("% |+6 0 obj << >>", true)]
     [InlineData("% |-6 0 obj << >>", false)]
     [InlineData("% |6 -1 obj << >>", false)]
+    [InlineData("% |6 -0 obj << >>", true)]
     [InlineData("% |6 65536 obj << >>", false)]
     [InlineData("% |6.5 0 obj << >>", false)]
     [InlineData("% |6 0 xyz << >>", false)]
@@ -684,7 +685,7 @@ public class WindowEdgeTests
         // longer than the window, which may start with a digit; or a string the line opens, which runs on past the window. A
         // header starts at a row as a load reads one: the byte before it ends a token, or the end-of-file marker a writer glued
         // an update to; a positive number, signed or not, up to the largest an object may have; a generation within its
-        // bounds; and obj, a whole keyword. Where one does, object 5 is kept as read, a dictionary whose endobj is unseen; where
+        // bounds, signed or not; and obj, a whole keyword. Where one does, object 5 is kept as read, a dictionary whose endobj is unseen; where
         // none does, at that row or at the rows after it, the window grows until it holds the word or the string, which takes
         // the place of endobj; and so it does where a row's lexing reaches a token the window's edge cuts, which may be a
         // number, whatever rows follow it. A row's lexing that crosses a comment another row's crossed, on the line it ends,
