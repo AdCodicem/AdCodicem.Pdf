@@ -1936,6 +1936,8 @@ public class ScannedPlacesTests
     [InlineData("no stream keyword, a megabyte and more before its endstream", 20, "Clean")]
     [InlineData("no stream keyword, a megabyte and more before its endstream, past streams whose searches spent the memo's reads", 0, "Raw", 300, 50_000, 10)]
     [InlineData("no stream keyword, a megabyte and more before its endstream, past streams whose searches spent the memo's reads, in a longer file", 0, "Clean", 300, 400_000, 10)]
+    [InlineData("no stream keyword, a megabyte and more before its endstream, past streams whose searches spent the memo's reads, the last read starting at the bound", 0, "Raw", 300, 154_640, 10)]
+    [InlineData("no stream keyword, a megabyte and more before its endstream, past streams whose searches spent the memo's reads, the last read starting short of the bound", 0, "Clean", 300, 154_641, 10)]
     public void A_stream_whose_data_starts_with_its_length_s_object_is_told_from_an_intact_one_by_what_it_may_read_past_the_scan_s_piece(
         string past, int headers, string kind, int lead = 300, int padding = 0, int spelled = 0)
     {
@@ -1958,7 +1960,8 @@ public class ScannedPlacesTests
         // that lost their endstream before 800,000 bytes of text: the search for where a load ends each one's data crosses
         // the text. With 50,000 bytes of white space before the table, the reads for the megabyte, counted with those
         // searches, reach four times the length of the file before they cross it, and object 9's header is Raw, as in an
-        // intact stream; 400,000 bytes leave them enough to cross it.
+        // intact stream; 400,000 bytes leave them enough to cross it. With 154,640 bytes, the read that ends the megabyte would
+        // start where those reads reach that bound: it is not made, and object 9's header is Raw; a byte more, and it is.
         const int Piece = 1 << 20;
         var file = new HandWrittenFile();
         var rows = new Dictionary<int, long> { [1] = file.Object(1, Catalog), [2] = file.Object(2, Pages) };
@@ -2325,6 +2328,72 @@ public class ScannedPlacesTests
             (fullMemo.Count, fullMemo.IsWhole, shortMemo.Count, shortMemo.IsWhole).Should().Be((places, true, places - 1, true));
             full.Should().BeLessThan(oneShort, "a memo that ends with its room full trims nothing ({0} bytes against {1})", full, oneShort);
         }
+    }
+
+    [Theory]
+    [InlineData(282_179, "Raw")]
+    [InlineData(282_180, "Clean")]
+    public void A_search_for_where_a_load_ends_a_stream_s_data_that_would_start_at_the_memo_s_bound_is_not_made(int padding, string kind)
+    {
+        // A file with no cross-reference table: six streams that lost their endstream, the last five headers glued to a sign,
+        // before a mebibyte of text and object 50, then a comment of padding. The scan for the memo searches each one's data
+        // for where a load ends it, at object 50's header, which spends 1,064,940 bytes of the reads made for the memo's kinds
+        // each. With 282,179 bytes of padding, the file holds 1,331,175 bytes, and the five searches before the sixth spend
+        // four times that: the sixth is not made, and object 50's header is held as taken in data; a byte more, and it is
+        // made, and the header is held as taken between objects (#361).
+        var text = new StringBuilder("%PDF-1.7\n1 0 obj\n" + Catalog + "\nendobj\n2 0 obj\n" + Pages + "\nendobj\n");
+
+        for (var i = 0; i < 6; i++)
+        {
+            text.Append(i == 0 ? "" : "+").Append(CultureInfo.InvariantCulture, $"{20 + i} 0 obj\n<< /Length 5 >>\nstream\nabcdefgh\n");
+        }
+
+        text.Append('t', 1024 * 1024).Append("\n50 0 obj\n(fifty)\nendobj\n%").Append('p', padding).Append("\ntrailer\n<< /Root 1 0 R >>\n%%EOF\n");
+        var file = Encoding.Latin1.GetBytes(text.ToString());
+        using var document = PdfDocument.Open(file);
+        var fifty = text.ToString().IndexOf("50 0 obj", StringComparison.Ordinal);
+
+        var memo = document.Reader.GetScanMemo();
+
+        file.Length.Should().Be(1_331_175 + padding - 282_179);
+        Headers(memo, fifty, fifty + 1).Should().ContainSingle().Which.Kind.Should().Be(Enum.Parse<ScannedPlaceKind>(kind));
+    }
+
+    [Fact]
+    public void A_memo_made_again_once_the_source_failed_its_scan_takes_its_places_as_one_the_source_never_failed()
+    {
+        // Three streams that lost their endstream, the second and third headers glued to a sign, before a mebibyte of text and
+        // object 50: the scan for the memo searches each one's data for where a load ends it, at object 50's header, across
+        // the mebibyte, which spends about three times the file of the reads made for the memo's kinds, and holds object 50's
+        // header as taken between objects. The source fails the scan's last read, once; the memo asked for again scans the
+        // file again, its reads counted from none, and holds each place as a memo the source never failed does (#361).
+        var pdf = new HandWrittenFile();
+        var rows = new Dictionary<int, long> { [1] = pdf.Object(1, Catalog), [2] = pdf.Object(2, Pages) };
+        rows[20] = pdf.Position;
+        pdf.Raw("20 0 obj\n<< /Length 5 >>\nstream\nabcdefgh\n+21 0 obj\n<< /Length 5 >>\nstream\nabcdefgh\n");
+        pdf.Raw("+22 0 obj\n<< /Length 5 >>\nstream\nabcdefgh\n" + new string('t', 1024 * 1024) + "\n");
+        rows[50] = pdf.Object(50, "(fifty)");
+        pdf.Table(51, rows, "/Size 51 /Root 1 0 R");
+        var file = pdf.Bytes;
+        using var sound = PdfDocument.Open(file);
+        var fifty = rows[50];
+        var reads = new List<long>();
+        using (var recording = new RecordingSource(file, reads))
+        using (var recorded = PdfDocument.Open(recording, options: null, ownsSource: false))
+        {
+            reads.Clear();
+            _ = recorded.Reader.GetScanMemo();
+        }
+
+        using var source = new FailingSource(file);
+        using var document = PdfDocument.Open(source, options: null, ownsSource: false);
+        source.FailAt = reads[^1];
+
+        FluentActions.Invoking(() => document.Reader.GetScanMemo()).Should().Throw<IOException>();
+        var memo = document.Reader.GetScanMemo();
+
+        Headers(memo, 0, long.MaxValue).Should().Equal(Headers(sound.Reader.GetScanMemo(), 0, long.MaxValue));
+        Headers(memo, fifty, fifty + 1).Should().ContainSingle().Which.Kind.Should().Be(ScannedPlaceKind.Clean);
     }
 
     [Fact]
@@ -2867,6 +2936,33 @@ public class ScannedPlacesTests
             var count = (int)Math.Min(buffer.Length, data.Length - offset);
             data.AsSpan((int)offset, count).CopyTo(buffer);
             return count;
+        }
+    }
+
+    /// <summary>A file read from memory that notes where each read starts.</summary>
+    private sealed class RecordingSource(byte[] data, List<long> reads) : PdfFileSource
+    {
+        private readonly PdfFileSource _inner = FromMemory(data);
+
+        /// <inheritdoc/>
+        public override long Length => _inner.Length;
+
+        /// <inheritdoc/>
+        public override int Read(long offset, Span<byte> buffer)
+        {
+            reads.Add(offset);
+            return _inner.Read(offset, buffer);
+        }
+
+        /// <inheritdoc/>
+        protected override void Dispose(bool disposing)
+        {
+            if (disposing)
+            {
+                _inner.Dispose();
+            }
+
+            base.Dispose(disposing);
         }
     }
 

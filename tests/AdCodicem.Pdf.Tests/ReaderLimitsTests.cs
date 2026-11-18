@@ -849,13 +849,18 @@ public class ReaderLimitsTests
         findings.Any(finding => finding.RuleId == PdfValidationRuleIds.ObjectReferenceMissing).Should().Be(presence == "Missing");
     }
 
-    [Theory]
+    [Theory(Timeout = 60_000)]
     [InlineData("a header whose obj ends the first mebibyte of the data", "Unindexed")]
     [InlineData("a header past the first mebibyte of the data", "Unindexed")]
     [InlineData("no header in more than a mebibyte of data", "Missing")]
     [InlineData("a header that ends the file, no endstream after it", "Unindexed")]
     [InlineData("no data, the stream keyword ending the file", "Missing")]
-    public void Data_a_rebuild_s_scan_reads_as_intact_past_the_read_guard_is_searched_for_a_header_up_to_its_endstream_or_the_end_of_the_file(
+    [InlineData("obj at the start of the data, a header after it", "Unindexed")]
+    [InlineData("a word whose obj ends the first mebibyte of the data, a letter after it", "Missing")]
+    [InlineData("a word that ends in obj at the end of the first mebibyte of the data", "Missing")]
+    [InlineData("a word that holds obj five bytes short of the end of the first mebibyte of the data", "Missing")]
+    [InlineData("a header past a first read the source gives short", "Missing")]
+    public async Task Data_a_rebuild_s_scan_reads_as_intact_past_the_read_guard_is_searched_for_a_header_up_to_its_endstream_or_the_end_of_the_file(
         string data, string presence)
     {
         // A file with no cross-reference table, its catalog naming object 99, which it does not define, under /Lang. Twenty-four
@@ -865,7 +870,9 @@ public class ReaderLimitsTests
         // first endstream, nothing taken there. Stream 40's data is searched for a header the scan would have taken, a
         // mebibyte at a time, each window repeating the obj keyword the one before ended with and the byte before it, up to
         // its endstream or the end of the file: where it holds one, whether the file holds object 99 is unknown; where it holds
-        // none, or no data at all, object 99 is missing.
+        // none, or no data at all, object 99 is missing. An obj keyword counts where a header precedes it, the byte before it
+        // ending a token, and no regular character follows it, whichever window holds it; a read the source gives short of
+        // what was asked ends the search, as the end of the data.
         const int Spelled = 24;
         const int Mebibyte = 1024 * 1024;
         const string Head = "20 0 obj\n<< /Length 0000000 >>\nstream\nabc\nendstream\nendobj\n";
@@ -890,10 +897,22 @@ public class ReaderLimitsTests
             "a header past the first mebibyte of the data" => new string('t', Mebibyte + 1000) + "\n77 0 obj\n" + Ends,
             "no header in more than a mebibyte of data" => new string('t', Mebibyte + 1000) + Ends,
             "a header that ends the file, no endstream after it" => "abc\n77 0 obj",
+            "obj at the start of the data, a header after it" => "obj\n77 0 obj\n" + Ends,
+            "a word whose obj ends the first mebibyte of the data, a letter after it" =>
+                new string('t', Mebibyte - "\n77 0 obj".Length) + "\n77 0 objx\n" + new string('t', 1000) + Ends,
+            "a word that ends in obj at the end of the first mebibyte of the data" =>
+                new string('t', Mebibyte - "obj".Length) + "obj\n" + new string('t', 1000) + Ends,
+            "a word that holds obj five bytes short of the end of the first mebibyte of the data" =>
+                new string('t', Mebibyte - 5) + "obj" + new string('t', 1000) + Ends,
+            "a header past a first read the source gives short" => new string('t', 5000) + "\n77 0 obj\n" + Ends,
             _ => string.Empty,
         });
 
-        using var document = PdfDocument.Open(Encoding.Latin1.GetBytes(text.ToString()));
+        var shortRead = data == "a header past a first read the source gives short";
+        using var source = new ShortCountSource(
+            Encoding.Latin1.GetBytes(text.ToString()), (offset, held) => shortRead && offset == dataStart ? Math.Min(held, 1000) : held);
+        using var document = await Task.Run(
+            () => PdfDocument.Open(source, options: null, ownsSource: false), TestContext.Current.CancellationToken);
 
         document.WasRepaired.Should().BeTrue();
         document.Diagnostics.Contains(PdfDiagnosticCodes.LimitRebuildReads).Should().BeTrue();
@@ -923,6 +942,25 @@ public class ReaderLimitsTests
             .Should().Equal(judged is null ? [] : [judged]);
     }
 
+    [Fact]
+    public void A_memo_whose_scan_reaches_the_read_guard_leaves_the_chain_s_index_as_it_was()
+    {
+        // The guard's case under a table whose rows each lie three bytes past the header they place. Reading the catalog
+        // searches near its row, from the scan's memo, whose scan reaches MaxRebuildReadPasses where the data of stream 24
+        // holds stream 25's header; the catalog is found there, and no rebuild follows. The memo reports nothing, and the
+        // chain's index is not one a guard stopped short: an object it does not number is missing (#361).
+        using var document = PdfDocument.Open(SpelledStreamsUnderShiftedRows());
+
+        var catalog = document.GetObject(new PdfObjectId(1));
+
+        catalog.AsDictionary().Required().GetName(PdfName.Type).Should().Be(PdfName.Get("Catalog"));
+        document.WasRepaired.Should().BeFalse();
+        document.Reader.GetScanMemo().ReadsBounded.Should().BeTrue();
+        document.Reader.RebuildReadsBoundedAt.Should().Be(-1);
+        document.Reader.GetPresence(99).Should().Be(ObjectPresence.Missing);
+        document.Diagnostics.Contains(PdfDiagnosticCodes.LimitRebuildReads).Should().BeFalse();
+    }
+
     [Theory]
     [InlineData(31, true)]
     [InlineData(99, true)]
@@ -945,6 +983,56 @@ public class ReaderLimitsTests
 
         thrown.LimitName.Should().Be(nameof(PdfReaderLimits.MaxRebuildReadPasses));
         again.Should().Throw<PdfLimitExceededException>().Which.Position.Should().Be(thrown.Position);
+    }
+
+    [Theory]
+    [InlineData(64, false, true)]
+    [InlineData(100, false, false)]
+    [InlineData(192, true, true)]
+    public void A_stream_whose_reads_to_confirm_its_length_start_at_the_read_guard_is_not_confirmed_and_one_whose_reads_cross_it_is(
+        int shortOfTheBound, bool glued, bool reached)
+    {
+        // A file with no cross-reference table, read with MaxRebuildReadPasses at one: object 10, an attached file with an
+        // indirect /Length, spells three streams whose direct lengths all end where a thousand spaces start, then object 30,
+        // whose direct length ends a hundred spaces before its endstream, glued or not to a run of letters, and the file is
+        // padded so that the reads past the spelled streams' lengths stop the given count of bytes short of its length. Object
+        // 30's reads past its length, which double from 64 bytes, then start: where the next of them would start at the bound,
+        // the scan does not make it, and the stream is not confirmed, the guard reported there; where it starts short of the
+        // bound, it finds the endstream and crosses the bound, which confirms the stream, the guard reported nowhere; and
+        // where they end at the bound, the letters glued to the keyword are not read, and the stream is not confirmed (#361).
+        const string Head = "20 0 obj\n<< /Length 0000000 >>\nstream\nabc\n";
+        const int Spelled = 3;
+        const int Run = 1000;
+        var data = new StringBuilder();
+
+        for (var i = 0; i < Spelled; i++)
+        {
+            var length = ((Spelled - i) * Head.Length) - (Head.Length - "abc\n".Length);
+            data.Append(Head.Replace("20 0", string.Create(CultureInfo.InvariantCulture, $"{20 + i} 0"), StringComparison.Ordinal)
+                .Replace("0000000", length.ToString("D7", CultureInfo.InvariantCulture), StringComparison.Ordinal));
+        }
+
+        data.Append(' ', Run).Append("x\n30 0 obj\n<< /Length 3 >>\nstream\nabc").Append(' ', 100).Append("endstream")
+            .Append(glued ? new string('Z', 80) : string.Empty).Append("\nendobj\n");
+        var text = new StringBuilder("%PDF-1.7\n1 0 obj\n" + Catalog + "\nendobj\n2 0 obj\n" + Pages + "\nendobj\n")
+            .Append("10 0 obj\n<< /Type /EmbeddedFile /Length 11 0 R >>\nstream\n").Append(data).Append("endstream\nendobj\n")
+            .Append(CultureInfo.InvariantCulture, $"11 0 obj\n{data.Length}\nendobj\ntrailer\n<< /Root 1 0 R >>\n%%EOF\n%");
+
+        // Each spelled stream's reads past its length double from 64 bytes until one holds the first byte past the spaces.
+        var spent = 0;
+
+        for (var size = 64; spent <= Run; size *= 2)
+        {
+            spent += size;
+        }
+
+        var file = Encoding.Latin1.GetBytes(text.Append('p', (Spelled * spent) + shortOfTheBound - text.Length - 1).Append('\n').ToString());
+        using var document = PdfDocument.Open(file, new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxRebuildReadPasses = 1 } });
+
+        file.Length.Should().Be((Spelled * spent) + shortOfTheBound);
+        document.WasRepaired.Should().BeTrue();
+        document.GetObject(new PdfObjectId(30)).AsStream().Required().GetRawBytes().Length.Should().Be(3);
+        document.Diagnostics.Contains(PdfDiagnosticCodes.LimitRebuildReads).Should().Be(reached);
     }
 
     [Theory]
