@@ -450,11 +450,12 @@ public static class PdfDiagnosticCodes
     public const string LimitFilterChain = "limit.filter-chain";
 
     /// <summary>
-    /// A rebuild of the index read past streams' declared lengths, to confirm them, as many times the length of the file
-    /// as <see cref="Documents.PdfReaderLimits.MaxRebuildReadPasses"/> lets it: from then on, a stream whose length a first
-    /// read cannot confirm was not confirmed, and the data of each stream the scan could not confirm was read up to its
-    /// first <c>endstream</c>, the object headers there not taken. Reported once for each rebuild, where the data starts
-    /// of the first stream the bound left so.
+    /// A rebuild of the index read to confirm streams' lengths — past direct ones, or, counted apart, for the objects of
+    /// indirect ones — as many times the length of the file as <see cref="Documents.PdfReaderLimits.MaxRebuildReadPasses"/>
+    /// lets it: from then on, the scan confirmed no more lengths of that kind than a first read past a direct length
+    /// confirms, and the data of each stream it could not confirm was read up to its first <c>endstream</c>, the object
+    /// headers there not taken.
+    /// Reported once for each rebuild, where the data starts of the first stream the bound left so.
     /// </summary>
     public const string LimitRebuildReads = "limit.rebuild-reads";
 }

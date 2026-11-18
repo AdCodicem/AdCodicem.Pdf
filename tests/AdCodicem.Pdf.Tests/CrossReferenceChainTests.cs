@@ -2255,10 +2255,12 @@ public class CrossReferenceChainTests
     public void A_section_in_stream_data_whose_length_is_not_confirmed_is_taken_as_the_bytes_give_it_and_the_validator_calls_it_unconfirmed(
         string word, string length)
     {
-        // As above, object 4's /Length an indirect reference, or a direct one that falls short of its data's end: the scan
-        // cannot confirm where the data ends, and takes what it holds as the bytes give it. The word xref, or the header, is the section found moved, which cannot be read, and ends the search; the
-        // index is rebuilt, and object 6 is read as the rebuild finds it. The reader cannot vouch for the place: the validator
-        // gives an error where it gives a warning for a section found where the scan takes it between objects (ADR 45).
+        // As above, object 4's /Length an indirect reference whose object holds a note before the length, or a
+        // direct one that falls short of its data's end: the scan cannot confirm where the data ends, and takes what it
+        // holds as the bytes give it. The word xref, or the header, is the section found moved, which cannot be read, and
+        // ends the search; the index is rebuilt, and object 6 is read as the rebuild finds it. The reader cannot vouch for
+        // the place: the validator gives an error where it gives a warning for a section found where the scan takes it
+        // between objects (ADR 45).
         var (file, at, _) = UpdatePastAWordInStreamDataOfUnconfirmedLength("Notes on the file format.\n", word, length);
         using var document = PdfDocument.Open(file);
 
@@ -2313,9 +2315,10 @@ public class CrossReferenceChainTests
     public void A_word_in_stream_data_whose_length_is_not_confirmed_is_the_section_found_moved_only_where_a_load_reads_it_on_its_line(
         string lead, string word, bool taken, int letters = 0)
     {
-        // As above, object 4's /Length an indirect reference, the word xref or the header of an object of /Type /XRef past
-        // lead on its line: in a comment or a string there, or a token a load reads, in the middle of the line or at its
-        // start. The rebuild's scan takes the data as the bytes give it, comments unread, and takes the word or the header
+        // As above, object 4's /Length an indirect reference whose object holds a note before the length, the word
+        // xref or the header of an object of /Type /XRef past lead on its line: in a comment or a string there, or a token a
+        // load reads, in the middle of the line or at its start. The rebuild's scan takes the data as the bytes give it,
+        // comments unread, and takes the word or the header
         // in a comment or a string too: the search tries it, and what it reads there cannot be read. A load reads no keyword
         // and no header in a comment or a string, the line lexed from its start: the place is dropped as any that holds no
         // section, and the search goes on to the update's table, which frees object 6, nothing rebuilt. So is a word on a
@@ -10425,9 +10428,10 @@ public class CrossReferenceChainTests
     /// Writes a document saved twice: the first table indexes the catalog, an empty page tree and object 6; past 1,200 bytes
     /// of comment, the update writes object 4, an uncompressed embedded file whose <c>/Length</c> is
     /// <paramref name="length"/> and whose data is <paramref name="before"/>, <paramref name="word"/>, which starts at
-    /// <c>Word</c>, and <see cref="StreamDataAfterTheWord"/>, then object 9, the data's length, and its table, at
-    /// <c>Update</c>, which frees object 6; the newest table names through <c>/Prev</c> the place 2 bytes past where the
-    /// word starts.
+    /// <c>Word</c>, and <see cref="StreamDataAfterTheWord"/>, then object 9, the data's length after a note, which the
+    /// rebuild's scan reads within 64 bytes of its header alone, so that it cannot confirm an indirect length (#363), and
+    /// its table, at <c>Update</c>, which frees object 6; the newest table names through <c>/Prev</c> the place 2 bytes
+    /// past where the word starts.
     /// </summary>
     private static (byte[] File, long Word, long Update) UpdatePastAWordInStreamDataOfUnconfirmedLength(string before, string word, string length)
     {
@@ -10441,7 +10445,7 @@ public class CrossReferenceChainTests
         var four = Append(text, Invariant($"4 0 obj\n<< /Type /EmbeddedFile /Length {length} >>\nstream\n"));
         var at = text.Length + before.Length;
         text.Append(data).Append("\nendstream\nendobj\n");
-        var nine = Append(text, Invariant($"9 0 obj\n{data.Length}\nendobj\n"));
+        var nine = Append(text, Invariant($"9 0 obj\n% the length of object 4's data, which its writer filled in once it had written it\n{data.Length}\nendobj\n"));
         var update = Append(text, Invariant($"xref\n0 1\n0000000000 65535 f \n4 1\n{four:D10} 00000 n \n6 1\n0000000000 00001 f \n9 1\n{nine:D10} 00000 n \ntrailer\n<< /Size 10 /Root 1 0 R /Prev {oldest} >>\nstartxref\n"));
         text.Append(Invariant($"{update}\n%%EOF\n"));
         var newest = Append(text, Invariant($"xref\n0 1\n0000000000 65535 f \ntrailer\n<< /Size 10 /Root 1 0 R /Prev {at + 2} >>\nstartxref\n"));

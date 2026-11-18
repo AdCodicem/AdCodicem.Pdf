@@ -4599,7 +4599,8 @@ public class DocumentReaderTests
     [InlineData("a string a comment holding the word obj comes before", true)]
     [InlineData("a comment between objects", false)]
     [InlineData("a comment the end-of-file marker opens before a stream's endstream", false)]
-    [InlineData("stream data whose /Length is an object", true)]
+    [InlineData("stream data whose /Length is an object", false)]
+    [InlineData("stream data whose /Length is an object that holds it past a note", true)]
     [InlineData("stream data whose direct /Length is wrong", true)]
     [InlineData("a comment after stream data whose direct /Length is wrong, the end of the scan's piece parting its endstream", false)]
     [InlineData("nothing: written between objects", true)]
@@ -4607,9 +4608,11 @@ public class DocumentReaderTests
     {
         // The file's startxref names nothing, and its index is rebuilt as it opens. A second page tree, object 2 again,
         // marked /Injected, lies where the case says. The scan delimits each object it takes, as a load reads it: a header
-        // inside another object's value, or inside data its length confirms, is none, nor one a comment holds; object 2 is
-        // then the file's own page tree. Where the length is not confirmed, the data ends at the next header, as a load's
-        // search ends it, and the header there is taken, the last definition winning (#171); past its endstream, wherever
+        // inside another object's value, or inside data its length confirms — a direct one, or an indirect one whose object
+        // the scan finds in the file's bytes (#363) —, is none, nor one a comment holds; object 2 is then the file's own page
+        // tree. Where the length is not confirmed — an indirect one whose object holds a note before it, which the scan
+        // reads within 64 bytes of the object's header alone —, the data ends at the next header, as a load's search ends
+        // it, and the header there is taken, the last definition winning (#171); past its endstream, wherever
         // the end of the scan's piece parts the keyword, a comment hides one again. A string that holds endobj, or one the
         // end of the file leaves open, runs past its object's end, as one an unbalanced parenthesis runs on does, and
         // delimits nothing: the header on the line after its start is taken as the bytes give it. So it is where a comment
@@ -4647,6 +4650,10 @@ public class DocumentReaderTests
             case "stream data whose /Length is an object":
                 file.Object(5, $"<< /Length 6 0 R >>\nstream\n{Injected}\nendstream");
                 file.Object(6, length);
+                break;
+            case "stream data whose /Length is an object that holds it past a note":
+                file.Object(5, $"<< /Length 6 0 R >>\nstream\n{Injected}\nendstream");
+                file.Object(6, "% the length of object 5's data, which its writer filled in once it had written it\n" + length);
                 break;
             case "stream data whose direct /Length is wrong":
                 file.Object(5, $"<< /Length 3 >>\nstream\n{Injected}\nendstream");

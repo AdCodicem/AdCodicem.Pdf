@@ -625,8 +625,9 @@ public class ReaderLimitsTests
     public void A_valid_file_a_guard_sends_into_a_rebuild_serves_no_object_a_stream_s_data_spells_after_streams_an_attached_file_s_bytes_spell(
         string spelled, int count, bool reached)
     {
-        // Object 10, an attached file with an indirect /Length, spells streams in its data: their direct lengths end where
-        // one run of a mebibyte of spaces starts; or they have no length, and 64 KiB of spaces follow each before an endobj;
+        // Object 10, an attached file with an indirect /Length whose object holds a note before its length, spells streams
+        // in its data: their direct lengths end where one run of a mebibyte of spaces starts; or they have no length, and
+        // 64 KiB of spaces follow each before an endobj;
         // or a sign or an end-of-file marker is glued to their headers, and no endstream follows their data, which may
         // run on through a mebibyte of text. Object 30, after it, has a direct length 70 spaces before its endstream, which
         // a first read cannot see past, and its data spells object 77, which the file does not define. MaxXRefSectionLength
@@ -666,7 +667,7 @@ public class ReaderLimitsTests
         var rows = new Dictionary<int, long> { [1] = pdf.Object(1, Catalog), [2] = pdf.Object(2, Pages) };
         rows[10] = pdf.Position;
         pdf.Raw("10 0 obj\n<< /Type /EmbeddedFile /Length 11 0 R >>\nstream\n" + data + "endstream\nendobj\n");
-        rows[11] = pdf.Object(11, data.Length.ToString(CultureInfo.InvariantCulture));
+        rows[11] = NotedLength(pdf, data.Length);
         rows[30] = pdf.Position;
         pdf.Raw("30 0 obj\n<< /Length 24 >>\nstream\n77 0 obj\n(inner)\nendobj\n" + new string(' ', 70) + "\nendstream\nendobj\n");
         pdf.Table(31, rows, "/Size 31 /Root 1 0 R");
@@ -704,7 +705,7 @@ public class ReaderLimitsTests
         var rows = new Dictionary<int, long> { [1] = pdf.Object(1, Catalog), [2] = pdf.Object(2, Pages) };
         rows[10] = pdf.Position;
         pdf.Raw("10 0 obj\n<< /Type /EmbeddedFile /Length 11 0 R >>\nstream\n" + data + "endstream\nendobj\n");
-        rows[11] = pdf.Object(11, data.Length.ToString(CultureInfo.InvariantCulture));
+        rows[11] = NotedLength(pdf, data.Length);
         rows[30] = pdf.Position;
         pdf.Raw(string.Create(CultureInfo.InvariantCulture, $"30 0 obj\n<< /Type /EmbeddedFile /Length {Inner.Length} >>\nstream\n{Inner}") +
             new string(' ', 70) + "endstream endobj 31 0 obj (real) endobj\n");
@@ -996,7 +997,8 @@ public class ReaderLimitsTests
         int shortOfTheBound, bool glued, bool reached)
     {
         // A file with no cross-reference table, read with MaxRebuildReadPasses at one: object 10, an attached file with an
-        // indirect /Length, spells three streams whose direct lengths all end where a thousand spaces start, then object 30,
+        // indirect /Length whose object holds a note before its length, spells three streams whose direct lengths all end
+        // where a thousand spaces start, then object 30,
         // whose direct length ends a hundred spaces before its endstream, glued or not to a run of letters, and the file is
         // padded so that the reads past the spelled streams' lengths stop the given count of bytes short of its length. Object
         // 30's reads past its length, which double from 64 bytes, then start: where the next of them would start at the bound,
@@ -1019,7 +1021,7 @@ public class ReaderLimitsTests
             .Append(glued ? new string('Z', 80) : string.Empty).Append("\nendobj\n");
         var text = new StringBuilder("%PDF-1.7\n1 0 obj\n" + Catalog + "\nendobj\n2 0 obj\n" + Pages + "\nendobj\n")
             .Append("10 0 obj\n<< /Type /EmbeddedFile /Length 11 0 R >>\nstream\n").Append(data).Append("endstream\nendobj\n")
-            .Append(CultureInfo.InvariantCulture, $"11 0 obj\n{data.Length}\nendobj\ntrailer\n<< /Root 1 0 R >>\n%%EOF\n%");
+            .Append(CultureInfo.InvariantCulture, $"11 0 obj\n{LengthNote}{data.Length}\nendobj\ntrailer\n<< /Root 1 0 R >>\n%%EOF\n%");
 
         // Each spelled stream's reads past its length double from 64 bytes until one holds the first byte past the spaces.
         var spent = 0;
@@ -1039,13 +1041,83 @@ public class ReaderLimitsTests
     }
 
     [Theory]
+    [InlineData(1, false)]
+    [InlineData(1, true)]
+    [InlineData(64, false)]
+    public void The_search_for_the_objects_of_indirect_lengths_reaches_the_read_guard_on_its_own_and_reports_it_once(int passes, bool throwOnLimit)
+    {
+        // A file with no cross-reference table. Past a comment line, four streams, each with an indirect /Length naming an
+        // object the file does not define, come before 64 KiB of comment lines, and the last one's data spells object 77. For each, the rebuild's
+        // scan searches the file from the stream's endstream to its end for a header of the length's number, and finds
+        // none: with MaxRebuildReadPasses at one, the first search reads short of the file's length and the second reaches
+        // it. The scan reads the data of that stream and of each after it as an intact stream's, nothing taken there, and
+        // reports the guard once, where the second stream's data starts; a document opened to throw throws it once the
+        // index is whole. No direct length is read past: the search's reads reach the guard on their own (#363). Raised,
+        // the guard is not reached, and object 77 is taken from the data the scan could not confirm.
+        var text = new StringBuilder("%PDF-1.7\n1 0 obj\n" + Catalog + "\nendobj\n2 0 obj\n" + Pages + "\nendobj\n%").Append('-', 2000).Append('\n');
+        var dataStarts = new long[4];
+
+        for (var i = 0; i < 4; i++)
+        {
+            text.Append(CultureInfo.InvariantCulture, $"{10 + i} 0 obj\n<< /Length {90 + i} 0 R >>\nstream\n");
+            dataStarts[i] = text.Length;
+            text.Append(i == 3 ? "77 0 obj (inner) endobj\n" : "abc\n").Append("endstream\nendobj\n");
+        }
+
+        for (var line = 0; line < 1024; line++)
+        {
+            text.Append("% ").Append('-', 61).Append('\n');
+        }
+
+        var file = Encoding.Latin1.GetBytes(text.Append("trailer\n<< /Root 1 0 R >>\n%%EOF\n").ToString());
+        var options = new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxRebuildReadPasses = passes }, ThrowOnLimit = throwOnLimit };
+
+        if (throwOnLimit)
+        {
+            var thrown = FluentActions.Invoking(() => PdfDocument.Open(file, options)).Should().Throw<PdfLimitExceededException>().Which;
+            (thrown.LimitName, thrown.Position).Should().Be((nameof(PdfReaderLimits.MaxRebuildReadPasses), dataStarts[1]));
+            return;
+        }
+
+        using var document = PdfDocument.Open(file, options);
+
+        document.WasRepaired.Should().BeTrue();
+        document.Diagnostics.Where(entry => entry.Code == PdfDiagnosticCodes.LimitRebuildReads).Select(entry => entry.Position)
+            .Should().Equal(passes == 1 ? [dataStarts[1]] : []);
+        document.Reader.GetPresence(77).Should().Be(passes == 1 ? ObjectPresence.Unindexed : ObjectPresence.Defined);
+    }
+
+    [Fact]
+    public void A_stream_whose_indirect_length_its_object_confirms_is_confirmed_after_the_reads_that_confirm_direct_lengths_reached_the_read_guard()
+    {
+        // The guard's case, object 30's /Length written as object 32, which the file writes after object 31: past its
+        // length, 70 spaces lie before its endstream, which a first read cannot see past. The reads past the spelled streams'
+        // direct lengths reach MaxRebuildReadPasses, reported where stream 24's data starts; those that confirm indirect
+        // lengths are counted apart, and read through the spaces to object 30's endstream: the scan passes the data whole,
+        // and the comment after the attached file's own endstream hides nothing (#363).
+        var text = Encoding.Latin1.GetString(Case.For("rebuild reads").File);
+        var key = "30 0 obj\n<< /Type /EmbeddedFile /Length ";
+        var at = text.IndexOf(key, StringComparison.Ordinal) + key.Length;
+        var length = text[at..text.IndexOf(' ', at)];
+        text = text[..at] + "32 0 R" + text[(at + length.Length)..];
+        text = text.Replace("31 0 obj (real) endobj\n", "31 0 obj (real) endobj\n32 0 obj\n" + length + "\nendobj\n", StringComparison.Ordinal);
+        var file = Encoding.Latin1.GetBytes(text);
+
+        using var document = PdfDocument.Open(file);
+
+        document.GetObject(new PdfObjectId(31)).AsText().Should().Be("real");
+        document.Diagnostics.Where(entry => entry.Code == PdfDiagnosticCodes.LimitRebuildReads).Select(entry => entry.Position)
+            .Should().Equal(OffsetOf(file, "24 0 obj") + "20 0 obj\n<< /Length 0000000 >>\nstream\n".Length);
+    }
+
+    [Theory]
     [InlineData("a sign", 5)]
     [InlineData("a sign", 32)]
     [InlineData("an end-of-file marker", 32)]
     public void A_rebuild_s_scan_makes_none_of_the_reads_that_decide_only_how_a_memo_counts_what_it_takes(string glued, int count)
     {
-        // Object 10, an attached file with an indirect /Length, spells streams in its data that lost their endstream, each
-        // header glued to a sign or to an end-of-file marker, which the scan takes and a load's search does not stop at,
+        // Object 10, an attached file with an indirect /Length whose object holds a note before its length, spells streams
+        // in its data that lost their endstream, each header glued to a sign or to an end-of-file marker, which the scan takes and a load's search does not stop at,
         // before a mebibyte of text. MaxXRefSectionLength cuts the table, and the rebuild's scan reads object 10's data as
         // objects. The search for where a load ends each spelled stream's data, which decides only how a memo would count the
         // places the scan takes, crossed the mebibyte for each: five times the file, beside the scan's own reading and the
@@ -1063,7 +1135,7 @@ public class ReaderLimitsTests
         var rows = new Dictionary<int, long> { [1] = pdf.Object(1, Catalog), [2] = pdf.Object(2, Pages) };
         rows[10] = pdf.Position;
         pdf.Raw("10 0 obj\n<< /Type /EmbeddedFile /Length 11 0 R >>\nstream\n" + data + "endstream\nendobj\n");
-        rows[11] = pdf.Object(11, data.Length.ToString(CultureInfo.InvariantCulture));
+        rows[11] = NotedLength(pdf, data.Length);
         pdf.Table(31, rows, "/Size 31 /Root 1 0 R");
         var file = pdf.Bytes;
         using var source = new StrictCountingSource(file);
@@ -1105,10 +1177,12 @@ public class ReaderLimitsTests
         // an end of line before, or before a word endstream of the form's own text, and object 13 follows endobj on that
         // line. The form's text may name a stream in a word, run past a mebibyte, spell a header of object 12, defined
         // before object 14, inside a string, or spell streams and a trailer keyword of its own. MaxXRefSectionLength cuts
-        // the table, and the rebuild's scan takes that other object 11 for the length: ending the data where a load given
-        // it does would read the rest of the data between objects, where a comment or a string would hide object 13, or
-        // a string end before a header of object 12. The scan reads the data as the bytes give it, up to its first
-        // endstream, whatever the length says.
+        // the table. The rebuild's scan tries that other object 11 for the length, which no endstream follows, then the one
+        // written after the stream, which an endstream follows, and passes the data whole (#363). Where that object 11 holds
+        // a note before its length, which the scan does not read past, the scan cannot confirm the length: ending
+        // the data where a load given the other object 11 does would read the rest of the data between objects, where a
+        // comment or a string would hide object 13, or a string end before a header of object 12, and the scan reads the
+        // data as the bytes give it, up to its first endstream, whatever the length says.
         const string Form = "99 0 obj\n<< /FDF << /F (a.pdf) /Fields [] >> >>\nendobj\nplain text the attached form carries\n";
         var other = string.Create(CultureInfo.InvariantCulture, $"11 0 obj\n{value}\nendobj\n");
         var note = text switch
@@ -1128,41 +1202,49 @@ public class ReaderLimitsTests
         };
         var data = "%FDF-1.2\n" + (writer == "the attached file itself" ? other : "") + Form + (writer == "the attached file, past its first object" ? other : "") +
             note + last;
-        var pdf = new HandWrittenFile();
-        var rows = new Dictionary<int, long> { [1] = pdf.Object(1, Catalog), [2] = pdf.Object(2, Pages), [12] = pdf.Object(12, "(early)") };
-        var trailer = "/Size 16 /Root 1 0 R";
-
-        if (writer == "an older revision")
-        {
-            rows[14] = pdf.Position;
-            pdf.Raw("14 0 obj\n<< /Type /EmbeddedFile /Length 11 0 R >>\nstream\n" + new string('x', value - 1) + "\nendstream\nendobj\n");
-            rows[11] = pdf.Position;
-            pdf.Raw(other);
-            rows[13] = pdf.Object(13, "(old)");
-            trailer += string.Create(CultureInfo.InvariantCulture, $" /Prev {pdf.Table(16, rows, trailer)}");
-        }
-        else if (writer == "an earlier attached file")
-        {
-            var inner = "%PDF-1.4\n1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n" + other + "%%EOF\n";
-            rows[10] = pdf.Position;
-            pdf.Raw("10 0 obj\n<< /Type /EmbeddedFile /Length 15 0 R >>\nstream\n" + inner + "endstream\nendobj\n");
-            rows[15] = pdf.Object(15, inner.Length.ToString(CultureInfo.InvariantCulture));
-        }
-
-        rows[14] = pdf.Position;
-        pdf.Raw("14 0 obj\n<< /Type /EmbeddedFile /Length 11 0 R >>\nstream\n" + data + "endstream endobj ");
-        rows[13] = pdf.Position;
-        pdf.Raw("13 0 obj (real) endobj\n");
-        rows[11] = pdf.Object(11, data.Length.ToString(CultureInfo.InvariantCulture));
-        pdf.Table(16, rows, trailer);
         var options = new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxXRefSectionLength = 16 } };
 
-        using var document = PdfDocument.Open(pdf.Bytes, options);
+        foreach (var lengthNote in new[] { string.Empty, LengthNote })
+        {
+            using var document = PdfDocument.Open(Write(lengthNote), options);
 
-        document.GetObject(new PdfObjectId(13)).AsText().Should().Be("real");
-        document.GetObject(new PdfObjectId(12)).AsText().Should().Be("early");
-        document.WasRepaired.Should().BeTrue();
-        document.Diagnostics.Should().Contain(diagnostic => diagnostic.Code == PdfDiagnosticCodes.LimitXRefSectionLength);
+            document.GetObject(new PdfObjectId(13)).AsText().Should().Be("real");
+            document.GetObject(new PdfObjectId(12)).AsText().Should().Be("early");
+            document.WasRepaired.Should().BeTrue();
+            document.Diagnostics.Should().Contain(diagnostic => diagnostic.Code == PdfDiagnosticCodes.LimitXRefSectionLength);
+        }
+
+        byte[] Write(string lengthNote)
+        {
+            var pdf = new HandWrittenFile();
+            var rows = new Dictionary<int, long> { [1] = pdf.Object(1, Catalog), [2] = pdf.Object(2, Pages), [12] = pdf.Object(12, "(early)") };
+            var trailer = "/Size 16 /Root 1 0 R";
+
+            if (writer == "an older revision")
+            {
+                rows[14] = pdf.Position;
+                pdf.Raw("14 0 obj\n<< /Type /EmbeddedFile /Length 11 0 R >>\nstream\n" + new string('x', value - 1) + "\nendstream\nendobj\n");
+                rows[11] = pdf.Position;
+                pdf.Raw(other);
+                rows[13] = pdf.Object(13, "(old)");
+                trailer += string.Create(CultureInfo.InvariantCulture, $" /Prev {pdf.Table(16, rows, trailer)}");
+            }
+            else if (writer == "an earlier attached file")
+            {
+                var inner = "%PDF-1.4\n1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n" + other + "%%EOF\n";
+                rows[10] = pdf.Position;
+                pdf.Raw("10 0 obj\n<< /Type /EmbeddedFile /Length 15 0 R >>\nstream\n" + inner + "endstream\nendobj\n");
+                rows[15] = pdf.Object(15, inner.Length.ToString(CultureInfo.InvariantCulture));
+            }
+
+            rows[14] = pdf.Position;
+            pdf.Raw("14 0 obj\n<< /Type /EmbeddedFile /Length 11 0 R >>\nstream\n" + data + "endstream endobj ");
+            rows[13] = pdf.Position;
+            pdf.Raw("13 0 obj (real) endobj\n");
+            rows[11] = pdf.Object(11, lengthNote + data.Length.ToString(CultureInfo.InvariantCulture));
+            pdf.Table(16, rows, trailer);
+            return pdf.Bytes;
+        }
     }
 
     [Theory]
@@ -1189,11 +1271,13 @@ public class ReaderLimitsTests
         // well — one an older revision wrote, which the update redefines, or one the attached file holds —, or not at all.
         // The data's last line holds a comment or an open string, right before endstream, and object 13 follows endobj on
         // that line; or the data spells a header of object 12, defined before object 14, inside a string a commented header
-        // opens. MaxXRefSectionLength cuts the table: the rebuild's scan, which reads the data of object 14 as the bytes give
-        // it up to its first endstream, reads the stream spelled past it as the bytes give it up to the next endstream, as
-        // a load given no more than its bytes does, whatever its direct /Length says. Ending that data where a load given
-        // the length does would read the rest between objects, where the comment or the string would hide object 13, or a
-        // string end before the header of object 12.
+        // opens. MaxXRefSectionLength cuts the table. The rebuild's scan confirms object 14's length with object 11, written
+        // after it, and passes the data whole (#363). Where that object 11 holds a note before its length, which the scan
+        // does not read past, the scan, which reads the data of object 14 as the bytes give it up to its first
+        // endstream, reads the stream spelled past it as the bytes give it up to the next endstream, as a load given no
+        // more than its bytes does, whatever its direct /Length says. Ending that data where a load given the length does
+        // would read the rest between objects, where the comment or the string would hide object 13, or a string end before
+        // the header of object 12.
         const string Spelled = "5 0 obj\n<< /Length 3 >>\nstream\nabcdefgh\n99 0 obj\n(x)\nendobj\n";
         const string Form = "%FDF-1.2\n99 0 obj\n<< /FDF << /F (a.pdf) /Fields [] >> >>\nendobj\n";
         const string Cut = "98 0 obj << /Length 5 /X (endstream) >> stream\nabc\n97 0 obj (x) endobj\n";
@@ -1216,33 +1300,158 @@ public class ReaderLimitsTests
             _ => Form + "98 0 obj << /Length 97 0 R /X (endstream) >> stream\n96 0 obj << /Length 5 /Y (endstream) >> stream\nabc\n" +
                 "95 0 obj (x) endobj\nplain text\n%",
         };
+        var options = new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxXRefSectionLength = 16 } };
+
+        foreach (var lengthNote in new[] { string.Empty, LengthNote })
+        {
+            using var document = PdfDocument.Open(Write(lengthNote), options);
+
+            document.GetObject(new PdfObjectId(13)).AsText().Should().Be("real");
+            document.GetObject(new PdfObjectId(12)).AsText().Should().Be("early");
+            document.WasRepaired.Should().BeTrue();
+            document.Diagnostics.Should().Contain(diagnostic => diagnostic.Code == PdfDiagnosticCodes.LimitXRefSectionLength);
+        }
+
+        byte[] Write(string lengthNote)
+        {
+            var pdf = new HandWrittenFile();
+            var rows = new Dictionary<int, long> { [1] = pdf.Object(1, Catalog), [2] = pdf.Object(2, Pages), [12] = pdf.Object(12, "(early)") };
+            var trailer = "/Size 15 /Root 1 0 R";
+
+            if (writer == "an older revision")
+            {
+                rows[14] = pdf.Position;
+                pdf.Raw("14 0 obj\n<< /Type /EmbeddedFile /Length 11 0 R >>\nstream\n" + new string('x', 39) + "\nendstream\nendobj\n");
+                rows[11] = pdf.Object(11, "40");
+                rows[13] = pdf.Object(13, "(old)");
+                trailer += string.Create(CultureInfo.InvariantCulture, $" /Prev {pdf.Table(15, rows, trailer)}");
+            }
+
+            rows[14] = pdf.Position;
+            pdf.Raw("14 0 obj\n<< /Type /EmbeddedFile /Length 11 0 R >>\nstream\n" + data + "endstream endobj ");
+            rows[13] = pdf.Position;
+            pdf.Raw("13 0 obj (real) endobj\n");
+            rows[11] = pdf.Object(11, lengthNote + data.Length.ToString(CultureInfo.InvariantCulture));
+            pdf.Table(15, rows, trailer);
+            return pdf.Bytes;
+        }
+    }
+
+    [Theory]
+    [InlineData("a trailer keyword in a comment, its dictionary naming an encryption dictionary", "after the stream")]
+    [InlineData("a trailer keyword in a comment, its dictionary naming an encryption dictionary", "before the stream")]
+    [InlineData("a header of a stream whose length runs past the data's endstream", "after the stream")]
+    [InlineData("a header of a stream whose length runs past the data's endstream", "before the stream")]
+    [InlineData("a header of a stream whose length runs past the data's endstream", "after the stream, each token on a line of its own")]
+    [InlineData("a header of object 12 past a word endstream", "after the stream")]
+    [InlineData("a trailer keyword naming an encryption dictionary in a comment between the tokens of a header", "after the stream")]
+    [InlineData("an xref keyword in a comment between the tokens of a header of object 12", "after the stream")]
+    public void A_valid_file_a_guard_sends_into_a_rebuild_takes_nothing_from_the_data_of_a_stream_whose_indirect_length_its_object_confirms(
+        string text, string lengthAt)
+    {
+        // An update rewrites object 14, an attached text written uncompressed whose indirect /Length names object 11, which
+        // the update writes after the stream, each token on a line of its own or not, or right before it; object 13 follows
+        // endobj on endstream's line, and object 15,
+        // a stream, comes after. The older revision wrote object 14, object 11 and object 13 before, and object 12. The text
+        // spells a trailer keyword in a comment whose dictionary names an encryption dictionary; or the header of a stream
+        // whose direct length an endstream follows past object 15's data; or, past a word endstream, a header of object
+        // 12; or such a header, a comment between its tokens holding a trailer keyword or an xref keyword. MaxXRefSectionLength
+        // cuts the table, and the rebuild's scan, which reads no index, read the text as the bytes give it: it merged the
+        // trailer, and the file, which no section encrypts, would not open; or it passed the spelled stream, past objects 13,
+        // 11 and 15, and served the older revision's object 13; or it served the attached object 12. The scan reads object
+        // 11 in the file's bytes, among the last values it passed or past the data's endstream, and an endstream follows the
+        // length it holds: the data is the stream's, and the scan takes nothing there (#363). The memo the scan makes for
+        // the searches near a row or an offset takes the same places.
+        const string Encrypt = "<< /Encrypt << /Filter /Standard /V 1 /R 2 /O <00> /U <00> /P -4 >> >>";
+        var data = text switch
+        {
+            "a trailer keyword in a comment, its dictionary naming an encryption dictionary" =>
+                "Attached notes.\n%trailer " + Encrypt + "\nmore notes\n",
+            "a header of a stream whose length runs past the data's endstream" => "Attached notes.\n98 0 obj\n<< /Length LLLLLLL >>\nstream\ninner text\n",
+            "a header of object 12 past a word endstream" => "Attached notes.\nThis text quotes the word endstream in plain prose.\n12 0 obj (attached) endobj\nmore\n",
+            "a trailer keyword naming an encryption dictionary in a comment between the tokens of a header" =>
+                "Attached notes.\n12 0 %trailer " + Encrypt + "\nobj (attached) endobj\nmore\n",
+            _ => "Attached notes.\n12 0 %xref\nobj (attached) endobj\nmore\n",
+        };
         var pdf = new HandWrittenFile();
         var rows = new Dictionary<int, long> { [1] = pdf.Object(1, Catalog), [2] = pdf.Object(2, Pages), [12] = pdf.Object(12, "(early)") };
-        var trailer = "/Size 15 /Root 1 0 R";
+        var trailer = "/Size 16 /Root 1 0 R";
+        rows[14] = pdf.Position;
+        pdf.Raw("14 0 obj\n<< /Type /EmbeddedFile /Length 11 0 R >>\nstream\n" + new string('x', 39) + "\nendstream\nendobj\n");
+        rows[11] = pdf.Object(11, "40");
+        rows[13] = pdf.Object(13, "(old)");
+        trailer += string.Create(CultureInfo.InvariantCulture, $" /Prev {pdf.Table(16, rows, trailer)}");
+        var length = data.Length.ToString(CultureInfo.InvariantCulture);
 
-        if (writer == "an older revision")
+        if (lengthAt == "before the stream")
         {
-            rows[14] = pdf.Position;
-            pdf.Raw("14 0 obj\n<< /Type /EmbeddedFile /Length 11 0 R >>\nstream\n" + new string('x', 39) + "\nendstream\nendobj\n");
-            rows[11] = pdf.Object(11, "40");
-            rows[13] = pdf.Object(13, "(old)");
-            trailer += string.Create(CultureInfo.InvariantCulture, $" /Prev {pdf.Table(15, rows, trailer)}");
+            rows[11] = pdf.Object(11, length);
         }
 
         rows[14] = pdf.Position;
-        pdf.Raw("14 0 obj\n<< /Type /EmbeddedFile /Length 11 0 R >>\nstream\n" + data + "endstream endobj ");
+        pdf.Raw("14 0 obj\n<< /Type /EmbeddedFile /Length 11 0 R >>\nstream\n");
+        var dataStart = pdf.Position;
+        pdf.Raw(data + "endstream endobj ");
         rows[13] = pdf.Position;
         pdf.Raw("13 0 obj (real) endobj\n");
-        rows[11] = pdf.Object(11, data.Length.ToString(CultureInfo.InvariantCulture));
-        pdf.Table(15, rows, trailer);
+
+        if (lengthAt == "after the stream")
+        {
+            rows[11] = pdf.Object(11, length);
+        }
+        else if (lengthAt != "before the stream")
+        {
+            rows[11] = pdf.Position;
+            pdf.Raw("11\n0\nobj\n" + length + "\nendobj\n");
+        }
+
+        rows[15] = pdf.Position;
+        pdf.Raw("15 0 obj\n<< /Length 3 >>\nstream\nabc\nendstream\nendobj\n");
+        pdf.Table(16, rows, trailer);
+        var written = Encoding.Latin1.GetString(pdf.Bytes);
+        var inner = written.IndexOf("LLLLLLL", StringComparison.Ordinal);
+
+        if (inner >= 0)
+        {
+            var innerData = written.IndexOf("stream\n", inner, StringComparison.Ordinal) + "stream\n".Length;
+            var fifteenData = written.IndexOf("abc\nendstream", written.IndexOf("15 0 obj", StringComparison.Ordinal), StringComparison.Ordinal) + "abc\n".Length;
+            written = written.Replace("LLLLLLL", (fifteenData - innerData).ToString("D7", CultureInfo.InvariantCulture), StringComparison.Ordinal);
+        }
+
         var options = new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxXRefSectionLength = 16 } };
 
-        using var document = PdfDocument.Open(pdf.Bytes, options);
+        using var document = PdfDocument.Open(Encoding.Latin1.GetBytes(written), options);
 
+        var memo = document.Reader.GetScanMemo();
+        document.IsEncrypted.Should().BeFalse();
+        document.Trailer.ContainsKey(PdfName.Get("Encrypt")).Should().BeFalse();
         document.GetObject(new PdfObjectId(13)).AsText().Should().Be("real");
         document.GetObject(new PdfObjectId(12)).AsText().Should().Be("early");
+        document.GetObject(new PdfObjectId(15)).AsStream().Required().GetRawBytes().Length.Should().Be(3);
+        document.GetObject(new PdfObjectId(14)).AsStream().Required().GetRawBytes().Length.Should().Be(data.Length);
         document.WasRepaired.Should().BeTrue();
-        document.Diagnostics.Should().Contain(diagnostic => diagnostic.Code == PdfDiagnosticCodes.LimitXRefSectionLength);
+        document.Diagnostics.Select(entry => entry.Code).Should().Contain(PdfDiagnosticCodes.LimitXRefSectionLength).And.NotContain(PdfDiagnosticCodes.LimitRebuildReads);
+        memo.ReadsBounded.Should().BeFalse();
+        Headers(memo, dataStart, dataStart + data.Length).Should().BeEmpty();
+
+        foreach (var number in new[] { 1, 2, 11, 12, 13, 14, 15 })
+        {
+            document.Reader.Index.TryGet(number, out var entry).Should().BeTrue();
+            document.Reader.PositionOf(entry).Should().Be(
+                Headers(memo, 0, long.MaxValue).Last(header => header.Number == number).Position, "the rebuild takes the memo's last header of object {0}", number);
+        }
+
+        static List<ScannedHeader> Headers(ScanMemo memo, long from, long to)
+        {
+            var headers = new List<ScannedHeader>();
+
+            foreach (var header in memo.HeadersWithin(from, to))
+            {
+                headers.Add(header);
+            }
+
+            return headers;
+        }
     }
 
     [Fact]
@@ -4984,6 +5193,17 @@ public class ReaderLimitsTests
         Encoding.Latin1.GetString(file).IndexOf(text, StringComparison.Ordinal);
 
     /// <summary>
+    /// A note a writer puts in an attached file's length object, object 11, before its integer: the rebuild's scan reads
+    /// such an object within 64 bytes of its header alone, and with the note cannot read the length there, so that it
+    /// cannot confirm the attached file's indirect length, and reads its data as before (#363).
+    /// </summary>
+    private const string LengthNote = "% the length of the attached file's data, which its writer filled in once it had written it\n";
+
+    /// <summary>Writes object 11, holding <paramref name="length"/> after <see cref="LengthNote"/>, and gives where it starts.</summary>
+    private static long NotedLength(HandWrittenFile pdf, int length) =>
+        pdf.Object(11, LengthNote + length.ToString(CultureInfo.InvariantCulture));
+
+    /// <summary>
     /// A sound document that reaches one guard — but for the damage that sets off a rebuild, for a guard only a rebuild
     /// reaches —: the limits that reach it, the limits that read it whole, what reading it observes, what the guard
     /// reports, and what a whole read still does (<see cref="WholeReports"/>).
@@ -5242,7 +5462,8 @@ public class ReaderLimitsTests
         private static Case ManySpelledStreams()
         {
             // A file with no cross-reference table, which the reader rebuilds. Object 10, an attached file with an indirect
-            // /Length, spells six streams in its data whose direct lengths all end where 64 KiB of spaces start: the scan,
+            // /Length whose object holds a note before its length, which the scan cannot read there (#363), spells six
+            // streams in its data whose direct lengths all end where 64 KiB of spaces start: the scan,
             // which cannot confirm object 10, reads its data as objects, and reads through the spaces for each spelled stream
             // to confirm it, four times the file by the fifth, which it leaves unconfirmed. Object 30, an attached PDF file,
             // has a direct length 70 spaces before its endstream, which a first read cannot see past; its data holds a stream
@@ -5265,7 +5486,7 @@ public class ReaderLimitsTests
             const string Inner = "%PDF-1.4\n5 0 obj\n<< /Length 3 >>\nstream\nabc\nendstream\nendobj\n% the attached file's last line";
             var text = new StringBuilder("%PDF-1.7\n1 0 obj\n" + Catalog + "\nendobj\n2 0 obj\n" + Pages + "\nendobj\n")
                 .Append("10 0 obj\n<< /Type /EmbeddedFile /Length 11 0 R >>\nstream\n").Append(data).Append("endstream\nendobj\n")
-                .Append(CultureInfo.InvariantCulture, $"11 0 obj\n{data.Length}\nendobj\n")
+                .Append(CultureInfo.InvariantCulture, $"11 0 obj\n{LengthNote}{data.Length}\nendobj\n")
                 .Append(CultureInfo.InvariantCulture, $"30 0 obj\n<< /Type /EmbeddedFile /Length {Inner.Length} >>\nstream\n{Inner}")
                 .Append(' ', 70).Append("endstream endobj 31 0 obj (real) endobj\ntrailer\n<< /Root 1 0 R >>\n%%EOF\n");
             var file = Encoding.Latin1.GetBytes(text.ToString());
