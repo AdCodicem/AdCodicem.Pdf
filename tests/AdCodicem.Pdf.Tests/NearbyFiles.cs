@@ -38,6 +38,16 @@ internal static class NearbyFiles
         + "4 0 obj (fake four) endobj\n8 0 obj << /Length 3 >> stream\nabc\nendstream endobj\n";
 
     /// <summary>
+    /// Object 4, <c>(real four)</c>, then a stream, object 7, that lost its endstream and whose length's object the file
+    /// lacks, whose data quotes the word <c>xref</c> in a string, then writes object 4 again, <c>(fake four)</c>, its number
+    /// glued to a sign, which a load's search for where the data ends does not stop at; then object 9 and an intact
+    /// stream (#372).
+    /// </summary>
+    public const string FourPastAKeywordInAString =
+        "4 0 obj (real four) endobj\n7 0 obj << /Length 8 0 R >> stream\nBT (see xref) Tj ET\n+4 0 obj (fake four) endobj\n" +
+        "9 0 obj (nine) endobj\n10 0 obj << /Length 3 >> stream\nabc\nendstream endobj\n";
+
+    /// <summary>
     /// Object 4, <c>(outer four)</c>, then an attached PDF file, object 12, whose indirect length object 13 holds after it,
     /// and which writes objects of its own: 13, which holds 5, then 2, a stream, then 4, <c>(inner four)</c> (#366).
     /// </summary>

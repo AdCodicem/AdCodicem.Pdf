@@ -673,10 +673,14 @@ internal sealed partial class PdfFileReader : IPdfObjectSource, IPdfStreamDataPr
     /// that window holds, which it searches first; the white space past a declared length, or past the first
     /// <c>endstream</c> of such data, that a first read cannot see past for an <c>endobj</c> (<see cref="IsEndObjAt"/>); and
     /// the bytes swept for comments and strings past where a load ends such data (<see cref="SweepForKinds"/>), every byte
-    /// counted, those the window holds included. First reads that tell a place at once are not among them: of 64 bytes at
-    /// most after a length the scan took from the file's bytes, read no further (<see cref="SignificantPastLength"/>), at an
-    /// <c>endstream</c>, where an <c>endobj</c> may follow a length or such an <c>endstream</c>, at a length's object, and at
-    /// a stream's data's start (<see cref="StartsAttachedFile"/>).
+    /// counted, those the window holds included; the bytes searched for the end of the line where the scan stops reading such
+    /// data as the bytes give it (<see cref="IsOnRawLine"/>), and those read before an <c>xref</c> or a <c>trailer</c>
+    /// keyword to tell whether it starts its line (<see cref="StartsLine"/>), every byte counted too. First reads that tell
+    /// a place at once are not among them: of 64 bytes at most after a length the scan took from the file's bytes, read no
+    /// further (<see cref="SignificantPastLength"/>), at an <c>endstream</c>, where an <c>endobj</c> may follow a length or
+    /// such an <c>endstream</c>, where the next object's header may follow an attached file's length instead
+    /// (<see cref="EndsObjectAt"/>), at a length's object, and at a stream's data's start
+    /// (<see cref="StartsAttachedFile"/>).
     /// </summary>
     private long _scanKindBytes;
 
