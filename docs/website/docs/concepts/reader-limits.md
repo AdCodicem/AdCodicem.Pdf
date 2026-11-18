@@ -73,7 +73,8 @@ section's rows would stand for them.
 
 What a guard leaves out of the cross-reference index — the oldest sections of a long chain, the rows past a long
 table's bound, the objects past the most the index holds, the objects whose headers a rebuild's scan may have left in
-data it no longer reads once it has read to confirm streams' lengths as much as `MaxRebuildReadPasses` lets it — is no damage
+data it no longer reads once it has read past streams' direct lengths, to confirm them, as much as `MaxRebuildReadPasses`
+lets it — is no damage
 either. Those objects read as null, unknown rather than missing, until you raise the limit; the reader does not rebuild
 the index for them, as it would for a file whose index is broken, since a rebuild would report a sound file as damaged
 and could lose what the chain had read.
@@ -180,15 +181,17 @@ joined as it is lost to the last one lost where the two meet —, past which eve
 is looked for by rebuilding the index: a valid file's sections lose none ([#208](https://github.com/AdCodicem/AdCodicem.Pdf/issues/208),
 [#210](https://github.com/AdCodicem/AdCodicem.Pdf/issues/210)). Those stay internal constants, since lifting them would
 let nothing more be read, and each says where it is declared why no valid file reaches it. The scan that rebuilds the
-index counts what it reads to confirm streams apart, and three ways. The reads that confirm a stream's direct
-`/Length` decide which streams it confirms: a valid file's own streams spend about twice the file of them, but the
-streams an attached file's bytes spell inside a stream's data the scan does not confirm count too, and can spend four
-times the file. The reads that confirm an indirect `/Length` look for its object in the file's bytes, a few objects
-before the stream or within a mebibyte past its data: a valid file's length objects lie there, but one in an object
-stream is never found, and a file of many such streams can have that mebibyte searched four times the file over. Both
-decide what a rebuild serves, so they are a guard, `MaxRebuildReadPasses`, each counted apart against it
-([#363](https://github.com/AdCodicem/AdCodicem.Pdf/issues/363)); once either reaches it, the scan reads the data of each
-stream it cannot confirm up to its first `endstream`, rather than as objects. The reads that tell only how the searches near a
+index counts what it reads apart, and three ways. The reads that confirm a stream's direct `/Length` decide which
+streams it confirms: a valid file's own streams spend about twice the file of them, but the streams an attached file's
+bytes spell inside a stream's data the scan does not confirm count too, and can spend four times the file, so they are
+a guard, `MaxRebuildReadPasses`; once it is reached, the scan reads the data of each stream it cannot confirm up to its
+first `endstream`, rather than as objects. The reads that confirm an indirect `/Length` look for its object in the
+file's bytes, a few objects before the stream or the first object after it, where writers put it, and have a budget
+of their own: an internal constant, as are the few objects and the bytes they look through, since a valid file reaches
+that search only through a rebuild a reported guard sent it to, which raising that guard spares, and past those bounds
+a stream is read as before the search existed, nothing reported
+([What cannot be lifted](../reference/reader-limits.md#what-cannot-be-lifted),
+[#363](https://github.com/AdCodicem/AdCodicem.Pdf/issues/363)). The reads that tell only how the searches near a
 row or an offset rank a header found in such data ([Lazy reading](lazy-reading.md#what-opening-actually-does)) have four
 times the file of their own, an internal constant: what a rebuild serves does not hang on them, a rebuild's own scan
 makes none of them, and those searches run only where a row or an offset is off

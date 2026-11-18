@@ -192,10 +192,10 @@ internal sealed partial class PdfFileReader
     /// <see cref="PdfReaderLimits.MaxRebuildReadPasses"/> lets them, the scan reads such data as an intact stream's
     /// instead, up to its first <c>endstream</c>, nothing taken there (#361): the streams an attached file's bytes spell
     /// there would otherwise go on spending them. The reads that confirm indirect lengths have an internal bound of their
-    /// own (<see cref="LengthSearchReadPasses"/>), past which a stream is read as before they existed. Where the bytes show that no <c>endstream</c>
-    /// follows such a length, the memo holds what the scan takes past where a load ends the data as taken between
-    /// objects, as a scan between objects would take it, a header or a keyword that a comment or a string between objects
-    /// holds there, swept from that end, held as taken in the data (<see cref="KindAt"/>, <see cref="TakeCleanSwept"/>):
+    /// own (<see cref="LengthSearchReadPasses"/>), past which a stream is read as before they existed. Where the bytes show
+    /// that no <c>endstream</c> follows such a length, the memo holds what the scan takes past where a load ends the data
+    /// as taken between objects, as a scan between objects would take it, a header or a keyword that a comment or a string
+    /// between objects holds there, swept from that end, held as taken in the data (<see cref="KindAt"/>, <see cref="TakeCleanSwept"/>):
     /// past where <see cref="DataEndWithoutEndStream"/> says, for a direct <c>/Length</c>; for an indirect one, once its
     /// object, read in the file's bytes, shows it (<see cref="EndDataAtLengthObject"/>, <see cref="EndDataWithLength"/>),
     /// or, for one whose object the scan never reads, past where a load ends the data without a length, or past an
@@ -1877,8 +1877,9 @@ internal sealed partial class PdfFileReader
     /// that where the piece ends changes neither what the search spends nor what it finds (#171). A header is read as the
     /// scan reads one, not looked for as the text <c>N G obj</c>: a writer that puts each token on a line of its own,
     /// <c>9</c>, <c>0</c> and <c>obj</c>, wrote 30 streams of a corpus file so, whose length objects a search for the
-    /// text missed, each search reading a mebibyte past its stream, so that a rebuild reached the guard. A writer that
-    /// puts the length objects in an object stream writes none past the stream: the first header tells, a few bytes on.
+    /// text missed, each search reading a mebibyte past its stream, so that a rebuild's searches spent their bound. A
+    /// writer that puts the length objects in an object stream writes none past the stream: the first header tells, a few
+    /// bytes on.
     /// </remarks>
     private long FindLengthHeader(long dataStart, long from, long lengthObject, bool attached, ReadOnlySpan<byte> span, long windowStart)
     {
@@ -1943,8 +1944,9 @@ internal sealed partial class PdfFileReader
 
     /// <summary>
     /// How many bytes past a stream's data's first <c>endstream</c> the search for its length's object reads (<see
-    /// cref="FindLengthHeader"/>): a piece of the scan, as far as writers put a length object after its stream. Not a
-    /// guard (<see cref="ConfirmIndirectLength"/>): a length object farther leaves the stream read as before.
+    /// cref="FindLengthHeader"/>): a piece of the scan, as far as writers put a length object after an attached file, whose
+    /// own objects lie between; past another stream's data, the first header within it decides. Not a guard
+    /// (<see cref="ConfirmIndirectLength"/>): a length object farther leaves the stream read as before.
     /// </summary>
     private const int LengthHeaderSearchLength = ScanChunkSize;
 
@@ -2543,7 +2545,10 @@ internal sealed partial class PdfFileReader
         /// <summary>How far the search for <see cref="RawLineEnd"/> has read, finding no end of line.</summary>
         public long RawLineSearched;
 
-        /// <summary>How many of the last values the scan passed it keeps (<see cref="Values"/>): a power of two.</summary>
+        /// <summary>
+        /// How many of the last values the scan passed it keeps (<see cref="Values"/>): a power of two. Not a guard
+        /// (<see cref="ConfirmIndirectLength"/>): a length object more values back leaves the stream read as before.
+        /// </summary>
         public const int ValueCount = 8;
 
         /// <summary>
