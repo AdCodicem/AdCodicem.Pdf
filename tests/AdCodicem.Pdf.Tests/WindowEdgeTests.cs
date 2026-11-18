@@ -539,25 +539,24 @@ public class WindowEdgeTests
     [InlineData(100, 0, 0, false, false)]
     [InlineData(100, -2, 0, true, false)]
     [InlineData(100, 2, 0, true, false)]
-    [InlineData(100, 20, 0, true, false)]
-    [InlineData(PdfFileReader.InitialObjectWindow - 65, 0, 0, false, false)]
-    [InlineData(PdfFileReader.InitialObjectWindow - 64, 0, 0, false, false)]
-    [InlineData(PdfFileReader.InitialObjectWindow - 100, 0, 0, false, false)]
-    [InlineData(PdfFileReader.InitialObjectWindow - 40, 0, 0, false, false)]
-    [InlineData(100, 0, PdfFileReader.InitialObjectWindow, false, false)]
-    [InlineData(100, -2, PdfFileReader.InitialObjectWindow, false, true)]
-    [InlineData(PdfFileReader.InitialObjectWindow - 100, 0, PdfFileReader.InitialObjectWindow, false, false)]
-    [InlineData(PdfFileReader.InitialObjectWindow - 40, 0, PdfFileReader.InitialObjectWindow, false, false)]
-    [InlineData(PdfFileReader.InitialObjectWindow - 5, 0, PdfFileReader.InitialObjectWindow, false, true)]
-    [InlineData(PdfFileReader.InitialObjectWindow - 40, 0, 10_000, false, false)]
-    public void A_dictionary_whose_stream_keyword_lies_past_a_header_placed_in_its_comments_ends_there_wherever_the_windows_end(
+    [InlineData(PdfFileReader.InitialObjectWindow - 8, 0, 0, false, false)]
+    [InlineData(PdfFileReader.InitialObjectWindow - 7, 0, 0, true, false)]
+    [InlineData(PdfFileReader.InitialObjectWindow - 4, 0, 0, true, false)]
+    [InlineData(PdfFileReader.InitialObjectWindow - 3, 0, 0, true, false)]
+    [InlineData(PdfFileReader.InitialObjectWindow - 2, 0, 0, true, false)]
+    [InlineData(PdfFileReader.InitialObjectWindow - 1, 0, 0, true, false)]
+    [InlineData(100, 0, 10_000, false, false)]
+    [InlineData(PdfFileReader.InitialObjectWindow - 7, 0, 10_000, false, true)]
+    [InlineData(100, 0, PdfFileReader.InitialObjectWindow, false, true)]
+    public void A_dictionary_whose_stream_keyword_lies_past_the_window_is_read_whole_unless_the_window_holds_a_header_placed_past_it(
         int headerAt, int rowShift, int guard, bool stream, bool cut)
     {
         // Object 5's dictionary, then more comment lines than the window holds, then its stream keyword; the table places
-        // object 6 at a header a comment line holds headerAt bytes into object 5, or rowShift bytes from it. Object 5 ends at
-        // that header, a dictionary, whether the first window holds its tokens or a larger one does, and reaches no guard; a
-        // row that is no header's start leaves the stream to be read, and a guard that keeps the window from holding the
-        // header's tokens is reached, as it was before (#362).
+        // object 6 at a header a comment line holds headerAt bytes into object 5, or rowShift bytes from it. Where the window
+        // holds that header's tokens and the byte after them, short of the largest window MaxObjectLength allows, object 5 is
+        // kept as read, a dictionary, and reaches no guard; a row that is no header's start, or a header the window's edge
+        // cuts, leaves the window to grow and read the stream; and the largest window reaches the guard, which is reported,
+        // whatever header it holds (#362).
         var file = new HandWrittenFile();
         var rows = new Dictionary<int, long>
         {
@@ -584,137 +583,116 @@ public class WindowEdgeTests
         document.Diagnostics.Select(entry => entry.Code).Should().Equal(cut ? [PdfDiagnosticCodes.LimitObject] : []);
     }
 
-    [Theory]
-    [InlineData(50)]
-    [InlineData(110)]
-    public void A_string_a_header_placed_in_its_span_ends_is_cut_there_wherever_the_windows_end(int fromEdge)
-    {
-        // Object 5's string runs past the window a load starts with, and holds a header the table places fromEdge bytes short
-        // of the edge of the window eight times larger: a window that holds the whole string but not that header and the
-        // bytes past it grows, so that the string is cut at the header as where that window holds them (#362).
-        var file = new HandWrittenFile();
-        var rows = new Dictionary<int, long>
-        {
-            [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),
-            [2] = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"),
-            [ObjectNumber] = file.Position,
-        };
-        var row = (8 * Window) - fromEdge;
-        const string Head = "5 0 obj\n(";
-        file.Raw(Head + new string('c', row - Head.Length - 1) + "\n");
-        rows[6] = file.Position;
-        file.Raw("6 0 obj ) endobj\n");
-        file.Table(7, rows, "/Size 7 /Root 1 0 R");
-        using var document = PdfDocument.Open(file.Bytes);
-
-        var read = document.GetObject(new PdfObjectId(ObjectNumber));
-
-        read.Should().BeOfType<PdfString>().Which.Length.Should().Be(row - Head.Length);
-        document.Diagnostics.Should().ContainSingle(entry => entry.Code == PdfDiagnosticCodes.SyntaxTruncatedObject)
-            .Which.Message.Should().StartWith("The next object the index places started inside a literal string");
-        document.Reader.IsEndObjMissing(ObjectNumber, out _).Should().BeFalse();
-    }
-
-    [Theory]
-    [InlineData(0, false)]
-    [InlineData(2 * PdfFileReader.InitialObjectWindow, true)]
-    public void A_header_placed_in_a_string_whose_tokens_lie_past_the_largest_window_reaches_the_guard(int guard, bool cut)
-    {
-        // Object 5's string runs past the window a load starts with and closes within one twice as large, endobj after it; the
-        // table places object 6 at a header its last line holds, whose number a comment, which holds the string's end and
-        // endobj, parts from the rest, written past that window's edge. A window that holds the header's tokens cuts the
-        // string at it; one MaxObjectLength keeps from holding them cannot say whether the header starts there, and reaches
-        // the guard, as where the window's edge cuts the parse (#362).
-        var file = new HandWrittenFile();
-        var rows = new Dictionary<int, long>
-        {
-            [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),
-            [2] = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"),
-            [ObjectNumber] = file.Position,
-        };
-        const string Head = "5 0 obj\n(";
-        file.Raw(Head + new string('c', Window + 100) + "\n");
-        rows[6] = file.Position;
-        file.Raw("6 %) endobj\n" + new string(' ', 2 * Window) + "\n0 obj (six) endobj\n");
-        file.Table(7, rows, "/Size 7 /Root 1 0 R");
-        var limits = PdfReaderLimits.Default;
-        using var document = PdfDocument.Open(
-            file.Bytes, new PdfReaderOptions { Limits = guard > 0 ? limits with { MaxObjectLength = guard } : limits });
-
-        var read = document.GetObject(new PdfObjectId(ObjectNumber));
-
-        read.Should().BeOfType<PdfString>().Which.Length.Should().Be(Window + 101 + (cut ? "6 %".Length : 0));
-        document.Reader.IsCutAtLimit(ObjectNumber).Should().Be(cut);
-        document.Diagnostics.Select(entry => entry.Code).Should().Equal(
-            cut ? PdfDiagnosticCodes.LimitObject : PdfDiagnosticCodes.SyntaxTruncatedObject);
-    }
-
     [Fact]
-    public void An_object_found_near_its_row_reads_past_the_header_of_another_object_its_row_places_it_at()
+    public void A_header_at_an_objects_own_row_past_its_value_does_not_keep_it_from_being_read_on()
     {
-        // Object 5's row places it at the header of object 9 its own string holds, past where its value starts; the search
-        // near the row finds its header. That row is its own, and ends no data: the string runs past the window a load starts
-        // with to its closing parenthesis (#362).
+        // Object 5's row places it at the header of object 9 a comment past its dictionary holds; the search near the row
+        // finds its header. That row is its own, and keeps no window from growing: the stream keyword past the comment lines
+        // makes object 5 a stream (#362).
         var file = new HandWrittenFile();
         var rows = new Dictionary<int, long>
         {
             [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),
             [2] = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"),
         };
-        file.Raw("5 0 obj\n(abc\n");
+        file.Raw("5 0 obj\n<< /Length 3 >>\n% ");
         rows[ObjectNumber] = file.Position;
-        file.Raw("9 0 obj\n" + new string('c', Window) + ")\nendobj\n");
+        file.Raw("9 0 obj << >>\n%" + new string('c', Window) + "\nstream\nabc\nendstream\nendobj\n");
         file.Table(10, rows, "/Size 10 /Root 1 0 R");
         using var document = PdfDocument.Open(file.Bytes);
 
-        var read = document.GetObject(new PdfObjectId(ObjectNumber));
-
-        read.Should().BeOfType<PdfString>().Which.Length.Should().Be("abc\n9 0 obj\n".Length + Window);
+        document.GetObject(new PdfObjectId(ObjectNumber)).Should().BeOfType<PdfStream>();
     }
 
     [Theory]
-    [InlineData(PdfFileReader.InitialObjectWindow - 3)]
-    [InlineData(PdfFileReader.InitialObjectWindow + 100)]
-    public void An_object_stream_the_chain_places_a_byte_short_of_its_header_is_read_as_a_stream_there_after_a_rebuild(int streamAt)
+    [InlineData(true)]
+    [InlineData(false)]
+    public void Rows_past_a_value_whose_lexing_crosses_lines_to_a_word_the_window_cuts_leave_a_header_after_them_to_count(bool header)
     {
-        // Object stream 5's dictionary runs past the window a load starts with, its stream keyword streamAt bytes from its
-        // row, which lies a byte short of its header; a rebuild places it at that header. A reading where the chain places
-        // it, as the validator's of an object stream's header, took its own header for the next object's, ended its data
-        // there, and read a dictionary: the object stream was reported broken (#362).
+        // Object 5's dictionary, then comment lines "% 7 % c" the table places objects 100 to 139 at the integers of, then a
+        // line holding object 6's header, which the table places, then a word longer than the window. The lexing from each
+        // integer crosses the lines after it to that word, which is no generation: no header starts there, and the header
+        // after them keeps object 5 as read, a dictionary whose endobj is unseen. Without that header the window grows until
+        // it holds the word, which takes the place of endobj (#362).
         var file = new HandWrittenFile();
-        var catalog = file.Object(1, "<< /Type /Catalog /Pages 2 0 R /X 10 0 R >>");
-        var pages = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>");
-        file.Raw("% no header of object 3 within reach\n");
-        var nowhere = file.Position - 10;
-        var row = file.Position;
-        const string Members = "10 0 (member ten)";
-        var head = new StringBuilder("\n5 0 obj\n<< /Type /ObjStm /N 1 /First 5 /Length 17 /Pad [");
-
-        while (head.Length < streamAt - 8)
+        var rows = new Dictionary<int, long>
         {
-            head.Append("0 ");
+            [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"),
+            [ObjectNumber] = file.Position,
+        };
+        file.Raw("5 0 obj\n<< /Length 3 >>\n");
+
+        for (var number = 100; number < 140; number++)
+        {
+            file.Raw("% ");
+            rows[number] = file.Position;
+            file.Raw("7 % c\n");
         }
 
-        head.Append(' ', streamAt - 5 - head.Length).Append("] >>\n");
-        file.Raw(head + "stream\n" + Members + "\nendstream\nendobj\n");
-        var rows = new Dictionary<int, (int Type, long Field2, int Field3)>
+        if (header)
         {
-            [1] = (1, catalog, 0),
-            [2] = (1, pages, 0),
-            [3] = (1, nowhere, 0),
-            [ObjectNumber] = (1, row, 0),
-            [10] = (2, ObjectNumber, 0),
-        };
-        file.CrossReferenceStream(9, 11, rows, "/Root 1 0 R");
+            file.Raw("% ");
+            rows[6] = file.Position;
+            file.Raw("6 0 obj << >>\n");
+        }
+
+        file.Raw(new string('x', 2 * Window) + "\nendobj\n");
+        file.Table(140, rows, "/Size 140 /Root 1 0 R");
         using var document = PdfDocument.Open(file.Bytes);
 
-        document.GetObject(new PdfObjectId(3)).Should().BeSameAs(PdfNull.Instance);
-        var report = new PdfValidator().Validate(document);
+        var read = document.GetObject(new PdfObjectId(ObjectNumber));
 
-        document.WasRepaired.Should().BeTrue();
-        document.GetObject(new PdfObjectId(ObjectNumber)).Should().BeOfType<PdfStream>();
-        document.GetObject(new PdfObjectId(10)).AsText().Should().Be("member ten");
-        report.Findings.Should().NotContain(finding => finding.RuleId == PdfValidationRuleIds.XRefObjectStreamBroken);
+        read.AsDictionary().Required().GetInteger(PdfName.Length).Should().Be(3);
+        document.Reader.IsEndObjMissing(ObjectNumber, out _).Should().Be(!header);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void A_row_inside_a_value_the_first_window_cuts_keeps_it_from_being_read_whole(bool rowsInHeaderGap)
+    {
+        // Object 10's string runs past the window a load starts with; the table places a row inside it, at an integer whose
+        // lexing crosses only comment lines up to the table — or places objects 11 to 40 at the integers of the comment lines
+        // that part object 10's header tokens, each with that header and value. A row inside a value is not past its end: the
+        // window grows, and the string is read whole, its endobj after it (#362).
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"),
+            [10] = file.Position,
+        };
+        file.Raw("10\n");
+
+        for (var number = 11; number <= 40 && rowsInHeaderGap; number++)
+        {
+            file.Raw("%");
+            rows[number] = file.Position;
+            file.Raw(string.Create(CultureInfo.InvariantCulture, $"{number}\n"));
+        }
+
+        file.Raw("0 obj ( ");
+        rows[999] = file.Position;
+        file.Raw("999\n%" + new string('x', Window) + "\n%) endobj\n");
+
+        for (var line = 0; line < 2 * Window / 100; line++)
+        {
+            file.Raw("%" + new string('z', 98) + "\n");
+        }
+
+        rows[3] = file.Object(3, "(three)");
+        file.Table(1000, rows, "/Size 1000 /Root 1 0 R");
+        using var document = PdfDocument.Open(file.Bytes);
+
+        foreach (var number in rowsInHeaderGap ? [10, 11, 40] : new[] { 10 })
+        {
+            document.GetObject(new PdfObjectId(number)).Should().BeOfType<PdfString>()
+                .Which.Length.Should().Be(" 999\n%".Length + Window + "\n%".Length);
+            document.Reader.IsEndObjMissing(number, out _).Should().BeFalse();
+        }
+
+        document.Diagnostics.Should().BeEmpty();
     }
 
     [Theory]

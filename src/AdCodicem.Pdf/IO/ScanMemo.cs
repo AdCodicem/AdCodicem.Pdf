@@ -13,9 +13,8 @@ namespace AdCodicem.Pdf.IO;
 /// </summary>
 /// <remarks>
 /// <para>
-/// A place is held in a slot of 16 bytes: where it starts, the object number, and the generation with the kind and, for a
-/// header, whether the scan found it inside another object. Places of one number, generation and traits that the scan
-/// takes one after another at one distance — a header written again
+/// A place is held in a slot of 16 bytes: where it starts, the object number, and the generation with the kind. Places
+/// of one number, generation and kind that the scan takes one after another at one distance — a header written again
 /// and again, as hostile files repeat one by the million — are held as a run, in two slots however many they are. The
 /// slots are one array, grown by doubling as the scan adds to it, never past the bound, and trimmed once it ends. A
 /// memo that is whole keeps the trailers too (<see cref="Trailers"/>): 8 bytes for each <c>trailer</c> keyword, which
@@ -70,12 +69,6 @@ internal sealed class ScanMemo
     /// The traits of the slot that ends a run: where its last place starts, and, for value, the distance between its places.
     /// </summary>
     private const int RunEndFlag = 1 << 19;
-
-    /// <summary>
-    /// The bit of a slot's traits that says the scan took its headers inside another object
-    /// (<see cref="HeaderEnumerator.CurrentFoundInside"/>).
-    /// </summary>
-    private const int InsideFlag = 1 << 20;
 
     /// <summary>How many slots a builder makes room for first.</summary>
     private const int FirstCapacity = 64;
@@ -292,12 +285,11 @@ internal sealed class ScanMemo
         public bool ReadsBounded { get; set; }
 
         /// <summary>
-        /// Adds the header the scan took at <paramref name="position"/>, inside another object where
-        /// <paramref name="inside"/> (<see cref="HeaderEnumerator.CurrentFoundInside"/>); false where the memo, or the place,
-        /// is past what it may hold (<see cref="TryCount"/>).
+        /// Adds the header the scan took at <paramref name="position"/>; false where the memo, or the place, is past what it
+        /// may hold (<see cref="TryCount"/>).
         /// </summary>
-        public bool TryAddHeader(long position, int number, int generation, ScannedPlaceKind kind, long floor, bool inside = false) =>
-            TryAdd(position, number, generation | FlagOf(kind) | (inside ? InsideFlag : 0), floor);
+        public bool TryAddHeader(long position, int number, int generation, ScannedPlaceKind kind, long floor) =>
+            TryAdd(position, number, generation | FlagOf(kind), floor);
 
         /// <summary>
         /// Adds the <c>xref</c> keyword the scan took at <paramref name="position"/>; false where the memo, or the place, is
@@ -602,13 +594,6 @@ internal sealed class ScanMemo
         /// <summary>Gets the header the enumerator stands on.</summary>
         public ScannedHeader Current { get; private set; }
 
-        /// <summary>
-        /// Gets a value indicating whether the scan took the header the enumerator stands on inside another object: in a
-        /// stretch it reads as the bytes give it, or within what the lexing of an object it could not delimit read — what a
-        /// rebuild that takes its headers from the memo notes of them (<see cref="PdfFileReader.HeaderEndingData"/>).
-        /// </summary>
-        public bool CurrentFoundInside { get; private set; }
-
         /// <summary>Moves to the next header within the range; false past the last.</summary>
         public bool MoveNext()
         {
@@ -624,7 +609,6 @@ internal sealed class ScanMemo
                         }
 
                         Current = new ScannedHeader(_next, _number, _traits & GenerationMask, KindOf(_traits));
-                        CurrentFoundInside = (_traits & InsideFlag) != 0;
                         _next += _stride;
                         return true;
                     }
@@ -654,7 +638,6 @@ internal sealed class ScanMemo
                 if ((slot.Traits & KeywordFlag) == 0)
                 {
                     Current = new ScannedHeader(slot.Start, slot.Value, slot.Traits & GenerationMask, KindOf(slot.Traits));
-                    CurrentFoundInside = (slot.Traits & InsideFlag) != 0;
                     return true;
                 }
             }
@@ -683,10 +666,7 @@ internal sealed class ScanMemo
         /// <summary>The object number of a header; 0 for a keyword; for a run's end, the distance between its places.</summary>
         public int Value = value;
 
-        /// <summary>
-        /// The generation, kind, role and whether the scan found its headers inside another object, as the flags of
-        /// <see cref="ScanMemo"/> lay them out.
-        /// </summary>
+        /// <summary>The generation, kind and role of the slot, as the flags of <see cref="ScanMemo"/> lay them out.</summary>
         public int Traits = traits;
     }
 }

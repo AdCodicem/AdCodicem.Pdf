@@ -731,14 +731,13 @@ internal sealed partial class PdfFileReader
 
     /// <summary>
     /// Determines whether a token starts at <paramref name="at"/> in <paramref name="span"/>, lexed from
-    /// <paramref name="from"/>: where its line starts (<see cref="IsTokenOnItsLine"/>), or where an object's value does
-    /// (<see cref="HeaderEndingData"/>).
+    /// <paramref name="lineStart"/>, where its line starts (<see cref="IsTokenOnItsLine"/>).
     /// </summary>
-    private static bool StartsToken(ReadOnlySpan<byte> span, int from, int at)
+    private static bool StartsToken(ReadOnlySpan<byte> span, int lineStart, int at)
     {
         // The bytes lexed run past the place, as every token that holds it does; the end of the input stops the lexing all
         // the same, and starts no token, so that no length the bytes come in keeps the loop going (invariant 4).
-        var lexer = new PdfLexer(span, from);
+        var lexer = new PdfLexer(span, lineStart);
         var token = lexer.Read();
 
         while (token.End <= at && token.Kind != PdfTokenKind.EndOfInput)
