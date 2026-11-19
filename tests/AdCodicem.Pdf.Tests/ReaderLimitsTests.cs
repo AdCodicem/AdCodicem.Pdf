@@ -20,6 +20,9 @@ public class ReaderLimitsTests
     private const string Catalog = "<< /Type /Catalog /Pages 2 0 R >>";
     private const string Pages = "<< /Type /Pages /Kids [] /Count 0 >>";
 
+    /// <summary>The data of attached file 20 in <see cref="MissedLengths"/>, which spells object 77.</summary>
+    private const string MissedData = "77 0 obj (inner) endobj\n";
+
     /// <summary>A guard for each bound of <see cref="PdfReaderLimits"/>, the trailer's reached two ways.</summary>
     public static TheoryData<string> Guards =>
         ["decoded stream", "stream length", "object", "section length", "section count", "trailer", "cross-reference stream", "index entries", "filter chain", "rebuild reads"];
@@ -1043,43 +1046,82 @@ public class ReaderLimitsTests
     [Theory]
     [InlineData(6, false)]
     [InlineData(6, true)]
+    [InlineData(5, false)]
+    [InlineData(4, false)]
     [InlineData(2, false)]
-    public void The_search_for_the_objects_of_indirect_lengths_confirms_nothing_past_its_own_bound_and_reports_nothing(int misses, bool throwOnLimit)
+    [InlineData(5, false, "0")]
+    [InlineData(2, false, null, false)]
+    public void The_search_for_the_objects_of_indirect_lengths_confirms_nothing_past_its_own_bound_and_reports_nothing(
+        int misses, bool throwOnLimit, string? named = null, bool marked = true)
     {
         // A file with no cross-reference table, read with MaxRebuildReadPasses at one. Past a comment line, attached files,
         // each with an indirect /Length naming an object the file does not define, come before attached file 20, whose
         // length object 21 follows it and whose data spells object 77, and 64 KiB of comment lines. For each miss, the
         // rebuild's scan searches the file from the stream's endstream to its end for a header of the length's number, and
-        // finds none: each search reads about the file. The searches together read four times the file at most, an
-        // internal bound: past it, with six misses, the scan confirms no more indirect lengths, and reads stream 20's data
-        // as the bytes give it, object 77 taken there, as before it looked for any length's object; with two, it confirms
-        // stream 20 and takes nothing in its data. Either way it reports nothing, and a document opened to throw opens: the
-        // guard bounds only the reads past direct lengths, which this file makes none of (#363).
-        const string Data = "77 0 obj (inner) endobj\n";
-        var text = new StringBuilder("%PDF-1.7\n1 0 obj\n" + Catalog + "\nendobj\n2 0 obj\n" + Pages + "\nendobj\n%").Append('-', 2000).Append('\n');
-
-        for (var i = 0; i < misses; i++)
-        {
-            text.Append(CultureInfo.InvariantCulture, $"{10 + i} 0 obj\n<< /Type /EmbeddedFile /Length {90 + i} 0 R >>\nstream\nabc\nendstream\nendobj\n");
-        }
-
-        text.Append("20 0 obj\n<< /Type /EmbeddedFile /Length 21 0 R >>\nstream\n").Append(Data)
-            .Append(CultureInfo.InvariantCulture, $"endstream\nendobj\n21 0 obj\n{Data.Length}\nendobj\n");
-
-        for (var line = 0; line < 1024; line++)
-        {
-            text.Append("% ").Append('-', 61).Append('\n');
-        }
-
-        var file = Encoding.Latin1.GetBytes(text.Append("trailer\n<< /Root 1 0 R >>\n%%EOF\n").ToString());
+        // finds none: each search reads about the file, a little less. The searches together read four times the file at
+        // most, an internal bound: past it, with five misses or six, the scan confirms no more indirect lengths, and reads
+        // stream 20's data as the bytes give it, object 77 taken there, as before it looked for any length's object; with
+        // four or two, it confirms stream 20 and takes nothing in its data. Either way it reports nothing, and a document
+        // opened to throw opens: the guard bounds only the reads past direct lengths, which this file makes none of (#363).
+        // A memo made after the rebuild scans the file again, its searches counted from nothing: it confirms what the
+        // rebuild confirmed. A miss whose /Length names object 0, which the scan never takes, searches and spends alike, and
+        // so does one in a file whose last bytes hold no end-of-file marker.
+        var file = MissedLengths(misses, named: named, marked: marked);
         var options = new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxRebuildReadPasses = 1 }, ThrowOnLimit = throwOnLimit };
 
         using var document = PdfDocument.Open(file, options);
 
         document.WasRepaired.Should().BeTrue();
         document.Diagnostics.Select(entry => entry.Code).Should().NotContain(PdfDiagnosticCodes.LimitRebuildReads);
-        document.Reader.GetPresence(77).Should().Be(misses == 6 ? ObjectPresence.Defined : ObjectPresence.Missing);
-        document.GetObject(new PdfObjectId(20)).AsStream().Required().GetRawBytes().Length.Should().Be(Data.Length);
+        document.Reader.GetPresence(77).Should().Be(misses >= 5 ? ObjectPresence.Defined : ObjectPresence.Missing);
+        document.GetObject(new PdfObjectId(20)).AsStream().Required().GetRawBytes().Length.Should().Be(MissedData.Length);
+        document.Reader.GetScanMemo().TryGetHeaderAt(OffsetOf(file, "77 0 obj"), out _).Should().Be(misses >= 5);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void A_search_for_a_length_s_object_stops_where_the_searches_reach_their_bound_short_of_the_object_farther_on(bool farther)
+    {
+        // The case above with four misses, which read a little less than four times the file: the search for object 21, the
+        // length's object of attached file 20, starts short of the bound, and finds the object right past the stream. Past
+        // the 64 KiB of comment lines, it reads as far as the bound lets it, and stops there: the scan reads stream 20's
+        // data as the bytes give it, object 77 taken there (#363).
+        var file = MissedLengths(4, farther ? "past the comment lines after it" : "right after it");
+
+        using var document = PdfDocument.Open(file);
+
+        document.WasRepaired.Should().BeTrue();
+        document.Reader.GetPresence(77).Should().Be(farther ? ObjectPresence.Defined : ObjectPresence.Missing);
+    }
+
+    [Theory]
+    [InlineData("before it", 18, false)]
+    [InlineData("before it", 19, true)]
+    [InlineData("past a line after it", 82, false)]
+    [InlineData("past a line after it", 83, true)]
+    [InlineData("before it", 130, false, true)]
+    [InlineData("before it", 131, true, true)]
+    public void A_search_for_a_length_s_object_is_made_and_goes_on_only_short_of_the_bound_the_searches_share(
+        string where, int padding, bool confirmed, bool confirmedFirst = false)
+    {
+        // The case above with four misses, a comment line of 25 dashes before them, and one of padding before the fourth.
+        // Object 21 written right before attached file 20: with 18 bytes of padding, the misses read exactly four times the
+        // file, the bound, and the scan neither reads object 21 among the last values it passed nor searches past the
+        // stream: it reads stream 20's data as the bytes give it, object 77 taken there; with 19, they read a byte short of the
+        // bound, and the scan confirms the stream with object 21's length. Object 21 written past a comment line after the
+        // stream, past the 64 bytes the search reads first: with 82 bytes, the misses read 64 bytes short of the bound, which
+        // that first read reaches, and no second read is made; with 83, it is, and finds object 21 (#363). Where a stream whose
+        // length its object before it confirms comes first, and an end-of-file marker that an endstream follows after each
+        // miss, the reads of the bytes past that confirmed length and past each marker a search's read cuts count too: with
+        // 130 bytes of padding, the searches read exactly the bound before object 21 is read, with 131 a byte short of it.
+        var file = MissedLengths(4, where, prefix: 25, padding: padding, confirmedFirst: confirmedFirst);
+
+        using var document = PdfDocument.Open(file);
+
+        file.Length.Should().Be((confirmedFirst ? 66_276 : where == "before it" ? 66_136 : 66_218) + padding);
+        document.WasRepaired.Should().BeTrue();
+        document.Reader.GetPresence(77).Should().Be(confirmed ? ObjectPresence.Missing : ObjectPresence.Defined);
     }
 
     [Fact]
@@ -5540,6 +5582,47 @@ public class ReaderLimitsTests
 
         table.Append(CultureInfo.InvariantCulture, $"trailer\n<< /Size 32 /Root 1 0 R >>\nstartxref\n{body.Length}\n%%EOF\n");
         return Encoding.Latin1.GetBytes(body + table);
+    }
+
+    /// <summary>
+    /// Writes a file with no cross-reference table: a comment line of <paramref name="prefix"/> dashes, then
+    /// <paramref name="misses"/> attached files whose indirect <c>/Length</c> names an object the file lacks — <paramref name="named"/>,
+    /// or a number of its own for each —, a comment line of <paramref name="padding"/> bytes before the fourth where there are
+    /// any, then attached file 20, whose data, <see cref="MissedData"/>, spells object 77, then 64 KiB of comment lines, then a
+    /// trailer, and an end-of-file marker where <paramref name="marked"/>. Object 21, the length's object of stream 20, lies
+    /// <paramref name="where"/>: right after it, before it, past a line after it, or past the comment lines after it. Where
+    /// <paramref name="confirmedFirst"/>, stream 15, whose length object 16 before it confirms, comes before the misses, and an
+    /// end-of-file marker that an endstream follows comes after each.
+    /// </summary>
+    private static byte[] MissedLengths(
+        int misses, string where = "right after it", string? named = null, bool marked = true, int prefix = 2000, int padding = 0, bool confirmedFirst = false)
+    {
+        var length = string.Create(CultureInfo.InvariantCulture, $"21 0 obj\n{MissedData.Length}\nendobj\n");
+        var text = new StringBuilder("%PDF-1.7\n1 0 obj\n" + Catalog + "\nendobj\n2 0 obj\n" + Pages + "\nendobj\n%").Append('-', prefix).Append('\n');
+        text.Append(confirmedFirst ? "16 0 obj\n3\nendobj\n15 0 obj\n<< /Length 16 0 R >>\nstream\nabc\nendstream\nendobj\n" : "");
+
+        for (var i = 0; i < misses; i++)
+        {
+            if (i == 3 && padding > 0)
+            {
+                text.Append('%').Append('p', padding).Append('\n');
+            }
+
+            var number = named ?? (90 + i).ToString(CultureInfo.InvariantCulture);
+            text.Append(CultureInfo.InvariantCulture, $"{10 + i} 0 obj\n<< /Type /EmbeddedFile /Length {number} 0 R >>\nstream\nabc\nendstream\nendobj\n")
+                .Append(confirmedFirst ? "%%EOF\nendstream\n" : "");
+        }
+
+        text.Append(where == "before it" ? length : "").Append("20 0 obj\n<< /Type /EmbeddedFile /Length 21 0 R >>\nstream\n").Append(MissedData)
+            .Append("endstream\nendobj\n").Append(where == "right after it" ? length : where == "past a line after it" ? "%" + new string('-', 80) + "\n" + length : "");
+
+        for (var line = 0; line < 1024; line++)
+        {
+            text.Append("% ").Append('-', 61).Append('\n');
+        }
+
+        text.Append(where == "past the comment lines after it" ? length : "").Append("trailer\n<< /Root 1 0 R >>\n").Append(marked ? "%%EOF\n" : "");
+        return Encoding.Latin1.GetBytes(text.ToString());
     }
 
     private static int OffsetOf(byte[] file, string text) =>

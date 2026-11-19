@@ -29,6 +29,36 @@ public class ScannedPlacesTests
     [InlineData("a header in the data of a stream whose length's object has each token on a line of its own", null)]
     [InlineData("a header in the data of a stream whose length is an object no endstream follows the length of", "Raw")]
     [InlineData("a header in the data of a stream whose length's object lies more than a mebibyte past its endstream", "Raw")]
+    [InlineData("a header in an attached PDF file whose header 59 bytes of white space precede, its length's object past the object after it", null)]
+    [InlineData("a header in the data of a stream whose PDF header 60 bytes of white space precede, its length's object past the object after it", "Raw")]
+    [InlineData("a header in the data of a stream whose subtype, not its type, is EmbeddedFile, its length's object past the object after it", "Raw")]
+    [InlineData("a header in the data of a stream whose length names object 0, which a header past the data's first endstream holds", "Raw")]
+    [InlineData("a header past the first endstream of an attached PDF file with no type whose direct length an endobj follows, its endstream lost", "Raw")]
+    [InlineData("a header in the data of a stream with no endstream, in that of a stream whose length runs past the end of the file, in that of a stream whose length's object is lost", "Raw")]
+    [InlineData("a header on a comment line that holds an object before it, past where a load ends the data of a stream with no endstream", "Raw")]
+    [InlineData("a header on the line of the endstream of a stream whose data opens a string, past where a load ends the data of a stream with no endstream", "Clean")]
+    [InlineData("a header on the line of a comment that holds the first endstream of a stream with no endstream, past such a stream whose first endstream's line ends before it", "Raw")]
+    [InlineData("a header in the data of a stream with no endstream whose length's object is lost, in an attached file's data whose length's object is lost", "Raw")]
+    [InlineData("a header in the data of a stream with no endstream, in that of a stream whose length's object, in its data, ends it past that stream's start", "Raw")]
+    [InlineData("a header past an attached PDF file's object of its length's number, past the file's first endstream and within the data that length gives", "Clean")]
+    [InlineData("a header in the data of a stream whose header an attached file's data holds, the attached file's length's object after both ending it there", "Raw")]
+    [InlineData("a header past an attached PDF file that lost its endstream and endobj, its direct length ending where a reference follows", "Raw")]
+    [InlineData("a header on the line a string that runs over a line ends, past the line of a comment that holds the first endstream of a stream with no endstream", "Clean")]
+    [InlineData("a header on the line a string that runs over two lines ends, past the line of a comment that holds the first endstream of a stream with no endstream", "Clean")]
+    [InlineData("a header on the line a string that runs over a line ends, past the line of the first endstream of a stream with no endstream whose length's object follows", "Clean")]
+    [InlineData("a header past two xref keywords that start their lines, between a stream with no endstream, whose length's object is lost, and the next header", "Clean")]
+    [InlineData("a header in an attached PDF file whose length's object before it holds a length past the end of the file, its endstream there", "Raw")]
+    [InlineData("a header past an attached PDF file that lost its endstream and endobj, whose length's object after it ends its data where that object starts", "Clean")]
+    [InlineData("a header past an attached PDF file that lost its endstream and endobj, its direct length ending where a word and a number follow", "Raw")]
+    [InlineData("a header on the line a string that runs over a line ends, its first byte a mebibyte's sixteenth and a byte past the object that opens it", "Clean")]
+    [InlineData("a header on the line of a comment that holds the first endstream of an attached file that lost its endstream, the header of its length's object", "Clean")]
+    [InlineData("a header in the data of a stream with no length, on the line of its first endstream, in the data of a stream whose length's object is lost", "Raw")]
+    [InlineData("a header glued to a sign past an xref keyword that starts its line, in a stream with no endstream, a stream glued to a sign past it", "Raw")]
+    [InlineData("a header in the data of a stream with no endstream whose length's object is lost, written again where that stream's data starts", "Raw")]
+    [InlineData("a header in the data of a stream whose length's object's obj ends a mebibyte past the data's first endstream", null)]
+    [InlineData("a header in the data of a stream whose length's object's obj ends a mebibyte and a byte past the data's first endstream", "Raw")]
+    [InlineData("a header in the data of a stream whose length's object's number starts 33 bytes past the data's first endstream, its obj 62", null)]
+    [InlineData("a header in the data of a stream whose length's object's number starts 32 bytes past the data's first endstream, its obj 62", "Raw")]
     [InlineData("a header after another in the data of an intact stream whose indirect length's object follows it", null)]
     [InlineData("a header in what a string that holds endobj runs into", "Raw")]
     [InlineData("a header past the endobj that follows the declared length of a stream with no endstream", "Clean")]
@@ -144,6 +174,9 @@ public class ScannedPlacesTests
     [InlineData("a header glued to a sign past a trailer keyword between a stream with no endstream, whose length's object is lost, and the next header", "Clean")]
     [InlineData("a header glued to a sign past a trailer keyword that starts the data of a stream with no endstream, whose length's object is lost", "Clean")]
     [InlineData("a header glued to a sign past an xref keyword more than 64 bytes of white space precede on its line, in a stream with no endstream", "Raw")]
+    [InlineData("a header glued to a sign past an xref keyword 63 bytes of white space precede on its line, in a stream with no endstream", "Clean")]
+    [InlineData("a header glued to a sign past an xref keyword that starts its line after a carriage return, in a stream with no endstream", "Clean")]
+    [InlineData("a header glued to a sign past a trailer keyword that starts its line past a thousand that do not, in a stream with no endstream", "Raw")]
     [InlineData("a header in the data of a stream of type EmbeddedFile whose direct length runs past the end of the file", "Raw")]
     [InlineData("a header past an attached PDF file that lost its endstream and endobj, its length's object next, 56 bytes of white space before it", "Clean")]
     [InlineData("a header past an attached PDF file that lost its endstream and endobj, its length's object next, 57 bytes of white space before it", "Raw")]
@@ -475,6 +508,16 @@ public class ScannedPlacesTests
             // back: the keyword is not told to start its line, and ends no data.
             "a header glued to a sign past an xref keyword more than 64 bytes of white space precede on its line, in a stream with no endstream" =>
                 "5 0 obj\n<< /Length 8 0 R >>\nstream\n0123456789\n" + new string(' ', 70) + "xref\n+9 0 obj\n(nine)\n10 0 obj\n(ten)\nendobj\n",
+            "a header glued to a sign past an xref keyword 63 bytes of white space precede on its line, in a stream with no endstream" =>
+                "5 0 obj\n<< /Length 8 0 R >>\nstream\n0123456789\n" + new string(' ', 63) + "xref\n+9 0 obj\n(nine)\n10 0 obj\n(ten)\nendobj\n",
+            "a header glued to a sign past an xref keyword that starts its line after a carriage return, in a stream with no endstream" =>
+                "5 0 obj\n<< /Length 8 0 R >>\nstream\n0123456789\rxref\n+9 0 obj\n(nine)\n10 0 obj\n(ten)\nendobj\n",
+
+            // Each trailer keyword the scan took in the data, from its start, is read back for whether it starts its line, with
+            // the reads made for the memo's kinds: a thousand that do not spend them, and the one that does, past them, is not
+            // read, and ends no data.
+            "a header glued to a sign past a trailer keyword that starts its line past a thousand that do not, in a stream with no endstream" =>
+                "5 0 obj\n<< /Length 8 0 R >>\nstream\n0123456789\n" + string.Concat(Enumerable.Repeat("a trailer ", 1000)) + "\ntrailer\n+9 0 obj\n(nine)\n10 0 obj\n(ten)\nendobj\n",
             // Stream 5 has no length, and the scan reads its data as the bytes give it up to its first endstream, or to the end
             // of the file where none follows: neither a string in it that runs past its object's end, nor the direct length
             // of a stream in it that no endstream follows, ends that data where it ends, before object 9's header.
@@ -602,6 +645,166 @@ public class ScannedPlacesTests
                 "5 0 obj\n<< /Length 6 0 R >>\nstream\n9 0 obj (inner) endobj\nendstream\nendobj\n6\n0\nobj\n22\nendobj\n",
             "a header in the data of a stream whose length is an object no endstream follows the length of" =>
                 "5 0 obj\n<< /Length 6 0 R >>\nstream\n9 0 obj (inner) endobj\nendstream\nendobj\n6 0 obj\n21\nendobj\n",
+            // Stream 7 lost its endstream and its length's object, 8, in the data of attached file 5, whose length's object, 6, is
+            // lost too: the data of an attached file holds objects of its own, and the scan awaits no length's object of a stream
+            // there, whose places stay held as taken in the attached file's data.
+            "a header in the data of a stream with no endstream whose length's object is lost, in an attached file's data whose length's object is lost" =>
+                "5 0 obj\n<< /Type /EmbeddedFile /Length 6 0 R >>\nstream\n7 0 obj\n<< /Length 8 0 R >>\nstream\n9 0 obj\n(nine)\nendobj\n",
+
+            // Stream 5 lost its endstream; its length's object, 8, which the scan meets in its data awaiting it, holds a length past
+            // which a load ends the data at object 9's header, the first it reads as one: past where the data of stream 6 starts,
+            // in what the memo counts as taken in stream 5's data. The scan awaits no length's object for stream 6, whose own is
+            // lost, and object 9's header stays held as taken in data.
+            "a header in the data of a stream with no endstream, in that of a stream whose length's object, in its data, ends it past that stream's start" =>
+                "5 0 obj\n<< /Length 8 0 R >>\nstream\n+4 0 obj (four) endobj\n+8 0 obj\n80\nendobj\n+6 0 obj\n<< /Length 10 0 R >>\nstream\n+7 0 obj (seven)\n9 0 obj\n(nine)\nendobj\n",
+
+            // Attached file 5 lost its endstream, and its length's object, 6, is lost; its own object 6, past its first endstream,
+            // holds a length that ends the data right before an endobj: an object within the data its length gives is the
+            // attached file's own, and the memo keeps the places past that first endstream as they are (#366).
+            "a header past an attached PDF file's object of its length's number, past the file's first endstream and within the data that length gives" =>
+                "5 0 obj\n<< /Type /EmbeddedFile /Length 6 0 R >>\nstream\n%PDF-1.4\n" + InnerStream + "6 0 obj\n90\nendobj\n9 0 obj (x) endobj\n",
+
+            // Object 6, after attached file 5, holds a length that ends its data where object 9's header starts, in the data of
+            // stream 7, whose header the attached file's data holds: the places between where that length ends the data and
+            // where stream 7's data starts, none, are held as taken between objects, and object 9's header stays held as taken in
+            // stream 7's data.
+            "a header in the data of a stream whose header an attached file's data holds, the attached file's length's object after both ending it there" =>
+                "5 0 obj\n<< /Type /EmbeddedFile /Length 6 0 R >>\nstream\nabc\n7 0 obj\n<< /Length 8 0 R >>\nstream\n9 0 obj\n(nine)\nendobj\nendstream\nendobj\n6 0 obj\n39\nendobj\n",
+
+            // A reference, not an object's header, follows where the direct length of attached file 5 ends its data: the length
+            // shows no end of the stream, and the places past it stay held as taken in the attached file's data.
+            "a header past an attached PDF file that lost its endstream and endobj, its direct length ending where a reference follows" => Measured(
+                "5 0 obj\n<< /Type /EmbeddedFile /Length LENGTH >>\nstream\n[[%PDF-1.4\n1 0 obj << /Type /Catalog >> endobj\n%%EOF\n]]\r\n12 0 R\n9 0 obj\n(nine)\nendobj\n"
+                + InnerStream),
+
+            // Past the line of stream 5's first endstream, a string of object 7 runs over a line, and a comment on the line it
+            // ends would hold object 9's header: the scan passes object 7, and takes the header between objects, past the line,
+            // whatever a sweep from where a load ends the data would read there. So it does where the scan awaits the length's
+            // object of stream 5 past that line, and learns where a load ends the data only past object 9.
+            "a header on the line a string that runs over a line ends, past the line of a comment that holds the first endstream of a stream with no endstream" =>
+                "5 0 obj\n<< /Length 10 >>\nstream\n0123456789\nendobj\n4 0 obj (four) endobj\n% endstream 7 0 obj (a\n%) endobj 8 0 obj (eight) endobj 9 0 obj (nine) endobj\n",
+            "a header on the line a string that runs over two lines ends, past the line of a comment that holds the first endstream of a stream with no endstream" =>
+                "5 0 obj\n<< /Length 10 >>\nstream\n0123456789\nendobj\n4 0 obj (four) endobj\n% endstream 7 0 obj (a \\\n\n%) endobj 9 0 obj (nine) endobj\n",
+            "a header on the line a string that runs over a line ends, past the line of the first endstream of a stream with no endstream whose length's object follows" =>
+                "5 0 obj\n<< /Length 8 0 R >>\nstream\n0123456789\nendobj\n4 0 obj (four) endobj\nendstream\n7 0 obj\n(a\n%) endobj 9 0 obj\n(nine)\nendobj\n8 0 obj\n10\nendobj\n",
+
+            // Two xref keywords that start their lines end stream 5's data for the memo's kinds at the first: object 9's header,
+            // between them, is held as taken between objects.
+            "a header past two xref keywords that start their lines, between a stream with no endstream, whose length's object is lost, and the next header" =>
+                "5 0 obj\n<< /Length 8 0 R >>\nstream\n0123456789\nxref\n+9 0 obj\n(nine)\nxref\n+7 0 obj\n(seven)\n10 0 obj\n(ten)\nendobj\n",
+
+            // Object 6, before attached file 5, holds a length past the end of the file: it shows no end of the data, whose places
+            // stay held as taken in it.
+            "a header in an attached PDF file whose length's object before it holds a length past the end of the file, its endstream there" =>
+                "6 0 obj\n99999\nendobj\n5 0 obj\n<< /Type /EmbeddedFile /Length 6 0 R >>\nstream\n%PDF-1.4\n9 0 obj\n(inner)\nendobj\n%%EOF\nendstream\nendobj\n",
+
+            // Object 6, right after attached file 5, holds the length of its data, which ends where that object's header starts,
+            // as a load ends the data at the next header: the places past are held as taken between objects (#366).
+            "a header past an attached PDF file that lost its endstream and endobj, whose length's object after it ends its data where that object starts" =>
+                "5 0 obj\n<< /Type /EmbeddedFile /Length 6 0 R >>\nstream\n%PDF-1.4\n1 0 obj << >> endobj\n%%EOF\n" + new string(' ', 37) + "6 0 obj\n73\nendobj\n9 0 obj (nine) endobj\n",
+
+            // A word, not an object's number, starts the header-like tokens where the direct length of attached file 5 ends its
+            // data: the length shows no end of the stream, and the places past it stay held as taken in the attached file's data.
+            "a header past an attached PDF file that lost its endstream and endobj, its direct length ending where a word and a number follow" => Measured(
+                "5 0 obj\n<< /Type /EmbeddedFile /Length LENGTH >>\nstream\n[[%PDF-1.4\n1 0 obj << /Type /Catalog >> endobj\n%%EOF\n]]\r\nx 0 obj\n9 0 obj\n(nine)\nendobj\n"
+                + InnerStream),
+
+            // As the case of object 9 on the line of a string that runs over a line, past the line of a comment that holds the
+            // first endstream of stream 5: the end of that line lies 65,537 bytes past object 7's header, where the bytes the memo
+            // reads for whether object 8's header lies on that line, in reads of 64 KiB and one byte each repeating the last byte of
+            // the one before, cross from one read to the next.
+            "a header on the line a string that runs over a line ends, its first byte a mebibyte's sixteenth and a byte past the object that opens it" =>
+                "5 0 obj\n<< /Length 10 >>\nstream\n0123456789\nendobj\n4 0 obj (four) endobj\n% endstream 7 0 obj (a" + new string('x', 65_527) +
+                "\n%) endobj 8 0 obj (eight) endobj 9 0 obj (nine) endobj\n",
+
+            // Attached file 5 lost its endstream; object 9, its length's object, lies on the line of a comment that holds the
+            // data's first endstream, which the scan reads from that endstream on: the length it holds ends the data before an
+            // endobj, short of that line, and the scan, which met object 9 past where the memo counts places as taken in the
+            // data, holds its header as it took it, between objects (#366).
+            "a header on the line of a comment that holds the first endstream of an attached file that lost its endstream, the header of its length's object" =>
+                "5 0 obj\n<< /Type /EmbeddedFile /Length 9 0 R >>\nstream\n4 0 obj (four) endobj\nendobj\n% endstream 9 0 obj\n22\nendobj\n",
+
+            // Stream 5 lost its endstream and its length's object; stream 6, with no length, in its data, lost its endstream too,
+            // whose first endstream ends the line of object 3: the places past the data's start of stream 6 are its own, and
+            // object 9's header stays held as taken in its data, whatever the wait for stream 5's length's object ends with.
+            "a header in the data of a stream with no length, on the line of its first endstream, in the data of a stream whose length's object is lost" =>
+                "5 0 obj\n<< /Length 8 0 R >>\nstream\n4 0 obj (four) endobj\n6 0 obj\n<< >>\nstream\n9 0 obj (nine) endobj\nendstream 3 0 obj (three) endobj\n",
+
+            // Stream 5's length's object is lost, and an xref keyword that starts its line in its data would end it for the memo's
+            // kinds; but the data of stream 6, whose header, glued to a sign, a load does not stop at, starts short of where a load
+            // ends stream 5's data, at object 10's header: what the scan read as stream 5's data stops there, and the places in
+            // it stay held as taken in the data.
+            "a header glued to a sign past an xref keyword that starts its line, in a stream with no endstream, a stream glued to a sign past it" =>
+                "5 0 obj\n<< /Length 8 0 R >>\nstream\n0123456789\nxref\n+9 0 obj\n(nine)\n+6 0 obj\n<< >>\nstream\nabcdefghijklmnop\n10 0 obj\n(ten)\nendobj\n",
+
+            // Stream 9, with no length, in the data of stream 5, whose length's object 8 comes past both, starts its data with a
+            // header of its own number: the memo holds the two headers of object 9 as one run, which ends where the data of
+            // stream 9 starts. Where object 8's length ends stream 5's data, the places held as taken between objects end at that
+            // start too, and the run, which reaches it, keeps its kind.
+            "a header in the data of a stream with no endstream whose length's object is lost, written again where that stream's data starts" =>
+                "5 0 obj\n<< /Length 8 0 R >>\nstream\n4 0 obj (x) endobj\n9 0 obj\n<< >>\nstream\n9 0 obj (z) endobj\nendstream\nendobj\n8 0 obj\n10\nendobj\n",
+
+            // The data of stream 5 starts with a PDF file's header past white space: within the first 64 bytes, the data is an
+            // attached file's, whose own objects lie past its first endstream, and the search for object 6 passes object 4 to
+            // read it; past them, the data is another stream's, and object 4, the first header past it, decides (#363).
+            "a header in an attached PDF file whose header 59 bytes of white space precede, its length's object past the object after it" =>
+                "5 0 obj\n<< /Length 6 0 R >>\nstream\n" + new string(' ', 59) + "%PDF-1.4\n9 0 obj (inner) endobj\nendstream\nendobj\n4 0 obj\n(four)\nendobj\n6 0 obj\n90\nendobj\n",
+            "a header in the data of a stream whose PDF header 60 bytes of white space precede, its length's object past the object after it" =>
+                "5 0 obj\n<< /Length 6 0 R >>\nstream\n" + new string(' ', 60) + "%PDF-1.4\n9 0 obj (inner) endobj\nendstream\nendobj\n4 0 obj\n(four)\nendobj\n6 0 obj\n91\nendobj\n",
+
+            // Only a /Type of EmbeddedFile says the data is an attached file's: under another key, the data is another stream's,
+            // and object 4, the first header past it, decides (#363).
+            "a header in the data of a stream whose subtype, not its type, is EmbeddedFile, its length's object past the object after it" =>
+                "5 0 obj\n<< /Subtype /EmbeddedFile /Length 6 0 R >>\nstream\n9 0 obj (inner) endobj\nendstream\nendobj\n4 0 obj\n(four)\nendobj\n6 0 obj\n22\nendobj\n",
+
+            // Object 0, the head of the free list, is no object the scan takes: its header, written 32 bytes past the data's
+            // first endstream and read where the search's second read starts, past an obj that starts no header, gives stream
+            // 5 no length (#363).
+            "a header in the data of a stream whose length names object 0, which a header past the data's first endstream holds" =>
+                "5 0 obj\n<< /Length 0 0 R >>\nstream\n9 0 obj (inner) endobj\nendstream\nendobj\n" + new string(' ', 15) + "0 0 obj\n22\nendobj\n%" + new string('-', 11) + "xobj\n",
+
+            // Data that starts with a PDF file's header is an attached file's, whatever its dictionary says: its direct length,
+            // which an endobj follows, ends it there, and the places within, past its first endstream too, are its own (#366).
+            "a header past the first endstream of an attached PDF file with no type whose direct length an endobj follows, its endstream lost" => Measured(
+                "5 0 obj\n<< /Length LENGTH >>\nstream\n[[%PDF-1.4\n" + InnerStream + "9 0 obj\n(inner)\nendobj\n%%EOF\n]]endobj\n10 0 obj\n(ten)\nendobj\n"),
+
+            // Stream 5 lost its endstream and its length's object, 8: the scan awaits it in stream 5's data, up to where the data
+            // of stream 6 starts, whose direct length runs past the end of the file. Stream 7's data starts in stream 6's, past
+            // where the wait stops: the scan awaits no length's object for it, and the memo counts what follows as taken in data.
+            "a header in the data of a stream with no endstream, in that of a stream whose length runs past the end of the file, in that of a stream whose length's object is lost" =>
+                "5 0 obj\n<< /Length 8 0 R >>\nstream\n6 0 obj\n<< /Length 7000 >>\nstream\n7 0 obj\n<< /Length 10 0 R >>\nstream\n9 0 obj\n(nine)\nendobj\n",
+
+            // Past where a load ends stream 5's data, short of its first endstream, the sweep for the memo's kinds tells each
+            // place. An object whose header a comment holds is not passed by that sweep, which tells the header after it, on the
+            // comment's line, as in the comment; one whose header it took between objects, a stream whose data opens a string, is
+            // passed, and the header after it, on the line of that stream's endstream, the data's first, is held as taken between
+            // objects.
+            "a header on a comment line that holds an object before it, past where a load ends the data of a stream with no endstream" =>
+                "5 0 obj\n<< /Length 10 >>\nstream\n0123456789\nendobj\n% 7 0 obj (seven) endobj 9 0 obj (nine) endobj\nendstream\nendobj\n",
+            "a header on the line of the endstream of a stream whose data opens a string, past where a load ends the data of a stream with no endstream" =>
+                "5 0 obj\n<< /Length 10 >>\nstream\n0123456789\nendobj\n7 0 obj\n<< /Length 4 >>\nstream\na (b endstream endobj 9 0 obj\n(nine)\nendobj\n",
+
+            // Stream 5's first endstream ends its line past object 8's header; stream 6's, in a comment, holds object 9's header
+            // on its line: the line is searched anew for each stream, and the header held as taken in the data.
+            "a header on the line of a comment that holds the first endstream of a stream with no endstream, past such a stream whose first endstream's line ends before it" =>
+                "5 0 obj\n<< /Length 10 >>\nstream\n0123456789\nendobj\n4 0 obj (four) endobj\nendstream 8 0 obj (eight) endobj\n"
+                + "6 0 obj\n<< /Length 10 >>\nstream\n0123456789\nendobj\n3 0 obj (three) endobj\n% endstream 9 0 obj (nine) endobj\n",
+
+            // The search for object 6 reads a mebibyte past the data's first endstream, where it starts: it reads a header
+            // whose obj ends there, and none past (#363).
+            "a header in the data of a stream whose length's object's obj ends a mebibyte past the data's first endstream" =>
+                "5 0 obj\n<< /Length 6 0 R >>\nstream\n9 0 obj (inner) endobj\nendstream\nendobj\n" + CommentLines((1024 * 1024) - 24) + "6 0 obj\n22\nendobj\n",
+            "a header in the data of a stream whose length's object's obj ends a mebibyte and a byte past the data's first endstream" =>
+                "5 0 obj\n<< /Length 6 0 R >>\nstream\n9 0 obj (inner) endobj\nendstream\nendobj\n" + CommentLines((1024 * 1024) - 23) + "6 0 obj\n22\nendobj\n",
+
+            // The search reads the 64 bytes from the data's first endstream, then from 32 bytes past it, each read repeating
+            // the last 32 bytes of the one before: object 6's obj, which the first read cuts, is read back from the second,
+            // whose first byte, a new line, shows that the header's number starts a token there. A number at that read's first
+            // byte, whose start it cannot tell, is no header, and leaves the stream unconfirmed (#363).
+            "a header in the data of a stream whose length's object's number starts 33 bytes past the data's first endstream, its obj 62" =>
+                "5 0 obj\n<< /Length 6 0 R >>\nstream\n9 0 obj (inner) endobj\nendstream\nendobj\n" + new string(' ', 15) + "\n6" + new string(' ', 26) + "0 obj\n22\nendobj\n",
+            "a header in the data of a stream whose length's object's number starts 32 bytes past the data's first endstream, its obj 62" =>
+                "5 0 obj\n<< /Length 6 0 R >>\nstream\n9 0 obj (inner) endobj\nendstream\nendobj\n" + new string(' ', 14) + "\n6" + new string(' ', 27) + "0 obj\n22\nendobj\n",
             "a header in the data of a stream whose length's object lies more than a mebibyte past its endstream" =>
                 "5 0 obj\n<< /Length 6 0 R >>\nstream\n9 0 obj (inner) endobj\nendstream\nendobj\n" +
                 string.Concat(Enumerable.Repeat("% " + new string('-', 1021) + "\n", 1025)) + "6 0 obj\n22\nendobj\n",
@@ -633,6 +836,39 @@ public class ScannedPlacesTests
             header.Should().Be(new ScannedHeader(at, 9, 0, Enum.Parse<ScannedPlaceKind>(kind)));
             memo.TryGetHeaderAt(at + 1, out _).Should().BeFalse();
         }
+    }
+
+    [Theory(Timeout = 60_000)]
+    [InlineData("a stream whose length's object lies past the endobj after its data")]
+    [InlineData("a stream whose length's object lies past an end-of-file marker an endstream follows")]
+    [InlineData("a stream with no endstream whose length's object is lost, an xref keyword in its data and the next header in the middle of their lines")]
+    [InlineData("a stream with no endstream whose first endstream a string holds, an escaped end of line past it")]
+    [InlineData("a stream with no endstream whose length's object, past the places in its data, ends it before them")]
+    public async Task The_scan_for_the_memo_ends_over_each_shape_its_searches_and_sweeps_loop_over(string shape)
+    {
+        // Each shape leads the scan into a loop over the file's bytes or the memo's places: the search for a length's object
+        // past an obj that starts no header, or past an end-of-file marker; the search for an xref keyword that starts its
+        // line, past one that does not, and up to a header that does not; the search for the end of a line past an escaped
+        // end of line; the places held as taken between objects past where a load ends the data. Each ends.
+        var text = shape switch
+        {
+            "a stream whose length's object lies past the endobj after its data" =>
+                "5 0 obj\n<< /Length 6 0 R >>\nstream\n9 0 obj (inner) endobj\nendstream\nendobj\n6 0 obj\n22\nendobj\n",
+            "a stream whose length's object lies past an end-of-file marker an endstream follows" =>
+                "5 0 obj\n<< /Type /EmbeddedFile /Length 6 0 R >>\nstream\n9 0 obj (inner) endobj\nendstream\nendobj\n%%EOF\nendstream\n6 0 obj\n22\nendobj\n",
+            "a stream with no endstream whose length's object is lost, an xref keyword in its data and the next header in the middle of their lines" =>
+                "5 0 obj\n<< /Length 8 0 R >>\nstream\n0123456789 xref +9 0 obj (nine) 10 0 obj (ten) endobj\n",
+            "a stream with no endstream whose first endstream a string holds, an escaped end of line past it" =>
+                "8 0 obj\n10\nendobj\n5 0 obj\n<< /Length 8 0 R >>\nstream\n0123456789\nendobj\n4 0 obj (four) endobj\n( endstream \\\n9 0 obj (nine) endobj\n",
+            _ => "5 0 obj\n<< /Length 8 0 R >>\nstream\n0123456789\nendobj\n4 0 obj (four) endobj\n9 0 obj (nine) endobj\nendstream\nendobj\n8 0 obj\n10\nendobj\n",
+        };
+        var (file, _) = Sound(text, 0);
+
+        using var document = PdfDocument.Open(file);
+        var memo = await Task.Run(document.Reader.GetScanMemo, TestContext.Current.CancellationToken);
+
+        memo.IsWhole.Should().BeTrue();
+        Headers(memo, 0, long.MaxValue).Should().Contain(header => header.Number == 5);
     }
 
     [Fact]
@@ -942,6 +1178,56 @@ public class ScannedPlacesTests
         document.GetObject(new PdfObjectId(9)).AsText().Should().Be("nine");
     }
 
+    [Theory]
+    [InlineData("% xref\nxref\nxref\n", "Raw")]
+    [InlineData("xref\n% xref\n", "Raw")]
+    [InlineData("xref\nxref\n", "Clean")]
+    public void A_run_of_xref_keywords_past_where_a_load_ends_a_stream_s_data_is_held_as_taken_between_objects_only_where_its_first_and_last_are(
+        string keywords, string kind)
+    {
+        // Stream 5 lost its endstream; object 8, its length's object, comes past its data's first endstream: the scan learns
+        // where a load ends the data only past the xref keywords it took there, one after another, the same distance apart,
+        // which the memo holds as one run. The sweep from that end holds them as taken between objects where it shows both the
+        // run's first and its last there; a comment that holds either keeps the whole run held as taken in the data (#372).
+        var text = "5 0 obj\n<< /Length 8 0 R >>\nstream\n0123456789\nendobj\n4 0 obj (four) endobj\n" + keywords +
+            "9 0 obj (nine) endobj\nendstream\nendobj\n8 0 obj\n10\nendobj\n";
+        var (file, start) = Sound(text, 0);
+
+        using var document = PdfDocument.Open(file);
+        var memo = document.Reader.GetScanMemo();
+        var kinds = new List<ScannedPlaceKind>();
+
+        for (var at = start + text.IndexOf("xref", StringComparison.Ordinal); at < start + text.IndexOf("9 0 obj", StringComparison.Ordinal); at++)
+        {
+            if (memo.TryGetXRefKeywordAt(at, out var found))
+            {
+                kinds.Add(found);
+            }
+        }
+
+        kinds.Should().HaveCount(keywords.Split('\n', StringSplitOptions.RemoveEmptyEntries).Length).And.OnlyContain(found => found == Enum.Parse<ScannedPlaceKind>(kind));
+    }
+
+    [Fact]
+    public void A_header_whose_comment_between_its_tokens_holds_an_xref_keyword_past_where_a_load_ends_a_stream_s_data_is_held_as_taken_between_objects()
+    {
+        // Stream 5 lost its endstream: past where its direct length, which an endobj follows, ends its data, and short of its
+        // first endstream, the scan reads the bytes as they come, and the sweep for the memo's kinds tells each place it
+        // takes. The xref keyword in a comment between the tokens of object 9's header, which the scan takes there, is told
+        // by a sweep ahead, which leaves the sweep for the header where it stood: the keyword is held as taken in the comment,
+        // and the header as taken between objects (#372).
+        const string Text = "5 0 obj\n<< /Length 10 >>\nstream\n0123456789\nendobj\n9 0 % xref\nobj\n(nine)\nendobj\nendstream\nendobj\n";
+        var (file, at) = Sound(Text, Text.IndexOf("9 0 %", StringComparison.Ordinal));
+
+        using var document = PdfDocument.Open(file);
+        var memo = document.Reader.GetScanMemo();
+
+        memo.TryGetHeaderAt(at, out var header).Should().BeTrue();
+        header.Should().Be(new ScannedHeader(at, 9, 0, ScannedPlaceKind.Clean));
+        memo.TryGetXRefKeywordAt(at + "9 0 % ".Length, out var kind).Should().BeTrue();
+        kind.Should().Be(ScannedPlaceKind.Raw);
+    }
+
     [Fact]
     public void A_header_taken_second_that_starts_before_the_first_place_taken_is_put_back_before_it_and_a_rebuild_scans_again()
     {
@@ -1229,6 +1515,28 @@ public class ScannedPlacesTests
         memo.IsWhole.Should().BeFalse();
         memo.FullAt.Should().Be(start + text.IndexOf("24 0 obj", StringComparison.Ordinal));
         memo.WholeUntil.Should().BeGreaterThan(start + text.IndexOf("23 0 obj", StringComparison.Ordinal)).And.BeLessThanOrEqualTo(memo.FullAt);
+    }
+
+    [Fact]
+    public void A_memo_that_fills_past_an_attached_file_whose_length_s_object_before_it_shows_where_its_data_ends_is_whole_up_to_the_first_place_it_left_out()
+    {
+        // Attached file 12 lost its endstream; object 13, before it, holds its length, which an endobj follows: the length shows
+        // where the data ends, and the scan awaits no other object 13. MaxIndexEntries of 10: the memo fills among the values
+        // after the attached file, and is whole up to the first place it left out, not only before the attached file's data.
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long> { [1] = file.Object(1, Catalog), [2] = file.Object(2, Pages) };
+        var start = file.Position;
+        var text = "13 0 obj\n15\nendobj\n12 0 obj\n<< /Type /EmbeddedFile /Length 13 0 R >>\nstream\n%PDF-1.4\nhello\nendobj\n" +
+            string.Concat(Enumerable.Range(20, 20).Select(number => string.Create(CultureInfo.InvariantCulture, $"{number} 0 obj\n({number})\nendobj\n")));
+        file.Raw(text);
+        file.Table(3, rows, "/Size 3 /Root 1 0 R");
+
+        using var document = PdfDocument.Open(file.Bytes, new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxIndexEntries = 10 } });
+        var memo = document.Reader.GetScanMemo();
+
+        memo.IsWhole.Should().BeFalse();
+        memo.FullAt.Should().BeGreaterThan(start + text.IndexOf("20 0 obj", StringComparison.Ordinal));
+        memo.WholeUntil.Should().BeGreaterThan(start + text.IndexOf("20 0 obj", StringComparison.Ordinal)).And.BeLessThanOrEqualTo(memo.FullAt);
     }
 
     [Fact]
@@ -1691,6 +1999,46 @@ public class ScannedPlacesTests
     }
 
     [Fact]
+    public void A_header_that_ends_a_cut_file_where_an_attached_file_s_direct_length_ends_its_data_is_held_as_taken_between_objects()
+    {
+        // Attached file 5 lost its endstream and endobj, and the file, which holds no endstream, is cut right after object 9's
+        // header, where the attached file's direct length ends its data: that header, which the bytes end, ends the stream's
+        // object, and is held as taken between objects, the places within the data as taken there (#366).
+        const string Data = "%PDF-1.4\n7 0 obj (seven) endobj\n%%EOF\n";
+        var text = string.Create(
+            CultureInfo.InvariantCulture,
+            $"%PDF-1.7\n1 0 obj\n{Catalog}\nendobj\n2 0 obj\n{Pages}\nendobj\n5 0 obj\n<< /Type /EmbeddedFile /Length {Data.Length} >>\nstream\n{Data}9 0 obj");
+
+        using var document = PdfDocument.Open(Encoding.Latin1.GetBytes(text));
+        var memo = document.Reader.GetScanMemo();
+
+        memo.TryGetHeaderAt(text.IndexOf("7 0 obj", StringComparison.Ordinal), out var inner).Should().BeTrue();
+        memo.TryGetHeaderAt(text.IndexOf("9 0 obj", StringComparison.Ordinal), out var cut).Should().BeTrue();
+        (inner.Kind, cut.Kind).Should().Be((ScannedPlaceKind.Raw, ScannedPlaceKind.Clean));
+    }
+
+    [Fact]
+    public void A_keyword_that_starts_its_line_near_the_start_of_the_file_ends_the_data_of_a_stream_whose_length_s_object_is_lost()
+    {
+        // Stream 5, the file's first object, lost its endstream and its length's object; an xref keyword that starts its line
+        // in its data, fewer than 64 bytes past the start of the file, ends the data for the memo's kinds, the bytes before it
+        // read from the file's first, and object 9's header past it, glued to a sign, is held as taken between objects (#372).
+        const string Text = "5 0 obj\n<< /Length 8 0 R >>\nstream\nxref\n+9 0 obj\n(nine)\n10 0 obj\n(ten)\nendobj\n";
+        var pdf = new HandWrittenFile();
+        var at = pdf.Position + Text.IndexOf("+9", StringComparison.Ordinal);
+        pdf.Raw(Text);
+        var rows = new Dictionary<int, long> { [1] = pdf.Object(1, Catalog), [2] = pdf.Object(2, Pages) };
+        pdf.Table(3, rows, "/Size 3 /Root 1 0 R");
+
+        using var document = PdfDocument.Open(pdf.Bytes);
+        var memo = document.Reader.GetScanMemo();
+
+        (at - "xref\n".Length).Should().BeLessThan(PdfObjectParser.EndObjLookahead);
+        memo.TryGetHeaderAt(at, out var header).Should().BeTrue();
+        header.Should().Be(new ScannedHeader(at, 9, 0, ScannedPlaceKind.Clean));
+    }
+
+    [Fact]
     public void A_place_whose_distance_from_the_line_of_a_data_s_first_endstream_a_short_read_keeps_from_telling_is_held_as_taken_in_the_data()
     {
         // Stream 5's direct length ends its data before an endobj, no endstream following: the scan reads the data up to its
@@ -1711,6 +2059,61 @@ public class ScannedPlacesTests
         document.Reader.GetScanMemo().TryGetHeaderAt(at, out var cut).Should().BeTrue();
 
         (sound.Kind, cut.Kind).Should().Be((ScannedPlaceKind.Clean, ScannedPlaceKind.Raw));
+    }
+
+    [Fact]
+    public void A_place_whose_line_a_read_the_source_gives_short_keeps_from_telling_is_held_as_taken_in_the_data_though_later_reads_are_whole()
+    {
+        // Stream 5's direct length ends its data before an endobj, no endstream following: its first endstream lies in a
+        // comment, on a line where a string of object 7 opens and runs over the end of the piece the scan holds, the comment's
+        // line ending past it. Object 8's header lies on the line that string ends, which a comment there would hold: the memo
+        // learns whether it lies on the endstream's line by reading the bytes from object 7's header, past what the piece
+        // holds. Read whole, an end of line comes first, and the header is held as taken between objects. The source giving
+        // fewer bytes than asked to the reads that start there, and whole reads after them, the search stops: whether the
+        // header lies on that line is not told, and it is held as taken in the data, as the sweep from where a load ends the
+        // data reads it (#52).
+        var text = "5 0 obj\n<< /Length 10 >>\nstream\n0123456789\nendobj\n4 0 obj (four) endobj\n% endstream 7 0 obj (a" + new string('x', 150) +
+            "\n%) endobj 8 0 obj (eight) endobj\n";
+        text = CommentLines(1_048_450 - 109 - text.IndexOf("% endstream", StringComparison.Ordinal)) + text;
+        var (file, at) = Sound(text, text.IndexOf("8 0 obj", StringComparison.Ordinal));
+        var seven = Encoding.Latin1.GetString(file).IndexOf("7 0 obj (a", StringComparison.Ordinal);
+        var armed = false;
+        using var whole = PdfDocument.Open(file);
+        using var source = new ShortCountSource(file, (start, count) => armed && start == seven - 1 ? count / 2 : count);
+        using var document = PdfDocument.Open(source, options: null, ownsSource: false);
+        armed = true;
+
+        whole.Reader.GetScanMemo().TryGetHeaderAt(at, out var sound).Should().BeTrue();
+        document.Reader.GetScanMemo().TryGetHeaderAt(at, out var cut).Should().BeTrue();
+
+        (sound.Kind, cut.Kind).Should().Be((ScannedPlaceKind.Clean, ScannedPlaceKind.Raw));
+        seven.Should().BeLessThan((1024 * 1024) - PdfObjectParser.EndObjLookahead);
+        source.ShortReads.Should().BePositive();
+    }
+
+    [Theory]
+    [InlineData("half of what it asks")]
+    [InlineData("ten bytes")]
+    public void A_search_for_a_length_s_object_that_a_read_the_source_gives_short_stops_confirms_nothing_past_it(string given)
+    {
+        // Object 6, which holds the length of stream 5's data, lies nearly a mebibyte past the data's first endstream, past the
+        // piece the scan holds: the search reads it from the source, and confirms the stream, its data's header not taken.
+        // The source giving fewer bytes than asked to the read that crosses the piece's end, half of them or fewer than the
+        // bytes it repeats of the read before, the search stops there, and the scan reads the data as the bytes give it, object
+        // 9 taken there, though the reads after it would be whole (#363).
+        var text = "5 0 obj\n<< /Length 6 0 R >>\nstream\n9 0 obj (inner) endobj\nendstream\nendobj\n" + CommentLines(1_048_400) + "6 0 obj\n22\nendobj\n";
+        var (file, at) = Sound(text, text.IndexOf("9 0 obj", StringComparison.Ordinal));
+        var armed = false;
+        using var whole = PdfDocument.Open(file);
+        using var source = new ShortCountSource(file, (start, count) =>
+            armed && start < 1024 * 1024 && start + count > 1024 * 1024 ? given == "ten bytes" ? 10 : count / 2 : count);
+        using var document = PdfDocument.Open(source, options: null, ownsSource: false);
+        armed = true;
+
+        whole.Reader.GetScanMemo().TryGetHeaderAt(at, out _).Should().BeFalse();
+        document.Reader.GetScanMemo().TryGetHeaderAt(at, out var header).Should().BeTrue();
+        header.Kind.Should().Be(ScannedPlaceKind.Raw);
+        source.ShortReads.Should().BePositive();
     }
 
     [Fact]
@@ -2838,6 +3241,78 @@ public class ScannedPlacesTests
     }
 
     [Theory]
+    [InlineData(127, "Clean")]
+    [InlineData(128, "Raw")]
+    public void Whether_a_trailer_keyword_starts_its_line_is_read_only_short_of_the_bound_of_the_reads_for_the_memo_s_kinds(int padding, string kind)
+    {
+        // Stream 5 lost its endstream and its length's object; fifty trailer keywords in its data do not start their lines, and
+        // a last one does, before object 9's header, glued to a sign, and object 10's, where a load ends the data. Each is read
+        // back for whether it starts its line, 64 bytes counted with the reads made for the memo's kinds, and a comment of
+        // padding past them sets their bound, four times the file. With 127 bytes, the reads for the fifty reach exactly the
+        // bound: the last keyword is not read, the data ends at object 10's header, which is held as taken between objects,
+        // no byte swept before it. With 128, they stop a byte short of it: the last keyword is read, the data ends there, and
+        // the reads, past their bound, sweep nothing up to object 10's header, which stays held as taken in the data (#372).
+        var text = "5 0 obj\n<< /Length 8 0 R >>\nstream\n0123456789\n" + string.Concat(Enumerable.Repeat("a trailer ", 50)) +
+            "\ntrailer\n+9 0 obj\n(nine)\n10 0 obj\n(ten)\nendobj\n%" + new string('p', padding) + "\n";
+        var (file, at) = Sound(text, text.IndexOf("10 0 obj", StringComparison.Ordinal));
+
+        using var document = PdfDocument.Open(file);
+        var memo = document.Reader.GetScanMemo();
+
+        file.Length.Should().Be(828 + padding);
+        memo.TryGetHeaderAt(at, out var header).Should().BeTrue();
+        header.Kind.Should().Be(Enum.Parse<ScannedPlaceKind>(kind));
+    }
+
+    [Theory]
+    [InlineData(100, 1, "Raw")]
+    [InlineData(99, 2, "Clean")]
+    public void Whether_a_place_lies_on_the_line_of_a_data_s_first_endstream_is_read_only_short_of_the_bound_of_the_reads_for_the_memo_s_kinds(
+        int run, int padding, string kind)
+    {
+        // As above, 151 trailer keywords that do not start their lines spend most of what the reads made for the memo's kinds
+        // may read, once attached file 15 ends the wait for stream 5's length's object. The objects after it spend some more,
+        // each read once: stream 16, whose length's object, met on the line of its first endstream, ends the wait for it;
+        // attached file 20, its length's object lost, which file 24 ends the wait for; past where stream 25's direct length
+        // ends its data, two xref keywords on a line, told by a sweep ahead; stream 27, whose length's object, met past two
+        // objects after its endstream, ends its data short of it; stream 32, whose length's object, met after stream 35 in
+        // its data, ends that data short of where stream 35's starts, at object 36's header; stream 37, whose length's
+        // object ends its data within a run of xref keywords, the same distance apart; stream 40, whose length's object ends
+        // its data short of where stream 42's starts, object 42's header written again there. Streams 6 and 13 lost their
+        // endstream, their direct lengths ending their data before an endobj, and a comment holds each one's first endstream:
+        // the memo reads, for each place past it, whether it lies on that line, once for each line. Objects 3 and 7 lie on
+        // stream 6's line, a run of letters past them, and objects 11 and 12 past it; object 9 on the line after stream 13's.
+        // With a run of 100 letters and a comment of one byte of padding at the end, the reads reach exactly their bound
+        // before object 9's line is read: it is taken to lie on the comment's line, and held as taken in the data; with 99
+        // letters and two bytes, they stop a byte short of it, the line is read, and object 9's header held as taken between
+        // objects (#372).
+        var text = "5 0 obj\n<< /Length 8 0 R >>\nstream\n0123456789\n" + string.Concat(Enumerable.Repeat("a trailer ", 151)) + "\n" +
+            "15 0 obj\n<< /Type /EmbeddedFile >>\nstream\nabc\nendstream\nendobj\n" +
+            "16 0 obj\n<< /Length 17 0 R >>\nstream\n0123456789\nendobj\n18 0 obj (x) endobj\nendstream 17 0 obj\n10\nendobj 19 0 obj (y) endobj\n" +
+            "20 0 obj\n<< /Type /EmbeddedFile /Length 21 0 R >>\nstream\n22 0 obj (x) endobj\nendstream 23 0 obj (y) endobj\n" +
+            "24 0 obj\n<< /Type /EmbeddedFile >>\nstream\nabc\nendstream\nendobj\n" +
+            "25 0 obj\n<< /Length 10 >>\nstream\n0123456789\nendobj\n26 0 obj (x) endobj\n" + new string('a', 100) + " xref xref\nendstream\n" +
+            "27 0 obj\n<< /Length 28 0 R >>\nstream\n0123456789\nendobj\n29 0 obj (x) endobj\nendstream\nendobj\n30 0 obj (a) endobj\n31 0 obj (b) endobj\n" +
+            "28 0 obj\n10\nendobj\n" +
+            "32 0 obj\n<< /Length 33 0 R >>\nstream\n0123456789\nendobj\n34 0 obj (x) endobj\n35 0 obj\n<< >>\nstream\n36 0 obj (z) endobj\nendstream\nendobj\n" +
+            "33 0 obj\n10\nendobj\n" +
+            "37 0 obj\n<< /Length 38 0 R >>\nstream\n+39 0 obj (x) endobj\nxref\nxref\nxref\nxref\n38 0 obj\n31\nendobj\n" +
+            "40 0 obj\n<< /Length 43 0 R >>\nstream\n41 0 obj (x) endobj\n42 0 obj\n<< >>\nstream\n42 0 obj (z) endobj\nendstream\nendobj\n43 0 obj\n10\nendobj\n" +
+            "6 0 obj\n<< /Length 10 >>\nstream\n0123456789\nendobj\n4 0 obj (four) endobj\n" +
+            "% endstream 3 0 obj (three) endobj 7 0 obj (seven) endobj " + new string('x', run) + "\n11 0 obj (eleven) endobj\n12 0 obj (twelve) endobj\n" +
+            "13 0 obj\n<< /Length 10 >>\nstream\n0123456789\nendobj\n14 0 obj (fourteen) endobj\n% endstream\n9 0 obj (nine) endobj\n%" +
+            new string('p', padding) + "\n";
+        var (file, at) = Sound(text, text.IndexOf("9 0 obj (nine)", StringComparison.Ordinal));
+
+        using var document = PdfDocument.Open(file);
+        var memo = document.Reader.GetScanMemo();
+
+        file.Length.Should().Be(3_171 + run + padding);
+        memo.TryGetHeaderAt(at, out var header).Should().BeTrue();
+        header.Kind.Should().Be(Enum.Parse<ScannedPlaceKind>(kind));
+    }
+
+    [Theory]
     [InlineData(false)]
     [InlineData(true)]
     public void An_attached_file_whose_length_s_object_before_it_the_spent_search_does_not_confirm_keeps_its_places_up_to_where_that_length_ends_it(bool spent)
@@ -3345,6 +3820,20 @@ public class ScannedPlacesTests
 
         file.CrossReferenceStream(5, 6, rows, "/Root 1 0 R");
         return file.Bytes;
+    }
+
+    /// <summary>Gives comment lines of <paramref name="length"/> bytes in all, at least two, each of 1,024 bytes but the last.</summary>
+    private static string CommentLines(int length)
+    {
+        var text = new StringBuilder(length);
+
+        while (text.Length < length)
+        {
+            var line = Math.Min(1024, length - text.Length);
+            text.Append('%').Append('-', line - 2).Append('\n');
+        }
+
+        return text.ToString();
     }
 
     /// <summary>
