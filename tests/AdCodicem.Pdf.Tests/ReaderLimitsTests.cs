@@ -1541,7 +1541,13 @@ public class ReaderLimitsTests
     [InlineData("an update that writes a form, then the length's object of the attached file it replaces")]
     [InlineData("an update whose first object is the length's object of the older revision's last object, a content stream")]
     [InlineData("an attached PDF file that writes its own table, trailer and end-of-file marker, its length's object after it")]
-    public void A_valid_file_a_guard_sends_into_a_rebuild_serves_its_objects_with_no_length_s_object_read_past_the_end_of_a_stream_s_revision(string shape)
+    [InlineData("an update that replaces an attached file, writing its length's object again before it", "an ExifTool update comment")]
+    [InlineData("an update that replaces an attached file, writing its length's object again before it", "80 spaces")]
+    [InlineData("an update that replaces an attached file, writing its length's object again before it", "200 NULs")]
+    [InlineData("an update whose first object is the length's object of the older revision's last object, a content stream", "an ExifTool update comment")]
+    [InlineData("an update whose first object is the length's object of the older revision's last object, a content stream", "80 spaces")]
+    [InlineData("an update whose first object is the length's object of the older revision's last object, a content stream", "200 NULs")]
+    public void A_valid_file_a_guard_sends_into_a_rebuild_serves_its_objects_with_no_length_s_object_read_past_the_end_of_a_stream_s_revision(string shape, string past = "")
     {
         // An older revision writes object 9, ten values, then object 8, a stream whose indirect /Length names 9 — an attached
         // file, then a content stream, object 10, a page and a font; or the page, the font, then a content stream, its last
@@ -1552,8 +1558,10 @@ public class ReaderLimitsTests
         // of the older revision, the end-of-file marker no endstream follows, and reads the stream as before it searched — it
         // once confirmed it with the newer length, and took neither object 10, nor the page, nor the font, nor the form, nor
         // the newer object 9 (#363). An attached file that writes its own table, trailer and marker is searched past
-        // them, its marker followed by its stream's endstream, to object 9 after it: none of its objects is taken. Every
-        // object is served as the index serves it.
+        // them, its marker followed by its stream's endstream, to object 9 after it: none of its objects is taken. The older
+        // revision's marker ends it with the update's first header right after it, and with an ExifTool comment or padding
+        // longer than the bytes read past it before that header, as real files write them. Every object is served as the
+        // index serves it.
         const string Content = "BT /F1 24 Tf 72 720 Td (Hello) Tj ET";
         const string Attached = "<< /Type /EmbeddedFile /Length 9 0 R >>";
         const string Form = "<< /Type /XObject /Subtype /Form /BBox [0 0 10 10] /Length 15 >>";
@@ -1612,6 +1620,13 @@ public class ReaderLimitsTests
         else
         {
             trailer += string.Create(CultureInfo.InvariantCulture, $" /Prev {pdf.Table(30, rows, trailer)}");
+            pdf.Raw(past switch
+            {
+                "an ExifTool update comment" => "%BeginExifToolUpdate\n",
+                "80 spaces" => new string(' ', 80) + "\n",
+                "200 NULs" => new string('\0', 200) + "\n",
+                _ => string.Empty,
+            });
         }
 
         var length = own ? 0 : shape switch
