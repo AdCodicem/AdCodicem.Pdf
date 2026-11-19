@@ -204,7 +204,9 @@ internal sealed partial class PdfFileReader
     /// stream of <c>/Type /EmbeddedFile</c>, or data that starts with a file's header (<see cref="StartsAttachedFile"/>) —
     /// holds objects of its own: no length's object is read inside it, it ends the wait for another stream's, and its
     /// places stay held as taken in it but where its own length's object, met outside it, shows where it ends
-    /// (<see cref="EndAttachedData"/>). An object the scan
+    /// (<see cref="EndAttachedData"/>). Some places of hand-made shapes near a lost <c>endstream</c> — in such data, or in
+    /// a comment or a string past where a load ends a stream's data — stay held as taken between objects all the same
+    /// (#392). An object the scan
     /// cannot delimit has what follows its header read as the bytes give it, and the headers within what its delimiting
     /// read are taken undelimited, so that no byte is lexed for one object after another. Between objects, a comment or
     /// a string runs to the end of its line, and a header or a keyword that starts inside one is none
@@ -918,11 +920,11 @@ internal sealed partial class PdfFileReader
     /// <remarks>
     /// Those first bytes alone are read, as at a length's object, counted with neither the reads that confirm lengths nor
     /// those made for the memo's kinds: one read for each stream with an indirect <c>/Length</c>, in a rebuild's scan as in a
-    /// memo's (<see cref="ConfirmStream"/>), and, in a memo's, for each other stream it does not confirm, and for each
-    /// length's object it meets awaiting an attached file's whose length would end the data by its first place
-    /// (<see cref="EndAttachedData"/>). A header after longer white space is not told, and the data is read as another stream's: the
-    /// search for its length's object stops at the first header past its first <c>endstream</c>, and the memo counts its
-    /// places as another stream's.
+    /// memo's (<see cref="ConfirmStream"/>), and, in a memo's, for each other stream it does not confirm — none for a stream
+    /// whose dictionary says <c>/Type /EmbeddedFile</c>, attached already —; and for each length's object a memo's scan
+    /// meets awaiting an attached file's whose length would end the data by its first place (<see cref="EndAttachedData"/>).
+    /// A header after longer white space is not told, and the data is read as another stream's: the search for its length's
+    /// object stops at the first header past its first <c>endstream</c>, and the memo counts its places as another stream's.
     /// </remarks>
     private bool StartsAttachedFile(ReadOnlySpan<byte> span, long windowStart, long dataStart)
     {
@@ -1006,8 +1008,8 @@ internal sealed partial class PdfFileReader
     /// length's object met past the data's start (<paramref name="after"/>), which the scan awaited, is taken only where it
     /// lies past where its length ends the data, and, for data that starts with a file's header, which holds objects of its
     /// own, where that end lies past the first place the memo took past the data's start: one inside the data, or whose
-    /// length ends it sooner — a 0, the file's header comments read as white space before its first object —, is the
-    /// attached file's own. False where the length is not taken.
+    /// length ends it sooner — a 0, the file's header comments read as white space before its first object —, is taken for
+    /// the attached file's own (<see cref="EndsByFirstPlace"/>). False where the length is not taken.
     /// </summary>
     /// <remarks>
     /// The bytes where the length ends the data are read once, a first read as past a length (<see cref="SignificantPastLength"/>),
@@ -1062,7 +1064,9 @@ internal sealed partial class PdfFileReader
     /// <paramref name="dataStart"/>, lies at or before the first place <paramref name="memo"/> holds past that start, the
     /// data starting with a file's header (<see cref="StartsAttachedFile"/>): an attached file holds objects of its own, and
     /// its own object of its stream's length's number, whose 0 its header comments pass for white space before its first
-    /// object, or whose length is that of its header, ends it there.
+    /// object, or whose length is that of its header, ends it there. That object is told by where its value ends the data
+    /// alone: one whose value ends it past that place is not, and the right length of such data that holds no header,
+    /// whose first place lies past its end, is taken for one (#392).
     /// </summary>
     private bool EndsByFirstPlace(ReadOnlySpan<byte> span, long windowStart, long dataStart, long declaredEnd, ScanMemo.Builder memo) =>
         memo.TryGetPlaces(memo.IndexAtOrAfter(dataStart), long.MaxValue, out var first, out _, out _) && declaredEnd <= first &&
@@ -1329,14 +1333,14 @@ internal sealed partial class PdfFileReader
 
     /// <summary>
     /// Determines whether <paramref name="at"/>, past where the scan stops reading a stream's data as the bytes give it
-    /// (<see cref="ScanState.RawUntil"/>), lies on the line that holds that end, no end of line between but one a backslash
-    /// escapes, over which a string runs on (<see cref="SweepLine"/>): the scan's own sweep
-    /// starts there anew, where the sweep for the memo's kinds from where a load ends the data may stand in a comment or a
-    /// string that holds that end — the data's first <c>endstream</c> —, which hides what follows on its line. Past the
-    /// line's end both sweeps read tokens alike. The bytes are searched once for each such end
-    /// (<see cref="ScanState.RawLineEnd"/>), each counted with the reads made for the memo's kinds, from the window or the
-    /// file alike; once those reads have read as much as <see cref="MemoKindReadPasses"/> lets them, the place is taken to lie
-    /// on that line, and the sweep for the kinds, at its bound too, holds it as taken in the data.
+    /// (<see cref="ScanState.RawUntil"/>), lies on the line that holds that end, no end of line between but one right after a
+    /// backslash — in a string or not, as a string runs on over one (<see cref="SweepLine"/>); the sweep for the kinds then
+    /// tells the places past it —: the scan's own sweep starts there anew, where the sweep for the memo's kinds from where a
+    /// load ends the data may stand in a comment or a string that holds that end — the data's first <c>endstream</c> —,
+    /// which hides what follows on its line. Past the line's end both sweeps read tokens alike. The bytes are searched once
+    /// for each such end (<see cref="ScanState.RawLineEnd"/>), each counted with the reads made for the memo's kinds, from
+    /// the window or the file alike; once those reads have read as much as <see cref="MemoKindReadPasses"/> lets them, the
+    /// place is taken to lie on that line, and the sweep for the kinds, at its bound too, holds it as taken in the data.
     /// </summary>
     private bool IsOnRawLine(ReadOnlySpan<byte> span, long windowStart, long at, ref ScanState scan)
     {
@@ -1355,7 +1359,8 @@ internal sealed partial class PdfFileReader
             }
 
             // Each read holds the byte before it — RawUntil, where an endstream starts, lies past the file's first byte —: an
-            // end of line a backslash escapes runs a string on, as a sweep reads it (SweepLine), and the line goes on.
+            // end of line right after any backslash goes on with the line, as a string runs on over it (SweepLine), whether a
+            // string holds it or not; the sweep for the kinds tells the places past it.
             var start = from - 1;
             var asked = (int)Math.Min(EndStreamSearchChunk, at - from) + 1;
             var held = start >= windowStart && start - windowStart + asked <= span.Length;
@@ -1859,10 +1864,11 @@ internal sealed partial class PdfFileReader
     /// bytes give, where an <c>endstream</c> follows the length it holds, white space and comments between, as one follows
     /// a direct length the scan confirms (<see cref="EndAfterLength"/>): the newest of the last values the scan passed in
     /// its revision that is that object and holds a length (<see cref="TryReadLastValue"/>), whose length alone decides;
-    /// where none is, a header of that number past the data's first <c>endstream</c>, in its revision too, whose object
-    /// holds a length (<see cref="FindLengthHeader"/>) — the first header there, for data that is not an attached file's
-    /// (<paramref name="attached"/>). -1 where none does, where <paramref name="lengthObject"/> is -1, and once the reads
-    /// that confirm indirect lengths have read as much as <see cref="LengthSearchReadPasses"/> lets them
+    /// where none is, a header of that number past the data's first <c>endstream</c>, short of the first revision's end
+    /// past it, whose object holds a length (<see cref="FindLengthHeader"/>) — the first header there, for data that is not
+    /// an attached file's (<paramref name="attached"/>); that <c>endstream</c> lies in a later revision already where a
+    /// damage took a revision's last stream's own (#391). -1 where none does, where <paramref name="lengthObject"/> is -1,
+    /// and once the reads that confirm indirect lengths have read as much as <see cref="LengthSearchReadPasses"/> lets them
     /// (<see cref="_scanLengthBytes"/>).
     /// </summary>
     /// <remarks>
@@ -1870,7 +1876,9 @@ internal sealed partial class PdfFileReader
     /// A stream so confirmed is passed as one whose direct length an <c>endstream</c> confirms: its data is the stream's, up to
     /// that <c>endstream</c>, and nothing in it is taken — an attached file's text, its own object headers and a trailer it
     /// spells in a comment are its bytes, not the file's (#363). A writer puts a stream's length object a few objects before
-    /// the stream or right after it, where the search finds it.
+    /// the stream or right after it, where the search finds it — but after an attached file whose data runs on more than
+    /// <see cref="LengthHeaderSearchLength"/> bytes past its first <c>endstream</c>, which, in an uncompressed attached PDF,
+    /// is its own first stream's.
     /// </para>
     /// <para>
     /// The object is read from the file's bytes alone, never through an index, so that a scan for the memo and a rebuild's
@@ -1879,9 +1887,9 @@ internal sealed partial class PdfFileReader
     /// attached file spells —: its length confirms nothing unless an <c>endstream</c> follows where it ends the data, as a
     /// direct length an attached file spells confirms nothing unless one does. A length nothing confirms leaves the stream
     /// unconfirmed, its data read as before (<see cref="ScanState.Passed"/>). The values passed before the revision's start
-    /// are not read (<see cref="TryReadLastValue"/>), nor the headers past its end (<see cref="FirstRevisionEnd"/>). A value
-    /// that gives a length no <c>endstream</c> follows — a damage that moved the bytes, its object
-    /// written right before the stream — ends the search: no header past the data is tried.
+    /// are not read (<see cref="TryReadLastValue"/>), nor the headers past the end of a revision
+    /// (<see cref="FirstRevisionEnd"/>). A value that gives a length no <c>endstream</c> follows — a damage that moved the
+    /// bytes, its object written right before the stream — ends the search: no header past the data is tried.
     /// </para>
     /// <para>
     /// Its bounds — the last <see cref="ScanState.ValueCount"/> values, the <see
@@ -1920,10 +1928,11 @@ internal sealed partial class PdfFileReader
     /// <c>endstream</c>, a header of another number, or whose object holds no length, is passed; past another stream's,
     /// the first header decides, and one of another number, whose object holds no length, or that the search cannot read
     /// back gives -1: the next object, past the stream, is the length's, or the search would cross into what other
-    /// streams and other revisions hold. -1 too where the end of a revision of the file lies before such a header
-    /// (<see cref="FirstRevisionEnd"/>), where none lies within <see cref="LengthHeaderSearchLength"/> bytes of
-    /// <paramref name="from"/>, where a read the source gives short ends the search, or once the reads that confirm
-    /// indirect lengths have read as much as they may.
+    /// streams and other revisions hold. -1 too where the end of a revision of the file lies between
+    /// <paramref name="from"/> and such a header (<see cref="FirstRevisionEnd"/>) — <paramref name="from"/> lies in a later
+    /// revision than the data where a damage took a revision's last stream's own <c>endstream</c> (#391) —, where none
+    /// lies within <see cref="LengthHeaderSearchLength"/> bytes of <paramref name="from"/>, where a read the source gives
+    /// short ends the search, or once the reads that confirm indirect lengths have read as much as they may.
     /// </summary>
     /// <remarks>
     /// The bytes are searched in reads that grow from <see cref="PdfObjectParser.EndObjLookahead"/> to
@@ -2005,12 +2014,15 @@ internal sealed partial class PdfFileReader
     /// its stream's <c>endstream</c>, ends no revision.
     /// </summary>
     /// <remarks>
-    /// Not a guard (<see cref="ConfirmIndirectLength"/>): each revision of a valid file ends at its marker, and the objects
-    /// past it are a later revision's, which may write the length's object again for a stream it rewrites, its length
-    /// ending the older stream's data at another stream's <c>endstream</c>, as the values the scan passed before a revision's
-    /// end may (<see cref="TryReadLastValue"/>). An attached file updated incrementally, or linearized, holds a marker that
-    /// objects of its own follow: the search stops there too, and the stream is read as before the search existed — a
-    /// confirmation lost, never a wrong one.
+    /// Not a guard (<see cref="ConfirmIndirectLength"/>): each revision of a valid file ends at its marker — a linearized
+    /// file's first-page marker aside —, and the objects past it are a later revision's, which may write the length's object
+    /// again for a stream it rewrites, its length ending the older stream's data at another stream's <c>endstream</c>, as the
+    /// values the scan passed before a revision's end may (<see cref="TryReadLastValue"/>). An attached file whose own
+    /// marker no <c>endstream</c> follows within those 64 bytes — updated incrementally, linearized with a first-page
+    /// cross-reference stream, with bytes or long padding after its last marker (junk, Ctrl-Z, a second marker), or holding
+    /// a marker in its text — has the search stop there too, and the stream is read as before the search existed — a
+    /// confirmation lost, never a wrong one. A first-page cross-reference table's marker precedes the attached file's first
+    /// <c>endstream</c>, where the search starts.
     /// </remarks>
     private int FirstRevisionEnd(ReadOnlySpan<byte> bytes, long position)
     {
@@ -2050,9 +2062,10 @@ internal sealed partial class PdfFileReader
 
     /// <summary>
     /// How many bytes past a stream's data's first <c>endstream</c> the search for its length's object reads (<see
-    /// cref="FindLengthHeader"/>): a piece of the scan, as far as writers put a length object after an attached file, whose
-    /// own objects lie between; past another stream's data, the first header within it decides. Not a guard
-    /// (<see cref="ConfirmIndirectLength"/>): a length object farther leaves the stream read as before.
+    /// cref="FindLengthHeader"/>): a piece of the scan. In an attached file's data, whose own objects lie between, that
+    /// <c>endstream</c> is, for an uncompressed attached PDF, its own first stream's, so that the length object after such
+    /// a file larger than about this many bytes is not found; past another stream's data, the first header within it decides. Not a
+    /// guard (<see cref="ConfirmIndirectLength"/>): a length object farther leaves the stream read as before.
     /// </summary>
     private const int LengthHeaderSearchLength = ScanChunkSize;
 
@@ -2709,11 +2722,11 @@ internal sealed partial class PdfFileReader
         public long PendingUntil;
 
         /// <summary>
-        /// Where the last place ends that the scan took past <see cref="PendingUntil"/>, on the line that holds it, while it
-        /// awaits the length's object of a stream that is no attached file's, whose first <c>endstream</c> starts there
-        /// (<see cref="KindAt"/>); -1 for none. The scan learning, past them, where a load ends that data before there, those
-        /// places are swept from that end with the places in the data (<see cref="EndDataWithLength"/>,
-        /// <see cref="EndAwaitedData"/>).
+        /// One byte past where the last place starts that the scan took past <see cref="PendingUntil"/>, on the line that
+        /// holds it, while it awaits the length's object of a stream that is no attached file's, whose first
+        /// <c>endstream</c> starts there (<see cref="KindAt"/>); -1 for none. The scan learning, past them, where a load
+        /// ends that data before there, those places are swept from that end with the places in the data
+        /// (<see cref="EndDataWithLength"/>, <see cref="EndAwaitedData"/>).
         /// </summary>
         public long PendingLineTo;
 

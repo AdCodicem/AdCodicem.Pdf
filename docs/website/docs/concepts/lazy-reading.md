@@ -399,7 +399,9 @@ none of them gives its length, a stream waiting for its own length's object stop
 takes in it counts as found in the data. Where its own length shows where the stream ends — an `endstream` there, or,
 that lost, the end of its object, an `endobj` or, that lost too, the next object's header —, all the data up to there
 counts so, past its first `endstream` too, and what follows as found between objects
-([#366](https://github.com/AdCodicem/AdCodicem.Pdf/issues/366)). Where the scan takes a length among the last objects
+([#366](https://github.com/AdCodicem/AdCodicem.Pdf/issues/366)). A few hand-made shapes near a lost `endstream` still
+have some of the places such data holds, or a comment or a string hides, counted as found between objects
+([#392](https://github.com/AdCodicem/AdCodicem.Pdf/issues/392)). Where the scan takes a length among the last objects
 before the stream or in the data, or finds none, it may take the data for an attached file's, which its first
 `endstream` ends where no other stream's `stream` keyword comes before it — and, where the scan took a length, where an
 `endobj` follows that `endstream` —, the scan reading 1 MB at most for that keyword: past it, it cannot tell, and the
