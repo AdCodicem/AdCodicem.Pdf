@@ -7,6 +7,46 @@ to about thirty lines each; the unabridged text is the
 [journal of `e38ebbc`](https://github.com/AdCodicem/AdCodicem.Pdf/blob/e38ebbc471b86779c3f6ac5b320ca1ecd531b2c1/docs/status.md#journal). A session reads an entry when it needs the
 reason for a past decision. A new entry is short, about thirty lines; the detail is in the pull request's body.
 
+## 2026-11-19 — Batch 33, second pull request: the indirect lengths a rebuild's scan confirms, and its memo's kinds ([#394])
+
+- **The question.** Measured on `main` at `bcb3653`. After a reported guard sent a valid file into a rebuild, the scan
+  could not confirm an indirect `/Length`. It read that data as the bytes give it up to its first `endstream`, taking an
+  attached file's headers and a trailer written in a comment, so wrong objects were served ([#363]). The memo's kinds,
+  which the search near a shifted row and the validator consult, held Clean a header a comment or string hides past a
+  lost `endstream` ([#365]) and an attached file's objects ([#366]). Where the scan could not learn where a load ends
+  the data, they held Raw what follows ([#372]).
+- **Settled with the maintainer** (2026-11-17 to 19, each as recommended):
+  - #363: confirm an indirect length from its object. The search stops at the first header of its number whose object
+    holds an integer, and its bounds are internal constants with a written reason. After round 1, its budget became
+    internal and silent, and `MaxRebuildReadPasses` went back to direct lengths only. Past the data's first
+    `endstream`, only the first header decides unless the data is an attached file.
+  - #365: a lone header there near a shifted row is now an Error, where [#360] pinned Clean.
+  - Rounds 2 and 3: two wrong confirmations within one revision, and the shapes equal to `main`, filed.
+- **What changed.** The scan confirms an indirect length from its object and an `endstream` after that length. The object
+  is one of the last eight values since the last trailer, the first holding an integer deciding; else the first header
+  past the first `endstream`, or for an attached file the first of its number within a mebibyte. Both forward searches
+  stop at a revision's `%%EOF`, under a silent budget of four times the file. The memo sweeps past a load's end, and the
+  line of the first `endstream`, for what a comment or string hides. An attached file's places are held Raw, and the
+  search for a load's end stops at a line-start `xref` or `trailer`. No corpus document changes, by default or after a
+  forced rebuild.
+- **Review** (ADR 54): three rounds, three lenses each and a refuter on every blocker and major.
+  - Round 1: 1 blocker (an older revision's length object), 2 majors (Ghostscript's object streams reaching the guard;
+    length objects before their streams, with lengths damaged, spending it), 3 minors, 8 nits.
+  - Round 2: 1 blocker (an attachment's search crossing a revision), 3 minors, 7 nits.
+  - Round 3: 1 blocker by the letter, equal to `main`, folded into an accepted residual; 5 minors, 8 nits.
+  - Real damage, up to 180,000 reads a round: no change but the intended.
+- **Mutation** (ADR 53 amended): 314 mutants over 165 of the 354 changed lines. The suite killed 198 and 6 hung. Tests
+  kill the hangs and 85 survivors. The second opinion overturned 10 of 32 equivalents, and found an empty read at the end
+  of a file that a strict source refuses (#167), now fixed. 25 equivalents stay.
+- **The issues.** [#363], [#365], [#366], [#372]. Filed under M02: [#391] (the search's residuals), [#392] (the memo's),
+  [#393] (`stream.length-invalid` after a rebuild, equal to `main`).
+- **Checks.** 12,589 unit tests at `797ca09`, 12,586 passed and 3 skipped, with 235 of the 242 remote documents; the
+  patch's 311 instrumented lines covered, two branches no input takes partial; `Remote corpus` run 125 green; the corpus
+  differential over 403 documents, by default and after a forced rebuild: no object or finding changes.
+- **For callers.** A rebuild serves the objects of a valid file whose streams' lengths are indirect where it served an
+  attached file's. `MaxRebuildReadPasses` counts direct lengths only. `xref.entry-unconfirmed` and
+  `xref.checked-in-part` are reworded.
+
 ## 2026-11-18 — Batch 33, first pull request: a load's look past a whole value, and the rebuild's read bound ([#386])
 
 - **The question.** Measured on `main` at `445d2e5`: a file of comment lines holding headers the rebuild's scan takes
@@ -1125,6 +1165,7 @@ The detail is in git and in the pull requests; what still matters is in the reco
 [#357]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/357
 [#358]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/358
 [#359]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/359
+[#360]: https://github.com/AdCodicem/AdCodicem.Pdf/pull/360
 [#361]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/361
 [#362]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/362
 [#363]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/363
@@ -1153,3 +1194,7 @@ The detail is in git and in the pull requests; what still matters is in the reco
 [#388]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/388
 [#389]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/389
 [#390]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/390
+[#391]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/391
+[#392]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/392
+[#393]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/393
+[#394]: https://github.com/AdCodicem/AdCodicem.Pdf/pull/394
