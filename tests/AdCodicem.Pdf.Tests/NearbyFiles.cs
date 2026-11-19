@@ -38,6 +38,16 @@ internal static class NearbyFiles
         + "4 0 obj (fake four) endobj\n8 0 obj << /Length 3 >> stream\nabc\nendstream endobj\n";
 
     /// <summary>
+    /// A stream, object 7, that lost its endstream, whose indirect length object 6 holds after it; then object 4,
+    /// <c>(real four)</c>; then a line that opens with <paramref name="opening"/>, a comment or a string, holds the word
+    /// <c>endstream</c> and writes object 4 again, <c>(fake four)</c>, which a load reads inside it; then object 6 and an
+    /// intact stream (#365).
+    /// </summary>
+    public static string FourOnTheLineOfALostEndStream(string opening) =>
+        "7 0 obj << /Length 6 0 R >> stream\n0123456789\nendobj\n4 0 obj (real four) endobj\n" + opening
+        + "endstream 4 0 obj (fake four) endobj\n6 0 obj 10 endobj\n8 0 obj << /Length 3 >> stream\nabc\nendstream endobj\n";
+
+    /// <summary>
     /// Object 4, <c>(real four)</c>, then a stream, object 7, that lost its endstream and whose length's object the file
     /// lacks, whose data quotes the word <c>xref</c> in a string, then writes object 4 again, <c>(fake four)</c>, its number
     /// glued to a sign, which a load's search for where the data ends does not stop at; then object 9 and an intact
@@ -56,6 +66,29 @@ internal static class NearbyFiles
         "12 0 obj << /Type /EmbeddedFile /Length 13 0 R >> stream\n",
         "%PDF-1.4\n13 0 obj 5 endobj\n2 0 obj << /Length 5 >> stream\nhello\nendstream endobj\n4 0 obj (inner four) endobj\n%%EOF\n",
         "endstream endobj\n13 0 obj LENGTH endobj\n");
+
+    /// <summary>
+    /// Object 4, <c>(outer four)</c>, then an attached PDF file, object 12, whose indirect length object 13 holds after it,
+    /// and which writes objects of its own: 1, 4, <c>(inner four)</c>, then 7, a stream whose indirect length names 13 too,
+    /// and 13, which holds 0 (#366).
+    /// </summary>
+    public static readonly string FourInAnAttachedPdfFileWhoseOwnLengthObjectHoldsZero = WithAttached(
+        "4 0 obj (outer four) endobj\n",
+        "12 0 obj << /Type /EmbeddedFile /Length 13 0 R >> stream\n",
+        "%PDF-1.4\n1 0 obj << /Type /Catalog >> endobj\n4 0 obj (inner four) endobj\n7 0 obj << /Length 13 0 R >> stream\nendstream endobj\n" +
+        "13 0 obj 0 endobj\n%%EOF\n",
+        "endstream endobj\n13 0 obj LENGTH endobj\n");
+
+    /// <summary>
+    /// Object 4, <c>(outer four)</c>, then an attached PDF file, object 12, whose indirect length names object 13, which the
+    /// file lacks, and which writes objects of its own: 1, then 13, which holds the length of the file's header line, then
+    /// 4, <c>(inner four)</c> (#366).
+    /// </summary>
+    public static readonly string FourInAnAttachedPdfFileWhoseOwnLengthObjectEndsItAtItsFirstHeader = WithAttached(
+        "4 0 obj (outer four) endobj\n",
+        "12 0 obj << /Type /EmbeddedFile /Length 13 0 R >> stream\n",
+        "%PDF-1.4\n1 0 obj << >> endobj\n13 0 obj 9 endobj\n4 0 obj (inner four) endobj\n%%EOF\n",
+        "endstream endobj\n");
 
     /// <summary>
     /// Object 13, which holds the length of an attached FDF file, then ten objects, then object 4, <c>(outer four)</c>, then
