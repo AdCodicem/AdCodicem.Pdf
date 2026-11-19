@@ -14,7 +14,8 @@ internal enum ScannedPlaceKind : byte
     /// line, which the scan took before that header (<see cref="PdfFileReader.EndAwaitedData"/>) —, where no comment nor
     /// string between objects holds it, as a sweep from that end tells, on the line that holds the data's first
     /// <c>endstream</c> too, past where the scan stops reading the data as the bytes give them
-    /// (<see cref="PdfFileReader.KindAt"/>).
+    /// (<see cref="PdfFileReader.KindAt"/>). Some places hand-made shapes put in such data, or in a comment or a string
+    /// there, are held so too (#392).
     /// </summary>
     Clean,
 
@@ -29,7 +30,8 @@ internal enum ScannedPlaceKind : byte
     /// <c>endstream</c> following it, past its first <c>endstream</c> too (<see cref="PdfFileReader.EndAttachedData"/>); or in what
     /// a string that runs past its object's end runs into. Of the places the scan took in such data before it learned, past
     /// them, that a load ends it sooner (<see cref="PdfFileReader.TakeCleanSwept"/>), those from where the data of a stream
-    /// it met there starts, or from where it read anew before an object whose string runs past its end, stay so.
+    /// it met there starts, or from where it read anew before an object whose string runs past its end, stay so. Some of
+    /// these places, in hand-made shapes, are held as taken between objects instead (#392).
     /// </summary>
     Raw,
 }
