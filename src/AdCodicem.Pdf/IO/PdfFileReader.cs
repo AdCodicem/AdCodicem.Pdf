@@ -285,15 +285,12 @@ internal sealed partial class PdfFileReader : IPdfObjectSource, IPdfStreamDataPr
     /// before it looked for any.
     /// </summary>
     /// <remarks>
-    /// Not a guard (ADR 34): a valid file reaches this search only through a rebuild, which a reported guard sent it to and
-    /// whose raising reads it through its index, and past the bound the scan reads each stream it has not confirmed as
-    /// before the search existed, its data as the bytes give it up to its first <c>endstream</c>. A valid file's searches
+    /// Not a guard, as the search's other bounds are not (<see cref="ConfirmIndirectLength"/>). A valid file's searches
     /// read little: a stream's length object lies among the last objects before it, or is the first object past it, or,
     /// for an attached file, which holds objects of its own, a few objects on; a writer that puts it in an object stream
     /// writes no header of it past the stream, and the search stops at the first header there. Their budget is their own,
     /// apart from the reads past direct lengths that <see cref="PdfReaderLimits.MaxRebuildReadPasses"/> bounds and from the
-    /// reads made for the memo's kinds, so that they never change which direct lengths the scan confirms: the scan reports
-    /// nothing when it is spent, and the data of each stream it has not confirmed is read as it was before.
+    /// reads made for the memo's kinds, so that they never change which direct lengths the scan confirms.
     /// </remarks>
     private const int LengthSearchReadPasses = 4;
 

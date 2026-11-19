@@ -1534,6 +1534,153 @@ public class ReaderLimitsTests
     }
 
     [Theory]
+    [InlineData("an update that replaces an attached file, writing its length's object again before it")]
+    [InlineData("an update that replaces an attached file, writing its length's object again after it")]
+    [InlineData("an update that replaces an attached file, a content stream the older revision's last object")]
+    [InlineData("an update that replaces an attached file, its length ending the older data where no endstream follows")]
+    [InlineData("an update that writes a form, then the length's object of the attached file it replaces")]
+    [InlineData("an update whose first object is the length's object of the older revision's last object, a content stream")]
+    [InlineData("an attached PDF file that writes its own table, trailer and end-of-file marker, its length's object after it")]
+    public void A_valid_file_a_guard_sends_into_a_rebuild_serves_its_objects_with_no_length_s_object_read_past_the_end_of_a_stream_s_revision(string shape)
+    {
+        // An older revision writes object 9, ten values, then object 8, a stream whose indirect /Length names 9 — an attached
+        // file, then a content stream, object 10, a page and a font; or the page, the font, then a content stream, its last
+        // object. An update replaces object 8 and writes object 9 again, before it or after it, a form, object 12, first or
+        // not. The length the newer object 9 holds ends the older stream's data where object 10's data, or the form's, ends,
+        // an endstream following; or five bytes past it. MaxXRefSectionLength cuts the table, and the rebuild's scan, which
+        // finds object 9 among none of the values before the older stream, searches past its data for it: it stops at the end
+        // of the older revision, the end-of-file marker no endstream follows, and reads the stream as before it searched — it
+        // once confirmed it with the newer length, and took neither object 10, nor the page, nor the font, nor the form, nor
+        // the newer object 9 (#363). An attached file that writes its own table, trailer and marker is searched past
+        // them, its marker followed by its stream's endstream, to object 9 after it: none of its objects is taken. Every
+        // object is served as the index serves it.
+        const string Content = "BT /F1 24 Tf 72 720 Td (Hello) Tj ET";
+        const string Attached = "<< /Type /EmbeddedFile /Length 9 0 R >>";
+        const string Form = "<< /Type /XObject /Subtype /Form /BBox [0 0 10 10] /Length 15 >>";
+        const string Inner = "%PDF-1.4\n1 0 obj << /Type /Catalog /Pages 2 0 R >> endobj\n2 0 obj << /Type /Pages /Kids [] /Count 0 >> endobj\n" +
+            "77 0 obj << /Length 3 >> stream\nabc\nendstream endobj\nxref\n0 1\n0000000000 65535 f \ntrailer << /Size 78 /Root 1 0 R >>\n" +
+            "startxref\n142\n%%EOF";
+        var content = shape.EndsWith("a content stream", StringComparison.Ordinal);
+        var own = shape.StartsWith("an attached PDF file", StringComparison.Ordinal);
+        var last = shape.EndsWith("the older revision's last object", StringComparison.Ordinal);
+        var oldData = content ? Content : own ? Inner : new string('Q', 3000);
+        var pdf = new HandWrittenFile();
+        var rows = new Dictionary<int, long> { [1] = pdf.Object(1, Catalog), [2] = pdf.Object(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>") };
+        var trailer = "/Size 30 /Root 1 0 R";
+
+        if (!own)
+        {
+            rows[9] = pdf.Object(9, oldData.Length.ToString(CultureInfo.InvariantCulture));
+
+            for (var number = 20; number < 30; number++)
+            {
+                rows[number] = pdf.Object(number, string.Create(CultureInfo.InvariantCulture, $"<< /Filler {number} >>"));
+            }
+        }
+
+        long oldDataStart = 0;
+        long target = 0;
+
+        if (!content && !own)
+        {
+            (oldDataStart, _) = Stream(8, Attached, oldData);
+        }
+
+        if (!last)
+        {
+            (_, target) = Stream(10, string.Create(CultureInfo.InvariantCulture, $"<< /Length {Content.Length} >>"), Content);
+        }
+
+        rows[3] = pdf.Object(3, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 10 0 R /Resources << /Font << /F1 11 0 R >> >> >>");
+        rows[11] = pdf.Object(11, "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>");
+
+        if (last)
+        {
+            (_, target) = Stream(10, string.Create(CultureInfo.InvariantCulture, $"<< /Length {Content.Length} >>"), Content);
+        }
+
+        if (content)
+        {
+            (oldDataStart, _) = Stream(8, "<< /Length 9 0 R >>", oldData);
+        }
+
+        if (own)
+        {
+            Stream(8, Attached, oldData);
+            rows[9] = pdf.Object(9, oldData.Length.ToString(CultureInfo.InvariantCulture));
+        }
+        else
+        {
+            trailer += string.Create(CultureInfo.InvariantCulture, $" /Prev {pdf.Table(30, rows, trailer)}");
+        }
+
+        var length = own ? 0 : shape switch
+        {
+            "an update that writes a form, then the length's object of the attached file it replaces" => Stream(12, Form, "0 0 m 10 10 l S").EndStream - oldDataStart - 1,
+            "an update whose first object is the length's object of the older revision's last object, a content stream" => LengthFirst(),
+            _ => target - oldDataStart - 1 + (shape.EndsWith("where no endstream follows", StringComparison.Ordinal) ? 5 : 0),
+        };
+
+        if (!own && !content)
+        {
+            var after = shape.EndsWith("after it", StringComparison.Ordinal);
+
+            if (!after)
+            {
+                rows[9] = pdf.Object(9, length.ToString(CultureInfo.InvariantCulture));
+            }
+
+            Stream(8, Attached, new string('R', (int)length));
+
+            if (after)
+            {
+                rows[9] = pdf.Object(9, length.ToString(CultureInfo.InvariantCulture));
+            }
+        }
+
+        pdf.Table(30, rows, trailer);
+        var file = Encoding.Latin1.GetBytes(Encoding.Latin1.GetString(pdf.Bytes).Replace("LLLLLLLLLL", length.ToString("D10", CultureInfo.InvariantCulture), StringComparison.Ordinal));
+
+        using var intact = PdfDocument.Open(file);
+        using var rebuilt = PdfDocument.Open(file, new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxXRefSectionLength = 16 } });
+
+        intact.WasRepaired.Should().BeFalse();
+        rebuilt.WasRepaired.Should().BeTrue();
+        rebuilt.Diagnostics.Should().Contain(diagnostic => diagnostic.Code == PdfDiagnosticCodes.LimitXRefSectionLength);
+
+        foreach (var number in intact.ObjectNumbers.Union(rebuilt.ObjectNumbers).ToList())
+        {
+            Served(rebuilt, number).Should().Be(Served(intact, number), "the rebuild serves object {0} as the index does", number);
+        }
+
+        // Object 9 comes first, its value as wide as the length it holds, written once the form, whose endstream that length
+        // ends the older data at, is; then object 8, its content padded to that length by a comment.
+        long LengthFirst()
+        {
+            rows[9] = pdf.Object(9, "LLLLLLLLLL");
+            var form = Stream(12, Form, "0 0 m 10 10 l S").EndStream - oldDataStart - 1;
+            Stream(8, "<< /Length 9 0 R >>", Content + "\n%" + new string(' ', (int)form - Content.Length - 2));
+            return form;
+        }
+
+        (long DataStart, long EndStream) Stream(int number, string dictionary, string data)
+        {
+            rows[number] = pdf.Position;
+            pdf.Raw(string.Create(CultureInfo.InvariantCulture, $"{number} 0 obj\n{dictionary}\nstream\n"));
+            var dataStart = pdf.Position;
+            pdf.Raw(data + "\n");
+            var endStream = pdf.Position;
+            pdf.Raw("endstream\nendobj\n");
+            return (dataStart, endStream);
+        }
+
+        static string Served(PdfDocument document, int number) =>
+            document.GetObject(new PdfObjectId(number)) is PdfStream stream
+                ? stream.Dictionary + Encoding.Latin1.GetString(stream.GetRawBytes().Span)
+                : document.GetObject(new PdfObjectId(number))?.ToString() ?? "null";
+    }
+
+    [Theory]
     [InlineData(false)]
     [InlineData(true)]
     public void A_rebuild_s_scan_searches_no_further_for_the_length_of_a_stream_whose_length_object_right_before_it_holds_a_length_no_endstream_follows(bool lostEndStream)

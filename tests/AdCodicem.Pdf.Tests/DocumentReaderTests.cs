@@ -564,6 +564,11 @@ public class DocumentReaderTests
         { NearbyFiles.FourInAnAttachedPdfFile, "2 0 obj << /Length 5", -1, 0, "4 0 obj (outer", "outer four" },
         { NearbyFiles.FourInAnAttachedFdfFile, "4 0 obj (inner", -40, 0, "4 0 obj (outer", "outer four" },
         { NearbyFiles.FourPastAKeywordInAString, "+4 0 obj", 2, 0, "4 0 obj (real", "real four" },
+        { NearbyFiles.FourOnTheLineOfALostEndStream("% "), "4 0 obj (fake", -2, 0, "4 0 obj (real", "real four" },
+        { NearbyFiles.FourOnTheLineOfALostEndStream("( "), "4 0 obj (fake", -2, 0, "4 0 obj (real", "real four" },
+        { NearbyFiles.FourPastALostEndStream("( endstream \\\n"), "4 0 obj (fake", -2, 0, "4 0 obj (real", "real four" },
+        { NearbyFiles.FourInAnAttachedPdfFileWhoseOwnLengthObjectHoldsZero, "4 0 obj (inner", -2, 0, "4 0 obj (outer", "outer four" },
+        { NearbyFiles.FourInAnAttachedPdfFileWhoseOwnLengthObjectEndsItAtItsFirstHeader, "4 0 obj (inner", -2, 0, "4 0 obj (outer", "outer four" },
     };
 
     [Theory]
@@ -575,9 +580,11 @@ public class DocumentReaderTests
         // replaced, a few bytes off the newer one's row (#171). It serves the one as far from the row as the headers of the
         // objects beside it are from their own rows, where one is; otherwise the nearest, the one before the row on a tie. A
         // row at the end of the file or past it places no object, and confirms none, whatever header lies as far from it. A
-        // definition a load reads in a comment or a string, past where it ends the data of a stream that lost its endstream,
-        // or in an attached file's data, or before where it ends such data, past a keyword a string there quotes, is the bytes
-        // of another, and the one between objects is served (#365, #366, #372).
+        // definition a load reads in a comment or a string, past where it ends the data of a stream that lost its endstream —
+        // on the line of that data's first endstream too, the length's object before it or after it, and past an end of line
+        // a backslash escapes in that string —, or in an attached file's data, which an object of its stream's length's number
+        // that the file writes itself does not end, or before where it ends such data, past a keyword a string there quotes,
+        // is the bytes of another, and the one between objects is served (#365, #366, #372).
         var (file, _) = NearbyFiles.FourNear(body, anchor, shift, neighborShift);
         using var document = PdfDocument.Open(file);
 
