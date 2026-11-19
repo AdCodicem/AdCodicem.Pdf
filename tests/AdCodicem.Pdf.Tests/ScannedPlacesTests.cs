@@ -2522,6 +2522,50 @@ public class ScannedPlacesTests
     }
 
     [Theory]
+    [InlineData("a stream with no length whose data starts at the end of the file", 9)]
+    [InlineData("a stream with a direct length whose data starts at the end of the file", 9)]
+    [InlineData("a stream with a negative length whose data starts at the end of the file", 9)]
+    [InlineData("a stream with an indirect length whose data starts at the end of the file", 9)]
+    [InlineData("a stream whose length's object, before it, ends its data at the end of the file", 6)]
+    [InlineData("an attached file whose direct length ends its data at the end of the file", 6)]
+    [InlineData("an attached file whose length's object, before it, ends its data at the end of the file, a header in its data", 9)]
+    public void Data_that_starts_or_that_its_length_ends_at_the_end_of_a_file_past_the_scan_s_first_piece_asks_the_source_for_no_read_of_nothing(
+        string shape, int last)
+    {
+        // A file over a mebibyte with no table, rebuilt as it opens, whose last stream starts in the scan's first piece and
+        // ends the file past it: its dictionary runs past that piece, and its stream keyword ends the file, a truncation,
+        // whatever its length; or its data runs past it, and its length, direct or in object 5 before it, ends it exactly at
+        // the end of the file. The source refuses a read of nothing, as a source may (#167): opening the file, rebuilding its
+        // index and making the memo ask it for none, and take what they take through a source that holds the file in memory.
+        const string Head = "%PDF-1.4\n1 0 obj\n" + Catalog + "\nendobj\n2 0 obj\n" + Pages + "\nendobj\ntrailer\n<< /Root 1 0 R >>\n";
+        var filler = new string('a', 1_200_000);
+        var text = shape switch
+        {
+            "a stream with no length whose data starts at the end of the file" => Truncated(string.Empty),
+            "a stream with a direct length whose data starts at the end of the file" => Truncated("/Length 4 "),
+            "a stream with a negative length whose data starts at the end of the file" => Truncated("/Length -4 "),
+            "a stream with an indirect length whose data starts at the end of the file" => Truncated("/Length 8 0 R "),
+            "a stream whose length's object, before it, ends its data at the end of the file" =>
+                Head + Measured("5 0 obj LENGTH endobj\n6 0 obj\n<< /Length 5 0 R >>\nstream\n[[" + filler + "]]"),
+            "an attached file whose direct length ends its data at the end of the file" =>
+                Head + Measured("6 0 obj\n<< /Type /EmbeddedFile /Length LENGTH >>\nstream\n[[" + filler + "]]"),
+            _ => Head + Measured("5 0 obj LENGTH endobj\n6 0 obj\n<< /Type /EmbeddedFile /Length 5 0 R >>\nstream\n[[9 0 obj (nine) endobj\n" + filler + "]]"),
+        };
+        var file = Encoding.Latin1.GetBytes(text);
+        using var strict = PdfDocument.Open(new StrictCountingSource(file), options: null, ownsSource: true);
+        using var held = PdfDocument.Open(file);
+
+        var memo = strict.Reader.GetScanMemo();
+
+        (strict.WasRepaired, file.Length > 1024 * 1024).Should().Be((true, true));
+        Entries(strict).Should().Equal(Entries(held));
+        Headers(memo, 0, long.MaxValue).Should().Equal(Headers(held.Reader.GetScanMemo(), 0, long.MaxValue)).And.Contain(header => header.Number == last);
+
+        string Truncated(string length) =>
+            Head + "%" + new string('c', (1024 * 1024) - 200 - Head.Length) + "\n9 0 obj\n<< " + length + "/F (" + new string('f', 2000) + ") >>\nstream\n";
+    }
+
+    [Theory]
     [InlineData(1)]
     [InlineData(7)]
     public void A_length_that_ends_a_stream_s_data_where_white_space_runs_to_the_end_of_the_file_is_told_no_endstream_follows_from_the_bytes_the_scan_holds(int fromEnd)

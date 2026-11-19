@@ -923,13 +923,21 @@ internal sealed partial class PdfFileReader
     /// memo's (<see cref="ConfirmStream"/>), and, in a memo's, for each other stream it does not confirm — none for a stream
     /// whose dictionary says <c>/Type /EmbeddedFile</c>, attached already —; and for each length's object a memo's scan
     /// meets awaiting an attached file's whose length would end the data by its first place (<see cref="EndAttachedData"/>).
-    /// A header after longer white space is not told, and the data is read as another stream's: the search for its length's
-    /// object stops at the first header past its first <c>endstream</c>, and the memo counts its places as another stream's.
+    /// None for data that starts at the end of the file, which holds no header. A header after longer white space is not
+    /// told, and the data is read as another stream's: the search for its length's object stops at the first header past
+    /// its first <c>endstream</c>, and the memo counts its places as another stream's.
     /// </remarks>
     private bool StartsAttachedFile(ReadOnlySpan<byte> span, long windowStart, long dataStart)
     {
         Span<byte> bytes = stackalloc byte[PdfObjectParser.EndObjLookahead];
         var wanted = (int)Math.Min(bytes.Length, _source.Length - dataStart);
+
+        // A source may refuse a read of nothing (#167): data its stream keyword ends the file with is not read.
+        if (wanted == 0)
+        {
+            return false;
+        }
+
         ReadOnlySpan<byte> held = dataStart >= windowStart && dataStart - windowStart + wanted <= span.Length
             ? span.Slice((int)(dataStart - windowStart), wanted)
             : bytes[.._source.Read(dataStart, bytes[..wanted])];
