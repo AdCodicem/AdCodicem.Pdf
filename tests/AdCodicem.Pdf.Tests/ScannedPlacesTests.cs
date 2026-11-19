@@ -189,6 +189,10 @@ public class ScannedPlacesTests
     [InlineData("a header in an attached PDF file whose length's object follows the object after it", null)]
     [InlineData("a header glued to a sign in the data of a stream with no endstream whose length's object is lost, past an xref keyword a string there holds", "Raw")]
     [InlineData("a header glued to a sign in the data of a stream with no endstream whose length's object is lost, past a trailer keyword a string there holds", "Raw")]
+    [InlineData("a header in the data of a stream whose dictionary gives a length's object, then a direct length no endstream follows", "Raw")]
+    [InlineData("a header in the data of a stream whose dictionary gives a direct length no endstream follows, then a length's object", null)]
+    [InlineData("a header that holds an attached PDF file's length, met past where it ends the data before an endstream, on the line of a string the data opens", "Raw")]
+    [InlineData("a header that holds an attached PDF file's length, met past where it ends the data before an endobj, on the line of a string the data opens", "Raw")]
     public void A_header_is_recorded_where_the_scan_takes_it_with_how_it_took_it(string shape, string? kind)
     {
         var text = shape switch
@@ -813,6 +817,28 @@ public class ScannedPlacesTests
             // nothing its data holds (#363).
             "a header after another in the data of an intact stream whose indirect length's object follows it" =>
                 "5 0 obj\n<< /Length 6 0 R >>\nstream\n4 0 obj (four) endobj\n9 0 obj (inner) endobj\nendstream\nendobj\n6 0 obj\n44\nendobj\n",
+
+            // Stream 5's dictionary gives /Length twice. A load keeps the last value given (syntax.key-repeated), and so does
+            // the scan: the direct 3, which no endstream follows, leaves the data unconfirmed, and object 8, whose 16 an
+            // endstream follows, is not read; given last, object 8 confirms the stream, and nothing its data holds is taken.
+            "a header in the data of a stream whose dictionary gives a length's object, then a direct length no endstream follows" =>
+                "8 0 obj\n16\nendobj\n5 0 obj\n<< /Length 8 0 R /Length 3 >>\nstream\n9 0 obj 1 endobj\nendstream\nendobj\n",
+            "a header in the data of a stream whose dictionary gives a direct length no endstream follows, then a length's object" =>
+                "8 0 obj\n16\nendobj\n5 0 obj\n<< /Length 3 /Length 8 0 R >>\nstream\n9 0 obj 1 endobj\nendstream\nendobj\n",
+
+            // Attached file 6 awaits its length's object, 9: the search for it stops at the end-of-file marker of the
+            // file it attaches. Object 12 there lost its endstream, and the scan reads its data up to the first
+            // endstream past it, the attached file's own, or, with none, to the end of the file. Met past where its
+            // length ends the attached file's data, before an endstream or an endobj, object 9 ends the wait, the
+            // places within held as taken in the data. Its header lies short of where the scan stops reading object
+            // 12's data, or on that end's line: the sweep for the memo's kinds, from where a load ends object 12's
+            // data, crosses the rest of the attached file's as it crosses the bytes between objects, and the string the
+            // attached file opens before its end holds the header, which is held as taken in the data where a load
+            // reads it between objects — a confirmation lost, never a wrong one (#392).
+            "a header that holds an attached PDF file's length, met past where it ends the data before an endstream, on the line of a string the data opens" =>
+                Measured("6 0 obj\n<< /Type /EmbeddedFile /Length 9 0 R >>\nstream\n[[" + AttachedWithString + "]] endstream 9 0 obj LENGTH endobj\n13 0 obj (three) endobj\n"),
+            "a header that holds an attached PDF file's length, met past where it ends the data before an endobj, on the line of a string the data opens" =>
+                Measured("6 0 obj\n<< /Type /EmbeddedFile /Length 9 0 R >>\nstream\n[[" + AttachedWithString + "]] endobj 9 0 obj LENGTH endobj\n13 0 obj (three) endobj\n"),
             _ => "5 0 obj\n(a ( b\nendobj\n9 0 obj\n(nine)\nendobj\n) )\nendobj\n",
         };
         var place = text.Contains("+9", StringComparison.Ordinal) ? text.IndexOf("+9", StringComparison.Ordinal) : text.IndexOf("9 0 obj", StringComparison.Ordinal);
@@ -3308,6 +3334,52 @@ public class ScannedPlacesTests
         header.Kind.Should().Be(Enum.Parse<ScannedPlaceKind>(kind));
     }
 
+    [Fact]
+    public void A_trailer_keyword_where_what_the_scan_reads_as_awaited_data_stops_is_not_read_back_for_whether_it_starts_its_line()
+    {
+        // Stream 5 lost its endstream and its length's object. In its data, a trailer keyword that does not start its line,
+        // then stream 7, whose header a sign glued to it keeps a load's search from stopping at, and whose data starts with
+        // another: what the scan reads as stream 5's data stops there. The wait ends at the end of the file, and a keyword
+        // that starts its line before there ends the data sooner (#372): the first is read back for it, the 64 bytes before
+        // it counted with the reads made for the memo's kinds; the second, which would end it nowhere sooner, is not.
+        var text = "5 0 obj\n<< /Length 8 0 R >>\nstream\n0123456789 trailer\n+7 0 obj << /Length 3 >> stream\ntrailer\n4 0 obj (x) endobj\nendstream\nendobj\n";
+        var (file, start) = Sound(text, 0);
+        var first = start + text.IndexOf(" trailer", StringComparison.Ordinal) + 1;
+        var second = start + text.IndexOf("\ntrailer", StringComparison.Ordinal) + 1;
+        var reads = new List<long>();
+        using var source = new RecordingSource(file, reads);
+        using var document = PdfDocument.Open(source, options: null, ownsSource: false);
+        reads.Clear();
+
+        var memo = document.Reader.GetScanMemo();
+
+        memo.IsWhole.Should().BeTrue();
+        (reads.Contains(first - PdfObjectParser.EndObjLookahead), reads.Contains(second - PdfObjectParser.EndObjLookahead)).Should().Be((true, false));
+    }
+
+    [Fact]
+    public void A_wait_whose_data_stops_where_a_load_ends_it_reads_nothing_between_the_two_for_a_stream_keyword()
+    {
+        // Stream 5 lost its endstream and its length's object. In its data, a trailer keyword starts its line; object 4,
+        // whose header a sign glued to it keeps a load's search from stopping at, is passed, and the string of the object
+        // after it holds endobj and runs on: what the scan reads as stream 5's data stops where object 4's value ends, which
+        // is where a load ends that data, before the endobj there. The wait ends at the end of the file with nothing between
+        // the two to search for a stream keyword: the bytes there, which the reads made for the memo's kinds would count,
+        // are not read, and object 4's header stays held as taken in the data.
+        var text = "5 0 obj\n<< /Length 8 0 R >>\nstream\n\ntrailer\n+4 0 obj 1\nendobj\n5 0 obj (abc endobj)\nendstream\nendobj\n";
+        var (file, stop) = Sound(text, text.IndexOf("\nendobj\n5 0 obj", StringComparison.Ordinal));
+        var four = stop - "+4 0 obj 1".Length;
+        var reads = new List<long>();
+        using var source = new RecordingSource(file, reads);
+        using var document = PdfDocument.Open(source, options: null, ownsSource: false);
+        reads.Clear();
+
+        var memo = document.Reader.GetScanMemo();
+
+        reads.Should().NotContain(stop - 1);
+        Headers(memo, four, four + 1).Should().ContainSingle().Which.Kind.Should().Be(ScannedPlaceKind.Raw);
+    }
+
     [Theory]
     [InlineData(100, 1, "Raw")]
     [InlineData(99, 2, "Clean")]
@@ -3805,6 +3877,13 @@ public class ScannedPlacesTests
         entries.Sort(StringComparer.Ordinal);
         return entries;
     }
+
+    /// <summary>
+    /// An attached PDF file's text: an intact stream, its end-of-file marker, then object 12, which lost its endstream, and
+    /// object 4, before a string it opens.
+    /// </summary>
+    private const string AttachedWithString =
+        "%PDF-1.4\n11 0 obj<</Length 3>>stream\nabc\nendstream\nendobj\n%%EOF\n12 0 obj<</Length 3>>stream\nabcXYZ\nendobj\n4 0 obj 1 endobj\n(abc";
 
     /// <summary>An intact stream, object 7, whose stream keyword tells the data before it holds no intact stream's.</summary>
     private const string InnerStream = "7 0 obj\n<< /Length 3 >>\nstream\nabc\nendstream\nendobj\n";
