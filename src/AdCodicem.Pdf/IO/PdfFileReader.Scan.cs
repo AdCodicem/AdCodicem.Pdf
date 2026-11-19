@@ -372,10 +372,14 @@ internal sealed partial class PdfFileReader
                 }
 
                 // An object the sweep for the memo's kinds took between objects is passed by it, as the scan's own sweep
-                // passes one.
-                if (scan.KindCleanAt == at && extent.Kind is ExtentKind.Value or ExtentKind.Stream && extent.End > scan.KindSweptTo)
+                // passes one. Written with neither a pattern nor a tuple, whose temporaries count among the loop's locals
+                // (ScanState.PieceXRefAt).
+                if (scan.KindCleanAt == at && (extent.Kind == ExtentKind.Value || extent.Kind == ExtentKind.Stream) &&
+                    extent.End > scan.KindSweptTo)
                 {
-                    (scan.KindSweptTo, scan.KindLine, scan.KindDepth) = (extent.End, LineState.Tokens, 0);
+                    scan.KindSweptTo = extent.End;
+                    scan.KindLine = LineState.Tokens;
+                    scan.KindDepth = 0;
                 }
 
                 // The scan goes on past the object: within this window where its end lies within the bytes searched, from
@@ -2569,8 +2573,11 @@ internal sealed partial class PdfFileReader
         /// method the more locals it holds, and with these two, and <see cref="NoteXRefKeyword"/> inlined, it left out of the
         /// loop the lexer that reads back the line of a header whose tokens a comment parts
         /// (<see cref="HeaderNumbers.TakeLine"/>); the rebuild of a file of such lines ran about a tenth slower
-        /// (<c>ObjectScanBenchmarks</c>). The method has grown since, and its optimized compiles leave that lexer out of the
-        /// loop all the same, at no cost the benchmark tells (#374).
+        /// (<c>ObjectScanBenchmarks</c>). The method has grown since, and stays near that edge: the five temporaries a
+        /// pattern and a tuple took in a statement it gained for the memo's kinds made its optimized compiles leave that
+        /// lexer out again, and the index's lookups (<see cref="IndexScannedHeader"/>) with it, the rebuild of those lines
+        /// about an eighth slower and its scan for the memo about a fifth, until that statement was written without them
+        /// (#374).
         /// </remarks>
         public int PieceXRefAt;
 
