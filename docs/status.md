@@ -56,7 +56,9 @@ Tracking workflow mirrors from `docs/roadmap.md` (*Debt and open points*, below)
   pages — the validation rules among them, moved from the project documents — with the API reference under them, and
   four explanations. Outside any milestone.
 - **Last milestone closed**: **M01 — Object model and tolerant reading**
-- **Tests**: 12,363 unit on [#386]'s branch at `c935daf`, with 235 of the 242 remote documents fetched, 12,360 passed
+- **Tests**: 12,589 unit on [#394]'s branch at `797ca09`, with 235 of the 242 remote documents fetched, 12,586 passed
+  and 3 skipped; the 60 timing and memory tests alone; the integration suite green in CI; `Remote corpus` run 125 green
+  over all 242. Before it, 12,363 unit on [#386]'s branch at `c935daf`, with 235 of the 242 remote documents fetched, 12,360 passed
   and 3 skipped; the 58 timing and memory tests alone; the integration suite green in CI; `Remote corpus` run 123 green
   over all 242. Before it, 12,214 unit on [#384]'s branch at `7aa8ac7`, with 235 of the 242 remote documents fetched — the container
   reached neither web.archive.org nor a GitHub release for the other seven —, 12,211 passed and 3 skipped; the 54 timing
@@ -84,7 +86,9 @@ Tracking workflow mirrors from `docs/roadmap.md` (*Debt and open points*, below)
   container at `26ce787`, run class by class, 3,754 passed and 6 skipped where qpdf cannot walk a damaged document's
   pages; and `Remote corpus` run 109's 11,155 acceptance tests and 3,760 referee checks, on the library code
   [#344] ends with.
-- **Coverage**: on [#386]'s branch at `c935daf`, as Codecov reports it, 99.53 % of the patch, one line partial: the arm
+- **Coverage**: on [#394]'s branch, as Codecov reports it, every modified and coverable line of the patch covered; two
+  branches no input takes stay partial, `StartsLine`'s empty read and `FindLengthHeader`'s window check. Before it, on
+  [#386]'s branch at `c935daf`, as Codecov reports it, 99.53 % of the patch, one line partial: the arm
   of `RowLexer.CommentEnd` that keeps the last comment's end, which no input takes, a second agent agreeing in the
   mutation step. Before it, on [#384]'s branch, as Codecov reports it, every modified and coverable line of the patch
   covered. Before it, on [#382]'s branch at `f72cff6`, counted from the unit suite's report by Codecov's rule, 100 % of the
@@ -481,6 +485,16 @@ against 640 to 713 ms and 108 MB (`ObjectStreamDependencyBenchmarks`, ShortRun, 
 benchmark run on `main`). The rebuild's scan for trailers past 12,000 keywords that share long comments takes 211 to 220
 ms over a reference or a null and 408 to 447 ms over a dictionary, against 258 to 288 ms and 473 to 475 ms on `main`
 (`TrailerScanBenchmarks`, a medium job, twice, alternated).
+
+Batch 33's second pull request ([#394]) leaves the rebuild's scan, the memo's and the search for a lost `endstream`
+where `main` has them, allocations equal (`ObjectScanBenchmarks`, `StreamEndSearchBenchmarks` and
+`StreamLengthBenchmarks`, a medium job, `main` and the branch alternated twice, one process at a time). One statement the
+scan's loop gained had taken the method past the JIT's threshold of tracked locals, so that it stopped inlining the lexer
+that reads back a header's comment line and the index's lookups, [#374]'s mechanism: 4 MB of lines of a string holding a
+`%` rebuilt in 57.3 and 58.6 ms against 50.6 and 51.7, the memo's scan 58.4 and 64.4 against 50.7 and 50.9. Written
+without temporaries, the statement gives them back, 50.6 and 54.5 ms against 50.0 and 52.2 on `main`, the memo's scan
+50.8 and 52.4 against 50.3 and 50.5. The margin is about `main`'s: a few more locals in `ScanForObjects` would lose the
+lexer again.
 
 Batch 21's second pull request ([#360]) leaves the rebuild where `main` has it: every shape within the runs' spread,
 allocations equal to the byte (`ObjectScanBenchmarks`, a medium job, `main` and `6a5a4df` alternated twice, one process

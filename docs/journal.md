@@ -9,43 +9,34 @@ reason for a past decision. A new entry is short, about thirty lines; the detail
 
 ## 2026-11-19 — Batch 33, second pull request: the indirect lengths a rebuild's scan confirms, and its memo's kinds ([#394])
 
-- **The question.** Measured on `main` at `bcb3653`. After a reported guard sent a valid file into a rebuild, the scan
-  could not confirm an indirect `/Length`. It read that data as the bytes give it up to its first `endstream`, taking an
-  attached file's headers and a trailer written in a comment, so wrong objects were served ([#363]). The memo's kinds,
-  which the search near a shifted row and the validator consult, held Clean a header a comment or string hides past a
-  lost `endstream` ([#365]) and an attached file's objects ([#366]). Where the scan could not learn where a load ends
-  the data, they held Raw what follows ([#372]).
-- **Settled with the maintainer** (2026-11-17 to 19, each as recommended):
-  - #363: confirm an indirect length from its object. The search stops at the first header of its number whose object
-    holds an integer, and its bounds are internal constants with a written reason. After round 1, its budget became
-    internal and silent, and `MaxRebuildReadPasses` went back to direct lengths only. Past the data's first
-    `endstream`, only the first header decides unless the data is an attached file.
-  - #365: a lone header there near a shifted row is now an Error, where [#360] pinned Clean.
-  - Rounds 2 and 3: two wrong confirmations within one revision, and the shapes equal to `main`, filed.
-- **What changed.** The scan confirms an indirect length from its object and an `endstream` after that length. The object
-  is one of the last eight values since the last trailer, the first holding an integer deciding; else the first header
-  past the first `endstream`, or for an attached file the first of its number within a mebibyte. Both forward searches
-  stop at a revision's `%%EOF`, under a silent budget of four times the file. The memo sweeps past a load's end, and the
-  line of the first `endstream`, for what a comment or string hides. An attached file's places are held Raw, and the
-  search for a load's end stops at a line-start `xref` or `trailer`. No corpus document changes, by default or after a
-  forced rebuild.
-- **Review** (ADR 54): three rounds, three lenses each and a refuter on every blocker and major.
-  - Round 1: 1 blocker (an older revision's length object), 2 majors (Ghostscript's object streams reaching the guard;
-    length objects before their streams, with lengths damaged, spending it), 3 minors, 8 nits.
-  - Round 2: 1 blocker (an attachment's search crossing a revision), 3 minors, 7 nits.
-  - Round 3: 1 blocker by the letter, equal to `main`, folded into an accepted residual; 5 minors, 8 nits.
-  - Real damage, up to 180,000 reads a round: no change but the intended.
-- **Mutation** (ADR 53 amended): 314 mutants over 165 of the 354 changed lines. The suite killed 198 and 6 hung. Tests
-  kill the hangs and 85 survivors. The second opinion overturned 10 of 32 equivalents, and found an empty read at the end
-  of a file that a strict source refuses (#167), now fixed. 25 equivalents stay.
-- **The issues.** [#363], [#365], [#366], [#372]. Filed under M02: [#391] (the search's residuals), [#392] (the memo's),
-  [#393] (`stream.length-invalid` after a rebuild, equal to `main`).
-- **Checks.** 12,589 unit tests at `797ca09`, 12,586 passed and 3 skipped, with 235 of the 242 remote documents; the
-  patch's 311 instrumented lines covered, two branches no input takes partial; `Remote corpus` run 125 green; the corpus
-  differential over 403 documents, by default and after a forced rebuild: no object or finding changes.
-- **For callers.** A rebuild serves the objects of a valid file whose streams' lengths are indirect where it served an
-  attached file's. `MaxRebuildReadPasses` counts direct lengths only. `xref.entry-unconfirmed` and
-  `xref.checked-in-part` are reworded.
+- **The question.** Measured on `main` at `bcb3653`: after a reported guard sent a valid file into a rebuild, the scan
+  read data whose indirect `/Length` it could not confirm up to its first `endstream`, taking an attached file's headers
+  and a trailer in a comment: wrong objects served ([#363]). The memo's kinds held Clean what a comment or string hides
+  past a lost `endstream` ([#365]) and an attached file's objects ([#366]), and Raw what follows where the scan could
+  not learn a load's end ([#372]).
+- **Settled with the maintainer** (2026-11-17 to 19, each as recommended): confirm an indirect length from its object,
+  the search's bounds internal constants with a written reason; after round 1, its budget internal and silent,
+  `MaxRebuildReadPasses` back to direct lengths, only the first header past the data deciding unless it is an attached
+  file; a lone hidden header near a shifted row now an Error where [#360] pinned Clean; the later residuals filed.
+- **What changed.** The object is one of the last eight values since the last trailer, the first holding an integer
+  deciding, else the first header past the first `endstream` (for an attached file, the first of its number within a
+  mebibyte); the search stops at a revision's `%%EOF`, under four times the file. The memo sweeps for what a comment or
+  string hides, holds an attached file's places Raw, and ends a load's data at a line-start `xref` or `trailer`. No
+  corpus document changes, by default or after a forced rebuild.
+- **Review** (ADR 54): three rounds. Round 1: 1 blocker (an older revision's length object), 2 majors (Ghostscript's
+  object streams reaching the guard; length objects before their streams spending it), 3 minors, 8 nits. Round 2: 1
+  blocker (an attachment's search crossing a revision), 3 minors, 7 nits. Round 3: 1 blocker by the letter, equal to
+  `main`, folded into an accepted residual, 5 minors, 8 nits. Real damage, up to 180,000 reads a round: no change.
+- **Mutation** (ADR 53 amended): 314 mutants over 165 of 354 changed lines; 198 killed by the suite, 6 hung; tests kill
+  the hangs and 85 survivors. The second opinion overturned 10 of 32 equivalents and found an empty read at a file's end
+  that a strict source refuses (#167), fixed; 25 equivalents stay.
+- **The issues.** [#363], [#365], [#366], [#372]. Filed under M02: [#391], [#392], [#393].
+- **Checks.** 12,589 unit tests at `797ca09`, 12,586 passed and 3 skipped; the 60 timing and memory tests alone; CI
+  green, Codecov's patch whole; `Remote corpus` run 125 green; the corpus differential: no object or finding changes.
+  Benchmarks against `main`, alone, within noise once one statement's temporaries, which had taken the scan's loop past
+  the JIT's threshold of tracked locals and cost 4 MB of strings holding a `%` a seventh, were written out ([#374]).
+- **For callers.** A rebuild serves a valid file's own objects where its streams' lengths are indirect.
+  `MaxRebuildReadPasses` counts direct lengths only; `xref.entry-unconfirmed` and `xref.checked-in-part` are reworded.
 
 ## 2026-11-18 — Batch 33, first pull request: a load's look past a whole value, and the rebuild's read bound ([#386])
 
