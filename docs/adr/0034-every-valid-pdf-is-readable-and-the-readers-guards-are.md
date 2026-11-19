@@ -197,16 +197,18 @@ searches stay bounded by `EndStreamSearchPasses`, an internal constant whose rea
 
 Amended on 2026-11-18, by the maintainer, while [#363](https://github.com/AdCodicem/AdCodicem.Pdf/issues/363) was fixed:
 the rebuild's scan now confirms a stream's indirect `/Length` where the file's bytes give its object and an `endstream`
-follows the length it holds: one of the last eight values the scan passed since the last trailer it met; else the first
-object header past the data's first `endstream`, when it is the length's object, or, for an attached file's data, the
-first header of the length's number within a mebibyte past it. `MaxRebuildReadPasses` still bounds only the reads that confirm direct lengths. The search's
-own reads have a budget of their own, four times the file, spent silently, and its other bounds — the eight values, the
-mebibyte, the 64 bytes a length's object is read within, and what each of its reads repeats of the one before — are
-internal constants too, by the maintainer's choice: a valid file reaches this search only through a rebuild that a
-reported guard sent it to, and raising that guard reads it through its index; past one of these bounds the scan reads
-the stream as it did before the search existed. A first version counted the search against the guard, apart from the
-direct lengths; a damaged file whose lengths sit in an object stream, as one writer puts them, then reached it on a few
-pages, and was read worse than before.
+follows the length it holds: one of the last eight values the scan passed since the last trailer it met, the first that
+holds an integer deciding; where none does, the first object header past the data's first `endstream`, when it is the
+length's object, or, for an attached file's data, the first header of the length's number whose object holds an integer
+within a mebibyte past it — the search stopping, either way, at the end of the revision, the `%%EOF` no `endstream`
+follows, as the values stop at its trailer. `MaxRebuildReadPasses` still bounds only the reads that confirm direct
+lengths. The search's own reads have a budget of their own, four times the file, spent silently, and its other bounds —
+the eight values, the mebibyte, the 64 bytes a length's object is read within, and what each of its reads repeats of the
+one before — are internal constants too, by the maintainer's choice: a valid file reaches this search only through a
+rebuild that a reported guard sent it to, and raising that guard reads it through its index; past one of these bounds
+the scan reads the stream as it did before the search existed. A first version counted the search against the guard,
+apart from the direct lengths; a damaged file whose lengths sit in an object stream, as one writer puts them, then
+reached it on a few pages, and was read worse than before.
 
 ## Context
 
