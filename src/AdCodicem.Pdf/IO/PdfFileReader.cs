@@ -1653,11 +1653,11 @@ internal sealed partial class PdfFileReader : IPdfObjectSource, IPdfStreamDataPr
     /// The walks' guard's is kept until the walk ends only, by every load it passes through (<see cref="KeepWalkThrow"/>):
     /// what it reads as null is the walk's alone, and the object is read whole once the walk ends
     /// (<see cref="PdfReaderLimits.MaxObjectStreamDecodePasses"/>). What a lookup of a number the index lacks threw is not
-    /// kept (<see cref="IsKeptNowhere"/>).
+    /// kept (<see cref="IsKeptByNoTable"/>).
     /// </remarks>
     private void KeepThrow(int number, Exception exception)
     {
-        if (exception is not PdfLimitExceededException limit || IsKeptNowhere(limit) ||
+        if (exception is not PdfLimitExceededException limit || IsKeptByNoTable(limit) ||
             !(_throwsKept ??= new(ReferenceEqualityComparer.Instance)).Add(limit))
         {
             return;
@@ -1692,7 +1692,7 @@ internal sealed partial class PdfFileReader : IPdfObjectSource, IPdfStreamDataPr
     /// <remarks>
     /// Called as the stream's contents are kept — not where the walks' guard read a value as null on the way, nor through an
     /// index the stream's load rebuilt —, and not while a rebuild takes the object streams in, where a number the index holds
-    /// no entry for yet reads as null for the time being; never for an exception <see cref="IsKeptNowhere"/> names. A value
+    /// no entry for yet reads as null for the time being; never for an exception <see cref="IsKeptByNoTable"/> names. A value
     /// the decoding read as null because the stream holds it, or because it was being loaded, does not keep the exception
     /// from being kept, unlike a load's: every later decoding of the stream reads that value as null again
     /// (<see cref="_nullWhileDecoding"/>, let go with the kept exceptions), and would throw alike. A null the loads' nesting
@@ -1702,12 +1702,12 @@ internal sealed partial class PdfFileReader : IPdfObjectSource, IPdfStreamDataPr
         (_decodingsThrown ??= new(_cacheCapacity)).Keep(number, exception);
 
     /// <summary>
-    /// Determines whether <paramref name="exception"/> is one no load or decoding keeps beyond a walk: the walks' guard's,
-    /// kept until the walk ends only, by the loads it passes through (<see cref="KeepWalkThrow"/>); or one a lookup of a
-    /// number the index lacks threw, anew at each lookup, which reads nothing — kept, it would save no read, and a document
-    /// would hold one for each number looked up.
+    /// Determines whether <paramref name="exception"/> is one neither table of kept exceptions keeps
+    /// (<see cref="_loadsThrown"/>, <see cref="_decodingsThrown"/>): the walks' guard's, which the walk keeps apart, for the
+    /// loads it passes through (<see cref="KeepWalkThrow"/>); or one a lookup of a number the index lacks threw, anew at each
+    /// lookup, which reads nothing — kept, it would save no read, and a document would hold one for each number looked up.
     /// </summary>
-    private bool IsKeptNowhere(PdfLimitExceededException exception) => IsWalkGuard(exception) || ReferenceEquals(exception, _lookupThrown);
+    private bool IsKeptByNoTable(PdfLimitExceededException exception) => IsWalkGuard(exception) || ReferenceEquals(exception, _lookupThrown);
 
     /// <summary>
     /// Determines whether <paramref name="exception"/> is the one the walks' guard throws, which is kept until the walk ends

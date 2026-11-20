@@ -50,7 +50,7 @@ internal sealed partial class PdfFileReader
     /// time a guard that stopped the index short of the file leaves one out — <see cref="PdfReaderLimits.MaxIndexEntries"/>
     /// filled it, or <see cref="PdfReaderLimits.MaxRebuildReadPasses"/> kept the scan of the rebuild that made it from
     /// reading data that holds a header —, as an object read again past its guard throws again, where the guard was
-    /// reported. The exception is a new one each time, which no load or decoding keeps (<see cref="IsKeptNowhere"/>).
+    /// reported. The exception is a new one each time, which no load or decoding keeps (<see cref="IsKeptByNoTable"/>).
     /// </summary>
     /// <exception cref="PdfLimitExceededException">
     /// The index is full, or a rebuild's scan left data that holds a header unread, and the document was opened to throw on
@@ -77,7 +77,7 @@ internal sealed partial class PdfFileReader
         catch (PdfLimitExceededException exception)
         {
             // Thrown anew at each lookup, which reads nothing: neither the load of the number nor any load or decoding it
-            // passes through keeps it (IsKeptNowhere).
+            // passes through keeps it (IsKeptByNoTable).
             _lookupThrown = exception;
             throw;
         }
@@ -1773,7 +1773,7 @@ internal sealed partial class PdfFileReader
                 // Kept as the stream's contents are, not as a load's exception is: a null on the way for an object the stream
                 // holds, or one being loaded, is read as null again by every decoding of the stream, which would throw alike
                 // (KeepDecodingThrow's remarks).
-                catch (PdfLimitExceededException exception) when (repaired == _repaired && walkCuts == _walkCuts && !_expandingObjectStreams && !IsKeptNowhere(exception))
+                catch (PdfLimitExceededException exception) when (repaired == _repaired && walkCuts == _walkCuts && !_expandingObjectStreams && !IsKeptByNoTable(exception))
                 {
                     KeepDecodingThrow(number, exception);
                     throw;

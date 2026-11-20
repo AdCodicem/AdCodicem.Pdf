@@ -2022,7 +2022,7 @@ public class StreamLengthTests
             }
         }
 
-        parsed.Should().BeGreaterThan(PdfFileReader.UncheckedConfirmedPasses * file.Bytes.Length, "the reader counts past this");
+        parsed.Should().BeGreaterThan(PdfFileReader.UncountedUnreadPasses * file.Bytes.Length, "the reader counts past this");
         document.Diagnostics.Should().BeEmpty();
     }
 
@@ -2062,7 +2062,7 @@ public class StreamLengthTests
         }
 
         parsed.Should().BeGreaterThan(
-            (PdfFileReader.UncheckedConfirmedPasses + PdfFileReader.OverlapKeptPasses + PdfFileReader.OverlapCutPasses) * file.Bytes.Length,
+            (PdfFileReader.UncountedUnreadPasses + PdfFileReader.OverlapKeptPasses + PdfFileReader.OverlapCutPasses) * file.Bytes.Length,
             "past what lengths taken unread may total, were these counted");
         document.Diagnostics.Should().HaveCount(60).And.OnlyHaveUniqueItems(d => d.Position);
         document.Diagnostics.Should().NotContain(d => d.Message.Contains("overlap", StringComparison.Ordinal));
@@ -2120,7 +2120,7 @@ public class StreamLengthTests
         var bytes = file.Bytes;
         using var document = PdfDocument.Open(bytes);
         var provider = (IPdfStreamDataProvider)document.Reader;
-        var four = PdfFileReader.UncheckedConfirmedPasses * bytes.Length;
+        var four = PdfFileReader.UncountedUnreadPasses * bytes.Length;
 
         var start = rows[3] + 10;
         var kept = (int)(placed - start);
