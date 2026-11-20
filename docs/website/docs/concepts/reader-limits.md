@@ -177,15 +177,17 @@ a catalog a `/Root` that leads to none sets off, and a validation's rules — we
 what its first decodings of them weighed. Past it, the walk leaves the rest unread as a guard's cut, goes on, and
 reports `limit.object-stream-decodes`. A valid file reaches it — the page tree above —, so it is a guard, and what it
 leaves unread is the reader's limit: the validator judges nothing of it, and finds no fault where the file has none.
-The search for a catalog does not leave it at that when it finds none among what it read whole: rebuilding the index
+The search for a catalog does not leave it at that when it finds none among what it read: rebuilding the index
 would scan the whole file, and could take a catalog an update superseded, while reading again what the guard cut, those
 of each object stream together, decodes each stream once more at most; so it does that first, and takes the first of
 them, in the index's order, that reads as a catalog — read whole this time, or cut again, as the first search takes
 one —; where it finds none — a candidate's `/Type` lying in a stream it may not decode again —, the index is rebuilt as
-before. Nothing the walk left unread is kept; what it read through it is kept until the walk ends, and no longer — so
-that the walk reads such an object once, however many candidates lead to it, and does not decode again, for each of its
-objects, a stream whose decoding met the cut —: your own reads once it is done read every object whole, and the next
-walk starts its budget again. The rules that read every object of the index
+before. Nothing the walk left unread is kept. An object whose load read through it is kept until the walk ends, and no
+longer — unless the cache lets it go first —; with `ThrowOnLimit`, an object whose load the guard's exception passed
+through throws the walk's first such exception again, without reading, until the walk ends. So the walk reads such an
+object once, however many candidates lead to it; and an object stream whose decoding met the cut is not kept at all, but
+counted as decoded, so that the walk does not decode it again for each of its objects. Your own reads once the walk is
+done read every object whole, and the next walk starts its budget again. The rules that read every object of the index
 read those of each object stream together, so that a sound file's validation decodes each stream once, whatever its
 numbers' order.
 
@@ -234,9 +236,11 @@ header, or one body read under many numbers, would otherwise read that stretch a
 in its square. Past that, a stream's
 data ends at an object either index places inside it, as long as what the streams so ended keep stays within four times
 the file more, or reads empty: what such streams serve stays within eight times the file once the reader counts, besides
-what the searches read for the objects they were made for, at most four times the file, whatever the order they are
-read in and whatever the indexes place, and it counts only once they were parsed four times the file over, which spares
-a valid file the count
+what the searches read for the objects they were made for — four times the file, and the stretch of the search under way
+when they reach it, which reads on to its stop: about five times the file at most —, whatever the order they are read in
+and whatever the indexes place, and it counts only once they were parsed four times the file over: a valid file is spared
+the count until its streams have been parsed that often, and none of them is ever ended, since, counted once each, they
+total less than the file
 ([What cannot be lifted](../reference/reader-limits.md#what-cannot-be-lifted),
 [#280](https://github.com/AdCodicem/AdCodicem.Pdf/issues/280)).
 
