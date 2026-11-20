@@ -99,10 +99,10 @@ internal sealed class HandWrittenFile
 
     /// <summary>
     /// Writes object stream <paramref name="number"/>, Flate-compressed, holding <paramref name="members"/> after spaces
-    /// between its header and its first object that make its data decode to <paramref name="decoded"/> bytes, and gives
-    /// where its header starts.
+    /// between its header and its first object that make its data decode to <paramref name="decoded"/> bytes, its dictionary
+    /// holding <paramref name="entries"/> besides its own, and gives where its header starts.
     /// </summary>
-    public long PaddedObjectStream(int number, (int Number, string Body)[] members, int decoded)
+    public long PaddedObjectStream(int number, (int Number, string Body)[] members, int decoded, string entries = "")
     {
         var header = new StringBuilder();
         var contents = new StringBuilder();
@@ -119,7 +119,7 @@ internal sealed class HandWrittenFile
             number,
             string.Create(
                 CultureInfo.InvariantCulture,
-                $"<< /Type /ObjStm /N {members.Length} /First {first} /Filter /FlateDecode /Length {data.Length} >>{_eol}stream{_eol}{Encoding.Latin1.GetString(data)}{_eol}endstream"));
+                $"<< /Type /ObjStm /N {members.Length} /First {first} /Filter /FlateDecode /Length {data.Length} {entries}>>{_eol}stream{_eol}{Encoding.Latin1.GetString(data)}{_eol}endstream"));
     }
 
     /// <summary>

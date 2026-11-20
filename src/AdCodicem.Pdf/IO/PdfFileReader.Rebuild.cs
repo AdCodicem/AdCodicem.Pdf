@@ -966,9 +966,11 @@ internal sealed partial class PdfFileReader
     /// <see cref="PdfReaderLimits.MaxObjectStreamDecodePasses"/>, a candidate past it being one a limit cut. A search that
     /// finds no catalog among what it read whole reads again the candidates that guard cut — those an object stream holds
     /// stream by stream, in the order of their places in it, then the others —, in a walk that decodes each stream once at
-    /// most (<see cref="BeginWalkDecodingOnce"/>), and takes the first of them in the index's order that is a catalog: the
-    /// one a search within the guard takes, rather than rebuild the index for want of one (<see cref="RecoverCatalog"/>).
-    /// Not within another walk, whose budget it counts with, nor once a load rebuilt the index, whose own search took over.
+    /// most (<see cref="BeginWalkDecodingOnce"/>), and takes the first of them in the index's order that is a catalog among
+    /// those it reads whole, rather than rebuild the index for want of one (<see cref="RecoverCatalog"/>): where that
+    /// reading is cut too — a candidate's <c>/Type</c> in a stream it may not decode again — and takes none, the index is
+    /// rebuilt as before. Not within another walk, whose budget it counts with, nor once a load rebuilt the index, whose
+    /// own search took over.
     /// </para>
     /// </remarks>
     private ExceptionDispatchInfo? FindCatalog()
