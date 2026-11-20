@@ -273,7 +273,7 @@ public class ReaderLimitsTests
         // Object 16 is no catalog, and the catalog, object 30, has no row. The search for a catalog, past what it may decode
         // again, reads objects 14 and 16 as null; read again, neither is a catalog, and the index is rebuilt, as a search
         // within its guard rebuilds it, and the rebuild finds object 30.
-        var file = ObjectStreamsReadInTurnFile(parametersCut: false, catalogUnindexed: true);
+        var file = ObjectStreamsReadInTurnFile(parametersCut: false, catalogWrittenDirectly: true);
         using var cut = PdfDocument.Open(file, new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxObjectStreamDecodePasses = 1 } });
         using var whole = PdfDocument.Open(file);
 
@@ -282,6 +282,23 @@ public class ReaderLimitsTests
         whole.Diagnostics.Select(entry => entry.Code).Should().Equal(PdfDiagnosticCodes.XRefRebuilt, PdfDiagnosticCodes.TrailerRootRecovered);
         cut.Reader.CatalogFoundAs.Should().Be(30);
         whole.Reader.CatalogFoundAs.Should().Be(30);
+    }
+
+    [Fact]
+    public void A_search_for_a_catalog_that_takes_one_past_candidates_its_guard_cut_reads_none_again_and_notes_them()
+    {
+        // Object 16 is no catalog, and the catalog is object 30, written directly past the object streams. The search for a
+        // catalog, past what it may decode again, reads objects 14 and 16 as null, then takes object 30, as a search within
+        // its guard does, without reading them again: it notes that it passed over objects a limit cut.
+        var file = ObjectStreamsReadInTurnFile(parametersCut: false, catalogWrittenDirectly: true, catalogRow: true);
+        using var cut = PdfDocument.Open(file, new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxObjectStreamDecodePasses = 1 } });
+        using var whole = PdfDocument.Open(file);
+
+        cut.Diagnostics.Select(entry => entry.Code).Should().Equal(PdfDiagnosticCodes.LimitObjectStreamDecodes, PdfDiagnosticCodes.TrailerRootRecovered);
+        cut.Reader.CatalogFoundAs.Should().Be(30);
+        cut.Reader.CatalogCandidateCut.Should().BeTrue();
+        whole.Reader.CatalogFoundAs.Should().Be(30);
+        whole.Reader.CatalogCandidateCut.Should().BeFalse();
     }
 
     [Theory]
@@ -3308,6 +3325,28 @@ public class ReaderLimitsTests
         document.GetObject(new PdfObjectId(42)).AsStream().Required().Decode().Length.Should().Be(44);
     }
 
+    [Fact]
+    public void An_object_whose_load_threw_in_a_rebuild_reads_as_the_object_stream_that_replaces_it_defines_it()
+    {
+        // Opened to throw, a lookup of object 31, which the table lacks, rebuilds the index, whose /Prev names no section.
+        // Telling the object streams apart, the rebuild loads object 5, written directly, which runs past MaxObjectLength: the
+        // load throws, and keeps its exception. Object stream 10, written after it, defines 5 again, and replaces it: the
+        // lookup throws the guard once the rebuild is finished, and object 5 reads as the stream defines it.
+        var file = new HandWrittenFile(version: "1.5");
+        var rows = new Dictionary<int, long> { [1] = file.Object(1, Catalog), [2] = file.Object(2, Pages) };
+        file.Object(5, "(" + new string('x', 2000) + ")");
+        file.ObjectStream(10, [(5, "(five)")]);
+        file.Table(3, rows, "/Size 3 /Root 1 0 R /Prev 1 0 R");
+        var options = new PdfReaderOptions { ThrowOnLimit = true, Limits = PdfReaderLimits.Default with { MaxObjectLength = 1024 } };
+        using var document = PdfDocument.Open(file.Bytes, options);
+
+        FluentActions.Invoking(() => document.GetObject(new PdfObjectId(31))).Should().Throw<PdfLimitExceededException>()
+            .Which.Code.Should().Be(PdfDiagnosticCodes.LimitObject);
+
+        document.WasRepaired.Should().BeTrue();
+        document.GetObject(new PdfObjectId(5)).AsText().Should().Be("five");
+    }
+
     /// <summary>
     /// Writes the file of the guard on the rebuild's reads (<see cref="Case.For"/>) under a classic table whose row for object
     /// 50 points into the spaces of object 10's data, and that lacks object 41, which object stream 40 holds; stream 42 takes
@@ -6161,10 +6200,10 @@ public class ReaderLimitsTests
     /// Writes a file whose object streams 4 and 5, which decode to 17 MB each, past half the budget the reader keeps them
     /// in, hold objects 10 to 17 in turn, the even ones in 4; the trailer's /Root names a string, and the catalog is object
     /// 16. With <paramref name="parametersCut"/>, object stream 6 holds object 18, and its <c>/DecodeParms</c> names object
-    /// 14. With <paramref name="catalogUnindexed"/>, object 16 is no catalog, and the catalog is object 30, which no row
-    /// places.
+    /// 14. With <paramref name="catalogWrittenDirectly"/>, object 16 is no catalog, and the catalog is object 30, written
+    /// directly, which a row places only with <paramref name="catalogRow"/>.
     /// </summary>
-    private static byte[] ObjectStreamsReadInTurnFile(bool parametersCut, bool catalogUnindexed = false)
+    private static byte[] ObjectStreamsReadInTurnFile(bool parametersCut, bool catalogWrittenDirectly = false, bool catalogRow = false)
     {
         var file = new HandWrittenFile(version: "1.5");
         var rows = new Dictionary<int, (int Type, long Field2, int Field3)>
@@ -6172,7 +6211,7 @@ public class ReaderLimitsTests
             [1] = (1, file.Object(1, "(not a catalog)"), 0),
             [2] = (1, file.Object(2, Pages), 0),
         };
-        (int Number, string Body)[] even = [(10, "<< >>"), (12, "<< >>"), (14, "<< >>"), (16, catalogUnindexed ? "<< >>" : Catalog)];
+        (int Number, string Body)[] even = [(10, "<< >>"), (12, "<< >>"), (14, "<< >>"), (16, catalogWrittenDirectly ? "<< >>" : Catalog)];
         (int Number, string Body)[] odd = [(11, "<< >>"), (13, "<< >>"), (15, "<< >>"), (17, "<< >>")];
         rows[4] = (1, file.PaddedObjectStream(4, even, ObjectStreamDecoded), 0);
         rows[5] = (1, file.PaddedObjectStream(5, odd, ObjectStreamDecoded), 0);
@@ -6183,9 +6222,14 @@ public class ReaderLimitsTests
             rows[odd[index].Number] = (2, 5, index);
         }
 
-        if (catalogUnindexed)
+        if (catalogWrittenDirectly)
         {
-            file.Object(30, Catalog);
+            var catalog = file.Object(30, Catalog);
+
+            if (catalogRow)
+            {
+                rows[30] = (1, catalog, 0);
+            }
         }
 
         if (parametersCut)
@@ -6195,7 +6239,7 @@ public class ReaderLimitsTests
             rows[18] = (2, 6, 0);
         }
 
-        file.CompressedCrossReferenceStream(20, 21, number => rows.TryGetValue(number, out var row) ? row : (0, 0, 0), "/Root 1 0 R");
+        file.CompressedCrossReferenceStream(20, catalogRow ? 31 : 21, number => rows.TryGetValue(number, out var row) ? row : (0, 0, 0), "/Root 1 0 R");
         return file.Bytes;
     }
 
