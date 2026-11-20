@@ -286,14 +286,14 @@ public sealed record PdfReaderLimits
     /// that walk weighed — their decoded data, and their headers' tables. Past it, every object a stream the walk decoded
     /// and the reader let go holds reads as null until the walk ends, as an object a guard cut, and the walk goes on. A
     /// stream the walk has not decoded yet is decoded, and a rebuild's taking in of the object streams is not weighed. A
-    /// search for a catalog that finds none among the objects it read whole reads those the guard cut again, stream by
-    /// stream, each stream decoded once more at most, and takes the first of them, in the index's order, that reads as a
-    /// catalog — read whole this time, or cut again, as the first search takes one —, before it would rebuild the index for
-    /// want of one; where this reading finds none, the index is rebuilt as it would have been without it. It does not read
-    /// them again within another walk, nor once a load rebuilt the index on the way, whose own search for a catalog takes
-    /// over. What reads as null for the guard is not kept, and what is read through it is kept until the walk ends only,
-    /// so that your own reads, once the walk is done, read the objects whole; and the budget starts again with the next
-    /// walk.
+    /// search for a catalog that finds none among the objects it read reads those the guard cut again, stream by stream,
+    /// each stream decoded once more at most, and takes the first of them, in the index's order, that reads as a catalog —
+    /// read whole this time, or cut again, as the first search takes one —, before it would rebuild the index for want of
+    /// one; where this reading finds none, the index is rebuilt as it would have been without it. It does not read them
+    /// again within another walk, nor once a load rebuilt the index on the way, whose own search for a catalog takes over.
+    /// What reads as null for the guard is not kept. An object whose load read through it is kept until the walk ends only,
+    /// and an object stream whose decoding did is not kept at all, nor decoded again before the walk ends, so that your own
+    /// reads, once the walk is done, read the objects whole; and the budget starts again with the next walk.
     /// </para>
     /// <para>
     /// A valid file can reach it: a page tree whose pages lie in turn in two object streams that each decode past 16 MB.
@@ -302,7 +302,8 @@ public sealed record PdfReaderLimits
     /// before the walk began: two validations of such a file may differ. Reaching it reports
     /// <see cref="Diagnostics.PdfDiagnosticCodes.LimitObjectStreamDecodes"/>, once a document, where the object stream it
     /// first left undecoded lies; with <see cref="PdfReaderOptions.ThrowOnLimit"/>, each read it leaves undecoded throws,
-    /// the search for a catalog once it ends, as for the other guards it meets.
+    /// the search for a catalog once it ends, as for the other guards it meets, and an object whose read threw so throws the
+    /// walk's first such exception again, without being read again, until the walk ends.
     /// </para>
     /// </remarks>
     /// <exception cref="ArgumentOutOfRangeException">The value is zero or less.</exception>

@@ -349,11 +349,9 @@ public class ReaderLimitsTests
     [InlineData("filter", false)]
     [InlineData("parameters", false)]
     [InlineData("length", false)]
-    [InlineData("own", false)]
     [InlineData("filter", true)]
     [InlineData("parameters", true)]
     [InlineData("length", true)]
-    [InlineData("own", true)]
     public void An_object_stream_whose_decoding_meets_what_a_walk_s_guard_cut_and_gives_nothing_is_decoded_once_however_many_of_its_objects_the_walk_reads(string value, bool catalogCut)
     {
         // The search for a catalog, past what it may decode again, reads object 28 as null, and decodes object stream 60
@@ -361,21 +359,38 @@ public class ReaderLimitsTests
         // read as null for the guard, the stream decoded once, not once for each. Where the catalog is one the guard cut too,
         // the search reads again what it cut, stream by stream, decoding each once more at most: object 28, read whole there,
         // is let go before stream 60 is decoded again, which it reads as null again, the stream decoded once more. Read by
-        // the caller after the search, stream 60 serves its objects. A stream whose decoding needs no value the guard cut,
-        // and gives nothing for the file's own fault, is kept, decoded once, and serves none.
+        // the caller after the search, stream 60 serves its objects.
         var file = DecodedThroughACutValueFile(value, 100, catalogCut, out var dataStart);
         using var source = new OffsetCountingSource(file);
         var options = new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxObjectStreamDecodePasses = 1 }, ObjectCacheCapacity = 64 };
         using var document = PdfDocument.Open(source, options, ownsSource: false);
 
-        source.Reads.GetValueOrDefault(dataStart).Should().Be(catalogCut && value != "own" ? 2 : 1, "stream 60 is decoded once a walk");
+        source.Reads.GetValueOrDefault(dataStart).Should().Be(catalogCut ? 2 : 1, "stream 60 is decoded once a walk");
+        document.Reader.CatalogFoundAs.Should().Be(FirstMemberOfSixty + 100);
+        document.Diagnostics.Select(entry => entry.Code).Should().Equal(PdfDiagnosticCodes.LimitObjectStreamDecodes, PdfDiagnosticCodes.TrailerRootRecovered);
+        document.GetObject(new PdfObjectId(FirstMemberOfSixty)).AsDictionary().Required().GetRaw(PdfName.Get("Kept")).Should().Be(PdfBoolean.True);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void An_object_stream_that_gives_nothing_for_the_file_s_own_fault_in_a_walk_past_its_guard_is_kept_decoded_once_and_serves_none(bool catalogCut)
+    {
+        // Object stream 60 needs no value the search for a catalog, past what it may decode again, reads as null: a stray
+        // token heads its header, which lists no object, and it gives nothing for the file's own fault. What it gave is kept,
+        // as any decoding's is: it is decoded once, however many of its hundred objects the search reads — and where the
+        // catalog is one the guard cut too, and the search reads again what it cut, not once more —, reported unreadable,
+        // and serves none of them, to the caller after the search either.
+        var file = DecodedThroughACutValueFile("own", 100, catalogCut, out var dataStart);
+        using var source = new OffsetCountingSource(file);
+        var options = new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxObjectStreamDecodePasses = 1 }, ObjectCacheCapacity = 64 };
+        using var document = PdfDocument.Open(source, options, ownsSource: false);
+
+        source.Reads.GetValueOrDefault(dataStart).Should().Be(1, "stream 60 is decoded once");
         document.Reader.CatalogFoundAs.Should().Be(FirstMemberOfSixty + 100);
         document.Diagnostics.Select(entry => entry.Code).Should().Equal(
-            value == "own"
-                ? [PdfDiagnosticCodes.LimitObjectStreamDecodes, PdfDiagnosticCodes.ObjectStreamUnreadable, PdfDiagnosticCodes.TrailerRootRecovered]
-                : [PdfDiagnosticCodes.LimitObjectStreamDecodes, PdfDiagnosticCodes.TrailerRootRecovered]);
-        var member = document.GetObject(new PdfObjectId(FirstMemberOfSixty));
-        (member.AsDictionary()?.GetRaw(PdfName.Get("Kept")) == PdfBoolean.True).Should().Be(value != "own");
+            PdfDiagnosticCodes.LimitObjectStreamDecodes, PdfDiagnosticCodes.ObjectStreamUnreadable, PdfDiagnosticCodes.TrailerRootRecovered);
+        document.GetObject(new PdfObjectId(FirstMemberOfSixty)).Should().Be(PdfNull.Instance);
     }
 
     [Theory]
@@ -400,6 +415,143 @@ public class ReaderLimitsTests
         document.Diagnostics.Select(entry => entry.Code).Should().Equal(PdfDiagnosticCodes.LimitObjectStreamDecodes, PdfDiagnosticCodes.TrailerRootRecovered);
         document.Reader.CacheCounts.Ordered.Should().Be(document.Reader.CacheCounts.Held);
         Encoding.Latin1.GetString(document.GetObject(new PdfObjectId(61)).AsStream().Required().Decode().Span).Should().Be("01\nendstream\nendobj\n89");
+    }
+
+    [Theory]
+    [InlineData("type", 20)]
+    [InlineData("type", 150)]
+    [InlineData("object stream length", 20)]
+    [InlineData("object stream length", 150)]
+    [InlineData("object stream type", 20)]
+    [InlineData("object stream type", 150)]
+    public void Under_ThrowOnLimit_an_object_whose_load_threw_a_walk_s_guard_is_read_once_a_walk_however_many_candidates_lead_to_it(string through, int candidates)
+    {
+        // Past what the search for a catalog may decode again, object 28 throws the guard's exception, and so does each read
+        // that needs it: object 61, a stream whose /Length it is, which the candidates name as their /Type, or as the /Type
+        // of object stream 60 that holds them; or object stream 60 itself, whose /Length it is, and which holds them. That
+        // object is read once in the search, not once for each candidate, and opening throws the guard's exception once the
+        // search ends.
+        var file = through switch
+        {
+            "type" => CandidatesThroughALengthCutFile(candidates, out _),
+            "object stream type" => CandidatesThroughALengthCutFile(candidates, out _, heldByObjectStream: true),
+            _ => DecodedThroughACutValueFile("length", candidates, catalogCut: false, out _),
+        };
+        var at = OffsetOf(file, through == "object stream length" ? "\n60 0 obj" : "\n61 0 obj");
+        using var source = new OffsetCountingSource(file);
+        var options = new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxObjectStreamDecodePasses = 1 }, ThrowOnLimit = true };
+        var opening = () => PdfDocument.Open(source, options, ownsSource: false);
+
+        opening.Should().Throw<PdfLimitExceededException>().Which.Code.Should().Be(PdfDiagnosticCodes.LimitObjectStreamDecodes);
+        source.Reads.GetValueOrDefault(at).Should().Be(1, "the object is read once a walk");
+    }
+
+    [Theory]
+    [InlineData("type")]
+    [InlineData("object stream length")]
+    public void Within_a_walk_under_ThrowOnLimit_a_load_its_guard_threw_through_throws_again_without_reading_until_the_walk_ends(string through)
+    {
+        // A walk reads objects 10 to 33 in turn, decoding their object streams again once at most, and object 28 throws the
+        // guard's exception. Object 61 needs object 28: a stream whose /Length it is, or a member of object stream 60, whose
+        // /Length it is. Read again within the walk, object 61 throws the same exception again, and neither it nor object
+        // stream 60 is read again. Once the walk ends, both read whole.
+        var file = through == "type"
+            ? CandidatesThroughALengthCutFile(1, out _, rootIsCatalog: true)
+            : DecodedThroughACutValueFile("length", 1, catalogCut: false, out _, rootIsCatalog: true);
+        var at = OffsetOf(file, through == "type" ? "\n61 0 obj" : "\n60 0 obj");
+        using var source = new OffsetCountingSource(file);
+        var options = new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxObjectStreamDecodePasses = 1 }, ThrowOnLimit = true };
+        using var document = PdfDocument.Open(source, options, ownsSource: false);
+        var reading = () => document.GetObject(new PdfObjectId(61));
+        PdfLimitExceededException first, again;
+        int readInWalk;
+        document.Reader.BeginWalk("validation");
+
+        try
+        {
+            for (var number = 10; number < 34; number++)
+            {
+                ReadPastGuard(document, number);
+            }
+
+            first = reading.Should().Throw<PdfLimitExceededException>().Which;
+            again = reading.Should().Throw<PdfLimitExceededException>().Which;
+            readInWalk = source.Reads.GetValueOrDefault(at);
+        }
+        finally
+        {
+            document.Reader.EndWalk();
+        }
+
+        first.Code.Should().Be(PdfDiagnosticCodes.LimitObjectStreamDecodes);
+        again.Should().BeSameAs(first);
+        readInWalk.Should().Be(1, "the object is read once a walk");
+        var whole = document.GetObject(new PdfObjectId(61));
+
+        if (through == "type")
+        {
+            Encoding.Latin1.GetString(whole.AsStream().Required().Decode().Span).Should().Be("01\nendstream\nendobj\n89");
+        }
+        else
+        {
+            whole.AsDictionary().Required().GetRaw(PdfName.Get("Kept")).Should().Be(PdfBoolean.True);
+            document.GetObject(new PdfObjectId(60)).AsStream().Required().Dictionary.IsOfType(PdfName.ObjStm).Should().BeTrue();
+        }
+
+        source.Reads.GetValueOrDefault(at).Should().Be(2, "the object is read again once the walk ends");
+    }
+
+    [Fact]
+    public void Within_a_walk_under_ThrowOnLimit_the_loads_its_guard_threw_through_throw_again_the_first_exception_it_threw_and_not_each_its_own()
+    {
+        // A walk reads objects 10 to 33 in turn, decoding their object streams again once at most: the twelve objects 16 to
+        // 32 that streams 4 and 5 hold each throw an exception of their own, the walk leaving their stream undecoded. Read
+        // again within the walk, each throws the first the walk threw: the walk keeps one exception, however many loads it
+        // threw through.
+        var file = CandidatesThroughALengthCutFile(1, out _, rootIsCatalog: true);
+        var options = new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxObjectStreamDecodePasses = 1 }, ThrowOnLimit = true };
+        using var document = PdfDocument.Open(file, options);
+        var thrown = new List<(int Number, PdfLimitExceededException Exception)>();
+        var again = new List<PdfLimitExceededException>();
+        document.Reader.BeginWalk("validation");
+
+        try
+        {
+            for (var number = 10; number < 34; number++)
+            {
+                if (ReadPastGuard(document, number) is { } exception)
+                {
+                    thrown.Add((number, exception));
+                }
+            }
+
+            foreach (var (number, _) in thrown)
+            {
+                again.Add(ReadPastGuard(document, number)!);
+            }
+        }
+        finally
+        {
+            document.Reader.EndWalk();
+        }
+
+        thrown.Select(each => each.Number).Should().Equal(16, 17, 19, 20, 22, 23, 25, 26, 28, 29, 31, 32);
+        thrown.Select(each => each.Exception).Should().OnlyHaveUniqueItems();
+        again.Should().AllSatisfy(exception => exception.Should().BeSameAs(thrown[0].Exception));
+    }
+
+    /// <summary>Reads object <paramref name="number"/>, and gives the exception of the guard it reached, or null.</summary>
+    private static PdfLimitExceededException? ReadPastGuard(PdfDocument document, int number)
+    {
+        try
+        {
+            _ = document.GetObject(new PdfObjectId(number));
+            return null;
+        }
+        catch (PdfLimitExceededException exception)
+        {
+            return exception;
+        }
     }
 
     [Theory]
@@ -6351,17 +6503,18 @@ public class ReaderLimitsTests
     private const int FirstCandidate = 1000;
 
     /// <summary>
-    /// Writes a file whose /Root names a string, read in number order by a search for a catalog that may decode its object
-    /// streams again once (<see cref="WriteStreamsCutInTurn"/>), and whose object stream 60 holds <paramref name="members"/>
-    /// objects, 61 and on, each <c>&lt;&lt; /Kept true &gt;&gt;</c>, whose decoding needs object 28: its <c>/Filter</c>,
-    /// for <paramref name="value"/> <c>filter</c>; its <c>/DecodeParms</c>, a predictor its data is written with, for
-    /// <c>parameters</c>; or its <c>/Length</c>, for <c>length</c>, its data not compressed and spelling an <c>endstream</c>
-    /// and an <c>endobj</c> between its header and its first object. Read without object 28, the stream's header is still
-    /// encoded, or garbage, or its objects lie past its data. For <c>own</c>, the stream needs no other object, and a stray
-    /// token heads its header, which lists no object: a fault of the file. The catalog comes after stream 60's objects:
-    /// written directly, or, with <paramref name="catalogCut"/>, in object stream 250.
+    /// Writes a file whose /Root names a string — the catalog, with <paramref name="rootIsCatalog"/> —, read in number order
+    /// by a search for a catalog that may decode its object streams again once (<see cref="WriteStreamsCutInTurn"/>), and
+    /// whose object stream 60 holds <paramref name="members"/> objects, 61 and on, each <c>&lt;&lt; /Kept true &gt;&gt;</c>,
+    /// whose decoding needs object 28: its <c>/Filter</c>, for <paramref name="value"/> <c>filter</c>; its
+    /// <c>/DecodeParms</c>, a predictor its data is written with, for <c>parameters</c>; or its <c>/Length</c>, for
+    /// <c>length</c>, its data not compressed and spelling an <c>endstream</c> and an <c>endobj</c> between its header and its
+    /// first object. Read without object 28, the stream's header is still encoded, or garbage, or its objects lie past its
+    /// data. For <c>own</c>, the stream needs no other object, and a stray token heads its header, which lists no object: a
+    /// fault of the file. The catalog comes after stream 60's objects: written directly, or, with
+    /// <paramref name="catalogCut"/>, in object stream 250.
     /// </summary>
-    private static byte[] DecodedThroughACutValueFile(string value, int members, bool catalogCut, out long dataStart)
+    private static byte[] DecodedThroughACutValueFile(string value, int members, bool catalogCut, out long dataStart, bool rootIsCatalog = false)
     {
         const int Columns = 64;
         var catalog = FirstMemberOfSixty + members;
@@ -6411,7 +6564,8 @@ public class ReaderLimitsTests
         }
 
         var last = rows.Keys.Max();
-        file.CompressedCrossReferenceStream(last + 1, last + 2, number => rows.TryGetValue(number, out var row) ? row : (0, 0, 0), "/Root 1 0 R");
+        var root = string.Create(CultureInfo.InvariantCulture, $"/Root {(rootIsCatalog ? catalog : 1)} 0 R");
+        file.CompressedCrossReferenceStream(last + 1, last + 2, number => rows.TryGetValue(number, out var row) ? row : (0, 0, 0), root);
         var bytes = file.Bytes;
         var at = OffsetOf(bytes, "\n60 0 obj");
         dataStart = at + bytes.AsSpan(at).IndexOf("stream\n"u8) + "stream\n".Length;
@@ -6431,12 +6585,14 @@ public class ReaderLimitsTests
     }
 
     /// <summary>
-    /// Writes a file whose /Root names a string, read in number order by a search for a catalog that may decode its object
-    /// streams again once (<see cref="WriteStreamsCutInTurn"/>), and whose <paramref name="candidates"/> candidates, objects
-    /// 1000 and on, name object 61 as their <c>/Type</c>: a stream whose <c>/Length</c> is object 28, and whose data spells an
-    /// <c>endstream</c> and an <c>endobj</c> before its own. The catalog comes after them.
+    /// Writes a file whose /Root names a string — the catalog, with <paramref name="rootIsCatalog"/> —, read in number order
+    /// by a search for a catalog that may decode its object streams again once (<see cref="WriteStreamsCutInTurn"/>), and
+    /// whose <paramref name="candidates"/> candidates, objects 1000 and on, lead to object 61: a stream whose <c>/Length</c> is
+    /// object 28, and whose data spells an <c>endstream</c> and an <c>endobj</c> before its own. Each names it as its
+    /// <c>/Type</c>; or, with <paramref name="heldByObjectStream"/>, object stream 60, its <c>/Length</c> direct, holds them,
+    /// and names it as its own <c>/Type</c>. The catalog comes after them.
     /// </summary>
-    private static byte[] CandidatesThroughALengthCutFile(int candidates, out long at)
+    private static byte[] CandidatesThroughALengthCutFile(int candidates, out long at, bool heldByObjectStream = false, bool rootIsCatalog = false)
     {
         const string Data = "01\nendstream\nendobj\n89";
         var file = new HandWrittenFile(version: "1.5");
@@ -6444,14 +6600,31 @@ public class ReaderLimitsTests
         at = file.Object(61, $"<< /Length 28 0 R /Padding ({new string('x', 4096)}) >>\nstream\n{Data}\nendstream");
         rows[61] = (1, at, 0);
 
-        for (var number = FirstCandidate; number < FirstCandidate + candidates; number++)
+        if (heldByObjectStream)
         {
-            rows[number] = (1, file.Object(number, "<< /Type 61 0 R >>"), 0);
+            var header = new StringBuilder();
+
+            for (var index = 0; index < candidates; index++)
+            {
+                header.Append(CultureInfo.InvariantCulture, $"{FirstCandidate + index} {index * 6} ");
+                rows[FirstCandidate + index] = (2, 60, index);
+            }
+
+            var data = header + string.Concat(Enumerable.Repeat("<< >> ", candidates));
+            rows[60] = (1, file.Object(60, string.Create(CultureInfo.InvariantCulture, $"<< /Type 61 0 R /N {candidates} /First {header.Length} /Length {data.Length} >>\nstream\n{data}\nendstream")), 0);
+        }
+        else
+        {
+            for (var number = FirstCandidate; number < FirstCandidate + candidates; number++)
+            {
+                rows[number] = (1, file.Object(number, "<< /Type 61 0 R >>"), 0);
+            }
         }
 
         var catalog = FirstCandidate + candidates;
         rows[catalog] = (1, file.Object(catalog, Catalog), 0);
-        file.CompressedCrossReferenceStream(catalog + 1, catalog + 2, number => rows.TryGetValue(number, out var row) ? row : (0, 0, 0), "/Root 1 0 R");
+        var root = string.Create(CultureInfo.InvariantCulture, $"/Root {(rootIsCatalog ? catalog : 1)} 0 R");
+        file.CompressedCrossReferenceStream(catalog + 1, catalog + 2, number => rows.TryGetValue(number, out var row) ? row : (0, 0, 0), root);
         return file.Bytes;
     }
 
