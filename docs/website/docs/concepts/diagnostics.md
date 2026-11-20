@@ -96,9 +96,10 @@ wherever the reader's reads part the data. Both are reported as
 A `/Length` that names an object one of the reader's limits cut is no length the file gave: what the cut left of it —
 null, or `1` of a `15` it parted — is the guard's. An integer read before the cut is only a place to look for
 `endstream` at, and the data is otherwise found by its `endstream`, as for a stream with no length; nothing is said of
-the length — but where the `endstream` that follows it confirms data the index places another object inside, which is
-weighed as a declared length is ([Streams whose length is wrong](../reference/diagnostics.md#streams-whose-length-is-wrong)) —,
-while a missing `endstream` is still the file's, and reported. One that names an object a guard left out of
+the length — but where an `endstream` follows it: the length is then weighed as a declared one it confirms, and the data
+may end short of it, or read empty, where streams whose lengths were taken without reading where their data ends overlap
+([Streams whose length is wrong](../reference/diagnostics.md#streams-whose-length-is-wrong)) —, while a missing
+`endstream` is still the file's, and reported. One that names an object a guard left out of
 the index is not judged either: its data is found the same way, and a missing `endstream` reported as the file's. Such a
 stream may be valid, its length only hidden, and its data may spell an object header, as an embedded PDF file's does —
 and the `endstream` of a stream the embedded file holds, which no search can tell from the stream's own. A header the
@@ -142,7 +143,10 @@ another's dictionary, or a header the search does not take — a regular charact
 index as the file wrote it does not place. Past the bound, only the bytes the parser holds are searched: a declared
 length that ends before the next object is kept, the data otherwise taken up to it or to the end of the file, and the
 report says so — but for a stream whose length a guard hid, whose data up to there is the guard's, as an `endstream`
-nothing proves is.
+nothing proves is. Data so taken counts, with the lengths an `endstream` confirms, among the lengths taken without
+reading where the data ends ([Bounds that stay internal](reader-limits.md#bounds-that-stay-internal)): where such
+streams overlap past their bound, the data ends at an object an index places inside it, or reads empty, and is
+reported, a hidden length's too.
 
 ## Damaged stream data
 
