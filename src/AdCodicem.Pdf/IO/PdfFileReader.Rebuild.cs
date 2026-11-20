@@ -921,6 +921,7 @@ internal sealed partial class PdfFileReader
         _objectStreamsHiddenByGuard.Remove(number);
         _cache.Remove(number);
         _walkLoads?.Remove(number);
+        _walkLoadsThrown?.Remove(number);
         _unproduced.Remove(number);
         _cutAtLimit.Remove(number);
         _endObjMissing.Remove(number);
@@ -970,7 +971,7 @@ internal sealed partial class PdfFileReader
     /// The search is one of the library's walks (<see cref="BeginWalk"/>): the candidates it reads in the index's order may
     /// lie in turn in object streams the reader cannot keep together, which it decodes again within
     /// <see cref="PdfReaderLimits.MaxObjectStreamDecodePasses"/>, a candidate past it being one a limit cut. A search that
-    /// finds no catalog among what it read whole reads again the candidates that guard cut — those an object stream holds
+    /// finds no catalog among what it read reads again the candidates that guard cut — those an object stream holds
     /// stream by stream, in the order of their places in it, then the others —, in a walk that decodes each stream once at
     /// most (<see cref="BeginWalkDecodingOnce"/>), and takes the first of them in the index's order that reads as a catalog,
     /// rather than rebuild the index for want of one (<see cref="RecoverCatalog"/>): one that reading cuts too is taken as

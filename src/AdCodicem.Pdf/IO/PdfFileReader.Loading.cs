@@ -1946,9 +1946,11 @@ internal sealed partial class PdfFileReader
         while (_cache.Count >= _cacheCapacity && _cacheOrder.TryDequeue(out var oldest))
         {
             // The queue can name a number the cache let go of already, a rebuild having replaced its definition
-            // (ForgetObject): the next is let go in its place, so that the cache never holds more than its capacity.
+            // (ForgetObject): the next is let go in its place, so that the cache never holds more than its capacity. One the
+            // walk alone kept is no longer the walk's to let go of as it ends: read again, it is kept again.
             if (_cache.Remove(oldest))
             {
+                _walkLoads?.Remove(oldest);
                 break;
             }
         }
