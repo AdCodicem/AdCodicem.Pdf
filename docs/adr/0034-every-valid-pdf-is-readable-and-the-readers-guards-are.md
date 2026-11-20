@@ -220,9 +220,9 @@ alternate between them. The guard is scoped to the walks the library makes of it
 as the document opens or as a rebuild finishes, and a validation's rules —, each counted from its start, a nested one with
 it: during one, the streams it decoded and let go may be decoded again up to that many times what its first decodings of
 them weighed; past it, an object such a stream holds reads as null until the walk ends, as one a guard cut, reported once
-a document. What so reads as null is not kept, nor anything read through it, so that a caller's own reads are never cut,
-and the budget starts again with the next walk; a rebuild's expansion of the object streams, which makes the index the
-reader keeps, is not counted. A valid file reaches it, and the validator takes what it leaves unread for the reader's
+a document. What so reads as null is not kept, and what is read through it is kept until the walk ends only, so that a
+caller's own reads are never cut, and the budget starts again with the next walk; a rebuild's expansion of the object
+streams, which makes the index the reader keeps, is not counted. A valid file reaches it, and the validator takes what it leaves unread for the reader's
 limit, judging nothing of it. A guard on every read, for the document's life, was weighed and set aside: it would cut a
 caller reading a valid file's pages in turn, which the caller can order otherwise, as the one rule that reads every object
 of the index now does, stream by stream.
