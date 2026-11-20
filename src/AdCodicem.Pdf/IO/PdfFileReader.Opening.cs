@@ -211,7 +211,8 @@ internal sealed partial class PdfFileReader
     /// <remarks>
     /// A broken <c>/Root</c> says nothing against the index: the objects are where the chain says. Keeping the index
     /// keeps what an incremental update superseded superseded, which a rebuild — the last definition in the file
-    /// winning — does not always manage.
+    /// winning — does not always manage. Nor does a candidate <see cref="PdfReaderLimits.MaxObjectStreamDecodePasses"/> cut
+    /// say anything against it: the search reads such candidates again before the index is rebuilt (<see cref="FindCatalog"/>).
     /// </remarks>
     private void RecoverCatalog()
     {

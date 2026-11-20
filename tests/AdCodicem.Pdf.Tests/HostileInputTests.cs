@@ -1452,8 +1452,9 @@ public class HostileInputTests
         // The file #181 describes, of about 45 KB: object streams 1 and 2, of one object each, decode to 20 MB each, past
         // half the budget the reader keeps them in; the cross-reference stream gives no /Root, and places each of its
         // 100,000 numbers in stream 1 when odd, in stream 2 when even. The search for a catalog decoded a whole stream for
-        // each number. It decodes them again up to four times what it first decoded of them, reads the rest as null, and
-        // the rebuild that follows finds no catalog either. What it read as null is not kept: objects 3 and 4 read whole.
+        // each number. It decodes them again up to four times what it first decoded of them, and reads the rest as null,
+        // which it reads again decoding each stream once more; the rebuild that follows finds no catalog either. What it
+        // read as null is not kept: objects 3 and 4 read whole.
         var file = AlternatingObjectStreams(100_000, 20 * 1024 * 1024);
         using var source = new StrictCountingSource(file);
 
@@ -1464,6 +1465,28 @@ public class HostileInputTests
         document.Diagnostics[0].Position.Should().Be(PdfTemplate.OffsetOf(file, "1 0 obj"));
         document.GetObject(new PdfObjectId(3)).Should().BeOfType<PdfDictionary>();
         document.GetObject(new PdfObjectId(4)).Should().BeOfType<PdfDictionary>();
+    }
+
+    [Fact]
+    public void A_search_for_a_catalog_reads_again_what_its_guard_cut_decoding_each_stream_once_more()
+    {
+        // The trailer's /Root names a string, and the catalog, object 3, has no row. Object streams 10 and 12, of 17 MB each,
+        // hold 400 objects in turn: those 10 holds take their /Type from the object before them, which 12 holds. Opened with a
+        // cache of 64 objects, the search for a catalog decodes them again up to four times what it first decoded of them,
+        // and reads the rest as null; finding no catalog, it reads those again, stream by stream, each stream decoded once
+        // more at most: the /Type of an object of stream 10, which the cache let go, decodes stream 12, and the next object
+        // would decode stream 10 again. Read again within the guard's own bound, the file was read a third more; read again
+        // without a bound, two streams were decoded for each object. None is a catalog, and the rebuild that follows finds
+        // object 3.
+        var file = TypesInTurnInTwoStreams(200, 17 * 1024 * 1024);
+        using var source = new StrictCountingSource(file);
+
+        using var document = Measure(() => PdfDocument.Open(source, PdfReaderOptions.Default with { ObjectCacheCapacity = 64 }, ownsSource: false));
+
+        source.BytesRead.Should().BeLessThan(12L * file.Length, "the search reads again what its guard cut decoding each stream once more");
+        document.Diagnostics.Select(entry => entry.Code).Should().Equal(
+            PdfDiagnosticCodes.LimitObjectStreamDecodes, PdfDiagnosticCodes.XRefRebuilt, PdfDiagnosticCodes.TrailerRootRecovered);
+        document.Reader.CatalogFoundAs.Should().Be(3);
     }
 
     [Theory]
@@ -1496,7 +1519,7 @@ public class HostileInputTests
     }
 
     [Fact]
-    public void Validating_a_file_whose_unlisted_pages_lie_in_turn_in_two_large_object_streams_reads_each_stream_once_and_reports_them_in_number_order()
+    public void Validating_a_file_whose_unlisted_pages_lie_in_turn_in_two_large_object_streams_decodes_each_stream_a_few_times_and_reports_them_in_number_order()
     {
         // Objects 20 to 219 are pages the tree does not list: those a multiple of 25 written directly, the others in object
         // streams 10 and 11, of 17 MB each, in turn. Read in number order, each decoded a whole stream. The rule reads the
@@ -6641,6 +6664,33 @@ public class HostileInputTests
                 _ => (0, 0, 0),
             },
             "/Root 1 0 R");
+        return file.Bytes;
+    }
+
+    /// <summary>
+    /// Writes a file whose <c>/Root</c> names a string, whose catalog, object 3, has no row, and whose object streams 12 and
+    /// 10 hold <paramref name="pairs"/> pairs of objects in turn, 20 and on, each decoding to <paramref name="decoded"/>
+    /// bytes: the even ones, in 12, are names; the odd ones, in 10, take their <c>/Type</c> from the object before them.
+    /// </summary>
+    private static byte[] TypesInTurnInTwoStreams(int pairs, int decoded)
+    {
+        var file = new HandWrittenFile(version: "1.5");
+        var rows = new Dictionary<int, (int Type, long Field2, int Field3)>
+        {
+            [1] = (1, file.Object(1, "(not a catalog)"), 0),
+            [2] = (1, file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"), 0),
+        };
+        file.Object(3, "<< /Type /Catalog /Pages 2 0 R >>");
+        rows[10] = (1, file.PaddedObjectStream(10, Enumerable.Range(0, pairs).Select(k => (21 + (2 * k), string.Create(CultureInfo.InvariantCulture, $"<< /Type {20 + (2 * k)} 0 R >>"))).ToArray(), decoded), 0);
+        rows[12] = (1, file.PaddedObjectStream(12, Enumerable.Range(0, pairs).Select(k => (20 + (2 * k), "/Thing")).ToArray(), decoded), 0);
+
+        for (var k = 0; k < pairs; k++)
+        {
+            rows[20 + (2 * k)] = (2, 12, k);
+            rows[21 + (2 * k)] = (2, 10, k);
+        }
+
+        file.CompressedCrossReferenceStream(20 + (2 * pairs), 21 + (2 * pairs), number => rows.TryGetValue(number, out var row) ? row : (0, 0, 0), "/Root 1 0 R");
         return file.Bytes;
     }
 

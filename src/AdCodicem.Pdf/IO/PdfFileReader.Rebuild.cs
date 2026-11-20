@@ -953,94 +953,237 @@ internal sealed partial class PdfFileReader
     /// trailer's <c>/Root</c>.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// It runs on the index the chain gave, and on a rebuilt one. Loading a candidate from the chain's index can
     /// rebuild it — the candidate's entry being broken —, and the rebuild runs a search of its own, once the load in flight
     /// returns, over the rebuilt index, the candidate among it: the search it interrupted stops there, over the numbers it
     /// copied before it began (#229). A candidate one of the reader's limits cut is noted (<see cref="CatalogCandidateCut"/>):
-    /// a catalog may lie past the cut, and one taken from what lies before it is not read whole either. The search is one of
-    /// the library's walks (<see cref="BeginWalk"/>): the candidates it reads in the index's order may lie in turn in object
-    /// streams the reader cannot keep together, which it decodes again within
-    /// <see cref="PdfReaderLimits.MaxObjectStreamDecodePasses"/>, a candidate past it being one a limit cut.
+    /// a catalog may lie past the cut, and one taken from what lies before it is not read whole either.
+    /// </para>
+    /// <para>
+    /// The search is one of the library's walks (<see cref="BeginWalk"/>): the candidates it reads in the index's order may
+    /// lie in turn in object streams the reader cannot keep together, which it decodes again within
+    /// <see cref="PdfReaderLimits.MaxObjectStreamDecodePasses"/>, a candidate past it being one a limit cut. A search that
+    /// finds no catalog among what it read whole reads again the candidates that guard cut — those an object stream holds
+    /// stream by stream, in the order of their places in it, then the others —, in a walk that decodes each stream once at
+    /// most (<see cref="BeginWalkDecodingOnce"/>), and takes the first of them in the index's order that is a catalog: the
+    /// one a search within the guard takes, rather than rebuild the index for want of one (<see cref="RecoverCatalog"/>).
+    /// Not within another walk, whose budget it counts with, nor once a load rebuilt the index, whose own search took over.
+    /// </para>
     /// </remarks>
     private ExceptionDispatchInfo? FindCatalog()
     {
-        BeginWalk("search for a catalog");
+        ExceptionDispatchInfo? reached = null;
+        List<(int Stream, int Place, int Order, int Number)>? cut = null;
+        var rebuilt = _repaired;
+        bool found;
+
+        BeginWalk(CatalogSearch);
 
         try
         {
-            return SearchForCatalog();
+            found = SearchForCatalog(ref reached, ref cut);
         }
         finally
         {
             EndWalk();
         }
+
+        if (found || cut is null || _repaired != rebuilt)
+        {
+            return reached;
+        }
+
+        if (_walkDepth > 0)
+        {
+            _catalogCandidateCut = true;
+            return reached;
+        }
+
+        BeginWalkDecodingOnce(CatalogSearch);
+
+        try
+        {
+            SearchAgain(cut, ref reached);
+        }
+        finally
+        {
+            EndWalk();
+        }
+
+        return reached;
     }
 
-    /// <summary>The search <see cref="FindCatalog"/> makes, one of the library's walks.</summary>
-    private ExceptionDispatchInfo? SearchForCatalog()
+    /// <summary>What the search for a catalog is, as the report of the walks' guard names it.</summary>
+    private const string CatalogSearch = "search for a catalog";
+
+    /// <summary>
+    /// The search <see cref="FindCatalog"/> makes, one of the library's walks: determines whether it took a catalog, and
+    /// gives the candidates the walks' guard cut, where an object stream places each and their order in the index, which it
+    /// notes only once the guard cuts one.
+    /// </summary>
+    private bool SearchForCatalog(ref ExceptionDispatchInfo? reached, ref List<(int Stream, int Place, int Order, int Number)>? cut)
     {
-        ExceptionDispatchInfo? reached = null;
         var rebuilt = _repaired;
         var numbers = _xref.CopyNumbers();
         _catalogCandidateCut = false;
 
-        foreach (var number in numbers)
+        for (var order = 0; order < numbers.Length; order++)
         {
+            var number = numbers[order];
+            var walkCuts = _walkCuts;
             bool isCatalog;
 
             // A /Type written as a reference is read as the candidate is, and may reach a guard as its read may: the search
             // goes on, and the first guard reached is the one thrown once it ends.
             try
             {
-                isCatalog = GetObject(new PdfObjectId(number)).AsDictionary() is { } dictionary && dictionary.IsOfType(PdfName.Catalog);
+                isCatalog = IsCatalogCandidate(number);
             }
             catch (PdfLimitExceededException exception)
             {
                 reached ??= ExceptionDispatchInfo.Capture(exception);
-                _catalogCandidateCut = true;
+
+                if (IsWalkGuard(exception))
+                {
+                    NoteCutByWalk(number, order, ref cut);
+                }
+                else
+                {
+                    _catalogCandidateCut = true;
+                }
+
                 continue;
             }
 
             if (_repaired != rebuilt)
             {
-                break;
+                return false;
             }
 
             // A dictionary a guard cut may give /Type /Catalog past the cut, or be a stream whose dictionary does; one taken for
             // giving it before the cut is read only in part all the same.
-            _catalogCandidateCut |= IsCutAtLimit(number);
+            _catalogCandidateCut |= _cutAtLimit.Contains(number);
 
             if (isCatalog)
             {
-                // The reference names the catalog as its entry does, read once the catalog is — a relocation on the way
-                // gives the header's generation —: an entry of 1 1 makes 1 1 R, not 1 0 R (#118).
-                var generation = _xref.TryGet(number, out var entry) && entry.Kind == XRefEntryKind.Regular ? entry.Generation : 0;
-                Trailer.Set(PdfName.Root, new PdfReference(new PdfObjectId(number, generation), this));
-                _catalogFoundAs = number;
+                // The walks' guard cut candidates before it, which a search within the guard may have taken instead.
+                _catalogCandidateCut |= cut is not null || walkCuts != _walkCuts;
+                TakeCatalog(number);
+                return true;
+            }
 
-                // The file's structure is what the document opened with: the catalog a rebuild run since took is the reader's.
-                if (!_opened)
-                {
-                    _structure.CatalogFoundAs = number;
-                }
-
-                // A rebuild after opening sets aside the catalog a search took, and finds the same object again: said once.
-                // One that takes another object says so.
-                if (number != _catalogReportedAs)
-                {
-                    _catalogReportedAs = number;
-                    _diagnostics.Repair(
-                        PdfDiagnosticCodes.TrailerRootRecovered,
-                        string.Create(
-                            CultureInfo.InvariantCulture,
-                            $"The trailer's /Root does not lead to a document catalog; the catalog was found as object {number}."));
-                }
-
-                break;
+            // What the walks' guard read as null on the way — the candidate, or its /Type — may hide a catalog.
+            if (walkCuts != _walkCuts)
+            {
+                NoteCutByWalk(number, order, ref cut);
             }
         }
 
-        return reached;
+        return false;
+    }
+
+    /// <summary>
+    /// Notes candidate <paramref name="number"/>, the <paramref name="order"/>th of the search's, as one the walks' guard cut,
+    /// with where an object stream places it, for <see cref="SearchAgain"/> to read it again with the others of its stream.
+    /// </summary>
+    private void NoteCutByWalk(int number, int order, ref List<(int Stream, int Place, int Order, int Number)>? cut)
+    {
+        // Written directly, it is read after those object streams hold, in the search's order.
+        var (stream, place) = _xref.TryGet(number, out var entry) && entry.Kind == XRefEntryKind.Compressed
+            ? (entry.ObjectStreamNumber, entry.IndexInObjectStream)
+            : (int.MaxValue, order);
+        (cut ??= []).Add((stream, place, order, number));
+    }
+
+    /// <summary>
+    /// Reads again the candidates the walks' guard cut in a search that found no catalog, stream by stream, and takes the
+    /// first of them in the search's order that is a catalog; a candidate past one found is not read, as the search stops
+    /// at the catalog it takes.
+    /// </summary>
+    private void SearchAgain(List<(int Stream, int Place, int Order, int Number)> cut, ref ExceptionDispatchInfo? reached)
+    {
+        var rebuilt = _repaired;
+        var catalog = -1;
+        var catalogOrder = int.MaxValue;
+        var firstCut = int.MaxValue;
+        cut.Sort();
+
+        foreach (var (_, _, order, number) in cut)
+        {
+            if (order > catalogOrder)
+            {
+                continue;
+            }
+
+            var walkCuts = _walkCuts;
+            bool isCatalog;
+
+            try
+            {
+                isCatalog = IsCatalogCandidate(number);
+            }
+            catch (PdfLimitExceededException exception)
+            {
+                reached ??= ExceptionDispatchInfo.Capture(exception);
+                firstCut = Math.Min(firstCut, order);
+                continue;
+            }
+
+            if (_repaired != rebuilt)
+            {
+                return;
+            }
+
+            if (walkCuts != _walkCuts || IsCutAtLimit(number))
+            {
+                firstCut = Math.Min(firstCut, order);
+            }
+
+            if (isCatalog)
+            {
+                (catalog, catalogOrder) = (number, order);
+            }
+        }
+
+        _catalogCandidateCut |= firstCut <= catalogOrder;
+
+        if (catalog >= 0)
+        {
+            TakeCatalog(catalog);
+        }
+    }
+
+    /// <summary>Reads candidate <paramref name="number"/>, and determines whether it is a dictionary of <c>/Type /Catalog</c>.</summary>
+    private bool IsCatalogCandidate(int number) =>
+        GetObject(new PdfObjectId(number)).AsDictionary() is { } dictionary && dictionary.IsOfType(PdfName.Catalog);
+
+    /// <summary>Makes object <paramref name="number"/>, a catalog the search found, the trailer's <c>/Root</c>.</summary>
+    private void TakeCatalog(int number)
+    {
+        // The reference names the catalog as its entry does, read once the catalog is — a relocation on the way gives the
+        // header's generation —: an entry of 1 1 makes 1 1 R, not 1 0 R (#118).
+        var generation = _xref.TryGet(number, out var entry) && entry.Kind == XRefEntryKind.Regular ? entry.Generation : 0;
+        Trailer.Set(PdfName.Root, new PdfReference(new PdfObjectId(number, generation), this));
+        _catalogFoundAs = number;
+
+        // The file's structure is what the document opened with: the catalog a rebuild run since took is the reader's.
+        if (!_opened)
+        {
+            _structure.CatalogFoundAs = number;
+        }
+
+        // A rebuild after opening sets aside the catalog a search took, and finds the same object again: said once. One that
+        // takes another object says so.
+        if (number != _catalogReportedAs)
+        {
+            _catalogReportedAs = number;
+            _diagnostics.Repair(
+                PdfDiagnosticCodes.TrailerRootRecovered,
+                string.Create(
+                    CultureInfo.InvariantCulture,
+                    $"The trailer's /Root does not lead to a document catalog; the catalog was found as object {number}."));
+        }
     }
 
     /// <summary>

@@ -17,8 +17,8 @@ namespace AdCodicem.Pdf.Validation.Rules;
 /// one.
 /// </para>
 /// <para>
-/// It inspects every object the file's index holds in use, but those one of the reader's limits cut — those an object
-/// stream holds together, stream by stream —, and reads no content. It does so only where that index is
+/// It inspects every object the file's index holds in use — those an object stream holds together, stream by stream —, but
+/// those one of the reader's limits cut, and reads no content. It does so only where that index is
 /// sound and whole — the chain read to its end, every entry leading to its object, every object stream readable, the
 /// page tree read whole —: elsewhere loading an object may rebuild the index and bring back what an update deleted,
 /// and a page the tree seems not to list may lie below a node the reader could not produce.

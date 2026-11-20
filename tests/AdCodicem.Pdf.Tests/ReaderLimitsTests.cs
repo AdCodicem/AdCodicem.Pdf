@@ -204,7 +204,14 @@ public class ReaderLimitsTests
         var @case = Case.For(guard);
         using var document = PdfDocument.Open(@case.File, new PdfReaderOptions { Limits = @case.Reached });
 
-        @case.Read(document).Should().NotBe(@case.Whole, $"the {guard} guard cuts what is read");
+        if (@case.ReadsWholeAtGuard)
+        {
+            @case.Read(document).Should().Be(@case.Whole, $"the {guard} guard cuts only what a walk of the library's reads, which reads it again");
+        }
+        else
+        {
+            @case.Read(document).Should().NotBe(@case.Whole, $"the {guard} guard cuts what is read");
+        }
 
         var report = document.Diagnostics.Should().ContainSingle(entry => entry.Code == @case.Code).Which;
         report.Severity.Should().Be(PdfDiagnosticSeverity.Warning);
@@ -249,14 +256,32 @@ public class ReaderLimitsTests
         // Object stream 6's /DecodeParms names object 14, which the search for a catalog, past what it may decode again,
         // reads as null: it decodes stream 6 without it, as a stream whose parameters a guard cut, and takes object 18 for one
         // the guard cut. Neither the stream nor what it gave is kept, nor is it taken for one a guard hid: read after the
-        // search, object 18 reads whole, and nothing is reported of stream 6.
+        // search — which finds the catalog, object 16, reading again what its guard cut —, object 18 reads whole, and nothing
+        // is reported of stream 6.
         var file = ObjectStreamsReadInTurnFile(parametersCut: true);
         using var document = PdfDocument.Open(file, new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxObjectStreamDecodePasses = 1 } });
 
-        document.Diagnostics.Select(entry => entry.Code).Should().Equal(
-            PdfDiagnosticCodes.LimitObjectStreamDecodes, PdfDiagnosticCodes.XRefRebuilt, PdfDiagnosticCodes.TrailerRootRecovered);
+        document.Diagnostics.Select(entry => entry.Code).Should().Equal(PdfDiagnosticCodes.LimitObjectStreamDecodes, PdfDiagnosticCodes.TrailerRootRecovered);
+        document.Reader.CatalogFoundAs.Should().Be(16);
         document.Reader.ObjectsLeftOutByGuard.Should().BeFalse();
         document.GetObject(new PdfObjectId(18)).AsDictionary().Required().GetRaw(PdfName.Get("Kept")).Should().Be(PdfBoolean.True);
+    }
+
+    [Fact]
+    public void A_search_for_a_catalog_that_reads_again_what_its_guard_cut_and_finds_none_rebuilds_the_index_as_a_whole_search_does()
+    {
+        // Object 16 is no catalog, and the catalog, object 30, has no row. The search for a catalog, past what it may decode
+        // again, reads objects 14 and 16 as null; read again, neither is a catalog, and the index is rebuilt, as a search
+        // within its guard rebuilds it, and the rebuild finds object 30.
+        var file = ObjectStreamsReadInTurnFile(parametersCut: false, catalogUnindexed: true);
+        using var cut = PdfDocument.Open(file, new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxObjectStreamDecodePasses = 1 } });
+        using var whole = PdfDocument.Open(file);
+
+        cut.Diagnostics.Select(entry => entry.Code).Should().Equal(
+            PdfDiagnosticCodes.LimitObjectStreamDecodes, PdfDiagnosticCodes.XRefRebuilt, PdfDiagnosticCodes.TrailerRootRecovered);
+        whole.Diagnostics.Select(entry => entry.Code).Should().Equal(PdfDiagnosticCodes.XRefRebuilt, PdfDiagnosticCodes.TrailerRootRecovered);
+        cut.Reader.CatalogFoundAs.Should().Be(30);
+        whole.Reader.CatalogFoundAs.Should().Be(30);
     }
 
     [Theory]
@@ -5804,6 +5829,12 @@ public class ReaderLimitsTests
         /// </summary>
         public string[] WholeReports { get; init; } = [];
 
+        /// <summary>
+        /// Gets a value indicating whether reading under the reached limits observes what it does under the raised ones: the
+        /// guard cuts only what one of the library's walks reads, and the walk reads what it cut again.
+        /// </summary>
+        public bool ReadsWholeAtGuard { get; init; }
+
         public static Case For(string guard) => guard switch
         {
             "decoded stream" => DecodedStream(),
@@ -6090,8 +6121,8 @@ public class ReaderLimitsTests
         {
             // The search for a catalog reads objects 10 to 17 in number order, each decoding its stream again: within the
             // default four times what the first two decodings weighed, it finds the catalog, object 16; within one, it
-            // decodes stream 4 no more past object 13, reads 14 and 16 as null, and the index is rebuilt, where the catalog
-            // is found reading each stream's objects together.
+            // decodes stream 4 no more past object 13, and reads 14 and 16 as null. Finding no catalog, it reads those two
+            // again, decoding stream 4 once more, and takes object 16 as a whole search does: the index is not rebuilt.
             var bytes = ObjectStreamsReadInTurnFile(parametersCut: false);
             const long FirstDecodings = 2 * (ObjectStreamDecoded + (16 * 4));
 
@@ -6101,8 +6132,8 @@ public class ReaderLimitsTests
                 bytes,
                 PdfReaderLimits.Default with { MaxObjectStreamDecodePasses = 1 },
                 PdfReaderLimits.Default,
-                document => document.WasRepaired ? "rebuilt" : "as written",
-                "as written",
+                document => string.Create(CultureInfo.InvariantCulture, $"{(document.WasRepaired ? "rebuilt" : "as written")}, catalog {document.Reader.CatalogFoundAs}"),
+                "as written, catalog 16",
                 string.Create(
                     CultureInfo.InvariantCulture,
                     $"The search for a catalog decoded again the object streams the reader let go as much as what its first decodings of them weighed, {FirstDecodings:N0} bytes: object stream 4 was not decoded again, and the objects it holds read as null until the search for a catalog ends."),
@@ -6111,6 +6142,7 @@ public class ReaderLimitsTests
                 ReportsNothingElse: false)
             {
                 WholeReports = [PdfDiagnosticCodes.TrailerRootRecovered],
+                ReadsWholeAtGuard = true,
             };
         }
 
@@ -6129,9 +6161,10 @@ public class ReaderLimitsTests
     /// Writes a file whose object streams 4 and 5, which decode to 17 MB each, past half the budget the reader keeps them
     /// in, hold objects 10 to 17 in turn, the even ones in 4; the trailer's /Root names a string, and the catalog is object
     /// 16. With <paramref name="parametersCut"/>, object stream 6 holds object 18, and its <c>/DecodeParms</c> names object
-    /// 14.
+    /// 14. With <paramref name="catalogUnindexed"/>, object 16 is no catalog, and the catalog is object 30, which no row
+    /// places.
     /// </summary>
-    private static byte[] ObjectStreamsReadInTurnFile(bool parametersCut)
+    private static byte[] ObjectStreamsReadInTurnFile(bool parametersCut, bool catalogUnindexed = false)
     {
         var file = new HandWrittenFile(version: "1.5");
         var rows = new Dictionary<int, (int Type, long Field2, int Field3)>
@@ -6139,7 +6172,7 @@ public class ReaderLimitsTests
             [1] = (1, file.Object(1, "(not a catalog)"), 0),
             [2] = (1, file.Object(2, Pages), 0),
         };
-        (int Number, string Body)[] even = [(10, "<< >>"), (12, "<< >>"), (14, "<< >>"), (16, Catalog)];
+        (int Number, string Body)[] even = [(10, "<< >>"), (12, "<< >>"), (14, "<< >>"), (16, catalogUnindexed ? "<< >>" : Catalog)];
         (int Number, string Body)[] odd = [(11, "<< >>"), (13, "<< >>"), (15, "<< >>"), (17, "<< >>")];
         rows[4] = (1, file.PaddedObjectStream(4, even, ObjectStreamDecoded), 0);
         rows[5] = (1, file.PaddedObjectStream(5, odd, ObjectStreamDecoded), 0);
@@ -6148,6 +6181,11 @@ public class ReaderLimitsTests
         {
             rows[even[index].Number] = (2, 4, index);
             rows[odd[index].Number] = (2, 5, index);
+        }
+
+        if (catalogUnindexed)
+        {
+            file.Object(30, Catalog);
         }
 
         if (parametersCut)
