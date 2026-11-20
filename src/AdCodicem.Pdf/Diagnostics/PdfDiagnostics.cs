@@ -49,9 +49,10 @@ public sealed class PdfDiagnostics : IReadOnlyList<PdfDiagnostic>
     /// The severity and code of the entries <see cref="Capacity"/> dropped, so that <see cref="Contains(string)"/> and the
     /// <c>Has</c> properties answer for them too; null until an entry is dropped. A pair is noted when it is not noted already
     /// past <see cref="_droppedFrom"/>. On an instance kept as it is, the note holds a pair per severity and code dropped, the
-    /// codes the library reports being constants. On one kept in another, a pair is noted once more for each mark taken or
-    /// closed while an outer mark stays open: the note grows with what one attempt parses, and a rollback of the attempt's
-    /// mark ends it.
+    /// codes the library reports being constants. On one kept in another, it holds a pair at most once for each mark still
+    /// open, and once before the first: a mark closed for good — moved from, or rolled back to and not used again — gives
+    /// back the window the enclosing mark looked in (<see cref="PdfDiagnosticsMark.DroppedFrom"/>), so that the pairs an
+    /// attempt noted before a nested one are not noted again after it, however many nested ones it makes (#385).
     /// </summary>
     private List<(PdfDiagnosticSeverity Severity, string Code)>? _dropped;
 
@@ -59,8 +60,10 @@ public sealed class PdfDiagnostics : IReadOnlyList<PdfDiagnostic>
     /// Where <see cref="_dropped"/> is looked in before a pair is noted. It stays 0 on an instance kept as it is, whose marks
     /// are not all closed, so that the note does not grow with them; there, a rollback keeps exactly the pairs dropped before
     /// its mark, the first drop of each being noted. On an instance kept in another, every mark is closed by a rollback or a
-    /// move, and this is where the note stood at the mark last taken or closed: past any mark still open lie the pairs
-    /// dropped since it, each of them, which a move takes into the instance it keeps them in (#169).
+    /// move, and this is where the note stood when the innermost mark still open was taken: past any mark still open lie the
+    /// pairs dropped since it, each of them, which a move takes into the instance it keeps them in (#169). A mark taken moves
+    /// it to the note's end, a mark closed for good moves it back to where it stood before that mark, and a retry that rolls
+    /// back to its mark and goes on using it puts it at that mark's start (<see cref="RollBackToRetry"/>).
     /// </summary>
     private int _droppedFrom;
 
@@ -167,25 +170,55 @@ public sealed class PdfDiagnostics : IReadOnlyList<PdfDiagnostic>
     /// by <see cref="GetMarkWithDecodingReports"/>. Marks are closed — rolled back to, or moved from — in the reverse of the
     /// order they were taken: a mark taken after one rolled back to is not used again.
     /// </summary>
-    internal PdfDiagnosticsMark GetMark() => new(_entries.Count, _suppressed, _limits, _limitsSuppressed, OpenDropped());
+    internal PdfDiagnosticsMark GetMark()
+    {
+        var droppedFrom = _droppedFrom;
+        return new(_entries.Count, _suppressed, _limits, _limitsSuppressed, OpenDropped()) { DroppedFrom = droppedFrom };
+    }
 
     /// <summary>
     /// Records where the entries stand, and which of them decodings of streams moved in: rolled back to, this instance
     /// forgets the decodings' reports it drops, so that a decoding that meets one again moves it in again. It copies what
     /// it records, so it is taken where it is rare, not in a loop.
     /// </summary>
-    internal PdfDiagnosticsMark GetMarkWithDecodingReports() =>
-        new(_entries.Count, _suppressed, _limits, _limitsSuppressed, OpenDropped(), new Dictionary<PdfDiagnostic, int>(_decodingReports ?? []));
+    internal PdfDiagnosticsMark GetMarkWithDecodingReports()
+    {
+        var droppedFrom = _droppedFrom;
+        return new(_entries.Count, _suppressed, _limits, _limitsSuppressed, OpenDropped(), new Dictionary<PdfDiagnostic, int>(_decodingReports ?? []))
+        {
+            DroppedFrom = droppedFrom,
+        };
+    }
 
-    /// <summary>Drops every entry recorded since <paramref name="mark"/>, suppressed ones and guards reached included.</summary>
-    internal void RollBack(PdfDiagnosticsMark mark)
+    /// <summary>
+    /// Drops every entry recorded since <paramref name="mark"/>, suppressed ones and guards reached included, the mark closed
+    /// for good: one taken after it is not used again.
+    /// </summary>
+    internal void RollBack(PdfDiagnosticsMark mark) => RollBack(mark, retried: false);
+
+    /// <summary>
+    /// Drops every entry recorded since <paramref name="mark"/>, as <see cref="RollBack(PdfDiagnosticsMark)"/> does, for an
+    /// attempt that goes on using the mark — a reading made again in a larger window —: the mark stays open, and a pair
+    /// dropped after it is noted past its start, as before the rollback, though an enclosing attempt noted it before the mark.
+    /// </summary>
+    internal void RollBackToRetry(PdfDiagnosticsMark mark) => RollBack(mark, retried: true);
+
+    private void RollBack(PdfDiagnosticsMark mark, bool retried)
     {
         _entries.RemoveRange(mark.Count, _entries.Count - mark.Count);
         _suppressed = mark.Suppressed;
         _limits = mark.Limits;
         _limitsSuppressed = mark.LimitsSuppressed;
         _dropped?.RemoveRange(mark.Dropped, _dropped.Count - mark.Dropped);
-        CloseDropped(mark);
+
+        if (retried)
+        {
+            ReopenDropped(mark);
+        }
+        else
+        {
+            CloseDropped(mark);
+        }
 
         // Copied: the mark keeps what it recorded, whatever this instance holds next.
         if (mark.DecodingReports is { } held)
@@ -457,8 +490,23 @@ public sealed class PdfDiagnostics : IReadOnlyList<PdfDiagnostic>
         return noted;
     }
 
-    /// <summary>Starts the note again where <paramref name="mark"/> started on it, the mark closed (<see cref="_droppedFrom"/>).</summary>
+    /// <summary>
+    /// Looks in the note again where the enclosing mark still open looks, <paramref name="mark"/> closed for good
+    /// (<see cref="_droppedFrom"/>).
+    /// </summary>
     private void CloseDropped(PdfDiagnosticsMark mark)
+    {
+        if (KeptIn is not null)
+        {
+            _droppedFrom = mark.DroppedFrom;
+        }
+    }
+
+    /// <summary>
+    /// Looks in the note from where <paramref name="mark"/> started on it, the mark rolled back to and still open
+    /// (<see cref="_droppedFrom"/>).
+    /// </summary>
+    private void ReopenDropped(PdfDiagnosticsMark mark)
     {
         if (KeptIn is not null)
         {

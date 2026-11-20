@@ -531,6 +531,75 @@ public class DiagnosticsTests
         allocated.Should().BeLessThan(1_000);
     }
 
+    [Theory]
+    [InlineData(0)]
+    [InlineData(1000)]
+    public void Faults_an_object_meets_between_its_nested_loads_past_the_capacity_cost_no_more_than_before_them(int capacity)
+    {
+        // Ten thousand streams in one array, each /Length naming an object loaded in its turn, three faults after each or all
+        // before them. The reader holds back what the array's reading meets, and noted again each pair the capacity dropped
+        // after each nested load, its note growing to 32,768 pairs, kept as long as the document (#385).
+        const int Streams = 10_000;
+
+        Allocated(between: true).Should().BeLessThan(Allocated(between: false) + (64 * 1024), "the pairs are noted once for the reading");
+
+        long Allocated(bool between)
+        {
+            var array = new StringBuilder("[");
+            var builder = new TestPdfBuilder()
+                .WithObject(1, "<< /Type /Catalog /Pages 2 0 R >>")
+                .WithObject(2, "<< /Type /Pages /Kids [] /Count 0 >>");
+
+            for (var k = 0; !between && k < Streams; k++)
+            {
+                array.Append(" x/a#zz<zz>");
+            }
+
+            for (var k = 0; k < Streams; k++)
+            {
+                array.Append(System.Globalization.CultureInfo.InvariantCulture, $"<</Length {10 + k} 0 R>>stream\nendstream{(between ? " x/a#zz<zz>" : string.Empty)}");
+                builder.WithObject(10 + k, "0");
+            }
+
+            var file = builder.WithObject(3, array.Append(']').ToString()).BuildClassic(rootNumber: 1);
+
+            return Allocations.Least(
+                () => PdfDocument.Open(file, new PdfReaderOptions { DiagnosticCapacity = capacity }),
+                static document =>
+                {
+                    using (document)
+                    {
+                        return document!.GetObject(new PdfObjectId(3));
+                    }
+                },
+                out _,
+                out _);
+        }
+    }
+
+    [Fact]
+    public void A_retry_notes_past_its_mark_a_code_the_attempt_around_it_dropped_before_it()
+    {
+        // A reading made again in a larger window rolls back to its mark and goes on using it: a code the attempt around it
+        // dropped before the mark, and the retry drops again, is noted past the mark. The reader sees a fault of the syntax
+        // since the mark, and the document holds the code once the retry is kept, though the attempt around it is not.
+        var document = new PdfDiagnostics();
+        var pending = new PdfDiagnostics { Capacity = 0, KeptIn = document };
+        var outer = pending.GetMark();
+        pending.Warn("syntax.met", "Dropped by the attempt around the retry.");
+        var retried = pending.GetMark();
+        pending.Warn("syntax.met", "Dropped by the first try.");
+
+        pending.RollBackToRetry(retried);
+        pending.Warn("syntax.met", "Dropped by the retry.");
+
+        pending.DroppedSince(retried, "syntax.").Should().BeTrue();
+        pending.MoveTo(document, retried);
+        pending.RollBack(outer);
+        document.Contains("syntax.met").Should().BeTrue();
+        pending.Contains("syntax.met").Should().BeFalse();
+    }
+
     [Fact]
     public void Refuses_a_negative_capacity()
     {
@@ -540,9 +609,11 @@ public class DiagnosticsTests
     }
 
     [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public void Rolling_back_forgets_only_what_the_capacity_dropped_since_the_mark(bool keptInAnother)
+    [InlineData(false, false)]
+    [InlineData(true, false)]
+    [InlineData(false, true)]
+    [InlineData(true, true)]
+    public void Rolling_back_forgets_only_what_the_capacity_dropped_since_the_mark(bool keptInAnother, bool toRetry)
     {
         var diagnostics = keptInAnother ? new PdfDiagnostics { Capacity = 0, KeptIn = new PdfDiagnostics() } : new PdfDiagnostics { Capacity = 0 };
         diagnostics.Warn("before", "Dropped before the mark.");
@@ -550,7 +621,15 @@ public class DiagnosticsTests
 
         diagnostics.Warn("before", "Dropped again after it.");
         diagnostics.Repair("after", "Dropped after it.");
-        diagnostics.RollBack(mark);
+
+        if (toRetry)
+        {
+            diagnostics.RollBackToRetry(mark);
+        }
+        else
+        {
+            diagnostics.RollBack(mark);
+        }
 
         diagnostics.Contains("before").Should().BeTrue();
         diagnostics.Contains("after").Should().BeFalse();

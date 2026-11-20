@@ -316,7 +316,7 @@ internal sealed partial class PdfFileReader
                         return false;
                     }
 
-                    _pending.RollBack(mark);
+                    _pending.RollBackToRetry(mark);
 
                     if (windowSize >= maxWindow)
                     {
@@ -348,7 +348,7 @@ internal sealed partial class PdfFileReader
                 {
                     if (windowSize < maxWindow)
                     {
-                        _pending.RollBack(mark);
+                        _pending.RollBackToRetry(mark);
                         windowSize = (int)Math.Min((long)windowSize * 8, maxWindow);
                         continue;
                     }
@@ -763,7 +763,7 @@ internal sealed partial class PdfFileReader
                         return false;
                     }
 
-                    _pending.RollBack(mark);
+                    _pending.RollBackToRetry(mark);
                     windowSize = (int)Math.Min((long)windowSize * 8, maxWindow);
                     continue;
                 }

@@ -904,7 +904,7 @@ internal sealed partial class PdfFileReader
                 // keeps it.
                 if (parser.IsTruncated && edge && windowSize < maxWindow)
                 {
-                    _pending.RollBack(mark);
+                    _pending.RollBackToRetry(mark);
                     windowSize = (int)Math.Min((long)windowSize * 8, maxWindow);
                     continue;
                 }
