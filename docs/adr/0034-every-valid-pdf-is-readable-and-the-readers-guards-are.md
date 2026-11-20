@@ -13,7 +13,7 @@ saying which bounds a sound file could reach, and follows [8](0008-facade-immuta
 in making them options on an immutable record.
 
 Implemented by `PdfReaderLimits`, `PdfReaderOptions.Limits` and `PdfReaderOptions.ThrowOnLimit`,
-`PdfLimitExceededException`, the nine `limit.*` codes of `PdfDiagnosticCodes`, the `readerLimits` field of
+`PdfLimitExceededException`, the ten `limit.*` codes of `PdfDiagnosticCodes`, the `readerLimits` field of
 `tests/corpus/manifest.json`, and `ReaderLimitsTests`.
 
 Amended on 2026-09-27, by the maintainer, while M08 was specified: one record bounds every hostile read, the
@@ -210,6 +210,23 @@ the scan reads the stream as it did before the search existed. A first version c
 apart from the direct lengths; a damaged file whose lengths sit in an object stream, as one writer puts them, then
 reached it on a few pages, and was read worse than before.
 
+Amended on 2026-11-20, by the maintainer, while [#181](https://github.com/AdCodicem/AdCodicem.Pdf/issues/181) was fixed:
+a tenth guard, `MaxObjectStreamDecodePasses` (4, `limit.object-stream-decodes`), bounds what the library's own walks of a
+document decode again of the object streams the reader let go, a remark on `ObjectStreamBudget` having claimed that no
+file was read differently for that budget. Two streams that each decode past half of it evict each other, so a walk that
+reads their objects in turn decodes a whole stream for each: the search for a catalog through a 45 KB file whose
+cross-reference stream places 100,000 numbers in two streams of 20 MB, and a validation of a valid page tree whose pages
+alternate between them. The guard is scoped to the walks the library makes of its own accord — the search for a catalog,
+as the document opens or as a rebuild finishes, and a validation's rules —, each counted from its start, a nested one with
+it: during one, the streams it decoded and let go may be decoded again up to that many times what its first decodings of
+them weighed; past it, an object such a stream holds reads as null until the walk ends, as one a guard cut, reported once
+a document. What so reads as null is not kept, nor anything read through it, so that a caller's own reads are never cut,
+and the budget starts again with the next walk; a rebuild's expansion of the object streams, which makes the index the
+reader keeps, is not counted. A valid file reaches it, and the validator takes what it leaves unread for the reader's
+limit, judging nothing of it. A guard on every read, for the document's life, was weighed and set aside: it would cut a
+caller reading a valid file's pages in turn, which the caller can order otherwise, as the one rule that reads every object
+of the index now does, stream by stream.
+
 ## Context
 
 Invariant 4 treats everything read from a file as hostile: no allocation, loop or recursion is sized by a
@@ -238,6 +255,7 @@ claims; neither bounded what it was said to, and the 2026-10-14 amendment made t
 | The entries of the index | 8,388,607 | The informative annex C of ISO 32000-1 gives Acrobat's limit as 8,388,607 objects, and PDF/A-1 to 3 make it normative; PDF 2.0 sets none, and PDFium raised its own past it for documents of about six million. Each entry the index holds costs 40 bytes numbered in order, up to about 80 when a rebuild grew it and about 96 for numbers spread far apart, so the default holds 335 MB of index or more (amended on 2026-10-28, [#155](https://github.com/AdCodicem/AdCodicem.Pdf/issues/155)) |
 | The filters a stream's data passes through | 64 | ISO 32000 sets no limit on how many filters a `/Filter` array names; real streams name one to three, `/Crypt` among them, and qpdf reads three thousand |
 | A rebuild's reads past streams' declared lengths, to confirm them | 4 times the file | A valid file's own streams take about twice the file; but the data of a stream whose length the scan cannot confirm, which it reads as objects, may hold an attached file's bytes that spell streams, whose lengths may all end in one run of white space that each read past them crosses (amended on 2026-11-17, [#361](https://github.com/AdCodicem/AdCodicem.Pdf/issues/361)) |
+| What one of the library's walks decodes again of the object streams the reader let go | 4 times what its first decodings weighed | ISO 32000 sets no limit on an object stream's decoded length, nor on how a writer spreads objects among streams: a page tree whose pages alternate between two streams that each decode past half the reader's 32 MB budget has a walk of it decode a whole stream for each page (amended on 2026-11-20, [#181](https://github.com/AdCodicem/AdCodicem.Pdf/issues/181)) |
 
 None of these was an option. Until T21, T23 and T31 some were not even reported, or were reported as damage
 in the file: the map's image came out as "a Flate stream was truncated".
@@ -255,9 +273,10 @@ hands its output out a piece at a time can read the stream (T28).
 We will read every PDF that is valid under ISO 32000, and treat each bound a valid file can exceed as a
 guard: active by default, reported when it is reached, and lifted by an option.
 
-- **The options.** `PdfReaderOptions.Limits` is a `PdfReaderLimits`, an immutable record with the nine bounds
+- **The options.** `PdfReaderOptions.Limits` is a `PdfReaderLimits`, an immutable record with the ten bounds
   of the table: `MaxDecodedStreamLength`, `MaxStreamLength`, `MaxObjectLength`, `MaxXRefSectionLength`, `MaxXRefSectionCount`,
-  `MaxTrailerLength`, `MaxIndexEntries`, `MaxFilterChainLength` and `MaxRebuildReadPasses`. `PdfReaderLimits.Default` keeps the values above;
+  `MaxTrailerLength`, `MaxIndexEntries`, `MaxFilterChainLength`, `MaxRebuildReadPasses` and `MaxObjectStreamDecodePasses`.
+  `PdfReaderLimits.Default` keeps the values above;
   `PdfReaderLimits.Unbounded` takes the implementation's maximums — `Array.MaxLength` for a length,
   `int.MaxValue` for a count. A value of zero or less is refused; a value above the implementation's maximum is
   taken as that maximum.
