@@ -1493,6 +1493,20 @@ internal sealed partial class PdfFileReader : IPdfObjectSource, IPdfStreamDataPr
     }
 
     /// <summary>
+    /// Starts one of the library's walks, where no other is in progress, that decodes no object stream again once the reader
+    /// let it go: each stream is decoded once at most before it ends, past which the objects a stream it let go holds read
+    /// as null, as past <see cref="PdfReaderLimits.MaxObjectStreamDecodePasses"/>.
+    /// </summary>
+    /// <param name="name">What the walk is, as <see cref="BeginWalk"/> takes it.</param>
+    private void BeginWalkDecodingOnce(string name)
+    {
+        BeginWalk(name);
+
+        // Spent from its start: a stream the walk has not decoded yet is decoded, and no other (WalkSpent).
+        _walkBudgetSpent = true;
+    }
+
+    /// <summary>
     /// Ends a walk <see cref="BeginWalk"/> started: once the outermost ends, what the walks decoded is forgotten, the budget
     /// starts again with the next, and the objects they read as null for it read whole again.
     /// </summary>
