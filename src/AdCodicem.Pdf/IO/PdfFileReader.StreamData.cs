@@ -406,7 +406,7 @@ internal sealed partial class PdfFileReader
     /// stream —, until its streams so read were parsed four times over: a valid file's streams lie apart, and parsed once
     /// each they total less than the file, which leaves room for streams parsed again after the cache let them go.
     /// </remarks>
-    internal const int UncheckedConfirmedPasses = 4;
+    internal const int UncountedUnreadPasses = 4;
 
     /// <summary>
     /// How many times the file's length the lengths taken unread may total, once counted, before a stream's data is no longer
@@ -455,7 +455,7 @@ internal sealed partial class PdfFileReader
     private const int KeptNone = -2;
 
     /// <summary>
-    /// How many bytes the lengths taken unread parsed so far total, which <see cref="UncheckedConfirmedPasses"/> bounds; it
+    /// How many bytes the lengths taken unread parsed so far total, which <see cref="UncountedUnreadPasses"/> bounds; it
     /// stops growing once past.
     /// </summary>
     private long _unreadParsed;
@@ -479,7 +479,7 @@ internal sealed partial class PdfFileReader
     /// parsed again reads the same.
     /// </summary>
     /// <remarks>
-    /// Null until the count starts (<see cref="UncheckedConfirmedPasses"/>), so that a file whose streams are not parsed over
+    /// Null until the count starts (<see cref="UncountedUnreadPasses"/>), so that a file whose streams are not parsed over
     /// and over allocates nothing. Each pair then costs about 40 bytes — its key, its decision and the table's own slots —,
     /// once however often its stream is parsed: as many as the streams read past the start, each from the few places the
     /// indexes give it.
@@ -505,7 +505,7 @@ internal sealed partial class PdfFileReader
     /// read first, whose search read where the data ends; for every other number, what the search found is a length taken
     /// unread too (<see cref="IPdfStreamDataProvider.FindEndStream"/>).
     /// <para>
-    /// Nothing is counted until the lengths so taken, over every parse, total <see cref="UncheckedConfirmedPasses"/> times
+    /// Nothing is counted until the lengths so taken, over every parse, total <see cref="UncountedUnreadPasses"/> times
     /// the file's length: until then a valid file pays nothing. Past it, each length is counted once for each object number
     /// and place its data starts at, at the longest length taken for that pair — a rebuild may lengthen it —, into one total;
     /// no index is consulted to count, so that neither an index rebuilt after the chain was read, nor headers that all lie
@@ -542,7 +542,7 @@ internal sealed partial class PdfFileReader
             return length;
         }
 
-        var countedFrom = UncheckedConfirmedPasses * _source.Length;
+        var countedFrom = UncountedUnreadPasses * _source.Length;
 
         if (_unreadParsed <= countedFrom)
         {

@@ -398,7 +398,7 @@ public class HostileInputTests
         }
 
         (source.BytesRead - opened).Should().BeLessThan(
-            ((PdfFileReader.UncheckedConfirmedPasses + PdfFileReader.OverlapKeptPasses + 1) * file.Length) + (4L * Streams * PdfFileReader.InitialObjectWindow),
+            ((PdfFileReader.UncountedUnreadPasses + PdfFileReader.OverlapKeptPasses + 1) * file.Length) + (4L * Streams * PdfFileReader.InitialObjectWindow),
             "the data of the streams read before the reader looks and of those kept overlapping, and a few windows for each object");
         document.Diagnostics.Should().Contain(d => d.Code == PdfDiagnosticCodes.StreamLengthInvalid);
     }
@@ -428,7 +428,7 @@ public class HostileInputTests
         }
 
         (source.BytesRead - opened).Should().BeLessThan(
-            ((PdfFileReader.UncheckedConfirmedPasses + PdfFileReader.OverlapKeptPasses + 1) * file.Length) + (4L * Streams * PdfFileReader.InitialObjectWindow),
+            ((PdfFileReader.UncountedUnreadPasses + PdfFileReader.OverlapKeptPasses + 1) * file.Length) + (4L * Streams * PdfFileReader.InitialObjectWindow),
             "the data of the streams read before the reader looks and of those kept overlapping, and a few windows for each object");
         var first = Array.FindIndex(streams, stream => stream.Data.Length != Length);
         first.Should().BePositive();
@@ -522,7 +522,7 @@ public class HostileInputTests
         }
 
         (source.BytesRead - opened).Should().BeLessThan(
-            ((PdfFileReader.UncheckedConfirmedPasses + PdfFileReader.OverlapKeptPasses + PdfFileReader.OverlapCutPasses + PdfFileReader.EndStreamSearchPasses + 2) * file.Length) +
+            ((PdfFileReader.UncountedUnreadPasses + PdfFileReader.OverlapKeptPasses + PdfFileReader.OverlapCutPasses + PdfFileReader.EndStreamSearchPasses + 2) * file.Length) +
                 (4L * Streams * PdfFileReader.InitialObjectWindow),
             "the data served before the reader counts, kept whole and kept up to a header, what the searches and a rebuild read, and a few windows for each object");
         document.Diagnostics.Should().Contain(d => d.Code == PdfDiagnosticCodes.StreamLengthInvalid);
@@ -595,7 +595,7 @@ public class HostileInputTests
             served += streams[k].GetRawBytes().Length;
         }
 
-        var bound = ((PdfFileReader.UncheckedConfirmedPasses + PdfFileReader.OverlapKeptPasses + PdfFileReader.OverlapCutPasses + PdfFileReader.EndStreamSearchPasses + 2) * file.Length) +
+        var bound = ((PdfFileReader.UncountedUnreadPasses + PdfFileReader.OverlapKeptPasses + PdfFileReader.OverlapCutPasses + PdfFileReader.EndStreamSearchPasses + 2) * file.Length) +
             (4L * headers * PdfFileReader.InitialObjectWindow);
         served.Should().BeLessThan(bound, "the data served before the reader counts, kept whole and kept up to a header, and what the searches read");
         (source.BytesRead - opened).Should().BeLessThan(bound, "the data served, and a few windows for each object");
@@ -655,7 +655,7 @@ public class HostileInputTests
         new PdfValidator().Validate(document);
 
         (source.BytesRead - opened).Should().BeLessThan(
-            ((PdfFileReader.UncheckedConfirmedPasses + PdfFileReader.OverlapKeptPasses + PdfFileReader.OverlapCutPasses + PdfFileReader.EndStreamSearchPasses + 2) * bytes.Length) +
+            ((PdfFileReader.UncountedUnreadPasses + PdfFileReader.OverlapKeptPasses + PdfFileReader.OverlapCutPasses + PdfFileReader.EndStreamSearchPasses + 2) * bytes.Length) +
                 (4L * Headers * PdfFileReader.InitialObjectWindow),
             "the data decoded before the reader counts, kept whole and kept up to a header, what the searches read, and a few windows for each object");
         document.Diagnostics.Should().Contain(d =>
