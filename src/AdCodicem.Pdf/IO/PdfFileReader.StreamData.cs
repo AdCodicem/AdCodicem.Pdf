@@ -313,13 +313,16 @@ internal sealed partial class PdfFileReader
     /// leaves the data up to it to the guard (#224). What it reads is the stretch between the stream and the next object,
     /// once for each stream: the result is kept, and a stream parsed again — after the cache let it go, or a rebuild of
     /// the index — is not searched again. What the searches read together is bounded by
-    /// <see cref="EndStreamSearchPasses"/>.
+    /// <see cref="EndStreamSearchPasses"/>. Another object whose data starts at the same place — one body that many headers
+    /// name — takes the result as well, which was not read for it: <paramref name="reused"/> says so, and the length it
+    /// gives is then weighed as one taken without reading where the data ends (<see cref="IPdfStreamDataProvider.TakeUnread"/>).
     /// </para>
     /// </remarks>
     StreamEndSearch IPdfStreamDataProvider.FindEndStream(
-        int number, long absoluteDataStart, long declaredEnd, ReadOnlySpan<byte> buffered, bool deferred)
+        int number, long absoluteDataStart, long declaredEnd, ReadOnlySpan<byte> buffered, bool deferred, out bool reused)
     {
         var found = _endStreamSearches.TryGetValue((absoluteDataStart, deferred), out var known);
+        reused = found && known.SearchedFor != number;
 
         if (found && known.DeclaredEnd == declaredEnd)
         {
@@ -340,7 +343,7 @@ internal sealed partial class PdfFileReader
             };
         }
 
-        _endStreamSearches[(absoluteDataStart, deferred)] = (search, declaredEnd);
+        _endStreamSearches[(absoluteDataStart, deferred)] = (search, declaredEnd, found ? known.SearchedFor : number);
         return search;
     }
 
@@ -413,8 +416,9 @@ internal sealed partial class PdfFileReader
     /// Not a guard (ADR 34): no valid file's lengths taken unread total past the file's length. Each is counted once for each
     /// object and place its data starts at, so that streams whose data share no byte total at most the file's length, under
     /// this bound, which only data that overlaps reaches: streams each holding the next one's header, every length confirmed
-    /// by the one <c>endstream</c> far on or kept without a search. A damaged file's streams keep their data as the file wrote
-    /// it, a row a shift or an update left stale inside the data, or a copy of an object the file superseded, included.
+    /// by the one <c>endstream</c> far on or kept without a search, or one body that many headers name, each number but the
+    /// first taking what its search found. A damaged file's streams keep their data as the file wrote it, a row a shift or
+    /// an update left stale inside the data, or a copy of an object the file superseded, included.
     /// </remarks>
     internal const int OverlapKeptPasses = 4;
 
@@ -482,20 +486,33 @@ internal sealed partial class PdfFileReader
     /// </remarks>
     private Dictionary<(long DataStart, int Number), (int Counted, int Kept)>? _unreadTaken;
 
+    /// <summary>
+    /// Where the data starts of each stream a kept reading reported its data kept short of a length taken unread
+    /// (<see cref="StreamLengthFault.KeptShort"/>), apart from <see cref="_lengthFaultsReported"/>, which holds them too: a
+    /// stream reported for another fault first — its length kept without a search, before the count began — and read short
+    /// once parsed again says so, once.
+    /// </summary>
+    private readonly HashSet<long> _keptShortReported = new(SeededComparer.Instance);
+
     /// <inheritdoc/>
     /// <remarks>
     /// ISO 32000-1 (7.3.8, 7.5.3) has each object begin after the one before ends. A file whose streams each hold the next
     /// one's header, every declared length confirmed by the one <c>endstream</c> a megabyte on, makes each stream's data the
     /// whole stretch: nothing keeps it (<see cref="FileStreamData"/>), but from a source not in memory each read of each
     /// stream's data reads it again, the file in its square (#280). A length taken without reading where the data ends is the
-    /// one way data runs over the next object: a search for <c>endstream</c> stops at it.
+    /// one way data runs over the next object: a search for <c>endstream</c> stops at it. One body that many headers name —
+    /// on one comment line, each number's load reading it — does the same with a search: it is searched once, for the number
+    /// read first, whose search read where the data ends; for every other number, what the search found is a length taken
+    /// unread too (<see cref="IPdfStreamDataProvider.FindEndStream"/>).
     /// <para>
     /// Nothing is counted until the lengths so taken, over every parse, total <see cref="UncheckedConfirmedPasses"/> times
     /// the file's length: until then a valid file pays nothing. Past it, each length is counted once for each object number
     /// and place its data starts at, at the longest length taken for that pair — a rebuild may lengthen it —, into one total;
     /// no index is consulted to count, so that neither an index rebuilt after the chain was read, nor headers that all lie
     /// before the first data start, nor one body that many headers name, lets a stream escape it. Streams whose data share no
-    /// byte total at most the file's length, so that only data that overlaps passes four times it.
+    /// byte total at most the file's length, so that only data that overlaps, or that more than one number reads, passes
+    /// four times it. The number a search was made for is not counted: it read where its data ends, and a file whose streams
+    /// lost their <c>endstream</c> keeps the count it has.
     /// </para>
     /// <para>
     /// While the total is at most <see cref="OverlapKeptPasses"/> times the file's length, the data is kept whole. Past it,
@@ -504,11 +521,13 @@ internal sealed partial class PdfFileReader
     /// or at the first where none does, as long as what it keeps fits <see cref="OverlapCutPasses"/> times the file's length,
     /// which it then spends; otherwise, or where nothing is placed inside the data, the data reads empty. Either is reported
     /// as <see cref="Diagnostics.PdfDiagnosticCodes.StreamLengthInvalid"/>. So the data of the streams whose lengths are
-    /// taken unread total at most eight times the file once counted, each pair once, and four times before. A row a shift or
-    /// an update left stale in a sound stream's data ends nothing under these bounds. Past both, which streams are ended, and where, depends on the
-    /// order they are read in — one read whole before the count began may be read ended after, the cache having let it go —,
-    /// as which streams the searches leave unsearched does (#138): crafted files make it so, and no stream of the corpus,
-    /// nor of the copies of it measured truncated, rows shifted or updates stale, is ended.
+    /// taken unread total at most eight times the file once counted, each pair once, and four times before; the streams the
+    /// searches were made for add what the searches read, at most <see cref="EndStreamSearchPasses"/> times the file, the
+    /// bytes each load held aside. A row a shift or an update left stale in a sound stream's data ends nothing under these
+    /// bounds. Past both, which streams are ended, and where, depends on the order they are read in — one read whole before
+    /// the count began may be read ended after, the cache having let it go —, as which streams the searches leave unsearched
+    /// does (#138): crafted files make it so, and no stream of the corpus, nor of the copies of it measured truncated, rows
+    /// shifted or updates stale, is ended.
     /// </para>
     /// <para>
     /// While the chain is read, nothing is counted: the index is being made, and the streams read then are its sections'.
@@ -956,8 +975,8 @@ internal sealed partial class PdfFileReader
     }
 
     /// <inheritdoc/>
-    bool IPdfStreamDataProvider.IsLengthFaultReported(long absoluteDataStart) =>
-        _lengthFaultsReported.Contains(absoluteDataStart);
+    bool IPdfStreamDataProvider.IsLengthFaultReported(long absoluteDataStart, bool keptShort) =>
+        (keptShort ? _keptShortReported : _lengthFaultsReported).Contains(absoluteDataStart);
 
     /// <summary>
     /// Gets the index whose offsets bound the searches for <c>endstream</c>: the one the chain gave, as the file wrote

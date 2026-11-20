@@ -528,6 +528,140 @@ public class HostileInputTests
         document.Diagnostics.Should().Contain(d => d.Code == PdfDiagnosticCodes.StreamLengthInvalid);
     }
 
+    [Theory]
+    [InlineData("a wrong length, the endstream found", 200)]
+    [InlineData("a wrong length, the endstream found", 800)]
+    [InlineData("no length, the endstream found", 200)]
+    [InlineData("a length a guard cut, the endstream found", 200)]
+    [InlineData("a length its object's endobj follows, no endstream", 200)]
+    [InlineData("a short length, its object's endobj ending the data before the next object", 200)]
+    [InlineData("a length no endstream nor endobj follows", 200)]
+    [InlineData("a length a guard cut, no endstream before a header the data holds", 200)]
+    [InlineData("no length nor endstream, the data to the end of the file", 200)]
+    public void One_body_that_many_numbers_read_through_one_search_serves_a_bounded_multiple_of_the_file_and_says_so(string shape, int headers)
+    {
+        // Many headers on one comment line, every number's load reading the one body after it, whose /Length is wrong, absent
+        // or cut by a guard, or which lost its endstream: where its data ends is searched once, for the first number read, and
+        // every other number took that search's answer, the whole stretch — 198 times the file served for 200 headers. For
+        // any number but the one it was made for, that answer is a length taken without reading where the data ends, counted
+        // as the others are: past what such lengths may keep, the data reads empty, which is said once, besides what the
+        // search found; the number that searched keeps its data, parsed again once the cache let it go too (#280).
+        const int Filler = 1024 * 1024;
+        var lengthObject = "5" + new string(' ', 20_000);
+        var file = shape switch
+        {
+            "a wrong length, the endstream found" => HeadersOnOneCommentLine(headers, Filler, "/Length 7"),
+            "no length, the endstream found" => HeadersOnOneCommentLine(headers, Filler, string.Empty),
+            "a length a guard cut, the endstream found" => HeadersOnOneCommentLine(headers, Filler, "/Length 999 0 R", lengthObject: lengthObject),
+            "a length its object's endobj follows, no endstream" => HeadersOnOneCommentLine(headers, Filler, tail: "\nendobj\n"),
+            "a short length, its object's endobj ending the data before the next object" =>
+                HeadersOnOneCommentLine(headers, Filler, "/Length 7", "\nendobj\n", placedAfter: true),
+            "a length no endstream nor endobj follows" => HeadersOnOneCommentLine(headers, Filler, tail: "\n"),
+            "a length a guard cut, no endstream before a header the data holds" =>
+                HeadersOnOneCommentLine(headers, Filler, "/Length 999 0 R", "\n9 0 obj\n[1]\nendobj\n", lengthObject),
+            _ => HeadersOnOneCommentLine(headers, Filler, string.Empty, "\n"),
+        };
+        var nine = Encoding.Latin1.GetString(file).IndexOf("\n9 0 obj", StringComparison.Ordinal) + 1;
+        var declared = string.Create(CultureInfo.InvariantCulture, $"The stream declared {Filler} bytes");
+        const string Guard = "The stream's /Length names object 999 0, which one of the reader's limits cut";
+        var expected = shape switch
+        {
+            "a wrong length, the endstream found" => Found("The stream declared 7 bytes"),
+            "no length, the endstream found" => Found("The stream has no /Length"),
+            "a length a guard cut, the endstream found" => Found(Guard),
+            "a length its object's endobj follows, no endstream" => Missing(declared, "before the end of the file"),
+            "a short length, its object's endobj ending the data before the next object" =>
+                Missing("The stream declared 7 bytes", string.Create(CultureInfo.InvariantCulture, $"before the next object, at {nine}")),
+            "a length no endstream nor endobj follows" => Missing(declared, "before the end of the file"),
+            "a length a guard cut, no endstream before a header the data holds" =>
+                Missing(Guard, string.Create(CultureInfo.InvariantCulture, $"before the next object, at {nine}")),
+            _ => Missing("The stream has no /Length", "before the end of the file"),
+        };
+        var guarded = shape.Contains("guard", StringComparison.Ordinal);
+        var options = PdfReaderOptions.Default with
+        {
+            ObjectCacheCapacity = 4,
+            Limits = guarded ? PdfReaderLimits.Default with { MaxObjectLength = 16 * 1024 } : PdfReaderLimits.Default,
+        };
+        using var source = new StrictCountingSource(file);
+        using var document = PdfDocument.Open(source, options, ownsSource: false);
+        var opened = source.BytesRead;
+        var streams = new PdfStream[headers];
+        long served = 0;
+
+        for (var k = 0; k < headers; k++)
+        {
+            streams[k] = document.GetObject(new PdfObjectId(10 + k)).AsStream().Required();
+            served += streams[k].GetRawBytes().Length;
+        }
+
+        var bound = ((PdfFileReader.UncheckedConfirmedPasses + PdfFileReader.OverlapKeptPasses + PdfFileReader.OverlapCutPasses + PdfFileReader.EndStreamSearchPasses + 2) * file.Length) +
+            (4L * headers * PdfFileReader.InitialObjectWindow);
+        served.Should().BeLessThan(bound, "the data served before the reader counts, kept whole and kept up to a header, and what the searches read");
+        (source.BytesRead - opened).Should().BeLessThan(bound, "the data served, and a few windows for each object");
+        streams[0].Data.Length.Should().BeGreaterThanOrEqualTo(Filler, "the number that searched read where its data ends");
+        streams[^1].Data.Length.Should().Be(0);
+        var reports = document.Diagnostics.Where(d => d.Position == streams[0].Data.Position).ToList();
+        reports.Should().HaveCount(guarded ? 1 : 2, "what the search found is said, but of a length a guard hid, and so is the first data read empty");
+        reports[^1].Code.Should().Be(PdfDiagnosticCodes.StreamLengthInvalid);
+        reports[^1].Message.Should().Be(expected);
+        var again = document.GetObject(new PdfObjectId(10)).AsStream().Required();
+        again.Should().NotBeSameAs(streams[0], "the cache let it go, and it was parsed again");
+        again.Data.Length.Should().Be(streams[0].Data.Length, "the number the search was made for read where its data ends");
+
+        static string Found(string described) => string.Create(
+            CultureInfo.InvariantCulture,
+            $"{described}; an endstream ends its data after {Filler} bytes, but the stream's data reads empty, the streams that overlap having kept as much of the file as they may.");
+
+        static string Missing(string described, string where) =>
+            $"{described}, and no endstream follows its data {where}, but the stream's data reads empty, the streams that overlap having kept as much of the file as they may.";
+    }
+
+    [Fact]
+    public void Object_streams_that_many_numbers_read_as_one_body_through_one_search_validate_reading_a_bounded_multiple_of_the_file()
+    {
+        // Two hundred headers on one comment line, each an object stream of one member a cross-reference stream places, every
+        // number's load reading the one body after them, which has no /Length: its search was made once, and validating the
+        // file decoded the whole stretch for every number, 190 times the file read. Past what lengths taken unread may keep,
+        // a number's data reads empty, and its member null (#280).
+        const int Headers = 200;
+        const int Filler = 1024 * 1024;
+        var file = new HandWrittenFile(version: "1.5");
+        var rows = new Dictionary<int, (int Type, long Field2, int Field3)>
+        {
+            [1] = (1, file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"), 0),
+            [2] = (1, file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"), 0),
+        };
+        var origin = file.Position;
+        var text = new StringBuilder();
+
+        for (var k = 0; k < Headers; k++)
+        {
+            rows[10 + k] = (1, origin + text.Length, 0);
+            rows[5000 + k] = (2, 10 + k, 0);
+            text.Append(CultureInfo.InvariantCulture, $"{10 + k} 0 % ");
+        }
+
+        const string Member = "5000 0 ";
+        text.Append(CultureInfo.InvariantCulture, $"\nobj << /Type /ObjStm /N 1 /First {Member.Length} >> stream\n")
+            .Append(Member).Append("<< >>").Append(' ', Filler).Append("\nendstream\nendobj\n");
+        file.Raw(text.ToString());
+        file.CrossReferenceStream(9000, 9001, rows, "/Root 1 0 R");
+        var bytes = file.Bytes;
+        using var source = new StrictCountingSource(bytes);
+        using var document = PdfDocument.Open(source, options: null, ownsSource: false);
+        var opened = source.BytesRead;
+
+        new PdfValidator().Validate(document);
+
+        (source.BytesRead - opened).Should().BeLessThan(
+            ((PdfFileReader.UncheckedConfirmedPasses + PdfFileReader.OverlapKeptPasses + PdfFileReader.OverlapCutPasses + PdfFileReader.EndStreamSearchPasses + 2) * bytes.Length) +
+                (4L * Headers * PdfFileReader.InitialObjectWindow),
+            "the data decoded before the reader counts, kept whole and kept up to a header, what the searches read, and a few windows for each object");
+        document.Diagnostics.Should().Contain(d =>
+            d.Code == PdfDiagnosticCodes.StreamLengthInvalid && d.Message.EndsWith("the streams that overlap having kept as much of the file as they may.", StringComparison.Ordinal));
+    }
+
     [Fact]
     public void An_object_stream_header_s_tables_grow_no_larger_than_its_bytes_can_hold()
     {
@@ -6883,10 +7017,13 @@ public class HostileInputTests
     /// <summary>
     /// Writes a file whose objects 10 and on, <paramref name="streams"/> of them, the rows place on one comment line, each a
     /// number and a generation before the comment that runs to the line's end: each load reads its header there, the
-    /// comment skipped to the one <c>obj</c> on the next line, whose stream's <c>/Length</c> the one <c>endstream</c> after
-    /// <paramref name="filler"/> bytes confirms.
+    /// comment skipped to the one <c>obj</c> on the next line, whose stream's data is <paramref name="filler"/> bytes followed
+    /// by <paramref name="tail"/>, its dictionary holding <paramref name="length"/> — by default the length the one
+    /// <c>endstream</c> after the data confirms. Object 999, written after it, holds <paramref name="lengthObject"/> where it
+    /// is given; with <paramref name="placedAfter"/>, object 9 follows it.
     /// </summary>
-    internal static byte[] HeadersOnOneCommentLine(int streams, int filler)
+    internal static byte[] HeadersOnOneCommentLine(
+        int streams, int filler, string? length = null, string tail = "\nendstream\nendobj\n", string? lengthObject = null, bool placedAfter = false)
     {
         var file = new HandWrittenFile(version: "1.5");
         var rows = new Dictionary<int, long>
@@ -6903,9 +7040,22 @@ public class HostileInputTests
             text.Append(CultureInfo.InvariantCulture, $"{10 + k} 0 %");
         }
 
-        text.Append(CultureInfo.InvariantCulture, $"\nobj<</Length {filler}>>stream\n").Append('z', filler).Append("\nendstream\nendobj\n");
+        var entry = length ?? string.Create(CultureInfo.InvariantCulture, $"/Length {filler}");
+        text.Append("\nobj<<").Append(entry).Append(">>stream\n").Append('z', filler).Append(tail);
         file.Raw(text.ToString());
-        file.Table(10 + streams, rows, string.Create(CultureInfo.InvariantCulture, $"/Size {10 + streams} /Root 1 0 R"));
+
+        if (lengthObject is not null)
+        {
+            rows[999] = file.Object(999, lengthObject);
+        }
+
+        if (placedAfter)
+        {
+            rows[9] = file.Object(9, "[1]");
+        }
+
+        var size = lengthObject is null ? 10 + streams : 1000;
+        file.Table(size, rows, string.Create(CultureInfo.InvariantCulture, $"/Size {size} /Root 1 0 R"));
         return file.Bytes;
     }
 
