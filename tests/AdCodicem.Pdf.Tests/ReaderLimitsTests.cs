@@ -346,6 +346,39 @@ public class ReaderLimitsTests
     }
 
     [Theory]
+    [InlineData("filter", false)]
+    [InlineData("parameters", false)]
+    [InlineData("length", false)]
+    [InlineData("own", false)]
+    [InlineData("filter", true)]
+    [InlineData("parameters", true)]
+    [InlineData("length", true)]
+    [InlineData("own", true)]
+    public void An_object_stream_whose_decoding_meets_what_a_walk_s_guard_cut_and_gives_nothing_is_decoded_once_however_many_of_its_objects_the_walk_reads(string value, bool catalogCut)
+    {
+        // The search for a catalog, past what it may decode again, reads object 28 as null, and decodes object stream 60
+        // without it — its /Filter, its /DecodeParms, or its /Length —: the stream gives nothing, and its hundred objects
+        // read as null for the guard, the stream decoded once, not once for each. Where the catalog is one the guard cut too,
+        // the search reads again what it cut, stream by stream, decoding each once more at most: object 28, read whole there,
+        // is let go before stream 60 is decoded again, which it reads as null again, the stream decoded once more. Read by
+        // the caller after the search, stream 60 serves its objects. A stream whose decoding needs no value the guard cut,
+        // and gives nothing for the file's own fault, is kept, decoded once, and serves none.
+        var file = DecodedThroughACutValueFile(value, 100, catalogCut, out var dataStart);
+        using var source = new OffsetCountingSource(file);
+        var options = new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxObjectStreamDecodePasses = 1 }, ObjectCacheCapacity = 64 };
+        using var document = PdfDocument.Open(source, options, ownsSource: false);
+
+        source.Reads.GetValueOrDefault(dataStart).Should().Be(catalogCut && value != "own" ? 2 : 1, "stream 60 is decoded once a walk");
+        document.Reader.CatalogFoundAs.Should().Be(FirstMemberOfSixty + 100);
+        document.Diagnostics.Select(entry => entry.Code).Should().Equal(
+            value == "own"
+                ? [PdfDiagnosticCodes.LimitObjectStreamDecodes, PdfDiagnosticCodes.ObjectStreamUnreadable, PdfDiagnosticCodes.TrailerRootRecovered]
+                : [PdfDiagnosticCodes.LimitObjectStreamDecodes, PdfDiagnosticCodes.TrailerRootRecovered]);
+        var member = document.GetObject(new PdfObjectId(FirstMemberOfSixty));
+        (member.AsDictionary()?.GetRaw(PdfName.Get("Kept")) == PdfBoolean.True).Should().Be(value != "own");
+    }
+
+    [Theory]
     [InlineData("decoded stream", "The /ASCIIHexDecode data decodes to more than 1 byte; decoding stopped there.")]
     [InlineData("stream length", "A stream's data runs past 1 byte; only what lies within it was read.")]
     [InlineData("object", "Object 1 runs past 1 byte, its stream data aside; only what lies within it was read.")]
@@ -6285,6 +6318,143 @@ public class ReaderLimitsTests
 
         file.CompressedCrossReferenceStream(20, catalogRow ? 31 : 21, number => rows.TryGetValue(number, out var row) ? row : (0, 0, 0), "/Root 1 0 R");
         return file.Bytes;
+    }
+
+    /// <summary>The first of the objects object stream 60 of <see cref="DecodedThroughACutValueFile"/> holds.</summary>
+    private const int FirstMemberOfSixty = 61;
+
+    /// <summary>
+    /// Writes a file whose /Root names a string, read in number order by a search for a catalog that may decode its object
+    /// streams again once (<see cref="WriteStreamsCutInTurn"/>), and whose object stream 60 holds <paramref name="members"/>
+    /// objects, 61 and on, each <c>&lt;&lt; /Kept true &gt;&gt;</c>, whose decoding needs object 28: its <c>/Filter</c>,
+    /// for <paramref name="value"/> <c>filter</c>; its <c>/DecodeParms</c>, a predictor its data is written with, for
+    /// <c>parameters</c>; or its <c>/Length</c>, for <c>length</c>, its data not compressed and spelling an <c>endstream</c>
+    /// and an <c>endobj</c> between its header and its first object. Read without object 28, the stream's header is still
+    /// encoded, or garbage, or its objects lie past its data. For <c>own</c>, the stream needs no other object, and a stray
+    /// token heads its header, which lists no object: a fault of the file. The catalog comes after stream 60's objects:
+    /// written directly, or, with <paramref name="catalogCut"/>, in object stream 250.
+    /// </summary>
+    private static byte[] DecodedThroughACutValueFile(string value, int members, bool catalogCut, out long dataStart)
+    {
+        const int Columns = 64;
+        var catalog = FirstMemberOfSixty + members;
+        var header = new StringBuilder(value == "own" ? "x " : string.Empty);
+        var bodies = new StringBuilder();
+
+        for (var index = 0; index < members; index++)
+        {
+            header.Append(CultureInfo.InvariantCulture, $"{FirstMemberOfSixty + index} {bodies.Length} ");
+            bodies.Append("<< /Kept true >> ");
+        }
+
+        if (value == "length")
+        {
+            header.Append("\nendstream\nendobj\n");
+        }
+
+        var first = header.Length;
+        var plain = Encoding.Latin1.GetBytes((header.ToString() + bodies).PadRight((header.Length + bodies.Length + Columns - 1) / Columns * Columns));
+        var data = value switch
+        {
+            "length" => plain,
+            "parameters" => HostileInputTests.Compress(TiffPredicted(plain, Columns)),
+            _ => HostileInputTests.Compress(plain),
+        };
+        var (held, entries) = value switch
+        {
+            "filter" => ("/FlateDecode", string.Create(CultureInfo.InvariantCulture, $"/Filter 28 0 R /Length {data.Length}")),
+            "parameters" => (
+                string.Create(CultureInfo.InvariantCulture, $"<< /Predictor 2 /Colors 1 /BitsPerComponent 8 /Columns {Columns} >>"),
+                string.Create(CultureInfo.InvariantCulture, $"/Filter /FlateDecode /DecodeParms 28 0 R /Length {data.Length}")),
+            "length" => (data.Length.ToString(CultureInfo.InvariantCulture), "/Length 28 0 R"),
+            _ => ("<< >>", string.Create(CultureInfo.InvariantCulture, $"/Filter /FlateDecode /Length {data.Length}")),
+        };
+        var file = new HandWrittenFile(version: "1.5");
+        var rows = WriteStreamsCutInTurn(file, held, catalogCut ? catalog : 0);
+        rows[60] = (1, file.Object(60, string.Create(CultureInfo.InvariantCulture, $"<< /Type /ObjStm /N {members} /First {first} {entries} >>\nstream\n{Encoding.Latin1.GetString(data)}\nendstream")), 0);
+
+        for (var index = 0; index < members; index++)
+        {
+            rows[FirstMemberOfSixty + index] = (2, 60, index);
+        }
+
+        if (!catalogCut)
+        {
+            rows[catalog] = (1, file.Object(catalog, Catalog), 0);
+        }
+
+        var last = rows.Keys.Max();
+        file.CompressedCrossReferenceStream(last + 1, last + 2, number => rows.TryGetValue(number, out var row) ? row : (0, 0, 0), "/Root 1 0 R");
+        var bytes = file.Bytes;
+        var at = OffsetOf(bytes, "\n60 0 obj");
+        dataStart = at + bytes.AsSpan(at).IndexOf("stream\n"u8) + "stream\n".Length;
+        return bytes;
+
+        static byte[] TiffPredicted(byte[] plain, int columns)
+        {
+            var encoded = new byte[plain.Length];
+
+            for (var index = 0; index < plain.Length; index++)
+            {
+                encoded[index] = index % columns == 0 ? plain[index] : (byte)(plain[index] - plain[index - 1]);
+            }
+
+            return encoded;
+        }
+    }
+
+    /// <summary>
+    /// Writes to <paramref name="file"/> object 1, a string, and an empty page tree; object streams 4, 5 and 6, which decode
+    /// to <see cref="ObjectStreamDecoded"/> bytes each, past half the budget the reader keeps them in, and hold objects 10 to
+    /// 33 in turn, object 28, in stream 4, holding <paramref name="value"/>; and object stream 250, which holds object 9 and,
+    /// where <paramref name="catalog"/> is not 0, that catalog, stream 5 then holding the 80 objects after it besides. Gives
+    /// the rows written.
+    /// </summary>
+    /// <remarks>
+    /// Read in number order by a walk that may decode its object streams again once, each of streams 4, 5 and 6 is decoded
+    /// twice for objects 10 to 15, after which the objects streams 4 and 5 hold read as null, the walk's guard cut — 28, and
+    /// the 80 objects after the catalog, among them —, and so does the catalog, once stream 250 was let go. A search for a
+    /// catalog that reads them again, stream by stream, reads object 28 whole as it decodes stream 4, and lets go of it as
+    /// it caches 86 objects of stream 5, past a cache of 64 objects.
+    /// </remarks>
+    private static Dictionary<int, (int Type, long Field2, int Field3)> WriteStreamsCutInTurn(HandWrittenFile file, string value, int catalog)
+    {
+        var rows = new Dictionary<int, (int Type, long Field2, int Field3)>
+        {
+            [1] = (1, file.Object(1, "(not a catalog)"), 0),
+            [2] = (1, file.Object(2, Pages), 0),
+        };
+        var held = new List<(int Number, string Body)>[] { [], [], [] };
+
+        for (var number = 10; number < 34; number++)
+        {
+            held[(number - 10) % 3].Add((number, number == 28 ? value : "<< >>"));
+        }
+
+        for (var number = catalog + 1; catalog != 0 && number <= catalog + 80; number++)
+        {
+            held[1].Add((number, "<< >>"));
+        }
+
+        for (var stream = 0; stream < 3; stream++)
+        {
+            rows[4 + stream] = (1, file.PaddedObjectStream(4 + stream, [.. held[stream]], ObjectStreamDecoded), 0);
+
+            for (var index = 0; index < held[stream].Count; index++)
+            {
+                rows[held[stream][index].Number] = (2, 4 + stream, index);
+            }
+        }
+
+        rows[250] = (1, file.ObjectStream(250, catalog == 0 ? [(9, "<< >>")] : [(9, "<< >>"), (catalog, Catalog)]), 0);
+        rows[9] = (2, 250, 0);
+
+        if (catalog != 0)
+        {
+            rows[catalog] = (2, 250, 1);
+        }
+
+        return rows;
     }
 
     /// <summary>A source that records whether it was released.</summary>

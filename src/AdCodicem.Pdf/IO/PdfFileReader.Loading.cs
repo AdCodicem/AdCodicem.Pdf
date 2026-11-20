@@ -1786,7 +1786,8 @@ internal sealed partial class PdfFileReader
             }
 
             // What was read through an object a walk's guard read as null is the walk's: the stream is hidden by no guard,
-            // and is decoded again, whole, when next asked for.
+            // and is decoded again, whole, when asked for once the walk ends — not before, counted as decoded
+            // (CountWalkDecoding).
             var whole = walkCuts == _walkCuts;
 
             if (contents is null && hidden && whole)
@@ -1801,7 +1802,7 @@ internal sealed partial class PdfFileReader
                 KeepObjectStream(number, contents);
             }
 
-            CountWalkDecoding(number, contents);
+            CountWalkDecoding(number, contents, whole);
 
             // Nor does the walk read the object from what it gave, which may lack what the guard read as null: the object
             // is one the guard cut, until the walk ends.
@@ -1828,7 +1829,9 @@ internal sealed partial class PdfFileReader
     /// </summary>
     /// <remarks>
     /// A rebuild's taking in of the object streams is not weighed: what it reads makes the index the reader keeps, which no
-    /// walk may change. Within the budget, a decoding is counted once done (<see cref="CountWalkDecoding"/>).
+    /// walk may change. Within the budget, a decoding is counted once done (<see cref="CountWalkDecoding"/>); one that read a
+    /// value the guard cut is counted too, though it gave nothing, so that the next object asked of the stream is cut here,
+    /// the budget being spent, rather than decode the stream again.
     /// </remarks>
     private bool WalkSpent(int number)
     {
@@ -1852,20 +1855,32 @@ internal sealed partial class PdfFileReader
     /// Counts against the walk in progress a decoding of object stream <paramref name="number"/> that gave
     /// <paramref name="contents"/>: its first in the walk, or one more of a stream the reader let go.
     /// </summary>
-    private void CountWalkDecoding(int number, ObjectStreamContents? contents)
+    /// <remarks>
+    /// A decoding that gave nothing is counted only where it read a value the walk's guard cut — <paramref name="whole"/>
+    /// false —, as weighing nothing: the reader does not keep what it gave, and, counted, the stream is not decoded again
+    /// before the walk ends (<see cref="WalkSpent"/>), however much data it decodes and however many of its objects the
+    /// walk asks for. One that gave nothing for the file's own fault, reading no such value, is kept as what any decoding
+    /// gives is, and its objects read from there.
+    /// </remarks>
+    /// <param name="number">The object stream's number.</param>
+    /// <param name="contents">What the decoding gave; null for nothing.</param>
+    /// <param name="whole">Whether the decoding read no value the walk's guard cut.</param>
+    private void CountWalkDecoding(int number, ObjectStreamContents? contents, bool whole)
     {
-        if (_walkDepth == 0 || _expandingObjectStreams || contents is null)
+        if (_walkDepth == 0 || _expandingObjectStreams || (contents is null && whole))
         {
             return;
         }
 
-        if ((_walkDecoded ??= new(SeededComparer.Instance)).TryAdd(number, contents.Weight))
+        var weight = contents?.Weight ?? 0;
+
+        if ((_walkDecoded ??= new(SeededComparer.Instance)).TryAdd(number, weight))
         {
-            _walkFirstBytes += contents.Weight;
+            _walkFirstBytes += weight;
         }
         else
         {
-            _walkAgainBytes += contents.Weight;
+            _walkAgainBytes += weight;
         }
     }
 
