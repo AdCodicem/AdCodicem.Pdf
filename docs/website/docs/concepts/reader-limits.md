@@ -39,8 +39,9 @@ it, and a file that kills the process is the worst outcome a document reader can
 Some of those bounds are reachable by a sound document: a large-format scan decodes past the 256 MB a stream may
 decode to by default, and stored without a filter its data would run past the 256 MB the reader reads of one stream at
 once; a file saved incrementally a thousand times has a thousand cross-reference sections; nothing
-in PDF 2.0 forbids more objects than the 8,388,607 the index holds by default; and a rebuild of a file whose attached
-data spells streams can read past their lengths, to confirm them, many times the file. A bound like that is a **guard**. It is on by default, so an application that opens files it did not produce is
+in PDF 2.0 forbids more objects than the 8,388,607 the index holds by default; a rebuild of a file whose attached
+data spells streams can read past their lengths, to confirm them, many times the file; and a page tree whose pages lie in
+turn in two large object streams has a validation decode them again for each page. A bound like that is a **guard**. It is on by default, so an application that opens files it did not produce is
 protected without configuring anything; it is reported under its own `limit.*` code when a document reaches it; and
 its message names the option that lifts it, so that the document stays readable by whoever needs to read it.
 
@@ -159,6 +160,26 @@ a stretch of the file do not each hold a copy of it.
 `PdfReaderLimits.Unbounded` takes every limit to the most the implementation can hold. It is for documents your own
 application produced, never for uploads: under it, a file can make the reader hold whatever it asks for, up to those
 maxima.
+
+## What the library's own walks decode again
+
+Each limit above bounds one step: one stream's decoding, one object's parsing. Steps repeat, though. The reader keeps the
+object streams it decoded within its 32 MB budget, and decodes again a stream it let go when one of its objects is read
+again — the price of memory that follows the heaviest stream rather than their number. Two streams that each decode past
+16 MB cannot be kept together, so objects read from them in turn decode a whole stream each: a valid page tree whose
+pages alternate between them, or a 45 KB file whose cross-reference stream places 100,000 numbers in them in turn, which
+the search for a catalog reads one by one, decoding about two terabytes before the document opens
+([#181](https://github.com/AdCodicem/AdCodicem.Pdf/issues/181)).
+
+The reads you make are yours to order, and are never cut for this. The library's own walks of a document — the search for
+a catalog a `/Root` that leads to none sets off, and a validation's rules — weigh what they decode again:
+`MaxObjectStreamDecodePasses`, 4 by default, lets one walk decode again, together, the streams it let go up to four times
+what its first decodings of them weighed. Past it, the walk leaves the rest unread as a guard's cut, goes on, and
+reports `limit.object-stream-decodes`. A valid file reaches it — the page tree above —, so it is a guard, and what it
+leaves unread is the reader's limit: the validator judges nothing of it, and finds no fault where the file has none.
+Nothing the walk left unread is kept, so that your own reads once it is done read every object whole, and the next
+walk starts its budget again. The rules that read every object of the index read those of each object stream
+together, so that a sound file's validation decodes each stream once, whatever its numbers' order.
 
 ## Bounds that stay internal
 

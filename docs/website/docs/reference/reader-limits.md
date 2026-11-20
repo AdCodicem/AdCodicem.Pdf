@@ -22,11 +22,12 @@ document instead, in [Read or refuse a document that reaches a limit](../guides/
 | `MaxIndexEntries` | 8,388,607 | A document of more objects than ISO 32000-1's Annex C advises; or a cross-reference stream of one-byte rows, of which 256 MB decode from a few hundred bytes | The object numbers indexed first: the newest sections', a rebuild's first; of the scan the searches near an offset ask for, the first object headers and keywords it takes | `limit.index-entries` |
 | `MaxFilterChainLength` | 64 | A `/Filter` array naming more filters, `/Crypt` among them: real streams name one to three, and a hostile array of millions costs decoding a few microseconds a filter, and some filters a table of tens of kilobytes, whatever their data | The data as the filters within the bound decoded it; the elements past it are not read | `limit.filter-chain` |
 | `MaxRebuildReadPasses` | 4 | A rebuild of the index whose scan reads past streams' direct lengths, to confirm them, more times the length of the file: a valid file's own streams take about twice the file, but the streams an attached file's bytes spell, inside the data of a stream whose `/Length` the scan does not confirm, count too, and their lengths may all end in one long run of white space that each read crosses ([#361](https://github.com/AdCodicem/AdCodicem.Pdf/issues/361)). The search for the objects of indirect lengths has bounds of its own ([What cannot be lifted](#what-cannot-be-lifted)) | The streams confirmed until then; past it, the data of each stream the scan cannot confirm is read up to its first `endstream`, the object headers there not taken | `limit.rebuild-reads` |
+| `MaxObjectStreamDecodePasses` | 4 | One of the library's own walks of a document — the search for a catalog a `/Root` that leads to none sets off, as the document opens or as a rebuild finishes, and a validation's rules — that decodes again the object streams the reader let go more times what its first decodings of them weighed: two object streams that each decode past 16 MB, half the budget the reader keeps them in, whose objects the walk reads in turn — the pages of a valid page tree among them — decode a whole stream for each object ([#181](https://github.com/AdCodicem/AdCodicem.Pdf/issues/181)) | The objects of the streams the walk decoded within the bound, and those of any stream it has not decoded yet; until the walk ends, an object a stream it decoded and the reader let go holds reads as null, a guard's cut, and is read whole by any other read | `limit.object-stream-decodes` |
 
 | Member | Value |
 |---|---|
 | `PdfReaderLimits.Default` | Every limit at the default above; what `PdfReaderOptions.Limits` holds unless you set it |
-| `PdfReaderLimits.Unbounded` | Every length at `Array.MaxLength`, about 2 GB, and `MaxXRefSectionCount`, `MaxIndexEntries`, `MaxFilterChainLength` and `MaxRebuildReadPasses` at `int.MaxValue` |
+| `PdfReaderLimits.Unbounded` | Every length at `Array.MaxLength`, about 2 GB, and `MaxXRefSectionCount`, `MaxIndexEntries`, `MaxFilterChainLength`, `MaxRebuildReadPasses` and `MaxObjectStreamDecodePasses` at `int.MaxValue` |
 
 `MaxIndexEntries` bounds what a document costs after opening too. The index holds 40 bytes for each entry it is sized
 for — an object, or one the newest `/Size` numbers —, up to about 80 when a rebuild grew it and about 96 for numbers
@@ -308,7 +309,24 @@ there. Raise PdfReaderLimits.MaxDecodedStreamLength to read past it.
   there, and reported under `limit.stream-length`, even under `Unbounded`.
 - The reader keeps the object streams it decoded within a budget of 32 MB — their decoded data, and their headers'
   tables —, and always keeps the one it decoded last, whatever its size. Raising `MaxDecodedStreamLength` raises how
-  large that one can be.
+  large that one can be. A stream it let go is decoded again when one of its objects is read again: your own reads are
+  never cut for it, while the library's own walks — the search for a catalog, a validation's rules — decode again what
+  they let go within `MaxObjectStreamDecodePasses`. Past it, every object a stream the walk decoded and let go holds
+  reads as null until the walk ends, as one a guard cut: the search takes no such object for the catalog, and the
+  validator judges nothing of what it lacks or holds. What so read as null is not kept, and the budget starts again
+  with the next walk, so that which objects a walk leaves unread depends on what the reader kept before it began
+  ([`MaxObjectStreamDecodePasses`](api/AdCodicem.Pdf.Documents.PdfReaderLimits.md#AdCodicem_Pdf_Documents_PdfReaderLimits_MaxObjectStreamDecodePasses)
+  says what a walk counts). It is reported once a document, where the object stream the walk first left undecoded lies:
+
+  ```text
+  Warning limit.object-stream-decodes at 18191: The validation decoded again the object streams the reader let go as
+  much as 4 times what its first decodings of them weighed, 35,652,544 bytes: object stream 11 was not decoded again,
+  and the objects it holds read as null until the validation ends. Raise PdfReaderLimits.MaxObjectStreamDecodePasses
+  to read past it.
+  ```
+
+  With `ThrowOnLimit`, each read the walk so leaves undecoded throws: a validation stops there, and the search for a
+  catalog goes on, throwing the first once it ends, the index rebuilt where it found none.
 
 ## `ThrowOnLimit`
 
@@ -326,14 +344,17 @@ The exception comes from whichever operation reaches the limit:
 
 | Operation | When |
 |---|---|
-| `PdfDocument.Open` | While it indexes the file and reads its catalog |
+| `PdfDocument.Open` | While it indexes the file and reads its catalog, the search for one included: once that search ends, at the first limit it reached — `MaxObjectStreamDecodePasses` among them —, the index rebuilt first where it found none |
 | `GetObject`, or resolving a reference | When an object is too long, or the object stream that holds it runs past `MaxStreamLength`, decodes too far or names too many filters; when the read rebuilds the index, at any limit the rebuild reaches, once the rebuild is finished — the first reached: a limit the rebuild's scan reaches before the read's own, the read's own before one finishing the rebuild reaches; and each time it looks up an object a full index left out; and when the search near its entry's offset reaches past the places the scan it asks for keeps |
 | `GetRawBytes` | When the stream's data runs past `MaxStreamLength`, each time it is read |
 | `Decode` | When a stream's data runs past `MaxStreamLength`, the stream decodes too far, its decoding reaches the filter past `MaxFilterChainLength`, or loading a value the filters read — the `/Filter` entry, a filter's parameters — reaches a limit, as resolving a reference does |
 | `HasImageFilter` | When loading a value decoding reads before the image filter — the `/Filter` entry, a filter's parameters — reaches a limit, as resolving a reference does |
-| `PdfValidator.Validate` | As it reads, like any other caller; and before its first rule, at any limit the rebuild it may run then reaches, once that rebuild is finished |
+| `PdfValidator.Validate` | As it reads, like any other caller, and when its rules decode again past `MaxObjectStreamDecodePasses` the object streams the reader let go; and before its first rule, at any limit the rebuild it may run then reaches, once that rebuild is finished |
 
-A document whose index had to be rebuilt finishes the rebuild before throwing, so it stays usable afterwards.
+A document whose index had to be rebuilt finishes the rebuild before throwing, so it stays usable afterwards. An object
+whose load threw, or an object stream whose decoding did, throws the same exception again each time it is read, without
+reading the file again, until a rebuild of the index lets go of what was read: a search for a catalog whose candidates
+all lead to one object a limit cut reads it once ([#181](https://github.com/AdCodicem/AdCodicem.Pdf/issues/181)).
 
 ## What cannot be lifted
 
