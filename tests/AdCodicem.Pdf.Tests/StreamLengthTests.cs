@@ -1030,6 +1030,35 @@ public class StreamLengthTests
     }
 
     [Theory]
+    [InlineData(2)]
+    [InlineData(-2)]
+    public void A_stream_inside_the_window_whose_length_is_wrong_reads_no_more_of_the_file_than_a_sound_one(int error)
+    {
+        // 4 KB of data, its /Length 2 bytes off, as Distiller 3 wrote them: the endstream the window holds ends the data,
+        // and what follows it the window shows. The file was read again for it, 64 bytes a stream (#296).
+        var data = Data(4096);
+        var sound = Document((StreamNumber, Stream(data.Length, data)), (6, "(after)"));
+        var wrong = Document((StreamNumber, Stream(data.Length + error, data)), (6, "(after)"));
+
+        var soundRead = Read(sound, out _);
+        var wrongRead = Read(wrong, out var diagnostics);
+
+        wrongRead.Should().BeLessThanOrEqualTo(soundRead);
+        diagnostics.Should().ContainSingle().Which.Code.Should().Be(PdfDiagnosticCodes.StreamLengthInvalid);
+
+        static long Read(byte[] file, out PdfDiagnostics diagnostics)
+        {
+            using var source = new StrictCountingSource(file);
+            using var document = PdfDocument.Open(source, options: null, ownsSource: false);
+            var beforeLoading = source.BytesRead;
+
+            document.GetObject(new PdfObjectId(StreamNumber)).AsStream().Required().Data.Length.Should().Be(4096);
+            diagnostics = document.Diagnostics;
+            return source.BytesRead - beforeLoading;
+        }
+    }
+
+    [Theory]
     [InlineData(true)]
     [InlineData(false)]
     public void A_stream_whose_length_is_wrong_is_searched_and_reported_once_however_often_the_cache_lets_it_go(bool pastWindow)
@@ -2637,17 +2666,19 @@ public class StreamLengthTests
     }
 
     [Theory]
-    [InlineData(true)]
-    [InlineData(false)]
-    public void An_endstream_the_data_spells_past_which_the_searches_may_read_no_more_ends_data_that_is_the_guard_s(bool endObj)
+    [InlineData("comment", true)]
+    [InlineData("comment", false)]
+    [InlineData("white space", true)]
+    public void An_endstream_the_data_spells_past_which_the_searches_may_read_no_more_ends_data_that_is_the_guard_s(string gap, bool endObj)
     {
         // Ten streams whose data share a megabyte read as much of the file as the searches may. Then stream 13, whose
-        // /Length, object 14, MaxObjectLength cuts, spells an endstream in a string, a long comment after it, then an endobj
-        // or not: what follows the comment lies past what the searches may read, and nothing proves the endstream the
-        // stream's own. The data was taken for the file's, cut short unmarked, its object said to lack its endobj where the
-        // data spells none; it is the guard's (#224).
+        // /Length, object 14, MaxObjectLength cuts, spells an endstream in a string, a long comment or 80 spaces after it,
+        // then an endobj or not: what follows lies past what the file's first read after the keyword shows, and nothing
+        // proves the endstream the stream's own. The data was taken for the file's, cut short unmarked, its object said to
+        // lack its endobj where the data spells none; it is the guard's (#224). Past 80 spaces, the bytes the parser holds
+        // show the endobj, where the searches no longer read on: the data is the guard's all the same.
         const int Streams = 10;
-        var data = "BT (a\nendstream\n%" + new string('c', 80) + (endObj ? "\nendobj\n" : "\n") + ") Tj ET";
+        var data = "BT (a\nendstream" + (gap == "comment" ? "\n%" + new string('c', 80) : new string(' ', 80)) + (endObj ? "\nendobj\n" : "\n") + ") Tj ET";
         var (file, _) = NestedStreams(
             Streams,
             100_000,
