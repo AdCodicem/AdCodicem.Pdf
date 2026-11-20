@@ -742,6 +742,35 @@ public class ReadOrderTests
     }
 
     [Fact]
+    public void A_stream_ended_at_a_place_inside_its_data_is_said_so_once_though_the_source_failed_a_rebuild_between_two_readings()
+    {
+        // Twenty streams, each one's header in a string of the dictionary of the one before, every /Length confirmed by the
+        // one endstream 100 KB on, and object 9 placed 100 bytes before it. Streams 11 to 21, read first, keep as much as
+        // lengths taken unread may keep whole: stream 10, read next, ends at object 9, and says so. The table's /Prev names no
+        // section, and a lookup of object 5000, which it lacks, rebuilds the index, whose scan the source fails: what the
+        // rebuild reported is withdrawn, what was said before it stays said. The next read runs the rebuild again, and stream
+        // 10, read again, ends where it ended, and is not said again (#280).
+        var bytes = HostileInputTests.NestedInStrings(20, 100_000, placedFromEnd: 100, entries: "/Prev 1 0 R");
+        using var source = new FailingSource(bytes);
+        using var document = PdfDocument.Open(source, options: null, ownsSource: false);
+
+        for (var number = 11; number < 22; number++)
+        {
+            document.GetObject(new PdfObjectId(number));
+        }
+
+        var first = document.GetObject(new PdfObjectId(10)).AsStream().Required();
+        source.Fail(0, 1);
+
+        FluentActions.Invoking(() => document.GetObject(new PdfObjectId(5000))).Should().Throw<IOException>();
+        var again = document.GetObject(new PdfObjectId(10)).AsStream().Required();
+
+        document.WasRepaired.Should().BeTrue();
+        again.Data.Length.Should().Be(first.Data.Length).And.BeLessThan(100_000);
+        document.Diagnostics.Count(d => d.Position == first.Data.Position).Should().Be(1);
+    }
+
+    [Fact]
     public void A_rebuild_whose_finish_the_source_fails_is_finished_whole_by_the_next_read()
     {
         // Object stream 6 holds objects 10 and 11; object stream 8 holds 7, and its /Length is object 5, whose row leads

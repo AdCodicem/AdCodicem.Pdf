@@ -601,6 +601,7 @@ public class HostileInputTests
         (source.BytesRead - opened).Should().BeLessThan(bound, "the data served, and a few windows for each object");
         streams[0].Data.Length.Should().BeGreaterThanOrEqualTo(Filler, "the number that searched read where its data ends");
         streams[^1].Data.Length.Should().Be(0);
+        document.Reader.IsEndObjMissing(10 + headers - 1, out _).Should().BeFalse("where the object ends is unknown");
         var reports = document.Diagnostics.Where(d => d.Position == streams[0].Data.Position).ToList();
         reports.Should().HaveCount(guarded ? 1 : 2, "what the search found is said, but of a length a guard hid, and so is the first data read empty");
         reports[^1].Code.Should().Be(PdfDiagnosticCodes.StreamLengthInvalid);
@@ -1769,6 +1770,25 @@ public class HostileInputTests
         document.Diagnostics.Should().BeEmpty();
         report.Findings.Should().OnlyContain(finding => finding.RuleId == PdfValidationRuleIds.PageTreePageOrphaned);
         report.Findings.Select(finding => finding.Location.Object!.Value.Number).Should().Equal(Enumerable.Range(20, 200));
+    }
+
+    [Fact]
+    public void Validating_a_file_whose_unlisted_objects_lie_in_turn_in_two_large_object_streams_reads_each_once_through_a_small_cache()
+    {
+        // Objects 20 to 219, which no page tree lists and none of which is a page, lie in object streams 10 and 11, of 17 MB
+        // each, in turn, read through a cache of 64 objects. The rule that looks for unlisted pages reads the objects of each
+        // stream together, once: it reads none of them again in number order, which would decode a whole stream for each, past
+        // what the validation may decode again (#181).
+        var file = UnlistedPages(200, 17 * 1024 * 1024, "<< /Type /Thing >>");
+        using var source = new StrictCountingSource(file);
+        using var document = PdfDocument.Open(source, PdfReaderOptions.Default with { ObjectCacheCapacity = 64 }, ownsSource: false);
+        var opened = source.BytesRead;
+
+        var report = Measure(() => new PdfValidator().Validate(document));
+
+        (source.BytesRead - opened).Should().BeLessThan(8L * file.Length, "the rules decode each stream a few times, not once for each object");
+        document.Diagnostics.Should().BeEmpty();
+        report.Findings.Should().BeEmpty();
     }
 
     [Theory]
@@ -6718,7 +6738,7 @@ public class HostileInputTests
     /// <c>obj</c>, and <paramref name="lead"/> comes before each header, where the data of the one before starts. Each
     /// stream's row places it <paramref name="rowShift"/> bytes from its header's first byte, and rows place
     /// <paramref name="decoys"/> numbers no object has at the bytes of each lead from its <paramref name="decoyAt"/>th,
-    /// objects 10000 and on.
+    /// objects 10000 and on. The cross-reference stream's dictionary holds <paramref name="entries"/>.
     /// </summary>
     internal static byte[] Overlapping(
         int streams,
@@ -6729,7 +6749,8 @@ public class HostileInputTests
         string lead = "",
         int rowShift = 0,
         int decoys = 0,
-        int decoyAt = 0)
+        int decoyAt = 0,
+        string entries = "/Root 1 0 R")
     {
         var file = new HandWrittenFile(version: "1.5");
         var rows = new Dictionary<int, (int Type, long Field2, int Field3)>
@@ -6795,7 +6816,7 @@ public class HostileInputTests
 
         file.Raw(body.ToString());
         var index = decoys > 0 ? decoy : objectStreams ? 6000 : 1000;
-        file.CrossReferenceStream(index, index + 1, rows, "/Root 1 0 R");
+        file.CrossReferenceStream(index, index + 1, rows, entries);
         return file.Bytes;
     }
 
@@ -6842,9 +6863,9 @@ public class HostileInputTests
     /// stream's data; each <c>/Length</c> gives the bytes from its data's start to the one <c>endstream</c> after
     /// <paramref name="filler"/> bytes, less <paramref name="shortBy"/>, or names object 999, which holds
     /// <paramref name="lengthObject"/>. With <paramref name="placedFromEnd"/>, object 9, which the index places, starts that
-    /// many bytes before that <c>endstream</c>, inside every stream's data.
+    /// many bytes before that <c>endstream</c>, inside every stream's data. The trailer holds <paramref name="entries"/> besides.
     /// </summary>
-    internal static byte[] NestedInStrings(int streams, int filler, int shortBy = 0, string? lengthObject = null, int placedFromEnd = 0)
+    internal static byte[] NestedInStrings(int streams, int filler, int shortBy = 0, string? lengthObject = null, int placedFromEnd = 0, string entries = "")
     {
         var file = new HandWrittenFile(version: "1.5");
         var rows = new Dictionary<int, long>
@@ -6903,7 +6924,7 @@ public class HostileInputTests
         }
 
         var size = lengthObject is null ? 10 + streams : 1000;
-        file.Table(size, rows, string.Create(CultureInfo.InvariantCulture, $"/Size {size} /Root 1 0 R"));
+        file.Table(size, rows, string.Create(CultureInfo.InvariantCulture, $"/Size {size} /Root 1 0 R {entries}"));
         return file.Bytes;
     }
 
@@ -7163,11 +7184,11 @@ public class HostileInputTests
     /// <summary>
     /// Writes a file of an empty page tree and <paramref name="count"/> pages it does not list, objects 20 and on: those a
     /// multiple of 25 written directly, the others held in turn by object streams 10 and 11, the odd ones in 10, each of
-    /// which decodes to <paramref name="decoded"/> bytes.
+    /// which decodes to <paramref name="decoded"/> bytes. Each object is <paramref name="page"/>, a page unless it says
+    /// otherwise.
     /// </summary>
-    internal static byte[] UnlistedPages(int count, int decoded)
+    internal static byte[] UnlistedPages(int count, int decoded, string page = "<< /Type /Page /Parent 2 0 R >>")
     {
-        const string Page = "<< /Type /Page /Parent 2 0 R >>";
         var file = new HandWrittenFile(version: "1.5");
         var rows = new Dictionary<int, (int Type, long Field2, int Field3)>
         {
@@ -7178,13 +7199,13 @@ public class HostileInputTests
 
         foreach (var number in Enumerable.Range(20, count).Where(number => number % 25 == 0))
         {
-            rows[number] = (1, file.Object(number, Page), 0);
+            rows[number] = (1, file.Object(number, page), 0);
         }
 
         foreach (var stream in (int[])[10, 11])
         {
             var members = packed.Where(number => 11 - (number % 2) == stream).ToArray();
-            rows[stream] = (1, file.PaddedObjectStream(stream, members.Select(number => (number, Page)).ToArray(), decoded), 0);
+            rows[stream] = (1, file.PaddedObjectStream(stream, members.Select(number => (number, page)).ToArray(), decoded), 0);
 
             for (var index = 0; index < members.Length; index++)
             {
