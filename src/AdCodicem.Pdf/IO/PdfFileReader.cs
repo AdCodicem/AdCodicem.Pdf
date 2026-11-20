@@ -602,7 +602,7 @@ internal sealed partial class PdfFileReader : IPdfObjectSource, IPdfStreamDataPr
     /// <summary>
     /// The exception each object stream whose decoding reached a guard threw, by number, under
     /// <see cref="PdfReaderOptions.ThrowOnLimit"/>; null until one does. Each is thrown again, without decoding, as
-    /// <see cref="_loadsThrown"/> are, and as many kept.
+    /// <see cref="_loadsThrown"/> are, and as many kept; kept as the stream's contents are (<see cref="KeepDecodingThrow"/>).
     /// </summary>
     private KeptThrows? _decodingsThrown;
 
@@ -1553,6 +1553,15 @@ internal sealed partial class PdfFileReader : IPdfObjectSource, IPdfStreamDataPr
     /// Keeps, under <see cref="PdfReaderOptions.ThrowOnLimit"/>, the exception of a guard the decoding of object stream
     /// <paramref name="number"/> reached, for the next decoding of the stream to throw it again without decoding.
     /// </summary>
+    /// <remarks>
+    /// Called as the stream's contents are kept — not where the walks' guard read a value as null on the way, nor through an
+    /// index the stream's load rebuilt —, and not while a rebuild takes the object streams in, where a number the index holds
+    /// no entry for yet reads as null for the time being; never for an exception <see cref="IsKeptNowhere"/> names. A value
+    /// the decoding read as null because the stream holds it, or because it was being loaded, does not keep the exception
+    /// from being kept, unlike a load's: every later decoding of the stream reads that value as null again
+    /// (<see cref="_nullWhileDecoding"/>, let go with the kept exceptions), and would throw alike. A null the loads' nesting
+    /// gave (<see cref="MaxNestedLoads"/>) is not recorded there, and the exception is kept through it, as contents are.
+    /// </remarks>
     private void KeepDecodingThrow(int number, PdfLimitExceededException exception) =>
         (_decodingsThrown ??= new(_cacheCapacity)).Keep(number, exception);
 

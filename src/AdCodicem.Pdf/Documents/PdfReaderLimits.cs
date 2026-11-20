@@ -287,10 +287,12 @@ public sealed record PdfReaderLimits
     /// and the reader let go holds reads as null until the walk ends, as an object a guard cut, and the walk goes on. A
     /// stream the walk has not decoded yet is decoded, and a rebuild's taking in of the object streams is not weighed. A
     /// search for a catalog that finds none among the objects it read whole reads those the guard cut again, stream by
-    /// stream, each stream decoded once more at most, and takes the catalog a search within the guard takes, before it
-    /// would rebuild the index for want of one. What reads as null for the guard is not kept — nor anything read through
-    /// it —, so that your own reads, once the walk is done, read the objects whole; and the budget starts again with the
-    /// next walk.
+    /// stream, each stream decoded once more at most, and takes the first catalog, in the index's order, among those it
+    /// reads whole this time, before it would rebuild the index for want of one; where this reading is cut too and finds
+    /// none, the index is rebuilt as it would have been without it. It does not read them again within another walk, nor
+    /// once a load rebuilt the index on the way, whose own search for a catalog takes over. What reads as null for the
+    /// guard is not kept — nor anything read through it —, so that your own reads, once the walk is done, read the objects
+    /// whole; and the budget starts again with the next walk.
     /// </para>
     /// <para>
     /// A valid file can reach it: a page tree whose pages lie in turn in two object streams that each decode past 16 MB.

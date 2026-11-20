@@ -1766,9 +1766,9 @@ internal sealed partial class PdfFileReader
                 {
                     contents = ObjectStreamContents.TryCreate(number, stream, _diagnostics, _objectStreamReports, out hidden);
                 }
-                // Kept as the stream's contents are, and not where a guard against re-entry gave a null on the way, as a load's
-                // exception is not.
-                catch (PdfLimitExceededException exception) when (repaired == _repaired && reentries == _reentries && !IsKeptNowhere(exception))
+                // Kept as the stream's contents are, not as a load's exception is: a null a guard against re-entry gave on the
+                // way is read as null again by every decoding of the stream, which would throw alike (KeepDecodingThrow).
+                catch (PdfLimitExceededException exception) when (repaired == _repaired && walkCuts == _walkCuts && !_expandingObjectStreams && !IsKeptNowhere(exception))
                 {
                     KeepDecodingThrow(number, exception);
                     throw;

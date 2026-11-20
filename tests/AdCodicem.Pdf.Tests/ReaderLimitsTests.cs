@@ -288,17 +288,27 @@ public class ReaderLimitsTests
     public void A_search_for_a_catalog_that_takes_one_past_candidates_its_guard_cut_reads_none_again_and_notes_them()
     {
         // Object 16 is no catalog, and the catalog is object 30, written directly past the object streams. The search for a
-        // catalog, past what it may decode again, reads objects 14 and 16 as null, then takes object 30, as a search within
-        // its guard does, without reading them again: it notes that it passed over objects a limit cut.
+        // catalog, past what it may decode again, reads objects 14 to 17 as null, then takes object 30, as a search within
+        // its guard does, without reading them again: it decoded each object stream twice — once, and once again within its
+        // bound —, and decodes neither a third time. It notes that it passed over objects a limit cut.
         var file = ObjectStreamsReadInTurnFile(parametersCut: false, catalogWrittenDirectly: true, catalogRow: true);
-        using var cut = PdfDocument.Open(file, new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxObjectStreamDecodePasses = 1 } });
+        using var source = new OffsetCountingSource(file);
+        using var cut = PdfDocument.Open(source, new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxObjectStreamDecodePasses = 1 } }, ownsSource: false);
         using var whole = PdfDocument.Open(file);
 
+        source.Reads.GetValueOrDefault(DataStart(file, "4 0 obj")).Should().Be(2, "object stream 4 is decoded for objects 10 and 12 alone");
+        source.Reads.GetValueOrDefault(DataStart(file, "5 0 obj")).Should().Be(2, "object stream 5 is decoded for objects 11 and 13 alone");
         cut.Diagnostics.Select(entry => entry.Code).Should().Equal(PdfDiagnosticCodes.LimitObjectStreamDecodes, PdfDiagnosticCodes.TrailerRootRecovered);
         cut.Reader.CatalogFoundAs.Should().Be(30);
         cut.Reader.CatalogCandidateCut.Should().BeTrue();
         whole.Reader.CatalogFoundAs.Should().Be(30);
         whole.Reader.CatalogCandidateCut.Should().BeFalse();
+
+        static long DataStart(byte[] file, string header)
+        {
+            var at = OffsetOf(file, header);
+            return at + file.AsSpan(at).IndexOf("stream\n"u8) + "stream\n".Length;
+        }
     }
 
     [Theory]
@@ -2268,6 +2278,38 @@ public class ReaderLimitsTests
             var reading = () => document.GetObject(new PdfObjectId(4));
             reading.Should().Throw<PdfLimitExceededException>().Which.LimitName.Should().Be(nameof(PdfReaderLimits.MaxObjectLength));
         }
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("/DecodeParms 5 0 R ")]
+    [InlineData("/DecodeParms << /Predictor 9 0 R >> ")]
+    public void An_object_stream_whose_decoding_threw_at_a_guard_throws_the_same_exception_for_each_member_read_after(string entries)
+    {
+        // Object stream 20 holds objects 9 and 5, and its data decodes to 64 KB, past a MaxDecodedStreamLength of 1 KB. Its
+        // filter's parameters may name one of its own members, which reads as null while the stream is decoded, and as null
+        // again at every decoding (#51): each decoding throws alike. Opened to throw, the first read throws, and every read
+        // of a member after it throws the same exception, without decoding the stream again (#181).
+        var file = new HandWrittenFile(version: "1.5");
+        var rows = new Dictionary<int, (int Type, long Field2, int Field3)>
+        {
+            [1] = (1, file.Object(1, Catalog), 0),
+            [2] = (1, file.Object(2, Pages), 0),
+            [20] = (1, file.PaddedObjectStream(20, [(9, "<< >>"), (5, "<< >>")], 64 * 1024, entries), 0),
+            [9] = (2, 20, 0),
+            [5] = (2, 20, 1),
+        };
+        file.CompressedCrossReferenceStream(21, 22, number => rows.TryGetValue(number, out var row) ? row : (0, 0, 0), "/Root 1 0 R");
+        var options = new PdfReaderOptions { ThrowOnLimit = true, Limits = PdfReaderLimits.Default with { MaxDecodedStreamLength = 1024 } };
+        using var document = PdfDocument.Open(file.Bytes, options);
+
+        var first = Reading(9).Should().Throw<PdfLimitExceededException>().Which;
+
+        first.Code.Should().Be(PdfDiagnosticCodes.LimitDecodedStream);
+        Reading(9).Should().Throw<PdfLimitExceededException>().Which.Should().BeSameAs(first);
+        Reading(5).Should().Throw<PdfLimitExceededException>().Which.Should().BeSameAs(first);
+
+        Func<PdfObject> Reading(int number) => () => document.GetObject(new PdfObjectId(number));
     }
 
     [Fact]

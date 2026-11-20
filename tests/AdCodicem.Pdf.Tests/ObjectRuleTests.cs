@@ -4276,29 +4276,6 @@ public class ObjectRuleTests
     /// </summary>
     private static int ReadsAt(Dictionary<long, int> reads, long row) => reads.GetValueOrDefault(row - PdfFileReader.ByteBeforeRow);
 
-    /// <summary>A file in memory that counts what is read of it, and how many reads start at each offset.</summary>
-    private sealed class OffsetCountingSource(byte[] data) : PdfFileSource
-    {
-        /// <summary>Gets how many reads started at each offset.</summary>
-        public Dictionary<long, int> Reads { get; } = [];
-
-        /// <summary>Gets the number of bytes read so far.</summary>
-        public long BytesRead { get; private set; }
-
-        /// <inheritdoc/>
-        public override long Length => data.Length;
-
-        /// <inheritdoc/>
-        public override int Read(long offset, Span<byte> buffer)
-        {
-            var count = (int)Math.Min(buffer.Length, data.Length - offset);
-            data.AsSpan((int)offset, count).CopyTo(buffer);
-            Reads[offset] = Reads.GetValueOrDefault(offset) + 1;
-            BytesRead += count;
-            return count;
-        }
-    }
-
     /// <summary>Notes which entries of a step's parameters decoding reads, by the value each holds.</summary>
     /// <param name="keys">The entry each value is written under.</param>
     /// <param name="read">The entries read, in the order decoding reads them.</param>
