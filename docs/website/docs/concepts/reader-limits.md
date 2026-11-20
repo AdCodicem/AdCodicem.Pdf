@@ -179,11 +179,13 @@ reports `limit.object-stream-decodes`. A valid file reaches it — the page tree
 leaves unread is the reader's limit: the validator judges nothing of it, and finds no fault where the file has none.
 The search for a catalog does not leave it at that when it finds none among what it read whole: rebuilding the index
 would scan the whole file, and could take a catalog an update superseded, while reading again what the guard cut, those
-of each object stream together, decodes each stream once more at most; so it does that first, and takes the first
-catalog, in the index's order, among those it then reads whole: the one a search the guard did not cut would have taken,
-as long as this reading is not cut too — a candidate's `/Type` lying in a stream it may not decode again —; where it is,
-and takes none, the index is rebuilt as before. Nothing the walk left unread is kept, so that your own reads once it is
-done read every object whole, and the next walk starts its budget again. The rules that read every object of the index
+of each object stream together, decodes each stream once more at most; so it does that first, and takes the first of
+them, in the index's order, that reads as a catalog — read whole this time, or cut again, as the first search takes
+one —; where it finds none — a candidate's `/Type` lying in a stream it may not decode again —, the index is rebuilt as
+before. Nothing the walk left unread is kept; what it read through it is kept until the walk ends, and no longer — so
+that the walk reads such an object once, however many candidates lead to it, and does not decode again, for each of its
+objects, a stream whose decoding met the cut —: your own reads once it is done read every object whole, and the next
+walk starts its budget again. The rules that read every object of the index
 read those of each object stream together, so that a sound file's validation decodes each stream once, whatever its
 numbers' order.
 
@@ -223,15 +225,18 @@ row or an offset rank a header found in such data ([Lazy reading](lazy-reading.m
 times the file of their own, an internal constant: what a rebuild serves does not hang on them, a rebuild's own scan
 makes none of them, and those searches run only where a row or an offset is off
 ([#361](https://github.com/AdCodicem/AdCodicem.Pdf/issues/361)). And a stream whose length the reader takes without
-reading where its data ends — one an `endstream` confirms, or one taken without a search once the searches have read
-four times the file — keeps that length while the lengths so taken, each stream counted once at its longest, total at
-most four times the file: streams whose data share no byte, whatever row a damaged file left stale inside them, total at
+reading where its data ends — one an `endstream` confirms, one taken without a search once the searches have read four
+times the file, or what a search made for another object whose data starts at the same place found, as each number of
+one body that many headers name but the one read first takes it — keeps that length while the lengths so taken, each
+object and place counted once at its longest, total at most four times the file: streams whose data share no byte, whatever row a damaged file left stale inside them, total at
 most the file, and none of them is ended, while streams that share a stretch of the file, each holding the next one's
-header, would otherwise read that stretch again for each read of each one, the file in its square. Past that, a stream's
+header, or one body read under many numbers, would otherwise read that stretch again for each read of each one, the file
+in its square. Past that, a stream's
 data ends at an object either index places inside it, as long as what the streams so ended keep stays within four times
-the file more, or reads empty: what such streams serve stays within eight times the file once the reader counts,
-whatever the order they are read in and whatever the indexes place, and it counts only once they were parsed four times
-the file over, which spares a valid file the count
+the file more, or reads empty: what such streams serve stays within eight times the file once the reader counts, besides
+what the searches read for the objects they were made for, at most four times the file, whatever the order they are
+read in and whatever the indexes place, and it counts only once they were parsed four times the file over, which spares
+a valid file the count
 ([What cannot be lifted](../reference/reader-limits.md#what-cannot-be-lifted),
 [#280](https://github.com/AdCodicem/AdCodicem.Pdf/issues/280)).
 

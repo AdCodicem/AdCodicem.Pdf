@@ -44,7 +44,10 @@ stream — its length unconfirmed, or a `/Length` that gives none — is searche
 start of its data, which ends it, but for one a comment between an object header's tokens holds, below: in the bytes the
 parser holds, then in the file, up to the next object — the one the file's index places as the file wrote it (as the
 reader rebuilt it when the document opened, if the file wrote none), or the first object header, `N G obj`, the file's
-bytes hold, whichever comes first —, or up to the end of the file.
+bytes hold, whichever comes first —, or up to the end of the file. The search is made once for the place the data
+starts at, for the object read first: another object whose data starts there — one body that many headers name — takes
+what it found without searching again, which, for that object, is a length taken without reading where the data ends,
+weighed as below.
 
 Stopping at the next object keeps a later object's `endstream` from ending this stream, which is what a stretch of
 zeros that erased the end of one and the objects after it would otherwise do, or an object whose entry the index lost.
@@ -143,10 +146,12 @@ another's dictionary, or a header the search does not take — a regular charact
 index as the file wrote it does not place. Past the bound, only the bytes the parser holds are searched: a declared
 length that ends before the next object is kept, the data otherwise taken up to it or to the end of the file, and the
 report says so — but for a stream whose length a guard hid, whose data up to there is the guard's, as an `endstream`
-nothing proves is. Data so taken counts, with the lengths an `endstream` confirms, among the lengths taken without
-reading where the data ends ([Bounds that stay internal](reader-limits.md#bounds-that-stay-internal)): where such
-streams overlap past their bound, the data ends at an object an index places inside it, or reads empty, and is
-reported, a hidden length's too.
+nothing proves is. Data so taken counts, with the lengths an `endstream` confirms and what a search made for another
+object whose data starts at the same place found — not for the object it was made for, which read where its data
+ends —, among the lengths taken without reading where the data ends
+([Bounds that stay internal](reader-limits.md#bounds-that-stay-internal)): where such streams overlap past their bound, the data ends at an object an index places inside
+it, or reads empty, and is reported, a hidden length's too, once for the place the data starts at, though another fault
+of the stream was reported there before.
 
 ## Damaged stream data
 
