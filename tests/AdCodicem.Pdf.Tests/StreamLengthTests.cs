@@ -2767,6 +2767,90 @@ public class StreamLengthTests
         return (file, head);
     }
 
+    /// <summary>
+    /// A document of <paramref name="streams"/> streams as <see cref="NestedStreams"/> writes them, each declaring 100,000
+    /// bytes, then <paramref name="after"/>, then a string of the length that leaves the searches for <c>endstream</c>, once
+    /// those streams are read, a few bytes at most of what they may read: fewer than
+    /// <see cref="PdfFileReader.EndStreamSearchPasses"/>.
+    /// </summary>
+    private static byte[] NestedStreamsLeavingTheSearchesAFewBytes(int streams, params string[] after)
+    {
+        // What the searches of those streams read does not depend on what follows the next object, which ends each of them.
+        const int Measured = 3_000_000;
+        var padding = streams + 3 + after.Length;
+        var measured = NestedStreams(streams, 100_000, [.. after, Padding(padding, Measured)]).File;
+        long spent;
+
+        using (var document = PdfDocument.Open(measured))
+        {
+            for (var number = 3; number <= streams + 2; number++)
+            {
+                document.GetObject(new PdfObjectId(number));
+            }
+
+            spent = document.Reader.EndStreamSearchBytes;
+        }
+
+        var length = (spent / PdfFileReader.EndStreamSearchPasses) + 1;
+        var file = NestedStreams(streams, 100_000, [.. after, Padding(padding, Measured + (int)(length - measured.Length))]).File;
+        file.Length.Should().Be((int)length);
+        return file;
+
+        static string Padding(int number, int length) => Invariant($"{number} 0 obj\n({new string('f', length)})\nendobj\n");
+    }
+
+    [Fact]
+    public void What_follows_an_endstream_past_the_file_s_first_read_is_read_from_the_file_as_far_as_the_searches_may_read()
+    {
+        // Five streams whose data share a megabyte leave the searches for endstream a few bytes of what they may read. Stream 8's
+        // endstream lies in the bytes its object is read with, and its endobj 100 spaces after it, past what the file's first
+        // read after its data holds: the file is read on for it, which counts with the searches, and stream 9, whose length is
+        // 20,000 bytes short, is left unsearched and keeps it. Judged from the bytes held, stream 8 read nothing, and stream 9
+        // was searched (#296).
+        const int Streams = 5;
+        var file = NestedStreamsLeavingTheSearchesAFewBytes(
+            Streams,
+            Invariant($"{Streams + 3} 0 obj\n<< /Length 3 >>\nstream\nabcdef\nendstream{new string(' ', 100)}\nendobj\n"),
+            Invariant($"{Streams + 4} 0 obj\n<< /Length 5 >>\nstream\n{new string('y', 20_000)}\nendstream\nendobj\n"));
+        using var document = PdfDocument.Open(file);
+
+        for (var number = 3; number <= Streams + 2; number++)
+        {
+            document.GetObject(new PdfObjectId(number));
+        }
+
+        document.GetObject(new PdfObjectId(Streams + 3)).AsStream().Required().Data.Length.Should().Be(6);
+        var reports = document.Diagnostics.Count;
+        document.GetObject(new PdfObjectId(Streams + 4)).AsStream().Required().Data.Length.Should().Be(5);
+
+        document.Diagnostics.Skip(reports).Should().ContainSingle().Which.Message.Should().Be(
+            "The stream declared 5 bytes, and no endstream follows them; the declared length is kept without a search, the document's searches for endstream having read as much of the file as they may.");
+    }
+
+    [Fact]
+    public void What_follows_an_endstream_past_the_file_s_first_read_is_unseen_once_the_search_that_found_it_read_as_much_as_the_searches_may()
+    {
+        // As above, stream 8's endstream lies 20,000 bytes on, and the search that finds it reads past what the searches may;
+        // 100 spaces follow the keyword, then a token that is not endobj. The file's first read after the data shows spaces
+        // alone, and the searches may read no more: what follows the keyword is unseen, and the object is not said to lack
+        // its endobj. Judged from the bytes the search held, it was (#296).
+        const int Streams = 5;
+        var file = NestedStreamsLeavingTheSearchesAFewBytes(
+            Streams,
+            Invariant($"{Streams + 3} 0 obj\n<< /Length 5 >>\nstream\n{new string('y', 20_000)}\nendstream{new string(' ', 100)}\nxyz\nendobj\n"));
+        using var document = PdfDocument.Open(file);
+
+        for (var number = 3; number <= Streams + 2; number++)
+        {
+            document.GetObject(new PdfObjectId(number));
+        }
+
+        document.GetObject(new PdfObjectId(Streams + 3)).AsStream().Required().Data.Length.Should().Be(20_000);
+
+        document.Reader.EndStreamSearchBytes.Should().BeGreaterThanOrEqualTo(PdfFileReader.EndStreamSearchPasses * file.Length);
+        document.Reader.IsEndObjMissing(Streams + 3, out _).Should().BeFalse();
+    }
+
     [Theory]
     [InlineData("comment", true)]
     [InlineData("comment", false)]
