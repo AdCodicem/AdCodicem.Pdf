@@ -1,3 +1,5 @@
+using System.Runtime.InteropServices;
+
 namespace AdCodicem.Pdf.IO;
 
 /// <summary>What a search of the file for a stream's <c>endstream</c> found.</summary>
@@ -18,6 +20,11 @@ namespace AdCodicem.Pdf.IO;
 /// Whether the file was searched as far as the search stops: past the bytes the parser holds, it is not once the
 /// document's searches have read as much of it as they may, and then nothing past them was found.
 /// </param>
+/// <remarks>
+/// Laid out as the runtime sees fit: one is kept for each stream whose length is not confirmed, and the fields in their
+/// declared order would pad it to 48 bytes rather than 40.
+/// </remarks>
+[StructLayout(LayoutKind.Auto)]
 internal readonly record struct StreamEndSearch(int? Length, long? NextObject, EndObjState EndObj, bool Searched = true)
 {
     /// <summary>

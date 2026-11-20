@@ -367,19 +367,23 @@ internal sealed partial class PdfFileReader
             out var searched,
             out var endObjSeen,
             out var objectEnd,
-            out _);
+            out _,
+            out var endObjHeld);
 
         // A header the bytes hold is looked for only before the next object the index places: found, it is the nearer.
         var stop = header >= 0 ? header : nextObject;
 
         // Past int.MaxValue bytes, no length the reader holds a stream by reaches the endstream found: only a file of more
         // than 2 GB can put one there, and the stream is read as one whose endstream is not found. With none, what the
-        // object's endobj does is read once with the search, as long as the searches may read.
+        // object's endobj does is read once with the search, as long as the searches may read. What follows an endstream
+        // found is read from the bytes that hold it where they show it, the file asked only where they end too soon.
         return dataEnd >= 0 && dataEnd - absoluteDataStart <= int.MaxValue
             ? new StreamEndSearch(
                 (int)(dataEnd - absoluteDataStart),
                 stop,
-                ((IPdfStreamDataProvider)this).CheckEndStream(dataEnd) ?? EndObjState.Unseen)
+                endObjHeld is EndObjState.Present or EndObjState.Absent
+                    ? endObjHeld
+                    : ((IPdfStreamDataProvider)this).CheckEndStream(dataEnd) ?? EndObjState.Unseen)
             : new StreamEndSearch(null, stop, EndObjState.Unknown, searched)
             {
                 EndObjSeen = endObjSeen,
@@ -591,7 +595,8 @@ internal sealed partial class PdfFileReader
             out var searched,
             out _,
             out var objectEnd,
-            out var emptied);
+            out var emptied,
+            out _);
 
         if (found >= 0 || !searched)
         {
@@ -891,12 +896,19 @@ internal sealed partial class PdfFileReader
     /// <param name="spent">Counts the bytes read from the file.</param>
     /// <param name="header">Where the header that stopped the search starts, or -1.</param>
     /// <param name="searched">Whether the search reached where it stops, rather than the end of what it might read.</param>
-    /// <param name="endObjSeen">Whether the bytes searched, before a header that stopped the search, hold an <c>endobj</c>.</param>
+    /// <param name="endObjSeen">
+    /// Whether the bytes searched, before a header that stopped the search, hold an <c>endobj</c>; false where an
+    /// <c>endstream</c> found ends the data, before which none is looked for.
+    /// </param>
     /// <param name="objectEnd">
     /// Where the data ends, when no <c>endstream</c> is found and the search reached where it stops, at the object's own
     /// <c>endobj</c> that only white space and comments separate from there (<see cref="EndObjTail"/>); -1 otherwise.
     /// </param>
     /// <param name="emptied">Whether a window the source gave empty ended the search.</param>
+    /// <param name="endObjHeld">
+    /// What follows the <c>endstream</c> found, as the bytes that hold it show it — Present or Absent —; Unknown where they
+    /// end before they can say, or none was found (<see cref="EndObjAfter"/>).
+    /// </param>
     private long SearchEndStream(
         long dataStart,
         ReadOnlySpan<byte> buffered,
@@ -908,7 +920,8 @@ internal sealed partial class PdfFileReader
         out bool searched,
         out bool endObjSeen,
         out long objectEnd,
-        out bool emptied)
+        out bool emptied,
+        out EndObjState endObjHeld)
     {
         Span<byte> carried = stackalloc byte[HeaderText.CarriedLength];
         Span<long> carriedAt = stackalloc long[HeaderText.CarriedLength];
@@ -922,6 +935,7 @@ internal sealed partial class PdfFileReader
         searched = true;
         emptied = false;
         objectEnd = -1;
+        endObjHeld = EndObjState.Unknown;
 
         var inBuffer = (int)Math.Clamp(limit - dataStart, 0, buffered.Length);
         text.Read(buffered[..inBuffer], dataStart);
@@ -936,13 +950,21 @@ internal sealed partial class PdfFileReader
 
         if (found >= 0 || header >= 0 || dataStart + buffered.Length >= end || !readsFile)
         {
+            // An endstream found ends the data: no endobj before it is asked for, and what follows it the bytes held show.
+            if (found >= 0)
+            {
+                endObjSeen = false;
+                endObjHeld = EndObjAfter(buffered, found - dataStart, dataStart + buffered.Length >= _source.Length);
+                return found;
+            }
+
             tail.Read(buffered[..inBuffer], dataStart, header >= 0 ? header : dataStart + inBuffer);
             endObjSeen = tail.Seen;
 
-            if (found >= 0 || header >= 0)
+            if (header >= 0)
             {
-                objectEnd = found < 0 ? tail.DataEnd(header) : -1;
-                return found;
+                objectEnd = tail.DataEnd(header);
+                return -1;
             }
 
             if (dataStart + buffered.Length >= end)
@@ -982,6 +1004,15 @@ internal sealed partial class PdfFileReader
 
             if (found >= 0 || header >= 0 || position + span.Length >= end)
             {
+                // An endstream found that a length can reach ends the data, as in the bytes held. One past int.MaxValue
+                // bytes is read as none found, which the object's endobj, followed up to it, plays its part for.
+                if (found >= 0 && found - dataStart <= int.MaxValue)
+                {
+                    endObjSeen = false;
+                    endObjHeld = EndObjAfter(span, found - position, position + span.Length >= _source.Length);
+                    return found;
+                }
+
                 // A header that starts before this read starts at a number the reads before carried into it, where a copy of
                 // the tail was kept: it is judged as the tail stood there, not as the reads before read on past it.
                 if (held.TryGet(header, out var atHeader))
@@ -1004,6 +1035,28 @@ internal sealed partial class PdfFileReader
             position = next;
             size = Math.Min(2 * size, EndStreamSearchChunk);
         }
+    }
+
+    /// <summary>
+    /// Reads what follows the <c>endstream</c> after data that ends <paramref name="at"/> bytes into <paramref name="bytes"/>,
+    /// which hold it, as <see cref="IPdfStreamDataProvider.CheckEndStream"/> reads it from the file: Present or Absent where
+    /// they show it; Unknown where they end before they can say, for the file to be asked.
+    /// </summary>
+    /// <remarks>
+    /// The bytes a search holds may show what follows a keyword past more white space than the file's first read would: an
+    /// <c>endobj</c> they show then is seen even once the searches may read no more, where the file is no longer read on.
+    /// No caller sees a difference: a stream whose length a guard hid is the guard's unless what follows its object's end
+    /// is proven the file's (<see cref="IPdfStreamDataProvider.IsOwnEndStream"/>), which reads no more either.
+    /// </remarks>
+    private static EndObjState EndObjAfter(ReadOnlySpan<byte> bytes, long at, bool reachesEndOfFile)
+    {
+        if (at < 0 || at > bytes.Length)
+        {
+            return EndObjState.Unknown;
+        }
+
+        var end = StreamEnds.ReadEnd(bytes[(int)at..], reachesEndOfFile);
+        return end is { Kind: StreamEndKind.EndStream, EndObj: EndObjState.Present or EndObjState.Absent } ? end.EndObj : EndObjState.Unknown;
     }
 
     /// <summary>
