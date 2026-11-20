@@ -38,8 +38,9 @@ internal enum StreamLengthForm : byte
     /// <c>endstream</c> is still the file's (#224) — but where the search stops at an object header the data spells,
     /// or at an <c>endstream</c> its object's <c>endobj</c> does not follow, which only the length could tell from the
     /// end of the data: the data up to there is then the guard's. The data up to the stop, taken without a search once the
-    /// document's searches read as much of the file as they may, is weighed as a length taken without reading where the
-    /// data ends, and reported where it is kept short of it (<see cref="IPdfStreamDataProvider.TakeUnread"/>).
+    /// document's searches read as much of the file as they may, and what a search made for another object whose data
+    /// starts at the same place found, an <c>endstream</c> or none, are weighed as lengths taken without reading where the
+    /// data ends, and reported where the data is kept short of them (<see cref="IPdfStreamDataProvider.TakeUnread"/>).
     /// </summary>
     ObjectUnindexed,
 
@@ -49,9 +50,10 @@ internal enum StreamLengthForm : byte
     /// follows it, the stream is read with that integer as with a declared length an <c>endstream</c> confirms, weighed as
     /// one is (<see cref="IPdfStreamDataProvider.TakeUnread"/>); the data is otherwise taken up to its <c>endstream</c>.
     /// Nothing is reported of the length, whose fault is the guard's, which reported it — but where the data of a length
-    /// so confirmed, or taken without a search as <see cref="ObjectUnindexed"/> says, is kept short of it, the lengths taken
-    /// without reading where the data ends having kept as much of the file as they may —; a missing <c>endstream</c> is
-    /// still the file's (#224), but where the search stops as <see cref="ObjectUnindexed"/> says.
+    /// so confirmed, taken without a search, or found by a search made for another object, as <see cref="ObjectUnindexed"/>
+    /// says, is kept short of it, the lengths taken without reading where the data ends having kept as much of the file as
+    /// they may —; a missing <c>endstream</c> is still the file's (#224), but where the search stops as
+    /// <see cref="ObjectUnindexed"/> says.
     /// </summary>
     ObjectCut,
 }

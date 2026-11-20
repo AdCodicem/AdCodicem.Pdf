@@ -594,8 +594,8 @@ internal sealed partial class PdfFileReader : IPdfObjectSource, IPdfStreamDataPr
 
     /// <summary>
     /// The objects the cache holds for the walk in progress alone, their loads having read what the walk's guard read as
-    /// null: each is served as read through the guard's cut, until the walk ends and the cache lets go of it; null until a
-    /// load is kept so.
+    /// null: each is served as read through the guard's cut, until the cache lets go of it, at the latest when the walk
+    /// ends; null until a load is kept so.
     /// </summary>
     /// <remarks>
     /// Loaded again within the walk, such an object would meet the same cut — a stream the walk spent its budget on is not
@@ -604,23 +604,25 @@ internal sealed partial class PdfFileReader : IPdfObjectSource, IPdfStreamDataPr
     private HashSet<int>? _walkLoads;
 
     /// <summary>
-    /// The first exception the walks' guard threw in the walk in progress, under <see cref="PdfReaderOptions.ThrowOnLimit"/>,
-    /// which each of <see cref="_walkLoadsThrown"/> throws again; null until the guard throws one, and let go when the walk
-    /// ends.
+    /// The first exception of the walks' guard a load kept, under <see cref="PdfReaderOptions.ThrowOnLimit"/>, since the
+    /// outermost walk in progress began or the kept exceptions were last let go (<see cref="KeepWalkThrow"/>), which each of
+    /// <see cref="_walkLoadsThrown"/> throws again; null until a load keeps one, and let go when the outermost walk ends, or
+    /// with the other kept exceptions, at a rebuild or as the reader closes (<see cref="ForgetThrows"/>).
     /// </summary>
     private ExceptionDispatchInfo? _walkThrow;
 
     /// <summary>
     /// The objects whose loads the walks' guard's exception passed through in the walk in progress, under
     /// <see cref="PdfReaderOptions.ThrowOnLimit"/>: each throws <see cref="_walkThrow"/> again, without reading, until the
-    /// walk ends; null until a load is kept so.
+    /// outermost walk ends or the kept exceptions are let go (<see cref="ForgetThrows"/>); null until a load is kept so.
     /// </summary>
     /// <remarks>
     /// Loaded again within the walk, such an object would meet the same cut — a stream the walk spent its budget on is not
     /// decoded again before it ends — and would read up to it again, each time in full, before it throws: every load the
     /// exception passes through is kept, the outer ones having read the most (#181). The walk keeps one exception, not one
     /// for each object: the guard throws a new one each time it leaves a stream undecoded, and each member of a stream the
-    /// walk leaves so would keep its own. Once the walk ends, read whole.
+    /// walk leaves so would keep its own. Once the walk ends, read whole. It is not capped as the tables of kept exceptions
+    /// are: it holds a number at most for each the index holds, for one walk.
     /// </remarks>
     private HashSet<int>? _walkLoadsThrown;
 
@@ -1294,16 +1296,17 @@ internal sealed partial class PdfFileReader : IPdfObjectSource, IPdfStreamDataPr
         }
         catch (Exception exception) when (exception is PdfLimitExceededException || _unfinishedRebuild is RebuildAwaitingFinish)
         {
-            // Kept as a value is cached: not where a guard against re-entry gave a null on the way, which says nothing of the
-            // object — read again once what was in flight is done, it may read whole (#51) —, nor where the load rebuilt the
-            // index on its way: the next read takes the rebuilt index's definition of the number.
+            // Kept only where nothing on the way counted as a re-entry: a null a guard against re-entry gave says nothing of
+            // the object — read again once what was in flight is done, it may read whole (#51) —, and what was read through
+            // the walks' guard's cut is the walk's, whose exception is kept apart, below. Nor where the load rebuilt the index
+            // on its way: the next read takes the rebuilt index's definition of the number.
             if (reentries == _reentries && repaired == _repaired)
             {
                 KeepThrow(id.Number, exception);
             }
 
-            // The walks' guard's, which counts as a re-entry, is kept by every load it passes through, until the walk ends
-            // only, as what is read through its cut is cached: not where the load rebuilt the index on its way (#181).
+            // The walks' guard's, which counts as a re-entry, is kept for the walk alone, by every load it passes through but
+            // one that rebuilt the index on its way (#181).
             if (repaired == _repaired && exception is PdfLimitExceededException limit && IsWalkGuard(limit))
             {
                 KeepWalkThrow(id.Number, limit);
@@ -1650,8 +1653,8 @@ internal sealed partial class PdfFileReader : IPdfObjectSource, IPdfStreamDataPr
     /// to throw it again without reading.
     /// </summary>
     /// <remarks>
-    /// The walks' guard's is kept until the walk ends only, by every load it passes through (<see cref="KeepWalkThrow"/>):
-    /// what it reads as null is the walk's alone, and the object is read whole once the walk ends
+    /// The walks' guard's is kept for the walk alone, by every load it passes through (<see cref="KeepWalkThrow"/>): what it
+    /// reads as null is the walk's alone, and the object is read whole once the walk ends
     /// (<see cref="PdfReaderLimits.MaxObjectStreamDecodePasses"/>). What a lookup of a number the index lacks threw is not
     /// kept (<see cref="IsKeptByNoTable"/>).
     /// </remarks>
@@ -1671,13 +1674,16 @@ internal sealed partial class PdfFileReader : IPdfObjectSource, IPdfStreamDataPr
 
     /// <summary>
     /// Keeps object <paramref name="number"/>, whose load the walks' guard's <paramref name="exception"/> passed through, for
-    /// each later read of it within the walk in progress to throw again without reading, until the walk ends
-    /// (<see cref="_walkLoadsThrown"/>).
+    /// each later read of it within the walk in progress to throw again without reading, counted as one more cut, until the
+    /// outermost walk ends (<see cref="EndWalk"/>) or the kept exceptions are let go, at a rebuild or as the reader closes
+    /// (<see cref="ForgetThrows"/>): the walk reads such an object once (<see cref="_walkLoadsThrown"/>).
     /// </summary>
     /// <remarks>
-    /// Each throws the walk's first such exception, captured once, whichever its own load let go: one stack trace, as the kept
-    /// exceptions are thrown again (<see cref="KeptThrows"/>), and one exception for the walk however many loads the guard
-    /// threw through.
+    /// Called for every load the exception passes through but one that rebuilt the index on its way, whose next read takes
+    /// the rebuilt index's definition of the number. Each throws the first such exception a load kept since the outermost
+    /// walk began or the kept exceptions were last let go (<see cref="_walkThrow"/>), captured once, whichever its own load
+    /// let go: one stack trace, as the kept exceptions are thrown again (<see cref="KeptThrows"/>), and one exception for the
+    /// walk however many loads the guard threw through.
     /// </remarks>
     private void KeepWalkThrow(int number, PdfLimitExceededException exception)
     {
@@ -1710,8 +1716,8 @@ internal sealed partial class PdfFileReader : IPdfObjectSource, IPdfStreamDataPr
     private bool IsKeptByNoTable(PdfLimitExceededException exception) => IsWalkGuard(exception) || ReferenceEquals(exception, _lookupThrown);
 
     /// <summary>
-    /// Determines whether <paramref name="exception"/> is the one the walks' guard throws, which is kept until the walk ends
-    /// only.
+    /// Determines whether <paramref name="exception"/> is the one the walks' guard throws, which is kept for the walk alone
+    /// (<see cref="KeepWalkThrow"/>).
     /// </summary>
     private static bool IsWalkGuard(PdfLimitExceededException exception) =>
         exception.Code == PdfDiagnosticCodes.LimitObjectStreamDecodes;

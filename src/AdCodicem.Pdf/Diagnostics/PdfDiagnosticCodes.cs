@@ -195,21 +195,26 @@ public static class PdfDiagnosticCodes
 
     /// <summary>
     /// A stream's <c>/Length</c> is not where its data ends: its <c>endstream</c> lies elsewhere and ends the data, the
-    /// <c>/Length</c> gives no length the reader can take and the <c>endstream</c> ends the data, or no <c>endstream</c>
-    /// follows the declared length — none before the next object or the end of the file, or none looked for once the
-    /// document's searches read as much of the file as they may — and that length is kept, or the data runs to the next
-    /// object, or, taken without a search, to the end of the file. A <c>/Length</c> that leads to an object one of the reader's limits cut, or left out of the index, is not
-    /// judged: the limit's report says why — but for the integer a cut object held before the cut, which an
-    /// <c>endstream</c> confirms, weighed as a declared length is, and for the data a guard leaves taken without a search,
-    /// weighed as below. An <c>endstream</c> that follows the declared length confirms it. But every length the reader takes
-    /// without having read where the data ends — one an <c>endstream</c> confirms, or one taken without a search — is
-    /// counted once the lengths so taken were parsed four times the file's length over, once for each object and place its
-    /// data starts at, at the longest length taken for it; past four times the file's length counted, as no valid file's
-    /// lengths reach, the data ends at the first of the places the indexes give inside it, of the first 64, at which a
-    /// header starts as a load reads one, or at the first where none does, as long as what the streams so ended keep fits
-    /// four times the file's length more, and otherwise, or where nothing is placed inside it, it reads empty; whether the
-    /// object ends with <c>endobj</c> is not judged then (#280). Past both bounds, which of a crafted file's streams are so
-    /// ended, and where, depends on the order they are read in (#138).
+    /// <c>/Length</c> gives no length the reader can take and the <c>endstream</c> ends the data, or no
+    /// <c>endstream</c> follows the declared length — none before the next object or the end of the file, or none
+    /// looked for once the document's searches read as much of the file as they may — and that length is kept, or the
+    /// data runs to the next object, or, taken without a search, to the end of the file. A <c>/Length</c> that leads to
+    /// an object one of the reader's limits cut, or left out of the index, is not judged: the limit's report says why —
+    /// but for the integer a cut object held before the cut, which an <c>endstream</c> confirms, weighed as a declared
+    /// length is, and for the data a guard leaves taken without a search, or that a search made for another object
+    /// found, weighed as below. An <c>endstream</c> that follows the declared length confirms it. But every length the
+    /// reader takes without having read where the data ends — one an <c>endstream</c> confirms, one taken without a
+    /// search, or what a search made for another object whose data starts at the same place found, an <c>endstream</c>
+    /// or none — is counted once the lengths so taken were parsed four times the file's length over, once for each
+    /// object and place its data starts at, at the longest length taken for it; past four times the file's length
+    /// counted, as no valid file's lengths reach, the data ends at the first of the places the indexes give inside it,
+    /// of the first 64, at which a header starts as a load reads one, or at the first where none does, as long as what
+    /// the streams so ended keep fits four times the file's length more, and otherwise, or where nothing is placed
+    /// inside it, it reads empty, even where a search made for another object found an <c>endstream</c>; whether the
+    /// object ends with <c>endobj</c> is not judged then (#280). Data so kept short is reported once for each place its
+    /// data starts at, whichever object is read there, by the first reading that keeps it short, though another fault
+    /// of the stream was reported there before. Past both bounds, which of a crafted file's streams are so ended, and
+    /// where, depends on the order they are read in (#138).
     /// </summary>
     public const string StreamLengthInvalid = "stream.length-invalid";
 
@@ -217,7 +222,8 @@ public static class PdfDiagnosticCodes
     /// A stream has no <c>endstream</c> before the next object or the end of the file: its object's <c>endobj</c> ends its
     /// data — after its declared length, or where the object ends —, or its data runs to the end of the file. Data taken
     /// without a search, the document's searches having read as much of the file as they may, is
-    /// <see cref="StreamLengthInvalid"/>'s, whose <c>endstream</c> no search said is missing.
+    /// <see cref="StreamLengthInvalid"/>'s, whose <c>endstream</c> no search said is missing; so is data kept short of what a
+    /// search made for another object whose data starts at the same place found.
     /// </summary>
     public const string StreamTruncated = "stream.truncated";
 
