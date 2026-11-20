@@ -1905,6 +1905,13 @@ public class StreamLengthTests
     [InlineData("a byte before the header")]
     [InlineData("inside another number, then the header")]
     [InlineData("where no header starts, then the header")]
+    [InlineData("where no header starts, then a letter before the header's digits")]
+    [InlineData("where no header starts, then a comment longer than a first read before the header")]
+    [InlineData("where no header starts, then a header whose obj lies past a first read")]
+    [InlineData("a comment as long as a first read, then a letter, then the header")]
+    [InlineData("a comment a byte shorter than a first read, then a letter, then the header")]
+    [InlineData("where no header starts, sixty-three times, then the header")]
+    [InlineData("where no header starts, sixty-four times, then the header")]
     [InlineData("where no header starts, sixty-five times")]
     public void Streams_past_what_they_may_keep_end_at_the_first_of_64_places_the_index_gives_that_a_load_reads_a_header_at_or_else_at_the_first(string rows)
     {
@@ -1923,9 +1930,17 @@ public class StreamLengthTests
             "a byte before the header" => ("", -1, 0, 0),
             "inside another number, then the header" => ("98 0 obj ", 0, 1, 1),
             "where no header starts, then the header" => ("y ", 0, 1, 0),
+            "where no header starts, then a letter before the header's digits" => ("y x", 0, 1, 0),
+            "where no header starts, then a comment longer than a first read before the header" => ("y %" + new string('c', 80) + "\n", -82, 1, 0),
+            "where no header starts, then a header whose obj lies past a first read" => ("y ", 0, 1, 0),
+            "a comment as long as a first read, then a letter, then the header" => ("%" + new string('c', 62) + "\nq ", 0, 1, 0),
+            "a comment a byte shorter than a first read, then a letter, then the header" => ("%" + new string('c', 61) + "\nq ", 0, 1, 0),
+            "where no header starts, sixty-three times, then the header" => (new string('y', 63) + " ", 0, 63, 0),
+            "where no header starts, sixty-four times, then the header" => (new string('y', 64) + " ", 0, 64, 0),
             _ => (new string('y', 65) + " ", 0, 65, 0),
         };
-        var file = HostileInputTests.Overlapping(Streams, filler: 100_000, lead: lead, rowShift: rowShift, decoys: decoys, decoyAt: decoyAt);
+        var gap = rows.EndsWith("obj lies past a first read", StringComparison.Ordinal) ? 2 * PdfObjectParser.EndObjLookahead : 1;
+        var file = HostileInputTests.Overlapping(Streams, filler: 100_000, headerGap: gap, lead: lead, rowShift: rowShift, decoys: decoys, decoyAt: decoyAt);
         using var document = PdfDocument.Open(file);
         var streams = Enumerable.Range(0, Streams).Select(k => document.GetObject(new PdfObjectId(3 + k)).AsStream().Required()).ToArray();
 
@@ -1937,13 +1952,37 @@ public class StreamLengthTests
         {
             "white space before the header" => Invariant($"  {next} 0 obj"),
             "a comment before the header" => Invariant($"%c\n{next} 0 obj"),
-            "a comment longer than a first read before the header" => "%ccc",
+            "a comment longer than a first read before the header" or "where no header starts, then a comment longer than a first read before the header"
+                or "a comment as long as a first read, then a letter, then the header" => "%ccc",
             "a byte before the header" => Invariant($"\n{next + 1} 0 obj"),
-            "where no header starts, sixty-five times" => "yyy",
+            "where no header starts, then a header whose obj lies past a first read" => Invariant($"{next} 0  "),
+            "where no header starts, sixty-four times, then the header" or "where no header starts, sixty-five times" => "yyy",
             _ => Invariant($"{next} 0 obj"),
         };
         Encoding.Latin1.GetString(file, end, expected.Length).Should().Be(expected);
         document.Diagnostics.Should().Contain(d => d.Code == PdfDiagnosticCodes.StreamLengthInvalid && d.Position == streams[first].Data.Position);
+    }
+
+    [Fact]
+    public void Streams_ended_at_a_place_inside_their_data_keep_up_to_it_until_they_have_kept_four_times_the_file_and_read_empty_after()
+    {
+        // Twenty streams, each one's header in a string of the dictionary of the one before, every /Length confirmed by the
+        // one endstream 100 KB on, and object 9 placed 100 bytes before it, inside every stream's data. The first four are read
+        // before the reader counts, the next four keep their data whole; past it, each one's data ends at object 9, nearly
+        // all of it, until what they so keep totals four times the file: four of them; the others read empty (#280).
+        var file = HostileInputTests.NestedInStrings(20, 100_000, placedFromEnd: 100);
+        using var document = PdfDocument.Open(file);
+        var placed = file.AsSpan().IndexOf("\n9 0 obj"u8) + 1;
+        var kept = new List<string>();
+
+        for (var number = 10; number < 30; number++)
+        {
+            var stream = document.GetObject(new PdfObjectId(number)).AsStream().Required();
+            var end = stream.Data.Position + stream.Data.Length;
+            kept.Add(stream.Data.Length == stream.Dictionary.GetInteger(PdfName.Length) ? "whole" : stream.Data.Length == 0 ? "empty" : end == placed ? "placed" : "other");
+        }
+
+        kept.Should().Equal([.. Enumerable.Repeat("whole", 8), .. Enumerable.Repeat("placed", 4), .. Enumerable.Repeat("empty", 8)]);
     }
 
     [Fact]
@@ -2069,6 +2108,118 @@ public class StreamLengthTests
     }
 
     [Fact]
+    public void A_stream_ended_at_a_place_inside_its_data_is_said_so_once_though_a_rebuild_runs_between_two_readings()
+    {
+        // Twenty streams, each one's header in a string of the dictionary of the one before, every /Length confirmed by the
+        // one endstream 100 KB on, and object 9 placed 100 bytes before it. Streams 11 to 21, read first, keep as much as
+        // lengths taken unread may keep whole, and three of them end at object 9: stream 10, read next, ends there too, and
+        // says so. The table's /Prev names no
+        // section, and a lookup of object 5000, which it lacks, rebuilds the index: read again through it, stream 10 ends
+        // where it ended, and nothing is said again (#280).
+        var file = HostileInputTests.NestedInStrings(20, 100_000, placedFromEnd: 100, entries: "/Prev 1 0 R");
+        var placed = file.AsSpan().IndexOf("\n9 0 obj"u8) + 1;
+        using var document = PdfDocument.Open(file);
+
+        for (var number = 11; number < 22; number++)
+        {
+            document.GetObject(new PdfObjectId(number));
+        }
+
+        var first = document.GetObject(new PdfObjectId(10)).AsStream().Required();
+        var reports = document.Diagnostics.Count(d => d.Position == first.Data.Position);
+        document.GetObject(new PdfObjectId(5000)).Should().Be(PdfNull.Instance);
+        var again = document.GetObject(new PdfObjectId(10)).AsStream().Required();
+
+        document.WasRepaired.Should().BeTrue();
+        (first.Data.Position + first.Data.Length).Should().Be(placed);
+        again.Data.Length.Should().Be(first.Data.Length);
+        reports.Should().Be(1);
+        document.Diagnostics.Count(d => d.Position == first.Data.Position).Should().Be(1);
+    }
+
+    [Fact]
+    public void A_stream_whose_load_rebuilds_the_index_and_ends_at_a_place_inside_its_data_says_so_once_the_rebuild_is_finished()
+    {
+        // Twenty streams, each one's header in a string of the dictionary of the one before, every /Length confirmed by the
+        // one endstream 100 KB on, and object 9 placed 100 bytes before it. Streams 11 to 21, read first, keep as much as
+        // lengths taken unread may keep whole. Stream 10's /Length is object 99, which the file defines and the table, whose
+        // /Prev names no section, lacks: read next, it rebuilds the index, reads 99 from the scan's, and its data ends at
+        // object 9, which it says; the rebuild, finished once the load returns, withdraws what the load reported, and reads
+        // stream 10 again, which ends there again and says so: once (#280).
+        var file = NestedInStringsWithAnUnindexedLength(20, 100_000, placedFromEnd: 100);
+        var placed = file.AsSpan().IndexOf("\n9 0 obj"u8) + 1;
+        using var document = PdfDocument.Open(file);
+
+        for (var number = 11; number < 22; number++)
+        {
+            document.GetObject(new PdfObjectId(number));
+        }
+
+        var stream = document.GetObject(new PdfObjectId(10)).AsStream().Required();
+
+        document.WasRepaired.Should().BeTrue();
+        (stream.Data.Position + stream.Data.Length).Should().Be(placed);
+        document.Diagnostics.Count(d => d.Position == stream.Data.Position).Should().Be(1);
+    }
+
+    /// <summary>
+    /// Writes the file of <see cref="HostileInputTests.NestedInStrings"/> with <paramref name="placedFromEnd"/>, stream 10's
+    /// <c>/Length</c> object 99, which the file defines after the streams and the table, whose <c>/Prev</c> names no section,
+    /// does not place.
+    /// </summary>
+    private static byte[] NestedInStringsWithAnUnindexedLength(int streams, int filler, int placedFromEnd)
+    {
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"),
+        };
+        var origin = file.Position;
+        var text = new StringBuilder();
+        var lengthAt = new int[streams];
+        var starts = new int[streams];
+
+        for (var k = 0; k < streams; k++)
+        {
+            rows[10 + k] = origin + text.Length;
+            text.Append(CultureInfo.InvariantCulture, $"{10 + k} 0 obj<</Length ");
+            lengthAt[k] = text.Length;
+            text.Append(k == 0 ? "99 0 R    " : "0000000000").Append(k < streams - 1 ? "/S(" : ">>stream\n");
+        }
+
+        starts[^1] = text.Length;
+
+        for (var k = streams - 2; k >= 0; k--)
+        {
+            text.Append(")>>stream\n");
+            starts[k] = text.Length;
+        }
+
+        const string Placed = "\n9 0 obj\n[1]\nendobj\n";
+        text.Append('z', filler - placedFromEnd);
+        rows[9] = origin + text.Length + 1;
+        text.Append(Placed).Append('z', placedFromEnd - Placed.Length);
+        var end = text.Length;
+        text.Append("\nendstream\nendobj\n");
+
+        for (var k = 1; k < streams; k++)
+        {
+            var digits = (end - starts[k]).ToString("D10", CultureInfo.InvariantCulture);
+
+            for (var d = 0; d < digits.Length; d++)
+            {
+                text[lengthAt[k] + d] = digits[d];
+            }
+        }
+
+        text.Append(CultureInfo.InvariantCulture, $"99 0 obj\n{end - starts[0]}\nendobj\n");
+        file.Raw(text.ToString());
+        file.Table(10 + streams, rows, string.Create(CultureInfo.InvariantCulture, $"/Size {10 + streams} /Root 1 0 R /Prev 1 0 R"));
+        return file.Bytes;
+    }
+
+    [Fact]
     public void A_stream_that_reads_empty_once_parsed_again_says_so_once_though_its_place_was_reported_before()
     {
         // Two hundred streams, each one's header in a string of the dictionary of the one before, each length one byte short
@@ -2095,6 +2246,202 @@ public class StreamLengthTests
             Invariant($"The stream declared {declared} bytes, which no endstream follows, the document's searches for endstream having read as much of the file as they may; its data reads empty without a search, the streams that overlap having kept as much of the file as they may."));
 
         PdfStream[] Read() => [.. Enumerable.Range(0, Streams).Select(k => document.GetObject(new PdfObjectId(10 + k)).AsStream().Required())];
+    }
+
+    [Fact]
+    public void Data_ended_at_a_place_spends_what_it_keeps_once_however_long_a_length_comes_after_and_the_rest_reads_empty()
+    {
+        // Lengths taken unread past four times the file, and four times more kept whole: data that holds object 4's header,
+        // object 3's ten bytes on, ends there, and keeps the bytes up to it, out of four times the file such data may keep —
+        // spaces after object 4 make it a whole number of such data —; a longer length for it after spends nothing more. Data
+        // that ends where object 4 starts holds no place, and reads empty. Each other number whose data starts there and runs
+        // past object 4 keeps as much while it fits, the last up to four times the file exactly, and reads empty after (#280).
+        var (bytes, start, placed) = Build(0);
+        var kept = (int)(placed - start);
+        var padding = Enumerable.Range(1000, kept).First(pad => 4L * (bytes.Length + pad) % kept == 0);
+        (bytes, start, placed) = Build(padding);
+        using var document = PdfDocument.Open(bytes);
+        var provider = (IPdfStreamDataProvider)document.Reader;
+        var fits = ((4 * bytes.Length) - kept) / kept;
+
+        provider.TakeUnread(90, 0, 4 * bytes.Length, out _);
+        provider.TakeUnread(91, 0, 4 * bytes.Length, out _);
+        provider.TakeUnread(91, 0, 10, out _).Should().Be(10, "a shorter length takes nothing back of what was kept");
+        provider.TakeUnread(3, start, kept + 100, out _).Should().Be(kept);
+        provider.TakeUnread(3, start, kept + 500, out _).Should().Be(kept);
+        provider.TakeUnread(300, start, kept, out _).Should().Be(0, "data that ends where object 4 starts holds no place");
+
+        var taken = Enumerable.Range(200, fits + 1).Select(number => provider.TakeUnread(number, start, kept + 100, out _)).ToList();
+
+        (4 * bytes.Length).Should().Be((fits + 1) * kept);
+        taken.Should().Equal([.. Enumerable.Repeat(kept, fits), 0]);
+
+        static (byte[] Bytes, long Start, long Placed) Build(int padding)
+        {
+            var file = new HandWrittenFile();
+            var rows = new Dictionary<int, long>
+            {
+                [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),
+                [2] = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"),
+            };
+            rows[3] = file.Object(3, "(" + new string('x', 1000) + ")");
+            var placed = rows[4] = file.Object(4, "null");
+            file.Raw(new string(' ', padding));
+            file.Table(5, rows, "/Size 5 /Root 1 0 R");
+            return (file.Bytes, rows[3] + 10, placed);
+        }
+    }
+
+    [Fact]
+    public void Data_past_what_it_may_keep_reads_a_place_near_the_end_of_the_file_no_further_than_the_file()
+    {
+        // A row places object 9 ten bytes before the end of the file, in its last line. Lengths taken unread past four times
+        // the file, and four times more kept whole: data that runs to the end of the file over that place ends there, where no
+        // header starts, the place read up to the file's end and no further — a source that refuses a read past its end
+        // serves it. Where two numbers end the file past its end of file marker, a row placing them after a place where no
+        // header starts, the two numbers, read short, are no header, and the data ends at the first place (#280).
+        var (bytes, placed) = Build(0);
+        (bytes, placed) = Build(bytes.Length - 10);
+        using var source = new StrictCountingSource(bytes);
+        using var document = PdfDocument.Open(source, options: null, ownsSource: false);
+        var provider = (IPdfStreamDataProvider)document.Reader;
+
+        provider.TakeUnread(90, 0, 4 * bytes.Length, out _);
+        provider.TakeUnread(91, 0, 4 * bytes.Length, out _);
+        provider.TakeUnread(300, placed - 5, 15, out var end).Should().Be(5);
+        end.Should().Be(placed);
+
+        var (tail, decoy) = BuildWithTail(0);
+        (tail, decoy) = BuildWithTail(tail.Length - 12);
+        using var tailSource = new StrictCountingSource(tail);
+        using var tailDocument = PdfDocument.Open(tailSource, options: null, ownsSource: false);
+        var tailProvider = (IPdfStreamDataProvider)tailDocument.Reader;
+        tailProvider.TakeUnread(90, 0, 4 * tail.Length, out _);
+        tailProvider.TakeUnread(91, 0, 4 * tail.Length, out _);
+        tailProvider.TakeUnread(300, decoy - 5, 17, out end).Should().Be(5);
+        end.Should().Be(decoy);
+
+        static (byte[] Bytes, long Placed) Build(long placed)
+        {
+            var file = new HandWrittenFile();
+            var rows = new Dictionary<int, long>
+            {
+                [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),
+                [2] = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"),
+                [9] = placed,
+            };
+            file.Table(10, rows, "/Size 10 /Root 1 0 R");
+            return (file.Bytes, placed);
+        }
+
+        static (byte[] Bytes, long Decoy) BuildWithTail(long decoy)
+        {
+            var file = new HandWrittenFile();
+            var rows = new Dictionary<int, long>
+            {
+                [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),
+                [2] = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"),
+                [8] = decoy,
+                [9] = decoy + 9,
+            };
+            file.Table(10, rows, "/Size 10 /Root 1 0 R");
+            file.Raw("5 0");
+            return (file.Bytes, decoy);
+        }
+    }
+
+    [Fact]
+    public void Data_past_what_it_may_keep_once_the_index_is_rebuilt_ends_where_either_index_places_another_object_and_not_at_its_own()
+    {
+        // The table places object 4 where the file defines it first; the file defines it again after it, and object 7 after
+        // that, neither of which the table places, and its /Prev names no section: a lookup of object 500 rebuilds the index,
+        // which places 4 at its second definition and 7. Lengths taken unread past four times the file, and four times more
+        // kept whole: data of object 4 over both its definitions holds no other object's place — each index's entry of its own
+        // is stepped over — and reads empty; data past both over object 7, which the rebuilt index alone places, ends there
+        // (#280).
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"),
+            [3] = file.Object(3, "(" + new string('x', 1000) + ")"),
+        };
+        var first = rows[4] = file.Object(4, "(first)");
+        var second = file.Object(4, "(second)");
+        var seven = file.Object(7, "(seven)");
+        file.Raw(new string(' ', 1000));
+        file.Table(5, rows, "/Size 5 /Root 1 0 R /Prev 1 0 R");
+        var bytes = file.Bytes;
+        using var document = PdfDocument.Open(bytes);
+        var provider = (IPdfStreamDataProvider)document.Reader;
+        document.GetObject(new PdfObjectId(500)).Should().Be(PdfNull.Instance);
+        document.WasRepaired.Should().BeTrue();
+        document.GetObject(new PdfObjectId(4)).AsText().Should().Be("second");
+
+        provider.TakeUnread(90, 0, 4 * bytes.Length, out _);
+        provider.TakeUnread(91, 0, 4 * bytes.Length, out _);
+        var start = rows[3] + 10;
+
+        provider.TakeUnread(4, start, (int)(second - start) + 10, out var end).Should().Be(0, "its own entries are stepped over");
+        end.Should().Be(-1);
+        provider.TakeUnread(300, second + 5, (int)(seven - second) + 5, out end).Should().Be((int)(seven - second - 5));
+        end.Should().Be(seven);
+        first.Should().BeLessThan(second);
+    }
+
+    [Fact]
+    public void Data_past_what_it_may_keep_in_a_file_after_bytes_before_its_header_reads_empty_where_nothing_is_placed_past_it()
+    {
+        // Eight bytes come before the file's header, so that its offsets count from past them. Lengths taken unread past four
+        // times the file, and four times more kept whole: data inside object 3, the last object the table places, over which no
+        // object is placed, reads empty (#280).
+        var file = new HandWrittenFile(prefix: "garbage\n");
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"),
+            [3] = file.Object(3, "(" + new string('x', 1000) + ")"),
+        };
+        file.Table(4, rows, "/Size 4 /Root 1 0 R");
+        var bytes = file.Bytes;
+        using var source = new StrictCountingSource(bytes);
+        using var document = PdfDocument.Open(source, options: null, ownsSource: false);
+        var provider = (IPdfStreamDataProvider)document.Reader;
+
+        provider.TakeUnread(90, 0, 4 * bytes.Length, out _);
+        provider.TakeUnread(91, 0, 4 * bytes.Length, out _);
+
+        provider.TakeUnread(300, rows[3] + "garbage\n".Length + 20, 500, out var end).Should().Be(0);
+        end.Should().Be(-1);
+    }
+
+    [Fact]
+    public void Data_past_what_it_may_keep_ends_at_the_first_place_inside_it_where_the_only_header_lies_at_its_end()
+    {
+        // A row places object 8 in the middle of object 3's string, where no header starts, and object 4 follows 3. Lengths
+        // taken unread past four times the file, and four times more kept whole: data that holds object 8's place and ends
+        // where object 4's header starts holds no header — object 4's lies past it — and ends at the first place (#280).
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"),
+            [3] = file.Object(3, "(" + new string('x', 1000) + ")"),
+        };
+        var header = rows[4] = file.Object(4, "null");
+        rows[8] = rows[3] + 500;
+        file.Raw(new string(' ', 1000));
+        file.Table(9, rows, "/Size 9 /Root 1 0 R");
+        var bytes = file.Bytes;
+        using var document = PdfDocument.Open(bytes);
+        var provider = (IPdfStreamDataProvider)document.Reader;
+        var start = rows[3] + 10;
+
+        provider.TakeUnread(90, 0, 4 * bytes.Length, out _);
+        provider.TakeUnread(91, 0, 4 * bytes.Length, out _);
+
+        provider.TakeUnread(300, start, (int)(header - start), out var end).Should().Be((int)(rows[8] - start));
+        end.Should().Be(rows[8]);
     }
 
     [Fact]
@@ -2970,6 +3317,82 @@ public class StreamLengthTests
         static string Padding(int number, int length) => Invariant($"{number} 0 obj\n({new string('f', length)})\nendobj\n");
     }
 
+    [Theory]
+    [InlineData("", "endobj", false)]
+    [InlineData("", "xyz", false)]
+    [InlineData("long", "endobj", false)]
+    [InlineData("long", "xyz", false)]
+    [InlineData("", "endobj", true)]
+    public void What_follows_an_endstream_a_search_finds_is_judged_from_the_bytes_it_holds_and_reads_nothing_more(string data, string follower, bool last)
+    {
+        // Stream 3's /Length is 3, and the endstream its search finds starts its data, or follows 20,000 bytes of it, past the
+        // first read: the bytes the search holds there show an endobj after it, or another token, up to the end of the file,
+        // which the endobj ends, where the object is the file's last. Judged from them, the stream's endobj is present or
+        // absent, and the file is not read again where the endstream starts (#296).
+        var text = data == "long" ? new string('y', 20_000) + "\n" : string.Empty;
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"),
+        };
+        rows[3] = file.Position;
+        file.Raw("3 0 obj\n<< /Length 3 >>\nstream\n" + text + "endstream\n" + follower + (last ? string.Empty : "\n"));
+
+        if (!last)
+        {
+            file.Table(4, rows, "/Size 4 /Root 1 0 R");
+        }
+
+        var bytes = file.Bytes;
+        var endStream = Encoding.Latin1.GetString(bytes).IndexOf("endstream\n" + follower, (int)rows[3], StringComparison.Ordinal);
+        using var source = new OffsetCountingSource(bytes);
+        using var document = PdfDocument.Open(source, options: null, ownsSource: false);
+
+        document.GetObject(new PdfObjectId(3)).AsStream().Required().Data.Length.Should().Be(text.Length == 0 ? 0 : 20_000);
+        document.Reader.IsEndObjMissing(3, out _).Should().Be(follower != "endobj");
+        source.Reads.GetValueOrDefault(endStream).Should().Be(0);
+        source.Reads.GetValueOrDefault(endStream - 1).Should().Be(0, "the data ends at the end-of-line before the keyword");
+    }
+
+    [Fact]
+    public void One_body_many_numbers_read_through_one_search_reads_empty_for_the_last_and_where_its_object_ends_is_unknown()
+    {
+        // Forty headers on one comment line, every number's load reading the one body of 2 KB after it, whose /Length is wrong:
+        // the search made for the first number serves the others, lengths taken unread, and past what such lengths may keep,
+        // the data reads empty. What follows its data's start is the body, read whole with the object, but where an object
+        // whose data so reads empty ends is unknown, and its endobj is not said to be missing (#280).
+        var file = HostileInputTests.HeadersOnOneCommentLine(40, 2000, "/Length 7");
+        using var document = PdfDocument.Open(file, PdfReaderOptions.Default with { ObjectCacheCapacity = 4 });
+
+        for (var number = 10; number < 50; number++)
+        {
+            document.GetObject(new PdfObjectId(number));
+        }
+
+        document.GetObject(new PdfObjectId(49)).AsStream().Required().Data.Length.Should().Be(0);
+        document.Reader.IsEndObjMissing(49, out _).Should().BeFalse();
+    }
+
+    [Fact]
+    public void One_body_a_few_numbers_read_through_one_search_keeps_its_data_for_each_and_says_nothing_of_overlap()
+    {
+        // Three headers on one comment line, every number's load reading the one body after it, whose /Length is wrong: where
+        // its data ends is searched once, for the first number read, and every other number takes that search's answer, a
+        // length taken unread, far within what such lengths may keep. Each number keeps the data whole, and the wrong length is
+        // said once (#280).
+        var file = HostileInputTests.HeadersOnOneCommentLine(3, 1000, "/Length 7");
+        using var document = PdfDocument.Open(file);
+
+        for (var number = 10; number < 13; number++)
+        {
+            document.GetObject(new PdfObjectId(number)).AsStream().Required().Data.Length.Should().Be(1000);
+        }
+
+        document.Diagnostics.Should().ContainSingle(d => d.Code == PdfDiagnosticCodes.StreamLengthInvalid)
+            .Which.Message.Should().NotContain("overlap");
+    }
+
     [Fact]
     public void What_follows_an_endstream_past_the_file_s_first_read_is_read_from_the_file_as_far_as_the_searches_may_read()
     {
@@ -3192,6 +3615,7 @@ public class StreamLengthTests
         var last = document.GetObject(new PdfObjectId(10 + Streams - 1)).AsStream().Required();
         var declared = last.Dictionary.GetInteger(PdfName.Length);
         last.Data.Length.Should().Be(0);
+        document.Reader.IsEndObjMissing(10 + Streams - 1, out _).Should().BeFalse("where the object ends is unknown");
         document.Reader.TryGetStreamLengthFault(10 + Streams - 1, out var fault).Should().BeTrue();
         fault.Should().Be(new StreamLengthFault
         {

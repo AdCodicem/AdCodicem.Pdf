@@ -600,6 +600,24 @@ public class DiagnosticsTests
         pending.Contains("syntax.met").Should().BeFalse();
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Closing_a_mark_looks_in_the_note_again_where_the_mark_around_it_looks(bool withDecodingReports)
+    {
+        // A code dropped before the mark around, closed for good, an inner mark — taken with the decodings' reports or not —
+        // and dropped again after it, is noted again past the mark around, which the attempt it stands for sees (#385).
+        var pending = new PdfDiagnostics { Capacity = 0, KeptIn = new PdfDiagnostics() };
+        pending.Warn("syntax.met", "Dropped before any mark.");
+        var outer = pending.GetMark();
+        var inner = withDecodingReports ? pending.GetMarkWithDecodingReports() : pending.GetMark();
+
+        pending.RollBack(inner);
+        pending.Warn("syntax.met", "Dropped after the inner mark closed.");
+
+        pending.DroppedSince(outer, "syntax.").Should().BeTrue();
+    }
+
     [Fact]
     public void Refuses_a_negative_capacity()
     {
