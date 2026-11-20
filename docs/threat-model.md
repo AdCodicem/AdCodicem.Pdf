@@ -208,7 +208,9 @@ or of no byte.
 `PdfDiagnostics` keeps `PdfReaderOptions.DiagnosticCapacity` entries (1,000) and counts the rest in `SuppressedCount`;
 `Contains` and the `Has` properties answer for the entries dropped too, from a note of each severity and code dropped
 (`PdfDiagnostics.NoteDropped`, [#169]). A document's note holds at most a pair per severity and code, the library's
-codes being constants; the reader's pending note grows with what one attempt parses and ends with it. What the reader
+codes being constants; the reader's pending note at most one for each attempt still open and one before the first, an
+attempt closed for good giving back the window the one around it looked in (`PdfDiagnosticsMark.DroppedFrom`, [#385]),
+however many nested loads an object makes. What the reader
 decides never rests on the kept entries alone: a guard's cut is known from the guard reached, not from its report, and a
 fault of the syntax from its code, kept or dropped (`PdfFileReader.SyntaxFaultSince`), so a full record makes no cut the
 file's damage and no other report a syntax error. `DiagnosticCapacity`, `PdfDiagnostics.Capacity` and
@@ -486,6 +488,7 @@ Known gaps:
 | One search reading without end | Reads doubling up to 64 KB (`PdfFileReader.EndStreamSearchChunk`), each further on, ending at a stop, an `endstream` or an empty read | `StreamLengthTests` | No |
 | The same search made at every new parse | Kept by data start for the document's life; whether `endobj` follows the length is reread only when a rebuild changes it | `StreamLengthTests`, `ReadOrderTests` | — |
 | Encoded data of any length, or handed back as it is | `MaxStreamLength`, a guard (`limit.stream-length`): one stream's data is read no further, the rest cut and reported (to `Decode`'s diagnostics too), what was read decoded as cut; it bounds data handed back undecoded, unlike `MaxDecodedStreamLength` ([#170]) | `ReaderLimitsTests` | No |
+| Streams each holding the next one's header, every length confirmed by one `endstream` far on: each one's data read whole from a source not in memory, the file in its square | Once the confirmed streams parsed total four times the file (`PdfFileReader.UncheckedConfirmedPasses`), a confirmed stream's data is checked against the first offset the index places at or after its start, a header starting there (`IPdfStreamDataProvider.TakeConfirmed`); such streams keep their data up to four times the file together, each counted once where its data starts (`OverlapKeptPasses`), past which the data ends at that header, reported. Both internal constants with their reasons: no valid file overlaps. A row stale in data, no header there, is neither counted nor cut; past both bounds, which streams are cut depends on the read order ([#280], [#138]) | `StreamLengthTests`, `HostileInputTests` | No |
 | Raw data held with its stream, or copied per stream sharing it | Nothing keeps encoded data (`FileStreamData`): it is read each time, lent by a source in memory (a view keeping that memory alive while held, past disposal, and changing with it), copied otherwise ([#170]) | `DocumentReaderTests`, `HostileInputMemoryTests`, `HostileInputTests` | No |
 | A stream decoded long after opening escaping the guards | Its data carries its document's guard and diagnostics | `ReaderLimitsTests` | Yes |
 
@@ -493,8 +496,6 @@ Known gaps:
 
 - [#368] A load's search for a lost `endstream` stops at the next object the index places, at that row's offset as
   written: a row shifted back into the stream's data cuts the data there, and what it encodes past that point is lost.
-- [#280] Streams sharing a stretch of the file each read it again from a source not in memory: time, not memory,
-  bounded per read by `MaxStreamLength` alone.
 - [#138] A stream searched for its `endstream` can keep a length that depends on the object read first.
 - [#287] Under a hidden `/Length`, an `endstream` an object only a superseded row places follows is not proven the
   stream's own: its data, whole, is the guard's.
@@ -913,6 +914,7 @@ before it writes code.
 [#358]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/358
 [#361]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/361
 [#362]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/362
+[#385]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/385
 [#387]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/387
 [#363]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/363
 [#365]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/365
