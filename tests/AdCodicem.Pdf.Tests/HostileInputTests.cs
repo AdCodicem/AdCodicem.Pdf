@@ -1467,8 +1467,10 @@ public class HostileInputTests
         document.GetObject(new PdfObjectId(4)).Should().BeOfType<PdfDictionary>();
     }
 
-    [Fact]
-    public void A_search_for_a_catalog_reads_again_what_its_guard_cut_decoding_each_stream_once_more()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void A_search_for_a_catalog_reads_again_what_its_guard_cut_decoding_each_stream_once_more(bool throwOnLimit)
     {
         // The trailer's /Root names a string, and the catalog, object 3, has no row. Object streams 10 and 12, of 17 MB each,
         // hold 400 objects in turn: those 10 holds take their /Type from the object before them, which 12 holds. Opened with a
@@ -1477,16 +1479,35 @@ public class HostileInputTests
         // more at most: the /Type of an object of stream 10, which the cache let go, decodes stream 12, and the next object
         // would decode stream 10 again. Read again within the guard's own bound, the file was read a third more; read again
         // without a bound, two streams were decoded for each object. None is a catalog, and the rebuild that follows finds
-        // object 3.
+        // object 3. Opened to throw, each object the guard leaves undecoded throws, the search goes on, and opening throws
+        // the first once the rebuild is done, having read the same.
         var file = TypesInTurnInTwoStreams(200, 17 * 1024 * 1024);
         using var source = new StrictCountingSource(file);
+        var options = PdfReaderOptions.Default with { ObjectCacheCapacity = 64, ThrowOnLimit = throwOnLimit };
+        PdfDocument? document = null;
 
-        using var document = Measure(() => PdfDocument.Open(source, PdfReaderOptions.Default with { ObjectCacheCapacity = 64 }, ownsSource: false));
+        try
+        {
+            var opening = () => document = Measure(() => PdfDocument.Open(source, options, ownsSource: false));
 
-        source.BytesRead.Should().BeLessThan(12L * file.Length, "the search reads again what its guard cut decoding each stream once more");
-        document.Diagnostics.Select(entry => entry.Code).Should().Equal(
-            PdfDiagnosticCodes.LimitObjectStreamDecodes, PdfDiagnosticCodes.XRefRebuilt, PdfDiagnosticCodes.TrailerRootRecovered);
-        document.Reader.CatalogFoundAs.Should().Be(3);
+            if (throwOnLimit)
+            {
+                opening.Should().Throw<PdfLimitExceededException>().Which.Code.Should().Be(PdfDiagnosticCodes.LimitObjectStreamDecodes);
+            }
+            else
+            {
+                opening();
+                document!.Diagnostics.Select(entry => entry.Code).Should().Equal(
+                    PdfDiagnosticCodes.LimitObjectStreamDecodes, PdfDiagnosticCodes.XRefRebuilt, PdfDiagnosticCodes.TrailerRootRecovered);
+                document.Reader.CatalogFoundAs.Should().Be(3);
+            }
+
+            source.BytesRead.Should().BeLessThan(12L * file.Length, "the search reads again what its guard cut decoding each stream once more");
+        }
+        finally
+        {
+            document?.Dispose();
+        }
     }
 
     [Theory]
