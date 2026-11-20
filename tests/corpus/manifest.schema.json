@@ -286,7 +286,8 @@
               "limit.trailer",
               "limit.index-entries",
               "limit.filter-chain",
-              "limit.rebuild-reads"
+              "limit.rebuild-reads",
+              "limit.object-stream-decodes"
             ]
           },
           "uniqueItems": true
@@ -499,6 +500,12 @@
         "maxRebuildReadPasses": {
           "type": "integer",
           "description": "How many times the length of the file a rebuild may read past streams' declared lengths.",
+          "exclusiveMinimum": 4,
+          "maximum": 2147483647
+        },
+        "maxObjectStreamDecodePasses": {
+          "type": "integer",
+          "description": "How many times what one of the library's walks first decoded of the object streams it may decode again of those the reader let go.",
           "exclusiveMinimum": 4,
           "maximum": 2147483647
         }

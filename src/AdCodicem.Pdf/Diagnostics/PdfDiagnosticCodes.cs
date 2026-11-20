@@ -458,4 +458,13 @@ public static class PdfDiagnosticCodes
     /// of the first stream the bound left so.
     /// </summary>
     public const string LimitRebuildReads = "limit.rebuild-reads";
+
+    /// <summary>
+    /// One of the library's walks of a document — the search for a catalog, or a validation's rules — decoded again the
+    /// object streams the reader let go as many times what its first decodings of them weighed as
+    /// <see cref="Documents.PdfReaderLimits.MaxObjectStreamDecodePasses"/> lets it: the objects a stream it decoded and
+    /// the reader let go holds read as null until that walk ends, and are read whole by any other read. Reported once a
+    /// document, where the object stream the walk first left undecoded lies.
+    /// </summary>
+    public const string LimitObjectStreamDecodes = "limit.object-stream-decodes";
 }

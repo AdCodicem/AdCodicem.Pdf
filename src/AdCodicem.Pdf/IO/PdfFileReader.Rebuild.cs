@@ -129,6 +129,9 @@ internal sealed partial class PdfFileReader
     /// </summary>
     private void ForgetWhatWasRead()
     {
+        ForgetThrows();
+        _walkDecoded = null;
+        _walkCut = null;
         _cache.Clear();
         _cacheOrder.Clear();
         _objectStreams.Clear();
@@ -909,6 +912,8 @@ internal sealed partial class PdfFileReader
     /// </remarks>
     private void ForgetObject(int number)
     {
+        _loadsThrown?.Remove(number);
+        _decodingsThrown?.Remove(number);
         _objectStreamsHiddenByGuard.Remove(number);
         _cache.Remove(number);
         _unproduced.Remove(number);
@@ -930,6 +935,7 @@ internal sealed partial class PdfFileReader
     /// </summary>
     private void ForgetObjectsRead()
     {
+        ForgetThrows();
         _cache.Clear();
         _cacheOrder.Clear();
         _objectStreams.Clear();
@@ -951,9 +957,27 @@ internal sealed partial class PdfFileReader
     /// rebuild it — the candidate's entry being broken —, and the rebuild runs a search of its own, once the load in flight
     /// returns, over the rebuilt index, the candidate among it: the search it interrupted stops there, over the numbers it
     /// copied before it began (#229). A candidate one of the reader's limits cut is noted (<see cref="CatalogCandidateCut"/>):
-    /// a catalog may lie past the cut, and one taken from what lies before it is not read whole either.
+    /// a catalog may lie past the cut, and one taken from what lies before it is not read whole either. The search is one of
+    /// the library's walks (<see cref="BeginWalk"/>): the candidates it reads in the index's order may lie in turn in object
+    /// streams the reader cannot keep together, which it decodes again within
+    /// <see cref="PdfReaderLimits.MaxObjectStreamDecodePasses"/>, a candidate past it being one a limit cut.
     /// </remarks>
     private ExceptionDispatchInfo? FindCatalog()
+    {
+        BeginWalk("search for a catalog");
+
+        try
+        {
+            return SearchForCatalog();
+        }
+        finally
+        {
+            EndWalk();
+        }
+    }
+
+    /// <summary>The search <see cref="FindCatalog"/> makes, one of the library's walks.</summary>
+    private ExceptionDispatchInfo? SearchForCatalog()
     {
         ExceptionDispatchInfo? reached = null;
         var rebuilt = _repaired;

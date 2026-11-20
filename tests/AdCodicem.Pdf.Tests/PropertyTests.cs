@@ -584,7 +584,8 @@ public class PropertyTests
                     && Refused(() => PdfReaderLimits.Default with { MaxTrailerLength = value })
                     && Refused(() => PdfReaderLimits.Default with { MaxIndexEntries = value })
                     && Refused(() => PdfReaderLimits.Default with { MaxFilterChainLength = value })
-                    && Refused(() => PdfReaderLimits.Default with { MaxRebuildReadPasses = value });
+                    && Refused(() => PdfReaderLimits.Default with { MaxRebuildReadPasses = value })
+                    && Refused(() => PdfReaderLimits.Default with { MaxObjectStreamDecodePasses = value });
             }
 
             var length = Math.Min(value, Array.MaxLength);
@@ -598,12 +599,13 @@ public class PropertyTests
                 MaxIndexEntries = value,
                 MaxFilterChainLength = value,
                 MaxRebuildReadPasses = value,
+                MaxObjectStreamDecodePasses = value,
             };
 
             return limits.MaxDecodedStreamLength == length && limits.MaxObjectLength == length
                 && limits.MaxXRefSectionLength == length && limits.MaxXRefSectionCount == value
                 && limits.MaxTrailerLength == length && limits.MaxIndexEntries == value && limits.MaxFilterChainLength == value
-                && limits.MaxRebuildReadPasses == value;
+                && limits.MaxRebuildReadPasses == value && limits.MaxObjectStreamDecodePasses == value;
         }));
 
         static bool Refused(Func<PdfReaderLimits> setting)

@@ -26,6 +26,7 @@ internal static class CorpusOptions
                 MaxIndexEntries = raised.MaxIndexEntries ?? limits.MaxIndexEntries,
                 MaxFilterChainLength = raised.MaxFilterChainLength ?? limits.MaxFilterChainLength,
                 MaxRebuildReadPasses = raised.MaxRebuildReadPasses ?? limits.MaxRebuildReadPasses,
+                MaxObjectStreamDecodePasses = raised.MaxObjectStreamDecodePasses ?? limits.MaxObjectStreamDecodePasses,
             };
         }
 

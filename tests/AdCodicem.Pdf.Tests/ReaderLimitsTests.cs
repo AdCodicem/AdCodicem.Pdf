@@ -25,7 +25,7 @@ public class ReaderLimitsTests
 
     /// <summary>A guard for each bound of <see cref="PdfReaderLimits"/>, the trailer's reached two ways.</summary>
     public static TheoryData<string> Guards =>
-        ["decoded stream", "stream length", "object", "section length", "section count", "trailer", "cross-reference stream", "index entries", "filter chain", "rebuild reads"];
+        ["decoded stream", "stream length", "object", "section length", "section count", "trailer", "cross-reference stream", "index entries", "filter chain", "rebuild reads", "object-stream decodes"];
 
     [Fact]
     public void The_defaults_are_the_bounds_the_reader_kept_before_they_were_options()
@@ -41,6 +41,7 @@ public class ReaderLimitsTests
         limits.MaxIndexEntries.Should().Be(8_388_607);
         limits.MaxFilterChainLength.Should().Be(64);
         limits.MaxRebuildReadPasses.Should().Be(4);
+        limits.MaxObjectStreamDecodePasses.Should().Be(4);
         PdfReaderOptions.Default.Limits.Should().BeSameAs(limits);
         PdfReaderOptions.Default.ThrowOnLimit.Should().BeFalse();
     }
@@ -59,6 +60,7 @@ public class ReaderLimitsTests
         limits.MaxIndexEntries.Should().Be(int.MaxValue);
         limits.MaxFilterChainLength.Should().Be(int.MaxValue);
         limits.MaxRebuildReadPasses.Should().Be(int.MaxValue);
+        limits.MaxObjectStreamDecodePasses.Should().Be(int.MaxValue);
     }
 
     [Fact]
@@ -86,6 +88,7 @@ public class ReaderLimitsTests
     [InlineData(nameof(PdfReaderLimits.MaxIndexEntries), 0)]
     [InlineData(nameof(PdfReaderLimits.MaxFilterChainLength), -1)]
     [InlineData(nameof(PdfReaderLimits.MaxRebuildReadPasses), 0)]
+    [InlineData(nameof(PdfReaderLimits.MaxObjectStreamDecodePasses), 0)]
     public void A_limit_of_zero_or_less_is_refused_and_named(string limit, int value)
     {
         var setting = () => With(PdfReaderLimits.Default, limit, value);
@@ -107,6 +110,7 @@ public class ReaderLimitsTests
             MaxIndexEntries = int.MaxValue,
             MaxFilterChainLength = int.MaxValue,
             MaxRebuildReadPasses = int.MaxValue,
+            MaxObjectStreamDecodePasses = int.MaxValue,
         };
 
         limits.Should().Be(PdfReaderLimits.Unbounded);
@@ -161,6 +165,7 @@ public class ReaderLimitsTests
                 MaxIndexEntries = int.MaxValue - 1,
                 MaxFilterChainLength = int.MaxValue - 1,
                 MaxRebuildReadPasses = int.MaxValue - 1,
+                MaxObjectStreamDecodePasses = int.MaxValue - 1,
             },
             throwOnLimit: false);
 
@@ -174,6 +179,8 @@ public class ReaderLimitsTests
         justBelow.Reach(PdfLimit.FilterChain, diagnostics, "Cut.", 13);
         unbounded.Reach(PdfLimit.RebuildReads, diagnostics, "Cut.", 14);
         justBelow.Reach(PdfLimit.RebuildReads, diagnostics, "Cut.", 15);
+        unbounded.Reach(PdfLimit.ObjectStreamDecodes, diagnostics, "Cut.", 16);
+        justBelow.Reach(PdfLimit.ObjectStreamDecodes, diagnostics, "Cut.", 17);
 
         diagnostics.Select(entry => entry.Message).Should().Equal(
             "Cut. PdfReaderLimits.MaxDecodedStreamLength is already at the most the reader can hold.",
@@ -185,7 +192,9 @@ public class ReaderLimitsTests
             "Cut. PdfReaderLimits.MaxFilterChainLength is already at the most the reader can hold.",
             "Cut. Raise PdfReaderLimits.MaxFilterChainLength to read past it.",
             "Cut. PdfReaderLimits.MaxRebuildReadPasses is already at the most the reader can hold.",
-            "Cut. Raise PdfReaderLimits.MaxRebuildReadPasses to read past it.");
+            "Cut. Raise PdfReaderLimits.MaxRebuildReadPasses to read past it.",
+            "Cut. PdfReaderLimits.MaxObjectStreamDecodePasses is already at the most the reader can hold.",
+            "Cut. Raise PdfReaderLimits.MaxObjectStreamDecodePasses to read past it.");
     }
 
     [Theory]
@@ -210,6 +219,80 @@ public class ReaderLimitsTests
         }
     }
 
+    [Fact]
+    public void A_walk_s_budget_for_decoding_object_streams_again_starts_again_with_the_next_and_cuts_no_read_of_the_caller_s()
+    {
+        // Eight pages, objects 20 to 27, which name the catalog as their parent, lie in turn in object streams 10 and 11, of
+        // 17 MB each. A validation that may decode them again once reads pages 20 to 23, then leaves stream 11, which the
+        // reader let go, undecoded: pages 24 and 26 read as null, a guard's cut, and it finds the parent of six pages wrong.
+        // The next validation's budget starts again: it reads the pages the cache kept, decodes stream 11, its first
+        // decoding in that walk, and finds all eight; the guard is reported once. The caller's reads after them are whole.
+        var file = HostileInputTests.AlternatingPages(8, 17 * 1024 * 1024, "<< /Type /Page /Parent 1 0 R >>");
+        using var document = PdfDocument.Open(file, new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxObjectStreamDecodePasses = 1 } });
+
+        WrongParents(new PdfValidator().Validate(document)).Should().Equal(20, 21, 22, 23, 25, 27);
+        WrongParents(new PdfValidator().Validate(document)).Should().Equal(Enumerable.Range(20, 8));
+        document.Diagnostics.Select(entry => entry.Code).Should().Equal(PdfDiagnosticCodes.LimitObjectStreamDecodes);
+
+        for (var number = 20; number < 28; number++)
+        {
+            document.GetObject(new PdfObjectId(number)).AsDictionary().Required().IsOfType(PdfName.Page).Should().BeTrue();
+        }
+
+        static IEnumerable<int> WrongParents(PdfValidationReport report) =>
+            report.Findings.Where(finding => finding.RuleId == PdfValidationRuleIds.PageTreeParentWrong).Select(finding => finding.Location.Object!.Value.Number);
+    }
+
+    [Fact]
+    public void An_object_stream_decoded_with_a_value_a_walk_s_guard_read_as_null_is_neither_hidden_nor_kept_and_reads_whole_after()
+    {
+        // Object stream 6's /DecodeParms names object 14, which the search for a catalog, past what it may decode again,
+        // reads as null: it decodes stream 6 without it, as a stream whose parameters a guard cut, and takes object 18 for one
+        // the guard cut. Neither the stream nor what it gave is kept, nor is it taken for one a guard hid: read after the
+        // search, object 18 reads whole, and nothing is reported of stream 6.
+        var file = ObjectStreamsReadInTurnFile(parametersCut: true);
+        using var document = PdfDocument.Open(file, new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxObjectStreamDecodePasses = 1 } });
+
+        document.Diagnostics.Select(entry => entry.Code).Should().Equal(
+            PdfDiagnosticCodes.LimitObjectStreamDecodes, PdfDiagnosticCodes.XRefRebuilt, PdfDiagnosticCodes.TrailerRootRecovered);
+        document.Reader.ObjectsLeftOutByGuard.Should().BeFalse();
+        document.GetObject(new PdfObjectId(18)).AsDictionary().Required().GetRaw(PdfName.Get("Kept")).Should().Be(PdfBoolean.True);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void A_validation_past_what_it_may_decode_again_leaves_unread_what_its_guard_cut_and_the_caller_reads_it_whole_after(bool throwOnLimit)
+    {
+        // A valid page tree lists eight pages, objects 20 to 27, that object streams 10 and 11, of 17 MB each, hold in turn.
+        // A validation that may decode them again once has decoded each again once by its fifth page: it leaves the stream
+        // the reader then let go undecoded, its pages are ones the guard cut, and the report finds no fault; under
+        // ThrowOnLimit the validation throws there, at stream 11. Neither the nulls nor the exception are kept: the caller
+        // reads every page whole after it.
+        var file = HostileInputTests.AlternatingPages(8, 17 * 1024 * 1024, "<< /Type /Page /Parent 2 0 R >>");
+        var options = new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxObjectStreamDecodePasses = 1 }, ThrowOnLimit = throwOnLimit };
+        using var document = PdfDocument.Open(file, options);
+
+        if (throwOnLimit)
+        {
+            var validating = () => new PdfValidator().Validate(document);
+            var thrown = validating.Should().Throw<PdfLimitExceededException>().Which;
+            thrown.Code.Should().Be(PdfDiagnosticCodes.LimitObjectStreamDecodes);
+            thrown.Position.Should().Be(OffsetOf(file, "11 0 obj"));
+            document.Diagnostics.Should().BeEmpty();
+        }
+        else
+        {
+            new PdfValidator().Validate(document).Findings.Should().BeEmpty();
+            document.Diagnostics.Select(entry => entry.Code).Should().Equal(PdfDiagnosticCodes.LimitObjectStreamDecodes);
+        }
+
+        for (var number = 20; number < 28; number++)
+        {
+            document.GetObject(new PdfObjectId(number)).AsDictionary().Required().IsOfType(PdfName.Page).Should().BeTrue();
+        }
+    }
+
     [Theory]
     [InlineData("decoded stream", "The /ASCIIHexDecode data decodes to more than 1 byte; decoding stopped there.")]
     [InlineData("stream length", "A stream's data runs past 1 byte; only what lies within it was read.")]
@@ -219,6 +302,7 @@ public class ReaderLimitsTests
     [InlineData("cross-reference stream", "The dictionary of the object read as a cross-reference stream runs past 1 byte; only what lies within it was read.")]
     [InlineData("filter chain", "The /Filter entry names more than 1 filter; decoding stopped after the first.")]
     [InlineData("rebuild reads", "Past streams' direct lengths, the scan for objects read the length of the file; the data of each stream it could not confirm after that was read up to its first endstream, the object headers there not taken.")]
+    [InlineData("object-stream decodes", "The search for a catalog decoded again the object streams the reader let go as much as what its first decodings of them weighed, 35,651,712 bytes: object stream 4 was not decoded again, and the objects it holds read as null until the search for a catalog ends.")]
     public void A_guard_set_to_one_says_its_bound_in_the_singular(string guard, string reported)
     {
         // Each guard at one, the least it takes, reached on the file of its own case: the bound it names is said in the
@@ -5433,6 +5517,7 @@ public class ReaderLimitsTests
         nameof(PdfReaderLimits.MaxIndexEntries) => limits with { MaxIndexEntries = value },
         nameof(PdfReaderLimits.MaxFilterChainLength) => limits with { MaxFilterChainLength = value },
         nameof(PdfReaderLimits.MaxRebuildReadPasses) => limits with { MaxRebuildReadPasses = value },
+        nameof(PdfReaderLimits.MaxObjectStreamDecodePasses) => limits with { MaxObjectStreamDecodePasses = value },
         _ => throw new ArgumentOutOfRangeException(nameof(limit), limit, "Not a reader limit."),
     };
 
@@ -5447,6 +5532,7 @@ public class ReaderLimitsTests
         nameof(PdfReaderLimits.MaxIndexEntries) => limits.MaxIndexEntries,
         nameof(PdfReaderLimits.MaxFilterChainLength) => limits.MaxFilterChainLength,
         nameof(PdfReaderLimits.MaxRebuildReadPasses) => limits.MaxRebuildReadPasses,
+        nameof(PdfReaderLimits.MaxObjectStreamDecodePasses) => limits.MaxObjectStreamDecodePasses,
         _ => throw new ArgumentOutOfRangeException(nameof(limit), limit, "Not a reader limit."),
     };
 
@@ -5675,6 +5761,7 @@ public class ReaderLimitsTests
             "index entries" => ManyObjects(),
             "filter chain" => LongFilterChain(),
             "rebuild reads" => ManySpelledStreams(),
+            "object-stream decodes" => ObjectStreamsReadInTurn(),
             _ => throw new ArgumentOutOfRangeException(nameof(guard), guard, "Not a guard."),
         };
 
@@ -5944,12 +6031,79 @@ public class ReaderLimitsTests
             };
         }
 
+        private static Case ObjectStreamsReadInTurn()
+        {
+            // The search for a catalog reads objects 10 to 17 in number order, each decoding its stream again: within the
+            // default four times what the first two decodings weighed, it finds the catalog, object 16; within one, it
+            // decodes stream 4 no more past object 13, reads 14 and 16 as null, and the index is rebuilt, where the catalog
+            // is found reading each stream's objects together.
+            var bytes = ObjectStreamsReadInTurnFile(parametersCut: false);
+            const long FirstDecodings = 2 * (ObjectStreamDecoded + (16 * 4));
+
+            return new Case(
+                nameof(PdfReaderLimits.MaxObjectStreamDecodePasses),
+                PdfDiagnosticCodes.LimitObjectStreamDecodes,
+                bytes,
+                PdfReaderLimits.Default with { MaxObjectStreamDecodePasses = 1 },
+                PdfReaderLimits.Default,
+                document => document.WasRepaired ? "rebuilt" : "as written",
+                "as written",
+                string.Create(
+                    CultureInfo.InvariantCulture,
+                    $"The search for a catalog decoded again the object streams the reader let go as much as what its first decodings of them weighed, {FirstDecodings:N0} bytes: object stream 4 was not decoded again, and the objects it holds read as null until the search for a catalog ends."),
+                OffsetOf(bytes, "4 0 obj"),
+                ThrowsOnOpening: true,
+                ReportsNothingElse: false)
+            {
+                WholeReports = [PdfDiagnosticCodes.TrailerRootRecovered],
+            };
+        }
+
         private static byte[] Replace(byte[] file, string text, string replacement)
         {
             var written = Encoding.Latin1.GetString(file);
             written.Should().Contain(text);
             return Encoding.Latin1.GetBytes(written.Replace(text, replacement, StringComparison.Ordinal));
         }
+    }
+
+    /// <summary>What object streams 4 and 5 of <see cref="ObjectStreamsReadInTurnFile"/> decode to, each.</summary>
+    private const int ObjectStreamDecoded = 17 * 1024 * 1024;
+
+    /// <summary>
+    /// Writes a file whose object streams 4 and 5, which decode to 17 MB each, past half the budget the reader keeps them
+    /// in, hold objects 10 to 17 in turn, the even ones in 4; the trailer's /Root names a string, and the catalog is object
+    /// 16. With <paramref name="parametersCut"/>, object stream 6 holds object 18, and its <c>/DecodeParms</c> names object
+    /// 14.
+    /// </summary>
+    private static byte[] ObjectStreamsReadInTurnFile(bool parametersCut)
+    {
+        var file = new HandWrittenFile(version: "1.5");
+        var rows = new Dictionary<int, (int Type, long Field2, int Field3)>
+        {
+            [1] = (1, file.Object(1, "(not a catalog)"), 0),
+            [2] = (1, file.Object(2, Pages), 0),
+        };
+        (int Number, string Body)[] even = [(10, "<< >>"), (12, "<< >>"), (14, "<< >>"), (16, Catalog)];
+        (int Number, string Body)[] odd = [(11, "<< >>"), (13, "<< >>"), (15, "<< >>"), (17, "<< >>")];
+        rows[4] = (1, file.PaddedObjectStream(4, even, ObjectStreamDecoded), 0);
+        rows[5] = (1, file.PaddedObjectStream(5, odd, ObjectStreamDecoded), 0);
+
+        for (var index = 0; index < 4; index++)
+        {
+            rows[even[index].Number] = (2, 4, index);
+            rows[odd[index].Number] = (2, 5, index);
+        }
+
+        if (parametersCut)
+        {
+            var data = HostileInputTests.Compress("18 0 << /Kept true >>"u8.ToArray());
+            rows[6] = (1, file.Object(6, string.Create(CultureInfo.InvariantCulture, $"<< /Type /ObjStm /N 1 /First 5 /Filter /FlateDecode /DecodeParms 14 0 R /Length {data.Length} >>\nstream\n{Encoding.Latin1.GetString(data)}\nendstream")), 0);
+            rows[18] = (2, 6, 0);
+        }
+
+        file.CompressedCrossReferenceStream(20, 21, number => rows.TryGetValue(number, out var row) ? row : (0, 0, 0), "/Root 1 0 R");
+        return file.Bytes;
     }
 
     /// <summary>A source that records whether it was released.</summary>

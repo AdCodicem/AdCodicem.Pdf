@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.IO.Compression;
 using System.Text;
 
 namespace AdCodicem.Pdf.Tests;
@@ -97,6 +98,60 @@ internal sealed class HandWrittenFile
     }
 
     /// <summary>
+    /// Writes object stream <paramref name="number"/>, Flate-compressed, holding <paramref name="members"/> after spaces
+    /// between its header and its first object that make its data decode to <paramref name="decoded"/> bytes, and gives
+    /// where its header starts.
+    /// </summary>
+    public long PaddedObjectStream(int number, (int Number, string Body)[] members, int decoded)
+    {
+        var header = new StringBuilder();
+        var contents = new StringBuilder();
+
+        foreach (var (member, body) in members)
+        {
+            header.Append(CultureInfo.InvariantCulture, $"{member} {contents.Length} ");
+            contents.Append(body).Append(' ');
+        }
+
+        var first = Math.Max(header.Length, decoded - contents.Length);
+        var data = Deflate(Encoding.Latin1.GetBytes(header.ToString().PadRight(first) + contents));
+        return Object(
+            number,
+            string.Create(
+                CultureInfo.InvariantCulture,
+                $"<< /Type /ObjStm /N {members.Length} /First {first} /Filter /FlateDecode /Length {data.Length} >>{_eol}stream{_eol}{Encoding.Latin1.GetString(data)}{_eol}endstream"));
+    }
+
+    /// <summary>
+    /// Writes cross-reference stream <paramref name="number"/> of the numbers below <paramref name="size"/>, <c>/W [1 4 2]</c>,
+    /// Flate-compressed, one row each from <paramref name="row"/> — its own and that of object 0 aside —, its dictionary
+    /// holding <paramref name="entries"/>, and the <c>startxref</c> naming it.
+    /// </summary>
+    public long CompressedCrossReferenceStream(int number, int size, Func<int, (int Type, long Field2, int Field3)> row, string entries)
+    {
+        var at = Position;
+        var rows = new byte[size * 7];
+
+        for (var each = 0; each < size; each++)
+        {
+            var (type, field2, field3) = each == number ? (1, at, 0) : each == 0 ? (0, 0L, 65535) : row(each);
+            var slot = rows.AsSpan(each * 7, 7);
+            slot[0] = (byte)type;
+            System.Buffers.Binary.BinaryPrimitives.WriteUInt32BigEndian(slot[1..], (uint)field2);
+            System.Buffers.Binary.BinaryPrimitives.WriteUInt16BigEndian(slot[5..], (ushort)field3);
+        }
+
+        var data = Deflate(rows);
+        Object(
+            number,
+            string.Create(
+                CultureInfo.InvariantCulture,
+                $"<< /Type /XRef /Size {size} /W [1 4 2] /Filter /FlateDecode /Length {data.Length} {entries} >>{_eol}stream{_eol}{Encoding.Latin1.GetString(data)}{_eol}endstream"));
+        _text.Append("startxref").Append(_eol).Append(at.ToString(CultureInfo.InvariantCulture)).Append(_eol).Append("%%EOF").Append(_eol);
+        return at;
+    }
+
+    /// <summary>
     /// Writes cross-reference stream <paramref name="number"/> of the numbers below <paramref name="size"/>, <c>/W [1 4 2]</c>,
     /// one row each from <paramref name="rows"/> — its own aside, a number it lacks is free —, its dictionary holding
     /// <paramref name="entries"/> and, unless <paramref name="length"/> says not to, the <c>/Length</c> of its data, and the
@@ -134,5 +189,18 @@ internal sealed class HandWrittenFile
 
         _text.Append("startxref").Append(_eol).Append(at.ToString(CultureInfo.InvariantCulture)).Append(_eol).Append("%%EOF").Append(_eol);
         return at;
+    }
+
+    /// <summary>Compresses <paramref name="data"/> with zlib, as a <c>/FlateDecode</c> stream holds it.</summary>
+    private static byte[] Deflate(byte[] data)
+    {
+        using var compressed = new MemoryStream();
+
+        using (var zlib = new ZLibStream(compressed, CompressionLevel.SmallestSize, leaveOpen: true))
+        {
+            zlib.Write(data);
+        }
+
+        return compressed.ToArray();
     }
 }

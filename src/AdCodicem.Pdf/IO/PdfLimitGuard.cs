@@ -43,6 +43,7 @@ internal sealed class PdfLimitGuard(PdfReaderLimits limits, bool throwOnLimit, P
         PdfLimit.IndexEntries => limits.MaxIndexEntries,
         PdfLimit.FilterChain => limits.MaxFilterChainLength,
         PdfLimit.RebuildReads => limits.MaxRebuildReadPasses,
+        PdfLimit.ObjectStreamDecodes => limits.MaxObjectStreamDecodePasses,
         _ => limits.MaxTrailerLength,
     };
 
@@ -57,6 +58,7 @@ internal sealed class PdfLimitGuard(PdfReaderLimits limits, bool throwOnLimit, P
         var name = Name(limit);
         var bound = Bound(limit);
         var ceiling = limit is PdfLimit.XRefSectionCount or PdfLimit.IndexEntries or PdfLimit.FilterChain or PdfLimit.RebuildReads
+            or PdfLimit.ObjectStreamDecodes
             ? int.MaxValue
             : Array.MaxLength;
         var message = bound >= ceiling
@@ -98,6 +100,7 @@ internal sealed class PdfLimitGuard(PdfReaderLimits limits, bool throwOnLimit, P
         PdfLimit.IndexEntries => PdfDiagnosticCodes.LimitIndexEntries,
         PdfLimit.FilterChain => PdfDiagnosticCodes.LimitFilterChain,
         PdfLimit.RebuildReads => PdfDiagnosticCodes.LimitRebuildReads,
+        PdfLimit.ObjectStreamDecodes => PdfDiagnosticCodes.LimitObjectStreamDecodes,
         _ => PdfDiagnosticCodes.LimitTrailer,
     };
 
@@ -111,6 +114,7 @@ internal sealed class PdfLimitGuard(PdfReaderLimits limits, bool throwOnLimit, P
         PdfLimit.IndexEntries => nameof(PdfReaderLimits.MaxIndexEntries),
         PdfLimit.FilterChain => nameof(PdfReaderLimits.MaxFilterChainLength),
         PdfLimit.RebuildReads => nameof(PdfReaderLimits.MaxRebuildReadPasses),
+        PdfLimit.ObjectStreamDecodes => nameof(PdfReaderLimits.MaxObjectStreamDecodePasses),
         _ => nameof(PdfReaderLimits.MaxTrailerLength),
     };
 }

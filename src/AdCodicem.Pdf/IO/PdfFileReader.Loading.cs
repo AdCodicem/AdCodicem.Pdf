@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Runtime.ExceptionServices;
 using AdCodicem.Pdf.Diagnostics;
 using AdCodicem.Pdf.Documents;
 using AdCodicem.Pdf.IO.XRef;
@@ -1606,8 +1607,8 @@ internal sealed partial class PdfFileReader
 
         if (contents is null)
         {
-            // A stream that cannot be read yet, because its own dictionary is being read, says nothing of the
-            // object: it is read again when asked again.
+            // A stream that cannot be read yet — its own dictionary being read, or a walk having decoded again as much as
+            // it may — says nothing of the object: it is read again when asked again.
             if (notYet)
             {
                 return PdfNull.Instance;
@@ -1681,7 +1682,7 @@ internal sealed partial class PdfFileReader
     /// <summary>
     /// Gives what object stream <paramref name="number"/> holds, decoding it the first time, or null when it cannot
     /// serve its objects — for good, or, when <paramref name="notYet"/> says so, only while its own dictionary is
-    /// being read.
+    /// being read, or while a walk of the library's own that may not decode it again is in progress (#181).
     /// </summary>
     private ObjectStreamContents? GetObjectStream(int number, int wanted, out bool notYet)
     {
@@ -1702,6 +1703,25 @@ internal sealed partial class PdfFileReader
             return null;
         }
 
+        // Under ThrowOnLimit, a decoding that reached a guard throws again, without decoding (#181).
+        if (_decodingsThrown is not null && _decodingsThrown.TryGetValue(number, out var thrown))
+        {
+            thrown.Throw();
+        }
+
+        // A walk of the library's own decodes again what it let go within its budget: past it, the object reads as null,
+        // which says nothing of it, and is not kept — nor is anything read through it (#181).
+        if (WalkSpent(number))
+        {
+            _reentries++;
+            _walkCuts++;
+            _guardsReached++;
+            (_walkCut ??= new(SeededComparer.Instance)).Add(wanted);
+            notYet = true;
+            ReachWalkDecodes(number);
+            return null;
+        }
+
         // Marked while it is decoded: an object it holds, asked for meanwhile, reads as null rather than
         // recursing, and is not kept as null.
         _objectStreamsLoading.Add(number);
@@ -1710,6 +1730,7 @@ internal sealed partial class PdfFileReader
         {
             var reentries = _reentries;
             var repaired = _repaired;
+            var walkCuts = _walkCuts;
             var loaded = GetObject(new PdfObjectId(number));
 
             // The stream itself could not be loaded from here — too deep, or needed by what is being loaded —: that
@@ -1729,23 +1750,46 @@ internal sealed partial class PdfFileReader
             // of its stream, before or inside its dictionary, is hidden by that guard.
             if (loaded is PdfStream stream)
             {
-                contents = ObjectStreamContents.TryCreate(number, stream, _diagnostics, _objectStreamReports, out hidden);
+                try
+                {
+                    contents = ObjectStreamContents.TryCreate(number, stream, _diagnostics, _objectStreamReports, out hidden);
+                }
+                catch (PdfLimitExceededException exception) when (repaired == _repaired && !IsWalkGuard(exception))
+                {
+                    (_decodingsThrown ??= new(SeededComparer.Instance))[number] = ExceptionDispatchInfo.Capture(exception);
+                    throw;
+                }
             }
             else
             {
                 hidden = IsCutAtLimit(number);
             }
 
-            if (contents is null && hidden)
+            // What was read through an object a walk's guard read as null is the walk's: the stream is hidden by no guard,
+            // and is decoded again, whole, when next asked for.
+            var whole = walkCuts == _walkCuts;
+
+            if (contents is null && hidden && whole)
             {
                 _objectStreamsHiddenByGuard.Add(number);
             }
 
             // A stream read through an index its own load had rebuilt is decoded again when next asked for, from the
             // rebuilt index's definition.
-            if (repaired == _repaired)
+            if (repaired == _repaired && whole)
             {
                 KeepObjectStream(number, contents);
+            }
+
+            CountWalkDecoding(number, contents);
+
+            // Nor does the walk read the object from what it gave, which may lack what the guard read as null: the object
+            // is one the guard cut, until the walk ends.
+            if (!whole)
+            {
+                (_walkCut ??= new(SeededComparer.Instance)).Add(wanted);
+                notYet = true;
+                return null;
             }
 
             return contents;
@@ -1754,6 +1798,82 @@ internal sealed partial class PdfFileReader
         {
             _objectStreamsLoading.Remove(number);
         }
+    }
+
+    /// <summary>
+    /// Determines whether the walk in progress may not decode object stream <paramref name="number"/> again: it decoded it
+    /// before, the reader let it go, and decoding it again would take what the walk decoded again past
+    /// <see cref="PdfReaderLimits.MaxObjectStreamDecodePasses"/> times what its first decodings weighed — or did already,
+    /// past which nothing it let go is decoded again before it ends.
+    /// </summary>
+    /// <remarks>
+    /// A rebuild's taking in of the object streams is not weighed: what it reads makes the index the reader keeps, which no
+    /// walk may change. Within the budget, a decoding is counted once done (<see cref="CountWalkDecoding"/>).
+    /// </remarks>
+    private bool WalkSpent(int number)
+    {
+        if (_walkDepth == 0 || _expandingObjectStreams || _walkDecoded is null || !_walkDecoded.TryGetValue(number, out var weight))
+        {
+            return false;
+        }
+
+        // Weighed in 128 bits, where a bound of int.MaxValue times what the first decodings weighed cannot overflow.
+        if (!_walkBudgetSpent &&
+            (Int128)_walkAgainBytes + weight <= (Int128)_walkFirstBytes * _guard.Bound(PdfLimit.ObjectStreamDecodes))
+        {
+            return false;
+        }
+
+        _walkBudgetSpent = true;
+        return true;
+    }
+
+    /// <summary>
+    /// Counts against the walk in progress a decoding of object stream <paramref name="number"/> that gave
+    /// <paramref name="contents"/>: its first in the walk, or one more of a stream the reader let go.
+    /// </summary>
+    private void CountWalkDecoding(int number, ObjectStreamContents? contents)
+    {
+        if (_walkDepth == 0 || _expandingObjectStreams || contents is null)
+        {
+            return;
+        }
+
+        if ((_walkDecoded ??= new(SeededComparer.Instance)).TryAdd(number, contents.Weight))
+        {
+            _walkFirstBytes += contents.Weight;
+        }
+        else
+        {
+            _walkAgainBytes += contents.Weight;
+        }
+    }
+
+    /// <summary>
+    /// Reports that the walk in progress left object stream <paramref name="number"/> undecoded for
+    /// <see cref="PdfReaderLimits.MaxObjectStreamDecodePasses"/>: once a document, where the stream lies; for a document
+    /// opened to throw on a guard, each time.
+    /// </summary>
+    /// <exception cref="PdfLimitExceededException">The document was opened to throw on a guard.</exception>
+    private void ReachWalkDecodes(int number)
+    {
+        if (_limitsReached.Contains(WalkDecodesReported))
+        {
+            return;
+        }
+
+        var passes = _guard.Bound(PdfLimit.ObjectStreamDecodes);
+        var weighed = passes == 1
+            ? "what its first decodings of them weighed"
+            : string.Create(CultureInfo.InvariantCulture, $"{passes:N0} times what its first decodings of them weighed");
+        _guard.Reach(
+            PdfLimit.ObjectStreamDecodes,
+            _diagnostics,
+            string.Create(
+                CultureInfo.InvariantCulture,
+                $"The {_walkName} decoded again the object streams the reader let go as much as {weighed}, {CountText.Grouped(_walkFirstBytes, "byte", "bytes")}: object stream {number} was not decoded again, and the objects it holds read as null until the {_walkName} ends."),
+            _xref.TryGet(number, out var entry) && entry.Kind == XRefEntryKind.Regular ? EntryPosition(entry) : -1);
+        _limitsReached.Add(WalkDecodesReported);
     }
 
     /// <summary>
