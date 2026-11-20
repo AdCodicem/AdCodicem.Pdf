@@ -177,7 +177,10 @@ a catalog a `/Root` that leads to none sets off, and a validation's rules — we
 what its first decodings of them weighed. Past it, the walk leaves the rest unread as a guard's cut, goes on, and
 reports `limit.object-stream-decodes`. A valid file reaches it — the page tree above —, so it is a guard, and what it
 leaves unread is the reader's limit: the validator judges nothing of it, and finds no fault where the file has none.
-Nothing the walk left unread is kept, so that your own reads once it is done read every object whole, and the next
+The search for a catalog does not leave it at that when it finds none among what it read whole: rebuilding the index would
+scan the whole file, and could take a catalog an update superseded, while reading again what the guard cut, those of
+each object stream together, decodes each stream once more at most; so it does that first, and takes the catalog a
+search the guard did not cut would have taken. Nothing the walk left unread is kept, so that your own reads once it is done read every object whole, and the next
 walk starts its budget again. The rules that read every object of the index read those of each object stream
 together, so that a sound file's validation decodes each stream once, whatever its numbers' order.
 
@@ -216,7 +219,14 @@ a stream is read as before the search existed, nothing reported
 row or an offset rank a header found in such data ([Lazy reading](lazy-reading.md#what-opening-actually-does)) have four
 times the file of their own, an internal constant: what a rebuild serves does not hang on them, a rebuild's own scan
 makes none of them, and those searches run only where a row or an offset is off
-([#361](https://github.com/AdCodicem/AdCodicem.Pdf/issues/361)).
+([#361](https://github.com/AdCodicem/AdCodicem.Pdf/issues/361)). And a stream whose length an `endstream` confirms
+keeps that length, unless the index places another object inside its data, which no valid file's index does, and the
+streams whose data holds such a place have kept four times the file together: streams that share a stretch of the file,
+each holding the next one's header, would otherwise read that stretch again for each read of each one, the file in its
+square, while streams whose data share no byte — a damaged file's stale row inside one of them counting it — total at
+most the file, and none of them is ended
+([What cannot be lifted](../reference/reader-limits.md#what-cannot-be-lifted),
+[#280](https://github.com/AdCodicem/AdCodicem.Pdf/issues/280)).
 
 A new bound is classified when it is added ([ADR 34](/project/adr/every-valid-pdf-is-readable-and-the-readers-guards-are)):
 if a valid file can reach it, it becomes a limit, with its code and its test.

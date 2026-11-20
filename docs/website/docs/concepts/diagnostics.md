@@ -96,7 +96,9 @@ wherever the reader's reads part the data. Both are reported as
 A `/Length` that names an object one of the reader's limits cut is no length the file gave: what the cut left of it —
 null, or `1` of a `15` it parted — is the guard's. An integer read before the cut is only a place to look for
 `endstream` at, and the data is otherwise found by its `endstream`, as for a stream with no length; nothing is said of
-the length, while a missing `endstream` is still the file's, and reported. One that names an object a guard left out of
+the length — but where the `endstream` that follows it confirms data the index places another object inside, which is
+weighed as a declared length is ([Streams whose length is wrong](../reference/diagnostics.md#streams-whose-length-is-wrong)) —,
+while a missing `endstream` is still the file's, and reported. One that names an object a guard left out of
 the index is not judged either: its data is found the same way, and a missing `endstream` reported as the file's. Such a
 stream may be valid, its length only hidden, and its data may spell an object header, as an embedded PDF file's does —
 and the `endstream` of a stream the embedded file holds, which no search can tell from the stream's own. A header the
