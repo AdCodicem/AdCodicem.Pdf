@@ -562,6 +562,155 @@ public class HostileInputMemoryTests
         held.Should().BeLessThan(16L * 1024 * 1024, $"memory was sampled {source.Samples} times");
     }
 
+    [Theory]
+    [InlineData("lookups past a full index")]
+    [InlineData("lengths a rebuilt index lacks")]
+    [InlineData("filter chains")]
+    public void A_document_opened_to_throw_keeps_a_bounded_number_of_the_exceptions_its_reads_threw(string shape)
+    {
+        // Under ThrowOnLimit, a load or a decoding that reached a guard keeps its exception, to throw it again without reading
+        // up to the bound again. A lookup of a number a full index lacks threw anew each time, and kept each: 40,000 lookups
+        // of a caller kept some 40 MB. A rebuild's taking in of the object streams loads every stream it indexed, each of
+        // 20,000 naming a /Length its index lacks: each lookup kept its own, some 40 MB from a file of 2 MB. And each of
+        // 16,000 members alone in an object stream whose filters pass the guard, read twice by a caller, kept its own, and
+        // its stream's, some 32 MB. A lookup saves no read, and is kept nowhere; the others are kept as many as the reader
+        // caches objects, the oldest let go first. Each read the caller sees throws the guard's own exception.
+        var (file, options, first, reads) = shape switch
+        {
+            "lookups past a full index" => (
+                IndexFullOnRebuild(),
+                new PdfReaderOptions { ThrowOnLimit = true, Limits = PdfReaderLimits.Default with { MaxIndexEntries = 40 } },
+                3,
+                Enumerable.Range(5_000_000, 40_000).ToArray()),
+            "lengths a rebuilt index lacks" => (
+                LengthsTheRebuiltIndexLacks(20_000),
+                new PdfReaderOptions { ThrowOnLimit = true },
+                31,
+                Enumerable.Range(100, 20_000).ToArray()),
+            _ => (
+                MembersBehindTooManyFilters(16_000),
+                new PdfReaderOptions { ThrowOnLimit = true, ObjectCacheCapacity = 64, Limits = PdfReaderLimits.Default with { MaxFilterChainLength = 1 } },
+                10,
+                [.. Enumerable.Range(10, 16_000), .. Enumerable.Range(10, 16_000)]),
+        };
+        var before = Retained();
+        using var document = PdfDocument.Open(file, options);
+        var opening = FluentActions.Invoking(() => document.GetObject(new PdfObjectId(first)));
+        var guard = opening.Should().Throw<PdfLimitExceededException>().Which;
+        var thrown = new HashSet<(string Code, string Message)>();
+
+        foreach (var number in reads)
+        {
+            try
+            {
+                document.GetObject(new PdfObjectId(number));
+            }
+            catch (PdfLimitExceededException exception)
+            {
+                thrown.Add((exception.Code, exception.Message));
+            }
+        }
+
+        var after = Retained();
+
+        thrown.Should().Equal((guard.Code, guard.Message));
+        (after - before).Should().BeLessThan(8L * 1024 * 1024, "the exceptions a document keeps are bounded, not one for each read");
+        GC.KeepAlive(document);
+    }
+
+    /// <summary>
+    /// Writes a file whose classic table places object 3 on its own <c>xref</c> keyword, so that a lookup of 3 rebuilds the
+    /// index, and holds objects 3,000,000 and on, which a bound of 40 entries leaves out of the rebuilt index.
+    /// </summary>
+    private static byte[] IndexFullOnRebuild()
+    {
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"),
+        };
+
+        for (var k = 0; k < 50; k++)
+        {
+            file.Object(3_000_000 + k, "(filler)");
+        }
+
+        rows[3] = file.Position;
+        file.Table(4, rows, "/Size 4 /Root 1 0 R");
+        return file.Bytes;
+    }
+
+    /// <summary>
+    /// Writes a file like that of the guard on the rebuild's reads, with sixteen spelled streams, objects 50 to 65, under a
+    /// classic table whose <c>/Prev</c> names no section, so that a lookup of object 31, which the table lacks, rebuilds the
+    /// index and its scan reaches the guard; with <paramref name="streams"/> streams, objects 100 and on, each of a
+    /// <c>/Length</c> that names an object the file lacks.
+    /// </summary>
+    private static byte[] LengthsTheRebuiltIndexLacks(int streams)
+    {
+        const int Spelled = 16;
+        const string Head = "50 0 obj\n<< /Length 0000000 >>\nstream\nabc\n";
+        var spelled = new StringBuilder();
+
+        for (var i = 0; i < Spelled; i++)
+        {
+            var length = ((Spelled - i) * Head.Length) - (Head.Length - "abc\n".Length);
+            spelled.Append(Head.Replace("50 0", string.Create(CultureInfo.InvariantCulture, $"{50 + i} 0"), StringComparison.Ordinal)
+                .Replace("0000000", length.ToString("D7", CultureInfo.InvariantCulture), StringComparison.Ordinal));
+        }
+
+        var data = spelled.Append(' ', Math.Max(64 * 1024, streams * 60)).Append("attached tail\n").ToString();
+        const string Inner = "%PDF-1.4\n5 0 obj\n<< /Length 3 >>\nstream\nabc\nendstream\nendobj\n% the attached file's last line";
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"),
+            [10] = file.Object(10, "<< /Type /EmbeddedFile /Length 11 0 R >>\nstream\n" + data + "endstream"),
+            [11] = file.Object(11, "% the length of the attached file's data, which its writer filled in once it had written it\n" + data.Length.ToString(CultureInfo.InvariantCulture)),
+            [30] = file.Position,
+        };
+        file.Raw(string.Create(CultureInfo.InvariantCulture, $"30 0 obj\n<< /Type /EmbeddedFile /Length {Inner.Length} >>\nstream\n{Inner}") +
+            new string(' ', 70) + "endstream endobj 31 0 obj (real) endobj\n");
+        var small = new StringBuilder();
+
+        for (var k = 0; k < streams; k++)
+        {
+            small.Append(CultureInfo.InvariantCulture, $"{100 + k} 0 obj<</Length {1_000_000 + k} 0 R>>stream\nabc\nendstream endobj\n");
+        }
+
+        file.Raw(small.ToString());
+        file.Table(31, rows, "/Size 31 /Root 1 0 R /Prev 1 0 R");
+        return file.Bytes;
+    }
+
+    /// <summary>
+    /// Writes a file of <paramref name="members"/> objects, 10 and on, each alone in an object stream whose <c>/Filter</c>
+    /// names two hexadecimal filters, the first of which decodes its data, all placed by a cross-reference stream.
+    /// </summary>
+    private static byte[] MembersBehindTooManyFilters(int members)
+    {
+        var file = new HandWrittenFile(version: "1.5");
+        var rows = new Dictionary<int, (int Type, long Field2, int Field3)>
+        {
+            [1] = (1, file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"), 0),
+            [2] = (1, file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"), 0),
+        };
+
+        for (var k = 0; k < members; k++)
+        {
+            var stream = 10 + members + k;
+            var header = string.Create(CultureInfo.InvariantCulture, $"{10 + k} 0 ");
+            var hex = Convert.ToHexString(Encoding.ASCII.GetBytes(header + "(m) ")) + ">";
+            rows[stream] = (1, file.Object(stream, string.Create(CultureInfo.InvariantCulture, $"<< /Type /ObjStm /N 1 /First {header.Length} /Filter [/ASCIIHexDecode /ASCIIHexDecode] /Length {hex.Length} >>\nstream\n{hex}\nendstream")), 0);
+            rows[10 + k] = (2, stream, 0);
+        }
+
+        file.CrossReferenceStream(10 + (2 * members), 11 + (2 * members), rows, "/Root 1 0 R");
+        return file.Bytes;
+    }
+
     /// <summary>A file in memory that samples the memory live at once, every object collected first, at each read.</summary>
     private sealed class SamplingSource(byte[] data) : PdfFileSource
     {

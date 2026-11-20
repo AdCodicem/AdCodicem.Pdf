@@ -50,7 +50,7 @@ internal sealed partial class PdfFileReader
     /// time a guard that stopped the index short of the file leaves one out — <see cref="PdfReaderLimits.MaxIndexEntries"/>
     /// filled it, or <see cref="PdfReaderLimits.MaxRebuildReadPasses"/> kept the scan of the rebuild that made it from
     /// reading data that holds a header —, as an object read again past its guard throws again, where the guard was
-    /// reported.
+    /// reported. The exception is a new one each time, which no load or decoding keeps (<see cref="IsKeptNowhere"/>).
     /// </summary>
     /// <exception cref="PdfLimitExceededException">
     /// The index is full, or a rebuild's scan left data that holds a header unread, and the document was opened to throw on
@@ -58,7 +58,12 @@ internal sealed partial class PdfFileReader
     /// </exception>
     private PdfNull NotIndexed()
     {
-        if (_guard.ThrowsOnLimit)
+        if (!_guard.ThrowsOnLimit)
+        {
+            return PdfNull.Instance;
+        }
+
+        try
         {
             if (_indexFull)
             {
@@ -68,6 +73,13 @@ internal sealed partial class PdfFileReader
             {
                 _guard.Reach(PdfLimit.RebuildReads, null, RebuildReadsMessage(), _rebuildReadsReportedAt);
             }
+        }
+        catch (PdfLimitExceededException exception)
+        {
+            // Thrown anew at each lookup, which reads nothing: neither the load of the number nor any load or decoding it
+            // passes through keeps it (IsKeptNowhere).
+            _lookupThrown = exception;
+            throw;
         }
 
         return PdfNull.Instance;
@@ -1704,7 +1716,7 @@ internal sealed partial class PdfFileReader
         }
 
         // Under ThrowOnLimit, a decoding that reached a guard throws again, without decoding (#181).
-        if (_decodingsThrown is not null && _decodingsThrown.TryGetValue(number, out var thrown))
+        if (_decodingsThrown is not null && _decodingsThrown.TryGet(number, out var thrown))
         {
             thrown.Throw();
         }
@@ -1754,9 +1766,11 @@ internal sealed partial class PdfFileReader
                 {
                     contents = ObjectStreamContents.TryCreate(number, stream, _diagnostics, _objectStreamReports, out hidden);
                 }
-                catch (PdfLimitExceededException exception) when (repaired == _repaired && !IsWalkGuard(exception))
+                // Kept as the stream's contents are, and not where a guard against re-entry gave a null on the way, as a load's
+                // exception is not.
+                catch (PdfLimitExceededException exception) when (repaired == _repaired && reentries == _reentries && !IsKeptNowhere(exception))
                 {
-                    (_decodingsThrown ??= new(SeededComparer.Instance))[number] = ExceptionDispatchInfo.Capture(exception);
+                    KeepDecodingThrow(number, exception);
                     throw;
                 }
             }
