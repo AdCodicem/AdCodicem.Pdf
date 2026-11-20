@@ -899,20 +899,18 @@ internal ref struct PdfObjectParser
 
         if (confirmed == true)
         {
-            // A confirmed length is the one way data runs over the next object, which no valid file's does: past what the
-            // streams that overlap so may keep together, the data ends at a place the index gives inside it (#280). Every
-            // length confirmed is weighed so — a declared one, or the integer an object a guard cut held before the cut, which
-            // the stream is read with alike once an endstream follows it.
+            // A confirmed length is taken without reading where the data ends, the one way data runs over the next object,
+            // which no valid file's does: once the lengths so taken have kept as much of the file as they may, the data ends
+            // at a place an index gives inside it, or reads empty (#280). Every length confirmed is weighed so — a declared
+            // one, or the integer an object a guard cut held before the cut, which the stream is read with alike once an
+            // endstream follows it.
             if (_streamData is { } provider)
             {
-                var taken = provider.TakeConfirmed(_objectNumber, _baseOffset + dataStart, checkedAt, out var placed);
+                var taken = provider.TakeUnread(_objectNumber, _baseOffset + dataStart, checkedAt, out var placed);
 
                 if (taken != checkedAt)
                 {
-                    if (KeepLengthFault(Fault(declared, dataStart, taken, checkedAt, EndStreamState.PastPlacedObject, placed)))
-                    {
-                        WarnLengthFault(PdfDiagnosticCodes.StreamLengthInvalid, DescribePastPlacedObject(declared, checkedAt, taken, placed), dataStart);
-                    }
+                    KeepOverlapped(declared, dataStart, taken, placed, checkedAt);
 
                     // The endstream that confirmed the length follows another object's data: where this one ends is unknown.
                     _endObjAfterStream = null;
@@ -993,7 +991,21 @@ internal ref struct PdfObjectParser
 
         if (!search.Searched)
         {
-            // The document's searches read as much of the file as they may: what lies past the bytes held is not looked at.
+            // The document's searches read as much of the file as they may: what lies past the bytes held is not looked at,
+            // and the length kept is taken without reading where the data ends, weighed as a confirmed one is (#280): once
+            // the lengths so taken have kept as much of the file as they may, the data ends at a place an index gives inside
+            // it, or reads empty, which is said whatever the length's form.
+            var kept = fits ? length : upToStop;
+            var placed = -1L;
+            var taken = _streamData is { } provider ? provider.TakeUnread(_objectNumber, _baseOffset + dataStart, kept, out placed) : kept;
+
+            if (taken != kept)
+            {
+                KeepOverlapped(declared, dataStart, taken, placed, null, fits, length);
+                _endObjUnknown = true;
+                return Finish(dictionary, dataStart, taken, span.Length);
+            }
+
             // Where a /Length a guard cut or left out of the index would say how far the data runs, where it ends is the
             // guard's, as where an endstream found is not proven the stream's own: the data up to the stop is cut by it, the
             // object's endobj unjudged, and nothing is said of the file (#224).
@@ -1002,8 +1014,6 @@ internal ref struct PdfObjectParser
                 _endObjUnknown = true;
                 return Finish(dictionary, dataStart, upToStop, span.Length, cutByGuard: true);
             }
-
-            var kept = fits ? length : upToStop;
 
             if (KeepLengthFault(Fault(declared, dataStart, kept, null, EndStreamState.NotSearched, null)))
             {
@@ -1296,18 +1306,55 @@ internal ref struct PdfObjectParser
 
     /// <summary>
     /// Says what was wrong with a stream's <c>/Length</c>, which an <c>endstream</c> confirmed after <paramref name="confirmed"/>
-    /// bytes, the data ending after <paramref name="taken"/> of them, at the place the index gives an object at,
-    /// <paramref name="placed"/>: the length it declared, or the integer the object a guard cut held before the cut.
+    /// bytes — the length it declared, or the integer the object a guard cut held before the cut —, once the lengths taken
+    /// without reading where the data ends had kept as much of the file as they may (<see cref="KeepOverlapped"/>).
     /// </summary>
-    private static string DescribePastPlacedObject(DeclaredLength declared, int confirmed, int taken, long placed)
-    {
-        var length = declared.Form == StreamLengthForm.Integer
-            ? string.Create(CultureInfo.InvariantCulture, $"{Describe(declared)}, which an endstream follows, but an object the index places starts inside the data, at {placed}")
-            : string.Create(CultureInfo.InvariantCulture, $"{Describe(declared)}; an endstream follows the {CountText.Bytes(confirmed)} the integer read from it before the cut gives, but an object the index places starts inside them, at {placed}");
+    private static string DescribeConfirmedOverlapped(DeclaredLength declared, int confirmed, int taken, long placed) =>
+        declared.Form == StreamLengthForm.Integer
+            ? string.Create(CultureInfo.InvariantCulture, $"{Describe(declared)}, which an endstream follows, but {DescribeOverlapped("the data", "the stream's data", taken, placed)}")
+            : string.Create(CultureInfo.InvariantCulture, $"{Describe(declared)}; an endstream follows the {CountText.Bytes(confirmed)} the integer read from it before the cut gives, but {DescribeOverlapped("them", "the stream's data", taken, placed)}");
 
-        return string.Create(
-            CultureInfo.InvariantCulture,
-            $"{length}; the {CountText.Bytes(taken)} up to it {(taken == 1 ? "is" : "are")} taken as the stream's data, the streams that overlap so having kept as much of the file as they may.");
+    /// <summary>
+    /// Says what was wrong with a stream's <c>/Length</c>, which no <c>endstream</c> follows in the bytes read with its object,
+    /// the document's searches having read as much of the file as they may: the declared length, <paramref name="length"/>
+    /// bytes, where it <paramref name="fits"/> before the next object or the end of the file, or the data up to it otherwise,
+    /// was taken without a search, once the lengths taken without reading where the data ends had kept as much of the file
+    /// as they may (<see cref="KeepOverlapped"/>).
+    /// </summary>
+    private static string DescribeUnsearchedOverlapped(DeclaredLength declared, bool fits, int length, int taken, long placed) =>
+        fits
+            ? string.Create(CultureInfo.InvariantCulture, $"The stream declared {CountText.Bytes(length)}, which no endstream follows, the document's searches for endstream having read as much of the file as they may; {DescribeOverlapped("the data", "its data", taken, placed, " without a search")}")
+            : string.Create(CultureInfo.InvariantCulture, $"{Describe(declared)}, and no endstream follows its data in the bytes read with its object, the document's searches for endstream having read as much of the file as they may; {DescribeOverlapped("the data", "its data", taken, placed, " without a search")}");
+
+    /// <summary>
+    /// Says where the data ends, <paramref name="taken"/> bytes kept, once the lengths taken without reading where the data
+    /// ends had kept as much of the file as they may: at <paramref name="placed"/>, a place an index gives an object at inside
+    /// <paramref name="inside"/>, or nowhere, -1, the data reading empty.
+    /// </summary>
+    private static string DescribeOverlapped(string inside, string data, int taken, long placed, string how = "") => placed < 0
+        ? $"{data} reads empty{how}, the streams that overlap having kept as much of the file as they may."
+        : string.Create(CultureInfo.InvariantCulture, $"the index places an object inside {inside}, at {placed}, and the {CountText.Bytes(taken)} up to it {(taken == 1 ? "is" : "are")} taken as {data}{how}, the streams that overlap having kept as much of the file as they may.");
+
+    /// <summary>
+    /// Keeps, and reports, what was found of the stream being read, whose length was taken without reading where the data
+    /// ends — one an <c>endstream</c> <paramref name="confirmed"/>, or, where that is null, the declared length,
+    /// <paramref name="length"/> bytes, where it <paramref name="fits"/>, or the data up to the stop, taken without a
+    /// search —, its data kept short of it, <paramref name="taken"/> bytes: ended at <paramref name="placed"/>, a place an
+    /// index gives an object at, or read empty where that is -1.
+    /// </summary>
+    private void KeepOverlapped(DeclaredLength declared, int dataStart, int taken, long placed, int? confirmed, bool fits = false, int length = 0)
+    {
+        var endStream = placed < 0 ? EndStreamState.ReadEmpty : EndStreamState.PastPlacedObject;
+
+        if (KeepLengthFault(Fault(declared, dataStart, taken, confirmed, endStream, placed < 0 ? null : placed)))
+        {
+            WarnLengthFault(
+                PdfDiagnosticCodes.StreamLengthInvalid,
+                confirmed is { } found
+                    ? DescribeConfirmedOverlapped(declared, found, taken, placed)
+                    : DescribeUnsearchedOverlapped(declared, fits, length, taken, placed),
+                dataStart);
+        }
     }
 
     /// <summary>

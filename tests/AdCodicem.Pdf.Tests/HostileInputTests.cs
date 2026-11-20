@@ -358,12 +358,13 @@ public class HostileInputTests
     {
         // Two hundred streams, each header inside the data of the one before, every /Length confirmed by the one endstream
         // a megabyte on: reading each one's raw data from a file read the whole stretch again, 199 times the file, and
-        // validating two hundred object streams so nested read it 387 times (#280). Once the streams whose data hold a place
-        // the index gives have kept as much of the file as they may, each one's data ends at the first of those places a
-        // header starts at, or at the first. Whatever lies at the place, the stream counts: rows at white space or a comment
-        // before each header, at its digits a letter goes before, a byte before it, or rows of numbers no object has before
-        // it — inside another number, or where no header starts — each kept every stream whole, the stretch read once for
-        // each, and nothing said, where a header at the first place alone counted.
+        // validating two hundred object streams so nested read it 387 times (#280). Once the lengths taken unread have kept
+        // as much of the file as they may, each one's data ends at the first of the places the index gives inside it that a
+        // header starts at, or at the first, and the last, which holds none, reads empty. Whatever lies at the place, the
+        // data ends there: rows at white space or a comment before each header, at its digits a letter goes before, a byte
+        // before it, or rows of numbers no object has before it — inside another number, or where no header starts — each
+        // kept every stream whole, the stretch read once for each, and nothing said, where a header at the first place alone
+        // counted.
         const int Streams = 200;
         var (lead, rowShift, decoys, decoyAt) = shape switch
         {
@@ -408,8 +409,9 @@ public class HostileInputTests
         // A hundred streams, each header a space past where the data of the one before starts, each /Length object 999, which
         // MaxObjectLength cuts in the white space after the integer it starts with, 256 KB, that each stream's own endstream
         // follows: the integer was taken for each stream's length unchecked, and reading each one's raw data read the
-        // stretch again, 90 times the file. It is checked as a declared length is: past what the streams that overlap so may
-        // keep, the data ends at the header the index places inside it, which is said, the length the cut left named (#280).
+        // stretch again, 90 times the file. It is weighed as a declared length is: past what the lengths taken unread may
+        // keep, the data ends at the header the index places inside it, which is said, the length the cut left named; the
+        // last, inside whose data the index places nothing, reads empty (#280).
         const int Streams = 100;
         const int Length = 256 * 1024;
         var file = OverlappingWithCutLength(Streams, Length);
@@ -431,11 +433,17 @@ public class HostileInputTests
         var first = Array.FindIndex(streams, stream => stream.Data.Length != Length);
         first.Should().BePositive();
         streams[first..^1].Should().OnlyContain(stream => stream.Data.Length == 1 && !stream.Data.CutByGuard, "the last holds no other header");
+        streams[^1].Data.Length.Should().Be(0);
         var at = streams[first].Data.Position;
-        document.Diagnostics.Where(d => d.Code == PdfDiagnosticCodes.StreamLengthInvalid).Should().HaveCount(Streams - 1 - first)
+        var lastAt = streams[^1].Data.Position;
+        var reports = document.Diagnostics.Where(d => d.Code == PdfDiagnosticCodes.StreamLengthInvalid).ToList();
+        reports.Should().HaveCount(Streams - first)
             .And.ContainSingle(d => d.Position == at).Which.Message.Should().Be(string.Create(
                 CultureInfo.InvariantCulture,
-                $"The stream's /Length names object 999 0, which one of the reader's limits cut; an endstream follows the {Length} bytes the integer read from it before the cut gives, but an object the index places starts inside them, at {at + 1}; the 1 byte up to it is taken as the stream's data, the streams that overlap so having kept as much of the file as they may."));
+                $"The stream's /Length names object 999 0, which one of the reader's limits cut; an endstream follows the {Length} bytes the integer read from it before the cut gives, but the index places an object inside them, at {at + 1}, and the 1 byte up to it is taken as the stream's data, the streams that overlap having kept as much of the file as they may."));
+        reports.Should().ContainSingle(d => d.Position == lastAt).Which.Message.Should().Be(string.Create(
+            CultureInfo.InvariantCulture,
+            $"The stream's /Length names object 999 0, which one of the reader's limits cut; an endstream follows the {Length} bytes the integer read from it before the cut gives, but the stream's data reads empty, the streams that overlap having kept as much of the file as they may."));
         document.Reader.TryGetStreamLengthFault(3 + first, out var fault).Should().BeTrue();
         fault.Should().Be(new StreamLengthFault
         {
@@ -447,6 +455,77 @@ public class HostileInputTests
             NextObject = at + 1,
             DataStart = at,
         });
+    }
+
+    [Theory]
+    [InlineData("rows past the file, so that a rebuild places the streams")]
+    [InlineData("lengths a rebuild lengthens once the streams were counted short")]
+    [InlineData("headers in a string of the dictionary before")]
+    [InlineData("lengths no endstream follows, kept without a search")]
+    [InlineData("lengths a guard cut, the data to the end of the file taken without a search")]
+    [InlineData("an object placed near the far endstream")]
+    [InlineData("headers on one comment line before one body")]
+    public void Streams_whose_lengths_are_taken_unread_and_whose_data_share_a_stretch_read_it_a_bounded_number_of_times(string shape)
+    {
+        // Two hundred streams whose data each run to one endstream a megabyte on, every length taken without reading where
+        // the data ends — confirmed by that endstream, or kept without a search once the searches read as much of the file as
+        // they may. Reading each one's raw data read the stretch again, about 200 times the file, where nothing the reader
+        // weighed placed an object inside the data: an index rebuilt after the chain was read, a length counted short that a
+        // rebuild lengthened, headers that all lie before the first data start, one body that many headers name, lengths
+        // taken without a search; or where one object placed inside every stream's data, near its end, let each keep nearly
+        // all of it. Each length is counted once for each object and place its data starts at, whatever the indexes place:
+        // past what such streams may keep whole, the data ends at a header placed inside it while what it keeps fits a
+        // second allowance, or reads empty, and says so (#280).
+        const int Streams = 200;
+        const int Filler = 1024 * 1024;
+        var first = 10;
+        var junk = 0;
+        var lengthened = shape.StartsWith("lengths a rebuild", StringComparison.Ordinal);
+        var guarded = shape.Contains("guard", StringComparison.Ordinal);
+        var file = shape switch
+        {
+            "rows past the file, so that a rebuild places the streams" => OverlappingRebuilt(Streams, Filler),
+            "headers in a string of the dictionary before" => NestedInStrings(Streams, Filler),
+            "lengths no endstream follows, kept without a search" => NestedInStrings(Streams, Filler, shortBy: 1),
+            "an object placed near the far endstream" => NestedInStrings(Streams, Filler, placedFromEnd: 100),
+            "headers on one comment line before one body" => HeadersOnOneCommentLine(Streams, Filler),
+            _ when guarded => NestedInStrings(Streams, Filler, lengthObject: "5" + new string(' ', 20_000)),
+            _ => OverlappingLengthened(Streams, Filler, out first, out junk),
+        };
+        var options = guarded ? new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxObjectLength = 16 * 1024 } } : null;
+        using var source = new StrictCountingSource(file);
+        using var document = PdfDocument.Open(source, options, ownsSource: false);
+        var opened = source.BytesRead;
+
+        if (lengthened)
+        {
+            // Six streams over the whole stretch start the count; the others, read with their short lengths, are counted so;
+            // a load of a number whose row places another object rebuilds the index, which keeps the last definition of each
+            // length, up to the far endstream.
+            for (var number = 3; number < first - 6; number++)
+            {
+                document.GetObject(new PdfObjectId(number)).AsStream().Required().GetRawBytes();
+            }
+
+            for (var k = 0; k < Streams; k++)
+            {
+                document.GetObject(new PdfObjectId(first + k)).AsStream().Required().GetRawBytes();
+            }
+
+            document.GetObject(new PdfObjectId(junk));
+            document.Reader.WasRepaired.Should().BeTrue();
+        }
+
+        for (var k = 0; k < Streams; k++)
+        {
+            document.GetObject(new PdfObjectId(first + k)).AsStream().Required().GetRawBytes();
+        }
+
+        (source.BytesRead - opened).Should().BeLessThan(
+            ((PdfFileReader.UncheckedConfirmedPasses + PdfFileReader.OverlapKeptPasses + PdfFileReader.OverlapCutPasses + PdfFileReader.EndStreamSearchPasses + 2) * file.Length) +
+                (4L * Streams * PdfFileReader.InitialObjectWindow),
+            "the data served before the reader counts, kept whole and kept up to a header, what the searches and a rebuild read, and a few windows for each object");
+        document.Diagnostics.Should().Contain(d => d.Code == PdfDiagnosticCodes.StreamLengthInvalid);
     }
 
     [Fact]
@@ -6611,6 +6690,213 @@ public class HostileInputTests
         file.Raw(body.ToString());
         rows[999] = (1, file.Object(999, length.ToString(CultureInfo.InvariantCulture) + new string(' ', 20_000)), 0);
         file.CrossReferenceStream(1000, 1001, rows, "/Root 1 0 R");
+        return file.Bytes;
+    }
+
+    /// <summary>
+    /// Writes a file of <paramref name="streams"/> streams, objects 10 and on, each one's header in a string of the dictionary
+    /// of the one before, so that every header lies before the first data start and the index places no object inside any
+    /// stream's data; each <c>/Length</c> gives the bytes from its data's start to the one <c>endstream</c> after
+    /// <paramref name="filler"/> bytes, less <paramref name="shortBy"/>, or names object 999, which holds
+    /// <paramref name="lengthObject"/>. With <paramref name="placedFromEnd"/>, object 9, which the index places, starts that
+    /// many bytes before that <c>endstream</c>, inside every stream's data.
+    /// </summary>
+    internal static byte[] NestedInStrings(int streams, int filler, int shortBy = 0, string? lengthObject = null, int placedFromEnd = 0)
+    {
+        var file = new HandWrittenFile(version: "1.5");
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"),
+        };
+        var origin = file.Position;
+        var text = new StringBuilder();
+        var lengthAt = new int[streams];
+        var starts = new int[streams];
+
+        for (var k = 0; k < streams; k++)
+        {
+            rows[10 + k] = origin + text.Length;
+            text.Append(CultureInfo.InvariantCulture, $"{10 + k} 0 obj<</Length ");
+            lengthAt[k] = text.Length;
+            text.Append(lengthObject is null ? "0000000000" : "999 0 R").Append(k < streams - 1 ? "/S(" : ">>stream\n");
+        }
+
+        starts[^1] = text.Length;
+
+        for (var k = streams - 2; k >= 0; k--)
+        {
+            text.Append(")>>stream\n");
+            starts[k] = text.Length;
+        }
+
+        const string Placed = "\n9 0 obj\n[1]\nendobj\n";
+        text.Append('z', filler - placedFromEnd);
+
+        if (placedFromEnd > 0)
+        {
+            rows[9] = origin + text.Length + 1;
+            text.Append(Placed).Append('z', placedFromEnd - Placed.Length);
+        }
+
+        var end = text.Length;
+        text.Append("\nendstream\nendobj\n");
+
+        for (var k = 0; lengthObject is null && k < streams; k++)
+        {
+            var digits = (end - starts[k] - shortBy).ToString("D10", CultureInfo.InvariantCulture);
+
+            for (var d = 0; d < digits.Length; d++)
+            {
+                text[lengthAt[k] + d] = digits[d];
+            }
+        }
+
+        file.Raw(text.ToString());
+
+        if (lengthObject is not null)
+        {
+            rows[999] = file.Object(999, lengthObject);
+        }
+
+        var size = lengthObject is null ? 10 + streams : 1000;
+        file.Table(size, rows, string.Create(CultureInfo.InvariantCulture, $"/Size {size} /Root 1 0 R"));
+        return file.Bytes;
+    }
+
+    /// <summary>
+    /// Writes a file of <paramref name="streams"/> streams, objects 10 and on, each one's header inside the data of the one
+    /// before, every <c>/Length</c> an object written after the one <c>endstream</c> after <paramref name="filler"/> bytes,
+    /// up to which it runs, and before each header a shorter definition of the next one's length: each row places its
+    /// stream past the end of the file, so that the first load rebuilds the index, which places each stream at its header,
+    /// and each length at its last definition.
+    /// </summary>
+    internal static byte[] OverlappingRebuilt(int streams, int filler)
+    {
+        var file = new HandWrittenFile(version: "1.5");
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"),
+        };
+        var lengths = 10 + streams;
+        var text = new StringBuilder();
+        var starts = new int[streams];
+
+        for (var k = 0; k < streams; k++)
+        {
+            text.Append(CultureInfo.InvariantCulture, $"{lengths + k} 0 obj 9 endobj\n{10 + k} 0 obj\n<</Length {lengths + k} 0 R>>\nstream\n");
+            starts[k] = text.Length;
+            rows[10 + k] = 9_000_000_000L + k;
+        }
+
+        text.Append('z', filler);
+        var end = text.Length;
+        text.Append("\nendstream\nendobj\n");
+
+        for (var k = 0; k < streams; k++)
+        {
+            text.Append(CultureInfo.InvariantCulture, $"{lengths + k} 0 obj\n{end - starts[k]}\nendobj\n");
+        }
+
+        file.Raw(text.ToString());
+        file.Table(lengths + streams, rows, string.Create(CultureInfo.InvariantCulture, $"/Size {lengths + streams} /Root 1 0 R"));
+        return file.Bytes;
+    }
+
+    /// <summary>
+    /// Writes a file of six streams, objects 3 to 8, each one's data running over all that follows to the one
+    /// <c>endstream</c> after <paramref name="filler"/> bytes, then <paramref name="streams"/> streams, from
+    /// <paramref name="first"/> on, each one's <c>/Length</c> an object the index places before its header, which gives the
+    /// length of an object the index places at the start of its data, its own <c>endstream</c> following it: a later
+    /// definition of each length, after that far <c>endstream</c>, which no row places, runs the data up to it. The row of
+    /// <paramref name="junk"/> places object 1: loading it rebuilds the index, which keeps the later definitions.
+    /// </summary>
+    internal static byte[] OverlappingLengthened(int streams, int filler, out int first, out int junk)
+    {
+        const int Spanning = 6;
+        var file = new HandWrittenFile(version: "1.5");
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"),
+        };
+        const int SpanningLengths = 3 + Spanning;
+        first = SpanningLengths + Spanning;
+        var lengths = first + streams;
+        var inner = lengths + streams;
+        junk = inner + streams;
+        var origin = file.Position;
+        var text = new StringBuilder();
+        var spanningStarts = new int[Spanning];
+        var starts = new int[streams];
+
+        for (var t = 0; t < Spanning; t++)
+        {
+            rows[3 + t] = origin + text.Length;
+            text.Append(CultureInfo.InvariantCulture, $"{3 + t} 0 obj <</Length {SpanningLengths + t} 0 R>> stream\n");
+            spanningStarts[t] = text.Length;
+        }
+
+        for (var k = 0; k < streams; k++)
+        {
+            var held = string.Create(CultureInfo.InvariantCulture, $"{inner + k} 0 obj [{k}] endobj");
+            rows[lengths + k] = origin + text.Length;
+            text.Append(CultureInfo.InvariantCulture, $"{lengths + k} 0 obj {held.Length} endobj\n");
+            rows[first + k] = origin + text.Length;
+            text.Append(CultureInfo.InvariantCulture, $"{first + k} 0 obj <</Length {lengths + k} 0 R>> stream\n");
+            starts[k] = text.Length;
+            rows[inner + k] = origin + text.Length;
+            text.Append(held).Append("\nendstream\nendobj\n");
+        }
+
+        text.Append('z', filler);
+        var end = text.Length;
+        text.Append("\nendstream\nendobj\n");
+
+        for (var t = 0; t < Spanning; t++)
+        {
+            rows[SpanningLengths + t] = origin + text.Length;
+            text.Append(CultureInfo.InvariantCulture, $"{SpanningLengths + t} 0 obj {end - spanningStarts[t]} endobj\n");
+        }
+
+        for (var k = 0; k < streams; k++)
+        {
+            text.Append(CultureInfo.InvariantCulture, $"{lengths + k} 0 obj {end - starts[k]} endobj\n");
+        }
+
+        file.Raw(text.ToString());
+        rows[junk] = rows[1];
+        file.Table(junk + 1, rows, string.Create(CultureInfo.InvariantCulture, $"/Size {junk + 1} /Root 1 0 R"));
+        return file.Bytes;
+    }
+
+    /// <summary>
+    /// Writes a file whose objects 10 and on, <paramref name="streams"/> of them, the rows place on one comment line, each a
+    /// number and a generation before the comment that runs to the line's end: each load reads its header there, the
+    /// comment skipped to the one <c>obj</c> on the next line, whose stream's <c>/Length</c> the one <c>endstream</c> after
+    /// <paramref name="filler"/> bytes confirms.
+    /// </summary>
+    internal static byte[] HeadersOnOneCommentLine(int streams, int filler)
+    {
+        var file = new HandWrittenFile(version: "1.5");
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"),
+        };
+        var origin = file.Position;
+        var text = new StringBuilder();
+
+        for (var k = 0; k < streams; k++)
+        {
+            rows[10 + k] = origin + text.Length;
+            text.Append(CultureInfo.InvariantCulture, $"{10 + k} 0 %");
+        }
+
+        text.Append(CultureInfo.InvariantCulture, $"\nobj<</Length {filler}>>stream\n").Append('z', filler).Append("\nendstream\nendobj\n");
+        file.Raw(text.ToString());
+        file.Table(10 + streams, rows, string.Create(CultureInfo.InvariantCulture, $"/Size {10 + streams} /Root 1 0 R"));
         return file.Bytes;
     }
 
