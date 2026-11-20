@@ -1728,12 +1728,10 @@ internal sealed partial class PdfFileReader
         }
 
         // A walk of the library's own decodes again what it let go within its budget: past it, the object reads as null,
-        // which says nothing of it, and is not kept — nor is anything read through it (#181).
+        // which says nothing of it, and is not kept — nor is anything read through it, beyond the walk (#181).
         if (WalkSpent(number))
         {
-            _reentries++;
-            _walkCuts++;
-            _guardsReached++;
+            CountWalkCut();
             (_walkCut ??= new(SeededComparer.Instance)).Add(wanted);
             notYet = true;
             ReachWalkDecodes(number);
@@ -1772,8 +1770,9 @@ internal sealed partial class PdfFileReader
                 {
                     contents = ObjectStreamContents.TryCreate(number, stream, _diagnostics, _objectStreamReports, out hidden);
                 }
-                // Kept as the stream's contents are, not as a load's exception is: a null a guard against re-entry gave on the
-                // way is read as null again by every decoding of the stream, which would throw alike (KeepDecodingThrow).
+                // Kept as the stream's contents are, not as a load's exception is: a null on the way for an object the stream
+                // holds, or one being loaded, is read as null again by every decoding of the stream, which would throw alike
+                // (KeepDecodingThrow's remarks).
                 catch (PdfLimitExceededException exception) when (repaired == _repaired && walkCuts == _walkCuts && !_expandingObjectStreams && !IsKeptNowhere(exception))
                 {
                     KeepDecodingThrow(number, exception);

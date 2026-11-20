@@ -586,10 +586,22 @@ internal sealed partial class PdfFileReader : IPdfObjectSource, IPdfStreamDataPr
     private HashSet<int>? _walkCut;
 
     /// <summary>
-    /// How many times a walk read an object as null for <see cref="PdfReaderLimits.MaxObjectStreamDecodePasses"/>: what was
-    /// read while it rose is the walk's, not the file's, and is neither cached nor kept.
+    /// How many times a walk read an object as null for <see cref="PdfReaderLimits.MaxObjectStreamDecodePasses"/>, or served
+    /// one of <see cref="_walkLoads"/>: what was read while it rose is the walk's, not the file's, and is not kept, nor
+    /// cached beyond the walk.
     /// </summary>
     private int _walkCuts;
+
+    /// <summary>
+    /// The objects the cache holds for the walk in progress alone, their loads having read what the walk's guard read as
+    /// null: each is served as read through the guard's cut, until the walk ends and the cache lets go of it; null until a
+    /// load is kept so.
+    /// </summary>
+    /// <remarks>
+    /// Loaded again within the walk, such an object would meet the same cut — a stream the walk spent its budget on is not
+    /// decoded again before it ends — and would read as it did, each time in full (#181). Once the walk ends, read whole.
+    /// </remarks>
+    private HashSet<int>? _walkLoads;
 
     /// <summary>
     /// The exception each load that reached a guard threw, by object number, under <see cref="PdfReaderOptions.ThrowOnLimit"/>;
@@ -1119,6 +1131,16 @@ internal sealed partial class PdfFileReader : IPdfObjectSource, IPdfStreamDataPr
     internal long ObjectStreamBytes => _objectStreamBytes;
 
     /// <summary>
+    /// Gets how many objects the cache holds, and how many numbers the order it lets them go in names: one the cache let go
+    /// of otherwise — a definition a rebuild replaced — stays named until that order reaches it.
+    /// </summary>
+    /// <remarks>
+    /// Nothing in the library reads it. A test sees through it that the objects the cache held for a walk alone, let go of
+    /// once the walk ends, leave that order as they leave the cache.
+    /// </remarks>
+    internal (int Held, int Ordered) CacheCounts => (_cache.Count, _cacheOrder.Count);
+
+    /// <summary>
     /// Gets the decoded data the reader keeps of object stream <paramref name="number"/>, or no data when it keeps none: the
     /// stream not decoded yet, let go by the budget or by closing, or one that serves no object.
     /// </summary>
@@ -1179,6 +1201,13 @@ internal sealed partial class PdfFileReader : IPdfObjectSource, IPdfStreamDataPr
 
         if (_cache.TryGetValue(id.Number, out var cached))
         {
+            // What the walk alone keeps was read through its guard's cut, and so is what is read through it now, as it would
+            // be were the object loaded again.
+            if (_walkLoads?.Contains(id.Number) == true)
+            {
+                CountWalkCut();
+            }
+
             return cached;
         }
 
@@ -1221,10 +1250,15 @@ internal sealed partial class PdfFileReader : IPdfObjectSource, IPdfStreamDataPr
             // A null a guard against re-entry produced on the way is not the object's: it is read again when asked
             // again, rather than kept for good (#51). Nor is what was read through an index its own load had rebuilt — an
             // indirect /Length whose entry leads nowhere —: the next read takes the rebuilt index's definition of the
-            // number, as it would had the rebuild run before. Nor what was read through an object a walk's guard read as
-            // null, which the walk alone reads so.
-            if ((value is not PdfNull || reentries == _reentries) && repaired == _repaired && walkCuts == _walkCuts)
+            // number, as it would had the rebuild run before. What was read through an object a walk's guard read as null,
+            // which the walk alone reads so, is kept for the rest of that walk only (#181).
+            if ((value is not PdfNull || reentries == _reentries) && repaired == _repaired)
             {
+                if (walkCuts != _walkCuts)
+                {
+                    (_walkLoads ??= new(SeededComparer.Instance)).Add(id.Number);
+                }
+
                 Cache(id.Number, value);
             }
         }
@@ -1510,7 +1544,8 @@ internal sealed partial class PdfFileReader : IPdfObjectSource, IPdfStreamDataPr
 
     /// <summary>
     /// Ends a walk <see cref="BeginWalk"/> started: once the outermost ends, what the walks decoded is forgotten, the budget
-    /// starts again with the next, and the objects they read as null for it read whole again.
+    /// starts again with the next, and the objects they read as null for it, and those the cache held for them alone
+    /// (<see cref="_walkLoads"/>), read whole again.
     /// </summary>
     internal void EndWalk()
     {
@@ -1524,6 +1559,46 @@ internal sealed partial class PdfFileReader : IPdfObjectSource, IPdfStreamDataPr
         _walkAgainBytes = 0;
         _walkBudgetSpent = false;
         _walkCut = null;
+        ForgetWalkLoads();
+    }
+
+    /// <summary>Counts a read the walks' guard cut: what is read through it is the walk's, not kept, nor cached beyond the walk.</summary>
+    private void CountWalkCut()
+    {
+        _reentries++;
+        _walkCuts++;
+        _guardsReached++;
+    }
+
+    /// <summary>
+    /// Lets the cache go of the objects it held for the walk that ends (<see cref="_walkLoads"/>): read after it, each is
+    /// read whole.
+    /// </summary>
+    private void ForgetWalkLoads()
+    {
+        if (_walkLoads is null)
+        {
+            return;
+        }
+
+        foreach (var number in _walkLoads)
+        {
+            _cache.Remove(number);
+        }
+
+        _walkLoads = null;
+
+        // The order the cache lets go in would name them until it is full, and would grow with every walk until then: it
+        // keeps the numbers the cache holds, in their order.
+        for (var count = _cacheOrder.Count; count > 0; count--)
+        {
+            var number = _cacheOrder.Dequeue();
+
+            if (_cache.ContainsKey(number))
+            {
+                _cacheOrder.Enqueue(number);
+            }
+        }
     }
 
     /// <summary>
@@ -1795,6 +1870,7 @@ internal sealed partial class PdfFileReader : IPdfObjectSource, IPdfStreamDataPr
         _objectStreamBytes = 0;
         _walkDecoded = null;
         _walkCut = null;
+        _walkLoads = null;
         ForgetThrows();
         _xref.Release();
         _chainIndex = null;

@@ -379,6 +379,30 @@ public class ReaderLimitsTests
     }
 
     [Theory]
+    [InlineData(20)]
+    [InlineData(200)]
+    public void An_object_whose_load_meets_what_a_walk_s_guard_cut_is_read_once_a_walk_however_many_candidates_lead_to_it_and_whole_after(int candidates)
+    {
+        // The candidates for a catalog lead through their /Type to object 61, a stream whose /Length, object 28, the search,
+        // past what it may decode again, reads as null: the stream is read up to the first endstream its data spells, and
+        // kept for the rest of the search, not read again for each candidate. The cache lets go of it as the search ends,
+        // and of its place in the order the cache lets go in. Read by the caller after the search, its /Length is read, and
+        // its data is whole.
+        var file = CandidatesThroughALengthCutFile(candidates, out var at);
+        using var source = new OffsetCountingSource(file);
+        var options = new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxObjectStreamDecodePasses = 1 } };
+        using var document = PdfDocument.Open(source, options, ownsSource: false);
+
+        // Object 61 is read from the end of the line before its header, and is a candidate itself.
+        source.Reads.GetValueOrDefault(at - 1).Should().Be(1, "object 61 is read once a walk");
+        document.Reader.CatalogFoundAs.Should().Be(FirstCandidate + candidates);
+        document.Reader.CatalogCandidateCut.Should().BeTrue();
+        document.Diagnostics.Select(entry => entry.Code).Should().Equal(PdfDiagnosticCodes.LimitObjectStreamDecodes, PdfDiagnosticCodes.TrailerRootRecovered);
+        document.Reader.CacheCounts.Ordered.Should().Be(document.Reader.CacheCounts.Held);
+        Encoding.Latin1.GetString(document.GetObject(new PdfObjectId(61)).AsStream().Required().Decode().Span).Should().Be("01\nendstream\nendobj\n89");
+    }
+
+    [Theory]
     [InlineData("decoded stream", "The /ASCIIHexDecode data decodes to more than 1 byte; decoding stopped there.")]
     [InlineData("stream length", "A stream's data runs past 1 byte; only what lies within it was read.")]
     [InlineData("object", "Object 1 runs past 1 byte, its stream data aside; only what lies within it was read.")]
@@ -6323,6 +6347,9 @@ public class ReaderLimitsTests
     /// <summary>The first of the objects object stream 60 of <see cref="DecodedThroughACutValueFile"/> holds.</summary>
     private const int FirstMemberOfSixty = 61;
 
+    /// <summary>The first of the candidates for a catalog of <see cref="CandidatesThroughALengthCutFile"/>.</summary>
+    private const int FirstCandidate = 1000;
+
     /// <summary>
     /// Writes a file whose /Root names a string, read in number order by a search for a catalog that may decode its object
     /// streams again once (<see cref="WriteStreamsCutInTurn"/>), and whose object stream 60 holds <paramref name="members"/>
@@ -6401,6 +6428,31 @@ public class ReaderLimitsTests
 
             return encoded;
         }
+    }
+
+    /// <summary>
+    /// Writes a file whose /Root names a string, read in number order by a search for a catalog that may decode its object
+    /// streams again once (<see cref="WriteStreamsCutInTurn"/>), and whose <paramref name="candidates"/> candidates, objects
+    /// 1000 and on, name object 61 as their <c>/Type</c>: a stream whose <c>/Length</c> is object 28, and whose data spells an
+    /// <c>endstream</c> and an <c>endobj</c> before its own. The catalog comes after them.
+    /// </summary>
+    private static byte[] CandidatesThroughALengthCutFile(int candidates, out long at)
+    {
+        const string Data = "01\nendstream\nendobj\n89";
+        var file = new HandWrittenFile(version: "1.5");
+        var rows = WriteStreamsCutInTurn(file, Data.Length.ToString(CultureInfo.InvariantCulture), catalog: 0);
+        at = file.Object(61, $"<< /Length 28 0 R /Padding ({new string('x', 4096)}) >>\nstream\n{Data}\nendstream");
+        rows[61] = (1, at, 0);
+
+        for (var number = FirstCandidate; number < FirstCandidate + candidates; number++)
+        {
+            rows[number] = (1, file.Object(number, "<< /Type 61 0 R >>"), 0);
+        }
+
+        var catalog = FirstCandidate + candidates;
+        rows[catalog] = (1, file.Object(catalog, Catalog), 0);
+        file.CompressedCrossReferenceStream(catalog + 1, catalog + 2, number => rows.TryGetValue(number, out var row) ? row : (0, 0, 0), "/Root 1 0 R");
+        return file.Bytes;
     }
 
     /// <summary>
