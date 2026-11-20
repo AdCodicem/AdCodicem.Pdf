@@ -56,9 +56,10 @@ internal interface IPdfStreamDataProvider : IPdfFileEdge
     /// </summary>
     /// <remarks>
     /// The file is searched once for each stream: asked again for the data at the same place — the stream parsed
-    /// again, after the cache let it go or the index was rebuilt —, the provider answers what it found the first time.
-    /// When it finds no <c>endstream</c>, it says what the object's <c>endobj</c> does instead (#174): whether one follows
-    /// the declared length, where the one that ends the object before the stop lies, and whether the stretch holds one.
+    /// again, after the cache let it go or the index was rebuilt, or another object whose data starts there —, the provider
+    /// answers what it found the first time. When it finds no <c>endstream</c>, it says what the object's <c>endobj</c> does
+    /// instead (#174): whether one follows the declared length, where the one that ends the object before the stop lies, and
+    /// whether the stretch holds one.
     /// </remarks>
     /// <param name="number">
     /// The number of the object the stream is the value of, whose own entry in the index is no next object; 0 for a
@@ -71,14 +72,19 @@ internal interface IPdfStreamDataProvider : IPdfFileEdge
     /// Whether the stream is a cross-reference stream whose <c>/Length</c> the chain could not read (#182): its rows may
     /// spell an object header and end in a carriage return, so neither stops nor trims the search (#220).
     /// </param>
-    StreamEndSearch FindEndStream(int number, long absoluteDataStart, long declaredEnd, ReadOnlySpan<byte> buffered, bool deferred);
+    /// <param name="reused">
+    /// Whether the answer is that of a search made for another object number: where the data ends was read for that object,
+    /// not for this one, and the length the answer gives is one taken without reading it (<see cref="TakeUnread"/>).
+    /// </param>
+    StreamEndSearch FindEndStream(int number, long absoluteDataStart, long declaredEnd, ReadOnlySpan<byte> buffered, bool deferred, out bool reused);
 
     /// <summary>
     /// Gives how many bytes of its data a stream keeps whose length, <paramref name="length"/> bytes from
     /// <paramref name="absoluteDataStart"/>, the reader takes without having read where the data ends — one an
-    /// <c>endstream</c> confirms, or one taken without a search once the document's searches for <c>endstream</c> read as
-    /// much of the file as they may —: all of them, unless the lengths so taken have kept as much of the file as they may,
-    /// the data then ending at a place an index gives inside it, which <paramref name="placed"/> gives, or reading empty.
+    /// <c>endstream</c> confirms, one taken without a search once the document's searches for <c>endstream</c> read as
+    /// much of the file as they may, or one a search made for another object found (<see cref="FindEndStream"/>) —: all of
+    /// them, unless the lengths so taken have kept as much of the file as they may, the data then ending at a place an index
+    /// gives inside it, which <paramref name="placed"/> gives, or reading empty.
     /// </summary>
     /// <param name="number">
     /// The number of the object the stream is the value of, counted with the place its data starts at, whose own entry in
@@ -87,8 +93,8 @@ internal interface IPdfStreamDataProvider : IPdfFileEdge
     /// <param name="absoluteDataStart">Where the data starts in the file.</param>
     /// <param name="length">
     /// The length taken: the declared one, or the integer an object a guard cut held before the cut, which an
-    /// <c>endstream</c> confirms; or, without a search, the declared one, or the data up to the next object or the end of
-    /// the file.
+    /// <c>endstream</c> confirms; without a search, the declared one, or the data up to the next object or the end of the
+    /// file; or what a search made for another object would keep of the data, whatever ends it.
     /// </param>
     /// <param name="placed">
     /// Where the data ends in the file, at a place an index gives an object at, when it ends there short of its length; -1
@@ -128,7 +134,9 @@ internal interface IPdfStreamDataProvider : IPdfFileEdge
     /// <summary>
     /// Determines whether what is wrong with the length of the stream whose data starts at
     /// <paramref name="absoluteDataStart"/> was reported already, by a reading of the stream that was kept: a stream
-    /// parsed again is not reported again.
+    /// parsed again is not reported again. Data <paramref name="keptShort"/> of a length taken unread
+    /// (<see cref="StreamLengthFault.KeptShort"/>) is weighed against the reports of such data alone: the first reading
+    /// that keeps it short says so, whatever was said of the stream before.
     /// </summary>
-    bool IsLengthFaultReported(long absoluteDataStart);
+    bool IsLengthFaultReported(long absoluteDataStart, bool keptShort);
 }

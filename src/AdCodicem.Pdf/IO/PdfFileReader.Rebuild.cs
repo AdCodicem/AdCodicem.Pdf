@@ -302,6 +302,7 @@ internal sealed partial class PdfFileReader
     private ReportsMark MarkReports() => new(
         _diagnostics.GetMarkWithDecodingReports(),
         new HashSet<long>(_lengthFaultsReported, SeededComparer.Instance),
+        new HashSet<long>(_keptShortReported, SeededComparer.Instance),
         new HashSet<PdfDiagnostic>(_syntaxReported),
         new HashSet<(PdfLimit Limit, long Position)>(_limitsReached, SeededComparer.Instance),
         new HashSet<(long DataStart, int Number)>(_memberLimitsReached, SeededComparer.Instance),
@@ -318,6 +319,7 @@ internal sealed partial class PdfFileReader
     private ReportsMark BringForward(ReportsMark mark)
     {
         mark.LengthFaults.UnionWith(_lengthFaultsReported);
+        mark.KeptShort.UnionWith(_keptShortReported);
         mark.Syntax.UnionWith(_syntaxReported);
         mark.Limits.UnionWith(_limitsReached);
         mark.MemberLimits.UnionWith(_memberLimitsReached);
@@ -334,6 +336,7 @@ internal sealed partial class PdfFileReader
     {
         _diagnostics.RollBack(mark.Diagnostics);
         Restore(_lengthFaultsReported, mark.LengthFaults);
+        Restore(_keptShortReported, mark.KeptShort);
         Restore(_syntaxReported, mark.Syntax);
         Restore(_limitsReached, mark.Limits);
         Restore(_memberLimitsReached, mark.MemberLimits);
@@ -1242,6 +1245,7 @@ internal sealed partial class PdfFileReader
     /// </summary>
     /// <param name="Diagnostics">Where the diagnostics stood, with which of their entries decodings moved in.</param>
     /// <param name="LengthFaults">The streams whose length fault was reported, by where their data starts.</param>
+    /// <param name="KeptShort">The streams reported to keep their data short of a length taken unread, likewise.</param>
     /// <param name="Syntax">The faults of the syntax reported.</param>
     /// <param name="Limits">The guards reported, and where.</param>
     /// <param name="MemberLimits">The object stream members whose cut was reported.</param>
@@ -1251,6 +1255,7 @@ internal sealed partial class PdfFileReader
     private sealed record ReportsMark(
         PdfDiagnosticsMark Diagnostics,
         HashSet<long> LengthFaults,
+        HashSet<long> KeptShort,
         HashSet<PdfDiagnostic> Syntax,
         HashSet<(PdfLimit Limit, long Position)> Limits,
         HashSet<(long DataStart, int Number)> MemberLimits,

@@ -10,9 +10,9 @@ namespace AdCodicem.Pdf.IO;
 /// A stream whose length an <c>endstream</c> confirms — the declared one, or the integer an object a guard cut held before
 /// the cut — has none, unless the lengths taken without reading where the data ends had kept as much of the file as they
 /// may, its data then ending at a place an index gives inside it (<see cref="EndStreamState.PastPlacedObject"/>) or reading
-/// empty (<see cref="EndStreamState.ReadEmpty"/>), as one taken without a search may: the reader records one only for the
-/// streams it reported, as <see cref="Diagnostics.PdfDiagnosticCodes.StreamLengthInvalid"/> or
-/// <see cref="Diagnostics.PdfDiagnosticCodes.StreamTruncated"/>.
+/// empty (<see cref="EndStreamState.ReadEmpty"/>), as one taken without a search, or from a search made for another object,
+/// may: the reader records one only for the streams it reported, as
+/// <see cref="Diagnostics.PdfDiagnosticCodes.StreamLengthInvalid"/> or <see cref="Diagnostics.PdfDiagnosticCodes.StreamTruncated"/>.
 /// </remarks>
 internal readonly record struct StreamLengthFault
 {
@@ -65,4 +65,11 @@ internal readonly record struct StreamLengthFault
 
     /// <summary>Gets the offset in the file where the stream's data starts, which the diagnostic gives as its position.</summary>
     public required long DataStart { get; init; }
+
+    /// <summary>
+    /// Gets a value indicating whether the data was kept short of a length taken without reading where it ends, the lengths
+    /// so taken having kept as much of the file as they may: <see cref="EndStream"/> is
+    /// <see cref="EndStreamState.PastPlacedObject"/> or <see cref="EndStreamState.ReadEmpty"/>.
+    /// </summary>
+    public bool KeptShort => EndStream is EndStreamState.PastPlacedObject or EndStreamState.ReadEmpty;
 }

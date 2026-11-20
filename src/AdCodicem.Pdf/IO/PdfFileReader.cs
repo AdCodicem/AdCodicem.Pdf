@@ -664,9 +664,10 @@ internal sealed partial class PdfFileReader : IPdfObjectSource, IPdfStreamDataPr
     /// <summary>
     /// What each search of the file for a stream's <c>endstream</c> found, by where the stream's data starts and whether
     /// its <c>/Length</c> was one the chain could not read: the file is searched once for each stream, however many times
-    /// it is parsed. With it, the declared end it last said what follows of, read again only when that end changes.
+    /// it is parsed. With it, the declared end it last said what follows of, read again only when that end changes, and the
+    /// number of the object it was made for, the one that read where the data ends.
     /// </summary>
-    private readonly Dictionary<(long DataStart, bool Deferred), (StreamEndSearch Search, long DeclaredEnd)> _endStreamSearches = new(SeededComparer.Instance);
+    private readonly Dictionary<(long DataStart, bool Deferred), (StreamEndSearch Search, long DeclaredEnd, int SearchedFor)> _endStreamSearches = new(SeededComparer.Instance);
 
     /// <summary>
     /// What follows each place the reader read on past white space and comments to find an <c>endstream</c> (#174): read
@@ -1823,6 +1824,7 @@ internal sealed partial class PdfFileReader : IPdfObjectSource, IPdfStreamDataPr
         _endStreamKeywords.TrimExcess();
         _unreadTaken = null;
         Release(_lengthFaultsReported);
+        Release(_keptShortReported);
         Release(_syntaxReported);
         Release(_limitsReached);
         Release(_memberLimitsReached);

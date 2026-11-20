@@ -634,7 +634,7 @@ public class StreamLengthTests
         var provider = (IPdfStreamDataProvider)document.Reader;
 
         var search = provider.FindEndStream(
-            number: 0, absoluteDataStart: 0, declaredEnd: -1, buffered: bytes.AsSpan(0, junk.Length + "%PDF-".Length), deferred: false);
+            number: 0, absoluteDataStart: 0, declaredEnd: -1, buffered: bytes.AsSpan(0, junk.Length + "%PDF-".Length), deferred: false, out _);
 
         search.Should().Be(header
             ? new StreamEndSearch(null, 0, EndObjState.Unknown) { HeaderStopped = true }
@@ -657,7 +657,7 @@ public class StreamLengthTests
         var provider = (IPdfStreamDataProvider)document.Reader;
         ReadOnlySpan<byte> buffered = held ? file.AsSpan(0, Head.Length) : [];
 
-        provider.FindEndStream(0, 0, -1, buffered, deferred: false).Should().Be(
+        provider.FindEndStream(0, 0, -1, buffered, deferred: false, out _).Should().Be(
             new StreamEndSearch(null, 0, EndObjState.Unknown) { HeaderStopped = true });
     }
 
@@ -2026,14 +2026,87 @@ public class StreamLengthTests
         document.Diagnostics.Should().BeEmpty();
     }
 
+    [Theory]
+    [InlineData("<< /Length 2048 >>", "\nendobj")]
+    [InlineData("<< /Length 7 >>", "\nendstream\nendobj")]
+    [InlineData("<< >>", "\nendstream\nendobj")]
+    public void Streams_each_searched_for_its_own_number_parsed_over_and_over_keep_their_data_and_are_reported_once_each(string dictionary, string tail)
+    {
+        // Sixty streams of 2 KB, each one's endstream lost or its /Length wrong or absent, read twenty times over through a
+        // cache of sixteen objects: each parse takes what the search made for its own number found, which read where the data ends,
+        // and is weighed by no count — none is ever cut, and each is reported once, as its first reading said (#280).
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"),
+        };
+
+        for (var number = 3; number < 63; number++)
+        {
+            rows[number] = file.Object(number, dictionary + "\nstream\n" + new string('x', 2048) + tail);
+        }
+
+        file.Table(63, rows, "/Size 63 /Root 1 0 R");
+        using var document = PdfDocument.Open(file.Bytes, PdfReaderOptions.Default with { ObjectCacheCapacity = 16 });
+        long parsed = 0;
+
+        for (var pass = 0; pass < 20; pass++)
+        {
+            for (var number = 3; number < 63; number++)
+            {
+                var stream = document.GetObject(new PdfObjectId(number)).AsStream().Required();
+                stream.Data.Length.Should().Be(2048);
+                parsed += stream.Data.Length;
+            }
+        }
+
+        parsed.Should().BeGreaterThan(
+            (PdfFileReader.UncheckedConfirmedPasses + PdfFileReader.OverlapKeptPasses + PdfFileReader.OverlapCutPasses) * file.Bytes.Length,
+            "past what lengths taken unread may total, were these counted");
+        document.Diagnostics.Should().HaveCount(60).And.OnlyHaveUniqueItems(d => d.Position);
+        document.Diagnostics.Should().NotContain(d => d.Message.Contains("overlap", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void A_stream_that_reads_empty_once_parsed_again_says_so_once_though_its_place_was_reported_before()
+    {
+        // Two hundred streams, each one's header in a string of the dictionary of the one before, each length one byte short
+        // of the one endstream a megabyte on, read three times through a cache of four objects. Once the searches read as
+        // much as they may, a length is kept without a search, which is said; one so kept before the reader counted lengths
+        // taken unread counts once parsed again, past what such lengths may keep, and its data reads empty: that is said once,
+        // though its place was reported before (#280).
+        const int Streams = 200;
+        var file = HostileInputTests.NestedInStrings(Streams, 1024 * 1024, shortBy: 1);
+        using var document = PdfDocument.Open(file, PdfReaderOptions.Default with { ObjectCacheCapacity = 4 });
+        var first = Read();
+        var again = Read();
+        Read();
+
+        var emptied = Enumerable.Range(0, Streams).Where(k => first[k].Data.Length > 0 && again[k].Data.Length == 0).DefaultIfEmpty(-1).First();
+        emptied.Should().BeGreaterThanOrEqualTo(0);
+        var stream = again[emptied];
+        var declared = (int)stream.Dictionary.GetInteger(PdfName.Length)!;
+        var reports = document.Diagnostics.Where(d => d.Position == stream.Data.Position).ToList();
+        reports.Should().HaveCount(2);
+        reports[0].Message.Should().Be(
+            Invariant($"The stream declared {declared} bytes, and no endstream follows them; the declared length is kept without a search, the document's searches for endstream having read as much of the file as they may."));
+        reports[1].Message.Should().Be(
+            Invariant($"The stream declared {declared} bytes, which no endstream follows, the document's searches for endstream having read as much of the file as they may; its data reads empty without a search, the streams that overlap having kept as much of the file as they may."));
+
+        PdfStream[] Read() => [.. Enumerable.Range(0, Streams).Select(k => document.GetObject(new PdfObjectId(10 + k)).AsStream().Required())];
+    }
+
     [Fact]
     public void A_length_taken_unread_counts_once_at_its_longest_and_once_ended_keeps_what_was_decided_whatever_length_comes_after()
     {
         // Lengths taken unread count once four times the file were parsed, each object and data start once, at its longest:
-        // two lengths of four times the file, the first before the count, the second filling what may be kept whole. Past
-        // that, data that holds object 4's header ends there, and keeps that end however long a length is parsed after —
-        // a rebuild's —, while a shorter one keeps what it holds; data inside which nothing is placed but its own object's
-        // entry — the object relocated from an entry that missed it — reads empty, whatever its length after (#280).
+        // a length of four times the file before the count; ten bytes of object 3's data, taken twice and counted once; and
+        // what fills the rest of what may be kept whole, which is kept so. A longer length of object 3's data counts what it
+        // runs past the ten — a rebuild's —, past the bound: data that holds object 4's header ends there, and keeps that end
+        // however long a length is parsed after, while a shorter one keeps what it holds; data inside which nothing is placed
+        // but its own object's entry — the object relocated from an entry that missed it — reads empty, whatever its length
+        // after (#280).
         var file = new HandWrittenFile();
         var rows = new Dictionary<int, long>
         {
@@ -2049,12 +2122,16 @@ public class StreamLengthTests
         var provider = (IPdfStreamDataProvider)document.Reader;
         var four = PdfFileReader.UncheckedConfirmedPasses * bytes.Length;
 
-        provider.TakeUnread(90, 0, four, out _).Should().Be(four);
-        provider.TakeUnread(91, 0, PdfFileReader.OverlapKeptPasses * bytes.Length, out _).Should().Be(PdfFileReader.OverlapKeptPasses * bytes.Length);
-
         var start = rows[3] + 10;
         var kept = (int)(placed - start);
-        provider.TakeUnread(3, start, kept + 100, out var end).Should().Be(kept);
+        var rest = (PdfFileReader.OverlapKeptPasses * bytes.Length) - 10;
+        provider.TakeUnread(90, 0, four, out _).Should().Be(four);
+        provider.TakeUnread(3, start, 10, out var end).Should().Be(10);
+        provider.TakeUnread(3, start, 10, out end).Should().Be(10);
+        provider.TakeUnread(91, 0, rest, out end).Should().Be(rest, "the ten bytes taken twice count once");
+        end.Should().Be(-1);
+
+        provider.TakeUnread(3, start, kept + 100, out end).Should().Be(kept, "the longer length counts what it runs past the ten");
         end.Should().Be(placed);
         provider.TakeUnread(3, start, kept + 500, out end).Should().Be(kept, "the end decided stays");
         end.Should().Be(placed);

@@ -846,7 +846,8 @@ internal sealed partial class PdfFileReader
 
     /// <summary>
     /// Records what was found of the stream a kept reading of object <paramref name="found"/> ended with, when the file
-    /// did not confirm its length, and that it was reported: the stream is not reported again when it is parsed again.
+    /// did not confirm its length, and that it was reported: the stream is not reported again when it is parsed again, but
+    /// for data kept short of a length taken unread the first time (<see cref="_keptShortReported"/>).
     /// A kept reading that shows the stream sound, or the object no stream, clears what an earlier one recorded.
     /// </summary>
     private void RecordStreamLength(int number, int found, PdfObject parsed, StreamLengthFault? fault)
@@ -854,6 +855,11 @@ internal sealed partial class PdfFileReader
         if (fault is { } reported)
         {
             _lengthFaultsReported.Add(reported.DataStart);
+
+            if (reported.KeptShort)
+            {
+                _keptShortReported.Add(reported.DataStart);
+            }
         }
 
         if (number == DirectObject || found <= 0)
