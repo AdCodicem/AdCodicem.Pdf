@@ -132,6 +132,7 @@ internal sealed partial class PdfFileReader
         ForgetThrows();
         _walkDecoded = null;
         _walkCut = null;
+        _walkLoads = null;
         _cache.Clear();
         _cacheOrder.Clear();
         _objectStreams.Clear();
@@ -919,6 +920,7 @@ internal sealed partial class PdfFileReader
         _decodingsThrown?.Remove(number);
         _objectStreamsHiddenByGuard.Remove(number);
         _cache.Remove(number);
+        _walkLoads?.Remove(number);
         _unproduced.Remove(number);
         _cutAtLimit.Remove(number);
         _endObjMissing.Remove(number);
@@ -941,6 +943,7 @@ internal sealed partial class PdfFileReader
         ForgetThrows();
         _cache.Clear();
         _cacheOrder.Clear();
+        _walkLoads = null;
         _objectStreams.Clear();
         _objectStreamOrder.Clear();
         _objectStreamBytes = 0;
@@ -969,11 +972,11 @@ internal sealed partial class PdfFileReader
     /// <see cref="PdfReaderLimits.MaxObjectStreamDecodePasses"/>, a candidate past it being one a limit cut. A search that
     /// finds no catalog among what it read whole reads again the candidates that guard cut — those an object stream holds
     /// stream by stream, in the order of their places in it, then the others —, in a walk that decodes each stream once at
-    /// most (<see cref="BeginWalkDecodingOnce"/>), and takes the first of them in the index's order that is a catalog among
-    /// those it reads whole, rather than rebuild the index for want of one (<see cref="RecoverCatalog"/>): where that
-    /// reading is cut too — a candidate's <c>/Type</c> in a stream it may not decode again — and takes none, the index is
-    /// rebuilt as before. Not within another walk, whose budget it counts with, nor once a load rebuilt the index, whose
-    /// own search took over.
+    /// most (<see cref="BeginWalkDecodingOnce"/>), and takes the first of them in the index's order that reads as a catalog,
+    /// rather than rebuild the index for want of one (<see cref="RecoverCatalog"/>): one that reading cuts too is taken as
+    /// the first search takes one, and noted as cut. Where that reading takes none — a candidate's <c>/Type</c> in a stream
+    /// it may not decode again —, the index is rebuilt as before. Not within another walk, whose budget it counts with, nor
+    /// once a load rebuilt the index, whose own search took over.
     /// </para>
     /// </remarks>
     private ExceptionDispatchInfo? FindCatalog()
