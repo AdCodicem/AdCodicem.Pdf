@@ -389,6 +389,164 @@ internal sealed partial class PdfFileReader
     }
 
     /// <summary>
+    /// How many times the file's length the declared lengths of the streams an <c>endstream</c> confirms may total, over
+    /// every parse, before the reader looks for one whose data runs over an object the index places
+    /// (<see cref="IPdfStreamDataProvider.TakeConfirmed"/>).
+    /// </summary>
+    /// <remarks>
+    /// Not a guard (ADR 34): no valid file's index places an object inside a stream's data, so what the reader looks at past
+    /// it changes nothing a valid file serves. It spares a valid file the look — the index's offsets sorted, and a lookup for
+    /// each stream —: a valid file's streams lie apart, and parsed once each they total less than the file, which leaves
+    /// room for streams parsed again after the cache let them go.
+    /// </remarks>
+    internal const int UncheckedConfirmedPasses = 4;
+
+    /// <summary>
+    /// How many times the file's length the declared lengths of the streams whose data runs over an object the index places
+    /// may total, each stream counted once, before such a stream's data ends at that object
+    /// (<see cref="IPdfStreamDataProvider.TakeConfirmed"/>).
+    /// </summary>
+    /// <remarks>
+    /// Not a guard (ADR 34): no valid file holds such a stream. A damaged one may, a row placing an object inside a stream's
+    /// data where its header lies — a copy of an object the file superseded, or an attached file's header that an index
+    /// rebuilt from the file's bytes takes —, and its data is kept as the file wrote it up to this bound. Past it, which
+    /// streams keep theirs depends on the order they are read in: only crafted files make it so, as they do the searches
+    /// for <c>endstream</c> (<see cref="EndStreamSearchPasses"/>, #138).
+    /// </remarks>
+    internal const int OverlapKeptPasses = 4;
+
+    /// <summary>
+    /// How many bytes the confirmed streams parsed so far declared together, which <see cref="UncheckedConfirmedPasses"/>
+    /// bounds; it stops growing once past.
+    /// </summary>
+    private long _confirmedParsed;
+
+    /// <summary>
+    /// How many bytes the streams whose data runs over an object the index places kept together, each counted once, which
+    /// <see cref="OverlapKeptPasses"/> bounds.
+    /// </summary>
+    private long _overlapKept;
+
+    /// <summary>
+    /// What was decided of each stream whose data holds a place the index gives, by where its data starts: where the data
+    /// ends, at a header there, or -1 where the stream keeps its data — counted among those that overlap, or no header
+    /// starting at that place. A stream parsed again reads the same.
+    /// </summary>
+    private readonly Dictionary<long, long> _overlapEnds = new(SeededComparer.Instance);
+
+    /// <inheritdoc/>
+    /// <remarks>
+    /// ISO 32000-1 (7.3.8, 7.5.3) has each object begin after the one before ends. A file whose streams each hold the next
+    /// one's header, every declared length confirmed by the one <c>endstream</c> a megabyte on, makes each stream's data the
+    /// whole stretch: nothing keeps it (<see cref="FileStreamData"/>), but from a source not in memory each read of each
+    /// stream's data reads it again, the file in its square (#280). A confirmed length is the one way data runs over the
+    /// next object: a search for <c>endstream</c> stops at it.
+    /// <para>
+    /// Nothing is looked at until the declared lengths of the confirmed streams parsed total
+    /// <see cref="UncheckedConfirmedPasses"/> times the file's length: a valid file pays nothing. Past that, the data is
+    /// checked against the first offset at or after its start that <see cref="SearchIndex"/> places — the object's own entry
+    /// stepped over, as a search for <c>endstream</c> steps over it (<see cref="NextObjectStart"/>) —: the stream overlaps
+    /// where that offset lies inside the data and an object header starts there, as a load reads one from a row
+    /// (<see cref="RowLexer"/>). A row a shift or an update left stale lands in data, where no header starts: the stream
+    /// keeps its data, neither counted nor ended there. A header the first read cannot decide — white space or comments part its tokens past
+    /// it — is taken for one, as a load would read it: reading on for each would let headers padded so escape the bound,
+    /// and a row stale in data meets the end only past both bounds.
+    /// </para>
+    /// <para>
+    /// Streams that overlap keep their data as long as their declared lengths total no more than
+    /// <see cref="OverlapKeptPasses"/> times the file's length, each counted once where its data starts. Past that, an
+    /// overlapping stream's data ends at the header, reported as <see cref="Diagnostics.PdfDiagnosticCodes.StreamLengthInvalid"/>,
+    /// and the streams that hold the next one's header read the file a bounded number of times. Past both bounds, which
+    /// streams are ended depends on the order they are read in — one read whole before the reader looked may be read ended
+    /// after, the cache having let it go —, as which streams the searches leave unsearched does (#138): crafted files make it
+    /// so, and no stream of the corpus, nor of the copies of it measured truncated, rows shifted or updates stale, is ended. What
+    /// is decided for a stream is kept by where its data starts, and a stream parsed again reads the same; a length a
+    /// rebuild changes is weighed against the header found before.
+    /// </para>
+    /// <para>
+    /// While the chain is read, nothing is looked at: the index is being made, and the streams read then are its sections'.
+    /// </para>
+    /// </remarks>
+    int IPdfStreamDataProvider.TakeConfirmed(int number, long absoluteDataStart, int length, out long placed)
+    {
+        placed = -1;
+
+        if (_readingChain || length <= 0)
+        {
+            return length;
+        }
+
+        var lookedFrom = UncheckedConfirmedPasses * _source.Length;
+
+        if (_confirmedParsed <= lookedFrom)
+        {
+            _confirmedParsed += length;
+
+            if (_confirmedParsed <= lookedFrom)
+            {
+                return length;
+            }
+        }
+
+        var dataEnd = absoluteDataStart + length;
+
+        if (!_overlapEnds.TryGetValue(absoluteDataStart, out var end))
+        {
+            var at = NextObjectStart(number, absoluteDataStart - 1) ?? long.MaxValue;
+
+            if (at >= dataEnd)
+            {
+                return length;
+            }
+
+            if (!PlacedHeaderStartsAt(at))
+            {
+                _overlapEnds[absoluteDataStart] = -1;
+                return length;
+            }
+
+            // Counted once where the data starts, however often the stream is parsed.
+            var kept = _overlapKept + length <= OverlapKeptPasses * _source.Length;
+            _overlapKept += kept ? length : 0;
+            end = kept ? -1 : at;
+            _overlapEnds[absoluteDataStart] = end;
+        }
+
+        if (end < 0 || end >= dataEnd)
+        {
+            return length;
+        }
+
+        placed = end;
+        return (int)(end - absoluteDataStart);
+    }
+
+    /// <summary>
+    /// Determines whether an object header starts at <paramref name="position"/>, a place the index gives inside a
+    /// stream's data, as a load reads one from a row (<see cref="RowLexer"/>), from one read of
+    /// <see cref="PdfObjectParser.EndObjLookahead"/> bytes and the byte before: where the read, whole, cannot decide, it is
+    /// taken for one (<see cref="IPdfStreamDataProvider.TakeConfirmed"/>).
+    /// </summary>
+    private bool PlacedHeaderStartsAt(long position)
+    {
+        // The place lies inside data, past the end-of-line after a stream keyword: there is a byte before it.
+        Span<byte> bytes = stackalloc byte[PdfObjectParser.EndObjLookahead + 1];
+        var from = position - 1;
+        var read = _source.Read(from, bytes[..(int)Math.Min(bytes.Length, _source.Length - from)]);
+
+        if (read < 2)
+        {
+            return false;
+        }
+
+        // Undecided where the read was short — the end of the file, or a source that gives less than it holds —, it is no
+        // header: its tokens run into what could not be read.
+        var lexer = new RowLexer(bytes[..read]);
+        var reading = lexer.Read(1);
+        return reading == RowReading.Header || (reading == RowReading.Undecided && read == bytes.Length);
+    }
+
+    /// <summary>
     /// Gives where a load ends the data of the stream that starts at <paramref name="dataStart"/>, whose declared length ends
     /// at <paramref name="declaredEnd"/> and no <c>endstream</c> follows, as far as the file's bytes tell
     /// (<see cref="PdfObjectParser.FinishWithoutEndStream"/>), where the load's search finds no <c>endstream</c> before the

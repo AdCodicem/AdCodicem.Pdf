@@ -32,4 +32,11 @@ internal enum EndStreamState : byte
     /// next object, and the data runs up to it otherwise.
     /// </summary>
     NotSearched,
+
+    /// <summary>
+    /// After the declared length, confirming it, but past the header of an object the index places inside the data, which
+    /// ends there: the streams that overlap so had kept as much of the file as they may
+    /// (<see cref="IPdfStreamDataProvider.TakeConfirmed"/>).
+    /// </summary>
+    PastPlacedObject,
 }

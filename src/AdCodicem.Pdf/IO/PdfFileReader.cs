@@ -1765,6 +1765,8 @@ internal sealed partial class PdfFileReader : IPdfObjectSource, IPdfStreamDataPr
         _placedStarts.TrimExcess();
         _endStreamKeywords.Clear();
         _endStreamKeywords.TrimExcess();
+        _overlapEnds.Clear();
+        _overlapEnds.TrimExcess();
         Release(_lengthFaultsReported);
         Release(_syntaxReported);
         Release(_limitsReached);

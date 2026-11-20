@@ -7,9 +7,9 @@ namespace AdCodicem.Pdf.IO;
 /// its <c>endstream</c> was, and the length it took.
 /// </summary>
 /// <remarks>
-/// A stream whose declared length an <c>endstream</c> follows has none: the reader records one only for the streams it
-/// reported, as <see cref="Diagnostics.PdfDiagnosticCodes.StreamLengthInvalid"/> or
-/// <see cref="Diagnostics.PdfDiagnosticCodes.StreamTruncated"/>.
+/// A stream whose declared length an <c>endstream</c> follows has none, unless its data ends at an object the index places
+/// inside it (<see cref="EndStreamState.PastPlacedObject"/>): the reader records one only for the streams it reported, as
+/// <see cref="Diagnostics.PdfDiagnosticCodes.StreamLengthInvalid"/> or <see cref="Diagnostics.PdfDiagnosticCodes.StreamTruncated"/>.
 /// </remarks>
 internal readonly record struct StreamLengthFault
 {
@@ -55,7 +55,8 @@ internal readonly record struct StreamLengthFault
     /// Gets the offset of the object the search for the <c>endstream</c> stopped at — where an index places it, or where
     /// its header starts in the file's bytes —, when it stopped at one: <see cref="EndStream"/> is then
     /// <see cref="EndStreamState.MissingBeforeNextObject"/>, or <see cref="EndStreamState.MissingBeforeEndObj"/> when
-    /// the object's own <c>endobj</c> ended the data before it; null otherwise.
+    /// the object's own <c>endobj</c> ended the data before it; the object whose header ended the data, where
+    /// <see cref="EndStream"/> is <see cref="EndStreamState.PastPlacedObject"/>; null otherwise.
     /// </summary>
     public long? NextObject { get; init; }
 

@@ -343,35 +343,37 @@ public class HostileInputTests
         source.BytesRead.Should().BeLessThan(5L * file.Length);
     }
 
-    [Fact]
-    public void Reading_streams_whose_data_share_a_stretch_of_a_file_held_in_memory_allocates_none_of_their_data()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Streams_whose_data_share_a_stretch_of_a_file_read_it_a_bounded_number_of_times(bool objectStreams)
     {
         // Two hundred streams, each header inside the data of the one before, every /Length confirmed by the one endstream
-        // a megabyte on: each stream's data is the whole stretch, and reading each one's copied it, 200 MB from a file of
-        // 1 MB (#170). A source in memory lends each stream's data where it lies.
+        // a megabyte on: reading each one's raw data from a file read the whole stretch again, 199 times the file, and
+        // validating two hundred object streams so nested read it 387 times (#280). Once the streams that overlap so have
+        // kept as much of the file as they may, each one's data ends at the header the index places inside it.
         const int Streams = 200;
-        var file = Overlapping(Streams, filler: 1024 * 1024);
+        var file = Overlapping(Streams, filler: 1024 * 1024, objectStreams);
+        using var source = new StrictCountingSource(file);
+        using var document = PdfDocument.Open(source, options: null, ownsSource: false);
+        var opened = source.BytesRead;
 
-        var allocated = Allocations.Least(() => PdfDocument.Open(file), ReadEvery, out var document, out var read);
-
-        using (document)
+        if (objectStreams)
         {
-            read.Should().BeGreaterThan(Streams * 1024L * 1024, "each stream's data is the whole stretch");
-            allocated.Should().BeLessThan(2L * 1024 * 1024, "the streams' objects, and none of their data");
-            document.Diagnostics.Should().BeEmpty();
+            new PdfValidator().Validate(document);
         }
-
-        static long ReadEvery(PdfDocument document)
+        else
         {
-            long read = 0;
-
             for (var k = 0; k < Streams; k++)
             {
-                read += document.GetObject(new PdfObjectId(3 + k)).AsStream().Required().GetRawBytes().Length;
+                document.GetObject(new PdfObjectId(3 + k)).AsStream().Required().GetRawBytes();
             }
-
-            return read;
         }
+
+        (source.BytesRead - opened).Should().BeLessThan(
+            ((PdfFileReader.UncheckedConfirmedPasses + PdfFileReader.OverlapKeptPasses + 1) * file.Length) + (4L * Streams * PdfFileReader.InitialObjectWindow),
+            "the data of the streams read before the reader looks and of those kept overlapping, and a few windows for each object");
+        document.Diagnostics.Should().Contain(d => d.Code == PdfDiagnosticCodes.StreamLengthInvalid);
     }
 
     [Fact]
@@ -6372,9 +6374,11 @@ public class HostileInputTests
     /// before, every <c>/Length</c> ending at the one <c>endstream</c> after <paramref name="filler"/> bytes: each length
     /// confirmed, each stream's data the whole stretch from its start to that <c>endstream</c> (#170). With
     /// <paramref name="objectStreams"/>, objects 10 and on, each an object stream of one member, objects 3000 and on, that a
-    /// cross-reference stream places.
+    /// cross-reference stream places. With <paramref name="staleRow"/>, a row places object 999 in the middle of the
+    /// filler, where no header starts; <paramref name="headerGap"/> spaces part the generation of each header from its
+    /// <c>obj</c>, and <paramref name="lead"/> spaces come before each header, where the data of the one before starts.
     /// </summary>
-    internal static byte[] Overlapping(int streams, int filler, bool objectStreams = false)
+    internal static byte[] Overlapping(int streams, int filler, bool objectStreams = false, bool staleRow = false, int headerGap = 1, int lead = 0)
     {
         var file = new HandWrittenFile(version: "1.5");
         var rows = new Dictionary<int, (int Type, long Field2, int Field3)>
@@ -6391,8 +6395,9 @@ public class HostileInputTests
         {
             var number = (objectStreams ? 10 : 3) + k;
             var member = string.Create(CultureInfo.InvariantCulture, $"{3000 + k} 0 ");
+            body.Append(' ', lead);
             rows[number] = (1, start + body.Length, 0);
-            body.Append(CultureInfo.InvariantCulture, $"{number} 0 obj\n<< ");
+            body.Append(CultureInfo.InvariantCulture, $"{number} 0{new string(' ', headerGap)}obj\n<< ");
 
             if (objectStreams)
             {
@@ -6409,6 +6414,11 @@ public class HostileInputTests
                 body.Append(member);
                 rows[3000 + k] = (2, number, 0);
             }
+        }
+
+        if (staleRow)
+        {
+            rows[999] = (1, start + body.Length + (filler / 2), 0);
         }
 
         body.Append('x', filler);
