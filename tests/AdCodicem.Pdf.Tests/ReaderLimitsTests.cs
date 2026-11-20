@@ -3263,6 +3263,61 @@ public class ReaderLimitsTests
     }
 
     [Theory]
+    [InlineData("read")]
+    [InlineData("validation")]
+    public void A_stream_whose_length_a_rebuild_takes_in_late_reads_whole_after_the_rebuild_that_reached_a_guard(string how)
+    {
+        // Opened to throw, a read of object 50, whose row points into the spaces of object 10's data, or a validation, rebuilds
+        // the index, and the rebuild's scan reaches MaxRebuildReadPasses. Telling the object streams apart, the rebuild loads
+        // stream 42, whose /Length names object 41, a member of object stream 40 it has not taken in yet: the lookup throws
+        // the guard, the rebuild goes on, and takes 41 in. The exception was kept for 41, and thrown by every read of 41 and
+        // of 42 for the document's life; both read whole.
+        var file = LengthInAMemberTakenInLate();
+        using var document = PdfDocument.Open(file, new PdfReaderOptions { ThrowOnLimit = true });
+        Action rebuilding = how == "read" ? () => document.GetObject(new PdfObjectId(50)) : () => new PdfValidator().Validate(document);
+
+        rebuilding.Should().Throw<PdfLimitExceededException>().Which.Code.Should().Be(PdfDiagnosticCodes.LimitRebuildReads);
+
+        document.WasRepaired.Should().BeTrue();
+        document.GetObject(new PdfObjectId(41)).Should().BeOfType<PdfInteger>().Which.Value.Should().Be(44);
+        document.GetObject(new PdfObjectId(42)).AsStream().Required().Decode().Length.Should().Be(44);
+    }
+
+    /// <summary>
+    /// Writes the file of the guard on the rebuild's reads (<see cref="Case.For"/>) under a classic table whose row for object
+    /// 50 points into the spaces of object 10's data, and that lacks object 41, which object stream 40 holds; stream 42 takes
+    /// its <c>/Length</c>, 44, from it.
+    /// </summary>
+    private static byte[] LengthInAMemberTakenInLate()
+    {
+        const int Spelled = 6;
+        const string Head = "20 0 obj\n<< /Length 0000000 >>\nstream\nabc\n";
+        var spelled = new StringBuilder();
+
+        for (var i = 0; i < Spelled; i++)
+        {
+            var length = ((Spelled - i) * Head.Length) - (Head.Length - "abc\n".Length);
+            spelled.Append(Head.Replace("20 0", string.Create(CultureInfo.InvariantCulture, $"{20 + i} 0"), StringComparison.Ordinal)
+                .Replace("0000000", length.ToString("D7", CultureInfo.InvariantCulture), StringComparison.Ordinal));
+        }
+
+        var data = spelled.Append(' ', 64 * 1024).Append("attached tail\n").ToString();
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, Catalog),
+            [2] = file.Object(2, Pages),
+            [10] = file.Object(10, "<< /Type /EmbeddedFile /Length 11 0 R >>\nstream\n" + data + "endstream"),
+            [11] = file.Object(11, LengthNote + data.Length.ToString(CultureInfo.InvariantCulture)),
+            [40] = file.ObjectStream(40, [(41, "44")]),
+            [42] = file.Object(42, "<< /Length 41 0 R >>\nstream\n" + new string('x', 44) + "\nendstream"),
+        };
+        rows[50] = rows[10] + 2000;
+        file.Table(51, rows, "/Size 51 /Root 1 0 R");
+        return file.Bytes;
+    }
+
+    [Theory]
     [InlineData("a member its stream lacks")]
     [InlineData("a member written again directly")]
     [InlineData("a member of a stream a later object stream defines again")]

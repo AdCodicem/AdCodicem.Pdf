@@ -594,22 +594,29 @@ internal sealed partial class PdfFileReader : IPdfObjectSource, IPdfStreamDataPr
     /// <summary>
     /// The exception each load that reached a guard threw, by object number, under <see cref="PdfReaderOptions.ThrowOnLimit"/>;
     /// null until one does. A load kept nothing, and read again would read up to the bound again before it throws: it
-    /// throws the same exception again, without reading, until a rebuild lets go of what was read (#181).
+    /// throws the same exception again, without reading, until a rebuild lets go of what was read (#181). As many are kept
+    /// as the reader caches objects, the oldest let go first: one let go is read again up to its bound.
     /// </summary>
-    private Dictionary<int, ExceptionDispatchInfo>? _loadsThrown;
+    private KeptThrows? _loadsThrown;
 
     /// <summary>
     /// The exception each object stream whose decoding reached a guard threw, by number, under
     /// <see cref="PdfReaderOptions.ThrowOnLimit"/>; null until one does. Each is thrown again, without decoding, as
-    /// <see cref="_loadsThrown"/> are.
+    /// <see cref="_loadsThrown"/> are, and as many kept.
     /// </summary>
-    private Dictionary<int, ExceptionDispatchInfo>? _decodingsThrown;
+    private KeptThrows? _decodingsThrown;
 
     /// <summary>
     /// The exceptions <see cref="_loadsThrown"/> holds, which only the innermost load each passes through keeps: the loads
     /// it leaves read again, and reach the innermost.
     /// </summary>
     private HashSet<PdfLimitExceededException>? _throwsKept;
+
+    /// <summary>
+    /// The exception the last lookup of a number the index lacks threw (<see cref="NotIndexed"/>), which no load or decoding
+    /// it passes through keeps; null while none threw.
+    /// </summary>
+    private PdfLimitExceededException? _lookupThrown;
 
     /// <summary>The numbers of the objects being loaded, by number for the reason <see cref="_cache"/> gives.</summary>
     private readonly HashSet<int> _loading = new(SeededComparer.Instance);
@@ -1176,7 +1183,7 @@ internal sealed partial class PdfFileReader : IPdfObjectSource, IPdfStreamDataPr
 
         // Under ThrowOnLimit, a load that reached a guard kept nothing: it throws again, without reading up to the bound
         // again (#181).
-        if (_loadsThrown is not null && _loadsThrown.TryGetValue(id.Number, out var thrown))
+        if (_loadsThrown is not null && _loadsThrown.TryGet(id.Number, out var thrown))
         {
             thrown.Throw();
         }
@@ -1189,6 +1196,7 @@ internal sealed partial class PdfFileReader : IPdfObjectSource, IPdfStreamDataPr
         }
 
         PdfObject value;
+        var reentries = _reentries;
 
         try
         {
@@ -1205,7 +1213,6 @@ internal sealed partial class PdfFileReader : IPdfObjectSource, IPdfStreamDataPr
                 return PdfNull.Instance;
             }
 
-            var reentries = _reentries;
             var repaired = _repaired;
             var walkCuts = _walkCuts;
             value = LoadObject(id);
@@ -1222,7 +1229,12 @@ internal sealed partial class PdfFileReader : IPdfObjectSource, IPdfStreamDataPr
         }
         catch (Exception exception) when (exception is PdfLimitExceededException || _unfinishedRebuild is RebuildAwaitingFinish)
         {
-            KeepThrow(id.Number, exception);
+            // Kept as a value is cached: not where a guard against re-entry gave a null on the way, which says nothing of the
+            // object — read again once what was in flight is done, it may read whole (#51).
+            if (reentries == _reentries)
+            {
+                KeepThrow(id.Number, exception);
+            }
 
             // A load threw while a rebuild a load set off is unfinished: the outermost finishes it before the exception
             // leaves, so that the index stays the one a rebuild run first gives. Decided here, not in the filter, which runs
@@ -1505,16 +1517,36 @@ internal sealed partial class PdfFileReader : IPdfObjectSource, IPdfStreamDataPr
     /// </summary>
     /// <remarks>
     /// The walks' guard is not kept: what it reads as null is the walk's alone, and the object is read whole once the walk
-    /// ends (<see cref="PdfReaderLimits.MaxObjectStreamDecodePasses"/>).
+    /// ends (<see cref="PdfReaderLimits.MaxObjectStreamDecodePasses"/>). Nor is what a lookup of a number the index lacks
+    /// threw (<see cref="IsKeptNowhere"/>).
     /// </remarks>
     private void KeepThrow(int number, Exception exception)
     {
-        if (exception is PdfLimitExceededException limit && !IsWalkGuard(limit) &&
-            (_throwsKept ??= new(ReferenceEqualityComparer.Instance)).Add(limit))
+        if (exception is not PdfLimitExceededException limit || IsKeptNowhere(limit) ||
+            !(_throwsKept ??= new(ReferenceEqualityComparer.Instance)).Add(limit))
         {
-            (_loadsThrown ??= new(SeededComparer.Instance))[number] = ExceptionDispatchInfo.Capture(limit);
+            return;
+        }
+
+        if ((_loadsThrown ??= new(_cacheCapacity)).Keep(number, limit) is { } released)
+        {
+            _throwsKept.Remove(released);
         }
     }
+
+    /// <summary>
+    /// Keeps, under <see cref="PdfReaderOptions.ThrowOnLimit"/>, the exception of a guard the decoding of object stream
+    /// <paramref name="number"/> reached, for the next decoding of the stream to throw it again without decoding.
+    /// </summary>
+    private void KeepDecodingThrow(int number, PdfLimitExceededException exception) =>
+        (_decodingsThrown ??= new(_cacheCapacity)).Keep(number, exception);
+
+    /// <summary>
+    /// Determines whether <paramref name="exception"/> is one no load or decoding keeps: the walks' guard's, or one a lookup
+    /// of a number the index lacks threw, anew at each lookup, which reads nothing — kept, it would save no read, and a
+    /// document would hold one for each number looked up.
+    /// </summary>
+    private bool IsKeptNowhere(PdfLimitExceededException exception) => IsWalkGuard(exception) || ReferenceEquals(exception, _lookupThrown);
 
     /// <summary>Determines whether <paramref name="exception"/> is the one the walks' guard throws, which nothing keeps.</summary>
     private static bool IsWalkGuard(PdfLimitExceededException exception) =>
@@ -1829,4 +1861,55 @@ internal sealed partial class PdfFileReader : IPdfObjectSource, IPdfStreamDataPr
         offset < 0
             ? offset.ToString(CultureInfo.InvariantCulture)
             : ((ulong)offset + (ulong)headerOffset).ToString(CultureInfo.InvariantCulture);
+
+    /// <summary>
+    /// The exceptions kept for the loads, or for the decodings, that reached a guard, by object number: as many as the reader
+    /// caches objects at most, the oldest let go first.
+    /// </summary>
+    /// <remarks>
+    /// The bound is the reader's capacity, as the cache's is, not one of the file's: no file reads otherwise for it. An
+    /// exception let go only costs the read it saved — the load, or the decoding, reads up to its bound again, and throws
+    /// again —, and a document that throws for each of many objects keeps as many exceptions as objects, each with its
+    /// message and its stack (#181).
+    /// </remarks>
+    /// <param name="capacity">How many exceptions are kept at most.</param>
+    private sealed class KeptThrows(int capacity)
+    {
+        private readonly Dictionary<int, ExceptionDispatchInfo> _thrown = new(SeededComparer.Instance);
+
+        /// <summary>
+        /// The numbers in the order their exceptions were kept: it can name a number let go already (<see cref="Remove"/>),
+        /// and the next is let go in its place.
+        /// </summary>
+        private readonly Queue<int> _order = new();
+
+        /// <summary>Gives the exception kept for object <paramref name="number"/>, if one is.</summary>
+        public bool TryGet(int number, [System.Diagnostics.CodeAnalysis.MaybeNullWhen(false)] out ExceptionDispatchInfo thrown) =>
+            _thrown.TryGetValue(number, out thrown);
+
+        /// <summary>
+        /// Keeps <paramref name="exception"/> for object <paramref name="number"/>, which holds none, letting go of the oldest
+        /// kept when as many as the capacity are; gives the exception let go, or null.
+        /// </summary>
+        public PdfLimitExceededException? Keep(int number, PdfLimitExceededException exception)
+        {
+            PdfLimitExceededException? released = null;
+
+            while (_thrown.Count >= capacity && _order.TryDequeue(out var oldest))
+            {
+                if (_thrown.Remove(oldest, out var oldestThrown))
+                {
+                    released = (PdfLimitExceededException)oldestThrown.SourceException;
+                    break;
+                }
+            }
+
+            _thrown[number] = ExceptionDispatchInfo.Capture(exception);
+            _order.Enqueue(number);
+            return released;
+        }
+
+        /// <summary>Lets go of the exception kept for object <paramref name="number"/>, if one is.</summary>
+        public void Remove(int number) => _thrown.Remove(number);
+    }
 }
