@@ -3326,12 +3326,13 @@ public class ReaderLimitsTests
     }
 
     [Fact]
-    public void An_object_whose_load_threw_in_a_rebuild_reads_as_the_object_stream_that_replaces_it_defines_it()
+    public void An_object_whose_load_threw_in_a_rebuild_reads_as_the_object_stream_that_replaces_it_defines_it_and_the_lookup_reads_again()
     {
         // Opened to throw, a lookup of object 31, which the table lacks, rebuilds the index, whose /Prev names no section.
         // Telling the object streams apart, the rebuild loads object 5, written directly, which runs past MaxObjectLength: the
         // load throws, and keeps its exception. Object stream 10, written after it, defines 5 again, and replaces it: the
-        // lookup throws the guard once the rebuild is finished, and object 5 reads as the stream defines it.
+        // lookup throws the guard once the rebuild is finished, and object 5 reads as the stream defines it. The lookup keeps
+        // nothing of what it threw, its load having rebuilt the index: read again, 31 reads as the rebuilt index has it.
         var file = new HandWrittenFile(version: "1.5");
         var rows = new Dictionary<int, long> { [1] = file.Object(1, Catalog), [2] = file.Object(2, Pages) };
         file.Object(5, "(" + new string('x', 2000) + ")");
@@ -3345,6 +3346,7 @@ public class ReaderLimitsTests
 
         document.WasRepaired.Should().BeTrue();
         document.GetObject(new PdfObjectId(5)).AsText().Should().Be("five");
+        document.GetObject(new PdfObjectId(31)).Should().BeSameAs(PdfNull.Instance);
     }
 
     /// <summary>

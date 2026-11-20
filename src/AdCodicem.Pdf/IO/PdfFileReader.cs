@@ -1197,6 +1197,7 @@ internal sealed partial class PdfFileReader : IPdfObjectSource, IPdfStreamDataPr
 
         PdfObject value;
         var reentries = _reentries;
+        var repaired = _repaired;
 
         try
         {
@@ -1213,7 +1214,6 @@ internal sealed partial class PdfFileReader : IPdfObjectSource, IPdfStreamDataPr
                 return PdfNull.Instance;
             }
 
-            var repaired = _repaired;
             var walkCuts = _walkCuts;
             value = LoadObject(id);
 
@@ -1230,8 +1230,9 @@ internal sealed partial class PdfFileReader : IPdfObjectSource, IPdfStreamDataPr
         catch (Exception exception) when (exception is PdfLimitExceededException || _unfinishedRebuild is RebuildAwaitingFinish)
         {
             // Kept as a value is cached: not where a guard against re-entry gave a null on the way, which says nothing of the
-            // object — read again once what was in flight is done, it may read whole (#51).
-            if (reentries == _reentries)
+            // object — read again once what was in flight is done, it may read whole (#51) —, nor where the load rebuilt the
+            // index on its way: the next read takes the rebuilt index's definition of the number.
+            if (reentries == _reentries && repaired == _repaired)
             {
                 KeepThrow(id.Number, exception);
             }
