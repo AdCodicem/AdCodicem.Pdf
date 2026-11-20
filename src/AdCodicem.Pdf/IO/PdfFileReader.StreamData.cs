@@ -376,7 +376,8 @@ internal sealed partial class PdfFileReader
         // Past int.MaxValue bytes, no length the reader holds a stream by reaches the endstream found: only a file of more
         // than 2 GB can put one there, and the stream is read as one whose endstream is not found. With none, what the
         // object's endobj does is read once with the search, as long as the searches may read. What follows an endstream
-        // found is read from the bytes that hold it where they show it, the file asked only where they end too soon.
+        // found is read from the bytes that hold it where the file's first read after the data would decide it from them,
+        // the file asked otherwise.
         return dataEnd >= 0 && dataEnd - absoluteDataStart <= int.MaxValue
             ? new StreamEndSearch(
                 (int)(dataEnd - absoluteDataStart),
@@ -952,8 +953,9 @@ internal sealed partial class PdfFileReader
     /// </param>
     /// <param name="emptied">Whether a window the source gave empty ended the search.</param>
     /// <param name="endObjHeld">
-    /// What follows the <c>endstream</c> found, as the bytes that hold it show it — Present or Absent —; Unknown where they
-    /// end before they can say, or none was found (<see cref="EndObjAfter"/>).
+    /// What follows the <c>endstream</c> found, as the file's first read after the data would show it from the bytes that hold
+    /// it — Present or Absent —; Unknown where that read would leave it undecided, where they end before it, or where none
+    /// was found (<see cref="EndObjAfter"/>).
     /// </param>
     private long SearchEndStream(
         long dataStart,
@@ -1000,7 +1002,7 @@ internal sealed partial class PdfFileReader
             if (found >= 0)
             {
                 endObjSeen = false;
-                endObjHeld = EndObjAfter(buffered, found - dataStart, dataStart + buffered.Length >= _source.Length);
+                endObjHeld = EndObjAfter(buffered, found - dataStart, found);
                 return found;
             }
 
@@ -1055,7 +1057,7 @@ internal sealed partial class PdfFileReader
                 if (found >= 0 && found - dataStart <= int.MaxValue)
                 {
                     endObjSeen = false;
-                    endObjHeld = EndObjAfter(span, found - position, position + span.Length >= _source.Length);
+                    endObjHeld = EndObjAfter(span, found - position, found);
                     return found;
                 }
 
@@ -1084,24 +1086,29 @@ internal sealed partial class PdfFileReader
     }
 
     /// <summary>
-    /// Reads what follows the <c>endstream</c> after data that ends <paramref name="at"/> bytes into <paramref name="bytes"/>,
-    /// which hold it, as <see cref="IPdfStreamDataProvider.CheckEndStream"/> reads it from the file: Present or Absent where
-    /// they show it; Unknown where they end before they can say, for the file to be asked.
+    /// Reads what follows the <c>endstream</c> after data that ends at <paramref name="dataEnd"/>, <paramref name="at"/> bytes
+    /// into <paramref name="bytes"/>, which hold it, as the first read of <see cref="IPdfStreamDataProvider.CheckEndStream"/>
+    /// reads it from the file: Present or Absent where the bytes that read takes, which <paramref name="bytes"/> hold, show
+    /// it; Unknown where they leave it undecided, or <paramref name="bytes"/> end before them, for the file to be asked.
     /// </summary>
     /// <remarks>
-    /// The bytes a search holds may show what follows a keyword past more white space than the file's first read would: an
-    /// <c>endobj</c> they show then is seen even once the searches may read no more, where the file is no longer read on.
-    /// No caller sees a difference: a stream whose length a guard hid is the guard's unless what follows its object's end
-    /// is proven the file's (<see cref="IPdfStreamDataProvider.IsOwnEndStream"/>), which reads no more either.
+    /// Only what that read holds is judged, however far past it the bytes a search holds go: where it cannot decide, the file
+    /// is read on through the white space and comments that may lead to what follows, with reads that count with the
+    /// searches (<see cref="EndStreamSearchPasses"/>) and stop once those may read no more — what the bytes held past it show
+    /// would be seen where those reads see nothing, and would spend nothing where they spend. So judged, what follows the
+    /// keyword, and what the searches have read, are what the file's read makes them, which no caller tells apart.
     /// </remarks>
-    private static EndObjState EndObjAfter(ReadOnlySpan<byte> bytes, long at, bool reachesEndOfFile)
+    private EndObjState EndObjAfter(ReadOnlySpan<byte> bytes, long at, long dataEnd)
     {
-        if (at < 0 || at > bytes.Length)
+        // As many bytes as that read asks for, or up to the end of the file, and the same end of the file.
+        var first = (int)Math.Min(PdfObjectParser.EndObjLookahead, _source.Length - dataEnd);
+
+        if (at < 0 || first <= 0 || at + first > bytes.Length)
         {
             return EndObjState.Unknown;
         }
 
-        var end = StreamEnds.ReadEnd(bytes[(int)at..], reachesEndOfFile);
+        var end = StreamEnds.ReadEnd(bytes.Slice((int)at, first), dataEnd + first >= _source.Length);
         return end is { Kind: StreamEndKind.EndStream, EndObj: EndObjState.Present or EndObjState.Absent } ? end.EndObj : EndObjState.Unknown;
     }
 
