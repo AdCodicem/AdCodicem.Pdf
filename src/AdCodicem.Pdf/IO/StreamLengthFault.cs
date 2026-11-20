@@ -7,9 +7,12 @@ namespace AdCodicem.Pdf.IO;
 /// its <c>endstream</c> was, and the length it took.
 /// </summary>
 /// <remarks>
-/// A stream whose declared length an <c>endstream</c> follows has none, unless its data ends at an object the index places
-/// inside it (<see cref="EndStreamState.PastPlacedObject"/>): the reader records one only for the streams it reported, as
-/// <see cref="Diagnostics.PdfDiagnosticCodes.StreamLengthInvalid"/> or <see cref="Diagnostics.PdfDiagnosticCodes.StreamTruncated"/>.
+/// A stream whose length an <c>endstream</c> confirms — the declared one, or the integer an object a guard cut held before
+/// the cut — has none, unless the lengths taken without reading where the data ends had kept as much of the file as they
+/// may, its data then ending at a place an index gives inside it (<see cref="EndStreamState.PastPlacedObject"/>) or reading
+/// empty (<see cref="EndStreamState.ReadEmpty"/>), as one taken without a search may: the reader records one only for the
+/// streams it reported, as <see cref="Diagnostics.PdfDiagnosticCodes.StreamLengthInvalid"/> or
+/// <see cref="Diagnostics.PdfDiagnosticCodes.StreamTruncated"/>.
 /// </remarks>
 internal readonly record struct StreamLengthFault
 {
@@ -55,7 +58,7 @@ internal readonly record struct StreamLengthFault
     /// Gets the offset of the object the search for the <c>endstream</c> stopped at — where an index places it, or where
     /// its header starts in the file's bytes —, when it stopped at one: <see cref="EndStream"/> is then
     /// <see cref="EndStreamState.MissingBeforeNextObject"/>, or <see cref="EndStreamState.MissingBeforeEndObj"/> when
-    /// the object's own <c>endobj</c> ended the data before it; the place the index gives an object at, inside the data,
+    /// the object's own <c>endobj</c> ended the data before it; the place an index gives an object at, inside the data,
     /// where the data ended, where <see cref="EndStream"/> is <see cref="EndStreamState.PastPlacedObject"/>; null otherwise.
     /// </summary>
     public long? NextObject { get; init; }

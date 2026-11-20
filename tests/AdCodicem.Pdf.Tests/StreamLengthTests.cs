@@ -1821,22 +1821,22 @@ public class StreamLengthTests
     [InlineData("in order, the last over a row where no header starts")]
     [InlineData("in order, one kept parsed again once the cache let it go")]
     [InlineData("in order, each header's obj past more white space than a first read holds")]
-    public void Streams_that_hold_the_next_one_s_header_keep_their_data_until_those_that_overlap_have_kept_four_times_the_file(string reading)
+    public void Streams_that_hold_the_next_one_s_header_keep_their_data_until_the_lengths_taken_unread_have_kept_four_times_the_file(string reading)
     {
         // Seventy streams, each one's header a space past where the data of the one before starts, every /Length confirmed
-        // by the one endstream 100 KB on. The first four are read before the reader looks; the next four overlap within what
-        // such streams may keep together; past it, each one's data ends at the next one's header, and says so, white space
-        // between its tokens or not. The last holds no other header: read fifth, a row the index gives in its data where no
-        // header starts counts it among the streams that overlap, one fewer of the others keeps its data, and it keeps its
-        // own; read last, its data ends at that row, the first place the index gives in it, where none starts a header. A
-        // stream kept reads the same parsed again (#280).
+        // by the one endstream 100 KB on. The first four are read before the reader counts; the next four keep their data
+        // within what lengths taken unread may keep together; past it, each one's data ends at the next one's header, and
+        // says so, white space between its tokens or not. The last holds no other header: read fifth, it counts as the
+        // others do, one fewer of them keeps its data, and it keeps its own; read last, its data ends at a row the index
+        // gives in it where no header starts, the first place there, or, with no such row, reads empty. A stream kept reads
+        // the same parsed again (#280).
         const int Streams = 70;
         var staleRow = reading.Contains("no header", StringComparison.Ordinal);
-        var staleLast = reading.StartsWith("in order", StringComparison.Ordinal);
+        var readFifth = staleRow && !reading.StartsWith("in order", StringComparison.Ordinal);
         var gap = reading.Contains("white space", StringComparison.Ordinal) ? 2 * PdfObjectParser.EndObjLookahead : 1;
         var file = HostileInputTests.Overlapping(Streams, filler: 100_000, staleRow: staleRow, headerGap: gap, lead: " ");
         using var document = PdfDocument.Open(file, PdfReaderOptions.Default with { ObjectCacheCapacity = 64 });
-        int[] order = staleRow && !staleLast ? [0, 1, 2, 3, Streams - 1, .. Enumerable.Range(4, Streams - 5)] : [.. Enumerable.Range(0, Streams)];
+        int[] order = readFifth ? [0, 1, 2, 3, Streams - 1, .. Enumerable.Range(4, Streams - 5)] : [.. Enumerable.Range(0, Streams)];
         var streams = new PdfStream[Streams];
 
         foreach (var k in order)
@@ -1851,8 +1851,7 @@ public class StreamLengthTests
             streams[5] = again;
         }
 
-        var firstCut = staleRow && !staleLast ? 7 : 8;
-        var lastCut = staleRow && staleLast;
+        var firstCut = readFifth ? 7 : 8;
 
         for (var k = 0; k < Streams - 1; k++)
         {
@@ -1860,12 +1859,13 @@ public class StreamLengthTests
             streams[k].Data.Length.Should().Be(k < firstCut ? (int)declared! : 1, Invariant($"stream {k}"));
         }
 
-        streams[^1].Data.Length.Should().Be(lastCut ? 50_000 : (int)streams[^1].Dictionary.GetInteger(PdfName.Length)!);
+        var last = streams[^1];
+        last.Data.Length.Should().Be(readFifth ? (int)last.Dictionary.GetInteger(PdfName.Length)! : staleRow ? 50_000 : 0);
         var cut = streams[firstCut];
         var reports = document.Diagnostics.Where(d => d.Code == PdfDiagnosticCodes.StreamLengthInvalid).ToList();
-        reports.Should().HaveCount(Streams - 1 - firstCut + (lastCut ? 1 : 0));
+        reports.Should().HaveCount(Streams - firstCut - (readFifth ? 1 : 0));
         reports.Should().ContainSingle(d => d.Position == cut.Data.Position).Which.Message.Should().Be(
-            Invariant($"The stream declared {cut.Dictionary.GetInteger(PdfName.Length)} bytes, which an endstream follows, but an object the index places starts inside the data, at {cut.Data.Position + 1}; the 1 byte up to it is taken as the stream's data, the streams that overlap so having kept as much of the file as they may."));
+            Invariant($"The stream declared {cut.Dictionary.GetInteger(PdfName.Length)} bytes, which an endstream follows, but the index places an object inside the data, at {cut.Data.Position + 1}, and the 1 byte up to it is taken as the stream's data, the streams that overlap having kept as much of the file as they may."));
         document.Reader.TryGetStreamLengthFault(3 + firstCut, out var fault).Should().BeTrue();
         fault.Should().Be(new StreamLengthFault
         {
@@ -1878,6 +1878,23 @@ public class StreamLengthTests
             DataStart = cut.Data.Position,
         });
         document.Reader.IsEndObjMissing(3 + firstCut, out _).Should().BeFalse("where the object ends is unknown");
+
+        if (!staleRow)
+        {
+            var declared = (int)last.Dictionary.GetInteger(PdfName.Length)!;
+            reports.Should().ContainSingle(d => d.Position == last.Data.Position).Which.Message.Should().Be(
+                Invariant($"The stream declared {declared} bytes, which an endstream follows, but the stream's data reads empty, the streams that overlap having kept as much of the file as they may."));
+            document.Reader.TryGetStreamLengthFault(3 + Streams - 1, out var empty).Should().BeTrue();
+            empty.Should().Be(new StreamLengthFault
+            {
+                Form = StreamLengthForm.Integer,
+                Declared = declared,
+                Taken = 0,
+                Found = declared,
+                EndStream = EndStreamState.ReadEmpty,
+                DataStart = last.Data.Position,
+            });
+        }
     }
 
     [Theory]
@@ -1889,13 +1906,13 @@ public class StreamLengthTests
     [InlineData("inside another number, then the header")]
     [InlineData("where no header starts, then the header")]
     [InlineData("where no header starts, sixty-five times")]
-    public void Streams_that_overlap_past_what_they_may_keep_end_at_the_first_place_the_index_gives_at_which_a_load_reads_a_header(string rows)
+    public void Streams_past_what_they_may_keep_end_at_the_first_of_64_places_the_index_gives_that_a_load_reads_a_header_at_or_else_at_the_first(string rows)
     {
         // Seventy streams, each one's header inside the data of the one before, every /Length confirmed by the one endstream
-        // 100 KB on, the rows placing the headers, or other objects before them, as the row says. Once those that overlap so
-        // have kept four times the file, each one's data ends at the first place the index gives inside it from which a load
-        // reads a header — past white space and comments, a token that starts there whatever the byte before it, but for a
-        // place inside a number —, of the first 64; at the first place where none of them does (#280).
+        // 100 KB on, the rows placing the headers, or other objects before them, as the row says. Once the lengths taken
+        // unread have kept four times the file, each one's data ends at the first place the index gives inside it from which
+        // a load reads a header — past white space and comments, a token that starts there whatever the byte before it, but
+        // for a place inside a number —, of the first 64; at the first place where none of them does (#280).
         const int Streams = 70;
         var (lead, rowShift, decoys, decoyAt) = rows switch
         {
@@ -1934,8 +1951,8 @@ public class StreamLengthTests
     {
         // A stream of 100 KB, its /Length confirmed, and a row a shift left stale placing object 74 in the middle of its data,
         // where no header starts; seventy objects read after it let the cache drop it, eight times. Once the streams parsed
-        // total four times the file, the reader looks at it: it counts among the streams that overlap, alone, and keeps its
-        // data, unreported, however often it is parsed (#280).
+        // total four times the file, the reader counts it, once however often it is parsed, far under what lengths taken
+        // unread may keep: it keeps its data, unreported (#280).
         var file = new HandWrittenFile();
         var rows = new Dictionary<int, long>
         {
@@ -1971,6 +1988,83 @@ public class StreamLengthTests
         }
 
         document.Diagnostics.Should().BeEmpty();
+    }
+
+    [Fact]
+    public void A_valid_file_s_streams_parsed_over_and_over_keep_their_data_and_report_nothing()
+    {
+        // Sixty streams of 2 KB, each length confirmed, read ten times over through a cache of sixteen objects, so that each
+        // read parses its stream again: past four times the file parsed, the reader counts each stream once for its object
+        // and the place its data starts at, and streams that lie apart total less than the file, so none is ever cut (#280).
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"),
+        };
+
+        for (var number = 3; number < 63; number++)
+        {
+            rows[number] = file.Object(number, "<< /Length 2048 >>\nstream\n" + new string('x', 2048) + "\nendstream");
+        }
+
+        file.Table(63, rows, "/Size 63 /Root 1 0 R");
+        using var document = PdfDocument.Open(file.Bytes, PdfReaderOptions.Default with { ObjectCacheCapacity = 16 });
+        long parsed = 0;
+
+        for (var pass = 0; pass < 10; pass++)
+        {
+            for (var number = 3; number < 63; number++)
+            {
+                var stream = document.GetObject(new PdfObjectId(number)).AsStream().Required();
+                stream.Data.Length.Should().Be(2048);
+                parsed += stream.Data.Length;
+            }
+        }
+
+        parsed.Should().BeGreaterThan(PdfFileReader.UncheckedConfirmedPasses * file.Bytes.Length, "the reader counts past this");
+        document.Diagnostics.Should().BeEmpty();
+    }
+
+    [Fact]
+    public void A_length_taken_unread_counts_once_at_its_longest_and_once_ended_keeps_what_was_decided_whatever_length_comes_after()
+    {
+        // Lengths taken unread count once four times the file were parsed, each object and data start once, at its longest:
+        // two lengths of four times the file, the first before the count, the second filling what may be kept whole. Past
+        // that, data that holds object 4's header ends there, and keeps that end however long a length is parsed after —
+        // a rebuild's —, while a shorter one keeps what it holds; data inside which nothing is placed but its own object's
+        // entry — the object relocated from an entry that missed it — reads empty, whatever its length after (#280).
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"),
+        };
+        rows[3] = file.Object(3, "(" + new string('x', 1000) + ")");
+        var placed = rows[4] = file.Object(4, "null");
+        file.Raw(new string(' ', 1000));
+        file.Table(5, rows, "/Size 5 /Root 1 0 R");
+        var bytes = file.Bytes;
+        using var document = PdfDocument.Open(bytes);
+        var provider = (IPdfStreamDataProvider)document.Reader;
+        var four = PdfFileReader.UncheckedConfirmedPasses * bytes.Length;
+
+        provider.TakeUnread(90, 0, four, out _).Should().Be(four);
+        provider.TakeUnread(91, 0, PdfFileReader.OverlapKeptPasses * bytes.Length, out _).Should().Be(PdfFileReader.OverlapKeptPasses * bytes.Length);
+
+        var start = rows[3] + 10;
+        var kept = (int)(placed - start);
+        provider.TakeUnread(3, start, kept + 100, out var end).Should().Be(kept);
+        end.Should().Be(placed);
+        provider.TakeUnread(3, start, kept + 500, out end).Should().Be(kept, "the end decided stays");
+        end.Should().Be(placed);
+        provider.TakeUnread(3, start, 10, out end).Should().Be(10, "a shorter length ends before the end decided");
+        end.Should().Be(-1);
+
+        provider.TakeUnread(4, start, kept + 100, out end).Should().Be(0, "its own entry ends nothing");
+        end.Should().Be(-1);
+        provider.TakeUnread(4, start, 10, out end).Should().Be(0, "what was decided stays");
+        end.Should().Be(-1);
     }
 
     [Fact]
@@ -2921,10 +3015,12 @@ public class StreamLengthTests
     }
 
     [Fact]
-    public void A_stream_left_unsearched_whose_length_runs_past_the_file_takes_the_data_its_object_holds()
+    public void Streams_left_unsearched_whose_length_runs_past_the_file_take_the_data_their_object_holds_until_the_lengths_taken_unread_have_kept_four_times_the_file()
     {
-        // As streams whose data share a stretch exhaust what the searches may read, the last is left unsearched; its declared
-        // length runs past the end of the file, and the data up to it is taken, without a search, and said so.
+        // As streams whose data share a stretch exhaust what the searches may read, the others are left unsearched; each one's
+        // declared length runs past the end of the file, and the data up to it is taken, without a search, and said so. Those
+        // data are lengths taken unread: once they have kept four times the file, the last, inside whose data no index places
+        // anything, reads empty, and says so (#280).
         const int Streams = 30;
         const int Declared = 10_000_000;
         var (file, _) = NestedStreams(Streams, Declared);
@@ -2935,11 +3031,24 @@ public class StreamLengthTests
             document.GetObject(new PdfObjectId(number));
         }
 
+        var unsearched = Enumerable.Range(3, Streams).First(number => document.Reader.TryGetStreamLengthFault(number, out var fault) && fault.EndStream == EndStreamState.NotSearched);
+        document.Reader.TryGetStreamLengthFault(unsearched, out var first).Should().BeTrue();
+        first.Taken.Should().Be((int)(file.Length - first.DataStart));
+        document.Diagnostics.Should().ContainSingle(d => d.Position == first.DataStart).Which.Message.Should().Be(
+            Invariant($"The stream declared {Declared} bytes, and no endstream follows its data in the bytes read with its object; the {first.Taken} bytes to the end of the file are taken as its data without a search, the document's searches for endstream having read as much of the file as they may."));
+
         document.Reader.TryGetStreamLengthFault(Streams + 2, out var last).Should().BeTrue();
-        last.EndStream.Should().Be(EndStreamState.NotSearched);
-        last.Taken.Should().Be((int)(file.Length - last.DataStart));
+        last.Should().Be(new StreamLengthFault
+        {
+            Form = StreamLengthForm.Integer,
+            Declared = Declared,
+            Taken = 0,
+            EndStream = EndStreamState.ReadEmpty,
+            DataStart = last.DataStart,
+        });
+        document.GetObject(new PdfObjectId(Streams + 2)).AsStream().Required().Data.Length.Should().Be(0);
         document.Diagnostics.Should().ContainSingle(d => d.Position == last.DataStart).Which.Message.Should().Be(
-            Invariant($"The stream declared {Declared} bytes, and no endstream follows its data in the bytes read with its object; the {last.Taken} bytes to the end of the file are taken as its data without a search, the document's searches for endstream having read as much of the file as they may."));
+            Invariant($"The stream declared {Declared} bytes, and no endstream follows its data in the bytes read with its object, the document's searches for endstream having read as much of the file as they may; its data reads empty without a search, the streams that overlap having kept as much of the file as they may."));
     }
 
     [Fact]
@@ -2988,10 +3097,43 @@ public class StreamLengthTests
     }
 
     [Fact]
+    public void A_stream_left_unsearched_whose_declared_length_is_kept_reads_empty_once_the_lengths_taken_unread_have_kept_four_times_the_file()
+    {
+        // Thirty streams, each one's header in a string of the dictionary before, each declaring a byte less than its data
+        // holds up to the one endstream 100 KB on: the searches exhaust what they may read, the others keep their declared
+        // length without a search, and once those lengths have kept four times the file, the innermost, inside whose data
+        // nothing is placed, reads empty, and says so (#280).
+        const int Streams = 30;
+        var file = HostileInputTests.NestedInStrings(Streams, 100_000, shortBy: 1);
+        using var document = PdfDocument.Open(file);
+
+        for (var number = 10; number < 10 + Streams; number++)
+        {
+            document.GetObject(new PdfObjectId(number));
+        }
+
+        var last = document.GetObject(new PdfObjectId(10 + Streams - 1)).AsStream().Required();
+        var declared = last.Dictionary.GetInteger(PdfName.Length);
+        last.Data.Length.Should().Be(0);
+        document.Reader.TryGetStreamLengthFault(10 + Streams - 1, out var fault).Should().BeTrue();
+        fault.Should().Be(new StreamLengthFault
+        {
+            Form = StreamLengthForm.Integer,
+            Declared = declared,
+            Taken = 0,
+            EndStream = EndStreamState.ReadEmpty,
+            DataStart = last.Data.Position,
+        });
+        document.Diagnostics.Should().ContainSingle(d => d.Position == last.Data.Position).Which.Message.Should().Be(
+            Invariant($"The stream declared {declared} bytes, which no endstream follows, the document's searches for endstream having read as much of the file as they may; its data reads empty without a search, the streams that overlap having kept as much of the file as they may."));
+    }
+
+    [Fact]
     public void A_stream_left_unsearched_is_reported_once_however_often_it_is_parsed()
     {
-        // The last stream is left unsearched, as above; seventy objects read after it let the cache drop it, and parsed again,
-        // it keeps its data and says nothing more: its fault was reported the first time.
+        // The last stream is left unsearched, as above, and reads empty, the lengths taken unread having kept four times the
+        // file; seventy objects read after it let the cache drop it, and parsed again, it reads the same and says nothing
+        // more: its fault was reported the first time.
         const int Streams = 30;
         var after = Enumerable.Range(Streams + 3, 70).Select(number => Invariant($"{number} 0 obj\n({number})\nendobj\n")).ToArray();
         var (file, _) = NestedStreams(Streams, 10_000_000, after);
@@ -3003,8 +3145,9 @@ public class StreamLengthTests
         }
 
         document.Reader.TryGetStreamLengthFault(Streams + 2, out var last).Should().BeTrue();
-        last.EndStream.Should().Be(EndStreamState.NotSearched);
+        last.EndStream.Should().Be(EndStreamState.ReadEmpty);
         var length = document.GetObject(new PdfObjectId(Streams + 2)).AsStream().Required().RawLength;
+        length.Should().Be(0);
 
         for (var number = Streams + 3; number < Streams + 73; number++)
         {

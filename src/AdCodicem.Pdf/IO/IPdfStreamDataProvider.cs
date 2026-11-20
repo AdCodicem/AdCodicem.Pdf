@@ -75,23 +75,26 @@ internal interface IPdfStreamDataProvider : IPdfFileEdge
 
     /// <summary>
     /// Gives how many bytes of its data a stream keeps whose length, <paramref name="length"/> bytes from
-    /// <paramref name="absoluteDataStart"/>, an <c>endstream</c> confirms: all of them, unless the index places an object
-    /// inside them and the streams whose data so hold one have kept as much of the file as they may, the data then ending at
-    /// one of those places, which <paramref name="placed"/> gives.
+    /// <paramref name="absoluteDataStart"/>, the reader takes without having read where the data ends — one an
+    /// <c>endstream</c> confirms, or one taken without a search once the document's searches for <c>endstream</c> read as
+    /// much of the file as they may —: all of them, unless the lengths so taken have kept as much of the file as they may,
+    /// the data then ending at a place an index gives inside it, which <paramref name="placed"/> gives, or reading empty.
     /// </summary>
     /// <param name="number">
-    /// The number of the object the stream is the value of, whose own entry in the index is no object inside its data; 0
-    /// for a stream read alone.
+    /// The number of the object the stream is the value of, counted with the place its data starts at, whose own entry in
+    /// either index is no place inside its data; 0 for a stream read alone.
     /// </param>
     /// <param name="absoluteDataStart">Where the data starts in the file.</param>
     /// <param name="length">
-    /// The length an <c>endstream</c> confirms: the declared one, or the integer an object a guard cut held before the cut.
+    /// The length taken: the declared one, or the integer an object a guard cut held before the cut, which an
+    /// <c>endstream</c> confirms; or, without a search, the declared one, or the data up to the next object or the end of
+    /// the file.
     /// </param>
     /// <param name="placed">
-    /// Where the data ends in the file, at a place the index gives an object at, when it ends short of its length; -1
-    /// otherwise.
+    /// Where the data ends in the file, at a place an index gives an object at, when it ends there short of its length; -1
+    /// otherwise, the data read whole or empty.
     /// </param>
-    int TakeConfirmed(int number, long absoluteDataStart, int length, out long placed);
+    int TakeUnread(int number, long absoluteDataStart, int length, out long placed);
 
     /// <summary>
     /// Determines whether the <c>endstream</c> that ends data at <paramref name="absoluteDataEnd"/>, which a search found,

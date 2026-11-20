@@ -1,6 +1,9 @@
 namespace AdCodicem.Pdf.IO;
 
-/// <summary>Where the parser found the <c>endstream</c> of a stream whose length the file did not confirm.</summary>
+/// <summary>
+/// Where the parser found the <c>endstream</c> of a stream whose length the file did not confirm, or why the data of one
+/// whose length it took without reading where the data ends was kept short of it.
+/// </summary>
 internal enum EndStreamState : byte
 {
     /// <summary>After the data, where the <c>/Length</c> did not put it, or where no usable <c>/Length</c> put anything.</summary>
@@ -34,8 +37,16 @@ internal enum EndStreamState : byte
     NotSearched,
 
     /// <summary>
-    /// After the length, confirming it, but past a place the index gives an object at inside the data, which ends there: the
-    /// streams that overlap so had kept as much of the file as they may (<see cref="IPdfStreamDataProvider.TakeConfirmed"/>).
+    /// After the length, confirming it, or not looked for, the document's searches having read as much of the file as they
+    /// may; but the data ends short of the length, at a place an index gives an object at inside it: the lengths taken without
+    /// reading where the data ends had kept as much of the file as they may (<see cref="IPdfStreamDataProvider.TakeUnread"/>).
     /// </summary>
     PastPlacedObject,
+
+    /// <summary>
+    /// After the length, confirming it, or not looked for, as <see cref="PastPlacedObject"/> says; but the data reads empty:
+    /// the lengths taken without reading where the data ends had kept as much of the file as they may, and no place an index
+    /// gives inside the data ended it within what they may still keep (<see cref="IPdfStreamDataProvider.TakeUnread"/>).
+    /// </summary>
+    ReadEmpty,
 }
