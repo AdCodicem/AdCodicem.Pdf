@@ -2,7 +2,8 @@ namespace AdCodicem.Pdf.Diagnostics;
 
 /// <summary>
 /// A position in a <see cref="PdfDiagnostics"/>: how many entries it held, how many it had dropped, how many guards had
-/// been reached, how many of the entries dropped were guards' reports, and how far its note of what it dropped ran.
+/// been reached, how many of the entries dropped were guards' reports, how far its note of what it dropped ran, and where
+/// it looked in that note before the mark was taken.
 /// </summary>
 /// <param name="Count">The number of entries kept.</param>
 /// <param name="Suppressed">The number of entries dropped for want of capacity.</param>
@@ -19,4 +20,11 @@ internal readonly record struct PdfDiagnosticsMark(
     int Limits,
     int LimitsSuppressed,
     int Dropped,
-    IReadOnlyDictionary<PdfDiagnostic, int>? DecodingReports = null);
+    IReadOnlyDictionary<PdfDiagnostic, int>? DecodingReports = null)
+{
+    /// <summary>
+    /// Gets where the instance looked in its note of what it dropped before a pair was noted, as the mark was taken: the
+    /// start of the enclosing mark still open, where it looks again once this mark is closed for good.
+    /// </summary>
+    public int DroppedFrom { get; init; }
+}
