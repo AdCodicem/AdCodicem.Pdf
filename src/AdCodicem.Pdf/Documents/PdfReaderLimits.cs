@@ -302,8 +302,8 @@ public sealed record PdfReaderLimits
     /// before the walk began: two validations of such a file may differ. Reaching it reports
     /// <see cref="Diagnostics.PdfDiagnosticCodes.LimitObjectStreamDecodes"/>, once a document, where the object stream it
     /// first left undecoded lies; with <see cref="PdfReaderOptions.ThrowOnLimit"/>, each read it leaves undecoded throws,
-    /// the search for a catalog once it ends, as for the other guards it meets, and an object whose read threw so throws the
-    /// walk's first such exception again, without being read again, until the walk ends.
+    /// the search for a catalog once it ends, as for the other guards it meets, and the walk reads an object whose read
+    /// threw so once, however many of its reads lead to it.
     /// </para>
     /// </remarks>
     /// <exception cref="ArgumentOutOfRangeException">The value is zero or less.</exception>

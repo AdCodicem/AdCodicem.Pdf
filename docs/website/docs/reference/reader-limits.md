@@ -336,8 +336,8 @@ there. Raise PdfReaderLimits.MaxDecodedStreamLength to read past it.
 
   With `ThrowOnLimit`, each read the walk so leaves undecoded throws: a validation stops there, and the search for a
   catalog goes on, reads again what the guard cut where it found no catalog, and throws the first once it ends, the
-  index rebuilt where it found none even so. An object whose read threw so throws the walk's first such exception again,
-  without being read again, until the walk ends.
+  index rebuilt where it found none even so. The walk reads an object whose read threw so once, however many of its
+  reads lead to it.
 
 ## `ThrowOnLimit`
 
@@ -374,10 +374,10 @@ the time being — one being loaded already, or loads nested too deep —, which
 done. An object stream's decoding keeps its exception through such a null, as it keeps the objects it gave, every later
 decoding reading an object the stream holds, or one being loaded, as null again; but not through an object the walks'
 guard read as null, nor — though the objects it gives are kept then — while a rebuild takes the object streams in, where
-an object the index holds no entry for yet reads as null for the time being. The walks' guard's is kept until the walk
-ends only, by every load it passes through but one that rebuilt the index on its way, each throwing the walk's first such
-exception again without reading. None is kept for a lookup of an object a guard left out of the index, which reads
-nothing and throws a new exception each time.
+an object the index holds no entry for yet reads as null for the time being. The walks' guard's is not kept past the
+walk: within it, the walk reads an object whose read threw so once, and a read of it once the walk is done reads it
+whole. None is kept for a lookup of an object a guard left out of the index, which reads nothing and throws a new
+exception each time.
 
 ## What cannot be lifted
 

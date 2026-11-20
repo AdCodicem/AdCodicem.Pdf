@@ -183,13 +183,13 @@ of each object stream together, decodes each stream once more at most; so it doe
 them, in the index's order, that reads as a catalog — read whole this time, or cut again, as the first search takes
 one —; where it finds none — a candidate's `/Type` lying in a stream it may not decode again —, the index is rebuilt as
 before. Nothing the walk left unread is kept. An object whose load read through it is kept until the walk ends, and no
-longer — unless the cache lets it go first —; with `ThrowOnLimit`, an object whose load the guard's exception passed
-through throws the walk's first such exception again, without reading, until the walk ends. So the walk reads such an
-object once, however many candidates lead to it; and an object stream whose decoding met the cut is not kept at all, but
-counted as decoded, so that the walk does not decode it again for each of its objects. Your own reads once the walk is
-done read every object whole, and the next walk starts its budget again. The rules that read every object of the index
-read those of each object stream together, so that a sound file's validation decodes each stream once, whatever its
-numbers' order.
+longer, so that the walk reads such an object once, however many candidates lead to it, as long as the cache holds it:
+one the cache let go first is read again. With `ThrowOnLimit`, where such a load throws instead, the walk reads the
+object once all the same ([`ThrowOnLimit`](../reference/reader-limits.md#throwonlimit)). An object stream whose decoding
+met the cut is not kept at all, but counted as decoded, so that the walk does not decode it again for each of its
+objects. Your own reads once the walk is done read every object whole, and the next walk starts its budget again. The
+rules that read every object of the index read those of each object stream together, so that a sound file's validation
+decodes each stream once, whatever its numbers' order.
 
 ## Bounds that stay internal
 

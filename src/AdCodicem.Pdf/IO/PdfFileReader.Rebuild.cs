@@ -920,6 +920,9 @@ internal sealed partial class PdfFileReader
         _decodingsThrown?.Remove(number);
         _objectStreamsHiddenByGuard.Remove(number);
         _cache.Remove(number);
+
+        // The expansion runs after the rebuild let go of what the walk kept (ForgetWhatWasRead), so both sets hold nothing
+        // here today: the number is removed all the same, so that a later caller cannot leave it stale in them.
         _walkLoads?.Remove(number);
         _walkLoadsThrown?.Remove(number);
         _unproduced.Remove(number);

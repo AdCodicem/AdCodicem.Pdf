@@ -522,12 +522,13 @@ internal sealed partial class PdfFileReader
     /// which it then spends; otherwise, or where nothing is placed inside the data, the data reads empty. Either is reported
     /// as <see cref="Diagnostics.PdfDiagnosticCodes.StreamLengthInvalid"/>. So the data of the streams whose lengths are
     /// taken unread total at most eight times the file once counted, each pair once, and four times before; the streams the
-    /// searches were made for add what the searches read, at most <see cref="EndStreamSearchPasses"/> times the file, the
-    /// bytes each load held aside. A row a shift or an update left stale in a sound stream's data ends nothing under these
-    /// bounds. Past both, which streams are ended, and where, depends on the order they are read in — one read whole before
-    /// the count began may be read ended after, the cache having let it go —, as which streams the searches leave unsearched
-    /// does (#138): crafted files make it so, and no stream of the corpus, nor of the copies of it measured truncated, rows
-    /// shifted or updates stale, is ended.
+    /// searches were made for add what the searches read — <see cref="EndStreamSearchPasses"/> times the file, checked
+    /// before each search starts, and the stretch of the one under way when they reach it, which reads on to its stop: about
+    /// once the file more —, and the bytes each load held aside. A row a shift or an update left stale in a sound stream's
+    /// data ends nothing under these bounds. Past both, which streams are ended, and where, depends on the order they are
+    /// read in — one read whole before the count began may be read ended after, the cache having let it go —, as which
+    /// streams the searches leave unsearched does (#138): crafted files make it so, and no stream of the corpus, nor of the
+    /// copies of it measured truncated, rows shifted or updates stale, is ended.
     /// </para>
     /// <para>
     /// While the chain is read, nothing is counted: the index is being made, and the streams read then are its sections'.
