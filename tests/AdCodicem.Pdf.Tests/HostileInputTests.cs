@@ -344,16 +344,42 @@ public class HostileInputTests
     }
 
     [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public void Streams_whose_data_share_a_stretch_of_a_file_read_it_a_bounded_number_of_times(bool objectStreams)
+    [InlineData("streams")]
+    [InlineData("object streams")]
+    [InlineData("rows at a space before each header")]
+    [InlineData("rows at a comment before each header")]
+    [InlineData("rows at a comment longer than a first read before each header")]
+    [InlineData("rows at a header's digits after a letter")]
+    [InlineData("a row inside a number before each header")]
+    [InlineData("rows a byte before each header")]
+    [InlineData("a row where no header starts before each header")]
+    [InlineData("65 rows where no header starts before each header")]
+    public void Streams_whose_data_share_a_stretch_of_a_file_read_it_a_bounded_number_of_times(string shape)
     {
         // Two hundred streams, each header inside the data of the one before, every /Length confirmed by the one endstream
         // a megabyte on: reading each one's raw data from a file read the whole stretch again, 199 times the file, and
-        // validating two hundred object streams so nested read it 387 times (#280). Once the streams that overlap so have
-        // kept as much of the file as they may, each one's data ends at the header the index places inside it.
+        // validating two hundred object streams so nested read it 387 times (#280). Once the streams whose data hold a place
+        // the index gives have kept as much of the file as they may, each one's data ends at the first of those places a
+        // header starts at, or at the first. Whatever lies at the place, the stream counts: rows at white space or a comment
+        // before each header, at its digits a letter goes before, a byte before it, or rows of numbers no object has before
+        // it — inside another number, or where no header starts — each kept every stream whole, the stretch read once for
+        // each, and nothing said, where a header at the first place alone counted.
         const int Streams = 200;
-        var file = Overlapping(Streams, filler: 1024 * 1024, objectStreams);
+        var (lead, rowShift, decoys, decoyAt) = shape switch
+        {
+            "rows at a space before each header" => ("  ", -2, 0, 0),
+            "rows at a comment before each header" => ("%c\n", -3, 0, 0),
+            "rows at a comment longer than a first read before each header" => ("%" + new string('c', 80) + "\n", -82, 0, 0),
+            "rows at a header's digits after a letter" => ("x", 0, 0, 0),
+            "a row inside a number before each header" => ("98 0 obj ", 0, 1, 1),
+            "rows a byte before each header" => ("", -1, 0, 0),
+            "a row where no header starts before each header" => ("y ", 0, 1, 0),
+            "65 rows where no header starts before each header" => (new string('y', 65) + " ", 0, 65, 0),
+            _ => ("", 0, 0, 0),
+        };
+        var objectStreams = shape == "object streams";
+        var file = Overlapping(
+            Streams, filler: 1024 * 1024, objectStreams, lead: lead, rowShift: rowShift, decoys: decoys, decoyAt: decoyAt);
         using var source = new StrictCountingSource(file);
         using var document = PdfDocument.Open(source, options: null, ownsSource: false);
         var opened = source.BytesRead;
@@ -374,6 +400,53 @@ public class HostileInputTests
             ((PdfFileReader.UncheckedConfirmedPasses + PdfFileReader.OverlapKeptPasses + 1) * file.Length) + (4L * Streams * PdfFileReader.InitialObjectWindow),
             "the data of the streams read before the reader looks and of those kept overlapping, and a few windows for each object");
         document.Diagnostics.Should().Contain(d => d.Code == PdfDiagnosticCodes.StreamLengthInvalid);
+    }
+
+    [Fact]
+    public void Streams_whose_length_a_guard_cut_and_whose_data_share_a_stretch_of_a_file_read_it_a_bounded_number_of_times()
+    {
+        // A hundred streams, each header a space past where the data of the one before starts, each /Length object 999, which
+        // MaxObjectLength cuts in the white space after the integer it starts with, 256 KB, that each stream's own endstream
+        // follows: the integer was taken for each stream's length unchecked, and reading each one's raw data read the
+        // stretch again, 90 times the file. It is checked as a declared length is: past what the streams that overlap so may
+        // keep, the data ends at the header the index places inside it, which is said, the length the cut left named (#280).
+        const int Streams = 100;
+        const int Length = 256 * 1024;
+        var file = OverlappingWithCutLength(Streams, Length);
+        var options = new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxObjectLength = 16 * 1024 } };
+        using var source = new StrictCountingSource(file);
+        using var document = PdfDocument.Open(source, options, ownsSource: false);
+        var opened = source.BytesRead;
+        var streams = new PdfStream[Streams];
+
+        for (var k = 0; k < Streams; k++)
+        {
+            streams[k] = document.GetObject(new PdfObjectId(3 + k)).AsStream().Required();
+            streams[k].GetRawBytes();
+        }
+
+        (source.BytesRead - opened).Should().BeLessThan(
+            ((PdfFileReader.UncheckedConfirmedPasses + PdfFileReader.OverlapKeptPasses + 1) * file.Length) + (4L * Streams * PdfFileReader.InitialObjectWindow),
+            "the data of the streams read before the reader looks and of those kept overlapping, and a few windows for each object");
+        var first = Array.FindIndex(streams, stream => stream.Data.Length != Length);
+        first.Should().BePositive();
+        streams[first..^1].Should().OnlyContain(stream => stream.Data.Length == 1 && !stream.Data.CutByGuard, "the last holds no other header");
+        var at = streams[first].Data.Position;
+        document.Diagnostics.Where(d => d.Code == PdfDiagnosticCodes.StreamLengthInvalid).Should().HaveCount(Streams - 1 - first)
+            .And.ContainSingle(d => d.Position == at).Which.Message.Should().Be(string.Create(
+                CultureInfo.InvariantCulture,
+                $"The stream's /Length names object 999 0, which one of the reader's limits cut; an endstream follows the {Length} bytes the integer read from it before the cut gives, but an object the index places starts inside them, at {at + 1}; the 1 byte up to it is taken as the stream's data, the streams that overlap so having kept as much of the file as they may."));
+        document.Reader.TryGetStreamLengthFault(3 + first, out var fault).Should().BeTrue();
+        fault.Should().Be(new StreamLengthFault
+        {
+            Form = StreamLengthForm.ObjectCut,
+            Reference = new PdfObjectId(999),
+            Taken = 1,
+            Found = Length,
+            EndStream = EndStreamState.PastPlacedObject,
+            NextObject = at + 1,
+            DataStart = at,
+        });
     }
 
     [Fact]
@@ -6376,9 +6449,21 @@ public class HostileInputTests
     /// <paramref name="objectStreams"/>, objects 10 and on, each an object stream of one member, objects 3000 and on, that a
     /// cross-reference stream places. With <paramref name="staleRow"/>, a row places object 999 in the middle of the
     /// filler, where no header starts; <paramref name="headerGap"/> spaces part the generation of each header from its
-    /// <c>obj</c>, and <paramref name="lead"/> spaces come before each header, where the data of the one before starts.
+    /// <c>obj</c>, and <paramref name="lead"/> comes before each header, where the data of the one before starts. Each
+    /// stream's row places it <paramref name="rowShift"/> bytes from its header's first byte, and rows place
+    /// <paramref name="decoys"/> numbers no object has at the bytes of each lead from its <paramref name="decoyAt"/>th,
+    /// objects 10000 and on.
     /// </summary>
-    internal static byte[] Overlapping(int streams, int filler, bool objectStreams = false, bool staleRow = false, int headerGap = 1, int lead = 0)
+    internal static byte[] Overlapping(
+        int streams,
+        int filler,
+        bool objectStreams = false,
+        bool staleRow = false,
+        int headerGap = 1,
+        string lead = "",
+        int rowShift = 0,
+        int decoys = 0,
+        int decoyAt = 0)
     {
         var file = new HandWrittenFile(version: "1.5");
         var rows = new Dictionary<int, (int Type, long Field2, int Field3)>
@@ -6390,13 +6475,20 @@ public class HostileInputTests
         var body = new StringBuilder();
         var lengthAt = new int[streams];
         var dataStart = new int[streams];
+        var decoy = 10_000;
 
         for (var k = 0; k < streams; k++)
         {
             var number = (objectStreams ? 10 : 3) + k;
             var member = string.Create(CultureInfo.InvariantCulture, $"{3000 + k} 0 ");
-            body.Append(' ', lead);
-            rows[number] = (1, start + body.Length, 0);
+
+            for (var d = 0; d < decoys; d++)
+            {
+                rows[decoy++] = (1, start + body.Length + decoyAt + d, 0);
+            }
+
+            body.Append(lead);
+            rows[number] = (1, start + body.Length + rowShift, 0);
             body.Append(CultureInfo.InvariantCulture, $"{number} 0{new string(' ', headerGap)}obj\n<< ");
 
             if (objectStreams)
@@ -6436,8 +6528,45 @@ public class HostileInputTests
         }
 
         file.Raw(body.ToString());
-        var index = objectStreams ? 6000 : 1000;
+        var index = decoys > 0 ? decoy : objectStreams ? 6000 : 1000;
         file.CrossReferenceStream(index, index + 1, rows, "/Root 1 0 R");
+        return file.Bytes;
+    }
+
+    /// <summary>
+    /// Writes a file of <paramref name="streams"/> streams, objects 3 and on, each one's header a space past where the data
+    /// of the one before starts, each <c>/Length</c> object 999, which holds <paramref name="length"/> followed by 20,000
+    /// spaces: each stream's own <c>endstream</c> follows the first <paramref name="length"/> bytes of its data.
+    /// </summary>
+    internal static byte[] OverlappingWithCutLength(int streams, int length)
+    {
+        var file = new HandWrittenFile(version: "1.5");
+        var rows = new Dictionary<int, (int Type, long Field2, int Field3)>
+        {
+            [1] = (1, file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"), 0),
+            [2] = (1, file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"), 0),
+        };
+        var start = file.Position;
+        var body = new StringBuilder();
+        var dataStart = new int[streams];
+
+        for (var k = 0; k < streams; k++)
+        {
+            body.Append(' ');
+            rows[3 + k] = (1, start + body.Length, 0);
+            body.Append(CultureInfo.InvariantCulture, $"{3 + k} 0 obj\n<< /Length 999 0 R >>\nstream\n");
+            dataStart[k] = body.Length;
+        }
+
+        foreach (var at in dataStart)
+        {
+            body.Append('x', at + length - body.Length).Append("\nendstream");
+        }
+
+        body.Append("\nendobj\n");
+        file.Raw(body.ToString());
+        rows[999] = (1, file.Object(999, length.ToString(CultureInfo.InvariantCulture) + new string(' ', 20_000)), 0);
+        file.CrossReferenceStream(1000, 1001, rows, "/Root 1 0 R");
         return file.Bytes;
     }
 

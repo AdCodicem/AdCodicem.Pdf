@@ -199,10 +199,13 @@ public static class PdfDiagnosticCodes
     /// follows the declared length — none before the next object or the end of the file, or none looked for once the
     /// document's searches read as much of the file as they may — and that length is kept, or the data runs to the next
     /// object, or, taken without a search, to the end of the file. A <c>/Length</c> that leads to an object one of the reader's limits cut, or left out of the index, is not
-    /// judged: the limit's report says why. An <c>endstream</c> that follows the declared length confirms it, unless the
-    /// index places an object whose header starts inside the data, as no valid file's index does, and the streams that
-    /// overlap so have kept four times the file's length together, each counted once: the data ends at that header, and
-    /// whether the object ends with <c>endobj</c> is not judged (#280).
+    /// judged: the limit's report says why — but for the integer a cut object held before the cut, which an
+    /// <c>endstream</c> confirms, weighed as a declared length is. An <c>endstream</c> that follows the declared length
+    /// confirms it, unless the index places an object inside the data, as no valid file's index does, and the streams whose
+    /// data so hold one have kept four times the file's length together, each counted once, whatever lies where the index
+    /// places it: the data ends at the first of the places the index gives inside it, of the first 64, at which a header
+    /// starts as a load reads one, or at the first where none does, and whether the object ends with <c>endobj</c> is not
+    /// judged (#280).
     /// </summary>
     public const string StreamLengthInvalid = "stream.length-invalid";
 
