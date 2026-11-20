@@ -74,53 +74,6 @@ public class HostileInputMemoryTests
         GC.KeepAlive(held);
     }
 
-    [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public void Streams_whose_data_share_a_stretch_of_the_file_hold_none_of_it_once_read(bool fromPath)
-    {
-        // Two hundred streams, each header inside the data of the one before, every /Length confirmed by the one endstream
-        // a megabyte on: each stream's data is the whole stretch, and each kept a copy of it for as long as the stream was
-        // held, 200 MB from a file of 1 MB (#170). The streams are held here; their data is not.
-        const int Streams = 200;
-        var file = HostileInputTests.Overlapping(Streams, filler: 1024 * 1024);
-        var path = fromPath ? Path.GetTempFileName() : null;
-
-        try
-        {
-            if (path is not null)
-            {
-                File.WriteAllBytes(path, file);
-            }
-
-            var before = Retained();
-            using var document = path is null ? PdfDocument.Open(file) : PdfDocument.Open(path);
-            var held = new List<PdfStream>(Streams);
-            long read = 0;
-
-            for (var k = 0; k < Streams; k++)
-            {
-                var stream = document.GetObject(new PdfObjectId(3 + k)).AsStream().Required();
-                read += stream.GetRawBytes().Length;
-                held.Add(stream);
-            }
-
-            var after = Retained();
-
-            read.Should().BeGreaterThan(Streams * 1024L * 1024, "each stream's data is the whole stretch");
-            after.Should().BeLessThan(before + (8L * 1024 * 1024), "the streams, and no copy of their data");
-            document.Diagnostics.Should().BeEmpty();
-            GC.KeepAlive(held);
-        }
-        finally
-        {
-            if (path is not null)
-            {
-                File.Delete(path);
-            }
-        }
-    }
-
     [Fact]
     public void Validating_object_streams_whose_data_share_a_stretch_of_the_file_holds_no_copy_of_their_data()
     {

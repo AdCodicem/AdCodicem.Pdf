@@ -899,6 +899,32 @@ internal ref struct PdfObjectParser
 
         if (confirmed == true)
         {
+            // A confirmed length is the one way data runs over the next object, which no valid file's does: past what the
+            // streams that overlap so may keep together, the data ends at the header the index places inside it (#280). A
+            // length a guard cut is only a place to look at, never one kept.
+            if (_streamData is { } provider && declared.Form == StreamLengthForm.Integer)
+            {
+                var taken = provider.TakeConfirmed(_objectNumber, _baseOffset + dataStart, checkedAt, out var placed);
+
+                if (taken != checkedAt)
+                {
+                    if (KeepLengthFault(Fault(declared, dataStart, taken, checkedAt, EndStreamState.PastPlacedObject, placed)))
+                    {
+                        WarnLengthFault(
+                            PdfDiagnosticCodes.StreamLengthInvalid,
+                            string.Create(
+                                CultureInfo.InvariantCulture,
+                                $"{Describe(declared)}, which an endstream follows, but an object the index places starts inside the data, at {placed}; the {CountText.Bytes(taken)} up to it {(taken == 1 ? "is" : "are")} taken as the stream's data, the streams that overlap so having kept as much of the file as they may."),
+                            dataStart);
+                    }
+
+                    // The endstream that confirmed the length follows another object's data: where this one ends is unknown.
+                    _endObjAfterStream = null;
+                    _endObjUnknown = true;
+                    return Finish(dictionary, dataStart, taken, span.Length);
+                }
+            }
+
             return Finish(dictionary, dataStart, checkedAt, span.Length);
         }
 

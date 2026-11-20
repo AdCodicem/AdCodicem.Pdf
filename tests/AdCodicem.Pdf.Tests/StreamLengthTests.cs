@@ -1786,6 +1786,62 @@ public class StreamLengthTests
             Invariant($"The stream declared {Declared} bytes, and no endstream follows them; the declared length is kept without a search, the document's searches for endstream having read as much of the file as they may."));
     }
 
+    [Theory]
+    [InlineData("in order")]
+    [InlineData("the last fifth, over a row where no header starts")]
+    [InlineData("in order, one kept parsed again once the cache let it go")]
+    [InlineData("in order, each header's obj past more white space than a first read holds")]
+    public void Streams_that_hold_the_next_one_s_header_keep_their_data_until_those_that_overlap_have_kept_four_times_the_file(string reading)
+    {
+        // Seventy streams, each one's header a space past where the data of the one before starts, every /Length confirmed
+        // by the one endstream 100 KB on. The first four are read before the reader looks; the next four overlap within what
+        // such streams may keep together; past it, each one's data ends at the next one's header, and says so, white space
+        // between its tokens or not. The last holds no other header: a row the index gives in its data where no header
+        // starts neither ends it nor counts toward what the others keep. A stream kept reads the same parsed again (#280).
+        const int Streams = 70;
+        var staleRow = reading.Contains("no header", StringComparison.Ordinal);
+        var gap = reading.Contains("white space", StringComparison.Ordinal) ? 2 * PdfObjectParser.EndObjLookahead : 1;
+        var file = HostileInputTests.Overlapping(Streams, filler: 100_000, staleRow: staleRow, headerGap: gap, lead: 1);
+        using var document = PdfDocument.Open(file, PdfReaderOptions.Default with { ObjectCacheCapacity = 64 });
+        int[] order = staleRow ? [0, 1, 2, 3, Streams - 1, .. Enumerable.Range(4, Streams - 5)] : [.. Enumerable.Range(0, Streams)];
+        var streams = new PdfStream[Streams];
+
+        foreach (var k in order)
+        {
+            streams[k] = document.GetObject(new PdfObjectId(3 + k)).AsStream().Required();
+        }
+
+        if (reading.Contains("again", StringComparison.Ordinal))
+        {
+            var again = document.GetObject(new PdfObjectId(3 + 5)).AsStream().Required();
+            again.Should().NotBeSameAs(streams[5], "the cache let it go, and it was parsed again");
+            streams[5] = again;
+        }
+
+        for (var k = 0; k < Streams; k++)
+        {
+            var declared = streams[k].Dictionary.GetInteger(PdfName.Length);
+            streams[k].Data.Length.Should().Be(k < 8 || k == Streams - 1 ? (int)declared! : 1, Invariant($"stream {k}"));
+        }
+
+        var reports = document.Diagnostics.Where(d => d.Code == PdfDiagnosticCodes.StreamLengthInvalid).ToList();
+        reports.Should().HaveCount(Streams - 9);
+        reports.Should().ContainSingle(d => d.Position == streams[8].Data.Position).Which.Message.Should().Be(
+            Invariant($"The stream declared {streams[8].Dictionary.GetInteger(PdfName.Length)} bytes, which an endstream follows, but an object the index places starts inside the data, at {streams[8].Data.Position + 1}; the 1 byte up to it is taken as the stream's data, the streams that overlap so having kept as much of the file as they may."));
+        document.Reader.TryGetStreamLengthFault(3 + 8, out var fault).Should().BeTrue();
+        fault.Should().Be(new StreamLengthFault
+        {
+            Form = StreamLengthForm.Integer,
+            Declared = streams[8].Dictionary.GetInteger(PdfName.Length),
+            Taken = 1,
+            Found = (int)streams[8].Dictionary.GetInteger(PdfName.Length)!,
+            EndStream = EndStreamState.PastPlacedObject,
+            NextObject = streams[8].Data.Position + 1,
+            DataStart = streams[8].Data.Position,
+        });
+        document.Reader.IsEndObjMissing(3 + 8, out _).Should().BeFalse("where the object ends is unknown");
+    }
+
     [Fact]
     public void An_index_offset_past_the_end_of_the_file_or_before_the_data_bounds_nothing()
     {
