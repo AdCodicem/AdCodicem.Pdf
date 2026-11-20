@@ -900,9 +900,10 @@ internal ref struct PdfObjectParser
         if (confirmed == true)
         {
             // A confirmed length is the one way data runs over the next object, which no valid file's does: past what the
-            // streams that overlap so may keep together, the data ends at the header the index places inside it (#280). A
-            // length a guard cut is only a place to look at, never one kept.
-            if (_streamData is { } provider && declared.Form == StreamLengthForm.Integer)
+            // streams that overlap so may keep together, the data ends at a place the index gives inside it (#280). Every
+            // length confirmed is weighed so — a declared one, or the integer an object a guard cut held before the cut, which
+            // the stream is read with alike once an endstream follows it.
+            if (_streamData is { } provider)
             {
                 var taken = provider.TakeConfirmed(_objectNumber, _baseOffset + dataStart, checkedAt, out var placed);
 
@@ -910,12 +911,7 @@ internal ref struct PdfObjectParser
                 {
                     if (KeepLengthFault(Fault(declared, dataStart, taken, checkedAt, EndStreamState.PastPlacedObject, placed)))
                     {
-                        WarnLengthFault(
-                            PdfDiagnosticCodes.StreamLengthInvalid,
-                            string.Create(
-                                CultureInfo.InvariantCulture,
-                                $"{Describe(declared)}, which an endstream follows, but an object the index places starts inside the data, at {placed}; the {CountText.Bytes(taken)} up to it {(taken == 1 ? "is" : "are")} taken as the stream's data, the streams that overlap so having kept as much of the file as they may."),
-                            dataStart);
+                        WarnLengthFault(PdfDiagnosticCodes.StreamLengthInvalid, DescribePastPlacedObject(declared, checkedAt, taken, placed), dataStart);
                     }
 
                     // The endstream that confirmed the length follows another object's data: where this one ends is unknown.
@@ -1297,6 +1293,22 @@ internal ref struct PdfObjectParser
     private static string DescribeRecovered(DeclaredLength declared, int recovered) => declared.Form == StreamLengthForm.Integer
         ? string.Create(CultureInfo.InvariantCulture, $"The stream declared {CountText.Bytes(declared.Value.GetValueOrDefault())} but ended after {recovered}.")
         : string.Create(CultureInfo.InvariantCulture, $"{Describe(declared)}; its data ends after {CountText.Bytes(recovered)}.");
+
+    /// <summary>
+    /// Says what was wrong with a stream's <c>/Length</c>, which an <c>endstream</c> confirmed after <paramref name="confirmed"/>
+    /// bytes, the data ending after <paramref name="taken"/> of them, at the place the index gives an object at,
+    /// <paramref name="placed"/>: the length it declared, or the integer the object a guard cut held before the cut.
+    /// </summary>
+    private static string DescribePastPlacedObject(DeclaredLength declared, int confirmed, int taken, long placed)
+    {
+        var length = declared.Form == StreamLengthForm.Integer
+            ? string.Create(CultureInfo.InvariantCulture, $"{Describe(declared)}, which an endstream follows, but an object the index places starts inside the data, at {placed}")
+            : string.Create(CultureInfo.InvariantCulture, $"{Describe(declared)}; an endstream follows the {CountText.Bytes(confirmed)} the integer read from it before the cut gives, but an object the index places starts inside them, at {placed}");
+
+        return string.Create(
+            CultureInfo.InvariantCulture,
+            $"{length}; the {CountText.Bytes(taken)} up to it {(taken == 1 ? "is" : "are")} taken as the stream's data, the streams that overlap so having kept as much of the file as they may.");
+    }
 
     /// <summary>
     /// Says how a stream's <c>/Length</c> was written, as a report starts: the length it declared, or why it gives none.

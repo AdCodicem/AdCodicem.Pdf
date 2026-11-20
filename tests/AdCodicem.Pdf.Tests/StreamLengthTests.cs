@@ -1818,6 +1818,7 @@ public class StreamLengthTests
     [Theory]
     [InlineData("in order")]
     [InlineData("the last fifth, over a row where no header starts")]
+    [InlineData("in order, the last over a row where no header starts")]
     [InlineData("in order, one kept parsed again once the cache let it go")]
     [InlineData("in order, each header's obj past more white space than a first read holds")]
     public void Streams_that_hold_the_next_one_s_header_keep_their_data_until_those_that_overlap_have_kept_four_times_the_file(string reading)
@@ -1825,14 +1826,17 @@ public class StreamLengthTests
         // Seventy streams, each one's header a space past where the data of the one before starts, every /Length confirmed
         // by the one endstream 100 KB on. The first four are read before the reader looks; the next four overlap within what
         // such streams may keep together; past it, each one's data ends at the next one's header, and says so, white space
-        // between its tokens or not. The last holds no other header: a row the index gives in its data where no header
-        // starts neither ends it nor counts toward what the others keep. A stream kept reads the same parsed again (#280).
+        // between its tokens or not. The last holds no other header: read fifth, a row the index gives in its data where no
+        // header starts counts it among the streams that overlap, one fewer of the others keeps its data, and it keeps its
+        // own; read last, its data ends at that row, the first place the index gives in it, where none starts a header. A
+        // stream kept reads the same parsed again (#280).
         const int Streams = 70;
         var staleRow = reading.Contains("no header", StringComparison.Ordinal);
+        var staleLast = reading.StartsWith("in order", StringComparison.Ordinal);
         var gap = reading.Contains("white space", StringComparison.Ordinal) ? 2 * PdfObjectParser.EndObjLookahead : 1;
-        var file = HostileInputTests.Overlapping(Streams, filler: 100_000, staleRow: staleRow, headerGap: gap, lead: 1);
+        var file = HostileInputTests.Overlapping(Streams, filler: 100_000, staleRow: staleRow, headerGap: gap, lead: " ");
         using var document = PdfDocument.Open(file, PdfReaderOptions.Default with { ObjectCacheCapacity = 64 });
-        int[] order = staleRow ? [0, 1, 2, 3, Streams - 1, .. Enumerable.Range(4, Streams - 5)] : [.. Enumerable.Range(0, Streams)];
+        int[] order = staleRow && !staleLast ? [0, 1, 2, 3, Streams - 1, .. Enumerable.Range(4, Streams - 5)] : [.. Enumerable.Range(0, Streams)];
         var streams = new PdfStream[Streams];
 
         foreach (var k in order)
@@ -1847,28 +1851,126 @@ public class StreamLengthTests
             streams[5] = again;
         }
 
-        for (var k = 0; k < Streams; k++)
+        var firstCut = staleRow && !staleLast ? 7 : 8;
+        var lastCut = staleRow && staleLast;
+
+        for (var k = 0; k < Streams - 1; k++)
         {
             var declared = streams[k].Dictionary.GetInteger(PdfName.Length);
-            streams[k].Data.Length.Should().Be(k < 8 || k == Streams - 1 ? (int)declared! : 1, Invariant($"stream {k}"));
+            streams[k].Data.Length.Should().Be(k < firstCut ? (int)declared! : 1, Invariant($"stream {k}"));
         }
 
+        streams[^1].Data.Length.Should().Be(lastCut ? 50_000 : (int)streams[^1].Dictionary.GetInteger(PdfName.Length)!);
+        var cut = streams[firstCut];
         var reports = document.Diagnostics.Where(d => d.Code == PdfDiagnosticCodes.StreamLengthInvalid).ToList();
-        reports.Should().HaveCount(Streams - 9);
-        reports.Should().ContainSingle(d => d.Position == streams[8].Data.Position).Which.Message.Should().Be(
-            Invariant($"The stream declared {streams[8].Dictionary.GetInteger(PdfName.Length)} bytes, which an endstream follows, but an object the index places starts inside the data, at {streams[8].Data.Position + 1}; the 1 byte up to it is taken as the stream's data, the streams that overlap so having kept as much of the file as they may."));
-        document.Reader.TryGetStreamLengthFault(3 + 8, out var fault).Should().BeTrue();
+        reports.Should().HaveCount(Streams - 1 - firstCut + (lastCut ? 1 : 0));
+        reports.Should().ContainSingle(d => d.Position == cut.Data.Position).Which.Message.Should().Be(
+            Invariant($"The stream declared {cut.Dictionary.GetInteger(PdfName.Length)} bytes, which an endstream follows, but an object the index places starts inside the data, at {cut.Data.Position + 1}; the 1 byte up to it is taken as the stream's data, the streams that overlap so having kept as much of the file as they may."));
+        document.Reader.TryGetStreamLengthFault(3 + firstCut, out var fault).Should().BeTrue();
         fault.Should().Be(new StreamLengthFault
         {
             Form = StreamLengthForm.Integer,
-            Declared = streams[8].Dictionary.GetInteger(PdfName.Length),
+            Declared = cut.Dictionary.GetInteger(PdfName.Length),
             Taken = 1,
-            Found = (int)streams[8].Dictionary.GetInteger(PdfName.Length)!,
+            Found = (int)cut.Dictionary.GetInteger(PdfName.Length)!,
             EndStream = EndStreamState.PastPlacedObject,
-            NextObject = streams[8].Data.Position + 1,
-            DataStart = streams[8].Data.Position,
+            NextObject = cut.Data.Position + 1,
+            DataStart = cut.Data.Position,
         });
-        document.Reader.IsEndObjMissing(3 + 8, out _).Should().BeFalse("where the object ends is unknown");
+        document.Reader.IsEndObjMissing(3 + firstCut, out _).Should().BeFalse("where the object ends is unknown");
+    }
+
+    [Theory]
+    [InlineData("white space before the header")]
+    [InlineData("a comment before the header")]
+    [InlineData("a comment longer than a first read before the header")]
+    [InlineData("a letter before the header's digits")]
+    [InlineData("a byte before the header")]
+    [InlineData("inside another number, then the header")]
+    [InlineData("where no header starts, then the header")]
+    [InlineData("where no header starts, sixty-five times")]
+    public void Streams_that_overlap_past_what_they_may_keep_end_at_the_first_place_the_index_gives_at_which_a_load_reads_a_header(string rows)
+    {
+        // Seventy streams, each one's header inside the data of the one before, every /Length confirmed by the one endstream
+        // 100 KB on, the rows placing the headers, or other objects before them, as the row says. Once those that overlap so
+        // have kept four times the file, each one's data ends at the first place the index gives inside it from which a load
+        // reads a header — past white space and comments, a token that starts there whatever the byte before it, but for a
+        // place inside a number —, of the first 64; at the first place where none of them does (#280).
+        const int Streams = 70;
+        var (lead, rowShift, decoys, decoyAt) = rows switch
+        {
+            "white space before the header" => ("  ", -2, 0, 0),
+            "a comment before the header" => ("%c\n", -3, 0, 0),
+            "a comment longer than a first read before the header" => ("%" + new string('c', 80) + "\n", -82, 0, 0),
+            "a letter before the header's digits" => ("x", 0, 0, 0),
+            "a byte before the header" => ("", -1, 0, 0),
+            "inside another number, then the header" => ("98 0 obj ", 0, 1, 1),
+            "where no header starts, then the header" => ("y ", 0, 1, 0),
+            _ => (new string('y', 65) + " ", 0, 65, 0),
+        };
+        var file = HostileInputTests.Overlapping(Streams, filler: 100_000, lead: lead, rowShift: rowShift, decoys: decoys, decoyAt: decoyAt);
+        using var document = PdfDocument.Open(file);
+        var streams = Enumerable.Range(0, Streams).Select(k => document.GetObject(new PdfObjectId(3 + k)).AsStream().Required()).ToArray();
+
+        var first = Array.FindIndex(streams, stream => stream.Data.Length != stream.Dictionary.GetInteger(PdfName.Length));
+        first.Should().BePositive();
+        var end = (int)(streams[first].Data.Position + streams[first].Data.Length);
+        var next = 3 + first + 1;
+        var expected = rows switch
+        {
+            "white space before the header" => Invariant($"  {next} 0 obj"),
+            "a comment before the header" => Invariant($"%c\n{next} 0 obj"),
+            "a comment longer than a first read before the header" => "%ccc",
+            "a byte before the header" => Invariant($"\n{next + 1} 0 obj"),
+            "where no header starts, sixty-five times" => "yyy",
+            _ => Invariant($"{next} 0 obj"),
+        };
+        Encoding.Latin1.GetString(file, end, expected.Length).Should().Be(expected);
+        document.Diagnostics.Should().Contain(d => d.Code == PdfDiagnosticCodes.StreamLengthInvalid && d.Position == streams[first].Data.Position);
+    }
+
+    [Fact]
+    public void A_stream_whose_data_holds_a_row_where_no_header_starts_keeps_its_data_however_often_it_is_parsed()
+    {
+        // A stream of 100 KB, its /Length confirmed, and a row a shift left stale placing object 74 in the middle of its data,
+        // where no header starts; seventy objects read after it let the cache drop it, eight times. Once the streams parsed
+        // total four times the file, the reader looks at it: it counts among the streams that overlap, alone, and keeps its
+        // data, unreported, however often it is parsed (#280).
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"),
+        };
+        var at = file.Position;
+        var head = "3 0 obj\n<< /Length 100000 >>\nstream\n";
+        rows[3] = at;
+        rows[74] = at + head.Length + 50_000;
+        file.Raw(head + new string('x', 100_000) + "\nendstream\nendobj\n");
+
+        for (var number = 4; number < 74; number++)
+        {
+            rows[number] = file.Object(number, Invariant($"({number})"));
+        }
+
+        file.Table(75, rows, "/Size 75 /Root 1 0 R");
+        using var document = PdfDocument.Open(file.Bytes, PdfReaderOptions.Default with { ObjectCacheCapacity = 64 });
+        PdfStream? last = null;
+
+        for (var pass = 0; pass < 8; pass++)
+        {
+            var stream = document.GetObject(new PdfObjectId(3)).AsStream().Required();
+            stream.Should().NotBeSameAs(last, "the cache let it go, and it was parsed again");
+            stream.Data.Length.Should().Be(100_000);
+            last = stream;
+
+            for (var number = 4; number < 74; number++)
+            {
+                document.GetObject(new PdfObjectId(number));
+            }
+        }
+
+        document.Diagnostics.Should().BeEmpty();
     }
 
     [Fact]

@@ -74,18 +74,23 @@ internal interface IPdfStreamDataProvider : IPdfFileEdge
     StreamEndSearch FindEndStream(int number, long absoluteDataStart, long declaredEnd, ReadOnlySpan<byte> buffered, bool deferred);
 
     /// <summary>
-    /// Gives how many bytes of its data a stream keeps whose declared length, <paramref name="length"/> bytes from
+    /// Gives how many bytes of its data a stream keeps whose length, <paramref name="length"/> bytes from
     /// <paramref name="absoluteDataStart"/>, an <c>endstream</c> confirms: all of them, unless the index places an object
-    /// whose header starts inside them and the streams that overlap so have kept as much of the file as they may, the data
-    /// then ending at that header, which <paramref name="placed"/> gives.
+    /// inside them and the streams whose data so hold one have kept as much of the file as they may, the data then ending at
+    /// one of those places, which <paramref name="placed"/> gives.
     /// </summary>
     /// <param name="number">
     /// The number of the object the stream is the value of, whose own entry in the index is no object inside its data; 0
     /// for a stream read alone.
     /// </param>
     /// <param name="absoluteDataStart">Where the data starts in the file.</param>
-    /// <param name="length">The declared length, which an <c>endstream</c> confirms.</param>
-    /// <param name="placed">Where the header the data ends at starts in the file, when it ends short of its length; -1 otherwise.</param>
+    /// <param name="length">
+    /// The length an <c>endstream</c> confirms: the declared one, or the integer an object a guard cut held before the cut.
+    /// </param>
+    /// <param name="placed">
+    /// Where the data ends in the file, at a place the index gives an object at, when it ends short of its length; -1
+    /// otherwise.
+    /// </param>
     int TakeConfirmed(int number, long absoluteDataStart, int length, out long placed);
 
     /// <summary>
