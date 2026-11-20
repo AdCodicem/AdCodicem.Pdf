@@ -41,6 +41,7 @@ public sealed record PdfReaderLimits
         MaxIndexEntries = int.MaxValue,
         MaxFilterChainLength = int.MaxValue,
         MaxRebuildReadPasses = int.MaxValue,
+        MaxObjectStreamDecodePasses = int.MaxValue,
     };
 
     /// <summary>
@@ -119,8 +120,10 @@ public sealed record PdfReaderLimits
     /// 1,024; each incremental save adds one.
     /// </summary>
     /// <remarks>
-    /// Reaching it keeps the newest sections and reports
-    /// <see cref="Diagnostics.PdfDiagnosticCodes.LimitXRefSectionCount"/>.
+    /// It counts the links of the chain, the sections <c>startxref</c> and each <c>/Prev</c> name. In a hybrid file, the
+    /// cross-reference stream a classic table's <c>/XRefStm</c> names is read beside that table and not counted: a chain of
+    /// hybrid tables reads up to two sections a link, a table and its stream. Reaching it keeps the newest sections and
+    /// reports <see cref="Diagnostics.PdfDiagnosticCodes.LimitXRefSectionCount"/>.
     /// </remarks>
     /// <exception cref="ArgumentOutOfRangeException">The value is zero or less.</exception>
     public int MaxXRefSectionCount
@@ -262,6 +265,47 @@ public sealed record PdfReaderLimits
         init
         {
             ArgumentOutOfRangeException.ThrowIfNegativeOrZero(value, nameof(MaxRebuildReadPasses));
+            field = value;
+        }
+    } = 4;
+
+    /// <summary>
+    /// Gets how many times what one of the library's walks of a document first decoded of its object streams it may decode
+    /// again of those the reader let go. Defaults to 4: a walk decodes each object stream once while those it reads from in
+    /// turn fit the reader's budget for decoded object streams, while two streams that each decode past half that budget,
+    /// whose objects the walk reads in turn, would have it decode a whole stream again for each object.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The reader keeps the object streams it decoded within a budget of 32 MB, and the one it decoded last whatever its
+    /// size: a stream it let go is decoded again when one of its objects is read again. The library's own walks of a
+    /// document weigh what they decode: the search for a catalog, which a <c>/Root</c> that leads to none sets off as the
+    /// document opens or as a rebuild of its index finishes, and a validation's rules
+    /// (<see cref="Validation.PdfValidator.Validate"/>). During one walk, a nested one counted with it, the object streams it
+    /// decoded and the reader let go may be decoded again, together, up to this many times what their first decodings in
+    /// that walk weighed — their decoded data, and their headers' tables. Past it, every object a stream the walk decoded
+    /// and the reader let go holds reads as null until the walk ends, as an object a guard cut, and the walk goes on. A
+    /// stream the walk has not decoded yet is decoded, and a rebuild's taking in of the object streams is not weighed. What
+    /// reads as null for the guard is not kept — nor anything read through it —, so that your own reads, once the walk is
+    /// done, read the objects whole; and the budget starts again with the next walk.
+    /// </para>
+    /// <para>
+    /// A valid file can reach it: a page tree whose pages lie in turn in two object streams that each decode past 16 MB.
+    /// Validating such a file checks in part what lies past the cut, as for any guard; reading its pages yourself is not
+    /// bounded by it, and decodes a stream again for each page. Which objects read as null depends on what the reader kept
+    /// before the walk began: two validations of such a file may differ. Reaching it reports
+    /// <see cref="Diagnostics.PdfDiagnosticCodes.LimitObjectStreamDecodes"/>, once a document, where the object stream it
+    /// first left undecoded lies; with <see cref="PdfReaderOptions.ThrowOnLimit"/>, each read it leaves undecoded throws,
+    /// the search for a catalog once it ends, as for the other guards it meets.
+    /// </para>
+    /// </remarks>
+    /// <exception cref="ArgumentOutOfRangeException">The value is zero or less.</exception>
+    public int MaxObjectStreamDecodePasses
+    {
+        get;
+        init
+        {
+            ArgumentOutOfRangeException.ThrowIfNegativeOrZero(value, nameof(MaxObjectStreamDecodePasses));
             field = value;
         }
     } = 4;

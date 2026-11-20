@@ -1372,6 +1372,98 @@ public class HostileInputTests
     }
 
     [Fact]
+    public void A_search_for_a_catalog_through_two_large_object_streams_read_in_turn_decodes_them_again_within_its_bound()
+    {
+        // The file #181 describes, of about 45 KB: object streams 1 and 2, of one object each, decode to 20 MB each, past
+        // half the budget the reader keeps them in; the cross-reference stream gives no /Root, and places each of its
+        // 100,000 numbers in stream 1 when odd, in stream 2 when even. The search for a catalog decoded a whole stream for
+        // each number. It decodes them again up to four times what it first decoded of them, reads the rest as null, and
+        // the rebuild that follows finds no catalog either. What it read as null is not kept: objects 3 and 4 read whole.
+        var file = AlternatingObjectStreams(100_000, 20 * 1024 * 1024);
+        using var source = new StrictCountingSource(file);
+
+        using var document = Measure(() => PdfDocument.Open(source, PdfReaderOptions.Default, ownsSource: false));
+
+        source.BytesRead.Should().BeLessThan(16L * file.Length, "each stream is decoded again a few times, not once for each number");
+        document.Diagnostics.Select(entry => entry.Code).Should().Equal(PdfDiagnosticCodes.LimitObjectStreamDecodes, PdfDiagnosticCodes.XRefRebuilt);
+        document.Diagnostics[0].Position.Should().Be(PdfTemplate.OffsetOf(file, "1 0 obj"));
+        document.GetObject(new PdfObjectId(3)).Should().BeOfType<PdfDictionary>();
+        document.GetObject(new PdfObjectId(4)).Should().BeOfType<PdfDictionary>();
+    }
+
+    [Theory]
+    [InlineData("pages")]
+    [InlineData("types")]
+    public void Validating_objects_that_lie_in_turn_in_two_large_object_streams_decodes_them_again_within_its_bound_and_finds_no_fault(string shape)
+    {
+        // Object streams 10 and 11, of 17 MB each, hold sixty objects in turn: the pages of a valid page tree, or objects
+        // whose /Type names an object of stream 12, of 17 MB too, that no tree lists. Read in the tree's order, or by stream
+        // with each /Type resolved, each object decoded a whole stream. The validation decodes them again up to four times
+        // what it first decoded of them, and leaves the rest unread as a guard's: no finding of a fault, and objects read
+        // whole by the caller after it.
+        var file = shape == "pages"
+            ? AlternatingPages(60, 17 * 1024 * 1024, "<< /Type /Page /Parent 2 0 R >>")
+            : TypesInAnotherStream(60, 17 * 1024 * 1024);
+        using var source = new StrictCountingSource(file);
+        using var document = PdfDocument.Open(source, PdfReaderOptions.Default, ownsSource: false);
+        var opened = source.BytesRead;
+
+        var report = Measure(() => new PdfValidator().Validate(document));
+
+        (source.BytesRead - opened).Should().BeLessThan(16L * file.Length, "each stream is decoded again a few times, not once for each object");
+        document.Diagnostics.Select(entry => entry.Code).Should().Equal(PdfDiagnosticCodes.LimitObjectStreamDecodes);
+        report.Findings.Should().BeEmpty();
+
+        for (var number = 20; number < 80; number++)
+        {
+            document.GetObject(new PdfObjectId(number)).Should().BeOfType<PdfDictionary>();
+        }
+    }
+
+    [Fact]
+    public void Validating_a_file_whose_unlisted_pages_lie_in_turn_in_two_large_object_streams_reads_each_stream_once_and_reports_them_in_number_order()
+    {
+        // Objects 20 to 219 are pages the tree does not list: those a multiple of 25 written directly, the others in object
+        // streams 10 and 11, of 17 MB each, in turn. Read in number order, each decoded a whole stream. The rule reads the
+        // objects of each stream together, and reports every page in number order all the same.
+        var file = UnlistedPages(200, 17 * 1024 * 1024);
+        using var source = new StrictCountingSource(file);
+        using var document = PdfDocument.Open(source, PdfReaderOptions.Default, ownsSource: false);
+        var opened = source.BytesRead;
+
+        var report = Measure(() => new PdfValidator().Validate(document));
+
+        (source.BytesRead - opened).Should().BeLessThan(8L * file.Length, "the rules decode each stream a few times, not once for each object");
+        document.Diagnostics.Should().BeEmpty();
+        report.Findings.Should().OnlyContain(finding => finding.RuleId == PdfValidationRuleIds.PageTreePageOrphaned);
+        report.Findings.Select(finding => finding.Location.Object!.Value.Number).Should().Equal(Enumerable.Range(20, 200));
+    }
+
+    [Theory]
+    [InlineData("type")]
+    [InlineData("length")]
+    [InlineData("bomb")]
+    public void A_search_for_a_catalog_opened_to_throw_reads_an_object_a_guard_cut_once_however_many_candidates_lead_to_it(string form)
+    {
+        // Under ThrowOnLimit, the search for a catalog goes on past each guard and throws the first once it ends. Four
+        // hundred candidates lead to object 9 — through their /Type, or their stream's /Length —, which MaxObjectLength
+        // cuts at 1 MB, or to objects 8 and 9 in turn, which an object stream holds that decodes past a
+        // MaxDecodedStreamLength of 1 MB: each read it again up to its bound, a megabyte each. The load, or the decoding,
+        // that threw throws again without reading.
+        var (file, limits, code) = form == "bomb"
+            ? (CandidatesThroughABomb(400), PdfReaderLimits.Default with { MaxDecodedStreamLength = 1024 * 1024 }, PdfDiagnosticCodes.LimitDecodedStream)
+            : (CandidatesThroughALongObject(400, form), PdfReaderLimits.Default with { MaxObjectLength = 1024 * 1024 }, PdfDiagnosticCodes.LimitObject);
+        var options = new PdfReaderOptions { Limits = limits, ThrowOnLimit = true };
+        var allocated = GC.GetAllocatedBytesForCurrentThread();
+
+        var opening = () => Measure(() => PdfDocument.Open(file, options));
+
+        opening.Should().Throw<PdfLimitExceededException>().Which.Code.Should().Be(code);
+        allocated = GC.GetAllocatedBytesForCurrentThread() - allocated;
+        allocated.Should().BeLessThan(32L * 1024 * 1024, "object 9 is read once, not once for each candidate");
+    }
+
+    [Fact]
     public void A_fault_of_an_object_stream_is_held_once_by_its_document_however_often_the_stream_is_decoded()
     {
         // Object stream 7's hexadecimal data lacks its end marker. The reader decodes it to serve object 6, and again to
@@ -6336,6 +6428,168 @@ public class HostileInputTests
         file.Raw(body.ToString());
         var index = objectStreams ? 6000 : 1000;
         file.CrossReferenceStream(index, index + 1, rows, "/Root 1 0 R");
+        return file.Bytes;
+    }
+
+    /// <summary>
+    /// Writes the file #181 describes: object streams 1 and 2 hold objects 3 and 4 and decode to <paramref name="decoded"/>
+    /// bytes each; the cross-reference stream, object 5, indexes <paramref name="size"/> numbers, gives no <c>/Root</c>, and
+    /// places each number but theirs at index 0 of stream 1 when odd, of stream 2 when even.
+    /// </summary>
+    internal static byte[] AlternatingObjectStreams(int size, int decoded)
+    {
+        var file = new HandWrittenFile(version: "1.5");
+        var first = file.PaddedObjectStream(1, [(3, "<< >>")], decoded);
+        var second = file.PaddedObjectStream(2, [(4, "<< >>")], decoded);
+        file.CompressedCrossReferenceStream(
+            5, size, number => number switch { 1 => (1, first, 0), 2 => (1, second, 0), _ => (2, 2 - (number % 2), 0) }, string.Empty);
+        return file.Bytes;
+    }
+
+    /// <summary>
+    /// Writes a file whose page tree, object 2, lists <paramref name="pages"/> pages, objects 20 and on, each
+    /// <paramref name="page"/>, that object streams 10 and 11 hold in turn, the odd ones in 10: each decodes to
+    /// <paramref name="decoded"/> bytes. The tree gives its pages a media box and resources.
+    /// </summary>
+    internal static byte[] AlternatingPages(int pages, int decoded, string page)
+    {
+        var file = new HandWrittenFile(version: "1.5");
+        var kids = string.Join(' ', Enumerable.Range(20, pages).Select(number => string.Create(CultureInfo.InvariantCulture, $"{number} 0 R")));
+        var catalog = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>");
+        var tree = file.Object(2, string.Create(CultureInfo.InvariantCulture, $"<< /Type /Pages /Kids [{kids}] /Count {pages} /MediaBox [0 0 612 792] /Resources << >> >>"));
+        var odd = file.PaddedObjectStream(10, Enumerable.Range(20, pages).Where(number => number % 2 == 1).Select(number => (number, page)).ToArray(), decoded);
+        var even = file.PaddedObjectStream(11, Enumerable.Range(20, pages).Where(number => number % 2 == 0).Select(number => (number, page)).ToArray(), decoded);
+        file.CompressedCrossReferenceStream(
+            20 + pages,
+            21 + pages,
+            number => number switch
+            {
+                1 => (1, catalog, 0),
+                2 => (1, tree, 0),
+                10 => (1, odd, 0),
+                11 => (1, even, 0),
+                >= 20 => (2, 11 - (number % 2), (number - 20) / 2),
+                _ => (0, 0, 0),
+            },
+            "/Root 1 0 R");
+        return file.Bytes;
+    }
+
+    /// <summary>
+    /// Writes a file of an empty page tree whose object stream 10 holds <paramref name="count"/> objects, 20 and on, each of a
+    /// <c>/Type</c> that names an object of stream 12, 1000 and on, which holds a name: each stream decodes to
+    /// <paramref name="decoded"/> bytes.
+    /// </summary>
+    internal static byte[] TypesInAnotherStream(int count, int decoded)
+    {
+        var file = new HandWrittenFile(version: "1.5");
+        var catalog = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>");
+        var tree = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>");
+        var typed = file.PaddedObjectStream(
+            10, Enumerable.Range(0, count).Select(k => (20 + k, string.Create(CultureInfo.InvariantCulture, $"<< /Type {1000 + k} 0 R /Parent 2 0 R >>"))).ToArray(), decoded);
+        var types = file.PaddedObjectStream(12, Enumerable.Range(0, count).Select(k => (1000 + k, "/Thing")).ToArray(), decoded);
+        file.CompressedCrossReferenceStream(
+            1000 + count,
+            1001 + count,
+            number => number switch
+            {
+                1 => (1, catalog, 0),
+                2 => (1, tree, 0),
+                10 => (1, typed, 0),
+                12 => (1, types, 0),
+                >= 1000 => (2, 12, number - 1000),
+                >= 20 when number < 20 + count => (2, 10, number - 20),
+                _ => (0, 0, 0),
+            },
+            "/Root 1 0 R");
+        return file.Bytes;
+    }
+
+    /// <summary>
+    /// Writes a file of an empty page tree and <paramref name="count"/> pages it does not list, objects 20 and on: those a
+    /// multiple of 25 written directly, the others held in turn by object streams 10 and 11, the odd ones in 10, each of
+    /// which decodes to <paramref name="decoded"/> bytes.
+    /// </summary>
+    internal static byte[] UnlistedPages(int count, int decoded)
+    {
+        const string Page = "<< /Type /Page /Parent 2 0 R >>";
+        var file = new HandWrittenFile(version: "1.5");
+        var rows = new Dictionary<int, (int Type, long Field2, int Field3)>
+        {
+            [1] = (1, file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"), 0),
+            [2] = (1, file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"), 0),
+        };
+        var packed = Enumerable.Range(20, count).Where(number => number % 25 != 0).ToArray();
+
+        foreach (var number in Enumerable.Range(20, count).Where(number => number % 25 == 0))
+        {
+            rows[number] = (1, file.Object(number, Page), 0);
+        }
+
+        foreach (var stream in (int[])[10, 11])
+        {
+            var members = packed.Where(number => 11 - (number % 2) == stream).ToArray();
+            rows[stream] = (1, file.PaddedObjectStream(stream, members.Select(number => (number, Page)).ToArray(), decoded), 0);
+
+            for (var index = 0; index < members.Length; index++)
+            {
+                rows[members[index]] = (2, stream, index);
+            }
+        }
+
+        file.CompressedCrossReferenceStream(20 + count, 21 + count, number => rows.TryGetValue(number, out var row) ? row : (0, 0, 0), "/Root 1 0 R");
+        return file.Bytes;
+    }
+
+    /// <summary>
+    /// Writes a file whose <c>/Root</c> names a string, and whose <paramref name="count"/> candidates for a catalog, objects
+    /// 10 and on, lead to object 9, a string of 1.2 MB, through their <c>/Type</c>, or, for <paramref name="form"/>
+    /// <c>length</c>, through their stream's <c>/Length</c>; the catalog comes last.
+    /// </summary>
+    internal static byte[] CandidatesThroughALongObject(int count, string form)
+    {
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "(not a catalog)"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"),
+            [9] = file.Object(9, "(" + new string('x', 1_200_000) + ")"),
+        };
+
+        for (var number = 10; number < 10 + count; number++)
+        {
+            rows[number] = file.Object(number, form == "length" ? "<< /Length 9 0 R >>\nstream\nabc\nendstream" : "<< /Type 9 0 R >>");
+        }
+
+        rows[10 + count] = file.Object(10 + count, "<< /Type /Catalog /Pages 2 0 R >>");
+        file.Table(11 + count, rows, string.Create(CultureInfo.InvariantCulture, $"/Root 1 0 R /Size {11 + count}"));
+        return file.Bytes;
+    }
+
+    /// <summary>
+    /// Writes a file whose <c>/Root</c> names a string, and whose <paramref name="count"/> candidates for a catalog, objects
+    /// 10 and on, lead through their <c>/Type</c> to objects 8 and 9 in turn, which object stream 7 holds, whose data
+    /// decodes to 2 MB; the catalog comes last.
+    /// </summary>
+    internal static byte[] CandidatesThroughABomb(int count)
+    {
+        var file = new HandWrittenFile(version: "1.5");
+        var rows = new Dictionary<int, (int Type, long Field2, int Field3)>
+        {
+            [1] = (1, file.Object(1, "(not a catalog)"), 0),
+            [2] = (1, file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"), 0),
+            [7] = (1, file.PaddedObjectStream(7, [(8, "/Thing"), (9, "/Thing")], 2 * 1024 * 1024), 0),
+            [8] = (2, 7, 0),
+            [9] = (2, 7, 1),
+        };
+
+        for (var number = 10; number < 10 + count; number++)
+        {
+            rows[number] = (1, file.Object(number, string.Create(CultureInfo.InvariantCulture, $"<< /Type {8 + (number % 2)} 0 R >>")), 0);
+        }
+
+        rows[10 + count] = (1, file.Object(10 + count, "<< /Type /Catalog /Pages 2 0 R >>"), 0);
+        file.CompressedCrossReferenceStream(11 + count, 12 + count, number => rows.TryGetValue(number, out var row) ? row : (0, 0, 0), "/Root 1 0 R");
         return file.Bytes;
     }
 

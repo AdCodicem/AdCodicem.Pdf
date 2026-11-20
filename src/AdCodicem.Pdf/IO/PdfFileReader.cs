@@ -1,6 +1,7 @@
 using System.Buffers;
 using System.Globalization;
 using System.Runtime.CompilerServices;
+using System.Runtime.ExceptionServices;
 using AdCodicem.Pdf.Diagnostics;
 using AdCodicem.Pdf.Documents;
 using AdCodicem.Pdf.IO.XRef;
@@ -194,10 +195,16 @@ internal sealed partial class PdfFileReader : IPdfObjectSource, IPdfStreamDataPr
 
     /// <summary>
     /// What the object streams kept at once weigh, in bytes: their decoded data, and the tables and lookup of their
-    /// headers (#160). Past it the oldest is let go, and decoded again if an object it holds is asked for, so no file is
-    /// read differently for it: the bound is on memory, not on what can be read. The object stream decoded last is kept
-    /// whatever its size, so memory follows the heaviest object stream rather than the number of them.
+    /// headers (#160). Past it the oldest is let go, and decoded again if an object it holds is asked for: the bound is on
+    /// memory, not on what can be read. The object stream decoded last is kept whatever its size, so memory follows the
+    /// heaviest object stream rather than the number of them.
     /// </summary>
+    /// <remarks>
+    /// A caller's reads are read the same whatever it let go. The library's own walks of a document weigh what they decode
+    /// again against <see cref="PdfReaderLimits.MaxObjectStreamDecodePasses"/>, a guard (<see cref="BeginWalk"/>): two
+    /// streams that each decode past half the budget, read from in turn, would otherwise decode a whole stream for each
+    /// object the walk reads (#181).
+    /// </remarks>
     private const long ObjectStreamBudget = 32L * 1024 * 1024;
 
     /// <summary>The most a search for a stream's <c>endstream</c> reads of the file at once.</summary>
@@ -368,6 +375,12 @@ internal sealed partial class PdfFileReader : IPdfObjectSource, IPdfStreamDataPr
     /// no byte of the file has, so that it is told apart from the index's report of the same bound wherever that lies.
     /// </summary>
     private static readonly (PdfLimit Limit, long Position) ScanMemoBoundReported = (PdfLimit.IndexEntries, long.MinValue);
+
+    /// <summary>
+    /// What the report of <see cref="PdfReaderLimits.MaxObjectStreamDecodePasses"/> is held under among the guards reported
+    /// (<see cref="ReachWalkDecodes"/>): once a document, wherever the walks that reach it leave a stream undecoded.
+    /// </summary>
+    private static readonly (PdfLimit Limit, long Position) WalkDecodesReported = (PdfLimit.ObjectStreamDecodes, long.MinValue);
 
     /// <summary>
     /// The object stream members <see cref="PdfReaderLimits.MaxObjectLength"/> cut, by where their stream's data starts and
@@ -541,6 +554,62 @@ internal sealed partial class PdfFileReader : IPdfObjectSource, IPdfStreamDataPr
     private readonly HashSet<int> _objectStreamsHiddenByGuard = new(SeededComparer.Instance);
     private readonly Queue<int> _objectStreamOrder = new();
     private long _objectStreamBytes;
+
+    /// <summary>How many of the library's walks of the document are in progress, one inside another (<see cref="BeginWalk"/>).</summary>
+    private int _walkDepth;
+
+    /// <summary>What the outermost walk in progress is, as the report of its guard names it.</summary>
+    private string _walkName = string.Empty;
+
+    /// <summary>
+    /// What each object stream the walk in progress decoded weighed the first time it did, by number; null until it
+    /// decodes one, and let go when the walk ends.
+    /// </summary>
+    private Dictionary<int, long>? _walkDecoded;
+
+    /// <summary>What the first decodings of the walk in progress weighed together.</summary>
+    private long _walkFirstBytes;
+
+    /// <summary>What the walk in progress decoded again of the object streams the reader let go, together.</summary>
+    private long _walkAgainBytes;
+
+    /// <summary>
+    /// Whether the walk in progress reached <see cref="PdfReaderLimits.MaxObjectStreamDecodePasses"/>: no stream it decoded
+    /// and the reader let go is decoded again before it ends.
+    /// </summary>
+    private bool _walkBudgetSpent;
+
+    /// <summary>
+    /// The objects the walk in progress read as null for <see cref="PdfReaderLimits.MaxObjectStreamDecodePasses"/>, which
+    /// it judges as objects a guard cut (<see cref="IsCutAtLimit"/>); null until it reads one, and let go when it ends.
+    /// </summary>
+    private HashSet<int>? _walkCut;
+
+    /// <summary>
+    /// How many times a walk read an object as null for <see cref="PdfReaderLimits.MaxObjectStreamDecodePasses"/>: what was
+    /// read while it rose is the walk's, not the file's, and is neither cached nor kept.
+    /// </summary>
+    private int _walkCuts;
+
+    /// <summary>
+    /// The exception each load that reached a guard threw, by object number, under <see cref="PdfReaderOptions.ThrowOnLimit"/>;
+    /// null until one does. A load kept nothing, and read again would read up to the bound again before it throws: it
+    /// throws the same exception again, without reading, until a rebuild lets go of what was read (#181).
+    /// </summary>
+    private Dictionary<int, ExceptionDispatchInfo>? _loadsThrown;
+
+    /// <summary>
+    /// The exception each object stream whose decoding reached a guard threw, by number, under
+    /// <see cref="PdfReaderOptions.ThrowOnLimit"/>; null until one does. Each is thrown again, without decoding, as
+    /// <see cref="_loadsThrown"/> are.
+    /// </summary>
+    private Dictionary<int, ExceptionDispatchInfo>? _decodingsThrown;
+
+    /// <summary>
+    /// The exceptions <see cref="_loadsThrown"/> holds, which only the innermost load each passes through keeps: the loads
+    /// it leaves read again, and reach the innermost.
+    /// </summary>
+    private HashSet<PdfLimitExceededException>? _throwsKept;
 
     /// <summary>The numbers of the objects being loaded, by number for the reason <see cref="_cache"/> gives.</summary>
     private readonly HashSet<int> _loading = new(SeededComparer.Instance);
@@ -1105,6 +1174,13 @@ internal sealed partial class PdfFileReader : IPdfObjectSource, IPdfStreamDataPr
             return cached;
         }
 
+        // Under ThrowOnLimit, a load that reached a guard kept nothing: it throws again, without reading up to the bound
+        // again (#181).
+        if (_loadsThrown is not null && _loadsThrown.TryGetValue(id.Number, out var thrown))
+        {
+            thrown.Throw();
+        }
+
         // A file can make an object's length depend on the object itself, under any generation. Refusing to
         // re-enter turns an infinite recursion into a null.
         if (!_loading.Add(id.Number))
@@ -1131,24 +1207,28 @@ internal sealed partial class PdfFileReader : IPdfObjectSource, IPdfStreamDataPr
 
             var reentries = _reentries;
             var repaired = _repaired;
+            var walkCuts = _walkCuts;
             value = LoadObject(id);
 
             // A null a guard against re-entry produced on the way is not the object's: it is read again when asked
             // again, rather than kept for good (#51). Nor is what was read through an index its own load had rebuilt — an
             // indirect /Length whose entry leads nowhere —: the next read takes the rebuilt index's definition of the
-            // number, as it would had the rebuild run before.
-            if ((value is not PdfNull || reentries == _reentries) && repaired == _repaired)
+            // number, as it would had the rebuild run before. Nor what was read through an object a walk's guard read as
+            // null, which the walk alone reads so.
+            if ((value is not PdfNull || reentries == _reentries) && repaired == _repaired && walkCuts == _walkCuts)
             {
                 Cache(id.Number, value);
             }
         }
-        catch (Exception) when (_unfinishedRebuild is RebuildAwaitingFinish)
+        catch (Exception exception) when (exception is PdfLimitExceededException || _unfinishedRebuild is RebuildAwaitingFinish)
         {
+            KeepThrow(id.Number, exception);
+
             // A load threw while a rebuild a load set off is unfinished: the outermost finishes it before the exception
             // leaves, so that the index stays the one a rebuild run first gives. Decided here, not in the filter, which runs
             // before the loads this one is part of have let go of their numbers. A rebuild whose scan the source failed is
             // the exception itself, and is left to the next read, as a finish the source fails is.
-            if (_loading.Count == 1 && _objectStreamsLoading.Count == 0)
+            if (_unfinishedRebuild is RebuildAwaitingFinish && _loading.Count == 1 && _objectStreamsLoading.Count == 0)
             {
                 _loading.Remove(id.Number);
                 FinishUnfinishedRebuildAfterFailure();
@@ -1381,9 +1461,72 @@ internal sealed partial class PdfFileReader : IPdfObjectSource, IPdfStreamDataPr
 
     /// <summary>
     /// Determines whether object <paramref name="number"/>, as it was read, was cut by one of the reader's limits and
-    /// kept as far as the limit let it be read.
+    /// kept as far as the limit let it be read; or, during one of the library's walks, read as null for
+    /// <see cref="PdfReaderLimits.MaxObjectStreamDecodePasses"/>, until the walk ends.
     /// </summary>
-    internal bool IsCutAtLimit(int number) => _cutAtLimit.Contains(number);
+    internal bool IsCutAtLimit(int number) => _cutAtLimit.Contains(number) || _walkCut?.Contains(number) == true;
+
+    /// <summary>
+    /// Starts one of the library's walks of the document, which <see cref="EndWalk"/> ends: the search for a catalog, or a
+    /// validation's rules. Within it, the object streams the walk decoded and the reader let go are decoded again within
+    /// <see cref="PdfReaderLimits.MaxObjectStreamDecodePasses"/>, a walk started within another counting with it.
+    /// </summary>
+    /// <param name="name">What the walk is, as the guard's report names it: a noun phrase, such as "validation".</param>
+    internal void BeginWalk(string name)
+    {
+        if (_walkDepth++ == 0)
+        {
+            _walkName = name;
+        }
+    }
+
+    /// <summary>
+    /// Ends a walk <see cref="BeginWalk"/> started: once the outermost ends, what the walks decoded is forgotten, the budget
+    /// starts again with the next, and the objects they read as null for it read whole again.
+    /// </summary>
+    internal void EndWalk()
+    {
+        if (--_walkDepth > 0)
+        {
+            return;
+        }
+
+        _walkDecoded = null;
+        _walkFirstBytes = 0;
+        _walkAgainBytes = 0;
+        _walkBudgetSpent = false;
+        _walkCut = null;
+    }
+
+    /// <summary>
+    /// Keeps, under <see cref="PdfReaderOptions.ThrowOnLimit"/>, the exception of a guard the load of object
+    /// <paramref name="number"/> lets go, when that load is the innermost it passes through, for the next read of the object
+    /// to throw it again without reading.
+    /// </summary>
+    /// <remarks>
+    /// The walks' guard is not kept: what it reads as null is the walk's alone, and the object is read whole once the walk
+    /// ends (<see cref="PdfReaderLimits.MaxObjectStreamDecodePasses"/>).
+    /// </remarks>
+    private void KeepThrow(int number, Exception exception)
+    {
+        if (exception is PdfLimitExceededException limit && !IsWalkGuard(limit) &&
+            (_throwsKept ??= new(ReferenceEqualityComparer.Instance)).Add(limit))
+        {
+            (_loadsThrown ??= new(SeededComparer.Instance))[number] = ExceptionDispatchInfo.Capture(limit);
+        }
+    }
+
+    /// <summary>Determines whether <paramref name="exception"/> is the one the walks' guard throws, which nothing keeps.</summary>
+    private static bool IsWalkGuard(PdfLimitExceededException exception) =>
+        exception.Code == PdfDiagnosticCodes.LimitObjectStreamDecodes;
+
+    /// <summary>Lets go of the exceptions kept for loads and decodings that reached a guard, for an index a rebuild changes.</summary>
+    private void ForgetThrows()
+    {
+        _loadsThrown = null;
+        _decodingsThrown = null;
+        _throwsKept = null;
+    }
 
     /// <summary>
     /// Gets how many bytes the searches for <c>endstream</c>, and the proofs that what they found is a stream's own, have
@@ -1593,6 +1736,9 @@ internal sealed partial class PdfFileReader : IPdfObjectSource, IPdfStreamDataPr
         _objectStreamOrder.Clear();
         _objectStreamOrder.TrimExcess();
         _objectStreamBytes = 0;
+        _walkDecoded = null;
+        _walkCut = null;
+        ForgetThrows();
         _xref.Release();
         _chainIndex = null;
         _scanMemo = null;

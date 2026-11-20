@@ -31,6 +31,12 @@ internal enum PdfLimit
     RebuildReads,
 
     /// <summary>
+    /// How many times what one of the library's walks decoded of the object streams it may decode again of those the reader
+    /// let go.
+    /// </summary>
+    ObjectStreamDecodes,
+
+    /// <summary>
     /// How long a trailer, or a cross-reference stream's dictionary, may be: the last, which every switch over the guards
     /// takes as its default arm.
     /// </summary>

@@ -593,6 +593,7 @@ public class CorpusReadingTests
             Raises(raised.MaxIndexEntries, limits.MaxIndexEntries, PdfReaderLimits.Default.MaxIndexEntries, file);
             Raises(raised.MaxFilterChainLength, limits.MaxFilterChainLength, PdfReaderLimits.Default.MaxFilterChainLength, file);
             Raises(raised.MaxRebuildReadPasses, limits.MaxRebuildReadPasses, PdfReaderLimits.Default.MaxRebuildReadPasses, file);
+            Raises(raised.MaxObjectStreamDecodePasses, limits.MaxObjectStreamDecodePasses, PdfReaderLimits.Default.MaxObjectStreamDecodePasses, file);
             limits.Should().NotBe(PdfReaderLimits.Default, $"{file}: readerLimits raises at least one limit");
         }
 
@@ -662,6 +663,7 @@ public class CorpusReadingTests
             MaxIndexEntries = raised.MaxIndexEntries ?? limits.MaxIndexEntries,
             MaxFilterChainLength = raised.MaxFilterChainLength ?? limits.MaxFilterChainLength,
             MaxRebuildReadPasses = raised.MaxRebuildReadPasses ?? limits.MaxRebuildReadPasses,
+            MaxObjectStreamDecodePasses = raised.MaxObjectStreamDecodePasses ?? limits.MaxObjectStreamDecodePasses,
         };
     }
 
@@ -677,7 +679,8 @@ public class CorpusReadingTests
             || (raised.MaxTrailerLength != defaults.MaxTrailerLength && message.Contains("PdfReaderLimits.MaxTrailerLength", StringComparison.Ordinal))
             || (raised.MaxIndexEntries != defaults.MaxIndexEntries && message.Contains("PdfReaderLimits.MaxIndexEntries", StringComparison.Ordinal))
             || (raised.MaxFilterChainLength != defaults.MaxFilterChainLength && message.Contains("PdfReaderLimits.MaxFilterChainLength", StringComparison.Ordinal))
-            || (raised.MaxRebuildReadPasses != defaults.MaxRebuildReadPasses && message.Contains("PdfReaderLimits.MaxRebuildReadPasses", StringComparison.Ordinal));
+            || (raised.MaxRebuildReadPasses != defaults.MaxRebuildReadPasses && message.Contains("PdfReaderLimits.MaxRebuildReadPasses", StringComparison.Ordinal))
+            || (raised.MaxObjectStreamDecodePasses != defaults.MaxObjectStreamDecodePasses && message.Contains("PdfReaderLimits.MaxObjectStreamDecodePasses", StringComparison.Ordinal));
     }
 
     /// <summary>

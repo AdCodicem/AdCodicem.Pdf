@@ -17,7 +17,8 @@ namespace AdCodicem.Pdf.Validation.Rules;
 /// one.
 /// </para>
 /// <para>
-/// It inspects every object the file's index holds in use, but those one of the reader's limits cut, and reads no content. It does so only where that index is
+/// It inspects every object the file's index holds in use, but those one of the reader's limits cut — those an object
+/// stream holds together, stream by stream —, and reads no content. It does so only where that index is
 /// sound and whole — the chain read to its end, every entry leading to its object, every object stream readable, the
 /// page tree read whole —: elsewhere loading an object may rebuild the index and bring back what an update deleted,
 /// and a page the tree seems not to list may lie below a node the reader could not produce.
@@ -44,24 +45,56 @@ internal sealed class PageTreePageOrphanedRule : IValidationRule
         var numbers = index.CopyNumbers();
         Array.Sort(numbers);
 
+        // The objects an object stream holds are read together, stream by stream, before those written directly: read in
+        // number order, objects that lie in turn in streams the reader cannot keep together would have it decode a whole
+        // stream for each (#181). The pages are reported in number order all the same.
+        List<(int Stream, int Index, int Number)>? packed = null;
+
         foreach (var number in numbers)
         {
-            // Read again for each object: one read meanwhile may make the reader copy the chain's index.
-            if (number <= 0 || tree.IsPage(number) || tree.Nodes.Contains(number) ||
-                context.Document.Reader.ChainIndex?.TryGet(number, out var entry) != true ||
-                entry.Kind == XRefEntryKind.Free)
+            if (Inspected(context, tree, number, out var entry) && entry.Kind == XRefEntryKind.Compressed)
             {
-                continue;
+                (packed ??= []).Add((entry.ObjectStreamNumber, entry.IndexInObjectStream, number));
+            }
+        }
+
+        // The pages object streams hold, in number order once all are read.
+        List<(int Number, bool Parent)>? found = null;
+
+        if (packed is not null)
+        {
+            packed.Sort();
+
+            foreach (var (_, _, number) in packed)
+            {
+                // Looked up again for each object: one read meanwhile may make the reader copy the chain's index.
+                if (Inspected(context, tree, number, out var entry) && IsPage(context, number, entry, out var parent))
+                {
+                    (found ??= []).Add((number, parent));
+                }
             }
 
-            var id = new PdfObjectId(number, entry.Kind == XRefEntryKind.Regular ? entry.Generation : 0);
+            found?.Sort();
+        }
 
-            // An object a limit cut is not judged: its /Type may be what the cut left of /Pages. Nor is one whose value is a
-            // reference: a link of a chain the tree may list its page through, which is the page (the object it leads to).
-            var value = context.Document.GetObject(id);
+        var next = 0;
 
-            if (value is PdfReference || value.AsDictionary() is not { } page || context.Document.Reader.IsCutAtLimit(number) ||
-                !page.IsOfType(PdfName.Page) || (!page.ContainsKey(PdfName.Parent) && !page.ContainsKey(PdfName.Contents)))
+        foreach (var number in numbers)
+        {
+            PdfObjectId id;
+            bool parent;
+
+            if (found is not null && next < found.Count && found[next].Number == number)
+            {
+                id = new PdfObjectId(number);
+                parent = found[next++].Parent;
+            }
+            else if (Inspected(context, tree, number, out var entry) && entry.Kind == XRefEntryKind.Regular &&
+                IsPage(context, number, entry, out parent))
+            {
+                id = new PdfObjectId(number, entry.Generation);
+            }
+            else
             {
                 continue;
             }
@@ -77,9 +110,42 @@ internal sealed class PageTreePageOrphanedRule : IValidationRule
                 PdfValidationLocation.OfObject(id),
                 string.Create(
                     CultureInfo.InvariantCulture,
-                    $"Object {number} is a page, of /Type /Page with {(page.ContainsKey(PdfName.Parent) ? "a /Parent" : "a /Contents")}, that the page tree does not list: no reader shows it."),
+                    $"Object {number} is a page, of /Type /Page with {(parent ? "a /Parent" : "a /Contents")}, that the page tree does not list: no reader shows it."),
                 remedy: null);
         }
+    }
+
+    /// <summary>
+    /// Determines whether object <paramref name="number"/> is one to inspect — in use in the chain's index, and neither a page
+    /// nor a node of the tree —, and gives its entry there.
+    /// </summary>
+    private static bool Inspected(ValidationContext context, PageTreeWalk tree, int number, out XRefEntry entry)
+    {
+        entry = default;
+        return number > 0 && !tree.IsPage(number) && !tree.Nodes.Contains(number) &&
+            context.Document.Reader.ChainIndex?.TryGet(number, out entry) == true && entry.Kind != XRefEntryKind.Free;
+    }
+
+    /// <summary>
+    /// Reads object <paramref name="number"/>, which <paramref name="entry"/> places, and determines whether it is a page the
+    /// tree does not list, and whether it has a <c>/Parent</c>.
+    /// </summary>
+    private static bool IsPage(ValidationContext context, int number, XRefEntry entry, out bool parent)
+    {
+        parent = false;
+
+        // An object a limit cut is not judged: its /Type may be what the cut left of /Pages. Nor is one whose value is a
+        // reference: a link of a chain the tree may list its page through, which is the page (the object it leads to).
+        var value = context.Document.GetObject(new PdfObjectId(number, entry.Kind == XRefEntryKind.Regular ? entry.Generation : 0));
+
+        if (value is PdfReference || value.AsDictionary() is not { } page || context.Document.Reader.IsCutAtLimit(number) ||
+            !page.IsOfType(PdfName.Page))
+        {
+            return false;
+        }
+
+        parent = page.ContainsKey(PdfName.Parent);
+        return parent || page.ContainsKey(PdfName.Contents);
     }
 
     /// <summary>

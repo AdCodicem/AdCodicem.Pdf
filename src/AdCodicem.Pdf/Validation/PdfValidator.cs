@@ -18,22 +18,26 @@ namespace AdCodicem.Pdf.Validation;
 /// object stream, and the objects its decoding keys lead through, outside it, where the file's own index places them, or,
 /// for the objects written as a stream that only an index the reader rebuilt places, where that index places their
 /// stream —, and what the reader notices on the way joins <see cref="PdfDocument.Diagnostics"/>. Opening the document with
-/// raised limits lets it check more.
+/// raised limits lets it check more. The rules are one of the library's walks that
+/// <see cref="PdfReaderLimits.MaxObjectStreamDecodePasses"/> bounds: what that guard leaves unread is the reader's limit,
+/// not a fault of the file, as for any guard.
 /// </para>
 /// <para>
 /// Before its first rule, it rebuilds the document's index when a read could still set off that rebuild — the index is
 /// incomplete through damage, or an entry places its object where neither its offset nor the 512 bytes either side of it
 /// hold its header —, as reading that object would. No rule then reads part of the document before a rebuild and part
 /// after it, and two validations of the same document give the same report, whatever the caller read before them (#237).
-/// Five things change that: the caller changing the document between them; a rebuild that reaches a guard of a document
+/// Six things change that: the caller changing the document between them; a rebuild that reaches a guard of a document
 /// opened with <see cref="PdfReaderOptions.ThrowOnLimit"/>, which throws once, in the first validation, the index
 /// rebuilt whole — a later validation throws only where its rules read what the guard cut or left out, as any read
-/// does —; and three files crafted for it. In one, where a damaged stream's data ends depends on which stream was read
-/// first (#138). In another, a load lies past the reader's deepest nesting, which the reader cuts there, or serves from
-/// its cache when a read before kept the object, so that what was read before decides what that load gives (#163); on a
-/// thread with little stack, the reader's stack probe cuts sooner, even with nothing read first, and so does the probe the
-/// walks of the object streams make before each level they go down, which the document reports (#312), so the report can
-/// also depend on the thread. In the last, an object stream's decoding reads a value — its
+/// does —; a file whose object streams the rules decode again past
+/// <see cref="PdfReaderLimits.MaxObjectStreamDecodePasses"/>, where what the reader kept before the validation decides
+/// which objects that guard leaves unread; and three files crafted for it. In one, where a damaged stream's data ends
+/// depends on which stream was read first (#138). In another, a load lies past the reader's deepest nesting, which the
+/// reader cuts there, or serves from its cache when a read before kept the object, so that what was read before decides
+/// what that load gives (#163); on a thread with little stack, the reader's stack probe cuts sooner, even with nothing
+/// read first, and so does the probe the walks of the object streams make before each level they go down, which the
+/// document reports (#312), so the report can also depend on the thread. In the last, an object stream's decoding reads a value — its
 /// <c>/Type</c>, <c>/N</c>, <c>/First</c>, <c>/Filter</c> or <c>/DecodeParms</c> — held by a stream that lies on a loop,
 /// or the stream lies on a loop itself, and what the reader serves of that value depends on which stream of the loop it
 /// decoded first (#313).
@@ -74,9 +78,20 @@ public sealed class PdfValidator
         var profile = Options.Profile;
         var context = new ValidationContext(document, Options.FindingCapacity);
 
-        for (var index = 0; index < profile.Rules.Count; index++)
+        // The rules are one of the library's walks: what they decode again of the object streams the reader let go is
+        // weighed against PdfReaderLimits.MaxObjectStreamDecodePasses (#181).
+        document.Reader.BeginWalk("validation");
+
+        try
         {
-            profile.Rules[index].Check(context);
+            for (var index = 0; index < profile.Rules.Count; index++)
+            {
+                profile.Rules[index].Check(context);
+            }
+        }
+        finally
+        {
+            document.Reader.EndWalk();
         }
 
         return context.ToReport(profile);

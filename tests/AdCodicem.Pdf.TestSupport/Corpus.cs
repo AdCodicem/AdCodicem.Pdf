@@ -133,6 +133,12 @@ public sealed record CorpusReaderLimits
 
     /// <summary>How many times the length of the file a rebuild may read to confirm streams' lengths.</summary>
     public int? MaxRebuildReadPasses { get; init; }
+
+    /// <summary>
+    /// How many times what one of the library's walks first decoded of the object streams it may decode again of those the
+    /// reader let go.
+    /// </summary>
+    public int? MaxObjectStreamDecodePasses { get; init; }
 }
 
 /// <summary>One entry of the corpus manifest.</summary>
