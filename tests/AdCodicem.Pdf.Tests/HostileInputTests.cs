@@ -2458,7 +2458,7 @@ public class HostileInputTests
     }
 
     [Theory]
-    [InlineData("nest heads past the cache, met in turn, sharing their tails", 4)]
+    [InlineData("nest heads past the cache, met in turn, sharing their tails", 8)]
     [InlineData("nests ending at a stream another nest parsed", 2)]
     public void Nests_cost_each_object_stream_about_what_its_own_dictionary_does_whatever_they_end_at_and_however_many_heads_come_in_turn(string shape, int mostKilobytes)
     {
@@ -2470,7 +2470,9 @@ public class HostileInputTests
         // first, which met 9 parsed before, about 64 and 141 KB a stream. It keeps the chain of each stream's /Length as
         // that stream's link, which ends where the file alone says whatever stream it leads to was parsed, for 62 times as
         // many streams as the reader caches objects, and takes the links at once: each object stream costs about what its
-        // own dictionary does, the first shape's heads flattening their links again besides, whatever their number.
+        // own dictionary does, whatever their number. The first shape's heads also flatten their links again; and, giving a
+        // predictor, past the parameters the walk keeps, for as many streams as the reader caches objects, they are read
+        // again, with what the reader parses for their /Length: 5.3 KB a stream.
         const int Few = 40;
         const int Many = 160;
         var options = new PdfReaderOptions { ObjectCacheCapacity = 64 };
@@ -2927,14 +2929,14 @@ public class HostileInputTests
     public void A_walk_of_a_standing_takes_at_once_a_nest_whose_parse_took_runs_and_nests_the_reader_s_index_places_as_the_chain_s()
     {
         // Object stream 3, walked first, takes its parameters from stream 200, whose /Length names stream 201: the walk keeps
-        // the nest of 200. Stream 100 heads 40 streams by /Length, each naming the next through a link written between them,
-        // a run the walk takes at once, the last naming 200, whose nest the walk takes at once as well: the walk keeps the
-        // nest of 100, which 11 takes its parameters from. 100's parameters name 51, which 9 holds, so that 9's standing is
-        // worked out there; 9 takes its parameters from 100 as well, or from a dictionary written in place, and does not
-        // decode alike. Under a cache of 64 objects, fewer than the nest's 81, 9's walk of a standing takes the nest at once,
-        // the reader's index placing every link of it as the chain's does: reading 100 costs 9's walk 5.4 KB, 100's
-        // dictionary read again. Taken for a nest the index does not agree with, it was parsed again, its streams, 1 KB each,
-        // read from the file once more: 100 KB (#312).
+        // the links of both (#181). Stream 100 heads 40 streams by /Length, each naming the next through a link written
+        // between them, a run the walk takes at once, the last naming 200, whose links the walk takes at once as well: the
+        // walk keeps the link of each of the 40 the first time it meets 100, which 11 takes its parameters from. 100's
+        // parameters name 51, which 9 holds, so that 9's standing is worked out there; 9 takes its parameters from 100 as
+        // well, or from a dictionary written in place, and does not decode alike. Under a cache of 64 objects, fewer than the
+        // nest's 81, 9's walk of a standing takes 100's links at once, the reader's index placing every object they went
+        // through as the chain's does, and reads none of the nest's streams again: 5 KB. Taken for links the index does not
+        // agree with, the nest was parsed again, its streams, 1 KB each, read from the file once more: 100 KB (#312).
         var options = new PdfReaderOptions { ObjectCacheCapacity = 64 };
 
         var inPlaceAllocated = Allocations.Least(() => PdfDocument.Open(NestReadAgain(false), options), document => ObjectStreamDependencies.Run(document), out var inPlaceDocument, out var inPlaceResult);
@@ -3054,12 +3056,13 @@ public class HostileInputTests
     public void Values_that_are_no_streams_take_no_place_among_the_nests_the_walk_keeps()
     {
         // Object stream 3, walked first, takes its parameters from stream 100, which heads 40 streams by /Length, 1 KB each,
-        // each naming the next through a link: the walk keeps the nest of 100. 5 takes 64 Flate steps, each step's
-        // parameters a dictionary written in the file; 9 takes its parameters from 100 as well, or from a dictionary written
-        // in place. Under a cache of 64 objects and as many nests, the 64 dictionaries 5's decoding reads, none a stream,
-        // give no nest, and 9's walk takes 100's at once: reading 100 costs it 100's dictionary alone. Parsed as streams are,
-        // each would have given a nest of its own, the last 64 of them let go of 100's, and 9's walk parsed 100's nest again,
-        // its streams read from the file once more (#201).
+        // each naming the next through a link: the walk keeps the link of each of the 40 (#181). 5 takes 64 Flate steps,
+        // each step's parameters a dictionary written in the file; 9 takes its parameters from 100 as well, or from a
+        // dictionary written in place. Under a cache of 64 objects, the 64 dictionaries 5's decoding reads, none a stream,
+        // give no link, and 9's walk takes 100's links at once, reading none of the nest's streams again: 1.5 KB. Parsed as
+        // streams are, each would have given a nest of its own to a store of as many nests as the reader caches objects, the
+        // last 64 letting go of 100's, and 9's walk parsed 100's nest again, its streams read from the file once more (#201).
+        // The links, kept for 62 times as many streams, are not let go of for 64 values, streams or not.
         var options = new PdfReaderOptions { ObjectCacheCapacity = 64 };
 
         var inPlaceAllocated = Allocations.Least(() => PdfDocument.Open(AfterValues(false), options), document => ObjectStreamDependencies.Run(document), out var inPlaceDocument, out var inPlaceResult);
@@ -3150,10 +3153,11 @@ public class HostileInputTests
         // Object streams 10, 12 and on, 4 or 16 of them, each take their parameters from stream 300, which heads 60 streams
         // by /Length, each naming the next through a link, every one of them written twice; a row leading nowhere makes the
         // validation rebuild the index, which places each at its second copy, where the chain's row places its first. The
-        // walk that judges the first object stream parses the nest through the chain's index, and keeps it; each walk that
-        // judges after it takes the nest at once, however the rebuilt index places it. Under a cache of 64 objects, fewer
-        // than the nest's 119, one more object stream costs its own walk, 1.4 KB; parsing the nest again, each read its
-        // streams, 1 KB each, from the file once more, 206 KB (#312).
+        // walk that judges the first object stream parses the nest through the chain's index, and keeps the link of each of
+        // its streams, and the nest flattened once a walk takes it whole (#181); each walk that judges after it takes the
+        // links at once, however the rebuilt index places what they went through. Under a cache of 64 objects, fewer than the
+        // nest's 119, one more object stream costs its own walk, 2.3 KB; parsing the nest again, each read its streams, 1 KB
+        // each, from the file once more, 206 KB (#312).
         const int Few = 4;
         const int Many = 16;
 
@@ -3211,8 +3215,9 @@ public class HostileInputTests
         // the next stream of the nest; a row leading nowhere makes the validation rebuild the index, which places them all as
         // the chain's does. 5's standing waits on each holder in turn, 1,889 walks at 32 links. A walk of a standing after a
         // rebuild took no run, asking the reader's index of each object it loads: each walk loaded every link the ones before
-        // it had found again, 30 KB a hidden holder at 32 links. It takes a run, or a nest, where the reader's index places
-        // every object of it as the chain's does, and what one more hidden holder costs stays its own walk (#312).
+        // it had found again, 30 KB a hidden holder at 32 links. It takes a run, or a stream's link, where the reader's index
+        // places every object it went through as the chain's does — these links met objects of object streams, and are
+        // followed again, through the runs —, and what one more hidden holder costs stays its own walk, 3.3 KB (#312, #181).
         const int Few = 8;
         const int Many = 32;
         const int Holders = 16 * 29;
@@ -6732,12 +6737,14 @@ public class HostileInputTests
     /// A file of <paramref name="count"/> object streams X1, X2 and on, numbered 1,000, 1,002 and so on, each holding one
     /// object and taking its <c>/Length</c> from the object the next holds, the last from its own, and its
     /// <c>/DecodeParms</c> from an array of <paramref name="elements"/> zeros written in its dictionary, or from parameters
-    /// holding that array under the key <paramref name="key"/>.
+    /// holding that array under the key <paramref name="key"/>, in an array of their own when <paramref name="placed"/> says
+    /// so, as a chain of filters places each step's.
     /// </summary>
-    internal static byte[] WaitingArrays(int count, int elements, string? key = null)
+    internal static byte[] WaitingArrays(int count, int elements, string? key = null, bool placed = false)
     {
         var zeros = "[" + new StringBuilder().Insert(0, "0 ", elements) + "]";
         zeros = key is null ? zeros : "<< /Predictor 1 " + key + " " + zeros + " >>";
+        zeros = placed ? "[" + zeros + "]" : zeros;
         var packed = new List<PackedStream>();
 
         for (var x = 0; x < count; x++)

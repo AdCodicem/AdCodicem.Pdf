@@ -1317,13 +1317,14 @@ public class ObjectRuleTests
     public void A_nest_the_walk_keeps_is_taken_only_where_the_parse_it_stands_for_would_find_what_it_found(string shape)
     {
         // The parse of a stream met on a chain parses the stream its /Length loads, a level deeper, and so on to the reader's
-        // deepest load (#201). The walk keeps the nest of streams a parse went through when it met nothing
-        // its own state answers — no object of an object stream, no stream parsed before —, and takes it at once where the
-        // stream is met again at that depth or below it, or at any depth when the parse ended where its chains do; the
-        // streams it parsed are parsed, up to one parsed already. Each shape tells a nest taken from a parse followed where
-        // either finds an object stream circular and the other does not: met higher up, a parse reaches a stream further, whose
-        // /Length names an object of the stream walked; a stream parsed is not parsed again, from higher up either. The
-        // verdict is the one the walk gives with no nest kept.
+        // deepest load (#201). The walk keeps the chain of each stream's /Length as that stream's link, and the nest a
+        // stream's links lead through flattened (#181). A link that met nothing its own state answers — no object of an
+        // object stream — is taken at once to the stream it ends at, a level deeper, as the parse would go: up to a stream
+        // parsed already, and as far as the reader's nesting lets the parse reach from where the stream is met, a link whose
+        // first load the nesting cut followed again from higher up. Each shape tells links taken from a parse followed where
+        // either finds an object stream circular and the other does not: met higher up, a parse reaches a stream further,
+        // whose /Length names an object of the stream walked; a stream parsed is not parsed again, from higher up either. The
+        // verdict is the one the walk gives with nothing kept.
         var (file, circular) = NestShapes[shape];
         using var document = PdfDocument.Open(file());
 
@@ -1339,11 +1340,11 @@ public class ObjectRuleTests
         // second; each heads a nest of twenty streams leading into a nest of eight, of 100 and of 600, whose last takes its
         // /Length from a direct 2 — nests 6 met first, at the second level, when 400's holds a nest taken whole. 14 meets ten
         // other such nests of eight, which, under the smallest cache, 64 objects, let go of every stream of 400's and 500's,
-        // the reader as well. 16 meets 400, or 500, at the second level: 400's parse ended where its chains do, short of the
-        // reader's nesting, and from higher up it parses the same streams; its nest is taken at once, as 500's is, the walk
-        // reading the stream heading it, which the reader parses with the streams it loads for its /Length (#201). Followed
-        // again, the parse reads the twenty streams besides, as when 16 is the first to meet 400, 10's /Length written
-        // directly: some two thirds more.
+        // the reader as well, and of none of their links, which the walk keeps for 62 times as many streams (#181). 16 meets
+        // 400, or 500, at the second level: 400's links met nothing the walk's state answers, and its parse ended where its
+        // chains do, short of the reader's nesting, so that from higher up it goes through the same streams; its links are
+        // taken at once, as 500's are, and none of their streams is read again (#201). Followed, as when 16 is the first to
+        // meet 400, 10's /Length written directly, the parse reads its 28 streams: 390 to 470 KB.
         const int Heads = 10;
         var written = Merged(StreamChain(100, 9, "2"), StreamChain(600, 9, "2"));
         written = Merged(written, Merged(StreamChain(400, 20, "100 0 R"), StreamChain(500, 20, "600 0 R")));
@@ -1431,12 +1432,12 @@ public class ObjectRuleTests
     {
         // Object stream 10 meets stream 100; 12 meets 200 under its /Length, at the third level, and two streams heading nests
         // of eight; 200 heads a nest of 62 streams, which its parse from the third level follows to the reader's deepest
-        // load, where it is cut. 14 meets 200 at the second level, where its parse reaches further, and the nest it finds
-        // takes the place of the one kept. Then, four times, a stream meets two chains of 40 streams, which under the
-        // smallest cache, 64 objects, let go of 200's, and the next stream meets 200 at the second level: it takes the nest
-        // kept since 14, reading the stream heading it, which the reader parses with the streams its /Length loads. Had the
-        // nest found from higher up not taken the place of the one kept, which a meeting at the second level cannot take,
-        // each meeting would follow the parse again, as one meeting a chain of its own does: twice as much (#201).
+        // load, where it is cut: the walk keeps the link of each stream it reached, the last saying the nesting cut its
+        // chain (#181). 14 meets 200 at the second level, where its parse reaches further: that chain is followed again from
+        // higher up, its link kept in place of the one the cut left, and the nest kept flattened. Then, four times, a stream
+        // meets two chains of 40 streams, which under the smallest cache, 64 objects, let go of every stream of 200's, the
+        // reader as well, and of none of its links, and the next stream meets 200 at the second level: it takes the links
+        // at once, and reads none of 200's streams again. A meeting of a chain of its own follows it whole, some 1 MB (#201).
         const int Meetings = 4;
         var kept = Walk(meetsTwoHundred: true) - Walk(meetsTwoHundred: null);
         var followed = Walk(meetsTwoHundred: false) - Walk(meetsTwoHundred: null);
@@ -1486,8 +1487,9 @@ public class ObjectRuleTests
         // them, the first noted first let go: the first 71 heads' and the last stream of the 72nd's, as it finds the last
         // (#181). 26 meets the first head, whose nest it follows again, reading every object of it; the 72nd, whose links it
         // takes but the last, reading that stream alone; or the 257th, whose links it takes, reading nothing: a link holds
-        // what the walk reads of its stream, its parameters among them. A store of as many nests as the reader caches
-        // objects kept the last 64 heads' alone, and the walk read the 72nd's nest and the 257th's again.
+        // what the walk reads of its stream, and says whether the stream gives parameters, which these do not. A store of as
+        // many nests as the reader caches objects kept the last 64 heads' alone, and the walk read the 72nd's nest and the
+        // 257th's again.
         const int Streams = 8;
         const int Heads = 64 * Streams;
         var written = new Dictionary<int, string>();
@@ -1525,6 +1527,118 @@ public class ObjectRuleTests
             ObjectStreamDependencies.Run(document).CircularStreams.Should().BeEmpty();
             return source.BytesRead - before;
         }
+    }
+
+    [Theory]
+    [InlineData("that gives parameters the walk keeps", false)]
+    [InlineData("that gives parameters the walk let go", true)]
+    [InlineData("that gives none, met before as many streams giving some", false)]
+    [InlineData("that gives parameters the walk keeps, its link followed again", false)]
+    public void A_stream_whose_link_the_walk_keeps_is_read_again_only_where_the_parameters_it_gives_were_let_go(string stream, bool readAgain)
+    {
+        // Object stream 8 takes its parameters from stream 5, which gives none; 10 to 16, four of them, each take 64 Flate
+        // steps' parameters from 64 streams, each giving /Predictor 1 and its /Length directly; 18 from stream 6, giving
+        // /Predictor 1 and its /Length from 31, which object stream 30 holds. Opened with the smallest cache, 64 objects,
+        // the walk keeps the link of each of those 258 streams, and what a filter's step reads of the dictionaries of the
+        // last 64 noted that give some (#181). 20 meets the last of the 256, whose parameters are kept, and reads it no
+        // more; the first, whose parameters were let go, and reads it again, its /Length known from its link; 5, whose link
+        // says it gives none, and reads it no more; or 6, whose link met an object of an object stream, and is followed
+        // again, and kept again, its parameters kept, and reads it no more. A link that held its stream's parameters itself,
+        // whatever the file wrote in them, read none of these streams again.
+        const int Streams = 4;
+        var written = new Dictionary<int, string>
+        {
+            [5] = "<< /Length 2 >>\nstream\nab\nendstream",
+            [6] = "<< /Predictor 1 /Length 31 0 R >>\nstream\nab\nendstream",
+        };
+        var parameters = new StringBuilder[Streams];
+
+        for (var k = 0; k < 64 * Streams; k++)
+        {
+            written[100 + k] = "<< /Predictor 1 /Length 2 >>\nstream\nab\nendstream";
+            (parameters[k / 64] ??= new StringBuilder()).Append(CultureInfo.InvariantCulture, $"{100 + k} 0 R ");
+        }
+
+        var met = stream switch
+        {
+            "that gives parameters the walk keeps" => 100 + (64 * Streams) - 1,
+            "that gives parameters the walk let go" => 100,
+            "that gives none, met before as many streams giving some" => 5,
+            _ => 6,
+        };
+
+        var (file, before) = Walk("<< >>");
+        var (_, meeting) = Walk(string.Create(CultureInfo.InvariantCulture, $"{met} 0 R"));
+        var row = RowOf(file, met);
+
+        ReadsAt(before, row).Should().Be(1, "the walk reads the stream once as it first meets it");
+        (ReadsAt(meeting, row) - ReadsAt(before, row)).Should().Be(readAgain ? 1 : 0, readAgain ? "a stream whose parameters were let go is read again" : "a stream whose link is kept, and whose parameters are kept or none, is not read again");
+
+        (byte[] File, Dictionary<long, int> Reads) Walk(string meets)
+        {
+            var streams = new List<PlainObjectStream> { new(8, "/Filter /FlateDecode /DecodeParms 5 0 R", [(9, "<< >>")]) };
+
+            for (var k = 0; k < Streams; k++)
+            {
+                streams.Add(new(10 + (2 * k), $"/Filter [{string.Concat(Enumerable.Repeat("/FlateDecode ", 64))}] /DecodeParms [{parameters[k]}]", [(11 + (2 * k), "<< >>")]));
+            }
+
+            streams.Add(new(18, "/Filter /FlateDecode /DecodeParms 6 0 R", [(19, "<< >>")]));
+            streams.Add(new(20, $"/Filter /FlateDecode /DecodeParms {meets}", [(21, "<< >>")]));
+            streams.Add(new(30, string.Empty, [(31, "2")]));
+            var bytes = PlainObjectStreams(written, [.. streams]);
+            using var source = new OffsetCountingSource(bytes);
+            using var document = PdfDocument.Open(source, new PdfReaderOptions { ObjectCacheCapacity = 64 }, ownsSource: false);
+            document.Reader.SettleIndex();
+            source.Reads.Clear();
+            ObjectStreamDependencies.Run(document).CircularStreams.Should().BeEmpty();
+            return (bytes, new Dictionary<long, int>(source.Reads));
+        }
+    }
+
+    [Theory]
+    [InlineData("directly")]
+    [InlineData("through a run of two links")]
+    public void A_stream_whose_link_the_walk_keeps_is_read_once_however_many_walks_meet_it(string reached)
+    {
+        // Object stream 8 takes its parameters from stream 5, whose link the walk keeps; 10 to 16, four of them, then take 65
+        // Flate steps' parameters: the first from 5, directly or through 7, which names 6, which names 5, a run of links the
+        // walk takes at once; the other 64 from dictionaries written in the file, 64 of each stream's own, which under the
+        // smallest cache, 64 objects, let go of 5, 6 and 7 before the next stream meets them. Each walk works out the run
+        // from 7 again, which ends at 5: a stream, whose link says where its /Length leads without reading it. Worked out
+        // with a read of the stream that ends it, the run read 5 again for each object stream (#181).
+        const int Streams = 4;
+        var written = new Dictionary<int, string>
+        {
+            [5] = "<< /Length 2 >>\nstream\nab\nendstream",
+            [6] = "5 0 R",
+            [7] = "6 0 R",
+        };
+        var streams = new List<PlainObjectStream> { new(8, "/Filter /FlateDecode /DecodeParms 5 0 R", [(9, "<< >>")]) };
+
+        for (var k = 0; k < Streams; k++)
+        {
+            var own = new StringBuilder(reached == "directly" ? "5 0 R " : "7 0 R ");
+
+            for (var value = 0; value < 64; value++)
+            {
+                var number = 1000 + (100 * k) + value;
+                written[number] = "<< /Predictor 1 >>";
+                own.Append(CultureInfo.InvariantCulture, $"{number} 0 R ");
+            }
+
+            streams.Add(new(10 + (2 * k), $"/Filter [{string.Concat(Enumerable.Repeat("/FlateDecode ", 65))}] /DecodeParms [{own}]", [(11 + (2 * k), "<< >>")]));
+        }
+
+        var file = PlainObjectStreams(written, [.. streams]);
+        using var source = new OffsetCountingSource(file);
+        using var document = PdfDocument.Open(source, new PdfReaderOptions { ObjectCacheCapacity = 64 }, ownsSource: false);
+        document.Reader.SettleIndex();
+        source.Reads.Clear();
+
+        ObjectStreamDependencies.Run(document).CircularStreams.Should().BeEmpty();
+
+        ReadsAt(source.Reads, RowOf(file, 5)).Should().Be(1, "a stream whose link the walk keeps is read as it is first met, and not again");
     }
 
     [Theory]
@@ -4312,6 +4426,10 @@ public class ObjectRuleTests
     /// <paramref name="row"/>, which tells a row that cuts a number.
     /// </summary>
     private static int ReadsAt(Dictionary<long, int> reads, long row) => reads.GetValueOrDefault(row - PdfFileReader.ByteBeforeRow);
+
+    /// <summary>Gives where <paramref name="file"/> writes object <paramref name="number"/>, a line of its own.</summary>
+    private static long RowOf(byte[] file, int number) =>
+        Encoding.Latin1.GetString(file).IndexOf(string.Create(CultureInfo.InvariantCulture, $"\n{number} 0 obj\n"), StringComparison.Ordinal) + 1;
 
     /// <summary>Notes which entries of a step's parameters decoding reads, by the value each holds.</summary>
     /// <param name="keys">The entry each value is written under.</param>
