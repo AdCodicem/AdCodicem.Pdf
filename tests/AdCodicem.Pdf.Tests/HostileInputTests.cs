@@ -2525,6 +2525,48 @@ public class HostileInputTests
         }
     }
 
+    [Fact]
+    public void A_waiting_object_stream_whose_walk_followed_nothing_its_next_walk_could_take_allocates_nothing_to_keep_it()
+    {
+        // Object streams 10,000, 10,002 and on, 512 of them, each holding one object, take their parameters from the object
+        // the next holds, the last from its own: each walk of a standing reads the next's object as null, its standing not
+        // known yet, and is made again once it is known — none decodes alike, the last holding what it needs. In their twins,
+        // each takes its parameters from the object the one before holds, the first from its own: each standing is known
+        // once its object is met, and none waits. Each set is written with every /Length written directly, or taken from
+        // object 9, which all share. A walk that waits keeps for its next what it followed without reading an object of a
+        // stream not known yet as null (#315): with a /Length written directly, nothing; with 9, how deep the /Length
+        // loaded, which takes an object and a list of the stream's own, 64 bytes at the least. But for those, taking the
+        // /Length from 9 costs a stream that waits what it costs one that does not: had a walk that kept nothing kept an
+        // empty object and list, the two differences would be equal.
+        const int Streams = 512;
+        var keeping = Allocated(waits: true, shared: true) - Allocated(waits: true, shared: false);
+        var known = Allocated(waits: false, shared: true) - Allocated(waits: false, shared: false);
+
+        ((keeping - known) / Streams).Should().BeGreaterThanOrEqualTo(64, "a walk that kept nothing keeps no object for it, and one that kept its /Length's reach does ({0} B a stream)", (keeping - known) / Streams);
+
+        long Allocated(bool waits, bool shared)
+        {
+            var packed = new List<PackedStream>();
+
+            for (var k = 0; k < Streams; k++)
+            {
+                var own = 10_001 + (2 * k);
+                var named = (waits ? k + 1 == Streams : k == 0) ? own : waits ? own + 2 : own - 2;
+                packed.Add(new PackedStream(own - 1, string.Create(CultureInfo.InvariantCulture, $"/Filter /FlateDecode /DecodeParms {named} 0 R"), [(own, "<< >>")], PackedData.Plain, Length: shared ? "9 0 R" : null));
+            }
+
+            var file = PackedFile(packed, [(9, "10001 0 << >>\n".Length.ToString(CultureInfo.InvariantCulture))]);
+            var allocated = Allocations.Least(() => PdfDocument.Open(file), document => ObjectStreamDependencies.Run(document), out var document, out var result);
+
+            using (document)
+            {
+                result.CircularStreams.Should().ContainSingle();
+            }
+
+            return allocated;
+        }
+    }
+
     [Theory]
     [InlineData("a parameters dictionary of 100 KB")]
     [InlineData("a chain of 20,000 references")]
