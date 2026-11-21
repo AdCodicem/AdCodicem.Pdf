@@ -373,20 +373,32 @@ public class ReaderTimingTests
             shortTime);
     }
 
-    [Fact]
-    public void Sixteen_times_as_many_object_streams_whose_parameters_head_nests_of_streams_have_their_dependencies_walked_in_less_than_four_times_the_time()
+    [Theory]
+    [InlineData("ending where their chains do, cut at the reader's nesting")]
+    [InlineData("ending at an object of an object stream")]
+    [InlineData("ending at a stream written in the file, which the first nest parses")]
+    [InlineData("ending at an object of an object stream, through four objects between two levels")]
+    [InlineData("ending at an object of an object stream, of LZW parameters")]
+    [InlineData("with more heads than the reader caches objects, met in turn")]
+    public void Sixteen_times_as_many_object_streams_whose_parameters_head_nests_of_streams_have_their_dependencies_walked_in_less_than_four_times_the_time(string nests)
     {
-        // Object streams share 64 parameters and the values their predictor asks for, each a stream heading a nest of 63
-        // streams by /Length, which the parse of each follows to the reader's deepest load, where it is cut: 16,128 streams,
-        // more than the walk keeps of what it reads. The walk followed every nest again for each object stream, reading again
-        // all it had let go, 50 ms a stream: sixteen times the streams took seventeen times as long, 0.78 s for 16 and 13.1 s
-        // for 256. It takes at once the nest of streams a parse went through, from the depth it went through it, and what one
-        // more object stream costs, about 0.25 ms, is small next to what parsing the nests once costs, about 45 ms: 256
-        // streams take two to three times as long as 16 (#201). The measure is the ratio, the best walk of each, run in turn.
+        // Object streams share 64 parameters and the values their predictor asks for, each a stream heading a nest of 62 or
+        // 63 streams by /Length, which the parse of each follows to the reader's deepest load: 16,128 streams, more than the
+        // walk keeps of what it reads. The walk followed every nest again for each object stream, reading again all it had
+        // let go, 50 ms a stream: sixteen times the streams took seventeen times as long, 0.78 s for 16 and 13.1 s for 256
+        // (#201). It kept the nest a parse went through by the stream heading it, but not a nest ending at an object of an
+        // object stream, or at a stream another nest parsed, nor past as many heads as the reader caches objects, met in
+        // turn: each object stream followed its nests again, 37 to 48 ms a stream, 116 ms through four objects written
+        // between two levels, 256 streams taking fifteen to eighteen times as long as 16 (#181). It keeps the chain of each
+        // stream's /Length as that stream's link, and takes the links at once whatever they end at, but for a chain that
+        // met an object of an object stream: what one more object stream costs, 0.2 to 0.9 ms, is small next to what
+        // parsing the nests once costs, and 256 streams take one and a half to two and a half times as long as 16. The
+        // measure is the ratio, the best walk of each, run in turn.
         const int Few = 16;
         const int Many = 256;
-        using var few = PdfDocument.Open(HostileInputTests.LengthNests(Few, depth: 63));
-        using var many = PdfDocument.Open(HostileInputTests.LengthNests(Many, depth: 63));
+        var options = nests.StartsWith("with more heads", StringComparison.Ordinal) ? new PdfReaderOptions { ObjectCacheCapacity = 1024 } : null;
+        using var few = PdfDocument.Open(Nests(Few), options);
+        using var many = PdfDocument.Open(Nests(Many), options);
 
         var (fewTime, manyTime) = BestOfEach(() => ObjectStreamDependencies.Run(few), () => ObjectStreamDependencies.Run(many));
 
@@ -397,6 +409,16 @@ public class ReaderTimingTests
             Few,
             manyTime,
             Many);
+
+        byte[] Nests(int streams) => nests switch
+        {
+            "ending where their chains do, cut at the reader's nesting" => HostileInputTests.LengthNests(streams, depth: 63),
+            "ending at an object of an object stream" => HostileInputTests.LengthNests(streams, last: "member"),
+            "ending at a stream written in the file, which the first nest parses" => HostileInputTests.LengthNests(streams, depth: 60, last: "stream"),
+            "ending at an object of an object stream, through four objects between two levels" => HostileInputTests.LengthNests(streams, last: "member", between: 4),
+            "ending at an object of an object stream, of LZW parameters" => HostileInputTests.LengthNests(streams, last: "member", lzw: true),
+            _ => HostileInputTests.NestHeadsInTurn(sets: 8, streams),
+        };
     }
 
     [Theory]

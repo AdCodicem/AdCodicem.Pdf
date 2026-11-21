@@ -71,17 +71,26 @@ namespace AdCodicem.Pdf.Validation;
 /// yet from it, which, value after value and level after level of a nest, comes to a few thousand walks of one stream
 /// under the default limits, as many more as <see cref="PdfReaderLimits.MaxFilterChainLength"/> allows; what it reads
 /// of its own dictionary is read once while the walk keeps it, for as many streams as the reader caches objects, the
-/// oldest let go first and read again when walked again.
+/// oldest let go first and read again when walked again. A walk made again does not follow again what the last one
+/// followed without reading an object of a stream not known yet as null: the standings such a follow met are known for
+/// good, and it reads alike. Each such value's outcome, and the reach of the stream's own <c>/Length</c>, are kept for the
+/// next walk, which takes them at once and follows again only the values that read one so (#315), for as many entries
+/// in all as the reader caches objects, the stream kept first let go first and walked whole again.
 /// </para>
 /// <para>
-/// A loop that closes only through the value of an object whose stream does not decode alike where it is met stays unseen
-/// — a stream that lies on a loop itself, and is circular in its own right; one whose decoding meets a stream again while
-/// the reader holds it in its loads; one the reader's nesting cuts there; one a rebuilt index places otherwise —, and so
-/// does what decoding would read after that value. The reader reports such a loop as it decodes (#314). The walk that
-/// judges parses each stream once a walk, as a reader that keeps it does: it does not read as null, as the reader does for
-/// the rest of the judged stream's decoding, a stream that decoding met again while it held it, nor parse again a stream
-/// the reader's cache let go; deterministic, the verdict may then name a loop the reader meets in no read order, or miss
-/// one it meets.
+/// A loop that closes only through the value of an object whose stream does not decode alike where it is met stays unseen,
+/// and so does what decoding would read after that value; the reader reports such a loop as it decodes (#314). Each of the
+/// four ways such a stream fails to decode alike is left for a reason of its own. One that lies on a loop itself is
+/// circular in its own right, so that the file is reported in any case: following its value would ask a model of every
+/// read order of that loop, which costs much for what it adds. One whose decoding meets a stream again while the reader
+/// holds it in its loads, and one the reader's nesting cuts there, decode as what the reader has in flight, or how deep
+/// the read that first decoded them went, makes them: that is the reader's history, not the file's, which a verdict the
+/// same whatever was read before cannot follow. One a rebuilt index places otherwise than the chain's could be followed
+/// through the reader's own index, which none of 6,000 files generated with random dependencies between object streams
+/// needed: it waits for a file that does. The walk that judges parses each stream once a walk, as a reader that keeps it
+/// does: it does not read as null, as the reader does for the rest of the judged stream's decoding, a stream that decoding
+/// met again while it held it, nor parse again a stream the reader's cache let go; deterministic, the verdict may then
+/// name a loop the reader meets in no read order, or miss one it meets.
 /// </para>
 /// <para>
 /// Of a stream that is not of <c>/Type /ObjStm</c>, only what its <c>/Type</c> needs judges it (#274): a loop through its
@@ -114,7 +123,7 @@ namespace AdCodicem.Pdf.Validation;
 /// reader's, or its parser's, cuts a load the walks make through the reader, and the walks keep what that read gave,
 /// for the rest of the validation, as it gave it (#163). The walks' own cuts a level they would go down, which reads as
 /// null — a walk of a standing then taking its stream, for the rest of the validation, for one that does not decode
-/// alike, and no parse the cut leaves short giving a nest a later walk would take —, and which the document reports
+/// alike, and no chain the cut leaves short giving a link a later walk would take —, and which the document reports
 /// once. Either way, the report may depend on the thread.
 /// </para>
 /// <para>
@@ -140,7 +149,7 @@ namespace AdCodicem.Pdf.Validation;
 /// reader's nesting lets it; a run that ends at an object of a stream whose standing is not known yet is not kept. A chain
 /// with fewer loads left than a run kept goes on an object at a time there, so that what a run it takes passes, and how
 /// deep its holders' decodings reach, is never that of an object the chain does not load (#312). After a rebuild, a
-/// walk of a standing takes a run, or a nest, only where the reader's index places every object it went through as the
+/// walk of a standing takes a run, or a link, only where the reader's index places every object it went through as the
 /// chain's does. An object a run passes over is not kept for itself: a run keeps where it leads. As many objects are kept
 /// as the reader keeps in its cache, an object let go read again when met again. A value a stream reads again — the
 /// parameters each step of a chain of filters reads — is followed once a stream, as the reader keeps what it loaded. As it
@@ -149,17 +158,21 @@ namespace AdCodicem.Pdf.Validation;
 /// <para>
 /// The parse of a stream met on a chain parses in turn the stream its <c>/Length</c> loads, a level deeper, and so on to the
 /// reader's deepest load: a nest of 62 streams below one met at the second level, which streams of parameters, each heading
-/// one, took past what the walk keeps — 16,128 streams a walk, read again for each object stream (#201). A parse that met
-/// nothing the walk's own state answers — no object of an object stream, which reads as the stream walked and those in
-/// flight make it, no stream parsed before, the stream walked among them, no stream the reader holds in its loads read
-/// again, at its deepest load as well as above it, no load the thread's stack had no room for — parsed what the file
-/// alone says from that depth down, the same for every walk. The streams it went through, its nest, are kept by the
-/// number of the stream heading them, as many nests as the reader keeps objects, and taken at once where that stream is
-/// met again at that depth or below it, or at any depth when the parse ended where its chains do, short of the reader's
-/// nesting: its streams are parsed, as far as the nesting lets a parse from there reach, up to one parsed already,
-/// where the parse would end; and the load the nesting cuts at its end, the first a <c>/Length</c> names, is a stream
-/// read again or not, as there. A validation keeps one nest for the outermost parse, or for the outermost one inside it
-/// that met nothing.
+/// one, took past what the walk keeps — 16,128 streams a walk, read again for each object stream (#201). The chain of each
+/// stream's <c>/Length</c> is kept as that stream's link, for 62 times as many streams as the reader caches objects: the
+/// first object it names, the stream it ends at, whether it met nothing the walk's own state answers — no object of an
+/// object stream, which reads as the stream walked and those in flight make it, no load the thread's stack had no room
+/// for —, whether the reader's index places what it loaded as the chain's does, and what a filter's step reads of the
+/// stream's dictionary, so that a stream met again is not read again. A link that met nothing is the file's alone, the same
+/// for every walk from any depth its first load is not cut at: it is taken at once to the stream it ends at, and so on
+/// down, the first chain no such link is kept of followed, and kept in turn. The nest a stream's links lead through is kept
+/// flattened, for as many streams heading one as the reader caches objects, and taken whole the next time (#181). A link holds its
+/// own chain alone, and what the parse of the stream it ends at meets is that stream's link's: a nest that ends at an
+/// object of an object stream, loops back on itself, meets a stream another nest parsed, or whose heads come in turn past
+/// what the walk keeps, costs a walk the chains that met something, followed again, and no more. Each object stream then
+/// costs about what its own dictionary does, where nests kept by the stream heading them, and followed again whole when
+/// they could not be, cost up to 67 MB and 0.5 s a stream; heads past the nests kept flattened cost theirs flattened
+/// again, some 600 bytes each.
 /// </para>
 /// </remarks>
 internal sealed class ObjectStreamDependencies
@@ -184,6 +197,27 @@ internal sealed class ObjectStreamDependencies
 
     /// <summary>How deep the stream's parse loads its <c>/Length</c>: one level below the stream.</summary>
     private const int LengthDepth = ValueDepth + 1;
+
+    /// <summary>What a link holds as the first object of a <c>/Length</c> written directly, which loads none.</summary>
+    private const int NoReference = -1;
+
+    /// <summary>
+    /// What a link holds as the stream its chain ends at when the reader's nesting cut the chain's first load: where it leads
+    /// from higher up is not known.
+    /// </summary>
+    private const int Unexplored = -1;
+
+    /// <summary>
+    /// How many links the memo keeps for each object the reader caches: a nest holds 62 streams at most, so that the links
+    /// kept describe as many streams as the nests a store of as many nests as objects held (#181).
+    /// </summary>
+    /// <remarks>
+    /// No guard (ADR 34): it sizes what the walk keeps, not what it reads or judges. A link let go is followed again, through
+    /// the objects the memo keeps or reads again, and gives what it gave: no file reads otherwise for it. No valid file
+    /// keeps a link at all: one is kept of a stream met on a chain, a parameter or a link of a chain, which ISO 32000-1
+    /// allows neither. At the default cache, 507,904 links of 24 bytes take some 30 MB at most, where the nests took some 5.
+    /// </remarks>
+    private const int LinksPerObject = 62;
 
     /// <summary>The keys of an object stream that ISO 32000-1 makes integers (Tables 5 and 16).</summary>
     private static readonly PdfName[] IntegerKeys = [PdfName.N, PdfName.First, PdfName.Length];
@@ -614,23 +648,40 @@ internal sealed class ObjectStreamDependencies
         /// </summary>
         private readonly HashSet<int> _parsed = new(SeededComparer.Instance);
 
-        /// <summary>What the values read once the stream is parsed led to, by the number of the object each names.</summary>
-        private readonly Dictionary<int, Followed> _values = new(SeededComparer.Instance);
+        /// <summary>
+        /// What the values read once the stream is parsed led to, by the number of the object each names: the value, how deep
+        /// its follow loaded, and whether that follow read as null an object of a stream whose standing was not known yet. A
+        /// walk of a standing that waits keeps those that read none so, and its next walk takes them at once (#315).
+        /// </summary>
+        private readonly Dictionary<int, Outcome> _values = new(SeededComparer.Instance);
 
         /// <summary>
-        /// The streams parsed since the outermost parse in flight began — a stream met on a chain while no other's
-        /// <c>/Length</c> is being resolved —, in order, that stream first: what a parse parsed in turn, which lies past it
-        /// here, is its nest. Each parse parses one stream in turn at most, a level below it, its <c>/Length</c> ending at the
-        /// first stream it loads: the list holds no more than the reader nests loads.
+        /// How many objects of streams whose standing was not known yet a walk of a standing read as null: a follow during
+        /// which it grew may read otherwise once those streams are known, and is followed again then (#315).
         /// </summary>
-        private readonly List<int> _nested = [];
+        private int _hidden;
 
         /// <summary>
-        /// Of each stream in <see cref="_nested"/>, at the same place, the first object its <c>/Length</c> loads, 0 for one
-        /// written directly: the load the reader's nesting cuts when a nest is taken deep enough that its parse would not
-        /// reach the stream after it, which re-enters a stream the reader holds in its loads, or not.
+        /// How deep the walked stream's own <c>/Length</c> loaded, when it names an object and its follow read no object of a
+        /// stream whose standing was not known yet as null; -1 otherwise, for the walk made again to follow it again (#315).
         /// </summary>
-        private readonly List<int> _departures = [];
+        private int _lengthReach;
+
+        /// <summary>
+        /// The streams the parses in flight took through the links the memo keeps, in order, each a level below the one
+        /// before (#181). The reader holds them in its loads as it holds the streams of <see cref="_inFlight"/>, and they are
+        /// asked of here rather than put in that set (<see cref="IsInFlight"/>): a nest taken, and the chain followed below it
+        /// where its links end, cost no set an addition and a removal for each of its streams — 0.55 ms an object stream
+        /// whose 256 nests each end at an object of an object stream, which no link of their last stream takes.
+        /// </summary>
+        private readonly List<int> _chain = [];
+
+        /// <summary>
+        /// Of each stream in <see cref="_chain"/>, at the same place, the first object the <c>/Length</c> of the stream before
+        /// it names: the load the reader's nesting cuts where links are taken too deep to reach that stream, which re-enters a
+        /// stream the reader holds in its loads, or not.
+        /// </summary>
+        private readonly List<int> _firsts = [];
 
         /// <summary>
         /// The walk that works out the standing of an object stream, for the walk that judges: made the first time an object
@@ -682,34 +733,28 @@ internal sealed class ObjectStreamDependencies
         private HashSet<int>? _unknownSet;
 
         /// <summary>
-        /// How many times the walk met what its own state answers, rather than the file alone: an object of an object stream,
-        /// which reads as the stream walked, the streams in flight and its holder's standing make it — or a run through such
-        /// objects —, a stream the walk parsed already, which is not parsed again, a load that re-enters a stream the reader
-        /// holds in its loads, and a load the thread's stack had no room for, where the thread decides how far a parse
-        /// reaches. A parse that met none of them gives the memo its nest, the same for every walk (#201, #312).
+        /// Whether the chain of the <c>/Length</c> being followed met what the walk's state answers, rather than the file
+        /// alone: an object of an object stream, which reads as the stream walked, the streams in flight and its holder's
+        /// standing make it, or a run through such objects; or a load the thread's stack had no room for, where the thread
+        /// decides how far the chain reaches. A chain that met neither ends where the file alone says, whatever walk follows
+        /// it, and its link is clean (#181). What the parse of the stream it ends at meets is that stream's link's, not its.
         /// </summary>
-        private int _stateful;
+        private bool _dirty;
 
         /// <summary>
-        /// How many loads the reader's nesting cut: a parse that met none ended where its chains do, and its nest is the same
-        /// from any depth; one cut there may reach further from higher up.
+        /// Whether the chain of the <c>/Length</c> being followed loaded an object the reader's rebuilt index places otherwise
+        /// than the chain's, the stream it ends at included, which a walk of a standing asks of the links it takes (#312).
         /// </summary>
-        private int _cuts;
+        private bool _disagree;
+
+        /// <summary>The stream the chain of the <c>/Length</c> being followed ended at, 0 when none.</summary>
+        private int _ended;
 
         /// <summary>
-        /// How many objects the walk loaded, or took at once in a run or a nest, that the reader's rebuilt index places
-        /// otherwise than the chain's (#312): a nest whose parse met none may be taken by a walk of a standing, which follows
-        /// what the reader's index places.
+        /// Whether the reader's nesting cut the chain of the <c>/Length</c> being followed, at its first load — all of a
+        /// chain's loads are made at one depth —: its link then says nothing of where the chain leads from higher up.
         /// </summary>
-        private int _disagreements;
-
-        /// <summary>
-        /// Of the parses ended inside the outermost one in flight, the outermost that met nothing the walk's state answers,
-        /// whose nest the outermost parse gives the memo as it ends — its own when it met nothing either: a parse that met
-        /// nothing takes over the one inside it, whose nest its own holds; one that met something leaves it. Null between
-        /// outermost parses.
-        /// </summary>
-        private Settled? _settled;
+        private bool _cut;
 
         /// <summary>The object stream walked, whose objects read as null while it is decoded.</summary>
         private int _stream;
@@ -752,7 +797,6 @@ internal sealed class ObjectStreamDependencies
             _parsed.Clear();
             _values.Clear();
             _judging = 0;
-            _settled = null;
             (_unlike, _deepest) = (false, ValueDepth);
             _unknown?.Clear();
             _unknownSet?.Clear();
@@ -761,9 +805,30 @@ internal sealed class ObjectStreamDependencies
             // deeper, while the reader holds the stream in its loads, and the reader keeps the stream, so that it is not
             // parsed again. An object it holds is read as null whatever is in flight.
             _parsed.Add(stream);
-            _ownLength = true;
-            Follow(dictionary.GetRaw(PdfName.Length), LengthKey, LengthLinks, LengthDepth, out _);
-            _ownLength = false;
+
+            // A walk of a standing made again once the streams its last walk met are known takes what that walk followed
+            // without reading an object of any of them as null, as it was: the standings such a follow met are known for
+            // good, and it reads alike now. Only the values that read one so are followed again (#315).
+            var saved = judges ? null : memo.OutcomesOf(stream);
+            saved?.CopyTo(_values);
+
+            if (saved is { LengthReach: >= 0 } known)
+            {
+                (_deepest, _lengthReach) = (Math.Max(_deepest, known.LengthReach), known.LengthReach);
+            }
+            else
+            {
+                // How deep the /Length alone loads is noted apart, for the walk made again to take it as it took it.
+                var (deepest, hidden) = (_deepest, _hidden);
+                var length = dictionary.GetRaw(PdfName.Length);
+                _deepest = ValueDepth;
+                _ownLength = true;
+                Follow(length, LengthKey, LengthLinks, LengthDepth, out _);
+                _ownLength = false;
+                _lengthReach = length is PdfReference && _hidden == hidden ? _deepest : -1;
+                _deepest = Math.Max(deepest, _deepest);
+            }
+
             var ofLength = _found.Count;
 
             if (IsDone)
@@ -823,7 +888,9 @@ internal sealed class ObjectStreamDependencies
         /// <remarks>
         /// What the walk reads of the dictionary of a stream that waits is kept in the memo, for as many streams as the reader
         /// caches objects, the oldest let go first: one kept is not read from the file again for each walk made once the
-        /// streams it waits on are known.
+        /// streams it waits on are known. So is what the walk followed of it without reading an object of a stream not known
+        /// yet as null — each such value's outcome, and its own <c>/Length</c>'s reach —, which the walk made again takes at
+        /// once, following again only the rest (#315); dropped once the standing is known.
         /// </remarks>
         /// <returns>
         /// The standing; or, when the walk met objects of streams whose standing is not known yet, which it read as null, null,
@@ -855,15 +922,18 @@ internal sealed class ObjectStreamDependencies
 
             if (_unlike)
             {
+                memo.DropOutcomes(stream);
                 return Standing.Unlike;
             }
 
             if (unknown.Count == 0)
             {
+                memo.DropOutcomes(stream);
                 return new Standing(StandingKind.Alike, _deepest);
             }
 
             memo.KeepHead(stream, dictionary);
+            memo.KeepOutcomes(stream, _values, _lengthReach);
             return null;
         }
 
@@ -882,15 +952,23 @@ internal sealed class ObjectStreamDependencies
                 return new Followed(written, LeftByGuard: false);
             }
 
-            if (!_values.TryGetValue(reference.Id.Number, out var followed))
+            if (_values.TryGetValue(reference.Id.Number, out var outcome))
             {
-                // Whether a guard cut the object the chain reached, or left it out of the index, is asked once the chain is
-                // followed, of that object (#263): what the walk read, or the reader served, of it was read by then.
-                var value = Follow(written, key, PdfReference.MaxChainLength, ValueDepth, out var target);
-                followed = new Followed(value, document.Reader.IsLeftByGuard(target));
-                _values[reference.Id.Number] = followed;
+                // Followed earlier in this walk, or taken from the last walk of a stream that waits, the value reaches as deep
+                // as it did then (#315).
+                _deepest = Math.Max(_deepest, outcome.Reach);
+                return outcome.Followed;
             }
 
+            // Whether a guard cut the object the chain reached, or left it out of the index, is asked once the chain is
+            // followed, of that object (#263): what the walk read, or the reader served, of it was read by then. How deep
+            // this follow alone loads, and whether it read an object of a stream not known yet as null, is noted with it.
+            var (deepest, hidden) = (_deepest, _hidden);
+            _deepest = ValueDepth;
+            var value = Follow(written, key, PdfReference.MaxChainLength, ValueDepth, out var target);
+            var followed = new Followed(value, document.Reader.IsLeftByGuard(target));
+            _values[reference.Id.Number] = new Outcome(followed, _deepest, _hidden != hidden);
+            _deepest = Math.Max(deepest, _deepest);
             return followed;
         }
 
@@ -911,13 +989,17 @@ internal sealed class ObjectStreamDependencies
         public PdfObject? Follow(PdfObject? written, string key, int links, int depth, out int target)
         {
             target = 0;
+            return written is PdfReference reference ? FollowFrom(reference.Id.Number, key, links, depth, out target) : written;
+        }
 
-            if (written is not PdfReference reference)
-            {
-                return written;
-            }
-
-            var number = reference.Id.Number;
+        /// <summary>
+        /// Follows a chain from object <paramref name="number"/>, the first it loads, as <see cref="Follow"/> does from a
+        /// reference to it: a stream's <c>/Length</c> is followed from the first object its link names, the stream not read
+        /// again for it.
+        /// </summary>
+        private PdfObject? FollowFrom(int number, string key, int links, int depth, out int target)
+        {
+            target = 0;
 
             for (var loaded = 0; loaded < links;)
             {
@@ -940,15 +1022,8 @@ internal sealed class ObjectStreamDependencies
                 {
                     // A run through objects of object streams is the walk's state's to answer; its holders' decodings reach
                     // as deep as the deepest of them.
-                    if (run.PassesMembers)
-                    {
-                        _stateful++;
-                    }
-
-                    if (!run.Agrees)
-                    {
-                        _disagreements++;
-                    }
+                    _dirty |= run.PassesMembers;
+                    _disagree |= !run.Agrees;
 
                     if (_inFlight.Count == 0)
                     {
@@ -1013,9 +1088,15 @@ internal sealed class ObjectStreamDependencies
 
         /// <summary>
         /// Determines whether the reader holds stream <paramref name="stream"/> in its loads where the walk stands: a stream met
-        /// on the way whose <c>/Length</c> is being resolved, or the walked stream while its own is.
+        /// on the way whose <c>/Length</c> is being resolved, one a parse in flight took through the links the memo keeps, or
+        /// the walked stream while its own is.
         /// </summary>
-        private bool IsInFlight(int stream) => _inFlight.Contains(stream) || (_ownLength && stream == _stream);
+        /// <remarks>
+        /// The streams taken through links are 62 at most, each a level below the one before within the reader's nesting:
+        /// they are looked through, as many as a parse ever holds.
+        /// </remarks>
+        private bool IsInFlight(int stream) =>
+            _inFlight.Contains(stream) || CollectionsMarshal.AsSpan(_chain).Contains(stream) || (_ownLength && stream == _stream);
 
         /// <summary>
         /// Loads object <paramref name="number"/> as the reader loads it at <paramref name="depth"/> while the stream is
@@ -1031,15 +1112,14 @@ internal sealed class ObjectStreamDependencies
             // before anything else, which allocates nothing. The reader's probe does not stand in for it: what the walks
             // keep, and what the reader serves from its cache, is read with no load, so that the walks of a document read
             // before went their whole depth with no probe on the way, and past the end of a short stack (#312). Short of
-            // room, the object reads as null, as past the reader's nesting, and the cut counts as the nesting's cut of an
-            // object the reader holds in its loads does, whatever the object, among what the walk's state answers: where it
-            // falls is the thread's to say, not the file's. So no parse in flight gives a nest that a walk with more room
-            // would take — the nesting's count of its cuts, which marks a nest given as ended there, has none to mark —, and
-            // a walk of a standing takes its stream, for the rest of the validation, for one that does not decode alike: a
-            // value read as null there makes the decoding read less than the reader's. It is reported, once a document.
+            // room, the object reads as null, as past the reader's nesting, and the chain followed met what the walk's state
+            // answers: where it falls is the thread's to say, not the file's. So its link is not clean, and no walk with more
+            // room takes it for where the chain leads (#181); and a walk of a standing takes its stream, for the rest of the
+            // validation, for one that does not decode alike: a value read as null there makes the decoding read less than
+            // the reader's. It is reported, once a document.
             if (!RuntimeHelpers.TryEnsureSufficientExecutionStack())
             {
-                _stateful++;
+                _dirty = true;
                 _unlike |= !judges;
                 reader.ReportWalkTooDeep(number, judges ? null : _stream);
                 return PdfNull.Instance;
@@ -1047,13 +1127,13 @@ internal sealed class ObjectStreamDependencies
 
             // A walk of a standing follows the decoding the reader makes, through its own index (#312): an object it places
             // otherwise than the chain's, or holds in use where the chain's holds nothing, may decode the stream otherwise
-            // than the walk follows it. The walk that judges reads the chain's index, and counts it only for the nests its
-            // parses give.
+            // than the walk follows it. The walk that judges reads the chain's index, and notes it only in the links it keeps,
+            // which a walk of a standing takes only where they agree.
             var agrees = Agrees(reader, number);
 
             if (!agrees)
             {
-                _disagreements++;
+                _disagree = true;
 
                 if (!judges)
                 {
@@ -1072,7 +1152,7 @@ internal sealed class ObjectStreamDependencies
             // What an object of an object stream reads as, the walk's state answers.
             if (entry.Kind == XRefEntryKind.Compressed)
             {
-                _stateful++;
+                _dirty = true;
                 return Member(number, entry, key, depth, agrees);
             }
 
@@ -1098,185 +1178,306 @@ internal sealed class ObjectStreamDependencies
             // worked out, which reads it so at a first read and not a level deeper.
             if (depth > PdfFileReader.MaxNestedLoads)
             {
-                _cuts++;
-
-                if (IsInFlight(number))
-                {
-                    _stateful++;
-                    _unlike |= !judges;
-                }
-
+                _cut = true;
+                _unlike |= !judges && IsInFlight(number);
                 return PdfNull.Instance;
             }
 
-            var held = memo.Get(number, entry);
-
-            // A stream's parse resolves its /Length a level deeper, while it is in flight; once, as the reader keeps it. One met
-            // again while in flight, which the reader reads as null, is met on the chain of a /Length, whose value the walk
-            // drops: what it gives there changes nothing to the stream walked. But the reader goes on reading it as null for
-            // the rest of every decoding in flight (#51): an object stream decoded inside another's reads it as that one's
-            // decoding makes it, and does not decode alike. That it is not parsed again, what the walk parsed before decides —
-            // for the walk that judges, which parses each stream once, as a reader that keeps it does; a walk of a standing
-            // parses it again, as a reader whose cache let it go between two meetings does, so that what that parse meets
-            // tells the stream unlike as well.
-            if (held.IsStream)
+            if (!TryStream(number, entry, out var first, out var parameters, out var value))
             {
-                if (_parsed.Add(number))
+                return value;
+            }
+
+            // The stream is the one the chain followed ends at. Its parse resolves its /Length a level deeper, while it is in
+            // flight; once, as the reader keeps it. One met again while in flight, which the reader reads as null, is met on
+            // the chain of a /Length, whose value the walk drops: what it gives there changes nothing to the stream walked.
+            // But the reader goes on reading it as null for the rest of every decoding in flight (#51): an object stream
+            // decoded inside another's reads it as that one's decoding makes it, and does not decode alike. That it is not
+            // parsed again, what the walk parsed before decides — for the walk that judges, which parses each stream once, as
+            // a reader that keeps it does; a walk of a standing parses it again, as a reader whose cache let it go between two
+            // meetings does, so that what that parse meets tells the stream unlike as well. The parse is made from here, with
+            // no call between, so that each level of the walks' recursion holds no more frames than it must (#312).
+            _ended = number;
+
+            if (_parsed.Add(number))
+            {
+                Parse(number, first, parameters, key, depth);
+            }
+            else if (!judges)
+            {
+                if (IsInFlight(number))
                 {
-                    Parse(number, held, key, depth);
+                    _unlike = true;
                 }
                 else
                 {
-                    _stateful++;
-
-                    if (!judges)
-                    {
-                        if (IsInFlight(number))
-                        {
-                            _unlike = true;
-                        }
-                        else
-                        {
-                            Parse(number, held, key, depth);
-                        }
-                    }
+                    Parse(number, first, parameters, key, depth);
                 }
             }
 
-            return held.Value;
+            return value;
         }
 
         /// <summary>
-        /// Follows the <c>/Length</c> of stream <paramref name="number"/>, which <paramref name="held"/> gives, as its parse
+        /// Follows the <c>/Length</c> of stream <paramref name="number"/>, which names <paramref name="first"/>, as its parse
         /// resolves it, under <paramref name="key"/>: met on a chain at <paramref name="depth"/>, the stream is in flight
-        /// meanwhile, and the <c>/Length</c> loaded a level deeper. A nest the memo knows of it, from that depth or above, is
-        /// taken at once, as a run of links is (#201).
+        /// meanwhile, and the <c>/Length</c> loaded a level deeper. The stream's <paramref name="parameters"/> go in the link
+        /// it gives.
         /// </summary>
         /// <remarks>
-        /// <para>
-        /// The parse parses in turn the first stream its <c>/Length</c> loads, which ends that chain, a level deeper. Streams
-        /// of parameters each heading a nest of 62 such streams were 16,128 a walk, more than the memo keeps objects: the walk
-        /// of each object stream read them all again, about 60 ms and 15 MB a stream (#201). A parse that met nothing the
-        /// walk's state answers gives its nest; the outermost parse gives the memo its own, or that of the outermost inside it
-        /// that met nothing, so that a validation keeps a nest for each stream met at the head of one, not one for each stream
-        /// of it — which would let go of the heads' as the objects' let go of them.
-        /// </para>
-        /// <para>
-        /// A parse that parsed no stream in turn gives a nest as well, which holds none: one whose <c>/Length</c> names an
-        /// object written apart — an integer, as a writer that streams its output writes it — is taken at once rather than
-        /// loading that object again once the memo let it go, which a nest holding no stream saved six times over in reads,
-        /// where nests outlive objects. One whose <c>/Length</c> is written directly saves nothing, and takes a place among
-        /// the nests, as many as the reader keeps objects.
-        /// </para>
-        /// <para>
-        /// A nest taken by a walk of a standing is one the reader's rebuilt index places, every object its parse went through
-        /// as the chain's index does (#312). The reader holds the stream in its loads while a nest is taken as while its
-        /// <c>/Length</c> is followed: a stream of the nest, or the object the reader's nesting cuts at its end, that is in
-        /// flight there is read again.
-        /// </para>
+        /// Links are taken in turn as the parse would go: each stream a level below the one before, up to one parsed already
+        /// for the walk that judges, which the reader keeps, and as far as the reader's nesting lets it, the load cut at the
+        /// end the first the last stream's <c>/Length</c> names. The streams they took are held in the reader's loads as those
+        /// of a parse are: one met again, or the load the nesting cuts, that the reader holds tells a walk of a standing its
+        /// stream unlike. A walk of a standing takes a link, or a nest flattened, only where the reader's rebuilt index places
+        /// every object it went through as the chain's does (#312).
         /// </remarks>
-        private void Parse(int number, Held held, string key, int depth)
+        private void Parse(int number, int first, PdfDictionary? parameters, string key, int depth)
         {
-            // The streams a parse parses in turn are noted, in order, for the nest it may give the memo; the outermost parse
-            // starts the list anew.
-            if (_inFlight.Count == 0)
-            {
-                _nested.Clear();
-                _departures.Clear();
-            }
-
-            _nested.Add(number);
-            _departures.Add(held.Length is PdfReference length ? length.Id.Number : 0);
+            // The chain this parse follows is one of its own: what the chain it was met on noted of itself is set aside, and
+            // taken up again once this parse ends. Each is a local of its own, as each value below, rather than a tuple's
+            // part: the frames of a method the runtime has not recompiled yet hold every tuple apart, and this one is a
+            // level of the walks' recursion (#312).
+            var dirty = _dirty;
+            var disagree = _disagree;
+            var ended = _ended;
+            var cut = _cut;
+            var start = _chain.Count;
+            var current = number;
+            var level = depth;
+            var taken = 0;
+            var agree = true;
+            var goesOn = true;
             _inFlight.Add(number);
 
-            if (memo.NestOf(number) is { } known && (known.EndsChain || depth >= known.Depth) && (judges || known.Agrees))
+            if (memo.FlatOf(number) is { } flat && (judges || flat.Agrees))
             {
-                Take(known, depth);
+                goesOn = TakeFlat(flat, ref current, ref level);
+                taken = flat.Streams.Length;
+                agree = flat.Agrees;
             }
-            else
-            {
-                var (stateful, cuts, disagreements, start) = (_stateful, _cuts, _disagreements, _nested.Count);
-                Follow(held.Length, key, LengthLinks, depth + 1, out _);
 
-                // A parse that met nothing the walk's state answers takes over the nest inside it, which its own holds; a walk
-                // of a standing that ended inside it followed it in part.
-                if (_stateful == stateful && !IsDone)
+            if (goesOn)
+            {
+                // The chain of the /Length of the stream the links stopped at — the parsed stream itself, or one they led to
+                // — is followed, and kept as that stream's link unless the walk ended inside it; here, rather than from a call
+                // of its own, so that each level of the walks' recursion holds no more frames than it must (#312).
+                if (TakeLinks(ref current, ref level, ref agree))
                 {
-                    _settled = new Settled(number, depth, _cuts == cuts, _disagreements == disagreements, start, _nested.Count);
+                    if (current != number)
+                    {
+                        first = Describe(current, out parameters);
+                    }
+
+                    _dirty = false;
+                    _disagree = false;
+                    _ended = 0;
+                    _cut = false;
+
+                    if (first != NoReference)
+                    {
+                        FollowFrom(first, key, LengthLinks, level + 1, out _);
+                    }
+
+                    if (!IsDone)
+                    {
+                        memo.NoteLink(current, new Link(first, _cut ? Unexplored : _ended, !_dirty, !_disagree, parameters));
+                    }
+                }
+
+                // A nest longer than the one kept flattened, taken through links, is kept flattened in its place, and taken
+                // whole the next time.
+                if (_chain.Count - start > Math.Max(taken, 1))
+                {
+                    memo.NoteFlat(number, new Flat([.. CollectionsMarshal.AsSpan(_chain)[start..]], [.. CollectionsMarshal.AsSpan(_firsts)[start..]], agree));
                 }
             }
 
             _inFlight.Remove(number);
+            _firsts.RemoveRange(start, _firsts.Count - start);
+            _chain.RemoveRange(start, _chain.Count - start);
+            _dirty = dirty;
+            _disagree = disagree;
+            _ended = ended;
+            _cut = cut;
+        }
 
-            if (_inFlight.Count == 0 && _settled is { } settled && !IsDone)
+        /// <summary>
+        /// Takes <paramref name="flat"/>, the nest kept flattened of the stream a parse parses, as its links would be taken,
+        /// from <paramref name="current"/>, met at <paramref name="level"/>, without asking the memo for each; gives whether
+        /// the parse goes on past it, from the stream and the level it leaves in <paramref name="current"/> and
+        /// <paramref name="level"/>.
+        /// </summary>
+        private bool TakeFlat(Flat flat, ref int current, ref int level)
+        {
+            var (streams, firsts) = (flat.Streams, flat.Firsts);
+
+            for (var index = 0; index < streams.Length; index++)
             {
-                memo.NoteNest(
-                    settled.Stream,
-                    new Nest(
-                        settled.Depth,
-                        settled.EndsChain,
-                        settled.Agrees,
-                        CollectionsMarshal.AsSpan(_nested)[settled.Start..settled.End].ToArray(),
-                        CollectionsMarshal.AsSpan(_departures)[(settled.Start - 1)..settled.End].ToArray()));
-                _settled = null;
+                if (level >= PdfFileReader.MaxNestedLoads)
+                {
+                    Cut(firsts[index]);
+                    return false;
+                }
+
+                if (!GoesInto(streams[index]))
+                {
+                    return false;
+                }
+
+                (current, level) = (streams[index], level + 1);
+                _chain.Add(current);
+                _firsts.Add(firsts[index]);
+            }
+
+            return true;
+        }
+
+        /// <summary>
+        /// Takes the clean links the memo keeps from <paramref name="current"/>, met at <paramref name="level"/>, each to the
+        /// stream its chain ends at, a level deeper, noting in <paramref name="agree"/> whether each agrees with the reader's
+        /// index; gives whether the chain of the stream it stops at, left in <paramref name="current"/> and
+        /// <paramref name="level"/>, is to be followed: one no clean link is kept of, or whose link the reader's nesting cut,
+        /// met now higher up.
+        /// </summary>
+        private bool TakeLinks(ref int current, ref int level, ref bool agree)
+        {
+            // A parse begins with the walk going on, and nothing here ends a walk but where it returns.
+            while (true)
+            {
+                if (!memo.TryGetLink(current, out var link) || !link.Clean || !(judges || link.Agrees))
+                {
+                    return true;
+                }
+
+                if (link.First == NoReference)
+                {
+                    return false;
+                }
+
+                if (level >= PdfFileReader.MaxNestedLoads)
+                {
+                    Cut(link.First);
+                    return false;
+                }
+
+                if (link.Next == 0)
+                {
+                    return false;
+                }
+
+                if (link.Next == Unexplored)
+                {
+                    return true;
+                }
+
+                if (!GoesInto(link.Next))
+                {
+                    return false;
+                }
+
+                (current, level) = (link.Next, level + 1);
+                _chain.Add(current);
+                _firsts.Add(link.First);
+                agree &= link.Agrees;
             }
         }
 
         /// <summary>
-        /// Takes at once the nest <paramref name="nest"/> of a stream met at <paramref name="depth"/>: parses its streams, as
-        /// far as the reader's nesting lets the stream's parse reach from there — the first a level below the stream, each
-        /// next a level further —, and up to one the walk parsed already, where that parse ends, the stream met again; and
-        /// counts what the parse would have met, the load the reader's nesting cuts at its end included.
+        /// Goes into <paramref name="next"/>, the stream a link taken leads to, as a load goes into a stream a chain ends at
+        /// (<see cref="Load"/>); gives whether the parse goes on into it.
         /// </summary>
-        private void Take(Nest nest, int depth)
+        private bool GoesInto(int next)
         {
-            var streams = nest.Streams;
-            var reach = Math.Min(streams.Length, PdfFileReader.MaxNestedLoads - depth);
-
-            if (!nest.Agrees)
+            if (_parsed.Add(next))
             {
-                _disagreements++;
+                return true;
             }
 
-            for (var index = 0; index < reach; index++)
+            // The reader keeps a stream it parsed, and the parse ends there, for the walk that judges. A walk of a standing
+            // parses it again, as a reader whose cache let it go does, and the parse goes on — but for a stream the reader holds
+            // in its loads, which it reads again.
+            if (judges)
             {
-                if (!_parsed.Add(streams[index]))
-                {
-                    _stateful++;
-
-                    // The reader keeps a stream it parsed, and the parse ends there, for the walk that judges. A walk of a
-                    // standing parses it again, as a reader whose cache let it go does, and the nest goes on — but for a stream
-                    // the reader holds in its loads, which it reads again.
-                    if (judges)
-                    {
-                        return;
-                    }
-
-                    if (IsInFlight(streams[index]))
-                    {
-                        _unlike = true;
-                        return;
-                    }
-                }
-
-                _nested.Add(streams[index]);
-                _departures.Add(nest.Loads[index + 1]);
+                return false;
             }
 
-            // Short of the nest's end, or at an end the reader's nesting made, the parse is cut there: a parse resolves a
-            // /Length, which places the stream's data and nothing a decoding reads. The object the cut loads is the first the
-            // /Length of the last stream taken names, and is read again when the reader holds it in its loads.
-            if (reach < streams.Length || !nest.EndsChain)
+            if (IsInFlight(next))
             {
-                _cuts++;
-
-                if (IsInFlight(nest.Loads[reach]))
-                {
-                    _stateful++;
-                    _unlike |= !judges;
-                }
+                _unlike = true;
+                return false;
             }
+
+            return true;
         }
+
+        /// <summary>
+        /// Cuts, at the reader's nesting, the links taken, where their next load is <paramref name="first"/>: a walk of a
+        /// standing whose stream the reader holds in its loads is told unlike, as at a load past the nesting.
+        /// </summary>
+        private void Cut(int first) => _unlike |= !judges && IsInFlight(first);
+
+        /// <summary>
+        /// Gives what object <paramref name="number"/>, which <paramref name="entry"/> places, gives the walk in
+        /// <paramref name="value"/>; and whether it is a stream, whose <c>/Length</c> names <paramref name="first"/> and whose
+        /// dictionary gives a filter's step <paramref name="parameters"/>.
+        /// </summary>
+        /// <remarks>
+        /// A stream the walk kept a link of is not read again: the link says where its <c>/Length</c> leads, and holds what a
+        /// filter's step reads of its dictionary, so that a stream past the objects the memo keeps is not read again through
+        /// the reader, which would parse its nest again (#181). What the stream gives a chain of a <c>/Length</c> is dropped,
+        /// and what it gives as a value is what decoding reads of it, which the link holds.
+        /// </remarks>
+        private bool TryStream(int number, XRefEntry entry, out int first, out PdfDictionary? parameters, out PdfObject value)
+        {
+            if (memo.TryGetLink(number, out var link))
+            {
+                first = link.First;
+                parameters = link.Parameters;
+                value = parameters ?? memo.NoParameters;
+                return true;
+            }
+
+            var held = memo.Get(number, entry);
+            first = FirstOf(held);
+            parameters = ParametersOf(held);
+            value = held.Value;
+            return held.IsStream;
+        }
+
+        /// <summary>
+        /// Gives the first object the <c>/Length</c> of stream <paramref name="number"/> names, and what a filter's step reads
+        /// of its dictionary, <paramref name="parameters"/>: as its link holds them, or as the memo holds the stream.
+        /// </summary>
+        private int Describe(int number, out PdfDictionary? parameters)
+        {
+            if (memo.TryGetLink(number, out var link))
+            {
+                parameters = link.Parameters;
+                return link.First;
+            }
+
+            // A stream a link leads to was loaded through the index, which the validation settled before its first rule: it
+            // is there, and asked as a load asks rather than taken for granted.
+            if (!IndexOf(document.Reader).TryGet(number, out var entry))
+            {
+                parameters = null;
+                return NoReference;
+            }
+
+            var held = memo.Get(number, entry);
+            parameters = ParametersOf(held);
+            return FirstOf(held);
+        }
+
+        /// <summary>Gives the first object the <c>/Length</c> of the stream <paramref name="held"/> gives names.</summary>
+        private static int FirstOf(Held held) => held.Length is PdfReference length ? length.Id.Number : NoReference;
+
+        /// <summary>
+        /// Gives what a filter's step reads of the dictionary of the stream <paramref name="held"/> gives, null when it is
+        /// none of it: a link keeps no empty dictionary.
+        /// </summary>
+        private static PdfDictionary? ParametersOf(Held held) => held.Value is PdfDictionary { Count: > 0 } parameters ? parameters : null;
 
         /// <summary>
         /// Loads object <paramref name="number"/>, which object stream <paramref name="entry"/> names holds, as the reader
@@ -1321,7 +1522,7 @@ internal sealed class ObjectStreamDependencies
                 return PdfNull.Instance;
             }
 
-            if (_inFlight.Contains(holder))
+            if (IsInFlight(holder))
             {
                 return PdfNull.Instance;
             }
@@ -1348,6 +1549,9 @@ internal sealed class ObjectStreamDependencies
             }
             else
             {
+                // The value read through it reads otherwise once the stream is known, and is followed again then (#315).
+                _hidden++;
+
                 if ((_unknownSet ??= new(SeededComparer.Instance)).Add(holder))
                 {
                     (_unknown ??= []).Add(holder);
@@ -1397,11 +1601,14 @@ internal sealed class ObjectStreamDependencies
         /// chain of filters, and a value gates the next — <c>/Type</c> then <c>/N</c> and <c>/First</c>, then <c>/Filter</c>,
         /// <c>/DecodeParms</c>, a predictor and what it reads —, as the levels of a nest each gate the one below. Under the
         /// default limits that is a few thousand walks of one stream, 1,921 for 64 filters each read through 30 such streams,
-        /// and as many more as <see cref="PdfReaderLimits.MaxFilterChainLength"/> allows. Each walk repeats the stream's whole
-        /// walk, so that one stream costs its walk once for each holder that hid from it, and nests the walk cannot keep are
-        /// followed again on each of those walks (#181); the walks of a validation stay within about three per object stream,
-        /// a walk being made again only once a stream not walked before has been (#315). No recursion goes deeper than one
-        /// walk inside the walk that judges.
+        /// and as many more as <see cref="PdfReaderLimits.MaxFilterChainLength"/> allows; the walks of a validation stay
+        /// within about three per object stream, a walk being made again only once a stream not walked before has been. A
+        /// walk made again does not repeat the stream's whole walk: it takes at once what the last one followed without
+        /// reading an object of a stream not known yet as null, and follows again only the values that read one so (#315).
+        /// Each holder that hid from a stream then costs what the values it hid cost, not what the stream's other values do —
+        /// where one stream hiding 90 holders behind its <c>/Length</c>, with 256 nests through its parameters, cost 1.36 GB
+        /// and 4 to 7 s in a 1.07 MB file. Past what the memo keeps of such outcomes, a walk is made again whole. No recursion
+        /// goes deeper than one walk inside the walk that judges.
         /// </remarks>
         private Standing Settle(int holder)
         {
@@ -1478,17 +1685,39 @@ internal sealed class ObjectStreamDependencies
     }
 
     /// <summary>
-    /// A parse that met nothing the walk's state answers, whose nest the outermost parse gives the memo as it ends.
+    /// What a walk found of a stream met on a chain, as its parse follows its <c>/Length</c> (#181): the chain of that
+    /// <c>/Length</c> alone, not what the parse of the stream it ends at meets in turn, which is that stream's own link.
     /// </summary>
-    /// <param name="Stream">The stream parsed.</param>
-    /// <param name="Depth">The depth it was met at.</param>
-    /// <param name="EndsChain">Whether the parse ended where its chains do, with no load the reader's nesting cut.</param>
-    /// <param name="Agrees">
-    /// Whether the reader's index places every object the parse went through as the chain's does (#312).
+    /// <param name="First">The first object the <c>/Length</c> names; <see cref="NoReference"/> for one written directly.</param>
+    /// <param name="Next">
+    /// The stream the chain ends at, which the parse parses in turn a level deeper; 0 for none; <see cref="Unexplored"/> when
+    /// the reader's nesting cut the chain's first load, so that where it leads from higher up is not known.
     /// </param>
-    /// <param name="Start">Where the streams it parsed in turn start in the walk's list of the streams parsed.</param>
-    /// <param name="End">Where they end there.</param>
-    private readonly record struct Settled(int Stream, int Depth, bool EndsChain, bool Agrees, int Start, int End);
+    /// <param name="Clean">
+    /// Whether the chain met nothing the walk's state answers — no object of an object stream, no load the thread's stack had
+    /// no room for —: it then ends where the file alone says, at that stream whatever walk takes it, and is taken at once.
+    /// </param>
+    /// <param name="Agrees">
+    /// Whether the reader's index places every object the chain loaded, the stream it ends at included, as the chain's does,
+    /// which a walk of a standing asks of the links it takes (#312).
+    /// </param>
+    /// <param name="Parameters">
+    /// What a filter's step reads of the stream's dictionary (<see cref="FilterChain.ParameterKeys"/>), as a value that
+    /// leads to the stream reads it; null when the dictionary has none of them. A stream met as a value is then not read
+    /// again past what the memo keeps of objects, which made the reader parse its nest again.
+    /// </param>
+    private readonly record struct Link(int First, int Next, bool Clean, bool Agrees, PdfDictionary? Parameters);
+
+    /// <summary>
+    /// The nest a stream's clean links lead through, flattened (#181), so that it is taken whole rather than a link at a time.
+    /// </summary>
+    /// <param name="Streams">The streams the links lead to, in order, the first a level below the stream.</param>
+    /// <param name="Firsts">
+    /// Of each of <paramref name="Streams"/>, at the same place, the first object the <c>/Length</c> of the stream before it
+    /// names: the load the reader's nesting cuts where the nest is taken too deep to reach that stream.
+    /// </param>
+    /// <param name="Agrees">Whether every link it was taken through agrees with the reader's index (#312).</param>
+    private sealed record Flat(int[] Streams, int[] Firsts, bool Agrees);
 
     /// <summary>
     /// What a walk found of an object stream as the holder of an object another decoding reads (#312): whether it decodes
@@ -1535,6 +1764,78 @@ internal sealed class ObjectStreamDependencies
     /// </param>
     private readonly record struct Followed(PdfObject? Value, bool LeftByGuard);
 
+    /// <summary>What a value read once a stream is parsed gave a walk of the stream (#315).</summary>
+    /// <param name="Followed">What the value leads to.</param>
+    /// <param name="Reach">
+    /// How deep its follow loaded, the decodings of the streams holding the objects it led through included: as deep as the
+    /// stream's decoding reaches for it.
+    /// </param>
+    /// <param name="Hidden">
+    /// Whether its follow read as null an object of a stream whose standing was not known yet: the value may read otherwise
+    /// once that stream is known.
+    /// </param>
+    private readonly record struct Outcome(Followed Followed, int Reach, bool Hidden);
+
+    /// <summary>
+    /// What the last walk of an object stream whose standing waits followed without reading an object of a stream not known
+    /// yet as null (#315): the outcome of each such value, and how deep its own <c>/Length</c> loaded. The standings such a
+    /// follow met are known for good, so that it reads alike in every later walk, which takes it at once.
+    /// </summary>
+    private sealed class Outcomes
+    {
+        /// <summary>The outcomes kept, each with the number of the object its value names.</summary>
+        private readonly List<KeyValuePair<int, Outcome>> _values = [];
+
+        /// <summary>Gets how deep the stream's own <c>/Length</c> loaded; -1 when the walk made again follows it again.</summary>
+        public int LengthReach { get; private set; } = -1;
+
+        /// <summary>Gets how many entries are kept: one for each value, and one for the <c>/Length</c> when its reach is.</summary>
+        public int Entries => _values.Count + (LengthReach >= 0 ? 1 : 0);
+
+        /// <summary>
+        /// Gives how many entries keeping, of <paramref name="values"/>, those whose follow read no object of a stream not
+        /// known yet as null, and <paramref name="lengthReach"/>, takes.
+        /// </summary>
+        public static int EntriesOf(Dictionary<int, Outcome> values, int lengthReach)
+        {
+            var entries = lengthReach >= 0 ? 1 : 0;
+
+            foreach (var outcome in values.Values)
+            {
+                entries += outcome.Hidden ? 0 : 1;
+            }
+
+            return entries;
+        }
+
+        /// <summary>
+        /// Keeps, in place of what was kept, those of <paramref name="values"/> whose follow read no object of a stream not
+        /// known yet as null, and <paramref name="lengthReach"/>.
+        /// </summary>
+        public void Keep(Dictionary<int, Outcome> values, int lengthReach)
+        {
+            _values.Clear();
+            LengthReach = lengthReach;
+
+            foreach (var value in values)
+            {
+                if (!value.Value.Hidden)
+                {
+                    _values.Add(value);
+                }
+            }
+        }
+
+        /// <summary>Puts the outcomes kept in <paramref name="values"/>, the values of a walk made again.</summary>
+        public void CopyTo(Dictionary<int, Outcome> values)
+        {
+            foreach (var (number, outcome) in _values)
+            {
+                values[number] = outcome;
+            }
+        }
+    }
+
     /// <summary>
     /// Records what decoding reads of a stream's filters and their parameters, in the order <see cref="FilterChain"/> reads
     /// it, each value followed by the walk; and ends the reading where decoding ends it, at a value whose chain reached an
@@ -1565,11 +1866,19 @@ internal sealed class ObjectStreamDependencies
     /// chain loads from it. As many objects as <paramref name="capacity"/> says, the oldest let go first, and read again when
     /// met again, so that what the walks keep follows the reader's cache rather than the file (#201). It also keeps the
     /// standing of each object stream the walks met an object of (#312), what the walks of standings read of each stream's
-    /// dictionary, and, of each outermost parse a walk followed, at most one nest: that of the outermost parse in it, itself
-    /// included, that met nothing its state answers, by the number of the stream heading it.
+    /// dictionary and followed of its values (#315), and the link of each stream whose <c>/Length</c> a parse followed, with
+    /// the nests clean links lead through flattened (#181).
     /// </summary>
+    /// <remarks>
+    /// Each store but the standings' holds as much as <paramref name="capacity"/> says, or a multiple of it, the oldest let go
+    /// first: no guard (ADR 34), each sizes what the walks keep, not what they read or judge. What one let go is read or
+    /// followed again when met again, and gives what it gave: no file reads otherwise for it, and the report is the same.
+    /// </remarks>
     /// <param name="document">The document whose objects are read.</param>
-    /// <param name="capacity">How many objects are kept, at most: as many as the reader caches; and as many nests.</param>
+    /// <param name="capacity">
+    /// How many objects are kept, at most: as many as the reader caches; and as many dictionaries of waiting streams, nests
+    /// flattened and outcomes in all, and <see cref="LinksPerObject"/> times as many links.
+    /// </param>
     /// <param name="maxFilters">The most filters a stream's data passes through, which bounds what is kept of an array.</param>
     private sealed class Memo(PdfDocument document, int capacity, int maxFilters)
     {
@@ -1577,15 +1886,48 @@ internal sealed class ObjectStreamDependencies
         private readonly Queue<int> _order = new();
 
         /// <summary>
-        /// The nests the walks found, by the number of the stream heading each: as many as <c>capacity</c> says, the oldest
-        /// let go first, and found again when met again. They are kept apart from the objects, which the parse of one nest
-        /// fills in turn, and which would let go of every nest a walk meets as it takes in their streams. Each holds 62
-        /// numbers at most, as many streams as a parse reaches below a stream met at the second level, the shallowest any is
-        /// met, within the reader's nesting (<see cref="PdfFileReader.MaxNestedLoads"/>), which no value the file gives
-        /// changes: what they keep follows the reader's cache, not the file (#201).
+        /// The links the walks found, by the number of the stream whose <c>/Length</c> each follows (#181): as many as
+        /// <c>capacity</c> times <see cref="LinksPerObject"/>, the oldest let go first, and followed again when met again.
+        /// A link holds two numbers, two flags and the stream's parameters, null for the streams of a nest, which have none.
         /// </summary>
-        private readonly Dictionary<int, Nest> _nests = new(SeededComparer.Instance);
-        private readonly Queue<int> _nestOrder = new();
+        private readonly Dictionary<int, Link> _links = new(SeededComparer.Instance);
+        private readonly Queue<int> _linkOrder = new();
+
+        /// <summary>
+        /// The nests clean links lead through, flattened, by the number of the stream heading each (#181): as many as
+        /// <c>capacity</c> says, the oldest let go first, and taken a link at a time again when met again. Each holds 62
+        /// streams at most, as many as a parse reaches below a stream met at the second level, the shallowest any is met,
+        /// within the reader's nesting (<see cref="PdfFileReader.MaxNestedLoads"/>), which no value the file gives changes.
+        /// Taking a nest a link at a time asks the links' store once for each, which made a walk of streams heading kept
+        /// nests about two and a half times as slow as taking the nest kept by the stream heading it.
+        /// </summary>
+        private readonly Dictionary<int, Flat> _flats = new(SeededComparer.Instance);
+        private readonly Queue<int> _flatOrder = new();
+
+        /// <summary>Gets an empty dictionary, which a stream whose link holds no parameters gives as a value.</summary>
+        public PdfDictionary NoParameters { get; } = new();
+
+        /// <summary>Gives the nest flattened of stream <paramref name="stream"/>; null when none is kept.</summary>
+        public Flat? FlatOf(int stream) => _flats.TryGetValue(stream, out var flat) ? flat : null;
+
+        /// <summary>
+        /// Keeps <paramref name="flat"/>, the nest flattened of stream <paramref name="stream"/>, in place of the one
+        /// kept, which a parse took whole before it went on past it.
+        /// </summary>
+        public void NoteFlat(int stream, Flat flat)
+        {
+            if (!_flats.ContainsKey(stream))
+            {
+                if (_flats.Count >= capacity && _flatOrder.TryDequeue(out var oldest))
+                {
+                    _flats.Remove(oldest);
+                }
+
+                _flatOrder.Enqueue(stream);
+            }
+
+            _flats[stream] = flat;
+        }
 
         /// <summary>
         /// What the walks of standings read of the dictionary of each object stream whose standing waits on others — its
@@ -1597,6 +1939,78 @@ internal sealed class ObjectStreamDependencies
         /// </summary>
         private readonly Dictionary<int, PdfDictionary> _heads = new(SeededComparer.Instance);
         private readonly Queue<int> _headOrder = new();
+
+        /// <summary>
+        /// What the last walk of each object stream whose standing waits followed without reading an object of a stream not
+        /// known yet as null, by the stream's number, dropped once its standing is known (#315): as many entries in all as
+        /// <c>capacity</c> says — one for each value, and one for a <c>/Length</c> —, the stream kept first let go first, and
+        /// walked whole again. A walk that kept nothing keeps no entry.
+        /// </summary>
+        private readonly Dictionary<int, Outcomes> _outcomes = new(SeededComparer.Instance);
+
+        /// <summary>
+        /// The streams in the order their outcomes were first kept: it can name a stream dropped already, which is passed
+        /// over, and which is never kept again, its standing known.
+        /// </summary>
+        private readonly Queue<int> _outcomeOrder = new();
+
+        /// <summary>How many entries <see cref="_outcomes"/> holds in all.</summary>
+        private long _outcomeEntries;
+
+        /// <summary>Gives what the last walk of waiting stream <paramref name="stream"/> kept; null when none is kept.</summary>
+        public Outcomes? OutcomesOf(int stream) => _outcomes.TryGetValue(stream, out var outcomes) ? outcomes : null;
+
+        /// <summary>Drops what was kept of the walks of stream <paramref name="stream"/>, its standing now known.</summary>
+        public void DropOutcomes(int stream)
+        {
+            if (_outcomes.Remove(stream, out var outcomes))
+            {
+                _outcomeEntries -= outcomes.Entries;
+            }
+        }
+
+        /// <summary>
+        /// Keeps, of <paramref name="values"/>, those whose follow read no object of a stream not known yet as null, and how
+        /// deep the stream's own <c>/Length</c> loaded, <paramref name="lengthReach"/>, for the next walk of waiting stream
+        /// <paramref name="stream"/>, in place of what its last walk kept; letting go of the streams kept first until the
+        /// entries kept fit.
+        /// </summary>
+        /// <remarks>
+        /// A later walk of a stream keeps every entry the one before kept, which it took, and perhaps more: a stream that kept
+        /// nothing, or more than fits, keeps nothing, and a stream kept again after it was let go was taken out of the order
+        /// with it. So the order names each stream kept once, and those dropped once their standing is known. A stream is
+        /// walked again only once every stream its last walk met is known, and dropped, those it met in turn included: the
+        /// streams still kept were kept before it, and are let go before it, which, alone, fits.
+        /// </remarks>
+        public void KeepOutcomes(int stream, Dictionary<int, Outcome> values, int lengthReach)
+        {
+            var entries = Outcomes.EntriesOf(values, lengthReach);
+
+            if (entries == 0 || entries > capacity)
+            {
+                DropOutcomes(stream);
+                return;
+            }
+
+            if (_outcomes.TryGetValue(stream, out var outcomes))
+            {
+                _outcomeEntries -= outcomes.Entries;
+            }
+            else
+            {
+                outcomes = new Outcomes();
+                _outcomes.Add(stream, outcomes);
+                _outcomeOrder.Enqueue(stream);
+            }
+
+            outcomes.Keep(values, lengthReach);
+            _outcomeEntries += entries;
+
+            while (_outcomeEntries > capacity && _outcomeOrder.TryDequeue(out var oldest))
+            {
+                DropOutcomes(oldest);
+            }
+        }
 
         /// <summary>
         /// The standing of each object stream the walks met an object of, by its number: worked out once a validation, as a
@@ -1617,27 +2031,27 @@ internal sealed class ObjectStreamDependencies
         public void NoteStanding(int stream, Standing standing) =>
             (_standings ??= new(SeededComparer.Instance))[stream] = standing;
 
-        /// <summary>Gives the nest a walk found of stream <paramref name="stream"/>; null when none is kept.</summary>
-        public Nest? NestOf(int stream) => _nests.TryGetValue(stream, out var nest) ? nest : null;
+        /// <summary>Gives the link a walk found of stream <paramref name="stream"/>, if one is kept.</summary>
+        public bool TryGetLink(int stream, out Link link) => _links.TryGetValue(stream, out link);
 
         /// <summary>
-        /// Keeps <paramref name="nest"/>, the nest of stream <paramref name="stream"/>: in place of the one kept, since a walk
-        /// follows a parse only where none kept can be taken — the one kept found from deeper down, or, for a walk of a
-        /// standing, through an object the reader's rebuilt index places otherwise than the chain's.
+        /// Keeps <paramref name="link"/>, the link of stream <paramref name="stream"/>, in place of the one kept, which a parse
+        /// followed again: not clean, cut by the reader's nesting, or, for a walk of a standing, through an object the reader's
+        /// rebuilt index places otherwise than the chain's.
         /// </summary>
-        public void NoteNest(int stream, Nest nest)
+        public void NoteLink(int stream, Link link)
         {
-            if (!_nests.ContainsKey(stream))
+            if (!_links.ContainsKey(stream))
             {
-                if (_nests.Count >= capacity && _nestOrder.TryDequeue(out var oldest))
+                if (_links.Count >= (long)capacity * LinksPerObject && _linkOrder.TryDequeue(out var oldest))
                 {
-                    _nests.Remove(oldest);
+                    _links.Remove(oldest);
                 }
 
-                _nestOrder.Enqueue(stream);
+                _linkOrder.Enqueue(stream);
             }
 
-            _nests[stream] = nest;
+            _links[stream] = link;
         }
 
         /// <summary>
@@ -1714,7 +2128,9 @@ internal sealed class ObjectStreamDependencies
         /// <param name="loads">How many objects the chain loads at most from it.</param>
         public LinkRun? RunFrom(int number, int loads)
         {
-            if (number <= 0 || !IndexOf(document.Reader).TryGet(number, out var entry) || !IsAlikeForEveryStream(number, entry))
+            // A stream starts no run: one the walks kept a link of is known for one without reading it again (#181).
+            if (number <= 0 || _links.ContainsKey(number) || !IndexOf(document.Reader).TryGet(number, out var entry) ||
+                !IsAlikeForEveryStream(number, entry))
             {
                 return null;
             }
@@ -1900,50 +2316,6 @@ internal sealed class ObjectStreamDependencies
 
         /// <summary>Gets or sets the run a chain loads from the object, once worked out, when its value is a reference.</summary>
         public LinkRun? Run { get; set; }
-    }
-
-    /// <summary>
-    /// What the parse of a stream met on a chain parses in turn as it resolves its <c>/Length</c>, when it met nothing a
-    /// walk's state answers — no object of an object stream, no stream parsed before, the stream walked included, no stream
-    /// the reader holds in its loads read again —: the streams its chains lead through, each the first stream the
-    /// <c>/Length</c> of the one before loads, a level below it, which the file alone gives from that depth down (#201).
-    /// </summary>
-    /// <param name="depth">The depth the stream was met at when its parse gave the nest: the nest is the same from below.</param>
-    /// <param name="endsChain">
-    /// Whether the parse ended where its chains do, with no load the reader's nesting cut: the nest is then the same from any
-    /// depth, as far as the nesting lets a parse reach.
-    /// </param>
-    /// <param name="agrees">
-    /// Whether the reader's index places every object the parse went through as the chain's does, which a walk of a
-    /// standing asks of what it takes (#312).
-    /// </param>
-    /// <param name="streams">The streams it parsed in turn, in order, the first a level below the stream.</param>
-    /// <param name="loads">
-    /// Of the stream and of each of <paramref name="streams"/> after it, in order, the first object its <c>/Length</c> loads, 0
-    /// for one written directly: the object the reader's nesting cuts, a level below the last stream a parse from a given
-    /// depth reaches.
-    /// </param>
-    private sealed class Nest(int depth, bool endsChain, bool agrees, int[] streams, int[] loads)
-    {
-        /// <summary>Gets the depth the stream was met at when its parse gave the nest.</summary>
-        public int Depth { get; } = depth;
-
-        /// <summary>Gets a value indicating whether the parse ended where its chains do, rather than where the nesting cut it.</summary>
-        public bool EndsChain { get; } = endsChain;
-
-        /// <summary>
-        /// Gets a value indicating whether the reader's index places every object the parse went through as the chain's does.
-        /// </summary>
-        public bool Agrees { get; } = agrees;
-
-        /// <summary>Gets the streams the parse parsed in turn, in order, the first a level below the stream.</summary>
-        public int[] Streams { get; } = streams;
-
-        /// <summary>
-        /// Gets, of the stream and of each of <see cref="Streams"/> after it, the first object its <c>/Length</c> loads: one
-        /// more than the streams.
-        /// </summary>
-        public int[] Loads { get; } = loads;
     }
 
     /// <summary>
