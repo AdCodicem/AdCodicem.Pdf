@@ -7,6 +7,39 @@ to about thirty lines each; the unabridged text is the
 [journal of `e38ebbc`](https://github.com/AdCodicem/AdCodicem.Pdf/blob/e38ebbc471b86779c3f6ac5b320ca1ecd531b2c1/docs/status.md#journal). A session reads an entry when it needs the
 reason for a past decision. A new entry is short, about thirty lines; the detail is in the pull request's body.
 
+## 2026-11-21 — Batch 25, first pull request: what the library's walks decode again, and overlapping stream data ([#398])
+
+- **The question.** Measured on `main` at `b8f6f7d`: the library's walks decoded again, for each member they read, the
+  object streams the reader had let go — a hundred rows 99 decodings, 6 s and 9.9 GB; a valid file of 200 pages
+  alternating between two 20 MB object streams 200 decodings in its page tree's walk ([#181]). Under `ThrowOnLimit` a
+  broken `/Root`'s search read a bomb again for each candidate. Two hundred streams whose data share a stretch read it
+  199 times from a file ([#280]); a wrong `/Length` read 64 bytes it held ([#296]); the pending note of dropped codes
+  grew with nested loads ([#385]).
+- **Settled with the maintainer** (2026-11-20, each as recommended): two pull requests by area, the reader's first; a
+  guard scoped to the library's walks, `MaxObjectStreamDecodePasses`, 4, `limit.object-stream-decodes`; [#280] counted
+  lazily; [#181]'s grown windows moved to [#387]; [#314] closed by its documentation, in the second. After round 1, the
+  catalog's candidates the guard cut read again grouped by stream; after round 2, one total of the lengths taken unread.
+- **What changed.** Within a walk, past four times what the first decodings gave, a stream is not decoded again and its
+  members read null for that walk; a caller's own reads are never cut. The orphaned-page rule reads grouped by stream.
+  Under `ThrowOnLimit` a load's and a decoding's exception are kept as their values are and thrown again. Every length
+  taken unread counts once per data start and number into one total: past four times the file, data ends at the first of
+  64 placed starts inside it, within a second allowance, or reads empty, reported. What follows a found `endstream` is
+  read from the bytes held; a mark gives back its note's window. No corpus document changes.
+- **Review** (ADR 54): five rounds: 4, 3, 3, 1 and no blocker, each E1 on a hand-made file; three were regressions
+  against `main` — a walk reading an object again for each candidate, through a decoding that gave nothing, a load that
+  met the cut, the guard's own exception — each now kept for the walk. Three minors, 29 nits. Real damage, up to 180,000
+  reads a round, the count and the guards forced low: nothing but the guards' documented effects.
+- **Mutation** (ADR 53 amended): 439 mutants over 249 of 525 changed lines; 260 killed by the suite, none hung; tests
+  kill 128 of the 177 survivors, three through a 2 GB source generated as it is read. The second opinion overturned 8 of
+  57 equivalents, a third agent one more; 49 stay. No debt.
+- **The issues.** [#280], [#296], [#385]; [#181] advanced. Filed under M02: [#395], [#396], [#397] — the last E1 by the
+  letter on a hand-made file, as on `main` and slower there.
+- **Checks.** The batch check at `0fb9870`; the benchmarks against `main`, the timing and memory tests alone, the site
+  and `Remote corpus` follow, recorded when done.
+- **For callers.** `PdfReaderLimits.MaxObjectStreamDecodePasses` and `limit.object-stream-decodes`; overlapping data
+  past the bound reads cut or empty, reported `stream.length-invalid`; under `ThrowOnLimit` a load or decoding that
+  reached a guard throws its first exception again. Validating first reports in another order, the same set.
+
 ## 2026-11-19 — Batch 33, second pull request: the indirect lengths a rebuild's scan confirms, and its memo's kinds ([#394])
 
 - **The question.** Measured on `main` at `bcb3653`: after a reported guard sent a valid file into a rebuild, the scan
@@ -1189,3 +1222,7 @@ The detail is in git and in the pull requests; what still matters is in the reco
 [#392]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/392
 [#393]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/393
 [#394]: https://github.com/AdCodicem/AdCodicem.Pdf/pull/394
+[#395]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/395
+[#396]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/396
+[#397]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/397
+[#398]: https://github.com/AdCodicem/AdCodicem.Pdf/pull/398
