@@ -33,7 +33,8 @@ reason for a past decision. A new entry is short, about thirty lines; the detail
   shape, the same on `main`, now held by a test —; 9 stay. No debt.
 - **The issues.** [#181], [#314], [#315]. Filed under M23: [#399], the walk about a fifth slower over a thousand streams
   in nests, a nit on a hand-made shape.
-- **Checks.** The batch check at `2f8cc89`; the 69 timing and memory tests alone; CI and `Remote corpus` on the branch.
+- **Checks.** The batch check at `2f8cc89`; the 69 timing and memory tests alone; CI green, integration, the site and the .NET 11
+  island included; `Remote corpus` run 130 green on the code.
   Benchmarks against `main`, alone, alternated: a thousand streams hiding their holders behind their `/Length` walked in
   56 to 59 ms and 17.8 MB against 4.62 to 4.78 s and 1.50 GB; nests at a thousand streams 326 to 381 ms against 288 to
   328 ([#399]), a megabyte more; the rest and validation within the runs' spread. Patch coverage 98.64 % by Codecov's
