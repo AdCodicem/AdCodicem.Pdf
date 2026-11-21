@@ -34,8 +34,10 @@ reason for a past decision. A new entry is short, about thirty lines; the detail
   57 equivalents, a third agent one more; 49 stay. No debt.
 - **The issues.** [#280], [#296], [#385]; [#181] advanced. Filed under M02: [#395], [#396], [#397] — the last E1 by the
   letter on a hand-made file, as on `main` and slower there.
-- **Checks.** The batch check at `0fb9870`; the benchmarks against `main`, the timing and memory tests alone, the site
-  and `Remote corpus` follow, recorded when done.
+- **Checks.** The batch check at `d95e0f0`; the 61 timing and memory tests alone; CI green, integration and the site
+  included; `Remote corpus` run 128 green on the code. Benchmarks against `main`, alone, alternated: a wrong `/Length`
+  read from a file about 7 % faster at 4 KB, allocations equal; the rest within the runs' spread, opening about 200
+  bytes more. Patch coverage 98.21 % by Codecov's rule, eight partial lines no input takes.
 - **For callers.** `PdfReaderLimits.MaxObjectStreamDecodePasses` and `limit.object-stream-decodes`; overlapping data
   past the bound reads cut or empty, reported `stream.length-invalid`; under `ThrowOnLimit` a load or decoding that
   reached a guard throws its first exception again. Validating first reports in another order, the same set.
