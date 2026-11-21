@@ -38,7 +38,8 @@ Tracking workflow mirrors from `docs/roadmap.md` (*Debt and open points*, below)
   value and the rebuild's read bound made a guard, in [#386], the second, [#363], [#365], [#366] and [#372], the
   indirect lengths a rebuild's scan confirms and its memo's kinds, in [#394] on 2026-11-19; the twenty-fifth, in two
   pull requests by area as the maintainer chose on 2026-11-20, the first, [#181]'s reader paths with [#280], [#296] and
-  [#385], open in [#398]. Then the other batches, slices 4 to 6 ([#60] to [#62]); then the milestone's adversarial review, slice 7 ([#137], ADR 46), once
+  [#385], in [#398] on 2026-11-21, the second, [#315] and [#181]'s walk, with [#314] closed by its documentation, open
+  in [#400]. Then the other batches, slices 4 to 6 ([#60] to [#62]); then the milestone's adversarial review, slice 7 ([#137], ADR 46), once
   every other issue filed under M02 is closed. The debts come from the reader's own work, the threat model's first
   version ([#135], `docs/threat-model.md`), M01's review after the fact ([#136], `docs/reviews/M01.md`), the planning of
   step 4 ([#199] to [#202]), its second batch ([#207] to [#210]), its third ([#212]), its fifth ([#215], [#216]), its
@@ -51,14 +52,16 @@ Tracking workflow mirrors from `docs/roadmap.md` (*Debt and open points*, below)
   ([#387] to [#389], [#391] to [#393]) and its twenty-fifth's first ([#395] to [#397]); [#123] moved to M20.
   The seventeenth filed [#305] and [#306] under M23, the eighteenth [#310] under
   M03 and [#311] under M23, the nineteenth [#331] under M03 and [#343] under M23, the thirty-third's first pull request
-  [#390] under M23; [#367] and [#373], which the
+  [#390] under M23, the twenty-fifth's second [#399] under M23; [#367] and [#373], which the
   twenty-first filed under M02, moved to M03 and M23 on 2026-11-17.
 - **User documentation**: organized along Diátaxis since 2026-09-30 ([ADR 47](adr/0047-the-user-documentation-follows-diataxis.md),
   [#148]), on `main`: a tutorial held to its sample by a test, four how-to guides, four reference
   pages — the validation rules among them, moved from the project documents — with the API reference under them, and
   four explanations. Outside any milestone.
 - **Last milestone closed**: **M01 — Object model and tolerant reading**
-- **Tests**: 12,769 unit on [#398]'s branch at `d95e0f0`, with 235 of the 242 remote documents fetched, 12,766 passed
+- **Tests**: 12,829 unit on [#400]'s branch at `2f8cc89`, with 235 of the 242 remote documents fetched, 12,826 passed
+  and 3 skipped; the 69 timing and memory tests alone. Before it, 12,769 unit on [#398]'s branch at `d95e0f0`, with 235
+  of the 242 remote documents fetched, 12,766 passed
   and 3 skipped; the 61 timing and memory tests alone; the integration suite green in CI; `Remote corpus` run 128 green
   over all 242 on its code. Before it, 12,589 unit on [#394]'s branch at `797ca09`, with 235 of the 242 remote documents
   fetched, 12,586 passed and 3 skipped; the 60 timing and memory tests alone; the integration suite green in CI;
@@ -90,7 +93,10 @@ Tracking workflow mirrors from `docs/roadmap.md` (*Debt and open points*, below)
   container at `26ce787`, run class by class, 3,754 passed and 6 skipped where qpdf cannot walk a damaged document's
   pages; and `Remote corpus` run 109's 11,155 acceptance tests and 3,760 referee checks, on the library code
   [#344] ends with.
-- **Coverage**: on [#398]'s branch at `d95e0f0`, counted from the unit suite's report by Codecov's rule, 98.21 % of the
+- **Coverage**: on [#400]'s branch at `681cba0`, counted from the unit suite's report by Codecov's rule, 98.64 % of the
+  patch: 217 of its 220 coverable lines whole; the other three, two missed and one partial, are `Describe`'s defensive
+  check of the index, which no input takes, a stream a link leads to having been loaded through the index the validation
+  settled before its first rule. Before it, on [#398]'s branch at `d95e0f0`, counted the same way, 98.21 % of the
   patch: its 446 coverable lines covered, eight partial on a branch no input takes, each traced through its callers — the
   three `?.` of `ForgetObject` on sets a rebuild has let go of before it runs, the second reading's `??=` on an exception
   its first reading always keeps, the `-1` arm of the walk guard's report for an object the index holds as a regular
@@ -496,6 +502,17 @@ benchmark run on `main`). The rebuild's scan for trailers past 12,000 keywords t
 ms over a reference or a null and 408 to 447 ms over a dictionary, against 258 to 288 ms and 473 to 475 ms on `main`
 (`TrailerScanBenchmarks`, a medium job, twice, alternated).
 
+Batch 25's second pull request ([#400]) takes the validator's walk of object streams' dependencies off what it walked
+again, and leaves the rest where `main` has it (`ObjectStreamDependencyBenchmarks` and `ValidationBenchmarks`, a medium
+job, `main` and the branch alternated twice, one process at a time, the branch's benchmark class on both; `nests` and
+`waits` at a thousand streams three more times). A thousand object streams hiding their holders behind their `/Length`
+walk in 56 to 59 ms and 17.8 MB, against 4.62 to 4.78 s and 1.50 GB on `main`; a hundred in 52 to 53 ms and 17.6 MB,
+against 517 to 537 ms and 178 MB. Nests of a thousand streams take 326 to 381 ms against 288 to 328, each of five pairs
+above `main`, about 20 % at the medians ([#399]), and a hundred 67 to 71 ms against 73 to 74; both allocate a megabyte
+more, the stores' bookkeeping. Waiting streams stay within the runs' spread, 52 to 71 ms against 48 to 66 at a thousand,
+allocating the outcomes they keep, 3.63 MB against 3.31. The other shapes and validation stay within the runs' spread,
+allocations equal to half a kilobyte.
+
 Batch 25's first pull request ([#398]) takes [#296]'s waste off a wrong `/Length` read from a file, and leaves the rest
 where `main` has it (`StreamLengthBenchmarks`, a medium job, `main` and the branch alternated four times, one process at a
 time). A thousand pages whose `/Length` is 2 bytes too long read from a file in 6.23 to 6.62 ms at 4 KB, against 6.72 to
@@ -654,9 +671,10 @@ One pull request per batch, each design question put to the maintainer after mea
        half, done in [#254] with [#141]. It filed [#385], which the maintainer placed with batch 25 on 2026-11-20. Batch 33 follows it, brought forward by
        the maintainer on 2026-11-17 for the denial of service it pays ([#362]).
    25. [#181], with [#280], [#296], [#314], [#315] and [#385] — in two pull requests by area, as the maintainer chose on
-       2026-11-20: the reader's paths of [#181] with [#280], [#296] and [#385] in [#398], open (journal of 2026-11-21),
-       which filed [#395] to [#397] under M02; then the validator's walks, [#315] and what remains of [#181], with
-       [#314] closed by its documentation.
+       2026-11-20: the reader's paths of [#181] with [#280], [#296] and [#385] in [#398], merged on 2026-11-21,
+       `Remote corpus` run 128 green on its branch, which filed [#395] to [#397] under M02; then the validator's walks,
+       [#315] and what remains of [#181], with [#314] closed by its documentation, in [#400], open (journal of
+       2026-11-21), which filed [#399] under M23.
    26. [#162], with [#250].
    27. [#163], `MaxDepth` and `MaxNestedLoads` made guards, as the maintainer decided, with [#262].
    28. [#185].
@@ -1073,3 +1091,5 @@ Until 2026-09-27 this section was a table whose rows were numbered T01 to T40; t
 [#396]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/396
 [#397]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/397
 [#398]: https://github.com/AdCodicem/AdCodicem.Pdf/pull/398
+[#399]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/399
+[#400]: https://github.com/AdCodicem/AdCodicem.Pdf/pull/400
