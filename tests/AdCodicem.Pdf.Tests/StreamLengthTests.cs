@@ -2401,6 +2401,96 @@ public class StreamLengthTests
     }
 
     [Fact]
+    public void An_object_stream_read_where_the_chain_places_it_ends_at_the_first_object_past_its_own_entries_in_its_data()
+    {
+        // Object stream 5's /Length names object 999, written after everything else, which a rebuild's scan cannot read: the
+        // scan reads 5's data up to its first endstream, then takes object 6 and a second definition of 5, which it keeps.
+        // The chain's row of 5 falls on 6's header, 5's own a few bytes before it. Twenty streams follow, each one's header
+        // in a string of the dictionary of the one before, every /Length confirmed by the one endstream 100 KB on, which 999
+        // runs 5's data to as well. Read first, they keep as much as lengths taken unread may keep whole. A row of object 8
+        // outside the file rebuilds the index as the validation starts, which then reads 5 near the chain's row: its data
+        // ends at stream 10's header, the first place an index gives inside it past 5's own entries — the chain's row, and
+        // the rebuilt index's definition, which follows 6's there with nothing between (#280).
+        var (file, dataStart, declared, again, nested) = ObjectStreamTheChainMisplacesBeforeNestedStreams();
+        using var document = PdfDocument.Open(file);
+
+        for (var number = 11; number < 30; number++)
+        {
+            document.GetObject(new PdfObjectId(number));
+        }
+
+        new PdfValidator().Validate(document);
+
+        document.WasRepaired.Should().BeTrue();
+        document.Reader.Index.TryGet(5, out var rebuilt).Should().BeTrue();
+        rebuilt.Offset.Should().Be(again, "the rebuilt index keeps the definition of 5 inside the data");
+        document.Diagnostics.Should().ContainSingle(d => d.Position == dataStart).Which.Message.Should().Be(
+            Invariant($"The stream declared {declared} bytes, which an endstream follows, but the index places an object inside the data, at {nested}, and the {nested - dataStart} bytes up to it are taken as the stream's data, the streams that overlap having kept as much of the file as they may."));
+    }
+
+    /// <summary>
+    /// Writes object stream 5, its <c>/Length</c> object 999, holding object 7, which the cross-reference stream places at
+    /// index 0 of it; its data's first <c>endstream</c>, then object 6 and a second definition of 5, the row of 5 placing it
+    /// at 6's header; and the streams of <see cref="HostileInputTests.NestedInStrings"/>, objects 10 to 29, whose one
+    /// <c>endstream</c> 999's length ends 5's data at, 999 written after them, and a row of object 8 outside the file. Gives
+    /// where 5's data starts, the length 999 gives it, 5's second definition, and stream 10's header.
+    /// </summary>
+    private static (byte[] File, long DataStart, long Declared, long Again, long Nested) ObjectStreamTheChainMisplacesBeforeNestedStreams()
+    {
+        const int Streams = 20;
+        var file = new HandWrittenFile(version: "1.5");
+        var rows = new Dictionary<int, (int Type, long Field2, int Field3)>
+        {
+            [1] = (1, file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"), 0),
+            [2] = (1, file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"), 0),
+            [7] = (2, 5, 0),
+            [8] = (1, 4_000_000_000L, 0),
+        };
+        var origin = file.Position;
+        const string Head = "5 0 obj\n<< /Type /ObjStm /N 1 /First 4 /Length 999 0 R >>\nstream\n";
+        var text = new StringBuilder(Head).Append("7 0 (seven)\nendstream\nendobj\n");
+
+        // The row of 5 falls on 6's header, the second definition further on than a search near the row reads.
+        rows[5] = (1, origin + text.Length, 0);
+        text.Append("6 0 obj\n(").Append('x', 2 * PdfFileReader.NearbySearchRadius).Append(")\nendobj\n");
+        var again = origin + text.Length;
+        text.Append("5 0 obj\n[1]\nendobj\n");
+        var nested = origin + text.Length;
+        var lengthAt = new int[Streams];
+        var starts = new int[Streams];
+
+        for (var k = 0; k < Streams; k++)
+        {
+            rows[10 + k] = (1, origin + text.Length, 0);
+            text.Append(CultureInfo.InvariantCulture, $"{10 + k} 0 obj<</Length ");
+            lengthAt[k] = text.Length;
+            text.Append("0000000000").Append(k < Streams - 1 ? "/S(" : ">>stream\n");
+        }
+
+        starts[^1] = text.Length;
+
+        for (var k = Streams - 2; k >= 0; k--)
+        {
+            text.Append(")>>stream\n");
+            starts[k] = text.Length;
+        }
+
+        text.Append('z', 100_000);
+        var end = text.Length;
+        text.Append("\nendstream\nendobj\n");
+
+        for (var k = 0; k < Streams; k++)
+        {
+            WriteDigits(text, lengthAt[k], end - starts[k]);
+        }
+
+        file.Raw(text.ToString());
+        rows[999] = (1, file.Object(999, (end - Head.Length).ToString(CultureInfo.InvariantCulture)), 0);
+        file.CrossReferenceStream(30, 1000, rows, "/Root 1 0 R");
+        return (file.Bytes, origin + Head.Length, end - Head.Length, again, nested);
+    }
+
+    [Fact]
     public void Cross_reference_streams_whose_data_overlap_keep_their_rows_however_far_the_lengths_the_chain_reads_run()
     {
         // Twelve cross-reference streams, each one's header inside the data of the one before, each /Prev naming the next,
