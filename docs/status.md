@@ -60,7 +60,8 @@ Tracking workflow mirrors from `docs/roadmap.md` (*Debt and open points*, below)
   four explanations. Outside any milestone.
 - **Last milestone closed**: **M01 — Object model and tolerant reading**
 - **Tests**: 12,829 unit on [#400]'s branch at `2f8cc89`, with 235 of the 242 remote documents fetched, 12,826 passed
-  and 3 skipped; the 69 timing and memory tests alone. Before it, 12,769 unit on [#398]'s branch at `d95e0f0`, with 235
+  and 3 skipped; the 69 timing and memory tests alone; the integration suite green in CI; `Remote corpus` run 130
+  green over all 242 on its code. Before it, 12,769 unit on [#398]'s branch at `d95e0f0`, with 235
   of the 242 remote documents fetched, 12,766 passed
   and 3 skipped; the 61 timing and memory tests alone; the integration suite green in CI; `Remote corpus` run 128 green
   over all 242 on its code. Before it, 12,589 unit on [#394]'s branch at `797ca09`, with 235 of the 242 remote documents
