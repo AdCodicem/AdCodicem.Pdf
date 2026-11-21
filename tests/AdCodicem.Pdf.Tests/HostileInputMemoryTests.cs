@@ -332,14 +332,18 @@ public class HostileInputMemoryTests
         held.Should().BeLessThan(6L * 1024 * 1024, $"memory was sampled {source.Samples} times");
     }
 
-    [Fact]
-    public void The_walk_of_the_object_streams_dependencies_keeps_no_more_objects_than_the_reader_caches()
+    [Theory]
+    [InlineData("[<< /Predictor 1 /Columns {0} >>]", 32)]
+    [InlineData("<< /Predictor 1 /Columns {0} >>", 4)]
+    public void The_walk_of_the_object_streams_dependencies_keeps_no_more_objects_than_the_reader_caches(string parameter, int mostMegabytes)
     {
         // Five hundred Flate object streams each take their /DecodeParms from an object of their own, written in the file: an
         // array holding << /Predictor 1 /Columns [...] >>, of 20,000 zeros, opened with a cache of 64 objects. The walk reads
         // each once a validation and keeps what decoding may read of it, as it keeps every object it reads — of an array, as
         // many elements as a chain of filters reads, as they are written —, about 260 KB each: of all five hundred, 130 MB.
-        // It keeps as many as the reader keeps in its cache, the oldest let go first (#201): 17 MB.
+        // It keeps as many as the reader keeps in its cache, the oldest let go first (#201): 17 MB. Of the dictionary written
+        // directly, it keeps only the entries a filter's step reads written as a reference, an integer or a real, not a
+        // /Columns array, which decoding reads as absent (#181): 50 KB, where the dictionary kept whole took 17 MB.
         const int Streams = 500;
         var columns = "[" + new StringBuilder().Insert(0, "0 ", 20_000) + "]";
         var file = new HandWrittenFile(version: "1.5");
@@ -354,7 +358,7 @@ public class HostileInputMemoryTests
             var (parameters, stream, member) = (1000 + k, 2000 + (2 * k), 2001 + (2 * k));
             var header = string.Create(CultureInfo.InvariantCulture, $"{member} 0 ");
             var data = Encoding.Latin1.GetString(Compress(Encoding.Latin1.GetBytes(header + "<< >>")));
-            rows[parameters] = (1, file.Object(parameters, $"[<< /Predictor 1 /Columns {columns} >>]"), 0);
+            rows[parameters] = (1, file.Object(parameters, string.Format(CultureInfo.InvariantCulture, parameter, columns)), 0);
             rows[stream] = (1, file.Object(stream, string.Create(CultureInfo.InvariantCulture, $"<< /Type /ObjStm /N 1 /First {header.Length} /Filter /FlateDecode /DecodeParms {parameters} 0 R /Length {data.Length} >>\nstream\n{data}\nendstream")), 0);
             rows[member] = (2, stream, 0);
         }
@@ -369,7 +373,7 @@ public class HostileInputMemoryTests
 
         source.Sampling = false;
         var held = source.MostLive - before;
-        held.Should().BeLessThan(32L * 1024 * 1024, $"memory was sampled {source.Samples} times");
+        held.Should().BeLessThan(mostMegabytes * 1024L * 1024, $"memory was sampled {source.Samples} times");
     }
 
     [Theory]
