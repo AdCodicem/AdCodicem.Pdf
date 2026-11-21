@@ -86,11 +86,11 @@ namespace AdCodicem.Pdf.Validation;
 /// holds it in its loads, and one the reader's nesting cuts there, decode as what the reader has in flight, or how deep
 /// the read that first decoded them went, makes them: that is the reader's history, not the file's, which a verdict the
 /// same whatever was read before cannot follow. One a rebuilt index places otherwise than the chain's could be followed
-/// through the reader's own index, which none of 6,000 files generated with random dependencies between object streams
-/// needed: it waits for a file that does. The walk that judges parses each stream once a walk, as a reader that keeps it
-/// does: it does not read as null, as the reader does for the rest of the judged stream's decoding, a stream that decoding
-/// met again while it held it, nor parse again a stream the reader's cache let go; deterministic, the verdict may then
-/// name a loop the reader meets in no read order, or miss one it meets.
+/// through the reader's own index: no document of the corpus has that shape, and following it would take some 100 to 150
+/// lines at a moderate risk, so that it waits for a file that does. The walk that judges parses each stream once a walk,
+/// as a reader that keeps it does: it does not read as null, as the reader does for the rest of the judged stream's
+/// decoding, a stream that decoding met again while it held it, nor parse again a stream the reader's cache let go;
+/// deterministic, the verdict may then name a loop the reader meets in no read order, or miss one it meets.
 /// </para>
 /// <para>
 /// Of a stream that is not of <c>/Type /ObjStm</c>, only what its <c>/Type</c> needs judges it (#274): a loop through its
@@ -162,17 +162,24 @@ namespace AdCodicem.Pdf.Validation;
 /// stream's <c>/Length</c> is kept as that stream's link, for 62 times as many streams as the reader caches objects: the
 /// first object it names, the stream it ends at, whether it met nothing the walk's own state answers — no object of an
 /// object stream, which reads as the stream walked and those in flight make it, no load the thread's stack had no room
-/// for —, whether the reader's index places what it loaded as the chain's does, and what a filter's step reads of the
-/// stream's dictionary, so that a stream met again is not read again. A link that met nothing is the file's alone, the same
-/// for every walk from any depth its first load is not cut at: it is taken at once to the stream it ends at, and so on
-/// down, the first chain no such link is kept of followed, and kept in turn. The nest a stream's links lead through is kept
-/// flattened, for as many streams heading one as the reader caches objects, and taken whole the next time (#181). A link holds its
-/// own chain alone, and what the parse of the stream it ends at meets is that stream's link's: a nest that ends at an
-/// object of an object stream, loops back on itself, meets a stream another nest parsed, or whose heads come in turn past
-/// what the walk keeps, costs a walk the chains that met something, followed again, and no more. Each object stream then
-/// costs about what its own dictionary does, where nests kept by the stream heading them, and followed again whole when
-/// they could not be, cost up to 67 MB and 0.5 s a stream; heads past the nests kept flattened cost theirs flattened
-/// again, some 600 bytes each.
+/// for —, whether the reader's index places what it loaded as the chain's does, and whether the stream's dictionary gives a
+/// filter's step parameters, which are kept apart, for as many streams as the reader caches objects. A stream met again
+/// whose link is kept is not read again, where a chain loads it or a run of links ends at it, but where the parameters it
+/// gives were let go: it is then read again through the objects the walk keeps, else through the reader, as a stream no
+/// link is kept of is. The reader is not asked again for a stream so taken: where what a file decodes to depends on what
+/// the reader read before — object streams on a loop, a load its nesting cuts —, what the reader reports in the
+/// document's own diagnostics, and an object a later read serves, may then depend on what the walk kept; the findings
+/// of the validation do not. A link that met nothing is the file's alone, the same for every walk from any depth its
+/// first load is not cut at: it is taken at once to the stream it ends at, and so on down, the first chain no such link
+/// is kept of followed, and kept in turn. The nest a stream's links lead through is kept flattened, for as many streams
+/// heading one as the reader caches objects, and taken whole the next time (#181). A link holds its own chain alone, and
+/// what the parse of the stream it ends at meets is that stream's link's: a nest that ends at an object of an object
+/// stream, loops back on itself, meets a stream another nest parsed, or whose heads come in turn past what the walk
+/// keeps, costs a walk the chains that met something, followed again, and no more. Each object stream then costs about
+/// what its own dictionary does, where nests kept by the stream heading them, and followed again whole when they could
+/// not be, cost up to 67 MB and 0.5 s a stream; heads past the nests kept flattened cost theirs flattened again, some 600
+/// bytes each, and streams met as values past the parameters kept are read again, each with what the reader parses for
+/// its own <c>/Length</c>.
 /// </para>
 /// </remarks>
 internal sealed class ObjectStreamDependencies
@@ -215,7 +222,9 @@ internal sealed class ObjectStreamDependencies
     /// No guard (ADR 34): it sizes what the walk keeps, not what it reads or judges. A link let go is followed again, through
     /// the objects the memo keeps or reads again, and gives what it gave: no file reads otherwise for it. No valid file
     /// keeps a link at all: one is kept of a stream met on a chain, a parameter or a link of a chain, which ISO 32000-1
-    /// allows neither. At the default cache, 507,904 links of 24 bytes take some 30 MB at most, where the nests took some 5.
+    /// allows neither. At the default cache, 507,904 links of 12 bytes take some 20 MB at most, their order included, where
+    /// the nests took some 5. What a filter's step reads of a linked stream's dictionary is kept apart, for as many streams
+    /// as the reader caches objects: some 4.3 MB more at the default cache, where each gives five references.
     /// </remarks>
     private const int LinksPerObject = 62;
 
@@ -1221,8 +1230,8 @@ internal sealed class ObjectStreamDependencies
         /// <summary>
         /// Follows the <c>/Length</c> of stream <paramref name="number"/>, which names <paramref name="first"/>, as its parse
         /// resolves it, under <paramref name="key"/>: met on a chain at <paramref name="depth"/>, the stream is in flight
-        /// meanwhile, and the <c>/Length</c> loaded a level deeper. The stream's <paramref name="parameters"/> go in the link
-        /// it gives.
+        /// meanwhile, and the <c>/Length</c> loaded a level deeper. The link it gives says whether the stream's dictionary
+        /// gives a filter's step <paramref name="parameters"/>, which the memo keeps apart.
         /// </summary>
         /// <remarks>
         /// Links are taken in turn as the parse would go: each stream a level below the one before, up to one parsed already
@@ -1264,9 +1273,11 @@ internal sealed class ObjectStreamDependencies
                 // of its own, so that each level of the walks' recursion holds no more frames than it must (#312).
                 if (TakeLinks(ref current, ref level, ref agree))
                 {
+                    var hasParameters = parameters is not null;
+
                     if (current != number)
                     {
-                        first = Describe(current, out parameters);
+                        first = Describe(current, out hasParameters, out parameters);
                     }
 
                     _dirty = false;
@@ -1281,7 +1292,7 @@ internal sealed class ObjectStreamDependencies
 
                     if (!IsDone)
                     {
-                        memo.NoteLink(current, new Link(first, _cut ? Unexplored : _ended, !_dirty, !_disagree, parameters));
+                        memo.NoteLink(current, new Link(first, _cut ? Unexplored : _ended, !_dirty, !_disagree, hasParameters), parameters);
                     }
                 }
 
@@ -1423,17 +1434,19 @@ internal sealed class ObjectStreamDependencies
         /// dictionary gives a filter's step <paramref name="parameters"/>.
         /// </summary>
         /// <remarks>
-        /// A stream the walk kept a link of is not read again: the link says where its <c>/Length</c> leads, and holds what a
-        /// filter's step reads of its dictionary, so that a stream past the objects the memo keeps is not read again through
-        /// the reader, which would parse its nest again (#181). What the stream gives a chain of a <c>/Length</c> is dropped,
-        /// and what it gives as a value is what decoding reads of it, which the link holds.
+        /// A stream the walk kept a link of is not read again while the memo keeps its parameters, or when it gives none: the
+        /// link says where its <c>/Length</c> leads, and the memo holds what a filter's step reads of its dictionary, so that
+        /// a stream past the objects the memo keeps is not read again through the reader, which would parse its nest again
+        /// (#181). One whose parameters the memo let go is read again, and they are kept again. What the stream gives a chain
+        /// of a <c>/Length</c> is dropped, and what it gives as a value is what decoding reads of it, its parameters.
         /// </remarks>
         private bool TryStream(int number, XRefEntry entry, out int first, out PdfDictionary? parameters, out PdfObject value)
         {
-            if (memo.TryGetLink(number, out var link))
+            var linked = memo.TryGetLink(number, out var link);
+
+            if (linked && memo.TryGetParameters(number, link, out parameters))
             {
                 first = link.First;
-                parameters = link.Parameters;
                 value = parameters ?? memo.NoParameters;
                 return true;
             }
@@ -1442,18 +1455,29 @@ internal sealed class ObjectStreamDependencies
             first = FirstOf(held);
             parameters = ParametersOf(held);
             value = held.Value;
+
+            if (linked)
+            {
+                memo.KeepParameters(number, parameters);
+            }
+
             return held.IsStream;
         }
 
         /// <summary>
-        /// Gives the first object the <c>/Length</c> of stream <paramref name="number"/> names, and what a filter's step reads
-        /// of its dictionary, <paramref name="parameters"/>: as its link holds them, or as the memo holds the stream.
+        /// Gives the first object the <c>/Length</c> of stream <paramref name="number"/> names, and whether its dictionary
+        /// gives a filter's step parameters, <paramref name="hasParameters"/>: as its link says, or as the memo holds the
+        /// stream, which gives them in <paramref name="parameters"/> as well, for the link to keep.
         /// </summary>
-        private int Describe(int number, out PdfDictionary? parameters)
+        private int Describe(int number, out bool hasParameters, out PdfDictionary? parameters)
         {
+            parameters = null;
+
+            // The link followed again is replaced by one that says the same of the stream's parameters, which the memo keeps,
+            // or let go of, as it did: they are not read again for it.
             if (memo.TryGetLink(number, out var link))
             {
-                parameters = link.Parameters;
+                hasParameters = link.HasParameters;
                 return link.First;
             }
 
@@ -1461,12 +1485,13 @@ internal sealed class ObjectStreamDependencies
             // is there, and asked as a load asks rather than taken for granted.
             if (!IndexOf(document.Reader).TryGet(number, out var entry))
             {
-                parameters = null;
+                hasParameters = false;
                 return NoReference;
             }
 
             var held = memo.Get(number, entry);
             parameters = ParametersOf(held);
+            hasParameters = parameters is not null;
             return FirstOf(held);
         }
 
@@ -1475,7 +1500,7 @@ internal sealed class ObjectStreamDependencies
 
         /// <summary>
         /// Gives what a filter's step reads of the dictionary of the stream <paramref name="held"/> gives, null when it is
-        /// none of it: a link keeps no empty dictionary.
+        /// none of it: the memo keeps no empty dictionary for a link.
         /// </summary>
         private static PdfDictionary? ParametersOf(Held held) => held.Value is PdfDictionary { Count: > 0 } parameters ? parameters : null;
 
@@ -1701,12 +1726,12 @@ internal sealed class ObjectStreamDependencies
     /// Whether the reader's index places every object the chain loaded, the stream it ends at included, as the chain's does,
     /// which a walk of a standing asks of the links it takes (#312).
     /// </param>
-    /// <param name="Parameters">
-    /// What a filter's step reads of the stream's dictionary (<see cref="FilterChain.ParameterKeys"/>), as a value that
-    /// leads to the stream reads it; null when the dictionary has none of them. A stream met as a value is then not read
-    /// again past what the memo keeps of objects, which made the reader parse its nest again.
+    /// <param name="HasParameters">
+    /// Whether the stream's dictionary gives a filter's step parameters (<see cref="FilterChain.ParameterKeys"/>), which the
+    /// memo keeps apart, for fewer streams than links: a stream whose parameters it let go is read again where a chain or a
+    /// value loads it.
     /// </param>
-    private readonly record struct Link(int First, int Next, bool Clean, bool Agrees, PdfDictionary? Parameters);
+    private readonly record struct Link(int First, int Next, bool Clean, bool Agrees, bool HasParameters);
 
     /// <summary>
     /// The nest a stream's clean links lead through, flattened (#181), so that it is taken whole rather than a link at a time.
@@ -1867,7 +1892,7 @@ internal sealed class ObjectStreamDependencies
     /// met again, so that what the walks keep follows the reader's cache rather than the file (#201). It also keeps the
     /// standing of each object stream the walks met an object of (#312), what the walks of standings read of each stream's
     /// dictionary and followed of its values (#315), and the link of each stream whose <c>/Length</c> a parse followed, with
-    /// the nests clean links lead through flattened (#181).
+    /// the parameters of the streams linked and the nests clean links lead through flattened (#181).
     /// </summary>
     /// <remarks>
     /// Each store but the standings' holds as much as <paramref name="capacity"/> says, or a multiple of it, the oldest let go
@@ -1877,7 +1902,7 @@ internal sealed class ObjectStreamDependencies
     /// <param name="document">The document whose objects are read.</param>
     /// <param name="capacity">
     /// How many objects are kept, at most: as many as the reader caches; and as many dictionaries of waiting streams, nests
-    /// flattened and outcomes in all, and <see cref="LinksPerObject"/> times as many links.
+    /// flattened, linked streams' parameters and outcomes in all, and <see cref="LinksPerObject"/> times as many links.
     /// </param>
     /// <param name="maxFilters">The most filters a stream's data passes through, which bounds what is kept of an array.</param>
     private sealed class Memo(PdfDocument document, int capacity, int maxFilters)
@@ -1888,10 +1913,23 @@ internal sealed class ObjectStreamDependencies
         /// <summary>
         /// The links the walks found, by the number of the stream whose <c>/Length</c> each follows (#181): as many as
         /// <c>capacity</c> times <see cref="LinksPerObject"/>, the oldest let go first, and followed again when met again.
-        /// A link holds two numbers, two flags and the stream's parameters, null for the streams of a nest, which have none.
+        /// A link holds two numbers and three flags, one of them whether the stream's dictionary gives a filter's step
+        /// parameters, which are kept apart (<see cref="_parameters"/>): what a link takes does not depend on what the file
+        /// wrote in that dictionary.
         /// </summary>
         private readonly Dictionary<int, Link> _links = new(SeededComparer.Instance);
         private readonly Queue<int> _linkOrder = new();
+
+        /// <summary>
+        /// What a filter's step reads of the dictionary of each stream whose link says it gives some, by the stream's number
+        /// (#181): as many as <c>capacity</c> says, the oldest let go first. A stream whose link is kept but whose parameters
+        /// were let go is read again through the memo when a chain or a value loads it — from the objects it keeps, else
+        /// through the reader —, as a stream no link is kept of is, and its parameters kept again: a cache, no guard
+        /// (ADR 34), as the memo's remarks say of each store. Each holds five numbers or references at most
+        /// (<see cref="Parameters"/>), five references the heaviest, some 540 bytes: 4.3 MB at the default cache.
+        /// </summary>
+        private readonly Dictionary<int, PdfDictionary> _parameters = new(SeededComparer.Instance);
+        private readonly Queue<int> _parameterOrder = new();
 
         /// <summary>
         /// The nests clean links lead through, flattened, by the number of the stream heading each (#181): as many as
@@ -1904,7 +1942,7 @@ internal sealed class ObjectStreamDependencies
         private readonly Dictionary<int, Flat> _flats = new(SeededComparer.Instance);
         private readonly Queue<int> _flatOrder = new();
 
-        /// <summary>Gets an empty dictionary, which a stream whose link holds no parameters gives as a value.</summary>
+        /// <summary>Gets an empty dictionary, which a stream whose link says it gives no parameters gives as a value.</summary>
         public PdfDictionary NoParameters { get; } = new();
 
         /// <summary>Gives the nest flattened of stream <paramref name="stream"/>; null when none is kept.</summary>
@@ -1976,10 +2014,13 @@ internal sealed class ObjectStreamDependencies
         /// entries kept fit.
         /// </summary>
         /// <remarks>
-        /// A later walk of a stream keeps every entry the one before kept, which it took, and perhaps more: a stream that kept
-        /// nothing, or more than fits, keeps nothing, and a stream kept again after it was let go was taken out of the order
-        /// with it. So the order names each stream kept once, and those dropped once their standing is known. A stream is
-        /// walked again only once every stream its last walk met is known, and dropped, those it met in turn included: the
+        /// A later walk of a stream keeps every entry the one before kept, which it took, and perhaps more; a stream that kept
+        /// nothing, or more than fits, keeps nothing. A walk made whole after such a drop may keep fewer: a parameter its last
+        /// walk read as null, the reading going on past it, may now lead to an object a guard cut, where decoding ends
+        /// (#263), and the values after it are read no more. The stream is then queued again while its earlier place is still
+        /// in the order, which is harmless: reached there, the stream is let go sooner than its turn, and its next walk made
+        /// whole, as any stream let go is; reached at its later place, it is passed over, dropped already. A stream is walked
+        /// again only once every stream its last walk met is known, and dropped, those it met in turn included: the
         /// streams still kept were kept before it, and are let go before it, which, alone, fits.
         /// </remarks>
         public void KeepOutcomes(int stream, Dictionary<int, Outcome> values, int lengthReach)
@@ -2039,7 +2080,7 @@ internal sealed class ObjectStreamDependencies
         /// followed again: not clean, cut by the reader's nesting, or, for a walk of a standing, through an object the reader's
         /// rebuilt index places otherwise than the chain's.
         /// </summary>
-        public void NoteLink(int stream, Link link)
+        public void NoteLink(int stream, Link link, PdfDictionary? parameters)
         {
             if (!_links.ContainsKey(stream))
             {
@@ -2052,6 +2093,39 @@ internal sealed class ObjectStreamDependencies
             }
 
             _links[stream] = link;
+            KeepParameters(stream, parameters);
+        }
+
+        /// <summary>
+        /// Gives in <paramref name="parameters"/> what a filter's step reads of the dictionary of stream
+        /// <paramref name="stream"/>, whose link is <paramref name="link"/>, null when the link says it gives none; false when
+        /// the memo let them go.
+        /// </summary>
+        public bool TryGetParameters(int stream, Link link, out PdfDictionary? parameters)
+        {
+            parameters = null;
+            return !link.HasParameters || _parameters.TryGetValue(stream, out parameters);
+        }
+
+        /// <summary>
+        /// Keeps <paramref name="parameters"/>, what a filter's step reads of the dictionary of stream
+        /// <paramref name="stream"/>, whose link is kept; nothing when they are kept already, which the same stream gives
+        /// alike, or when they are null: the stream gives none, or they were not read again.
+        /// </summary>
+        public void KeepParameters(int stream, PdfDictionary? parameters)
+        {
+            if (parameters is null || _parameters.ContainsKey(stream))
+            {
+                return;
+            }
+
+            if (_parameters.Count >= capacity && _parameterOrder.TryDequeue(out var oldest))
+            {
+                _parameters.Remove(oldest);
+            }
+
+            _parameters.Add(stream, parameters);
+            _parameterOrder.Enqueue(stream);
         }
 
         /// <summary>
@@ -2190,6 +2264,12 @@ internal sealed class ObjectStreamDependencies
                     break;
                 }
 
+                // A stream ends the run, and one the walks kept a link of is known for one without reading it again (#181).
+                if (_links.ContainsKey(next))
+                {
+                    break;
+                }
+
                 // An object the run passes over is not kept for itself, so that the run's start, which is, outlives it. One
                 // that ends the run is kept: the chain loads it next.
                 var nextHeld = _held.TryGetValue(next, out var kept) ? kept : Project(Fetch(next, nextEntry));
@@ -2254,7 +2334,7 @@ internal sealed class ObjectStreamDependencies
 
         /// <summary>
         /// Gives what decoding may read of <paramref name="value"/>, whatever reads it: a scalar or a reference as it is; of a
-        /// dictionary, the entries of a step's parameters (<see cref="FilterChain.ParameterKeys"/>); of a stream, those of its
+        /// dictionary, the entries of a step's parameters (<see cref="Parameters"/>); of a stream, those of its
         /// dictionary, and its <c>/Length</c> apart; of an array, as many elements as a chain of filters reads — an element
         /// of <c>/Filter</c>, or of <c>/DecodeParms</c> at a step's place, past the guard is never read.
         /// </summary>
@@ -2269,14 +2349,20 @@ internal sealed class ObjectStreamDependencies
             _ => new Held(value, length: null, isStream: false),
         };
 
-        /// <summary>Gives the entries of <paramref name="dictionary"/> a step's parameters are read from.</summary>
+        /// <summary>
+        /// Gives the entries of <paramref name="dictionary"/> a step's parameters are read from, of those only the ones
+        /// written as a reference, an integer or a real: decoding reads each parameter as an integer
+        /// (<see cref="FilterChain.ParameterKeys"/>), a value of any other kind as it reads an entry absent, and the walk
+        /// follows a reference before the value it leads to is read so. What is kept of a dictionary is then five numbers or
+        /// references at most, whatever the file wrote in it.
+        /// </summary>
         private static PdfDictionary Parameters(PdfDictionary dictionary)
         {
             var parameters = new PdfDictionary();
 
             foreach (var key in FilterChain.ParameterKeys)
             {
-                if (dictionary.GetRaw(key) is { } value)
+                if (dictionary.GetRaw(key) is { } value and (PdfReference or PdfInteger or PdfReal))
                 {
                     parameters.Set(key, value);
                 }

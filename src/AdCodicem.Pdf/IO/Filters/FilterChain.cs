@@ -97,6 +97,11 @@ internal sealed class FilterChain
     /// dictionary for what decoding reads of it — the validator's walk of the object streams' dependencies (#277) — needs
     /// nothing else of it; a filter that reads another entry adds it here.
     /// </summary>
+    /// <remarks>
+    /// That walk keeps, of each of these entries, only a reference, which it follows, an integer or a real: decoding reads
+    /// every one of them through <see cref="PdfObjectExtensions.AsInteger"/>, which reads a value of any other kind as it
+    /// reads an entry absent (#181). A filter that reads one of them as another kind widens what the walk keeps.
+    /// </remarks>
     internal static ReadOnlySpan<PdfName> ParameterKeys => ParametersRead;
 
     /// <summary>Gets where in the <c>/Filter</c> array the last step decoding runs stands, or -1 when it runs none.</summary>
