@@ -3056,13 +3056,14 @@ public class HostileInputTests
     public void Values_that_are_no_streams_take_no_place_among_the_nests_the_walk_keeps()
     {
         // Object stream 3, walked first, takes its parameters from stream 100, which heads 40 streams by /Length, 1 KB each,
-        // each naming the next through a link: the walk keeps the link of each of the 40 (#181). 5 takes 64 Flate steps,
-        // each step's parameters a dictionary written in the file; 9 takes its parameters from 100 as well, or from a
-        // dictionary written in place. Under a cache of 64 objects, the 64 dictionaries 5's decoding reads, none a stream,
-        // give no link, and 9's walk takes 100's links at once, reading none of the nest's streams again: 1.5 KB. Parsed as
-        // streams are, each would have given a nest of its own to a store of as many nests as the reader caches objects, the
-        // last 64 letting go of 100's, and 9's walk parsed 100's nest again, its streams read from the file once more (#201).
-        // The links, kept for 62 times as many streams, are not let go of for 64 values, streams or not.
+        // each naming the next through a link: the walk keeps the link of each of the 40 (#181). The 64 object streams from
+        // 300 take 64 Flate steps each, each step's parameters a dictionary written in the file; 500 takes its parameters
+        // from 100 as well, or from a dictionary written in place. Under a cache of 64 objects, the walk keeps the links of
+        // 3,968 streams: the 4,096 dictionaries the 64 streams' decodings read, none a stream, give none, and 500's walk
+        // takes 100's links at once, reading none of the nest's streams again: 1.5 KB. Noted among the links, as the walk
+        // notes a stream's, they would have let go of 100's, and 500's walk parsed its nest again, its streams read from the
+        // file once more: 91 KB (#201).
+        const int Holders = 64;
         var options = new PdfReaderOptions { ObjectCacheCapacity = 64 };
 
         var inPlaceAllocated = Allocations.Least(() => PdfDocument.Open(AfterValues(false), options), document => ObjectStreamDependencies.Run(document), out var inPlaceDocument, out var inPlaceResult);
@@ -3073,21 +3074,20 @@ public class HostileInputTests
         {
             inPlaceResult.CircularStreams.Should().BeEmpty();
             nestResult.CircularStreams.Should().BeEmpty();
-            (nestAllocated - inPlaceAllocated).Should().BeLessThan(16 * 1024, "values that are no streams leave the nest of 100 kept");
+            (nestAllocated - inPlaceAllocated).Should().BeLessThan(16 * 1024, "values that are no streams leave the links of 100's nest kept");
         }
 
-        // Stream 100, padded, and the 39 after it by /Length, each through a link; 9 reads 100 when `nest` says so.
+        // Stream 100, padded, and the 39 after it by /Length, each through a link; the 64 streams from 300, each reading 64
+        // dictionaries from 1000 on; and 500, reading 100 when `nest` says so.
         static byte[] AfterValues(bool nest)
         {
-            var (five, first) = ConvergenceShapes.ObjectStreamData((6, "<< >>"));
             var filters = "[" + string.Join(' ', Enumerable.Repeat("/FlateDecode", 64)) + "]";
-            var parameters = "[" + string.Join(' ', Enumerable.Range(300, 64).Select(number => string.Create(CultureInfo.InvariantCulture, $"{number} 0 R"))) + "]";
             var objects = new SortedDictionary<int, (string Entries, byte[]? Data)>
             {
                 [3] = ConvergenceShapes.FlateObjectStream("/DecodeParms 100 0 R", (4, "<< >>")),
-                [5] = (string.Create(CultureInfo.InvariantCulture, $"/Type /ObjStm /N 1 /First {first} /Length @L /Filter {filters} /DecodeParms {parameters}"), Encoding.Latin1.GetBytes(five)),
-                [9] = ConvergenceShapes.FlateObjectStream(nest ? "/DecodeParms 100 0 R" : "/DecodeParms << /Predictor 1 >>", (10, "<< >>")),
+                [500] = ConvergenceShapes.FlateObjectStream(nest ? "/DecodeParms 100 0 R" : "/DecodeParms << /Predictor 1 >>", (501, "<< >>")),
             };
+            var members = new Dictionary<int, (int Stream, int Index)> { [4] = (3, 0), [501] = (500, 0) };
 
             for (var stream = 0; stream < 40; stream++)
             {
@@ -3101,12 +3101,21 @@ public class HostileInputTests
                 }
             }
 
-            for (var value = 0; value < 64; value++)
+            for (var holder = 0; holder < Holders; holder++)
             {
-                objects[300 + value] = ("<< /Predictor 1 >>", null);
+                var (number, first) = (300 + (2 * holder), 1000 + (64 * holder));
+                var (data, start) = ConvergenceShapes.ObjectStreamData((number + 1, "<< >>"));
+                var parameters = "[" + string.Join(' ', Enumerable.Range(first, 64).Select(value => string.Create(CultureInfo.InvariantCulture, $"{value} 0 R"))) + "]";
+                objects[number] = (string.Create(CultureInfo.InvariantCulture, $"/Type /ObjStm /N 1 /First {start} /Length @L /Filter {filters} /DecodeParms {parameters}"), Encoding.Latin1.GetBytes(data));
+                members[number + 1] = (number, 0);
+
+                for (var value = first; value < first + 64; value++)
+                {
+                    objects[value] = ("<< /Predictor 1 >>", null);
+                }
             }
 
-            return ConvergenceShapes.StreamsAndMembers(objects, new() { [4] = (3, 0), [6] = (5, 0), [10] = (9, 0) });
+            return ConvergenceShapes.StreamsAndMembers(objects, members);
         }
     }
 
