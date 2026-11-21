@@ -1561,6 +1561,46 @@ public class ObjectRuleTests
         ObjectStreamDependencies.Run(document).CircularStreams.Should().BeEquivalentTo([14]);
     }
 
+    [Fact]
+    public void A_stream_whose_link_is_followed_again_keeps_the_parameters_it_gives_though_following_its_length_let_them_go()
+    {
+        // Object streams 30, 34 and 36 take their parameters from stream 10, which gives /Predictor 1 and takes its /Length
+        // from 41, which object stream 40 holds, 11 0 R: stream 11, which gives /Predictor 1 as well. The walk keeps 11's
+        // link and parameters, then 10's (#181); 10's link met an object of an object stream, and is followed again at each
+        // meeting. Object stream 32 takes 63 Flate steps' parameters from 63 streams giving /Predictor 1, which, under the
+        // smallest cache, 64 objects, let go of 11's parameters. 34 meets 10, whose parameters are kept, and follows its link
+        // again to 11, which is read again, and whose parameters, kept again, let go of 10's: 10's are kept again with its
+        // link, and 36 takes them, reading 10 no more. 10 is read once, as 30's walk first meets it.
+        var written = new Dictionary<int, string>
+        {
+            [10] = "<< /Predictor 1 /Length 41 0 R >>\nstream\nab\nendstream",
+            [11] = "<< /Predictor 1 /Length 2 >>\nstream\nab\nendstream",
+        };
+        var parameters = new StringBuilder();
+
+        for (var k = 0; k < 63; k++)
+        {
+            written[100 + k] = "<< /Predictor 1 /Length 2 >>\nstream\nab\nendstream";
+            parameters.Append(CultureInfo.InvariantCulture, $"{100 + k} 0 R ");
+        }
+
+        var file = PlainObjectStreams(
+            written,
+            new(30, "/Filter /FlateDecode /DecodeParms 10 0 R", [(31, "<< >>")]),
+            new(32, $"/Filter [{string.Concat(Enumerable.Repeat("/FlateDecode ", 63))}] /DecodeParms [{parameters}]", [(33, "<< >>")]),
+            new(34, "/Filter /FlateDecode /DecodeParms 10 0 R", [(35, "<< >>")]),
+            new(36, "/Filter /FlateDecode /DecodeParms 10 0 R", [(37, "<< >>")]),
+            new(40, string.Empty, [(41, "11 0 R")]));
+        using var source = new OffsetCountingSource(file);
+        using var document = PdfDocument.Open(source, new PdfReaderOptions { ObjectCacheCapacity = 64 }, ownsSource: false);
+        document.Reader.SettleIndex();
+        source.Reads.Clear();
+
+        ObjectStreamDependencies.Run(document).CircularStreams.Should().BeEmpty();
+
+        ReadsAt(source.Reads, RowOf(file, 10)).Should().Be(1, "a stream whose link is followed again keeps its parameters with its link, whatever the follow let go");
+    }
+
     [Theory]
     [InlineData(300, 301, 2)]
     [InlineData(100, 200, 3)]
@@ -2243,6 +2283,56 @@ public class ObjectRuleTests
 
         ReadsAt(source.Reads, RowOf(file, 70)).Should().Be(lengthReads, "50's /Length is followed again only by a walk made whole");
         ReadsAt(source.Reads, RowOf(file, 1000)).Should().Be(firstReads, "50's first parameters are followed again only by a walk made whole");
+    }
+
+    [Fact]
+    public void A_value_a_waiting_object_stream_s_walk_keeps_reaches_as_deep_as_its_own_follow_whatever_the_walk_followed_before_it()
+    {
+        // Object streams 20 to 50, 31 of them, each take their /Length from the object the one before holds, 20's written
+        // directly: the last, which holds 91 and 92, a predictor 12 0 R, is decoded past the 60th load. Object stream 93
+        // takes its /N from 91, which has the walk work out 50's standing first. Object stream 95 takes its /Length from 100,
+        // which object stream 99 holds; 99 takes its two Flate steps' parameters from 102, which object stream 101 holds, a
+        // predictor 12 0 R whose /Colors is 13, written in the file past MaxObjectLength lowered to 1,024 bytes, and from 92.
+        // 99's first walk reads 102 as null, 101 not known yet, follows 92 as deep as 50 decodes, then 12, written in the
+        // file, and keeps what it followed for its next walk (#315). Once 101 is known, that walk takes 12 at once as 102's
+        // predictor and ends at 13, which the guard cut, short of 92: 99 decodes alike a few loads deep, and so does 95, whose
+        // /Length is read through it. Object stream 97 takes its /N from 96, which 95 holds, 98 0 R: 97 holds 98, and is
+        // circular. Had 12 been kept as deep as 99's walk had reached before it, 99 would have reached past the reader's
+        // nesting where 95 reads it, 95 would not have decoded alike, and 97 would not have been found circular.
+        const int Holders = 31;
+        var written = new Dictionary<int, string> { [12] = "12", [13] = "(" + new string('x', 3000) + ")" };
+        var streams = new List<PlainObjectStream>();
+        (int Number, string Body)[] members = [(91, "1"), (92, "<< /Predictor 12 0 R >>")];
+
+        for (var holder = Holders - 1; holder >= 0; holder--)
+        {
+            streams.Add(new(20 + holder, string.Empty, members, Length: holder == 0 ? null : string.Create(CultureInfo.InvariantCulture, $"{59 + holder} 0 R")));
+            members = [(59 + holder, LengthOf(members))];
+        }
+
+        streams.Add(new(93, string.Empty, [(94, "1")], Count: "91 0 R"));
+        streams.Add(new(95, string.Empty, [(96, "98 0 R")], Length: "100 0 R"));
+        streams.Add(new(97, string.Empty, [(98, "1")], Count: "96 0 R"));
+        streams.Add(new(99, "/Filter [/FlateDecode /FlateDecode] /DecodeParms [102 0 R 92 0 R]", [(100, LengthOf([(96, "98 0 R")]))]));
+        streams.Add(new(101, string.Empty, [(102, "<< /Predictor 12 0 R /Colors 13 0 R >>")]));
+        using var document = PdfDocument.Open(PlainObjectStreams(written, [.. streams]), new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxObjectLength = 1024 } });
+
+        Single(new PdfValidator().Validate(document), PdfValidationRuleIds.XRefObjectStreamCircular).Message.Should().Be(
+            "Object stream 97 needs object 98, which it holds, to be read: its /N names it, and the object cannot be read before the stream is.");
+
+        // The length of the data PlainObjectStreams writes of an object stream holding these members.
+        static string LengthOf((int Number, string Body)[] held)
+        {
+            var (header, contents) = (0, 0);
+
+            foreach (var (number, body) in held)
+            {
+                header += string.Create(CultureInfo.InvariantCulture, $"{number} {contents} ").Length;
+                contents += body.Length + 1;
+            }
+
+            return (header + contents).ToString(CultureInfo.InvariantCulture);
+        }
     }
 
     [Theory]
