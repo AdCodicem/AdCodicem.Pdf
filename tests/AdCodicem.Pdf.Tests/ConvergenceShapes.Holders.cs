@@ -380,16 +380,29 @@ internal static partial class ConvergenceShapes
     /// <summary>
     /// Object stream 7 holds 5 and 6, and takes its parameters from 50, which 9 holds, <c>5 0 R</c>; 9 takes its own from
     /// 101, which object stream 100 holds; <paramref name="holders"/> object streams, 100, 102 and so on, each hold one
-    /// object, <c>&lt;&lt; /Predictor 1 &gt;&gt;</c>, and take their parameters from the next one's, the last none.
+    /// object, <c>&lt;&lt; /Predictor 1 &gt;&gt;</c>, and take their parameters from the next one's, the last none. When
+    /// <paramref name="throughLength"/> says so, 9 takes its <c>/Length</c> from 101 instead, its <c>/Filter</c> from 14,
+    /// <c>/FlateDecode</c>, which object stream 13 holds, and its <c>/DecodeParms</c> from 12, which object stream 11 holds;
+    /// 11 and 13 need nothing.
     /// </summary>
-    internal static byte[] HolderChain(int holders)
+    internal static byte[] HolderChain(int holders, bool throughLength = false)
     {
+        var (nine, nineFirst) = ObjectStreamData((50, "5 0 R"));
         var objects = new SortedDictionary<int, (string Entries, byte[]? Data)>
         {
             [7] = FlateObjectStream("/DecodeParms 50 0 R", (5, "<< /Predictor 1 >>"), (6, "<< /Title (six) >>")),
-            [9] = FlateObjectStream("/DecodeParms 101 0 R", (50, "5 0 R")),
+            [9] = throughLength
+                ? (string.Create(CultureInfo.InvariantCulture, $"/Type /ObjStm /N 1 /First {nineFirst} /Length 101 0 R /Filter 14 0 R /DecodeParms 12 0 R"), HostileInputTests.Compress(Encoding.Latin1.GetBytes(nine)))
+                : FlateObjectStream("/DecodeParms 101 0 R", (50, "5 0 R")),
         };
         var members = new Dictionary<int, (int Stream, int Index)> { [5] = (7, 0), [6] = (7, 1), [50] = (9, 0) };
+
+        if (throughLength)
+        {
+            objects[11] = FlateObjectStream(string.Empty, (12, "<< /Predictor 1 >>"));
+            objects[13] = FlateObjectStream(string.Empty, (14, "/FlateDecode"));
+            (members[12], members[14]) = ((11, 0), (13, 0));
+        }
 
         for (var holder = 0; holder < holders; holder++)
         {
