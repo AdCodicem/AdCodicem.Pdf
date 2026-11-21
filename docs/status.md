@@ -36,7 +36,9 @@ Tracking workflow mirrors from `docs/roadmap.md` (*Debt and open points*, below)
   [#169], what a full diagnostics record still answers for, in [#384]; the thirty-third, brought forward, in two pull
   requests by area as the maintainer chose on 2026-11-17, the first, [#362] and [#361], the loads' look past a whole
   value and the rebuild's read bound made a guard, in [#386], the second, [#363], [#365], [#366] and [#372], the
-  indirect lengths a rebuild's scan confirms and its memo's kinds, open in [#394]. Then the other batches, slices 4 to 6 ([#60] to [#62]); then the milestone's adversarial review, slice 7 ([#137], ADR 46), once
+  indirect lengths a rebuild's scan confirms and its memo's kinds, in [#394] on 2026-11-19; the twenty-fifth, in two
+  pull requests by area as the maintainer chose on 2026-11-20, the first, [#181]'s reader paths with [#280], [#296] and
+  [#385], open in [#398]. Then the other batches, slices 4 to 6 ([#60] to [#62]); then the milestone's adversarial review, slice 7 ([#137], ADR 46), once
   every other issue filed under M02 is closed. The debts come from the reader's own work, the threat model's first
   version ([#135], `docs/threat-model.md`), M01's review after the fact ([#136], `docs/reviews/M01.md`), the planning of
   step 4 ([#199] to [#202]), its second batch ([#207] to [#210]), its third ([#212]), its fifth ([#215], [#216]), its
@@ -45,8 +47,8 @@ Tracking workflow mirrors from `docs/roadmap.md` (*Debt and open points*, below)
   fifteenth ([#273] to [#277]), its sixteenth ([#279] to [#283], [#287] to [#290], [#292] to [#296]), its seventeenth
   ([#307]), its eighteenth ([#309], [#312] to [#315], [#317]), its nineteenth ([#320] to [#330], [#332], [#333],
   [#336], [#342]), its twentieth ([#348] to [#351]), its twenty-first ([#353] to [#359], [#361] to [#363], [#365] to
-  [#374]), its twenty-second ([#375] to [#379], [#381]), its twenty-fourth ([#385]) and its thirty-third's two pull requests
-  ([#387] to [#389], [#391] to [#393]); [#123] moved to M20.
+  [#374]), its twenty-second ([#375] to [#379], [#381]), its twenty-fourth ([#385]), its thirty-third's two pull requests
+  ([#387] to [#389], [#391] to [#393]) and its twenty-fifth's first ([#395] to [#397]); [#123] moved to M20.
   The seventeenth filed [#305] and [#306] under M23, the eighteenth [#310] under
   M03 and [#311] under M23, the nineteenth [#331] under M03 and [#343] under M23, the thirty-third's first pull request
   [#390] under M23; [#367] and [#373], which the
@@ -626,9 +628,12 @@ One pull request per batch, each design question put to the maintainer after mea
    23. [#141] — done in [#254], brought forward with [#144] at the maintainer's request on 2026-10-15 (journal of
        2026-10-15).
    24. [#169] — done, in [#384], `Remote corpus` run 122 green on its branch (journal of 2026-11-17); [#144], its batch's other
-       half, done in [#254] with [#141]. It filed [#385], which waits to be placed. Batch 33 follows it, brought forward by
+       half, done in [#254] with [#141]. It filed [#385], which the maintainer placed with batch 25 on 2026-11-20. Batch 33 follows it, brought forward by
        the maintainer on 2026-11-17 for the denial of service it pays ([#362]).
-   25. [#181].
+   25. [#181], with [#280], [#296], [#314], [#315] and [#385] — in two pull requests by area, as the maintainer chose on
+       2026-11-20: the reader's paths of [#181] with [#280], [#296] and [#385] in [#398], open (journal of 2026-11-21),
+       which filed [#395] to [#397] under M02; then the validator's walks, [#315] and what remains of [#181], with
+       [#314] closed by its documentation.
    26. [#162], with [#250].
    27. [#163], `MaxDepth` and `MaxNestedLoads` made guards, as the maintainer decided, with [#262].
    28. [#185].
@@ -642,8 +647,8 @@ One pull request per batch, each design question put to the maintainer after mea
    33. [#362], [#361], [#363], [#365], [#366] and [#372]: the headers the rebuild's scan takes in stream data it cannot
        confirm, its memo's kinds and its read budget, the denial of service first — in two pull requests, as the
        maintainer chose on 2026-11-17: [#362] and [#361] in [#386] (journal of 2026-11-18), which filed [#387] to
-       [#389] under M02 and [#390] under M23; then [#363], [#365], [#366] and [#372] in [#394], open, `Remote corpus`
-       run 125 green on its branch (journal of 2026-11-19), which filed [#391] to [#393] under M02.
+       [#389] under M02 and [#390] under M23; then [#363], [#365], [#366] and [#372] in [#394], merged on 2026-11-19, `Remote
+       corpus` run 125 green on its branch (journal of 2026-11-19), which filed [#391] to [#393] under M02.
    34. [#368], [#369], [#370] and [#371]: the searches near a row and near an offset, and where a stream's data ends
        without `endstream`.
    35. [#353], [#357], [#358] and [#356]: the rebuild's header walk, where its scan's pieces start, and the order of the
@@ -1041,3 +1046,7 @@ Until 2026-09-27 this section was a table whose rows were numbered T01 to T40; t
 [#392]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/392
 [#393]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/393
 [#394]: https://github.com/AdCodicem/AdCodicem.Pdf/pull/394
+[#395]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/395
+[#396]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/396
+[#397]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/397
+[#398]: https://github.com/AdCodicem/AdCodicem.Pdf/pull/398
