@@ -1430,24 +1430,25 @@ public class ObjectRuleTests
     [Fact]
     public void A_nest_found_again_from_higher_up_takes_the_place_of_the_one_kept()
     {
-        // Object stream 10 meets stream 100; 12 meets 200 under its /Length, at the third level, and two streams heading nests
-        // of eight; 200 heads a nest of 62 streams, which its parse from the third level follows to the reader's deepest
-        // load, where it is cut: the walk keeps the link of each stream it reached, the last saying the nesting cut its
-        // chain (#181). 14 meets 200 at the second level, where its parse reaches further: that chain is followed again from
-        // higher up, its link kept in place of the one the cut left, and the nest kept flattened. Then, four times, a stream
-        // meets two chains of 40 streams, which under the smallest cache, 64 objects, let go of every stream of 200's, the
-        // reader as well, and of none of its links, and the next stream meets 200 at the second level: it takes the links
-        // at once, and reads none of 200's streams again. A meeting of a chain of its own follows it whole, some 1 MB (#201).
+        // Object stream 10 meets stream 100, heading a nest of eight; 12 meets 200 under its /Length, at the third level, and
+        // two streams heading nests of eight; 200 heads a nest of 62 streams, each taking its /Length from the object after
+        // it, which names the next, and its parse from the third level follows the nest to the reader's deepest load, where
+        // the nesting cuts the last chain at its first object, 323: the walk keeps the link of each stream it reached, the
+        // last saying the nesting cut its chain (#181). 14 meets 200 at the second level, where its parse reaches further:
+        // that chain is followed again from higher up, 323 read, its link kept in place of the one the cut left, and the
+        // nest kept flattened. Then, four times, a stream meets two chains of 40 streams, which under the smallest cache, 64
+        // objects, let go of every object of 200's nest, the reader as well, and of none of its links, and the next stream
+        // meets 200 at the second level, or 100, which no cut left short: it takes 200's nest at once, as it takes 100's,
+        // reading nothing. Had the link the cut left stayed, each meeting followed that chain again from the cut, and read
+        // 323 again, 32 KB in all (#201).
         const int Meetings = 4;
-        var kept = Walk(meetsTwoHundred: true) - Walk(meetsTwoHundred: null);
-        var followed = Walk(meetsTwoHundred: false) - Walk(meetsTwoHundred: null);
 
-        (kept / Meetings).Should().BeLessThan(followed / Meetings * 3 / 4, "each meeting takes the nest found from higher up");
+        Walk(meets: 200).Should().Be(Walk(meets: 100), "each meeting takes the nest found from higher up as one no cut left short");
 
-        // Each stream after 14 meets 200, a chain of its own as long, or nothing.
-        long Walk(bool? meetsTwoHundred)
+        // Each meeting after 14, past two chains of 40 streams, meets `meets`: 200, or 100.
+        long Walk(int meets)
         {
-            var written = Merged(Merged(StreamChain(100, 9, "2"), StreamChain(200, 63, "2")), Merged(StreamChain(1000, 9, "2"), StreamChain(1010, 9, "2")));
+            var written = Merged(Merged(StreamChain(100, 9, "2"), LinkedStreamChain(200, 63, "2")), Merged(StreamChain(1000, 9, "2"), StreamChain(1010, 9, "2")));
             var streams = new List<PlainObjectStream>
             {
                 new(10, "/Filter /FlateDecode /DecodeParms 100 0 R", [(11, "<< >>")]),
@@ -1457,16 +1458,10 @@ public class ObjectRuleTests
 
             for (var meeting = 0; meeting < Meetings; meeting++)
             {
-                var (spacers, own) = (10_000 + (1_000 * meeting), 50_000 + (100 * meeting));
-                written = Merged(Merged(written, StreamChain(spacers, 40, "2")), Merged(StreamChain(spacers + 100, 40, "2"), StreamChain(own, 63, "2")));
+                var spacers = 10_000 + (1_000 * meeting);
+                written = Merged(written, Merged(StreamChain(spacers, 40, "2"), StreamChain(spacers + 100, 40, "2")));
                 streams.Add(new(20 + (4 * meeting), string.Create(CultureInfo.InvariantCulture, $"/Filter [/FlateDecode /FlateDecode] /DecodeParms [{spacers} 0 R {spacers + 100} 0 R]"), [(21 + (4 * meeting), "<< >>")]));
-                var meets = meetsTwoHundred switch
-                {
-                    true => "/Filter /FlateDecode /DecodeParms 200 0 R",
-                    false => string.Create(CultureInfo.InvariantCulture, $"/Filter /FlateDecode /DecodeParms {own} 0 R"),
-                    _ => string.Empty,
-                };
-                streams.Add(new(22 + (4 * meeting), meets, [(23 + (4 * meeting), "<< >>")]));
+                streams.Add(new(22 + (4 * meeting), string.Create(CultureInfo.InvariantCulture, $"/Filter /FlateDecode /DecodeParms {meets} 0 R"), [(23 + (4 * meeting), "<< >>")]));
             }
 
             using var source = new StrictCountingSource(PlainObjectStreams(written, [.. streams]));
