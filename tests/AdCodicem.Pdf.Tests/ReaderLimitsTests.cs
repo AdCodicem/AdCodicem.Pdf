@@ -801,6 +801,170 @@ public class ReaderLimitsTests
     }
 
     [Fact]
+    public void A_search_for_a_catalog_a_rebuild_sets_off_under_ThrowOnLimit_notes_a_candidate_its_second_reading_throws_for_before_the_catalog()
+    {
+        // Object 1, the catalog the cross-reference stream places, is defined again after it as a string, and the stream's
+        // /Prev names no section. Objects 20 to 27, written directly, take their /Type from objects of object streams 4, 5 and
+        // 6, of 17 MB each, in turn. Opened to throw, a lookup of object 5000, which the index lacks, rebuilds it, which takes
+        // the later definition of 1: its search for a catalog, past what it may decode again, leaves the objects of stream 5
+        // after 51 unread. Reading them again, it decodes 5 once more: object 55, which runs past MaxObjectLength, throws, and
+        // object 56, after it, is a catalog, which the search takes, noting the candidate a limit cut before it (#181).
+        var file = MemberPastTheBoundBeforeACatalogFile();
+        var options = new PdfReaderOptions
+        {
+            ThrowOnLimit = true,
+            Limits = PdfReaderLimits.Default with { MaxObjectStreamDecodePasses = 1, MaxObjectLength = 1024 },
+        };
+        using var document = PdfDocument.Open(file, options);
+        document.Reader.CatalogFoundAs.Should().Be(0);
+
+        ReadPastGuard(document, 5000).Should().NotBeNull();
+
+        document.WasRepaired.Should().BeTrue();
+        document.Reader.CatalogFoundAs.Should().Be(56);
+        document.Reader.CatalogCandidateCut.Should().BeTrue();
+    }
+
+    /// <summary>
+    /// Writes the file of <see cref="A_search_for_a_catalog_a_rebuild_sets_off_under_ThrowOnLimit_notes_a_candidate_its_second_reading_throws_for_before_the_catalog"/>.
+    /// </summary>
+    private static byte[] MemberPastTheBoundBeforeACatalogFile()
+    {
+        var file = new HandWrittenFile(version: "1.5");
+        var rows = new Dictionary<int, (int Type, long Field2, int Field3)>
+        {
+            [1] = (1, file.Object(1, Catalog), 0),
+            [2] = (1, file.Object(2, Pages), 0),
+        };
+        (int Stream, int[] Members)[] streams = [(4, [40, 41, 42]), (5, [50, 51, 52, 53, 55, 56]), (6, [60, 61])];
+
+        foreach (var (stream, members) in streams)
+        {
+            rows[stream] = (1, file.PaddedObjectStream(stream, [.. members.Select(number => (number, Member(number)))], ObjectStreamDecoded), 0);
+
+            for (var index = 0; index < members.Length; index++)
+            {
+                rows[members[index]] = (2, stream, index);
+            }
+        }
+
+        foreach (var (number, type) in (ReadOnlySpan<(int, int)>)[(20, 40), (21, 50), (22, 60), (23, 41), (24, 51), (25, 61), (26, 42), (27, 52)])
+        {
+            rows[number] = (1, file.Object(number, string.Create(CultureInfo.InvariantCulture, $"<< /Type {type} 0 R >>")), 0);
+        }
+
+        file.Object(1, "(not a catalog)");
+        file.CompressedCrossReferenceStream(70, 71, number => rows.TryGetValue(number, out var row) ? row : (0, 0, 0), "/Root 1 0 R /Prev 1 0 R");
+        return file.Bytes;
+
+        static string Member(int number) => number switch
+        {
+            55 => "<< /Padding (" + new string('x', 2000) + ") >>",
+            56 => Catalog,
+            _ => "/Thing",
+        };
+    }
+
+    [Fact]
+    public void An_object_stream_a_rebuild_decodes_again_as_it_takes_the_object_streams_in_weighs_nothing_in_the_walk_it_runs_in()
+    {
+        // The trailer's /Root names a string, and its /Prev names no section: the search for a catalog reads object 3, whose
+        // /Type is object 5000, which the index lacks, and the index is rebuilt within the search. It takes the object streams
+        // in from the last written: 6, whose /Length is object 90, which no stream taken in holds yet, waits; 5, whose
+        // /DecodeParms is object 7, which holds a reference to an object the file lacks, is decoded and not kept; 4 is. Then
+        // 6, loaded again, reads 90 from 5, which is decoded again — the rebuild's taking in, which no walk weighs. The
+        // rebuild's own search reads objects 20 to 24, whose /Type lies in turn in streams 5 and 4, of 17 MB each, which the
+        // reader cannot keep together: within what it may decode again, it reads 24 whole, a catalog, and takes it (#181).
+        var file = ObjectStreamDecodedAgainAsItIsTakenInFile();
+        var options = new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxObjectStreamDecodePasses = 1 } };
+        using var document = PdfDocument.Open(file, options);
+
+        document.WasRepaired.Should().BeTrue();
+        document.Reader.CatalogFoundAs.Should().Be(24);
+        document.Diagnostics.Should().NotContain(d => d.Code == PdfDiagnosticCodes.LimitObjectStreamDecodes);
+    }
+
+    /// <summary>
+    /// Writes the file of <see cref="An_object_stream_a_rebuild_decodes_again_as_it_takes_the_object_streams_in_weighs_nothing_in_the_walk_it_runs_in"/>.
+    /// </summary>
+    private static byte[] ObjectStreamDecodedAgainAsItIsTakenInFile()
+    {
+        var file = new HandWrittenFile(version: "1.5");
+        var rows = new Dictionary<int, (int Type, long Field2, int Field3)>
+        {
+            [1] = (1, file.Object(1, "(not a catalog)"), 0),
+            [2] = (1, file.Object(2, Pages), 0),
+            [3] = (1, file.Object(3, "<< /Type 5000 0 R >>"), 0),
+        };
+        file.Object(7, "999 0 R");
+        file.PaddedObjectStream(4, [(41, "/Thing"), (43, "/Thing")], ObjectStreamDecoded);
+        file.PaddedObjectStream(5, [(40, "/Thing"), (42, "/Thing"), (44, "/Catalog"), (90, "9")], ObjectStreamDecoded, "/DecodeParms 7 0 R ");
+        file.Object(6, "<< /Type /ObjStm /N 1 /First 6 /Length 90 0 R >>\nstream\n100 0 (x)\nendstream");
+
+        foreach (var (number, type) in (ReadOnlySpan<(int, int)>)[(20, 40), (21, 41), (22, 42), (23, 43)])
+        {
+            file.Object(number, string.Create(CultureInfo.InvariantCulture, $"<< /Type {type} 0 R >>"));
+        }
+
+        file.Object(24, "<< /Type 44 0 R /Pages 2 0 R >>");
+        file.CompressedCrossReferenceStream(8, 9, number => rows.TryGetValue(number, out var row) ? row : (0, 0, 0), "/Root 1 0 R /Prev 1 0 R");
+        return file.Bytes;
+    }
+
+    [Fact]
+    public void A_search_for_a_catalog_within_another_walk_reads_none_of_the_candidates_its_guard_cut_again()
+    {
+        // The trailer's /Root names a string, and its /Prev names no section: the search for a catalog reads object 3, whose
+        // /Type is object 5000, which the index lacks, and the index is rebuilt within the search. The rebuild's own search
+        // reads objects 20 to 24, whose /Type lies in turn in object streams 5 and 4, of 17 MB each, which the reader cannot
+        // keep together, past what it may decode again: 24 is a candidate its guard cut, and none is a catalog. Eighty
+        // objects read after 24 let the cache, of 64 objects, drop it. Within another walk, whose budget it counts with, the
+        // search reads none of what its guard cut again, and notes the cut: 24 is read twice, by the rebuild, which loads
+        // every object it places, and by the search (#181).
+        var (file, candidate) = SearchWithinASearchFile();
+        using var source = new OffsetCountingSource(file);
+        var options = new PdfReaderOptions { ObjectCacheCapacity = 64, Limits = PdfReaderLimits.Default with { MaxObjectStreamDecodePasses = 1 } };
+        using var document = PdfDocument.Open(source, options, ownsSource: false);
+
+        document.WasRepaired.Should().BeTrue();
+        document.Reader.CatalogFoundAs.Should().Be(0);
+        document.Reader.CatalogCandidateCut.Should().BeTrue();
+        source.Reads.GetValueOrDefault(candidate).Should().Be(2);
+    }
+
+    /// <summary>
+    /// Writes the file of <see cref="A_search_for_a_catalog_within_another_walk_reads_none_of_the_candidates_its_guard_cut_again"/>,
+    /// and gives where object 24 starts.
+    /// </summary>
+    private static (byte[] File, long Candidate) SearchWithinASearchFile()
+    {
+        var file = new HandWrittenFile(version: "1.5");
+        var rows = new Dictionary<int, (int Type, long Field2, int Field3)>
+        {
+            [1] = (1, file.Object(1, "(not a catalog)"), 0),
+            [2] = (1, file.Object(2, Pages), 0),
+            [3] = (1, file.Object(3, "<< /Type 5000 0 R >>"), 0),
+        };
+        file.PaddedObjectStream(4, [(41, "/Thing"), (43, "/Thing"), (45, "/Thing")], ObjectStreamDecoded);
+        file.PaddedObjectStream(5, [(40, "/Thing"), (42, "/Thing"), (44, "/Thing")], ObjectStreamDecoded);
+
+        foreach (var (number, type) in (ReadOnlySpan<(int, int)>)[(20, 40), (21, 41), (22, 42), (23, 43)])
+        {
+            file.Object(number, string.Create(CultureInfo.InvariantCulture, $"<< /Type {type} 0 R >>"));
+        }
+
+        var candidate = file.Object(24, "<< /Type 44 0 R >>");
+
+        for (var number = 100; number < 180; number++)
+        {
+            file.Object(number, "<< >>");
+        }
+
+        file.CompressedCrossReferenceStream(8, 9, number => rows.TryGetValue(number, out var row) ? row : (0, 0, 0), "/Root 1 0 R /Prev 1 0 R");
+        return (file.Bytes, candidate);
+    }
+
+    [Fact]
     public void A_search_for_a_catalog_that_takes_one_read_through_its_guard_s_cut_notes_it()
     {
         // The trailer's /Root names a string. Objects 40 to 45 lie in object streams 4, 5 and 6, of 17 MB each, in turn, and
@@ -3474,6 +3638,57 @@ public class ReaderLimitsTests
         document.WasRepaired.Should().BeTrue();
         document.GetObject(new PdfObjectId(14)).Should().BeOfType<PdfDictionary>();
         document.GetObject(new PdfObjectId(12)).AsText().Should().Be("twelve");
+    }
+
+    [Fact]
+    public void Under_ThrowOnLimit_an_object_stream_whose_decoding_reached_a_guard_as_a_rebuild_took_the_streams_in_is_decoded_again_when_read()
+    {
+        // Object stream 5's /Filter is object 7, which holds a reference to object 81, /RunLengthDecode, which object stream
+        // 4, written before 5, holds; object stream 6, written after them, takes its /Length from object 90, which 5 holds,
+        // and the table's /Prev names no section. Opened to throw, a lookup of object 5000 rebuilds the index, which takes the
+        // streams in from the last written: 5 is decoded before 4 is taken in, 81 reading as null for the time being, and its
+        // data, read as it is, holds 40 and 90; once 4 is, 6 is loaded again, which decodes 5 again through its /Filter, the
+        // runs of object 40 past MaxDecodedStreamLength: the guard throws. What a decoding throws while the rebuild takes the
+        // object streams in is not kept: read after it, object 40 decodes 5 again, and throws anew (#181).
+        var file = FilterTakenInLateFile();
+        var at = OffsetOf(file, "5 0 obj");
+        var dataStart = at + file.AsSpan(at).IndexOf("stream\n"u8) + "stream\n".Length;
+        using var source = new OffsetCountingSource(file);
+        var options = new PdfReaderOptions { ThrowOnLimit = true, Limits = PdfReaderLimits.Default with { MaxDecodedStreamLength = 4096 } };
+        using var document = PdfDocument.Open(source, options, ownsSource: false);
+        var rebuilding = ReadPastGuard(document, 5000);
+        var decoded = source.Reads.GetValueOrDefault(dataStart);
+
+        var reading = ReadPastGuard(document, 40);
+
+        document.WasRepaired.Should().BeTrue();
+        rebuilding.Should().NotBeNull();
+        rebuilding!.Code.Should().Be(PdfDiagnosticCodes.LimitDecodedStream);
+        reading.Should().NotBeNull().And.NotBeSameAs(rebuilding);
+        reading!.Code.Should().Be(PdfDiagnosticCodes.LimitDecodedStream);
+        decoded.Should().Be(2, "the rebuild decodes stream 5 as it takes it in, and again as it takes 6 in");
+        source.Reads.GetValueOrDefault(dataStart).Should().Be(3);
+    }
+
+    /// <summary>
+    /// Writes the file of <see cref="Under_ThrowOnLimit_an_object_stream_whose_decoding_reached_a_guard_as_a_rebuild_took_the_streams_in_is_decoded_again_when_read"/>:
+    /// object 40, in object stream 5, is a string of 2,000 bytes of 0x81, each pair of which a run-length decoding repeats
+    /// 128 times.
+    /// </summary>
+    private static byte[] FilterTakenInLateFile()
+    {
+        var file = new HandWrittenFile(version: "1.5");
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, Catalog),
+            [2] = file.Object(2, Pages),
+        };
+        file.Object(7, "81 0 R");
+        file.ObjectStream(4, [(81, "/RunLengthDecode")]);
+        file.ObjectStream(5, [(40, "(" + new string('\u0081', 2000) + ")"), (90, "9")], "/Filter 7 0 R ");
+        file.Object(6, "<< /Type /ObjStm /N 1 /First 6 /Length 90 0 R >>\nstream\n100 0 (x)\nendstream");
+        file.Table(3, rows, "/Size 3 /Root 1 0 R /Prev 1 0 R");
+        return file.Bytes;
     }
 
     [Fact]
