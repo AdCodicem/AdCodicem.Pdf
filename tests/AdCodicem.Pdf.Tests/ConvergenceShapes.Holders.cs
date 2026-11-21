@@ -383,9 +383,10 @@ internal static partial class ConvergenceShapes
     /// object, <c>&lt;&lt; /Predictor 1 &gt;&gt;</c>, and take their parameters from the next one's, the last none. When
     /// <paramref name="throughLength"/> says so, 9 takes its <c>/Length</c> from 101 instead, its <c>/Filter</c> from 14,
     /// <c>/FlateDecode</c>, which object stream 13 holds, and its <c>/DecodeParms</c> from 12, which object stream 11 holds;
-    /// 11 and 13 need nothing.
+    /// 11 and 13 need nothing. When <paramref name="colorsHeldApart"/> says so, 101 is <c>&lt;&lt; /Predictor 12 /Colors 16 0 R
+    /// &gt;&gt;</c>, object stream 15 holds 16, <c>1</c>, which needs nothing, and 9's data is predicted as they say.
     /// </summary>
-    internal static byte[] HolderChain(int holders, bool throughLength = false)
+    internal static byte[] HolderChain(int holders, bool throughLength = false, bool colorsHeldApart = false)
     {
         var (nine, nineFirst) = ObjectStreamData((50, "5 0 R"));
         var objects = new SortedDictionary<int, (string Entries, byte[]? Data)>
@@ -404,11 +405,19 @@ internal static partial class ConvergenceShapes
             (members[12], members[14]) = ((11, 0), (13, 0));
         }
 
+        if (colorsHeldApart)
+        {
+            // 9's data is written as the rows of a PNG predictor of one byte, which 101 and 16 make it.
+            objects[9] = (string.Create(CultureInfo.InvariantCulture, $"/Type /ObjStm /N 1 /First {nineFirst} /Length @L /Filter /FlateDecode /DecodeParms 101 0 R"), HostileInputTests.Compress(PngRows(Encoding.Latin1.GetBytes(nine), 1)));
+            objects[15] = FlateObjectStream(string.Empty, (16, "1"));
+            members[16] = (15, 0);
+        }
+
         for (var holder = 0; holder < holders; holder++)
         {
             var number = 100 + (2 * holder);
             var parameters = holder + 1 < holders ? string.Create(CultureInfo.InvariantCulture, $"/DecodeParms {number + 3} 0 R") : string.Empty;
-            objects[number] = FlateObjectStream(parameters, (number + 1, "<< /Predictor 1 >>"));
+            objects[number] = FlateObjectStream(parameters, (number + 1, holder == 0 && colorsHeldApart ? "<< /Predictor 12 /Colors 16 0 R >>" : "<< /Predictor 1 >>"));
             members[number + 1] = (number, 0);
         }
 
