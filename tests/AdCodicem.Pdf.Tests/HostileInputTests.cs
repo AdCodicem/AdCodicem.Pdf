@@ -6932,10 +6932,11 @@ public class HostileInputTests
     /// Writes a file of <paramref name="streams"/> streams, objects 10 and on, each one's header inside the data of the one
     /// before, every <c>/Length</c> an object written after the one <c>endstream</c> after <paramref name="filler"/> bytes,
     /// up to which it runs, and before each header a shorter definition of the next one's length: each row places its
-    /// stream past the end of the file, so that the first load rebuilds the index, which places each stream at its header,
-    /// and each length at its last definition.
+    /// stream past the end of the file — 9,000,000,000 bytes and on, or <paramref name="rowsAt"/> for every row where one is
+    /// given —, so that the first load rebuilds the index, which places each stream at its header, and each length at its
+    /// last definition.
     /// </summary>
-    internal static byte[] OverlappingRebuilt(int streams, int filler)
+    internal static byte[] OverlappingRebuilt(int streams, int filler, long? rowsAt = null)
     {
         var file = new HandWrittenFile(version: "1.5");
         var rows = new Dictionary<int, long>
@@ -6951,7 +6952,7 @@ public class HostileInputTests
         {
             text.Append(CultureInfo.InvariantCulture, $"{lengths + k} 0 obj 9 endobj\n{10 + k} 0 obj\n<</Length {lengths + k} 0 R>>\nstream\n");
             starts[k] = text.Length;
-            rows[10 + k] = 9_000_000_000L + k;
+            rows[10 + k] = rowsAt ?? (9_000_000_000L + k);
         }
 
         text.Append('z', filler);

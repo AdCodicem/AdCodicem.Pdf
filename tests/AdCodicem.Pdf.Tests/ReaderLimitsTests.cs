@@ -3257,6 +3257,84 @@ public class ReaderLimitsTests
     }
 
     [Fact]
+    public void Under_ThrowOnLimit_a_lookup_an_object_stream_s_decoding_makes_throws_anew_at_each_decoding()
+    {
+        // A read of object 50, whose entry points into the spaces of object 10's data, rebuilds the index, and the rebuild's
+        // scan reaches MaxRebuildReadPasses. Object stream 60 gives its /N as object 77, which no index holds: decoding it, the
+        // rebuild's expansion throws the guard at the lookup, and keeps from the chain's index 60's member 61. Opened to
+        // throw, each read of 61 decodes 60 again and throws anew at the lookup, which no decoding keeps (#181).
+        var file = LookupInAnObjectStreamDecoding();
+        using var document = PdfDocument.Open(file, new PdfReaderOptions { ThrowOnLimit = true });
+        ReadPastGuard(document, 50).Should().NotBeNull().And.Match<PdfLimitExceededException>(thrown => thrown.Code == PdfDiagnosticCodes.LimitRebuildReads);
+
+        var first = ReadPastGuard(document, 61);
+        var again = ReadPastGuard(document, 61);
+
+        document.WasRepaired.Should().BeTrue();
+        first.Should().NotBeNull().And.Match<PdfLimitExceededException>(thrown => thrown.Code == PdfDiagnosticCodes.LimitRebuildReads);
+        again.Should().NotBeNull().And.NotBeSameAs(first);
+    }
+
+    [Fact]
+    public void Under_ThrowOnLimit_disposing_lets_go_of_the_exceptions_the_loads_kept_though_a_reference_taken_from_the_document_is_held()
+    {
+        // Object 5 runs past MaxObjectLength. Opened to throw, a read of 5 throws, and its load keeps the exception for the
+        // next read to throw again without reading (#181); the document disposed of, a reference taken from it still held,
+        // the exception is let go of with all the document kept.
+        var (held, thrown, kept) = ThrowKeepAndDispose();
+
+        GC.Collect();
+        GC.WaitForPendingFinalizers();
+        GC.Collect();
+
+        kept.Should().BeTrue("the load kept what it threw");
+        thrown.IsAlive.Should().BeFalse("the exceptions the loads kept are let go of as the document is disposed");
+        GC.KeepAlive(held);
+    }
+
+    [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
+    private static (PdfObject Held, WeakReference Thrown, bool Kept) ThrowKeepAndDispose()
+    {
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long> { [1] = file.Object(1, Catalog), [2] = file.Object(2, Pages) };
+        rows[5] = file.Object(5, "(" + new string('x', 2000) + ")");
+        file.Table(6, rows, "/Size 6 /Root 1 0 R");
+        var options = new PdfReaderOptions { ThrowOnLimit = true, Limits = PdfReaderLimits.Default with { MaxObjectLength = 1024 } };
+        var document = PdfDocument.Open(file.Bytes, options);
+        var thrown = ReadPastGuard(document, 5);
+        var kept = thrown is not null && ReferenceEquals(ReadPastGuard(document, 5), thrown);
+        var held = document.Trailer.GetRaw(PdfName.Root)!;
+
+        document.Dispose();
+        return (held, new WeakReference(thrown), kept);
+    }
+
+    /// <summary>
+    /// Writes a file whose row for object 50 points into the spaces of object 10's data, an attached file whose bytes spell
+    /// streams (<see cref="SpelledStreamsData"/>), as <see cref="LengthInAMemberTakenInLate"/> does, and object stream 60,
+    /// whose /N names object 77, which no index holds, its member 61 placed there by the chain's index, a cross-reference
+    /// stream.
+    /// </summary>
+    private static byte[] LookupInAnObjectStreamDecoding()
+    {
+        var data = SpelledStreamsData();
+        const string Members = "61 0 (sixty-one) ";
+        var file = new HandWrittenFile(version: "1.5");
+        var rows = new Dictionary<int, (int Type, long Field2, int Field3)>
+        {
+            [1] = (1, file.Object(1, Catalog), 0),
+            [2] = (1, file.Object(2, Pages), 0),
+            [10] = (1, file.Object(10, "<< /Type /EmbeddedFile /Length 11 0 R >>\nstream\n" + data + "endstream"), 0),
+            [11] = (1, file.Object(11, LengthNote + data.Length.ToString(CultureInfo.InvariantCulture)), 0),
+            [60] = (1, file.Object(60, string.Create(CultureInfo.InvariantCulture, $"<< /Type /ObjStm /N 77 0 R /First 5 /Length {Members.Length} >>\nstream\n{Members}\nendstream")), 0),
+            [61] = (2, 60, 0),
+        };
+        rows[50] = (1, rows[10].Field2 + 2000, 0);
+        file.CrossReferenceStream(99, 100, rows, "/Root 1 0 R");
+        return file.Bytes;
+    }
+
+    [Fact]
     public void Under_ThrowOnLimit_a_rebuild_lets_go_of_the_exceptions_the_loads_kept_and_the_object_is_read_from_the_rebuilt_index()
     {
         // Object 5, as the table places it, runs past MaxObjectLength; the file defines it again past the table, within the
@@ -4555,11 +4633,10 @@ public class ReaderLimitsTests
     }
 
     /// <summary>
-    /// Writes the file of the guard on the rebuild's reads (<see cref="Case.For"/>) under a classic table whose row for object
-    /// 50 points into the spaces of object 10's data, and that lacks object 41, which object stream 40 holds; stream 42 takes
-    /// its <c>/Length</c>, 44, from it.
+    /// Gives the data of an attached file that spells six streams, each one's /Length running over the headers after it, then
+    /// 64 KB of spaces: a rebuild's scan reads past them more than <see cref="PdfReaderLimits.MaxRebuildReadPasses"/> lets it.
     /// </summary>
-    private static byte[] LengthInAMemberTakenInLate()
+    private static string SpelledStreamsData()
     {
         const int Spelled = 6;
         const string Head = "20 0 obj\n<< /Length 0000000 >>\nstream\nabc\n";
@@ -4572,7 +4649,17 @@ public class ReaderLimitsTests
                 .Replace("0000000", length.ToString("D7", CultureInfo.InvariantCulture), StringComparison.Ordinal));
         }
 
-        var data = spelled.Append(' ', 64 * 1024).Append("attached tail\n").ToString();
+        return spelled.Append(' ', 64 * 1024).Append("attached tail\n").ToString();
+    }
+
+    /// <summary>
+    /// Writes the file of the guard on the rebuild's reads (<see cref="Case.For"/>) under a classic table whose row for object
+    /// 50 points into the spaces of object 10's data, and that lacks object 41, which object stream 40 holds; stream 42 takes
+    /// its <c>/Length</c>, 44, from it.
+    /// </summary>
+    private static byte[] LengthInAMemberTakenInLate()
+    {
+        var data = SpelledStreamsData();
         var file = new HandWrittenFile();
         var rows = new Dictionary<int, long>
         {

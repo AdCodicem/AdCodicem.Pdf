@@ -1986,6 +1986,58 @@ public class StreamLengthTests
     }
 
     [Fact]
+    public void A_stream_ended_inside_its_data_ends_at_the_first_place_there_where_the_source_gives_nothing_at_it()
+    {
+        // As above, but the source is cut short as the reader first reads from the byte before object 9's place, which it
+        // reads to tell whether a header starts there: it gives nothing, which tells no header, and the first stream past what
+        // lengths taken unread may keep whole ends its data at that place all the same, the first the index gives inside it,
+        // as where no place there holds a header (#280).
+        var file = HostileInputTests.NestedInStrings(20, 100_000, placedFromEnd: 100);
+        var placed = file.AsSpan().IndexOf("\n9 0 obj"u8) + 1;
+        var source = new CutShortSource(file);
+        using var document = PdfDocument.Open(source, options: null, ownsSource: true);
+
+        for (var number = 10; number < 18; number++)
+        {
+            document.GetObject(new PdfObjectId(number));
+        }
+
+        source.CutWhenReadAt(placed - 1, placed - 1);
+        var stream = document.GetObject(new PdfObjectId(18)).AsStream().Required();
+
+        (stream.Data.Position + stream.Data.Length).Should().Be(placed);
+    }
+
+    [Fact(Timeout = 60_000)]
+    public async Task Streams_a_rebuild_places_end_inside_their_data_alike_whether_their_rows_lie_past_the_file_or_give_the_largest_offset()
+    {
+        // Twenty streams, objects 10 to 29, each one's header inside the data of the one before, every /Length an object after
+        // the one endstream 100 KB on, every row placing its stream past the end of the file, or at the largest offset a long
+        // holds, which is also what the index answers where it places nothing further: the first load rebuilds the index.
+        // Past what lengths taken unread may keep whole, each stream's data ends at a place the rebuilt index gives inside it,
+        // its own row stepped over, wherever it lies past the file (#280).
+        var past = await Task.Run(() => DataLengths(HostileInputTests.OverlappingRebuilt(20, 100_000)), TestContext.Current.CancellationToken);
+        var largest = await Task.Run(() => DataLengths(HostileInputTests.OverlappingRebuilt(20, 100_000, rowsAt: long.MaxValue)), TestContext.Current.CancellationToken);
+
+        largest.Should().Equal(past);
+        largest.Should().Contain(length => length == 0, "past what lengths taken unread keep whole, the data ends at the next header");
+    }
+
+    /// <summary>Reads streams 10 to 29 of <paramref name="file"/> in turn, and gives the length of each one's data.</summary>
+    private static List<int> DataLengths(byte[] file)
+    {
+        using var document = PdfDocument.Open(file);
+        var lengths = new List<int>();
+
+        for (var number = 10; number < 30; number++)
+        {
+            lengths.Add(document.GetObject(new PdfObjectId(number)).AsStream().Required().Data.Length);
+        }
+
+        return lengths;
+    }
+
+    [Fact]
     public void A_stream_whose_data_holds_a_row_where_no_header_starts_keeps_its_data_however_often_it_is_parsed()
     {
         // A stream of 100 KB, its /Length confirmed, and a row a shift left stale placing object 74 in the middle of its data,
@@ -2630,6 +2682,27 @@ public class StreamLengthTests
         var stream = document.GetObject(new PdfObjectId(StreamNumber)).AsStream().Required();
 
         stream.Data.Length.Should().Be(data.Length + "\n12 % ".Length);
+    }
+
+    [Fact]
+    public void An_endstream_in_a_comment_ends_the_data_where_a_read_past_the_one_that_found_it_decides_it()
+    {
+        // The data, its /Length wrong, holds its first endstream in a comment on a line of its own, which may lie between the
+        // tokens of a header, then three windows of comment lines and the object's endobj: the search reads on through them,
+        // past the read that found the keyword and the one after it, and endobj, which ends no header, decides that the
+        // endstream ends the data (#261).
+        var data = Data(Window / 4);
+        var comments = string.Concat(Enumerable.Repeat("% " + new string('c', 1022) + "\n", 3 * Window / 1024));
+        var file = new TestPdfBuilder()
+            .WithObject(1, "<< /Type /Catalog /Pages 2 0 R >>")
+            .WithObject(2, "<< /Type /Pages /Kids [] /Count 0 >>")
+            .WithObject(StreamNumber, Invariant($"<< /Length {data.Length + 400} >>\nstream\n{data}\n% endstream\n{comments}"))
+            .BuildClassic(rootNumber: 1);
+        using var document = PdfDocument.Open(file);
+
+        var stream = document.GetObject(new PdfObjectId(StreamNumber)).AsStream().Required();
+
+        stream.Data.Length.Should().Be(data.Length + "\n% ".Length);
     }
 
     [Fact]
