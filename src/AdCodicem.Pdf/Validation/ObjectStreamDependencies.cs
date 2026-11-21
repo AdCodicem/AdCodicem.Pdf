@@ -178,8 +178,8 @@ namespace AdCodicem.Pdf.Validation;
 /// keeps, costs a walk the chains that met something, followed again, and no more. Each object stream then costs about
 /// what its own dictionary does, where nests kept by the stream heading them, and followed again whole when they could
 /// not be, cost up to 67 MB and 0.5 s a stream; heads past the nests kept flattened cost theirs flattened again, some 600
-/// bytes each, and streams met as values past the parameters kept are read again, each with what the reader parses for
-/// its own <c>/Length</c>.
+/// bytes each, and streams met as values, or on a chain followed again, past the parameters kept are read again, each
+/// with what the reader parses for its own <c>/Length</c>.
 /// </para>
 /// </remarks>
 internal sealed class ObjectStreamDependencies
@@ -1896,8 +1896,11 @@ internal sealed class ObjectStreamDependencies
     /// </summary>
     /// <remarks>
     /// Each store but the standings' holds as much as <paramref name="capacity"/> says, or a multiple of it, the oldest let go
-    /// first: no guard (ADR 34), each sizes what the walks keep, not what they read or judge. What one let go is read or
-    /// followed again when met again, and gives what it gave: no file reads otherwise for it, and the report is the same.
+    /// first, its order a place for each stream or object it holds — but the outcomes' order, which keeps the place of a
+    /// stream dropped before its turn, and is bounded by the walks of standings rather than by <paramref name="capacity"/>
+    /// (<see cref="_outcomeOrder"/>). None is a guard (ADR 34): each sizes what the walks keep, not what they read or
+    /// judge. What one let go is read or followed again when met again, and gives what it gave: no file reads otherwise for
+    /// it, and the report is the same.
     /// </remarks>
     /// <param name="document">The document whose objects are read.</param>
     /// <param name="capacity">
@@ -1987,9 +1990,18 @@ internal sealed class ObjectStreamDependencies
         private readonly Dictionary<int, Outcomes> _outcomes = new(SeededComparer.Instance);
 
         /// <summary>
-        /// The streams in the order their outcomes were first kept: it can name a stream dropped already, which is passed
-        /// over, and which is never kept again, its standing known.
+        /// The streams in the order their outcomes were kept, a place each time a walk keeps some of a stream none are kept
+        /// of. A stream dropped before its place is reached — its standing known, or its walk keeping nothing or more than
+        /// fits — leaves its place in the order, which, reached, is passed over, or lets go of what the stream kept since
+        /// (<see cref="KeepOutcomes"/>).
         /// </summary>
+        /// <remarks>
+        /// The order is dequeued only while the entries kept exceed <c>capacity</c>, and a stream whose standing became known
+        /// stays in it: while the entries stay within <c>capacity</c>, it keeps up to one stale place for each walk that kept
+        /// outcomes, once their streams are dropped. It holds no more places than walks of standings were made, and is
+        /// bounded, as <see cref="_standings"/> is, by the object streams the index names rather than by <c>capacity</c>:
+        /// the walks of standings stay within about three per object stream (<see cref="Walk.Settle"/>), 4 bytes a place.
+        /// </remarks>
         private readonly Queue<int> _outcomeOrder = new();
 
         /// <summary>How many entries <see cref="_outcomes"/> holds in all.</summary>
@@ -1998,7 +2010,11 @@ internal sealed class ObjectStreamDependencies
         /// <summary>Gives what the last walk of waiting stream <paramref name="stream"/> kept; null when none is kept.</summary>
         public Outcomes? OutcomesOf(int stream) => _outcomes.TryGetValue(stream, out var outcomes) ? outcomes : null;
 
-        /// <summary>Drops what was kept of the walks of stream <paramref name="stream"/>, its standing now known.</summary>
+        /// <summary>
+        /// Drops what was kept of the walks of stream <paramref name="stream"/>, if anything is: its standing now known, its
+        /// last walk keeping nothing or more than fits, or its place in the order reached. A stream dropped before that place
+        /// leaves it in the order (<see cref="_outcomeOrder"/>).
+        /// </summary>
         public void DropOutcomes(int stream)
         {
             if (_outcomes.Remove(stream, out var outcomes))
@@ -2018,10 +2034,11 @@ internal sealed class ObjectStreamDependencies
         /// nothing, or more than fits, keeps nothing. A walk made whole after such a drop may keep fewer: a parameter its last
         /// walk read as null, the reading going on past it, may now lead to an object a guard cut, where decoding ends
         /// (#263), and the values after it are read no more. The stream is then queued again while its earlier place is still
-        /// in the order, which is harmless: reached there, the stream is let go sooner than its turn, and its next walk made
-        /// whole, as any stream let go is; reached at its later place, it is passed over, dropped already. A stream is walked
-        /// again only once every stream its last walk met is known, and dropped, those it met in turn included: the
-        /// streams still kept were kept before it, and are let go before it, which, alone, fits.
+        /// in the order, which is harmless: reached there, the stream is let go sooner than its turn, the outcomes its latest
+        /// walk kept with it, and its next walk made whole, as any stream let go is; reached at its later place, it is let go
+        /// again if it was kept since, or passed over. A stream is walked again only once every stream its last walk met is
+        /// known, and dropped, those it met in turn included: the streams still kept were kept before it, and are let go
+        /// before it, which, alone, fits.
         /// </remarks>
         public void KeepOutcomes(int stream, Dictionary<int, Outcome> values, int lengthReach)
         {
