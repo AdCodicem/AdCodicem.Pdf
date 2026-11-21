@@ -601,6 +601,35 @@ public class DiagnosticsTests
     }
 
     [Theory]
+    [InlineData("a value past the first window")]
+    [InlineData("a header whose comment runs past the first window")]
+    public void A_nested_load_read_again_in_a_larger_window_keeps_a_code_the_capacity_dropped_though_the_reading_around_it_is_dropped(string shape)
+    {
+        // Object 5's row places object 6, whose dictionary holds a name escape the capacity drops, and whose /Length names
+        // object 7, read again in a larger window, its own name escape dropped too: the reading at the row loads 7 and keeps
+        // it, then finds 6, not 5, and keeps nothing of its own; 5 is found nearby. The document holds the code 7's reading
+        // dropped, though the reading around it, which dropped it before 7's reading began, is not kept (#385).
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"),
+            [5] = file.Object(6, "<< /A#zz 1 /Length 7 0 R >>\nstream\nabc\nendstream"),
+        };
+        file.Object(5, "(five)");
+        rows[7] = file.Position;
+        file.Raw(shape == "a value past the first window"
+            ? "7 0 obj\n[/A#zz (" + new string('x', 9000) + ")]\nendobj\n"
+            : "7 0 %" + new string('c', 9000) + "\nobj\n[/A#zz]\nendobj\n");
+        file.Table(8, rows, "/Size 8 /Root 1 0 R");
+        using var document = PdfDocument.Open(file.Bytes, new PdfReaderOptions { DiagnosticCapacity = 0 });
+
+        document.GetObject(new PdfObjectId(5)).Should().BeOfType<PdfString>();
+
+        document.Diagnostics.Contains(PdfDiagnosticCodes.SyntaxNameEscapeInvalid).Should().BeTrue();
+    }
+
+    [Theory]
     [InlineData(false)]
     [InlineData(true)]
     public void Closing_a_mark_looks_in_the_note_again_where_the_mark_around_it_looks(bool withDecodingReports)
