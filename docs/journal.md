@@ -7,6 +7,40 @@ to about thirty lines each; the unabridged text is the
 [journal of `e38ebbc`](https://github.com/AdCodicem/AdCodicem.Pdf/blob/e38ebbc471b86779c3f6ac5b320ca1ecd531b2c1/docs/status.md#journal). A session reads an entry when it needs the
 reason for a past decision. A new entry is short, about thirty lines; the detail is in the pull request's body.
 
+## 2026-11-21 — Batch 25, second pull request: what the validator's walk of object streams follows again ([#400])
+
+- **The question.** Measured on `main` at `b8f6f7d`: each walk of a waiting object stream — one whose standing waits on
+  streams not known yet — followed every value again from the start: ten streams of ten holders the cache let go took
+  1.35 GB and 4.4 s, thirty-one of thirty-two 13.9 GB and 44 s ([#315]). The walk kept its nests by the stream heading
+  them, so a nest met from another head was parsed again, up to 14.5 to 29.4 MB a stream ([#181], its walk's part).
+  [#314] named four classes of objects the walk leaves to the reader.
+- **Settled with the maintainer** (2026-11-20 and 21, each as recommended): [#314] closed by its documentation, its four
+  classes pinned by their tests; links kept for `ObjectCacheCapacity × 62` streams, about 20 MB at the default cache;
+  flattened nests let go first in, first out. After round 1, a stream's parameters in a store of their own,
+  `ObjectCacheCapacity` entries of numbers and references only; past it, a stream is read again as on `main`.
+- **What changed.** The walk keeps, per stream, the first object its `/Length` names and where its chain leads; a
+  flattened run per nest; the parameters decoding reads; and, across the walks of one waiting stream, each value's
+  outcome, so that a walk made again follows only the values that read as null an object of a stream not known yet.
+  Each store is a cache (ADR 34): past it, the walk follows the file again, to the same verdict. Findings, their order
+  and messages are `main`'s on every input tried; the reader's diagnostics during and after a validation can differ on
+  hand-made files, where the walk no longer loads through the reader what it kept.
+- **Review** (ADR 54): two rounds. Round 1 found one blocker, E1 on a hand-made file and a regression — a link kept its
+  stream's parameters whole, 113 MiB live at a cache of 64 against 4.7 on `main` — fixed by the store above; round 2
+  only nits. Differentials over 41,000 runs of generated files with every parameter type and rebuilt indexes, 403
+  corpus documents and 7,177 damaged variants under a dozen settings: no finding differs.
+- **Mutation** (ADR 53 amended): 267 mutants over 148 of 245 changed code lines; 169 killed by the suite, none hung;
+  tests kill 89 of the 98 survivors. The second opinion overturned 3 of 12 equivalents — one a finding on a hand-made
+  shape, the same on `main`, now held by a test —; 9 stay. No debt.
+- **The issues.** [#181], [#314], [#315]. Filed under M23: [#399], the walk about a fifth slower over a thousand streams
+  in nests, a nit on a hand-made shape.
+- **Checks.** The batch check at `2f8cc89`; the 69 timing and memory tests alone; CI and `Remote corpus` on the branch.
+  Benchmarks against `main`, alone, alternated: a thousand streams hiding their holders behind their `/Length` walked in
+  56 to 59 ms and 17.8 MB against 4.62 to 4.78 s and 1.50 GB; nests at a thousand streams 326 to 381 ms against 288 to
+  328 ([#399]), a megabyte more; the rest and validation within the runs' spread. Patch coverage 98.64 % by Codecov's
+  rule: three lines of `Describe`'s defensive check of the index, which no input takes.
+- **For callers.** No API change. Validating a file whose object streams depend on each other no longer walks again
+  what it met; reader diagnostics read during a validation of a hand-made file may differ, its findings do not.
+
 ## 2026-11-21 — Batch 25, first pull request: what the library's walks decode again, and overlapping stream data ([#398])
 
 - **The question.** Measured on `main` at `b8f6f7d`: the library's walks decoded again, for each member they read, the
@@ -1228,3 +1262,5 @@ The detail is in git and in the pull requests; what still matters is in the reco
 [#396]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/396
 [#397]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/397
 [#398]: https://github.com/AdCodicem/AdCodicem.Pdf/pull/398
+[#399]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/399
+[#400]: https://github.com/AdCodicem/AdCodicem.Pdf/pull/400
