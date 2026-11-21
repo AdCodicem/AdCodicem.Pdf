@@ -393,6 +393,28 @@ public class ReaderLimitsTests
         document.GetObject(new PdfObjectId(FirstMemberOfSixty)).Should().Be(PdfNull.Instance);
     }
 
+    [Fact]
+    public void An_object_stream_whose_decoding_meets_what_a_walk_s_guard_cut_and_rebuilds_the_index_serves_its_objects_from_the_rebuilt_index()
+    {
+        // The search for a catalog, past what it may decode again, reads object 28, the /Length of object stream 60, as null,
+        // and decodes the stream without it for object 61. The stream's /N, object 63, is not where its row places it:
+        // loading it rebuilds the index on the way, and the search ends there. What the decoding gave through the guard's cut
+        // is neither kept nor served: the document reads and reports as one whose search decodes as much as it needs, the
+        // guard besides — the rebuilt index's own search takes the catalog, object 62, and serves object 61 whole, from
+        // stream 60 read with its /Length.
+        var file = DecodedThroughACutValueFile("length", 1, catalogCut: false, out _, countMisplaced: true);
+        using var document = PdfDocument.Open(file, new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxObjectStreamDecodePasses = 1 } });
+        using var whole = PdfDocument.Open(file, new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxObjectStreamDecodePasses = int.MaxValue } });
+
+        whole.Diagnostics.Should().NotContain(entry => entry.Code == PdfDiagnosticCodes.LimitObjectStreamDecodes);
+        document.Diagnostics.Select(entry => entry.Code).Should().Equal(
+            whole.Diagnostics.Select(entry => entry.Code).Prepend(PdfDiagnosticCodes.LimitObjectStreamDecodes));
+        document.WasRepaired.Should().BeTrue();
+        document.Reader.CatalogFoundAs.Should().Be(FirstMemberOfSixty + 1);
+        document.Reader.ObjectsLeftOutByGuard.Should().BeFalse();
+        document.GetObject(new PdfObjectId(FirstMemberOfSixty)).AsDictionary().Required().GetRaw(PdfName.Get("Kept")).Should().Be(PdfBoolean.True);
+    }
+
     [Theory]
     [InlineData(20)]
     [InlineData(200)]
@@ -7768,9 +7790,11 @@ public class ReaderLimitsTests
     /// first object. Read without object 28, the stream's header is still encoded, or garbage, or its objects lie past its
     /// data. For <c>own</c>, the stream needs no other object, and a stray token heads its header, which lists no object: a
     /// fault of the file. The catalog comes after stream 60's objects: written directly, or, with
-    /// <paramref name="catalogCut"/>, in object stream 250.
+    /// <paramref name="catalogCut"/>, in object stream 250. With <paramref name="countMisplaced"/>, the stream's <c>/N</c> is
+    /// the object after the catalog, whose row places it in a string's data, where no header lies near.
     /// </summary>
-    private static byte[] DecodedThroughACutValueFile(string value, int members, bool catalogCut, out long dataStart, bool rootIsCatalog = false)
+    private static byte[] DecodedThroughACutValueFile(
+        string value, int members, bool catalogCut, out long dataStart, bool rootIsCatalog = false, bool countMisplaced = false)
     {
         const int Columns = 64;
         var catalog = FirstMemberOfSixty + members;
@@ -7807,7 +7831,14 @@ public class ReaderLimitsTests
         };
         var file = new HandWrittenFile(version: "1.5");
         var rows = WriteStreamsCutInTurn(file, held, catalogCut ? catalog : 0);
-        rows[60] = (1, file.Object(60, string.Create(CultureInfo.InvariantCulture, $"<< /Type /ObjStm /N {members} /First {first} {entries} >>\nstream\n{Encoding.Latin1.GetString(data)}\nendstream")), 0);
+        var count = countMisplaced ? string.Create(CultureInfo.InvariantCulture, $"{catalog + 1} 0 R") : members.ToString(CultureInfo.InvariantCulture);
+        rows[60] = (1, file.Object(60, string.Create(CultureInfo.InvariantCulture, $"<< /Type /ObjStm /N {count} /First {first} {entries} >>\nstream\n{Encoding.Latin1.GetString(data)}\nendstream")), 0);
+
+        if (countMisplaced)
+        {
+            file.Object(catalog + 1, members.ToString(CultureInfo.InvariantCulture));
+            rows[catalog + 1] = (1, file.Padding(7, 2048) + 1024, 0);
+        }
 
         for (var index = 0; index < members; index++)
         {
