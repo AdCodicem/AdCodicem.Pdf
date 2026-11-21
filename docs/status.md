@@ -58,9 +58,11 @@ Tracking workflow mirrors from `docs/roadmap.md` (*Debt and open points*, below)
   pages — the validation rules among them, moved from the project documents — with the API reference under them, and
   four explanations. Outside any milestone.
 - **Last milestone closed**: **M01 — Object model and tolerant reading**
-- **Tests**: 12,589 unit on [#394]'s branch at `797ca09`, with 235 of the 242 remote documents fetched, 12,586 passed
-  and 3 skipped; the 60 timing and memory tests alone; the integration suite green in CI; `Remote corpus` run 125 green
-  over all 242. Before it, 12,363 unit on [#386]'s branch at `c935daf`, with 235 of the 242 remote documents fetched, 12,360 passed
+- **Tests**: 12,769 unit on [#398]'s branch at `d95e0f0`, with 235 of the 242 remote documents fetched, 12,766 passed
+  and 3 skipped; the 61 timing and memory tests alone; the integration suite green in CI; `Remote corpus` run 128 green
+  over all 242 on its code. Before it, 12,589 unit on [#394]'s branch at `797ca09`, with 235 of the 242 remote documents
+  fetched, 12,586 passed and 3 skipped; the 60 timing and memory tests alone; the integration suite green in CI;
+  `Remote corpus` run 125 green over all 242. Before it, 12,363 unit on [#386]'s branch at `c935daf`, with 235 of the 242 remote documents fetched, 12,360 passed
   and 3 skipped; the 58 timing and memory tests alone; the integration suite green in CI; `Remote corpus` run 123 green
   over all 242. Before it, 12,214 unit on [#384]'s branch at `7aa8ac7`, with 235 of the 242 remote documents fetched — the container
   reached neither web.archive.org nor a GitHub release for the other seven —, 12,211 passed and 3 skipped; the 54 timing
@@ -88,8 +90,14 @@ Tracking workflow mirrors from `docs/roadmap.md` (*Debt and open points*, below)
   container at `26ce787`, run class by class, 3,754 passed and 6 skipped where qpdf cannot walk a damaged document's
   pages; and `Remote corpus` run 109's 11,155 acceptance tests and 3,760 referee checks, on the library code
   [#344] ends with.
-- **Coverage**: on [#394]'s branch, as Codecov reports it, every modified and coverable line of the patch covered; two
-  branches no input takes stay partial, `StartsLine`'s empty read and `FindLengthHeader`'s window check. Before it, on
+- **Coverage**: on [#398]'s branch at `d95e0f0`, counted from the unit suite's report by Codecov's rule, 98.21 % of the
+  patch: its 446 coverable lines covered, eight partial on a branch no input takes, each traced through its callers — the
+  three `?.` of `ForgetObject` on sets a rebuild has let go of before it runs, the second reading's `??=` on an exception
+  its first reading always keeps, the `-1` arm of the walk guard's report for an object the index holds as a regular
+  entry, the walk guard's exception tested in the kept-throws check that never holds one, the parser's arm without a
+  stream-data provider, and the orphaned-page rule's `?.` on a chain index never null. Codecov had reported 97.98 % at
+  `b378761`, with a ninth partial line that a test now takes. Before it, on [#394]'s branch, as Codecov reports it,
+  every modified and coverable line of the patch covered; two branches no input takes stay partial, `StartsLine`'s empty read and `FindLengthHeader`'s window check. Before it, on
   [#386]'s branch at `c935daf`, as Codecov reports it, 99.53 % of the patch, one line partial: the arm
   of `RowLexer.CommentEnd` that keeps the last comment's end, which no input takes, a second agent agreeing in the
   mutation step. Before it, on [#384]'s branch, as Codecov reports it, every modified and coverable line of the patch
@@ -487,6 +495,21 @@ against 640 to 713 ms and 108 MB (`ObjectStreamDependencyBenchmarks`, ShortRun, 
 benchmark run on `main`). The rebuild's scan for trailers past 12,000 keywords that share long comments takes 211 to 220
 ms over a reference or a null and 408 to 447 ms over a dictionary, against 258 to 288 ms and 473 to 475 ms on `main`
 (`TrailerScanBenchmarks`, a medium job, twice, alternated).
+
+Batch 25's first pull request ([#398]) takes [#296]'s waste off a wrong `/Length` read from a file, and leaves the rest
+where `main` has it (`StreamLengthBenchmarks`, a medium job, `main` and the branch alternated four times, one process at a
+time). A thousand pages whose `/Length` is 2 bytes too long read from a file in 6.23 to 6.62 ms at 4 KB, against 6.72 to
+7.04 on `main`, and in 9.57 to 10.29 ms at 16 KB, against 9.63 to 10.80; from memory, where the read [#296] (b) saves
+cost about 10 ns, 4.65 to 4.99 ms against 4.76 to 5.16 at 4 KB and 6.75 to 7.26 against 6.51 to 7.05 at 16 KB. They
+allocate what they did, 2.69 and 2.70 MB to the benchmark's precision: [#241] had paid the boxed `long?`. Sound lengths
+stay within the runs' spread, sixteen kilobytes from memory 2.93 to 3.22 ms against 2.81 to 3.04 — the first two pairs
+about 11 % apart, the last two within the spread, and the branch's head timed in one harness with `main`, 2.99 and 2.95
+ms against 3.05 and 2.78. Reading every member of an object stream, parsing, the search for a lost `endstream` and
+validating stay within the runs' spread (`ObjectStreamMemberBenchmarks`, `ParserBenchmarks` and
+`StreamEndSearchBenchmarks` twice, `ValidationBenchmarks` three times, alternated): opening and validating a thousand
+pages 6.03 to 6.28 ms against 6.16 to 6.76, the rules alone 2.63 to 2.68 against 2.59 to 3.10. Opening a document
+allocates about 200 bytes more, the reader's new fields and its set of the streams reported short, which every row that
+opens one shows; parsing allocates what it did.
 
 Batch 33's second pull request ([#394]) leaves the rebuild's scan, the memo's and the search for a lost `endstream`
 where `main` has them, allocations equal (`ObjectScanBenchmarks`, `StreamEndSearchBenchmarks` and
