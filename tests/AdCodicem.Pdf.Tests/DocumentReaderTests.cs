@@ -3311,16 +3311,18 @@ public class DocumentReaderTests
         document.Reader.Structure.Sections[^1].CutByLimit.Should().BeTrue();
     }
 
-    [Fact]
-    public void A_deferred_length_s_data_whose_rows_a_guard_on_decoding_holds_all_of_reports_its_filters_ends()
+    [Theory]
+    [InlineData("\n")]
+    [InlineData("\r\n")]
+    public void A_deferred_length_s_data_whose_rows_a_guard_on_decoding_holds_all_of_reports_its_filters_ends(string endOfLine)
     {
         // Stream 5's rows and 30 zero bytes, compressed, are written in hexadecimal with no ">", and MaxDecodedStreamLength
         // stops the Flate output past every row the section declares: no row is missing, so nothing would take the data
         // again, and the endstream it was taken to ends it whatever the guard does. Its missing ">" is the file's, as for
-        // the direct twin (#220).
+        // the direct twin (#220). The carriage return a length leaves out is not decoded again past the guard (#288).
         var options = new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxDecodedStreamLength = 50 } };
-        using var direct = PdfDocument.Open(ChainFiles.UpdateOverHexRows(deferred: false, compressed: true, padding: 30), options);
-        using var deferred = PdfDocument.Open(ChainFiles.UpdateOverHexRows(deferred: true, compressed: true, padding: 30), options);
+        using var direct = PdfDocument.Open(ChainFiles.UpdateOverHexRows(deferred: false, compressed: true, padding: 30, endOfLine), options);
+        using var deferred = PdfDocument.Open(ChainFiles.UpdateOverHexRows(deferred: true, compressed: true, padding: 30, endOfLine), options);
 
         direct.Diagnostics.Should().Contain(entry => entry.Message.StartsWith("An ASCIIHex stream ends without its > end marker", StringComparison.Ordinal));
         deferred.Diagnostics.Select(entry => entry.Message).Should().Equal(direct.Diagnostics.Select(entry => entry.Message));

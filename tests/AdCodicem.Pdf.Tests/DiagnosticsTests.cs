@@ -99,6 +99,51 @@ public class DiagnosticsTests
     }
 
     [Fact]
+    public void Withdrawing_a_decoding_s_reports_takes_out_one_copy_of_each_a_decoding_moved_in_that_the_diagnostics_still_hold()
+    {
+        // A decoding moved in "one" and two copies of "two"; another, "gone", which a rollback to a mark that records no
+        // decoding reports dropped and holds as moved in still; "outside" was reported apart from any decoding. Withdrawn:
+        // one copy of "one" and of "two", which a decoding that meets them again moves in again; "gone" and "outside" stay as
+        // they were, and "never", which nothing holds, changes nothing (#288).
+        var target = new PdfDiagnostics();
+        var decodings = target.Decodings;
+        var first = decodings.GetMark();
+        decodings.Warn(PdfDiagnosticCodes.FilterFailed, "one", 5);
+        decodings.Repair(PdfDiagnosticCodes.FilterFailed, "two", 5);
+        decodings.Repair(PdfDiagnosticCodes.FilterFailed, "two", 5);
+        decodings.MoveDecodingReportsTo(target, first);
+        var mark = target.GetMark();
+        var dropped = decodings.GetMark();
+        decodings.Warn(PdfDiagnosticCodes.FilterFailed, "gone", 5);
+        decodings.MoveDecodingReportsTo(target, dropped);
+        target.RollBack(mark);
+        target.Warn(PdfDiagnosticCodes.FilterFailed, "outside", 5);
+        var reports = new PdfDiagnostics();
+        reports.Warn(PdfDiagnosticCodes.FilterFailed, "one", 5);
+        reports.Repair(PdfDiagnosticCodes.FilterFailed, "two", 5);
+        reports.Warn(PdfDiagnosticCodes.FilterFailed, "gone", 5);
+        reports.Warn(PdfDiagnosticCodes.FilterFailed, "outside", 5);
+        reports.Warn(PdfDiagnosticCodes.FilterFailed, "never", 5);
+
+        target.WithdrawDecodingReports(reports);
+
+        target.Select(d => d.Message).Should().Equal("two", "outside");
+        var again = decodings.GetMark();
+        decodings.Warn(PdfDiagnosticCodes.FilterFailed, "one", 5);
+        decodings.Repair(PdfDiagnosticCodes.FilterFailed, "two", 5);
+        decodings.Repair(PdfDiagnosticCodes.FilterFailed, "two", 5);
+        decodings.Warn(PdfDiagnosticCodes.FilterFailed, "gone", 5);
+        decodings.MoveDecodingReportsTo(target, again);
+        target.Select(d => d.Message).Should().Equal("two", "outside", "one", "two");
+
+        // Diagnostics no decoding moved anything into have nothing to withdraw.
+        var apart = new PdfDiagnostics();
+        apart.Warn(PdfDiagnosticCodes.FilterFailed, "one", 5);
+        apart.WithdrawDecodingReports(reports);
+        apart.Select(d => d.Message).Should().Equal("one");
+    }
+
+    [Fact]
     public void A_report_a_decoding_moved_in_before_takes_no_room_once_the_diagnostics_are_full_and_a_guard_stays_counted()
     {
         var target = new PdfDiagnostics { Capacity = 1 };
