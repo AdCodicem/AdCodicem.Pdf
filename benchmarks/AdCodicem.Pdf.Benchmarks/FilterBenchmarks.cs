@@ -7,8 +7,8 @@ using BenchmarkDotNet.Attributes;
 namespace AdCodicem.Pdf.Benchmarks;
 
 /// <summary>
-/// Measures what decoding a Flate content stream costs, whole, cut short, and damaged; and what a chain of two filters
-/// costs, its parameters read before its data.
+/// Measures what decoding a Flate content stream costs, whole, cut short, and damaged; what a chain of two filters
+/// costs, its parameters read before its data; and what a predictor costs after Flate.
 /// </summary>
 /// <remarks>
 /// A whole stream is what nearly every document holds, and noticing a lost tail or a fault must cost it nothing. A
@@ -16,7 +16,9 @@ namespace AdCodicem.Pdf.Benchmarks;
 /// data: that costs time on damaged streams only, and should cost no memory beyond the inflater's own. A stream
 /// whose checksum is wrong, or that turns corrupt, is read again after the fault to keep what the reading that met
 /// it lost: its body as raw deflate, then — for a corrupt one — once more, one byte at a time through the input the
-/// fault was met in. Three readings at most, into the same output, on damaged streams only.
+/// fault was met in. Three readings at most, into the same output, on damaged streams only. The predictors are PNG's on
+/// rows of five bytes, each taking the row above, as a cross-reference stream gives them; and TIFF's on rows of
+/// 1,024 RGB pixels of eight bits, each sample taking the one before.
 /// </remarks>
 [MemoryDiagnoser]
 public class FilterBenchmarks
@@ -24,12 +26,20 @@ public class FilterBenchmarks
     /// <summary>The first byte of a last block of the type deflate reserves, and defines no data for: BFINAL 1, BTYPE 3.</summary>
     private const byte UndefinedBlock = 0x07;
 
+    /// <summary>A cross-reference stream's row as producers write it: <c>/W [1 3 1]</c>.</summary>
+    private const int CrossReferenceRow = 5;
+
+    /// <summary>A TIFF-predicted row's length: 1,024 pixels of three eight-bit samples.</summary>
+    private const int TiffRow = 3 * 1024;
+
     private PdfStream _whole = null!;
     private PdfStream _withoutChecksum = null!;
     private PdfStream _withoutTail = null!;
     private PdfStream _wrongChecksum = null!;
     private PdfStream _corrupt = null!;
     private PdfStream _chain = null!;
+    private PdfStream _pngRows = null!;
+    private PdfStream _tiffSamples = null!;
 
     [Params(64 * 1024, 4 * 1024 * 1024)]
     public int DecodedLength { get; set; }
@@ -56,6 +66,9 @@ public class FilterBenchmarks
         parameters.Set(PdfName.Predictor, PdfInteger.Create(1));
         chain.Set(PdfName.DecodeParms, new PdfArray([PdfNull.Instance, parameters]));
         _chain = new PdfStream(chain, PdfStreamData.FromMemory(Ascii85(compressed)));
+
+        _pngRows = PredictedStream(PngPredicted(DecodedLength / CrossReferenceRow), predictor: 12, colors: 1, columns: CrossReferenceRow);
+        _tiffSamples = PredictedStream(TiffPredicted(DecodedLength / TiffRow), predictor: 2, colors: 3, columns: TiffRow / 3);
     }
 
     [Benchmark(Baseline = true, Description = "Decode a whole Flate stream")]
@@ -75,6 +88,12 @@ public class FilterBenchmarks
 
     [Benchmark(Description = "Decode a chain of ASCII85 and Flate")]
     public int Chain() => _chain.Decode(new PdfDiagnostics()).Length;
+
+    [Benchmark(Description = "Decode Flate rows a PNG predictor took")]
+    public int PngRows() => _pngRows.Decode(new PdfDiagnostics()).Length;
+
+    [Benchmark(Description = "Decode Flate samples a TIFF predictor took")]
+    public int TiffSamples() => _tiffSamples.Decode(new PdfDiagnostics()).Length;
 
     private static byte[] Ascii85(byte[] data)
     {
@@ -109,6 +128,72 @@ public class FilterBenchmarks
         var dictionary = new PdfDictionary();
         dictionary.Set(PdfName.Filter, PdfName.FlateDecode);
         return new PdfStream(dictionary, PdfStreamData.FromMemory(data));
+    }
+
+    private static PdfStream PredictedStream(byte[] predicted, int predictor, int colors, int columns)
+    {
+        var parameters = new PdfDictionary();
+        parameters.Set(PdfName.Predictor, PdfInteger.Create(predictor));
+        parameters.Set(PdfName.Colors, PdfInteger.Create(colors));
+        parameters.Set(PdfName.Columns, PdfInteger.Create(columns));
+        var dictionary = new PdfDictionary();
+        dictionary.Set(PdfName.Filter, PdfName.FlateDecode);
+        dictionary.Set(PdfName.DecodeParms, parameters);
+        return new PdfStream(dictionary, PdfStreamData.FromMemory(Compress(predicted)));
+    }
+
+    /// <summary>
+    /// Rows of a cross-reference stream — type 1, an offset 200 bytes past the last, generation 0 — each tagged with
+    /// PNG's Up filter and written as its difference from the row above.
+    /// </summary>
+    private static byte[] PngPredicted(int rows)
+    {
+        var predicted = new byte[rows * (CrossReferenceRow + 1)];
+        Span<byte> above = stackalloc byte[CrossReferenceRow];
+        Span<byte> row = stackalloc byte[CrossReferenceRow];
+        above.Clear();
+
+        for (var index = 0; index < rows; index++)
+        {
+            var offset = 15 + (index * 200);
+            row[0] = 1;
+            row[1] = (byte)(offset >> 16);
+            row[2] = (byte)(offset >> 8);
+            row[3] = (byte)offset;
+            row[4] = 0;
+
+            var start = index * (CrossReferenceRow + 1);
+            predicted[start] = 2;
+
+            for (var i = 0; i < CrossReferenceRow; i++)
+            {
+                predicted[start + 1 + i] = (byte)(row[i] - above[i]);
+            }
+
+            row.CopyTo(above);
+        }
+
+        return predicted;
+    }
+
+    /// <summary>Rows of a smooth RGB gradient, each sample written as its difference from the sample of its color before it.</summary>
+    private static byte[] TiffPredicted(int rows)
+    {
+        var predicted = new byte[rows * TiffRow];
+
+        for (var index = 0; index < rows; index++)
+        {
+            var start = index * TiffRow;
+
+            for (var i = 0; i < TiffRow; i++)
+            {
+                var sample = (byte)((index + (i / 3) + (i % 3 * 85)) & 0xFF);
+                var before = i < 3 ? (byte)0 : (byte)((index + ((i - 3) / 3) + (i % 3 * 85)) & 0xFF);
+                predicted[start + i] = (byte)(sample - before);
+            }
+        }
+
+        return predicted;
     }
 
     private static byte[] ContentStream(int length)
