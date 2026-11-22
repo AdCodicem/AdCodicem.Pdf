@@ -3262,6 +3262,62 @@ public class DocumentReaderTests
     }
 
     [Fact]
+    public void A_deferred_length_s_data_MaxStreamLength_cuts_past_every_row_is_read_once_though_its_length_leaves_out_its_carriage_return()
+    {
+        // Stream 5's rows, 42 bytes, are followed by a carriage return and a line feed before its endstream; its /Length
+        // names object 4, which its own row places and which gives 42. The chain took 43 bytes, the carriage return kept,
+        // and MaxStreamLength cut them at 42, past every row. Once the length is read, the data is not decoded again without
+        // the carriage return: what data a guard cut holds is the guard's, and its bytes are read once, by the chain (#288).
+        var file = ChainFiles.AloneWithIndirectLength(endOfLine: "\r\n");
+        var dataStart = Encoding.Latin1.GetString(file).IndexOf("stream\n", StringComparison.Ordinal) + "stream\n".Length;
+        using var source = new OffsetCountingSource(file);
+        using var document = PdfDocument.Open(
+            source, new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxStreamLength = 42 } }, ownsSource: false);
+
+        document.Diagnostics.Select(entry => entry.Code).Should().Equal(PdfDiagnosticCodes.LimitStreamLength);
+        source.Reads.GetValueOrDefault(dataStart).Should().Be(1, "the data a guard cut is decoded once");
+    }
+
+    [Fact]
+    public void A_deferred_length_s_object_is_read_once_where_the_data_holds_every_row_and_ends_in_no_carriage_return()
+    {
+        // Stream 5's /Length names object 4, which its own row places; its data holds every row the section declares and
+        // ends in a zero, no carriage return an end-of-line would have kept. The data is not taken again to the length:
+        // object 4 is read once, when the length is checked once the chain is read (#288). A load starts reading on the
+        // end-of-line before an object, which the count takes in.
+        var file = ChainFiles.AloneWithIndirectLength();
+        var text = Encoding.Latin1.GetString(file);
+        var four = text.IndexOf("4 0 obj", StringComparison.Ordinal);
+        var end = text.IndexOf("endobj", four, StringComparison.Ordinal);
+        using var source = new OffsetCountingSource(file);
+        using var document = PdfDocument.Open(source, new PdfReaderOptions(), ownsSource: false);
+
+        document.Diagnostics.Should().BeEmpty();
+        source.Reads.Where(read => read.Key >= four - 1 && read.Key < end).Sum(read => read.Value).Should().Be(1);
+    }
+
+    [Fact]
+    public void A_deferred_length_s_empty_data_is_checked_for_a_carriage_return_without_a_read_before_it()
+    {
+        // Stream 5 declares no row, /Size 0, and its data is empty: its endstream follows the line feed that ends its stream
+        // keyword. Its /Length names object 9, which nothing places. Whether data that holds every row ends in a carriage
+        // return the end-of-line kept is asked of its last byte, which empty data has none of: the line feed before it, the
+        // keyword's end-of-line, is not read for it (#288).
+        var text = new StringBuilder("%PDF-1.5\n%ab\n");
+        text.Append("1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n");
+        text.Append("2 0 obj\n<< /Type /Pages /Kids [] /Count 0 >>\nendobj\n");
+        var five = text.Length;
+        text.Append("5 0 obj\n<< /Type /XRef /Size 0 /W [1 4 2] /Root 1 0 R /Length 9 0 R >>\nstream\n");
+        var dataStart = text.Length;
+        text.Append(CultureInfo.InvariantCulture, $"endstream\nendobj\nstartxref\n{five}\n%%EOF\n");
+        using var source = new OffsetCountingSource(Encoding.ASCII.GetBytes(text.ToString()));
+        using var document = PdfDocument.Open(source, new PdfReaderOptions(), ownsSource: false);
+
+        document.Diagnostics.Select(entry => entry.Code).Should().Equal(PdfDiagnosticCodes.XRefRebuilt, PdfDiagnosticCodes.StreamLengthInvalid);
+        source.Reads.Should().NotContainKey(dataStart - 1);
+    }
+
+    [Fact]
     public void A_deferred_length_s_data_whose_last_digit_alone_crosses_MaxDecodedStreamLength_is_cut_as_its_direct_twin_s()
     {
         // Stream 5's hexadecimal rows spell an endstream after the digits of 14 bytes and one more, where the deferred search
