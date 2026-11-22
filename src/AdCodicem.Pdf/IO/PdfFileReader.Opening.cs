@@ -79,9 +79,12 @@ internal sealed partial class PdfFileReader
     /// copied (<see cref="PreserveChainIndex"/>). A length the <c>endstream</c> the chain stopped at confirms — the white
     /// space before it counted, or not all of it — is the stream's own, as the parser takes it for any stream, and says
     /// nothing; so is one the data was taken again to, the section's own row placing it (<see cref="RetakeDeferred"/>).
-    /// One confirmed by an <c>endstream</c> past it gives data the chain did not read, rows included — the section's row
-    /// for the <c>/Length</c> among them, or one that does not stand —: they are not read again, and the report says so.
-    /// The stream is not parsed again, and each is reported once.
+    /// One that leaves out the carriage return the data the chain took ends in makes that byte the end-of-line's: what
+    /// decoding the data reported is made again without it (<see cref="DecodeAgainWithoutCarriageReturn"/>), the rows read
+    /// with it standing, but for data a guard cut, or whose end it hides, whose end is the guard's (#288). One confirmed by
+    /// an <c>endstream</c> past it gives data the chain did not read, rows included — the section's row for the
+    /// <c>/Length</c> among them, or one that does not stand —: they are not read again, and the report says so. The stream
+    /// is not parsed again, and each is reported once.
     /// </remarks>
     private void CheckDeferredLengths()
     {
@@ -122,6 +125,10 @@ internal sealed partial class PdfFileReader
                     CultureInfo.InvariantCulture,
                     $"The /Length of cross-reference stream {deferred.Stream} names object {number} {generation}, {held}; the chain took its data up to its endstream, after {CountText.Bytes(deferred.Taken)}.");
             }
+            else if (LeavesOutCarriageReturn(dataStart, deferred.Taken, length) && deferred.Read.Data is { CutByGuard: false, EndHidden: false })
+            {
+                DecodeAgainWithoutCarriageReturn(deferred.Read, (int)length);
+            }
             else if (length != deferred.Taken)
             {
                 var stopped = EndStreamAfter(dataStart + deferred.Taken);
@@ -143,6 +150,31 @@ internal sealed partial class PdfFileReader
                 _diagnostics.Warn(PdfDiagnosticCodes.StreamLengthInvalid, message, dataStart);
             }
         }
+    }
+
+    /// <summary>
+    /// Decodes again, at the <paramref name="length"/> its <c>/Length</c> gives, the data of cross-reference stream
+    /// <paramref name="taken"/>, which the chain took with the carriage return before its <c>endstream</c>, a row's last byte
+    /// being one (#220): what decoding the data with that byte reported is withdrawn from the document's diagnostics, and
+    /// what decoding it without that byte reports is added, as for the stream's direct twin (#288). The diagnostics are not
+    /// handed out yet, the document opening (<see cref="PdfDiagnostics.WithdrawDecodingReports"/>). Data whose decoding
+    /// reaches a guard is left as decoded: what it holds is the guard's.
+    /// </summary>
+    private void DecodeAgainWithoutCarriageReturn(PdfStream taken, int length)
+    {
+        // The decoding the chain made is made again apart, to know what it reported: the reports are the document's to hold
+        // once each, whatever the data the stream was decoded from, and only their messages tell them apart (#144).
+        var first = new PdfDiagnostics { Capacity = int.MaxValue };
+        _ = Filters.PdfFilterPipeline.Decode(taken, first);
+
+        if (first.LimitsReached > 0)
+        {
+            return;
+        }
+
+        _diagnostics.WithdrawDecodingReports(first);
+        var data = ((IPdfStreamDataProvider)this).Create(taken.Data.Position, length);
+        _ = Filters.PdfFilterPipeline.Decode(new PdfStream(taken.Dictionary, data), _diagnostics);
     }
 
     /// <summary>
@@ -199,10 +231,14 @@ internal sealed partial class PdfFileReader
     }
 
     /// <summary>
-    /// A cross-reference stream's <c>/Length</c> the chain could not read: the object it names, how many bytes of data the
-    /// chain took, and the stream's own number.
+    /// A cross-reference stream's <c>/Length</c> the chain could not read: the object it names, the stream as the chain read
+    /// it, its data taken up to an <c>endstream</c>, and the stream's own number.
     /// </summary>
-    private readonly record struct DeferredLength(PdfObjectId Length, int Taken, int Stream);
+    private readonly record struct DeferredLength(PdfObjectId Length, PdfStream Read, int Stream)
+    {
+        /// <summary>Gets how many bytes of data the chain took.</summary>
+        public int Taken => Read.Data.Length;
+    }
 
     /// <summary>
     /// Looks for the catalog among the objects the chain indexed, the trailer's <c>/Root</c> leading to none, and

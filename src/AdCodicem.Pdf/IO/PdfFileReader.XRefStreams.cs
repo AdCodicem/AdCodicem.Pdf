@@ -42,7 +42,9 @@ internal sealed partial class PdfFileReader
     /// carriage return its last row ends in (#220). With none there, the data ends nowhere the section says, and the
     /// section is malformed. Rows that spell an <c>endstream</c> are told from the data's end by the section's own row for
     /// the <c>/Length</c>, when it lies before them: the data is taken again to the length the object it places gives,
-    /// where an <c>endstream</c> confirms it (<see cref="RetakeDeferred"/>). <see cref="PdfReaderLimits.MaxTrailerLength"/>
+    /// where an <c>endstream</c> confirms it (<see cref="RetakeDeferred"/>). So is data that ends in a carriage return, to a
+    /// length that leaves it out, which makes it the end-of-line's: its rows are read, and its filters' reports made, as
+    /// for its direct twin (#288). <see cref="PdfReaderLimits.MaxTrailerLength"/>
     /// bounds the dictionary alone, read from the object's header, and, apart, the white space before it, which the offset
     /// falls short by (<see cref="PaddingAt"/>).
     /// </para>
@@ -239,7 +241,7 @@ internal sealed partial class PdfFileReader
         // it among them. So is one a chain of references from it leads to, or a guard cut, which the check then passes over.
         var deferred = dictionary.GetRaw(PdfName.Length) is PdfReference length && ReadThroughWithoutLoading(length.Id) is null &&
             !section.CutByLimit
-            ? new DeferredLength(length.Id, xrefStream.Data.Length, number)
+            ? new DeferredLength(length.Id, xrefStream, number)
             : (DeferredLength?)null;
 
         // Data a search found no endstream for, before the next object the sections read so far place or the end of the
@@ -518,11 +520,24 @@ internal sealed partial class PdfFileReader
             // Fewer rows than the section declares, in data a /Length the chain could not read left to the first endstream:
             // where the section's own row for that /Length, among those held, gives more data, which an endstream confirms,
             // the rows spelled an endstream, and the data is taken again to that length (#220). Data that holds no row whole
-            // is asked too: a newer section may place the object, which a guard cut.
-            if (!retaken && !endHidden && deferred is { } unsettled && declared > held && decodedWhole)
+            // is asked too: a newer section may place the object, which a guard cut. So is data that ends in the carriage
+            // return the chain kept, whatever rows it holds: a length the file gave that leaves it out makes it the
+            // end-of-line's, not a row's last byte, and the data is taken again to that length, its rows read and its
+            // filters' reports made without it, as for its direct twin (#288).
+            if (!retaken && !endHidden && deferred is { } unsettled && decodedWhole && (declared > held || EndsInCarriageReturn(xrefStream)))
             {
                 long[] ranges = index is null ? [0, declared] : subsections;
-                var whole = RetakeDeferred(xrefStream, unsettled, data, fieldWidths, row, held, ranges, out lengthCut, out var numbered);
+                var whole = RetakeDeferred(xrefStream, unsettled, data, fieldWidths, row, held, ranges, out var cutLength, out var numbered);
+
+                // Data that holds every row the section declares is taken again only to leave the carriage return out: a
+                // length past it is checked once the chain is read (CheckDeferredLengths), as when no carriage return ends
+                // the data, and a guard's cut of it leaves the data as taken, its rows the file's.
+                if (declared <= held && whole?.Data.Length > unsettled.Taken)
+                {
+                    whole = null;
+                }
+
+                lengthCut = cutLength && declared > held;
 
                 // The row for the /Length may lie in the first predicted row, which the spelled endstream parts, and which the
                 // data decoded as data whose end the file gives left as decoded, the row longer than the data (#162): the
@@ -530,7 +545,7 @@ internal sealed partial class PdfFileReader
                 // whole. What that decoding reports is dropped with it, but for a guard on decoding it reached,
                 // which the whole data, holding at least as much, reaches too: where it found no row for the /Length, where
                 // the rows end is the guard's, as where the decoding before reached it.
-                if (whole is null && numbered && row > 0)
+                if (whole is null && numbered && row > 0 && declared > held)
                 {
                     var again = _diagnostics.GetMarkWithDecodingReports();
                     var undone = Filters.PdfFilterPipeline.Decode(
@@ -557,7 +572,7 @@ internal sealed partial class PdfFileReader
                 {
                     _diagnostics.RollBack(decoding);
                     xrefStream = whole;
-                    deferred = unsettled with { Taken = whole.Data.Length };
+                    deferred = unsettled with { Read = whole };
                     retaken = true;
                     continue;
                 }
@@ -799,8 +814,10 @@ internal sealed partial class PdfFileReader
     /// gives, which the chain could not read and took the data up to the first <c>endstream</c> for, when the rows
     /// <paramref name="data"/> holds show that <c>endstream</c> was in the rows (#220): the section's own row for the object
     /// the <c>/Length</c> names, among those held, places it, and the length it gives runs past the data taken, to an
-    /// <c>endstream</c> that confirms it. Null otherwise: the length is checked once the chain is read — and a subsection
-    /// numbers the object, its row past those held or not standing, where <paramref name="numbered"/> says so.
+    /// <c>endstream</c> that confirms it — or, for a length the file gave, leaves out the carriage return the data ends in,
+    /// which the chain kept for a row's last byte and the length makes the end-of-line's (#288). Null otherwise: the length
+    /// is checked once the chain is read — and a subsection numbers the object, its row past those held or not standing,
+    /// where <paramref name="numbered"/> says so.
     /// </summary>
     /// <remarks>
     /// The section's row for the object is the first that numbers it, whatever its type, as the reading of its rows takes
@@ -888,22 +905,47 @@ internal sealed partial class PdfFileReader
 
         // Data taken again to an integer a guard's cut left is no length the file gave: rows it still lacks are the guard's.
         lengthCut = pastGuard;
-        return TakeAgain(stream, deferred, value);
+        return TakeAgain(stream, deferred, value, pastGuard);
     }
 
     /// <summary>
     /// Gives cross-reference stream <paramref name="stream"/> with its data taken again to the length
-    /// <paramref name="value"/>, an integer, gives, when it gives more than the data taken and an <c>endstream</c> confirms
-    /// it; null otherwise.
+    /// <paramref name="value"/>, an integer, gives, when it gives more than the data taken, or, but for an integer a guard's
+    /// cut left (<paramref name="cut"/>), leaves out the carriage return the data taken ends in (#288), and an
+    /// <c>endstream</c> confirms it; null otherwise.
     /// </summary>
-    private PdfStream? TakeAgain(PdfStream stream, DeferredLength deferred, PdfObject value)
+    private PdfStream? TakeAgain(PdfStream stream, DeferredLength deferred, PdfObject value, bool cut)
     {
         var dataStart = stream.Data.Position;
 
-        return value.AsInteger() is { } length && length > deferred.Taken && length <= int.MaxValue &&
-            length <= _source.Length - dataStart && ((IPdfStreamDataProvider)this).CheckEndStream(dataStart + length) is not null
+        return value.AsInteger() is { } length &&
+            (length > deferred.Taken || (!cut && LeavesOutCarriageReturn(dataStart, deferred.Taken, length))) &&
+            length <= int.MaxValue && length <= _source.Length - dataStart &&
+            ((IPdfStreamDataProvider)this).CheckEndStream(dataStart + length) is not null
             ? new PdfStream(stream.Dictionary, ((IPdfStreamDataProvider)this).Create(dataStart, (int)length))
             : null;
+    }
+
+    /// <summary>
+    /// Determines whether the data of <paramref name="stream"/> ends in a carriage return, which the chain keeps of the
+    /// end-of-line before the <c>endstream</c> a deferred length's data was taken up to, a row's last byte being one (#220).
+    /// The byte is read alone, from the file.
+    /// </summary>
+    private bool EndsInCarriageReturn(PdfStream stream)
+    {
+        Span<byte> last = stackalloc byte[1];
+        return stream.Data.Length > 0 && _source.Read(stream.Data.Position + stream.Data.Length - 1, last) == 1 && last[0] == (byte)'\r';
+    }
+
+    /// <summary>
+    /// Determines whether a <paramref name="length"/> one byte short of the <paramref name="taken"/> bytes of data starting at
+    /// <paramref name="dataStart"/> leaves out the carriage return they end in: the end-of-line's, then, not a row's last
+    /// byte (#288). The byte is read alone, from the file.
+    /// </summary>
+    private bool LeavesOutCarriageReturn(long dataStart, int taken, long length)
+    {
+        Span<byte> last = stackalloc byte[1];
+        return length == taken - 1L && length >= 0 && _source.Read(dataStart + length, last) == 1 && last[0] == (byte)'\r';
     }
 
     /// <summary>
@@ -945,7 +987,7 @@ internal sealed partial class PdfFileReader
             }
         }
 
-        return value is null ? null : TakeAgain(stream, deferred, value);
+        return value is null ? null : TakeAgain(stream, deferred, value, lengthCut);
     }
 
     /// <summary>

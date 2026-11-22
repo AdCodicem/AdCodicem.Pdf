@@ -381,8 +381,13 @@ public static class PdfDiagnosticCodes
     /// zlib header or checksum, an end marker missing after a whole unit or ending on a <c>~</c>, or the <c>&lt;~</c>
     /// PostScript writes, is reported as a repair. The message says which; for a Flate stream turned corrupt, a byte that
     /// encodes nothing, an ASCII85 group past four bytes and a <c>~</c> something other than <c>&gt;</c> follows, it says at
-    /// which byte of the filter's data the first lies. A cross-reference stream whose Flate data is so left, corrupt before
-    /// its first byte decodes, holds no rows: the section cannot be read (#221). A predictor's data is the filter's too,
+    /// which byte of the filter's data the first lies, and how many bytes that data holds. It gives no length for data whose
+    /// end is a guard's — data the reader cut at one of its limits, or whose end a guard hides, or that a filter before
+    /// stopped at <see cref="Documents.PdfReaderLimits.MaxDecodedStreamLength"/> —, whose faults it counts in the part of
+    /// the data read, as it says, nor for data the filter itself stopped decoding at that bound, whose faults it counts
+    /// before decoding stopped, as it says too: such a report reads the same however much of the data was taken, and the
+    /// document holds it once (#283). A cross-reference stream whose Flate data is so left, corrupt before its first byte
+    /// decodes, holds no rows: the section cannot be read (#221). A predictor's data is the filter's too,
     /// each fault a warning: rows its parameters describe longer than the data, which is left as the filter decoded it;
     /// PNG rows that name a filter type past 4, which PNG does not define, each read as unfiltered, as MuPDF, qpdf and
     /// PDFium read it, the first and how many in the message; and a last row the data holds in part, kept and undone as

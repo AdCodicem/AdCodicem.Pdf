@@ -392,6 +392,43 @@ public sealed class PdfDiagnostics : IReadOnlyList<PdfDiagnostic>
     }
 
     /// <summary>
+    /// Withdraws one copy of each entry <paramref name="reports"/> holds that a decoding moved into this instance and that
+    /// it still holds: the reports of a decoding of a stream's data that a decoding of the same stream at another length
+    /// replaces (#288). Called only as a document opens, before its diagnostics are handed out: an entry withdrawn moves
+    /// those recorded after it, which no enumeration may see (#167). A report a rollback dropped, which this instance holds
+    /// as moved in still by design (<see cref="GetMark"/>), is not there to withdraw, and stays held, a decoding that meets
+    /// it again adding none; a report the capacity left out stays counted, and its code noted.
+    /// </summary>
+    internal void WithdrawDecodingReports(PdfDiagnostics reports)
+    {
+        if (_decodingReports is not { } held)
+        {
+            return;
+        }
+
+        foreach (var entry in reports._entries)
+        {
+            var at = _entries.LastIndexOf(entry);
+
+            if (at < 0 || !held.TryGetValue(entry, out var copies))
+            {
+                continue;
+            }
+
+            if (copies == 1)
+            {
+                held.Remove(entry);
+            }
+            else
+            {
+                held[entry] = copies - 1;
+            }
+
+            _entries.RemoveAt(at);
+        }
+    }
+
+    /// <summary>
     /// Determines whether an entry whose code starts with <paramref name="prefix"/> was dropped since
     /// <paramref name="mark"/>, on an instance kept in another, whose note holds past each open mark every pair dropped since
     /// it (<see cref="_droppedFrom"/>).

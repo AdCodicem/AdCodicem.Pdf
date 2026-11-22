@@ -3084,16 +3084,18 @@ public class DocumentReaderTests
     }
 
     [Theory]
-    [InlineData(nameof(PdfReaderLimits.MaxFilterChainLength))]
-    [InlineData(nameof(PdfReaderLimits.MaxDecodedStreamLength))]
-    [InlineData(nameof(PdfReaderLimits.MaxStreamLength))]
-    public void A_fault_a_deferred_length_s_data_holds_before_a_guard_stops_it_is_the_file_s_as_for_a_direct_one(string limit)
+    [InlineData(nameof(PdfReaderLimits.MaxFilterChainLength), "An ASCIIHex stream holds a byte that encodes nothing, at byte 1 of its 108; it was passed over.", "An ASCIIHex stream holds a byte that encodes nothing in the part of its data read, at byte 1; it was passed over.")]
+    [InlineData(nameof(PdfReaderLimits.MaxDecodedStreamLength), "An ASCIIHex stream holds a byte that encodes nothing before decoding stopped at the bound, at byte 1; it was passed over.", null)]
+    [InlineData(nameof(PdfReaderLimits.MaxStreamLength), "An ASCIIHex stream holds a byte that encodes nothing in the part of its data read, at byte 1; it was passed over.", null)]
+    public void A_fault_a_deferred_length_s_data_holds_before_a_guard_stops_it_is_the_file_s_as_for_a_direct_one(
+        string limit, string directFault, string? deferredFault)
     {
         // Stream 5's hexadecimal data starts with a stray x, which encodes nothing, and its rows spell no endstream. Read
         // whole, the fault is the file's, whether the /Length names object 4, which only the stream places, or is written
         // direct. Under a guard on decoding, or MaxStreamLength, only the guard's report stood when the /Length waited for
         // the chain: but the fault lies before the guard stops, where the whole data meets it, and only how the data ends is
-        // the guard's to hide (#220).
+        // the guard's to hide (#220). Where MaxFilterChainLength kept the deferred data from being taken again to its
+        // length, its end is the guard's, and the report gives no length, as for data a guard cut (#283).
         var limits = limit switch
         {
             nameof(PdfReaderLimits.MaxFilterChainLength) => PdfReaderLimits.Default with { MaxFilterChainLength = 1 },
@@ -3103,11 +3105,76 @@ public class DocumentReaderTests
         using var direct = PdfDocument.Open(ChainFiles.UpdateOverAStrayHexByte(deferred: false), new PdfReaderOptions { Limits = limits });
         using var deferred = PdfDocument.Open(ChainFiles.UpdateOverAStrayHexByte(deferred: true), new PdfReaderOptions { Limits = limits });
 
-        Faults(direct).Should().ContainSingle().Which.Should().StartWith("An ASCIIHex stream holds a byte that encodes nothing");
-        Faults(deferred).Should().Equal(Faults(direct));
+        Faults(direct).Should().Equal(directFault);
+        Faults(deferred).Should().Equal(deferredFault ?? directFault);
 
         static string[] Faults(PdfDocument document) =>
             [.. document.Diagnostics.Where(entry => entry.Code == PdfDiagnosticCodes.FilterFailed).Select(entry => entry.Message)];
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void A_fault_before_the_bound_in_a_deferred_length_s_data_is_reported_once_however_much_of_it_is_decoded(bool deferred)
+    {
+        // Stream 5's hexadecimal data starts with a stray x; its rows spell an endstream past those of objects 4, 5 and 0,
+        // where the deferred search stops, and MaxDecodedStreamLength stops the hex within the first row. The fault was
+        // reported at opening "of its 43", the data up to the spelled endstream, and again "of its 97" once the stream,
+        // loaded with its length, was decoded: a report that gives no length after the bound reads the same however much of
+        // the data was taken, and the document holds it once (#283, #144).
+        var options = new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxDecodedStreamLength = 14 } };
+        using var document = PdfDocument.Open(ChainFiles.AloneOverAStrayHexByteBeforeASpelledEndStream(deferred), options);
+        var five = document.GetObject(new PdfObjectId(5)).AsStream().Required();
+        five.Decode();
+        five.Decode();
+
+        document.Diagnostics.Where(entry => entry.Code == PdfDiagnosticCodes.FilterFailed).Select(entry => entry.Message).Should().Equal(
+            "An ASCIIHex stream holds a byte that encodes nothing before decoding stopped at the bound, at byte 1; it was passed over.");
+        document.Diagnostics.Count(entry => entry.Code == PdfDiagnosticCodes.LimitDecodedStream).Should().Be(1);
+    }
+
+    [Theory]
+    [InlineData("own row", "\r\n", 1)]
+    [InlineData("own row", "\r\n", 5)]
+    [InlineData("older section", "\r\n", 1)]
+    [InlineData("own row", "\r\n", 2)]
+    [InlineData("own row", "\n", 1)]
+    [InlineData("own row", "\n", 2)]
+    [InlineData("older section", "\r\n", 2)]
+    [InlineData("older section", "\n", 1)]
+    public void A_deferred_length_s_data_is_decoded_without_the_carriage_return_its_length_leaves_out_as_its_direct_twin_s(
+        string placedBy, string endOfLine, int dropped)
+    {
+        // The stream's rows are compressed in a stored block that lacks one or two of its checksum's bytes, or, with five,
+        // the last row's last byte too. Its /Length names an object the stream's own row places, or an older section, and
+        // the chain took the data up to its endstream, the carriage return of an end-of-line kept, as a row's last byte. It
+        // was decoded as data: a byte of the checksum, which then disagreed, or the last row's, object 5 indexed with
+        // generation 13. Once the length is known, the data is decoded without it, as its direct twin's, whose /Length
+        // leaves it out (#288). With a lone line feed, or two bytes dropped, the twins read alike already.
+        var file = placedBy == "own row"
+            ? ChainFiles.AloneWithIndirectLength(compressed: true, dropped: dropped, endOfLine: endOfLine)
+            : ChainFiles.UpdateWithALengthAnOlderSectionPlaces(deferred: true, dropped, endOfLine);
+        var twin = placedBy == "own row"
+            ? ChainFiles.AloneWithIndirectLength(compressed: true, dropped: dropped, endOfLine: endOfLine, direct: true)
+            : ChainFiles.UpdateWithALengthAnOlderSectionPlaces(deferred: false, dropped, endOfLine);
+        var stream = new PdfObjectId(placedBy == "own row" ? 5 : 10);
+        using var document = PdfDocument.Open(file);
+        using var direct = PdfDocument.Open(twin);
+
+        string[] expected = dropped > 4
+            ? ["Warning filter.failed: A Flate stream ends before its data does; what decoded before the end was kept.", "Warning xref.section-unreadable"]
+            : ["Repair filter.failed: A Flate stream ends before its checksum does; its data decoded whole, unchecked."];
+        direct.Diagnostics.Select(entry => entry.Code == PdfDiagnosticCodes.FilterFailed ? $"{entry.Severity} {entry.Code}: {entry.Message}" : $"{entry.Severity} {entry.Code}")
+            .Should().Equal(expected);
+        document.Diagnostics.Should().Equal(direct.Diagnostics);
+        document.Reader.Index.Count.Should().Be(direct.Reader.Index.Count);
+        document.Reader.Index.TryGet(stream.Number, out _).Should().Be(dropped <= 4);
+
+        // Decoded again, the stream reports nothing more.
+        document.GetObject(stream).AsStream().Required().Decode();
+        direct.GetObject(stream).AsStream().Required().Decode();
+        document.Diagnostics.Should().Equal(direct.Diagnostics);
+        document.Diagnostics.Count(entry => entry.Code.StartsWith("filter.", StringComparison.Ordinal)).Should().Be(1);
     }
 
     [Fact]
