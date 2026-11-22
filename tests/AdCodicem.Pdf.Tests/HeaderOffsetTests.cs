@@ -58,7 +58,7 @@ public sealed class HeaderOffsetTests
         var missing = document.Diagnostics.Should().ContainSingle(d => d.Code == PdfDiagnosticCodes.XRefSectionMissing).Which;
         missing.Position.Should().Be(update);
         missing.Message.Should().StartWith(
-            $"The cross-reference section {naming} names at offset {LargestShifted} lies outside the file, which is {file.Length:N0} bytes long;");
+            $"The cross-reference section {naming} names at offset {LargestShifted} lies outside the file, which is {file.Length} bytes long;");
 
         var finding = Single(new PdfValidator().Validate(document), PdfValidationRuleIds.XRefSectionNotFound);
         finding.Location.Position.Should().Be(update);

@@ -678,7 +678,7 @@ internal static class PdfFilterPipeline
                     ? "The /Filter entry names more than 1 filter; decoding stopped after the first."
                     : string.Create(
                         CultureInfo.InvariantCulture,
-                        $"The /Filter entry names more than {chain.EndIndex:N0} filters; decoding stopped after the first {chain.EndIndex:N0}."),
+                        $"The /Filter entry names more than {chain.EndIndex} filters; decoding stopped after the first {chain.EndIndex}."),
                 position);
             return;
         }

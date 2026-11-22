@@ -653,7 +653,7 @@ internal sealed partial class PdfFileReader
                 section.RowsHeld = held;
                 section.Fault = string.Create(
                     CultureInfo.InvariantCulture,
-                    $"it holds {held:N0} {(held == 1 ? "row" : "rows")} where its /Index and /Size declare {declared:N0}");
+                    $"it holds {CountText.Of(held, "row", "rows")} where its /Index and /Size declare {declared}");
             }
             else
             {
@@ -1147,7 +1147,7 @@ internal sealed partial class PdfFileReader
         held = most.Rows;
         return string.Create(
             CultureInfo.InvariantCulture,
-            $"its data, {most.Length:N0} {(most.Length == 1 ? "byte" : "bytes")} decoded, holds at most {most.Rows:N0} of the {declared:N0}{(exact ? string.Empty : " or more")} {(declared == 1 && exact ? "row" : "rows")} its /Index and /Size declare");
+            $"its data, {CountText.Bytes(most.Length)} decoded, holds at most {most.Rows} of the {declared}{(exact ? string.Empty : " or more")} {(declared == 1 && exact ? "row" : "rows")} its /Index and /Size declare");
     }
 
     /// <summary>
@@ -1259,7 +1259,7 @@ internal sealed partial class PdfFileReader
         {
             return string.Create(
                 CultureInfo.InvariantCulture,
-                $"its /Index gives a subsection of {count:N0} rows, more than object numbers 0 to {PdfObjectId.MaxNumber} hold");
+                $"its /Index gives a subsection of {count} rows, more than object numbers 0 to {PdfObjectId.MaxNumber} hold");
         }
 
         return startRead && start is < 0 or > PdfObjectId.MaxNumber
@@ -1623,7 +1623,7 @@ internal sealed partial class PdfFileReader
         return start is < 0 or > PdfObjectId.MaxNumber || count > PdfObjectId.MaxNumber - start + 1
             ? string.Create(
                 CultureInfo.InvariantCulture,
-                $"its /Index gives a subsection of {count:N0} {(count == 1 ? "row" : "rows")} from object {start}, outside object numbers 0 to {PdfObjectId.MaxNumber}")
+                $"its /Index gives a subsection of {CountText.Of(count.Value, "row", "rows")} from object {start}, outside object numbers 0 to {PdfObjectId.MaxNumber}")
             : null;
     }
 

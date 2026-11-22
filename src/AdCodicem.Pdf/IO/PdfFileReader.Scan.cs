@@ -77,7 +77,7 @@ internal sealed partial class PdfFileReader
         _guard.Reach(
             PdfLimit.IndexEntries,
             _diagnostics,
-            $"The scan for objects recorded {CountText.Grouped(_guard.Bound(PdfLimit.IndexEntries), "object header or keyword", "object headers and keywords")}; those past them were not recorded.",
+            $"The scan for objects recorded {CountText.Of(_guard.Bound(PdfLimit.IndexEntries), "object header or keyword", "object headers and keywords")}; those past them were not recorded.",
             memo.FullAt);
         _limitsReached.Add(ScanMemoBoundReported);
 
@@ -490,7 +490,7 @@ internal sealed partial class PdfFileReader
     private string RebuildReadsMessage()
     {
         var passes = _guard.Bound(PdfLimit.RebuildReads);
-        var read = passes == 1 ? "the length of the file" : string.Create(CultureInfo.InvariantCulture, $"{passes:N0} times the length of the file");
+        var read = passes == 1 ? "the length of the file" : string.Create(CultureInfo.InvariantCulture, $"{passes} times the length of the file");
         return $"Past streams' direct lengths, the scan for objects read {read}; the data of each stream it could not confirm after that was read up to its first endstream, the object headers there not taken.";
     }
 

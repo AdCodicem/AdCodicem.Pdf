@@ -6,9 +6,9 @@ using FsCheck.Fluent;
 namespace AdCodicem.Pdf.Tests;
 
 /// <summary>
-/// How a message says how many, and how far (#241): a count agrees with its noun, a count of one included, and a distance
-/// says which way it runs rather than carrying a sign. Each message that writes a count is held to it with a count of one
-/// beside its other tests.
+/// How a message says how many, and how far (#241): a count agrees with its noun, a count of one included, its digits never
+/// grouped (#326), and a distance says which way it runs rather than carrying a sign. Each message that writes a count is held
+/// to it with a count of one beside its other tests.
 /// </summary>
 public class CountTextTests
 {
@@ -33,11 +33,17 @@ public class CountTextTests
     }
 
     [Theory]
-    [InlineData(1, "1 section")]
-    [InlineData(2, "2 sections")]
-    [InlineData(12345, "12,345 sections")]
-    public void A_grouped_count_groups_its_digits_and_agrees_with_its_noun_alike(long count, string said) =>
-        CountText.Grouped(count, "section", "sections").Should().Be(said);
+    [InlineData(1, "1 byte", "1 byte")]
+    [InlineData(1000, "1000 bytes", "1000 bytes")]
+    [InlineData(-1000, "-1000 bytes", "-1000 bytes")]
+    [InlineData(1_024_000, "1024000 bytes", "1000 KB")]
+    [InlineData(1_048_576_000, "1048576000 bytes", "1000 MB")]
+    public void A_count_s_digits_are_never_grouped_and_a_bound_of_whole_kilobytes_or_megabytes_keeps_its_unit(
+        int count, string said, string bound)
+    {
+        CountText.Bytes(count).Should().Be(said);
+        PdfLimitGuard.FormatLength(count).Should().Be(bound);
+    }
 
     [Theory]
     [InlineData(-1, "1 byte before it")]
@@ -61,7 +67,7 @@ public class CountTextTests
         {
             CultureInfo.CurrentCulture = new CultureInfo(name);
 
-            CountText.Grouped(1_048_576, "byte", "bytes").Should().Be("1,048,576 bytes");
+            PdfLimitGuard.FormatLength(1_000_000).Should().Be("1000000 bytes");
             CountText.Of(-5, "value", "values").Should().Be("-5 values");
             CountText.Distance(-3, "where the index said").Should().Be("3 bytes before where the index said");
         }

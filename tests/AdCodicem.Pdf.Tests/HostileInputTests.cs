@@ -110,7 +110,7 @@ public class HostileInputTests
         report.Position.Should().Be(opens);
         report.Message.Should().Be(string.Create(
             CultureInfo.InvariantCulture,
-            $"The file ended inside a literal string, which takes the {file.Length - opens:N0} bytes from where it opens to that end."));
+            $"The file ended inside a literal string, which takes the {file.Length - opens} bytes from where it opens to that end."));
     }
 
     [Fact]
@@ -155,7 +155,7 @@ public class HostileInputTests
             six.Should().BeOfType<PdfDictionary>();
             allocated.Should().BeLessThan(honest + 4096, "the header lists one pair, whatever its /N says");
             document.Diagnostics.Should().ContainSingle().Which.Message.Should().Be(
-                "Object stream 5 has a header that ends after 1 of the 1,000,000,000 objects its /N declares; only the first 1 of its 1,000,000,000 objects can be read from it.");
+                "Object stream 5 has a header that ends after 1 of the 1000000000 objects its /N declares; only the first 1 of its 1000000000 objects can be read from it.");
         }
     }
 
@@ -755,7 +755,7 @@ public class HostileInputTests
         Measure(() => document.GetObject(new PdfObjectId(6))).Should().BeSameAs(PdfNull.Instance);
         document.Reader.ObjectStreamBytes.Should().Be(decoded.Length + 16);
         document.Diagnostics.Should().ContainSingle().Which.Message.Should().Be(
-            "Object stream 5 has a header that lists object 1 at offset 0, not past the offset of the object before it, 0, after 1 of the 1,000,000 objects its /N declares; only the first 1 of its 1,000,000 objects can be read from it.");
+            "Object stream 5 has a header that lists object 1 at offset 0, not past the offset of the object before it, 0, after 1 of the 1000000 objects its /N declares; only the first 1 of its 1000000 objects can be read from it.");
     }
 
     [Fact]
@@ -911,7 +911,7 @@ public class HostileInputTests
 
         allocated.Should().BeLessThan(2 * 1024 * 1024, "a report quotes 127 bytes of the name, whatever its length");
         document.Diagnostics.Where(d => d.Code == PdfDiagnosticCodes.StreamLengthInvalid).Should().HaveCount(4)
-            .And.OnlyContain(d => d.Message.Contains(" (the first 127 of 4,194,304 bytes)", StringComparison.Ordinal));
+            .And.OnlyContain(d => d.Message.Contains(" (the first 127 of 4194304 bytes)", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -969,7 +969,7 @@ public class HostileInputTests
         allocated = GC.GetAllocatedBytesForCurrentThread() - allocated;
 
         allocated.Should().BeLessThan(1024 * 1024, "each report quotes 127 bytes of the filter's name");
-        diagnostics[0].Message.Should().StartWith("The filter /" + new string('X', 127) + " (the first 127 of 1,000,000 bytes)");
+        diagnostics[0].Message.Should().StartWith("The filter /" + new string('X', 127) + " (the first 127 of 1000000 bytes)");
     }
 
     [Fact]
@@ -984,7 +984,7 @@ public class HostileInputTests
         var finding = new PdfValidator().Validate(document).Findings.Single(f => f.RuleId == PdfValidationRuleIds.XRefSectionMalformed);
 
         finding.Message.Length.Should().BeLessThan(512);
-        finding.Message.Should().Contain("it holds the keyword " + new string('k', 127) + " (the first 127 of 10,485,760 bytes) at offset ");
+        finding.Message.Should().Contain("it holds the keyword " + new string('k', 127) + " (the first 127 of 10485760 bytes) at offset ");
     }
 
     [Fact]
@@ -1014,7 +1014,7 @@ public class HostileInputTests
         allocated = GC.GetAllocatedBytesForCurrentThread() - allocated;
 
         allocated.Should().BeLessThan(4 * 1024 * 1024, "a path quotes 127 bytes of each of the eight keys it keeps");
-        var quoted = "/" + new string('A', 127) + " (the first 127 of 1,048,576 bytes)";
+        var quoted = "/" + new string('A', 127) + " (the first 127 of 1048576 bytes)";
         findings.Single(f => f.RuleId == PdfValidationRuleIds.ObjectReferenceMissing).Message
             .Should().Contain("under " + quoted).And.Contain(" (2 steps) /" + new string('G', 127));
     }
@@ -1169,7 +1169,7 @@ public class HostileInputTests
         report.Code.Should().Be(PdfDiagnosticCodes.LimitIndexEntries);
         report.Position.Should().Be(section);
         report.Message.Should().Be(
-            "The index reached 1,000,000 entries; the objects past them were not indexed. Raise PdfReaderLimits.MaxIndexEntries to read past it.");
+            "The index reached 1000000 entries; the objects past them were not indexed. Raise PdfReaderLimits.MaxIndexEntries to read past it.");
         // Measured at 575,312,600 bytes twice on 2026-10-28, 5 % above: the index sized once for the guard's entries,
         // where the map it was before #155 took 595,837,384 sized once and 675,532,296 grown by doubling.
         allocated.Should().BeLessThan(604_080_000, "the index holds the guard's entries, and the decoded rows are read once");
@@ -1235,7 +1235,7 @@ public class HostileInputTests
         document.Catalog.Required().IsOfType(PdfName.Catalog).Should().BeTrue();
         document.Diagnostics.Select(entry => entry.Code).Should().Equal(PdfDiagnosticCodes.LimitIndexEntries, PdfDiagnosticCodes.XRefEntryReserved);
         document.Diagnostics.Should().ContainSingle(entry => entry.Code == PdfDiagnosticCodes.XRefEntryReserved).Which.Message.Should().Contain(
-            " gives 999,997 rows a reserved type: the row for object 4 gives it type 3, the first of them. ");
+            " gives 999997 rows a reserved type: the row for object 4 gives it type 3, the first of them. ");
         // Measured at 119,845,568 to 119,853,680 bytes on 2026-11-04, 5 % above: 16 MB of rows decoded, and the index sized
         // for a million entries, its slots with them, where it would be for eight million past the guard; 119,843,360 and
         // 119,851,472 on 2026-10-28, when the rows took no entry; 140,272,056 with the map it was before #155.

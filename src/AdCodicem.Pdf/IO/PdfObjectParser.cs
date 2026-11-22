@@ -1679,7 +1679,7 @@ internal ref struct PdfObjectParser
                     : KeepsReports
                         ? string.Create(
                             CultureInfo.InvariantCulture,
-                            $"A hexadecimal string holds {strays:N0} bytes that are neither hexadecimal digits nor white space, the first here; they were skipped.")
+                            $"A hexadecimal string holds {strays} bytes that are neither hexadecimal digits nor white space, the first here; they were skipped.")
                         : "A hexadecimal string holds bytes that are neither hexadecimal digits nor white space; they were skipped.",
                 token.Start + 1 + firstStray);
         }
@@ -1736,7 +1736,7 @@ internal ref struct PdfObjectParser
             : atHeader ? (_inObject ? "An object header ended the object" : "An object header came")
             : End;
         var content = swallowed > 0
-            ? string.Create(CultureInfo.InvariantCulture, $", which takes the {swallowed:N0} {(swallowed == 1 ? "byte" : "bytes")} from where it opens to that end")
+            ? string.Create(CultureInfo.InvariantCulture, $", which takes the {CountText.Bytes(swallowed)} from where it opens to that end")
             : valueMissing ? ", which was never closed, before the value of its last key" : ", which was never closed";
         var around = enclosing switch
         {

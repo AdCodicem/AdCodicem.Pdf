@@ -192,10 +192,10 @@ internal sealed partial class PdfFileReader
                     inFile
                         ? string.Create(
                             CultureInfo.InvariantCulture,
-                            $"The cross-reference chain has more than {CountText.Grouped(_guard.Bound(PdfLimit.XRefSectionCount), "section", "sections")}; the older ones were not read.")
+                            $"The cross-reference chain has more than {CountText.Of(_guard.Bound(PdfLimit.XRefSectionCount), "section", "sections")}; the older ones were not read.")
                         : string.Create(
                             CultureInfo.InvariantCulture,
-                            $"The cross-reference chain has more than {CountText.Grouped(_guard.Bound(PdfLimit.XRefSectionCount), "section", "sections")}; the older ones were not read: the chain goes on at offset {DescribeOffset(offset)}, outside the file."),
+                            $"The cross-reference chain has more than {CountText.Of(_guard.Bound(PdfLimit.XRefSectionCount), "section", "sections")}; the older ones were not read: the chain goes on at offset {DescribeOffset(offset)}, outside the file."),
                     inFile ? cut : namedFrom);
                 break;
             }
@@ -1771,7 +1771,7 @@ internal sealed partial class PdfFileReader
             PdfDiagnosticCodes.XRefEntryReserved,
             string.Create(
                 CultureInfo.InvariantCulture,
-                $"{SectionNamed(section, naming)} gives {CountText.Grouped(section.ReservedRows, "row", "rows")} a reserved type: {first}{(many ? ", the first of them" : string.Empty)}. ISO 32000-1 defines types 0, 1 and 2, and reads any other as a reference to the null object (7.5.8.3){said}."),
+                $"{SectionNamed(section, naming)} gives {CountText.Of(section.ReservedRows, "row", "rows")} a reserved type: {first}{(many ? ", the first of them" : string.Empty)}. ISO 32000-1 defines types 0, 1 and 2, and reads any other as a reference to the null object (7.5.8.3){said}."),
             section.Offset);
     }
 
@@ -1871,7 +1871,7 @@ internal sealed partial class PdfFileReader
                     $"The cross-reference section startxref names at offset {section.Offset} is not there; the whole index is rebuilt by scanning the file.")
                 : string.Create(
                     CultureInfo.InvariantCulture,
-                    $"The cross-reference section startxref names at offset {DescribeOffset(section.WrittenOffset)} lies outside the file, which is {_source.Length:N0} bytes long; the whole index is rebuilt by scanning the file."),
+                    $"The cross-reference section startxref names at offset {DescribeOffset(section.WrittenOffset)} lies outside the file, which is {CountText.Bytes(_source.Length)} long; the whole index is rebuilt by scanning the file."),
             inFile ? section.Offset : section.NamedFrom);
     }
 
@@ -1903,7 +1903,7 @@ internal sealed partial class PdfFileReader
                     $"The cross-reference section {naming} names at offset {absolute} is not there, nor near it; the objects only it indexes are looked for by rebuilding the index.")
                 : string.Create(
                     CultureInfo.InvariantCulture,
-                    $"The cross-reference section {naming} names at offset {DescribeOffset(offset)} lies outside the file, which is {_source.Length:N0} bytes long; the objects only it indexes are looked for by rebuilding the index."),
+                    $"The cross-reference section {naming} names at offset {DescribeOffset(offset)} lies outside the file, which is {CountText.Bytes(_source.Length)} long; the objects only it indexes are looked for by rebuilding the index."),
             IsInFile(absolute) ? absolute : namedFrom);
     }
 
@@ -2070,6 +2070,6 @@ internal sealed partial class PdfFileReader
         var bound = _guard.Bound(PdfLimit.IndexEntries);
         return string.Create(
             CultureInfo.InvariantCulture,
-            $"The index reached {bound:N0} {(bound == 1 ? "entry" : "entries")}; the objects past them were not indexed.");
+            $"The index reached {CountText.Of(bound, "entry", "entries")}; the objects past them were not indexed.");
     }
 }

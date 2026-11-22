@@ -1,4 +1,5 @@
 using System.Globalization;
+using AdCodicem.Pdf.Diagnostics;
 using AdCodicem.Pdf.Objects;
 
 namespace AdCodicem.Pdf.IO.XRef;
@@ -126,16 +127,54 @@ internal readonly struct ObjectStreamHeader
     }
 
     /// <summary>
+    /// Says that an object stream has no <c>/N</c> that gives a count of objects. Each fault of an object stream's
+    /// header is written once, here, as the predicate of a sentence whose subject is the stream: the reader's
+    /// <see cref="PdfDiagnosticCodes.ObjectStreamUnreadable"/> and the validator's finding, which quotes it, say it alike.
+    /// </summary>
+    public const string NoCount = "has no /N that gives a count of objects";
+
+    /// <summary>Says that an object stream has no <c>/First</c> that gives where its objects start, as <see cref="NoCount"/> does.</summary>
+    public const string NoFirst = "has no /First that gives where its objects start";
+
+    /// <summary>
+    /// Says that an object stream's <c>/First</c> lies past the end of its decoded data, as <see cref="NoCount"/> says its
+    /// fault.
+    /// </summary>
+    /// <param name="first">The offset its <c>/First</c> gives.</param>
+    /// <param name="dataLength">How many bytes the stream decodes to.</param>
+    public static string FirstPastData(long first, int dataLength) => string.Create(
+        CultureInfo.InvariantCulture,
+        $"gives in /First an offset, {first}, past the end of its decoded data, which is {CountText.Bytes(dataLength)} long");
+
+    /// <summary>
+    /// Says what ended this header before its <c>/N</c>, for a header read with a fault, as <see cref="NoCount"/> says its
+    /// fault: how many of the objects its <c>/N</c> declares it lists before it, and what came then.
+    /// </summary>
+    /// <param name="declared">How many objects the stream's <c>/N</c> declares.</param>
+    /// <param name="dataLength">How many bytes the stream decodes to.</param>
+    public string Describe(long declared, int dataLength) => Fault switch
+    {
+        ObjectStreamHeaderFault.Ended => string.Create(
+            CultureInfo.InvariantCulture, $"has a header that ends after {Count} of the {CountText.Objects(declared)} its /N declares"),
+        ObjectStreamHeaderFault.Stray => string.Create(
+            CultureInfo.InvariantCulture,
+            $"has a header that holds something other than an object number and an offset after {Count} of the {CountText.Objects(declared)} its /N declares"),
+        _ => string.Create(
+            CultureInfo.InvariantCulture,
+            $"has a header that lists object {FaultNumber} at offset {FaultOffset}, {Why(dataLength)}, after {Count} of the {CountText.Objects(declared)} its /N declares"),
+    };
+
+    /// <summary>
     /// Says why the pair that ended the header can be no member, for a fault that names a pair: what follows its offset
     /// in a message.
     /// </summary>
     /// <param name="dataLength">How many bytes the stream decodes to.</param>
-    public string Why(int dataLength) => Fault switch
+    private string Why(int dataLength) => Fault switch
     {
         ObjectStreamHeaderFault.NotIncreasing => string.Create(
             CultureInfo.InvariantCulture, $"not past the offset of the object before it, {Offsets[^1]}"),
         ObjectStreamHeaderFault.PastData => string.Create(
-            CultureInfo.InvariantCulture, $"past what its {dataLength:N0} bytes of decoded data hold"),
+            CultureInfo.InvariantCulture, $"past what its {dataLength} bytes of decoded data hold"),
         _ => "which no member can be",
     };
 }

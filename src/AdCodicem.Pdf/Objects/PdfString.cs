@@ -137,7 +137,7 @@ public sealed class PdfString : PdfObject
 
         if (whole > shown)
         {
-            described.Append(CultureInfo.InvariantCulture, $" (the first {shown} of {whole:N0} characters)");
+            described.Append(CultureInfo.InvariantCulture, $" (the first {shown} of {whole} characters)");
         }
 
         return described.ToString();

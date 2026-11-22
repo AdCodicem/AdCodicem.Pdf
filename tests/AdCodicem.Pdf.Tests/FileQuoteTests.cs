@@ -59,7 +59,7 @@ public class FileQuoteTests
     {
         var name = PdfName.Get(new string('n', 1_000_000));
 
-        FileQuote.Name(name).Should().Be("/" + new string('n', 127) + " (the first 127 of 1,000,000 bytes)");
+        FileQuote.Name(name).Should().Be("/" + new string('n', 127) + " (the first 127 of 1000000 bytes)");
     }
 
     [Fact]
@@ -173,7 +173,7 @@ public class FileQuoteTests
         // some 8 KB (#253).
         var allocated = Allocations.Least(() => FileQuote.Name(name), out var quote);
 
-        quote.Should().EndWith(" (the first 127 of 67,108,864 bytes)");
+        quote.Should().EndWith(" (the first 127 of 67108864 bytes)");
         allocated.Should().BeLessThan(1024, "the quote is written through a buffer on the stack, and only it is allocated");
     }
 }
