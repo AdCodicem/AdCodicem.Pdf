@@ -7,6 +7,43 @@ to about thirty lines each; the unabridged text is the
 [journal of `e38ebbc`](https://github.com/AdCodicem/AdCodicem.Pdf/blob/e38ebbc471b86779c3f6ac5b320ca1ecd531b2c1/docs/status.md#journal). A session reads an entry when it needs the
 reason for a past decision. A new entry is short, about thirty lines; the detail is in the pull request's body.
 
+## 2026-11-22 — Batch 26, first pull request: predictors, abbreviated filter names, and filter reports of cut data ([#404])
+
+- **The question.** Measured on `main` at `2e07dca`, twice: a TIFF predictor at 1, 2, 4 or 16 bits a component left its
+  data predicted, a `/Colors` past 32 was clamped, and a PNG pixel's bytes rounded down, so `/Colors 3
+  /BitsPerComponent 4` decoded otherwise than qpdf, MuPDF and PDFium — all in silence, as was every parameter value the
+  reader replaced ([#162]). A filter named by an inline image's abbreviation (`/Fl`, `/DCT`, …) stopped decoding; a
+  cross-reference stream so named rebuilt the file ([#250]). A filter report on data a guard ended quoted the cut as the
+  data's length, so a deferred stream's fault was held twice ([#283]); a deferred cross-reference stream kept the
+  carriage return its length leaves out, completing a checksum or a row with it ([#288]).
+- **Settled with the maintainer** (2026-11-22, each as recommended): the batch in two pull requests by area, decoding
+  here, the messages and the probe ([#326], [#349]) next; a new `filter.parameters-invalid`, Warning, once for each value
+  replaced; an invalid `/Predictor` split as PDFium splits it; a crypt filter other than `/Identity` in a document that
+  gives no `/Encrypt` passed along, reported; abbreviations read, under a new `filter.name-abbreviated`, Repair; a
+  report on cut data with no length, counting "the part of its data read"; the carriage return dropped on both paths.
+  [#395] to [#397] placed in batch 27.
+- **What changed.** Predictors are undone at every width, in place, the row length weighed in 64 bits before any
+  allocation; a partial last row is kept and undone as far as it goes. Abbreviations are read by decoding, the
+  cross-reference stream check, `HasImageFilter` and the validator alike. Filter reports of cut data read the same
+  whatever the cut, so the document holds them once. A deferred stream's data is taken again, or decoded again, without
+  the carriage return, its first reports withdrawn.
+- **Review** (ADR 54): one round, three lenses — predictors against independent references (25,000 random cases), the
+  reader's paths, real damage over the corpus and about 10,000 damaged variants. No blocker or major; one minor, E4 on
+  real files (an unknown PNG filter type counted against the rows of the part read), and seven nits. The final pass
+  fixed the texts; the behavior left is filed.
+- **Mutation** (ADR 53 amended): 313 mutants over 112 of 278 changed code lines; 251 killed by the suite, 1 hung; tests
+  kill 29 of the 61 survivors. The second opinion overturned 3 of 32 equivalents, told apart by the reads a caller's own
+  source counts, now held by tests; 29 stay. No debt.
+- **The issues.** [#162], [#250], [#283], [#288]. Filed under M02: [#401], two filter reports that still depend on how
+  much was decoded; [#402], three edges of the deferred stream's retake; [#403], an object stream whose filters decode
+  nothing reported as a header fault.
+- **Checks.** The batch check at `9950958`, 12,959 unit tests; the 69 timing and memory tests alone; `Remote corpus`
+  run 131 green. The corpus differential is identical at default limits. Benchmarks against `main`, alone and twice:
+  the same allocations, times within the runs' spread. Patch coverage 99.57 % by Codecov's rule: one line, a defensive
+  check no input takes.
+- **For callers.** Two new codes. Data that decoded wrongly or stayed predicted now decodes as other readers decode it;
+  abbreviated filters decode; a filter report on cut data no longer depends on where the cut fell.
+
 ## 2026-11-21 — Batch 25, second pull request: what the validator's walk of object streams follows again ([#400])
 
 - **The question.** Measured on `main` at `b8f6f7d`: each walk of a waiting object stream — one whose standing waits on
@@ -1265,3 +1302,7 @@ The detail is in git and in the pull requests; what still matters is in the reco
 [#398]: https://github.com/AdCodicem/AdCodicem.Pdf/pull/398
 [#399]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/399
 [#400]: https://github.com/AdCodicem/AdCodicem.Pdf/pull/400
+[#401]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/401
+[#402]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/402
+[#403]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/403
+[#404]: https://github.com/AdCodicem/AdCodicem.Pdf/pull/404
