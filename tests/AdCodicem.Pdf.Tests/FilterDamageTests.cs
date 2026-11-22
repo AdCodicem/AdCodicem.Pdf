@@ -997,14 +997,15 @@ public class FilterDamageTests
     }
 
     [Theory]
-    [InlineData("/EarlyChange 4294967296", "lzw")]
-    [InlineData("/EarlyChange -4294967296.0", "lzw")]
-    [InlineData("/Predictor 4294967297 /Columns 4", "png")]
-    public void Reads_a_parameter_past_an_int_as_the_int_nearest_it_rather_than_its_low_bits(string entries, string data)
+    [InlineData("/EarlyChange 4294967296", "lzw", "/EarlyChange 4294967296, which ISO 32000-1 does not allow; it was read as 1.")]
+    [InlineData("/EarlyChange -4294967296.0", "lzw", "/EarlyChange -4294967296, which ISO 32000-1 does not allow; it was read as 1.")]
+    [InlineData("/Predictor 4294967297 /Columns 4", "png", "/Predictor 4294967297, which ISO 32000-1 does not allow; it was read as a PNG predictor.")]
+    public void Reads_a_parameter_past_an_int_as_the_int_nearest_it_rather_than_its_low_bits(string entries, string data, string given)
     {
         // A multiple of 2^32 narrowed to an int is 0, and 2^32 + 1 is 1: /EarlyChange 4294967296 read as 0, and a
         // /Predictor of 4294967297 as no predictor. Neither value is the one its low bits name: an /EarlyChange that is
-        // not 0 is 1, and a predictor past an int is a PNG one, whose rows are undone.
+        // not 0 is 1, and a predictor past an int is a PNG one, whose rows are undone. Neither is a value ISO 32000-1
+        // allows, which is reported (#162).
         byte[] rows = [2, 1, 2, 3, 4, 2, 1, 1, 1, 1];
         var plain = ContentStream(40);
         var dictionary = new PdfObjectParser(Encoding.ASCII.GetBytes($"<< /Filter /{(data == "lzw" ? "LZWDecode" : "FlateDecode")} /DecodeParms << {entries} >> >>"))
@@ -1015,7 +1016,7 @@ public class FilterDamageTests
         var decoded = new PdfStream(dictionary, PdfStreamData.FromMemory(encoded)).Decode(diagnostics);
 
         decoded.ToArray().Should().Equal(data == "lzw" ? plain : [1, 2, 3, 4, 2, 3, 4, 5]);
-        diagnostics.Should().BeEmpty();
+        Describe(diagnostics).Should().Be(Report(PdfDiagnosticSeverity.Warning, "The /DecodeParms entry gives " + given, PdfDiagnosticCodes.FilterParametersInvalid));
     }
 
     [Theory]
@@ -1443,10 +1444,13 @@ public class FilterDamageTests
     [Theory]
     [InlineData("checksum")]
     [InlineData("corrupt")]
+    [InlineData("tail")]
     public void Counts_the_bytes_a_damaged_stream_kept_before_its_predictor_takes_the_tag_off_each_row(string damage)
     {
         // 200 rows of four bytes, each behind the tag of the PNG predictor that changes nothing: 1,000 bytes decode,
-        // and the predictor hands 800 on. The report counts what the Flate data decoded to, the tags included.
+        // and the predictor hands 800 on. The report counts what the Flate data decoded to, the tags included. Data that
+        // lost its tail 503 bytes in, three bytes into the 101st row, keeps the two after its tag, the loss the lost tail's
+        // to report (#162).
         var rows = new byte[1000];
         var predicted = new byte[800];
         for (var index = 0; index < predicted.Length; index++)
@@ -1456,7 +1460,12 @@ public class FilterDamageTests
         }
 
         var faultAt = 0;
-        var data = damage == "checksum" ? WithWrongChecksum(Compress(rows, CompressionLevel.Optimal)) : CorruptAfter(rows, out faultAt);
+        var data = damage switch
+        {
+            "checksum" => WithWrongChecksum(Compress(rows, CompressionLevel.Optimal)),
+            "tail" => Compress(rows, CompressionLevel.NoCompression)[..^(ChecksumLength + 497)],
+            _ => CorruptAfter(rows, out faultAt),
+        };
         var parameters = new PdfDictionary();
         parameters.Set(PdfName.Predictor, PdfInteger.Create(12));
         parameters.Set(PdfName.Columns, PdfInteger.Create(4));
@@ -1464,9 +1473,13 @@ public class FilterDamageTests
 
         var decoded = Decode(data, PdfName.FlateDecode, diagnostics, parameters);
 
-        decoded.ToArray().Should().Equal(predicted);
-        Describe(diagnostics).Should().Be(
-            damage == "checksum" ? ChecksumReport(1000) : Report(PdfDiagnosticSeverity.Warning, CorruptAt(faultAt, data.Length, 1000)));
+        decoded.ToArray().Should().Equal(damage == "tail" ? predicted[..402] : predicted);
+        Describe(diagnostics).Should().Be(damage switch
+        {
+            "checksum" => ChecksumReport(1000),
+            "tail" => Report(PdfDiagnosticSeverity.Warning, TailLost),
+            _ => Report(PdfDiagnosticSeverity.Warning, CorruptAt(faultAt, data.Length, 1000)),
+        });
     }
 
     [Fact]

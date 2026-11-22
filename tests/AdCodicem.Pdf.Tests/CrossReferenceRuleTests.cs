@@ -218,6 +218,7 @@ public class CrossReferenceRuleTests
     [InlineData("/Size 6 /W [1 4 2] /Filter [/FlateDecode] /DecodeParms [1 0 R]", "its /DecodeParms holds the reference 1 0 R, which no section read before it places where it can be read.")]
     [InlineData("/Size 6 /W [1 4 2] /Filter /FlateDecode /DecodeParms [1 0 R]", "its /DecodeParms holds the reference 1 0 R, which no section read before it places where it can be read.")]
     [InlineData("/Size 6 /W [1 4 2] /Filter [/Crypt /FlateDecode] /DecodeParms [null 1 0 R]", "its /DecodeParms holds the reference 1 0 R, which no section read before it places where it can be read.")]
+    [InlineData("/Size 6 /W [1 4 2] /Filter /Crypt /DecodeParms 1 0 R", "its /DecodeParms is the reference 1 0 R, which no section read before it places where it can be read.")]
     [InlineData("/Size 1 0 R /W [1 4 2] /Index null", "its /Size is the reference 1 0 R, which no section read before it places where it can be read.")]
     [InlineData("/Size 6 /W [1 4 2] /Index [-5 1]", "its /Index gives a subsection of 1 row from object -5, outside object numbers 0 to 2147483647.")]
     [InlineData("/Size 6 /W [1 4 2] /Index [2147482000 5000]", "its /Index gives a subsection of 5,000 rows from object 2147482000, outside object numbers 0 to 2147483647.")]
@@ -246,8 +247,7 @@ public class CrossReferenceRuleTests
     [InlineData("/Size 6 /W [1 4 2] /Index [0 6 2147483647 0]", false)]
     [InlineData("/Size 6 /W [1 4 2] /Index [0 6 2147483642 0]", false)]
     [InlineData("/Size 6 /W [1 4 2] /Index [2147483642 6]", true)]
-    [InlineData("/Size 6 /W [1 4 2] /Filter /Crypt /DecodeParms 1 0 R", false)]
-    [InlineData("/Size 6 /W [1 4 2] /Filter [/Crypt /DCTDecode 1 0 R] /DecodeParms [1 0 R 1 0 R 1 0 R]", false)]
+    [InlineData("/Size 6 /W [1 4 2] /Filter [/Crypt /DCTDecode 1 0 R] /DecodeParms [null 1 0 R 1 0 R]", false)]
     public void A_cross_reference_stream_whose_numbering_holds_is_not_malformed(string layout, bool repaired)
     {
         // Integral reals are read as the integers they equal, as everywhere the reader reads a value, and reported as the

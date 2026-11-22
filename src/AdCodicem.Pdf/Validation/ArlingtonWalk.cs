@@ -554,8 +554,9 @@ internal sealed class ArlingtonWalk
     /// Chooses, among the link's candidates, the parameters of the filter at the place of the parameters being typed: the
     /// filter a <c>/DecodeParms</c> dictionary belongs to — the only one, a name or an array of one —, or the element of
     /// the filters at the place of an element of a <c>/DecodeParms</c> array, the first one standing for a single name.
-    /// False when no filter stands there, or it names no candidate: a filter that takes no parameters, one the model does
-    /// not know or knows only abbreviated, an element that names none, or a dictionary beside several filters.
+    /// A filter named by its abbreviation is the one it abbreviates, as decoding reads it. False when no filter stands
+    /// there, or it names no candidate: a filter that takes no parameters, one the model does not know, an element that
+    /// names none, or a dictionary beside several filters.
     /// </summary>
     private bool TryChooseByFilter(PdfObject filters, ArlingtonLink link, out ArlingtonObject chosen)
     {
@@ -570,10 +571,13 @@ internal sealed class ArlingtonWalk
             _ => null,
         };
 
-        if (at is null || Resolve(at) is not PdfName name)
+        if (at is null || Resolve(at) is not PdfName written)
         {
             return false;
         }
+
+        // A filter named by its abbreviation is the filter decoding reads it as (#250).
+        var name = IO.Filters.FilterChain.FullName(written);
 
         for (var index = 0; index < link.CandidateCount; index++)
         {

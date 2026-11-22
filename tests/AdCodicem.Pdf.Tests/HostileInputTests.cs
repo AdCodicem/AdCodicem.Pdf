@@ -5916,6 +5916,31 @@ public class HostileInputTests
             "Raise PdfReaderLimits.MaxDecodedStreamLength to read past it.");
     }
 
+    [Theory]
+    [InlineData("/Predictor 2 /BitsPerComponent 16 /Colors 1 /Columns 2", "01000005", "01000105")]
+    [InlineData("/Predictor 2 /BitsPerComponent 1 /Colors 1 /Columns 8", "C0FF", "80AA")]
+    [InlineData("/Predictor 12 /Colors 40 /Columns 1", "{forty}", "{forty undone}")]
+    public void A_predictor_whose_parameters_pdf_allows_decodes_to_its_bytes_through_its_document(string parameters, string predicted, string expected)
+    {
+        // #162's file: data that inflates to 01 00 00 05 under a 16-bit TIFF predictor came back unchanged, as did any other
+        // width than a byte's, and forty components were read as thirty-two, all with no report. Each decodes to its bytes.
+        var forty = Enumerable.Range(1, 40).Select(value => (byte)value).ToArray();
+        var data = predicted == "{forty}" ? [0, .. forty, 2, .. Enumerable.Repeat((byte)1, 40)] : Convert.FromHexString(predicted);
+        var output = expected == "{forty undone}" ? Convert.ToHexString([.. forty, .. forty.Select(value => (byte)(value + 1))]) : expected;
+        var hex = Convert.ToHexString(Compress(data)) + ">";
+        var file = new TestPdfBuilder()
+            .WithObject(1, "<< /Type /Catalog /Pages 2 0 R >>")
+            .WithObject(2, "<< /Type /Pages /Kids [] /Count 0 >>")
+            .Stream(3, $"/Filter [/ASCIIHexDecode /FlateDecode] /DecodeParms [null << {parameters} >>]", hex)
+            .BuildClassic(rootNumber: 1);
+
+        using var document = PdfDocument.Open(file);
+        var decoded = document.GetObject(new PdfObjectId(3)).AsStream().Required().Decode(document.Diagnostics);
+
+        Convert.ToHexString(decoded.Span).Should().Be(output);
+        document.Diagnostics.Should().BeEmpty();
+    }
+
     [Fact]
     public void Decodes_data_no_flate_reading_can_decode_once_however_many_flate_filters_name_it()
     {

@@ -1125,12 +1125,15 @@ internal static class ChainFiles
 
     /// <summary>
     /// As <see cref="DeferredLengthRowPastRunLengthRuns"/>, the rows past the endstream they spell, but stream 7 numbers no
-    /// row for object 5, which no section places (<c>/Index [0 4 8 256 264 2 7 1]</c>): its <c>/Length</c> can be read once
-    /// the chain is, and the rows past the endstream are the file's to lack, the data up to it decoding to 1,052 bytes.
+    /// row for object 5, which no section places (<c>/Index [8 256 0 4 264 2 7 1]</c>): its <c>/Length</c> can be read once
+    /// the chain is, and the rows past the endstream are the file's to lack. The RunLength data, the 256 free rows first, is
+    /// one predicted row of 90 columns, which the spelled endstream parts: the data up to it, shorter than the row, is left
+    /// as decoded, its tag a RunLength length that puts each run's length out of step, and decodes to a few dozen bytes;
+    /// undone as far as it goes, it would decode to 1,820.
     /// </summary>
     public static byte[] DeferredLengthNoRowNumbersPastRunLengthRuns()
     {
-        const int Columns = 45;
+        const int Columns = 90;
         using var file = new Writer("1.5");
         file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>");
         file.Object(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>");
@@ -1139,14 +1142,15 @@ internal static class ChainFiles
         // The data's length does not depend on the offsets its rows hold.
         byte[] Data(long stream)
         {
-            var runs = new List<byte> { 27 };
-            runs.AddRange(Encode([(0, 0, 65535), (1, file.OffsetOf(1), 0), (1, file.OffsetOf(2), 0), (1, file.OffsetOf(3), 0)], Rows.Raw));
+            var runs = new List<byte>();
 
             for (var i = 0; i < 14; i++)
             {
                 runs.AddRange([0x81, 0x00]);
             }
 
+            runs.Add(27);
+            runs.AddRange(Encode([(0, 0, 65535), (1, file.OffsetOf(1), 0), (1, file.OffsetOf(2), 0), (1, file.OffsetOf(3), 0)], Rows.Raw));
             runs.Add(13);
             runs.AddRange("\nendstream\0\0\0\0"u8.ToArray());
             runs.Add(6);
@@ -1160,7 +1164,7 @@ internal static class ChainFiles
             7,
             string.Create(
                 CultureInfo.InvariantCulture,
-                $"/Type /XRef /Size 266 /W [1 4 2] /Index [0 4 8 256 264 2 7 1] /Filter [/FlateDecode /RunLengthDecode] /DecodeParms [<< /Predictor 12 /Columns {Columns} >> null] /Root 1 0 R /Length 5 0 R"),
+                $"/Type /XRef /Size 266 /W [1 4 2] /Index [8 256 0 4 264 2 7 1] /Filter [/FlateDecode /RunLengthDecode] /DecodeParms [<< /Predictor 12 /Columns {Columns} >> null] /Root 1 0 R /Length 5 0 R"),
             Data(at));
         file.StartXRef(at);
         return file.ToArray();

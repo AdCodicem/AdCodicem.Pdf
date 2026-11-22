@@ -1,3 +1,5 @@
+using System.Globalization;
+using AdCodicem.Pdf.Diagnostics;
 using AdCodicem.Pdf.Objects;
 
 namespace AdCodicem.Pdf.IO.Filters;
@@ -17,8 +19,18 @@ namespace AdCodicem.Pdf.IO.Filters;
 /// Only what decoding reads is resolved: the chain's names up to the first that ends it — an image filter, a filter
 /// the library does not know, an element that names no filter —, and of the parameters, LZW's <c>/EarlyChange</c>, a
 /// Flate or LZW step's <c>/Predictor</c>, and its <c>/Colors</c>, <c>/BitsPerComponent</c> and <c>/Columns</c> when the
-/// predictor is past 1. Each of the others can be a reference, and resolving it could load, or rebuild, what nothing
-/// asked for.
+/// step reads a predictor, and a <c>/Crypt</c> step's <c>/Name</c>. Each of the others can be a reference, and resolving
+/// it could load, or rebuild, what nothing asked for.
+/// </para>
+/// <para>
+/// A name is read as the filter it abbreviates where it is one of the abbreviations ISO 32000-1 allows only in an inline
+/// image's dictionary (Table 94), as qpdf, MuPDF, pdf.js and PDFium read it on any stream (#250): every reader of the
+/// chain reads it so, the check of a cross-reference stream before its rows, <c>HasImageFilter</c> and the validator's
+/// walks alike. A parameter's value ISO 32000-1 does not allow is read as other readers read it (#162). What the chain
+/// reads otherwise than the file wrote it is kept, in the order it was read, for decoding to report (<see cref="Report"/>):
+/// each abbreviation (<see cref="PdfDiagnosticCodes.FilterNameAbbreviated"/>), and each value it replaced
+/// (<see cref="PdfDiagnosticCodes.FilterParametersInvalid"/>), with its place. What it keeps stays within what the guard
+/// on filters lets run: seven entries for an element at most, and one for the <c>/DecodeParms</c> entry.
 /// </para>
 /// <para>
 /// The parameters of a step are paired with it as qpdf pairs them, so that the shapes ISO 32000-1 (7.3.8.2) does not
@@ -52,9 +64,15 @@ internal sealed class FilterChain
 {
     private static readonly FilterChain NoFilter = new(new Reading());
 
+    /// <summary>The entry of a <c>/Crypt</c> step's parameters that names its crypt filter (ISO 32000-1, Table 14).</summary>
+    private static readonly PdfName CryptFilterKey = PdfName.Get("Name");
+
+    /// <summary>The crypt filter that passes its data along as it is, a <c>/Crypt</c> step's when it names none.</summary>
+    private static readonly PdfName Identity = PdfName.Get("Identity");
+
     /// <summary>The entries of a step's parameters dictionary decoding may read, every one it reads.</summary>
     private static readonly PdfName[] ParametersRead =
-        [PdfName.EarlyChange, PdfName.Predictor, PdfName.Colors, PdfName.BitsPerComponent, PdfName.Columns];
+        [PdfName.EarlyChange, PdfName.Predictor, PdfName.Colors, PdfName.BitsPerComponent, PdfName.Columns, CryptFilterKey];
 
     /// <summary>What <c>/Filter</c> leads to: a name, an array, or anything else when it names no filter at all.</summary>
     private readonly PdfObject? _filters;
@@ -76,6 +94,11 @@ internal sealed class FilterChain
     /// <summary>How many elements of the <c>/Filter</c> array stand before the end of the chain.</summary>
     private readonly int _length;
 
+    /// <summary>What the chain reads otherwise than the file wrote it, in the order it was read.</summary>
+    private readonly Fault[]? _faults;
+
+    private readonly int _faultCount;
+
     private FilterChain(in Reading reading)
     {
         _filters = reading.Filters;
@@ -85,6 +108,8 @@ internal sealed class FilterChain
         _flate = reading.Flate;
         _lzw = reading.Lzw;
         _length = reading.Length;
+        _faults = reading.Faults;
+        _faultCount = reading.FaultCount;
         LastIndex = reading.LastIndex;
         End = reading.End;
         EndIndex = reading.EndIndex;
@@ -92,15 +117,17 @@ internal sealed class FilterChain
     }
 
     /// <summary>
-    /// Gets the entries of a step's parameters dictionary decoding may read: LZW's <c>/EarlyChange</c>, and a Flate or LZW
-    /// step's <c>/Predictor</c>, <c>/Colors</c>, <c>/BitsPerComponent</c> and <c>/Columns</c>. What keeps a parameters
-    /// dictionary for what decoding reads of it — the validator's walk of the object streams' dependencies (#277) — needs
-    /// nothing else of it; a filter that reads another entry adds it here.
+    /// Gets the entries of a step's parameters dictionary decoding may read: LZW's <c>/EarlyChange</c>, a Flate or LZW
+    /// step's <c>/Predictor</c>, <c>/Colors</c>, <c>/BitsPerComponent</c> and <c>/Columns</c>, and a <c>/Crypt</c> step's
+    /// <c>/Name</c>. What keeps a parameters dictionary for what decoding reads of it — the validator's walk of the object
+    /// streams' dependencies (#277) — needs nothing else of it; a filter that reads another entry adds it here.
     /// </summary>
     /// <remarks>
     /// That walk keeps, of each of these entries, only a reference, which it follows, an integer or a real: decoding reads
-    /// every one of them through <see cref="PdfObjectExtensions.AsInteger"/>, which reads a value of any other kind as it
-    /// reads an entry absent (#181). A filter that reads one of them as another kind widens what the walk keeps.
+    /// every one of them but <c>/Name</c> through <see cref="PdfObjectExtensions.AsInteger"/>, which reads a value of any
+    /// other kind as it reads an entry absent (#181), and <c>/Name</c> as a name, which says what to report and decides
+    /// nothing decoding reads after it, so that the walk, which follows what decoding loads, needs none of it but a
+    /// reference. A filter that reads one of them as another kind, and reads on as it says, widens what the walk keeps.
     /// </remarks>
     internal static ReadOnlySpan<PdfName> ParameterKeys => ParametersRead;
 
@@ -161,6 +188,56 @@ internal sealed class FilterChain
     public Steps GetEnumerator() => new(this);
 
     /// <summary>
+    /// Gives the filter <paramref name="name"/> names: the filter an abbreviation ISO 32000-1 allows only in an inline
+    /// image's dictionary (Table 94) stands for — <c>/AHx</c>, <c>/A85</c>, <c>/LZW</c>, <c>/Fl</c>, <c>/RL</c>,
+    /// <c>/CCF</c>, <c>/DCT</c> —, or the name itself.
+    /// </summary>
+    /// <param name="name">A name a <c>/Filter</c> gives.</param>
+    internal static PdfName FullName(PdfName name) => name.Value switch
+    {
+        "AHx" => PdfName.ASCIIHexDecode,
+        "A85" => PdfName.ASCII85Decode,
+        "LZW" => PdfName.LZWDecode,
+        "Fl" => PdfName.FlateDecode,
+        "RL" => PdfName.RunLengthDecode,
+        "CCF" => PdfName.CCITTFaxDecode,
+        "DCT" => PdfName.DCTDecode,
+        _ => name,
+    };
+
+    /// <summary>
+    /// Reports what the chain read otherwise than the file wrote it, in the order it read it, at
+    /// <paramref name="data"/>'s position: each filter named by its abbreviation, a repair
+    /// (<see cref="PdfDiagnosticCodes.FilterNameAbbreviated"/>), and each value it replaced, a warning
+    /// (<see cref="PdfDiagnosticCodes.FilterParametersInvalid"/>) — but a crypt filter a <c>/Crypt</c> step names in data
+    /// that may be encrypted (<see cref="PdfStreamData.MayBeEncrypted"/>), where the name is the security handler's to
+    /// read.
+    /// </summary>
+    /// <param name="diagnostics">Receives the reports.</param>
+    /// <param name="data">The stream's data.</param>
+    public void Report(PdfDiagnostics? diagnostics, PdfStreamData data)
+    {
+        if (diagnostics is null)
+        {
+            return;
+        }
+
+        for (var index = 0; index < _faultCount; index++)
+        {
+            var fault = _faults![index];
+
+            if (fault.Kind == FaultKind.Abbreviated)
+            {
+                diagnostics.Repair(PdfDiagnosticCodes.FilterNameAbbreviated, Describe(fault), data.Position);
+            }
+            else if (fault.Kind != FaultKind.CryptFilterNamed || !data.MayBeEncrypted)
+            {
+                diagnostics.Warn(PdfDiagnosticCodes.FilterParametersInvalid, Describe(fault), data.Position);
+            }
+        }
+    }
+
+    /// <summary>
     /// The steps of a chain, each with the values of its parameters, as decoding runs them: every filter before the end
     /// of the chain but <c>/Crypt</c>, which passes its data along as it is — the identity crypt filter's, and any other's
     /// until the security handler decrypts (M16).
@@ -182,7 +259,7 @@ internal sealed class FilterChain
             {
                 // Every element before the end is a name, or a reference that led to one, which was kept in order.
                 var element = chain._filters is PdfArray array ? array[_index] : chain._filters;
-                var name = element as PdfName ?? chain._names![_name++];
+                var name = element is PdfName written ? FullName(written) : chain._names![_name++];
 
                 if (name == PdfName.Crypt)
                 {
@@ -250,6 +327,7 @@ internal sealed class FilterChain
         var parametersRead = false;
         var flateRead = false;
         var lzwRead = false;
+        var cryptRead = false;
         PdfObject? parameters = null;
 
         for (var index = 0; index < length; index++)
@@ -268,6 +346,16 @@ internal sealed class FilterChain
             if (array is not null && !reader.TryRead(PdfName.Filter, written, entry: false, out element))
             {
                 return false;
+            }
+
+            if (element is PdfName read && FullName(read) is var full && !ReferenceEquals(full, read))
+            {
+                if (keep)
+                {
+                    AddFault(ref reading, new Fault(FaultKind.Abbreviated, index, read, Value: null));
+                }
+
+                element = full;
             }
 
             var end = element switch
@@ -293,7 +381,7 @@ internal sealed class FilterChain
                 Append(ref reading.Names, ref reading.NameCount, filter);
             }
 
-            if (filter == PdfName.FlateDecode || filter == PdfName.LZWDecode)
+            if (filter == PdfName.FlateDecode || filter == PdfName.LZWDecode || filter == PdfName.Crypt)
             {
                 if (!parametersRead)
                 {
@@ -303,27 +391,70 @@ internal sealed class FilterChain
                     }
 
                     parametersRead = true;
+
+                    if (keep && parameters is not (null or PdfNull or PdfArray) && parameters.AsDictionary() is null)
+                    {
+                        AddFault(ref reading, new Fault(FaultKind.ParametersNotDictionaryOrArray, -1, Name: null, parameters));
+                    }
                 }
 
                 if (parameters is PdfArray parameterArray)
                 {
                     var placed = index < parameterArray.Count ? parameterArray[index] : null;
 
-                    if (!reader.TryRead(PdfName.DecodeParms, placed, entry: false, out placed) ||
-                        !TryReadParameters(filter, placed.AsDictionary(), ref reader, out var values))
+                    if (!reader.TryRead(PdfName.DecodeParms, placed, entry: false, out placed))
                     {
                         return false;
                     }
 
-                    if (keep && values != new FilterParameters())
+                    // A null element is a step without parameters, as ISO 32000-1 writes it (7.3.8.2); a missing one or
+                    // one of another kind leaves the step without the parameters the file may have meant it to have.
+                    if (keep && index >= parameterArray.Count)
                     {
-                        Append(ref reading.Placed, ref reading.PlacedCount, new Placed(index, values));
+                        AddFault(ref reading, new Fault(FaultKind.ElementMissing, index, filter, Value: null));
                     }
+                    else if (keep && placed is not (null or PdfNull) && placed.AsDictionary() is null)
+                    {
+                        AddFault(ref reading, new Fault(FaultKind.ElementNotDictionary, index, filter, placed));
+                    }
+
+                    if (filter == PdfName.Crypt)
+                    {
+                        if (!TryReadCrypt(placed.AsDictionary(), index, ref reader, keep, ref reading))
+                        {
+                            return false;
+                        }
+                    }
+                    else
+                    {
+                        if (!TryReadParameters(filter, placed.AsDictionary(), index, ref reader, keep, described: true, ref reading, out var values))
+                        {
+                            return false;
+                        }
+
+                        if (keep && values != new FilterParameters())
+                        {
+                            Append(ref reading.Placed, ref reading.PlacedCount, new Placed(index, values));
+                        }
+                    }
+                }
+                else if (filter == PdfName.Crypt)
+                {
+                    // Of a dictionary, the name is read once: it says the same of every /Crypt step.
+                    if (!cryptRead && !TryReadCrypt(parameters.AsDictionary(), -1, ref reader, keep, ref reading))
+                    {
+                        return false;
+                    }
+
+                    cryptRead = true;
                 }
                 else if (filter == PdfName.FlateDecode ? !flateRead : !lzwRead)
                 {
-                    // A dictionary serves every step: its values are read once for each kind of step that reads them.
-                    if (!TryReadParameters(filter, parameters.AsDictionary(), ref reader, out var values))
+                    // A dictionary serves every step: its values are read once for each kind of step that reads them, and
+                    // what it gives ISO 32000-1 does not allow is kept once, though both kinds read the predictor's values.
+                    var described = keep && !flateRead && !lzwRead;
+
+                    if (!TryReadParameters(filter, parameters.AsDictionary(), -1, ref reader, keep, described, ref reading, out var values))
                     {
                         return false;
                     }
@@ -394,8 +525,31 @@ internal sealed class FilterChain
     private static int Nearest(long? value, int absent) =>
         value is { } read ? (int)Math.Clamp(read, int.MinValue, int.MaxValue) : absent;
 
-    /// <summary>Reads the values of a Flate or LZW step's parameters that decoding it reads.</summary>
-    private static bool TryReadParameters<TReader>(PdfName filter, PdfDictionary? parameters, ref TReader reader, out FilterParameters values)
+    /// <summary>
+    /// Reads the values of a Flate or LZW step's parameters that decoding it reads, each as ISO 32000-1 (Table 8) allows
+    /// it, or as other readers read one it does not: a <c>/Predictor</c> other than 1, 2 or 10 to 15 as none, and one past
+    /// 15 as a PNG predictor, as PDFium splits them; a <c>/BitsPerComponent</c> other than 1, 2, 4, 8 or 16 as 8; a
+    /// <c>/Colors</c> or <c>/Columns</c> below 1 as 1; an <c>/EarlyChange</c> other than 0 as 1; a value that is no integer
+    /// as the entry absent. With <paramref name="keep"/>, each value so replaced is kept for decoding to report — of the
+    /// values Flate and LZW both read, only with <paramref name="described"/>.
+    /// </summary>
+    /// <param name="filter">The step's filter.</param>
+    /// <param name="parameters">The step's parameters, or null when it has none.</param>
+    /// <param name="index">Where in the <c>/DecodeParms</c> array the parameters stand, or -1 for its dictionary.</param>
+    /// <param name="reader">Follows each value.</param>
+    /// <param name="keep">Whether what decoding needs again is kept.</param>
+    /// <param name="described">Whether the values Flate and LZW both read are kept when replaced, not kept already.</param>
+    /// <param name="reading">Receives what the values give that ISO 32000-1 does not allow.</param>
+    /// <param name="values">The values decoding reads.</param>
+    private static bool TryReadParameters<TReader>(
+        PdfName filter,
+        PdfDictionary? parameters,
+        int index,
+        ref TReader reader,
+        bool keep,
+        bool described,
+        ref Reading reading,
+        out FilterParameters values)
         where TReader : struct, IFilterValueReader
     {
         values = new FilterParameters();
@@ -412,15 +566,17 @@ internal sealed class FilterChain
                 return false;
             }
 
-            values = values with { EarlyChange = earlyChange.AsInteger() is 0 ? 0 : 1 };
+            values = values with { EarlyChange = Read(earlyChange, PdfName.EarlyChange, index, keep, ref reading) };
         }
+
+        keep &= described;
 
         if (!reader.TryRead(PdfName.DecodeParms, parameters.GetRaw(PdfName.Predictor), entry: false, out var predictor))
         {
             return false;
         }
 
-        values = values with { Predictor = Nearest(predictor.AsInteger(), 1) };
+        values = values with { Predictor = Read(predictor, PdfName.Predictor, index, keep, ref reading) };
 
         // Without a predictor the other parameters mean nothing, and are not read.
         if (values.Predictor <= 1)
@@ -437,12 +593,108 @@ internal sealed class FilterChain
 
         values = values with
         {
-            Colors = Nearest(colors.AsInteger(), 1),
-            BitsPerComponent = Nearest(bitsPerComponent.AsInteger(), 8),
-            Columns = (int)Math.Clamp(columns.AsInteger() ?? 1, 1, int.MaxValue),
+            Colors = Read(colors, PdfName.Colors, index, keep, ref reading),
+            BitsPerComponent = Read(bitsPerComponent, PdfName.BitsPerComponent, index, keep, ref reading),
+            Columns = Read(columns, PdfName.Columns, index, keep, ref reading),
         };
         return true;
     }
+
+    /// <summary>
+    /// Reads <paramref name="value"/>, the parameter <paramref name="key"/>, which decoding reads as an integer: the int
+    /// nearest it, as <see cref="Allowed"/> reads it, or as the entry absent when it is of another kind. With
+    /// <paramref name="keep"/>, one of another kind, or one read as another value, is kept for decoding to report.
+    /// </summary>
+    private static int Read(PdfObject? value, PdfName key, int index, bool keep, ref Reading reading)
+    {
+        var written = value.AsInteger();
+        var nearest = Nearest(written, key == PdfName.BitsPerComponent ? 8 : 1);
+        var read = Allowed(key, nearest);
+
+        if (keep && (written is null ? value is not (null or PdfNull) : read != nearest))
+        {
+            AddFault(ref reading, new Fault(written is null ? FaultKind.ValueOfWrongKind : FaultKind.ValueReplaced, index, key, value));
+        }
+
+        return read;
+    }
+
+    /// <summary>
+    /// Gives the value decoding reads the int <paramref name="value"/> of the parameter <paramref name="key"/> as: itself
+    /// where ISO 32000-1 (Table 8) allows it; otherwise, of <c>/Predictor</c>, 15 past 15 — a PNG predictor, whose rows say
+    /// how each was predicted — and 1, no predictor, for any other, of <c>/BitsPerComponent</c> 8, of <c>/EarlyChange</c>
+    /// 1, and of <c>/Colors</c> or <c>/Columns</c> 1.
+    /// </summary>
+    private static int Allowed(PdfName key, int value) =>
+        key == PdfName.Predictor ? (value is 1 or 2 or (>= 10 and <= 15) ? value : value > 15 ? 15 : 1) :
+        key == PdfName.BitsPerComponent ? (value is 1 or 2 or 4 or 8 or 16 ? value : 8) :
+        key == PdfName.EarlyChange ? (value == 0 ? 0 : 1) :
+        Math.Max(value, 1);
+
+    /// <summary>
+    /// Reads the <c>/Name</c> of a <c>/Crypt</c> step's parameters, which names the crypt filter that decrypts its data,
+    /// the identity filter where they give none or give no name (ISO 32000-1, 7.4.10). Decoding applies none: with
+    /// <paramref name="keep"/>, a name other than <c>/Identity</c> is kept for it to report where no encryption dictionary
+    /// can define it, and a value of another kind, read as absent, as one it replaced.
+    /// </summary>
+    private static bool TryReadCrypt<TReader>(PdfDictionary? parameters, int index, ref TReader reader, bool keep, ref Reading reading)
+        where TReader : struct, IFilterValueReader
+    {
+        if (parameters is null)
+        {
+            return true;
+        }
+
+        if (!reader.TryRead(PdfName.DecodeParms, parameters.GetRaw(CryptFilterKey), entry: false, out var name))
+        {
+            return false;
+        }
+
+        if (!keep || name is null or PdfNull || (name is PdfName given && given == Identity))
+        {
+            return true;
+        }
+
+        AddFault(ref reading, new Fault(name is PdfName ? FaultKind.CryptFilterNamed : FaultKind.ValueOfWrongKind, index, CryptFilterKey, name));
+        return true;
+    }
+
+    /// <summary>Keeps <paramref name="fault"/>, for decoding to report.</summary>
+    private static void AddFault(ref Reading reading, Fault fault) => Append(ref reading.Faults, ref reading.FaultCount, fault);
+
+    /// <summary>Says what the file wrote that <paramref name="fault"/> stands for, and what it was read as.</summary>
+    private string Describe(in Fault fault)
+    {
+        var where = fault.Index < 0 ? "The /DecodeParms entry" : Invariant($"Element {fault.Index} of the /DecodeParms array");
+        var key = fault.Name is null ? string.Empty : FileQuote.Name(fault.Name);
+        var several = _filters is PdfArray;
+
+        return fault.Kind switch
+        {
+            FaultKind.Abbreviated =>
+                $"{(several ? Invariant($"Element {fault.Index} of the /Filter entry") : "The /Filter entry")} names {key}, an abbreviation ISO 32000-1 allows only in an inline image; it was read as {FileQuote.Name(FullName(fault.Name!))}.",
+            FaultKind.ValueReplaced => Invariant(
+                $"{where} gives {key} {fault.Value.AsInteger()}, which ISO 32000-1 does not allow; it was read as {Said(fault.Name!, Allowed(fault.Name!, Nearest(fault.Value.AsInteger(), 1)))}."),
+            FaultKind.ValueOfWrongKind =>
+                $"{where} gives {key} as {PdfObjectParser.KindOf(fault.Value)}, where ISO 32000-1 wants {(fault.Name == CryptFilterKey ? "a name" : "an integer")}; it was read as absent, which gives {Said(fault.Name!, fault.Name == PdfName.BitsPerComponent ? 8 : 1)}.",
+            FaultKind.ParametersNotDictionaryOrArray =>
+                $"{where} is {PdfObjectParser.KindOf(fault.Value)}, neither a dictionary nor an array; {(several ? "the filters decode" : "the filter decodes")} with no parameters.",
+            FaultKind.ElementNotDictionary =>
+                $"{where} is {PdfObjectParser.KindOf(fault.Value)}, neither a dictionary nor null; the {key} filter it is for decodes with no parameters.",
+            FaultKind.ElementMissing => several
+                ? Invariant($"The /DecodeParms array holds no element for the {key} filter at element {fault.Index} of the /Filter entry; it decodes with no parameters.")
+                : $"The /DecodeParms array holds no element for the {key} filter; it decodes with no parameters.",
+            _ => $"{where} names the crypt filter {FileQuote.Name((PdfName)fault.Value!)}, which no /Encrypt dictionary defines; the /Crypt filter passed its data along as it is.",
+        };
+
+        // What a parameter was read as, in words: a predictor by its kind, a crypt filter by its name.
+        static string Said(PdfName key, int read) =>
+            key == PdfName.Predictor ? (read == 1 ? "1, no predictor" : "a PNG predictor") :
+            key == CryptFilterKey ? "the identity crypt filter" :
+            read.ToString(CultureInfo.InvariantCulture);
+    }
+
+    private static string Invariant(FormattableString text) => text.ToString(CultureInfo.InvariantCulture);
 
     /// <summary>The values of the parameters of the step at <paramref name="Index"/>.</summary>
     /// <param name="Index">Where in the chain the step stands.</param>
@@ -464,7 +716,44 @@ internal sealed class FilterChain
         public int PlacedCount;
         public FilterParameters Flate = new();
         public FilterParameters Lzw = new();
+        public Fault[]? Faults;
+        public int FaultCount;
     }
+
+    /// <summary>What the chain reads otherwise than the file wrote it.</summary>
+    private enum FaultKind
+    {
+        /// <summary>A filter named by its abbreviation, read as the filter it abbreviates.</summary>
+        Abbreviated,
+
+        /// <summary>An integer ISO 32000-1 does not allow the parameter, read as another.</summary>
+        ValueReplaced,
+
+        /// <summary>A parameter's value of the wrong kind, read as the entry absent.</summary>
+        ValueOfWrongKind,
+
+        /// <summary>A <c>/DecodeParms</c> that is neither a dictionary nor an array, which gives no filter parameters.</summary>
+        ParametersNotDictionaryOrArray,
+
+        /// <summary>An element of the <c>/DecodeParms</c> array that is neither a dictionary nor null.</summary>
+        ElementNotDictionary,
+
+        /// <summary>A <c>/DecodeParms</c> array too short to reach a step that reads parameters.</summary>
+        ElementMissing,
+
+        /// <summary>A crypt filter a <c>/Crypt</c> step names other than the identity filter, which decoding does not apply.</summary>
+        CryptFilterNamed,
+    }
+
+    /// <summary>Something the chain reads otherwise than the file wrote it.</summary>
+    /// <param name="Kind">What it is.</param>
+    /// <param name="Index">
+    /// Where it stands: the element of the <c>/Filter</c> array — of an abbreviation, a missing element's step —, or of the
+    /// <c>/DecodeParms</c> array, -1 for the <c>/DecodeParms</c> dictionary.
+    /// </param>
+    /// <param name="Name">The abbreviation, the step's filter, or the parameter's key, as <paramref name="Kind"/> says.</param>
+    /// <param name="Value">The value the file wrote, as resolved, where <paramref name="Kind"/> quotes one.</param>
+    private readonly record struct Fault(FaultKind Kind, int Index, PdfName? Name, PdfObject? Value);
 
     /// <summary>
     /// Follows each value as <see cref="PdfReference.Resolve"/> does, and ends the reading at one that leads to an object

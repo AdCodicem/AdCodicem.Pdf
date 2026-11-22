@@ -1272,6 +1272,9 @@ internal sealed partial class PdfFileReader
 
         internal override bool EndHidden => _endHidden;
 
+        // The trailer as read so far: what a rebuild merges is added to it, never taken from it.
+        internal override bool MayBeEncrypted => reader.Trailer.ContainsKey(PdfName.Encrypt);
+
         public void MarkCutByGuard() => _cutByGuard = true;
 
         public void MarkEndHidden() => _endHidden = true;

@@ -507,8 +507,8 @@ internal sealed partial class PdfFileReader
             // The data decoded again knowing its end hidden lacks the group a filter dropped there, and a filter after it,
             // given less, may be given more room than the decoding before gave it, and read rows past where that one stopped
             // at a guard on decoding: the guard stops it where it stops the data read whole, the decoding before (#220). A
-            // decoding no guard stopped holds fewer rows only where its end, decoded as the file's, lost a predicted row the
-            // data decoded again undoes as far as it goes: those it completes are the file's.
+            // decoding no guard stopped holds fewer rows only where its end, decoded as the file's, parted the first predicted
+            // row, left as decoded, which the data decoded again undoes as far as it goes: those it completes are the file's.
             if (endHidden && reachedBefore && held > heldBefore)
             {
                 held = heldBefore;
@@ -524,10 +524,10 @@ internal sealed partial class PdfFileReader
                 long[] ranges = index is null ? [0, declared] : subsections;
                 var whole = RetakeDeferred(xrefStream, unsettled, data, fieldWidths, row, held, ranges, out lengthCut, out var numbered);
 
-                // The row for the /Length may lie in a predicted row the spelled endstream parts, which the data decoded as
-                // data whose end the file gives dropped, left as decoded — the first predicted row parted — or left still
-                // differenced: the data decoded knowing its end hidden undoes it as far as it goes, and holds the rows before
-                // the endstream whole. What that decoding reports is dropped with it, but for a guard on decoding it reached,
+                // The row for the /Length may lie in the first predicted row, which the spelled endstream parts, and which the
+                // data decoded as data whose end the file gives left as decoded, the row longer than the data (#162): the
+                // data decoded knowing its end hidden undoes it as far as it goes, and holds the rows before the endstream
+                // whole. What that decoding reports is dropped with it, but for a guard on decoding it reached,
                 // which the whole data, holding at least as much, reaches too: where it found no row for the /Length, where
                 // the rows end is the guard's, as where the decoding before reached it.
                 if (whole is null && numbered && row > 0)

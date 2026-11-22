@@ -152,15 +152,15 @@ public class ArlingtonRuleTests
     [InlineData("/Filter /FlateDecode /DecodeParms << /Predictor 12 /Columns 3 >>", "", 0)]
     [InlineData("/Filter [/ASCIIHexDecode /FlateDecode] /DecodeParms << /Predictor 12.0 >>", "", 0)]
     [InlineData("/Filter /ASCIIHexDecode /DecodeParms << /Predictor 12.0 >>", "", 0)]
-    [InlineData("/Filter /Fl /DecodeParms << /Predictor 12.0 >>", "", 0)]
+    [InlineData("/Filter /Fl /DecodeParms << /Predictor 12.0 >>", "FilterFlateDecode", 1)]
     [InlineData("/Filter [5 /FlateDecode] /DecodeParms [<< /Predictor 12.0 >> << /Predictor 1 >>]", "", 0)]
     [InlineData("/DecodeParms << /Predictor 12.0 >>", "", 0)]
     public void A_stream_s_filter_parameters_are_the_type_of_the_filter_at_their_place(string entries, string type, int findings)
     {
         // Flate's parameters and LZW's share every key but /EarlyChange: what a dictionary holds cannot tell them apart, and
         // two candidates that score alike leave it unchecked. The filter at the same place says whose parameters they
-        // are; where none does — a dictionary beside several filters, a filter that takes none, one the model knows only by
-        // its full name, an element that names none, or no filter at all —, they stay unchecked (#219).
+        // are, an abbreviation the filter it abbreviates (#250); where none does — a dictionary beside several filters, a
+        // filter that takes none, an element that names none, or no filter at all —, they stay unchecked (#219).
         var report = Validate(Pdf(
             Catalog,
             Root,

@@ -15,15 +15,15 @@ internal readonly record struct FilterParameters
     public int EarlyChange { get; init; } = 1;
 
     /// <summary>
-    /// Gets the step's <c>/Predictor</c>: 1, no predictor, unless the parameters say otherwise; a value past an int is the
-    /// int nearest it, as are <see cref="Colors"/> and <see cref="BitsPerComponent"/>.
+    /// Gets the step's <c>/Predictor</c>: 1, no predictor, 2, TIFF's, or 10 to 15, PNG's, as the chain reads what the
+    /// parameters say (<see cref="FilterChain"/>).
     /// </summary>
     public int Predictor { get; init; } = 1;
 
-    /// <summary>Gets the predictor's <c>/Colors</c>, read only when the predictor is past 1.</summary>
+    /// <summary>Gets the predictor's <c>/Colors</c>, at least 1, read only when the predictor is past 1.</summary>
     public int Colors { get; init; } = 1;
 
-    /// <summary>Gets the predictor's <c>/BitsPerComponent</c>, read only when the predictor is past 1.</summary>
+    /// <summary>Gets the predictor's <c>/BitsPerComponent</c>, 1, 2, 4, 8 or 16, read only when the predictor is past 1.</summary>
     public int BitsPerComponent { get; init; } = 8;
 
     /// <summary>Gets the predictor's <c>/Columns</c>, at least 1, read only when the predictor is past 1.</summary>
