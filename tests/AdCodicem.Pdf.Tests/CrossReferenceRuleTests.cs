@@ -4642,6 +4642,42 @@ public class CrossReferenceRuleTests
         document.GetObject(new PdfObjectId(7)).Should().BeSameAs(PdfNull.Instance);
     }
 
+    [Fact]
+    public void An_object_a_rebuild_serves_from_the_chain_s_own_row_of_its_stream_outside_the_file_is_not_said_lost()
+    {
+        // Thirteen headers of object 30 fill the scan's memo under MaxIndexEntries 12. Object stream 6, which lists object 7,
+        // lies within object 10's data, past the memo's bound, where the rebuild's scan passes over it. The newest table
+        // places 6 at offset -1; its /Prev, a cross-reference stream, places 7 at index 0 of 6 and row 9 outside the file;
+        // MaxXRefSectionCount 2 leaves the oldest table unread, so the rebuild merges the chain's rows of 6 and 7. The rebuilt
+        // index keeps the chain's own row of 6, which a load reads as the chain's, finding 6 near it: 7 is served, and no
+        // finding says it lost.
+        const string Six = "6 0 obj\n<< /Type /ObjStm /N 1 /First 4 /Length 12 >>\nstream\n7 0 (seven) \nendstream\nendobj\n";
+        var file = new HandWrittenFile(version: "1.5");
+
+        for (var copy = 0; copy < 13; copy++)
+        {
+            file.Object(30, "0");
+        }
+
+        file.Raw(Invariant($"10 0 obj\n<< /Length {Six.Length} >>\nstream\n"));
+        file.Raw(Six + "\nendstream\nendobj\n");
+        var one = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>");
+        var two = file.Object(2, "<< /Type /Pages /Kids [4 0 R] /Count 1 >>");
+        var four = file.Object(4, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 10 10] >>");
+        var oldest = file.Table(3, new Dictionary<int, long> { [1] = one, [2] = two }, "/Size 3 /Root 1 0 R");
+        var stream = file.CrossReferenceStream(
+            8, 10, new Dictionary<int, (int Type, long Field2, int Field3)> { [7] = (2, 6, 0), [9] = (1, 999_999, 0) }, Invariant($"/Root 1 0 R /Prev {oldest}"));
+        file.Table(7, new Dictionary<int, long> { [1] = one, [2] = two, [4] = four, [6] = -1 }, Invariant($"/Size 10 /Root 1 0 R /Prev {stream}"));
+        using var document = PdfDocument.Open(
+            file.Bytes, new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxXRefSectionCount = 2, MaxIndexEntries = 12 } });
+
+        var report = new PdfValidator().Validate(document);
+
+        document.WasRepaired.Should().BeTrue();
+        report.Findings.Where(finding => finding.Location.Object?.Number == 7).Should().BeEmpty();
+        document.GetObject(new PdfObjectId(7)).Should().BeOfType<PdfString>().Which.ToText().Should().Be("seven");
+    }
+
     /// <summary>
     /// Writes a file whose chain places each of <paramref name="placed"/> at its index of object stream 6, which holds
     /// <paramref name="members"/>, and object 9 outside the file, so that the validation rebuilds the index; the file writes
