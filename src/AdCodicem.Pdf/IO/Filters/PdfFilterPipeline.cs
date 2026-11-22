@@ -830,19 +830,27 @@ internal static class PdfFilterPipeline
 
         if (faults.UnknownTags > 0)
         {
+            // Of data whose end is a guard's, the rows are those of the part read, and how many the data holds is the
+            // guard's: the report gives no total, and reads the same however much of the data was taken.
+            var total = cut ? "the" : Invariant($"{faults.Rows}");
+            var of = cut ? string.Empty : Invariant($" of {faults.Rows}");
+            var read = cut ? " in the part of the data read" : string.Empty;
             diagnostics.Warn(
                 PdfDiagnosticCodes.FilterFailed,
                 faults.UnknownTags == 1
-                    ? Invariant($"Row {faults.FirstUnknownRow} of {faults.Rows} PNG-predicted rows names filter type {faults.FirstUnknownTag}, which PNG does not define; it was read as unfiltered.")
-                    : Invariant($"{faults.UnknownTags} of {faults.Rows} PNG-predicted rows name a filter type PNG does not define, the first row {faults.FirstUnknownRow} type {faults.FirstUnknownTag}; they were read as unfiltered."),
+                    ? Invariant($"Row {faults.FirstUnknownRow} of {total} PNG-predicted rows{read} names filter type {faults.FirstUnknownTag}, which PNG does not define; it was read as unfiltered.")
+                    : Invariant($"{faults.UnknownTags}{of} PNG-predicted rows{read} name a filter type PNG does not define, the first row {faults.FirstUnknownRow} type {faults.FirstUnknownTag}; they were read as unfiltered."),
                 position);
         }
 
         if (faults.Partial > 0 && ended)
         {
+            // A PNG row of which the data holds only the byte that names its filter type has nothing to undo or keep.
             diagnostics.Warn(
                 PdfDiagnosticCodes.FilterFailed,
-                Invariant($"The predicted data ends inside a row, with {CountText.Bytes(faults.Partial)} of its {faults.Stride}; what the row holds was kept, undone as far as it goes."),
+                faults.Partial == 1 && parameters.Predictor != 2
+                    ? "The predicted data ends with the byte that names a row's filter type, and none of the row's bytes; nothing of it was kept."
+                    : Invariant($"The predicted data ends inside a row, with {CountText.Bytes(faults.Partial)} of its {faults.Stride}; what the row holds was kept, undone as far as it goes."),
                 position);
         }
 
