@@ -388,20 +388,23 @@ public class GuardCutValueTests
         control.Diagnostics.Should().BeEmpty();
     }
 
-    [Fact]
-    public void A_content_stream_whose_filter_a_guard_cut_comes_back_as_the_filters_before_it_decode_it()
+    [Theory]
+    [InlineData("/Filter [/ASCIIHexDecode 20 0 R]", "/ASCIIHexDecode")]
+    [InlineData("/Filter [/ASCIIHexDecode /Crypt /ASCIIHexDecode] /DecodeParms [null << /Name 20 0 R >> null]", "/Identity")]
+    public void A_content_stream_whose_filter_a_guard_cut_comes_back_as_the_filters_before_it_decode_it(string entries, string twenty)
     {
         // The page's content stream decodes through /ASCIIHexDecode, then object 20, which MaxObjectLength cuts before
         // "/ASCIIHexDecode": its data comes back as the first filter decodes it, as past MaxFilterChainLength, and nothing is
-        // said but the guard — once, it decoded as if the chain ended there, in silence (#263).
+        // said but the guard — once, it decoded as if the chain ended there, in silence (#263). So it does where object 20
+        // is the /Name of the crypt filter a /Crypt step names before the second /ASCIIHexDecode (#162).
         var file = new HandWrittenFile();
         var rows = new Dictionary<int, long>
         {
             [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),
             [2] = file.Object(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>"),
             [3] = file.Object(3, Page),
-            [4] = file.Object(4, "<< /Filter [/ASCIIHexDecode 20 0 R] /Length 23 >>\nstream\n333032303330323036443E>\nendstream"),
-            [20] = file.Object(20, new string(' ', 3000) + "/ASCIIHexDecode"),
+            [4] = file.Object(4, $"<< {entries} /Length 23 >>\nstream\n333032303330323036443E>\nendstream"),
+            [20] = file.Object(20, new string(' ', 3000) + twenty),
         };
         file.Table(21, rows, "/Size 21 /Root 1 0 R");
         using var document = PdfDocument.Open(file.Bytes, ObjectGuard);
@@ -698,6 +701,54 @@ public class GuardCutValueTests
         document.Diagnostics.Select(entry => entry.Code).Should().Equal(PdfDiagnosticCodes.XRefEntryReserved, PdfDiagnosticCodes.LimitObject);
         document.WasRepaired.Should().BeFalse();
         new PdfValidator().Validate(document).Contains(PdfValidationRuleIds.XRefSectionMalformed).Should().BeFalse();
+    }
+
+    [Theory]
+    [InlineData(1, "")]
+    [InlineData(5, "junk\n")]
+    public void A_carriage_return_a_deferred_length_s_data_ends_in_stays_the_data_s_where_a_guard_cut_the_length_after_its_value(
+        int dropped, string after)
+    {
+        // Stream 5's rows are compressed in a stored block that lacks the last byte of its checksum, or all of it and the last
+        // row's last byte, and a carriage return and a line feed come before its endstream. Its /Length names object 4,
+        // which the stream's own row places, and which holds the data's length before 3,000 spaces. Read whole, the length
+        // leaves the carriage return out, and the data decodes as its direct twin's (#288). Under MaxObjectLength, which
+        // cuts object 4 after its value, the integer the cut left is a place to look at, no length the file gave: the
+        // carriage return stays the data's — the checksum's last byte, which then disagrees, or the last row's, the checksum
+        // then missing. The data holds every row the section declares: where it ends is no guard's, though text that is no
+        // object follows the stream's, and nothing proves its endstream its own.
+        var file = ChainFiles.AloneWithIndirectLength(compressed: true, dropped: dropped, endOfLine: "\r\n", lengthTail: 3000, after: after);
+        using var whole = PdfDocument.Open(file);
+        using var document = PdfDocument.Open(file, ObjectGuard);
+
+        whole.Diagnostics.Where(entry => entry.Code.StartsWith("filter.", StringComparison.Ordinal)).Select(entry => entry.Message).Should().Equal(
+            dropped == 1
+                ? "A Flate stream ends before its checksum does; its data decoded whole, unchecked."
+                : "A Flate stream ends before its data does; what decoded before the end was kept.");
+        document.Diagnostics.Select(entry => entry.Code).Should().Equal(
+            dropped == 1 ? PdfDiagnosticCodes.FilterChecksumMismatch : PdfDiagnosticCodes.FilterFailed, PdfDiagnosticCodes.LimitObject);
+        document.Diagnostics[0].Message.Should().Be(dropped == 1
+            ? "A Flate stream's checksum disagrees with the 42 bytes its data decoded to; all were kept, and some may be wrong."
+            : "A Flate stream ends before its checksum does; its data decoded whole, unchecked.");
+    }
+
+    [Fact]
+    public void A_carriage_return_a_deferred_length_s_data_ends_in_stays_the_data_s_where_a_guard_cut_a_length_a_newer_section_places()
+    {
+        // Stream 7's last row, the page's, gives generation 13, its last byte a carriage return; the data lacks that byte,
+        // and a carriage return and a line feed come before its endstream. Its /Length names object 5, which the newer
+        // table places, and which holds the data's length before 3,000 spaces. Read whole, the length leaves the carriage
+        // return out, and the section lacks the page's row. Under MaxObjectLength, which cuts object 5 after its value, the
+        // integer the cut left is no length the file gave: the carriage return stays the data's, the row's last byte (#288).
+        var file = ChainFiles.UpdatePlacingAPaddedLength(chained: false, lengthFirst: true, spelling: false, generation: 13, dropped: 1, endOfLine: "\r\n");
+        using var whole = PdfDocument.Open(file);
+        using var document = PdfDocument.Open(file, ObjectGuard);
+
+        whole.Diagnostics.Select(entry => entry.Code).Should().Equal(PdfDiagnosticCodes.XRefSectionUnreadable);
+        whole.Reader.Index.TryGet(3, out _).Should().BeFalse();
+        document.Diagnostics.Select(entry => entry.Code).Should().Equal(PdfDiagnosticCodes.LimitObject);
+        document.Reader.Index.TryGet(3, out var three).Should().BeTrue();
+        three.Generation.Should().Be(13);
     }
 
     [Theory]
@@ -1400,9 +1451,10 @@ public class GuardCutValueTests
     {
         // Content stream 4's Flate data, under a /Length a guard cut or left out of the index, its endstream proven its own:
         // raw deflate whose last byte is a NUL, zlib whose checksum is wrong past bytes that look like a comment after white
-        // space, zlib whose predicted rows end it whole. The deflate body ends in the data as the search took it: what it
-        // decodes to is whole, the repair raw deflate asks for reported as read whole. It was decoded again up to the NUL, or
-        // to the % the checksum's bytes hold, its last bytes lost and its end taken for the guard's (#224).
+        // space, zlib whose predicted rows end it whole, or in a last row it holds in part. The deflate body ends in the data
+        // as the search took it: what it decodes to is whole, the repair raw deflate asks for reported as read whole, and so
+        // is the part of a row (#162). It was decoded again up to the NUL, or to the % the checksum's bytes hold, its last
+        // bytes lost and its end taken for the guard's (#224).
         var raw = new MemoryStream();
 
         using (var deflate = new DeflateStream(raw, CompressionLevel.Optimal, leaveOpen: true))
@@ -1417,6 +1469,7 @@ public class GuardCutValueTests
             ("/Filter /FlateDecode", raw.ToArray()),
             ("/Filter /FlateDecode", stored),
             (Invariant($"/Filter /FlateDecode /DecodeParms << /Predictor {predictor} /Columns 4 >>"), Zlib(rows)),
+            (Invariant($"/Filter /FlateDecode /DecodeParms << /Predictor {predictor} /Columns 4 >>"), Zlib(rows.AsSpan(..^2))),
         ];
 
         raw.ToArray()[^1].Should().Be(0);

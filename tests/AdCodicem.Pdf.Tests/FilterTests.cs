@@ -786,20 +786,70 @@ public class FilterTests
     }
 
     [Theory]
+    [InlineData("Flate, its checksum missing")]
+    [InlineData("Flate, its checksum wrong")]
+    [InlineData("LZW, its end code")]
+    [InlineData("LZW, no end code")]
+    [InlineData("LZW, inside a code")]
+    [InlineData("LZW, a code it has not defined")]
+    public void Reports_a_partial_last_row_where_its_filter_decoded_the_data_to_an_end_that_loses_nothing(string data)
+    {
+        // Two PNG-predicted rows of two bytes, then a third's filter type and first byte. Flate data whose deflate body ends,
+        // its checksum missing or wrong, and LZW data that ends at its end code, or at the end of its last code without
+        // one, lose nothing: the part of the row is the file's, and reported. LZW data that ends inside a code, or at a code
+        // it has not defined, may have lost what follows, which its report says: the part of the row is not reported again.
+        byte[] predicted = [0, 1, 2, 2, 1, 1, 2, 1];
+        int[] codes = [.. predicted.Select(value => (int)value)];
+        byte[] encoded = data switch
+        {
+            "Flate, its checksum missing" => Compress(predicted)[..^4],
+            "Flate, its checksum wrong" => [.. Compress(predicted)[..^1], (byte)(Compress(predicted)[^1] ^ 0xFF)],
+            "LZW, its end code" => NineBitCodes([.. codes, 257]),
+            "LZW, no end code" => NineBitCodes(codes),
+            "LZW, inside a code" => [.. NineBitCodes(codes), 0xFF],
+            _ => NineBitCodes([.. codes, 300]),
+        };
+        var dictionary = Dictionary($"/Filter /{(data.StartsWith("LZW", StringComparison.Ordinal) ? "LZWDecode" : "FlateDecode")} /DecodeParms << /Predictor 12 /Columns 2 >>");
+        const string Partial = "The predicted data ends inside a row, with 2 bytes of its 3; what the row holds was kept, undone as far as it goes.";
+        (string Code, string Message)[] reports = data switch
+        {
+            "Flate, its checksum missing" =>
+                [(PdfDiagnosticCodes.FilterFailed, "A Flate stream ends before its checksum does; its data decoded whole, unchecked."), (PdfDiagnosticCodes.FilterFailed, Partial)],
+            "Flate, its checksum wrong" =>
+                [(PdfDiagnosticCodes.FilterChecksumMismatch, "A Flate stream's checksum disagrees with the 8 bytes its data decoded to; all were kept, and some may be wrong."), (PdfDiagnosticCodes.FilterFailed, Partial)],
+            "LZW, its end code" => [(PdfDiagnosticCodes.FilterFailed, Partial)],
+            "LZW, no end code" =>
+                [(PdfDiagnosticCodes.FilterFailed, "An LZW stream ends without its end-of-data code; it decoded to the end of its data."), (PdfDiagnosticCodes.FilterFailed, Partial)],
+            "LZW, inside a code" =>
+                [(PdfDiagnosticCodes.FilterFailed, "An LZW stream ends without its end-of-data code, inside a code, whose bits were dropped; data may have been lost.")],
+            _ => [(PdfDiagnosticCodes.FilterFailed, "An LZW stream uses code 300, which it has not defined; what decoded before it was kept.")],
+        };
+        var diagnostics = new PdfDiagnostics();
+
+        var decoded = new PdfStream(dictionary, PdfStreamData.FromMemory(encoded)).Decode(diagnostics);
+
+        Convert.ToHexString(decoded.Span).Should().Be("0102020303");
+        diagnostics.Select(d => (d.Code, d.Message)).Should().Equal(reports);
+    }
+
+    [Theory]
     [InlineData("00010203040501010101", "0102030401010101", "Row 2 of 2 PNG-predicted rows names filter type 5, which PNG does not define; it was read as unfiltered.")]
     [InlineData("0001020304FF010101010902020202", "010203040101010102020202", "2 of 3 PNG-predicted rows name a filter type PNG does not define, the first row 2 type 255; they were read as unfiltered.")]
     public void Reads_a_png_row_whose_filter_type_png_does_not_define_as_unfiltered_and_reports_it(string predicted, string expected, string message)
     {
-        // MuPDF, qpdf and PDFium read such a row as it is, rather than abandon the stream; the report counts them.
+        // MuPDF, qpdf and PDFium read such a row as it is, rather than abandon the stream; the report counts them. Decoded
+        // with nowhere to report to, the stream reads the same.
         var dictionary = new PdfObjectParser("<< /Filter /FlateDecode /DecodeParms << /Predictor 12 /Columns 4 >> >>"u8.ToArray())
             .ParseObject().AsDictionary().Required();
         var diagnostics = new PdfDiagnostics();
+        var stream = new PdfStream(dictionary, PdfStreamData.FromMemory(Compress(Convert.FromHexString(predicted))));
 
-        var decoded = new PdfStream(dictionary, PdfStreamData.FromMemory(Compress(Convert.FromHexString(predicted)))).Decode(diagnostics);
+        var decoded = stream.Decode(diagnostics);
 
         Convert.ToHexString(decoded.Span).Should().Be(expected);
         var report = diagnostics.Should().ContainSingle().Which;
         (report.Code, report.Severity, report.Message).Should().Be((PdfDiagnosticCodes.FilterFailed, PdfDiagnosticSeverity.Warning, message));
+        Convert.ToHexString(stream.Decode().Span).Should().Be(expected);
     }
 
     [Theory]
@@ -915,6 +965,7 @@ public class FilterTests
     [Theory]
     [InlineData(1, 1, 8, "C0FF", "80AA")]
     [InlineData(1, 1, 5, "C7", "87")]
+    [InlineData(1, 1, 9, "C080C080", "80808080")]
     [InlineData(2, 1, 4, "5540", "6C55")]
     [InlineData(4, 2, 2, "1234", "1246")]
     [InlineData(4, 1, 3, "123F", "136F")]
@@ -926,8 +977,9 @@ public class FilterTests
         int bitsPerComponent, int colors, int columns, string predicted, string expected)
     {
         // ISO 32000-1 (Table 8) allows 1, 2, 4, 8 and 16 bits. Each sample adds the one of its component before it in its
-        // row, modulo 2 to its width (TIFF 6.0, section 14): packed from the high bit below a byte, the bits that pad a row
-        // to its last byte left alone, and big-endian at 16 bits, a carry crossing from the low byte to the high one.
+        // row, modulo 2 to its width (TIFF 6.0, section 14): packed from the high bit below a byte, a row rounded up to whole
+        // bytes — nine samples of one bit take two —, the bits that pad it to its last byte left alone, and big-endian at 16
+        // bits, a carry crossing from the low byte to the high one.
         var dictionary = new PdfObjectParser(Encoding.ASCII.GetBytes(string.Create(
             CultureInfo.InvariantCulture,
             $"<< /Filter /FlateDecode /DecodeParms << /Predictor 2 /BitsPerComponent {bitsPerComponent} /Colors {colors} /Columns {columns} >> >>")))
@@ -944,13 +996,14 @@ public class FilterTests
     [InlineData(11, 3, 4, 2, "01102030", "102040")]
     [InlineData(13, 3, 4, 2, "03102030", "102038")]
     [InlineData(11, 5, 2, 4, "010102030405", "0102040609")]
+    [InlineData(11, 1, 1, 16, "011020", "1030")]
     [InlineData(12, 40, 8, 1, "{forty}", "{forty undone}")]
     public void Counts_a_png_pixel_s_bytes_rounded_up_whatever_its_components(
         int predictor, int colors, int bitsPerComponent, int columns, string predicted, string expected)
     {
         // A pixel of three 4-bit components is 12 bits, two bytes as PNG counts them, its left neighbour two bytes back; one
-        // of five 2-bit components, 10 bits, two bytes too. ISO 32000-1 sets no bound on /Colors: forty components, two
-        // rows of a pixel each, the second predicted from the first, decode whole (#162).
+        // of five 2-bit components, 10 bits, two bytes too; one of a single bit, a byte. ISO 32000-1 sets no bound on
+        // /Colors: forty components, two rows of a pixel each, the second predicted from the first, decode whole (#162).
         var forty = Enumerable.Range(1, 40).Select(value => (byte)value).ToArray();
         var data = predicted == "{forty}" ? [0, .. forty, 2, .. Enumerable.Repeat((byte)1, 40)] : Convert.FromHexString(predicted);
         var output = expected == "{forty undone}" ? Convert.ToHexString([.. forty, .. forty.Select(value => (byte)(value + 1))]) : expected;
@@ -964,6 +1017,27 @@ public class FilterTests
 
         Convert.ToHexString(decoded.Span).Should().Be(output);
         diagnostics.Should().BeEmpty();
+    }
+
+    [Fact]
+    public void Undoes_the_part_of_a_png_row_a_guard_cut_whose_pixel_outgrows_an_int_as_bytes_without_a_left_neighbour()
+    {
+        // A pixel of 2,147,483,647 components of 16 bits is 4,294,967,294 bytes, more than an int holds, in a row longer than
+        // any data. MaxStreamLength lets the reader read 100 of the hexadecimal digits: the 42 bytes they hold after the
+        // row's filter type, Sub, are undone as far as they go, none of them with a left neighbour (#162).
+        byte[] rows = [1, .. Enumerable.Repeat((byte)5, 99)];
+        var hex = Convert.ToHexString(Compress(rows, CompressionLevel.NoCompression)) + ">";
+        var file = new TestPdfBuilder()
+            .WithObject(1, "<< /Type /Catalog /Pages 2 0 R >>")
+            .WithObject(2, "<< /Type /Pages /Kids [] /Count 0 >>")
+            .Stream(3, "/Filter [/ASCIIHexDecode /FlateDecode] /DecodeParms [null << /Predictor 12 /Colors 2147483647 /BitsPerComponent 16 >>]", hex)
+            .BuildClassic(rootNumber: 1);
+        using var document = PdfDocument.Open(file, new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxStreamLength = 100 } });
+
+        var decoded = document.GetObject(new PdfObjectId(3)).AsStream().Required().Decode(document.Diagnostics);
+
+        decoded.ToArray().Should().Equal(Enumerable.Repeat((byte)5, 42));
+        document.Diagnostics.Select(d => d.Code).Should().Equal(PdfDiagnosticCodes.LimitStreamLength);
     }
 
     [Theory]
@@ -1010,17 +1084,20 @@ public class FilterTests
     [InlineData("/Filter [/FlateDecode] /DecodeParms [<< /Predictor 7 /Columns 4 >>]", Unpredicted, "Element 0 of the /DecodeParms array gives /Predictor 7, which ISO 32000-1 does not allow; it was read as 1, no predictor.")]
     [InlineData("/Filter [/FlateDecode /FlateDecode] /DecodeParms << /Predictor 7 >>", Unpredicted, "The /DecodeParms entry gives /Predictor 7, which ISO 32000-1 does not allow; it was read as 1, no predictor.")]
     [InlineData("/Filter [/FlateDecode /LZWDecode] /DecodeParms << /Predictor 7 /EarlyChange 2 >>", Unpredicted, "The /DecodeParms entry gives /Predictor 7, which ISO 32000-1 does not allow; it was read as 1, no predictor.|The /DecodeParms entry gives /EarlyChange 2, which ISO 32000-1 does not allow; it was read as 1.")]
+    [InlineData("/Filter [/LZWDecode /FlateDecode] /DecodeParms << /Predictor 7 >>", Unpredicted, "The /DecodeParms entry gives /Predictor 7, which ISO 32000-1 does not allow; it was read as 1, no predictor.")]
     [InlineData("/Filter [/FlateDecode /FlateDecode] /DecodeParms [<< /Predictor 7 >> << /Predictor 9 >>]", Unpredicted, "Element 0 of the /DecodeParms array gives /Predictor 7, which ISO 32000-1 does not allow; it was read as 1, no predictor.|Element 1 of the /DecodeParms array gives /Predictor 9, which ISO 32000-1 does not allow; it was read as 1, no predictor.")]
     [InlineData("/Filter /FlateDecode /DecodeParms [null]", Unpredicted, "")]
     [InlineData("/Filter /FlateDecode /DecodeParms null", Unpredicted, "")]
+    [InlineData("/Filter /FlateDecode /DecodeParms 9 0 R", Unpredicted, "")]
     [InlineData("/Filter [/FlateDecode] /DecodeParms [<< /Predictor 12 /Columns 4 >> null]", Undone, "")]
     [InlineData("/Filter /ASCIIHexDecode /DecodeParms 5", Unpredicted, "")]
     public void Reports_a_filter_the_shape_of_the_parameters_leaves_without_any_and_no_other(string entries, string expected, string reports)
     {
         // A /DecodeParms neither a dictionary nor an array, an element neither a dictionary nor null, and an array too short
-        // to reach a filter that reads parameters, leave it none, where the file may have meant some. A null element, an
-        // array longer than /Filter, a dictionary that serves every step, and parameters of a filter that reads none,
-        // replace nothing; a value a dictionary gives every step is reported once.
+        // to reach a filter that reads parameters, leave it none, where the file may have meant some. A null element, a
+        // /DecodeParms that leads to null, as a reference to an object nothing holds does, an array longer than /Filter, a
+        // dictionary that serves every step, and parameters of a filter that reads none, replace nothing; a value a
+        // dictionary gives every step is reported once, whichever kind of step reads it first.
         AssertDecodes(Dictionary(entries), expected, reports);
     }
 
@@ -1030,13 +1107,15 @@ public class FilterTests
     [InlineData("/Filter [/Crypt /FlateDecode] /DecodeParms [<< /Name (StdCF) >> null]", "Element 0 of the /DecodeParms array gives /Name as a string, where ISO 32000-1 wants a name; it was read as absent, which gives the identity crypt filter.")]
     [InlineData("/Filter [/Crypt /Crypt /FlateDecode] /DecodeParms << /Name /StdCF >>", "The /DecodeParms entry names the crypt filter /StdCF, which no /Encrypt dictionary defines; the /Crypt filter passed its data along as it is.")]
     [InlineData("/Filter [/Crypt /FlateDecode] /DecodeParms [<< /Name /Identity >> null]", "")]
+    [InlineData("/Filter [/Crypt /FlateDecode] /DecodeParms [<< /Name 9 0 R >> null]", "")]
     [InlineData("/Filter [/Crypt /FlateDecode]", "")]
     [InlineData("/Filter [/Crypt] /DecodeParms [<< /Type /CryptFilterDecodeParms >>]", "")]
     public void Passes_the_data_of_a_crypt_filter_along_and_reports_one_that_names_a_crypt_filter_nothing_defines(string entries, string reports)
     {
         // A stream built in memory belongs to no document, and no encryption dictionary defines a crypt filter for it: the
-        // identity filter, named or not, passes its data along in silence, and any other is passed along so, reported once
-        // however many /Crypt filters a dictionary of parameters serves.
+        // identity filter, named or not — a /Name that leads to null, as a reference to an object nothing holds does, names
+        // none —, passes its data along in silence, and any other is passed along so, reported once however many /Crypt
+        // filters a dictionary of parameters serves.
         AssertDecodes(Dictionary(entries), Unpredicted, reports);
     }
 
@@ -1046,11 +1125,15 @@ public class FilterTests
     public void Reports_a_named_crypt_filter_only_in_a_document_whose_trailer_gives_no_encryption(bool encrypted)
     {
         // In a document that gives /Encrypt the name is the security handler's to read, which decryption reads (M16): the
-        // data passes along as it is, unreported. In one that gives none, nothing defines the filter.
+        // data passes along as it is, unreported. In one that gives none, nothing defines the filter. A value the stream's
+        // parameters give that ISO 32000-1 does not allow is reported either way.
+        const string Crypt = "Element 0 of the /DecodeParms array names the crypt filter /StdCF, which no /Encrypt dictionary defines; the /Crypt filter passed its data along as it is.";
+        const string Predictor = "Element 2 of the /DecodeParms array gives /Predictor 7, which ISO 32000-1 does not allow; it was read as 1, no predictor.";
+        var hex = Convert.ToHexString(Compress("plain"u8.ToArray())) + ">";
         var file = new TestPdfBuilder()
             .WithObject(1, "<< /Type /Catalog /Pages 2 0 R >>")
             .WithObject(2, "<< /Type /Pages /Kids [] /Count 0 >>")
-            .Stream(3, "/Filter [/Crypt /ASCIIHexDecode] /DecodeParms [<< /Name /StdCF >> null]", "706C61696E>")
+            .Stream(3, "/Filter [/Crypt /ASCIIHexDecode /FlateDecode] /DecodeParms [<< /Name /StdCF >> null << /Predictor 7 >>]", hex)
             .WithObject(9, "<< /Filter /Standard /V 4 /R 4 /Length 128 /O <00> /U <00> /P -4 /CF << /StdCF << /CFM /AESV2 >> >> /StmF /StdCF /StrF /StdCF >>")
             .BuildClassic(rootNumber: 1);
         var text = Encoding.Latin1.GetString(file);
@@ -1062,8 +1145,10 @@ public class FilterTests
 
         document.IsEncrypted.Should().Be(encrypted);
         Text(decoded).Should().Be("plain");
-        document.Diagnostics.Select(d => (d.Code, d.Position)).Should().Equal(
-            encrypted ? [] : [(PdfDiagnosticCodes.FilterParametersInvalid, stream.Data.Position)]);
+        document.Diagnostics.Select(d => (d.Code, d.Message, d.Position)).Should().Equal(
+            encrypted
+                ? [(PdfDiagnosticCodes.FilterParametersInvalid, Predictor, stream.Data.Position)]
+                : [(PdfDiagnosticCodes.FilterParametersInvalid, Crypt, stream.Data.Position), (PdfDiagnosticCodes.FilterParametersInvalid, Predictor, stream.Data.Position)]);
     }
 
     [Theory]

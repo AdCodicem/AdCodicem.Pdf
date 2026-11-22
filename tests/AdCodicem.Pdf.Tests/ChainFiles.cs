@@ -132,8 +132,12 @@ internal static class ChainFiles
     /// <paramref name="spellingHeader"/> an object header. The rows are compressed when <paramref name="compressed"/>, the
     /// data loses its last <paramref name="dropped"/> bytes, and it ends with <paramref name="endOfLine"/> before its
     /// <c>endstream</c>, which its <c>endobj</c> and the <c>startxref</c> follow. The object that holds the length holds
-    /// <paramref name="lengthPadding"/> spaces before it. With <paramref name="direct"/>, the <c>/Length</c> is written
-    /// direct, as wide as the reference it stands for: every offset is the file's whose <c>/Length</c> is indirect.
+    /// <paramref name="lengthPadding"/> spaces before it, and <paramref name="lengthTail"/> after it. With
+    /// <paramref name="direct"/>, the <c>/Length</c> is written direct, as wide as the reference it stands for: every offset
+    /// is the file's whose <c>/Length</c> is indirect. <paramref name="after"/> is written between the stream's object and
+    /// the <c>startxref</c>, and <paramref name="tail"/> after the rows, in the data, as no row. <paramref name="filters"/>,
+    /// when given, is the stream's <c>/Filter</c>, whatever <paramref name="compressed"/> says of the data, and
+    /// <paramref name="encode"/>, when given, encodes the rows as they are written in their place.
     /// </summary>
     public static byte[] AloneWithIndirectLength(
         int lengthOff = 0,
@@ -146,7 +150,12 @@ internal static class ChainFiles
         bool spellingHeader = false,
         int dropped = 0,
         int lengthPadding = 0,
-        bool direct = false)
+        bool direct = false,
+        int lengthTail = 0,
+        string after = "",
+        string tail = "",
+        string? filters = null,
+        Func<byte[], byte[]>? encode = null)
     {
         using var file = new Writer("1.5");
         file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>");
@@ -159,9 +168,9 @@ internal static class ChainFiles
 
         // Uncompressed rows, or stored in blocks of their own, take as many bytes whatever they hold.
         var length = Data(0, 0).Length + lengthOff;
-        file.Object(lengthNumber, new string(' ', lengthPadding) + length.ToString(CultureInfo.InvariantCulture));
+        file.Object(lengthNumber, new string(' ', lengthPadding) + length.ToString(CultureInfo.InvariantCulture) + new string(' ', lengthTail));
         var stream = file.Position;
-        var filter = compressed ? " /Filter /FlateDecode" : string.Empty;
+        var filter = filters is not null ? " /Filter " + filters : compressed ? " /Filter /FlateDecode" : string.Empty;
         var reference = string.Create(CultureInfo.InvariantCulture, $"{lengthNumber} 0 R");
         var written = direct ? length.ToString(CultureInfo.InvariantCulture).PadRight(reference.Length) : reference;
         file.Stream(
@@ -169,6 +178,7 @@ internal static class ChainFiles
             string.Create(CultureInfo.InvariantCulture, $"/Type /XRef /Size {size} /W [1 4 2]{filter} /Root 1 0 R /Length {written}"),
             Data(file.OffsetOf(lengthNumber), stream),
             endOfLine);
+        file.Text(after);
         file.StartXRef(stream);
         return file.ToArray();
 
@@ -189,7 +199,7 @@ internal static class ChainFiles
 
             // Types 10 and 101 or 106, reserved: the rows read as references to the null object, and their bytes read
             // "\nendstream", or "\n1 0 obj". The length's row past them is written as they are, uncompressed.
-            var data = new List<byte>(Encode([.. rows], encoding));
+            var data = new List<byte>(encode is null ? Encode([.. rows], encoding) : encode(Encode([.. rows], Rows.Raw)));
             data.AddRange(spelled);
 
             if (lengthLast)
@@ -198,6 +208,7 @@ internal static class ChainFiles
             }
 
             data.RemoveRange(data.Count - dropped, dropped);
+            data.AddRange(Encoding.Latin1.GetBytes(tail));
             return [.. data];
         }
     }
@@ -522,18 +533,28 @@ internal static class ChainFiles
     /// to the length; <paramref name="padding"/> spaces come before it. With <paramref name="spelledFirst"/>, the rows that
     /// spell <c>endstream</c> come first: chained, stream 7's row of object 4 then lies past the data taken to that
     /// <c>endstream</c>, and the file is read whole only by rebuilding its index. With <paramref name="lengthFirst"/>, the
-    /// spaces come after the length instead.
+    /// spaces come after the length instead. Without <paramref name="spelling"/>, no row spells <c>endstream</c>; the page's
+    /// row gives <paramref name="generation"/>, the data loses its last <paramref name="dropped"/> bytes, and it ends with
+    /// <paramref name="endOfLine"/> before its <c>endstream</c>.
     /// </summary>
     public static byte[] UpdatePlacingAPaddedLength(
-        bool chained, int padding = 3000, int lengthOff = 0, bool spelledFirst = false, bool lengthFirst = false)
+        bool chained,
+        int padding = 3000,
+        int lengthOff = 0,
+        bool spelledFirst = false,
+        bool lengthFirst = false,
+        bool spelling = true,
+        int generation = 0,
+        int dropped = 0,
+        string endOfLine = "\n")
     {
         using var file = new Writer("1.5");
         file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>");
         file.Object(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>");
         file.Object(3, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << >> >>");
         var lengthNumber = chained ? 9 : 5;
-        var spelled = "\nendstream\0\0\0\0"u8.ToArray();
-        var length = (6 * 7 + spelled.Length + lengthOff).ToString(CultureInfo.InvariantCulture);
+        var spelled = spelling ? "\nendstream\0\0\0\0"u8.ToArray() : [];
+        var length = (6 * 7 + spelled.Length - dropped + lengthOff).ToString(CultureInfo.InvariantCulture);
         file.Object(lengthNumber, lengthFirst ? length + new string(' ', padding) : new string(' ', padding) + length);
 
         if (chained)
@@ -547,13 +568,15 @@ internal static class ChainFiles
             Rows.Raw);
         var data = new List<byte>(spelledFirst ? spelled : rows);
         data.AddRange(spelledFirst ? rows : spelled);
-        data.AddRange(Encode([(1, file.OffsetOf(3), 0)], Rows.Raw));
+        data.AddRange(Encode([(1, file.OffsetOf(3), generation)], Rows.Raw));
+        data.RemoveRange(data.Count - dropped, dropped);
         var (spelledRows, lengthRow) = chained ? ("10 2", "4 1") : ("8 2", "5 1");
-        var index = spelledFirst ? $"[{spelledRows} 0 3 {lengthRow} 7 1 3 1]" : $"[0 3 {lengthRow} 7 1 {spelledRows} 3 1]";
+        var index = !spelling ? $"[0 3 {lengthRow} 7 1 3 1]" : spelledFirst ? $"[{spelledRows} 0 3 {lengthRow} 7 1 3 1]" : $"[0 3 {lengthRow} 7 1 {spelledRows} 3 1]";
         file.Stream(
             7,
             string.Create(CultureInfo.InvariantCulture, $"/Type /XRef /Size {(chained ? 12 : 10)} /W [1 4 2] /Index {index} /Root 1 0 R /Length {(chained ? 4 : 5)} 0 R"),
-            [.. data]);
+            [.. data],
+            endOfLine);
         var xref = file.Position;
         file.Text(string.Create(
             CultureInfo.InvariantCulture,
@@ -679,9 +702,10 @@ internal static class ChainFiles
     /// indexes it in cross-reference stream 10, whose rows are compressed in a stored block that loses its last
     /// <paramref name="dropped"/> bytes, and end with <paramref name="endOfLine"/> before its <c>endstream</c>. Stream 10's
     /// <c>/Length</c> names object 4, which only the older section places — or, unless <paramref name="deferred"/>, is
-    /// written direct, as wide as the reference: every offset is the deferred file's.
+    /// written direct, as wide as the reference: every offset is the deferred file's. <paramref name="entries"/> gives
+    /// stream 10's filters, and their parameters.
     /// </summary>
-    public static byte[] UpdateWithALengthAnOlderSectionPlaces(bool deferred, int dropped, string endOfLine)
+    public static byte[] UpdateWithALengthAnOlderSectionPlaces(bool deferred, int dropped, string endOfLine, string entries = "/Filter /FlateDecode")
     {
         using var file = new Writer("1.5");
         file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>");
@@ -706,7 +730,7 @@ internal static class ChainFiles
         var written = deferred ? "4 0 R" : length.ToString(CultureInfo.InvariantCulture).PadRight("4 0 R".Length);
         file.Stream(
             10,
-            string.Create(CultureInfo.InvariantCulture, $"/Type /XRef /Size 11 /W [1 4 2] /Index [8 1 10 1] /Filter /FlateDecode /Root 1 0 R /Prev {first} /Length {written}"),
+            string.Create(CultureInfo.InvariantCulture, $"/Type /XRef /Size 11 /W [1 4 2] /Index [8 1 10 1] {entries} /Root 1 0 R /Prev {first} /Length {written}"),
             Data(file.OffsetOf(8), second),
             endOfLine);
         file.StartXRef(second);
