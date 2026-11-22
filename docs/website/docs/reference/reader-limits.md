@@ -210,7 +210,7 @@ there. Raise PdfReaderLimits.MaxDecodedStreamLength to read past it.
   at the filter whose
   parameters are: the filters before it run, and the stream comes back as they decoded it, still encoded by the rest,
   as past `MaxFilterChainLength`. `HasImageFilter` reads what decoding reads before the image filter, the parameters of
-  a Flate or LZW filter that comes before it included, and says false when such a value ends the chain there; under
+  a Flate, LZW or `/Crypt` filter that comes before it included, and says false when such a value ends the chain there; under
   `ThrowOnLimit`, loading one throws where decoding would. An object stream the reader meets so
   is read as one a guard cut before its data: its objects are unknown until you raise the limit, and when the catalog
   is among them the reader does not look for another. While the chain is read, a `/Prev` or an `/XRefStm` the reader

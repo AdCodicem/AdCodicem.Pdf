@@ -23,9 +23,9 @@ namespace AdCodicem.Pdf.Validation;
 /// <c>/First</c>; and only when they let it decode — a count above 0, a start not below 0 — what
 /// <see cref="FilterChain"/> reads of its filters and their parameters, through an <see cref="IFilterValueReader"/> that
 /// records what each value leads to: the <c>/Filter</c> entry and its names up to the first that ends the chain, of
-/// <c>/DecodeParms</c> only what a Flate or LZW step reads, and nothing past a value whose chain reaches an object a guard
-/// cut, or left out of the index, where decoding ends (#263) — asked of the object the walk's own chain reached, not by
-/// following the chain again. Each value is followed as <see cref="PdfReference.Resolve"/> follows it — as many objects as
+/// <c>/DecodeParms</c> only what a Flate, LZW or <c>/Crypt</c> step reads, and nothing past a value whose chain reaches an
+/// object a guard cut, or left out of the index, where decoding ends (#263) — asked of the object the walk's own chain
+/// reached, not by following the chain again. Each value is followed as <see cref="PdfReference.Resolve"/> follows it — as many objects as
 /// it loads, the value of the last dropped (#173), a <c>/Length</c> one object further, which the parse loads before it
 /// resolves what it gives —, and nothing written inside an array or a dictionary is read but what decoding reads of it.
 /// </para>
