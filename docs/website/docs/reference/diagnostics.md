@@ -301,13 +301,18 @@ The byte counts in these reports are the reporting filter's own. The bytes kept 
 (`/DecodeParms` `/Predictor`) is applied, so `Decode` may return another length — a PNG predictor takes a byte off each
 row. The byte where the fault was found counts from 1 at the start of the data the filter was given, and the length the
 report gives is that data's: the stream's data when the filter is its only one, what the filter before it decoded to
-otherwise. Each kind of fault is reported once for each filter of the stream, however often its data repeats it; a
-filter stopped at `MaxDecodedStreamLength` counts the faults of the part it read, and says so. The document's
-diagnostics hold what decoding a stream met once, however often the stream is decoded — by you, passing no diagnostics
-or the document's, by the reader as it serves an object stream's objects again after its budget let them go or as it
-rebuilds the index, or by the validator —, as long as they have room for it; diagnostics you pass of your own hold every
-decoding's reports. A stream the reader itself cut at one of its limits is reported as that limit, not as a lost tail; a
-fault in the part it did read is the file's, and is reported. That holds whoever cut it: the reader, reading the stream's
+otherwise. Where that data's end is a guard's — data the reader cut at one of its limits or whose end a guard hides, as
+below, or that a filter before it stopped at `MaxDecodedStreamLength` —, the report gives no length, which would be the
+guard's, and counts the faults "in the part of its data read". Each kind of fault is reported once for each filter of
+the stream, however often its data repeats it; a filter stopped at `MaxDecodedStreamLength` counts the faults of the
+part it read, says so, and gives no length either
+([#283](https://github.com/AdCodicem/AdCodicem.Pdf/issues/283)). The document's diagnostics hold what decoding a
+stream met once, however often the stream is decoded — by you, passing no diagnostics or the document's, by the reader
+as it serves an object stream's objects again after its budget let them go or as it rebuilds the index, or by the
+validator —, as long as they have room for it: a report that gives no length reads the same whatever part of the data a
+guard let a decoding read. Diagnostics you pass of your own hold every decoding's reports. A stream the reader itself
+cut at one of its limits is reported as that limit, not as a lost tail; a fault in the part it did read is the file's,
+and is reported. That holds whoever cut it: the reader, reading the stream's
 data within `MaxStreamLength`, or its object within `MaxObjectLength`, or a filter before this one that stopped at
 `MaxDecodedStreamLength`. Of data the reader cut, no lost tail, missing checksum or missing end marker is reported, a
 hexadecimal digit without its pair or an ASCII85 group short of five is dropped rather than completed, and a predictor
@@ -326,6 +331,7 @@ decode, and report, as read whole.
 Warning filter.failed at 59534: A Flate stream ends before its data does; what decoded before the end was kept.
 Repair filter.failed at 63982: A Flate stream ends before its checksum does; its data decoded whole, unchecked.
 Warning filter.failed at 2102: A Flate stream is corrupt at byte 889 of its 20624; the 847 bytes decoded before the fault was found were kept.
+Warning filter.failed at 274: A Flate stream is corrupt at byte 42 of the part of its data read; the 7 bytes decoded before the fault was found were kept.
 Warning filter.checksum-mismatch at 3278: A Flate stream's checksum disagrees with the 174803 bytes its data decoded to; all were kept, and some may be wrong.
 Warning filter.failed at 4336336: An ASCII85 stream ends without its ~> end marker, after a group of a single digit, which encodes no byte; it was dropped, and data may have been lost.
 Warning filter.failed at 812: An ASCIIHex stream holds a byte that encodes nothing, at byte 5 of its 12; it was passed over.
