@@ -524,16 +524,16 @@ zlib in distributions'): a host patching both patches part of the reader.
 | A guard's cut reported as damage by later filters | A filter after one the bound stopped, or after `MaxStreamLength` cut, gets data the reader cut: no lost tail, checksum or end marker; a unit the cut parted is dropped. A fault in what was read stays the file's ([#199], [#141]) | `FilterDamageTests`, `FilterTests` | Property |
 | A filter value a guard cut or left out of the index | The chain ends there, as past `MaxFilterChainLength` (`FilterChainEnd.Guard`): earlier steps run, the data is left encoded (`leftEncoded`), nothing more reported; an object stream so left is the guard's. It hides none of the stream's own faults ([#263]); `HasImageFilter` says no where it ends the chain first | `GuardCutValueTests`, `FilterTests` | No |
 | An output buffer sized from the file | The first buffer is an estimate from the input, capped at the bound, that doubles, never past it | `FilterTests` | Yes |
-| Predictor parameters that overflow or size a row unchecked | The row length is computed in 64 bits and checked against the data before any allocation | `FilterTests` | Seeds only |
+| Predictor parameters that overflow or size a row unchecked | The row length is computed in 64 bits, past a long taken as longer than any data, and checked against the data before any allocation (`PredictorTransform.TryApply`): `/Colors` has no bound, which ISO 32000 sets none on, each buffer bounded by the data `MaxDecodedStreamLength` bounds; a pixel's bytes are held to the data's length, which no file tells apart; TIFF rows are undone in place ([#162]) | `FilterTests`, `HostileInputTests` | Seeds only |
+| Filter parameters the reader does not apply, decoding to wrong bytes in silence | TIFF prediction at every width ISO 32000 allows (`PredictorTransform`); a value it does not allow and a `/DecodeParms` whose shape leaves a filter none read as other readers read them, and a crypt filter no `/Encrypt` can define passed along, each reported (`FilterChain`, `filter.parameters-invalid`); a PNG filter type past 4 and a partial last row nothing else accounts for reported (`PdfFilterPipeline.ApplyPredictor`, `filter.failed`). What the chain keeps to report stays within `MaxFilterChainLength` ([#162]) | `FilterTests`, `FilterDamageTests`, `HostileInputTests` | No ([#176]) |
 | An LZW code past the table | A fixed table of 4,096 codes; an undefined code stops decoding, keeping what preceded, reported | `FilterDamageTests`, `FilterTests` | Two seeds |
 | Data that breaks its filter's format, read in silence | ASCII85, ASCIIHex and RunLength decode it as other readers do and report each kind once a step; data without its end marker, LZW's included, decodes to its end, reported unless a guard cut it ([#141]); counting allocates nothing | `FilterDamageTests`, `TextFilterRefereeTests` (qpdf) | No ([#176]) |
 | Damaged Flate data read again and again | Read again only after a fault, into the same output, byte by byte only over the 8 KB piece of the fault (`FlateInput.ChunkLength`): at most eight readings, three byte by byte, in the faulting filter alone. Accepted: about 40 times slower, still linear (#135) | `FilterDamageTests` | Yes |
 | The inflater's exceptions escaping | Only its complaints about the data (`InvalidDataException`, `IOException`) are faults; a preset dictionary is refused | `FilterDamageTests` | Yes |
-| Image codecs | DCT, JPX, JBIG2 and CCITT data is never decoded: the chain stops, the data returned within `MaxStreamLength`. An unknown filter, or an element naming none, stops it too, reported ([#159], [#209]); no cross-reference rows are read from data still to decode ([#221]) | Structural; `FilterTests` | — |
+| Image codecs | DCT, JPX, JBIG2 and CCITT data is never decoded: the chain stops, the data returned within `MaxStreamLength`. An unknown filter, or an element naming none, stops it too, reported ([#159], [#209]); no cross-reference rows are read from data still to decode ([#221]). An abbreviation an inline image's dictionary uses is the filter it abbreviates wherever the chain is read (`FilterChain.FullName`), reported ([#250]) | Structural; `FilterTests` | — |
 
 Known gaps:
 
-- [#162] Predictors and filter parameters the reader does not apply decode to wrong bytes with no report.
 - [#146] A Flate reading allocates its output before the zlib header says it can go on.
 - [#142], [#143], [#145] Damaged Flate data is repaired and checked less than it could be.
 - [#192] LZW decoding allocates an array for nearly every code, several times its output, within the output's guard.
@@ -867,6 +867,7 @@ before it writes code.
 [#230]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/230
 [#237]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/237
 [#241]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/241
+[#250]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/250
 [#255]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/255
 [#256]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/256
 [#259]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/259
