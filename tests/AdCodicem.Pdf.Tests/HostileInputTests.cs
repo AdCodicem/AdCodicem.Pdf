@@ -1905,7 +1905,7 @@ public class HostileInputTests
         FluentActions.Invoking(() => stream.Decode(document.Diagnostics)).Should().Throw<PdfLimitExceededException>();
 
         document.Diagnostics.Select(d => d.Message).Should().Equal(
-            "An ASCIIHex stream holds a byte that encodes nothing before decoding stopped at the bound, at byte 2 of its 131; it was passed over.");
+            "An ASCIIHex stream holds a byte that encodes nothing before decoding stopped at the bound, at byte 2; it was passed over.");
     }
 
     [Fact]

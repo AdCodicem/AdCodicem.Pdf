@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.IO.Compression;
 using System.Text;
 using AdCodicem.Pdf.Diagnostics;
@@ -1313,14 +1314,15 @@ public class FilterDamageTests
     }
 
     [Theory]
-    [InlineData("ASCIIHexDecode", "4G1424344G4G5>", 2, "4142", "An ASCIIHex stream holds a byte that encodes nothing before decoding stopped at the bound, at byte 2 of its 14; it was passed over.")]
-    [InlineData("ASCIIHexDecode", "4G1G424344>", 2, "4142", "An ASCIIHex stream holds 2 bytes that encode nothing before decoding stopped at the bound, the first at byte 2 of its 11; they were passed over.")]
-    [InlineData("ASCII85Decode", "uuuuu87cUR~>", 4, "08780EC4", "An ASCII85 stream holds a group whose value does not fit in four bytes before decoding stopped at the bound, ending at byte 5 of its 12; it was decoded to the four low-order bytes of its value, which may be wrong.")]
-    [InlineData("ASCII85Decode", "uuuuuuuuuu87cUR~>", 8, "08780EC408780EC4", "An ASCII85 stream holds 2 groups whose values do not fit in four bytes before decoding stopped at the bound, the first ending at byte 5 of its 17; each was decoded to the four low-order bytes of its value, which may be wrong.")]
+    [InlineData("ASCIIHexDecode", "4G1424344G4G5>", 2, "4142", "An ASCIIHex stream holds a byte that encodes nothing before decoding stopped at the bound, at byte 2; it was passed over.")]
+    [InlineData("ASCIIHexDecode", "4G1G424344>", 2, "4142", "An ASCIIHex stream holds 2 bytes that encode nothing before decoding stopped at the bound, the first at byte 2; they were passed over.")]
+    [InlineData("ASCII85Decode", "uuuuu87cUR~>", 4, "08780EC4", "An ASCII85 stream holds a group whose value does not fit in four bytes before decoding stopped at the bound, ending at byte 5; it was decoded to the four low-order bytes of its value, which may be wrong.")]
+    [InlineData("ASCII85Decode", "uuuuuuuuuu87cUR~>", 8, "08780EC408780EC4", "An ASCII85 stream holds 2 groups whose values do not fit in four bytes before decoding stopped at the bound, the first ending at byte 5; each was decoded to the four low-order bytes of its value, which may be wrong.")]
     public void Says_the_faults_a_filter_stopped_at_the_bound_counted_are_those_of_the_part_it_read(
         string filter, string encoded, int bound, string expected, string message)
     {
-        // The bytes past the bound are not read: the count covers the part read, and the report says so, the guard's beside it.
+        // The bytes past the bound are not read: the count covers the part read, and the report says so, the guard's beside
+        // it, and gives no length, which a decoding of more or less of the same data would give otherwise (#283).
         var diagnostics = new PdfDiagnostics();
 
         var decoded = DecodeChainWithin(Encoding.ASCII.GetBytes(encoded), bound, diagnostics, PdfName.Get(filter));
@@ -1487,7 +1489,8 @@ public class FilterDamageTests
     {
         // MaxStreamLength lets the reader read 10,000 bytes of the stream's hex data, well past the byte its Flate data
         // turns corrupt at. The guard is reported, and so is the fault, which lies in bytes the reader read and is the
-        // file's: counted in the data the Flate filter was given, which is what the guard kept.
+        // file's: counted in the data the Flate filter was given, the part the guard kept, whose length is the guard's and
+        // not given (#283).
         const int Kept = 10_000;
         var plain = ContentStream(200);
         var hex = Convert.ToHexString(CorruptAfter(plain, out var faultAt, after: RandomBytes(60_000))) + ">";
@@ -1504,7 +1507,7 @@ public class FilterDamageTests
 
         decoded.ToArray().Should().Equal(plain);
         document.Diagnostics.Select(d => d.Code).Should().Equal(PdfDiagnosticCodes.LimitStreamLength, PdfDiagnosticCodes.FilterFailed);
-        document.Diagnostics[^1].Message.Should().Be(CorruptAt(faultAt, Kept, plain.Length));
+        document.Diagnostics[^1].Message.Should().Be(CorruptInThePartRead(faultAt, plain.Length));
     }
 
     [Fact]
@@ -1528,6 +1531,44 @@ public class FilterDamageTests
 
         cut.Diagnostics.Select(d => d.Code).Should().Equal(PdfDiagnosticCodes.LimitStreamLength);
         whole.Diagnostics.Should().BeEmpty();
+    }
+
+    [Theory]
+    [InlineData("MaxStreamLength", "ASCIIHexDecode", "41x42", "An ASCIIHex stream holds a byte that encodes nothing in the part of its data read, at byte 3; it was passed over.")]
+    [InlineData("MaxStreamLength", "ASCIIHexDecode", "41x4y2", "An ASCIIHex stream holds 2 bytes that encode nothing in the part of its data read, the first at byte 3; they were passed over.")]
+    [InlineData("MaxStreamLength", "ASCII85Decode", "uuuuu", "An ASCII85 stream holds a group whose value does not fit in four bytes in the part of its data read, ending at byte 5; it was decoded to the four low-order bytes of its value, which may be wrong.")]
+    [InlineData("MaxStreamLength", "ASCII85Decode", "uuuuuuuuuu", "An ASCII85 stream holds 2 groups whose values do not fit in four bytes in the part of its data read, the first ending at byte 5; each was decoded to the four low-order bytes of its value, which may be wrong.")]
+    [InlineData("MaxStreamLength", "ASCII85Decode", "!!!!!~x", "An ASCII85 stream holds a ~ that no > follows, at byte 6; decoding stopped there, and what follows was not decoded.")]
+    [InlineData("MaxObjectLength", "ASCIIHexDecode", "BT (endstream) Tj ET>", "An ASCIIHex stream holds 2 bytes that encode nothing in the part of its data read, the first at byte 2; they were passed over.")]
+    public void Places_a_fault_in_data_a_guard_of_the_reader_cut_without_giving_the_cut_as_the_data_s_length(
+        string limit, string filter, string data, string message)
+    {
+        // MaxStreamLength lets the reader read 50 bytes of the data, which goes on for 200 more; or MaxObjectLength cuts
+        // object 4, which holds the stream's /Length, and the data is taken up to the endstream it spells. A fault in the
+        // part read is the file's, and reported; how long the data is, the guard hides: the report gives no length, which
+        // was once the cut's, and counts what the part read holds, as it says (#283).
+        var builder = new TestPdfBuilder()
+            .WithObject(1, "<< /Type /Catalog /Pages 2 0 R >>")
+            .WithObject(2, "<< /Type /Pages /Kids [] /Count 0 >>");
+        var limits = PdfReaderLimits.Default with { MaxStreamLength = 50 };
+
+        if (limit == "MaxObjectLength")
+        {
+            builder.WithObject(3, $"<< /Filter /{filter} /Length 4 0 R >>\nstream\n{data}\nendstream").WithObject(4, new string(' ', 2000) + data.Length.ToString(CultureInfo.InvariantCulture));
+            limits = PdfReaderLimits.Default with { MaxObjectLength = 1024 };
+        }
+        else
+        {
+            builder.Stream(3, $"/Filter /{filter}", data + (filter == "ASCIIHexDecode" ? new string('4', 200) + ">" : new string('!', 200) + "~>"));
+        }
+
+        using var document = PdfDocument.Open(builder.BuildClassic(rootNumber: 1), new PdfReaderOptions { Limits = limits });
+        document.GetObject(new PdfObjectId(3)).AsStream().Required().Decode();
+
+        document.Diagnostics.Select(d => d.Code).Should().Equal(
+            limit == "MaxObjectLength" ? PdfDiagnosticCodes.LimitObject : PdfDiagnosticCodes.LimitStreamLength, PdfDiagnosticCodes.FilterFailed);
+        document.Diagnostics[^1].Severity.Should().Be(PdfDiagnosticSeverity.Warning);
+        document.Diagnostics[^1].Message.Should().Be(message);
     }
 
     [Theory]
@@ -1558,7 +1599,8 @@ public class FilterDamageTests
     public void Reports_a_fault_in_the_data_a_filter_kept_though_a_filter_before_it_stopped_at_the_bound()
     {
         // The hex stops at the bound past the byte the fault lies in: the fault is in bytes the reader read, and the
-        // whole data would meet it at the same point. It is the file's, and is reported beside the guard.
+        // whole data would meet it at the same point. It is the file's, and is reported beside the guard, in data whose
+        // length is the guard's and not given (#283).
         var prefix = RandomBytes(1_000);
         var data = CorruptAfter(prefix, out var faultAt, after: new byte[2_000]);
         var bound = faultAt + 500;
@@ -1568,7 +1610,7 @@ public class FilterDamageTests
 
         decoded.ToArray().Should().Equal(prefix);
         diagnostics.Select(d => d.Code).Should().Equal(PdfDiagnosticCodes.LimitDecodedStream, PdfDiagnosticCodes.FilterFailed);
-        diagnostics[1].Message.Should().Be(CorruptAt(faultAt, bound, prefix.Length));
+        diagnostics[1].Message.Should().Be(CorruptInThePartRead(faultAt, prefix.Length));
     }
 
     [Fact]
@@ -1773,6 +1815,9 @@ public class FilterDamageTests
 
     private static string CorruptAt(int faultAt, int encoded, int kept) =>
         $"A Flate stream is corrupt at byte {faultAt} of its {encoded}; the {kept} bytes decoded before the fault was found were kept.";
+
+    private static string CorruptInThePartRead(int faultAt, int kept) =>
+        $"A Flate stream is corrupt at byte {faultAt} of the part of its data read; the {kept} bytes decoded before the fault was found were kept.";
 
     private static string ChecksumMismatch(int decoded) =>
         decoded == 0

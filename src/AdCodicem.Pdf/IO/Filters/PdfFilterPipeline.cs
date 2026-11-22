@@ -457,7 +457,7 @@ internal static class PdfFilterPipeline
             // did read, and the whole data would meet it at the same point: it is the file's.
             var endHidden = (quiet && ending is FlateEnding.TailLost or FlateEnding.ChecksumMissing) ||
                 (checksumHidden && ending == FlateEnding.ChecksumMismatch);
-            ReportEnding(endHidden ? FlateEnding.Whole : ending, decoded.Length, faultAt, data.Length, diagnostics, position);
+            ReportEnding(endHidden ? FlateEnding.Whole : ending, decoded.Length, faultAt, data.Length, quiet, diagnostics, position);
             Reached(limited, name, bounds.Shared, diagnostics, position, guard, ref cut, ref limitReported);
 
             // Data that ran out where a guard hides its end may have lost the end of its last row there: it is undone as far
@@ -524,7 +524,7 @@ internal static class PdfFilterPipeline
 
         // The end of data the reader cut, or whose end a guard hides, or of data the filter stopped decoding at the bound, is
         // the reader's: only what the filter read is the file's.
-        ReportFaults(faults, name, data.Length, textLimited, ended: !quiet && !textLimited, diagnostics, position);
+        ReportFaults(faults, name, data.Length, textLimited, quiet, ended: !quiet && !textLimited, diagnostics, position);
         Reached(textLimited, name, bounds.Shared, diagnostics, position, guard, ref cut, ref limitReported);
         dropped = faults.Dropped;
         ranOut = name == PdfName.RunLengthDecode && faults.Ending != DataEnding.Marked;
@@ -540,6 +540,10 @@ internal static class PdfFilterPipeline
     /// <param name="name">The filter.</param>
     /// <param name="encoded">How many bytes the filter was given.</param>
     /// <param name="stopped">Whether the filter stopped at the bound, the faults it counts being those of the part it read.</param>
+    /// <param name="lengthUnknown">
+    /// Whether the data ends where a guard cut it or hides its end, the faults the filter counts being those of the part
+    /// read, and the data's length unknown.
+    /// </param>
     /// <param name="ended">
     /// Whether the filter read its data to the end the file gave it, which its end then says something of: an end marker
     /// missing, or a <c>~</c> no <c>&gt;</c> follows, where the reader cut the data, a guard hides its end, or the filter
@@ -548,7 +552,7 @@ internal static class PdfFilterPipeline
     /// <param name="diagnostics">Receives the reports.</param>
     /// <param name="position">Where the stream's data starts.</param>
     private static void ReportFaults(
-        in DataFaults faults, PdfName name, int encoded, bool stopped, bool ended, PdfDiagnostics? diagnostics, long position)
+        in DataFaults faults, PdfName name, int encoded, bool stopped, bool lengthUnknown, bool ended, PdfDiagnostics? diagnostics, long position)
     {
         if (diagnostics is null)
         {
@@ -556,7 +560,8 @@ internal static class PdfFilterPipeline
         }
 
         var subject = name == PdfName.ASCII85Decode ? "An ASCII85 stream" : name == PdfName.ASCIIHexDecode ? "An ASCIIHex stream" : "A RunLength stream";
-        var read = stopped ? " before decoding stopped at the bound" : string.Empty;
+        var read = stopped ? " before decoding stopped at the bound" : lengthUnknown ? " in the part of its data read" : string.Empty;
+        var unsized = stopped || lengthUnknown;
 
         if (faults.Introducer)
         {
@@ -571,8 +576,8 @@ internal static class PdfFilterPipeline
             diagnostics.Warn(
                 PdfDiagnosticCodes.FilterFailed,
                 faults.Passed == 1
-                    ? Invariant($"{subject} holds a byte that encodes nothing{read}, at byte {faults.FirstPassed} of its {encoded}; it was passed over.")
-                    : Invariant($"{subject} holds {faults.Passed} bytes that encode nothing{read}, the first at byte {faults.FirstPassed} of its {encoded}; they were passed over."),
+                    ? Invariant($"{subject} holds a byte that encodes nothing{read}, at byte {faults.FirstPassed}{Size(encoded, unsized)}; it was passed over.")
+                    : Invariant($"{subject} holds {faults.Passed} bytes that encode nothing{read}, the first at byte {faults.FirstPassed}{Size(encoded, unsized)}; they were passed over."),
                 position);
         }
 
@@ -581,8 +586,8 @@ internal static class PdfFilterPipeline
             diagnostics.Warn(
                 PdfDiagnosticCodes.FilterFailed,
                 faults.Overflowing == 1
-                    ? Invariant($"{subject} holds a group whose value does not fit in four bytes{read}, ending at byte {faults.FirstOverflowing} of its {encoded}; it was decoded to the four low-order bytes of its value, which may be wrong.")
-                    : Invariant($"{subject} holds {faults.Overflowing} groups whose values do not fit in four bytes{read}, the first ending at byte {faults.FirstOverflowing} of its {encoded}; each was decoded to the four low-order bytes of its value, which may be wrong."),
+                    ? Invariant($"{subject} holds a group whose value does not fit in four bytes{read}, ending at byte {faults.FirstOverflowing}{Size(encoded, unsized)}; it was decoded to the four low-order bytes of its value, which may be wrong.")
+                    : Invariant($"{subject} holds {faults.Overflowing} groups whose values do not fit in four bytes{read}, the first ending at byte {faults.FirstOverflowing}{Size(encoded, unsized)}; each was decoded to the four low-order bytes of its value, which may be wrong."),
                 position);
         }
 
@@ -590,7 +595,7 @@ internal static class PdfFilterPipeline
         {
             diagnostics.Warn(
                 PdfDiagnosticCodes.FilterFailed,
-                Invariant($"{subject} holds a ~ that no > follows, at byte {faults.BrokenMarker} of its {encoded}; decoding stopped there, and what follows was not decoded."),
+                Invariant($"{subject} holds a ~ that no > follows, at byte {faults.BrokenMarker}{Size(encoded, unsized)}; decoding stopped there, and what follows was not decoded."),
                 position);
         }
 
@@ -650,6 +655,14 @@ internal static class PdfFilterPipeline
 
     private static string Invariant(FormattableString text) => text.ToString(CultureInfo.InvariantCulture);
 
+    /// <summary>
+    /// Gives how many bytes the data a filter was given holds, for a report that places a fault in it, or nothing with
+    /// <paramref name="unknown"/>: the length of data a guard cut or hid the end of is the guard's, and a filter that
+    /// stopped at the bound counts what it met in the part it read, whatever the data's length. Built only for a report,
+    /// so that a clean decoding allocates nothing for it.
+    /// </summary>
+    private static string Size(int encoded, bool unknown) => unknown ? string.Empty : Invariant($" of its {encoded}");
+
     /// <summary>Reports what ended the chain before its last element, when it is no image filter.</summary>
     /// <exception cref="PdfLimitExceededException">
     /// The guard ended the chain, and the document was opened to throw when it does.
@@ -695,10 +708,11 @@ internal static class PdfFilterPipeline
     /// <param name="decoded">How many bytes were kept, before any predictor.</param>
     /// <param name="faultAt">For corrupt data, where in it, counted from 1, lies the byte the inflater met the fault in.</param>
     /// <param name="encoded">How many bytes of encoded data the filter was given.</param>
+    /// <param name="lengthUnknown">Whether the data ends where a guard cut it or hides its end, its length unknown.</param>
     /// <param name="diagnostics">Receives the report.</param>
     /// <param name="position">Where the stream's data starts.</param>
     private static void ReportEnding(
-        FlateEnding ending, int decoded, int faultAt, int encoded, PdfDiagnostics? diagnostics, long position)
+        FlateEnding ending, int decoded, int faultAt, int encoded, bool lengthUnknown, PdfDiagnostics? diagnostics, long position)
     {
         switch (ending)
         {
@@ -733,7 +747,7 @@ internal static class PdfFilterPipeline
                     PdfDiagnosticCodes.FilterFailed,
                     string.Create(
                         CultureInfo.InvariantCulture,
-                        $"A Flate stream is corrupt at byte {faultAt} of its {encoded}; the {CountText.Bytes(decoded)} decoded before the fault was found {(decoded == 1 ? "was" : "were")} kept."),
+                        $"A Flate stream is corrupt at byte {faultAt} of {(lengthUnknown ? "the part of its data read" : Invariant($"its {encoded}"))}; the {CountText.Bytes(decoded)} decoded before the fault was found {(decoded == 1 ? "was" : "were")} kept."),
                     position);
                 break;
         }

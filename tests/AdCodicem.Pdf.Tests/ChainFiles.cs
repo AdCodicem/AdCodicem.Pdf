@@ -132,7 +132,8 @@ internal static class ChainFiles
     /// <paramref name="spellingHeader"/> an object header. The rows are compressed when <paramref name="compressed"/>, the
     /// data loses its last <paramref name="dropped"/> bytes, and it ends with <paramref name="endOfLine"/> before its
     /// <c>endstream</c>, which its <c>endobj</c> and the <c>startxref</c> follow. The object that holds the length holds
-    /// <paramref name="lengthPadding"/> spaces before it.
+    /// <paramref name="lengthPadding"/> spaces before it. With <paramref name="direct"/>, the <c>/Length</c> is written
+    /// direct, as wide as the reference it stands for: every offset is the file's whose <c>/Length</c> is indirect.
     /// </summary>
     public static byte[] AloneWithIndirectLength(
         int lengthOff = 0,
@@ -144,7 +145,8 @@ internal static class ChainFiles
         bool lengthLast = false,
         bool spellingHeader = false,
         int dropped = 0,
-        int lengthPadding = 0)
+        int lengthPadding = 0,
+        bool direct = false)
     {
         using var file = new Writer("1.5");
         file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>");
@@ -160,9 +162,11 @@ internal static class ChainFiles
         file.Object(lengthNumber, new string(' ', lengthPadding) + length.ToString(CultureInfo.InvariantCulture));
         var stream = file.Position;
         var filter = compressed ? " /Filter /FlateDecode" : string.Empty;
+        var reference = string.Create(CultureInfo.InvariantCulture, $"{lengthNumber} 0 R");
+        var written = direct ? length.ToString(CultureInfo.InvariantCulture).PadRight(reference.Length) : reference;
         file.Stream(
             5,
-            string.Create(CultureInfo.InvariantCulture, $"/Type /XRef /Size {size} /W [1 4 2]{filter} /Root 1 0 R /Length {lengthNumber} 0 R"),
+            string.Create(CultureInfo.InvariantCulture, $"/Type /XRef /Size {size} /W [1 4 2]{filter} /Root 1 0 R /Length {written}"),
             Data(file.OffsetOf(lengthNumber), stream),
             endOfLine);
         file.StartXRef(stream);
@@ -634,6 +638,78 @@ internal static class ChainFiles
         file.Text(string.Create(
             CultureInfo.InvariantCulture,
             $"xref\n0 4\n0000000000 65535 f\r\n{file.OffsetOf(1):D10} 00000 n\r\n{file.OffsetOf(2):D10} 00000 n\r\n{file.OffsetOf(3):D10} 00000 n\r\ntrailer\n<< /Size 6 /Root 1 0 R /Prev {at} >>\nstartxref\n{xref}\n%%EOF\n"));
+        return file.ToArray();
+    }
+
+    /// <summary>
+    /// A file of one cross-reference stream, object 5, <c>/Filter /ASCIIHexDecode</c>, whose <c>/Index [4 2 0 1 1 3]</c>
+    /// gives the rows of objects 4 and 5 first: its hexadecimal data is a stray <c>x</c>, which encodes nothing, the digits
+    /// of the rows of objects 4, 5 and 0, an end-of-line, <c>endstream</c> and another, which hold 6 more bytes that encode
+    /// nothing, then the digits of the rows of objects 1 to 3 and a <c>&gt;</c>. Its <c>/Length</c> names object 4, which
+    /// holds it and which only the stream indexes — or, unless <paramref name="deferred"/>, is written direct, as wide as
+    /// the reference: every offset is the deferred file's.
+    /// </summary>
+    public static byte[] AloneOverAStrayHexByteBeforeASpelledEndStream(bool deferred)
+    {
+        using var file = new Writer("1.5");
+        file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>");
+        file.Object(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>");
+        file.Object(3, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << >> >>");
+
+        // The data's length does not depend on the offsets its rows hold.
+        byte[] Data(long four, long stream) => Encoding.ASCII.GetBytes(
+            "x" + Convert.ToHexString(Encode([(1, four, 0), (1, stream, 0), (0, 0, 65535)], Rows.Raw)) + "\nendstream\n" +
+            Convert.ToHexString(Encode([(1, file.OffsetOf(1), 0), (1, file.OffsetOf(2), 0), (1, file.OffsetOf(3), 0)], Rows.Raw)) + ">");
+
+        var length = Data(0, 0).Length;
+        file.Object(4, length.ToString("D4", CultureInfo.InvariantCulture));
+        var stream = file.Position;
+        var written = deferred ? "4 0 R" : length.ToString("D5", CultureInfo.InvariantCulture);
+        file.Stream(
+            5,
+            $"/Type /XRef /Size 6 /Index [4 2 0 1 1 3] /W [1 4 2] /Filter /ASCIIHexDecode /Root 1 0 R /Length {written}",
+            Data(file.OffsetOf(4), stream));
+        file.StartXRef(stream);
+        return file.ToArray();
+    }
+
+    /// <summary>
+    /// A file of two revisions. The first writes object 8 as <c>(old)</c>, and object 4, which holds the length of the
+    /// second's stream, and indexes them in cross-reference stream 7. The second writes object 8 again as <c>(new)</c>, and
+    /// indexes it in cross-reference stream 10, whose rows are compressed in a stored block that loses its last
+    /// <paramref name="dropped"/> bytes, and end with <paramref name="endOfLine"/> before its <c>endstream</c>. Stream 10's
+    /// <c>/Length</c> names object 4, which only the older section places — or, unless <paramref name="deferred"/>, is
+    /// written direct, as wide as the reference: every offset is the deferred file's.
+    /// </summary>
+    public static byte[] UpdateWithALengthAnOlderSectionPlaces(bool deferred, int dropped, string endOfLine)
+    {
+        using var file = new Writer("1.5");
+        file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>");
+        file.Object(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>");
+        file.Object(3, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << >> >>");
+        file.Object(8, "(old)");
+
+        // Stored, the data's length does not depend on the offsets its rows hold.
+        byte[] Data(long eight, long stream) => Encode([(1, eight, 0), (1, stream, 0)], Rows.Flate)[..^dropped];
+
+        var length = Data(0, 0).Length;
+        file.Object(4, length.ToString(CultureInfo.InvariantCulture));
+        var first = file.Position;
+        var rows = Encode(
+            [(0, 0, 65535), (1, file.OffsetOf(1), 0), (1, file.OffsetOf(2), 0), (1, file.OffsetOf(3), 0), (1, file.OffsetOf(4), 0), (0, 0, 0), (0, 0, 0), (1, first, 0), (1, file.OffsetOf(8), 0)],
+            Rows.Raw);
+        file.Stream(7, string.Create(CultureInfo.InvariantCulture, $"/Type /XRef /Size 9 /W [1 4 2] /Root 1 0 R /Length {rows.Length}"), rows);
+        file.StartXRef(first);
+
+        file.Object(8, "(new)");
+        var second = file.Position;
+        var written = deferred ? "4 0 R" : length.ToString(CultureInfo.InvariantCulture).PadRight("4 0 R".Length);
+        file.Stream(
+            10,
+            string.Create(CultureInfo.InvariantCulture, $"/Type /XRef /Size 11 /W [1 4 2] /Index [8 1 10 1] /Filter /FlateDecode /Root 1 0 R /Prev {first} /Length {written}"),
+            Data(file.OffsetOf(8), second),
+            endOfLine);
+        file.StartXRef(second);
         return file.ToArray();
     }
 
