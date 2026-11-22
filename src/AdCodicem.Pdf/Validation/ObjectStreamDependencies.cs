@@ -2368,10 +2368,10 @@ internal sealed class ObjectStreamDependencies
 
         /// <summary>
         /// Gives the entries of <paramref name="dictionary"/> a step's parameters are read from, of those only the ones
-        /// written as a reference, an integer or a real: decoding reads each parameter as an integer
-        /// (<see cref="FilterChain.ParameterKeys"/>), a value of any other kind as it reads an entry absent, and the walk
-        /// follows a reference before the value it leads to is read so. What is kept of a dictionary is then five numbers or
-        /// references at most, whatever the file wrote in it.
+        /// written as a reference, an integer or a real: decoding reads each parameter as an integer, but a <c>/Crypt</c>
+        /// step's <c>/Name</c>, whose name decides nothing it reads after it (<see cref="FilterChain.ParameterKeys"/>), a
+        /// value of any other kind as it reads an entry absent, and the walk follows a reference before the value it leads to
+        /// is read so. What is kept of a dictionary is then six numbers or references at most, whatever the file wrote in it.
         /// </summary>
         private static PdfDictionary Parameters(PdfDictionary dictionary)
         {

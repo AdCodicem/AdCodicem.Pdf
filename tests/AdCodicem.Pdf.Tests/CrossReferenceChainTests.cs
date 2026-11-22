@@ -775,18 +775,16 @@ public class CrossReferenceChainTests
     [Theory]
     [InlineData("/FlateDecode", PdfDiagnosticCodes.FilterFailed)]
     [InlineData("/Foo", PdfDiagnosticCodes.FilterUnsupported)]
-    [InlineData("/Fl", PdfDiagnosticCodes.FilterUnsupported)]
     public void A_cross_reference_stream_whose_filters_decode_nothing_of_its_data_hands_its_prev_on_to_the_older_sections(
         string filter, string decoding)
     {
         // The middle of three revisions is a stream of /Type /XRef whose 21 bytes of data, xxxxxxxxxxxxxxxxxxxxx, its filter
-        // decodes nothing of: Flate data corrupt before its first byte decodes, a filter the library does not know, or /Fl, an
-        // abbreviation it does not read in a stream's /Filter (#250). The encoded bytes were read as the stream's rows, the
-        // first byte of each, 120, a reserved type: objects 4 and 7 read as the null object, no older row standing for them
-        // (#221). The data holds no row, and the stream cannot be read, as one whose /W no row can be read with: the chain
-        // goes on through its /Prev, the numbers it declares refused to the older sections' rows, and objects 4 and 7, which
-        // its rows alone index in their last revisions, are found by rebuilding the index (#208). What decoding met is
-        // reported once, beside the section.
+        // decodes nothing of: Flate data corrupt before its first byte decodes, or a filter the library does not know. The
+        // encoded bytes were read as the stream's rows, the first byte of each, 120, a reserved type: objects 4 and 7 read as
+        // the null object, no older row standing for them (#221). The data holds no row, and the stream cannot be read, as
+        // one whose /W no row can be read with: the chain goes on through its /Prev, the numbers it declares refused to the
+        // older sections' rows, and objects 4 and 7, which its rows alone index in their last revisions, are found by
+        // rebuilding the index (#208). What decoding met is reported once, beside the section.
         var (file, oldest, stream, newest) = LostStreamFiles.ThreeRevisions(
             "/Type /XRef /Size 9 /Index [4 2 7 1] /W [1 4 2] /Filter " + filter, written: new string('x', 21));
 
@@ -1251,7 +1249,6 @@ public class CrossReferenceChainTests
     [Theory]
     [InlineData("/FlateDecode", "xxxxxxx", PdfDiagnosticCodes.FilterFailed)]
     [InlineData("/Foo", "xxxxxxx", PdfDiagnosticCodes.FilterUnsupported)]
-    [InlineData("/Fl", "xxxxxxx", PdfDiagnosticCodes.FilterUnsupported)]
     [InlineData("[/ASCIIHexDecode /FlateDecode]", "78787878787878>", PdfDiagnosticCodes.FilterFailed)]
     [InlineData("[/ASCIIHexDecode /Foo]", "78787878787878>", PdfDiagnosticCodes.FilterUnsupported)]
     public void A_cross_reference_stream_startxref_names_whose_filters_decode_nothing_of_its_data_leaves_the_file_to_a_rebuild(

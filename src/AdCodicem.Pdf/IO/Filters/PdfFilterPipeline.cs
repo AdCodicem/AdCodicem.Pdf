@@ -12,10 +12,20 @@ internal static class PdfFilterPipeline
     /// reader's guard lets data pass through.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// Image filters are left in place on purpose: a JPEG inside a PDF is already a JPEG, and decoding it
     /// to pixels only to encode it again is both slow and lossy. Callers that want pixels ask for them. A filter
     /// the library does not know leaves the data as the filters before it decoded it: the filters after it would
     /// decode what it encoded, and meet a fault of their own, or none, in data they cannot read.
+    /// </para>
+    /// <para>
+    /// The chain is read as other readers read what ISO 32000-1 does not allow, and what was read so is reported before any
+    /// filter runs, at the stream's data (<see cref="FilterChain.Report"/>): a filter named by its abbreviation is the
+    /// filter it abbreviates, and a parameter's value ISO 32000-1 does not allow is replaced (#162, #250). A predictor's
+    /// rows are undone at 1, 2, 4, 8 and 16 bits a component, a PNG row whose filter type PNG does not define is read as
+    /// unfiltered, and a last row the data holds in part is kept and undone as far as it goes, the last two reported as the
+    /// predictor's faults where nothing else accounts for them.
+    /// </para>
     /// </remarks>
     /// <param name="stream">The stream to decode.</param>
     /// <param name="diagnostics">Receives what decoding met; when none are supplied, the stream's document does.</param>
@@ -203,6 +213,7 @@ internal static class PdfFilterPipeline
         // more, and is never the last. Under a bound the reader cannot raise, the filters share none either.
         var bound = guard.Bound(PdfLimit.DecodedStream);
         var shared = bound >= Array.MaxLength ? long.MaxValue : bound;
+        chain.Report(diagnostics, stream.Data);
 
         foreach (var step in chain)
         {
@@ -229,7 +240,7 @@ internal static class PdfFilterPipeline
                 {
                     if (clean)
                     {
-                        data = ApplyPredictor(whole, step, diagnostics, stream.Data.Position, cut: false);
+                        data = ApplyPredictor(whole, step, diagnostics, stream.Data.Position, cut: false, ended: true);
                         shared -= data.Length;
                         continue;
                     }
@@ -452,7 +463,8 @@ internal static class PdfFilterPipeline
             // Data that ran out where a guard hides its end may have lost the end of its last row there: it is undone as far
             // as it goes, as of data a guard cut.
             ranOut = ending == FlateEnding.TailLost;
-            return ApplyPredictor(decoded, step, diagnostics, position, cut || (silenced && ranOut));
+            var ended = !limited && ending is FlateEnding.Whole or FlateEnding.ChecksumMissing or FlateEnding.ChecksumMismatch;
+            return ApplyPredictor(decoded, step, diagnostics, position, cut || (silenced && ranOut), ended);
         }
 
         if (name == PdfName.LZWDecode)
@@ -488,7 +500,8 @@ internal static class PdfFilterPipeline
 
             Reached(limited, name, bounds.Shared, diagnostics, position, guard, ref cut, ref limitReported);
             ranOut = undefinedCode < 0 && ending is DataEnding.Unmarked or DataEnding.UnmarkedInsideCode;
-            return ApplyPredictor(decoded, step, diagnostics, position, cut || (silenced && ranOut));
+            var ended = !limited && undefinedCode < 0 && ending != DataEnding.UnmarkedInsideCode;
+            return ApplyPredictor(decoded, step, diagnostics, position, cut || (silenced && ranOut), ended);
         }
 
         byte[] text;
@@ -762,8 +775,22 @@ internal static class PdfFilterPipeline
     /// <param name="Shared">Whether the bound the filters before the last share holds it to less than the bound itself.</param>
     private readonly record struct Bounds(int MaxLength, bool Shared);
 
+    /// <summary>
+    /// Undoes the predictor of a Flate or LZW step, and reports what its data holds that the predictor's format does not
+    /// allow (<see cref="PdfDiagnosticCodes.FilterFailed"/>).
+    /// </summary>
+    /// <param name="decoded">What the step's filter decoded.</param>
+    /// <param name="step">The step, and the values of its parameters.</param>
+    /// <param name="diagnostics">Receives the reports.</param>
+    /// <param name="position">Where the stream's data starts.</param>
+    /// <param name="cut">Whether the data ends where the file's may not, a last row it holds in part the cut's.</param>
+    /// <param name="ended">
+    /// Whether the filter decoded its data to an end that loses nothing: a last row the data holds in part is then the
+    /// file's, and reported. Data that ran out or turned corrupt before its end, or that a guard stopped, is reported so
+    /// already, which accounts for a row it ends inside.
+    /// </param>
     private static ReadOnlyMemory<byte> ApplyPredictor(
-        byte[] decoded, in FilterStep step, PdfDiagnostics? diagnostics, long position, bool cut)
+        byte[] decoded, in FilterStep step, PdfDiagnostics? diagnostics, long position, bool cut, bool ended)
     {
         var parameters = step.Parameters;
 
@@ -773,11 +800,35 @@ internal static class PdfFilterPipeline
         }
 
         if (!PredictorTransform.TryApply(
-                decoded, parameters.Predictor, parameters.Colors, parameters.BitsPerComponent, parameters.Columns, cut, out var result))
+                decoded, parameters.Predictor, parameters.Colors, parameters.BitsPerComponent, parameters.Columns, cut, out var result, out var faults))
         {
             diagnostics?.Warn(
                 PdfDiagnosticCodes.FilterFailed,
                 "The predictor's parameters describe rows longer than the decoded data; the data was left as decoded.",
+                position);
+            return result;
+        }
+
+        if (diagnostics is null)
+        {
+            return result;
+        }
+
+        if (faults.UnknownTags > 0)
+        {
+            diagnostics.Warn(
+                PdfDiagnosticCodes.FilterFailed,
+                faults.UnknownTags == 1
+                    ? Invariant($"Row {faults.FirstUnknownRow} of {faults.Rows} PNG-predicted rows names filter type {faults.FirstUnknownTag}, which PNG does not define; it was read as unfiltered.")
+                    : Invariant($"{faults.UnknownTags} of {faults.Rows} PNG-predicted rows name a filter type PNG does not define, the first row {faults.FirstUnknownRow} type {faults.FirstUnknownTag}; they were read as unfiltered."),
+                position);
+        }
+
+        if (faults.Partial > 0 && ended)
+        {
+            diagnostics.Warn(
+                PdfDiagnosticCodes.FilterFailed,
+                Invariant($"The predicted data ends inside a row, with {CountText.Bytes(faults.Partial)} of its {faults.Stride}; what the row holds was kept, undone as far as it goes."),
                 position);
         }
 

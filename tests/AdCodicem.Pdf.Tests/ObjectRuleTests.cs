@@ -961,9 +961,9 @@ public class ObjectRuleTests
     public void A_value_decoding_does_not_read_is_needed_by_neither_the_reader_nor_the_walk(string shape)
     {
         // #277's table, and the shapes like it the walk took for loops: decoding reads a filter's names up to the first that
-        // ends the chain, of /DecodeParms only what a Flate or LZW step reads — the element at its place, /EarlyChange,
-        // /Predictor, and the rest only past a predictor of 1 —, and nothing else. The walk followed both keys whole, and
-        // found a loop through what the reader never reads.
+        // ends the chain, of /DecodeParms only what a Flate, LZW or /Crypt step reads — the element at its place,
+        // /EarlyChange, /Predictor, and the rest only past a predictor of 1, and the crypt filter's /Name —, and nothing
+        // else. The walk followed both keys whole, and found a loop through what the reader never reads.
         var file = DecodingShapes[shape].Build();
 
         Validate(file).Contains(PdfValidationRuleIds.XRefObjectStreamCircular).Should().BeFalse();
@@ -2920,8 +2920,9 @@ public class ObjectRuleTests
     public void Decoding_reads_no_entry_of_a_step_s_parameters_the_walk_does_not_keep()
     {
         // The walk keeps of a parameters dictionary written in the file the entries FilterChain.ParameterKeys lists, and
-        // reads nothing else of it: an entry decoding came to read besides would be a need the walk could not see. An LZW
-        // step and a Flate step, a predictor past 1, and every entry ISO 32000-1 gives a filter's parameters besides.
+        // reads nothing else of it: an entry decoding came to read besides would be a need the walk could not see. A /Crypt
+        // step, an LZW step and a Flate step, a predictor past 1, and every entry ISO 32000-1 gives a filter's parameters
+        // besides.
         string[] names =
         [
             "EarlyChange", "Predictor", "Colors", "BitsPerComponent", "Columns", "K", "EndOfLine", "EncodedByteAlign", "Rows",
@@ -2940,7 +2941,7 @@ public class ObjectRuleTests
         }
 
         var dictionary = new PdfDictionary();
-        dictionary.Set(PdfName.Filter, new PdfArray([PdfName.LZWDecode, PdfName.FlateDecode]));
+        dictionary.Set(PdfName.Filter, new PdfArray([PdfName.Crypt, PdfName.LZWDecode, PdfName.FlateDecode]));
         dictionary.Set(PdfName.DecodeParms, parameters);
         var reads = new ParameterReads(keys, []);
 
@@ -5050,7 +5051,6 @@ public class ObjectRuleTests
         "ASCIIHex, which reads no parameters, /DecodeParms 5 0 R",
         "[/FlateDecode /Foo], /DecodeParms [null 5 0 R]",
         "[/FlateDecode /JBIG2Decode], /DecodeParms [null << /JBIG2Globals 5 0 R >>]",
-        "[/Crypt /FlateDecode], /DecodeParms [<< /Name 5 0 R >> null]",
         "Flate, a /Columns 5 0 R past a predictor 4 0 R of 1",
         "Flate, a /Columns 5 0 R past a predictor of 1 object stream 9 holds",
         "Flate, parameters object stream 9 holds, << /Foo 5 0 R >>",
@@ -5063,6 +5063,7 @@ public class ObjectRuleTests
         { "Flate, a /Columns 5 0 R past a predictor of 12", "/DecodeParms" },
         { "Flate, /DecodeParms 3 0 R, 3 = << /Predictor 12.0 /Columns 5 0 R >>", "/DecodeParms" },
         { "LZW, an /EarlyChange 5 0 R", "/DecodeParms" },
+        { "[/Crypt /FlateDecode], /DecodeParms [<< /Name 5 0 R >> null]", "/DecodeParms" },
         { "/Filter 3 0 R, 3 = [5 0 R]", "/Filter" },
         { "Flate, /DecodeParms 3 0 R, 3 = [4 0 R], 4 = << /Predictor 5 0 R >>", "/DecodeParms" },
         { "Flate, a /Predictor 4 0 R, 4 = 3 0 R, 3 = 5 0 R", "/DecodeParms" },

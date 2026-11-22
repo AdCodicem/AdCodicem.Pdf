@@ -5749,9 +5749,10 @@ public class DocumentReaderTests
     public void A_deferred_length_no_row_numbers_is_not_looked_for_in_data_decoded_again()
     {
         // Stream 7's /Length names object 5, which no section places and no subsection of its own numbers, and its rows spell
-        // an endstream that parts a predicted row. The data up to it, its end the file's, decodes within the 1,100 bytes
-        // MaxDecodedStreamLength lets the RunLength step decode; decoded again, its predicted row undone, it would pass them,
-        // but no row could give the length there: what is read is what an unbounded reading reads, no guard reached.
+        // an endstream that parts its only predicted row. The data up to it, its end the file's, shorter than the row, is
+        // left as decoded and decodes within the 1,100 bytes MaxDecodedStreamLength lets the RunLength step decode; decoded
+        // again, the row undone as far as it goes, it would pass them, but no row could give the length there: what is read
+        // is what an unbounded reading reads, no guard reached.
         var file = ChainFiles.DeferredLengthNoRowNumbersPastRunLengthRuns();
         string[] unboundedCodes;
 

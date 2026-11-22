@@ -382,7 +382,13 @@ public static class PdfDiagnosticCodes
     /// PostScript writes, is reported as a repair. The message says which; for a Flate stream turned corrupt, a byte that
     /// encodes nothing, an ASCII85 group past four bytes and a <c>~</c> something other than <c>&gt;</c> follows, it says at
     /// which byte of the filter's data the first lies. A cross-reference stream whose Flate data is so left, corrupt before
-    /// its first byte decodes, holds no rows: the section cannot be read (#221).
+    /// its first byte decodes, holds no rows: the section cannot be read (#221). A predictor's data is the filter's too,
+    /// each fault a warning: rows its parameters describe longer than the data, which is left as the filter decoded it;
+    /// PNG rows that name a filter type past 4, which PNG does not define, each read as unfiltered, as MuPDF, qpdf and
+    /// PDFium read it, the first and how many in the message; and a last row the data holds in part, kept and undone as
+    /// far as it goes, reported only where the filter decoded its data to an end that loses nothing — Flate data that lost
+    /// its tail or turned corrupt, LZW data that ends inside a code or uses one it has not defined, and data a guard cut
+    /// are reported so already (#162).
     /// </summary>
     public const string FilterFailed = "filter.failed";
 
@@ -400,6 +406,33 @@ public static class PdfDiagnosticCodes
     /// decode, holds no rows: the section cannot be read (#221).
     /// </summary>
     public const string FilterUnsupported = "filter.unsupported";
+
+    /// <summary>
+    /// An element of a stream's <c>/Filter</c> — or the entry, a single name — names a filter by the abbreviation ISO
+    /// 32000-1 allows only in an inline image's dictionary (Table 94): <c>/AHx</c>, <c>/A85</c>, <c>/LZW</c>, <c>/Fl</c>,
+    /// <c>/RL</c>, <c>/CCF</c> or <c>/DCT</c>. It was read as the filter it abbreviates, as qpdf, MuPDF, pdf.js and PDFium
+    /// read it, by decoding and by every reader of the chain — the check of a cross-reference stream before its rows,
+    /// <see cref="Objects.PdfStreamDecodingExtensions.HasImageFilter"/> and the validator alike. A repair: nothing is lost,
+    /// every other reader reading the name so. Reported once for each such element, where the stream's data starts (#250).
+    /// </summary>
+    public const string FilterNameAbbreviated = "filter.name-abbreviated";
+
+    /// <summary>
+    /// A filter's parameters do not read as the file wrote them, and decoding read them as other readers do, each value
+    /// replaced reported once, where the stream's data starts. A <c>/Predictor</c> other than 1, 2 or 10 to 15 is read as
+    /// 1, no predictor, and one past 15 as a PNG predictor, as PDFium splits them; a <c>/BitsPerComponent</c> other than 1,
+    /// 2, 4, 8 or 16 as 8; a <c>/Colors</c> or <c>/Columns</c> below 1 as 1; an LZW <c>/EarlyChange</c> other than 0 or 1
+    /// as 1; a value of the wrong kind as the entry absent; a value past what an int holds as the int nearest it, reported
+    /// only where that int is one of the values above. A <c>/DecodeParms</c> that is neither a dictionary nor an array, an
+    /// element of the array that is neither a dictionary nor null, or an array too short to reach a Flate, LZW or
+    /// <c>/Crypt</c> filter, leaves that filter no parameters, and is reported; a null element, and the elements past
+    /// those <c>/Filter</c> names, replace nothing, and are not. A <c>/Crypt</c> filter whose <c>/Name</c> names a crypt
+    /// filter other than <c>/Identity</c>, in a stream of a document whose trailer gives no <c>/Encrypt</c> or one built in
+    /// memory, passes its data along as it is: no encryption dictionary defines that filter. In a document that gives
+    /// <c>/Encrypt</c> the name is the security handler's to read, and is not reported. A warning: the file does not read
+    /// as it was written, and what a value replaced would have decoded to is unknown (ADR 45, #162).
+    /// </summary>
+    public const string FilterParametersInvalid = "filter.parameters-invalid";
 
     /// <summary>
     /// A filter of a stream decodes to more than <see cref="Documents.PdfReaderLimits.MaxDecodedStreamLength"/>, or the

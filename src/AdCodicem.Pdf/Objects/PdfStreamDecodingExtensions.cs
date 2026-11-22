@@ -36,7 +36,9 @@ public static class PdfStreamDecodingExtensions
     /// as <see cref="PdfDiagnosticCodes.FilterUnsupported"/>, and the filters after it are not tried on data they
     /// could not read. An element of the <c>/Filter</c> array that names no filter ends decoding the same way, and a
     /// <c>/Filter</c> entry that is neither a name nor an array leaves the data as it found it, reported the same way.
-    /// A <c>/Filter</c> that is null is one the stream does not have.
+    /// A <c>/Filter</c> that is null is one the stream does not have. A predictor's last row the data holds in part is kept,
+    /// undone as far as it goes, and a PNG row whose filter type PNG does not define is read as unfiltered, each reported
+    /// as <see cref="PdfDiagnosticCodes.FilterFailed"/> where nothing else accounts for it.
     /// </para>
     /// <para>
     /// A stream read from a document decodes under that document's
@@ -59,7 +61,12 @@ public static class PdfStreamDecodingExtensions
     /// <para>
     /// The filters and the values of their parameters are read before any of the data is: a parameter held in an
     /// object stream decodes that stream first. The parameters of a filter are the element at its place of a
-    /// <c>/DecodeParms</c> array, the first for a single filter, or a <c>/DecodeParms</c> dictionary for every filter.
+    /// <c>/DecodeParms</c> array, the first for a single filter, or a <c>/DecodeParms</c> dictionary for every filter. A
+    /// filter named by an abbreviation ISO 32000-1 allows only in an inline image — <c>/Fl</c>, <c>/AHx</c> and the others —
+    /// is the filter it abbreviates, reported as <see cref="PdfDiagnosticCodes.FilterNameAbbreviated"/>. A parameter's value
+    /// ISO 32000-1 does not allow is read as other readers read it, and a crypt filter a <c>/Crypt</c> filter names in a
+    /// stream of a document that gives no <c>/Encrypt</c> passes its data along as it is, each reported as
+    /// <see cref="PdfDiagnosticCodes.FilterParametersInvalid"/>.
     /// </para>
     /// </remarks>
     /// <exception cref="PdfLimitExceededException">
@@ -79,8 +86,8 @@ public static class PdfStreamDecodingExtensions
 
     /// <summary>
     /// Determines whether the stream's data is an encoded image that <see cref="Decode"/> leaves alone: whether its
-    /// <c>/Filter</c> entry names an image filter before anything that ends decoding whatever the data holds — a filter
-    /// the library does not know, an element that names no filter, a filter past
+    /// <c>/Filter</c> entry names an image filter, or its abbreviation, before anything that ends decoding whatever the
+    /// data holds — a filter the library does not know, an element that names no filter, a filter past
     /// <see cref="Documents.PdfReaderLimits.MaxFilterChainLength"/>, a filter's value or parameter that leads to an object
     /// one of the reader's guards cut or left out of the index.
     /// </summary>

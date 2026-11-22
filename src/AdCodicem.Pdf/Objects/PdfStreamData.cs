@@ -40,6 +40,14 @@ public abstract class PdfStreamData
     /// </summary>
     internal virtual bool EndHidden => false;
 
+    /// <summary>
+    /// Gets a value indicating whether the data may be encrypted: the trailer of the document it was read from gives
+    /// <c>/Encrypt</c> — read as encrypted, or one the reader could not use, or a rebuild found after opening —, where a crypt
+    /// filter a <c>/Crypt</c> filter names is the security handler's to read (#162). False for data that never came from a
+    /// document.
+    /// </summary>
+    internal virtual bool MayBeEncrypted => false;
+
     /// <summary>Returns the encoded bytes, as they appear in the file, up to the reader's bound.</summary>
     /// <remarks>
     /// Data read from a document held in memory is a view of that memory, which keeps it alive and changes as it does. Data

@@ -278,6 +278,8 @@
               "filter.failed",
               "filter.checksum-mismatch",
               "filter.unsupported",
+              "filter.name-abbreviated",
+              "filter.parameters-invalid",
               "limit.decoded-stream",
               "limit.stream-length",
               "limit.object",
