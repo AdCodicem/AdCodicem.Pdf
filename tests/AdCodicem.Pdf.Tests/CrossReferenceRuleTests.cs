@@ -4466,6 +4466,67 @@ public class CrossReferenceRuleTests
         report.Contains(PdfValidationRuleIds.XRefCheckedInPart).Should().BeTrue();
     }
 
+    [Fact]
+    public void An_object_served_from_an_object_stream_a_rebuilt_index_full_before_it_leaves_out_is_unchecked_not_broken()
+    {
+        // The chain's newest section, the one MaxXRefSectionCount 1 lets the reader read, places object 7 soundly in object
+        // stream 16, which lies within object 10's data, where the scan for objects passes over it; row 9 lies outside the
+        // file, so the validation rebuilds the index, which the scan's objects, three the chain lacks among them, fill once it
+        // takes in the chain's entry of 7, before 16's. 7 is unknown, not lost: only xref.checked-in-part says the rebuilt
+        // index was stopped short (ADR 34, #349).
+        const string Sixteen = "16 0 obj\n<< /Type /ObjStm /N 1 /First 4 /Length 12 >>\nstream\n7 0 (seven) \nendstream\nendobj\n";
+        var file = new HandWrittenFile(version: "1.5");
+        var rows = new SortedDictionary<int, (int Type, long Field2, int Field3)>
+        {
+            [1] = (1, file.Object(1, "<< /Type /Catalog /Pages 2 0 R /Foo 7 0 R >>"), 0),
+            [2] = (1, file.Object(2, "<< /Type /Pages /Kids [4 0 R] /Count 1 >>"), 0),
+            [4] = (1, file.Object(4, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 10 10] >>"), 0),
+            [7] = (2, 16, 0),
+            [9] = (1, 999_999, 0),
+        };
+
+        for (var extra = 30; extra < 33; extra++)
+        {
+            file.Object(extra, "(extra)");
+        }
+
+        rows[10] = (1, file.Position, 0);
+        file.Raw(string.Create(CultureInfo.InvariantCulture, $"10 0 obj\n<< /Length {Sixteen.Length} >>\nstream\n"));
+        rows[16] = (1, file.Position, 0);
+        file.Raw(Sixteen + "\nendstream\nendobj\n");
+        var table = file.Table(3, new Dictionary<int, long> { [1] = rows[1].Field2, [2] = rows[2].Field2 }, "/Size 3 /Root 1 0 R");
+        var at = file.Position;
+        rows[20] = (1, at, 0);
+        var index = new StringBuilder();
+        var data = new StringBuilder();
+
+        foreach (var (number, (type, field2, field3)) in rows)
+        {
+            // A subsection a row: the section gives the index no number but these.
+            index.Append(CultureInfo.InvariantCulture, $"{number} 1 ");
+            data.Append((char)type).Append((char)((field2 >> 24) & 0xFF)).Append((char)((field2 >> 16) & 0xFF))
+                .Append((char)((field2 >> 8) & 0xFF)).Append((char)(field2 & 0xFF))
+                .Append((char)((field3 >> 8) & 0xFF)).Append((char)(field3 & 0xFF));
+        }
+
+        file.Raw(string.Create(
+            CultureInfo.InvariantCulture,
+            $"20 0 obj\n<< /Type /XRef /Size 33 /Index [{index}] /W [1 4 2] /Root 1 0 R /Prev {table} /Length {data.Length} >>\nstream\n{data}\nendstream\nendobj\nstartxref\n{at}\n%%EOF\n"));
+        using var document = PdfDocument.Open(
+            file.Bytes, new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxXRefSectionCount = 1, MaxIndexEntries = 9 } });
+
+        var report = new PdfValidator().Validate(document);
+
+        document.WasRepaired.Should().BeTrue();
+        document.Reader.Index.TryGet(7, out var seven).Should().BeTrue();
+        (seven.Kind, seven.ObjectStreamNumber).Should().Be((XRefEntryKind.Compressed, 16));
+        document.Reader.Index.TryGet(16, out _).Should().BeFalse();
+        report.Findings.Where(finding => finding.RuleId == PdfValidationRuleIds.XRefEntryBroken && finding.Location.Object?.Number == 7)
+            .Should().BeEmpty();
+        report.Findings.Should().Contain(finding =>
+            finding.RuleId == PdfValidationRuleIds.XRefCheckedInPart && finding.Message.Contains("MaxIndexEntries", StringComparison.Ordinal));
+    }
+
     /// <summary>
     /// Writes a file whose chain places object 7 at <paramref name="index"/> of object stream 6, whose definition there lists
     /// it at index 0, and object 9 outside the file; the shape says what else the file writes, which a rebuild serves. Gives

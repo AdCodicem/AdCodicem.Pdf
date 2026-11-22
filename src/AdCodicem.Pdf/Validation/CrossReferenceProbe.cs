@@ -335,7 +335,8 @@ internal sealed class CrossReferenceProbe
     /// stream it serves — does not list it, lists it written as a stream, which the reader reads as null, cannot be read or is
     /// no object stream; or where what it serves under that stream's number is no object stream of its own. The header of each
     /// definition it serves them from is read once, however many it serves from there. An object a guard left out of the
-    /// rebuilt index is unknown, not lost, and a definition a guard cut is the guard's to say, which the reader reported.
+    /// rebuilt index, or whose stream it left out of it, is unknown, not lost, and a definition a guard cut is the guard's to
+    /// say, which the reader reported.
     /// </summary>
     private void CheckMembersARebuildServesElsewhere(PdfFileReader reader, List<ServedElsewhere>? servedElsewhere)
     {
@@ -363,6 +364,14 @@ internal sealed class CrossReferenceProbe
             }
             else if (served.Kind == XRefEntryKind.Compressed)
             {
+                // Served from a stream a guard left out of the rebuilt index, the object is unknown, not lost, as one it left
+                // out is. Of a number the index does not hold, the presence says only whether a guard stopped the index.
+                if (!reader.Index.TryGet(served.ObjectStreamNumber, out _) &&
+                    reader.GetPresence(served.ObjectStreamNumber) == ObjectPresence.Unindexed)
+                {
+                    continue;
+                }
+
                 (servedStream, servedIndex) = (served.ObjectStreamNumber, served.IndexInObjectStream);
             }
             else
