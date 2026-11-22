@@ -13,8 +13,8 @@ namespace AdCodicem.Pdf.Validation.Rules;
 /// <see cref="PdfValidationRuleIds.FileStartXRefWrong"/>'s or <see cref="PdfValidationRuleIds.FileStartXRefMissing"/>'s,
 /// and none of its entries is probed. Of an index the reader rebuilt, chain or none, the objects written as a stream that
 /// it places where the chain's index places nothing are judged too, and so are the objects the chain's index places
-/// soundly in an object stream that it lacks, or places where they are written as a stream: no entry the reader read would
-/// say they are lost (#276). An object one of the reader's guards left out of the index it rebuilt is unknown, not lost
+/// soundly in an object stream that it lacks, or serves from an object stream that does not serve them, the finding saying
+/// why: no entry the reader read would say they are lost (#276, #349). An object one of the reader's guards left out of the index it rebuilt is unknown, not lost
 /// (<see cref="IO.ObjectPresence.Unindexed"/>), and its entry is not judged: <see cref="PdfValidationRuleIds.XRefCheckedInPart"/>
 /// says the index was checked in part.
 /// </remarks>

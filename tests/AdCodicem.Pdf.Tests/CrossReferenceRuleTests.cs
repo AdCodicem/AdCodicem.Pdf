@@ -4352,63 +4352,44 @@ public class CrossReferenceRuleTests
     };
 
     [Theory]
-    [InlineData("another definition of its stream, which does not list it", false)]
-    [InlineData("another definition of its stream, which does not list it", true)]
-    [InlineData("another object stream, which writes it as a stream", false)]
-    [InlineData("another definition of its stream, which writes it as a stream", false)]
-    [InlineData("the definition of its stream the chain's index places", false)]
-    [InlineData("another object stream, which writes it as a stream", false, 1)]
-    public void An_object_the_chain_s_index_places_soundly_that_a_rebuild_loses_is_an_entry_broken(string served, bool kid, int capacity = 0)
+    [InlineData("another definition of its stream, which does not list it", false, "The entry of object 7 places it at index 0 of object stream 6, and the index the reader rebuilt lacks it: the definition of object stream 6 it serves, at offset {0}, does not list it.")]
+    [InlineData("another definition of its stream, which does not list it", false, "The entry of object 7 places it at index 0 of object stream 6, and the index the reader rebuilt lacks it: the definition of object stream 6 it serves, at offset {0}, does not list it.", 0, true)]
+    [InlineData("another definition of its stream, which does not list it", true, "The entry of object 7 places it at index 0 of object stream 6; the index the reader rebuilt places it at index 0 of object stream 6, at offset {0}, whose header does not list it.")]
+    [InlineData("another definition of its stream, which does not list it", false, "The entry of object 7 places it at index 1 of object stream 6, whose header lists it at index 0, and the index the reader rebuilt lacks it: the definition of object stream 6 it serves, at offset {0}, does not list it.", 1)]
+    [InlineData("another definition of its stream, which does not list it", true, "The entry of object 7 places it at index 1 of object stream 6, whose header lists it at index 0; the index the reader rebuilt places it at index 1 of object stream 6, at offset {0}, whose header does not list it.", 1)]
+    [InlineData("another object stream, which writes it as a stream", false, "The entry of object 7 places it at index 0 of object stream 6; the index the reader rebuilt places it at index 0 of object stream 8, at offset {0}, where it is written as a stream, which an object stream cannot hold.")]
+    [InlineData("another definition of its stream, which writes it as a stream", false, "The entry of object 7 places it at index 0 of object stream 6; the index the reader rebuilt places it at index 0 of object stream 6, at offset {0}, where it is written as a stream, which an object stream cannot hold.")]
+    [InlineData("another definition of its stream, which writes it as a stream", true, "The entry of object 7 places it at index 1 of object stream 6, whose header lists it at index 0; the index the reader rebuilt places it at index 0 of object stream 6, at offset {0}, where it is written as a stream, which an object stream cannot hold.", 1)]
+    [InlineData("another definition of its stream, whose header ends early", false, "The entry of object 7 places it at index 0 of object stream 6, and the index the reader rebuilt lacks it: the definition of object stream 6 it serves, at offset {0}, can be read only in part: it has a header that ends after 1 of the 3 objects its /N declares.")]
+    [InlineData("another definition of its stream, whose header ends early", true, "The entry of object 7 places it at index 0 of object stream 6; the index the reader rebuilt places it at index 0 of object stream 6, at offset {0}, which can be read only in part: it has a header that ends after 1 of the 3 objects its /N declares.")]
+    [InlineData("another definition of its stream, whose data ends before its /First", false, "The entry of object 7 places it at index 0 of object stream 6, and the index the reader rebuilt lacks it: the definition of object stream 6 it serves, at offset {0}, cannot be read: it gives in /First an offset, 20, past the end of its decoded data, which is 5 bytes long.")]
+    [InlineData("another definition of its stream, whose data ends before its /First", true, "The entry of object 7 places it at index 0 of object stream 6; the index the reader rebuilt places it at index 0 of object stream 6, at offset {0}, which cannot be read: it gives in /First an offset, 20, past the end of its decoded data, which is 5 bytes long.")]
+    [InlineData("another object under its stream's number, which is no stream", false, "The entry of object 7 places it at index 0 of object stream 6, and the index the reader rebuilt lacks it: the object 6 it serves, at offset {0}, is not a stream.")]
+    [InlineData("another object under its stream's number, which is no stream", true, "The entry of object 7 places it at index 0 of object stream 6; the index the reader rebuilt places it at index 0 of object stream 6, at offset {0}, which is not a stream.")]
+    [InlineData("a member of another object stream under its stream's number", false, "The entry of object 7 places it at index 0 of object stream 6, and the index the reader rebuilt lacks it: it places object 6 itself at index 0 of object stream 8.")]
+    [InlineData("a member of another object stream under its stream's number", true, "The entry of object 7 places it at index 0 of object stream 6; the index the reader rebuilt places it at index 0 of object stream 6, which it places in object stream 8 in turn.")]
+    [InlineData("its stream within another stream's data", false, "The entry of object 7 places it at index 0 of object stream 6, and the index the reader rebuilt lacks it: it holds no object 6.")]
+    [InlineData("the definition of its stream the chain's index places", false, null)]
+    [InlineData("the definition of its stream the chain's index places", true, null, 1)]
+    [InlineData("another object stream, which writes it as a stream", false, null, 0, false, 1)]
+    public void An_object_the_chain_s_index_places_soundly_that_a_rebuild_loses_is_an_entry_broken(
+        string served, bool merged, string? expected, int index = 0, bool kid = false, int capacity = 0)
     {
-        // The chain places object 7 at index 0 of object stream 6, whose definition there lists it; row 9 lies outside the
-        // file, so the validation rebuilds the index, which serves the object stream the file writes last. Where that loses 7,
-        // the entry is broken as the reader reads it, though sound where the chain places it (#276). 7 is a value of the
-        // catalog, or a kid of the page tree.
-        const string StreamMember = "<< /Length 3 >>\nstream\nabc\nendstream";
-        var seven = kid ? "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 10 10] >>" : "(seven)";
-        var file = new HandWrittenFile(version: "1.5");
-        var rows = new Dictionary<int, (int Type, long Field2, int Field3)>
-        {
-            [1] = (1, file.Object(1, kid ? "<< /Type /Catalog /Pages 2 0 R >>" : "<< /Type /Catalog /Pages 2 0 R /Foo 7 0 R >>"), 0),
-            [2] = (1, file.Object(2, kid ? "<< /Type /Pages /Kids [4 0 R 7 0 R] /Count 2 >>" : "<< /Type /Pages /Kids [4 0 R] /Count 1 >>"), 0),
-            [4] = (1, file.Object(4, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 10 10] >>"), 0),
-            [7] = (2, 6, 0),
-            [9] = (1, 999_999, 0),
-        };
-        string? expected;
-
-        switch (served)
-        {
-            case "another definition of its stream, which does not list it":
-                rows[6] = (1, file.ObjectStream(6, [(7, seven)]), 0);
-                var lacking = file.ObjectStream(6, [(12, "(twelve)")]);
-                expected = Invariant($"The entry of object 7 places it at index 0 of object stream 6, and the index the reader rebuilt lacks it: it serves the definition of object stream 6 at offset {lacking} instead.");
-                break;
-            case "another object stream, which writes it as a stream":
-                rows[6] = (1, file.ObjectStream(6, [(7, seven)]), 0);
-                rows[8] = (1, file.ObjectStream(8, [(7, StreamMember)]), 0);
-                expected = Invariant($"The entry of object 7 places it at index 0 of object stream 6; the index the reader rebuilt places it at index 0 of object stream 8, at offset {rows[8].Field2}, where it is written as a stream, which an object stream cannot hold.");
-                break;
-            case "another definition of its stream, which writes it as a stream":
-                rows[6] = (1, file.ObjectStream(6, [(7, seven)]), 0);
-                var holding = file.ObjectStream(6, [(7, StreamMember)]);
-                expected = Invariant($"The entry of object 7 places it at index 0 of object stream 6; the index the reader rebuilt places it at index 0 of object stream 6, at offset {holding}, where it is written as a stream, which an object stream cannot hold.");
-                break;
-            default:
-                file.ObjectStream(6, [(12, "(twelve)")]);
-                rows[6] = (1, file.ObjectStream(6, [(7, seven)]), 0);
-                expected = null;
-                break;
-        }
-
-        file.CrossReferenceStream(20, 21, rows, "/Root 1 0 R");
-        using var document = PdfDocument.Open(file.Bytes);
+        // The chain places object 7 at index 0 of object stream 6, whose definition there lists it, or at index 1, where a
+        // load finds it at index 0 by its number; row 9 lies outside the file, so the validation rebuilds the index, which
+        // serves the object stream the file writes last. Where that loses 7, the entry is broken as the reader reads it, though
+        // sound where the chain places it, and the finding says why (#276, #349); a shift the entry makes keeps its warning. 7
+        // is a value of the catalog, or a kid of the page tree. Merged, the chain's entries the rebuild keeps place 7 where the
+        // chain does.
+        var (file, at) = RebuildLossFile(served, merged, kid, index);
+        using var document = PdfDocument.Open(
+            file, merged ? new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxXRefSectionCount = 1 } } : null);
 
         if (capacity > 0)
         {
             // With room for one finding, row 9's takes it: 7's is counted, not written, and the report holds every finding
             // written or counted.
-            using var unlimited = PdfDocument.Open(file.Bytes);
+            using var unlimited = PdfDocument.Open(file);
             var all = new PdfValidator().Validate(unlimited).Findings.Count;
             var limited = new PdfValidator(new PdfValidatorOptions { FindingCapacity = capacity }).Validate(document);
 
@@ -4418,12 +4399,155 @@ public class CrossReferenceRuleTests
         }
 
         var findings = new PdfValidator().Validate(document).Findings
-            .Where(finding => finding.RuleId == PdfValidationRuleIds.XRefEntryBroken && finding.Location.Object?.Number == 7)
-            .Select(finding => finding.Message);
+            .Where(finding => finding.Location.Object?.Number == 7 &&
+                finding.RuleId is PdfValidationRuleIds.XRefEntryBroken or PdfValidationRuleIds.XRefEntryShifted)
+            .Select(finding => (finding.RuleId, finding.Severity, finding.Message))
+            .ToList();
+        var lost = expected is null
+            ? []
+            : new[] { (PdfValidationRuleIds.XRefEntryBroken, PdfValidationSeverity.Error, string.Format(CultureInfo.InvariantCulture, expected, at)) };
+        var shifted = (PdfValidationRuleIds.XRefEntryShifted, PdfValidationSeverity.Warning, "The entry of object 7 places it at index 1 of object stream 6, whose header lists it at index 0.");
 
         document.WasRepaired.Should().BeTrue();
-        findings.Should().Equal(expected is null ? [] : [expected]);
+        findings.Should().Equal(index == 0 ? lost : [.. lost, shifted]);
         (document.GetObject(new PdfObjectId(7)) == PdfNull.Instance).Should().Be(expected is not null);
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(2)]
+    public void A_row_a_few_bytes_before_an_object_stream_a_rebuild_serves_costs_its_members_check_no_decoding(int early)
+    {
+        // The chain's row of object stream 6 gives its offset, or the white space two bytes before its header; the rebuilt index
+        // serves that definition, found at its header. Told by where a load found the header, not by the row, 6's members are
+        // served where the chain places them, and their check decodes the stream no more than an exact row lets it (#349).
+        var (file, _) = RebuildLossFile("the definition of its stream the chain's index places", merged: false, kid: false, index: 0, early);
+        var data = PdfTemplate.OffsetOf(file, "7 0 (seven)");
+        using var source = new OffsetCountingSource(file);
+        using var document = PdfDocument.Open(source, options: null, ownsSource: false);
+        var before = source.Reads.GetValueOrDefault(data);
+
+        var report = new PdfValidator().Validate(document);
+
+        document.WasRepaired.Should().BeTrue();
+        report.Findings.Where(finding => finding.Location.Object?.Number == 7).Should().BeEmpty();
+        (source.Reads.GetValueOrDefault(data) - before).Should().Be(2, "the rebuild decodes 6 to take in its members, and the probe to check them");
+    }
+
+    [Fact]
+    public void An_object_a_rebuilt_index_full_before_it_leaves_out_is_unchecked_not_broken()
+    {
+        // The chain places object 4 soundly in object stream 3; row 9 lies outside the file, so the validation rebuilds the
+        // index, which seven objects the chain lacks fill before the expansion takes 4 in. 4 is unknown, not lost: only
+        // xref.checked-in-part says the rebuilt index was stopped short (ADR 34, #349).
+        var file = new HandWrittenFile(version: "1.5");
+        var rows = new Dictionary<int, (int Type, long Field2, int Field3)>
+        {
+            [1] = (1, file.Object(1, "<< /Type /Catalog /Pages 2 0 R /Foo 4 0 R >>"), 0),
+            [2] = (1, file.Object(2, "<< /Type /Pages /Kids [5 0 R] /Count 1 >>"), 0),
+            [5] = (1, file.Object(5, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 10 10] >>"), 0),
+            [3] = (1, file.ObjectStream(3, [(4, "(four)")]), 0),
+            [4] = (2, 3, 0),
+            [9] = (1, 999_999, 0),
+        };
+
+        for (var extra = 30; extra < 37; extra++)
+        {
+            file.Object(extra, "(extra)");
+        }
+
+        file.CrossReferenceStream(10, 11, rows, "/Root 1 0 R");
+        using var document = PdfDocument.Open(file.Bytes, new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxIndexEntries = 12 } });
+
+        var report = new PdfValidator().Validate(document);
+
+        document.WasRepaired.Should().BeTrue();
+        report.Findings.Where(finding => finding.Location.Object?.Number == 4).Should().BeEmpty();
+        report.Contains(PdfValidationRuleIds.XRefCheckedInPart).Should().BeTrue();
+    }
+
+    /// <summary>
+    /// Writes a file whose chain places object 7 at <paramref name="index"/> of object stream 6, whose definition there lists
+    /// it at index 0, and object 9 outside the file; the shape says what else the file writes, which a rebuild serves. Gives
+    /// where the definition the rebuild serves in 6's place starts, or the object stream that holds 7 then.
+    /// </summary>
+    /// <param name="shape">What else the file writes.</param>
+    /// <param name="merged">Whether the chain goes on, past its cross-reference stream, to a table that holds rows 1 and 2.</param>
+    /// <param name="kid">Whether 7 is a page, a kid of the page tree, rather than a value of the catalog.</param>
+    /// <param name="index">The index of object stream 6 the chain places 7 at.</param>
+    /// <param name="early">How many bytes of white space before the header of 6 the chain's row gives.</param>
+    private static (byte[] File, long Served) RebuildLossFile(string shape, bool merged, bool kid, int index, int early = 0)
+    {
+        const string StreamMember = "<< /Length 3 >>\nstream\nabc\nendstream";
+        var seven = kid ? "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 10 10] >>" : "(seven)";
+        var file = new HandWrittenFile(version: "1.5");
+        var rows = new Dictionary<int, (int Type, long Field2, int Field3)>
+        {
+            [1] = (1, file.Object(1, kid ? "<< /Type /Catalog /Pages 2 0 R >>" : "<< /Type /Catalog /Pages 2 0 R /Foo 7 0 R >>"), 0),
+            [2] = (1, file.Object(2, kid ? "<< /Type /Pages /Kids [4 0 R 7 0 R] /Count 2 >>" : "<< /Type /Pages /Kids [4 0 R] /Count 1 >>"), 0),
+            [4] = (1, file.Object(4, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 10 10] >>"), 0),
+            [7] = (2, 6, index),
+            [9] = (1, 999_999, 0),
+        };
+        long served = -1;
+
+        if (shape == "the definition of its stream the chain's index places")
+        {
+            file.ObjectStream(6, [(12, "(twelve)")]);
+        }
+
+        if (shape == "its stream within another stream's data")
+        {
+            // A stream whose direct /Length the endstream after it confirms: the scan for objects passes over its data.
+            const string Six = "6 0 obj\n<< /Type /ObjStm /N 1 /First 4 /Length 12 >>\nstream\n7 0 (seven) \nendstream\nendobj\n";
+            file.Raw(string.Create(CultureInfo.InvariantCulture, $"10 0 obj\n<< /Length {Six.Length} >>\nstream\n"));
+            rows[6] = (1, file.Position, 0);
+            file.Raw(Six + "\nendstream\nendobj\n");
+        }
+        else
+        {
+            file.Raw(new string(' ', early));
+            rows[6] = (1, file.ObjectStream(6, [(7, seven)]) - early, 0);
+        }
+
+        switch (shape)
+        {
+            case "another definition of its stream, which does not list it":
+                served = file.ObjectStream(6, [(12, "(twelve)")]);
+                break;
+            case "another object stream, which writes it as a stream":
+                served = file.ObjectStream(8, [(7, StreamMember)]);
+                rows[8] = (1, served, 0);
+                break;
+            case "another definition of its stream, which writes it as a stream":
+                served = file.ObjectStream(6, [(7, StreamMember)]);
+                break;
+            case "another definition of its stream, whose header ends early":
+                served = file.Object(6, "<< /Type /ObjStm /N 3 /First 30 /Length 40 >>\nstream\n12 0                          (twelve)  \nendstream");
+                break;
+            case "another definition of its stream, whose data ends before its /First":
+                served = file.Object(6, "<< /Type /ObjStm /N 1 /First 20 /Length 5 >>\nstream\n12 0 \nendstream");
+                break;
+            case "another object under its stream's number, which is no stream":
+                served = file.Object(6, "(six)");
+                break;
+            case "a member of another object stream under its stream's number":
+                file.ObjectStream(8, [(6, "(six)")]);
+                break;
+        }
+
+        if (merged)
+        {
+            // The table past the stream, which MaxXRefSectionCount 1 leaves unread: the rebuilt index merges the chain's.
+            var table = file.Table(3, new Dictionary<int, long> { [1] = rows[1].Field2, [2] = rows[2].Field2 }, "/Size 3 /Root 1 0 R");
+            file.CrossReferenceStream(20, 21, rows, string.Create(CultureInfo.InvariantCulture, $"/Root 1 0 R /Prev {table}"));
+        }
+        else
+        {
+            file.CrossReferenceStream(20, 21, rows, "/Root 1 0 R");
+        }
+
+        return (file.Bytes, served);
     }
 
     [Theory]

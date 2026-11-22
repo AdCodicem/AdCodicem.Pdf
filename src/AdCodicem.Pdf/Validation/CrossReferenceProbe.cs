@@ -31,8 +31,8 @@ namespace AdCodicem.Pdf.Validation;
 /// only say it again. Of the index a rebuild made, it judges the members written as a stream that it places where the
 /// chain's places nothing — or, the chain stopped short by a guard, where the part of it the reader read places nothing —,
 /// which the reader reads as null and no entry of the file's the reader read would name (#161, #202); and, of the objects
-/// the chain's index places soundly in an object stream, those it lacks or places where they are written as a stream,
-/// which the reader loses though the chain's entry is sound (#276).
+/// the chain's index places soundly in an object stream, those it lacks or serves from an object stream that does not serve
+/// them, which the reader loses though the chain's entry is sound (#276, #349).
 /// </para>
 /// <para>
 /// Several rules read it, so the validation context works it out once. What it keeps is what it found wrong, never an
@@ -51,12 +51,6 @@ internal sealed class CrossReferenceProbe
 
     /// <summary>What the headers' reading may still consume past the first bytes of each, and the run of white space it crossed.</summary>
     private readonly HeaderReading _reading;
-
-    /// <summary>
-    /// The objects the chain's index places soundly in an object stream that the index the reader rebuilt does not serve from
-    /// there; null while there is none.
-    /// </summary>
-    private List<(int Number, int Stream, int Index, long Offset)>? _servedElsewhere;
 
     /// <summary>How many entries the probe left undecided, its reading spent.</summary>
     private int _undecidedCount;
@@ -179,8 +173,10 @@ internal sealed class CrossReferenceProbe
 
         if (packed.Count > 0)
         {
-            probe.CheckObjectStreams(document, reader, packed);
-            probe.CheckMembersARebuildServesElsewhere(reader);
+            // The objects the rebuild may have lost are kept only until they are judged: the probe keeps what it found wrong.
+            List<ServedElsewhere>? servedElsewhere = null;
+            probe.CheckObjectStreams(document, reader, packed, ref servedElsewhere);
+            probe.CheckMembersARebuildServesElsewhere(reader, servedElsewhere);
         }
 
         probe.CheckMembersOnlyARebuildPlaces(document, reader);
@@ -315,70 +311,75 @@ internal sealed class CrossReferenceProbe
     }
 
     /// <summary>
-    /// Determines whether the index the reader rebuilt places object <paramref name="number"/> where the chain's index does:
-    /// at <paramref name="index"/> of object stream <paramref name="stream"/>, of the definition at
-    /// <paramref name="offset"/>.
+    /// Determines whether the index the reader rebuilt serves object <paramref name="number"/> as the chain's index does: from
+    /// object stream <paramref name="stream"/>, of the definition whose header starts at <paramref name="headerAt"/>, at
+    /// <paramref name="index"/>, where the chain's index places it, or at <paramref name="actual"/>, where a load finds it by
+    /// its number.
     /// </summary>
-    private static bool ServedWhereChainPlaces(PdfFileReader reader, int number, int stream, int index, long offset) =>
+    /// <remarks>
+    /// The definition is told by where a load found its header, not by the row's offset: a row a few bytes early, on the white
+    /// space before the header, places the definition the rebuilt index serves all the same.
+    /// </remarks>
+    private static bool ServedWhereChainPlaces(PdfFileReader reader, int number, int stream, int index, int actual, long headerAt) =>
         reader.Index.TryGet(number, out var served) &&
         served.Kind == XRefEntryKind.Compressed &&
         served.ObjectStreamNumber == stream &&
-        served.IndexInObjectStream == index &&
+        (served.IndexInObjectStream == index || served.IndexInObjectStream == actual) &&
         reader.Index.TryGet(stream, out var definition) &&
         definition.Kind == XRefEntryKind.Regular &&
-        reader.PositionOf(definition) == offset;
+        reader.PositionOf(definition) == headerAt;
 
     /// <summary>
-    /// Judges the objects the chain's index places soundly in an object stream that the index the reader rebuilt serves from
-    /// elsewhere: lost where it lacks them — the definition of their stream it serves does not list them — or places them in
-    /// an object stream that holds them written as a stream, which the reader reads as null (#276). Each object stream the
-    /// rebuilt index serves them from is read once more.
+    /// Judges the objects the chain's index places soundly in an object stream that the index the reader rebuilt does not
+    /// serve as it does (#276, #349): lost where the definition it serves one from — or, lacking it, the definition of its
+    /// stream it serves — does not list it, lists it written as a stream, which the reader reads as null, cannot be read or is
+    /// no object stream; or where what it serves under that stream's number is no object stream of its own. The header of each
+    /// definition it serves them from is read once, however many it serves from there. An object a guard left out of the
+    /// rebuilt index is unknown, not lost, and a definition a guard cut is the guard's to say, which the reader reported.
     /// </summary>
-    private void CheckMembersARebuildServesElsewhere(PdfFileReader reader)
+    private void CheckMembersARebuildServesElsewhere(PdfFileReader reader, List<ServedElsewhere>? servedElsewhere)
     {
-        if (_servedElsewhere is null)
+        if (servedElsewhere is null)
         {
             return;
         }
 
-        SortedDictionary<int, List<(int Number, int Stream, int Index, int Served)>>? byServed = null;
+        SortedDictionary<int, List<(ServedElsewhere Member, int Served)>>? byServed = null;
 
-        foreach (var (number, stream, index, offset) in _servedElsewhere)
+        foreach (var member in servedElsewhere)
         {
-            if (!reader.Index.TryGet(number, out var served))
+            int servedStream, servedIndex;
+
+            if (!reader.Index.TryGet(member.Number, out var served))
             {
-                if (reader.GetPresence(number) == ObjectPresence.Unindexed || !Broken.Take())
+                if (reader.GetPresence(member.Number) == ObjectPresence.Unindexed)
                 {
                     continue;
                 }
 
-                // The rebuild takes in what each object stream it serves lists: lacking the object, it serves another
-                // definition of its stream, which does not list it or cannot be read, or could not read the one the chain's
-                // index places (#349).
-                var definition = reader.Index.TryGet(stream, out var held) && held.Kind == XRefEntryKind.Regular &&
-                    reader.PositionOf(held) != offset
-                    ? Invariant($": it serves the definition of object stream {stream} at offset {reader.PositionOf(held)} instead")
-                    : string.Empty;
-                Broken.Keep(new ProbeFinding(
-                    PdfValidationLocation.OfObject(new PdfObjectId(number)),
-                    Invariant($"The entry of object {number} places it at index {index} of object stream {stream}, and the index the reader rebuilt lacks it{definition}.")));
-                continue;
+                // The rebuild takes in what each object stream it serves lists: lacking the object, what it serves under its
+                // stream's number says why.
+                (servedStream, servedIndex) = (member.Stream, -1);
             }
-
-            if (served.Kind != XRefEntryKind.Compressed)
+            else if (served.Kind == XRefEntryKind.Compressed)
             {
+                (servedStream, servedIndex) = (served.ObjectStreamNumber, served.IndexInObjectStream);
+            }
+            else
+            {
+                // Placed outside any object stream, the object is not one the rebuild lost from one.
                 continue;
             }
 
             byServed ??= [];
 
-            if (!byServed.TryGetValue(served.ObjectStreamNumber, out var members))
+            if (!byServed.TryGetValue(servedStream, out var members))
             {
                 members = [];
-                byServed.Add(served.ObjectStreamNumber, members);
+                byServed.Add(servedStream, members);
             }
 
-            members.Add((number, stream, index, served.IndexInObjectStream));
+            members.Add((member, servedIndex));
         }
 
         if (byServed is null)
@@ -388,28 +389,41 @@ internal sealed class CrossReferenceProbe
 
         foreach (var (servedStream, members) in byServed)
         {
-            if (!reader.Index.TryGet(servedStream, out var entry) || entry.Kind != XRefEntryKind.Regular ||
-                reader.ReadObjectStreamHeader(servedStream, entry, out _, out _, out var streamMembers) is
-                    ObjectStreamHeaderResult.NotFound or ObjectStreamHeaderResult.CutByLimit or ObjectStreamHeaderResult.NotAnObjectStream)
+            var definition = new ServedDefinition(reader, servedStream);
+
+            if (definition.Result == ObjectStreamHeaderResult.CutByLimit)
             {
                 continue;
             }
 
-            foreach (var (number, stream, index, served) in members)
+            foreach (var (member, served) in members)
             {
-                if (Array.BinarySearch(streamMembers, served) >= 0 && Broken.Take())
+                var stream = false;
+                var why = served < 0 ? definition.WhyLacking(member.Number) : definition.WhyLost(member.Number, served, out stream);
+
+                if (why is null || !Broken.Take())
                 {
-                    Broken.Keep(new ProbeFinding(
-                        PdfValidationLocation.OfObject(new PdfObjectId(number)),
-                        Invariant($"The entry of object {number} places it at index {index} of object stream {stream}; the index the reader rebuilt places it at index {served} of object stream {servedStream}, at offset {reader.PositionOf(entry)}, where it is written as a stream, which an object stream cannot hold."),
-                        StreamMemberRemedy));
+                    continue;
                 }
+
+                var placed = member.Actual == member.Index
+                    ? Invariant($"The entry of object {member.Number} places it at index {member.Index} of object stream {member.Stream}")
+                    : Invariant($"The entry of object {member.Number} places it at index {member.Index} of object stream {member.Stream}, whose header lists it at index {member.Actual}");
+                Broken.Keep(new ProbeFinding(
+                    PdfValidationLocation.OfObject(new PdfObjectId(member.Number)),
+                    served < 0
+                        ? Invariant($"{placed}, and the index the reader rebuilt lacks it{why}.")
+                        : Invariant($"{placed}; the index the reader rebuilt places it at index {served} of object stream {servedStream}{why}."),
+                    stream ? StreamMemberRemedy : null));
             }
         }
     }
 
     private void CheckObjectStreams(
-        PdfDocument document, PdfFileReader reader, SortedDictionary<int, List<(int Number, int Index)>> packed)
+        PdfDocument document,
+        PdfFileReader reader,
+        SortedDictionary<int, List<(int Number, int Index)>> packed,
+        ref List<ServedElsewhere>? servedElsewhere)
     {
         if (document.IsEncrypted || reader.EncryptFoundAfterOpening)
         {
@@ -441,11 +455,12 @@ internal sealed class CrossReferenceProbe
 
         foreach (var (stream, objects) in packed)
         {
-            CheckObjectStream(reader, stream, objects);
+            CheckObjectStream(reader, stream, objects, ref servedElsewhere);
         }
     }
 
-    private void CheckObjectStream(PdfFileReader reader, int stream, List<(int Number, int Index)> objects)
+    private void CheckObjectStream(
+        PdfFileReader reader, int stream, List<(int Number, int Index)> objects, ref List<ServedElsewhere>? servedElsewhere)
     {
         var id = new PdfObjectId(stream);
 
@@ -476,7 +491,7 @@ internal sealed class CrossReferenceProbe
         var position = reader.IsInFile(offset) ? offset : -1;
         var at = position >= 0 ? PdfValidationLocation.OfObject(id, position) : PdfValidationLocation.OfObject(id);
 
-        var result = reader.ReadObjectStreamHeader(stream, entry, out var numbers, out var fault, out var streamMembers);
+        var result = reader.ReadObjectStreamHeader(stream, entry, out var numbers, out var fault, out var streamMembers, out var headerAt);
         long[]? places = null;
 
         switch (result)
@@ -547,15 +562,16 @@ internal sealed class CrossReferenceProbe
                 continue;
             }
 
+            // Sound where the chain's index places it, or where a load finds it by its number, the object may still be lost to
+            // a rebuild that serves it from elsewhere, or serves another definition of its stream (#276): a shift the entry
+            // makes is its warning, the loss its error.
+            if (actual >= 0 && reader.WasRepaired && !ServedWhereChainPlaces(reader, number, stream, index, actual, headerAt))
+            {
+                (servedElsewhere ??= []).Add(new ServedElsewhere(number, stream, index, actual));
+            }
+
             if (listed)
             {
-                // Sound where the chain's index places it, the object may still be lost to a rebuild that serves it from
-                // elsewhere, or serves another definition of its stream (#276).
-                if (reader.WasRepaired && !ServedWhereChainPlaces(reader, number, stream, index, offset))
-                {
-                    (_servedElsewhere ??= []).Add((number, stream, index, offset));
-                }
-
                 continue;
             }
 
@@ -624,7 +640,7 @@ internal sealed class CrossReferenceProbe
         foreach (var (stream, objects) in packed)
         {
             if (!reader.Index.TryGet(stream, out var entry) || entry.Kind != XRefEntryKind.Regular ||
-                reader.ReadObjectStreamHeader(stream, entry, out var numbers, out _, out var streamMembers) is
+                reader.ReadObjectStreamHeader(stream, entry, out var numbers, out _, out var streamMembers, out _) is
                     ObjectStreamHeaderResult.NotFound or ObjectStreamHeaderResult.CutByLimit or ObjectStreamHeaderResult.NotAnObjectStream)
             {
                 continue;
@@ -665,4 +681,121 @@ internal sealed class CrossReferenceProbe
     }
 
     private static string Invariant(FormattableString text) => text.ToString(CultureInfo.InvariantCulture);
+
+    /// <summary>
+    /// An object the chain's index places soundly in an object stream — at <paramref name="Index"/>, or at
+    /// <paramref name="Actual"/> where a load finds it by its number — that the index the reader rebuilt does not serve from
+    /// that definition, there.
+    /// </summary>
+    private readonly record struct ServedElsewhere(int Number, int Stream, int Index, int Actual);
+
+    /// <summary>
+    /// What the index the reader rebuilt serves under an object stream's number, read once for every object it serves from
+    /// there, or lacks while it serves that stream.
+    /// </summary>
+    private sealed class ServedDefinition
+    {
+        private readonly XRefEntry _entry;
+        private readonly int[] _numbers = [];
+        private readonly string? _fault;
+        private readonly int[] _streamMembers = [];
+
+        /// <summary>The lookup of the header by object number, built the first time one is needed.</summary>
+        private long[]? _places;
+
+        /// <summary>Reads what the index the reader rebuilt serves under object stream <paramref name="stream"/>.</summary>
+        public ServedDefinition(PdfFileReader reader, int stream)
+        {
+            Stream = stream;
+
+            if (!reader.Index.TryGet(stream, out _entry) || _entry.Kind != XRefEntryKind.Regular)
+            {
+                return;
+            }
+
+            Result = reader.ReadObjectStreamHeader(stream, _entry, out _numbers, out _fault, out _streamMembers, out _);
+            At = reader.PositionOf(_entry);
+        }
+
+        /// <summary>Gets the object stream's number.</summary>
+        public int Stream { get; }
+
+        /// <summary>Gets where the rebuilt index places the stream in the file, for a regular entry; -1 otherwise.</summary>
+        public long At { get; } = -1;
+
+        /// <summary>Gets what reading its header found, for a regular entry.</summary>
+        public ObjectStreamHeaderResult Result { get; } = ObjectStreamHeaderResult.NotFound;
+
+        /// <summary>
+        /// Says why the rebuilt index lacks object <paramref name="number"/>, which the rebuild takes in from every object
+        /// stream it serves that lists it, as a finding words it after "lacks it"; nothing where the definition it serves
+        /// lists it.
+        /// </summary>
+        public string WhyLacking(int number)
+        {
+            if (At < 0)
+            {
+                return _entry.Kind == XRefEntryKind.Compressed
+                    ? Invariant($": it places object {Stream} itself at index {_entry.IndexInObjectStream} of object stream {_entry.ObjectStreamNumber}")
+                    : Invariant($": it holds no object {Stream}");
+            }
+
+            return Result switch
+            {
+                ObjectStreamHeaderResult.NotFound => Invariant($": it places object stream {Stream} at offset {At}, where no object {Stream} lies"),
+                ObjectStreamHeaderResult.NotAnObjectStream => Invariant($": the object {Stream} it serves, at offset {At}, {_fault}"),
+                _ when FirstIndexOf(_numbers, number, ref _places) >= 0 => string.Empty,
+                ObjectStreamHeaderResult.Unreadable => Invariant($": the definition of object stream {Stream} it serves, at offset {At}, {Unread()}"),
+                _ => Invariant($": the definition of object stream {Stream} it serves, at offset {At}, does not list it"),
+            };
+        }
+
+        /// <summary>
+        /// Says why object <paramref name="number"/>, which the rebuilt index places at index <paramref name="served"/> of
+        /// this stream, is lost, as a finding words it after where it places it; null where the reader serves it from there,
+        /// at that index or at the one it finds it at by its number.
+        /// </summary>
+        /// <param name="number">The object's number.</param>
+        /// <param name="served">The index the rebuilt index places it at.</param>
+        /// <param name="stream">Whether it is lost for being written as a stream there.</param>
+        public string? WhyLost(int number, int served, out bool stream)
+        {
+            stream = false;
+
+            if (At < 0)
+            {
+                return _entry.Kind == XRefEntryKind.Compressed
+                    ? Invariant($", which it places in object stream {_entry.ObjectStreamNumber} in turn")
+                    : ", which it does not hold as an object";
+            }
+
+            switch (Result)
+            {
+                case ObjectStreamHeaderResult.NotFound:
+                    return Invariant($", at offset {At}, where no object {Stream} lies");
+                case ObjectStreamHeaderResult.NotAnObjectStream:
+                    return Invariant($", at offset {At}, which {_fault}");
+            }
+
+            // A load takes the object at the index the entry gives where the header lists it there, else at the first place
+            // the header lists it at.
+            var place = Listed(_numbers, number, served) ? served : FirstIndexOf(_numbers, number, ref _places);
+
+            if (place >= 0)
+            {
+                stream = Array.BinarySearch(_streamMembers, place) >= 0;
+                return !stream ? null
+                    : place == served ? Invariant($", at offset {At}, where it is written as a stream, which an object stream cannot hold")
+                    : Invariant($", at offset {At}, whose header lists it at index {place}, where it is written as a stream, which an object stream cannot hold");
+            }
+
+            return Result == ObjectStreamHeaderResult.Unreadable
+                ? Invariant($", at offset {At}, which {Unread()}")
+                : Invariant($", at offset {At}, whose header does not list it");
+        }
+
+        /// <summary>Says that the header cannot be read, whole or at all, the reader's fault quoted.</summary>
+        private string Unread() =>
+            _numbers.Length == 0 ? Invariant($"cannot be read: it {_fault}") : Invariant($"can be read only in part: it {_fault}");
+    }
 }

@@ -129,7 +129,7 @@ internal sealed partial class PdfFileReader
                     CultureInfo.InvariantCulture, $"The entry of object {id.Number} places it at offset {DescribeOffset(entry.Offset)}, outside the file."));
         }
 
-        if (TryParseWhereEntryPlaces(id.Number, entry, RecordedAnywhere, out var found, out var nearby, out var generation))
+        if (TryParseWhereEntryPlaces(id.Number, entry, RecordedAnywhere, out var found, out var nearby, out var generation, out _))
         {
             if (nearby < 0)
             {
@@ -189,14 +189,18 @@ internal sealed partial class PdfFileReader
     /// <param name="value">The object read.</param>
     /// <param name="nearby">Where the header the search near the offset chose starts; -1 where it was read at the offset.</param>
     /// <param name="generation">The generation the header the search chose gives.</param>
+    /// <param name="headerAt">
+    /// Where the header of the object read starts, past the white space and comments before it: the place a load takes the
+    /// entry to give, which a row a few bytes early does not.
+    /// </param>
     private bool TryParseWhereEntryPlaces(
-        int number, XRefEntry entry, long recordedAt, out PdfObject value, out long nearby, out int generation)
+        int number, XRefEntry entry, long recordedAt, out PdfObject value, out long nearby, out int generation, out long headerAt)
     {
         var offset = PositionOf(entry);
         nearby = -1;
 
         if (TryParseNumberedAt(
-            offset, number, PdfLimit.Object, out value, out var found, out _, out _, out _, recordedAt: recordedAt, atRow: !entry.FoundByReader))
+            offset, number, PdfLimit.Object, out value, out var found, out headerAt, out _, out _, recordedAt: recordedAt, atRow: !entry.FoundByReader))
         {
             generation = 0;
             return true;
@@ -205,9 +209,11 @@ internal sealed partial class PdfFileReader
         if (TryFindObjectHeader(number, entry, reportsBound: true, out var header, out generation, out _))
         {
             nearby = header;
+            headerAt = header;
             return TryParseObjectAt(number, header, out value, recordedAt);
         }
 
+        headerAt = offset;
         return found == HeaderCutsNumber && TryParseObjectAt(number, offset, out value, recordedAt);
     }
 
@@ -1165,7 +1171,7 @@ internal sealed partial class PdfFileReader
     /// <param name="number">The object's number.</param>
     /// <param name="entry">The regular entry of the chain's index that places it.</param>
     internal PdfObject? ReadWhereChainPlaces(int number, XRefEntry entry) =>
-        TryParseWhereEntryPlaces(number, entry, RecordedAtFor(number, entry), out var value, out _, out _) ? value : null;
+        TryParseWhereEntryPlaces(number, entry, RecordedAtFor(number, entry), out var value, out _, out _, out _) ? value : null;
 
     /// <summary>
     /// Reads which objects the object stream <paramref name="number"/> holds, in order, from the header its data
@@ -1191,15 +1197,19 @@ internal sealed partial class PdfFileReader
     /// reader reads as null (#161): each member is read as the reader reads it, in its window, unless the window holds no
     /// <c>stream</c> at all.
     /// </param>
+    /// <param name="headerAt">
+    /// Where the header of the definition read starts, past the white space before it: the place a load takes the entry to
+    /// give, which a row a few bytes early does not.
+    /// </param>
     internal ObjectStreamHeaderResult ReadObjectStreamHeader(
-        int number, XRefEntry entry, out int[] numbers, out string? fault, out int[] streamMembers)
+        int number, XRefEntry entry, out int[] numbers, out string? fault, out int[] streamMembers, out long headerAt)
     {
         numbers = [];
         fault = null;
         streamMembers = [];
 
         var guards = _guardsReached;
-        var found = TryParseWhereEntryPlaces(number, entry, RecordedAtFor(number, entry), out var value, out _, out _);
+        var found = TryParseWhereEntryPlaces(number, entry, RecordedAtFor(number, entry), out var value, out _, out _, out headerAt);
 
         // A dictionary one of the reader's limits cut is the limit's, not the file's: what it would have said is unknown. A
         // stream's dictionary was read whole, and is the file's; what a limit cut of its data is weighed as it is decoded.
