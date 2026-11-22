@@ -81,7 +81,9 @@ internal sealed partial class PdfFileReader
     /// nothing; so is one the data was taken again to, the section's own row placing it (<see cref="RetakeDeferred"/>).
     /// One that leaves out the carriage return the data the chain took ends in makes that byte the end-of-line's: what
     /// decoding the data reported is made again without it (<see cref="DecodeAgainWithoutCarriageReturn"/>), the rows read
-    /// with it standing, but for data a guard cut, or whose end it hides, whose end is the guard's (#288). One confirmed by
+    /// with it standing, but for data a guard cut, or whose end it hides, whose end is the guard's (#288): the reports made
+    /// again are appended to the diagnostics, those of the first decoding withdrawn from where they stood, so that they may
+    /// come after reports made in between, where a direct twin's stand where its decoding made them. One confirmed by
     /// an <c>endstream</c> past it gives data the chain did not read, rows included — the section's row for the
     /// <c>/Length</c> among them, or one that does not stand —: they are not read again, and the report says so. The stream
     /// is not parsed again, and each is reported once.

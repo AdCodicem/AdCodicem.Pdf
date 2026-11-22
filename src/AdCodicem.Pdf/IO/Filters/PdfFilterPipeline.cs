@@ -23,8 +23,8 @@ internal static class PdfFilterPipeline
     /// filter runs, at the stream's data (<see cref="FilterChain.Report"/>): a filter named by its abbreviation is the
     /// filter it abbreviates, and a parameter's value ISO 32000-1 does not allow is replaced (#162, #250). A predictor's
     /// rows are undone at 1, 2, 4, 8 and 16 bits a component, a PNG row whose filter type PNG does not define is read as
-    /// unfiltered, and a last row the data holds in part is kept and undone as far as it goes, the last two reported as the
-    /// predictor's faults where nothing else accounts for them.
+    /// unfiltered and reported as the predictor's fault, and a last row the data holds in part is kept and undone as far as
+    /// it goes, reported so where nothing else accounts for it.
     /// </para>
     /// </remarks>
     /// <param name="stream">The stream to decode.</param>

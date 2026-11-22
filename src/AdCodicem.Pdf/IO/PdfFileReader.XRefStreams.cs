@@ -1360,11 +1360,12 @@ internal sealed partial class PdfFileReader
     /// What is followed is what reading the rows reads, as it reads it: <c>/W</c> and the widths of its three fields;
     /// <c>/Index</c> and its elements, or <c>/Size</c> when there is no <c>/Index</c>; and what decoding the data reads
     /// before any of it is (<see cref="Filters.FilterChain"/>): <c>/Filter</c> and its elements up to the first that ends
-    /// decoding, and for each Flate or LZW step, <c>/DecodeParms</c>, its element at the step's place, LZW's
-    /// <c>/EarlyChange</c>, <c>/Predictor</c>, and <c>/Colors</c>, <c>/BitsPerComponent</c> and <c>/Columns</c> when the
-    /// predictor is past 1 — each through as many references as <see cref="PdfReference.Resolve"/> follows. A value the
-    /// rows are read without — <c>/Type</c>, <c>/Size</c> beside an <c>/Index</c>, an entry no filter reads — leaves the
-    /// section readable; the validator reports how it is written.
+    /// decoding, and for each Flate, LZW or <c>/Crypt</c> step, <c>/DecodeParms</c>, its element at the step's place, LZW's
+    /// <c>/EarlyChange</c>, a Flate or LZW step's <c>/Predictor</c>, and <c>/Colors</c>, <c>/BitsPerComponent</c> and
+    /// <c>/Columns</c> when the predictor is past 1, and a <c>/Crypt</c> step's <c>/Name</c> — each through as many
+    /// references as <see cref="PdfReference.Resolve"/> follows. A value the rows are read without — <c>/Type</c>,
+    /// <c>/Size</c> beside an <c>/Index</c>, an entry no filter reads — leaves the section readable; the validator reports
+    /// how it is written.
     /// </remarks>
     /// <param name="dictionary">The cross-reference stream's dictionary.</param>
     /// <param name="cut">The object a guard cut that the value which cannot be read leads to, or null when no guard did.</param>
