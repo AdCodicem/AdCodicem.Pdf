@@ -16,6 +16,9 @@ namespace AdCodicem.Pdf.Tests;
 /// </summary>
 public class CrossReferenceRuleTests
 {
+    /// <summary>The body of an object stream's member written as a stream, which the reader reads as null.</summary>
+    private const string StreamMember = "<< /Length 3 >>\nstream\nabc\nendstream";
+
     /// <summary>The sound document, saved once more: an update adding object 4, its /Prev naming the first table.</summary>
     private const string Updated = PdfTemplate.Sound + """
         4 0 obj
@@ -4369,7 +4372,10 @@ public class CrossReferenceRuleTests
     [InlineData("a member of another object stream under its stream's number", false, "The entry of object 7 places it at index 0 of object stream 6, and the index the reader rebuilt lacks it, and places object 6 itself at index 0 of object stream 8.")]
     [InlineData("a member of another object stream under its stream's number", true, "The entry of object 7 places it at index 0 of object stream 6; the index the reader rebuilt places it at index 0 of object stream 6, which it places in object stream 8 in turn.")]
     [InlineData("its stream within another stream's data", false, "The entry of object 7 places it at index 0 of object stream 6, and the index the reader rebuilt lacks it, and holds no object 6.")]
+    [InlineData("its stream within another stream's data, and another definition of its stream before the file's header", false, "The entry of object 7 places it at index 0 of object stream 6, and the index the reader rebuilt lacks it: the definition of object stream 6 the rebuilt index serves, at offset {0}, does not list it.")]
+    [InlineData("its stream within another stream's data, and object stream 8, which writes it as a stream, before the file's header", false, "The entry of object 7 places it at index 0 of object stream 6; the index the reader rebuilt places it at index 0 of object stream 8, at offset {0}, where it is written as a stream, which an object stream cannot hold.")]
     [InlineData("the definition of its stream the chain's index places", false, null)]
+    [InlineData("another definition of its stream, which lists it soundly", false, null)]
     [InlineData("the definition of its stream the chain's index places", true, null, 1)]
     [InlineData("another object stream, which writes it as a stream", false, null, 0, false, 1)]
     public void An_object_the_chain_s_index_places_soundly_that_a_rebuild_loses_is_an_entry_broken(
@@ -4377,10 +4383,10 @@ public class CrossReferenceRuleTests
     {
         // The chain places object 7 at index 0 of object stream 6, whose definition there lists it, or at index 1, where a
         // load finds it at index 0 by its number; row 9 lies outside the file, so the validation rebuilds the index, which
-        // serves the object stream the file writes last. Where that loses 7, the entry is broken as the reader reads it, though
-        // sound where the chain places it, and the finding says why (#276, #349); a shift the entry makes keeps its warning. 7
-        // is a value of the catalog, or a kid of the page tree. Merged, the chain's entries the rebuild keeps place 7 where the
-        // chain does.
+        // serves the object stream the file writes last of those its scan finds. Where that loses 7, the entry is broken as the
+        // reader reads it, though sound where the chain places it, and the finding says why (#276, #349); a shift the entry
+        // makes keeps its warning. 7 is a value of the catalog, or a kid of the page tree. Merged, the chain's entries the
+        // rebuild keeps place 7 where the chain does.
         var (file, at) = RebuildLossFile(served, merged, kid, index);
         using var document = PdfDocument.Open(
             file, merged ? new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxXRefSectionCount = 1 } } : null);
@@ -4398,7 +4404,8 @@ public class CrossReferenceRuleTests
             return;
         }
 
-        var findings = new PdfValidator().Validate(document).Findings
+        var report = new PdfValidator().Validate(document);
+        var findings = report.Findings
             .Where(finding => finding.Location.Object?.Number == 7 &&
                 finding.RuleId is PdfValidationRuleIds.XRefEntryBroken or PdfValidationRuleIds.XRefEntryShifted)
             .Select(finding => (finding.RuleId, finding.Severity, finding.Message))
@@ -4408,20 +4415,30 @@ public class CrossReferenceRuleTests
             : new[] { (PdfValidationRuleIds.XRefEntryBroken, PdfValidationSeverity.Error, string.Format(CultureInfo.InvariantCulture, expected, at)) };
         var shifted = (PdfValidationRuleIds.XRefEntryShifted, PdfValidationSeverity.Warning, "The entry of object 7 places it at index 1 of object stream 6, whose header lists it at index 0.");
 
+        // A loss to a member written as a stream is corrected outside the object stream; any other, in the index.
+        var remedy = expected?.EndsWith("which an object stream cannot hold.", StringComparison.Ordinal) == true
+            ? "Write the object outside the object stream, and index it there."
+            : "Correct the entry, or rewrite the file's cross-reference index.";
+
         document.WasRepaired.Should().BeTrue();
         findings.Should().Equal(index == 0 ? lost : [.. lost, shifted]);
+        report.Findings.Where(finding => finding.Location.Object?.Number == 7 && finding.RuleId == PdfValidationRuleIds.XRefEntryBroken)
+            .Select(finding => finding.Remedy).Should().Equal(expected is null ? [] : [remedy]);
         (document.GetObject(new PdfObjectId(7)) == PdfNull.Instance).Should().Be(expected is not null);
     }
 
     [Theory]
-    [InlineData(0)]
-    [InlineData(2)]
-    public void A_row_a_few_bytes_before_an_object_stream_a_rebuild_serves_costs_its_members_check_no_decoding(int early)
+    [InlineData(0, true)]
+    [InlineData(2, true)]
+    [InlineData(0, false)]
+    [InlineData(2, false)]
+    public void A_row_a_few_bytes_before_an_object_stream_costs_its_members_check_no_decoding(int early, bool rebuilt)
     {
-        // The chain's row of object stream 6 gives its offset, or the white space two bytes before its header; the rebuilt index
-        // serves that definition, found at its header. Told by where a load found the header, not by the row, 6's members are
-        // served where the chain places them, and their check decodes the stream no more than an exact row lets it (#349).
-        var (file, _) = RebuildLossFile("the definition of its stream the chain's index places", merged: false, kid: false, index: 0, early);
+        // The chain's row of object stream 6 gives its offset, or the white space two bytes before its header. Row 9 lies outside
+        // the file, so the validation rebuilds the index, which serves that definition, found at its header; or, without row 9,
+        // the reader serves the chain's index. Told by where a load found the header, not by the row, 6's members are served where
+        // the chain places them, and their check decodes the stream no more than an exact row lets it (#349).
+        var (file, _) = RebuildLossFile("the definition of its stream the chain's index places", merged: false, kid: false, index: 0, early, rebuilt);
         var data = PdfTemplate.OffsetOf(file, "7 0 (seven)");
         using var source = new OffsetCountingSource(file);
         using var document = PdfDocument.Open(source, options: null, ownsSource: false);
@@ -4429,9 +4446,202 @@ public class CrossReferenceRuleTests
 
         var report = new PdfValidator().Validate(document);
 
-        document.WasRepaired.Should().BeTrue();
+        document.WasRepaired.Should().Be(rebuilt);
         report.Findings.Where(finding => finding.Location.Object?.Number == 7).Should().BeEmpty();
-        (source.Reads.GetValueOrDefault(data) - before).Should().Be(2, "the rebuild decodes 6 to take in its members, and the probe to check them");
+        (source.Reads.GetValueOrDefault(data) - before).Should().Be(
+            2, rebuilt ? "the rebuild decodes 6 to take in its members, and the probe to check them" : "a load of 7 decodes 6, and the probe checks its members");
+    }
+
+    [Theory]
+    [InlineData("the definition of its stream the chain's index places", false)]
+    [InlineData("its stream within another stream's data", true)]
+    public void A_shifted_member_a_rebuild_serves_where_a_load_finds_it_costs_its_check_no_decoding(string shape, bool merged)
+    {
+        // The chain places object 7 at index 1 of object stream 6, whose header lists it at index 0; row 9 lies outside the file,
+        // so the validation rebuilds the index. The rebuilt index serves 7 from that definition at index 0, where its expansion
+        // of 6 lists it, or, merged, 6 lying within another stream's data the scan passes over, at index 1, where the chain's
+        // entry it keeps places it. A load finds 7 either way, by its index or by its number: the shift is the entry's warning,
+        // and the check of 6's members decodes it no more than when the chain places 7 at index 0 (#349).
+        var options = merged ? new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxXRefSectionCount = 1 } } : null;
+        var (exact, _) = ValidateCountingReads(RebuildLossFile(shape, merged, kid: false, index: 0).File, options);
+        var (shifted, findings) = ValidateCountingReads(RebuildLossFile(shape, merged, kid: false, index: 1).File, options);
+
+        findings.Should().Equal(PdfValidationRuleIds.XRefEntryShifted);
+        shifted.Should().Be(exact);
+
+        // Validates the file, and gives how many reads started at the data of object stream 6 as it did, and the rules of the
+        // findings about object 7.
+        static (int Reads, List<string> Findings) ValidateCountingReads(byte[] file, PdfReaderOptions? options)
+        {
+            var data = PdfTemplate.OffsetOf(file, "7 0 (seven)");
+            using var source = new OffsetCountingSource(file);
+            using var document = PdfDocument.Open(source, options, ownsSource: false);
+            var before = source.Reads.GetValueOrDefault(data);
+
+            var report = new PdfValidator().Validate(document);
+
+            document.WasRepaired.Should().BeTrue();
+            return (
+                source.Reads.GetValueOrDefault(data) - before,
+                [.. report.Findings.Where(finding => finding.Location.Object?.Number == 7).Select(finding => finding.RuleId)]);
+        }
+    }
+
+    [Fact]
+    public void An_object_a_rebuild_serves_from_the_first_of_two_places_its_stream_lists_it_at_is_lost_there()
+    {
+        // Object stream 6 lists object 7 twice: first written as a stream, then as a string, at index 1, where the chain places
+        // it. The rebuild keeps the first place a stream lists a number at: it serves 7 at index 0 of the same definition, where
+        // the reader reads it as null, though the chain's entry is sound (#276, #349).
+        var (file, stream) = OneObjectStreamFile([(7, StreamMember), (7, "(seven)")], [(7, 1)]);
+        using var document = PdfDocument.Open(file);
+
+        var findings = new PdfValidator().Validate(document).Findings.Where(finding => finding.Location.Object?.Number == 7);
+
+        document.WasRepaired.Should().BeTrue();
+        findings.Select(finding => (finding.RuleId, finding.Message, finding.Remedy)).Should().Equal((
+            PdfValidationRuleIds.XRefEntryBroken,
+            Invariant($"The entry of object 7 places it at index 1 of object stream 6; the index the reader rebuilt places it at index 0 of object stream 6, at offset {stream}, where it is written as a stream, which an object stream cannot hold."),
+            "Write the object outside the object stream, and index it there."));
+        document.GetObject(new PdfObjectId(7)).Should().BeSameAs(PdfNull.Instance);
+    }
+
+    [Fact]
+    public void An_object_its_stream_does_not_list_is_said_lost_once_when_a_rebuild_lacks_it_too()
+    {
+        // Object stream 6 lists object 12 alone, and the chain places object 7 at its index 0. The rebuilt index lacks 7 as the
+        // chain's index does: the entry's own finding says 7 is lost, and the rebuild loses nothing the chain's entry gave the
+        // reader (#276, #349).
+        var (file, _) = OneObjectStreamFile([(12, "(twelve)")], [(7, 0)]);
+        using var document = PdfDocument.Open(file);
+
+        var findings = new PdfValidator().Validate(document).Findings.Where(finding => finding.Location.Object?.Number == 7);
+
+        document.WasRepaired.Should().BeTrue();
+        findings.Select(finding => (finding.RuleId, finding.Message)).Should().Equal(
+            (PdfValidationRuleIds.XRefEntryBroken, "The entry of object 7 places it at index 0 of object stream 6, whose header does not list it."));
+    }
+
+    [Fact]
+    public void Objects_a_rebuild_serves_from_the_first_places_their_stream_lists_them_at_are_each_lost_there()
+    {
+        // Object stream 6 lists objects 7 and 8 twice each: first written as streams, then as strings, where the chain places
+        // them. The rebuild serves each from the first place 6 lists it at, where the reader reads it as null: each is lost
+        // (#276, #349).
+        var (file, stream) = OneObjectStreamFile([(7, StreamMember), (8, StreamMember), (7, "(seven)"), (8, "(eight)")], [(7, 2), (8, 3)]);
+        using var document = PdfDocument.Open(file);
+
+        var findings = new PdfValidator().Validate(document).Findings.Where(finding => finding.Location.Object?.Number is 7 or 8);
+
+        findings.Select(finding => finding.Message).Should().Equal(
+            Invariant($"The entry of object 7 places it at index 2 of object stream 6; the index the reader rebuilt places it at index 0 of object stream 6, at offset {stream}, where it is written as a stream, which an object stream cannot hold."),
+            Invariant($"The entry of object 8 places it at index 3 of object stream 6; the index the reader rebuilt places it at index 1 of object stream 6, at offset {stream}, where it is written as a stream, which an object stream cannot hold."));
+    }
+
+    [Fact]
+    public void An_object_a_rebuild_serves_outside_any_object_stream_is_not_lost_from_one()
+    {
+        // The chain places object 7 soundly at index 0 of object stream 6, and the file writes 7 again, directly, past 6: the
+        // rebuilt index serves that definition, the one the file writes last. The reader loads 7 there, from no object stream:
+        // nothing an object stream holds was lost (#276, #349).
+        var (file, _) = OneObjectStreamFile([(7, "(seven)")], [(7, 0)], [(7, "(seven, again)")]);
+        using var document = PdfDocument.Open(file);
+
+        var report = new PdfValidator().Validate(document);
+
+        document.WasRepaired.Should().BeTrue();
+        report.Findings.Where(finding => finding.RuleId == PdfValidationRuleIds.XRefEntryBroken && finding.Location.Object?.Number == 7)
+            .Should().BeEmpty();
+        document.GetObject(new PdfObjectId(7)).Should().BeOfType<PdfString>().Which.ToText().Should().Be("seven, again");
+    }
+
+    /// <summary>
+    /// Writes a file whose chain places each of <paramref name="placed"/> at its index of object stream 6, which holds
+    /// <paramref name="members"/>, and object 9 outside the file, so that the validation rebuilds the index; the file writes
+    /// <paramref name="after"/> past 6. Gives where 6's header starts.
+    /// </summary>
+    private static (byte[] File, long Stream) OneObjectStreamFile(
+        (int Number, string Body)[] members, (int Number, int Index)[] placed, (int Number, string Body)[]? after = null)
+    {
+        var file = new HandWrittenFile(version: "1.5");
+        var rows = new Dictionary<int, (int Type, long Field2, int Field3)>
+        {
+            [1] = (1, file.Object(1, "<< /Type /Catalog /Pages 2 0 R /Foo 7 0 R >>"), 0),
+            [2] = (1, file.Object(2, "<< /Type /Pages /Kids [4 0 R] /Count 1 >>"), 0),
+            [4] = (1, file.Object(4, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 10 10] >>"), 0),
+            [6] = (1, file.ObjectStream(6, members), 0),
+            [9] = (1, 999_999, 0),
+        };
+
+        foreach (var (number, index) in placed)
+        {
+            rows[number] = (2, 6, index);
+        }
+
+        foreach (var (number, body) in after ?? [])
+        {
+            file.Object(number, body);
+        }
+
+        file.CrossReferenceStream(20, 21, rows, "/Root 1 0 R");
+        return (file.Bytes, rows[6].Field2);
+    }
+
+    [Fact]
+    public void An_object_a_rebuild_serves_from_a_definition_a_reader_limit_cut_is_unchecked_not_broken()
+    {
+        // The rebuilt index serves the definition of object stream 6 the file writes last, whose dictionary runs past
+        // MaxObjectLength: what it lists is unknown, and the limit's to say, which the reader reported. Object 7, which the
+        // definition the chain's index places lists soundly, is not said lost (#349).
+        var (file, _) = RebuildLossFile("another definition of its stream, which runs past MaxObjectLength 200", merged: false, kid: false, index: 0);
+        using var document = PdfDocument.Open(file, new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxObjectLength = 200 } });
+
+        var report = new PdfValidator().Validate(document);
+
+        document.WasRepaired.Should().BeTrue();
+        report.Findings.Where(finding => finding.RuleId == PdfValidationRuleIds.XRefEntryBroken && finding.Location.Object?.Number == 7)
+            .Should().BeEmpty();
+        document.Diagnostics.Select(diagnostic => diagnostic.Code).Should().Contain(PdfDiagnosticCodes.LimitObject);
+    }
+
+    [Fact]
+    public void An_object_a_rebuild_serves_where_the_chain_places_it_in_a_stream_that_lists_it_twice_is_not_lost()
+    {
+        // Object stream 6, within object 10's data, where the scan for objects passes over it, lists object 7 twice: first
+        // written as a stream, then as a string, at index 1, where the chain places it. The chain's row of 6 gives the white
+        // space two bytes before its header, and row 9 lies outside the file, so the validation rebuilds the index, which keeps
+        // the chain's entries of 6 and 7, the chain stopped by MaxXRefSectionCount. Placed by the row, the definition the rebuilt
+        // index serves is checked again; a load takes 7 at index 1, where 6 lists it, and finds the string: 7 is not lost
+        // (#349).
+        var six = new HandWrittenFile(version: "1.5");
+        var start = (int)six.Position;
+        six.Raw("  ");
+        six.ObjectStream(6, [(7, StreamMember), (7, "(seven)")]);
+        var data = Encoding.Latin1.GetString(six.Bytes)[start..];
+        var file = new HandWrittenFile(version: "1.5");
+        var rows = new Dictionary<int, (int Type, long Field2, int Field3)>
+        {
+            [1] = (1, file.Object(1, "<< /Type /Catalog /Pages 2 0 R /Foo 7 0 R >>"), 0),
+            [2] = (1, file.Object(2, "<< /Type /Pages /Kids [4 0 R] /Count 1 >>"), 0),
+            [4] = (1, file.Object(4, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 10 10] >>"), 0),
+            [7] = (2, 6, 1),
+            [9] = (1, 999_999, 0),
+        };
+        file.Raw(Invariant($"10 0 obj\n<< /Length {data.Length} >>\nstream\n"));
+        rows[6] = (1, file.Position, 0);
+        file.Raw(data + "\nendstream\nendobj\n");
+        var table = file.Table(3, new Dictionary<int, long> { [1] = rows[1].Field2, [2] = rows[2].Field2 }, "/Size 3 /Root 1 0 R");
+        file.CrossReferenceStream(20, 21, rows, Invariant($"/Root 1 0 R /Prev {table}"));
+        using var document = PdfDocument.Open(file.Bytes, new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxXRefSectionCount = 1 } });
+
+        var report = new PdfValidator().Validate(document);
+
+        document.WasRepaired.Should().BeTrue();
+        document.Reader.Index.TryGet(7, out var seven).Should().BeTrue();
+        (seven.Kind, seven.ObjectStreamNumber, seven.IndexInObjectStream).Should().Be((XRefEntryKind.Compressed, 6, 1));
+        report.Findings.Where(finding => finding.RuleId == PdfValidationRuleIds.XRefEntryBroken && finding.Location.Object?.Number == 7)
+            .Should().BeEmpty();
+        document.GetObject(new PdfObjectId(7)).Should().BeOfType<PdfString>().Which.ToText().Should().Be("seven");
     }
 
     [Fact]
@@ -4529,19 +4739,35 @@ public class CrossReferenceRuleTests
 
     /// <summary>
     /// Writes a file whose chain places object 7 at <paramref name="index"/> of object stream 6, whose definition there lists
-    /// it at index 0, and object 9 outside the file; the shape says what else the file writes, which a rebuild serves. Gives
-    /// where the definition the rebuild serves in 6's place starts, or the object stream that holds 7 then.
+    /// it at index 0, and object 9 outside the file unless <paramref name="rebuilt"/> says not to; the shape says what else the
+    /// file writes, which a rebuild serves. Gives where the definition the rebuild serves in 6's place starts, or the object
+    /// stream that holds 7 then.
     /// </summary>
     /// <param name="shape">What else the file writes.</param>
     /// <param name="merged">Whether the chain goes on, past its cross-reference stream, to a table that holds rows 1 and 2.</param>
     /// <param name="kid">Whether 7 is a page, a kid of the page tree, rather than a value of the catalog.</param>
     /// <param name="index">The index of object stream 6 the chain places 7 at.</param>
     /// <param name="early">How many bytes of white space before the header of 6 the chain's row gives.</param>
-    private static (byte[] File, long Served) RebuildLossFile(string shape, bool merged, bool kid, int index, int early = 0)
+    /// <param name="rebuilt">Whether the chain places object 9 outside the file, which makes the validation rebuild the index.</param>
+    private static (byte[] File, long Served) RebuildLossFile(string shape, bool merged, bool kid, int index, int early = 0, bool rebuilt = true)
     {
-        const string StreamMember = "<< /Length 3 >>\nstream\nabc\nendstream";
         var seven = kid ? "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 10 10] >>" : "(seven)";
-        var file = new HandWrittenFile(version: "1.5");
+        var prefix = string.Empty;
+        long served = -1;
+
+        if (shape.EndsWith("before the file's header", StringComparison.Ordinal))
+        {
+            // An object stream at the file's first byte, before its header, where the scan for objects finds it: the rebuilt
+            // index serves it from there, at offset 0, the definition of 6 the chain's index places lying past the scan's reach.
+            var before = new HandWrittenFile(version: "1.5");
+            var start = (int)before.Position;
+            var eight = shape.Contains("object stream 8", StringComparison.Ordinal);
+            before.ObjectStream(eight ? 8 : 6, eight ? [(7, StreamMember)] : [(12, "(twelve)")]);
+            prefix = Encoding.Latin1.GetString(before.Bytes)[start..];
+            served = 0;
+        }
+
+        var file = new HandWrittenFile(prefix, version: "1.5");
         var rows = new Dictionary<int, (int Type, long Field2, int Field3)>
         {
             [1] = (1, file.Object(1, kid ? "<< /Type /Catalog /Pages 2 0 R >>" : "<< /Type /Catalog /Pages 2 0 R /Foo 7 0 R >>"), 0),
@@ -4550,14 +4776,13 @@ public class CrossReferenceRuleTests
             [7] = (2, 6, index),
             [9] = (1, 999_999, 0),
         };
-        long served = -1;
 
         if (shape == "the definition of its stream the chain's index places")
         {
             file.ObjectStream(6, [(12, "(twelve)")]);
         }
 
-        if (shape == "its stream within another stream's data")
+        if (shape.StartsWith("its stream within another stream's data", StringComparison.Ordinal))
         {
             // A stream whose direct /Length the endstream after it confirms: the scan for objects passes over its data.
             const string Six = "6 0 obj\n<< /Type /ObjStm /N 1 /First 4 /Length 12 >>\nstream\n7 0 (seven) \nendstream\nendobj\n";
@@ -4583,6 +4808,9 @@ public class CrossReferenceRuleTests
             case "another definition of its stream, which writes it as a stream":
                 served = file.ObjectStream(6, [(7, StreamMember)]);
                 break;
+            case "another definition of its stream, which lists it soundly":
+                served = file.ObjectStream(6, [(7, "(seven, again)")]);
+                break;
             case "another definition of its stream, whose header ends early":
                 served = file.Object(6, "<< /Type /ObjStm /N 3 /First 30 /Length 40 >>\nstream\n12 0                          (twelve)  \nendstream");
                 break;
@@ -4592,9 +4820,17 @@ public class CrossReferenceRuleTests
             case "another object under its stream's number, which is no stream":
                 served = file.Object(6, "(six)");
                 break;
+            case "another definition of its stream, which runs past MaxObjectLength 200":
+                served = file.Object(6, "<< /Type /ObjStm /N 1 /First 5 /Length 13 /Pad (" + new string('x', 300) + ") >>\nstream\n12 0 (twelve)\nendstream");
+                break;
             case "a member of another object stream under its stream's number":
                 file.ObjectStream(8, [(6, "(six)")]);
                 break;
+        }
+
+        if (!rebuilt)
+        {
+            rows.Remove(9);
         }
 
         if (merged)
