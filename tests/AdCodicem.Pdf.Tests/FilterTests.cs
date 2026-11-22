@@ -745,7 +745,6 @@ public class FilterTests
 
     [Theory]
     [InlineData("/Predictor 12 /Columns 4", "0001020304020101", "010203040203", "with 3 bytes of its 5")]
-    [InlineData("/Predictor 12 /Columns 4", "000102030402", "01020304", "with 1 byte of its 5")]
     [InlineData("/Predictor 2 /Columns 4", "0A0505051401 01", "0A0F1419141516", "with 3 bytes of its 4")]
     [InlineData("/Predictor 2 /BitsPerComponent 16 /Columns 2", "00010001000500", "00010002000500", "with 3 bytes of its 4")]
     [InlineData("/Predictor 2 /BitsPerComponent 4 /Columns 3", "123001", "136001", "with 1 byte of its 2")]
@@ -768,6 +767,24 @@ public class FilterTests
         report.Message.Should().Be($"The predicted data ends inside a row, {held}; what the row holds was kept, undone as far as it goes.");
     }
 
+    [Fact]
+    public void Reports_a_last_png_row_the_data_holds_only_the_filter_type_of_as_keeping_nothing_of_it()
+    {
+        // A whole row, then the byte that would name the next row's filter type: the next row holds no byte to undo or keep.
+        var dictionary = new PdfObjectParser("<< /Filter /FlateDecode /DecodeParms << /Predictor 12 /Columns 4 >> >>"u8.ToArray())
+            .ParseObject().AsDictionary().Required();
+        var diagnostics = new PdfDiagnostics();
+
+        var decoded = new PdfStream(dictionary, PdfStreamData.FromMemory(Compress(Convert.FromHexString("000102030402")))).Decode(diagnostics);
+
+        Convert.ToHexString(decoded.Span).Should().Be("01020304");
+        var report = diagnostics.Should().ContainSingle().Which;
+        (report.Code, report.Severity, report.Message).Should().Be((
+            PdfDiagnosticCodes.FilterFailed,
+            PdfDiagnosticSeverity.Warning,
+            "The predicted data ends with the byte that names a row's filter type, and none of the row's bytes; nothing of it was kept."));
+    }
+
     [Theory]
     [InlineData("00010203040501010101", "0102030401010101", "Row 2 of 2 PNG-predicted rows names filter type 5, which PNG does not define; it was read as unfiltered.")]
     [InlineData("0001020304FF010101010902020202", "010203040101010102020202", "2 of 3 PNG-predicted rows name a filter type PNG does not define, the first row 2 type 255; they were read as unfiltered.")]
@@ -783,6 +800,55 @@ public class FilterTests
         Convert.ToHexString(decoded.Span).Should().Be(expected);
         var report = diagnostics.Should().ContainSingle().Which;
         (report.Code, report.Severity, report.Message).Should().Be((PdfDiagnosticCodes.FilterFailed, PdfDiagnosticSeverity.Warning, message));
+    }
+
+    [Theory]
+    [InlineData(
+        "02",
+        "Row 2 of 100 PNG-predicted rows names filter type 5, which PNG does not define; it was read as unfiltered.",
+        "Row 2 of the PNG-predicted rows in the part of the data read names filter type 5, which PNG does not define; it was read as unfiltered.")]
+    [InlineData(
+        "FF",
+        "2 of 100 PNG-predicted rows name a filter type PNG does not define, the first row 2 type 5; they were read as unfiltered.",
+        "2 PNG-predicted rows in the part of the data read name a filter type PNG does not define, the first row 2 type 5; they were read as unfiltered.")]
+    public void Counts_png_rows_whose_filter_type_png_does_not_define_in_the_part_of_the_data_a_guard_let_be_read(
+        string thirdTag, string whole, string cut)
+    {
+        // A hundred rows, the second of type 5 and the third of type 255 or Up, stored in zlib and written in hex. The
+        // reader reads 200 hex digits of it under MaxStreamLength; the hex filter stops at 150 bytes under
+        // MaxDecodedStreamLength. Either way the rows those types name lie in the part read, which holds fewer rows than
+        // the data: the report counts that part's, as it says, and reads the same however much of the data was taken.
+        var rows = new byte[100 * 5];
+        rows.AsSpan().Fill(1);
+        rows[0] = 0;
+        rows[5] = 5;
+        rows[10] = Convert.FromHexString(thirdTag)[0];
+
+        for (var row = 3; row < 100; row++)
+        {
+            rows[row * 5] = 2;
+        }
+
+        var hex = Convert.ToHexString(Compress(rows, CompressionLevel.NoCompression)) + ">";
+        var file = new TestPdfBuilder()
+            .WithObject(1, "<< /Type /Catalog /Pages 2 0 R >>")
+            .WithObject(2, "<< /Type /Pages /Kids [] /Count 0 >>")
+            .Stream(3, "/Filter [/ASCIIHexDecode /FlateDecode] /DecodeParms [null << /Predictor 12 /Columns 4 >>]", hex)
+            .BuildClassic(rootNumber: 1);
+
+        Reports(PdfReaderLimits.Default).Should().Equal(
+            (PdfDiagnosticCodes.FilterFailed, whole));
+        Reports(PdfReaderLimits.Default with { MaxStreamLength = 200 }).Should().Equal(
+            (PdfDiagnosticCodes.LimitStreamLength, null), (PdfDiagnosticCodes.FilterFailed, cut));
+        Reports(PdfReaderLimits.Default with { MaxDecodedStreamLength = 150 }).Should().Equal(
+            (PdfDiagnosticCodes.LimitDecodedStream, null), (PdfDiagnosticCodes.FilterFailed, cut));
+
+        (string Code, string? Message)[] Reports(PdfReaderLimits limits)
+        {
+            using var document = PdfDocument.Open(file, new PdfReaderOptions { Limits = limits });
+            document.GetObject(new PdfObjectId(3)).AsStream().Required().Decode(document.Diagnostics);
+            return [.. document.Diagnostics.Select(d => (d.Code, d.Code == PdfDiagnosticCodes.FilterFailed ? d.Message : null))];
+        }
     }
 
     [Fact]
@@ -1624,10 +1690,10 @@ public class FilterTests
         return [.. bytes];
     }
 
-    private static byte[] Compress(byte[] data)
+    private static byte[] Compress(byte[] data, CompressionLevel level = CompressionLevel.Optimal)
     {
         using var compressed = new MemoryStream();
-        using (var zlib = new System.IO.Compression.ZLibStream(compressed, System.IO.Compression.CompressionLevel.Optimal, leaveOpen: true))
+        using (var zlib = new System.IO.Compression.ZLibStream(compressed, level, leaveOpen: true))
         {
             zlib.Write(data);
         }

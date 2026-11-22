@@ -390,10 +390,11 @@ public static class PdfDiagnosticCodes
     /// decodes, holds no rows: the section cannot be read (#221). A predictor's data is the filter's too,
     /// each fault a warning: rows its parameters describe longer than the data, which is left as the filter decoded it;
     /// PNG rows that name a filter type past 4, which PNG does not define, each read as unfiltered, as MuPDF, qpdf and
-    /// PDFium read it, the first and how many in the message; and a last row the data holds in part, kept and undone as
-    /// far as it goes, reported only where the filter decoded its data to an end that loses nothing — Flate data that lost
-    /// its tail or turned corrupt, LZW data that ends inside a code or uses one it has not defined, and data a guard cut
-    /// are reported so already (#162).
+    /// PDFium read it, the first and how many in the message, and of how many rows, but in data whose end is a guard's,
+    /// whose rows it counts in the part read; and a last row the data holds in part, kept and undone as far as it goes —
+    /// nothing, of a PNG row it holds only the filter type of —, reported only where the filter decoded its data to an end
+    /// that loses nothing — Flate data that lost its tail or turned corrupt, LZW data that ends inside a code or uses one
+    /// it has not defined, and data a guard cut are reported so already (#162).
     /// </summary>
     public const string FilterFailed = "filter.failed";
 
