@@ -718,9 +718,10 @@ internal static class ChainFiles
     /// stray byte. With <paramref name="compressed"/>, the rows and <paramref name="padding"/> zero bytes after them are
     /// compressed, the zero bytes to a few, and written with no <c>&gt;</c>: <c>/Filter [/ASCIIHexDecode /FlateDecode]</c>. Without,
     /// the rows are written as they are, <c>/Filter /ASCIIHexDecode</c>, and an end-of-line, <c>endstream</c> and another
-    /// follow the digits of 14 bytes and one more: the deferred search stops there.
+    /// follow the digits of 14 bytes and one more: the deferred search stops there. The data ends with
+    /// <paramref name="endOfLine"/> before its <c>endstream</c>.
     /// </summary>
-    public static byte[] UpdateOverHexRows(bool deferred, bool compressed, int padding = 0)
+    public static byte[] UpdateOverHexRows(bool deferred, bool compressed, int padding = 0, string endOfLine = "\n")
     {
         using var file = new Writer("1.5");
         file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>");
@@ -758,7 +759,8 @@ internal static class ChainFiles
         file.Stream(
             5,
             $"/Type /XRef /Size 6 /W [1 4 2] /Filter {(compressed ? "[/ASCIIHexDecode /FlateDecode]" : "/ASCIIHexDecode")} /Root 1 0 R /Length {(deferred ? "4 0 R" : length)}",
-            data);
+            data,
+            endOfLine);
         var xref = file.Position;
         file.Text(string.Create(
             CultureInfo.InvariantCulture,
