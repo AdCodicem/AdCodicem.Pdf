@@ -174,7 +174,7 @@ internal readonly struct ObjectStreamHeader
         ObjectStreamHeaderFault.NotIncreasing => string.Create(
             CultureInfo.InvariantCulture, $"not past the offset of the object before it, {Offsets[^1]}"),
         ObjectStreamHeaderFault.PastData => string.Create(
-            CultureInfo.InvariantCulture, $"past what its {dataLength} bytes of decoded data hold"),
+            CultureInfo.InvariantCulture, $"past what its {CountText.Bytes(dataLength)} of decoded data hold"),
         _ => "which no member can be",
     };
 }
