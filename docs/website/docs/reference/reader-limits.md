@@ -329,7 +329,7 @@ there. Raise PdfReaderLimits.MaxDecodedStreamLength to read past it.
 
   ```text
   Warning limit.object-stream-decodes at 18191: The validation decoded again the object streams the reader let go as
-  much as 4 times what its first decodings of them weighed, 35,652,544 bytes: object stream 11 was not decoded again,
+  much as 4 times what its first decodings of them weighed, 35652544 bytes: object stream 11 was not decoded again,
   and the objects it holds read as null until the validation ends. Raise PdfReaderLimits.MaxObjectStreamDecodePasses
   to read past it.
   ```

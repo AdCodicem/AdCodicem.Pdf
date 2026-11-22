@@ -67,7 +67,7 @@ internal sealed class ReservedTypeRule : IValidationRule
                 PdfValidationLocation.AtPosition(section.Offset),
                 string.Create(
                     CultureInfo.InvariantCulture,
-                    $"The cross-reference stream at offset {section.Offset} gives {CountText.Grouped(section.ReservedRows, "row", "rows")} a reserved type: {first}{others}. ISO 32000-1 defines types 0, 1 and 2, and reads any other as a reference to the null object (7.5.8.3), {reader}."),
+                    $"The cross-reference stream at offset {section.Offset} gives {CountText.Of(section.ReservedRows, "row", "rows")} a reserved type: {first}{others}. ISO 32000-1 defines types 0, 1 and 2, and reads any other as a reference to the null object (7.5.8.3), {reader}."),
                 "Rewrite the cross-reference stream with a row of type 0, 1 or 2 for each object it numbers: type 0 for one that is free.");
         }
     }

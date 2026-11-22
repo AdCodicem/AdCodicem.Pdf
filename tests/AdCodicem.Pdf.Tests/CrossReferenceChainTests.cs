@@ -231,7 +231,7 @@ public class CrossReferenceChainTests
         report.Position.Should().Be(naming, "the offset named lies outside the file (#187)");
         report.Message.Should().StartWith(string.Create(
             CultureInfo.InvariantCulture,
-            $"The cross-reference section /Prev names at offset 99999999 lies outside the file, which is {file.Length:N0} bytes long"));
+            $"The cross-reference section /Prev names at offset 99999999 lies outside the file, which is {file.Length} bytes long"));
         ReadsWhole(document);
     }
 
@@ -264,7 +264,7 @@ public class CrossReferenceChainTests
         document.Diagnostics[0].Position.Should().Be(PdfTemplate.OffsetOf(file, "startxref"));
         document.Diagnostics[0].Message.Should().Be(string.Create(
             CultureInfo.InvariantCulture,
-            $"The cross-reference section startxref names at offset 99999999 lies outside the file, which is {file.Length:N0} bytes long; the whole index is rebuilt by scanning the file."));
+            $"The cross-reference section startxref names at offset 99999999 lies outside the file, which is {file.Length} bytes long; the whole index is rebuilt by scanning the file."));
         document.Catalog.Should().NotBeNull();
     }
 
@@ -378,7 +378,7 @@ public class CrossReferenceChainTests
         report.Position.Should().Be(naming);
         report.Message.Should().StartWith(string.Create(
             CultureInfo.InvariantCulture,
-            $"The cross-reference section /Prev names at offset {file.Length} lies outside the file, which is {file.Length:N0} bytes long"));
+            $"The cross-reference section /Prev names at offset {file.Length} lies outside the file, which is {file.Length} bytes long"));
     }
 
     [Fact]
@@ -7054,7 +7054,7 @@ public class CrossReferenceChainTests
         {
             "the stream itself" => (PdfDiagnosticCodes.XRefChainCycle, Invariant($"The cross-reference chain loops back on itself: the /Prev of the section at offset {stream} names offset {stream}, which the chain has already read.")),
             "the table's /Prev" => (PdfDiagnosticCodes.XRefChainCycle, Invariant($"The cross-reference chain loops back on itself: the /Prev of the section at offset {stream} names offset {stream - 7}, which the chain has already read.")),
-            "outside the file" => (PdfDiagnosticCodes.XRefSectionMissing, Invariant($"The cross-reference section /Prev names at offset 99999999 lies outside the file, which is {file.Length:N0} bytes long; the objects only it indexes are looked for by rebuilding the index.")),
+            "outside the file" => (PdfDiagnosticCodes.XRefSectionMissing, Invariant($"The cross-reference section /Prev names at offset 99999999 lies outside the file, which is {file.Length} bytes long; the objects only it indexes are looked for by rebuilding the index.")),
             _ => (PdfDiagnosticCodes.XRefSectionMissing, Invariant($"The /Prev of the cross-reference section at offset {stream} is not an offset; the sections it names are looked for by rebuilding the index.")),
         };
         codes.Should().Equal(
@@ -10228,7 +10228,7 @@ public class CrossReferenceChainTests
         report.Severity.Should().Be(PdfDiagnosticSeverity.Warning);
         report.Position.Should().Be(newer);
         report.Message.Should().Be(Invariant(
-            $"The cross-reference stream startxref names at offset {newer} gives 1,001 rows a reserved type: the row for object 3 gives it type 3, the first of them. ISO 32000-1 defines types 0, 1 and 2, and reads any other as a reference to the null object (7.5.8.3): the rows were read so, and no older section's row stands for their objects."));
+            $"The cross-reference stream startxref names at offset {newer} gives 1001 rows a reserved type: the row for object 3 gives it type 3, the first of them. ISO 32000-1 defines types 0, 1 and 2, and reads any other as a reference to the null object (7.5.8.3): the rows were read so, and no older section's row stands for their objects."));
         document.ObjectCount.Should().Be(1007);
         document.ObjectNumbers.Should().Contain(1006);
         document.Reader.Index.TryGet(1006, out var last).Should().BeTrue();

@@ -1307,7 +1307,7 @@ public class ReaderLimitsTests
     [InlineData("cross-reference stream", "The dictionary of the object read as a cross-reference stream runs past 1 byte; only what lies within it was read.")]
     [InlineData("filter chain", "The /Filter entry names more than 1 filter; decoding stopped after the first.")]
     [InlineData("rebuild reads", "Past streams' direct lengths, the scan for objects read the length of the file; the data of each stream it could not confirm after that was read up to its first endstream, the object headers there not taken.")]
-    [InlineData("object-stream decodes", "The search for a catalog decoded again the object streams the reader let go as much as what its first decodings of them weighed, 35,651,712 bytes: object stream 4 was not decoded again, and the objects it holds read as null until the search for a catalog ends.")]
+    [InlineData("object-stream decodes", "The search for a catalog decoded again the object streams the reader let go as much as what its first decodings of them weighed, 35651712 bytes: object stream 4 was not decoded again, and the objects it holds read as null until the search for a catalog ends.")]
     public void A_guard_set_to_one_says_its_bound_in_the_singular(string guard, string reported)
     {
         // Each guard at one, the least it takes, reached on the file of its own case: the bound it names is said in the
@@ -7438,7 +7438,7 @@ public class ReaderLimitsTests
                 PdfReaderLimits.Default,
                 document => Decoded(document).ToString(CultureInfo.InvariantCulture),
                 "10000",
-                "The /ASCIIHexDecode data decodes to more than 1,000 bytes; decoding stopped there.",
+                "The /ASCIIHexDecode data decodes to more than 1000 bytes; decoding stopped there.",
                 OffsetOf(file, "stream\n") + "stream\n".Length,
                 ThrowsOnOpening: false,
                 ReportsNothingElse: true);
@@ -7464,7 +7464,7 @@ public class ReaderLimitsTests
                 PdfReaderLimits.Default,
                 document => document.GetObject(new PdfObjectId(3)).AsStream().Required().GetRawBytes().Length.ToString(CultureInfo.InvariantCulture),
                 "10000",
-                "A stream's data runs past 1,000 bytes; only what lies within it was read.",
+                "A stream's data runs past 1000 bytes; only what lies within it was read.",
                 OffsetOf(file, "stream\n") + "stream\n".Length,
                 ThrowsOnOpening: false,
                 ReportsNothingElse: true);
@@ -7706,7 +7706,7 @@ public class ReaderLimitsTests
                 "as written, catalog 16",
                 string.Create(
                     CultureInfo.InvariantCulture,
-                    $"The search for a catalog decoded again the object streams the reader let go as much as what its first decodings of them weighed, {FirstDecodings:N0} bytes: object stream 4 was not decoded again, and the objects it holds read as null until the search for a catalog ends."),
+                    $"The search for a catalog decoded again the object streams the reader let go as much as what its first decodings of them weighed, {FirstDecodings} bytes: object stream 4 was not decoded again, and the objects it holds read as null until the search for a catalog ends."),
                 OffsetOf(bytes, "4 0 obj"),
                 ThrowsOnOpening: true,
                 ReportsNothingElse: false)

@@ -9,9 +9,9 @@ namespace AdCodicem.Pdf.IO;
 /// </summary>
 /// <remarks>
 /// A count is written in digits and in the invariant culture, as every number of a message is: <c>1 byte</c>, never
-/// <c>one byte</c>, nor a culture's own minus sign or separators. A message that groups a count's digits by thousands
-/// writes it through <see cref="Grouped"/>, one that does not through <see cref="Of"/>; the noun agrees with it either
-/// way. A distance is never negative: the way it runs is said in words.
+/// <c>one byte</c>, nor a culture's own minus sign; and its digits are never grouped, so that a count the file writes is
+/// quoted as it wrote it and every count of a message reads alike: <c>1000 bytes</c>, never <c>1,000 bytes</c>. A
+/// distance is never negative: the way it runs is said in words.
 /// </remarks>
 internal static class CountText
 {
@@ -25,18 +25,11 @@ internal static class CountText
     public static string Pages(long count) => Of(count, "page", "pages");
 
     /// <summary>
-    /// Says <paramref name="count"/>, its digits as they are, with the noun that agrees with it: <paramref name="one"/>
-    /// for 1, <paramref name="many"/> for any other count.
+    /// Says <paramref name="count"/>, its digits ungrouped, with the noun that agrees with it: <paramref name="one"/> for 1,
+    /// <paramref name="many"/> for any other count.
     /// </summary>
     public static string Of(long count, string one, string many) =>
         string.Create(CultureInfo.InvariantCulture, $"{count} {(count == 1 ? one : many)}");
-
-    /// <summary>
-    /// Says <paramref name="count"/> as <see cref="Of"/> does, its digits grouped by thousands: <c>1 section</c>,
-    /// <c>1,024 sections</c>.
-    /// </summary>
-    public static string Grouped(long count, string one, string many) =>
-        string.Create(CultureInfo.InvariantCulture, $"{count:N0} {(count == 1 ? one : many)}");
 
     /// <summary>
     /// Says how far, and which way, something was found from where <paramref name="from"/> says it was named, the

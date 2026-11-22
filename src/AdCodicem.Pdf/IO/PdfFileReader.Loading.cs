@@ -1182,7 +1182,10 @@ internal sealed partial class PdfFileReader
     /// The object numbers its header lists, in order: all of them when it was read, those listed before the fault when its
     /// header could be read only in part — the objects the reader serves from it —, none otherwise.
     /// </param>
-    /// <param name="fault">What is wrong with it, in words, when it could not be read whole and is there.</param>
+    /// <param name="fault">
+    /// What is wrong with it, when it could not be read whole and is there: the predicate of a sentence whose subject is
+    /// the stream, as the reader's own report words it (<see cref="ObjectStreamHeader.NoCount"/>).
+    /// </param>
     /// <param name="streamMembers">
     /// The places in the header, among those of <paramref name="numbers"/>, of the objects written as a stream, which the
     /// reader reads as null (#161): each member is read as the reader reads it, in its window, unless the window holds no
@@ -1227,7 +1230,7 @@ internal sealed partial class PdfFileReader
 
         if (count < 0 || first < 0)
         {
-            fault = "its /N or its /First is missing or negative";
+            fault = count < 0 ? ObjectStreamHeader.NoCount : ObjectStreamHeader.NoFirst;
             return ObjectStreamHeaderResult.Unreadable;
         }
 
@@ -1241,8 +1244,7 @@ internal sealed partial class PdfFileReader
 
         if (first > data.Length)
         {
-            fault = string.Create(
-                CultureInfo.InvariantCulture, $"it decodes to {CountText.Bytes(data.Length)}, fewer than its /First of {first}");
+            fault = ObjectStreamHeader.FirstPastData(first, data.Length);
             return cut ? ObjectStreamHeaderResult.CutByLimit : ObjectStreamHeaderResult.Unreadable;
         }
 
@@ -1256,16 +1258,7 @@ internal sealed partial class PdfFileReader
             return ObjectStreamHeaderResult.Read;
         }
 
-        fault = header.Fault switch
-        {
-            ObjectStreamHeaderFault.Ended => string.Create(
-                CultureInfo.InvariantCulture, $"its header lists {header.Count} of the {CountText.Objects(count)} its /N declares, then ends"),
-            ObjectStreamHeaderFault.Stray => string.Create(
-                CultureInfo.InvariantCulture, $"its header lists {header.Count} of the {CountText.Objects(count)} its /N declares, then something else"),
-            _ => string.Create(
-                CultureInfo.InvariantCulture,
-                $"its header lists {header.Count} of the {CountText.Objects(count)} its /N declares, then object {header.FaultNumber} at offset {header.FaultOffset}, {header.Why(data.Length)}"),
-        };
+        fault = header.Describe(count, data.Length);
         return ObjectStreamHeaderResult.Unreadable;
     }
 
@@ -1899,13 +1892,13 @@ internal sealed partial class PdfFileReader
         var passes = _guard.Bound(PdfLimit.ObjectStreamDecodes);
         var weighed = passes == 1
             ? "what its first decodings of them weighed"
-            : string.Create(CultureInfo.InvariantCulture, $"{passes:N0} times what its first decodings of them weighed");
+            : string.Create(CultureInfo.InvariantCulture, $"{passes} times what its first decodings of them weighed");
         _guard.Reach(
             PdfLimit.ObjectStreamDecodes,
             _diagnostics,
             string.Create(
                 CultureInfo.InvariantCulture,
-                $"The {_walkName} decoded again the object streams the reader let go as much as {weighed}, {CountText.Grouped(_walkFirstBytes, "byte", "bytes")}: object stream {number} was not decoded again, and the objects it holds read as null until the {_walkName} ends."),
+                $"The {_walkName} decoded again the object streams the reader let go as much as {weighed}, {CountText.Bytes(_walkFirstBytes)}: object stream {number} was not decoded again, and the objects it holds read as null until the {_walkName} ends."),
             _xref.TryGet(number, out var entry) && entry.Kind == XRefEntryKind.Regular ? EntryPosition(entry) : -1);
         _limitsReached.Add(WalkDecodesReported);
     }
@@ -2134,13 +2127,13 @@ internal sealed partial class PdfFileReader
 
             if (count < 0)
             {
-                ReportUnreadable(diagnostics, reports, number, position, "has no /N that gives a count of objects", 0, count);
+                ReportUnreadable(diagnostics, reports, number, position, ObjectStreamHeader.NoCount, 0, count);
                 return null;
             }
 
             if (first < 0)
             {
-                ReportUnreadable(diagnostics, reports, number, position, "has no /First that gives where its objects start", 0, count);
+                ReportUnreadable(diagnostics, reports, number, position, ObjectStreamHeader.NoFirst, 0, count);
                 return null;
             }
 
@@ -2160,15 +2153,7 @@ internal sealed partial class PdfFileReader
                 if (!cutByGuard)
                 {
                     ReportUnreadable(
-                        diagnostics,
-                        reports,
-                        number,
-                        position,
-                        string.Create(
-                            CultureInfo.InvariantCulture,
-                            $"gives in /First an offset, {first:N0}, past the end of its decoded data, which is {CountText.Grouped(data.Length, "byte", "bytes")} long"),
-                        0,
-                        count);
+                        diagnostics, reports, number, position, ObjectStreamHeader.FirstPastData(first, data.Length), 0, count);
                 }
 
                 return null;
@@ -2178,24 +2163,7 @@ internal sealed partial class PdfFileReader
 
             if (header.Fault != ObjectStreamHeaderFault.None)
             {
-                ReportUnreadable(
-                    diagnostics,
-                    reports,
-                    number,
-                    position,
-                    header.Fault switch
-                    {
-                        ObjectStreamHeaderFault.Ended => string.Create(
-                            CultureInfo.InvariantCulture, $"has a header that ends after {header.Count:N0} of the {CountText.Grouped(count, "object", "objects")} its /N declares"),
-                        ObjectStreamHeaderFault.Stray => string.Create(
-                            CultureInfo.InvariantCulture,
-                            $"has a header that holds something other than an object number and an offset after {header.Count:N0} of the {CountText.Grouped(count, "object", "objects")} its /N declares"),
-                        _ => string.Create(
-                            CultureInfo.InvariantCulture,
-                            $"has a header that lists object {header.FaultNumber} at offset {header.FaultOffset}, {header.Why(data.Length)}, after {header.Count:N0} of the {CountText.Grouped(count, "object", "objects")} its /N declares"),
-                    },
-                    header.Count,
-                    count);
+                ReportUnreadable(diagnostics, reports, number, position, header.Describe(count, data.Length), header.Count, count);
             }
 
             return header.Count > 0
@@ -2303,7 +2271,7 @@ internal sealed partial class PdfFileReader
                 PdfDiagnosticCodes.ObjectStreamUnreadable,
                 kept == 0
                     ? string.Create(CultureInfo.InvariantCulture, $"Object stream {number} {fault}; none of its objects can be read from it.")
-                    : string.Create(CultureInfo.InvariantCulture, $"Object stream {number} {fault}; only the first {kept:N0} of its {count:N0} objects can be read from it."),
+                    : string.Create(CultureInfo.InvariantCulture, $"Object stream {number} {fault}; only the first {kept} of its {count} objects can be read from it."),
                 position);
         }
 

@@ -33,8 +33,13 @@ A message, of a diagnostic or of a [validation finding](validation.md#pdfvalidat
 read where a host prints it — a console, a log, a web page. What the file wrote reaches it under these rules:
 
 - **Printable ASCII, on one line.** Every character of a message lies between U+0020 and U+007E, and numbers are written
-  in the invariant culture, whatever `CultureInfo.CurrentCulture` is: `object -5`, `1,048,576 bytes`, never a culture's
-  own minus sign or separators. The same holds for `ToString()`.
+  in the invariant culture, whatever `CultureInfo.CurrentCulture` is: `object -5`, never a culture's own minus sign or
+  separators. The same holds for `ToString()`.
+- **A number is written in plain digits** ([#326](https://github.com/AdCodicem/AdCodicem.Pdf/issues/326)). A count, a
+  length, an offset, an object number or a generation never has its digits grouped, so that a value the file wrote is
+  quoted as the file wrote it, and every number of a message reads alike: `The stream declared 19954 bytes`,
+  `the 1000000000 objects its /N declares`, `more than 1000 bytes`. A bound that is a whole number of megabytes or
+  kilobytes is written in that unit: `256 MB`, `64 KB`.
 - **A count agrees with its noun, and a distance says which way it runs**
   ([#241](https://github.com/AdCodicem/AdCodicem.Pdf/issues/241)). A count is written in digits, and its noun is
   singular for one alone: `1 byte`, `2 bytes`, `the 1 object its /N declares`. A verb or a pronoun that follows it
@@ -47,7 +52,7 @@ read where a host prints it — a console, a log, a web page. What the file wrot
   the file wrote as the bytes `Pa`, a line feed, `ge`, an escape. In a keyword, which has no solidus, `#xx` stands for a
   byte all the same: `tra#1Biler`.
 - **Past 127 bytes, a quote is cut**, and says how long the whole is: a name of a megabyte of `A` is quoted as a solidus,
-  its first 127 `A`, and ` (the first 127 of 1,048,576 bytes)`. 127 bytes is the longest name PDF/A allows, so a name
+  its first 127 `A`, and ` (the first 127 of 1048576 bytes)`. 127 bytes is the longest name PDF/A allows, so a name
   such a file holds is quoted whole. The cut never splits a `#xx`, and
   the space before the note is one no quote holds. The whole name stays in the document: `PdfName.Value` keeps every
   byte.
@@ -179,7 +184,7 @@ followed, and nothing is merged for it. Each is noted once, as a warning under `
 stream's keyword or where the reference starts; a stream after the dictionary itself loses no key, and is not noted.
 
 ```text
-Warning syntax.truncated-object at 328: The file ended inside a literal string, which takes the 6,575 bytes from where it opens to that end; the 2 arrays or dictionaries around it were never closed either.
+Warning syntax.truncated-object at 328: The file ended inside a literal string, which takes the 6575 bytes from where it opens to that end; the 2 arrays or dictionaries around it were never closed either.
 Warning syntax.truncated-object at 381: An endobj ended the object inside an array, which was never closed.
 Warning syntax.truncated-object at 507: An object header ended the object inside a dictionary, which was never closed, before the value of its last key.
 Warning syntax.hex-string-invalid at 1204: A hexadecimal string holds 5 bytes that are neither hexadecimal digits nor white space, the first here; they were skipped.
@@ -262,7 +267,7 @@ once, however often the stream is decoded or the object parsed again.
 
 ```text
 Repair object-stream.member-moved at 274206: Object 2 is at index 65540 of object stream 65547, not at index 4, where the cross-reference index places it.
-Warning object-stream.unreadable at 1037994: Object stream 6396 gives in /First an offset, 29,927, past the end of its decoded data, which is 21,501 bytes long; none of its objects can be read from it.
+Warning object-stream.unreadable at 1037994: Object stream 6396 gives in /First an offset, 29927, past the end of its decoded data, which is 21501 bytes long; none of its objects can be read from it.
 Warning syntax.unexpected-token at 125: A token was found where a value was expected. It was met in object 3, at byte 112 of object stream 4's decoded data.
 ```
 

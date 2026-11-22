@@ -1334,7 +1334,7 @@ internal sealed partial class PdfFileReader
                 ? string.Create(CultureInfo.InvariantCulture, $"Rebuilding the index met a second definition of object {numbers}.")
                 : string.Create(
                     CultureInfo.InvariantCulture,
-                    $"Rebuilding the index met {Count:N0} definitions of object numbers it had already found, {(_unlisted ? "among them those of objects" : _listed == 1 ? "of object" : "of objects")} {numbers}.");
+                    $"Rebuilding the index met {Count} definitions of object numbers it had already found, {(_unlisted ? "among them those of objects" : _listed == 1 ? "of object" : "of objects")} {numbers}.");
             return met +
                 " Of each number, the definition kept is the one the file writes last, an object stream's members counting where the stream lies.";
         }

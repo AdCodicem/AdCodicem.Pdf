@@ -576,7 +576,7 @@ public class FilterTests
         output.Length.Should().Be(10_000);
         diagnostics.Should().ContainSingle()
             .Which.Message.Should().Be(
-                "The /RunLengthDecode data decodes to more than 10,000 bytes; decoding stopped there. " +
+                "The /RunLengthDecode data decodes to more than 10000 bytes; decoding stopped there. " +
                 "Raise PdfReaderLimits.MaxDecodedStreamLength to read past it.");
     }
 
@@ -608,7 +608,7 @@ public class FilterTests
 
         output.Length.Should().Be(10_000);
         diagnostics.Select(d => d.Message).Should().Equal(
-            "The /FlateDecode data decodes to more than 10,000 bytes; decoding stopped there. " +
+            "The /FlateDecode data decodes to more than 10000 bytes; decoding stopped there. " +
             "Raise PdfReaderLimits.MaxDecodedStreamLength to read past it.");
     }
 
@@ -643,8 +643,8 @@ public class FilterTests
         diagnostics.Select(d => d.Message).Should().Equal(
             reached switch
             {
-                "shared" => [$"The filters before the last decode to more than {bound:N0} bytes together; decoding stopped in the /ASCIIHexDecode data. Raise PdfReaderLimits.MaxDecodedStreamLength to read past it."],
-                "its own" => [$"The /ASCIIHexDecode data decodes to more than {bound:N0} bytes; decoding stopped there. Raise PdfReaderLimits.MaxDecodedStreamLength to read past it."],
+                "shared" => [$"The filters before the last decode to more than {bound} bytes together; decoding stopped in the /ASCIIHexDecode data. Raise PdfReaderLimits.MaxDecodedStreamLength to read past it."],
+                "its own" => [$"The /ASCIIHexDecode data decodes to more than {bound} bytes; decoding stopped there. Raise PdfReaderLimits.MaxDecodedStreamLength to read past it."],
                 _ => [],
             });
     }

@@ -686,7 +686,7 @@ public class ObjectRuleTests
         // array, and needs nothing inside it; the stream has no /N, and is broken.
         var report = Validate(ObjectStream("/N [5 0 R]", "2", compress: false));
 
-        Single(report, PdfValidationRuleIds.XRefObjectStreamBroken).Message.Should().EndWith("cannot be read: its /N or its /First is missing or negative.");
+        Single(report, PdfValidationRuleIds.XRefObjectStreamBroken).Message.Should().EndWith("cannot be read: it has no /N that gives a count of objects.");
         report.Contains(PdfValidationRuleIds.XRefObjectStreamCircular).Should().BeFalse();
     }
 

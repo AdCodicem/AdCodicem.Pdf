@@ -46,7 +46,7 @@ itself — white space, a control character, the number sign, a delimiter — as
 | `Esc`, an escape, `[31mred`, a line feed, `line` | `/Esc#1B#5B31mred#0Aline` |
 | `A B#` | `/A#20B#23` |
 | `café`, read from a file as Latin-1 | `/caf#E9` |
-| 4,194,304 times `A` | `/` and its first 127 `A`, then ` (the first 127 of 4,194,304 bytes)` |
+| 4,194,304 times `A` | `/` and its first 127 `A`, then ` (the first 127 of 4194304 bytes)` |
 
 A dictionary is described by its `/Type`, quoted the same way, and its count of entries: `1 entry`, `2 entries`. A
 stream is described by its `/Subtype`, or else its `/Type`, and the count of its encoded bytes: `1 byte`, `4096 bytes`.
@@ -64,7 +64,7 @@ every character outside printable ASCII escaped as C# writes it in a literal:
 | Any other character outside U+0020 to U+007E — an escape, `é`, U+202E, half of a surrogate pair | `\u` and four hexadecimal digits: `\u001B`, `\u00E9`, `\u202E`, `\uD83D` |
 
 Past 127 characters the text is cut, and the description says how many the whole holds: a string of 4,194,304 `A` is
-described as a double quote, its first 127 `A`, a double quote, and ` (the first 127 of 4,194,304 characters)`. Only
+described as a double quote, its first 127 `A`, a double quote, and ` (the first 127 of 4194304 characters)`. Only
 what is shown is decoded.
 
 ### Reals

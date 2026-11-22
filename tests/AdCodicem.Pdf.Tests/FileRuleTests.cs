@@ -118,7 +118,7 @@ public class FileRuleTests
 
         finding.Message.Should().Be(
             "The header names version " + new string('K', 127) +
-            string.Create(CultureInfo.InvariantCulture, $" (the first 127 of at least {read:N0} bytes), which is not a version of PDF: 1.0 to 1.7, or 2.0."));
+            string.Create(CultureInfo.InvariantCulture, $" (the first 127 of at least {read} bytes), which is not a version of PDF: 1.0 to 1.7, or 2.0."));
     }
 
     [Fact]

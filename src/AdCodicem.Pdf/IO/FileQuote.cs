@@ -144,7 +144,7 @@ internal static class FileQuote
             // A space no quote holds: the note cannot be read as the name's.
             destination[length..].TryWrite(
                 CultureInfo.InvariantCulture,
-                $" (the first {bytes} of {(atLeast ? "at least " : string.Empty)}{whole:N0} bytes)",
+                $" (the first {bytes} of {(atLeast ? "at least " : string.Empty)}{whole} bytes)",
                 out var written);
             length += written;
         }

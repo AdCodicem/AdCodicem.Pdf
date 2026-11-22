@@ -21,7 +21,8 @@ namespace AdCodicem.Pdf.Validation;
 /// <param name="Fault">
 /// What the reader found wrong as it read the stream's header, for the kinds it read the header for:
 /// <see cref="BrokenObjectStreamKind.NotAnObjectStream"/>, <see cref="BrokenObjectStreamKind.Unreadable"/> and
-/// <see cref="BrokenObjectStreamKind.ReadInPart"/>.
+/// <see cref="BrokenObjectStreamKind.ReadInPart"/>; the predicate of a sentence whose subject is the stream, as the reader's
+/// own report words it (<see cref="IO.XRef.ObjectStreamHeader.NoCount"/>).
 /// </param>
 internal readonly record struct BrokenObjectStream(
     int Stream,
@@ -47,11 +48,11 @@ internal readonly record struct BrokenObjectStream(
         BrokenObjectStreamKind.NotAnObjectStream =>
             Invariant($"Object {Stream}, where the index places {CountText.Objects(Objects)}, {Fault}."),
         BrokenObjectStreamKind.Unreadable =>
-            Invariant($"Object stream {Stream}, where the index places {CountText.Objects(Objects)}, cannot be read: {Fault}."),
+            Invariant($"Object stream {Stream}, where the index places {CountText.Objects(Objects)}, cannot be read: it {Fault}."),
         _ when Objects == 1 =>
-            Invariant($"Object stream {Stream}, where the index places 1 object, can be read only in part: {Fault}; it is not listed before that, and lost."),
+            Invariant($"Object stream {Stream}, where the index places 1 object, can be read only in part: it {Fault}; it is not listed before that, and lost."),
         _ =>
-            Invariant($"Object stream {Stream}, where the index places {CountText.Objects(Objects)}, can be read only in part: {Fault}; {Detail} of them {(Detail == 1 ? "is" : "are")} not listed before that, and lost."),
+            Invariant($"Object stream {Stream}, where the index places {CountText.Objects(Objects)}, can be read only in part: it {Fault}; {Detail} of them {(Detail == 1 ? "is" : "are")} not listed before that, and lost."),
     };
 
     private static string Invariant(FormattableString text) => text.ToString(CultureInfo.InvariantCulture);

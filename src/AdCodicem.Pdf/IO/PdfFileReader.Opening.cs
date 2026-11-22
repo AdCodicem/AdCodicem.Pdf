@@ -423,7 +423,7 @@ internal sealed partial class PdfFileReader
                 PdfDiagnosticCodes.HeaderMissing,
                 string.Create(
                     CultureInfo.InvariantCulture,
-                    $"The file has no PDF header (%PDF-) in its first {HeaderSearchLength:N0} bytes; its offsets were counted from its first byte."),
+                    $"The file has no PDF header (%PDF-) in its first {HeaderSearchLength} bytes; its offsets were counted from its first byte."),
                 _source.Length > 0 ? 0 : -1);
             return;
         }

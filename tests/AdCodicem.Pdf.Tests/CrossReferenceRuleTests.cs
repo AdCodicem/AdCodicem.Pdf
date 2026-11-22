@@ -193,7 +193,7 @@ public class CrossReferenceRuleTests
     [InlineData("/Size 6 /W [1 4]", "its /W does not give the widths of three fields.")]
     [InlineData("/Size 6 /W [0 0 0]", "its /W gives rows of no bytes.")]
     [InlineData("/Size 6 /W [1 4 2] /Index [0 -1]", "its /Index gives a subsection a count of rows out of range.")]
-    [InlineData("/Size 6 /W [1 4 2] /Index [0 4294967302]", "its /Index gives a subsection of 4,294,967,302 rows from object 0, outside object numbers 0 to 2147483647.")]
+    [InlineData("/Size 6 /W [1 4 2] /Index [0 4294967302]", "its /Index gives a subsection of 4294967302 rows from object 0, outside object numbers 0 to 2147483647.")]
     [InlineData("/Size 6 /W [1 4 2] /Index 6", "its /Index is the integer 6, not an array.")]
     [InlineData("/Size 6 /W [1 4 2] /Index /All", "its /Index is the name /All, not an array.")]
     [InlineData("/Size 6 /W [1 4 2] /Index []", "its /Index holds 0 values, not pairs of a first object number and a count of rows.")]
@@ -221,12 +221,12 @@ public class CrossReferenceRuleTests
     [InlineData("/Size 6 /W [1 4 2] /Filter /Crypt /DecodeParms 1 0 R", "its /DecodeParms is the reference 1 0 R, which no section read before it places where it can be read.")]
     [InlineData("/Size 1 0 R /W [1 4 2] /Index null", "its /Size is the reference 1 0 R, which no section read before it places where it can be read.")]
     [InlineData("/Size 6 /W [1 4 2] /Index [-5 1]", "its /Index gives a subsection of 1 row from object -5, outside object numbers 0 to 2147483647.")]
-    [InlineData("/Size 6 /W [1 4 2] /Index [2147482000 5000]", "its /Index gives a subsection of 5,000 rows from object 2147482000, outside object numbers 0 to 2147483647.")]
+    [InlineData("/Size 6 /W [1 4 2] /Index [2147482000 5000]", "its /Index gives a subsection of 5000 rows from object 2147482000, outside object numbers 0 to 2147483647.")]
     [InlineData("/Size 6 /W [1 4 2] /Index [-5 6]", "its /Index gives a subsection of 6 rows from object -5, outside object numbers 0 to 2147483647.")]
     [InlineData("/Size 6 /W [1 4 2] /Index [4294967296 6]", "its /Index gives a subsection of 6 rows from object 4294967296, outside object numbers 0 to 2147483647.")]
     [InlineData("/Size 6 /W [1 4 2] /Index [2147483647 6]", "its /Index gives a subsection of 6 rows from object 2147483647, outside object numbers 0 to 2147483647.")]
     [InlineData("/Size 6 /W [1 4 2] /Index [0 6 2147483648 0]", "its /Index gives a subsection of 0 rows from object 2147483648, outside object numbers 0 to 2147483647.")]
-    [InlineData("/Size 6 /W [1 4 2] /Index [0 6 2 9223372036854775807]", "its /Index gives a subsection of 9,223,372,036,854,775,807 rows from object 2, outside object numbers 0 to 2147483647.")]
+    [InlineData("/Size 6 /W [1 4 2] /Index [0 6 2 9223372036854775807]", "its /Index gives a subsection of 9223372036854775807 rows from object 2, outside object numbers 0 to 2147483647.")]
     [InlineData("/W [1 4 2]", "it has no /Index, and its /Size gives no count of objects.")]
     [InlineData("/Size -6 /W [1 4 2]", "it has no /Index, and its /Size gives no count of objects.")]
     [InlineData("/Size 6.5 /W [1 4 2]", "it has no /Index, and its /Size gives no count of objects.")]
@@ -287,7 +287,7 @@ public class CrossReferenceRuleTests
 
         Single(Validate(file), PdfValidationRuleIds.XRefSectionMalformed).Message.Should().EndWith(
             string.Create(
-                CultureInfo.InvariantCulture, $"is malformed: it holds 6 rows where its /Index and /Size declare {long.Parse(size, CultureInfo.InvariantCulture):N0}."));
+                CultureInfo.InvariantCulture, $"is malformed: it holds 6 rows where its /Index and /Size declare {long.Parse(size, CultureInfo.InvariantCulture)}."));
     }
 
     [Theory]
@@ -1851,8 +1851,9 @@ public class CrossReferenceRuleTests
     [Theory]
     [InlineData("/Type /ObjStm", "/Type/XObject", "Object 4, where the index places 2 objects, is a stream that is not of /Type /ObjStm.")]
     [InlineData("/Type /ObjStm", "/Kind /ObjStm", "Object 4, where the index places 2 objects, is a stream that is not of /Type /ObjStm.")]
-    [InlineData("/N 2", "/X 2", "Object stream 4, where the index places 2 objects, cannot be read: its /N or its /First is missing or negative.")]
-    [InlineData("/Type /ObjStm /N 2 /First ", "/Type/ObjStm/N 2/First 999", "Object stream 4, where the index places 2 objects, cannot be read: it decodes to")]
+    [InlineData("/N 2", "/X 2", "Object stream 4, where the index places 2 objects, cannot be read: it has no /N that gives a count of objects.")]
+    [InlineData("/First", "/Fyrst", "Object stream 4, where the index places 2 objects, cannot be read: it has no /First that gives where its objects start.")]
+    [InlineData("/Type /ObjStm /N 2 /First ", "/Type/ObjStm/N 2/First 999", "Object stream 4, where the index places 2 objects, cannot be read: it gives in /First an offset, 9999, past the end of its decoded data, which is ")]
     public void An_object_stream_that_cannot_serve_its_objects_is_reported_once(string text, string replacement, string message)
     {
         replacement.Length.Should().Be(text.Length, "every offset after the object stream stays right");
@@ -1896,16 +1897,16 @@ public class CrossReferenceRuleTests
     }
 
     [Theory]
-    [InlineData("x 0 ", "then something else")]
-    [InlineData("2 x ", "then something else")]
-    [InlineData("92233720368547758082 0 ", "then something else")]
-    [InlineData("0 0 ", "then object 0 at offset 0, which no member can be")]
-    [InlineData("2147483648 0 ", "then object 2147483648 at offset 0, which no member can be")]
-    [InlineData("4294967298 0 ", "then object 4294967298 at offset 0, which no member can be")]
-    [InlineData("-2 0 ", "then object -2 at offset 0, which no member can be")]
-    [InlineData("2 -5 ", "then object 2 at offset -5, which no member can be")]
-    [InlineData("2 2147483648 ", "then object 2 at offset 2147483648, which no member can be")]
-    [InlineData("2 2147483647 ", "then object 2 at offset 2147483647, past what its {0} bytes of decoded data hold")]
+    [InlineData("x 0 ", "holds something other than an object number and an offset")]
+    [InlineData("2 x ", "holds something other than an object number and an offset")]
+    [InlineData("92233720368547758082 0 ", "holds something other than an object number and an offset")]
+    [InlineData("0 0 ", "lists object 0 at offset 0, which no member can be,")]
+    [InlineData("2147483648 0 ", "lists object 2147483648 at offset 0, which no member can be,")]
+    [InlineData("4294967298 0 ", "lists object 4294967298 at offset 0, which no member can be,")]
+    [InlineData("-2 0 ", "lists object -2 at offset 0, which no member can be,")]
+    [InlineData("2 -5 ", "lists object 2 at offset -5, which no member can be,")]
+    [InlineData("2 2147483648 ", "lists object 2 at offset 2147483648, which no member can be,")]
+    [InlineData("2 2147483647 ", "lists object 2 at offset 2147483647, past what its {0} bytes of decoded data hold,")]
     [InlineData("2147483647 0 ", null)]
     public void An_object_stream_whose_header_lists_something_other_than_objects_cannot_be_read(string start, string? then)
     {
@@ -1925,15 +1926,15 @@ public class CrossReferenceRuleTests
         }
 
         Single(report, PdfValidationRuleIds.XRefObjectStreamBroken).Message.Should().Be(
-            "Object stream 4, where the index places 2 objects, cannot be read: its header lists 0 of the 2 objects its /N declares, " +
-            string.Format(CultureInfo.InvariantCulture, then, start.Length + 5 + PackedLength) + ".");
+            "Object stream 4, where the index places 2 objects, cannot be read: it has a header that " +
+            string.Format(CultureInfo.InvariantCulture, then, start.Length + 5 + PackedLength) + " after 0 of the 2 objects its /N declares.");
     }
 
     [Theory]
-    [InlineData("2 0 3 0 ", "then object 3 at offset 0, not past the offset of the object before it, 0")]
-    [InlineData("2 42 3 0 ", "then object 3 at offset 0, not past the offset of the object before it, 42")]
-    [InlineData("2 0 3 999 ", "then object 3 at offset 999, past what its {0} bytes of decoded data hold")]
-    [InlineData("2 0 x ", "then something else")]
+    [InlineData("2 0 3 0 ", "lists object 3 at offset 0, not past the offset of the object before it, 0,")]
+    [InlineData("2 42 3 0 ", "lists object 3 at offset 0, not past the offset of the object before it, 42,")]
+    [InlineData("2 0 3 999 ", "lists object 3 at offset 999, past what its {0} bytes of decoded data hold,")]
+    [InlineData("2 0 x ", "holds something other than an object number and an offset")]
     public void An_object_stream_whose_header_breaks_after_an_object_says_which_objects_are_lost(string header, string then)
     {
         // The reader serves object 2, listed before the fault, and loses object 3 (#160, #202, #275): the stream's finding
@@ -1947,7 +1948,7 @@ public class CrossReferenceRuleTests
         finding.Severity.Should().Be(PdfValidationSeverity.Error);
         finding.Message.Should().Be(string.Create(
             CultureInfo.InvariantCulture,
-            $"Object stream 4, where the index places 2 objects, can be read only in part: its header lists 1 of the 2 objects its /N declares, {string.Format(CultureInfo.InvariantCulture, then, header.Length + PackedLength)}; 1 of them is not listed before that, and lost."));
+            $"Object stream 4, where the index places 2 objects, can be read only in part: it has a header that {string.Format(CultureInfo.InvariantCulture, then, header.Length + PackedLength)} after 1 of the 2 objects its /N declares; 1 of them is not listed before that, and lost."));
     }
 
     [Fact]
@@ -1961,7 +1962,7 @@ public class CrossReferenceRuleTests
 
         finding.Message.Should().Be(string.Create(
             CultureInfo.InvariantCulture,
-            $"Object stream 4, where the index places 2 objects, cannot be read: its header lists 0 of the 2 objects its /N declares, then object 2 at offset 999, past what its {Header.Length + PackedLength} bytes of decoded data hold."));
+            $"Object stream 4, where the index places 2 objects, cannot be read: it has a header that lists object 2 at offset 999, past what its {Header.Length + PackedLength} bytes of decoded data hold, after 0 of the 2 objects its /N declares."));
     }
 
     [Theory]
@@ -1994,26 +1995,26 @@ public class CrossReferenceRuleTests
         var finding = Single(Validate(file), PdfValidationRuleIds.XRefObjectStreamBroken);
 
         finding.Location.Object.Should().Be(new PdfObjectId(4));
-        finding.Message.Should().Be("Object stream 4, where the index places 1 object, can be read only in part: its header lists 1 of the 2 objects its /N declares, then something else; it is not listed before that, and lost.");
+        finding.Message.Should().Be("Object stream 4, where the index places 1 object, can be read only in part: it has a header that holds something other than an object number and an offset after 1 of the 2 objects its /N declares; it is not listed before that, and lost.");
     }
 
     [Theory]
-    [InlineData("", "its header lists 0 of the 1 object its /N declares, then ends", "has a header that ends after 0 of the 1 object its /N declares")]
-    [InlineData("x ", "its header lists 0 of the 1 object its /N declares, then something else", "has a header that holds something other than an object number and an offset after 0 of the 1 object its /N declares")]
-    [InlineData("0 0 ", "its header lists 0 of the 1 object its /N declares, then object 0 at offset 0, which no member can be", "has a header that lists object 0 at offset 0, which no member can be, after 0 of the 1 object its /N declares")]
-    public void An_object_stream_whose_n_declares_one_object_says_so_in_the_singular(string header, string fault, string unreadable)
+    [InlineData("", "has a header that ends after 0 of the 1 object its /N declares")]
+    [InlineData("x ", "has a header that holds something other than an object number and an offset after 0 of the 1 object its /N declares")]
+    [InlineData("0 0 ", "has a header that lists object 0 at offset 0, which no member can be, after 0 of the 1 object its /N declares")]
+    public void An_object_stream_whose_n_declares_one_object_says_so_in_the_singular(string header, string fault)
     {
         // The index places object 3 alone in object stream 4, whose /N declares it alone, and whose header ends before it,
-        // lists something else, or an object no member can be: the finding quotes the reader's fault, and the reader's own
-        // report words it its way, each with one object in the singular (#241).
+        // lists something else, or an object no member can be: the finding quotes the reader's fault as the reader's own
+        // report words it, with one object in the singular (#241, #326).
         var file = XRefStreamBuilder().BuildWithXRefStream(rootNumber: 1, compressedObjects: [3], objectStreamHeader: _ => header);
         using var document = PdfDocument.Open(file);
 
         var finding = Single(new PdfValidator().Validate(document), PdfValidationRuleIds.XRefObjectStreamBroken);
 
-        finding.Message.Should().Be("Object stream 4, where the index places 1 object, cannot be read: " + fault + ".");
+        finding.Message.Should().Be("Object stream 4, where the index places 1 object, cannot be read: it " + fault + ".");
         document.Diagnostics.Should().ContainSingle(entry => entry.Code == PdfDiagnosticCodes.ObjectStreamUnreadable).Which.Message.Should().Be(
-            "Object stream 4 " + unreadable + "; none of its objects can be read from it.");
+            "Object stream 4 " + fault + "; none of its objects can be read from it.");
     }
 
     [Fact]
@@ -2032,7 +2033,7 @@ public class CrossReferenceRuleTests
         var finding = Single(new PdfValidator().Validate(document), PdfValidationRuleIds.XRefObjectStreamBroken);
         document.GetObject(new PdfObjectId(3)).Should().BeSameAs(PdfNull.Instance);
 
-        finding.Message.Should().Be("Object stream 4, where the index places 1 object, cannot be read: it decodes to 1 byte, fewer than its /First of 5.");
+        finding.Message.Should().Be("Object stream 4, where the index places 1 object, cannot be read: it gives in /First an offset, 5, past the end of its decoded data, which is 1 byte long.");
         document.Diagnostics.Should().ContainSingle(entry => entry.Code == PdfDiagnosticCodes.ObjectStreamUnreadable).Which.Message.Should().Be(
             "Object stream 4 gives in /First an offset, 5, past the end of its decoded data, which is 1 byte long; none of its objects can be read from it.");
     }
@@ -2288,7 +2289,7 @@ public class CrossReferenceRuleTests
 
         finding.Message.Should().Be(string.Create(
             CultureInfo.InvariantCulture,
-            $"Object stream 4, where the index places 2 objects, can be read only in part: its header lists 1 of the 2 objects its /N declares, then object 3 at offset 42, past what its {Header.Length + 30} bytes of decoded data hold; 1 of them is not listed before that, and lost."));
+            $"Object stream 4, where the index places 2 objects, can be read only in part: it has a header that lists object 3 at offset 42, past what its {Header.Length + 30} bytes of decoded data hold, after 1 of the 2 objects its /N declares; 1 of them is not listed before that, and lost."));
     }
 
     [Fact]
@@ -2635,7 +2636,7 @@ public class CrossReferenceRuleTests
         findings[0].Location.Position.Should().Be(newer);
         findings[0].Message.Should().StartWith(string.Create(
             CultureInfo.InvariantCulture,
-            $"The cross-reference stream at offset {newer} gives 1,001 rows a reserved type: the row for object 3 gives it type 3, the first of them. "));
+            $"The cross-reference stream at offset {newer} gives 1001 rows a reserved type: the row for object 3 gives it type 3, the first of them. "));
         findings[1].Location.Position.Should().Be(olderAt);
         findings[1].Message.Should().StartWith(string.Create(
             CultureInfo.InvariantCulture,

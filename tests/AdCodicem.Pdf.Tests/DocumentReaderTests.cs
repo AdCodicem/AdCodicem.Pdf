@@ -1137,7 +1137,7 @@ public class DocumentReaderTests
         reader.WasRepaired.Should().BeTrue();
         reader.Structure.StartXRefPosition.Should().Be(-1);
         diagnostics.Select(diagnostic => (diagnostic.Code, diagnostic.Message, diagnostic.Position)).Should().Equal(
-            (PdfDiagnosticCodes.HeaderMissing, "The file has no PDF header (%PDF-) in its first 4,096 bytes; its offsets were counted from its first byte.", -1L),
+            (PdfDiagnosticCodes.HeaderMissing, "The file has no PDF header (%PDF-) in its first 4096 bytes; its offsets were counted from its first byte.", -1L),
             (PdfDiagnosticCodes.XRefRebuilt, "The cross-reference index was rebuilt by scanning the file.", -1L));
     }
 
@@ -2656,7 +2656,7 @@ public class DocumentReaderTests
             using var document = PdfDocument.Open(file);
 
             document.Diagnostics.Should().ContainSingle(entry => entry.Code == PdfDiagnosticCodes.ObjectRedefined)
-                .Which.Message.Should().Be("Rebuilding the index met 1,001 definitions of object numbers it had already found, of object 6." + KeptRule);
+                .Which.Message.Should().Be("Rebuilding the index met 1001 definitions of object numbers it had already found, of object 6." + KeptRule);
         }
         finally
         {

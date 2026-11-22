@@ -96,7 +96,7 @@ public class ObjectModelTests
         var name = PdfName.Get(new string('A', 4 * 1024 * 1024));
         var dictionary = new PdfDictionary { [PdfName.Type] = name };
         var stream = new PdfStream(new PdfDictionary { [PdfName.Subtype] = name }, PdfStreamData.FromMemory(new byte[1]));
-        var quote = "/" + new string('A', 127) + " (the first 127 of 4,194,304 bytes)";
+        var quote = "/" + new string('A', 127) + " (the first 127 of 4194304 bytes)";
 
         // Warmed up first: what is measured is the describing, not the first call's own costs. Measured as the least of three
         // measures no collection paused, as every budget of a few kilobytes is: a collection another test triggers can fall in
@@ -162,7 +162,7 @@ public class ObjectModelTests
         _ = text.ToString();
         var allocated = Allocations.Least(text.ToString, out var described);
 
-        described.Should().EndWith(string.Create(CultureInfo.InvariantCulture, $"\" (the first 127 of {text.ToText().Length:N0} characters)"));
+        described.Should().EndWith(string.Create(CultureInfo.InvariantCulture, $"\" (the first 127 of {text.ToText().Length} characters)"));
         allocated.Should().BeLessThan(16 * 1024, "the whole is counted, not decoded");
     }
 
@@ -187,7 +187,7 @@ public class ObjectModelTests
         _ = latin.ToString();
         var allocated = Allocations.Least(latin.ToString, out var described);
 
-        described.Should().Be("\"" + new string('A', 127) + "\" (the first 127 of 4,194,304 characters)");
+        described.Should().Be("\"" + new string('A', 127) + "\" (the first 127 of 4194304 characters)");
         allocated.Should().BeLessThan(4096, "a description decodes no more of the text than it shows");
         utf16.ToString().Should().Be(
             "\"" + new string('a', 126) + "\\uD83D\" (the first 127 of 129 characters)",
