@@ -317,17 +317,20 @@ internal sealed class CrossReferenceProbe
     /// its number.
     /// </summary>
     /// <remarks>
-    /// The definition is told by where a load found its header, not by the row's offset: a row a few bytes early, on the white
-    /// space before the header, places the definition the rebuilt index serves all the same.
+    /// The definition is told by where a load found its header, or by the chain's own row at <paramref name="offset"/>: a row
+    /// a few bytes early, on the white space before the header, places the definition the rebuilt index serves all the same,
+    /// and a row the rebuild merged from the chain — one outside the file among them — is loaded as the chain's is.
     /// </remarks>
-    private static bool ServedWhereChainPlaces(PdfFileReader reader, int number, int stream, int index, int actual, long headerAt) =>
+    private static bool ServedWhereChainPlaces(
+        PdfFileReader reader, int number, int stream, int index, int actual, long offset, long headerAt) =>
         reader.Index.TryGet(number, out var served) &&
         served.Kind == XRefEntryKind.Compressed &&
         served.ObjectStreamNumber == stream &&
         (served.IndexInObjectStream == index || served.IndexInObjectStream == actual) &&
         reader.Index.TryGet(stream, out var definition) &&
         definition.Kind == XRefEntryKind.Regular &&
-        reader.PositionOf(definition) == headerAt;
+        reader.PositionOf(definition) is var servedAt &&
+        (servedAt == headerAt || servedAt == offset);
 
     /// <summary>
     /// Judges the objects the chain's index places soundly in an object stream that the index the reader rebuilt does not
@@ -574,7 +577,7 @@ internal sealed class CrossReferenceProbe
             // Sound where the chain's index places it, or where a load finds it by its number, the object may still be lost to
             // a rebuild that serves it from elsewhere, or serves another definition of its stream (#276): a shift the entry
             // makes is its warning, the loss its error.
-            if (actual >= 0 && reader.WasRepaired && !ServedWhereChainPlaces(reader, number, stream, index, actual, headerAt))
+            if (actual >= 0 && reader.WasRepaired && !ServedWhereChainPlaces(reader, number, stream, index, actual, offset, headerAt))
             {
                 (servedElsewhere ??= []).Add(new ServedElsewhere(number, stream, index, actual));
             }
