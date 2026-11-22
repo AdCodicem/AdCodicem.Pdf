@@ -7,6 +7,42 @@ to about thirty lines each; the unabridged text is the
 [journal of `e38ebbc`](https://github.com/AdCodicem/AdCodicem.Pdf/blob/e38ebbc471b86779c3f6ac5b320ca1ecd531b2c1/docs/status.md#journal). A session reads an entry when it needs the
 reason for a past decision. A new entry is short, about thirty lines; the detail is in the pull request's body.
 
+## 2026-11-22 — Batch 26, second pull request: counts in plain digits, and why a rebuild loses an object ([#407])
+
+- **The question.** Measured on `main` at `2e07dca`, twice: a message grouped the digits of some counts and not of
+  others, one message both, and an object stream's header fault was written twice, by the reader and by the validator,
+  in other words and other digits ([#326]). The check of objects the chain places soundly in an object stream a rebuild
+  serves otherwise said only that the rebuilt index lacked one, or nothing, where the definition it serves did not list
+  it, could not be read or was no object stream, and compared its served definition with the row, so that a row a few
+  bytes early made every sound member a candidate ([#349]).
+- **Settled with the maintainer** (2026-11-22, each as recommended): no count grouped, a whole-megabyte or -kilobyte
+  bound keeping its unit; the reader's predicates the single text of a header fault, which the finding quotes; each
+  reason a rebuild loses an object given; after the mutation step, [#406], this pull request's own regression, fixed
+  here. Settled by the measurement: `xref.entry-broken`, Error, no new rule; the served definition told by where a load
+  found its header.
+- **What changed.** Every count of a message is written in plain digits. `ObjectStreamHeader` writes a header's fault
+  once. The probe judges each candidate once per served stream: lacking it, it says why — the definition does not list
+  it, can be read only in part or not at all, is no object stream, is itself a member, or is not held —; serving it
+  elsewhere, where it is written as a stream or not listed; a stream a reader limit left out is skipped.
+- **Review** (ADR 54): one round, three lenses — the wording, the probe's paths, real damage (the corpus at default and
+  lowered limits, under `ThrowOnLimit`, about 18,000 damaged variants a worktree). No blocker or major; one minor, E4 on
+  real files (the bound-in-units rule worded wider than the code), and six nits, one this pull request's own regression
+  against `main` (a full index read as a loss), fixed in the final pass with the texts; one nit, an extra header read
+  for a signed header, left as cost only.
+- **Mutation** (ADR 53 amended): 132 mutants over 53 of 161 changed code lines; 101 killed by the suite, 1 stillborn;
+  tests kill 21 of the 30 survivors. The second opinion overturned 4 of 12 equivalents: 3 now held by tests, the fourth
+  told apart only by a false finding — an object the reader serves said lost where the rebuild keeps the chain's own row
+  of its stream outside the file, a regression against `main` filed as [#406], which the maintainer chose to fix here;
+  confirmed equivalent again on the fixed code. 9 equivalents stand.
+- **The issues.** [#326], [#349], [#406]. Filed under M02: [#405], a rebuild that takes an object stream's members in
+  through a value of its dictionary that a stream it expands later replaces, which the second opinion found. Considered
+  and not filed: a member its stream does not list read as null with no report of the reader, in every case alike.
+- **Checks.** The batch check at `5fb2ae2`, 12,997 unit tests; the 69 timing and memory tests alone; `Remote corpus` run
+  133 green. The corpus differential moves the counts, the header faults and [#349]'s reasons only. No benchmark: no hot
+  path changed. Patch coverage 96.40 % by Codecov's rule: five lines, defensive arms no input takes.
+- **For callers.** No new code, rule or severity. Messages read their counts in plain digits; a lost object's finding
+  says why.
+
 ## 2026-11-22 — Batch 26, first pull request: predictors, abbreviated filter names, and filter reports of cut data ([#404])
 
 - **The question.** Measured on `main` at `2e07dca`, twice: a TIFF predictor at 1, 2, 4 or 16 bits a component left its
@@ -1306,3 +1342,6 @@ The detail is in git and in the pull requests; what still matters is in the reco
 [#402]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/402
 [#403]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/403
 [#404]: https://github.com/AdCodicem/AdCodicem.Pdf/pull/404
+[#405]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/405
+[#406]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/406
+[#407]: https://github.com/AdCodicem/AdCodicem.Pdf/pull/407

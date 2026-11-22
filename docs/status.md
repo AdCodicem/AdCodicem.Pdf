@@ -40,7 +40,9 @@ Tracking workflow mirrors from `docs/roadmap.md` (*Debt and open points*, below)
   pull requests by area as the maintainer chose on 2026-11-20, the first, [#181]'s reader paths with [#280], [#296] and
   [#385], in [#398] on 2026-11-21, the second, [#315] and [#181]'s walk, with [#314] closed by its documentation, in
   [#400] on 2026-11-22; the twenty-sixth, in two pull requests by area as the maintainer chose that day, the first,
-  decoding, [#162], [#250], [#283] and [#288], open in [#404]. Then the other batches, slices 4 to 6 ([#60] to [#62]); then the milestone's adversarial review, slice 7 ([#137], ADR 46), once
+  decoding, [#162], [#250], [#283] and [#288], in [#404] on 2026-11-22, the second, [#326]'s counts and header faults
+  and [#349]'s reasons for a rebuild's losses, with [#406], its own regression, open in [#407]. Then the other batches,
+  slices 4 to 6 ([#60] to [#62]); then the milestone's adversarial review, slice 7 ([#137], ADR 46), once
   every other issue filed under M02 is closed. The debts come from the reader's own work, the threat model's first
   version ([#135], `docs/threat-model.md`), M01's review after the fact ([#136], `docs/reviews/M01.md`), the planning of
   step 4 ([#199] to [#202]), its second batch ([#207] to [#210]), its third ([#212]), its fifth ([#215], [#216]), its
@@ -50,8 +52,8 @@ Tracking workflow mirrors from `docs/roadmap.md` (*Debt and open points*, below)
   ([#307]), its eighteenth ([#309], [#312] to [#315], [#317]), its nineteenth ([#320] to [#330], [#332], [#333],
   [#336], [#342]), its twentieth ([#348] to [#351]), its twenty-first ([#353] to [#359], [#361] to [#363], [#365] to
   [#374]), its twenty-second ([#375] to [#379], [#381]), its twenty-fourth ([#385]), its thirty-third's two pull requests
-  ([#387] to [#389], [#391] to [#393]), its twenty-fifth's first ([#395] to [#397]) and its twenty-sixth's first ([#401]
-  to [#403]); [#123] moved to M20.
+  ([#387] to [#389], [#391] to [#393]), its twenty-fifth's first ([#395] to [#397]), its twenty-sixth's first ([#401]
+  to [#403]) and its second ([#405]); [#123] moved to M20.
   The seventeenth filed [#305] and [#306] under M23, the eighteenth [#310] under
   M03 and [#311] under M23, the nineteenth [#331] under M03 and [#343] under M23, the thirty-third's first pull request
   [#390] under M23, the twenty-fifth's second [#399] under M23; [#367] and [#373], which the
@@ -61,8 +63,11 @@ Tracking workflow mirrors from `docs/roadmap.md` (*Debt and open points*, below)
   pages — the validation rules among them, moved from the project documents — with the API reference under them, and
   four explanations. Outside any milestone.
 - **Last milestone closed**: **M01 — Object model and tolerant reading**
-- **Tests**: 12,959 unit on [#404]'s branch at `9950958`, with 235 of the 242 remote documents fetched, 12,956 passed
-  and 3 skipped; the 69 timing and memory tests alone; `Remote corpus` run 131 green over all 242 on its code. Before it,
+- **Tests**: 12,997 unit on [#407]'s branch at `5fb2ae2`, with 235 of the 242 remote documents fetched, 12,994 passed
+  and 3 skipped; the 69 timing and memory tests alone; `Remote corpus` run 133 green over all 242 on its code. Before
+  it, 12,959 unit on [#404]'s branch at `9950958`, with 235 of the 242 remote documents fetched, 12,956 passed
+  and 3 skipped; the 69 timing and memory tests alone; the integration suite green in CI; `Remote corpus` run 131 green
+  over all 242 on its code. Before it,
   12,829 unit on [#400]'s branch at `2f8cc89`, with 235 of the 242 remote documents fetched, 12,826 passed
   and 3 skipped; the 69 timing and memory tests alone; the integration suite green in CI; `Remote corpus` run 130
   green over all 242 on its code. Before it, 12,769 unit on [#398]'s branch at `d95e0f0`, with 235
@@ -98,7 +103,11 @@ Tracking workflow mirrors from `docs/roadmap.md` (*Debt and open points*, below)
   container at `26ce787`, run class by class, 3,754 passed and 6 skipped where qpdf cannot walk a damaged document's
   pages; and `Remote corpus` run 109's 11,155 acceptance tests and 3,760 referee checks, on the library code
   [#344] ends with.
-- **Coverage**: on [#404]'s branch at `9950958`, counted from the unit suite's report by Codecov's rule, 99.57 % of the
+- **Coverage**: on [#407]'s branch at `5fb2ae2`, counted from the unit suite's report by Codecov's rule, 96.40 % of the
+  patch: 134 of its 139 coverable lines whole; the other five, two missed and three partial, are the defensive arms of
+  the reasons a rebuild loses an object — a served definition no load finds, and a stream the rebuilt index holds as no
+  object — which no input takes, as the mutation step's second opinion confirmed. Before it, on [#404]'s branch at
+  `9950958`, counted from the unit suite's report by Codecov's rule, 99.57 % of the
   patch: 231 of its 232 coverable lines whole; the other, partial, is the retake's defensive check of a length that reads
   as nothing, which no input takes, its every caller giving it a reference. Before it, on [#400]'s branch at `681cba0`,
   counted the same way, 98.64 % of the patch: 217 of its 220 coverable lines whole; the other three, two missed and
@@ -684,9 +693,10 @@ One pull request per batch, each design question put to the maintainer after mea
        [#315] and what remains of [#181], with [#314] closed by its documentation, in [#400], merged on 2026-11-22,
        `Remote corpus` run 130 green on its branch (journal of 2026-11-21), which filed [#399] under M23.
    26. [#162], with [#250], [#283] and [#288], and [#326] and [#349] — six issues, in two pull requests by area, as the
-       maintainer chose on 2026-11-22: decoding, [#162], [#250], [#283] and [#288], in [#404], open, `Remote corpus` run
-       131 green on its branch (journal of 2026-11-22), which filed [#401] to [#403] under M02; then the messages and the
-       probe, [#326] and [#349], once it merges.
+       maintainer chose on 2026-11-22: decoding, [#162], [#250], [#283] and [#288], in [#404], merged on 2026-11-22,
+       `Remote corpus` run 131 green on its branch (journal of 2026-11-22), which filed [#401] to [#403] under M02; then
+       the messages and the probe, [#326] and [#349], in [#407], open, `Remote corpus` run 133 green on its branch,
+       which filed [#405] under M02, and closes [#406], its own regression, which the maintainer chose to fix there.
    27. [#163], `MaxDepth` and `MaxNestedLoads` made guards, as the maintainer decided, with [#262], and [#395] to [#397],
        which the maintainer placed here on 2026-11-22.
    28. [#185].
@@ -788,7 +798,8 @@ One pull request per batch, each design question put to the maintainer after mea
    filed [#399] under M23. Batch 26's first pull request filed three under M02, placed in no batch yet: [#401], two
    filter reports that still depend on how much of the data was decoded; [#402], three edges of the retake of a
    deferred cross-reference stream's data without its carriage return; [#403], an object stream whose filters decode
-   nothing reported as a header fault.
+   nothing reported as a header fault. Its second filed [#405] under M02, placed in no batch yet: a rebuild that takes
+   an object stream's members in through a value of its dictionary that a stream it expands later replaces.
 5. Slice 4 ([#60]) in two pull requests, streams then fonts, after the decisions it waits on: the severity of a font
    that is not embedded, the standard 14's aliases, where text is "meant to be extractable", how the rules that need
    content are left out and shown so, and the tools that referee both families.
@@ -1115,3 +1126,6 @@ Until 2026-09-27 this section was a table whose rows were numbered T01 to T40; t
 [#402]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/402
 [#403]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/403
 [#404]: https://github.com/AdCodicem/AdCodicem.Pdf/pull/404
+[#405]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/405
+[#406]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/406
+[#407]: https://github.com/AdCodicem/AdCodicem.Pdf/pull/407
