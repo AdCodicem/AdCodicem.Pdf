@@ -4555,6 +4555,93 @@ public class CrossReferenceRuleTests
         document.GetObject(new PdfObjectId(7)).Should().BeOfType<PdfString>().Which.ToText().Should().Be("seven, again");
     }
 
+    [Theory]
+    [InlineData(0)]
+    [InlineData(1)]
+    public void An_object_a_rebuild_lacks_though_the_stream_it_serves_lists_it_is_said_lacking_with_no_fault_of_that_stream(int index)
+    {
+        // Object stream 6 takes its /N from object 11, which the file writes directly, then again in object stream 8, past
+        // it, with one more: the chain's index serves the second, and 6 lists object 7 at index 0 or 1, where the chain
+        // places it. Row 9 lies outside the file, so the validation rebuilds the index. Its expansion takes 6 in first, the
+        // stream the file writes last, while 11 still reads as written directly, then 8, which replaces 11: 6 declared one
+        // object fewer, and 7 was not taken in. The rebuilt index lacks 7, which the definition of 6 it serves lists, 11 read
+        // from 8: the reader loses 7, and the finding says so, with no fault of that definition to give (#349).
+        (int Number, string Body)[] members = index == 0 ? [(7, "(seven)")] : [(12, "(twelve)"), (7, "(seven)")];
+        var header = new StringBuilder();
+        var contents = new StringBuilder();
+
+        foreach (var (member, body) in members)
+        {
+            header.Append(CultureInfo.InvariantCulture, $"{member} {contents.Length} ");
+            contents.Append(body).Append(' ');
+        }
+
+        var data = header.ToString() + contents;
+        var file = new HandWrittenFile(version: "1.5");
+        var rows = new Dictionary<int, (int Type, long Field2, int Field3)>
+        {
+            [1] = (1, file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"), 0),
+            [2] = (1, file.Object(2, "<< /Type /Pages /Kids [4 0 R] /Count 1 >>"), 0),
+            [4] = (1, file.Object(4, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 10 10] >>"), 0),
+            [7] = (2, 6, index),
+            [9] = (1, 999_999, 0),
+            [11] = (2, 8, 0),
+        };
+        file.Object(11, Invariant($"{index}"));
+        rows[8] = (1, file.ObjectStream(8, [(11, Invariant($"{index + 1}"))]), 0);
+        rows[6] = (1, file.Object(6, Invariant($"<< /Type /ObjStm /N 11 0 R /First {header.Length} /Length {data.Length} >>\nstream\n{data}\nendstream")), 0);
+        file.CrossReferenceStream(20, 21, rows, "/Root 1 0 R");
+        using var document = PdfDocument.Open(file.Bytes);
+
+        var report = new PdfValidator().Validate(document);
+
+        document.WasRepaired.Should().BeTrue();
+        report.Findings.Where(finding => finding.Location.Object?.Number == 7)
+            .Select(finding => (finding.RuleId, finding.Severity, finding.Message)).Should().Equal((
+                PdfValidationRuleIds.XRefEntryBroken,
+                PdfValidationSeverity.Error,
+                Invariant($"The entry of object 7 places it at index {index} of object stream 6, and the index the reader rebuilt lacks it.")));
+        document.GetObject(new PdfObjectId(7)).Should().BeSameAs(PdfNull.Instance);
+    }
+
+    [Fact]
+    public void An_object_a_rebuild_keeps_at_an_index_its_stream_does_not_list_it_at_is_lost_where_that_stream_lists_it_as_a_stream()
+    {
+        // Object stream 6 is written twice: first listing object 7 soundly at index 0, where the chain places it; then, past
+        // it, with its /Filter in object 12, listing object 13 at index 0 and 7 at index 1, written as a stream. The file
+        // writes 12 directly as two filters, past MaxFilterChainLength 1, then again in object stream 8 as none. Row 9 lies
+        // outside the file, so the validation rebuilds the index, which serves the second definition of 6. Its expansion
+        // decodes that definition while 12 still reads as written directly: the guard stops it, and the rebuild keeps the
+        // chain's entry of 7, at index 0. Read with 12 from 8, the definition lists 13 there, and 7 at index 1, where a load
+        // takes it, written as a stream: 7 is lost, and the finding names the index the stream lists it at (#349).
+        var file = new HandWrittenFile(version: "1.5");
+        var rows = new Dictionary<int, (int Type, long Field2, int Field3)>
+        {
+            [1] = (1, file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"), 0),
+            [2] = (1, file.Object(2, "<< /Type /Pages /Kids [4 0 R] /Count 1 >>"), 0),
+            [4] = (1, file.Object(4, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 10 10] >>"), 0),
+            [7] = (2, 6, 0),
+            [9] = (1, 999_999, 0),
+        };
+        file.Object(12, "[/ASCIIHexDecode /ASCIIHexDecode]");
+        rows[6] = (1, file.ObjectStream(6, [(7, "(seven)")]), 0);
+        file.ObjectStream(8, [(12, "[]")]);
+        var served = file.ObjectStream(6, [(13, "(thirteen)"), (7, StreamMember)], "/Filter 12 0 R ");
+        file.CrossReferenceStream(20, 21, rows, "/Root 1 0 R");
+        using var document = PdfDocument.Open(file.Bytes, new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxFilterChainLength = 1 } });
+
+        var report = new PdfValidator().Validate(document);
+
+        document.WasRepaired.Should().BeTrue();
+        report.Findings.Where(finding => finding.Location.Object?.Number == 7)
+            .Select(finding => (finding.RuleId, finding.Severity, finding.Message, finding.Remedy)).Should().Equal((
+                PdfValidationRuleIds.XRefEntryBroken,
+                PdfValidationSeverity.Error,
+                Invariant($"The entry of object 7 places it at index 0 of object stream 6; the index the reader rebuilt places it at index 0 of object stream 6, at offset {served}, whose header lists it at index 1, where it is written as a stream, which an object stream cannot hold."),
+                "Write the object outside the object stream, and index it there."));
+        document.GetObject(new PdfObjectId(7)).Should().BeSameAs(PdfNull.Instance);
+    }
+
     /// <summary>
     /// Writes a file whose chain places each of <paramref name="placed"/> at its index of object stream 6, which holds
     /// <paramref name="members"/>, and object 9 outside the file, so that the validation rebuilds the index; the file writes
