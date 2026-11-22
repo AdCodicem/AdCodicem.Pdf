@@ -391,12 +391,14 @@ public class GuardCutValueTests
     [Theory]
     [InlineData("/Filter [/ASCIIHexDecode 20 0 R]", "/ASCIIHexDecode")]
     [InlineData("/Filter [/ASCIIHexDecode /Crypt /ASCIIHexDecode] /DecodeParms [null << /Name 20 0 R >> null]", "/Identity")]
+    [InlineData("/Filter [/ASCIIHexDecode /Crypt /ASCIIHexDecode] /DecodeParms << /Name 20 0 R >>", "/Identity")]
     public void A_content_stream_whose_filter_a_guard_cut_comes_back_as_the_filters_before_it_decode_it(string entries, string twenty)
     {
         // The page's content stream decodes through /ASCIIHexDecode, then object 20, which MaxObjectLength cuts before
         // "/ASCIIHexDecode": its data comes back as the first filter decodes it, as past MaxFilterChainLength, and nothing is
         // said but the guard — once, it decoded as if the chain ended there, in silence (#263). So it does where object 20
-        // is the /Name of the crypt filter a /Crypt step names before the second /ASCIIHexDecode (#162).
+        // is the /Name of the crypt filter a /Crypt step names before the second /ASCIIHexDecode (#162), in the step's
+        // element of a /DecodeParms array or in the one dictionary every step shares.
         var file = new HandWrittenFile();
         var rows = new Dictionary<int, long>
         {
