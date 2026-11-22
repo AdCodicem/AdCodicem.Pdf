@@ -50,7 +50,7 @@ internal readonly record struct BrokenObjectStream(
         BrokenObjectStreamKind.Unreadable =>
             Invariant($"Object stream {Stream}, where the index places {CountText.Objects(Objects)}, cannot be read: it {Fault}."),
         _ when Objects == 1 =>
-            Invariant($"Object stream {Stream}, where the index places 1 object, can be read only in part: it {Fault}; it is not listed before that, and lost."),
+            Invariant($"Object stream {Stream}, where the index places 1 object, can be read only in part: it {Fault}; the object is not listed before that, and lost."),
         _ =>
             Invariant($"Object stream {Stream}, where the index places {CountText.Objects(Objects)}, can be read only in part: it {Fault}; {Detail} of them {(Detail == 1 ? "is" : "are")} not listed before that, and lost."),
     };

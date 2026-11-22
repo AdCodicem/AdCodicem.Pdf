@@ -736,17 +736,17 @@ internal sealed class CrossReferenceProbe
             if (At < 0)
             {
                 return _entry.Kind == XRefEntryKind.Compressed
-                    ? Invariant($": it places object {Stream} itself at index {_entry.IndexInObjectStream} of object stream {_entry.ObjectStreamNumber}")
-                    : Invariant($": it holds no object {Stream}");
+                    ? Invariant($", and places object {Stream} itself at index {_entry.IndexInObjectStream} of object stream {_entry.ObjectStreamNumber}")
+                    : Invariant($", and holds no object {Stream}");
             }
 
             return Result switch
             {
-                ObjectStreamHeaderResult.NotFound => Invariant($": it places object stream {Stream} at offset {At}, where no object {Stream} lies"),
-                ObjectStreamHeaderResult.NotAnObjectStream => Invariant($": the object {Stream} it serves, at offset {At}, {_fault}"),
+                ObjectStreamHeaderResult.NotFound => Invariant($", and places object stream {Stream} at offset {At}, where no object {Stream} lies"),
+                ObjectStreamHeaderResult.NotAnObjectStream => Invariant($": the object {Stream} the rebuilt index serves, at offset {At}, {_fault}"),
                 _ when FirstIndexOf(_numbers, number, ref _places) >= 0 => string.Empty,
-                ObjectStreamHeaderResult.Unreadable => Invariant($": the definition of object stream {Stream} it serves, at offset {At}, {Unread()}"),
-                _ => Invariant($": the definition of object stream {Stream} it serves, at offset {At}, does not list it"),
+                ObjectStreamHeaderResult.Unreadable => Invariant($": the definition of object stream {Stream} the rebuilt index serves, at offset {At}, {Unread()}"),
+                _ => Invariant($": the definition of object stream {Stream} the rebuilt index serves, at offset {At}, does not list it"),
             };
         }
 
