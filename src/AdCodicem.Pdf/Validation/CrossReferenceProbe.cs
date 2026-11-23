@@ -58,6 +58,12 @@ internal sealed class CrossReferenceProbe
     /// <summary>The first of those entries, in the order of object numbers.</summary>
     private ProbeFinding? _firstUndecided;
 
+    /// <summary>
+    /// The object streams whose objects an object stream's header reads as null, as the walk of the streams' dependencies
+    /// reads them (<see cref="ObjectStreamDependencies.NotAlike"/>); null to read them as the reader serves them.
+    /// </summary>
+    private IReadOnlySet<int>? _holdersReadAsNull;
+
     private CrossReferenceProbe(long allowance, int room)
     {
         _reading = new HeaderReading(allowance);
@@ -111,10 +117,18 @@ internal sealed class CrossReferenceProbe
     /// Probes the index the document's chain gave, writing of each kind of fault the first <paramref name="room"/> it finds
     /// and counting the rest: the room the report has when the probe is made, or every fault outside a validation.
     /// </summary>
-    public static CrossReferenceProbe Run(PdfDocument document, int room = int.MaxValue)
+    /// <param name="document">The document.</param>
+    /// <param name="room">How many findings of each kind are written.</param>
+    /// <param name="holdersReadAsNull">
+    /// The object streams whose objects the headers of object streams read as null, wherever their values lead: those the
+    /// walk of the streams' dependencies finds not to decode alike (<see cref="ObjectStreamDependencies.NotAlike"/>), so that
+    /// what the probe finds of a stream and its entries does not depend on what was read before (#313); null to read them
+    /// as the reader serves them.
+    /// </param>
+    public static CrossReferenceProbe Run(PdfDocument document, int room = int.MaxValue, IReadOnlySet<int>? holdersReadAsNull = null)
     {
         var reader = document.Reader;
-        var probe = new CrossReferenceProbe(reader.HeaderReadingAllowance, room);
+        var probe = new CrossReferenceProbe(reader.HeaderReadingAllowance, room) { _holdersReadAsNull = holdersReadAsNull };
 
         if (reader.ChainIndex is not { } index)
         {
@@ -401,7 +415,7 @@ internal sealed class CrossReferenceProbe
 
         foreach (var (servedStream, members) in byServed)
         {
-            var definition = new ServedDefinition(reader, servedStream);
+            var definition = new ServedDefinition(reader, servedStream, _holdersReadAsNull);
 
             if (definition.Result == ObjectStreamHeaderResult.CutByLimit)
             {
@@ -503,7 +517,7 @@ internal sealed class CrossReferenceProbe
         var position = reader.IsInFile(offset) ? offset : -1;
         var at = position >= 0 ? PdfValidationLocation.OfObject(id, position) : PdfValidationLocation.OfObject(id);
 
-        var result = reader.ReadObjectStreamHeader(stream, entry, out var numbers, out var fault, out var streamMembers, out var headerAt);
+        var result = reader.ReadObjectStreamHeader(stream, entry, out var numbers, out var fault, out var streamMembers, out var headerAt, _holdersReadAsNull);
         long[]? places = null;
 
         switch (result)
@@ -652,7 +666,7 @@ internal sealed class CrossReferenceProbe
         foreach (var (stream, objects) in packed)
         {
             if (!reader.Index.TryGet(stream, out var entry) || entry.Kind != XRefEntryKind.Regular ||
-                reader.ReadObjectStreamHeader(stream, entry, out var numbers, out _, out var streamMembers, out _) is
+                reader.ReadObjectStreamHeader(stream, entry, out var numbers, out _, out var streamMembers, out _, _holdersReadAsNull) is
                     ObjectStreamHeaderResult.NotFound or ObjectStreamHeaderResult.CutByLimit or ObjectStreamHeaderResult.NotAnObjectStream)
             {
                 continue;
@@ -715,8 +729,11 @@ internal sealed class CrossReferenceProbe
         /// <summary>The lookup of the header by object number, built the first time one is needed.</summary>
         private long[]? _places;
 
-        /// <summary>Reads what the index the reader rebuilt serves under object stream <paramref name="stream"/>.</summary>
-        public ServedDefinition(PdfFileReader reader, int stream)
+        /// <summary>
+        /// Reads what the index the reader rebuilt serves under object stream <paramref name="stream"/>, the objects of
+        /// <paramref name="holdersReadAsNull"/> read as null.
+        /// </summary>
+        public ServedDefinition(PdfFileReader reader, int stream, IReadOnlySet<int>? holdersReadAsNull)
         {
             Stream = stream;
 
@@ -725,7 +742,7 @@ internal sealed class CrossReferenceProbe
                 return;
             }
 
-            Result = reader.ReadObjectStreamHeader(stream, _entry, out _numbers, out _fault, out _streamMembers, out _);
+            Result = reader.ReadObjectStreamHeader(stream, _entry, out _numbers, out _fault, out _streamMembers, out _, holdersReadAsNull);
             At = reader.PositionOf(_entry);
         }
 

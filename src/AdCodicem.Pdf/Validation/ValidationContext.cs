@@ -74,7 +74,7 @@ internal sealed class ValidationContext
     /// <summary>
     /// Gets what probing every entry of the file's own index found, worked out the first time a rule asks for it.
     /// </summary>
-    public CrossReferenceProbe Probe => _probe ??= CrossReferenceProbe.Run(Document, Room);
+    public CrossReferenceProbe Probe => _probe ??= CrossReferenceProbe.Run(Document, Room, ObjectStreams.NotAlike);
 
     /// <summary>Gets the walk of the document's page tree, made the first time a rule asks for it.</summary>
     public PageTreeWalk PageTree => _pageTree ??= PageTreeWalk.Run(Document, Room);

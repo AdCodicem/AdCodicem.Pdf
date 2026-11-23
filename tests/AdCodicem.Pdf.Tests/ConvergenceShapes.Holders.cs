@@ -92,6 +92,17 @@ internal static partial class ConvergenceShapes
             PdfReaderLimits.Default,
             [[new(100)], [new(6)], [new(170)], [new(100), new(6)], [new(6), new(100)]]);
 
+        // #313: 6 and 21 need each other, and 21 holds 7, which 19's header takes a value from: the probe reads 7 as null, as
+        // the walk does, whichever of 6 and 21 the reader decoded first.
+        foreach (var key in (string[])["/Type", "/Filter", "/DecodeParms", "an entry"])
+        {
+            yield return new(
+                $"an object stream whose header takes a value from a loop of object streams, {key}",
+                ValueHeldOnALoop(key),
+                PdfReaderLimits.Default,
+                [[new(7)], [new(20)], [new(21)], [new(19)], [new(10)], [new(31)], [new(6)], [new(31), new(7)], [new(21), new(6)], [new(6), new(21)]]);
+        }
+
         // #163: at 62 streams, a read of 100 has the reader parse 9 at its deepest load, its /Length cut there; what that
         // parse gave serves no read from a shallower place.
         yield return new(
@@ -564,6 +575,56 @@ internal static partial class ConvergenceShapes
         }
 
         return StreamsAndMembers(objects, members);
+    }
+
+    /// <summary>
+    /// The files of #313: object stream 6 holds 31, and takes its <c>/Length</c> from 20; 21 holds 7 and 20, <c>0</c>, and
+    /// takes its <c>/First</c> from 31, so that 6 and 21 need each other; 19 holds 10 and 11, and takes from 7 its
+    /// <c>/Type</c>, its <c>/Filter</c> or its <c>/DecodeParms</c> — with <paramref name="key"/> "an entry", a hex filter
+    /// over data whose undecoded bytes list no member.
+    /// </summary>
+    internal static byte[] ValueHeldOnALoop(string key)
+    {
+        var (seven, nineteenEntries, nineteenData) = key switch
+        {
+            "/Type" => ("/ObjStm", "/Type 7 0 R", Encoding.Latin1.GetBytes(ObjectStreamData((10, "(ten)"), (11, "(eleven)")).Data)),
+            "/Filter" => ("/FlateDecode", "/Type /ObjStm /Filter 7 0 R", HostileInputTests.Compress(Encoding.Latin1.GetBytes(ObjectStreamData((10, "(ten)"), (11, "(eleven)")).Data))),
+            "/DecodeParms" => ("<< /Predictor 12 /Columns 4 >>", "/Type /ObjStm /Filter /FlateDecode /DecodeParms 7 0 R", HostileInputTests.Compress(PredictedUp(Encoding.Latin1.GetBytes(ObjectStreamData((10, "(ten)"), (11, "(eleven)")).Data), 4))),
+            _ => ("/ASCIIHexDecode", "/Type /ObjStm /Filter 7 0 R", Encoding.Latin1.GetBytes(Convert.ToHexString(Encoding.Latin1.GetBytes(ObjectStreamData((10, "(ten)"), (11, "(eleven)")).Data)) + ">")),
+        };
+        var first = ObjectStreamData((10, "(ten)"), (11, "(eleven)")).First;
+        var (loop, loopFirst) = ObjectStreamData((7, seven), (20, "0"));
+        var objects = new SortedDictionary<int, (string Entries, byte[]? Data)>
+        {
+            [6] = ("/Type /ObjStm /N 1 /First 5 /Length 20 0 R", "31 0 9 "u8.ToArray()),
+            [21] = ("/Type /ObjStm /N 2 /First 31 0 R /Length @L", Encoding.Latin1.GetBytes(loop)),
+            [19] = (string.Create(CultureInfo.InvariantCulture, $"{nineteenEntries} /N 2 /First {first} /Length @L"), nineteenData),
+        };
+        objects[6] = (objects[6].Entries, Encoding.Latin1.GetBytes(string.Create(CultureInfo.InvariantCulture, $"31 0 {loopFirst} ")));
+        return StreamsAndMembers(objects, new() { [31] = (6, 0), [7] = (21, 0), [20] = (21, 1), [10] = (19, 0), [11] = (19, 1) });
+
+        // Writes data as a PNG predictor of /Columns columns writes it with Up, one row a filter byte and the differences.
+        static byte[] PredictedUp(byte[] data, int columns)
+        {
+            var rows = (data.Length + columns - 1) / columns;
+            var padded = new byte[rows * columns];
+            data.CopyTo(padded, 0);
+            Array.Fill(padded, (byte)' ', data.Length, padded.Length - data.Length);
+            var output = new byte[rows * (columns + 1)];
+
+            for (var row = 0; row < rows; row++)
+            {
+                output[row * (columns + 1)] = 2;
+
+                for (var column = 0; column < columns; column++)
+                {
+                    var above = row == 0 ? 0 : padded[((row - 1) * columns) + column];
+                    output[(row * (columns + 1)) + 1 + column] = (byte)(padded[(row * columns) + column] - above);
+                }
+            }
+
+            return output;
+        }
     }
 
     /// <summary>

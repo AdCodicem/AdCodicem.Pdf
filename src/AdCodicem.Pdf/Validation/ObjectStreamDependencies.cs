@@ -255,6 +255,14 @@ internal sealed class ObjectStreamDependencies
     public HashSet<int> CircularStreams { get; } = new(SeededComparer.Instance);
 
     /// <summary>
+    /// Gets the object streams an object of which the walk met and found not to decode alike in every read order where a
+    /// first read decodes them, the circular ones among them: an object one of them holds is what what was read before
+    /// makes it, and the walk reads it as null. The validator's probe reads the objects they hold as null too, where it
+    /// reads an object stream's header (#313).
+    /// </summary>
+    public HashSet<int> NotAlike { get; } = new(SeededComparer.Instance);
+
+    /// <summary>
     /// Gets the object streams whose <c>/N</c>, <c>/First</c> or <c>/Length</c> is a real number with no fractional part,
     /// where ISO 32000-1 asks for an integer (Tables 5 and 16): one finding per stream and key, in the order of their
     /// numbers. The reader reads each as the integer it equals (#215).
@@ -300,7 +308,8 @@ internal sealed class ObjectStreamDependencies
         // The streams that need an object stream, in the order of their numbers, each with where the chain's row places it
         // and the first object of each stream it needs, another or itself.
         var needing = new List<Needing>();
-        var walk = new Walk(document, new Memo(document, reader.CacheCapacity, reader.FilterChainBound), judges: true);
+        var memo = new Memo(document, reader.CacheCapacity, reader.FilterChainBound);
+        var walk = new Walk(document, memo, judges: true);
 
         foreach (var stream in streams)
         {
@@ -337,6 +346,7 @@ internal sealed class ObjectStreamDependencies
         }
 
         result.MostWaiting = walk.MostWaiting;
+        memo.CollectNotAlike(result.NotAlike, reader.MaxNestedLoads);
 
         // A stream that needs none leads nowhere, and lies on no loop: with none needing one, none is circular.
         if (needing.Count == 0)
@@ -365,6 +375,7 @@ internal sealed class ObjectStreamDependencies
             // Every circular stream is known, for the rule that passes over them; its finding is written while there is
             // room (#168).
             result.CircularStreams.Add(stream);
+            result.NotAlike.Add(stream);
 
             if (result.Circular.Take())
             {
@@ -2129,6 +2140,26 @@ internal sealed class ObjectStreamDependencies
         /// <summary>Notes the standing of object stream <paramref name="stream"/>.</summary>
         public void NoteStanding(int stream, Standing standing) =>
             (_standings ??= new(SeededComparer.Instance))[stream] = standing;
+
+        /// <summary>
+        /// Adds to <paramref name="notAlike"/> each stream whose standing is known and does not decode alike where a first read
+        /// of one of its objects decodes it, within <paramref name="maxLoads"/>, the reader's nesting.
+        /// </summary>
+        public void CollectNotAlike(HashSet<int> notAlike, int maxLoads)
+        {
+            if (_standings is null)
+            {
+                return;
+            }
+
+            foreach (var (stream, standing) in _standings)
+            {
+                if (!standing.IsAlikeAt(0, maxLoads))
+                {
+                    notAlike.Add(stream);
+                }
+            }
+        }
 
         /// <summary>Gives the link a walk found of stream <paramref name="stream"/>, if one is kept.</summary>
         public bool TryGetLink(int stream, out Link link) => _links.TryGetValue(stream, out link);
