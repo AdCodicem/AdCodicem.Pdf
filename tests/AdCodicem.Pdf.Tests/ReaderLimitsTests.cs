@@ -3483,14 +3483,15 @@ public class ReaderLimitsTests
     [InlineData("loads")]
     public void What_the_thread_s_stack_cut_is_read_whole_once_a_thread_has_room_for_it(string nesting)
     {
-        // Six hundred arrays, one inside the other, under a bound of a thousand; or object 3 in the first of 40 object streams,
-        // each taking its /Filter from an object the next holds. Read on a small stack, the stack cuts them, reported under the
-        // guard's code — the parser's, or the loads' —; read again on a large one, they read whole: what the stack cut was not
-        // kept.
+        // Six hundred arrays, one inside the other, under a bound of a thousand; or object 3 in the first of 60 object streams,
+        // each taking its /Filter from an object the next holds, under a bound of a thousand loads. Read on a small stack, the
+        // stack cuts them, reported under the guard's code — the parser's, or the loads' —; read again on a large one, they
+        // read whole: what the stack cut was not kept.
         var file = nesting == "containers"
             ? new TestPdfBuilder().WithObject(1, Catalog).WithObject(2, Pages).WithObject(3, new string('[', 600) + new string(']', 600)).BuildClassic(rootNumber: 1)
-            : HostileInputTests.ObjectStreamsTakingTheirFilterFromTheNext(40);
-        using var document = PdfDocument.Open(file, new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxNestingDepth = 1000 } });
+            : HostileInputTests.ObjectStreamsTakingTheirFilterFromTheNext(60);
+        var limits = PdfReaderLimits.Default with { MaxNestingDepth = 1000, MaxNestedLoads = 1000 };
+        using var document = PdfDocument.Open(file, new PdfReaderOptions { Limits = limits });
 
         var small = Stacks.Run(Stacks.Small, () => Read(document, nesting));
         var large = Stacks.Run(Stacks.Large, () => Read(document, nesting));
