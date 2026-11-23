@@ -507,6 +507,31 @@ public class ParserTests
         static int Depth(PdfObject value) => value is PdfArray array ? 1 + (array.Count > 0 ? Depth(array[0]) : 0) : 0;
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Each_container_past_the_bound_is_cut_and_the_first_cut_kept_for_the_reader_when_no_report_is_kept(bool full)
+    {
+        // Two arrays nested past a bound of four in one object, parsed with no diagnostics, or with diagnostics that keep
+        // none: both read as null, each cut counted where diagnostics count it, and the first cut's message is the one the
+        // reader throws under ThrowOnLimit.
+        var diagnostics = full ? new PdfDiagnostics { Capacity = 0 } : null;
+        var bytes = Encoding.ASCII.GetBytes("[[[[[[0]]]]] [[[[[1]]]]]]");
+        var parser = new PdfObjectParser(bytes, diagnostics: diagnostics, maxDepth: 4);
+
+        var parsed = parser.ParseObject().Should().BeOfType<PdfArray>().Which;
+
+        parsed.Should().HaveCount(2);
+        parsed.Select(Depth).Should().Equal(3, 3);
+
+        parser.NestingCut.Should().BeTrue();
+        parser.NestingCutAt.Should().Be(4);
+        parser.NestingCutMessage.Should().StartWith("An array nested inside 4 others reads as null");
+        diagnostics?.SuppressedCount.Should().Be(2);
+
+        static int Depth(PdfObject value) => value is PdfArray array ? 1 + (array.Count > 0 ? Depth(array[0]) : 0) : 0;
+    }
+
     [Fact]
     public void Refuses_to_follow_nesting_deeper_than_its_limit()
     {

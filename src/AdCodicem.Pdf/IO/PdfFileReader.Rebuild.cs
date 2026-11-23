@@ -926,14 +926,13 @@ internal sealed partial class PdfFileReader
         _decodingsThrown?.Remove(number);
         _objectStreamsHiddenByGuard.Remove(number);
         _cache.Remove(number);
-        _cutCache?.RemoveAll(number);
+        _cutCache.RemoveAll(number);
 
         // No load is in flight as the expansion replaces a definition, and what the last read noted of its cut reads was let
-        // go as it ended: noted still, it would read the replaced object as null once loaded again from the same place.
-        if (_cutKeptForRead is not null)
-        {
-            KeepLastCutReads();
-        }
+        // go as it ended: let go of here all the same, so that a later caller cannot leave a note that reads the replaced
+        // object as null once loaded again from the same place.
+        _cutKeptForRead = null;
+        _cutKeysForRead = null;
 
         // The expansion runs after the rebuild let go of what the walk kept (ForgetWhatWasRead), so both sets hold nothing
         // here today: the number is removed all the same, so that a later caller cannot leave it stale in them.

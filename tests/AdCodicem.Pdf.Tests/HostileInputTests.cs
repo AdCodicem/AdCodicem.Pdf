@@ -1881,6 +1881,25 @@ public class HostileInputTests
     }
 
     [Fact]
+    public void Under_ThrowOnLimit_an_object_stream_whose_decoding_the_nesting_cut_throws_again_for_another_of_its_objects_without_decoding()
+    {
+        // Object stream 100, the first of 70 each taking its /Filter from an object the next holds, holds objects 200 and 3.
+        // Read first, 3 has 100 decoded a load deep, and the loads' nesting cuts the decoding, which throws; 200, read next
+        // from as deep, has 100's decoding throw again, kept for that depth, with nothing read again (#163, #397).
+        var file = ObjectStreamsTakingTheirFilterFromTheNext(70);
+        using var source = new OffsetCountingSource(file);
+        using var document = PdfDocument.Open(source, new PdfReaderOptions { ThrowOnLimit = true }, ownsSource: false);
+
+        var three = () => document.GetObject(new PdfObjectId(3));
+        three.Should().Throw<PdfLimitExceededException>().Which.Code.Should().Be(PdfDiagnosticCodes.LimitNestedLoads);
+        var read = source.BytesRead;
+        var other = () => document.GetObject(new PdfObjectId(200));
+
+        other.Should().Throw<PdfLimitExceededException>().Which.Code.Should().Be(PdfDiagnosticCodes.LimitNestedLoads);
+        source.BytesRead.Should().Be(read, "the decoding's exception is thrown again without decoding");
+    }
+
+    [Fact]
     public void A_read_past_the_loads_nesting_loads_each_object_once_a_depth_however_little_the_cache_keeps()
     {
         // Each of 20 object streams decodes to 8 MB and asks for the next from two depths in turn, past a bound of 12 loads:

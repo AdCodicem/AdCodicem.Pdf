@@ -1795,34 +1795,26 @@ internal sealed partial class PdfFileReader
         // Marked while it is decoded: an object it holds, asked for meanwhile, reads as null rather than
         // recursing, and is not kept as null.
         _objectStreamsLoading.Add(number);
-        var outerDeepest = _deepest;
+        var before = (Reentries: _reentries, Repaired: _repaired, WalkCuts: _walkCuts, NestingCuts: _nestingCuts, TransientCuts: _transientCuts, Deepest: _deepest);
         _deepest = depthBase;
-        var nestingCuts = _nestingCuts;
-        var transientCuts = _transientCuts;
+
+        // What a guard's exception is kept as, by the filter below, where it sets out: the stream's own load, its decoding,
+        // or neither.
+        var keeping = DecodingStep.None;
 
         try
         {
-            var reentries = _reentries;
-            var repaired = _repaired;
-            var walkCuts = _walkCuts;
             PdfObject loaded;
 
             // The stream's own load reaching a guard — its dictionary, its /Length — is kept as its decoding's is, so that each
             // object asked of it throws again without loading it again (#397).
-            try
-            {
-                loaded = GetObject(new PdfObjectId(number));
-            }
-            catch (PdfLimitExceededException exception) when (reentries == _reentries && repaired == _repaired && walkCuts == _walkCuts && !_expandingObjectStreams && !IsKeptByNoTable(exception) &&
-                KeepDecodingThrow(number, exception, DepthSince(depthBase, nestingCuts, transientCuts)))
-            {
-                // Never reached: the exception is kept in the filter, which catches nothing (KeepThrown's remarks).
-                throw;
-            }
+            keeping = DecodingStep.Load;
+            loaded = GetObject(new PdfObjectId(number));
+            keeping = DecodingStep.None;
 
             // The stream itself could not be loaded from here — too deep, or needed by what is being loaded —: that
             // says nothing of it, and it is read again when one of its objects is asked for again.
-            if (loaded is PdfNull && reentries != _reentries)
+            if (loaded is PdfNull && before.Reentries != _reentries)
             {
                 notYet = true;
                 return null;
@@ -1837,19 +1829,9 @@ internal sealed partial class PdfFileReader
             // of its stream, before or inside its dictionary, is hidden by that guard.
             if (loaded is PdfStream stream)
             {
-                try
-                {
-                    contents = ObjectStreamContents.TryCreate(this, number, stream, _diagnostics, _objectStreamReports, out hidden);
-                }
-                // Kept as the stream's contents are, not as a load's exception is: a null on the way for an object the stream
-                // holds, or one being loaded, is read as null again by every decoding of the stream, which would throw alike
-                // (KeepDecodingThrow's remarks).
-                catch (PdfLimitExceededException exception) when (repaired == _repaired && walkCuts == _walkCuts && !_expandingObjectStreams && !IsKeptByNoTable(exception) &&
-                    KeepDecodingThrow(number, exception, DepthSince(depthBase, nestingCuts, transientCuts)))
-                {
-                    // Never reached, as above.
-                    throw;
-                }
+                keeping = DecodingStep.Decoding;
+                contents = ObjectStreamContents.TryCreate(this, number, stream, _diagnostics, _objectStreamReports, out hidden);
+                keeping = DecodingStep.None;
             }
             else
             {
@@ -1859,7 +1841,7 @@ internal sealed partial class PdfFileReader
             // What was read through an object a walk's guard read as null is the walk's: the stream is hidden by no guard,
             // and is decoded again, whole, when asked for once the walk ends — not before, counted as decoded
             // (CountWalkDecoding).
-            var whole = walkCuts == _walkCuts;
+            var whole = before.WalkCuts == _walkCuts;
 
             if (contents is null && hidden && whole)
             {
@@ -1868,9 +1850,9 @@ internal sealed partial class PdfFileReader
 
             // A stream read through an index its own load had rebuilt is decoded again when next asked for, from the
             // rebuilt index's definition.
-            if (repaired == _repaired && whole)
+            if (before.Repaired == _repaired && whole)
             {
-                KeepObjectStream(number, contents, DepthSince(depthBase, nestingCuts, transientCuts));
+                KeepObjectStream(number, contents, DepthSince(depthBase, before.NestingCuts, before.TransientCuts));
             }
 
             CountWalkDecoding(number, contents, whole);
@@ -1886,16 +1868,61 @@ internal sealed partial class PdfFileReader
 
             return contents;
         }
-        catch (Exception) when (RaiseDeepest(outerDeepest))
+        catch (Exception exception) when (KeepDecodingThrown(number, exception, keeping, depthBase, before))
         {
-            // Never reached: the filter raises the deepest load as the exception sets out, and catches nothing.
+            // Never reached: the filter keeps the exception as it sets out, and catches nothing (KeepThrown's remarks).
             throw;
         }
         finally
         {
             _objectStreamsLoading.Remove(number);
-            _deepest = Math.Max(outerDeepest, _deepest);
+            _deepest = Math.Max(before.Deepest, _deepest);
         }
+    }
+
+    /// <summary>
+    /// Keeps, under <see cref="PdfReaderOptions.ThrowOnLimit"/>, what the decoding of object stream <paramref name="number"/>
+    /// from <paramref name="depthBase"/> loads in flight threw, as the filter of its frame, which runs as the exception sets
+    /// out (<see cref="KeepThrown"/>'s remarks): thrown by the stream's own load — its dictionary, its <c>/Length</c> — where
+    /// nothing on the way counted as a re-entry, or by its decoding, as its contents are kept, a null on the way for an object
+    /// the stream holds, or one being loaded, read as null again by every decoding of the stream, which would throw alike
+    /// (<see cref="KeepDecodingThrow"/>'s remarks); and raises the deepest load the read reached as the frame's
+    /// <see langword="finally"/> does. Catches nothing.
+    /// </summary>
+    /// <param name="number">The object stream.</param>
+    /// <param name="exception">What was thrown.</param>
+    /// <param name="step">Where it was thrown.</param>
+    /// <param name="depthBase">How many loads were in flight as the decoding started.</param>
+    /// <param name="before">The reader's counts, and the deepest load the read reached, as the decoding started.</param>
+    private bool KeepDecodingThrown(
+        int number,
+        Exception exception,
+        DecodingStep step,
+        int depthBase,
+        (int Reentries, bool Repaired, int WalkCuts, int NestingCuts, int TransientCuts, int Deepest) before)
+    {
+        if (step != DecodingStep.None && exception is PdfLimitExceededException limit &&
+            (step == DecodingStep.Decoding || before.Reentries == _reentries) &&
+            before.Repaired == _repaired && before.WalkCuts == _walkCuts && !_expandingObjectStreams && !IsKeptByNoTable(limit))
+        {
+            KeepDecodingThrow(number, limit, DepthSince(depthBase, before.NestingCuts, before.TransientCuts));
+        }
+
+        _deepest = Math.Max(before.Deepest, _deepest);
+        return false;
+    }
+
+    /// <summary>Where the decoding of an object stream is, for what a guard's exception it meets is kept as.</summary>
+    private enum DecodingStep
+    {
+        /// <summary>Neither loading the stream nor decoding it: what is thrown is kept by the load it comes from.</summary>
+        None,
+
+        /// <summary>Loading the stream itself.</summary>
+        Load,
+
+        /// <summary>Decoding the stream's header and data.</summary>
+        Decoding,
     }
 
     /// <summary>
@@ -2008,7 +2035,7 @@ internal sealed partial class PdfFileReader
         if (depth.CutBase >= 0)
         {
             var key = DepthKey(number, depth.CutBase);
-            (_cutCache ??= new(_cacheCapacity, byNumber: true)).Keep(key, (value, depth));
+            _cutCache.Keep(key, (value, depth));
 
             if ((_cutKeysForRead ??= new(SeededComparer.Instance)).Add(key))
             {
