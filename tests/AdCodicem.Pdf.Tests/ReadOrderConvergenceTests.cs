@@ -92,7 +92,9 @@ public class ReadOrderConvergenceTests
         // Gives the circular object streams' findings, once the objects of `reads` are read, or a validation made.
         static List<string> Circular(byte[] file, int capacity, PdfObjectId[]? reads)
         {
-            using var document = PdfDocument.Open(file, new PdfReaderOptions { ObjectCacheCapacity = capacity });
+            // The walks' guard on decoding again, whose cut depends on what the reader kept before a walk, as its documentation
+            // says, is lifted: the streams drawn here weigh a few bytes, and what a walk may decode again of them, with them.
+            using var document = PdfDocument.Open(file, new PdfReaderOptions { ObjectCacheCapacity = capacity, Limits = PdfReaderLimits.Default with { MaxObjectStreamDecodePasses = int.MaxValue } });
 
             if (reads is null)
             {
