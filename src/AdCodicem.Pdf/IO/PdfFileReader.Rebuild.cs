@@ -516,7 +516,7 @@ internal sealed partial class PdfFileReader
             // The white space and comments after the keyword are skipped once, for the parse to start past them and for
             // a note to name where its value starts.
             var parser = new PdfObjectParser(
-                window.Memory, position, this, _pending, endsData: !cut, fileEdge: this, readsStreams: false, maxDepth: MaxNestingDepth);
+                window.Memory, position, this, _pending, endsData: !cut, fileEdge: this, readsStreams: false, maxDepth: MaxNestingDepth, guard: _guard);
             var keyword = position - TrailerKeyword.Length;
             var valueStart = ValueStart(window.Memory.Span);
             parser.Position = valueStart;
@@ -576,7 +576,7 @@ internal sealed partial class PdfFileReader
     {
         using var window = _source.GetWindow(position, XRefWindow);
         var cut = window.Length == XRefWindow && position + window.Length < _source.Length;
-        var parser = new PdfObjectParser(window.Memory, position, this, null, endsData: !cut, fileEdge: this, readsStreams: false, maxDepth: MaxNestingDepth);
+        var parser = new PdfObjectParser(window.Memory, position, this, null, endsData: !cut, fileEdge: this, readsStreams: false, maxDepth: MaxNestingDepth, guard: _guard);
 
         if (!parser.TryReadIndirectObject(out _, out var value) || value is not PdfDictionary dictionary)
         {

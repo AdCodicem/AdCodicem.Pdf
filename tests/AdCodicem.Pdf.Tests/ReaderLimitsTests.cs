@@ -3506,6 +3506,79 @@ public class ReaderLimitsTests
             : string.Create(CultureInfo.InvariantCulture, $"{document.GetObject(new PdfObjectId(3))}");
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void A_trailer_value_nested_past_the_bound_reads_as_null_and_the_chain_goes_on(bool crossesWindow)
+    {
+        // An update's trailer gives a value nested 129 arrays deep beside its /Prev; with the update's table long enough,
+        // the trailer runs past the table's window and is read on its own. The cut container reads as null, and what the
+        // trailer gives past it, its /Prev to the older revision holding the catalog and object 3 included, is read.
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long> { [1] = file.Object(1, Catalog), [2] = file.Object(2, Pages), [3] = file.Object(3, "(three)") };
+        var first = file.Table(4, rows, "/Size 4 /Root 1 0 R");
+        var five = file.Object(5, "(five)");
+        var xref = file.Position;
+        var count = crossesWindow ? (65536 - 120) / 20 : 1;
+        var table = new StringBuilder("xref\n0 1\n0000000000 65535 f \n");
+        table.Append(CultureInfo.InvariantCulture, $"5 {count}\n{five:D10} 00000 n \n");
+
+        for (var row = 1; row < count; row++)
+        {
+            table.Append("0000000000 00000 f \n");
+        }
+
+        table.Append(CultureInfo.InvariantCulture, $"trailer\n<< /Size {5 + count} /Root 1 0 R /Prev {first} /Deep {new string('[', 129)}{new string(']', 129)} >>\nstartxref\n{xref}\n%%EOF\n");
+        file.Raw(table.ToString());
+        using var document = PdfDocument.Open(file.Bytes);
+
+        string.Create(CultureInfo.InvariantCulture, $"{document.GetObject(new PdfObjectId(3))}").Should().Be("\"three\"");
+        document.Diagnostics.Select(entry => entry.Code).Should().Equal(PdfDiagnosticCodes.LimitNestingDepth);
+    }
+
+    [Theory]
+    [InlineData("a stale row's object")]
+    [InlineData("a member written as a stream")]
+    public void Under_ThrowOnLimit_a_nesting_cut_in_a_parse_the_reader_drops_throws_nothing(string shape)
+    {
+        // Row 3 names object 4, 23 bytes past object 3, nested 200 arrays deep and named by nothing; or member 3 of an object
+        // stream is written as a stream whose dictionary nests 129 arrays deep. The reader drops either parse: nothing is
+        // reached, and nothing thrown, as in a document opened not to throw.
+        byte[] bytes;
+
+        if (shape == "a stale row's object")
+        {
+            var file = new HandWrittenFile();
+            var rows = new Dictionary<int, long> { [1] = file.Object(1, Catalog), [2] = file.Object(2, Pages) };
+            file.Object(3, "(three)");
+            rows[3] = rows[4] = file.Object(4, new string('[', 200) + new string(']', 200));
+            file.Table(5, rows, "/Size 5 /Root 1 0 R");
+            bytes = file.Bytes;
+        }
+        else
+        {
+            var file = new HandWrittenFile(version: "1.5");
+            var rows = new Dictionary<int, (int Type, long Field2, int Field3)>
+            {
+                [1] = (1, file.Object(1, Catalog), 0),
+                [2] = (1, file.Object(2, Pages), 0),
+                [10] = (1, file.ObjectStream(10, [(3, "<< /A " + new string('[', 129) + new string(']', 129) + " /Length 3 >> stream\nabc\nendstream"), (4, "(four)")]), 0),
+                [3] = (2, 10, 0),
+                [4] = (2, 10, 1),
+            };
+            file.CrossReferenceStream(20, 21, rows, "/Root 1 0 R");
+            bytes = file.Bytes;
+        }
+
+        string Read(bool throwOnLimit)
+        {
+            using var document = PdfDocument.Open(bytes, new PdfReaderOptions { ThrowOnLimit = throwOnLimit });
+            return string.Create(CultureInfo.InvariantCulture, $"{document.GetObject(new PdfObjectId(3))}");
+        }
+
+        Read(throwOnLimit: true).Should().Be(Read(throwOnLimit: false));
+    }
+
     [Fact]
     public void Under_ThrowOnLimit_every_load_an_exception_passes_through_keeps_it()
     {

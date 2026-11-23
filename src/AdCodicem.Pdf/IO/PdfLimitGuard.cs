@@ -57,23 +57,50 @@ internal sealed class PdfLimitGuard(PdfReaderLimits limits, bool throwOnLimit, P
     /// <exception cref="PdfLimitExceededException">The document was opened with <see cref="PdfReaderOptions.ThrowOnLimit"/>.</exception>
     public void Reach(PdfLimit limit, PdfDiagnostics? diagnostics, string what, long position)
     {
+        var message = Describe(limit, what);
+        ThrowIfAsked(limit, message, position);
+        (diagnostics ?? documentDiagnostics)?.ReachLimit(Code(limit), message, position);
+    }
+
+    /// <summary>
+    /// Gives the message that <paramref name="limit"/>'s report makes: <paramref name="what"/> followed by the property that
+    /// lifts it, or by its standing at the most the reader can hold.
+    /// </summary>
+    public string Describe(PdfLimit limit, string what)
+    {
         var name = Name(limit);
-        var bound = Bound(limit);
         var ceiling = limit is PdfLimit.XRefSectionCount or PdfLimit.IndexEntries or PdfLimit.FilterChain or PdfLimit.RebuildReads
             or PdfLimit.ObjectStreamDecodes or PdfLimit.NestingDepth or PdfLimit.NestedLoads
             ? int.MaxValue
             : Array.MaxLength;
-        var message = bound >= ceiling
+        return Bound(limit) >= ceiling
             ? $"{what} PdfReaderLimits.{name} is already at the most the reader can hold."
             : $"{what} Raise PdfReaderLimits.{name} to read past it.";
+    }
 
+    /// <summary>
+    /// Gives the message that the report of the thread's stack, cutting what <paramref name="what"/> says before a nesting
+    /// guard did, makes: the remedy is a thread with a larger stack.
+    /// </summary>
+    public static string DescribeStack(string what) =>
+        $"{what} The thread's stack had no room for more; read the document from a thread with a larger stack.";
+
+    /// <summary>
+    /// Throws, where the document asked for it, the exception of <paramref name="limit"/> reached with
+    /// <paramref name="message"/>, a message <see cref="Describe"/> or <see cref="DescribeStack"/> made; does nothing
+    /// otherwise.
+    /// </summary>
+    /// <exception cref="PdfLimitExceededException">The document was opened with <see cref="PdfReaderOptions.ThrowOnLimit"/>.</exception>
+    public void ThrowIfAsked(PdfLimit limit, string message, long position)
+    {
         if (throwOnLimit)
         {
-            throw new PdfLimitExceededException(Code(limit), name, bound, message, position);
+            throw new PdfLimitExceededException(Code(limit), Name(limit), Bound(limit), message, position);
         }
-
-        (diagnostics ?? documentDiagnostics)?.ReachLimit(Code(limit), message, position);
     }
+
+    /// <summary>Gives the code <paramref name="limit"/> reports under.</summary>
+    public static string CodeOf(PdfLimit limit) => Code(limit);
 
     /// <summary>
     /// Reports that the thread's stack stopped a nesting <paramref name="limit"/> bounds before the bound did: a warning under
@@ -83,13 +110,8 @@ internal sealed class PdfLimitGuard(PdfReaderLimits limits, bool throwOnLimit, P
     /// <exception cref="PdfLimitExceededException">The document was opened with <see cref="PdfReaderOptions.ThrowOnLimit"/>.</exception>
     public void ReachStack(PdfLimit limit, PdfDiagnostics? diagnostics, string what, long position)
     {
-        var message = $"{what} The thread's stack had no room for more; read the document from a thread with a larger stack.";
-
-        if (throwOnLimit)
-        {
-            throw new PdfLimitExceededException(Code(limit), Name(limit), Bound(limit), message, position);
-        }
-
+        var message = DescribeStack(what);
+        ThrowIfAsked(limit, message, position);
         (diagnostics ?? documentDiagnostics)?.ReachLimit(Code(limit), message, position);
     }
 

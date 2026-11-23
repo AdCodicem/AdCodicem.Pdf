@@ -338,22 +338,22 @@ internal sealed partial class PdfFileReader : IPdfObjectSource, IPdfStreamDataPr
     private int MaxNestingDepth => _guard.Bound(PdfLimit.NestingDepth);
 
     /// <summary>
-    /// Counts a parse a container's nesting cut — the bound, which makes object <paramref name="number"/> one a guard cut, or
-    /// the thread's stack, whose cut the reads in progress keep for themselves alone —; nothing for one it did not cut.
+    /// Counts a parse the reader keeps that a container's nesting cut — the bound, which makes object <paramref name="number"/>
+    /// one a guard cut, or the thread's stack, whose cut the reads in progress keep for themselves alone —, and throws where
+    /// the document asks; nothing for one it did not cut. The parse reported the cut already. It is no cut of a window: what
+    /// the parse read past the cut container is the file's, a trailer's keys and its /Prev among them.
     /// </summary>
-    /// <param name="cut">Whether the parse's nesting cut a container.</param>
-    /// <param name="byStack">Whether the thread's stack cut it.</param>
+    /// <param name="nesting">What the parse said of its nesting: whether it cut a container, the stack cut it, and the report.</param>
     /// <param name="number">The object the parse read, noted as cut; 0 for one it notes nothing of.</param>
-    private void CountNestingCut(bool cut, bool byStack, int number)
+    /// <exception cref="PdfLimitExceededException">The document was opened to throw on a guard.</exception>
+    private void CountNestingCut(NestingCut nesting, int number)
     {
-        if (!cut)
+        if (!nesting.Cut)
         {
             return;
         }
 
-        _guardsReached++;
-
-        if (byStack)
+        if (nesting.ByStack)
         {
             _transientCuts++;
         }
@@ -361,6 +361,19 @@ internal sealed partial class PdfFileReader : IPdfObjectSource, IPdfStreamDataPr
         {
             _cutAtLimit.Add(number);
         }
+
+        _guard.ThrowIfAsked(PdfLimit.NestingDepth, nesting.Message!, nesting.At);
+    }
+
+    /// <summary>What a parse said of its nesting (<see cref="PdfObjectParser.NestingCut"/>), for the reader to count once it keeps it.</summary>
+    /// <param name="Cut">Whether a container's nesting was cut.</param>
+    /// <param name="ByStack">Whether the thread's stack cut it.</param>
+    /// <param name="Message">The report of the first container cut.</param>
+    /// <param name="At">Where that report is placed.</param>
+    private readonly record struct NestingCut(bool Cut, bool ByStack, string? Message, long At)
+    {
+        /// <summary>Gives what <paramref name="parser"/> said of its nesting.</summary>
+        public static NestingCut Of(in PdfObjectParser parser) => new(parser.NestingCut, parser.CutByStack, parser.NestingCutMessage, parser.NestingCutAt);
     }
 
     /// <summary>
@@ -2018,8 +2031,6 @@ internal sealed partial class PdfFileReader : IPdfObjectSource, IPdfStreamDataPr
     /// </summary>
     private void ReachNestedLoads(int number, bool byStack)
     {
-        _guardsReached++;
-
         if (_limitsReached.Contains(NestedLoadsReported))
         {
             return;

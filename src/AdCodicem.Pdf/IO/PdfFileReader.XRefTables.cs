@@ -667,6 +667,7 @@ internal sealed partial class PdfFileReader
                 // Cut short where the window holds the end of the file, the dictionary runs to it unclosed.
                 var malformed = parser.IsTruncated || SyntaxFaultSince(_pending, mark);
                 KeepPending(mark);
+                CountNestingCut(NestingCut.Of(parser), 0);
                 return JudgeTrailer(parsed, malformed, section);
             }
         }
