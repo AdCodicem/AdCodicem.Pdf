@@ -328,8 +328,9 @@ public sealed record PdfReaderLimits
     /// The bound holds within one object, whether the file writes it directly or an object stream holds it; an object
     /// loaded while another is parsed starts again at zero, and is bounded by <see cref="MaxNestedLoads"/>. The container
     /// past it reads as null — an array's element, a dictionary's key dropped —, what lies inside it unread, and the object
-    /// is one a guard cut. Each level costs the parser under a kilobyte of the thread's stack, which is asked before each
-    /// one: on a thread that has no room left, the container reads as null too, reported under the same code with the
+    /// is one a guard cut. Each level costs the parser some 0.7 KB of the thread's stack for an array and 1.3 KB for a
+    /// dictionary, which is asked before each one: on a thread that has no room left — a thread of 256 KB holds fewer
+    /// dictionaries than the default bound —, the container reads as null too, reported under the same code with the
     /// stack as the reason, however high the bound, and nothing read through it is kept past the read in progress.
     /// Reaching either reports <see cref="Diagnostics.PdfDiagnosticCodes.LimitNestingDepth"/>, once for each place.
     /// </remarks>

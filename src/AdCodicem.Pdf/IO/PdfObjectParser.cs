@@ -139,8 +139,9 @@ internal ref struct PdfObjectParser
     private readonly int _maxDepth;
 
     /// <summary>
-    /// The guards a container nested past <see cref="_maxDepth"/> reaches, reported, or thrown, as the document asks; null
-    /// for a parse whose reports are a probe's, which records its cut and reaches no guard.
+    /// The document's guards, which word the report of a container nested past <see cref="_maxDepth"/>; null for the
+    /// default guards. The parser throws nothing: the reader throws, where the document asks, for a parse it keeps
+    /// (<see cref="NestingCutMessage"/>).
     /// </summary>
     private readonly PdfLimitGuard? _guard;
 
@@ -149,6 +150,11 @@ internal ref struct PdfObjectParser
 
     /// <summary>Whether the thread's stack, rather than <see cref="_maxDepth"/>, cut a container.</summary>
     private bool _cutByStack;
+
+    /// <summary>The report of the first container cut, and where it is placed; null while none was.</summary>
+    private string? _nestingCutMessage;
+
+    private long _nestingCutAt;
 
     /// <summary>Where the header of the last indirect object <see cref="TryReadIndirectObject"/> read starts, in the buffer.</summary>
     private int _headerStart;
@@ -179,10 +185,7 @@ internal ref struct PdfObjectParser
     /// so, <see cref="StreamStop"/> where, and <see cref="StreamStopDepth"/> inside how many containers.
     /// </param>
     /// <param name="maxDepth">How deeply containers may nest, <see cref="Documents.PdfReaderLimits.MaxNestingDepth"/>.</param>
-    /// <param name="guard">
-    /// The document's guards, which a container nested past <paramref name="maxDepth"/> reaches; null for a parse whose
-    /// reports are a probe's, which reports the cut to <paramref name="diagnostics"/> and throws nothing.
-    /// </param>
+    /// <param name="guard">The document's guards, which word the report of a container nested past it; null for the defaults.</param>
     public PdfObjectParser(
         ReadOnlyMemory<byte> memory,
         long baseOffset = 0,
@@ -229,7 +232,7 @@ internal ref struct PdfObjectParser
     /// the data is in memory, so a member a window ends exactly with reads whole, as under a larger window.
     /// </param>
     /// <param name="maxDepth">How deeply containers may nest, <see cref="Documents.PdfReaderLimits.MaxNestingDepth"/>.</param>
-    /// <param name="guard">The document's guards, which a container nested past it reaches; null for a probe's parse.</param>
+    /// <param name="guard">The document's guards, which word the report of a container nested past it; null for the defaults.</param>
     public static PdfObjectParser ForObjectStreamMember(
         ReadOnlyMemory<byte> data,
         int streamNumber,
@@ -264,6 +267,15 @@ internal ref struct PdfObjectParser
 
     /// <summary>Gets a value indicating whether the thread's stack, rather than the bound, cut a container.</summary>
     public readonly bool CutByStack => _cutByStack;
+
+    /// <summary>
+    /// Gets the report of the first container a nesting cut, for the reader to throw where the document asks and it keeps
+    /// the parse; null while none was.
+    /// </summary>
+    public readonly string? NestingCutMessage => _nestingCutMessage;
+
+    /// <summary>Gets where the report of the first container a nesting cut is placed.</summary>
+    public readonly long NestingCutAt => _nestingCutAt;
 
     /// <summary>
     /// Gets where, in the buffer, the value of the last indirect object <see cref="TryReadIndirectObject"/> read ends, where
@@ -1895,36 +1907,36 @@ internal ref struct PdfObjectParser
     private readonly bool KeepsReports => _member is { } member ? !member.Diagnostics.IsFull : _diagnostics is { IsFull: false };
 
     /// <summary>
-    /// Reaches <see cref="Documents.PdfReaderLimits.MaxNestingDepth"/>, or the stack before it, for the container
+    /// Reports that <see cref="Documents.PdfReaderLimits.MaxNestingDepth"/>, or the stack before it, cut the container
     /// <paramref name="what"/> names, opened at <paramref name="openedAt"/> inside <paramref name="depth"/> others, which
-    /// reads as null: reported through the document's guards, which throw where it asked them to, or, for a probe's parse,
-    /// to the diagnostics alone.
+    /// reads as null. Nothing is thrown here: a parse a reader drops reaches no guard, and one it keeps throws there, where
+    /// the document asks (<see cref="NestingCutMessage"/>). A report the diagnostics drop, being full, is counted with a
+    /// message not formatted for it: a file can cut a container every few bytes.
     /// </summary>
     private void ReachNestingDepth(string what, int depth, int openedAt)
     {
         var stack = depth < _maxDepth;
         _nestingCut = true;
         _cutByStack |= stack;
-        var message = string.Create(
-            CultureInfo.InvariantCulture,
-            $"{what} nested inside {depth} others reads as null, and what it holds is not read.");
-        var (placed, position) = _member is { } member
-            ? (member.Place(message, openedAt), member.DataStart)
-            : (message, _baseOffset + openedAt);
         var diagnostics = _member?.Diagnostics ?? _diagnostics;
+        var position = _member is { } placedIn ? placedIn.DataStart : _baseOffset + openedAt;
 
-        if (_guard is null)
+        if (_nestingCutMessage is not null && diagnostics is null or { IsFull: true })
         {
-            diagnostics?.ReachLimit(PdfDiagnosticCodes.LimitNestingDepth, placed, position);
+            diagnostics?.ReachLimit(PdfDiagnosticCodes.LimitNestingDepth, what, position);
+            return;
         }
-        else if (stack)
+
+        var cut = string.Create(CultureInfo.InvariantCulture, $"{what} nested inside {depth} others reads as null, and what it holds is not read.");
+        var placed = _member is { } member ? member.Place(cut, openedAt) : cut;
+        var message = stack ? PdfLimitGuard.DescribeStack(placed) : (_guard ?? PdfLimitGuard.Default).Describe(PdfLimit.NestingDepth, placed);
+
+        if (_nestingCutMessage is null)
         {
-            _guard.ReachStack(PdfLimit.NestingDepth, diagnostics, placed, position);
+            (_nestingCutMessage, _nestingCutAt) = (message, position);
         }
-        else
-        {
-            _guard.Reach(PdfLimit.NestingDepth, diagnostics, placed, position);
-        }
+
+        diagnostics?.ReachLimit(PdfDiagnosticCodes.LimitNestingDepth, message, position);
     }
 
     private readonly void Report(string code, string message, long position)

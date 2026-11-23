@@ -392,6 +392,7 @@ internal sealed partial class PdfFileReader
                     }
 
                     KeepPending(mark, syntaxOnly: true);
+                    CountNestingCut(NestingCut.Of(parser), 0);
 
                     // A stream the guard cut ran into the window's edge, not the file's end: what the parser found of it
                     // is the limit's, and was dropped with what it reported.
@@ -404,7 +405,7 @@ internal sealed partial class PdfFileReader
 
                 syntaxFault |= SyntaxFaultSince(_pending, mark);
                 KeepPending(mark);
-                CountNestingCut(parser.NestingCut, parser.CutByStack, number != AnyObject && Records(recordedAt, offset + parser.HeaderStart) ? foundNumber : 0);
+                CountNestingCut(NestingCut.Of(parser), number != AnyObject && Records(recordedAt, offset + parser.HeaderStart) ? foundNumber : 0);
 
                 // A reading of a definition the reader no longer serves notes nothing of the number (#255).
                 var noted = Records(recordedAt, offset + parser.HeaderStart);
@@ -760,7 +761,7 @@ internal sealed partial class PdfFileReader
                 using var window = _source.GetWindow(offset, windowSize);
                 var cut = window.Length == windowSize && offset + window.Length < _source.Length;
                 // The file says where a token the window's edge reaches ends, as it does to a load; no stream's data is read.
-                var parser = new PdfObjectParser(window.Memory, offset, this, _pending, endsData: !cut, fileEdge: this, maxDepth: MaxNestingDepth);
+                var parser = new PdfObjectParser(window.Memory, offset, this, _pending, endsData: !cut, fileEdge: this, maxDepth: MaxNestingDepth, guard: _guard);
                 var read = parser.TryReadIndirectObject(out var found, out var parsed);
 
                 // A header read whole that names another object, or another generation, is not this object, however far
@@ -1345,7 +1346,7 @@ internal sealed partial class PdfFileReader
                 }
 
                 var parser = PdfObjectParser.ForObjectStreamMember(
-                    data[..window.End], number, dataStart, header.Numbers[index], this, _pending, window.EndsData, window.EndsAtNextMember, maxDepth: MaxNestingDepth);
+                    data[..window.End], number, dataStart, header.Numbers[index], this, _pending, window.EndsData, window.EndsAtNextMember, maxDepth: MaxNestingDepth, guard: _guard);
                 parser.Position = window.Start;
                 _ = parser.ParseObject();
 
@@ -1736,7 +1737,7 @@ internal sealed partial class PdfFileReader
                 KeepPending(mark);
             }
 
-            CountNestingCut(nesting.Cut, nesting.ByStack, id.Number);
+            CountNestingCut(nesting, id.Number);
             return value;
         }
         finally
@@ -2315,7 +2316,7 @@ internal sealed partial class PdfFileReader
             out bool cut,
             out long pastLength,
             out long streamAt,
-            out (bool Cut, bool ByStack) nesting)
+            out NestingCut nesting)
         {
             cut = false;
             pastLength = -1;
@@ -2359,7 +2360,7 @@ internal sealed partial class PdfFileReader
                 _data[..window.End], _number, _position, expectedNumber, source, parsing, window.EndsData, window.EndsAtNextMember, this, maxDepth, guard);
             parser.Position = window.Start;
             var value = parser.ParseObject();
-            nesting = (parser.NestingCut, parser.CutByStack);
+            nesting = NestingCut.Of(parser);
 
             // A member written as a stream is no value (#161).
             if (parser.StoppedAtStream)
