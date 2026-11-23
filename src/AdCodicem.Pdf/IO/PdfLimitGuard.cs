@@ -99,9 +99,6 @@ internal sealed class PdfLimitGuard(PdfReaderLimits limits, bool throwOnLimit, P
         }
     }
 
-    /// <summary>Gives the code <paramref name="limit"/> reports under.</summary>
-    public static string CodeOf(PdfLimit limit) => Code(limit);
-
     /// <summary>
     /// Reports that the thread's stack stopped a nesting <paramref name="limit"/> bounds before the bound did: a warning under
     /// the guard's code, whose message is <paramref name="what"/> followed by the remedy, a thread with a larger stack, or the

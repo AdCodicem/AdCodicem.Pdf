@@ -598,7 +598,7 @@ internal sealed partial class PdfFileReader : IPdfObjectSource, IPdfStreamDataPr
     /// a decoding the loads' nesting or a transient cut reached, by the base it was made from (<see cref="DepthKey"/>, #163),
     /// weighing what <see cref="WeightOfObjectStream"/> says, which <see cref="ObjectStreamBudget"/> bounds.
     /// </summary>
-    private readonly BoundedStore<(ObjectStreamContents? Contents, ReadDepth Depth)> _objectStreams = new(ObjectStreamBudget, WeightOfObjectStream, byNumber: true);
+    private readonly BoundedStore<(ObjectStreamContents? Contents, ReadDepth Depth)> _objectStreams = new(ObjectStreamBudget, WeightOfObjectStream);
 
     /// <summary>
     /// What reads the loads' nesting or a transient cut reached gave of each object, by number and by the base each was made
@@ -607,11 +607,11 @@ internal sealed partial class PdfFileReader : IPdfObjectSource, IPdfStreamDataPr
     /// objects; once the read in progress ends, one for each object, the last it kept (<see cref="_cutKeptForRead"/>), so
     /// that an object read from many depths in turn, over many reads, does not weigh as many times as the depths.
     /// </summary>
-    private BoundedStore<(PdfObject Value, ReadDepth Depth)>? _cutCache;
+    private readonly BoundedStore<(PdfObject Value, ReadDepth Depth)> _cutCache;
 
     /// <summary>
     /// What the read in progress kept in <see cref="_cutCache"/>, by key, in the order it kept them: a load from a base it kept
-    /// what it gave from before, the cache having let it go for want of room, reads as null (<see cref="ReachReadAgain"/>),
+    /// what it gave from before, the cache having let it go for want of room, reads as null, reported as a load past the nesting is,
     /// so that a read loads each object once a base at most, and its cost stays in proportion to its objects and its depths
     /// whatever the cache holds (#163). Let go of as the read ends.
     /// </summary>
@@ -1167,6 +1167,7 @@ internal sealed partial class PdfFileReader : IPdfObjectSource, IPdfStreamDataPr
         _guard = guard;
         _pending = new PdfDiagnostics { Capacity = diagnostics.Capacity, KeptIn = diagnostics };
         _cacheCapacity = Math.Max(MinimumCacheCapacity, cacheCapacity);
+        _cutCache = new(_cacheCapacity);
         _ownsSource = ownsSource;
 
         Initialize();
@@ -1344,7 +1345,7 @@ internal sealed partial class PdfFileReader : IPdfObjectSource, IPdfStreamDataPr
         }
 
         if ((_cache.TryGetValue(id.Number, out var cached) && ServesAt(cached.Depth, depthBase)) ||
-            (_cutCache is not null && _cutCache.TryGet(DepthKey(id.Number, depthBase), out cached) && ServesAt(cached.Depth, depthBase)))
+            (_cutCache.TryGet(DepthKey(id.Number, depthBase), out cached) && ServesAt(cached.Depth, depthBase)))
         {
             // What the walk alone keeps was read through its guard's cut, and so is what is read through it now, as it would
             // be were the object loaded again.
@@ -1420,7 +1421,7 @@ internal sealed partial class PdfFileReader : IPdfObjectSource, IPdfStreamDataPr
             if (_cutKeysForRead?.Contains(DepthKey(id.Number, depthBase)) == true)
             {
                 _transientCuts++;
-                ReachReadAgain(id.Number);
+                ReachNestedLoads(id.Number, byStack: false);
                 _reentries++;
                 return PdfNull.Instance;
             }
@@ -1774,7 +1775,7 @@ internal sealed partial class PdfFileReader : IPdfObjectSource, IPdfStreamDataPr
         foreach (var number in _walkLoads)
         {
             _cache.Remove(number);
-            _cutCache?.RemoveAll(number);
+            _cutCache.RemoveAll(number);
         }
 
         _walkLoads = null;
@@ -1829,17 +1830,6 @@ internal sealed partial class PdfFileReader : IPdfObjectSource, IPdfStreamDataPr
 
         _deepest = Math.Max(before.Deepest, _deepest);
         return depthBase == 0 && _unfinishedRebuild is RebuildAwaitingFinish;
-    }
-
-    /// <summary>
-    /// Raises the deepest load the read reached as the <see langword="finally"/> of a frame that set it aside does, as the filter
-    /// of that frame, for an exception on its way out (<see cref="KeepThrown"/>); catches nothing.
-    /// </summary>
-    /// <param name="outerDeepest">The deepest load the read reached as the frame started.</param>
-    private bool RaiseDeepest(int outerDeepest)
-    {
-        _deepest = Math.Max(outerDeepest, _deepest);
-        return false;
     }
 
     /// <summary>
@@ -1915,15 +1905,8 @@ internal sealed partial class PdfFileReader : IPdfObjectSource, IPdfStreamDataPr
     {
         foreach (var key in _keptForRead!)
         {
-            if (_cutCache is not null && _cutCache.TryGet(key, out var kept) && kept.Depth.Transient)
-            {
-                _cutCache.Remove(key);
-            }
-
-            if (_objectStreams.TryGet(key, out var stream) && stream.Depth.Transient)
-            {
-                _objectStreams.Remove(key);
-            }
+            _cutCache.RemoveIf(key, static kept => kept.Depth.Transient);
+            _objectStreams.RemoveIf(key, static kept => kept.Depth.Transient);
 
             _loadsThrown?.RemoveTransient(key);
             _decodingsThrown?.RemoveTransient(key);
@@ -1945,7 +1928,7 @@ internal sealed partial class PdfFileReader : IPdfObjectSource, IPdfStreamDataPr
         {
             if (done.Add(NumberOf(kept[index])))
             {
-                _cutCache?.RemoveAllBut(NumberOf(kept[index]), kept[index]);
+                _cutCache.RemoveAllBut(NumberOf(kept[index]), kept[index]);
             }
         }
 
@@ -1956,7 +1939,7 @@ internal sealed partial class PdfFileReader : IPdfObjectSource, IPdfStreamDataPr
     /// <summary>Lets go of what cut reads kept, and of what the read in progress noted of them (<see cref="_cutCache"/>).</summary>
     private void ForgetCutReads()
     {
-        _cutCache = null;
+        _cutCache.Clear();
         _cutKeptForRead = null;
         _cutKeysForRead = null;
     }
@@ -1993,12 +1976,10 @@ internal sealed partial class PdfFileReader : IPdfObjectSource, IPdfStreamDataPr
     /// (<see cref="_nullWhileDecoding"/>, let go with the kept exceptions), and would throw alike. A null the loads' nesting
     /// gave (<see cref="MaxNestedLoads"/>) is not recorded there, and the exception is kept through it, as contents are.
     /// </remarks>
-    /// <returns>False, always: called from the filter of the frame that decodes the stream, it catches nothing.</returns>
-    private bool KeepDecodingThrow(int number, PdfLimitExceededException exception, ReadDepth depth)
+    private void KeepDecodingThrow(int number, PdfLimitExceededException exception, ReadDepth depth)
     {
         (_decodingsThrown ??= new(_cacheCapacity)).Keep(number, exception, depth);
         KeepForRead(number, depth);
-        return false;
     }
 
     /// <summary>
@@ -2157,25 +2138,6 @@ internal sealed partial class PdfFileReader : IPdfObjectSource, IPdfStreamDataPr
             _guard.Reach(PdfLimit.NestedLoads, _diagnostics, what, ObjectPosition(number));
         }
 
-        _limitsReached.Add(NestedLoadsReported);
-    }
-
-    /// <summary>
-    /// Reports, under <see cref="PdfLimit.NestedLoads"/>, object <paramref name="number"/>, which the read in progress would
-    /// load again from as many loads in flight past the nesting, the cache having let go of what it gave there
-    /// (<see cref="_cutKeptForRead"/>); once a document, as the nesting's cut is, and throws where the document asks.
-    /// </summary>
-    private void ReachReadAgain(int number)
-    {
-        if (_limitsReached.Contains(NestedLoadsReported))
-        {
-            return;
-        }
-
-        var what = string.Create(
-            CultureInfo.InvariantCulture,
-            $"Object {number} is loaded again while {CountText.Objects(_loading.Count - 1)} are being loaded, within a read whose loads the nesting cut, the cache having let go of what it gave there for want of room; it reads as null there, and whole from a shallower place.");
-        _guard.Reach(PdfLimit.NestedLoads, _diagnostics, what, ObjectPosition(number));
         _limitsReached.Add(NestedLoadsReported);
     }
 
@@ -2372,7 +2334,7 @@ internal sealed partial class PdfFileReader : IPdfObjectSource, IPdfStreamDataPr
     /// <param name="capacity">How many exceptions are kept at most.</param>
     private sealed class KeptThrows(int capacity)
     {
-        private readonly BoundedStore<(ExceptionDispatchInfo Thrown, ReadDepth Depth)> _thrown = new(capacity, byNumber: true);
+        private readonly BoundedStore<(ExceptionDispatchInfo Thrown, ReadDepth Depth)> _thrown = new(capacity);
 
         /// <summary>Gives the exception kept for object <paramref name="number"/> from base <paramref name="cutBase"/>, if one is.</summary>
         public bool TryGet(int number, int cutBase, [System.Diagnostics.CodeAnalysis.MaybeNullWhen(false)] out ExceptionDispatchInfo thrown, out ReadDepth depth)
@@ -2393,12 +2355,6 @@ internal sealed partial class PdfFileReader : IPdfObjectSource, IPdfStreamDataPr
         public void Remove(int number) => _thrown.RemoveAll(number);
 
         /// <summary>Lets go of the exception kept under <paramref name="key"/> when it is a transient read's.</summary>
-        public void RemoveTransient(long key)
-        {
-            if (_thrown.TryGet(key, out var kept) && kept.Depth.Transient)
-            {
-                _thrown.Remove(key);
-            }
-        }
+        public void RemoveTransient(long key) => _thrown.RemoveIf(key, static kept => kept.Depth.Transient);
     }
 }

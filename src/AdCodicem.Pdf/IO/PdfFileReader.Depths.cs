@@ -22,22 +22,21 @@ internal sealed partial class PdfFileReader
     /// An entry that weighs nothing is kept until it is let go of by name: it takes no room. The order the others are let go in
     /// names each key once, rebuilt whenever it names twice as many as are kept, so that entries let go and kept again, one at
     /// a time — what the reads the thread's stack cut kept, let go as each read ends —, do not grow it. The keys of each object
-    /// are listed apart, where they hold its number, so that letting go of all of an object's costs what it kept, not what
-    /// the store holds: a rebuild's expansion lets go of an object for each definition it replaces.
+    /// are listed apart, so that letting go of all of an object's costs what it kept, not what the store holds: a rebuild's
+    /// expansion lets go of an object for each definition it replaces.
     /// </remarks>
     /// <typeparam name="T">What is kept.</typeparam>
     /// <param name="budget">How much the entries weigh at most, the last kept whatever it weighs.</param>
     /// <param name="weigh">Gives what an entry weighs; null for one each.</param>
-    /// <param name="byNumber">Whether the keys hold object numbers to let go of all at once (<see cref="RemoveAll"/>).</param>
-    private sealed class BoundedStore<T>(long budget, Func<T, long>? weigh = null, bool byNumber = false)
+    private sealed class BoundedStore<T>(long budget, Func<T, long>? weigh = null)
     {
         private readonly Dictionary<long, T> _entries = new(SeededComparer.Instance);
 
         /// <summary>The keys in the order they were kept: it can name a key let go already, and the next is let go in its place.</summary>
         private readonly Queue<long> _order = new();
 
-        /// <summary>The keys kept of each object, by number, where <c>byNumber</c> says so.</summary>
-        private readonly Dictionary<int, List<long>>? _keys = byNumber ? new(SeededComparer.Instance) : null;
+        /// <summary>The keys kept of each object, by number.</summary>
+        private readonly Dictionary<int, List<long>> _keys = new(SeededComparer.Instance);
 
         /// <summary>Gets what the entries kept weigh.</summary>
         public long Weight { get; private set; }
@@ -55,7 +54,7 @@ internal sealed partial class PdfFileReader
             {
                 Weight -= WeightOf(previous);
             }
-            else if (_keys is not null)
+            else
             {
                 ref var listed = ref CollectionsMarshal.GetValueRefOrAddDefault(_keys, NumberOf(key), out _);
                 (listed ??= []).Add(key);
@@ -74,7 +73,7 @@ internal sealed partial class PdfFileReader
             {
                 if (oldest != key && _entries.TryGetValue(oldest, out var queued) && WeightOf(queued) > 0)
                 {
-                    Remove(oldest);
+                    Drop(oldest, queued);
                 }
             }
 
@@ -83,31 +82,19 @@ internal sealed partial class PdfFileReader
             Weight += weight;
         }
 
-        /// <summary>Lets go of what is kept under <paramref name="key"/>.</summary>
-        public void Remove(long key)
+        /// <summary>Lets go of what is kept under <paramref name="key"/> where <paramref name="match"/> holds of it.</summary>
+        public void RemoveIf(long key, Func<T, bool> match)
         {
-            if (!_entries.Remove(key, out var removed))
+            if (_entries.TryGetValue(key, out var value) && match(value))
             {
-                return;
-            }
-
-            Weight -= WeightOf(removed);
-
-            if (_keys is not null && _keys.TryGetValue(NumberOf(key), out var listed))
-            {
-                listed.Remove(key);
-
-                if (listed.Count == 0)
-                {
-                    _keys.Remove(NumberOf(key));
-                }
+                Drop(key, value);
             }
         }
 
-        /// <summary>Lets go of what is kept under every key of object <paramref name="number"/>, where <c>byNumber</c> says so.</summary>
+        /// <summary>Lets go of what is kept under every key of object <paramref name="number"/>.</summary>
         public void RemoveAll(int number)
         {
-            if (_keys is null || !_keys.Remove(number, out var listed))
+            if (!_keys.Remove(number, out var listed))
             {
                 return;
             }
@@ -121,13 +108,10 @@ internal sealed partial class PdfFileReader
             }
         }
 
-        /// <summary>
-        /// Lets go of what is kept under every key of object <paramref name="number"/> but <paramref name="key"/>, where
-        /// <c>byNumber</c> says so.
-        /// </summary>
+        /// <summary>Lets go of what is kept under every key of object <paramref name="number"/> but <paramref name="key"/>.</summary>
         public void RemoveAllBut(int number, long key)
         {
-            if (_keys is null || !_keys.TryGetValue(number, out var listed))
+            if (!_keys.TryGetValue(number, out var listed))
             {
                 return;
             }
@@ -154,12 +138,26 @@ internal sealed partial class PdfFileReader
             _entries.TrimExcess();
             _order.Clear();
             _order.TrimExcess();
-            _keys?.Clear();
-            _keys?.TrimExcess();
+            _keys.Clear();
+            _keys.TrimExcess();
             Weight = 0;
         }
 
         private long WeightOf(T value) => weigh is null ? 1 : weigh(value);
+
+        /// <summary>Lets go of <paramref name="value"/>, kept under <paramref name="key"/>.</summary>
+        private void Drop(long key, T value)
+        {
+            _entries.Remove(key);
+            Weight -= WeightOf(value);
+            var listed = _keys[NumberOf(key)];
+            listed.Remove(key);
+
+            if (listed.Count == 0)
+            {
+                _keys.Remove(NumberOf(key));
+            }
+        }
 
         /// <summary>
         /// Rebuilds the order the entries are let go in once it names twice as many keys as are kept, keeping the last time it
