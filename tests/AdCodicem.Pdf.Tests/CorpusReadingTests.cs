@@ -594,6 +594,8 @@ public class CorpusReadingTests
             Raises(raised.MaxFilterChainLength, limits.MaxFilterChainLength, PdfReaderLimits.Default.MaxFilterChainLength, file);
             Raises(raised.MaxRebuildReadPasses, limits.MaxRebuildReadPasses, PdfReaderLimits.Default.MaxRebuildReadPasses, file);
             Raises(raised.MaxObjectStreamDecodePasses, limits.MaxObjectStreamDecodePasses, PdfReaderLimits.Default.MaxObjectStreamDecodePasses, file);
+            Raises(raised.MaxNestingDepth, limits.MaxNestingDepth, PdfReaderLimits.Default.MaxNestingDepth, file);
+            Raises(raised.MaxNestedLoads, limits.MaxNestedLoads, PdfReaderLimits.Default.MaxNestedLoads, file);
             limits.Should().NotBe(PdfReaderLimits.Default, $"{file}: readerLimits raises at least one limit");
         }
 
@@ -664,6 +666,8 @@ public class CorpusReadingTests
             MaxFilterChainLength = raised.MaxFilterChainLength ?? limits.MaxFilterChainLength,
             MaxRebuildReadPasses = raised.MaxRebuildReadPasses ?? limits.MaxRebuildReadPasses,
             MaxObjectStreamDecodePasses = raised.MaxObjectStreamDecodePasses ?? limits.MaxObjectStreamDecodePasses,
+            MaxNestingDepth = raised.MaxNestingDepth ?? limits.MaxNestingDepth,
+            MaxNestedLoads = raised.MaxNestedLoads ?? limits.MaxNestedLoads,
         };
     }
 
@@ -680,7 +684,9 @@ public class CorpusReadingTests
             || (raised.MaxIndexEntries != defaults.MaxIndexEntries && message.Contains("PdfReaderLimits.MaxIndexEntries", StringComparison.Ordinal))
             || (raised.MaxFilterChainLength != defaults.MaxFilterChainLength && message.Contains("PdfReaderLimits.MaxFilterChainLength", StringComparison.Ordinal))
             || (raised.MaxRebuildReadPasses != defaults.MaxRebuildReadPasses && message.Contains("PdfReaderLimits.MaxRebuildReadPasses", StringComparison.Ordinal))
-            || (raised.MaxObjectStreamDecodePasses != defaults.MaxObjectStreamDecodePasses && message.Contains("PdfReaderLimits.MaxObjectStreamDecodePasses", StringComparison.Ordinal));
+            || (raised.MaxObjectStreamDecodePasses != defaults.MaxObjectStreamDecodePasses && message.Contains("PdfReaderLimits.MaxObjectStreamDecodePasses", StringComparison.Ordinal))
+            || (raised.MaxNestingDepth != defaults.MaxNestingDepth && message.Contains("PdfReaderLimits.MaxNestingDepth", StringComparison.Ordinal))
+            || (raised.MaxNestedLoads != defaults.MaxNestedLoads && message.Contains("PdfReaderLimits.MaxNestedLoads", StringComparison.Ordinal));
     }
 
     /// <summary>

@@ -585,7 +585,9 @@ public class PropertyTests
                     && Refused(() => PdfReaderLimits.Default with { MaxIndexEntries = value })
                     && Refused(() => PdfReaderLimits.Default with { MaxFilterChainLength = value })
                     && Refused(() => PdfReaderLimits.Default with { MaxRebuildReadPasses = value })
-                    && Refused(() => PdfReaderLimits.Default with { MaxObjectStreamDecodePasses = value });
+                    && Refused(() => PdfReaderLimits.Default with { MaxObjectStreamDecodePasses = value })
+                    && Refused(() => PdfReaderLimits.Default with { MaxNestingDepth = value })
+                    && Refused(() => PdfReaderLimits.Default with { MaxNestedLoads = value });
             }
 
             var length = Math.Min(value, Array.MaxLength);
@@ -600,12 +602,15 @@ public class PropertyTests
                 MaxFilterChainLength = value,
                 MaxRebuildReadPasses = value,
                 MaxObjectStreamDecodePasses = value,
+                MaxNestingDepth = value,
+                MaxNestedLoads = value,
             };
 
             return limits.MaxDecodedStreamLength == length && limits.MaxObjectLength == length
                 && limits.MaxXRefSectionLength == length && limits.MaxXRefSectionCount == value
                 && limits.MaxTrailerLength == length && limits.MaxIndexEntries == value && limits.MaxFilterChainLength == value
-                && limits.MaxRebuildReadPasses == value && limits.MaxObjectStreamDecodePasses == value;
+                && limits.MaxRebuildReadPasses == value && limits.MaxObjectStreamDecodePasses == value
+                && limits.MaxNestingDepth == value && limits.MaxNestedLoads == value;
         }));
 
         static bool Refused(Func<PdfReaderLimits> setting)

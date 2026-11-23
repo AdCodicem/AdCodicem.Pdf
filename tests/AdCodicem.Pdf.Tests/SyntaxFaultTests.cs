@@ -283,7 +283,7 @@ public class SyntaxFaultTests
 
         document.GetObject(new PdfObjectId(4)).Should().BeOfType<PdfArray>();
         document.GetObject(new PdfObjectId(5)).AsDictionary().Required().Should().HaveCount(2);
-        document.Diagnostics.Select(entry => entry.Code).Should().Equal(PdfDiagnosticCodes.SyntaxDepthExceeded, PdfDiagnosticCodes.SyntaxTruncatedObject);
+        document.Diagnostics.Select(entry => entry.Code).Should().Equal(PdfDiagnosticCodes.LimitNestingDepth, PdfDiagnosticCodes.SyntaxTruncatedObject);
         document.Reader.IsEndObjMissing(4, out _).Should().BeTrue();
     }
 

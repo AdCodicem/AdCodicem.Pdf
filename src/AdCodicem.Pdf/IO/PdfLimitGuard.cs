@@ -44,6 +44,8 @@ internal sealed class PdfLimitGuard(PdfReaderLimits limits, bool throwOnLimit, P
         PdfLimit.FilterChain => limits.MaxFilterChainLength,
         PdfLimit.RebuildReads => limits.MaxRebuildReadPasses,
         PdfLimit.ObjectStreamDecodes => limits.MaxObjectStreamDecodePasses,
+        PdfLimit.NestingDepth => limits.MaxNestingDepth,
+        PdfLimit.NestedLoads => limits.MaxNestedLoads,
         _ => limits.MaxTrailerLength,
     };
 
@@ -58,7 +60,7 @@ internal sealed class PdfLimitGuard(PdfReaderLimits limits, bool throwOnLimit, P
         var name = Name(limit);
         var bound = Bound(limit);
         var ceiling = limit is PdfLimit.XRefSectionCount or PdfLimit.IndexEntries or PdfLimit.FilterChain or PdfLimit.RebuildReads
-            or PdfLimit.ObjectStreamDecodes
+            or PdfLimit.ObjectStreamDecodes or PdfLimit.NestingDepth or PdfLimit.NestedLoads
             ? int.MaxValue
             : Array.MaxLength;
         var message = bound >= ceiling
@@ -68,6 +70,24 @@ internal sealed class PdfLimitGuard(PdfReaderLimits limits, bool throwOnLimit, P
         if (throwOnLimit)
         {
             throw new PdfLimitExceededException(Code(limit), name, bound, message, position);
+        }
+
+        (diagnostics ?? documentDiagnostics)?.ReachLimit(Code(limit), message, position);
+    }
+
+    /// <summary>
+    /// Reports that the thread's stack stopped a nesting <paramref name="limit"/> bounds before the bound did: a warning under
+    /// the guard's code, whose message is <paramref name="what"/> followed by the remedy, a thread with a larger stack, or the
+    /// exception the document asked for.
+    /// </summary>
+    /// <exception cref="PdfLimitExceededException">The document was opened with <see cref="PdfReaderOptions.ThrowOnLimit"/>.</exception>
+    public void ReachStack(PdfLimit limit, PdfDiagnostics? diagnostics, string what, long position)
+    {
+        var message = $"{what} The thread's stack had no room for more; read the document from a thread with a larger stack.";
+
+        if (throwOnLimit)
+        {
+            throw new PdfLimitExceededException(Code(limit), Name(limit), Bound(limit), message, position);
         }
 
         (diagnostics ?? documentDiagnostics)?.ReachLimit(Code(limit), message, position);
@@ -103,6 +123,8 @@ internal sealed class PdfLimitGuard(PdfReaderLimits limits, bool throwOnLimit, P
         PdfLimit.FilterChain => PdfDiagnosticCodes.LimitFilterChain,
         PdfLimit.RebuildReads => PdfDiagnosticCodes.LimitRebuildReads,
         PdfLimit.ObjectStreamDecodes => PdfDiagnosticCodes.LimitObjectStreamDecodes,
+        PdfLimit.NestingDepth => PdfDiagnosticCodes.LimitNestingDepth,
+        PdfLimit.NestedLoads => PdfDiagnosticCodes.LimitNestedLoads,
         _ => PdfDiagnosticCodes.LimitTrailer,
     };
 
@@ -117,6 +139,8 @@ internal sealed class PdfLimitGuard(PdfReaderLimits limits, bool throwOnLimit, P
         PdfLimit.FilterChain => nameof(PdfReaderLimits.MaxFilterChainLength),
         PdfLimit.RebuildReads => nameof(PdfReaderLimits.MaxRebuildReadPasses),
         PdfLimit.ObjectStreamDecodes => nameof(PdfReaderLimits.MaxObjectStreamDecodePasses),
+        PdfLimit.NestingDepth => nameof(PdfReaderLimits.MaxNestingDepth),
+        PdfLimit.NestedLoads => nameof(PdfReaderLimits.MaxNestedLoads),
         _ => nameof(PdfReaderLimits.MaxTrailerLength),
     };
 }

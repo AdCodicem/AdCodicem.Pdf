@@ -62,7 +62,7 @@ public class ReadOrderConvergenceTests
     }
 
     /// <summary>Gets the seeds the files of <see cref="ConvergenceShapes.GeneratedHolders"/> are drawn from.</summary>
-    public static TheoryData<int> Seeds => [.. Enumerable.Range(0, 64)];
+    public static TheoryData<int> Seeds => [.. Enumerable.Range(0, 64), 338, 1758, 3519, 3838, 4635, 12800];
 
     [Theory]
     [MemberData(nameof(Seeds))]
@@ -74,9 +74,8 @@ public class ReadOrderConvergenceTests
         // object stream 6 take its parameters from a holder's object, which leads to an object 6 holds, or not, as the
         // holder's decoding reads its predictor. The walk follows such an object only where its holder decodes alike in
         // every read order (#312): the circular streams are the same whatever was read before, and whatever the cache, which
-        // at 64 objects lets go of a stream a decoding met before meeting it again. Of the first 5,000 seeds, 5 gave two
-        // verdicts, each where the reader decoded a holder at its deepest load, which cut a value its decoding read, or not,
-        // as a read before had left the holder in its cache, and kept what the cut gave (#163): none of the 64 drawn here.
+        // at 64 objects lets go of a stream a decoding met before meeting it again. The last six seeds gave two verdicts
+        // before the reader kept what its nesting cut for reads as deep alone (#163).
         var file = ConvergenceShapes.GeneratedHolders(seed);
         var fresh = Circular(file, 8192, []);
 

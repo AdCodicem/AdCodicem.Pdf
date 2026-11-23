@@ -658,7 +658,7 @@ internal sealed partial class PdfFileReader
         try
         {
             // The table's window ends the data unless it is full and the file goes on, as the table's reading took it.
-            var parser = new PdfObjectParser(window, absolute, this, _pending, this, endsData: !windowFull);
+            var parser = new PdfObjectParser(window, absolute, this, _pending, this, endsData: !windowFull, maxDepth: MaxNestingDepth, guard: _guard);
             parser.Position = position;
             var parsed = parser.ParseObject();
 
@@ -720,12 +720,20 @@ internal sealed partial class PdfFileReader
             mark,
             (this, syntaxOnly),
             static (entry, state) => state.Item1.IsKept(entry, state.syntaxOnly),
-            static (code, state) => !state.syntaxOnly || code.StartsWith(SyntaxCodePrefix, StringComparison.Ordinal));
+            static (code, state) => !state.syntaxOnly || IsParseReport(code));
+
+    /// <summary>
+    /// Determines whether a report under <paramref name="code"/> is one an object's parse makes of what it holds, kept once
+    /// however often the object is parsed, and kept for an object a guard cut too: a fault of the syntax, or a container
+    /// nested past <see cref="PdfReaderLimits.MaxNestingDepth"/>.
+    /// </summary>
+    private static bool IsParseReport(string code) =>
+        code.StartsWith(SyntaxCodePrefix, StringComparison.Ordinal) || code == PdfDiagnosticCodes.LimitNestingDepth;
 
     /// <summary>Determines whether <paramref name="entry"/> goes into the document's diagnostics.</summary>
     private bool IsKept(PdfDiagnostic entry, bool syntaxOnly)
     {
-        if (!entry.Code.StartsWith(SyntaxCodePrefix, StringComparison.Ordinal))
+        if (!IsParseReport(entry.Code))
         {
             return !syntaxOnly;
         }

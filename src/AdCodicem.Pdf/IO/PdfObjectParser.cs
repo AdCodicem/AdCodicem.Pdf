@@ -15,16 +15,6 @@ namespace AdCodicem.Pdf.IO;
 /// </remarks>
 internal ref struct PdfObjectParser
 {
-    /// <summary>
-    /// Deepest nesting followed. Real documents rarely pass ten; a file that passes this is either broken
-    /// or trying to exhaust the stack.
-    /// </summary>
-    /// <remarks>
-    /// The bound holds within one object. An object loaded while another is parsed — an indirect <c>/Length</c> —
-    /// starts again at zero, so the stack is also asked, at each container, whether it has room for another level:
-    /// what the bound alone would allow, times the loads the reader nests, is more than a small thread holds.
-    /// </remarks>
-    private const int MaxDepth = 128;
 
     /// <summary>
     /// How many bytes after a stream's data the reader reads first to decide whether <c>endstream</c> follows it, and
@@ -36,6 +26,9 @@ internal ref struct PdfObjectParser
     /// far as they go (#174), and what follows them decides.
     /// </remarks>
     internal const int EndObjLookahead = 64;
+
+    /// <summary>The nesting a parser follows when it is given none, <see cref="Documents.PdfReaderLimits.MaxNestingDepth"/>'s default.</summary>
+    internal const int DefaultMaxDepth = 128;
 
     private static ReadOnlySpan<byte> EndStreamKeyword => StreamEnds.EndStreamKeyword;
 
@@ -142,6 +135,21 @@ internal ref struct PdfObjectParser
     /// </summary>
     private int _streamStopDepth = -1;
 
+    /// <summary>How deeply containers may nest, <see cref="Documents.PdfReaderLimits.MaxNestingDepth"/>.</summary>
+    private readonly int _maxDepth;
+
+    /// <summary>
+    /// The guards a container nested past <see cref="_maxDepth"/> reaches, reported, or thrown, as the document asks; null
+    /// for a parse whose reports are a probe's, which records its cut and reaches no guard.
+    /// </summary>
+    private readonly PdfLimitGuard? _guard;
+
+    /// <summary>Whether a container nested past <see cref="_maxDepth"/>, or past what the thread's stack holds, read as null.</summary>
+    private bool _nestingCut;
+
+    /// <summary>Whether the thread's stack, rather than <see cref="_maxDepth"/>, cut a container.</summary>
+    private bool _cutByStack;
+
     /// <summary>Where the header of the last indirect object <see cref="TryReadIndirectObject"/> read starts, in the buffer.</summary>
     private int _headerStart;
 
@@ -170,6 +178,11 @@ internal ref struct PdfObjectParser
     /// parse stops at its <c>stream</c> keyword, the dictionary given as it was read, and <see cref="StoppedAtStream"/> says
     /// so, <see cref="StreamStop"/> where, and <see cref="StreamStopDepth"/> inside how many containers.
     /// </param>
+    /// <param name="maxDepth">How deeply containers may nest, <see cref="Documents.PdfReaderLimits.MaxNestingDepth"/>.</param>
+    /// <param name="guard">
+    /// The document's guards, which a container nested past <paramref name="maxDepth"/> reaches; null for a parse whose
+    /// reports are a probe's, which reports the cut to <paramref name="diagnostics"/> and throws nothing.
+    /// </param>
     public PdfObjectParser(
         ReadOnlyMemory<byte> memory,
         long baseOffset = 0,
@@ -178,8 +191,12 @@ internal ref struct PdfObjectParser
         IPdfStreamDataProvider? streamData = null,
         bool endsData = true,
         IPdfFileEdge? fileEdge = null,
-        bool readsStreams = true)
+        bool readsStreams = true,
+        int maxDepth = DefaultMaxDepth,
+        PdfLimitGuard? guard = null)
     {
+        _maxDepth = maxDepth;
+        _guard = guard;
         _memory = memory;
         _lexer = new PdfLexer(memory.Span);
         _baseOffset = baseOffset;
@@ -211,6 +228,8 @@ internal ref struct PdfObjectParser
     /// Says what the decoded data holds past <paramref name="data"/>'s end, where a window's edge leaves a keyword undecided:
     /// the data is in memory, so a member a window ends exactly with reads whole, as under a larger window.
     /// </param>
+    /// <param name="maxDepth">How deeply containers may nest, <see cref="Documents.PdfReaderLimits.MaxNestingDepth"/>.</param>
+    /// <param name="guard">The document's guards, which a container nested past it reaches; null for a probe's parse.</param>
     public static PdfObjectParser ForObjectStreamMember(
         ReadOnlyMemory<byte> data,
         int streamNumber,
@@ -220,9 +239,12 @@ internal ref struct PdfObjectParser
         PdfDiagnostics diagnostics,
         bool endsData = true,
         bool endsAtNextMember = false,
-        IPdfFileEdge? dataEdge = null)
+        IPdfFileEdge? dataEdge = null,
+        int maxDepth = DefaultMaxDepth,
+        PdfLimitGuard? guard = null)
     {
-        var parser = new PdfObjectParser(data, 0, source, diagnostics, endsData: endsData, fileEdge: dataEdge, readsStreams: false);
+        var parser = new PdfObjectParser(
+            data, 0, source, diagnostics, endsData: endsData, fileEdge: dataEdge, readsStreams: false, maxDepth: maxDepth, guard: guard);
         parser._member = new ObjectStreamMember(streamNumber, dataStart, objectNumber, diagnostics, endsAtNextMember);
         return parser;
     }
@@ -233,6 +255,15 @@ internal ref struct PdfObjectParser
     /// whole input keeps what was read.
     /// </summary>
     public readonly bool IsTruncated => _truncated;
+
+    /// <summary>
+    /// Gets a value indicating whether a container nested past <see cref="Documents.PdfReaderLimits.MaxNestingDepth"/>, or
+    /// past what the thread's stack held, read as null: the value is one a guard cut.
+    /// </summary>
+    public readonly bool NestingCut => _nestingCut;
+
+    /// <summary>Gets a value indicating whether the thread's stack, rather than the bound, cut a container.</summary>
+    public readonly bool CutByStack => _cutByStack;
 
     /// <summary>
     /// Gets where, in the buffer, the value of the last indirect object <see cref="TryReadIndirectObject"/> read ends, where
@@ -577,9 +608,9 @@ internal ref struct PdfObjectParser
     /// <summary>Parses an array whose <c>[</c> starts at <paramref name="openedAt"/>, inside <paramref name="depth"/> containers.</summary>
     private PdfObject ParseArray(int depth, int openedAt)
     {
-        if (depth >= MaxDepth || !RuntimeHelpers.TryEnsureSufficientExecutionStack())
+        if (depth >= _maxDepth || !RuntimeHelpers.TryEnsureSufficientExecutionStack())
         {
-            Report(PdfDiagnosticCodes.SyntaxDepthExceeded, "Nesting is deeper than the reader will follow.", _lexer.Position);
+            ReachNestingDepth("An array", depth, openedAt);
             SkipContainer(PdfTokenKind.ArrayEnd, openedAt, depth);
             return PdfNull.Instance;
         }
@@ -659,9 +690,9 @@ internal ref struct PdfObjectParser
     /// </summary>
     private PdfObject ParseDictionaryOrStream(int depth, int openedAt)
     {
-        if (depth >= MaxDepth || !RuntimeHelpers.TryEnsureSufficientExecutionStack())
+        if (depth >= _maxDepth || !RuntimeHelpers.TryEnsureSufficientExecutionStack())
         {
-            Report(PdfDiagnosticCodes.SyntaxDepthExceeded, "Nesting is deeper than the reader will follow.", _lexer.Position);
+            ReachNestingDepth("A dictionary", depth, openedAt);
             SkipContainer(PdfTokenKind.DictionaryEnd, openedAt, depth);
             return PdfNull.Instance;
         }
@@ -1863,6 +1894,39 @@ internal ref struct PdfObjectParser
     /// <summary>Gets a value indicating whether a report made now is kept, rather than counted and dropped.</summary>
     private readonly bool KeepsReports => _member is { } member ? !member.Diagnostics.IsFull : _diagnostics is { IsFull: false };
 
+    /// <summary>
+    /// Reaches <see cref="Documents.PdfReaderLimits.MaxNestingDepth"/>, or the stack before it, for the container
+    /// <paramref name="what"/> names, opened at <paramref name="openedAt"/> inside <paramref name="depth"/> others, which
+    /// reads as null: reported through the document's guards, which throw where it asked them to, or, for a probe's parse,
+    /// to the diagnostics alone.
+    /// </summary>
+    private void ReachNestingDepth(string what, int depth, int openedAt)
+    {
+        var stack = depth < _maxDepth;
+        _nestingCut = true;
+        _cutByStack |= stack;
+        var message = string.Create(
+            CultureInfo.InvariantCulture,
+            $"{what} nested inside {depth} others reads as null, and what it holds is not read.");
+        var (placed, position) = _member is { } member
+            ? (member.Place(message, openedAt), member.DataStart)
+            : (message, _baseOffset + openedAt);
+        var diagnostics = _member?.Diagnostics ?? _diagnostics;
+
+        if (_guard is null)
+        {
+            diagnostics?.ReachLimit(PdfDiagnosticCodes.LimitNestingDepth, placed, position);
+        }
+        else if (stack)
+        {
+            _guard.ReachStack(PdfLimit.NestingDepth, diagnostics, placed, position);
+        }
+        else
+        {
+            _guard.Reach(PdfLimit.NestingDepth, diagnostics, placed, position);
+        }
+    }
+
     private readonly void Report(string code, string message, long position)
     {
         if (_member is { } member)
@@ -1949,15 +2013,15 @@ internal ref struct PdfObjectParser
         /// being full, is counted with its message as it stands: hostile data can meet a fault at every token, and none
         /// of those is formatted for nothing.
         /// </summary>
-        public void Report(string code, string message, long position) =>
-            Diagnostics.Warn(
-                code,
-                Diagnostics.IsFull
-                    ? message
-                    : string.Create(
-                        CultureInfo.InvariantCulture,
-                        $"{message} It was met in object {ObjectNumber}, at byte {position} of object stream {StreamNumber}'s decoded data."),
-                DataStart);
+        public void Report(string code, string message, long position) => Diagnostics.Warn(code, Place(message, position), DataStart);
+
+        /// <summary>Adds to <paramref name="message"/> the member and byte <paramref name="position"/> of the decoded data.</summary>
+        public string Place(string message, long position) =>
+            Diagnostics.IsFull
+                ? message
+                : string.Create(
+                    CultureInfo.InvariantCulture,
+                    $"{message} It was met in object {ObjectNumber}, at byte {position} of object stream {StreamNumber}'s decoded data.");
     }
 
     /// <summary>A stream's <c>/Length</c>, as <see cref="ReadLength"/> read it.</summary>

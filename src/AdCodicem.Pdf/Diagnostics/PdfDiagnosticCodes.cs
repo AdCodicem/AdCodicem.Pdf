@@ -286,12 +286,6 @@ public static class PdfDiagnosticCodes
     public const string SyntaxTruncatedObject = "syntax.truncated-object";
 
     /// <summary>
-    /// Nesting exceeded the depth the reader follows, or the stack the thread leaves the reader, or the validator's walk
-    /// of what an object stream's decoding reads: what lies past it was skipped, or read as null.
-    /// </summary>
-    public const string SyntaxDepthExceeded = "syntax.depth-exceeded";
-
-    /// <summary>
     /// A number is beyond what a real can hold — its magnitude rounds past the largest a double holds, about 1.8 × 10^308
     /// —: it was read as null, so a dictionary holds no entry for its key. The report quotes the number, and is placed
     /// where it starts, or, for a number inside an object an object stream holds, where the stream's data starts, the
@@ -522,4 +516,20 @@ public static class PdfDiagnosticCodes
     /// document, where the object stream the walk first left undecoded lies.
     /// </summary>
     public const string LimitObjectStreamDecodes = "limit.object-stream-decodes";
+
+    /// <summary>
+    /// An object nests its arrays and dictionaries deeper than <see cref="Documents.PdfReaderLimits.MaxNestingDepth"/>, or
+    /// deeper than the thread's stack leaves the parser room for: the container past the bound reads as null — an array
+    /// element, or a dictionary's key dropped — and the object is one a guard cut. Reported once for each place.
+    /// </summary>
+    public const string LimitNestingDepth = "limit.nesting-depth";
+
+    /// <summary>
+    /// An object is reached through more objects loaded while loading another — an indirect <c>/Length</c>, an object
+    /// stream and the values its decoding reads — than <see cref="Documents.PdfReaderLimits.MaxNestedLoads"/>, or than the
+    /// thread's stack leaves the reader, or the validator's walk of what an object stream's decoding reads, room for: it
+    /// reads as null there, and is read whole from a shallower place. Reported once a document, where the first object it
+    /// cut lies, as the same chain is met again from each of its objects; once more for the validator's walk.
+    /// </summary>
+    public const string LimitNestedLoads = "limit.nested-loads";
 }

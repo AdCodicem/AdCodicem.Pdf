@@ -1489,7 +1489,7 @@ public class HostileInputTests
         using var document = Measure(() => PdfDocument.Open(bytes));
 
         document.GetObject(new PdfObjectId(2)).Required();
-        document.Diagnostics.Contains(PdfDiagnosticCodes.SyntaxDepthExceeded).Should().BeTrue();
+        document.Diagnostics.Contains(PdfDiagnosticCodes.LimitNestingDepth).Should().BeTrue();
     }
 
     [Fact]
@@ -1504,7 +1504,7 @@ public class HostileInputTests
         using var document = Measure(() => PdfDocument.Open(bytes));
 
         document.GetObject(new PdfObjectId(2)).Required();
-        document.Diagnostics.Contains(PdfDiagnosticCodes.SyntaxDepthExceeded).Should().BeTrue();
+        document.Diagnostics.Contains(PdfDiagnosticCodes.LimitNestingDepth).Should().BeTrue();
     }
 
     [Fact]
@@ -1541,7 +1541,7 @@ public class HostileInputTests
         var first = Measure(() => document.GetObject(new PdfObjectId(3)));
 
         first.AsStream().Required().GetRawBytes().Length.Should().Be(1);
-        document.Diagnostics.Where(d => d.Code == PdfDiagnosticCodes.SyntaxDepthExceeded).Should().ContainSingle();
+        document.Diagnostics.Where(d => d.Code == PdfDiagnosticCodes.LimitNestedLoads).Should().ContainSingle();
     }
 
     [Theory]
@@ -1567,7 +1567,7 @@ public class HostileInputTests
         var (first, diagnostics) = ReadObject3OnASmallStack(builder.BuildClassic(rootNumber: 1));
 
         first.Should().BeOfType<PdfArray>();
-        diagnostics.Contains(PdfDiagnosticCodes.SyntaxDepthExceeded).Should().BeTrue();
+        diagnostics.Contains(PdfDiagnosticCodes.LimitNestingDepth).Should().BeTrue();
     }
 
     [Theory]
@@ -1589,7 +1589,7 @@ public class HostileInputTests
         var (first, diagnostics) = ReadObject3OnASmallStack(builder.BuildClassic(rootNumber: 1));
 
         first.Should().BeOfType<PdfDictionary>();
-        diagnostics.Contains(PdfDiagnosticCodes.SyntaxDepthExceeded).Should().BeTrue();
+        diagnostics.Contains(PdfDiagnosticCodes.LimitNestingDepth).Should().BeTrue();
     }
 
     [Fact]
@@ -1796,7 +1796,7 @@ public class HostileInputTests
     [InlineData("length")]
     [InlineData("bomb")]
     [InlineData("bomb whose parameters are its own member")]
-    [InlineData("bomb whose parameters lie past the nesting")]
+    [InlineData("chain past the nesting")]
     public void A_search_for_a_catalog_opened_to_throw_reads_an_object_a_guard_cut_once_however_many_candidates_lead_to_it(string form)
     {
         // Under ThrowOnLimit, the search for a catalog goes on past each guard and throws the first once it ends. Four
@@ -1804,14 +1804,15 @@ public class HostileInputTests
         // cuts at 1 MB, or to objects 8 and 9 in turn, which an object stream holds that decodes past a
         // MaxDecodedStreamLength of 1 MB: each read it again up to its bound, a megabyte each. The load, or the decoding,
         // that threw throws again without reading — a decoding as its stream's contents are kept: also where its filter's
-        // parameters are one of its own members, which every decoding reads as null (#51), or lie past where the reader
-        // nests loads, sixty-four candidates reaching the stream through a chain of 63 streams' /Length.
+        // parameters are one of its own members, which every decoding reads as null (#51). Sixty-four candidates reaching an
+        // object stream through a chain of 63 streams' /Length reach the loads' nesting, whose exception each load keeps for
+        // reads as deep (#163, #397).
         var bombLimits = PdfReaderLimits.Default with { MaxDecodedStreamLength = 1024 * 1024 };
         var (file, limits, code) = form switch
         {
             "bomb" => (CandidatesThroughABomb(400), bombLimits, PdfDiagnosticCodes.LimitDecodedStream),
             "bomb whose parameters are its own member" => (CandidatesThroughABomb(400, "/DecodeParms 8 0 R "), bombLimits, PdfDiagnosticCodes.LimitDecodedStream),
-            "bomb whose parameters lie past the nesting" => (CandidatesThroughABombPastTheNesting(64), bombLimits, PdfDiagnosticCodes.LimitDecodedStream),
+            "chain past the nesting" => (CandidatesThroughABombPastTheNesting(64), PdfReaderLimits.Default, PdfDiagnosticCodes.LimitNestedLoads),
             _ => (CandidatesThroughALongObject(400, form), PdfReaderLimits.Default with { MaxObjectLength = 1024 * 1024 }, PdfDiagnosticCodes.LimitObject),
         };
         var options = new PdfReaderOptions { Limits = limits, ThrowOnLimit = true };
@@ -1822,6 +1823,62 @@ public class HostileInputTests
         opening.Should().Throw<PdfLimitExceededException>().Which.Code.Should().Be(code);
         allocated = GC.GetAllocatedBytesForCurrentThread() - allocated;
         allocated.Should().BeLessThan(32L * 1024 * 1024, "what a guard cut is read once, not once for each candidate");
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void An_object_reads_alike_after_a_read_the_loads_nesting_cut_and_in_a_fresh_document(bool cutFirst)
+    {
+        // Object 3, in the first of 64 object streams each taking its /Filter from the next, is read past the reader's nesting,
+        // which cuts the last; object 5, in the one before the last, reads the same before or after (#163).
+        var file = ObjectStreamsTakingTheirFilterFromTheNext(64);
+        using var document = PdfDocument.Open(file);
+
+        if (cutFirst)
+        {
+            document.GetObject(new PdfObjectId(3)).Should().Be(PdfNull.Instance);
+        }
+
+        document.GetObject(new PdfObjectId(5)).ToString().Should().Be("\"five\"");
+        document.GetObject(new PdfObjectId(3)).Should().Be(PdfNull.Instance);
+        document.Diagnostics.Should().ContainSingle(entry => entry.Code == PdfDiagnosticCodes.LimitNestedLoads);
+    }
+
+    [Theory]
+    [InlineData(new int[0])]
+    [InlineData(new[] { 20 })]
+    [InlineData(new[] { 50000 })]
+    [InlineData(new[] { 20, 50000 })]
+    public void A_member_an_object_stream_decoded_under_a_load_the_nesting_cut_reads_as_a_fresh_read_gives_it(int[] before)
+    {
+        // Read through the chain, object stream 20 loads 64 levels deep, where it reads its parameters as null; read from the
+        // top, it reads them: what it gave there serves no read from a shallower place, whatever was read before (#396).
+        using var document = PdfDocument.Open(MemberAChainReachesPastTheNesting());
+
+        foreach (var number in before)
+        {
+            document.GetObject(new PdfObjectId(number));
+        }
+
+        document.GetObject(new PdfObjectId(90000)).Should().Be(PdfNull.Instance);
+    }
+
+    [Theory]
+    [InlineData(20)]
+    [InlineData(80)]
+    public void Under_ThrowOnLimit_a_heavy_object_whose_inner_load_reaches_a_guard_is_read_once_however_many_candidates_lead_to_it(int candidates)
+    {
+        // Each candidate for a catalog takes its /Type from stream 61, whose 4 MB dictionary is read before its /Length, which
+        // an object stream decoding past 1 MB holds: every load the guard's exception passes through keeps it (#397).
+        var file = CandidatesThroughAHeavyStreamOverABomb(candidates);
+        using var source = new StrictCountingSource(file);
+        var options = new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxDecodedStreamLength = 1024 * 1024 }, ThrowOnLimit = true };
+
+        var opening = () => PdfDocument.Open(source, options, ownsSource: false);
+
+        opening.Should().Throw<PdfLimitExceededException>().Which.Code.Should().Be(PdfDiagnosticCodes.LimitDecodedStream);
+        source.BytesRead.Should().BeLessThan(3L * file.Length, "stream 61 is read once, not once for each candidate");
     }
 
     [Fact]
@@ -2167,7 +2224,7 @@ public class HostileInputTests
         using var document = PdfDocument.Open(file);
         document.GetObject(new PdfObjectId(100));
 
-        document.Diagnostics.Contains(PdfDiagnosticCodes.SyntaxDepthExceeded).Should().BeTrue();
+        document.Diagnostics.Contains(PdfDiagnosticCodes.LimitNestedLoads).Should().BeTrue();
         document.GetObject(new PdfObjectId(6)).Should().BeOfType<PdfDictionary>();
         document.GetObject(new PdfObjectId(5)).Should().Be(PdfInteger.Create(1));
     }
@@ -3319,7 +3376,7 @@ public class HostileInputTests
         using var document = PdfDocument.Open(file);
         document.GetObject(new PdfObjectId(4)).AsStream().Required();
 
-        document.Diagnostics.Should().ContainSingle(entry => entry.Code == PdfDiagnosticCodes.SyntaxDepthExceeded)
+        document.Diagnostics.Should().ContainSingle(entry => entry.Code == PdfDiagnosticCodes.LimitNestedLoads)
             .Which.Position.Should().Be(-1);
     }
 
@@ -3338,7 +3395,7 @@ public class HostileInputTests
         document.GetObject(new PdfObjectId(3)).AsStream().Required();
 
         var stoppedAt = Encoding.Latin1.GetString(file).IndexOf("\n67 0 obj", StringComparison.Ordinal) + 1;
-        document.Diagnostics.Should().ContainSingle(entry => entry.Code == PdfDiagnosticCodes.SyntaxDepthExceeded)
+        document.Diagnostics.Should().ContainSingle(entry => entry.Code == PdfDiagnosticCodes.LimitNestedLoads)
             .Which.Position.Should().Be(stoppedAt);
     }
 
@@ -3357,7 +3414,7 @@ public class HostileInputTests
         document.GetObject(new PdfObjectId(3)).AsStream().Required();
         document.GetObject(new PdfObjectId(100)).AsStream().Required();
 
-        document.Diagnostics.Where(entry => entry.Code == PdfDiagnosticCodes.SyntaxDepthExceeded).Should().ContainSingle();
+        document.Diagnostics.Where(entry => entry.Code == PdfDiagnosticCodes.LimitNestedLoads).Should().ContainSingle();
     }
 
     [Fact]
@@ -7558,9 +7615,9 @@ public class HostileInputTests
     /// Writes a file whose <c>/Root</c> names a string, and whose <paramref name="count"/> candidates for a catalog, objects
     /// 1000 and on, lead through their <c>/Type</c> to stream 50000, the first of 63 streams each of whose <c>/Length</c>
     /// names the next, the last naming object 90000, which object stream 20 holds; the catalog comes after the candidates.
-    /// Loaded there, object 90000 is 64 loads deep, and object 7000, the parameters stream 20's first Flate filter reads,
-    /// one deeper, past where the reader nests loads: read as null, it leaves the second filter's data as it is, which then
-    /// decodes to 2 MB. Read from a shallower place, its predictor garbles that data.
+    /// Loaded there, object 90000 is 64 loads deep, and stream 20, which holds it, one deeper, past where the reader nests
+    /// loads. Read from a shallower place, object 7000, the parameters stream 20's first Flate filter reads, garbles the
+    /// second filter's data with its predictor, and 90000 is not found.
     /// </summary>
     internal static byte[] CandidatesThroughABombPastTheNesting(int count)
     {
@@ -7588,6 +7645,114 @@ public class HostileInputTests
         }
 
         file.CompressedCrossReferenceStream(90001, 90002, number => rows.TryGetValue(number, out var row) ? row : (0, 0, 0), "/Root 1 0 R");
+        return file.Bytes;
+    }
+
+    /// <summary>
+    /// Writes a file of <paramref name="streams"/> object streams, 100 and on, each holding the next's filter, objects 200
+    /// and on, <c>/FlateDecode</c>, and taking its own from the object the next holds, the last's written directly: the
+    /// first holds object 3, <c>(three)</c>, the one before the last object 5, <c>(five)</c>. Read first, 3 loads each stream
+    /// in turn, a level deeper each (ISO 32000-1 7.5.7 allows it).
+    /// </summary>
+    internal static byte[] ObjectStreamsTakingTheirFilterFromTheNext(int streams)
+    {
+        var file = new HandWrittenFile(version: "1.5");
+        var rows = new Dictionary<int, (int Type, long Field2, int Field3)>
+        {
+            [1] = (1, file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"), 0),
+            [2] = (1, file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"), 0),
+        };
+
+        for (var k = 0; k < streams; k++)
+        {
+            List<(int Number, string Body)> members = [(200 + k, "/FlateDecode")];
+
+            if (k == 0)
+            {
+                members.Add((3, "(three)"));
+            }
+
+            if (k == streams - 2)
+            {
+                members.Add((5, "(five)"));
+            }
+
+            var header = new StringBuilder();
+            var contents = new StringBuilder();
+
+            foreach (var (member, body) in members)
+            {
+                header.Append(CultureInfo.InvariantCulture, $"{member} {contents.Length} ");
+                contents.Append(body).Append(' ');
+            }
+
+            var data = Compress(Encoding.Latin1.GetBytes(header.ToString() + contents));
+            var filter = k == streams - 1 ? "/FlateDecode" : string.Create(CultureInfo.InvariantCulture, $"{201 + k} 0 R");
+            rows[100 + k] = (1, file.Object(100 + k, string.Create(CultureInfo.InvariantCulture, $"<< /Type /ObjStm /N {members.Count} /First {header.Length} /Filter {filter} /Length {data.Length} >>\nstream\n{Encoding.Latin1.GetString(data)}\nendstream")), 0);
+
+            for (var index = 0; index < members.Count; index++)
+            {
+                rows[members[index].Number] = (2, 100 + k, index);
+            }
+        }
+
+        file.CompressedCrossReferenceStream(900, 901, number => rows.TryGetValue(number, out var row) ? row : (0, 0, 0), "/Root 1 0 R");
+        return file.Bytes;
+    }
+
+    /// <summary>
+    /// Writes a file whose object 90000, which object stream 20 holds, is reached through stream 50000, the first of 63 each
+    /// taking its <c>/Length</c> from the next, the last from 90000: loaded there, 90000 is 64 loads deep, and 20 one deeper.
+    /// 20's first Flate filter takes its parameters from object 7000, whose predictor garbles the second filter's data, so
+    /// that a read of 90000 that loads 7000 does not find it, and one that reads 7000 as null decodes 90000 as <c>&lt;&lt;
+    /// &gt;&gt;</c>.
+    /// </summary>
+    internal static byte[] MemberAChainReachesPastTheNesting()
+    {
+        var file = new HandWrittenFile(version: "1.5");
+        var data = Compress(Compress(Encoding.ASCII.GetBytes("90000 0 << >> ".PadRight(4096))));
+        var rows = new Dictionary<int, (int Type, long Field2, int Field3)>
+        {
+            [1] = (1, file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"), 0),
+            [2] = (1, file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"), 0),
+            [20] = (1, file.Object(20, string.Create(CultureInfo.InvariantCulture, $"<< /Type /ObjStm /N 1 /First 8 /Filter [/FlateDecode /FlateDecode] /DecodeParms [7000 0 R null] /Length {data.Length} >>\nstream\n{Encoding.Latin1.GetString(data)}\nendstream")), 0),
+            [90000] = (2, 20, 0),
+            [7000] = (1, file.Object(7000, "<< /Predictor 2 /Colors 1 /BitsPerComponent 8 /Columns 4 >>"), 0),
+        };
+
+        for (var number = 50000; number < 50063; number++)
+        {
+            rows[number] = (1, file.Object(number, string.Create(CultureInfo.InvariantCulture, $"<< /Length {(number == 50062 ? 90000 : number + 1)} 0 R >>\nstream\nxx\nendstream")), 0);
+        }
+
+        file.CompressedCrossReferenceStream(90001, 90002, number => rows.TryGetValue(number, out var row) ? row : (0, 0, 0), "/Root 1 0 R");
+        return file.Bytes;
+    }
+
+    /// <summary>
+    /// Writes a file whose <c>/Root</c> names a string, and whose <paramref name="count"/> candidates for a catalog, objects
+    /// 1000 and on, take their <c>/Type</c> from stream 61, whose dictionary holds a 4 MB string and whose <c>/Length</c> is
+    /// object 29, which object stream 20 holds, decoding to 2 MB; the catalog comes after the candidates.
+    /// </summary>
+    internal static byte[] CandidatesThroughAHeavyStreamOverABomb(int count)
+    {
+        var file = new HandWrittenFile(version: "1.5");
+        var rows = new Dictionary<int, (int Type, long Field2, int Field3)>
+        {
+            [1] = (1, file.Object(1, "(not a catalog)"), 0),
+            [2] = (1, file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"), 0),
+            [20] = (1, file.PaddedObjectStream(20, [(29, "5")], 2 * 1024 * 1024), 0),
+            [29] = (2, 20, 0),
+            [61] = (1, file.Object(61, "<< /Big (" + new string('x', 4 * 1024 * 1024) + ") /Length 29 0 R >>\nstream\nhello\nendstream"), 0),
+        };
+
+        for (var number = 1000; number < 1000 + count; number++)
+        {
+            rows[number] = (1, file.Object(number, "<< /Type 61 0 R >>"), 0);
+        }
+
+        rows[1000 + count] = (1, file.Object(1000 + count, "<< /Type /Catalog /Pages 2 0 R >>"), 0);
+        file.CompressedCrossReferenceStream(5000, 5001, number => rows.TryGetValue(number, out var row) ? row : (0, 0, 0), "/Root 1 0 R");
         return file.Bytes;
     }
 

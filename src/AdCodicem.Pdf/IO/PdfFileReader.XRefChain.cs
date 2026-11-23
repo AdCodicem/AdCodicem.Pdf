@@ -896,7 +896,7 @@ internal sealed partial class PdfFileReader
             {
                 using var window = _source.GetWindow(offset, windowSize);
                 var edge = window.Length == windowSize && offset + window.Length < _source.Length;
-                var parser = new PdfObjectParser(window.Memory, offset, this, _pending, this, endsData: !edge);
+                var parser = new PdfObjectParser(window.Memory, offset, this, _pending, this, endsData: !edge, maxDepth: MaxNestingDepth, guard: _guard);
                 var read = parser.TryReadIndirectObject(out var found, out var parsed);
 
                 // What a window's edge may have cut is read again in a larger one, as far as the guard allows: past it, a

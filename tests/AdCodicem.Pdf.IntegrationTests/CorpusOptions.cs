@@ -27,6 +27,8 @@ internal static class CorpusOptions
                 MaxFilterChainLength = raised.MaxFilterChainLength ?? limits.MaxFilterChainLength,
                 MaxRebuildReadPasses = raised.MaxRebuildReadPasses ?? limits.MaxRebuildReadPasses,
                 MaxObjectStreamDecodePasses = raised.MaxObjectStreamDecodePasses ?? limits.MaxObjectStreamDecodePasses,
+                MaxNestingDepth = raised.MaxNestingDepth ?? limits.MaxNestingDepth,
+                MaxNestedLoads = raised.MaxNestedLoads ?? limits.MaxNestedLoads,
             };
         }
 

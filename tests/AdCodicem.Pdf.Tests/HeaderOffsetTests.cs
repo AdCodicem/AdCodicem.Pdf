@@ -584,7 +584,7 @@ public sealed class HeaderOffsetTests
 
         _ = document.GetObject(new PdfObjectId(10));
 
-        document.Diagnostics.Should().ContainSingle(d => d.Code == PdfDiagnosticCodes.SyntaxDepthExceeded).Which.Position.Should().Be(-1);
+        document.Diagnostics.Should().ContainSingle(d => d.Code == PdfDiagnosticCodes.LimitNestedLoads).Which.Position.Should().Be(-1);
     }
 
     [Theory]

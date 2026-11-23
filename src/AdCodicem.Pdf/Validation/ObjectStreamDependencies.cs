@@ -104,7 +104,7 @@ namespace AdCodicem.Pdf.Validation;
 /// Loads nest as they do when one of the stream's objects is the first read: the object is the first load in flight, the
 /// stream the second, the objects of its <c>/Length</c> the third, those of its other values the second again, and a
 /// stream met on a chain resolves its <c>/Length</c> a level below the chain. A load past
-/// <see cref="PdfFileReader.MaxNestedLoads"/> reads as null; so does an object another stream holds at that depth, that
+/// <see cref="PdfReaderLimits.MaxNestedLoads"/> reads as null; so does an object another stream holds at that depth, that
 /// stream being loaded a level deeper; one the walked stream holds is a need at any depth, the reader reporting it before
 /// it counts. No recursion goes deeper than twice that bound: the walk that works out a standing runs within the walk that
 /// met one of its objects, one at a time. Each level asks the thread for room before it goes down, as the reader asks
@@ -632,6 +632,9 @@ internal sealed class ObjectStreamDependencies
     /// </param>
     private sealed class Walk(PdfDocument document, Memo memo, bool judges)
     {
+        /// <summary>The reader's nesting of loads, <see cref="PdfReaderLimits.MaxNestedLoads"/>, which the walk's loads nest under.</summary>
+        private readonly int _maxLoads = document.Reader.MaxNestedLoads;
+
         /// <summary>
         /// How many entries the stack of waiting standings holds before it is first rid of the entries walks left stale: a
         /// size chosen for the stack's own sake, which is rid of them again whenever it holds more than this and twice as many
@@ -656,6 +659,16 @@ internal sealed class ObjectStreamDependencies
         /// not parse it again — as long as its cache keeps it, which a walk of a standing does not count on.
         /// </summary>
         private readonly HashSet<int> _parsed = new(SeededComparer.Instance);
+
+        /// <summary>
+        /// The streams whose last parse the reader's nesting cut, each with the level it was met at: the reader keeps what such
+        /// a parse gave only for a read from as deep, and parses the stream again where it is met higher up, which the walk
+        /// that judges does too (#163).
+        /// </summary>
+        private readonly Dictionary<int, int> _parsedCut = new(SeededComparer.Instance);
+
+        /// <summary>How many loads, or links, the reader's nesting cut in the walk in progress.</summary>
+        private int _cuts;
 
         /// <summary>
         /// What the values read once the stream is parsed led to, by the number of the object each names: the value, how deep
@@ -804,6 +817,7 @@ internal sealed class ObjectStreamDependencies
             _found.Clear();
             _inFlight.Clear();
             _parsed.Clear();
+            _parsedCut.Clear();
             _values.Clear();
             _judging = 0;
             (_unlike, _deepest) = (false, ValueDepth);
@@ -1025,9 +1039,9 @@ internal sealed class ObjectStreamDependencies
                 // being resolved: the holder's own walk would meet it, and the holder would not decode alike. A walk of a
                 // standing takes a run only where the reader's index places every object of it as the chain's does, and goes
                 // an object at a time elsewhere, asking it of each (#312).
-                if (depth <= PdfFileReader.MaxNestedLoads && memo.RunFrom(number, links - loaded) is { } run &&
+                if (depth <= _maxLoads && memo.RunFrom(number, links - loaded) is { } run &&
                     (judges || run.Agrees) &&
-                    (!run.PassesMembers || depth - 1 + run.Reach <= PdfFileReader.MaxNestedLoads))
+                    (!run.PassesMembers || run.Reach <= _maxLoads - (depth - 1)))
                 {
                     // A run through objects of object streams is the walk's state's to answer; its holders' decodings reach
                     // as deep as the deepest of them.
@@ -1185,9 +1199,10 @@ internal sealed class ObjectStreamDependencies
             // holds the object in its loads: a stream it is parsing, met again, is read again, and read as null for the rest
             // of every decoding in flight (#51) — a cut to a parse, but not to the decoding of a stream whose standing is
             // worked out, which reads it so at a first read and not a level deeper.
-            if (depth > PdfFileReader.MaxNestedLoads)
+            if (depth > _maxLoads)
             {
                 _cut = true;
+                _cuts++;
                 _unlike |= !judges && IsInFlight(number);
                 return PdfNull.Instance;
             }
@@ -1208,7 +1223,7 @@ internal sealed class ObjectStreamDependencies
             // no call between, so that each level of the walks' recursion holds no more frames than it must (#312).
             _ended = number;
 
-            if (_parsed.Add(number))
+            if (_parsed.Add(number) || ParsedCutBelow(number, depth))
             {
                 Parse(number, first, parameters, key, depth);
             }
@@ -1251,6 +1266,7 @@ internal sealed class ObjectStreamDependencies
             var disagree = _disagree;
             var ended = _ended;
             var cut = _cut;
+            var cuts = _cuts;
             var start = _chain.Count;
             var current = number;
             var level = depth;
@@ -1304,6 +1320,17 @@ internal sealed class ObjectStreamDependencies
                 }
             }
 
+            // A parse the nesting cut is cut for each stream it went into, each met a level below the one before.
+            if (cuts != _cuts)
+            {
+                _parsedCut[number] = depth;
+
+                for (var index = start; index < _chain.Count; index++)
+                {
+                    _parsedCut[_chain[index]] = depth + 1 + index - start;
+                }
+            }
+
             _inFlight.Remove(number);
             _firsts.RemoveRange(start, _firsts.Count - start);
             _chain.RemoveRange(start, _chain.Count - start);
@@ -1325,13 +1352,13 @@ internal sealed class ObjectStreamDependencies
 
             for (var index = 0; index < streams.Length; index++)
             {
-                if (level >= PdfFileReader.MaxNestedLoads)
+                if (level >= _maxLoads)
                 {
                     Cut(firsts[index]);
                     return false;
                 }
 
-                if (!GoesInto(streams[index]))
+                if (!GoesInto(streams[index], level + 1))
                 {
                     return false;
                 }
@@ -1366,7 +1393,7 @@ internal sealed class ObjectStreamDependencies
                     return false;
                 }
 
-                if (level >= PdfFileReader.MaxNestedLoads)
+                if (level >= _maxLoads)
                 {
                     Cut(link.First);
                     return false;
@@ -1382,7 +1409,7 @@ internal sealed class ObjectStreamDependencies
                     return true;
                 }
 
-                if (!GoesInto(link.Next))
+                if (!GoesInto(link.Next, level + 1))
                 {
                     return false;
                 }
@@ -1395,12 +1422,12 @@ internal sealed class ObjectStreamDependencies
         }
 
         /// <summary>
-        /// Goes into <paramref name="next"/>, the stream a link taken leads to, as a load goes into a stream a chain ends at
-        /// (<see cref="Load"/>); gives whether the parse goes on into it.
+        /// Goes into <paramref name="next"/>, the stream a link taken leads to at <paramref name="level"/>, as a load goes into a
+        /// stream a chain ends at (<see cref="Load"/>); gives whether the parse goes on into it.
         /// </summary>
-        private bool GoesInto(int next)
+        private bool GoesInto(int next, int level)
         {
-            if (_parsed.Add(next))
+            if (_parsed.Add(next) || ParsedCutBelow(next, level))
             {
                 return true;
             }
@@ -1426,7 +1453,19 @@ internal sealed class ObjectStreamDependencies
         /// Cuts, at the reader's nesting, the links taken, where their next load is <paramref name="first"/>: a walk of a
         /// standing whose stream the reader holds in its loads is told unlike, as at a load past the nesting.
         /// </summary>
-        private void Cut(int first) => _unlike |= !judges && IsInFlight(first);
+        private void Cut(int first)
+        {
+            _cuts++;
+            _unlike |= !judges && IsInFlight(first);
+        }
+
+        /// <summary>
+        /// Determines whether stream <paramref name="number"/>, parsed before by the walk that judges, was last parsed deeper
+        /// than <paramref name="level"/>, where it is met now, and cut there by the reader's nesting: the reader parses it
+        /// again from here, its cut falling further on (#163).
+        /// </summary>
+        private bool ParsedCutBelow(int number, int level) =>
+            judges && _parsedCut.TryGetValue(number, out var cutAt) && level < cutAt && _parsedCut.Remove(number);
 
         /// <summary>
         /// Gives what object <paramref name="number"/>, which <paramref name="entry"/> places, gives the walk in
@@ -1542,8 +1581,9 @@ internal sealed class ObjectStreamDependencies
                 _deepest = Math.Max(_deepest, depth + 1);
             }
 
-            if (depth >= PdfFileReader.MaxNestedLoads)
+            if (depth >= _maxLoads)
             {
+                _cuts++;
                 return PdfNull.Instance;
             }
 
@@ -1587,7 +1627,7 @@ internal sealed class ObjectStreamDependencies
 
             var offset = depth - 1;
 
-            if (standing.IsAlikeAt(offset))
+            if (standing.IsAlikeAt(offset, _maxLoads))
             {
                 if (reaching)
                 {
@@ -1763,9 +1803,10 @@ internal sealed class ObjectStreamDependencies
 
         /// <summary>
         /// Determines whether the stream decodes alike where an object it holds is read <paramref name="offset"/> levels
-        /// deeper than a first read: it decodes alike, and its deepest load stays within the reader's nesting there.
+        /// deeper than a first read: it decodes alike, and its deepest load stays within <paramref name="maxLoads"/>, the
+        /// reader's nesting, there.
         /// </summary>
-        public bool IsAlikeAt(int offset) => Kind == StandingKind.Alike && offset + Reach <= PdfFileReader.MaxNestedLoads;
+        public bool IsAlikeAt(int offset, int maxLoads) => Kind == StandingKind.Alike && Reach <= maxLoads - offset;
     }
 
     /// <summary>What a walk found of an object stream as the holder of an object another decoding reads.</summary>
@@ -1938,7 +1979,7 @@ internal sealed class ObjectStreamDependencies
         /// The nests clean links lead through, flattened, by the number of the stream heading each (#181): as many as
         /// <c>capacity</c> says, the oldest let go first, and taken a link at a time again when met again. Each holds 62
         /// streams at most, as many as a parse reaches below a stream met at the second level, the shallowest any is met,
-        /// within the reader's nesting (<see cref="PdfFileReader.MaxNestedLoads"/>), which no value the file gives changes.
+        /// within the reader's nesting (<see cref="PdfReaderLimits.MaxNestedLoads"/>), which no value the file gives changes.
         /// Taking a nest a link at a time asks the links' store once for each, which made a walk of streams heading kept
         /// nests about two and a half times as slow as taking the nest kept by the stream heading it.
         /// </summary>

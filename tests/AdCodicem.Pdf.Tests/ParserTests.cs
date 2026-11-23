@@ -284,7 +284,7 @@ public class ParserTests
 
         _ = parser.ParseObject();
 
-        diagnostics.Select(entry => entry.Code).Should().Equal(PdfDiagnosticCodes.SyntaxDepthExceeded, PdfDiagnosticCodes.SyntaxTruncatedObject);
+        diagnostics.Select(entry => entry.Code).Should().Equal(PdfDiagnosticCodes.LimitNestingDepth, PdfDiagnosticCodes.SyntaxTruncatedObject);
         diagnostics[1].Message.Should().Be(
             $"An object header came inside {what}, which was never closed; the 128 arrays or dictionaries around it were never closed either.");
     }
@@ -487,6 +487,26 @@ public class ParserTests
         parser.IsTruncated.Should().BeTrue();
     }
 
+    [Theory]
+    [InlineData(128, 128, false)]
+    [InlineData(129, 128, true)]
+    [InlineData(200, 200, false)]
+    [InlineData(201, 200, true)]
+    public void A_container_nested_past_the_parser_s_bound_reads_as_null_and_one_at_it_reads_whole(int levels, int bound, bool cut)
+    {
+        var diagnostics = new PdfDiagnostics();
+        var bytes = Encoding.ASCII.GetBytes(new string('[', levels) + new string(']', levels));
+        var parser = new PdfObjectParser(bytes, diagnostics: diagnostics, maxDepth: bound);
+
+        Depth(parser.ParseObject()).Should().Be(Math.Min(levels, bound));
+
+        parser.NestingCut.Should().Be(cut);
+        parser.CutByStack.Should().BeFalse();
+        diagnostics.Contains(PdfDiagnosticCodes.LimitNestingDepth).Should().Be(cut);
+
+        static int Depth(PdfObject value) => value is PdfArray array ? 1 + (array.Count > 0 ? Depth(array[0]) : 0) : 0;
+    }
+
     [Fact]
     public void Refuses_to_follow_nesting_deeper_than_its_limit()
     {
@@ -496,7 +516,7 @@ public class ParserTests
 
         parser.ParseObject();
 
-        diagnostics.Contains(PdfDiagnosticCodes.SyntaxDepthExceeded).Should().BeTrue();
+        diagnostics.Contains(PdfDiagnosticCodes.LimitNestingDepth).Should().BeTrue();
     }
 
     [Theory]
@@ -511,7 +531,7 @@ public class ParserTests
 
         parser.ParseObject().Should().BeOfType<PdfDictionary>();
 
-        diagnostics.Contains(PdfDiagnosticCodes.SyntaxDepthExceeded).Should().BeTrue();
+        diagnostics.Contains(PdfDiagnosticCodes.LimitNestingDepth).Should().BeTrue();
 
         // The levels past the limit are skipped whole, their delimiters balanced, an array among them included: the parse
         // ends with the input.
@@ -895,7 +915,7 @@ public class ParserTests
 
         _ = parser.ParseObject();
 
-        diagnostics.Select(entry => entry.Code).Should().Equal(PdfDiagnosticCodes.SyntaxDepthExceeded, PdfDiagnosticCodes.SyntaxTruncatedObject);
+        diagnostics.Select(entry => entry.Code).Should().Equal(PdfDiagnosticCodes.LimitNestingDepth, PdfDiagnosticCodes.SyntaxTruncatedObject);
         diagnostics[1].Position.Should().Be(128);
         diagnostics[1].Message.Should().Be(
             "The file ended inside an array, which was never closed; the 128 arrays or dictionaries around it were never closed either.");
@@ -989,7 +1009,7 @@ public class ParserTests
 
         _ = parser.ParseObject();
 
-        diagnostics.Select(entry => entry.Code).Should().Equal(PdfDiagnosticCodes.SyntaxDepthExceeded, PdfDiagnosticCodes.SyntaxTruncatedObject);
+        diagnostics.Select(entry => entry.Code).Should().Equal(PdfDiagnosticCodes.LimitNestingDepth, PdfDiagnosticCodes.SyntaxTruncatedObject);
         diagnostics[1].Message.Should().Be(
             "An endobj ended the object inside a dictionary, which was never closed; the 128 arrays or dictionaries around it were never closed either.");
     }
@@ -1019,7 +1039,7 @@ public class ParserTests
         _ = parser.ParseObject();
 
         parser.Position.Should().Be(text.Length - "endobj".Length);
-        diagnostics.Select(entry => entry.Code).Should().Equal(PdfDiagnosticCodes.SyntaxDepthExceeded, PdfDiagnosticCodes.SyntaxTruncatedObject);
+        diagnostics.Select(entry => entry.Code).Should().Equal(PdfDiagnosticCodes.LimitNestingDepth, PdfDiagnosticCodes.SyntaxTruncatedObject);
         diagnostics[1].Message.Should().Be(
             "An endobj ended the object inside an array, which was never closed; the 128 arrays or dictionaries around it were never closed either.");
     }

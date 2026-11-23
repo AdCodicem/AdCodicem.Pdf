@@ -136,6 +136,7 @@ internal sealed partial class PdfFileReader
         _cache.Clear();
         _cacheOrder.Clear();
         _objectStreams.Clear();
+        _objectStreamDepths.Clear();
         _objectStreamsHiddenByGuard.Clear();
         _objectStreamOrder.Clear();
         _objectStreamBytes = 0;
@@ -308,7 +309,6 @@ internal sealed partial class PdfFileReader
         new HashSet<(PdfLimit Limit, long Position)>(_limitsReached, SeededComparer.Instance),
         new HashSet<(long DataStart, int Number)>(_memberLimitsReached, SeededComparer.Instance),
         new HashSet<int>(_objectStreamsNeedingThemselves, SeededComparer.Instance),
-        _nestingReported,
         _objectStreamReports.Copy());
 
     /// <summary>
@@ -326,7 +326,7 @@ internal sealed partial class PdfFileReader
         mark.MemberLimits.UnionWith(_memberLimitsReached);
         mark.NeedingThemselves.UnionWith(_objectStreamsNeedingThemselves);
         mark.ObjectStreams.TakeIn(_objectStreamReports);
-        return mark with { Diagnostics = _diagnostics.GetMarkWithDecodingReports(), NestingReported = _nestingReported };
+        return mark with { Diagnostics = _diagnostics.GetMarkWithDecodingReports() };
     }
 
     /// <summary>
@@ -342,7 +342,6 @@ internal sealed partial class PdfFileReader
         Restore(_limitsReached, mark.Limits);
         Restore(_memberLimitsReached, mark.MemberLimits);
         Restore(_objectStreamsNeedingThemselves, mark.NeedingThemselves);
-        _nestingReported = mark.NestingReported;
         _objectStreamReports.RestoreFrom(mark.ObjectStreams);
     }
 
@@ -517,7 +516,7 @@ internal sealed partial class PdfFileReader
             // The white space and comments after the keyword are skipped once, for the parse to start past them and for
             // a note to name where its value starts.
             var parser = new PdfObjectParser(
-                window.Memory, position, this, _pending, endsData: !cut, fileEdge: this, readsStreams: false);
+                window.Memory, position, this, _pending, endsData: !cut, fileEdge: this, readsStreams: false, maxDepth: MaxNestingDepth);
             var keyword = position - TrailerKeyword.Length;
             var valueStart = ValueStart(window.Memory.Span);
             parser.Position = valueStart;
@@ -577,7 +576,7 @@ internal sealed partial class PdfFileReader
     {
         using var window = _source.GetWindow(position, XRefWindow);
         var cut = window.Length == XRefWindow && position + window.Length < _source.Length;
-        var parser = new PdfObjectParser(window.Memory, position, this, null, endsData: !cut, fileEdge: this, readsStreams: false);
+        var parser = new PdfObjectParser(window.Memory, position, this, null, endsData: !cut, fileEdge: this, readsStreams: false, maxDepth: MaxNestingDepth);
 
         if (!parser.TryReadIndirectObject(out _, out var value) || value is not PdfDictionary dictionary)
         {
@@ -877,6 +876,11 @@ internal sealed partial class PdfFileReader
     {
         ObjectStreamContents? contents;
         var reentries = _reentries;
+        var depthBase = _loading.Count;
+        var outerDeepest = _deepest;
+        _deepest = depthBase;
+        var nestingCuts = _nestingCuts;
+        var stackCuts = _stackCuts;
 
         try
         {
@@ -895,11 +899,15 @@ internal sealed partial class PdfFileReader
             _objectStreamsHiddenByGuard.Add(number);
             return null;
         }
+        finally
+        {
+            _deepest = Math.Max(outerDeepest, _deepest);
+        }
 
         // Contents decoded without an object the index did not hold yet are decoded again when first asked for.
         if (contents is not null && reentries == _reentries)
         {
-            KeepObjectStream(number, contents);
+            KeepObjectStream(number, contents, DepthSince(depthBase, nestingCuts, stackCuts));
         }
 
         return contents;
@@ -931,10 +939,7 @@ internal sealed partial class PdfFileReader
         _streamLengthFaults.Remove(number);
         _nullWhileDecoding.Remove(number);
 
-        if (_objectStreams.Remove(number, out var released) && released is not null)
-        {
-            _objectStreamBytes -= released.Weight;
-        }
+        ReleaseObjectStream(number);
     }
 
     /// <summary>
@@ -949,6 +954,7 @@ internal sealed partial class PdfFileReader
         _cacheOrder.Clear();
         _walkLoads = null;
         _objectStreams.Clear();
+        _objectStreamDepths.Clear();
         _objectStreamOrder.Clear();
         _objectStreamBytes = 0;
         _nullWhileDecoding.Clear();
@@ -1257,7 +1263,6 @@ internal sealed partial class PdfFileReader
     /// <param name="Limits">The guards reported, and where.</param>
     /// <param name="MemberLimits">The object stream members whose cut was reported.</param>
     /// <param name="NeedingThemselves">The object streams reported as needing an object they hold.</param>
-    /// <param name="NestingReported">Whether loads nested too deep were reported.</param>
     /// <param name="ObjectStreams">What the object streams' reports said.</param>
     private sealed record ReportsMark(
         PdfDiagnosticsMark Diagnostics,
@@ -1267,7 +1272,6 @@ internal sealed partial class PdfFileReader
         HashSet<(PdfLimit Limit, long Position)> Limits,
         HashSet<(long DataStart, int Number)> MemberLimits,
         HashSet<int> NeedingThemselves,
-        bool NestingReported,
         ObjectStreamReports ObjectStreams);
 
     /// <summary>
