@@ -880,12 +880,12 @@ internal sealed partial class PdfFileReader
         var outerDeepest = _deepest;
         _deepest = depthBase;
         var nestingCuts = _nestingCuts;
-        var stackCuts = _stackCuts;
+        var transientCuts = _transientCuts;
 
         try
         {
             var stream = (PdfStream)GetObject(new PdfObjectId(number));
-            contents = ObjectStreamContents.TryCreate(number, stream, _diagnostics, _objectStreamReports, out var hidden);
+            contents = ObjectStreamContents.TryCreate(this, number, stream, _diagnostics, _objectStreamReports, out var hidden);
 
             if (contents is null && hidden)
             {
@@ -907,7 +907,7 @@ internal sealed partial class PdfFileReader
         // Contents decoded without an object the index did not hold yet are decoded again when first asked for.
         if (contents is not null && reentries == _reentries)
         {
-            KeepObjectStream(number, contents, DepthSince(depthBase, nestingCuts, stackCuts));
+            KeepObjectStream(number, contents, DepthSince(depthBase, nestingCuts, transientCuts));
         }
 
         return contents;

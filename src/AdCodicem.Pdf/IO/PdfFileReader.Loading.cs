@@ -1202,7 +1202,30 @@ internal sealed partial class PdfFileReader
     /// Where the header of the definition read starts, past the white space before it: the place a load takes the entry to
     /// give, which a row a few bytes early does not.
     /// </param>
+    /// <param name="holdersReadAsNull">
+    /// The object streams whose objects the header's values read as null, wherever a value leads: those the walk of the
+    /// streams' dependencies finds not to decode alike in every read order, so that the header reads the same whatever was
+    /// read before (#313); null to read them as the reader serves them.
+    /// </param>
     internal ObjectStreamHeaderResult ReadObjectStreamHeader(
+        int number, XRefEntry entry, out int[] numbers, out string? fault, out int[] streamMembers, out long headerAt,
+        IReadOnlySet<int>? holdersReadAsNull = null)
+    {
+        var outer = _holdersReadAsNull;
+        _holdersReadAsNull = holdersReadAsNull;
+
+        try
+        {
+            return ReadObjectStreamHeaderCore(number, entry, out numbers, out fault, out streamMembers, out headerAt);
+        }
+        finally
+        {
+            _holdersReadAsNull = outer;
+        }
+    }
+
+    /// <summary>Reads object stream <paramref name="number"/>'s header, as <see cref="ReadObjectStreamHeader"/> does.</summary>
+    private ObjectStreamHeaderResult ReadObjectStreamHeaderCore(
         int number, XRefEntry entry, out int[] numbers, out string? fault, out int[] streamMembers, out long headerAt)
     {
         numbers = [];
@@ -1226,6 +1249,11 @@ internal sealed partial class PdfFileReader
 
         if (value is not PdfStream stream || !stream.Dictionary.IsOfType(PdfName.ObjStm))
         {
+            if (value is PdfStream typed && HeaderValueHidden(typed.Dictionary, PdfName.Type))
+            {
+                return ObjectStreamHeaderResult.CutByLimit;
+            }
+
             fault = value is PdfStream ? "is a stream that is not of /Type /ObjStm" : "is not a stream";
             return ObjectStreamHeaderResult.NotAnObjectStream;
         }
@@ -1237,6 +1265,12 @@ internal sealed partial class PdfFileReader
         if (count == 0)
         {
             return ObjectStreamHeaderResult.Read;
+        }
+
+        // A /N or a /First the reader cannot read for one of its guards is the guard's: what it would say is unknown (#395).
+        if ((count < 0 && HeaderValueHidden(stream.Dictionary, PdfName.N)) || (count > 0 && first < 0 && HeaderValueHidden(stream.Dictionary, PdfName.First)))
+        {
+            return ObjectStreamHeaderResult.CutByLimit;
         }
 
         if (count < 0 || first < 0)
@@ -1272,6 +1306,15 @@ internal sealed partial class PdfFileReader
         fault = header.Describe(count, data.Length);
         return ObjectStreamHeaderResult.Unreadable;
     }
+
+    /// <summary>
+    /// Determines whether the value <paramref name="dictionary"/>, an object stream's, gives under <paramref name="key"/> is
+    /// a reference whose object a guard cut or left out of the index, or the walk in progress read as null past its own
+    /// guard: what it holds is the guard's, not the file's (#395). Call it once the value is resolved.
+    /// </summary>
+    private bool HeaderValueHidden(PdfDictionary dictionary, PdfName key) =>
+        dictionary.GetRaw(key) is PdfReference reference &&
+        (LeftByGuard(reference) || _walkCut?.Contains(reference.Target().Number) == true);
 
     /// <summary>
     /// Gives the places in <paramref name="header"/> of the members of object stream <paramref name="number"/> written as a
@@ -1753,7 +1796,7 @@ internal sealed partial class PdfFileReader
         var outerDeepest = _deepest;
         _deepest = depthBase;
         var nestingCuts = _nestingCuts;
-        var stackCuts = _stackCuts;
+        var transientCuts = _transientCuts;
 
         try
         {
@@ -1770,7 +1813,7 @@ internal sealed partial class PdfFileReader
             }
             catch (PdfLimitExceededException exception) when (reentries == _reentries && repaired == _repaired && walkCuts == _walkCuts && !_expandingObjectStreams && !IsKeptByNoTable(exception))
             {
-                KeepDecodingThrow(number, exception, DepthSince(depthBase, nestingCuts, stackCuts));
+                KeepDecodingThrow(number, exception, DepthSince(depthBase, nestingCuts, transientCuts));
                 throw;
             }
 
@@ -1793,14 +1836,14 @@ internal sealed partial class PdfFileReader
             {
                 try
                 {
-                    contents = ObjectStreamContents.TryCreate(number, stream, _diagnostics, _objectStreamReports, out hidden);
+                    contents = ObjectStreamContents.TryCreate(this, number, stream, _diagnostics, _objectStreamReports, out hidden);
                 }
                 // Kept as the stream's contents are, not as a load's exception is: a null on the way for an object the stream
                 // holds, or one being loaded, is read as null again by every decoding of the stream, which would throw alike
                 // (KeepDecodingThrow's remarks).
                 catch (PdfLimitExceededException exception) when (repaired == _repaired && walkCuts == _walkCuts && !_expandingObjectStreams && !IsKeptByNoTable(exception))
                 {
-                    KeepDecodingThrow(number, exception, DepthSince(depthBase, nestingCuts, stackCuts));
+                    KeepDecodingThrow(number, exception, DepthSince(depthBase, nestingCuts, transientCuts));
                     throw;
                 }
             }
@@ -1823,7 +1866,7 @@ internal sealed partial class PdfFileReader
             // rebuilt index's definition.
             if (repaired == _repaired && whole)
             {
-                KeepObjectStream(number, contents, DepthSince(depthBase, nestingCuts, stackCuts));
+                KeepObjectStream(number, contents, DepthSince(depthBase, nestingCuts, transientCuts));
             }
 
             CountWalkDecoding(number, contents, whole);
@@ -2149,26 +2192,27 @@ internal sealed partial class PdfFileReader
         /// <remarks>
         /// Each report is placed where the stream's data starts, and says which fault it met and how many of the
         /// stream's objects can still be read from it; it is made once for each stream, however often the stream is
-        /// decoded. A <c>/First</c> past data a guard cut is not reported, nor data the guard on filters left encoded:
-        /// the guard was, under its own code.
+        /// decoded. A <c>/First</c> past data a guard cut is not reported, nor data the guard on filters left encoded, nor a
+        /// <c>/Type</c>, <c>/N</c> or <c>/First</c> whose object a guard cut: the guard was, under its own code.
         /// </remarks>
+        /// <param name="reader">Says whether a guard cut what a value of the stream's dictionary leads to.</param>
         /// <param name="number">The object stream's number.</param>
         /// <param name="stream">The object stream.</param>
         /// <param name="diagnostics">Receives what is wrong with the stream.</param>
         /// <param name="reports">Says which streams were reported already.</param>
         /// <param name="hiddenByGuard">Whether a guard, not the file, left the stream unable to serve its objects.</param>
         public static ObjectStreamContents? TryCreate(
-            int number, PdfStream stream, PdfDiagnostics diagnostics, ObjectStreamReports reports, out bool hiddenByGuard)
+            PdfFileReader reader, int number, PdfStream stream, PdfDiagnostics diagnostics, ObjectStreamReports reports, out bool hiddenByGuard)
         {
             hiddenByGuard = false;
             var position = stream.Data.Position;
 
             // A stream of another type serves no member, as the validator and the rebuild read it (#274): nothing past its
-            // type is read — its /Length, the parse resolved —, so nothing else it names is needed.
+            // type is read — its /Length, the parse resolved —, so nothing else it names is needed. A /Type, /N or /First the
+            // reader cannot read for one of its guards is the guard's, as data a guard cut before /First is (#395).
             if (!stream.Dictionary.IsOfType(PdfName.ObjStm))
             {
-                ReportUnreadable(diagnostics, reports, number, position, "is a stream that is not of /Type /ObjStm", 0, 0);
-                return null;
+                return HiddenOrUnreadable(PdfName.Type, "is a stream that is not of /Type /ObjStm", 0, out hiddenByGuard);
             }
 
             var count = stream.Dictionary.GetInteger(PdfName.N, -1);
@@ -2182,14 +2226,12 @@ internal sealed partial class PdfFileReader
 
             if (count < 0)
             {
-                ReportUnreadable(diagnostics, reports, number, position, ObjectStreamHeader.NoCount, 0, count);
-                return null;
+                return HiddenOrUnreadable(PdfName.N, ObjectStreamHeader.NoCount, count, out hiddenByGuard);
             }
 
             if (first < 0)
             {
-                ReportUnreadable(diagnostics, reports, number, position, ObjectStreamHeader.NoFirst, 0, count);
-                return null;
+                return HiddenOrUnreadable(PdfName.First, ObjectStreamHeader.NoFirst, count, out hiddenByGuard);
             }
 
             var data = Filters.PdfFilterPipeline.Decode(stream, diagnostics, out var leftEncoded, out var cutByGuard);
@@ -2224,6 +2266,19 @@ internal sealed partial class PdfFileReader
             return header.Count > 0
                 ? new ObjectStreamContents(number, position, reports, data, header.Numbers, header.Offsets, (int)first, cutByGuard)
                 : null;
+
+            // Says the stream hidden by a guard, where the value under key is the guard's, or reports it unreadable.
+            ObjectStreamContents? HiddenOrUnreadable(PdfName key, string fault, long declared, out bool hidden)
+            {
+                hidden = reader.HeaderValueHidden(stream.Dictionary, key);
+
+                if (!hidden)
+                {
+                    ReportUnreadable(diagnostics, reports, number, position, fault, 0, declared);
+                }
+
+                return null;
+            }
         }
 
         /// <summary>Parses the object the stream holds under <paramref name="expectedNumber"/>, or gives null when it holds none.</summary>

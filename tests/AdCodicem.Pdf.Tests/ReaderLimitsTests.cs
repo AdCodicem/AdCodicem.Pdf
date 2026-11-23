@@ -285,6 +285,59 @@ public class ReaderLimitsTests
         document.GetObject(new PdfObjectId(18)).AsDictionary().Required().GetRaw(PdfName.Get("Kept")).Should().Be(PdfBoolean.True);
     }
 
+    [Theory]
+    [InlineData("/N")]
+    [InlineData("/First")]
+    [InlineData("/Type")]
+    public void An_object_stream_whose_header_value_a_walk_s_guard_read_as_null_is_not_reported_and_reads_whole_after(string key)
+    {
+        // Object stream 6 takes its value from object 14, which the search for a catalog, past what it may decode again, reads
+        // as null: the stream is not reported unreadable for it, and reads whole once the search ends (#395).
+        var file = ObjectStreamsReadInTurnFile(parametersCut: true, headerKey: key);
+        using var document = PdfDocument.Open(file, new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxObjectStreamDecodePasses = 1 } });
+
+        document.Diagnostics.Select(entry => entry.Code).Should().Equal(PdfDiagnosticCodes.LimitObjectStreamDecodes, PdfDiagnosticCodes.TrailerRootRecovered);
+        document.GetObject(new PdfObjectId(18)).AsDictionary().Required().GetRaw(PdfName.Get("Kept")).Should().Be(PdfBoolean.True);
+    }
+
+    [Theory]
+    [InlineData("/N", "2")]
+    [InlineData("/First", "8")]
+    [InlineData("/Type", "/ObjStm")]
+    public void An_object_stream_whose_header_value_MaxObjectLength_cut_is_the_guard_s_and_its_members_read_as_cut(string key, string value)
+    {
+        // Object stream 10 takes its value from object 5, written past MaxObjectLength: the stream is not reported unreadable,
+        // its members read as the guard's cut, the validator checks it in part, and raising the bound reads it whole (#395).
+        var file = new HandWrittenFile(version: "1.5");
+        var rows = new Dictionary<int, (int Type, long Field2, int Field3)>
+        {
+            [1] = (1, file.Object(1, Catalog), 0),
+            [2] = (1, file.Object(2, Pages), 0),
+            [5] = (1, file.Object(5, new string(' ', 2000) + value), 0),
+            [4] = (2, 10, 0),
+            [6] = (2, 10, 1),
+        };
+        const string Data = "4 0 6 6 (four) (six) ";
+        var entries = key switch
+        {
+            "/N" => "/Type /ObjStm /N 5 0 R /First 8",
+            "/First" => "/Type /ObjStm /N 2 /First 5 0 R",
+            _ => "/Type 5 0 R /N 2 /First 8",
+        };
+        rows[10] = (1, file.Object(10, string.Create(CultureInfo.InvariantCulture, $"<< {entries} /Length {Data.Length} >>\nstream\n{Data}\nendstream")), 0);
+        file.CompressedCrossReferenceStream(20, 21, number => rows.TryGetValue(number, out var row) ? row : (0, 0, 0), "/Root 1 0 R");
+        using var cut = PdfDocument.Open(file.Bytes, new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxObjectLength = 1024 } });
+        using var whole = PdfDocument.Open(file.Bytes);
+
+        cut.GetObject(new PdfObjectId(4)).Should().Be(PdfNull.Instance);
+        cut.Reader.IsCutAtLimit(4).Should().BeTrue();
+        cut.Diagnostics.Select(entry => entry.Code).Should().Equal(PdfDiagnosticCodes.LimitObject);
+        var report = new PdfValidator().Validate(cut);
+        report.Contains(PdfValidationRuleIds.XRefObjectStreamBroken).Should().BeFalse();
+        report.Contains(PdfValidationRuleIds.XRefCheckedInPart).Should().BeTrue();
+        string.Create(CultureInfo.InvariantCulture, $"{whole.GetObject(new PdfObjectId(4))}").Should().Be("\"four\"");
+    }
+
     [Fact]
     public void A_search_for_a_catalog_that_reads_again_what_its_guard_cut_and_finds_none_rebuilds_the_index_as_a_whole_search_does()
     {
@@ -7852,6 +7905,17 @@ public class ReaderLimitsTests
         }
     }
 
+    /// <summary>
+    /// Gives an object stream's <c>/Type</c>, <c>/N</c> and <c>/First</c> for one member at byte 5, <paramref name="key"/>
+    /// written as <paramref name="value"/>.
+    /// </summary>
+    private static string HeaderNaming(string key, string value) => key switch
+    {
+        "/N" => $"/Type /ObjStm /N {value} /First 5",
+        "/First" => $"/Type /ObjStm /N 1 /First {value}",
+        _ => $"/Type {value} /N 1 /First 5",
+    };
+
     /// <summary>What object streams 4 and 5 of <see cref="ObjectStreamsReadInTurnFile"/> decode to, each.</summary>
     private const int ObjectStreamDecoded = 17 * 1024 * 1024;
 
@@ -7862,7 +7926,7 @@ public class ReaderLimitsTests
     /// 14. With <paramref name="catalogWrittenDirectly"/>, object 16 is no catalog, and the catalog is object 30, written
     /// directly, which a row places only with <paramref name="catalogRow"/>.
     /// </summary>
-    private static byte[] ObjectStreamsReadInTurnFile(bool parametersCut, bool catalogWrittenDirectly = false, bool catalogRow = false)
+    private static byte[] ObjectStreamsReadInTurnFile(bool parametersCut, bool catalogWrittenDirectly = false, bool catalogRow = false, string? headerKey = null)
     {
         var file = new HandWrittenFile(version: "1.5");
         var rows = new Dictionary<int, (int Type, long Field2, int Field3)>
@@ -7870,7 +7934,8 @@ public class ReaderLimitsTests
             [1] = (1, file.Object(1, "(not a catalog)"), 0),
             [2] = (1, file.Object(2, Pages), 0),
         };
-        (int Number, string Body)[] even = [(10, "<< >>"), (12, "<< >>"), (14, "<< >>"), (16, catalogWrittenDirectly ? "<< >>" : Catalog)];
+        var fourteen = headerKey switch { "/N" => "1", "/First" => "5", "/Type" => "/ObjStm", _ => "<< >>" };
+        (int Number, string Body)[] even = [(10, "<< >>"), (12, "<< >>"), (14, fourteen), (16, catalogWrittenDirectly ? "<< >>" : Catalog)];
         (int Number, string Body)[] odd = [(11, "<< >>"), (13, "<< >>"), (15, "<< >>"), (17, "<< >>")];
         rows[4] = (1, file.PaddedObjectStream(4, even, ObjectStreamDecoded), 0);
         rows[5] = (1, file.PaddedObjectStream(5, odd, ObjectStreamDecoded), 0);
@@ -7894,7 +7959,10 @@ public class ReaderLimitsTests
         if (parametersCut)
         {
             var data = HostileInputTests.Compress("18 0 << /Kept true >>"u8.ToArray());
-            rows[6] = (1, file.Object(6, string.Create(CultureInfo.InvariantCulture, $"<< /Type /ObjStm /N 1 /First 5 /Filter /FlateDecode /DecodeParms 14 0 R /Length {data.Length} >>\nstream\n{Encoding.Latin1.GetString(data)}\nendstream")), 0);
+            var entries = headerKey is null
+                ? "/Type /ObjStm /N 1 /First 5 /DecodeParms 14 0 R"
+                : HeaderNaming(headerKey, "14 0 R");
+            rows[6] = (1, file.Object(6, string.Create(CultureInfo.InvariantCulture, $"<< {entries} /Filter /FlateDecode /Length {data.Length} >>\nstream\n{Encoding.Latin1.GetString(data)}\nendstream")), 0);
             rows[18] = (2, 6, 0);
         }
 
