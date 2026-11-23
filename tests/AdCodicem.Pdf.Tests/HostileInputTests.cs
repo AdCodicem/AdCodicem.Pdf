@@ -1550,8 +1550,8 @@ public class HostileInputTests
     public void A_file_nesting_objects_deeper_than_the_stack_allows_reads_them_as_null_without_crashing(int nesting, int streams)
     {
         // Each stream takes its /Length from the next and sits inside nested arrays, so every nested load parses
-        // that deep again: within both the parser's and the loader's bounds, yet more stack than a small thread
-        // has. The reader stops where the stack runs short, as it does at either bound.
+        // that deep again: within the parser's bound, yet more stack than a small thread has. The reader stops where the
+        // stack runs short, or at the loads' bound, whichever the thread reaches first.
         var builder = new TestPdfBuilder()
             .WithObject(1, "<< /Type /Catalog /Pages 2 0 R >>")
             .WithObject(2, "<< /Type /Pages /Kids [] /Count 0 >>");
@@ -1567,7 +1567,7 @@ public class HostileInputTests
         var (first, diagnostics) = ReadObject3OnASmallStack(builder.BuildClassic(rootNumber: 1));
 
         first.Should().BeOfType<PdfArray>();
-        diagnostics.Contains(PdfDiagnosticCodes.LimitNestingDepth).Should().BeTrue();
+        CutAtANesting(diagnostics).Should().BeTrue();
     }
 
     [Theory]
@@ -1589,8 +1589,15 @@ public class HostileInputTests
         var (first, diagnostics) = ReadObject3OnASmallStack(builder.BuildClassic(rootNumber: 1));
 
         first.Should().BeOfType<PdfDictionary>();
-        diagnostics.Contains(PdfDiagnosticCodes.LimitNestingDepth).Should().BeTrue();
+        CutAtANesting(diagnostics).Should().BeTrue();
     }
+
+    /// <summary>
+    /// Determines whether <paramref name="diagnostics"/> report a cut at either nesting — the parser's containers or the
+    /// reader's loads, at its bound or where the stack ran short —, whichever the thread reached first.
+    /// </summary>
+    private static bool CutAtANesting(PdfDiagnostics diagnostics) =>
+        diagnostics.Contains(PdfDiagnosticCodes.LimitNestingDepth) || diagnostics.Contains(PdfDiagnosticCodes.LimitNestedLoads);
 
     [Fact]
     public void An_object_referenced_under_many_generations_is_read_once()
