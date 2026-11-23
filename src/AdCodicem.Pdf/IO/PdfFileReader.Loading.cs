@@ -392,7 +392,6 @@ internal sealed partial class PdfFileReader
                     }
 
                     KeepPending(mark, syntaxOnly: true);
-                    CountNestingCut(NestingCut.Of(parser), 0);
 
                     // A stream the guard cut ran into the window's edge, not the file's end: what the parser found of it
                     // is the limit's, and was dropped with what it reported.
