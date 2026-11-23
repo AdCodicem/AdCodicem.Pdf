@@ -120,23 +120,18 @@ Five things change the report from one validation to the next. One is changing t
 validates it as you changed it. Another is a document opened to throw on a limit ([`ThrowOnLimit`](reader-limits.md))
 whose rebuild before the first rule reaches one: the rebuild throws once, in the first validation, with the index
 whole; a later validation reads that index, and throws only where its rules read what the limit cut or left out, as
-any read under `ThrowOnLimit` does. The last three are files crafted for it. In one, where a damaged stream's data is
-taken to end can still depend on which stream was read first
-([#138](https://github.com/AdCodicem/AdCodicem.Pdf/issues/138)). In another, a load lies past the reader's deepest
-nesting. The reader cuts it, or serves it from its cache when a read before kept the object, so that what was read
-before decides what that load gives ([#163](https://github.com/AdCodicem/AdCodicem.Pdf/issues/163)). A stream first
-decoded there keeps what the cut gave. A `/Length` chain that a cached link carries past the cut can go on into a
-stream the reader still holds, which then reads as null for the rest of the decoding. A value the validator reads
-through such a stream depends on which read first decoded it that deep: one of yours, or one of the validation's own.
-So validating a document you have not read can read what the cut left, and reading it first can spare it, or the
-reverse. On a thread with little stack, the reader's stack probe cuts sooner, even with nothing read first. So does
-the validator's own, which it asks before each level of its walk of what an object stream's decoding reads: what it has
-no room to load reads as null, which `syntax.depth-exceeded` reports, and the report can also depend on the thread
-([#312](https://github.com/AdCodicem/AdCodicem.Pdf/issues/312)). In the last, an object stream's decoding reads a
-value — its `/Type`, `/N`, `/First`, `/Filter` or `/DecodeParms` — held by a stream that lies on a loop, or the stream
-lies on a loop itself. What the reader serves of that value depends on which stream of the loop it decoded first, and
-so do the verdicts of `xref.object-stream-broken`, `xref.entry-broken`, `xref.entry-shifted` and
-`xref.entry-unconfirmed` ([#313](https://github.com/AdCodicem/AdCodicem.Pdf/issues/313)).
+any read under `ThrowOnLimit` does. The last three are files crafted for it, or the thread. In one, where a damaged
+stream's data is taken to end can still depend on which stream was read first
+([#138](https://github.com/AdCodicem/AdCodicem.Pdf/issues/138)). In another, one of the library's walks reaches
+[`MaxObjectStreamDecodePasses`](../reference/reader-limits.md), whose cut depends on what the reader kept before the
+walk began. In the last, the thread has little stack: the reader's stack probe cuts sooner, even with nothing read
+first, and so does the validator's own, which it asks before each level of its walk of what an object stream's decoding
+reads; what it has no room to load reads as null, reported under `limit.nested-loads`
+([#312](https://github.com/AdCodicem/AdCodicem.Pdf/issues/312)). A load past the reader's nesting no longer makes the
+report depend on what was read before: what a read kept serves a later one only where it would read the same
+([#163](https://github.com/AdCodicem/AdCodicem.Pdf/issues/163)). Nor does a value an object stream's decoding reads
+that a stream on a loop holds: the probe of the file's index reads it as null, as the walk of the streams' dependencies
+does ([#313](https://github.com/AdCodicem/AdCodicem.Pdf/issues/313)).
 
 The cross-reference rules read where each entry of the file's index places its object as a load reads it, and decide
 what a load would find there as settling decides it, through one function of the reader — a few dozen bytes of its
@@ -157,9 +152,8 @@ they read through the reader, and follow, only when that stream decodes alike in
 first read of one of its members does, meets no member of its own, nor of a stream that does not decode alike in turn
 or lies on a loop with it, no stream read again while the reader is still reading it, after a rebuild nothing the
 rebuilt index places otherwise, and nothing the reader's nesting cuts —, since its decoding then gives the same
-whatever was read before, but at the reader's deepest load, above; a member of any other stream they take as a need,
-read as null, as the reader reads a member of a stream it is still decoding, so that the verdict does not depend on
-what you read before validating, but for that load. A loop that
+whatever was read before; a member of any other stream they take as a need, read as null, as the reader reads a member
+of a stream it is still decoding, so that the verdict does not depend on what you read before validating. A loop that
 closes only through the value of such a member, or through what decoding reads after it, is left to the reader to
 report ([#314](https://github.com/AdCodicem/AdCodicem.Pdf/issues/314)). Which streams lead back to themselves through what
 they need is worked out once, in time in proportion to the streams and what they need

@@ -229,6 +229,20 @@ it, and the validator takes what it leaves unread for the reader's limit, judgin
 for the document's life, was weighed and set aside: it would cut a caller reading a valid file's pages in turn, which the
 caller can order otherwise, as the one rule that reads every object of the index now does, stream by stream.
 
+Amended on 2026-11-23, by the maintainer, while [#163](https://github.com/AdCodicem/AdCodicem.Pdf/issues/163) was fixed: the
+parser's nesting bound (128) and the chain of nested loads (64) had been filed as bounds only an invalid file reaches,
+on reasons that were empirical. ISO 32000-1 nests arrays to any depth (7.3.6) — a chain of actions through `/Next` written
+in one object is as deep as it is long — and lets an object stream take its `/Filter` or `/DecodeParms` from an object
+another object stream holds (7.5.7), to any depth. Both become guards, `MaxNestingDepth` (128, `limit.nesting-depth`) and
+`MaxNestedLoads` (64, `limit.nested-loads`), their defaults unchanged, honored by `ThrowOnLimit`. The thread's stack stays
+the backstop beside each — the parser and the reader are recursive — and is reported under the guard's code, its message
+naming a larger stack as the remedy; `syntax.depth-exceeded` is withdrawn. The nested-loads cut depends on where a read
+is made from, not on the file: what a read keeps — an object, an object stream's contents, an exception — now carries how
+deep its loads went, and serves a later read only where that read would go as deep without the bound, or, for one the
+bound cut, from as many loads in flight, so that an object reads the same whatever was read before it; what the stack cut
+is kept for the read in progress alone. Keeping nothing a cut reached was measured and set aside: a chain of 64 object
+streams each taking its filter from the next was decoded again past every level, without end in practice.
+
 ## Context
 
 Invariant 4 treats everything read from a file as hostile: no allocation, loop or recursion is sized by a
