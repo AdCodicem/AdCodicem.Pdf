@@ -14,9 +14,6 @@ namespace AdCodicem.Pdf.IO;
 /// <param name="CutBase">The base of a read the loads' nesting or the stack cut on its way; -1 for one nothing cut.</param>
 internal readonly record struct ReadDepth(int Extent, int CutBase)
 {
-    /// <summary>The depth of what nothing nests: a read that made no load, or one kept before depths were.</summary>
-    public static ReadDepth None { get; } = new(0, -1);
-
     /// <summary>
     /// Gets a value indicating whether what the read gave depends on how it was made rather than on the file — the thread's
     /// stack cut it, or the validator's probe read an object stream's value as the walk of the streams' dependencies reads
