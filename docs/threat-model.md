@@ -138,9 +138,15 @@ defaults, never with `ThrowOnLimit`.
   (`PdfFileReader.GetObject`); `_loading` turns a load that needs itself into null. What a read keeps — an object, an
   object stream's contents, an exception — carries how deep its loads went (`ReadDepth`), and serves a later read only
   where that read would go as deep without the bound, or, for one the bound cut, from as many loads in flight: an object
-  reads the same whatever was read before it, and a read repeated from one depth costs once. What the stack cut is kept
-  for the read in progress alone (`_keptForRead`), so that the reads above it are not repeated each time in full ([#163],
-  [#396], [#397]; `HostileInputTests`, `ReaderLimitsTests`). A stream resolves its filters and their parameters before any
+  reads the same whatever was read before it, and a read repeated from one depth costs once. What a cut read kept is kept
+  apart for each depth it was made from (`BoundedStore`: object streams within the 32 MB budget, objects and exceptions
+  as many as the reader caches objects, one per object once the read ends), so that reads made in turn from two depths
+  each keep theirs. Within one read, an object the cache let go of is not loaded again from the same depth: it reads as
+  null under `limit.nested-loads` (`_cutKeptForRead`), so that a read loads each object once a depth at most, whatever
+  the cache holds, rather than once a path, a number that grows with the power of the depth. What the stack cut is kept
+  for the read in progress alone (`_keptForRead`), so that the reads above it are not repeated each time in full. A guard's exception thrown at the deepest load leaves every load in flight once, each keeping it in its
+  frame's filter (`KeepThrown`), rather than thrown again from a handler at each, which would take the stack once per
+  load ([#163], [#396], [#397]; `HostileInputTests`, `ReaderLimitsTests`). A stream resolves its filters and their parameters before any
   of its data (`FilterChain`), so no level holds decoded data while the next loads. While the cross-reference chain is
   read, nothing loads (*Indexing*).
 - **Every walk the validator makes across objects is iterative but one**, with a visited set by object number: the

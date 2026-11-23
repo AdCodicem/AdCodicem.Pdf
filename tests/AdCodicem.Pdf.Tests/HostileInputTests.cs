@@ -1853,6 +1853,50 @@ public class HostileInputTests
     }
 
     [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Object_streams_each_asking_for_the_next_from_two_depths_are_each_read_once_a_depth(bool throwOnLimit)
+    {
+        // Each of 80 object streams asks for the next from two depths in turn, past a bound of 16 loads, which cuts every
+        // decoding past the eighth stream. What a cut read gave, and what it threw, is kept apart for each depth it was made
+        // from, so that a read from one depth does not let go of what a read from the other kept: each stream is read at most
+        // once a depth — 3^8 times, were each read from a depth to replace the other's (#163).
+        var file = ObjectStreamsAskingTheNextFromTwoDepths(80);
+        using var source = new OffsetCountingSource(file);
+        var options = new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxNestedLoads = 16 }, ThrowOnLimit = throwOnLimit };
+        using var document = PdfDocument.Open(source, options, ownsSource: false);
+
+        var reading = () => document.GetObject(new PdfObjectId(3));
+
+        if (throwOnLimit)
+        {
+            reading.Should().Throw<PdfLimitExceededException>().Which.Code.Should().Be(PdfDiagnosticCodes.LimitNestedLoads);
+        }
+        else
+        {
+            reading().Should().Be(PdfNull.Instance);
+        }
+
+        source.Reads.Values.Max().Should().BeLessThanOrEqualTo(17, "a stream is read once for each depth it is asked from, 17 at most");
+    }
+
+    [Fact]
+    public void A_read_past_the_loads_nesting_loads_each_object_once_a_depth_however_little_the_cache_keeps()
+    {
+        // Each of 20 object streams decodes to 8 MB and asks for the next from two depths in turn, past a bound of 12 loads:
+        // under a cache of 64 objects, and the 32 MB of object streams the reader keeps, what a cut read kept is let go
+        // before the read asks for it again. Loaded again, each would load again what it read through, as many times as
+        // the read meets it; it reads as null instead, so that each stream is read about once a depth (#163).
+        var file = ObjectStreamsDecodingThroughTheNextFromTwoDepths(20, 8 * 1024 * 1024);
+        using var source = new OffsetCountingSource(file);
+        var options = new PdfReaderOptions { ObjectCacheCapacity = 64, Limits = PdfReaderLimits.Default with { MaxNestedLoads = 12 } };
+        using var document = PdfDocument.Open(source, options, ownsSource: false);
+
+        document.GetObject(new PdfObjectId(3)).ToString().Should().Be("\"three\"");
+        source.Reads.Values.Max().Should().BeLessThanOrEqualTo(24, "a stream is read about once for each depth it is asked from, not once for each path");
+    }
+
+    [Theory]
     [InlineData(new int[0])]
     [InlineData(new[] { 20 })]
     [InlineData(new[] { 50000 })]
@@ -7659,9 +7703,10 @@ public class HostileInputTests
     /// Writes a file of <paramref name="streams"/> object streams, 100 and on, each holding the next's filter, objects 200
     /// and on, <c>/FlateDecode</c>, and taking its own from the object the next holds, the last's written directly: the
     /// first holds object 3, <c>(three)</c>, the one before the last object 5, <c>(five)</c>. Read first, 3 loads each stream
-    /// in turn, a level deeper each (ISO 32000-1 7.5.7 allows it).
+    /// in turn, a level deeper each (ISO 32000-1 7.5.7 allows it). The last's data is padded with spaces to
+    /// <paramref name="lastPadding"/> bytes once decoded.
     /// </summary>
-    internal static byte[] ObjectStreamsTakingTheirFilterFromTheNext(int streams)
+    internal static byte[] ObjectStreamsTakingTheirFilterFromTheNext(int streams, int lastPadding = 0)
     {
         var file = new HandWrittenFile(version: "1.5");
         var rows = new Dictionary<int, (int Type, long Field2, int Field3)>
@@ -7693,7 +7738,8 @@ public class HostileInputTests
                 contents.Append(body).Append(' ');
             }
 
-            var data = Compress(Encoding.Latin1.GetBytes(header.ToString() + contents));
+            var text = header.ToString() + contents;
+            var data = Compress(Encoding.Latin1.GetBytes(k == streams - 1 ? text.PadRight(lastPadding) : text));
             var filter = k == streams - 1 ? "/FlateDecode" : string.Create(CultureInfo.InvariantCulture, $"{201 + k} 0 R");
             rows[100 + k] = (1, file.Object(100 + k, string.Create(CultureInfo.InvariantCulture, $"<< /Type /ObjStm /N {members.Count} /First {header.Length} /Filter {filter} /Length {data.Length} >>\nstream\n{Encoding.Latin1.GetString(data)}\nendstream")), 0);
 
@@ -7704,6 +7750,135 @@ public class HostileInputTests
         }
 
         file.CompressedCrossReferenceStream(900, 901, number => rows.TryGetValue(number, out var row) ? row : (0, 0, 0), "/Root 1 0 R");
+        return file.Bytes;
+    }
+
+    /// <summary>
+    /// Writes a file of <paramref name="streams"/> object streams, 100 and on, each taking its <c>/Length</c> and its
+    /// <c>/N</c> from objects the next holds, 1000 and 2000 and on, and its <c>/First</c> from object 4000 and on, which a
+    /// helper object stream holds, 300 and on, whose own <c>/N</c> is a third object the next holds, 3000 and on; the last
+    /// written directly. The first holds object 3, <c>(three)</c>. Decoded from a depth, each asks for the next from two
+    /// depths in turn: a level deeper for its <c>/Length</c>, read as it is loaded, and for its helper's <c>/N</c>; as deep
+    /// for its <c>/N</c>.
+    /// </summary>
+    internal static byte[] ObjectStreamsAskingTheNextFromTwoDepths(int streams)
+    {
+        var file = new HandWrittenFile(version: "1.5");
+        var rows = new Dictionary<int, (int Type, long Field2, int Field3)>
+        {
+            [1] = (1, file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"), 0),
+            [2] = (1, file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"), 0),
+        };
+
+        // Each stream's /Length is written six digits wide, in place of the zeros, so that what a stream's data weighs does
+        // not depend on the previous one's.
+        var data = new string[streams];
+        var firsts = new int[streams];
+
+        for (var i = 0; i < streams; i++)
+        {
+            List<(int Number, string Body)> members = i == 0
+                ? [(3, "(three)")]
+                : [(999 + i, "000000"), (1999 + i, i == 1 ? "1" : "3"), (2999 + i, "1")];
+            var header = new StringBuilder();
+            var contents = new StringBuilder();
+
+            foreach (var (member, body) in members)
+            {
+                header.Append(CultureInfo.InvariantCulture, $"{member} {contents.Length} ");
+                contents.Append(body).Append(' ');
+            }
+
+            data[i] = header.ToString() + contents;
+            firsts[i] = header.Length;
+
+            for (var index = 0; index < members.Count; index++)
+            {
+                rows[members[index].Number] = (2, 100 + i, index);
+            }
+        }
+
+        for (var i = 1; i < streams; i++)
+        {
+            data[i] = data[i].Replace("000000", data[i - 1].Length.ToString(CultureInfo.InvariantCulture).PadLeft(6), StringComparison.Ordinal);
+        }
+
+        for (var i = 0; i < streams; i++)
+        {
+            var last = i == streams - 1;
+            var entries = last
+                ? string.Create(CultureInfo.InvariantCulture, $"/N {(i == 0 ? 1 : 3)} /First {firsts[i]} /Length {data[i].Length}")
+                : string.Create(CultureInfo.InvariantCulture, $"/N {2000 + i} 0 R /First {4000 + i} 0 R /Length {1000 + i} 0 R");
+            rows[100 + i] = (1, file.Object(100 + i, $"<< /Type /ObjStm {entries} >>\nstream\n{data[i]}\nendstream"), 0);
+
+            if (!last)
+            {
+                var header = string.Create(CultureInfo.InvariantCulture, $"{4000 + i} 0 ");
+                var helper = string.Create(CultureInfo.InvariantCulture, $"{header}{firsts[i]} ");
+                rows[300 + i] = (1, file.Object(300 + i, string.Create(CultureInfo.InvariantCulture, $"<< /Type /ObjStm /N {3000 + i} 0 R /First {header.Length} /Length {helper.Length} >>\nstream\n{helper}\nendstream")), 0);
+                rows[4000 + i] = (2, 300 + i, 0);
+            }
+        }
+
+        file.CompressedCrossReferenceStream(9000, 9001, number => rows.TryGetValue(number, out var row) ? row : (0, 0, 0), "/Root 1 0 R");
+        return file.Bytes;
+    }
+
+    /// <summary>
+    /// Writes a file of <paramref name="streams"/> object streams, 100 and on, each giving its <c>/N</c> and <c>/First</c>
+    /// directly, taking its <c>/Length</c> from object 1000 and on, which the next holds, and passing its data through two
+    /// Flate steps, the first's parameters object 2000 and on, which the next holds, the second's object 4000 and on, which a
+    /// helper object stream holds, 300 and on, whose own <c>/N</c> is object 3000 and on, which the next holds; the last's
+    /// written directly. Each decodes to its members padded with spaces to <paramref name="padding"/> bytes; the first holds
+    /// object 3, <c>(three)</c>. Decoded from a depth, each asks for the next from two depths in turn, and decodes whatever
+    /// its loads read as null.
+    /// </summary>
+    internal static byte[] ObjectStreamsDecodingThroughTheNextFromTwoDepths(int streams, int padding)
+    {
+        var file = new HandWrittenFile(version: "1.5");
+        var rows = new Dictionary<int, (int Type, long Field2, int Field3)>
+        {
+            [1] = (1, file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"), 0),
+            [2] = (1, file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"), 0),
+        };
+        var data = new byte[streams][];
+
+        for (var i = 0; i < streams; i++)
+        {
+            // Each stream's /Length, the previous one's, is known once that one is compressed.
+            List<(int Number, string Body)> members = i == 0
+                ? [(3, "(three)")]
+                : [(999 + i, data[i - 1].Length.ToString(CultureInfo.InvariantCulture)), (1999 + i, "<< /Predictor 1 >>"), (2999 + i, "1")];
+            var header = new StringBuilder();
+            var contents = new StringBuilder();
+
+            foreach (var (member, body) in members)
+            {
+                header.Append(CultureInfo.InvariantCulture, $"{member} {contents.Length} ");
+                contents.Append(body).Append(' ');
+            }
+
+            data[i] = Compress(Compress(Encoding.Latin1.GetBytes((header.ToString() + contents).PadRight(padding))));
+            var entries = i == streams - 1
+                ? string.Create(CultureInfo.InvariantCulture, $"/Length {data[i].Length}")
+                : string.Create(CultureInfo.InvariantCulture, $"/Length {1000 + i} 0 R /DecodeParms [{2000 + i} 0 R {4000 + i} 0 R]");
+            rows[100 + i] = (1, file.Object(100 + i, string.Create(CultureInfo.InvariantCulture, $"<< /Type /ObjStm /N {members.Count} /First {header.Length} /Filter [/FlateDecode /FlateDecode] {entries} >>\nstream\n{Encoding.Latin1.GetString(data[i])}\nendstream")), 0);
+
+            for (var index = 0; index < members.Count; index++)
+            {
+                rows[members[index].Number] = (2, 100 + i, index);
+            }
+
+            if (i < streams - 1)
+            {
+                var helperHeader = string.Create(CultureInfo.InvariantCulture, $"{4000 + i} 0 ");
+                var helper = helperHeader + "<< /Predictor 1 >> ";
+                rows[300 + i] = (1, file.Object(300 + i, string.Create(CultureInfo.InvariantCulture, $"<< /Type /ObjStm /N {3000 + i} 0 R /First {helperHeader.Length} /Length {helper.Length} >>\nstream\n{helper}\nendstream")), 0);
+                rows[4000 + i] = (2, 300 + i, 0);
+            }
+        }
+
+        file.CompressedCrossReferenceStream(9000, 9001, number => rows.TryGetValue(number, out var row) ? row : (0, 0, 0), "/Root 1 0 R");
         return file.Bytes;
     }
 

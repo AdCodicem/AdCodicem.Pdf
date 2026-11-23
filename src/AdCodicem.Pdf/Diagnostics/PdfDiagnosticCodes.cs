@@ -528,8 +528,10 @@ public static class PdfDiagnosticCodes
     /// An object is reached through more objects loaded while loading another — an indirect <c>/Length</c>, an object
     /// stream and the values its decoding reads — than <see cref="Documents.PdfReaderLimits.MaxNestedLoads"/>, or than the
     /// thread's stack leaves the reader, or the validator's walk of what an object stream's decoding reads, room for: it
-    /// reads as null there, and is read whole from a shallower place. Reported once a document, where the first object it
-    /// cut lies, as the same chain is met again from each of its objects; once more for the validator's walk.
+    /// reads as null there, and is read whole from a shallower place. So does an object a read past that bound would load
+    /// again from where it loaded it before, the cache having let go of what it gave there. Reported once a document, where
+    /// the first object it cut lies, as the same chain is met again from each of its objects; once more for the validator's
+    /// walk.
     /// </summary>
     public const string LimitNestedLoads = "limit.nested-loads";
 }

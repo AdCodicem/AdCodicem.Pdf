@@ -3507,6 +3507,41 @@ public class ReaderLimitsTests
     }
 
     [Theory]
+    [InlineData("the thread's stack", Stacks.Small)]
+    [InlineData("the loads' nesting", Stacks.Large)]
+    [InlineData("a guard past the nesting's reach", Stacks.Large)]
+    public void Under_ThrowOnLimit_a_guard_reached_at_the_deepest_load_throws_on_a_thread_of_little_stack(string reached, int stack)
+    {
+        // Object 3, in the first of 40 or 70 object streams each taking its /Filter from an object the next holds, is read
+        // on a thread whose stack runs short at about thirty loads, or past the loads' nesting; or in the first of 63, the
+        // last of which decodes past a MaxDecodedStreamLength of 1 MB. The exception leaves every load in flight, each
+        // keeping it as it passes: thrown once, not thrown again from each load on top of the stack the others took, which
+        // would take more than the thread has.
+        var (file, limits, code) = reached switch
+        {
+            "the thread's stack" => (HostileInputTests.ObjectStreamsTakingTheirFilterFromTheNext(40), PdfReaderLimits.Default, "limit.nest"),
+            "the loads' nesting" => (HostileInputTests.ObjectStreamsTakingTheirFilterFromTheNext(70), PdfReaderLimits.Default, PdfDiagnosticCodes.LimitNestedLoads),
+            _ => (HostileInputTests.ObjectStreamsTakingTheirFilterFromTheNext(63, 2 * 1024 * 1024), PdfReaderLimits.Default with { MaxDecodedStreamLength = 1024 * 1024 }, PdfDiagnosticCodes.LimitDecodedStream),
+        };
+        using var document = PdfDocument.Open(file, new PdfReaderOptions { Limits = limits, ThrowOnLimit = true });
+
+        var thrown = Stacks.Run(stack, () =>
+        {
+            try
+            {
+                document.GetObject(new PdfObjectId(3));
+                return null;
+            }
+            catch (PdfLimitExceededException exception)
+            {
+                return exception.Code;
+            }
+        });
+
+        thrown.Should().StartWith(code);
+    }
+
+    [Theory]
     [InlineData(false)]
     [InlineData(true)]
     public void A_trailer_value_nested_past_the_bound_reads_as_null_and_the_chain_goes_on(bool crossesWindow)

@@ -365,6 +365,15 @@ public sealed record PdfReaderLimits
     /// bound, and nothing read through it is kept past the read in progress.
     /// </para>
     /// <para>
+    /// Within one read, what the bound cut is kept for each number of loads in flight it was read from, as many as
+    /// <see cref="PdfReaderOptions.ObjectCacheCapacity"/>, and one for each object once the read ends: a read that the
+    /// bound cuts loads each object once for each such number at most. Where the cache had to let go of one before the read
+    /// asks for it again from the same place — a nest of object streams that reads each other's values from many depths,
+    /// past what the cache holds —, that load reads as null too, reported under the same code, and which loads do then
+    /// depends on what the cache held before the read; so that the read's cost stays in proportion to its objects and to
+    /// the bound, rather than growing with the power of its depth.
+    /// </para>
+    /// <para>
     /// The validator's walk of what each object stream's decoding needs nests its loads as the reader does, under the same
     /// bound. Reaching it reports <see cref="Diagnostics.PdfDiagnosticCodes.LimitNestedLoads"/>, once a document.
     /// </para>

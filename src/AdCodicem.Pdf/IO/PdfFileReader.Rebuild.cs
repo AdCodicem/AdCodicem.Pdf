@@ -135,11 +135,9 @@ internal sealed partial class PdfFileReader
         _walkLoads = null;
         _cache.Clear();
         _cacheOrder.Clear();
+        ForgetCutReads();
         _objectStreams.Clear();
-        _objectStreamDepths.Clear();
         _objectStreamsHiddenByGuard.Clear();
-        _objectStreamOrder.Clear();
-        _objectStreamBytes = 0;
 
         // What read as null while loads were in flight was theirs, not the file's. What was noted of each object as it was
         // read is noted again as each is read from the rebuilt index — every object written directly in the file is, as the
@@ -928,6 +926,14 @@ internal sealed partial class PdfFileReader
         _decodingsThrown?.Remove(number);
         _objectStreamsHiddenByGuard.Remove(number);
         _cache.Remove(number);
+        _cutCache?.RemoveAll(number);
+
+        // No load is in flight as the expansion replaces a definition, and what the last read noted of its cut reads was let
+        // go as it ended: noted still, it would read the replaced object as null once loaded again from the same place.
+        if (_cutKeptForRead is not null)
+        {
+            KeepLastCutReads();
+        }
 
         // The expansion runs after the rebuild let go of what the walk kept (ForgetWhatWasRead), so both sets hold nothing
         // here today: the number is removed all the same, so that a later caller cannot leave it stale in them.
@@ -939,7 +945,7 @@ internal sealed partial class PdfFileReader
         _streamLengthFaults.Remove(number);
         _nullWhileDecoding.Remove(number);
 
-        ReleaseObjectStream(number);
+        _objectStreams.RemoveAll(number);
     }
 
     /// <summary>
@@ -953,10 +959,8 @@ internal sealed partial class PdfFileReader
         _cache.Clear();
         _cacheOrder.Clear();
         _walkLoads = null;
+        ForgetCutReads();
         _objectStreams.Clear();
-        _objectStreamDepths.Clear();
-        _objectStreamOrder.Clear();
-        _objectStreamBytes = 0;
         _nullWhileDecoding.Clear();
         _unproduced.Clear();
         _cutAtLimit.Clear();
