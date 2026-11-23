@@ -17,8 +17,8 @@ namespace AdCodicem.Pdf.Documents;
 /// instead.
 /// </para>
 /// <para>
-/// Bounds that only an invalid file can reach — how deeply containers nest, how far references to references are
-/// followed — are not options: lifting them would let nothing more be read.
+/// A bound that only an invalid file can reach — how far references to references are followed — is not an option:
+/// lifting it would let nothing more be read.
 /// </para>
 /// </remarks>
 public sealed record PdfReaderLimits
@@ -42,6 +42,8 @@ public sealed record PdfReaderLimits
         MaxFilterChainLength = int.MaxValue,
         MaxRebuildReadPasses = int.MaxValue,
         MaxObjectStreamDecodePasses = int.MaxValue,
+        MaxNestingDepth = int.MaxValue,
+        MaxNestedLoads = int.MaxValue,
     };
 
     /// <summary>
@@ -316,6 +318,66 @@ public sealed record PdfReaderLimits
             field = value;
         }
     } = 4;
+
+    /// <summary>
+    /// Gets how deeply one object may nest its arrays and dictionaries. Defaults to 128: real documents rarely pass ten,
+    /// while ISO 32000-1 (7.3.6) nests them to any depth — a chain of actions through <c>/Next</c> (12.6.2) written in one
+    /// object is as deep as it is long.
+    /// </summary>
+    /// <remarks>
+    /// The bound holds within one object, whether the file writes it directly or an object stream holds it; an object
+    /// loaded while another is parsed starts again at zero, and is bounded by <see cref="MaxNestedLoads"/>. The container
+    /// past it reads as null — an array's element, a dictionary's key dropped —, what lies inside it unread, and the object
+    /// is one a guard cut. Each level costs the parser under a kilobyte of the thread's stack, which is asked before each
+    /// one: on a thread that has no room left, the container reads as null too, reported under the same code with the
+    /// stack as the reason, however high the bound, and nothing read through it is kept past the read in progress.
+    /// Reaching either reports <see cref="Diagnostics.PdfDiagnosticCodes.LimitNestingDepth"/>, once for each place.
+    /// </remarks>
+    /// <exception cref="ArgumentOutOfRangeException">The value is zero or less.</exception>
+    public int MaxNestingDepth
+    {
+        get;
+        init
+        {
+            ArgumentOutOfRangeException.ThrowIfNegativeOrZero(value, nameof(MaxNestingDepth));
+            field = value;
+        }
+    } = 128;
+
+    /// <summary>
+    /// Gets how many objects may be loaded while loading another, the first load counted. Defaults to 64: real documents
+    /// stay within a handful — an object in an object stream whose <c>/Length</c> is indirect is three —, while
+    /// ISO 32000-1 (7.5.7) lets an object stream take its <c>/Filter</c> or <c>/DecodeParms</c> from an object another
+    /// object stream holds, to any depth.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A load nests another when an object's parse resolves an indirect <c>/Length</c>, when an object an object stream
+    /// holds has the stream loaded and decoded, and when that decoding reads its <c>/Type</c>, <c>/N</c>, <c>/First</c>,
+    /// <c>/Filter</c> and <c>/DecodeParms</c>. The load past the bound reads as null where it was asked from, and the
+    /// object is read whole from a shallower place: how deep a read went is kept with what it gave — an object, an object
+    /// stream's contents, or under <see cref="PdfReaderOptions.ThrowOnLimit"/> the exception it threw —, which serves a
+    /// later read only where a read made then would go as deep without the bound, or, for what the bound cut, from as many
+    /// loads in flight as it was made from. What an object reads as does not depend on what was read before it. Each load
+    /// costs the reader a few kilobytes of the thread's stack, which is asked before each one: on a thread that has no room
+    /// left, the load reads as null too, reported under the same code with the stack as the reason, however high the
+    /// bound, and nothing read through it is kept past the read in progress.
+    /// </para>
+    /// <para>
+    /// The validator's walk of what each object stream's decoding needs nests its loads as the reader does, under the same
+    /// bound. Reaching it reports <see cref="Diagnostics.PdfDiagnosticCodes.LimitNestedLoads"/>, once a document.
+    /// </para>
+    /// </remarks>
+    /// <exception cref="ArgumentOutOfRangeException">The value is zero or less.</exception>
+    public int MaxNestedLoads
+    {
+        get;
+        init
+        {
+            ArgumentOutOfRangeException.ThrowIfNegativeOrZero(value, nameof(MaxNestedLoads));
+            field = value;
+        }
+    } = 64;
 
     private static int Length(int value, [System.Runtime.CompilerServices.CallerMemberName] string? property = null)
     {

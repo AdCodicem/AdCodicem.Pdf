@@ -1644,7 +1644,7 @@ public class ObjectRuleTests
 
     [Theory]
     [InlineData(false, 1, 3)]
-    [InlineData(true, 69, 3)]
+    [InlineData(true, 69, 7)]
     public void Only_the_link_the_reader_s_nesting_cut_is_followed_again_from_higher_up(bool deeper, int row, int reads)
     {
         // Object stream 6 takes its parameters from stream 100, which heads 63 streams, or 40, each taking its /Length
@@ -1656,8 +1656,9 @@ public class ObjectRuleTests
         // then reads 64 dictionaries, 63 past 500, which, under the smallest cache, 64 objects, let go of what the
         // walks read of the chains, and 10 meets 100 at the second level, and takes its links at once. The object after
         // the head, or after the 35th stream, is read by 6's walk alone, as it follows the nest and as the reader
-        // resolves the /Length of the streams it reads. Had a cut below a link been taken for its own, or a link cut
-        // from a deeper meeting been kept cut, 10's walk followed the nest again from there.
+        // resolves the /Length of the streams it reads, and by the reader where what it kept of the 35th from one depth
+        // does not serve a read from another (#163). Had a cut below a link been taken for its own, or a link cut from a
+        // deeper meeting been kept cut, 10's walk followed the nest again from there.
         var written = Merged(LinkedStreamChain(100, deeper ? 40 : 63, "70 0 R"), new() { [70] = "2" });
         written = Merged(written, StreamChain(500, 28, "100 0 R"));
         var after = new StringBuilder();
@@ -2619,7 +2620,7 @@ public class ObjectRuleTests
     [InlineData("/N", 62, "a member of 9", false)]
     [InlineData("/N", 62, "an object", true)]
     [InlineData("/N", 63, "an object", false)]
-    [InlineData("/Length and /N", 61, "a member of 9", false)]
+    [InlineData("/Length and /N", 61, "a member of 9", true)]
     public void Streams_nested_on_a_chain_are_followed_as_deep_as_the_reader_nests_its_loads(string key, int streams, string last, bool circular)
     {
         // The key names the first of a chain of streams, each taking its /Length from the next, the last from 5 — or from
@@ -2627,7 +2628,8 @@ public class ObjectRuleTests
         // the stream a level below it, its /Length a level further, its /N where the stream was; each nested stream a level
         // deeper; and nothing past 64 levels, so that 170 reads as null at the 65th, a member at the 64th already, its stream
         // loaded a level deeper. 5 itself is reported at any depth, as the stream holds it. A chain of streams /Length met
-        // first, a level deeper than /N meets it, is parsed there, and kept: /N reads it again, and loads nothing more.
+        // first, a level deeper than /N meets it, is parsed there and cut: /N, a level higher, parses it again, and reaches
+        // 170 (#163).
         var chain = StreamChain(100, streams, last == "5" ? "5 0 R" : "170 0 R");
         Dictionary<int, string> nine = [];
 
@@ -3500,18 +3502,16 @@ public class ObjectRuleTests
     }
 
     [Theory]
-    [InlineData(new int[0], true)]
-    [InlineData(new[] { 6 }, true)]
-    [InlineData(new[] { 100 }, false)]
-    [InlineData(new[] { 100, 6 }, false)]
-    public void A_stream_the_reader_first_decodes_at_its_deepest_load_is_read_as_it_kept_that_decoding(int[] before, bool circular)
+    [InlineData(new int[0])]
+    [InlineData(new[] { 6 })]
+    [InlineData(new[] { 100 })]
+    [InlineData(new[] { 100, 6 })]
+    public void A_stream_the_reader_first_decodes_at_its_deepest_load_is_read_from_a_shallower_one_as_a_fresh_read_reads_it(int[] before)
     {
-        // #163's residual, which closing it flips. Stream 7 takes its parameters from 170, which 9 holds, 5 0 R; 9's /Length
-        // is 50, its data a string holding endstream, then 170. Streams 100 onward, 62 of them, each take their /Length from
-        // the next, the last from 170. 9 decodes alike, its decoding reaching the 3rd load, and the walk follows 170 to 5. Read
-        // first, 100 makes the reader decode 9 at its 64th load, 50 cut at the 65th: 9 ends at the endstream inside its
-        // data, 170 reads as null for good, and the walk, which reads 170 through the reader, finds 7 needing nothing. The
-        // reader keeps what a decoding its nesting cut gave (#163): what was read before decides.
+        // Stream 7 takes its parameters from 170, which 9 holds, 5 0 R; 9's /Length is 50, its data a string holding endstream,
+        // then 170. Streams 100 onward, 62 of them, each take their /Length from the next, the last from 170. Read first, 100
+        // has the reader decode 9 at its 64th load, 50 cut at the 65th, 170 left out; the walk then reads 170 from a shallower
+        // place, where that decoding does not serve it, and finds 7 needing 5 in every order (#163).
         using var document = PdfDocument.Open(ConvergenceShapes.Shallow(62));
 
         foreach (var number in before)
@@ -3519,24 +3519,20 @@ public class ObjectRuleTests
             document.GetObject(new PdfObjectId(number));
         }
 
-        new PdfValidator().Validate(document).Contains(PdfValidationRuleIds.XRefObjectStreamCircular).Should().Be(circular);
+        new PdfValidator().Validate(document).Contains(PdfValidationRuleIds.XRefObjectStreamCircular).Should().BeTrue();
     }
 
     [Theory]
-    [InlineData(new int[0], true)]
-    [InlineData(new[] { 30 }, true)]
-    [InlineData(new[] { 50 }, true)]
-    [InlineData(new[] { 30, 50 }, false)]
-    public void A_stream_whose_decoding_meets_a_link_the_reader_s_cache_serves_past_its_deepest_load_is_read_as_that_link_leads(int[] before, bool circular)
+    [InlineData(new int[0])]
+    [InlineData(new[] { 30 })]
+    [InlineData(new[] { 50 })]
+    [InlineData(new[] { 30, 50 })]
+    public void A_link_the_reader_kept_from_a_shallow_read_is_not_served_past_its_deepest_load(int[] before)
     {
-        // #163's residual, which closing it flips, closing it with no cut kept alone leaving it as it is. Stream 6 holds 7 and
-        // takes its parameters from 50, which 5 holds: 7 0 R where 5's second Flate step reads stream 20's predictor, 77 0 R
-        // otherwise. 20's /Length leads through 62 streams to 30, written in the file, 20 0 R. The walk follows 50 through the
-        // reader: 5 decodes alike, its walk reading 30 as null at the 65th load, inside 20's parse, where it places 20's data
-        // alone. Read first, 50 has the reader cut 30 there, and gives 7 0 R: 6 is circular. Read after 30, which the reader's
-        // cache keeps, 50 has the cache serve 30 past the reader's nesting, which it asks after its cache: the chain goes on
-        // to 20, which the reader holds in its loads and reads as null for the rest of 5's decoding, and 50 gives 77 0 R, with
-        // no load cut. What was read before decides (#163).
+        // Stream 6 holds 7 and takes its parameters from 50, which 5 holds: 7 0 R where 5's second Flate step reads stream 20's
+        // predictor, 77 0 R otherwise. 20's /Length leads through 62 streams to 30, written in the file, 20 0 R. Read after
+        // 30, which the reader kept from a shallow read, 50 meets 30 past the reader's nesting, where what was kept does not
+        // serve it: 30 is cut there as in a fresh read, and 50 gives 7 0 R in every order (#163).
         using var document = PdfDocument.Open(ConvergenceShapes.CachedPastTheCut(62));
 
         foreach (var number in before)
@@ -3544,7 +3540,7 @@ public class ObjectRuleTests
             document.GetObject(new PdfObjectId(number));
         }
 
-        new PdfValidator().Validate(document).Contains(PdfValidationRuleIds.XRefObjectStreamCircular).Should().Be(circular);
+        new PdfValidator().Validate(document).Contains(PdfValidationRuleIds.XRefObjectStreamCircular).Should().BeTrue();
     }
 
     [Fact]
@@ -3563,7 +3559,7 @@ public class ObjectRuleTests
         // bound on nested loads, which it reaches at stream 1002, three streams into 5's nest; on 256 KB, short of that bound,
         // where the stack runs short. A small read given a larger stack another thread left would read as the large one does,
         // and fail here (#312).
-        const string Bound = "Object 1002 is reached through more nested objects than the reader will follow, and reads as null.";
+        const string Bound = "Object 1002 is loaded while 64 objects are being loaded, and reads as null there; it reads whole from a shallower place. Raise PdfReaderLimits.MaxNestedLoads to read past it.";
         var file = DeepStack(60, 60, 61);
         var options = new PdfReaderOptions { ObjectCacheCapacity = 1 };
 
@@ -3581,7 +3577,7 @@ public class ObjectRuleTests
             List<string> cuts =
             [
                 .. document.Diagnostics
-                    .Where(diagnostic => diagnostic.Code == PdfDiagnosticCodes.SyntaxDepthExceeded)
+                    .Where(diagnostic => diagnostic.Code == PdfDiagnosticCodes.LimitNestedLoads)
                     .Select(diagnostic => diagnostic.Message),
             ];
             return (findings, cuts);
@@ -3611,7 +3607,7 @@ public class ObjectRuleTests
         });
 
         second.Findings.Should().Equal(first.Findings);
-        cuts.Should().Equal(new PdfDiagnostic(PdfDiagnosticSeverity.Warning, PdfDiagnosticCodes.SyntaxDepthExceeded, ReadAsNull(100), ObjectAt(file, 100)));
+        cuts.Should().Equal(new PdfDiagnostic(PdfDiagnosticSeverity.Warning, PdfDiagnosticCodes.LimitNestedLoads, ReadAsNull(100), ObjectAt(file, 100)));
     }
 
     [Fact]
@@ -3633,7 +3629,7 @@ public class ObjectRuleTests
 
         Single(room, PdfValidationRuleIds.XRefObjectStreamCircular).Message.Should().Be(HoldsFive("/DecodeParms"));
         cut.Contains(PdfValidationRuleIds.XRefObjectStreamCircular).Should().BeFalse();
-        cuts.Should().Equal(new PdfDiagnostic(PdfDiagnosticSeverity.Warning, PdfDiagnosticCodes.SyntaxDepthExceeded, ReadAsNull(50)));
+        cuts.Should().Equal(new PdfDiagnostic(PdfDiagnosticSeverity.Warning, PdfDiagnosticCodes.LimitNestedLoads, ReadAsNull(50)));
     }
 
     [Fact]
@@ -3658,7 +3654,7 @@ public class ObjectRuleTests
         Single(room, PdfValidationRuleIds.XRefObjectStreamCircular).Message.Should().Be(HoldsFive("/DecodeParms"));
         cut.Contains(PdfValidationRuleIds.XRefObjectStreamCircular).Should().BeFalse();
         Enumerable.Range(300, 60)
-            .Select(stream => new PdfDiagnostic(PdfDiagnosticSeverity.Warning, PdfDiagnosticCodes.SyntaxDepthExceeded, ReadAsNull(stream, unlike: 9), ObjectAt(file, stream)))
+            .Select(stream => new PdfDiagnostic(PdfDiagnosticSeverity.Warning, PdfDiagnosticCodes.LimitNestedLoads, ReadAsNull(stream, unlike: 9), ObjectAt(file, stream)))
             .Should().Contain(cuts.Should().ContainSingle().Subject);
     }
 
@@ -4736,13 +4732,14 @@ public class ObjectRuleTests
     /// </summary>
     private static string ReadAsNull(int number, int? unlike = null) =>
         string.Create(CultureInfo.InvariantCulture, $"Object {number} is reached through more nested objects than the thread's stack lets the validator follow: the validator reads it as null") +
-        (unlike is { } stream ? string.Create(CultureInfo.InvariantCulture, $", and takes object stream {stream} for one that does not decode alike in every read order.") : ".");
+        (unlike is { } stream ? string.Create(CultureInfo.InvariantCulture, $", and takes object stream {stream} for one that does not decode alike in every read order.") : ".") +
+        " The thread's stack had no room for more; read the document from a thread with a larger stack.";
 
     /// <summary>Gives what <paramref name="document"/> reported of the loads the walks had no room on the stack to make.</summary>
     private static List<PdfDiagnostic> WalkCuts(PdfDocument document) =>
     [
         .. document.Diagnostics.Where(diagnostic =>
-            diagnostic.Code == PdfDiagnosticCodes.SyntaxDepthExceeded && diagnostic.Message.Contains("lets the validator follow", StringComparison.Ordinal)),
+            diagnostic.Code == PdfDiagnosticCodes.LimitNestedLoads && diagnostic.Message.Contains("lets the validator follow", StringComparison.Ordinal)),
     ];
 
     /// <summary>
@@ -5094,13 +5091,14 @@ public class ObjectRuleTests
             [12]),
 
         // 100 heads 101 to 163, the last naming 13. 10 meets 100 at the second level, which parses 101 to 162; 12 at the
-        // third, under its /Length, which parses 101 to 161, then meets 161, parsed, or 162, whose parse reaches 163.
+        // third, under its /Length, which parses 101 to 161, cut there; then meets 161 higher up, whose parse, made again
+        // since the cut fell at the deeper meeting (#163), or 162's, reaches 163.
         ["taken a level lower, as far as the reader's nesting reaches"] = (
             () => PlainObjectStreams(
                 StreamChain(100, 64, "13 0 R"),
                 new(10, "/Filter /FlateDecode /DecodeParms 100 0 R", [(11, "<< >>")]),
                 new(12, "/Filter /FlateDecode /DecodeParms 161 0 R", [(13, "<< >>")], Length: "100 0 R")),
-            []),
+            [12]),
         ["taken a level lower, short of the first stream past the reader's nesting"] = (
             () => PlainObjectStreams(
                 StreamChain(100, 64, "13 0 R"),
@@ -5118,14 +5116,14 @@ public class ObjectRuleTests
                 new(14, "/Filter /FlateDecode /DecodeParms 162 0 R", [(15, "<< >>")], Length: "100 0 R")),
             [14]),
 
-        // Each stream meets 100, which parses 101 to 162, then 101, parsed: met first, 101's parse would reach 163, whose
-        // /Length names 13.
+        // Each stream meets 100, which parses 101 to 162, cut there, then 101 at the same level, whose parse, made again since
+        // the cut fell deeper (#163), reaches 163, whose /Length names 13.
         ["taken, its streams parsed"] = (
             () => PlainObjectStreams(
                 StreamChain(100, 64, "13 0 R"),
                 new(10, "/Filter [/FlateDecode /FlateDecode] /DecodeParms [100 0 R 101 0 R]", [(11, "<< >>")]),
                 new(12, "/Filter [/FlateDecode /FlateDecode] /DecodeParms [100 0 R 101 0 R]", [(13, "<< >>")])),
-            []),
+            [12]),
 
         // 12 meets 200, whose nest of 57 streams leads to 105 at the 60th level, which parses 106 to 109; then 100, whose
         // parse ends at 105, parsed; then 110, whose parse reaches 172, which names 13.
@@ -5146,7 +5144,8 @@ public class ObjectRuleTests
             [12]),
 
         // 12 parses 105, then 200, whose /Length names 100, whose nest ends at 105: 200's parse met a stream parsed already.
-        // 14 parses 200 to 161, and 16 takes its nest, the third level of 101 to 161 included, before it meets 110, parsed.
+        // 14 parses 200 to 161, cut there; 16 takes its nest, then meets 110 higher up than the cut, and parses it again
+        // (#163), as far as 173, which names 17.
         ["taken short inside a parse, which gives no nest"] = (
             () => PlainObjectStreams(
                 Merged(StreamChain(100, 73, "17 0 R"), new() { [200] = "<< /Length 100 0 R >>\nstream\nab\nendstream" }),
@@ -5154,7 +5153,7 @@ public class ObjectRuleTests
                 new(12, "/Filter [/FlateDecode /FlateDecode] /DecodeParms [105 0 R 200 0 R]", [(13, "<< >>")]),
                 new(14, "/Filter [/FlateDecode /FlateDecode] /DecodeParms [200 0 R 110 0 R]", [(15, "<< >>")]),
                 new(16, "/Filter [/FlateDecode /FlateDecode] /DecodeParms [200 0 R 110 0 R]", [(17, "<< >>")])),
-            []),
+            [16]),
 
         // 100 heads 101 to 161, the last naming 15. Under 10's /Length, 300 names 21, which 20, decoding alike, holds as
         // 100 0 R: 100 at the fourth level parses 101 to 160. Under 12's /Length, 200 names 100 at the fourth level, whose

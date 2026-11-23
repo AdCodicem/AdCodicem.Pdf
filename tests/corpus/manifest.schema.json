@@ -266,7 +266,6 @@
               "object-stream.unreadable",
               "syntax.unexpected-token",
               "syntax.truncated-object",
-              "syntax.depth-exceeded",
               "syntax.number-out-of-range",
               "syntax.hex-string-invalid",
               "syntax.name-escape-invalid",
@@ -289,7 +288,9 @@
               "limit.index-entries",
               "limit.filter-chain",
               "limit.rebuild-reads",
-              "limit.object-stream-decodes"
+              "limit.object-stream-decodes",
+              "limit.nesting-depth",
+              "limit.nested-loads"
             ]
           },
           "uniqueItems": true
@@ -509,6 +510,18 @@
           "type": "integer",
           "description": "How many times what one of the library's walks first decoded of the object streams it may decode again of those the reader let go.",
           "exclusiveMinimum": 4,
+          "maximum": 2147483647
+        },
+        "maxNestingDepth": {
+          "type": "integer",
+          "description": "How deeply one object may nest its arrays and dictionaries.",
+          "exclusiveMinimum": 128,
+          "maximum": 2147483647
+        },
+        "maxNestedLoads": {
+          "type": "integer",
+          "description": "How many objects may be loaded while loading another.",
+          "exclusiveMinimum": 64,
           "maximum": 2147483647
         }
       }

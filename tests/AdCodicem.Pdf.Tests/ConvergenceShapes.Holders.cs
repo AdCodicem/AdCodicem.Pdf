@@ -92,6 +92,21 @@ internal static partial class ConvergenceShapes
             PdfReaderLimits.Default,
             [[new(100)], [new(6)], [new(170)], [new(100), new(6)], [new(6), new(100)]]);
 
+        // #163: at 62 streams, a read of 100 has the reader parse 9 at its deepest load, its /Length cut there; what that
+        // parse gave serves no read from a shallower place.
+        yield return new(
+            "a holder first parsed at the reader's deepest load",
+            Shallow(62),
+            PdfReaderLimits.Default,
+            [[new(100)], [new(6)], [new(170)], [new(100), new(6)], [new(6), new(100)]]);
+
+        // #163: 30, kept from a shallow read, is not served past the reader's nesting, where a fresh read cuts it.
+        yield return new(
+            "a link kept from a shallow read met past the reader's deepest load",
+            CachedPastTheCut(62),
+            PdfReaderLimits.Default,
+            [[new(30)], [new(50)], [new(30), new(50)], [new(50), new(30)], [new(20)], [new(100)]]);
+
         // A rebuild redefines the stream holding 7's parameters: the walk follows the chain's, which needs nothing, and not
         // the rebuilt one, which the reader serves.
         yield return new(
@@ -552,11 +567,11 @@ internal static partial class ConvergenceShapes
     }
 
     /// <summary>
-    /// The file of #163's residual: object stream 7 holds 5 and 6, and takes its parameters from 170; 9, written as it is,
+    /// A file of #163's: object stream 7 holds 5 and 6, and takes its parameters from 170; 9, written as it is,
     /// holds 171, a string holding <c>endstream</c>, and 170, <c>5 0 R</c>, its <c>/Length</c> taken from 50, the true
     /// length; streams 100 onward, <paramref name="nest"/> of them, each take their <c>/Length</c> from the next, the last
     /// from 170. Read first, 100 makes the reader parse 9 at its deepest load, where 50 is cut: 9 ends at the
-    /// <c>endstream</c> inside its data, and 170 reads as null for good.
+    /// <c>endstream</c> inside its data, and 170 reads as null there, and whole from a shallower place.
     /// </summary>
     internal static byte[] Shallow(int nest)
     {
@@ -577,12 +592,11 @@ internal static partial class ConvergenceShapes
     }
 
     /// <summary>
-    /// A file of #163's residual, which is not among the shapes: object stream 5 takes both its Flate steps' parameters from
+    /// A file of #163's: object stream 5 takes both its Flate steps' parameters from
     /// stream 20, <c>/Predictor 12 /Columns 12</c>, whose <c>/Length</c> leads through streams 100 onward,
     /// <paramref name="nest"/> of them, each naming the next, the last naming 30, written in the file, <c>20 0 R</c>. With 62,
-    /// a first read of 50 loads 30 at the 65th load, which the reader's nesting cuts, unless its cache kept 30 from a read
-    /// before, and serves it there: the chain then goes on to 20, which the reader holds in its loads, and reads it as null
-    /// for the rest of 5's decoding.
+    /// a read of 50 loads 30 at the 65th load, which the reader's nesting cuts, whatever its cache kept of 30 from a read
+    /// before.
     /// </summary>
     internal static byte[] CachedPastTheCut(int nest)
     {

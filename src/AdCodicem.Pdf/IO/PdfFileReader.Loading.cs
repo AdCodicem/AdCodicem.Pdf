@@ -318,7 +318,7 @@ internal sealed partial class PdfFileReader
 
                 // A window that ends where the file does cut nothing, however long it is: what it holds is all there is.
                 var cut = bytes.Length == windowSize && offset + bytes.Length < _source.Length;
-                var parser = new PdfObjectParser(bytes, offset, this, _pending, this, endsData: !cut);
+                var parser = new PdfObjectParser(bytes, offset, this, _pending, this, endsData: !cut, maxDepth: MaxNestingDepth, guard: _guard);
                 PdfObject parsed;
 
                 if (number == DirectObject)
@@ -404,6 +404,7 @@ internal sealed partial class PdfFileReader
 
                 syntaxFault |= SyntaxFaultSince(_pending, mark);
                 KeepPending(mark);
+                CountNestingCut(parser.NestingCut, parser.CutByStack, number != AnyObject && Records(recordedAt, offset + parser.HeaderStart) ? foundNumber : 0);
 
                 // A reading of a definition the reader no longer serves notes nothing of the number (#255).
                 var noted = Records(recordedAt, offset + parser.HeaderStart);
@@ -759,7 +760,7 @@ internal sealed partial class PdfFileReader
                 using var window = _source.GetWindow(offset, windowSize);
                 var cut = window.Length == windowSize && offset + window.Length < _source.Length;
                 // The file says where a token the window's edge reaches ends, as it does to a load; no stream's data is read.
-                var parser = new PdfObjectParser(window.Memory, offset, this, _pending, endsData: !cut, fileEdge: this);
+                var parser = new PdfObjectParser(window.Memory, offset, this, _pending, endsData: !cut, fileEdge: this, maxDepth: MaxNestingDepth);
                 var read = parser.TryReadIndirectObject(out var found, out var parsed);
 
                 // A header read whole that names another object, or another generation, is not this object, however far
@@ -1301,7 +1302,7 @@ internal sealed partial class PdfFileReader
                 }
 
                 var parser = PdfObjectParser.ForObjectStreamMember(
-                    data[..window.End], number, dataStart, header.Numbers[index], this, _pending, window.EndsData, window.EndsAtNextMember);
+                    data[..window.End], number, dataStart, header.Numbers[index], this, _pending, window.EndsData, window.EndsAtNextMember, maxDepth: MaxNestingDepth);
                 parser.Position = window.Start;
                 _ = parser.ParseObject();
 
@@ -1651,7 +1652,7 @@ internal sealed partial class PdfFileReader
         {
             var bound = _guard.Bound(PdfLimit.Object);
             var value = contents.Parse(
-                entry.IndexInObjectStream, id.Number, this, _diagnostics, _pending, bound, out var cut, out var pastLength, out var streamAt);
+                entry.IndexInObjectStream, id.Number, this, _diagnostics, _pending, bound, MaxNestingDepth, _guard, out var cut, out var pastLength, out var streamAt, out var nesting);
 
             // A member written as a stream reads as null, what parsing met of it dropped, and is reported once (#161).
             if (streamAt >= 0)
@@ -1692,6 +1693,7 @@ internal sealed partial class PdfFileReader
                 KeepPending(mark);
             }
 
+            CountNestingCut(nesting.Cut, nesting.ByStack, id.Number);
             return value;
         }
         finally
@@ -1709,7 +1711,11 @@ internal sealed partial class PdfFileReader
     {
         notYet = false;
 
-        if (_objectStreams.TryGetValue(number, out var cached))
+        // The stream is decoded with the loads in flight: what an earlier decoding kept serves only where a decoding from here
+        // would go as deep (#163).
+        var depthBase = _loading.Count;
+
+        if (_objectStreams.TryGetValue(number, out var cached) && ServesAt(_objectStreamDepths[number], depthBase))
         {
             return cached;
         }
@@ -1725,7 +1731,7 @@ internal sealed partial class PdfFileReader
         }
 
         // Under ThrowOnLimit, a decoding that reached a guard throws again, without decoding (#181).
-        if (_decodingsThrown is not null && _decodingsThrown.TryGet(number, out var thrown))
+        if (_decodingsThrown is not null && _decodingsThrown.TryGet(number, out var thrown, out var thrownDepth) && ServesAt(thrownDepth, depthBase))
         {
             thrown.Throw();
         }
@@ -1744,13 +1750,29 @@ internal sealed partial class PdfFileReader
         // Marked while it is decoded: an object it holds, asked for meanwhile, reads as null rather than
         // recursing, and is not kept as null.
         _objectStreamsLoading.Add(number);
+        var outerDeepest = _deepest;
+        _deepest = depthBase;
+        var nestingCuts = _nestingCuts;
+        var stackCuts = _stackCuts;
 
         try
         {
             var reentries = _reentries;
             var repaired = _repaired;
             var walkCuts = _walkCuts;
-            var loaded = GetObject(new PdfObjectId(number));
+            PdfObject loaded;
+
+            // The stream's own load reaching a guard — its dictionary, its /Length — is kept as its decoding's is, so that each
+            // object asked of it throws again without loading it again (#397).
+            try
+            {
+                loaded = GetObject(new PdfObjectId(number));
+            }
+            catch (PdfLimitExceededException exception) when (reentries == _reentries && repaired == _repaired && walkCuts == _walkCuts && !_expandingObjectStreams && !IsKeptByNoTable(exception))
+            {
+                KeepDecodingThrow(number, exception, DepthSince(depthBase, nestingCuts, stackCuts));
+                throw;
+            }
 
             // The stream itself could not be loaded from here — too deep, or needed by what is being loaded —: that
             // says nothing of it, and it is read again when one of its objects is asked for again.
@@ -1778,7 +1800,7 @@ internal sealed partial class PdfFileReader
                 // (KeepDecodingThrow's remarks).
                 catch (PdfLimitExceededException exception) when (repaired == _repaired && walkCuts == _walkCuts && !_expandingObjectStreams && !IsKeptByNoTable(exception))
                 {
-                    KeepDecodingThrow(number, exception);
+                    KeepDecodingThrow(number, exception, DepthSince(depthBase, nestingCuts, stackCuts));
                     throw;
                 }
             }
@@ -1801,7 +1823,7 @@ internal sealed partial class PdfFileReader
             // rebuilt index's definition.
             if (repaired == _repaired && whole)
             {
-                KeepObjectStream(number, contents);
+                KeepObjectStream(number, contents, DepthSince(depthBase, nestingCuts, stackCuts));
             }
 
             CountWalkDecoding(number, contents, whole);
@@ -1820,6 +1842,7 @@ internal sealed partial class PdfFileReader
         finally
         {
             _objectStreamsLoading.Remove(number);
+            _deepest = Math.Max(outerDeepest, _deepest);
         }
     }
 
@@ -1917,7 +1940,7 @@ internal sealed partial class PdfFileReader
     /// Keeps an object stream's contents, letting go of the oldest ones kept while what they weigh and its own weight
     /// exceed <see cref="ObjectStreamBudget"/>.
     /// </summary>
-    private void KeepObjectStream(int number, ObjectStreamContents? contents)
+    private void KeepObjectStream(int number, ObjectStreamContents? contents, ReadDepth depth)
     {
         if (_objectStreams.TryGetValue(number, out var previous) && previous is not null)
         {
@@ -1925,6 +1948,8 @@ internal sealed partial class PdfFileReader
         }
 
         _objectStreams[number] = contents;
+        _objectStreamDepths[number] = depth;
+        KeepForRead(number, depth);
 
         if (contents is null)
         {
@@ -1934,9 +1959,9 @@ internal sealed partial class PdfFileReader
         while (_objectStreamBytes + contents.Weight > ObjectStreamBudget && _objectStreamOrder.TryDequeue(out var oldest))
         {
             // The queue can name a number twice, once replaced; letting it go early costs a decoding, nothing else.
-            if (oldest != number && _objectStreams.Remove(oldest, out var released) && released is not null)
+            if (oldest != number && _objectStreams.ContainsKey(oldest))
             {
-                _objectStreamBytes -= released.Weight;
+                ReleaseObjectStream(oldest);
             }
         }
 
@@ -1944,8 +1969,28 @@ internal sealed partial class PdfFileReader
         _objectStreamBytes += contents.Weight;
     }
 
-    private void Cache(int number, PdfObject value)
+    /// <summary>Lets go of what object stream <paramref name="number"/> holds, and of how deep its decoding went.</summary>
+    private void ReleaseObjectStream(int number)
     {
+        _objectStreamDepths.Remove(number);
+
+        if (_objectStreams.Remove(number, out var released) && released is not null)
+        {
+            _objectStreamBytes -= released.Weight;
+        }
+    }
+
+    private void Cache(int number, PdfObject value, ReadDepth depth)
+    {
+        KeepForRead(number, depth);
+
+        // One kept from a read at another depth gives way to the read made now, in its place in the order.
+        if (_cache.ContainsKey(number))
+        {
+            _cache[number] = (value, depth);
+            return;
+        }
+
         while (_cache.Count >= _cacheCapacity && _cacheOrder.TryDequeue(out var oldest))
         {
             // The queue can name a number the cache let go of already, a rebuild having replaced its definition
@@ -1958,7 +2003,7 @@ internal sealed partial class PdfFileReader
             }
         }
 
-        if (_cache.TryAdd(number, value))
+        if (_cache.TryAdd(number, (value, depth)))
         {
             _cacheOrder.Enqueue(number);
         }
@@ -2188,6 +2233,8 @@ internal sealed partial class PdfFileReader
         /// <param name="diagnostics">Receives what the index got wrong of the object's place.</param>
         /// <param name="parsing">Receives what parsing met, for the caller to keep or drop.</param>
         /// <param name="maxLength">The most of the data the member is read over, <see cref="PdfReaderLimits.MaxObjectLength"/>.</param>
+        /// <param name="maxDepth">How deeply the member may nest its containers, <see cref="PdfReaderLimits.MaxNestingDepth"/>.</param>
+        /// <param name="guard">The document's guards, which a container nested past <paramref name="maxDepth"/> reaches.</param>
         /// <param name="cut">
         /// Whether the object runs into the end of data a guard cut, or past <paramref name="maxLength"/>, and was read only
         /// as far as it, or starts past data a guard cut, and was not read.
@@ -2200,6 +2247,7 @@ internal sealed partial class PdfFileReader
         /// Where the member starts in the data, when it is written as a stream, which an object stream cannot hold: it is then
         /// no value; -1 otherwise.
         /// </param>
+        /// <param name="nesting">Whether a container's nesting cut the member, and whether the thread's stack did.</param>
         public PdfObject? Parse(
             int index,
             int expectedNumber,
@@ -2207,12 +2255,16 @@ internal sealed partial class PdfFileReader
             PdfDiagnostics diagnostics,
             PdfDiagnostics parsing,
             int maxLength,
+            int maxDepth,
+            PdfLimitGuard guard,
             out bool cut,
             out long pastLength,
-            out long streamAt)
+            out long streamAt,
+            out (bool Cut, bool ByStack) nesting)
         {
             cut = false;
             pastLength = -1;
+            nesting = default;
             streamAt = -1;
 
             if (index < 0 || index >= _numbers.Length || _numbers[index] != expectedNumber)
@@ -2249,9 +2301,10 @@ internal sealed partial class PdfFileReader
 
             var window = ObjectStreamMemberWindow.Of(_offsets, index, _first, _data.Length, _cutByGuard, maxLength);
             var parser = PdfObjectParser.ForObjectStreamMember(
-                _data[..window.End], _number, _position, expectedNumber, source, parsing, window.EndsData, window.EndsAtNextMember, this);
+                _data[..window.End], _number, _position, expectedNumber, source, parsing, window.EndsData, window.EndsAtNextMember, this, maxDepth, guard);
             parser.Position = window.Start;
             var value = parser.ParseObject();
+            nesting = (parser.NestingCut, parser.CutByStack);
 
             // A member written as a stream is no value (#161).
             if (parser.StoppedAtStream)

@@ -3115,7 +3115,7 @@ public class ReadOrderTests
         document.GetObject(new PdfObjectId(100)).Should().BeOfType<PdfStream>();
 
         document.WasRepaired.Should().BeTrue();
-        document.Diagnostics.Should().ContainSingle(diagnostic => diagnostic.Code == PdfDiagnosticCodes.SyntaxDepthExceeded);
+        document.Diagnostics.Should().ContainSingle(diagnostic => diagnostic.Code == PdfDiagnosticCodes.LimitNestedLoads);
     }
 
     [Fact]
@@ -3149,7 +3149,7 @@ public class ReadOrderTests
         document.GetObject(new PdfObjectId(100)).ToString().Should().Be(settled.GetObject(new PdfObjectId(100)).ToString());
 
         document.WasRepaired.Should().BeTrue();
-        document.Diagnostics.Should().Contain(diagnostic => diagnostic.Code == PdfDiagnosticCodes.SyntaxDepthExceeded);
+        document.Diagnostics.Should().Contain(diagnostic => diagnostic.Code == PdfDiagnosticCodes.LimitNestedLoads);
         document.Diagnostics.Select(diagnostic => diagnostic.ToString())
             .Should().Equal(settled.Diagnostics.Select(diagnostic => diagnostic.ToString()));
     }
@@ -3213,7 +3213,7 @@ public class ReadOrderTests
         afterRead.Should().ContainSingle(entry => entry.Contains("The stream declared 3 bytes", StringComparison.Ordinal));
         document.Diagnostics.Should().ContainSingle(diagnostic => diagnostic.Code == PdfDiagnosticCodes.LimitObject)
             .Which.Position.Should().Be(rows[6]);
-        document.Diagnostics.Should().ContainSingle(diagnostic => diagnostic.Code == PdfDiagnosticCodes.SyntaxDepthExceeded);
+        document.Diagnostics.Should().ContainSingle(diagnostic => diagnostic.Code == PdfDiagnosticCodes.LimitNestedLoads);
         document.Diagnostics.Select(diagnostic => diagnostic.ToString()).Should().Equal(afterRead);
     }
 

@@ -25,7 +25,7 @@ public class ReaderLimitsTests
 
     /// <summary>A guard for each bound of <see cref="PdfReaderLimits"/>, the trailer's reached two ways.</summary>
     public static TheoryData<string> Guards =>
-        ["decoded stream", "stream length", "object", "section length", "section count", "trailer", "cross-reference stream", "index entries", "filter chain", "rebuild reads", "object-stream decodes"];
+        ["decoded stream", "stream length", "object", "section length", "section count", "trailer", "cross-reference stream", "index entries", "filter chain", "rebuild reads", "object-stream decodes", "nesting depth", "nested loads"];
 
     [Fact]
     public void The_defaults_are_the_bounds_the_reader_kept_before_they_were_options()
@@ -42,6 +42,8 @@ public class ReaderLimitsTests
         limits.MaxFilterChainLength.Should().Be(64);
         limits.MaxRebuildReadPasses.Should().Be(4);
         limits.MaxObjectStreamDecodePasses.Should().Be(4);
+        limits.MaxNestingDepth.Should().Be(128);
+        limits.MaxNestedLoads.Should().Be(64);
         PdfReaderOptions.Default.Limits.Should().BeSameAs(limits);
         PdfReaderOptions.Default.ThrowOnLimit.Should().BeFalse();
     }
@@ -61,6 +63,8 @@ public class ReaderLimitsTests
         limits.MaxFilterChainLength.Should().Be(int.MaxValue);
         limits.MaxRebuildReadPasses.Should().Be(int.MaxValue);
         limits.MaxObjectStreamDecodePasses.Should().Be(int.MaxValue);
+        limits.MaxNestingDepth.Should().Be(int.MaxValue);
+        limits.MaxNestedLoads.Should().Be(int.MaxValue);
     }
 
     [Fact]
@@ -89,6 +93,8 @@ public class ReaderLimitsTests
     [InlineData(nameof(PdfReaderLimits.MaxFilterChainLength), -1)]
     [InlineData(nameof(PdfReaderLimits.MaxRebuildReadPasses), 0)]
     [InlineData(nameof(PdfReaderLimits.MaxObjectStreamDecodePasses), 0)]
+    [InlineData(nameof(PdfReaderLimits.MaxNestingDepth), 0)]
+    [InlineData(nameof(PdfReaderLimits.MaxNestedLoads), -1)]
     public void A_limit_of_zero_or_less_is_refused_and_named(string limit, int value)
     {
         var setting = () => With(PdfReaderLimits.Default, limit, value);
@@ -111,6 +117,8 @@ public class ReaderLimitsTests
             MaxFilterChainLength = int.MaxValue,
             MaxRebuildReadPasses = int.MaxValue,
             MaxObjectStreamDecodePasses = int.MaxValue,
+            MaxNestingDepth = int.MaxValue,
+            MaxNestedLoads = int.MaxValue,
         };
 
         limits.Should().Be(PdfReaderLimits.Unbounded);
@@ -166,6 +174,8 @@ public class ReaderLimitsTests
                 MaxFilterChainLength = int.MaxValue - 1,
                 MaxRebuildReadPasses = int.MaxValue - 1,
                 MaxObjectStreamDecodePasses = int.MaxValue - 1,
+                MaxNestingDepth = int.MaxValue - 1,
+                MaxNestedLoads = int.MaxValue - 1,
             },
             throwOnLimit: false);
 
@@ -181,6 +191,10 @@ public class ReaderLimitsTests
         justBelow.Reach(PdfLimit.RebuildReads, diagnostics, "Cut.", 15);
         unbounded.Reach(PdfLimit.ObjectStreamDecodes, diagnostics, "Cut.", 16);
         justBelow.Reach(PdfLimit.ObjectStreamDecodes, diagnostics, "Cut.", 17);
+        unbounded.Reach(PdfLimit.NestingDepth, diagnostics, "Cut.", 18);
+        justBelow.Reach(PdfLimit.NestingDepth, diagnostics, "Cut.", 19);
+        unbounded.Reach(PdfLimit.NestedLoads, diagnostics, "Cut.", 20);
+        justBelow.Reach(PdfLimit.NestedLoads, diagnostics, "Cut.", 21);
 
         diagnostics.Select(entry => entry.Message).Should().Equal(
             "Cut. PdfReaderLimits.MaxDecodedStreamLength is already at the most the reader can hold.",
@@ -194,7 +208,11 @@ public class ReaderLimitsTests
             "Cut. PdfReaderLimits.MaxRebuildReadPasses is already at the most the reader can hold.",
             "Cut. Raise PdfReaderLimits.MaxRebuildReadPasses to read past it.",
             "Cut. PdfReaderLimits.MaxObjectStreamDecodePasses is already at the most the reader can hold.",
-            "Cut. Raise PdfReaderLimits.MaxObjectStreamDecodePasses to read past it.");
+            "Cut. Raise PdfReaderLimits.MaxObjectStreamDecodePasses to read past it.",
+            "Cut. PdfReaderLimits.MaxNestingDepth is already at the most the reader can hold.",
+            "Cut. Raise PdfReaderLimits.MaxNestingDepth to read past it.",
+            "Cut. PdfReaderLimits.MaxNestedLoads is already at the most the reader can hold.",
+            "Cut. Raise PdfReaderLimits.MaxNestedLoads to read past it.");
     }
 
     [Theory]
@@ -3390,12 +3408,55 @@ public class ReaderLimitsTests
         source.BytesRead.Should().Be(read);
     }
 
+    [Theory]
+    [InlineData(129)]
+    [InlineData(200)]
+    public void Unbounded_limits_read_containers_nested_past_the_default_bound_whole(int levels)
+    {
+        var file = new TestPdfBuilder()
+            .WithObject(1, Catalog)
+            .WithObject(2, Pages)
+            .WithObject(3, new string('[', levels) + new string(']', levels))
+            .BuildClassic(rootNumber: 1);
+        using var document = PdfDocument.Open(file, new PdfReaderOptions { Limits = PdfReaderLimits.Unbounded, ThrowOnLimit = true });
+
+        Depth(document.GetObject(new PdfObjectId(3))).Should().Be(levels);
+
+        document.Diagnostics.Should().BeEmpty();
+    }
+
+    [Theory]
+    [InlineData("containers")]
+    [InlineData("loads")]
+    public void What_the_thread_s_stack_cut_is_read_whole_once_a_thread_has_room_for_it(string nesting)
+    {
+        // Six hundred arrays, one inside the other, under a bound of a thousand; or object 3 in the first of 40 object streams,
+        // each taking its /Filter from an object the next holds. Read on a small stack, the stack cuts them, reported under the
+        // guard's code — the parser's, or the loads' —; read again on a large one, they read whole: what the stack cut was not
+        // kept.
+        var file = nesting == "containers"
+            ? new TestPdfBuilder().WithObject(1, Catalog).WithObject(2, Pages).WithObject(3, new string('[', 600) + new string(']', 600)).BuildClassic(rootNumber: 1)
+            : HostileInputTests.ObjectStreamsTakingTheirFilterFromTheNext(40);
+        using var document = PdfDocument.Open(file, new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxNestingDepth = 1000 } });
+
+        var small = Stacks.Run(Stacks.Small, () => Read(document, nesting));
+        var large = Stacks.Run(Stacks.Large, () => Read(document, nesting));
+
+        small.Should().NotBe(large);
+        large.Should().Be(nesting == "containers" ? "600" : "\"three\"");
+        document.Diagnostics.Should().ContainSingle(entry => entry.Code.StartsWith("limit.nest", StringComparison.Ordinal))
+            .Which.Message.Should().EndWith("The thread's stack had no room for more; read the document from a thread with a larger stack.");
+
+        static string Read(PdfDocument document, string nesting) => nesting == "containers"
+            ? Depth(document.GetObject(new PdfObjectId(3))).ToString(CultureInfo.InvariantCulture)
+            : string.Create(CultureInfo.InvariantCulture, $"{document.GetObject(new PdfObjectId(3))}");
+    }
+
     [Fact]
-    public void Under_ThrowOnLimit_only_the_innermost_load_an_exception_passes_through_keeps_it()
+    public void Under_ThrowOnLimit_every_load_an_exception_passes_through_keeps_it()
     {
         // Stream 6 takes its /Length from object 5, written directly past MaxObjectLength. Opened to throw, a read of 6 throws
-        // what the load of 5 threw: 5 keeps it, and 6 does not. Read again, 6 is read again up to its /Length, and throws the
-        // exception 5 kept (#181).
+        // what the load of 5 threw, and both keep it: read again, 6 throws without reading (#397).
         var file = new HandWrittenFile();
         var rows = new Dictionary<int, long> { [1] = file.Object(1, Catalog), [2] = file.Object(2, Pages) };
         rows[5] = file.Object(5, "(" + new string('x', 2000) + ")");
@@ -3412,7 +3473,7 @@ public class ReaderLimitsTests
         first.Should().NotBeNull();
         again.Should().BeSameAs(first);
         ReadPastGuard(document, 5).Should().BeSameAs(first);
-        source.BytesRead.Should().BeGreaterThan(read);
+        source.BytesRead.Should().Be(read);
     }
 
     [Fact]
@@ -7168,6 +7229,8 @@ public class ReaderLimitsTests
         nameof(PdfReaderLimits.MaxFilterChainLength) => limits with { MaxFilterChainLength = value },
         nameof(PdfReaderLimits.MaxRebuildReadPasses) => limits with { MaxRebuildReadPasses = value },
         nameof(PdfReaderLimits.MaxObjectStreamDecodePasses) => limits with { MaxObjectStreamDecodePasses = value },
+        nameof(PdfReaderLimits.MaxNestingDepth) => limits with { MaxNestingDepth = value },
+        nameof(PdfReaderLimits.MaxNestedLoads) => limits with { MaxNestedLoads = value },
         _ => throw new ArgumentOutOfRangeException(nameof(limit), limit, "Not a reader limit."),
     };
 
@@ -7183,6 +7246,8 @@ public class ReaderLimitsTests
         nameof(PdfReaderLimits.MaxFilterChainLength) => limits.MaxFilterChainLength,
         nameof(PdfReaderLimits.MaxRebuildReadPasses) => limits.MaxRebuildReadPasses,
         nameof(PdfReaderLimits.MaxObjectStreamDecodePasses) => limits.MaxObjectStreamDecodePasses,
+        nameof(PdfReaderLimits.MaxNestingDepth) => limits.MaxNestingDepth,
+        nameof(PdfReaderLimits.MaxNestedLoads) => limits.MaxNestedLoads,
         _ => throw new ArgumentOutOfRangeException(nameof(limit), limit, "Not a reader limit."),
     };
 
@@ -7222,6 +7287,9 @@ public class ReaderLimitsTests
     }
 
     private static string Hex(string text) => Convert.ToHexString(Encoding.ASCII.GetBytes(text)) + ">";
+
+    /// <summary>Gives how many arrays <paramref name="value"/> holds one inside the other, through their first elements.</summary>
+    private static int Depth(PdfObject value) => value is PdfArray array ? 1 + (array.Count > 0 ? Depth(array[0]) : 0) : 0;
 
     /// <summary>
     /// A file whose page, object 3, object stream 4 holds, and whose index is cross-reference stream 5: the object stream's
@@ -7418,8 +7486,68 @@ public class ReaderLimitsTests
             "filter chain" => LongFilterChain(),
             "rebuild reads" => ManySpelledStreams(),
             "object-stream decodes" => ObjectStreamsReadInTurn(),
+            "nesting depth" => DeepContainers(),
+            "nested loads" => NestedLoads(),
             _ => throw new ArgumentOutOfRangeException(nameof(guard), guard, "Not a guard."),
         };
+
+        private static Case DeepContainers()
+        {
+            // Five arrays, one inside the other, which a bound of three cuts at the fourth.
+            var file = new TestPdfBuilder()
+                .WithObject(1, Catalog)
+                .WithObject(2, Pages)
+                .WithObject(3, "[[[[[1]]]]]")
+                .BuildClassic(rootNumber: 1);
+
+            return new Case(
+                nameof(PdfReaderLimits.MaxNestingDepth),
+                PdfDiagnosticCodes.LimitNestingDepth,
+                file,
+                PdfReaderLimits.Default with { MaxNestingDepth = 3 },
+                PdfReaderLimits.Default,
+                document => Depth(document.GetObject(new PdfObjectId(3))).ToString(CultureInfo.InvariantCulture),
+                "5",
+                "An array nested inside 3 others reads as null, and what it holds is not read.",
+                OffsetOf(file, "[[[[[1") + 3,
+                ThrowsOnOpening: false,
+                ReportsNothingElse: true);
+
+            static int Depth(PdfObject value) => value is PdfArray { Count: 1 } array ? 1 + Depth(array[0]) : 0;
+        }
+
+        private static Case NestedLoads()
+        {
+            // Object 3, which object stream 7 holds, whose filter is object 20, which object stream 8 holds: reading 3 loads 7,
+            // and decoding 7 loads 8, a third load, which a bound of two cuts. 7 is then decoded without its filter, and 3
+            // is not found in it.
+            var file = new HandWrittenFile(version: "1.5");
+            var rows = new Dictionary<int, (int Type, long Field2, int Field3)>
+            {
+                [1] = (1, file.Object(1, Catalog), 0),
+                [2] = (1, file.Object(2, Pages), 0),
+                [8] = (1, file.ObjectStream(8, [(20, "/ASCIIHexDecode")]), 0),
+                [20] = (2, 8, 0),
+                [3] = (2, 7, 0),
+            };
+            var data = Hex("3 0 (three) ");
+            rows[7] = (1, file.Object(7, string.Create(CultureInfo.InvariantCulture, $"<< /Type /ObjStm /N 1 /First 4 /Filter 20 0 R /Length {data.Length} >>\nstream\n{data}\nendstream")), 0);
+            file.CompressedCrossReferenceStream(30, 31, number => rows.TryGetValue(number, out var row) ? row : (0, 0, 0), "/Root 1 0 R");
+            var bytes = file.Bytes;
+
+            return new Case(
+                nameof(PdfReaderLimits.MaxNestedLoads),
+                PdfDiagnosticCodes.LimitNestedLoads,
+                bytes,
+                PdfReaderLimits.Default with { MaxNestedLoads = 2 },
+                PdfReaderLimits.Default,
+                document => string.Create(CultureInfo.InvariantCulture, $"{document.GetObject(new PdfObjectId(3))}"),
+                "\"three\"",
+                "Object 8 is loaded while 2 objects are being loaded, and reads as null there; it reads whole from a shallower place.",
+                OffsetOf(bytes, "8 0 obj"),
+                ThrowsOnOpening: false,
+                ReportsNothingElse: false);
+        }
 
         private static Case DecodedStream()
         {

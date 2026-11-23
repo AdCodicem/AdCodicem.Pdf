@@ -139,6 +139,12 @@ public sealed record CorpusReaderLimits
     /// reader let go.
     /// </summary>
     public int? MaxObjectStreamDecodePasses { get; init; }
+
+    /// <summary>How deeply one object may nest its arrays and dictionaries.</summary>
+    public int? MaxNestingDepth { get; init; }
+
+    /// <summary>How many objects may be loaded while loading another.</summary>
+    public int? MaxNestedLoads { get; init; }
 }
 
 /// <summary>One entry of the corpus manifest.</summary>

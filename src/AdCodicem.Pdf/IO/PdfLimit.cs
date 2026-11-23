@@ -36,6 +36,12 @@ internal enum PdfLimit
     /// </summary>
     ObjectStreamDecodes,
 
+    /// <summary>How deeply one object may nest its arrays and dictionaries.</summary>
+    NestingDepth,
+
+    /// <summary>How many objects may be loaded while loading another.</summary>
+    NestedLoads,
+
     /// <summary>
     /// How long a trailer, or a cross-reference stream's dictionary, may be: the last, which every switch over the guards
     /// takes as its default arm.
