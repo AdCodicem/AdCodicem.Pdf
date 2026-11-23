@@ -1310,12 +1310,11 @@ internal sealed partial class PdfFileReader
 
     /// <summary>
     /// Determines whether the value <paramref name="dictionary"/>, an object stream's, gives under <paramref name="key"/> is
-    /// a reference whose object a guard cut or left out of the index, or the walk in progress read as null past its own
-    /// guard: what it holds is the guard's, not the file's (#395). Call it once the value is resolved.
+    /// a reference whose object a guard cut or left out of the index, the walk in progress's guard among them
+    /// (<see cref="IsCutAtLimit"/>): what it holds is the guard's, not the file's (#395). Call it once the value is resolved.
     /// </summary>
     private bool HeaderValueHidden(PdfDictionary dictionary, PdfName key) =>
-        dictionary.GetRaw(key) is PdfReference reference &&
-        (LeftByGuard(reference) || _walkCut?.Contains(reference.Target().Number) == true);
+        dictionary.GetRaw(key) is PdfReference reference && LeftByGuard(reference);
 
     /// <summary>
     /// Gives the places in <paramref name="header"/> of the members of object stream <paramref name="number"/> written as a
@@ -1759,9 +1758,10 @@ internal sealed partial class PdfFileReader
         // would go as deep (#163).
         var depthBase = _loading.Count;
 
-        if (_objectStreams.TryGetValue(number, out var cached) && ServesAt(_objectStreamDepths[number], depthBase))
+        if ((_objectStreams.TryGet(DepthKey(number, -1), out var cached) && ServesAt(cached.Depth, depthBase)) ||
+            (_objectStreams.TryGet(DepthKey(number, depthBase), out cached) && ServesAt(cached.Depth, depthBase)))
         {
-            return cached;
+            return cached.Contents;
         }
 
         // The stream's own dictionary is being read, and names an object the stream holds — its /Length —: the
@@ -1775,7 +1775,8 @@ internal sealed partial class PdfFileReader
         }
 
         // Under ThrowOnLimit, a decoding that reached a guard throws again, without decoding (#181).
-        if (_decodingsThrown is not null && _decodingsThrown.TryGet(number, out var thrown, out var thrownDepth) && ServesAt(thrownDepth, depthBase))
+        if (_decodingsThrown is not null && ((_decodingsThrown.TryGet(number, -1, out var thrown, out var thrownDepth) && ServesAt(thrownDepth, depthBase)) ||
+            (_decodingsThrown.TryGet(number, depthBase, out thrown, out thrownDepth) && ServesAt(thrownDepth, depthBase))))
         {
             thrown.Throw();
         }
@@ -1812,9 +1813,10 @@ internal sealed partial class PdfFileReader
             {
                 loaded = GetObject(new PdfObjectId(number));
             }
-            catch (PdfLimitExceededException exception) when (reentries == _reentries && repaired == _repaired && walkCuts == _walkCuts && !_expandingObjectStreams && !IsKeptByNoTable(exception))
+            catch (PdfLimitExceededException exception) when (reentries == _reentries && repaired == _repaired && walkCuts == _walkCuts && !_expandingObjectStreams && !IsKeptByNoTable(exception) &&
+                KeepDecodingThrow(number, exception, DepthSince(depthBase, nestingCuts, transientCuts)))
             {
-                KeepDecodingThrow(number, exception, DepthSince(depthBase, nestingCuts, transientCuts));
+                // Never reached: the exception is kept in the filter, which catches nothing (KeepThrown's remarks).
                 throw;
             }
 
@@ -1842,9 +1844,10 @@ internal sealed partial class PdfFileReader
                 // Kept as the stream's contents are, not as a load's exception is: a null on the way for an object the stream
                 // holds, or one being loaded, is read as null again by every decoding of the stream, which would throw alike
                 // (KeepDecodingThrow's remarks).
-                catch (PdfLimitExceededException exception) when (repaired == _repaired && walkCuts == _walkCuts && !_expandingObjectStreams && !IsKeptByNoTable(exception))
+                catch (PdfLimitExceededException exception) when (repaired == _repaired && walkCuts == _walkCuts && !_expandingObjectStreams && !IsKeptByNoTable(exception) &&
+                    KeepDecodingThrow(number, exception, DepthSince(depthBase, nestingCuts, transientCuts)))
                 {
-                    KeepDecodingThrow(number, exception, DepthSince(depthBase, nestingCuts, transientCuts));
+                    // Never reached, as above.
                     throw;
                 }
             }
@@ -1882,6 +1885,11 @@ internal sealed partial class PdfFileReader
             }
 
             return contents;
+        }
+        catch (Exception) when (RaiseDeepest(outerDeepest))
+        {
+            // Never reached: the filter raises the deepest load as the exception sets out, and catches nothing.
+            throw;
         }
         finally
         {
@@ -1981,52 +1989,35 @@ internal sealed partial class PdfFileReader
     }
 
     /// <summary>
-    /// Keeps an object stream's contents, letting go of the oldest ones kept while what they weigh and its own weight
-    /// exceed <see cref="ObjectStreamBudget"/>.
+    /// Keeps an object stream's contents, with how deep its decoding went, letting go of the oldest ones kept while what they
+    /// weigh and its own weight exceed <see cref="ObjectStreamBudget"/>.
     /// </summary>
     private void KeepObjectStream(int number, ObjectStreamContents? contents, ReadDepth depth)
     {
-        if (_objectStreams.TryGetValue(number, out var previous) && previous is not null)
-        {
-            _objectStreamBytes -= previous.Weight;
-        }
-
-        _objectStreams[number] = contents;
-        _objectStreamDepths[number] = depth;
+        _objectStreams.Keep(DepthKey(number, depth.CutBase), (contents, depth));
         KeepForRead(number, depth);
-
-        if (contents is null)
-        {
-            return;
-        }
-
-        while (_objectStreamBytes + contents.Weight > ObjectStreamBudget && _objectStreamOrder.TryDequeue(out var oldest))
-        {
-            // The queue can name a number twice, once replaced; letting it go early costs a decoding, nothing else.
-            if (oldest != number && _objectStreams.ContainsKey(oldest))
-            {
-                ReleaseObjectStream(oldest);
-            }
-        }
-
-        _objectStreamOrder.Enqueue(number);
-        _objectStreamBytes += contents.Weight;
     }
 
-    /// <summary>Lets go of what object stream <paramref name="number"/> holds, and of how deep its decoding went.</summary>
-    private void ReleaseObjectStream(int number)
-    {
-        _objectStreamDepths.Remove(number);
-
-        if (_objectStreams.Remove(number, out var released) && released is not null)
-        {
-            _objectStreamBytes -= released.Weight;
-        }
-    }
-
+    /// <summary>
+    /// Keeps <paramref name="value"/>, which a read at <paramref name="depth"/> gave of object <paramref name="number"/>: in
+    /// the cache, for a read nothing cut, or apart, by the base it was made from, for one the loads' nesting or a transient
+    /// cut reached, noted for the read in progress (<see cref="_cutCache"/>, <see cref="_cutKeptForRead"/>).
+    /// </summary>
     private void Cache(int number, PdfObject value, ReadDepth depth)
     {
-        KeepForRead(number, depth);
+        if (depth.CutBase >= 0)
+        {
+            var key = DepthKey(number, depth.CutBase);
+            (_cutCache ??= new(_cacheCapacity, byNumber: true)).Keep(key, (value, depth));
+
+            if ((_cutKeysForRead ??= new(SeededComparer.Instance)).Add(key))
+            {
+                (_cutKeptForRead ??= []).Add(key);
+            }
+
+            KeepForRead(number, depth);
+            return;
+        }
 
         // One kept from a read at another depth gives way to the read made now, in its place in the order.
         if (_cache.ContainsKey(number))

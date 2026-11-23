@@ -1644,7 +1644,7 @@ public class ObjectRuleTests
 
     [Theory]
     [InlineData(false, 1, 3)]
-    [InlineData(true, 69, 7)]
+    [InlineData(true, 69, 3)]
     public void Only_the_link_the_reader_s_nesting_cut_is_followed_again_from_higher_up(bool deeper, int row, int reads)
     {
         // Object stream 6 takes its parameters from stream 100, which heads 63 streams, or 40, each taking its /Length
@@ -1656,9 +1656,9 @@ public class ObjectRuleTests
         // then reads 64 dictionaries, 63 past 500, which, under the smallest cache, 64 objects, let go of what the
         // walks read of the chains, and 10 meets 100 at the second level, and takes its links at once. The object after
         // the head, or after the 35th stream, is read by 6's walk alone, as it follows the nest and as the reader
-        // resolves the /Length of the streams it reads, and by the reader where what it kept of the 35th from one depth
-        // does not serve a read from another (#163). Had a cut below a link been taken for its own, or a link cut from a
-        // deeper meeting been kept cut, 10's walk followed the nest again from there.
+        // resolves the /Length of the streams it reads, the reader keeping what it read of the 35th from each depth apart
+        // (#163). Had a cut below a link been taken for its own, or a link cut from a deeper meeting been kept cut, 10's
+        // walk followed the nest again from there.
         var written = Merged(LinkedStreamChain(100, deeper ? 40 : 63, "70 0 R"), new() { [70] = "2" });
         written = Merged(written, StreamChain(500, 28, "100 0 R"));
         var after = new StringBuilder();
