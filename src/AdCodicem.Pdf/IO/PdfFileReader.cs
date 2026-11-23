@@ -1779,7 +1779,13 @@ internal sealed partial class PdfFileReader : IPdfObjectSource, IPdfStreamDataPr
             return false;
         }
 
-        if (depth.CutBase >= 0)
+        // What a transient read kept makes the read it serves transient in turn, or that read would keep past the read in
+        // progress what the thread, or the probe, decided.
+        if (depth.Transient)
+        {
+            _transientCuts++;
+        }
+        else if (depth.CutBase >= 0)
         {
             _nestingCuts++;
         }
