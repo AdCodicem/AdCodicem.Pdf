@@ -611,9 +611,10 @@ internal sealed partial class PdfFileReader : IPdfObjectSource, IPdfStreamDataPr
 
     /// <summary>
     /// What the read in progress kept in <see cref="_cutCache"/>, by key, in the order it kept them: a load from a base it kept
-    /// what it gave from before, the cache having let it go for want of room, reads as null, reported as a load past the nesting is,
-    /// so that a read loads each object once a base at most, and its cost stays in proportion to its objects and its depths
-    /// whatever the cache holds (#163). Let go of as the read ends.
+    /// what it gave from before, the cache having let it go for want of room, reads as null, reported as a load past the
+    /// nesting is, so that a read loads each object once a base at most — but one whose load met an object still being loaded,
+    /// which nothing keeps —, and its cost stays in proportion to its objects and its depths whatever the cache holds (#163).
+    /// As many as the read's cut loads, unlike what the cache keeps, and let go of as the read ends.
     /// </summary>
     private List<long>? _cutKeptForRead;
 

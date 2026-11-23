@@ -367,7 +367,8 @@ public sealed record PdfReaderLimits
     /// <para>
     /// Within one read, what the bound cut is kept for each number of loads in flight it was read from, as many as
     /// <see cref="PdfReaderOptions.ObjectCacheCapacity"/>, and one for each object once the read ends: a read that the
-    /// bound cuts loads each object once for each such number at most. Where the cache had to let go of one before the read
+    /// bound cuts loads each object once for each such number at most, but for one whose load met an object still being
+    /// loaded, which no read keeps, as without the bound. Where the cache had to let go of one before the read
     /// asks for it again from the same place — a nest of object streams that reads each other's values from many depths,
     /// past what the cache holds —, that load reads as null too, reported under the same code, and which loads do then
     /// depends on what the cache held before the read; so that the read's cost stays in proportion to its objects and to
