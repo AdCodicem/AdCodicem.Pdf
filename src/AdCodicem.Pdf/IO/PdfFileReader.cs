@@ -355,7 +355,7 @@ internal sealed partial class PdfFileReader : IPdfObjectSource, IPdfStreamDataPr
 
         if (byStack)
         {
-            _stackCuts++;
+            _transientCuts++;
         }
         else if (number > 0)
         {
@@ -875,17 +875,25 @@ internal sealed partial class PdfFileReader : IPdfObjectSource, IPdfStreamDataPr
     private int _nestingCuts;
 
     /// <summary>
-    /// How many loads, or parses, the thread's stack cut: what a read during which it moves gave is kept for the read in
-    /// progress only (<see cref="_keptForRead"/>), the thread deciding it.
+    /// How many loads, or parses, the thread's stack cut, and how many objects <see cref="_holdersReadAsNull"/> read as null:
+    /// what a read during which it moves gave is kept for the read in progress only (<see cref="_keptForRead"/>), how it was
+    /// made deciding it rather than the file.
     /// </summary>
-    private int _stackCuts;
+    private int _transientCuts;
 
     /// <summary>
-    /// The objects, object streams and exceptions kept from reads the thread's stack cut, each by number, let go once no load
-    /// is in flight: within one read they serve the loads made again from the same base, which would otherwise be read
-    /// again, each time in full, as many times as the reads above them repeat; past it, the thread may have room.
+    /// The objects, object streams and exceptions kept from reads <see cref="_transientCuts"/> counts, each by number, let go
+    /// once no load is in flight: within one read they serve the loads made again from the same base, which would otherwise
+    /// be read again, each time in full, as many times as the reads above them repeat; past it, the thread may have room.
     /// </summary>
     private HashSet<int>? _keptForRead;
+
+    /// <summary>
+    /// While the validator's probe reads an object stream's header (<see cref="ReadObjectStreamHeader"/>), the object
+    /// streams whose objects it reads as null, as the walk of the streams' dependencies does: those that do not decode alike
+    /// in every read order, which the reader would serve as what it read before decides (#313); null otherwise.
+    /// </summary>
+    private IReadOnlySet<int>? _holdersReadAsNull;
 
     /// <summary>
     /// Whether an object the validator's walks of the object streams did not load for want of stack was reported.
@@ -1282,6 +1290,16 @@ internal sealed partial class PdfFileReader : IPdfObjectSource, IPdfStreamDataPr
         // (#163): the cache, and the exceptions kept, serve it only then.
         var depthBase = _loading.Count;
 
+        // Asked before the cache too: what a probe of the validator reads as null of a stream that does not decode alike is the
+        // same whatever was read before (#313), and nothing read through it is kept past the read in progress.
+        if (_holdersReadAsNull is not null && _xref.TryGet(id.Number, out var held) && held.Kind == XRefEntryKind.Compressed &&
+            _holdersReadAsNull.Contains(held.ObjectStreamNumber))
+        {
+            _transientCuts++;
+            _reentries++;
+            return PdfNull.Instance;
+        }
+
         if (_cache.TryGetValue(id.Number, out var cached) && ServesAt(cached.Depth, depthBase))
         {
             // What the walk alone keeps was read through its guard's cut, and so is what is read through it now, as it would
@@ -1322,7 +1340,7 @@ internal sealed partial class PdfFileReader : IPdfObjectSource, IPdfStreamDataPr
         var outerDeepest = _deepest;
         _deepest = depthBase + 1;
         var nestingCuts = _nestingCuts;
-        var stackCuts = _stackCuts;
+        var transientCuts = _transientCuts;
 
         try
         {
@@ -1344,7 +1362,7 @@ internal sealed partial class PdfFileReader : IPdfObjectSource, IPdfStreamDataPr
 
             if (!RuntimeHelpers.TryEnsureSufficientExecutionStack())
             {
-                _stackCuts++;
+                _transientCuts++;
                 ReachNestedLoads(id.Number, byStack: true);
                 _reentries++;
                 return PdfNull.Instance;
@@ -1365,7 +1383,7 @@ internal sealed partial class PdfFileReader : IPdfObjectSource, IPdfStreamDataPr
                     (_walkLoads ??= new(SeededComparer.Instance)).Add(id.Number);
                 }
 
-                Cache(id.Number, value, DepthSince(depthBase, nestingCuts, stackCuts));
+                Cache(id.Number, value, DepthSince(depthBase, nestingCuts, transientCuts));
             }
         }
         catch (Exception exception) when (exception is PdfLimitExceededException || _unfinishedRebuild is RebuildAwaitingFinish)
@@ -1376,7 +1394,7 @@ internal sealed partial class PdfFileReader : IPdfObjectSource, IPdfStreamDataPr
             // on its way: the next read takes the rebuilt index's definition of the number.
             if (reentries == _reentries && repaired == _repaired)
             {
-                KeepThrow(id.Number, exception, DepthSince(depthBase, nestingCuts, stackCuts));
+                KeepThrow(id.Number, exception, DepthSince(depthBase, nestingCuts, transientCuts));
             }
 
             // The walks' guard's, which counts as a re-entry, is kept for the walk alone, by every load it passes through but
@@ -1772,10 +1790,10 @@ internal sealed partial class PdfFileReader : IPdfObjectSource, IPdfStreamDataPr
 
     /// <summary>
     /// Gives how deep the read that started from <paramref name="depthBase"/> loads in flight went, the counts of cuts it
-    /// started with being <paramref name="nestingCuts"/> and <paramref name="stackCuts"/>.
+    /// started with being <paramref name="nestingCuts"/> and <paramref name="transientCuts"/>.
     /// </summary>
-    private ReadDepth DepthSince(int depthBase, int nestingCuts, int stackCuts) =>
-        new(_deepest - depthBase, nestingCuts != _nestingCuts || stackCuts != _stackCuts ? depthBase : -1) { ByStack = stackCuts != _stackCuts };
+    private ReadDepth DepthSince(int depthBase, int nestingCuts, int transientCuts) =>
+        new(_deepest - depthBase, nestingCuts != _nestingCuts || transientCuts != _transientCuts ? depthBase : -1) { Transient = transientCuts != _transientCuts };
 
     /// <summary>
     /// Notes object <paramref name="number"/>, whose read the thread's stack cut, for what was kept of it to be let go once
@@ -1783,7 +1801,7 @@ internal sealed partial class PdfFileReader : IPdfObjectSource, IPdfStreamDataPr
     /// </summary>
     private void KeepForRead(int number, ReadDepth depth)
     {
-        if (depth.ByStack)
+        if (depth.Transient)
         {
             (_keptForRead ??= new(SeededComparer.Instance)).Add(number);
         }
@@ -1794,22 +1812,22 @@ internal sealed partial class PdfFileReader : IPdfObjectSource, IPdfStreamDataPr
     {
         foreach (var number in _keptForRead!)
         {
-            if (_cache.TryGetValue(number, out var kept) && kept.Depth.ByStack)
+            if (_cache.TryGetValue(number, out var kept) && kept.Depth.Transient)
             {
                 _cache.Remove(number);
             }
 
-            if (_objectStreamDepths.TryGetValue(number, out var depth) && depth.ByStack)
+            if (_objectStreamDepths.TryGetValue(number, out var depth) && depth.Transient)
             {
                 ReleaseObjectStream(number);
             }
 
-            if (_loadsThrown is not null && _loadsThrown.TryGet(number, out _, out var thrown) && thrown.ByStack)
+            if (_loadsThrown is not null && _loadsThrown.TryGet(number, out _, out var thrown) && thrown.Transient)
             {
                 _loadsThrown.Remove(number);
             }
 
-            if (_decodingsThrown is not null && _decodingsThrown.TryGet(number, out _, out var decoding) && decoding.ByStack)
+            if (_decodingsThrown is not null && _decodingsThrown.TryGet(number, out _, out var decoding) && decoding.Transient)
             {
                 _decodingsThrown.Remove(number);
             }

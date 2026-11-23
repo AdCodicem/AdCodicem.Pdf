@@ -18,10 +18,11 @@ internal readonly record struct ReadDepth(int Extent, int CutBase)
     public static ReadDepth None { get; } = new(0, -1);
 
     /// <summary>
-    /// Gets a value indicating whether the thread's stack cut the read: what it gave is kept for the read in progress
-    /// alone, another thread, or the same with more room, reading otherwise.
+    /// Gets a value indicating whether what the read gave depends on how it was made rather than on the file — the thread's
+    /// stack cut it, or the validator's probe read an object stream's value as the walk of the streams' dependencies reads
+    /// it —: it is kept for the read in progress alone.
     /// </summary>
-    public bool ByStack { get; init; }
+    public bool Transient { get; init; }
 
     /// <summary>
     /// Determines whether what a read kept at this depth serves a read made from <paramref name="depthBase"/> loads in flight,
