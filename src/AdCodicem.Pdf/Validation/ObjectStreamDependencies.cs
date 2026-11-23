@@ -43,8 +43,8 @@ namespace AdCodicem.Pdf.Validation;
 /// object the reader's index places otherwise than the chain's; and no load the reader's nesting cuts whose value reaches
 /// the decoding. Where its object is met, its deepest such load also stays within the reader's nesting. It then decodes
 /// the same whatever stream is in flight and whatever was read before — but at the reader's deepest load, which its
-/// nesting or its stack probe cuts, and where it serves what its cache kept, so that what was read before decides what
-/// that load gives (#163) —, and lies on no loop: the object is read through the reader, and followed. Of any other
+/// nesting or its stack probe cuts, where what it gives depends on how deep the read is made, what a cut read kept serving
+/// only a read made from as deep (#163) —, and lies on no loop: the object is read through the reader, and followed. Of any other
 /// stream, the object is a need, and reads as null, as one of a stream in flight does: a stream keeps at most one need
 /// for each value its decoding reads. A need on a stream that decodes alike closes no loop: a walk of a standing that
 /// meets an object of a stream that does not decode alike tells its own stream unlike wherever it meets it, so that the
@@ -52,8 +52,7 @@ namespace AdCodicem.Pdf.Validation;
 /// none of the others while theirs was. A stream met on the way — a parameter, or a link of a chain, which ISO 32000-1
 /// allows neither — gives its dictionary, and its parse resolves its <c>/Length</c>, a level deeper; an object it holds
 /// reads as null meanwhile, before it is decoded, and is its need, not the walked stream's. What that parse loads
-/// places that stream's data, and nothing a decoding reads: cut there or not, a stream decodes the same, but where the
-/// reader serves past the cut what its cache kept (#163).
+/// places that stream's data, and nothing a decoding reads: cut there or not, a stream decodes the same (#163).
 /// </para>
 /// <para>
 /// Each object stream's standing is worked out once a validation, the first time an object of it is met, as a first read
@@ -157,7 +156,7 @@ namespace AdCodicem.Pdf.Validation;
 /// </para>
 /// <para>
 /// The parse of a stream met on a chain parses in turn the stream its <c>/Length</c> loads, a level deeper, and so on to the
-/// reader's deepest load: a nest of 62 streams below one met at the second level, which streams of parameters, each heading
+/// reader's deepest load: a nest of 62 streams below one met at the second level, at the default nesting, which streams of parameters, each heading
 /// one, took past what the walk keeps — 16,128 streams a walk, read again for each object stream (#201). The chain of each
 /// stream's <c>/Length</c> is kept as that stream's link, for 62 times as many streams as the reader caches objects: the
 /// first object it names, the stream it ends at, whether it met nothing the walk's own state answers — no object of an
@@ -215,8 +214,8 @@ internal sealed class ObjectStreamDependencies
     private const int Unexplored = -1;
 
     /// <summary>
-    /// How many links the memo keeps for each object the reader caches: a nest holds 62 streams at most, so that the links
-    /// kept describe as many streams as the nests a store of as many nests as objects held (#181).
+    /// How many links the memo keeps for each object the reader caches: a nest holds 62 streams at most at the default
+    /// nesting, so that the links kept describe as many streams as the nests a store of as many nests as objects held (#181).
     /// </summary>
     /// <remarks>
     /// No guard (ADR 34): it sizes what the walk keeps, not what it reads or judges. A link let go is followed again, through
@@ -542,8 +541,8 @@ internal sealed class ObjectStreamDependencies
     /// A stream's indirect <c>/Length</c> is still loaded as any object is, at the top of the reader's loads
     /// (<see cref="PdfFileReader.ReadWhereChainPlaces"/>): reading an object stream's dictionary, or a stream met on a chain,
     /// decodes and keeps what that <c>/Length</c> leads through, before a value the walk reads through the reader decodes
-    /// it a level deeper. The walk relies on it no more than on any other read: the reader keeps a decoding its deepest load
-    /// cut whoever made it (#163).
+    /// it a level deeper. The walk relies on it no more than on any other read: what the reader keeps of a decoding its
+    /// nesting cut serves only a read made from as deep (#163).
     /// </remarks>
     private static PdfObject Read(PdfDocument document, PdfObjectId id, XRefEntry entry) =>
         (document.Reader.ChainIndex is null ? null : document.Reader.ReadWhereChainPlaces(id.Number, entry)) ??
@@ -1200,7 +1199,7 @@ internal sealed class ObjectStreamDependencies
             // deeper makes it deeper, where the nesting cuts it, and the decoding depends on how deep it is made — which the
             // walk that meets the stream's object asks of its standing (#312). A load inside the parse of a stream met on a
             // chain resolves that stream's /Length, which places its data and nothing else: cut there or not, the decoding
-            // reads the same values, but where the reader serves past the cut what its cache kept (#163).
+            // reads the same values (#163).
             if (_inFlight.Count == 0)
             {
                 _deepest = Math.Max(_deepest, depth);
@@ -1238,7 +1237,11 @@ internal sealed class ObjectStreamDependencies
             {
                 Parse(number, first, parameters, key, depth);
             }
-            else if (!judges)
+            else if (judges)
+            {
+                CountCutAgain(number);
+            }
+            else
             {
                 if (IsInFlight(number))
                 {
@@ -1448,6 +1451,7 @@ internal sealed class ObjectStreamDependencies
             // in its loads, which it reads again.
             if (judges)
             {
+                CountCutAgain(next);
                 return false;
             }
 
@@ -1468,6 +1472,19 @@ internal sealed class ObjectStreamDependencies
         {
             _cuts++;
             _unlike |= !judges && IsInFlight(first);
+        }
+
+        /// <summary>
+        /// Counts a cut where the walk that judges meets stream <paramref name="number"/> again, as deep as the reader's
+        /// nesting cut its last parse or deeper (<see cref="ParsedCutBelow"/>): the reader serves what that parse gave, or
+        /// parses it again and is cut sooner, a cut to the parse that meets it either way, met higher up again in its turn.
+        /// </summary>
+        private void CountCutAgain(int number)
+        {
+            if (_parsedCut.ContainsKey(number))
+            {
+                _cuts++;
+            }
         }
 
         /// <summary>
@@ -1988,9 +2005,10 @@ internal sealed class ObjectStreamDependencies
 
         /// <summary>
         /// The nests clean links lead through, flattened, by the number of the stream heading each (#181): as many as
-        /// <c>capacity</c> says, the oldest let go first, and taken a link at a time again when met again. Each holds 62
-        /// streams at most, as many as a parse reaches below a stream met at the second level, the shallowest any is met,
-        /// within the reader's nesting (<see cref="PdfReaderLimits.MaxNestedLoads"/>), which no value the file gives changes.
+        /// <c>capacity</c> says, the oldest let go first, and taken a link at a time again when met again. Each holds as many
+        /// streams as a parse reaches below a stream met at the second level, the shallowest any is met, within the reader's
+        /// nesting (<see cref="PdfReaderLimits.MaxNestedLoads"/>): 62 at most at the default, which no value the file gives
+        /// changes, and more for a caller who raises the guard.
         /// Taking a nest a link at a time asks the links' store once for each, which made a walk of streams heading kept
         /// nests about two and a half times as slow as taking the nest kept by the stream heading it.
         /// </summary>
@@ -2402,7 +2420,7 @@ internal sealed class ObjectStreamDependencies
         /// <summary>
         /// Reads object <paramref name="number"/>, which <paramref name="entry"/> places: where the chain places it; or, one
         /// held by an object stream that decodes alike in every read order, as the reader serves it, which is the same
-        /// whoever reads it — but for a decoding the reader's nesting cut and kept (#163).
+        /// whoever reads it from as deep (#163).
         /// </summary>
         private PdfObject Fetch(int number, XRefEntry entry) =>
             entry.Kind == XRefEntryKind.Compressed
