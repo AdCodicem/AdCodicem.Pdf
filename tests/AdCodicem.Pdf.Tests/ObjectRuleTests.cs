@@ -3437,6 +3437,42 @@ public class ObjectRuleTests
         ReaderNeeds(file).Should().Be(5);
     }
 
+    [Theory]
+    [InlineData(8)]
+    [InlineData(64)]
+    public void A_stream_met_again_where_the_reader_s_nesting_cut_its_parse_cuts_the_parse_that_meets_it(int maxLoads)
+    {
+        // Object stream 7 holds 5 and 6, and takes its /Length from stream 40, whose /Length is 41, whose /Length is 300: 300
+        // heads streams by /Length, the last naming 5, and is met at the 5th load, where the nesting cuts its parse short of 5.
+        // 7's two Flate steps take their parameters from streams 50 and 60: 50's /Length names 51, 51's names 60, and 60's
+        // names 300, met at the 5th load again, where the reader serves what its cut parse gave — a cut to 60's parse too,
+        // which the reader parses again where 7's second step meets it, at the 2nd load, and which reaches 5 from there (#163).
+        var objects = new SortedDictionary<int, (string Entries, byte[]? Data)>
+        {
+            [40] = ("/Length 41 0 R", "x"u8.ToArray()),
+            [41] = ("/Length 300 0 R", "x"u8.ToArray()),
+            [50] = ("/Length 51 0 R", "x"u8.ToArray()),
+            [51] = ("/Length 60 0 R", "x"u8.ToArray()),
+            [60] = ("/Length 300 0 R", "x"u8.ToArray()),
+        };
+
+        for (var stream = 0; stream < maxLoads - 3; stream++)
+        {
+            objects[300 + stream] = (stream + 1 < maxLoads - 3 ? string.Create(CultureInfo.InvariantCulture, $"/Length {301 + stream} 0 R") : "/Length 5 0 R", "x"u8.ToArray());
+        }
+
+        var (data, first) = ConvergenceShapes.ObjectStreamData((5, "1"), (6, "(six)"));
+        objects[7] = (
+            string.Create(CultureInfo.InvariantCulture, $"/Type /ObjStm /N 2 /First {first} /Length 40 0 R /Filter [/FlateDecode /FlateDecode] /DecodeParms [50 0 R 60 0 R]"),
+            HostileInputTests.Compress(HostileInputTests.Compress(Encoding.Latin1.GetBytes(data))));
+        var file = ConvergenceShapes.StreamsAndMembers(objects, new() { [5] = (7, 0), [6] = (7, 1) });
+        var options = new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxNestedLoads = maxLoads } };
+        using var document = PdfDocument.Open(file, options);
+
+        Single(new PdfValidator().Validate(document), PdfValidationRuleIds.XRefObjectStreamCircular).Message.Should().Be(HoldsFive("/DecodeParms"));
+        ReaderNeeds(file, options).Should().Be(5);
+    }
+
     [Fact]
     public void A_walk_of_a_standing_taking_a_nest_whose_stream_it_parsed_before_parses_it_again_and_goes_on()
     {
