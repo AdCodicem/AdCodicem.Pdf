@@ -1852,6 +1852,27 @@ public class HostileInputTests
         document.Diagnostics.Should().ContainSingle(entry => entry.Code == PdfDiagnosticCodes.LimitNestedLoads);
     }
 
+    [Fact]
+    public void A_read_the_loads_nesting_cut_is_served_again_from_the_same_depth_without_reading()
+    {
+        // Stream 100 heads a chain of 70 streams, each taking its /Length from the next: read from no load in flight, it is
+        // read past the loads' nesting. What the read gave is kept for that depth, and serves the next read of 100 from it,
+        // which reads nothing of the file (#163).
+        var builder = new TestPdfBuilder()
+            .WithObject(1, "<< /Type /Catalog /Pages 2 0 R >>")
+            .WithObject(2, "<< /Type /Pages /Kids [] /Count 0 >>");
+        AddLengthChain(builder, 100, 70, "1");
+        using var source = new OffsetCountingSource(builder.BuildClassic(rootNumber: 1));
+        using var document = PdfDocument.Open(source, PdfReaderOptions.Default, ownsSource: false);
+
+        document.GetObject(new PdfObjectId(100)).Should().BeOfType<PdfStream>();
+        var read = source.BytesRead;
+
+        document.GetObject(new PdfObjectId(100)).Should().BeOfType<PdfStream>();
+        source.BytesRead.Should().Be(read);
+        document.Diagnostics.Should().ContainSingle(entry => entry.Code == PdfDiagnosticCodes.LimitNestedLoads);
+    }
+
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
@@ -1913,6 +1934,236 @@ public class HostileInputTests
 
         document.GetObject(new PdfObjectId(3)).ToString().Should().Be("\"three\"");
         source.Reads.Values.Max().Should().BeLessThanOrEqualTo(24, "a stream is read about once for each depth it is asked from, not once for each path");
+    }
+
+    [Fact]
+    public void What_a_read_past_the_loads_nesting_reads_as_null_for_having_loaded_it_before_is_that_read_s_alone()
+    {
+        // The file of the test before: the read loads streams 101 onward again from depths it loaded them from before, the
+        // cache having let go of what it kept, and reads them as null there, as what the cache held decides. That is the
+        // read's alone: it says nothing of the objects those streams hold, 3000 onward among them, none of which is taken for
+        // one the reader cannot produce; and nothing the read gave through it is kept, so that 3 is read again (#163).
+        var file = ObjectStreamsDecodingThroughTheNextFromTwoDepths(20, 8 * 1024 * 1024);
+        using var source = new OffsetCountingSource(file);
+        var options = new PdfReaderOptions { ObjectCacheCapacity = 64, Limits = PdfReaderLimits.Default with { MaxNestedLoads = 12 } };
+        using var document = PdfDocument.Open(source, options, ownsSource: false);
+
+        document.GetObject(new PdfObjectId(3)).ToString().Should().Be("\"three\"");
+        Enumerable.Range(3000, 19).Where(number => document.Reader.GetPresence(number) == ObjectPresence.Unproduced).Should().BeEmpty();
+        var read = source.BytesRead;
+        document.GetObject(new PdfObjectId(3)).ToString().Should().Be("\"three\"");
+        source.BytesRead.Should().BeGreaterThan(read, "what the first read gave through a load it read as null was kept for that read alone");
+    }
+
+    [Fact]
+    public void Once_a_read_past_the_loads_nesting_ends_the_reader_keeps_of_each_object_it_cut_what_it_last_gave()
+    {
+        // Under a bound of 4 loads, stream 10 heads a chain of streams each taking its /Length from the next, and streams 20 to
+        // 34 lead to it, or to 20, by their own: each read below is cut, and what it gave of each object is kept for the depth
+        // it was read from, and, once it ends, for the last depth it read the object from alone (#163). Read through 23, then
+        // 30, then 20, 10 is read from depths 2 and 3, and 20 from depths 1 and 0: read again from depth 2 through 32, 10 is
+        // loaded again, and from depth 1 through 24, so is 20. Read through object stream 40, which takes its /Length and its
+        // /Filter from 10, 10 is read from depth 2, then from depth 1: read again from depth 1 through 34, it is served from
+        // what the last read kept.
+        var file = new HandWrittenFile(version: "1.5");
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"),
+        };
+
+        void Stream(int number, int length) =>
+            rows[number] = file.Object(number, string.Create(CultureInfo.InvariantCulture, $"<< /Length {length} 0 R >>\nstream\nx\nendstream"));
+
+        for (var number = 10; number < 16; number++)
+        {
+            Stream(number, number + 1);
+        }
+
+        rows[16] = file.Object(16, "1");
+        (int Number, int Length)[] leads = [(20, 21), (21, 22), (22, 10), (23, 20), (24, 20), (30, 31), (31, 10), (32, 33), (33, 10), (34, 10)];
+
+        foreach (var (number, length) in leads)
+        {
+            Stream(number, length);
+        }
+
+        rows[40] = file.Object(40, "<< /Type /ObjStm /N 1 /First 5 /Length 10 0 R /Filter 10 0 R >>\nstream\n41 0 (forty-one)\nendstream");
+        file.CompressedCrossReferenceStream(50, 51, number => number == 41 ? (2, 40, 0) : rows.TryGetValue(number, out var at) ? (1, at, 0) : (0, 0, 0), "/Root 1 0 R");
+        var options = new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxNestedLoads = 4 } };
+
+        using (var source = new OffsetCountingSource(file.Bytes))
+        using (var document = PdfDocument.Open(source, options, ownsSource: false))
+        {
+            foreach (var number in (int[])[23, 30, 20])
+            {
+                document.GetObject(new PdfObjectId(number));
+            }
+
+            Loads(source, rows[10], () => document.GetObject(new PdfObjectId(32))).Should().BePositive("10 was last read from depth 3");
+            Loads(source, rows[20], () => document.GetObject(new PdfObjectId(24))).Should().BePositive("20 was last read from depth 0");
+        }
+
+        using (var source = new OffsetCountingSource(file.Bytes))
+        using (var document = PdfDocument.Open(source, options, ownsSource: false))
+        {
+            document.GetObject(new PdfObjectId(41));
+
+            Loads(source, rows[10], () => document.GetObject(new PdfObjectId(34))).Should().Be(0, "10 was last read from depth 1");
+        }
+
+        // Gives how many times the object at offset is loaded while read runs: a load reads from the byte before its row's.
+        static int Loads(OffsetCountingSource source, long offset, Action read)
+        {
+            var before = source.Reads.GetValueOrDefault(offset - 1) + source.Reads.GetValueOrDefault(offset);
+            read();
+            return source.Reads.GetValueOrDefault(offset - 1) + source.Reads.GetValueOrDefault(offset) - before;
+        }
+    }
+
+    [Fact]
+    public void What_reads_past_the_loads_nesting_kept_is_let_go_of_once_newer_ones_fill_the_cache_however_many_reads_kept_values_for_themselves_alone()
+    {
+        // Under a bound of 3 loads and a cache of 64 objects, streams 200 onward each take their /Length from 100, which heads a
+        // chain: each read of one is cut, and kept for the depth it was read from. Five are read; then sixty validations, each
+        // of whose probes reads stream 40 through object 7, which a loop of object streams holds, as null, and keeps what it
+        // read for that read alone (#313): the order in which the cache lets go of what it keeps is rid of those entries as
+        // they pile up, and keeps the five. Read after 85 more, 200 is let go of, and loaded again (#163).
+        var (members, first) = ConvergenceShapes.ObjectStreamData((10, "(ten)"), (11, "(eleven)"));
+        var (loop, loopFirst) = ConvergenceShapes.ObjectStreamData((7, "15"), (20, "0"));
+        var objects = new SortedDictionary<int, (string Entries, byte[]? Data)>
+        {
+            [6] = ("/Type /ObjStm /N 1 /First 5 /Length 20 0 R", Encoding.Latin1.GetBytes(string.Create(CultureInfo.InvariantCulture, $"31 0 {loopFirst} "))),
+            [21] = ("/Type /ObjStm /N 2 /First 31 0 R /Length @L", Encoding.Latin1.GetBytes(loop)),
+            [19] = (string.Create(CultureInfo.InvariantCulture, $"/Type 40 0 R /N 2 /First {first} /Length @L"), Encoding.Latin1.GetBytes(members)),
+            [40] = ("<< /Length 7 0 R >>\nstream\nxx endstream yy\nendstream", null),
+            [106] = ("1", null),
+        };
+
+        for (var number = 100; number < 106; number++)
+        {
+            objects[number] = (string.Create(CultureInfo.InvariantCulture, $"<< /Length {number + 1} 0 R >>\nstream\nx\nendstream"), null);
+        }
+
+        for (var number = 200; number < 290; number++)
+        {
+            objects[number] = ("<< /Length 100 0 R >>\nstream\nx\nendstream", null);
+        }
+
+        var file = ConvergenceShapes.StreamsAndMembers(objects, new() { [31] = (6, 0), [7] = (21, 0), [20] = (21, 1), [10] = (19, 0), [11] = (19, 1) });
+        var row = PdfTemplate.OffsetOf(file, "200 0 obj");
+        using var source = new OffsetCountingSource(file);
+        var options = new PdfReaderOptions { ObjectCacheCapacity = 64, Limits = PdfReaderLimits.Default with { MaxNestedLoads = 3 } };
+        using var document = PdfDocument.Open(source, options, ownsSource: false);
+
+        for (var number = 200; number < 205; number++)
+        {
+            document.GetObject(new PdfObjectId(number));
+        }
+
+        for (var round = 0; round < 60; round++)
+        {
+            new PdfValidator().Validate(document);
+        }
+
+        Loads(() => document.GetObject(new PdfObjectId(200))).Should().Be(0, "200 is kept");
+
+        for (var number = 205; number < 290; number++)
+        {
+            document.GetObject(new PdfObjectId(number));
+        }
+
+        Loads(() => document.GetObject(new PdfObjectId(200))).Should().BePositive("200 was let go of for newer ones");
+
+        // Gives how many times 200 is loaded while read runs: a load reads from the byte before its row's.
+        int Loads(Action read)
+        {
+            var before = source.Reads.GetValueOrDefault(row - 1) + source.Reads.GetValueOrDefault(row);
+            read();
+            return source.Reads.GetValueOrDefault(row - 1) + source.Reads.GetValueOrDefault(row) - before;
+        }
+    }
+
+    [Fact]
+    public void Two_objects_a_decoding_the_loads_nesting_cut_serves_from_one_depth_read_whole_from_a_shallower_one()
+    {
+        // Object stream 800 takes its /Filter from 200 and its /DecodeParms from 3, which the first of 63 object streams each
+        // taking its /Filter from the next holds. Read through 801, which 800 holds, 200 and 3 have the first stream decoded
+        // two loads deep, from where the loads' nesting cuts the last stream: the decoding one of them made, cut, serves the
+        // other, and what either gave there is kept for that depth alone. Read from the top, neither is cut: both read whole
+        // (#163).
+        var file = ObjectStreamsTakingTheirFilterFromTheNext(63, more: (file, rows) =>
+        {
+            var data = Compress("801 0 (q) "u8.ToArray());
+            rows[800] = (1, file.Object(800, string.Create(CultureInfo.InvariantCulture, $"<< /Type /ObjStm /N 1 /First 6 /Filter 200 0 R /DecodeParms 3 0 R /Length {data.Length} >>\nstream\n{Encoding.Latin1.GetString(data)}\nendstream")), 0);
+            rows[801] = (2, 800, 0);
+        });
+        using var document = PdfDocument.Open(file);
+
+        document.GetObject(new PdfObjectId(801));
+
+        document.GetObject(new PdfObjectId(3)).ToString().Should().Be("\"three\"");
+        document.GetObject(new PdfObjectId(200)).ToString().Should().Be("/FlateDecode");
+    }
+
+    [Fact]
+    public void Under_ThrowOnLimit_an_object_a_kept_decoding_exception_is_thrown_through_reads_whole_from_a_shallower_depth()
+    {
+        // Streams 700 and 701 take their /Length from 200 and from 3, which the first of 63 object streams each taking its
+        // /Filter from the next holds: read through either, the first stream is decoded two loads deep, from where the loads'
+        // nesting cuts the last. Read through 700, the decoding throws, and is kept for that depth; read through 701, it throws
+        // again, and 3, which it passes through, keeps the exception for its own depth alone: read from the top, where nothing
+        // cuts it, 3 reads whole (#163, #397).
+        var file = ObjectStreamsTakingTheirFilterFromTheNext(63, more: (file, rows) =>
+        {
+            rows[700] = (1, file.Object(700, "<< /Length 200 0 R >>\nstream\nx\nendstream"), 0);
+            rows[701] = (1, file.Object(701, "<< /Length 3 0 R >>\nstream\nx\nendstream"), 0);
+        });
+        using var document = PdfDocument.Open(file, new PdfReaderOptions { ThrowOnLimit = true });
+
+        var first = () => document.GetObject(new PdfObjectId(700));
+        var second = () => document.GetObject(new PdfObjectId(701));
+
+        first.Should().Throw<PdfLimitExceededException>().Which.Code.Should().Be(PdfDiagnosticCodes.LimitNestedLoads);
+        second.Should().Throw<PdfLimitExceededException>().Which.Code.Should().Be(PdfDiagnosticCodes.LimitNestedLoads);
+        document.GetObject(new PdfObjectId(3)).ToString().Should().Be("\"three\"");
+    }
+
+    [Fact]
+    public void Under_ThrowOnLimit_an_object_stream_whose_decoding_the_nesting_cut_throws_again_after_the_loads_let_go_of_what_they_kept()
+    {
+        // As the test before, under a cache of 64 objects: read first, 3 has object stream 100 decoded a load deep, which the
+        // loads' nesting cuts, and the decoding keeps its exception for that depth. Seventy objects past MaxObjectLength read
+        // after it throw too, and seventy more read whole: the loads let go of what they kept of the chain, and the cache of
+        // its streams. 200, read next from as deep, has 100's decoding throw again from what it kept for that depth, without
+        // reading the chain again (#163, #397).
+        var file = ObjectStreamsTakingTheirFilterFromTheNext(70, more: (file, rows) =>
+        {
+            for (var number = 700; number < 770; number++)
+            {
+                rows[number] = (1, file.Object(number, "(" + new string('x', 2000) + ")"), 0);
+                rows[number + 100] = (1, file.Object(number + 100, "(whole)"), 0);
+            }
+        });
+        using var source = new OffsetCountingSource(file);
+        var options = new PdfReaderOptions { ThrowOnLimit = true, ObjectCacheCapacity = 64, Limits = PdfReaderLimits.Default with { MaxObjectLength = 1024 } };
+        using var document = PdfDocument.Open(source, options, ownsSource: false);
+
+        var three = () => document.GetObject(new PdfObjectId(3));
+        three.Should().Throw<PdfLimitExceededException>().Which.Code.Should().Be(PdfDiagnosticCodes.LimitNestedLoads);
+
+        for (var number = 700; number < 770; number++)
+        {
+            var past = () => document.GetObject(new PdfObjectId(number));
+            past.Should().Throw<PdfLimitExceededException>().Which.Code.Should().Be(PdfDiagnosticCodes.LimitObject);
+            document.GetObject(new PdfObjectId(number + 100)).ToString().Should().Be("\"whole\"");
+        }
+
+        var read = source.BytesRead;
+        var other = () => document.GetObject(new PdfObjectId(200));
+
+        other.Should().Throw<PdfLimitExceededException>().Which.Code.Should().Be(PdfDiagnosticCodes.LimitNestedLoads);
+        source.BytesRead.Should().Be(read, "the decoding's exception is thrown again without decoding");
     }
 
     [Theory]
@@ -7723,9 +7974,11 @@ public class HostileInputTests
     /// and on, <c>/FlateDecode</c>, and taking its own from the object the next holds, the last's written directly: the
     /// first holds object 3, <c>(three)</c>, the one before the last object 5, <c>(five)</c>. Read first, 3 loads each stream
     /// in turn, a level deeper each (ISO 32000-1 7.5.7 allows it). The last's data is padded with spaces to
-    /// <paramref name="lastPadding"/> bytes once decoded.
+    /// <paramref name="lastPadding"/> bytes once decoded; <paramref name="more"/>, where given, writes more objects, below
+    /// 900, and their rows.
     /// </summary>
-    internal static byte[] ObjectStreamsTakingTheirFilterFromTheNext(int streams, int lastPadding = 0)
+    internal static byte[] ObjectStreamsTakingTheirFilterFromTheNext(
+        int streams, int lastPadding = 0, Action<HandWrittenFile, Dictionary<int, (int Type, long Field2, int Field3)>>? more = null)
     {
         var file = new HandWrittenFile(version: "1.5");
         var rows = new Dictionary<int, (int Type, long Field2, int Field3)>
@@ -7768,6 +8021,7 @@ public class HostileInputTests
             }
         }
 
+        more?.Invoke(file, rows);
         file.CompressedCrossReferenceStream(900, 901, number => rows.TryGetValue(number, out var row) ? row : (0, 0, 0), "/Root 1 0 R");
         return file.Bytes;
     }

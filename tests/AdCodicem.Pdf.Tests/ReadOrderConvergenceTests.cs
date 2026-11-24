@@ -1,3 +1,5 @@
+using System.Globalization;
+using System.Text;
 using AdCodicem.Pdf.Documents;
 using AdCodicem.Pdf.Objects;
 using AdCodicem.Pdf.Validation;
@@ -24,6 +26,33 @@ public class ReadOrderConvergenceTests
 
             return data;
         }
+    }
+
+    [Theory]
+    [InlineData("/Type")]
+    [InlineData("/Filter")]
+    public void An_object_a_validation_s_probe_reads_through_a_holder_it_reads_as_null_reads_after_it_as_a_fresh_read_gives_it(string key)
+    {
+        // #313's loop: object streams 6 and 21 need each other, and 21 holds 7, 15, which stream 40's /Length names; 19's header
+        // takes its /Type, or its /Filter, from 40. The validation's probe reads 7 as null, as the walk does, and 40 through it,
+        // its data ending at the keyword endstream it holds: what it read through 7 is kept for that read alone, and 40 reads
+        // after the validation, all 15 bytes of its data, as a fresh read gives it (#163, #313).
+        var (members, first) = ConvergenceShapes.ObjectStreamData((10, "(ten)"), (11, "(eleven)"));
+        var (loop, loopFirst) = ConvergenceShapes.ObjectStreamData((7, "15"), (20, "0"));
+        var nineteen = key == "/Type" ? "/Type 40 0 R" : "/Type /ObjStm /Filter 40 0 R";
+        var objects = new SortedDictionary<int, (string Entries, byte[]? Data)>
+        {
+            [6] = ("/Type /ObjStm /N 1 /First 5 /Length 20 0 R", Encoding.Latin1.GetBytes(string.Create(CultureInfo.InvariantCulture, $"31 0 {loopFirst} "))),
+            [21] = ("/Type /ObjStm /N 2 /First 31 0 R /Length @L", Encoding.Latin1.GetBytes(loop)),
+            [19] = (string.Create(CultureInfo.InvariantCulture, $"{nineteen} /N 2 /First {first} /Length @L"), Encoding.Latin1.GetBytes(members)),
+            [40] = ("<< /Length 7 0 R >>\nstream\nxx endstream yy\nendstream", null),
+        };
+        var file = ConvergenceShapes.StreamsAndMembers(objects, new() { [31] = (6, 0), [7] = (21, 0), [20] = (21, 1), [10] = (19, 0), [11] = (19, 1) });
+        using var document = PdfDocument.Open(file);
+
+        new PdfValidator().Validate(document);
+
+        document.GetObject(new PdfObjectId(40)).AsStream().Required().Decode().Length.Should().Be(15);
     }
 
     [Theory]
