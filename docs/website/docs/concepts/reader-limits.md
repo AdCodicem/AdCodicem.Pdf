@@ -51,9 +51,11 @@ when it was the reader that stopped reading it. The bounds live on the options r
 two documents opened side by side can be read under different ones, and a stream decodes under the limits of the
 document it came from, however long after opening.
 
-A value read through a reference to an object a guard cut, or left out of the index, is the guard's too. What the cut
-left of it may be the start of what the file holds — `1` of `15`, `/Flate` of `/FlateDecode` —, so it is never judged
-as a value the file gave; a whole reference it left, though, leads on to the object it names, as read whole. The data
+A value a stream is read with — its `/Length`, its filters or their parameters — read through a reference to an object
+a guard cut, or left out of the index, is the guard's too, never judged as a value the file gave, though the cut keeps
+no token it parts, nor an integer that may start a reference past it
+([Tokens a bound parts](../reference/reader-limits.md#tokens-a-bound-parts)); a whole reference it left leads on to
+the object it names, as read whole. The data
 of a stream whose `/Length` is so named is found by its `endstream`, and its length is not judged, though an `endstream`
 the data lacks is still the file's to lack — unless an object header the data spells stops the search, or an
 `endstream` it spells, which only the hidden length could tell from the end of the data: the data is then the guard's
@@ -102,13 +104,13 @@ is looked for as one that is not there — near the offset, where a search may f
 What that search passes over, or what the section would have named, is the guard's, and so is which section the search
 takes, the one past them or another, which the reader cannot tell without reading past the guard. Wherever
 `MaxTrailerLength` cuts the reading at an offset the chain names, whatever it cuts — white space and comments, which
-turn that reading into the search, a dictionary, whatever its `/Type`, that the reading does not take for a section it
-cut, or the object's header, its number, its generation or its `obj` keyword running on past the guard or white space or
-a comment between its tokens, or a token where no header starts —, no cross-reference stream passed over near a hybrid
-table's `/Prev` is reported as one the chain did not reach, anywhere in the document: the cut may have hidden the
-`/Prev` of a section — any `/W` makes the dictionary there one —, or be what would end the chain, where an `/XRefStm`
-names the offset, and the reader cannot tell without reading past the guard, even where the search finds the section
-whole past the white space, or where the cut hid nothing
+turn that reading into the search, a dictionary whose `/Type`, written whole before the cut, names another type, which
+the reading does not take for a section it cut, or the object's header, its number, its generation or its `obj` keyword
+running on past the guard or white space or a comment between its tokens, or a token where no header starts —, no
+cross-reference stream passed over near a hybrid table's `/Prev` is reported as one the chain did not reach, anywhere
+in the document: the cut may have hidden the `/Prev` of a section — any `/W` makes the dictionary there one —, or be
+what would end the chain, where an `/XRefStm` names the offset, and the reader cannot tell without reading past the
+guard, even where the search finds the section whole past the white space, or where the cut hid nothing
 ([#279](https://github.com/AdCodicem/AdCodicem.Pdf/issues/279)). Where the guard cuts the trailer of a classic table an
 `/XRefStm` names, whose links the chain never follows ([#263](https://github.com/AdCodicem/AdCodicem.Pdf/issues/263)),
 the cut hides no link the chain follows and ends nothing, the chain going on through the table that names it, and the

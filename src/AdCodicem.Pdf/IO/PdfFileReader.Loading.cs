@@ -1275,7 +1275,8 @@ internal sealed partial class PdfFileReader
             return ObjectStreamHeaderResult.Read;
         }
 
-        // A /N or a /First the reader cannot read for one of its guards is the guard's: what it would say is unknown (#395).
+        // A /N or a /First the reader cannot read for one of its guards is the guard's, and one it reads is the file's, as
+        // ObjectStreamContents.TryCreate says (#395, #415).
         if ((count < 0 && HeaderValueHidden(stream.Dictionary, PdfName.N)) || (count > 0 && first < 0 && HeaderValueHidden(stream.Dictionary, PdfName.First)))
         {
             return ObjectStreamHeaderResult.CutByLimit;
@@ -2230,10 +2231,20 @@ internal sealed partial class PdfFileReader
         /// declares none, or what it says of itself cannot be believed, which is reported.
         /// </summary>
         /// <remarks>
+        /// <para>
         /// Each report is placed where the stream's data starts, and says which fault it met and how many of the
         /// stream's objects can still be read from it; it is made once for each stream, however often the stream is
-        /// decoded. A <c>/First</c> past data a guard cut is not reported, nor data the guard on filters left encoded, nor a
-        /// <c>/Type</c>, <c>/N</c> or <c>/First</c> whose object a guard cut: the guard was, under its own code.
+        /// decoded. A <c>/First</c> past data a guard cut is not reported, nor data the guard on filters left encoded: the
+        /// guard was, under its own code.
+        /// </para>
+        /// <para>
+        /// A <c>/N</c> or a <c>/First</c> read through a reference to an object a guard cut, or left out of the index, is
+        /// the guard's where it gives no count or offset, and is not reported: the integer the file wrote may lie past the
+        /// cut, which drops one it parts or that may start a reference past it, as
+        /// <see cref="PdfReaderLimits.MaxObjectLength"/> says (#395). Where it gives one, it is the file's, and the stream
+        /// is read with it as read whole: an integer the cut object still holds is whole, the one the file wrote (#415). A
+        /// <c>/Type</c> such an object gives is the guard's wherever it names no <c>/ObjStm</c>.
+        /// </para>
         /// </remarks>
         /// <param name="reader">Says whether a guard cut what a value of the stream's dictionary leads to.</param>
         /// <param name="number">The object stream's number.</param>
@@ -2248,8 +2259,8 @@ internal sealed partial class PdfFileReader
             var position = stream.Data.Position;
 
             // A stream of another type serves no member, as the validator and the rebuild read it (#274): nothing past its
-            // type is read — its /Length, the parse resolved —, so nothing else it names is needed. A /Type, /N or /First the
-            // reader cannot read for one of its guards is the guard's, as data a guard cut before /First is (#395).
+            // type is read — its /Length, the parse resolved —, so nothing else it names is needed. What a guard hid of these
+            // values is the guard's, as the remarks say, as data a guard cut before /First is (#395).
             if (!stream.Dictionary.IsOfType(PdfName.ObjStm))
             {
                 return HiddenOrUnreadable(PdfName.Type, "is a stream that is not of /Type /ObjStm", 0, out hiddenByGuard);

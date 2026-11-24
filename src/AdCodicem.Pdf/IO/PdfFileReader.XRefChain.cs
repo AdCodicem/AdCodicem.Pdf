@@ -567,9 +567,9 @@ internal sealed partial class PdfFileReader
     /// comments at an offset the chain names run past it, which turned the reading of the section there into the search
     /// near the offset, whatever section that search takes, the one past them read whole among them; or wherever it cut
     /// the reading at such an offset, whatever it cut, that the reading does not take for a section the guard cut — a
-    /// dictionary, whatever its <c>/Type</c>, which then reads as one of another type, its <c>/Prev</c> not followed, or
-    /// the object's header, which leaves no object read (ADR 34); where the reading takes it for the guard's section, the
-    /// chain's own cut withholds the reports already. Nor is it asked where the chain indexed nothing, the whole file then
+    /// dictionary whose <c>/Type</c> is a name written whole before the cut, which then reads as one of another type, its
+    /// <c>/Prev</c> not followed, or the object's header, which leaves no object read (ADR 34); where the reading takes it
+    /// for the guard's section, the chain's own cut withholds the reports already. Nor is it asked where the chain indexed nothing, the whole file then
     /// rebuilt.
     /// </summary>
     /// <remarks>

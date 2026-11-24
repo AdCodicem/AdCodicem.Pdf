@@ -101,13 +101,18 @@ public sealed record PdfReaderLimits
     /// <see cref="Diagnostics.PdfDiagnosticCodes.LimitObject"/>, once for each object, and for each object an object
     /// stream holds, once for each definition of that stream.
     /// <para>
-    /// The object is kept as far as the bound, but for a token the bound parts, which the byte past it says goes on: a name,
-    /// a number or a keyword — <c>/Flate</c> of <c>/FlateDecode</c>, <c>1</c> of <c>15</c> — is dropped (#279), and so
-    /// are the one or two integers right before the bound that may start a reference past it, whole or not — <c>4 0</c>
-    /// of <c>4 0 R</c> (#262). An array leaves what is dropped out, a dictionary the key whose value it was, and a value
-    /// alone reads as null. A closed string, and a name, a real or a keyword the byte past it ends, are kept: an object
-    /// stream member that ends at the bound reads as under a larger one (#282). A <c>stream</c> a regular byte follows is
-    /// no stream keyword, and leaves the dictionary before it alone (#294).
+    /// The object is kept as far as the bound, but for a token the bound parts: a name, a real or a keyword the byte past
+    /// the bound says goes on — <c>/Flate</c> of <c>/FlateDecode</c>, <c>1.</c> of <c>1.5</c> — is dropped (#279). An
+    /// integer is not asked of that byte: one the bound reaches is dropped, whole or not — <c>1</c> of <c>15</c> —, and so
+    /// are the one or two integers before the bound that may start a reference past it — <c>4 0</c> of <c>4 0 R</c>
+    /// (#262). An array leaves what is dropped out, a dictionary the key whose value it was, and a value alone reads as
+    /// null. A closed string, and a name, a real or a keyword the byte past the bound ends, are kept: an object stream
+    /// member that ends at the bound with one of them, a closed array or a whole reference reads as under a larger bound
+    /// (#282), while one that ends with an integer, or with a dictionary a <c>stream</c> keyword past the bound may
+    /// follow, is cut. A <c>stream</c> a regular byte follows is no stream keyword, and leaves the dictionary
+    /// before it alone (#294). A member read up to the end of data <see cref="MaxDecodedStreamLength"/> or
+    /// <see cref="MaxStreamLength"/> cut is read alike, but no byte past that end says a name, a real or a keyword ends
+    /// there, <c>stream</c> among them: each that reaches it is taken as parted.
     /// </para>
     /// </remarks>
     /// <exception cref="ArgumentOutOfRangeException">The value is zero or less.</exception>
