@@ -261,6 +261,22 @@ and the white space is read once. The white space before an object's header, whe
 `MaxObjectLength`, and a load reads near the row past the guard: left as debt, since bounding it apart is a change to
 the reader's most read path.
 
+The same day, while [#328](https://github.com/AdCodicem/AdCodicem.Pdf/issues/328) and
+[#329](https://github.com/AdCodicem/AdCodicem.Pdf/issues/329) were fixed, the maintainer closed what the 2026-11-04
+amendment left unjudged. A `/Prev` written whole before a guard's cut — in a classic trailer `MaxTrailerLength` cut, its
+table's rows read whole or found past rows a guard stopped, or in the dictionary of a cross-reference stream a guard's cut
+of a value its rows are read with keeps from being read, a fault beside that cut whose data may hold rows among them — is
+judged as one past a rows guard is, and never read: the chain still ends at the section, since an older trailer would
+stand for keys the cut hid, or older rows for those the value hides. A key written whole before a trailer's cut is the
+trailer's, though a repeat of it past the cut would win in a whole read: only an invalid file repeats a key, and the
+parser keeps no value the cut parts ([#279](https://github.com/AdCodicem/AdCodicem.Pdf/issues/279)). The `/XRefStm`
+such a trailer gives over rows read whole stays followed: its stream holds the table's own revision's rows, and no row of
+the table was lost for an older one to stand for; past rows a guard stopped, both links are judged and neither is
+followed, as before the trailer was cut. An `/XRefStm` that names what the `/Prev` names under a trailer cut is reported
+as naming the section past the guard that cut the trailer. A reference to a row the stream may hold but the guard left
+unread stays the guard's, the rows counted through what the stream's `/Index` or `/Size` declares, up to what its data
+can hold, where no guard cut them, any number otherwise.
+
 ## Context
 
 Invariant 4 treats everything read from a file as hostile: no allocation, loop or recursion is sized by a
@@ -341,10 +357,10 @@ guard: active by default, reported when it is reached, and lifted by an option.
   follows that does (amended on 2026-10-23 and 2026-10-24) —, since an older section, or its trailer, would stand for
   what the cut left out; where a guard stopped its rows — `MaxXRefSectionLength` or `MaxDecodedStreamLength` cut them,
   or `MaxIndexEntries` filled at them, a hybrid table's stream among them —, what the section it ends at names is judged
-  all the same, as far as the guard lets it be, without reading past it (amended on 2026-11-04), while the `/Prev` of a
-  cross-reference stream a value's cut ends the chain at, and a `/Prev` in a trailer `MaxTrailerLength` cut, are not
-  judged yet ([#329](https://github.com/AdCodicem/AdCodicem.Pdf/issues/329),
-  [#328](https://github.com/AdCodicem/AdCodicem.Pdf/issues/328)); and a section a guard cut is where it was named, not
+  all the same, as far as the guard lets it be, without reading past it (amended on 2026-11-04), and so is a `/Prev`
+  written whole before a trailer `MaxTrailerLength` cut, or in a cross-reference stream a value's cut ends the chain at
+  (amended on 2026-11-24, [#328](https://github.com/AdCodicem/AdCodicem.Pdf/issues/328),
+  [#329](https://github.com/AdCodicem/AdCodicem.Pdf/issues/329)); and a section a guard cut is where it was named, not
   looked for near there — white space past `MaxTrailerLength` before it, or a header that bound cuts, among such cuts
   (amended on 2026-11-24). One found near where it is named, whose values a guard keeps
   from being read, or that declared itself a section — the `xref` keyword, `/Type /XRef` — before a guard cut it, is the
