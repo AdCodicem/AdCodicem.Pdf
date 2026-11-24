@@ -1,5 +1,6 @@
 using System.Text;
 using AdCodicem.Pdf.Diagnostics;
+using AdCodicem.Pdf.Documents;
 using AdCodicem.Pdf.IO;
 using AdCodicem.Pdf.Objects;
 
@@ -530,6 +531,45 @@ public class ParserTests
         diagnostics?.SuppressedCount.Should().Be(2);
 
         static int Depth(PdfObject value) => value is PdfArray array ? 1 + (array.Count > 0 ? Depth(array[0]) : 0) : 0;
+    }
+
+    [Fact]
+    public void A_container_cut_after_the_first_while_the_record_its_reports_end_in_is_full_is_reported_without_its_message_formatted()
+    {
+        // Two arrays nested past a bound of four, reported into diagnostics with room of their own that are kept in a full
+        // record: what is added is dropped once kept, so the second cut, the first's message kept already for the reader, is
+        // added under its code with the bare name of what was cut, its message not built (#163).
+        var diagnostics = new PdfDiagnostics { Capacity = 8, KeptIn = new PdfDiagnostics { Capacity = 0 } };
+        var bytes = Encoding.ASCII.GetBytes("[[[[[[0]]]]] [[[[[1]]]]]]");
+        var parser = new PdfObjectParser(bytes, diagnostics: diagnostics, maxDepth: 4);
+
+        _ = parser.ParseObject();
+
+        diagnostics.Select(entry => entry.Code).Should().Equal(PdfDiagnosticCodes.LimitNestingDepth, PdfDiagnosticCodes.LimitNestingDepth);
+        diagnostics[0].Message.Should().Be(parser.NestingCutMessage);
+        diagnostics[1].Message.Should().Be("An array");
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void The_guards_a_parser_is_given_word_the_report_of_a_container_its_bound_cuts(bool member)
+    {
+        // A parser told to cut containers past a bound of two, under guards whose MaxNestingDepth stands at the most the
+        // reader can hold: the report says so, as those guards word it, rather than asking for a bound to be raised — for a
+        // member of an object stream too, whose parser is given the same guards.
+        var guard = new PdfLimitGuard(PdfReaderLimits.Unbounded, throwOnLimit: false);
+        var diagnostics = new PdfDiagnostics();
+        var bytes = Encoding.ASCII.GetBytes("5 0 [[[0]]]");
+        var parser = member
+            ? PdfObjectParser.ForObjectStreamMember(bytes, 9, 1000, 5, ObjectSourceReturning(new PdfObjectId(1), PdfNull.Instance), diagnostics, maxDepth: 2, guard: guard)
+            : new PdfObjectParser(bytes, diagnostics: diagnostics, maxDepth: 2, guard: guard);
+        parser.Position = 4;
+
+        _ = parser.ParseObject();
+
+        parser.NestingCut.Should().BeTrue();
+        diagnostics.Should().ContainSingle().Which.Message.Should().EndWith("PdfReaderLimits.MaxNestingDepth is already at the most the reader can hold.");
     }
 
     [Fact]

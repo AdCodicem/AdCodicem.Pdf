@@ -742,6 +742,47 @@ public class ReadOrderTests
     }
 
     [Fact]
+    public void What_a_failed_read_noted_of_its_cut_loads_reads_none_of_them_as_null_once_it_finished_its_rebuild()
+    {
+        // Under a MaxNestedLoads of 8, object stream 6 holds object 7, its first Flate step taking its predictor from stream
+        // 20, whose /Length heads streams 21 to 27 by /Length, and its second its parameters from 5, whose row leads to the
+        // catalog's header. Reading 7 reads 20 from the 2nd load, cut at 27, then rebuilds the index as it loads 5, which the
+        // source then fails to give where the rebuild found it: the read finishes the rebuild before its exception leaves.
+        // Read again, 7 reads 20 from the 2nd load again, as cut as before, and 6 decodes with its predictor: what the failed
+        // read noted of its cut loads is let go with them, and does not read 20 as null as a load made again within that
+        // read would (#163).
+        var file = new HandWrittenFile(version: "1.5");
+        var rows = new Dictionary<int, (int Type, long Field2, int Field3)>
+        {
+            [1] = (1, file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"), 0),
+            [2] = (1, file.Object(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>"), 0),
+            [3] = (1, file.Object(3, Page), 0),
+        };
+        var data = Encoding.Latin1.GetString(Compress(ConvergenceShapes.PngRows(Compress("7 0 (member) "u8.ToArray()), 12)));
+        rows[6] = (1, file.Object(6, string.Create(CultureInfo.InvariantCulture, $"<< /Type /ObjStm /N 1 /First 4 /Length {data.Length} /Filter [/FlateDecode /FlateDecode] /DecodeParms [20 0 R 5 0 R] >>\nstream\n{data}\nendstream")), 0);
+        rows[20] = (1, file.Object(20, "<< /Predictor 12 /Columns 12 /Length 21 0 R >>\nstream\nrr\nendstream"), 0);
+
+        for (var stream = 21; stream <= 27; stream++)
+        {
+            var length = stream < 27 ? string.Create(CultureInfo.InvariantCulture, $"{stream + 1} 0 R") : "2";
+            rows[stream] = (1, file.Object(stream, $"<< /Length {length} >>\nstream\nrr\nendstream"), 0);
+        }
+
+        rows[5] = (1, 9, 0);
+        rows[7] = (2, 6, 0);
+        rows[8] = (1, file.Padding(8), 0);
+        var five = file.Object(5, "<< /Predictor 1 >>");
+        file.CrossReferenceStream(28, 29, rows, "/Root 1 0 R");
+        using var source = new FailingSource(file.Bytes);
+        using var document = PdfDocument.Open(source, new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxNestedLoads = 8 } }, ownsSource: false);
+        source.Fail(five, 1);
+
+        FluentActions.Invoking(() => document.GetObject(new PdfObjectId(7))).Should().Throw<IOException>();
+
+        document.GetObject(new PdfObjectId(7)).Should().BeOfType<PdfString>().Which.ToText().Should().Be("member");
+    }
+
+    [Fact]
     public void A_stream_ended_at_a_place_inside_its_data_is_said_so_once_though_the_source_failed_a_rebuild_between_two_readings()
     {
         // Twenty streams, each one's header in a string of the dictionary of the one before, every /Length confirmed by the

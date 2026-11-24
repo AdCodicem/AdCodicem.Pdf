@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Text;
 using AdCodicem.Pdf.Documents;
+using AdCodicem.Pdf.IO;
 using AdCodicem.Pdf.Objects;
 using AdCodicem.Pdf.Validation;
 
@@ -53,6 +54,29 @@ public class ReadOrderConvergenceTests
         new PdfValidator().Validate(document);
 
         document.GetObject(new PdfObjectId(40)).AsStream().Required().Decode().Length.Should().Be(15);
+    }
+
+    [Fact]
+    public void An_object_whose_object_stream_a_probe_reads_as_null_through_its_holder_is_not_left_unproduced()
+    {
+        // Object stream 19 takes its /N from 50, which stream 60 holds; the chain's index places 60 itself in object stream 21.
+        // A probe that reads 21's objects as null reads 60 so, and 50 cannot be read from it for the time being: what it read
+        // through 60 is the probe's, not the file's, and 50 is not taken for an object the reader gave up on (#313).
+        var (members, first) = ConvergenceShapes.ObjectStreamData((10, "(ten)"), (11, "(eleven)"));
+        var (holder, holderFirst) = ConvergenceShapes.ObjectStreamData((60, "<< /Type /ObjStm /N 1 /First 5 >>"));
+        var objects = new SortedDictionary<int, (string Entries, byte[]? Data)>
+        {
+            [21] = (string.Create(CultureInfo.InvariantCulture, $"/Type /ObjStm /N 1 /First {holderFirst} /Length @L"), Encoding.Latin1.GetBytes(holder)),
+            [19] = (string.Create(CultureInfo.InvariantCulture, $"/Type /ObjStm /N 50 0 R /First {first} /Length @L"), Encoding.Latin1.GetBytes(members)),
+        };
+        var file = ConvergenceShapes.StreamsAndMembers(objects, new() { [60] = (21, 0), [50] = (60, 0), [10] = (19, 0), [11] = (19, 1) });
+        using var document = PdfDocument.Open(file);
+        var reader = document.Reader;
+        reader.Index.TryGet(19, out var entry).Should().BeTrue();
+
+        _ = reader.ReadObjectStreamHeader(19, entry, out _, out _, out _, out _, new HashSet<int> { 21 });
+
+        reader.GetPresence(50).Should().Be(ObjectPresence.Defined);
     }
 
     [Theory]
