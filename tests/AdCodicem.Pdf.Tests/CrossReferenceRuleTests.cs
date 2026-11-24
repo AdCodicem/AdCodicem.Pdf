@@ -2176,6 +2176,67 @@ public class CrossReferenceRuleTests
         finding.Remedy.Should().Be("Write the object outside the object stream, and index it there.");
     }
 
+    [Theory]
+    [InlineData("written as a stream")]
+    [InlineData("served from another stream")]
+    public void The_probe_reads_the_header_of_a_stream_the_rebuilt_index_serves_from_with_what_a_stream_that_does_not_decode_alike_holds_as_null(string shape)
+    {
+        // Object stream 20 takes its /N from 31, which object stream 30 holds; 30 takes its /Length from stream 40, whose
+        // /Length is stream 41, whose /Length is 40 again: the walk takes 30 for a stream that does not decode alike in every
+        // read order, and the probe reads 31 as null wherever it reads 20's header, as for the entries of the file's own
+        // index (#313). Row 2 lies outside the file, and reading object 2 rebuilds the index, which takes in what 20's header
+        // lists as the reader reads it, 31 served: 23, at index 2. Written as a stream there and placed by the rebuilt index
+        // alone, 23 is judged by no header the probe reads; or the file's own index places 23 in object stream 10, written
+        // before 20, and the rebuilt index serves it from 20, whose header the probe cannot read: 23 is lost there.
+        var file = new HandWrittenFile(version: "1.5");
+        var rows = new Dictionary<int, (int Type, long Field2, int Field3)>
+        {
+            [1] = (1, file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"), 0),
+            [2] = (1, 99999, 0),
+        };
+        file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>");
+        rows[40] = (1, file.Object(40, "<< /Length 41 0 R >>\nstream\nx\nendstream"), 0);
+        rows[41] = (1, file.Object(41, "<< /Length 40 0 R >>\nstream\nx\nendstream"), 0);
+        var thirty = Encoding.Latin1.GetString(HostileInputTests.Compress("31 0 3 "u8.ToArray()));
+        rows[30] = (1, file.Object(30, "<< /Type /ObjStm /N 1 /First 5 /Length 40 0 R /Filter /FlateDecode >>\nstream\n" + thirty + "\nendstream"), 0);
+
+        if (shape == "served from another stream")
+        {
+            rows[10] = (1, file.ObjectStream(10, [(23, "(old twenty-three)")]), 0);
+            rows[23] = (2, 10, 0);
+        }
+
+        (int, string)[] members = shape == "written as a stream"
+            ? [(21, "(twenty-one)"), (22, "(twenty-two)"), (23, "<< /Length 3 >> stream\nabc\nendstream")]
+            : [(21, "(twenty-one)"), (22, "(twenty-two)"), (23, "(twenty-three)")];
+        var header = new StringBuilder();
+        var contents = new StringBuilder();
+
+        foreach (var (member, body) in members)
+        {
+            header.Append(CultureInfo.InvariantCulture, $"{member} {contents.Length} ");
+            contents.Append(body).Append(' ');
+        }
+
+        var data = header.ToString() + contents;
+        var twenty = file.Object(20, string.Create(CultureInfo.InvariantCulture, $"<< /Type /ObjStm /N 31 0 R /First {header.Length} /Length {data.Length} >>\nstream\n{data}\nendstream"));
+        rows[20] = (1, twenty, 0);
+        rows[31] = (2, 30, 0);
+        rows[21] = (2, 20, 0);
+        rows[22] = (2, 20, 1);
+        file.CrossReferenceStream(50, 51, rows, "/Root 1 0 R");
+        using var document = PdfDocument.Open(file.Bytes);
+        var report = new PdfValidator().Validate(document);
+
+        document.WasRepaired.Should().BeTrue();
+        report.Findings.Where(finding => finding.Location.Object == new PdfObjectId(23)).Select(finding => finding.Message).Should().Equal(
+            shape == "written as a stream"
+                ? []
+                : [Invariant($"The entry of object 23 places it at index 0 of object stream 10; the index the reader rebuilt places it at index 2 of object stream 20, at offset {twenty}, which cannot be read: it has no /N that gives a count of objects.")]);
+        Single(report, PdfValidationRuleIds.XRefObjectStreamBroken).Message.Should().Be(
+            "Object stream 20, where the index places 2 objects, cannot be read: it has no /N that gives a count of objects.");
+    }
+
     [Fact]
     public void An_object_a_rebuild_placed_where_the_stream_s_header_now_lists_another_is_not_judged_as_written_there()
     {

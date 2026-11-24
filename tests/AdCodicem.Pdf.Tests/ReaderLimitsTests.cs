@@ -3480,16 +3480,22 @@ public class ReaderLimitsTests
 
     [Theory]
     [InlineData("containers")]
+    [InlineData("dictionaries")]
     [InlineData("loads")]
     public void What_the_thread_s_stack_cut_is_read_whole_once_a_thread_has_room_for_it(string nesting)
     {
-        // Six hundred arrays, one inside the other, under a bound of a thousand; or object 3 in the first of 60 object streams,
-        // each taking its /Filter from an object the next holds, under a bound of a thousand loads. Read on a small stack, the
-        // stack cuts them, reported under the guard's code — the parser's, or the loads' —; read again on a large one, they
-        // read whole: what the stack cut was not kept.
-        var file = nesting == "containers"
-            ? new TestPdfBuilder().WithObject(1, Catalog).WithObject(2, Pages).WithObject(3, new string('[', 600) + new string(']', 600)).BuildClassic(rootNumber: 1)
-            : HostileInputTests.ObjectStreamsTakingTheirFilterFromTheNext(60);
+        // Six hundred arrays, one inside the other, or six hundred dictionaries, each the /A of the one around it, under a
+        // bound of a thousand; or object 3 in the first of 60 object streams, each taking its /Filter from an object the next
+        // holds, under a bound of a thousand loads. Read on a small stack, the stack cuts them, reported under the guard's
+        // code — the parser's, or the loads' —; read again on a large one, they read whole: what the stack cut was not kept.
+        // Arrays and dictionaries each ask the stack for room before a level: a parse of nested dictionaries alone passes
+        // through no array.
+        var file = nesting switch
+        {
+            "containers" => new TestPdfBuilder().WithObject(1, Catalog).WithObject(2, Pages).WithObject(3, new string('[', 600) + new string(']', 600)).BuildClassic(rootNumber: 1),
+            "dictionaries" => new TestPdfBuilder().WithObject(1, Catalog).WithObject(2, Pages).WithObject(3, string.Concat(Enumerable.Repeat("<< /A ", 600)) + "1" + string.Concat(Enumerable.Repeat(" >>", 600))).BuildClassic(rootNumber: 1),
+            _ => HostileInputTests.ObjectStreamsTakingTheirFilterFromTheNext(60),
+        };
         var limits = PdfReaderLimits.Default with { MaxNestingDepth = 1000, MaxNestedLoads = 1000 };
         using var document = PdfDocument.Open(file, new PdfReaderOptions { Limits = limits });
 
@@ -3497,13 +3503,103 @@ public class ReaderLimitsTests
         var large = Stacks.Run(Stacks.Large, () => Read(document, nesting));
 
         small.Should().NotBe(large);
-        large.Should().Be(nesting == "containers" ? "600" : "\"three\"");
+        large.Should().Be(nesting == "loads" ? "\"three\"" : "600");
         document.Diagnostics.Should().ContainSingle(entry => entry.Code.StartsWith("limit.nest", StringComparison.Ordinal))
             .Which.Message.Should().EndWith("The thread's stack had no room for more; read the document from a thread with a larger stack.");
 
-        static string Read(PdfDocument document, string nesting) => nesting == "containers"
-            ? Depth(document.GetObject(new PdfObjectId(3))).ToString(CultureInfo.InvariantCulture)
-            : string.Create(CultureInfo.InvariantCulture, $"{document.GetObject(new PdfObjectId(3))}");
+        static string Read(PdfDocument document, string nesting) => nesting switch
+        {
+            "containers" => Depth(document.GetObject(new PdfObjectId(3))).ToString(CultureInfo.InvariantCulture),
+            "dictionaries" => DictionaryDepth(document.GetObject(new PdfObjectId(3))).ToString(CultureInfo.InvariantCulture),
+            _ => string.Create(CultureInfo.InvariantCulture, $"{document.GetObject(new PdfObjectId(3))}"),
+        };
+
+        static int DictionaryDepth(PdfObject? value) =>
+            value is PdfDictionary dictionary ? 1 + DictionaryDepth(dictionary.GetRaw(PdfName.Get("A"))) : 0;
+    }
+
+    [Theory]
+    [InlineData(5, 3, 3)]
+    [InlineData(129, 200, 129)]
+    public void A_member_of_an_object_stream_nests_its_containers_as_deep_as_MaxNestingDepth_lets_it(int levels, int bound, int read)
+    {
+        // Member 3 of object stream 10 nests arrays one inside the other, under a bound lowered below them or raised past the
+        // default: the bound holds within one object whether the file writes it directly or an object stream holds it.
+        var file = new HandWrittenFile(version: "1.5");
+        var rows = new Dictionary<int, (int Type, long Field2, int Field3)>
+        {
+            [1] = (1, file.Object(1, Catalog), 0),
+            [2] = (1, file.Object(2, Pages), 0),
+            [10] = (1, file.ObjectStream(10, [(3, new string('[', levels) + new string(']', levels)), (4, "(four)")]), 0),
+            [3] = (2, 10, 0),
+            [4] = (2, 10, 1),
+        };
+        file.CrossReferenceStream(20, 21, rows, "/Root 1 0 R");
+        using var document = PdfDocument.Open(file.Bytes, new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxNestingDepth = bound } });
+
+        Depth(document.GetObject(new PdfObjectId(3))).Should().Be(read);
+
+        document.Diagnostics.Contains(PdfDiagnosticCodes.LimitNestingDepth).Should().Be(levels > bound);
+    }
+
+    [Theory]
+    [InlineData(1000)]
+    [InlineData(0)]
+    public void A_member_a_guard_cuts_keeps_the_nesting_cut_its_parse_met_before_the_guard_whatever_room_the_diagnostics_have(int capacity)
+    {
+        // Member 3 of object stream 10 nests an array past a MaxNestingDepth of 3, then runs on in a string past a
+        // MaxObjectLength of 1 KB, which cuts it. Of what its parse reported, what it says of what the member holds stands,
+        // a container the nesting cut among it, as a fault of the syntax does, while the rest goes with the guard's cut: the
+        // nesting cut is reported, or, with no room for a report, still known to have been met.
+        var file = new HandWrittenFile(version: "1.5");
+        var rows = new Dictionary<int, (int Type, long Field2, int Field3)>
+        {
+            [1] = (1, file.Object(1, Catalog), 0),
+            [2] = (1, file.Object(2, Pages), 0),
+            [10] = (1, file.ObjectStream(10, [(3, "[[[[[1]]]] (" + new string('x', 2000) + ")"), (4, "(four)")]), 0),
+            [3] = (2, 10, 0),
+            [4] = (2, 10, 1),
+        };
+        file.CrossReferenceStream(20, 21, rows, "/Root 1 0 R");
+        var options = new PdfReaderOptions
+        {
+            DiagnosticCapacity = capacity,
+            Limits = PdfReaderLimits.Default with { MaxNestingDepth = 3, MaxObjectLength = 1024 },
+        };
+        using var document = PdfDocument.Open(file.Bytes, options);
+
+        document.GetObject(new PdfObjectId(3));
+
+        document.Reader.IsCutAtLimit(3).Should().BeTrue();
+        document.Diagnostics.Contains(PdfDiagnosticCodes.LimitNestingDepth).Should().BeTrue();
+    }
+
+    [Fact]
+    public void Each_container_nested_past_the_bound_in_one_object_is_reported_and_the_first_is_the_one_thrown()
+    {
+        // Object 3 holds an array, then a dictionary, each nesting past a bound of three: each container cut is reported where
+        // it opens, the second's report worded in full as the first's is while the diagnostics have room for it; opened to
+        // throw, the reader throws the report of the first.
+        var file = new TestPdfBuilder().WithObject(1, Catalog).WithObject(2, Pages).WithObject(3, "[[[[[0]]]] [[<< /A 1 >>]]]").BuildClassic(rootNumber: 1);
+        var limits = PdfReaderLimits.Default with { MaxNestingDepth = 3 };
+        const string Remedy = " reads as null, and what it holds is not read. Raise PdfReaderLimits.MaxNestingDepth to read past it.";
+        var first = OffsetOf(file, "[[[[0") + 2;
+
+        using (var document = PdfDocument.Open(file, new PdfReaderOptions { Limits = limits }))
+        {
+            Depth(document.GetObject(new PdfObjectId(3))).Should().Be(3);
+
+            document.Diagnostics.Should().Equal(
+                new PdfDiagnostic(PdfDiagnosticSeverity.Warning, PdfDiagnosticCodes.LimitNestingDepth, "An array nested inside 3 others" + Remedy, first),
+                new PdfDiagnostic(PdfDiagnosticSeverity.Warning, PdfDiagnosticCodes.LimitNestingDepth, "A dictionary nested inside 3 others" + Remedy, OffsetOf(file, "<< /A 1")));
+        }
+
+        using var throwing = PdfDocument.Open(file, new PdfReaderOptions { Limits = limits, ThrowOnLimit = true });
+        var reading = () => throwing.GetObject(new PdfObjectId(3));
+
+        var thrown = reading.Should().Throw<PdfLimitExceededException>().Which;
+        thrown.Message.Should().StartWith("An array nested inside 3 others" + Remedy);
+        thrown.Position.Should().Be(first);
     }
 
     [Theory]
@@ -3539,6 +3635,59 @@ public class ReaderLimitsTests
         });
 
         thrown.Should().StartWith(code);
+    }
+
+    [Theory]
+    [InlineData("a table's trailer", 5, 3)]
+    [InlineData("a table's trailer", 129, 200)]
+    [InlineData("a cross-reference stream's dictionary", 5, 3)]
+    [InlineData("a cross-reference stream's dictionary", 129, 200)]
+    public void A_value_of_the_index_nests_as_deep_as_MaxNestingDepth_lets_it(string where, int levels, int bound)
+    {
+        // A table's trailer, or a cross-reference stream's dictionary, gives /Deep, arrays nested one inside the other, under a
+        // bound lowered below them or raised past the default: the index is read under the document's bound, a value past it
+        // read as null and reported, and the rest of the index read. Opened to throw, a value past the bound throws as the
+        // document opens.
+        var bytes = IndexGiving(where, new string('[', levels) + new string(']', levels));
+        var limits = PdfReaderLimits.Default with { MaxNestingDepth = bound };
+
+        using (var document = PdfDocument.Open(bytes, new PdfReaderOptions { Limits = limits }))
+        {
+            string.Create(CultureInfo.InvariantCulture, $"{document.GetObject(new PdfObjectId(3))}").Should().Be("\"three\"");
+            document.Diagnostics.Select(entry => entry.Code).Should().Equal(levels > bound ? [PdfDiagnosticCodes.LimitNestingDepth] : []);
+        }
+
+        var opening = () => PdfDocument.Open(bytes, new PdfReaderOptions { Limits = limits, ThrowOnLimit = true }).Dispose();
+
+        if (levels > bound)
+        {
+            opening.Should().Throw<PdfLimitExceededException>().Which.Code.Should().Be(PdfDiagnosticCodes.LimitNestingDepth);
+        }
+        else
+        {
+            opening.Should().NotThrow();
+        }
+
+        static byte[] IndexGiving(string where, string deep)
+        {
+            if (where == "a table's trailer")
+            {
+                var table = new HandWrittenFile();
+                var offsets = new Dictionary<int, long> { [1] = table.Object(1, Catalog), [2] = table.Object(2, Pages), [3] = table.Object(3, "(three)") };
+                table.Table(4, offsets, "/Size 4 /Root 1 0 R /Deep " + deep);
+                return table.Bytes;
+            }
+
+            var file = new HandWrittenFile(version: "1.5");
+            var rows = new Dictionary<int, (int Type, long Field2, int Field3)>
+            {
+                [1] = (1, file.Object(1, Catalog), 0),
+                [2] = (1, file.Object(2, Pages), 0),
+                [3] = (1, file.Object(3, "(three)"), 0),
+            };
+            file.CrossReferenceStream(4, 5, rows, "/Root 1 0 R /Deep " + deep);
+            return file.Bytes;
+        }
     }
 
     [Theory]

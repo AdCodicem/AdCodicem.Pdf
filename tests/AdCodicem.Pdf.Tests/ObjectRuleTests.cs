@@ -3336,10 +3336,11 @@ public class ObjectRuleTests
     }
 
     [Theory]
-    [InlineData(false, false, new int[0])]
-    [InlineData(true, false, new[] { 7 })]
-    [InlineData(true, true, new[] { 7 })]
-    public void An_object_of_a_stream_whose_decoding_takes_a_nest_leading_back_to_it_is_followed_only_where_the_reader_meets_it_short_of_the_cut(bool deeper, bool entering, int[] circular)
+    [InlineData(false, false, false, new int[0])]
+    [InlineData(true, false, false, new[] { 7 })]
+    [InlineData(true, true, false, new[] { 7 })]
+    [InlineData(true, false, true, new[] { 7 })]
+    public void An_object_of_a_stream_whose_decoding_takes_a_nest_leading_back_to_it_is_followed_only_where_the_reader_meets_it_short_of_the_cut(bool deeper, bool entering, bool flattened, int[] circular)
     {
         // Stream 3, walked first, takes its /Length from stream 100, which heads 60 streams by /Length, the last naming object
         // stream 9: the walk keeps the nest of 100, 61 streams, 9 the last, cut where 9's /Length names 180, at the 65th load.
@@ -3352,8 +3353,11 @@ public class ObjectRuleTests
         // 190, 100 and the 60 streams it took, cut where 160's /Length names 181. Stream 13 takes its parameters from 12, which
         // 11 holds, 14 0 R; 13 holds 14. 11's decoding enters the loop at 102, and takes the nest of 190 at the 62nd load: its
         // second stream, 101, names 102 at the 65th, while 102's parse is in flight. The reader meets 102 again there: 11 does
-        // not decode alike, and 12 is a need of 13.
-        Validate(ConvergenceShapes.NestBackToAHolder(deeper, entering)).Findings.Where(finding => finding.RuleId == PdfValidationRuleIds.XRefObjectStreamCircular)
+        // not decode alike, and 12 is a need of 13. Where 3 takes its parameters from 100 too, a level higher than its
+        // /Length, its walk parses 100 again from there, taking the links its first parse kept, and keeps the nest of 100
+        // flattened, 9 the last: 9's decoding, meeting 100 through 190's /Length, takes that nest whole, and cuts it at 181 as
+        // the links do.
+        Validate(ConvergenceShapes.NestBackToAHolder(deeper, entering, flattened)).Findings.Where(finding => finding.RuleId == PdfValidationRuleIds.XRefObjectStreamCircular)
             .Select(finding => finding.Location.Object?.Number).Should().Equal([.. circular.Select(number => (int?)number)]);
     }
 
@@ -3438,15 +3442,19 @@ public class ObjectRuleTests
     }
 
     [Theory]
-    [InlineData(8)]
-    [InlineData(64)]
-    public void A_stream_met_again_where_the_reader_s_nesting_cut_its_parse_cuts_the_parse_that_meets_it(int maxLoads)
+    [InlineData(8, false)]
+    [InlineData(64, false)]
+    [InlineData(8, true)]
+    [InlineData(64, true)]
+    public void A_stream_met_again_where_the_reader_s_nesting_cut_its_parse_cuts_the_parse_that_meets_it(int maxLoads, bool linked)
     {
         // Object stream 7 holds 5 and 6, and takes its /Length from stream 40, whose /Length is 41, whose /Length is 300: 300
         // heads streams by /Length, the last naming 5, and is met at the 5th load, where the nesting cuts its parse short of 5.
         // 7's two Flate steps take their parameters from streams 50 and 60: 50's /Length names 51, 51's names 60, and 60's
         // names 300, met at the 5th load again, where the reader serves what its cut parse gave — a cut to 60's parse too,
         // which the reader parses again where 7's second step meets it, at the 2nd load, and which reaches 5 from there (#163).
+        // Where object stream 4, walked before 7, takes its parameters from 60, the walk keeps 60's link to 300, and 7's walk
+        // takes that link rather than loading 300: meeting 300 through it is the same cut to 60's parse.
         var objects = new SortedDictionary<int, (string Entries, byte[]? Data)>
         {
             [40] = ("/Length 41 0 R", "x"u8.ToArray()),
@@ -3465,12 +3473,154 @@ public class ObjectRuleTests
         objects[7] = (
             string.Create(CultureInfo.InvariantCulture, $"/Type /ObjStm /N 2 /First {first} /Length 40 0 R /Filter [/FlateDecode /FlateDecode] /DecodeParms [50 0 R 60 0 R]"),
             HostileInputTests.Compress(HostileInputTests.Compress(Encoding.Latin1.GetBytes(data))));
-        var file = ConvergenceShapes.StreamsAndMembers(objects, new() { [5] = (7, 0), [6] = (7, 1) });
+        Dictionary<int, (int Stream, int Index)> members = new() { [5] = (7, 0), [6] = (7, 1) };
+
+        if (linked)
+        {
+            objects[4] = ConvergenceShapes.FlateObjectStream("/DecodeParms 60 0 R", (8, "(eight)"));
+            members[8] = (4, 0);
+        }
+
+        var file = ConvergenceShapes.StreamsAndMembers(objects, members);
         var options = new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxNestedLoads = maxLoads } };
         using var document = PdfDocument.Open(file, options);
 
         Single(new PdfValidator().Validate(document), PdfValidationRuleIds.XRefObjectStreamCircular).Message.Should().Be(HoldsFive("/DecodeParms"));
         ReaderNeeds(file, options).Should().Be(5);
+    }
+
+    [Theory]
+    [InlineData("a stream met again in flight", 64, true)]
+    [InlineData("nothing", 64, false)]
+    [InlineData("a holder decoded at the reader's deepest load", 3, false)]
+    [InlineData("a holder past the reader's deepest load", 3, true)]
+    public void The_probe_reads_as_null_what_an_object_stream_s_header_takes_from_a_stream_that_does_not_decode_alike_where_a_first_read_decodes_it(
+        string through, int maxLoads, bool readAsNull)
+    {
+        // Object stream 20 takes its /N from 31, which object stream 30 holds, and 20 needs 31 wherever 30 does not decode
+        // alike a level below a first read of it. 30 takes its /Length from stream 40, whose /Length is stream 41, whose
+        // /Length is 40 again: the walk, following the reader's loads, meets 40 again while the reader holds it in its loads,
+        // and takes 30 for a stream that does not decode alike in every read order. Or 30 takes nothing from elsewhere; or,
+        // under a MaxNestedLoads of 3, its parameters from 51, which object stream 50 holds, decoded at the 3rd load from a
+        // first read of 30, within the nesting; or its /Length from 51, loaded at the 3rd load and 50 decoded at the 4th,
+        // past it. Where 30 does not decode alike where a first read decodes it, within the reader's nesting, the probe
+        // reads 31 as null where 20's header takes it, as the walk does, whatever the reader served before: 20 has no /N.
+        // Elsewhere it reads 31 as the reader serves it, and 20 is read (#313).
+        var thirty = ConvergenceShapes.FlateObjectStream(through == "a holder decoded at the reader's deepest load" ? "/DecodeParms 51 0 R" : string.Empty, (31, "2"));
+        var (twenty, first) = ConvergenceShapes.ObjectStreamData((21, "(twenty-one)"), (22, "(twenty-two)"));
+        var length = through switch
+        {
+            "a stream met again in flight" => "/Length 40 0 R",
+            "a holder past the reader's deepest load" => "/Length 51 0 R",
+            _ => "/Length @L",
+        };
+        var objects = new SortedDictionary<int, (string Entries, byte[]? Data)>
+        {
+            [30] = (thirty.Entries.Replace("/Length @L", length, StringComparison.Ordinal), thirty.Data),
+            [40] = ("/Length 41 0 R", "x"u8.ToArray()),
+            [41] = ("/Length 40 0 R", "x"u8.ToArray()),
+            [50] = ConvergenceShapes.FlateObjectStream(string.Empty, (51, "<< /Predictor 1 >>")),
+            [20] = (string.Create(CultureInfo.InvariantCulture, $"/Type /ObjStm /N 31 0 R /First {first} /Length @L"), Encoding.Latin1.GetBytes(twenty)),
+        };
+        var file = ConvergenceShapes.StreamsAndMembers(objects, new() { [31] = (30, 0), [51] = (50, 0), [21] = (20, 0), [22] = (20, 1) });
+        using var document = PdfDocument.Open(file, new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxNestedLoads = maxLoads } });
+
+        string.Create(CultureInfo.InvariantCulture, $"{document.GetObject(new PdfObjectId(21))}").Should().Be("\"twenty-one\"");
+
+        var report = new PdfValidator().Validate(document);
+        report.Findings.Where(finding => finding.RuleId == PdfValidationRuleIds.XRefObjectStreamBroken).Select(finding => finding.Message).Should().Equal(
+            readAsNull ? ["Object stream 20, where the index places 2 objects, cannot be read: it has no /N that gives a count of objects."] : []);
+        report.Contains(PdfValidationRuleIds.XRefObjectStreamCircular).Should().BeFalse();
+    }
+
+    [Fact]
+    public void The_probe_reads_as_null_what_an_object_stream_s_header_takes_from_a_circular_stream_no_walk_decoded()
+    {
+        // Object stream 30 takes its parameters from 31, which it holds: it is circular. Object stream 20 takes its /N from 33,
+        // which 30 lists at index 2 and the file's own index places at index 1: row 2 lies outside the file, and reading
+        // object 2 first rebuilds the index, which places 33 where 30 lists it. The walk of 20 reads 33 where the reader's
+        // index places it otherwise than the chain's, as a need, without working out 30's standing; 30 is known not to decode
+        // alike as circular alone. The probe reads 33 as null where 20's header takes it, as the walk does: 20 has no /N (#313).
+        var file = new HandWrittenFile(version: "1.5");
+        var rows = new Dictionary<int, (int Type, long Field2, int Field3)>
+        {
+            [1] = (1, file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"), 0),
+            [2] = (1, 99999, 0),
+        };
+        file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>");
+        var (thirty, first) = ConvergenceShapes.ObjectStreamData((31, "<< /Predictor 1 >>"), (32, "(thirty-two)"), (33, "2"));
+        var data = Encoding.Latin1.GetString(HostileInputTests.Compress(Encoding.Latin1.GetBytes(thirty)));
+        rows[30] = (1, file.Object(30, string.Create(CultureInfo.InvariantCulture, $"<< /Type /ObjStm /N 3 /First {first} /Length {data.Length} /Filter /FlateDecode /DecodeParms 31 0 R >>\nstream\n{data}\nendstream")), 0);
+        var (twenty, twentyFirst) = ConvergenceShapes.ObjectStreamData((21, "(twenty-one)"), (22, "(twenty-two)"));
+        rows[20] = (1, file.Object(20, string.Create(CultureInfo.InvariantCulture, $"<< /Type /ObjStm /N 33 0 R /First {twentyFirst} /Length {twenty.Length} >>\nstream\n{twenty}\nendstream")), 0);
+        rows[31] = (2, 30, 0);
+        rows[33] = (2, 30, 1);
+        rows[21] = (2, 20, 0);
+        rows[22] = (2, 20, 1);
+        file.CrossReferenceStream(50, 51, rows, "/Root 1 0 R");
+        using var document = PdfDocument.Open(file.Bytes);
+
+        document.GetObject(new PdfObjectId(2));
+        document.WasRepaired.Should().BeTrue();
+
+        var report = new PdfValidator().Validate(document);
+        report.Findings.Where(finding => finding.RuleId == PdfValidationRuleIds.XRefObjectStreamCircular).Select(finding => finding.Location.Object?.Number).Should().Equal(30);
+        report.Findings.Where(finding => finding.RuleId == PdfValidationRuleIds.XRefObjectStreamBroken).Select(finding => finding.Message).Should().Equal(
+            "Object stream 20, where the index places 2 objects, cannot be read: it has no /N that gives a count of objects.");
+    }
+
+    [Theory]
+    [InlineData("in the same walk")]
+    [InlineData("in an earlier walk")]
+    public void A_stream_parsed_again_since_a_cut_and_whole_then_is_not_parsed_again_for_that_cut(string where)
+    {
+        // Under a MaxNestedLoads of 8, stream 41 heads streams 41 to 45 by /Length, the last naming stream 40, whose /Length
+        // is 31, which object stream 30 holds: met as a parameter, 41 is loaded at the 2nd load and 40 at the 7th, where the
+        // nesting cuts 31. 30 takes its /Length from 40 too, and its parameters from 21, which object stream 20 holds: 30 needs
+        // its own 31, and 20's 21. 20 takes its parameters from 41, then 30, then 40, each a Flate step's: met under 30's
+        // /Length, 40 is parsed again, at the 3rd load, a level higher than its cut, and reads 31 as null, 30 being in flight;
+        // met as 20's third parameter, 40 is the one the reader parsed whole and keeps, and 20 needs nothing. In an earlier
+        // walk, 41 is object stream 10's parameter, and 20 takes its parameters from 30, then 40: the cut there was the earlier
+        // walk's, and 40 is parsed once in 20's. Only 30 is circular (#163).
+        int[] parameters = where == "in the same walk" ? [41, 30, 40] : [30, 40];
+        var (twenty, first) = ConvergenceShapes.ObjectStreamData((21, "<< /Predictor 1 >>"), (22, "(twenty-two)"));
+        var data = Encoding.Latin1.GetBytes(twenty);
+
+        foreach (var _ in parameters)
+        {
+            data = HostileInputTests.Compress(data);
+        }
+
+        var thirty = ConvergenceShapes.FlateObjectStream("/DecodeParms 21 0 R", (31, "1"));
+        var objects = new SortedDictionary<int, (string Entries, byte[]? Data)>
+        {
+            [40] = ("/Length 31 0 R", "x"u8.ToArray()),
+            [30] = (thirty.Entries.Replace("/Length @L", "/Length 40 0 R", StringComparison.Ordinal), thirty.Data),
+            [20] = (
+                string.Create(
+                    CultureInfo.InvariantCulture,
+                    $"/Type /ObjStm /N 2 /First {first} /Length @L /Filter [{string.Join(' ', parameters.Select(_ => "/FlateDecode"))}] /DecodeParms [{string.Join(' ', parameters.Select(number => $"{number} 0 R"))}]"),
+                data),
+        };
+
+        for (var stream = 41; stream <= 45; stream++)
+        {
+            objects[stream] = (string.Create(CultureInfo.InvariantCulture, $"/Length {(stream < 45 ? stream + 1 : 40)} 0 R"), "x"u8.ToArray());
+        }
+
+        Dictionary<int, (int Stream, int Index)> members = new() { [31] = (30, 0), [21] = (20, 0), [22] = (20, 1) };
+
+        if (where == "in an earlier walk")
+        {
+            objects[10] = ConvergenceShapes.FlateObjectStream("/DecodeParms 41 0 R", (11, "(eleven)"));
+            members[11] = (10, 0);
+        }
+
+        var file = ConvergenceShapes.StreamsAndMembers(objects, members);
+        using var document = PdfDocument.Open(file, new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxNestedLoads = 8 } });
+
+        new PdfValidator().Validate(document).Findings.Where(finding => finding.RuleId == PdfValidationRuleIds.XRefObjectStreamCircular)
+            .Select(finding => finding.Location.Object?.Number).Should().Equal(30);
     }
 
     [Fact]
