@@ -89,10 +89,14 @@ there. Raise PdfReaderLimits.MaxDecodedStreamLength to read past it.
   catalog, encryption and identity. The chain ends at such a cut, and at a section whose trailer a limit cut — but for a
   classic table an `/XRefStm` names, whose links the chain never follows
   ([#263](https://github.com/AdCodicem/AdCodicem.Pdf/issues/263)), the chain going on through the table that names it —:
-  a `/Prev`, an `/XRefStm` or a `/Root` past the cut is unknown, and no older section stands for it. What the section
-  the chain ends at names is still judged, as far as the cut lets it be, and nothing past the cut is read: a `/Prev` or
-  an `/XRefStm` — of a section whose rows a limit cut or filled the index at, or of a hybrid table whose stream a limit
-  so stopped — that can name no section whatever the cut hides is reported as a whole read reports it, under
+  a `/Prev`, an `/XRefStm` or a `/Root` past the cut is unknown, and no older section stands for it; one written whole
+  before the cut is the trailer's, though a repeat of it past the cut would win in a whole read. What the section the
+  chain ends at names is still judged, as far as the cut lets it be, and nothing past the cut is read: a `/Prev` or an
+  `/XRefStm` — of a section whose rows a limit cut or filled the index at, or of a hybrid table whose stream a limit so
+  stopped; a `/Prev` written whole before a limit cut a trailer
+  ([#328](https://github.com/AdCodicem/AdCodicem.Pdf/issues/328)); the `/Prev` of a cross-reference stream at which a
+  limit's cut of a value its rows are read with ends the chain, below — that can name no section whatever the cut hides
+  is reported as a whole read reports it, under
   `xref.section-missing`, `xref.chain-cycle` or `xref.hybrid-stream-lost`, and what only the sections it should have named
   index is found by rebuilding the index when you ask for it
   ([#264](https://github.com/AdCodicem/AdCodicem.Pdf/issues/264)). Such a value is no offset — a reference to a free
@@ -104,14 +108,13 @@ there. Raise PdfReaderLimits.MaxDecodedStreamLength to read past it.
   the cut, or to a number the section itself lost, which a row past the cut may place — is the limit's, and so are the trailers past it. A
   classic table `MaxXRefSectionLength` cuts before its first row is the limit's whatever the index holds, its `xref`
   keyword having declared it a section, and what its trailer names is judged so too; where the chain then gave no row,
-  the index is rebuilt at opening, as for any chain a limit leaves no row. A `/Prev` in a trailer a limit cut is not
-  judged ([#328](https://github.com/AdCodicem/AdCodicem.Pdf/issues/328)), nor an `/XRefStm` in one found past rows a
-  limit stopped; but the `/XRefStm` that the cut trailer of a table read whole gives is followed, as the file wrote it:
-  the cut keeps none it parts, nor one that may start a reference past it
-  ([Tokens a bound parts](#tokens-a-bound-parts)). Nor is the `/Prev` of a cross-reference stream
-  judged where a limit's cut of a value its rows are read with ends the chain at it, below
-  ([#329](https://github.com/AdCodicem/AdCodicem.Pdf/issues/329)). A section a limit cut is where it was named, and is
-  not looked for near there, as a section that is not there is.
+  the index is rebuilt at opening, as for any chain a limit leaves no row. The `/XRefStm` that the cut trailer of a
+  table read whole gives is followed, as the file wrote it, its stream holding the table's own revision's rows: the cut
+  keeps none it parts, nor one that may start a reference past it
+  ([Tokens a bound parts](#tokens-a-bound-parts)); one that names what the `/Prev` names is reported as naming the
+  section past the limit that cut the trailer. Past rows a limit stopped, a cut trailer's `/XRefStm` is judged as the
+  `/Prev` is, and not followed. A section a limit cut is where it was named, and is not looked for near there, as a
+  section that is not there is.
 - Past `MaxIndexEntries` places, the scan the searches near an offset ask for keeps no more, and answers only before
   the first it left out — or before the data of a stream whose length's object it then awaited, which that object could
   still show to end sooner. A search near an entry's offset that finds a header of the object past there, or a search
@@ -221,9 +224,10 @@ there. Raise PdfReaderLimits.MaxDecodedStreamLength to read past it.
   a cross-reference stream whose `/W`, `/Index`, `/Filter` or `/DecodeParms` does, or whose `/Size` does with no
   `/Index`, and one whose `/Length` does when no `endstream` ends its data, are the guard's, as a section it cut is: the
   chain ends there, the sections it names are not read — the older ones, or a hybrid file's cross-reference stream —,
-  nor is a stream's own `/Prev` judged yet, though its dictionary was read whole
-  ([#329](https://github.com/AdCodicem/AdCodicem.Pdf/issues/329)), the index is not rebuilt, and the guard is
-  reported once the chain is read, or thrown by `Open`. So does a section found near the offset it is named at, which
+  though a stream's own `/Prev`, its dictionary read whole, is judged as past a limit that stopped its rows, a
+  reference to a row it declares and the limit left unread staying the limit's
+  ([#329](https://github.com/AdCodicem/AdCodicem.Pdf/issues/329)), the index is not rebuilt for the guard, and the
+  guard is reported once the chain is read, or thrown by `Open`. So does a section found near the offset it is named at, which
   such a value keeps from being read, or which declared itself one — a table's `xref` keyword, `/Type /XRef` — before a
   guard cut it, as the nearest such place a fault of the file keeps from being read is taken for the section too
   ([#281](https://github.com/AdCodicem/AdCodicem.Pdf/issues/281)); a place there that declares another type — a CIDFont, whose `/W` gives

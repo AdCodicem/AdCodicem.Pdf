@@ -83,14 +83,19 @@ the index for them, as it would for a file whose index is broken, since a rebuil
 and could lose what the chain had read.
 
 The chain of cross-reference sections ends at the section a guard stopped, since an older section's rows would stand for
-those the guard left unread. Where the guard stopped its rows — cut them, or filled the index at them —, what that
-section names is still the file's to answer for, though, where it can name no section whatever the guard hid: a `/Prev`
+those the guard left unread. Where the guard stopped its rows — cut them, or filled the index at them —, cut the trailer
+of a classic table, or cut a value a cross-reference stream's rows are read with, what that section names is still the
+file's to answer for, though, where it can name no section whatever the guard hid: a `/Prev`
 that is no offset or lies outside the file, one that names the section itself or another the chain has reached, an
 `/XRefStm` that names no cross-reference stream. The reader judges such a value as a read of the whole file judges it,
 and reads nothing past the guard to do so: such a guard hides no damage that can be seen without reading past it, and
 what the lost sections index is found by rebuilding the index, as in the file read whole. A value that may name a sound
-section — an offset in the file the chain has not reached — stays the guard's, the older sections with it
-([#264](https://github.com/AdCodicem/AdCodicem.Pdf/issues/264)). A hybrid table's `/XRefStm` whose offset holds no
+section — an offset in the file the chain has not reached, a reference to a row the guard left unread — stays the
+guard's, the older sections with it ([#264](https://github.com/AdCodicem/AdCodicem.Pdf/issues/264)). In a trailer the
+guard cut, a value written whole before the cut is the trailer's, and the `/XRefStm` it gives over rows read whole is
+followed, its stream holding the table's own revision's rows
+([#328](https://github.com/AdCodicem/AdCodicem.Pdf/issues/328),
+[#329](https://github.com/AdCodicem/AdCodicem.Pdf/issues/329)). A hybrid table's `/XRefStm` whose offset holds no
 section, and whose search nearby stops at what the table's `/Prev` names because a guard cut it before it said what it
 is, or cut a value its rows are read with — the `/Prev` may read a section there, which the guard hides —, is the
 guard's too: nothing is reported of it, and the index is not rebuilt for it. Wherever the chain names a section, a
@@ -115,11 +120,7 @@ hidden the `/Prev` of a section — any `/W` makes the dictionary there one —,
 the cut hides no link the chain follows and ends nothing, the chain going on through the table that names it, and the
 report is made. An `/XRefStm` that names what the `/Prev` names, at that offset or in the white space before it, names
 no stream of the table's revision whatever the guard hid, and is reported, the validator saying the guard hides what is
-there. The `/Prev` of a cross-reference stream at which a guard's cut of a value its rows are read with ends the chain,
-and a `/Prev` in a trailer a guard cut, are not judged
-yet: a fault they show without reading past the guard goes unreported
-([#329](https://github.com/AdCodicem/AdCodicem.Pdf/issues/329),
-[#328](https://github.com/AdCodicem/AdCodicem.Pdf/issues/328)).
+there.
 
 ## What decoding a stream may hold
 

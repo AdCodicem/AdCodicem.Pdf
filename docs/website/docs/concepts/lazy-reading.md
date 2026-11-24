@@ -83,10 +83,10 @@ damage, and the map is not rebuilt for it. What a section whose rows a limit sto
 far as the limit lets it be, and nothing past the limit is read: a `/Prev` or an `/XRefStm` there that can name no
 section whatever the limit hid — no offset, an offset outside the file, the section itself, another the chain reached —
 is the file's damage, reported as in the file read whole, and leaves the map to be rebuilt as that damage does
-([#264](https://github.com/AdCodicem/AdCodicem.Pdf/issues/264)). The `/Prev` of a cross-reference stream at which a
-limit's cut of a value its rows are read with ends the chain, and a `/Prev` in a trailer a limit cut, are not judged
-yet ([#329](https://github.com/AdCodicem/AdCodicem.Pdf/issues/329),
-[#328](https://github.com/AdCodicem/AdCodicem.Pdf/issues/328)).
+([#264](https://github.com/AdCodicem/AdCodicem.Pdf/issues/264)). So is a `/Prev` written whole before a limit cut a
+trailer, or in a cross-reference stream at which a limit's cut of a value its rows are read with ends the chain
+([#328](https://github.com/AdCodicem/AdCodicem.Pdf/issues/328),
+[#329](https://github.com/AdCodicem/AdCodicem.Pdf/issues/329)).
 
 A row of a cross-reference stream of a reserved type — a type past 2, or a type field wider than 8 bytes whose leading
 bytes are not all zero, which ISO 32000-1 leaves for later versions to define and reads as a reference to the null
