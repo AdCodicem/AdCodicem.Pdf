@@ -685,9 +685,9 @@ public class GuardCutValueTests
     public void A_length_whose_reference_a_guard_cuts_after_its_number_or_its_generation_gives_no_place_to_look_at(int bound)
     {
         // Object 4's /Length names object 5, which holds 1,100 spaces then 6 0 R; object 6 holds 5. MaxObjectLength cuts
-        // object 5 before the reference, or after its 6, "6 ", "6 0" or "6 0 ": the 6 the cut left was taken for a place to
-        // look for the endstream at, which the end of line before endstream confirmed, the data keeping one byte too many.
-        // What may start a reference the cut parted is dropped now (#262): no place to look at, and the search finds the
+        // object 5 before the reference, or after its 6, "6 ", "6 0" or "6 0 ": what the window holds may start the reference
+        // the cut parts, and is dropped (#262), so the cut gives no place to look for the endstream at — a 6 taken for one,
+        // which the end of line before endstream confirms, would keep a byte too many in the data —, and the search finds the
         // data, as read whole, and as where the cut leaves 6 0 R whole.
         var file = new HandWrittenFile();
         var rows = new Dictionary<int, long>
@@ -715,11 +715,11 @@ public class GuardCutValueTests
     public void A_length_a_guard_cut_in_or_after_its_digits_leaves_data_an_endstream_in_a_string_ends_to_the_guard(int bound)
     {
         // Object 4's /Length names object 20, which holds 1,014 spaces then 25; its data, a string that spells endstream
-        // and 6 spaces, is 25 bytes. MaxObjectLength cuts object 20 after its 2, which the endstream the string spells
-        // confirmed: the data read as "(x", the object's endobj judged missing, and the validator said so of a valid file.
-        // The cut drops the 2, parted, and the 25 it leaves whole and followed by the edge alike, which may be a reference's
-        // number (#262, #279): no place to look at, and the endstream the data spells ends data that is the guard's, its
-        // endobj unjudged. Read whole, the data is the 25 bytes, and nothing is reported.
+        // and 6 spaces, is 25 bytes. MaxObjectLength cuts object 20 after its 2, or after its 25, which the edge follows: the
+        // 2 is parted, the 25 may be a reference's number, and the cut drops either (#262, #279), so it gives no place to
+        // look for the endstream at — a 2 taken for one, which the endstream the string spells confirms, would read the data
+        // as "(x" and judge the object's endobj missing in a valid file —: the endstream the data spells ends data that is
+        // the guard's, its endobj unjudged. Read whole, the data is the 25 bytes, and nothing is reported.
         const string Data = "(x\nendstream) Tj ET      ";
         var file = new HandWrittenFile();
         var rows = new Dictionary<int, long>
@@ -862,11 +862,10 @@ public class GuardCutValueTests
     [Fact]
     public void Rows_past_the_endstream_they_spell_where_a_guard_parted_the_length_are_the_guard_s()
     {
-        // MaxObjectLength parts stream 7's /Length, 210, after its 21, which the rows' second spelled endstream would confirm:
-        // the data taken again to it held 3 rows of the 30 the section declares, and the 27 it lacked were the file's, the
-        // section incomplete and the index rebuilt — and, the 21 only a place to look at, the guard's (#224). The 21 the cut
-        // parted is dropped now, no place to look at (#279): the data ends at the first spelled endstream, and the rows past
-        // it are the guard's, the section cut.
+        // MaxObjectLength parts stream 7's /Length, 210, after its 21, which the rows' second spelled endstream would confirm,
+        // the data taken again to it holding 3 rows of the 30 the section declares. The cut drops the 21, no value the file
+        // wrote (#279), and gives no place to look for the endstream at: the data ends at the first spelled endstream, and the
+        // rows past it are the guard's (#224), the section cut, nothing rebuilt.
         var file = ChainFiles.UpdatePlacingAPartedLength();
 
         using (var whole = PdfDocument.Open(file))
@@ -2544,8 +2543,8 @@ public class GuardCutValueTests
     public void Rows_past_the_endstream_they_spell_where_a_guard_parted_the_length_the_own_row_places_are_the_guard_s()
     {
         // As above, but the stream's own row places object 5, whose 420 MaxObjectLength parts after its 42, which the rows'
-        // second spelled endstream would confirm: the 54 rows the data taken again lacked were the guard's (#224). The 42 the
-        // cut parted is dropped now (#279): the data ends at the first spelled endstream, the rows past it the guard's.
+        // second spelled endstream would confirm. The cut drops the 42 (#279), and gives no place to look for the endstream
+        // at: the data ends at the first spelled endstream, and the rows past it are the guard's (#224).
         var file = ChainFiles.OwnRowPlacingAPaddedLength(throughReference: false);
 
         using (var whole = PdfDocument.Open(file))

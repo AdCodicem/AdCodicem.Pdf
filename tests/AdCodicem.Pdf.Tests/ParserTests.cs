@@ -1283,15 +1283,15 @@ public class ParserTests
     }
 
     [Theory]
-    [InlineData("/Fl")]
-    [InlineData("1")]
-    [InlineData("1.")]
-    [InlineData("tru")]
-    [InlineData("[1 /Fl")]
-    [InlineData("[1 (x) 1.")]
-    [InlineData("<< /A 1 /Filter /Fl")]
-    [InlineData("<< /A 1 /Decode 1.")]
-    public void Drops_a_name_a_number_or_a_keyword_a_guard_s_edge_parts(string text)
+    [InlineData("/Fl", "null")]
+    [InlineData("1", "null")]
+    [InlineData("1.", "null")]
+    [InlineData("tru", "null")]
+    [InlineData("[1 /Fl", "[1]")]
+    [InlineData("[1 (x) 1.", "[1 (x)]")]
+    [InlineData("<< /A 1 /Filter /Fl", "<</A 1>>")]
+    [InlineData("<< /A 1 /Decode 1.", "<</A 1>>")]
+    public void Drops_a_name_a_number_or_a_keyword_a_guard_s_edge_parts(string text, string read)
     {
         // The bytes end where a guard stops the reading, and the data goes on with a regular byte: what they hold of the last
         // token is none the file wrote. It reads as null alone, an array leaves it out, a dictionary the key whose value it
@@ -1301,12 +1301,7 @@ public class ParserTests
         var value = parser.ParseObject();
 
         parser.IsTruncated.Should().BeTrue();
-        Describe(value).Should().Be(text[0] switch
-        {
-            '[' => text.Contains('(', StringComparison.Ordinal) ? "[1 (x)]" : "[1]",
-            '<' => "<</A 1>>",
-            _ => "null",
-        });
+        Describe(value).Should().Be(read);
     }
 
     [Theory]
@@ -1351,16 +1346,25 @@ public class ParserTests
         parser.IsTruncated.Should().Be(text[0] == '[');
     }
 
+    [Fact]
+    public void Drops_a_name_a_guard_s_edge_reaches_where_nothing_says_what_follows_it()
+    {
+        // With nothing to ask what follows the bytes, a name the guard's edge reaches may go on, and is dropped.
+        var parser = new PdfObjectParser("/FlateDecode"u8.ToArray(), endsData: false, guardEdge: true);
+
+        parser.ParseObject().Should().BeSameAs(PdfNull.Instance);
+        parser.IsTruncated.Should().BeTrue();
+    }
+
     [Theory]
-    [InlineData("/FlateDecode", "null")]
     [InlineData("[1 (x", "[1 (x)]")]
     [InlineData("[1 [", "[1 []]")]
     [InlineData("<< /A <<", "<</A <<>>>>")]
-    public void Takes_a_token_a_guard_s_edge_reaches_as_parted_where_nothing_says_what_follows_it(string text, string read)
+    public void Keeps_a_string_or_a_container_a_guard_s_edge_leaves_open_as_far_as_it_was_read(string text, string read)
     {
-        // With nothing to ask what follows the bytes, a name the guard's edge reaches may go on, and is dropped. A string the
-        // edge leaves open is kept as far as it was read, and a container the edge opens is read as one left open there:
-        // neither is a token the edge parts.
+        // A string the guard's edge leaves open is kept as far as it was read, and a container the edge opens is read as one
+        // left open there, even with nothing to ask what follows the bytes: neither is a token the edge parts, and what holds
+        // them is one the guard cut.
         var parser = new PdfObjectParser(Encoding.ASCII.GetBytes(text), endsData: false, guardEdge: true);
 
         Describe(parser.ParseObject()).Should().Be(read);

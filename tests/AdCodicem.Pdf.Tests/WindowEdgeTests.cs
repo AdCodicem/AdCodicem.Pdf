@@ -343,9 +343,9 @@ public class WindowEdgeTests
     public void A_keyword_longer_than_stream_where_MaxObjectLength_ends_the_window_leaves_the_object_its_dictionary(int shift)
     {
         // "streamX" is no stream keyword. MaxObjectLength ends object 4's window a byte short of its "stream", right after
-        // it or a byte past it: the object reads as its dictionary, cut by the guard, alike at each. Right after it, the
-        // keyword was taken whole, and the object read as a stream whose data, "X\nhel", the guard cut, which decoding then
-        // said the file's: the file is asked whether a regular byte follows, as it is of an endobj or an R (#294).
+        // it or a byte past it: the object reads as its dictionary, cut by the guard, alike at each. Right after it, the file
+        // is asked whether a regular byte follows, as it is of an endobj or an R (#294): taken whole, the keyword would make
+        // the object a stream whose data, "X\nhel", the guard cut, and which decoding would lay on the file.
         var file = new HandWrittenFile();
         var rows = new Dictionary<int, long>
         {
@@ -375,8 +375,9 @@ public class WindowEdgeTests
     {
         // The cross-reference stream's keyword is "streamX", no stream keyword: read whole, its dictionary is followed by no
         // stream data, the section malformed, and the catalog found by the rebuild. MaxTrailerLength ends the window a byte
-        // short of its "stream", right after it or a byte past it: the section reads as read whole. Right after it, the
-        // keyword was taken whole, the section read, and the validator judged the catalog missing (#294).
+        // short of its "stream", right after it or a byte past it: the section reads as read whole. Right after it, the file
+        // says a regular byte follows (#294): taken whole, the keyword would have the section read, and the validator judge
+        // the catalog missing.
         var built = new TestPdfBuilder()
             .WithObject(1, "<< /Type /Catalog /Pages 2 0 R >>")
             .WithObject(2, "<< /Type /Pages /Kids [] /Count 0 >>")
@@ -408,9 +409,9 @@ public class WindowEdgeTests
     {
         // A classic table's trailer, longer than the table's window, is followed by "streamX", no stream keyword. The trailer
         // is read through a window of its own, which MaxTrailerLength ends a byte short of that "stream", right after it, a
-        // byte past it, or far past: the trailer reads whole alike, and nothing is reported. Right after it, the keyword was
-        // taken whole, the trailer read as a stream, no dictionary, the guard reported, and the validator judged the trailer
-        // malformed (#294).
+        // byte past it, or far past: the trailer reads whole alike, and nothing is reported. Right after it, the file says a
+        // regular byte follows (#294): taken whole, the keyword would make the trailer a stream, no dictionary, the guard
+        // reported, and the validator judge the trailer malformed.
         var file = new HandWrittenFile();
         var one = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>");
         var two = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>");

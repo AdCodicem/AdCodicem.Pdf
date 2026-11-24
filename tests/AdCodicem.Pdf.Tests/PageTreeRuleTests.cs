@@ -1388,7 +1388,8 @@ public class PageTreeRuleTests
     [Fact]
     public void An_object_whose_type_a_limit_cut_short_is_no_orphaned_page()
     {
-        // Review of #175 (L2-05): the cut falls inside /Pages, which the parser drops as a name the cut parted (#279).
+        // Review of #175: the cut falls inside /Pages, which the parser drops as a name the cut parted (#279): the object
+        // says no type, and what it is may lie past the cut.
         var file = WithObject(7, "<< /Parent 2 0 R /Foo (" + new string('x', 150) + ") /Type /Pages" + new string(' ', 200) + "/Kids [] /Count 0 >>");
         var pages = Encoding.Latin1.GetString(file).IndexOf("/Pages" + new string(' ', 200), StringComparison.Ordinal);
         var header = Encoding.Latin1.GetString(file).IndexOf("7 0 obj", StringComparison.Ordinal);
@@ -1465,9 +1466,10 @@ public class PageTreeRuleTests
     [Fact]
     public void A_count_read_before_the_cut_of_a_node_whose_kids_are_an_array_read_whole_is_not_judged()
     {
-        // Mutant W-count-judged-cut: node 2 gives /Count 5, read whole before a string the cut falls in — the cut drops a 5
-        // that may start "5 0 R" (#262). Its kids, in object 4, are read whole and counted: a node a limit cut is doubtful
-        // all the same, and its /Count is not judged against the one page below it, as it is read whole.
+        // Node 2 gives /Count 5 before a string the cut falls in: the 5 is whole, and starts no reference, which a cut right
+        // after it would drop (#262). Its kids, in object 4, are read whole and counted. A node a limit cut is doubtful all the
+        // same — a /Count given again past the cut would replace this one —, and its /Count, though read whole, is not judged
+        // against the one page below it; read whole, the node is.
         var file = PdfTemplate.Build(PdfTemplate.Sound
             .Replace("<< /Type /Pages /Kids [3 0 R] /Count 1 >>", "<< /Type /Pages /Kids 4 0 R /Count 5 /Pad (" + new string('x', 200) + ") >>", StringComparison.Ordinal)
             .Replace("xref\n0 4\n", "4 0 obj\n[3 0 R]\nendobj\nxref\n0 5\n", StringComparison.Ordinal)
