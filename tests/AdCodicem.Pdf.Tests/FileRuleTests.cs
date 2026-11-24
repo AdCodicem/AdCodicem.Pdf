@@ -828,8 +828,9 @@ public class FileRuleTests
     [InlineData(24)]
     public void A_catalog_a_limit_cut_inside_its_type_is_not_judged(int maxObjectLength)
     {
-        // #175: the rule took the prefix of /Catalog for another type, and the rebuild that followed found no catalog. The
-        // parser now drops the name the cut parted, /Cata or /Catalo, and the catalog reads with no /Type (#279).
+        // MaxObjectLength cuts the catalog inside the name its /Type gives: the parser drops what the window holds of it,
+        // /Cata or /Catalo (#279), and the catalog reads with no /Type, which the rule does not take for another type: what
+        // the catalog lacks may lie past the cut, and nothing is rebuilt for it (#175).
         var file = PdfTemplate.Build(PdfTemplate.Sound);
         using var document = PdfDocument.Open(file, CutAt(maxObjectLength));
 
