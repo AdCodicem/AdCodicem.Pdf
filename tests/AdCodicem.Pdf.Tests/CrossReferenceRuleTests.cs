@@ -3834,24 +3834,57 @@ public class CrossReferenceRuleTests
                 $"Reading the header of object 4 where its entry places it, at offset {row}, or near it, the reader reached PdfReaderLimits.MaxObjectLength: the entry was not checked. Raising the limit lets it be.")));
     }
 
-    [Fact]
-    public void An_object_found_near_a_row_whose_white_space_runs_past_the_object_guard_is_said_to_be_unchecked()
+    [Theory]
+    [InlineData(200, false)]
+    [InlineData(127, false)]
+    [InlineData(600, false)]
+    [InlineData(200, true)]
+    public void An_object_whose_row_names_more_white_space_than_the_object_guard_holds_reaches_it_and_is_said_to_be_unchecked(
+        int blanks, bool throwOnLimit)
     {
-        // Two hundred blanks, then object 4, where its row places it; the reader reads no object past 128 bytes. A load reaches
-        // the guard on the blanks before it finds the object near the row: what the row leads to is the limit's to say.
-        var file = WithFourWritten(new string(' ', 200) + "4 0 obj\n(four)\nendobj\n", out var row);
-        var options = new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxObjectLength = 128 } };
-        using var document = PdfDocument.Open(file, options);
+        // Blanks, then object 4, where its row places it; the reader reads no object past 128 bytes, and the blanks count
+        // toward that bound with the header past them: 127 of them and a header of seven bytes reach it, as 200 do. A load
+        // reaches the guard on the blanks, or throws there when opened to throw on one, then looks for the object near the
+        // row: found within 512 bytes, it is served from there; past them, the index is rebuilt. What the row leads to is the
+        // limit's to say, and the validator says the entry was not checked, laying nothing on the file. Read under the
+        // default bound, the object is read past the blanks, which its row falls short of. White space before an object's
+        // header keeps counting toward the object's bound, the load reading on past the guard (#289).
+        var file = WithFourWritten(new string(' ', blanks) + "4 0 obj\n(four)\nendobj\n", out var row);
+        var options = new PdfReaderOptions { ThrowOnLimit = throwOnLimit, Limits = PdfReaderLimits.Default with { MaxObjectLength = 128 } };
+        using var loaded = PdfDocument.Open(file, options);
+        using var validated = PdfDocument.Open(file, options);
+        using var standard = PdfDocument.Open(file);
 
-        var findings = new PdfValidator().Validate(document).Findings;
+        new PdfValidator().Validate(validated).Findings.Where(finding => finding.Location.Object == new PdfObjectId(4))
+            .Select(finding => (finding.RuleId, finding.Location, finding.Message)).Should().Equal((
+                PdfValidationRuleIds.XRefCheckedInPart,
+                PdfValidationLocation.OfObject(new PdfObjectId(4), row),
+                Invariant($"Reading the header of object 4 where its entry places it, at offset {row}, or near it, the reader reached PdfReaderLimits.MaxObjectLength: the entry was not checked. Raising the limit lets it be.")));
+        new PdfValidator().Validate(standard).Findings.Where(finding => finding.Location.Object == new PdfObjectId(4))
+            .Select(finding => finding.RuleId).Should().Equal(PdfValidationRuleIds.XRefOffsetImprecise);
+        standard.GetObject(new PdfObjectId(4)).Should().BeOfType<PdfString>().Which.ToText().Should().Be("four");
 
-        findings.Select(finding => (finding.RuleId, finding.Location, finding.Message)).Should().Equal((
-            PdfValidationRuleIds.XRefCheckedInPart,
-            PdfValidationLocation.OfObject(new PdfObjectId(4), row),
-            string.Create(
-                CultureInfo.InvariantCulture,
-                $"Reading the header of object 4 where its entry places it, at offset {row}, or near it, the reader reached PdfReaderLimits.MaxObjectLength: the entry was not checked. Raising the limit lets it be.")));
-        document.Diagnostics.Should().Contain(diagnostic => diagnostic.Code == PdfDiagnosticCodes.LimitObject && diagnostic.Position == row);
+        if (throwOnLimit)
+        {
+            FluentActions.Invoking(() => loaded.GetObject(new PdfObjectId(4))).Should().Throw<PdfLimitExceededException>()
+                .Which.Code.Should().Be(PdfDiagnosticCodes.LimitObject);
+            return;
+        }
+
+        loaded.GetObject(new PdfObjectId(4)).Should().BeOfType<PdfString>().Which.ToText().Should().Be("four");
+        var reports = loaded.Diagnostics.Select(diagnostic => (diagnostic.Code, diagnostic.Position));
+
+        if (blanks > 512)
+        {
+            // The rebuild's scan meets object 6, a long string, past the same bound.
+            reports.Take(2).Should().Equal((PdfDiagnosticCodes.LimitObject, row), (PdfDiagnosticCodes.XRefRebuilt, -1L));
+        }
+        else
+        {
+            reports.Should().Equal((PdfDiagnosticCodes.LimitObject, row), (PdfDiagnosticCodes.XRefOffsetAdjusted, row + blanks));
+        }
+
+        loaded.WasRepaired.Should().Be(blanks > 512);
     }
 
     [Theory]
