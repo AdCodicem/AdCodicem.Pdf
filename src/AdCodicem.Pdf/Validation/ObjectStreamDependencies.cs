@@ -673,9 +673,19 @@ internal sealed class ObjectStreamDependencies
         /// <summary>
         /// The streams whose last parse the reader's nesting cut, each with the level it was met at: the reader keeps what such
         /// a parse gave only for a read from as deep, and parses the stream again where it is met higher up, which the walk
-        /// that judges does too (#163).
+        /// that judges does too (#163). Asked only of a stream met again (<see cref="ParsedCut"/>).
         /// </summary>
         private readonly Dictionary<int, int> _parsedCut = new(SeededComparer.Instance);
+
+        /// <summary>
+        /// What cut parses noted since <see cref="_parsedCut"/> was last asked, in the order they noted it, a stream and its
+        /// level in turn: a nest is cut for each of its streams, and a walk that meets none of them again — most do not — notes
+        /// them in a run of integers rather than in a table, a nest of 62 streams for each of the thousands of object streams
+        /// sharing it. It holds no more than the links the walk's parses take, each parse's no longer than the reader's nesting:
+        /// some 8 MB for a walk whose values — a filter's 64 steps' parameters, at most — each head a nest the walk parses again
+        /// from every level, and it is let go as the walk ends.
+        /// </summary>
+        private readonly List<int> _parsedCutNoted = [];
 
         /// <summary>How many loads, or links, the reader's nesting cut in the walk in progress.</summary>
         private int _cuts;
@@ -828,6 +838,7 @@ internal sealed class ObjectStreamDependencies
             _inFlight.Clear();
             _parsed.Clear();
             _parsedCut.Clear();
+            _parsedCutNoted.Clear();
             _values.Clear();
             _judging = 0;
             (_unlike, _deepest) = (false, ValueDepth);
@@ -1337,11 +1348,13 @@ internal sealed class ObjectStreamDependencies
             // A parse the nesting cut is cut for each stream it went into, each met a level below the one before.
             if (cuts != _cuts)
             {
-                _parsedCut[number] = depth;
+                _parsedCutNoted.Add(number);
+                _parsedCutNoted.Add(depth);
 
                 for (var index = start; index < _chain.Count; index++)
                 {
-                    _parsedCut[_chain[index]] = depth + 1 + index - start;
+                    _parsedCutNoted.Add(_chain[index]);
+                    _parsedCutNoted.Add(depth + 1 + index - start);
                 }
             }
 
@@ -1481,7 +1494,7 @@ internal sealed class ObjectStreamDependencies
         /// </summary>
         private void CountCutAgain(int number)
         {
-            if (_parsedCut.ContainsKey(number))
+            if (ParsedCut.ContainsKey(number))
             {
                 _cuts++;
             }
@@ -1493,7 +1506,22 @@ internal sealed class ObjectStreamDependencies
         /// again from here, its cut falling further on (#163).
         /// </summary>
         private bool ParsedCutBelow(int number, int level) =>
-            judges && _parsedCut.TryGetValue(number, out var cutAt) && level < cutAt && _parsedCut.Remove(number);
+            judges && ParsedCut.TryGetValue(number, out var cutAt) && level < cutAt && _parsedCut.Remove(number);
+
+        /// <summary>Gets <see cref="_parsedCut"/>, with what cut parses noted since it was last asked (<see cref="_parsedCutNoted"/>).</summary>
+        private Dictionary<int, int> ParsedCut
+        {
+            get
+            {
+                for (var index = 0; index < _parsedCutNoted.Count; index += 2)
+                {
+                    _parsedCut[_parsedCutNoted[index]] = _parsedCutNoted[index + 1];
+                }
+
+                _parsedCutNoted.Clear();
+                return _parsedCut;
+            }
+        }
 
         /// <summary>
         /// Gives what object <paramref name="number"/>, which <paramref name="entry"/> places, gives the walk in
