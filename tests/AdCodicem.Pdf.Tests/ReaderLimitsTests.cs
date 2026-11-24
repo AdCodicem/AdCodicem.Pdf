@@ -3602,6 +3602,190 @@ public class ReaderLimitsTests
         thrown.Position.Should().Be(first);
     }
 
+    [Fact]
+    public void Wherever_the_thread_s_stack_cuts_a_read_a_thread_with_room_reads_it_whole_after()
+    {
+        // Stream 3 takes its /Length from object 7, which object stream 10 holds, and its data holds the keyword endstream, so
+        // that a read whose /Length reads as null ends it there. Read on a small thread beneath calls that took 96 KB to 160 KB
+        // of its stack, a step at a time, each read is cut at another place, however the thread's methods are compiled: by the
+        // parser at a dictionary, or by the reader's probe at the load of 3, of 7, or of object stream 10 itself. What a cut
+        // read gave is kept for that read alone: on a large thread after it, 3 reads whole; and where the reader's probe cut a
+        // load, no object is left taken for one the reader cannot produce (#163).
+        var file = new HandWrittenFile(version: "1.5");
+        var rows = new Dictionary<int, (int Type, long Field2, int Field3)>
+        {
+            [1] = (1, file.Object(1, Catalog), 0),
+            [2] = (1, file.Object(2, Pages), 0),
+            [3] = (1, file.Object(3, "<< /Length 7 0 R >>\nstream\nxx endstream yy\nendstream"), 0),
+            [10] = (1, file.ObjectStream(10, [(7, "15")]), 0),
+            [7] = (2, 10, 0),
+        };
+        file.CrossReferenceStream(20, 21, rows, "/Root 1 0 R");
+
+        for (var taken = 96 * 1024; taken < 160 * 1024; taken += 128)
+        {
+            using var document = PdfDocument.Open(file.Bytes);
+
+            Stacks.Run(Stacks.Small, () => Beneath(taken, () => document.GetObject(new PdfObjectId(3))));
+
+            if (document.Diagnostics.Contains(PdfDiagnosticCodes.LimitNestedLoads))
+            {
+                document.Reader.GetPresence(7).Should().Be(ObjectPresence.Defined, $"the reader's probe cut a load beneath {taken} bytes");
+            }
+
+            Stacks.Run(Stacks.Large, () => document.GetObject(new PdfObjectId(3)).AsStream().Required().Decode().Length)
+                .Should().Be(15, $"what the read beneath {taken} bytes gave was kept for that read alone");
+        }
+
+        // Runs work beneath a frame that takes bytes of the thread's stack.
+        static T Beneath<T>(int bytes, Func<T> work)
+        {
+            Span<byte> taken = stackalloc byte[bytes];
+            taken[^1] = 1;
+            var result = work();
+            taken[0] = taken[^1];
+            return result;
+        }
+    }
+
+    [Fact]
+    public void Under_ThrowOnLimit_what_the_thread_s_stack_cut_throws_is_not_thrown_again_once_a_thread_has_room()
+    {
+        // Object 3, in the first of 60 object streams each taking its /Filter from an object the next holds, read under raised
+        // bounds on a small thread, which its stack runs short of: the exception the stack's cut throws is kept by the loads
+        // and the decodings it leaves for that read alone. Read again on a large thread, 3 reads whole (#163, #397).
+        var file = HostileInputTests.ObjectStreamsTakingTheirFilterFromTheNext(60);
+        var options = new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxNestingDepth = 1000, MaxNestedLoads = 1000 }, ThrowOnLimit = true };
+        using var document = PdfDocument.Open(file, options);
+
+        var small = Stacks.Run(Stacks.Small, () => ReadPastGuard(document, 3));
+        var large = Stacks.Run(Stacks.Large, () => string.Create(CultureInfo.InvariantCulture, $"{document.GetObject(new PdfObjectId(3))}"));
+
+        small!.Code.Should().StartWith("limit.nest");
+        large.Should().Be("\"three\"");
+    }
+
+    [Fact]
+    public void Wherever_the_thread_s_stack_cuts_a_decoding_two_loads_share_neither_load_keeps_it_past_the_read()
+    {
+        // Object stream 30, holding 3, takes its /Filter from 41 and its /DecodeParms from 42, which object stream 40 holds; 40
+        // takes its /Length from 7, which object stream 10 holds, and its data holds the keyword endstream between 41 and 42,
+        // so that a decoding whose /Length reads as null ends there, without 42. Read on a small thread beneath calls that took
+        // 64 KB to 160 KB of its stack, a step at a time, 3 is cut at another place each time, the decoding of 40 for 41 among
+        // them: what it gave, served to 42's load from the same depth, is kept for that read alone, as is what 42 read through
+        // it. On a large thread after it, 42 reads whole (#163).
+        const string Data = "41 0 42 25 /FlateDecode endstream x << /K 1 >> ";
+        var file = new HandWrittenFile(version: "1.5");
+        var rows = new Dictionary<int, (int Type, long Field2, int Field3)>
+        {
+            [1] = (1, file.Object(1, Catalog), 0),
+            [2] = (1, file.Object(2, Pages), 0),
+            [40] = (1, file.Object(40, $"<< /Type /ObjStm /N 2 /First 11 /Length 7 0 R >>\nstream\n{Data}\nendstream"), 0),
+            [41] = (2, 40, 0),
+            [42] = (2, 40, 1),
+            [10] = (1, file.ObjectStream(10, [(7, Data.Length.ToString(CultureInfo.InvariantCulture))]), 0),
+            [7] = (2, 10, 0),
+            [30] = (1, file.Object(30, "<< /Type /ObjStm /N 1 /First 4 /Length 10 /Filter 41 0 R /DecodeParms 42 0 R >>\nstream\n3 0 (three)\nendstream"), 0),
+            [3] = (2, 30, 0),
+        };
+        file.CrossReferenceStream(50, 51, rows, "/Root 1 0 R");
+
+        for (var taken = 64 * 1024; taken < 160 * 1024; taken += 128)
+        {
+            using var document = PdfDocument.Open(file.Bytes);
+
+            Stacks.Run(Stacks.Small, () => Beneath(taken, () => document.GetObject(new PdfObjectId(3))));
+
+            Stacks.Run(Stacks.Large, () => document.GetObject(new PdfObjectId(42)))
+                .Should().BeOfType<PdfDictionary>($"what the read beneath {taken} bytes gave was kept for that read alone");
+        }
+
+        // Runs work beneath a frame that takes bytes of the thread's stack.
+        static T Beneath<T>(int bytes, Func<T> work)
+        {
+            Span<byte> taken = stackalloc byte[bytes];
+            taken[^1] = 1;
+            var result = work();
+            taken[0] = taken[^1];
+            return result;
+        }
+    }
+
+    [Fact]
+    public void Under_ThrowOnLimit_wherever_the_reader_s_probe_cuts_a_load_for_want_of_stack_the_read_throws()
+    {
+        // The file of the test before, opened to throw on a guard: read on a small thread beneath calls that took 96 KB to
+        // 160 KB of its stack, a step at a time, each read is cut at another place, the reader's probe cutting the load of 3,
+        // of 7 or of object stream 10 at some of them. Each load the probe cuts throws, under MaxNestedLoads' code, and is
+        // not reported in its stead.
+        var file = new HandWrittenFile(version: "1.5");
+        var rows = new Dictionary<int, (int Type, long Field2, int Field3)>
+        {
+            [1] = (1, file.Object(1, Catalog), 0),
+            [2] = (1, file.Object(2, Pages), 0),
+            [3] = (1, file.Object(3, "<< /Length 7 0 R >>\nstream\nxx endstream yy\nendstream"), 0),
+            [10] = (1, file.ObjectStream(10, [(7, "15")]), 0),
+            [7] = (2, 10, 0),
+        };
+        file.CrossReferenceStream(20, 21, rows, "/Root 1 0 R");
+        var codes = new HashSet<string>();
+
+        for (var taken = 96 * 1024; taken < 160 * 1024; taken += 128)
+        {
+            using var document = PdfDocument.Open(file.Bytes, new PdfReaderOptions { ThrowOnLimit = true });
+
+            var code = Stacks.Run(Stacks.Small, () => Beneath(taken, () => ReadPastGuard(document, 3)?.Code));
+
+            if (code is not null)
+            {
+                codes.Add(code);
+            }
+
+            document.Diagnostics.Where(entry => entry.Code == PdfDiagnosticCodes.LimitNestedLoads).Should().BeEmpty($"each load cut beneath {taken} bytes threw");
+        }
+
+        codes.Should().Contain(PdfDiagnosticCodes.LimitNestedLoads, "the reader's probe cut some reads");
+
+        // Runs work beneath a frame that takes bytes of the thread's stack.
+        static T Beneath<T>(int bytes, Func<T> work)
+        {
+            Span<byte> taken = stackalloc byte[bytes];
+            taken[^1] = 1;
+            var result = work();
+            taken[0] = taken[^1];
+            return result;
+        }
+    }
+
+    [Fact]
+    public void Under_ThrowOnLimit_a_guard_reached_while_a_rebuild_a_load_set_off_waits_throws_on_a_thread_of_little_stack()
+    {
+        // Streams 100 to 399 each take their /Length from the next, and 101's row leads nowhere: read on a small thread under
+        // raised bounds, 100 rebuilds the index with 100 and 101 in flight, and the loads then go on until the thread's stack
+        // runs short, whose cut throws. The exception leaves every load in flight, each keeping it as it passes, and the
+        // outermost alone finishes the rebuild before it leaves: thrown once, not thrown again from each load on top of the
+        // stack the others took, which would take more than the thread has (#397).
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long> { [1] = file.Object(1, Catalog), [2] = file.Object(2, Pages) };
+
+        for (var number = 100; number < 400; number++)
+        {
+            rows[number] = file.Object(number, string.Create(CultureInfo.InvariantCulture, $"<< /Length {number + 1} 0 R >>\nstream\nx\nendstream"));
+        }
+
+        rows[400] = file.Object(400, "1");
+        rows[9] = file.Padding(9);
+        rows[101] = rows[9] + 600;
+        file.Table(401, rows, "/Size 401 /Root 1 0 R");
+        var limits = PdfReaderLimits.Default with { MaxNestingDepth = 1000, MaxNestedLoads = 1000 };
+        using var document = PdfDocument.Open(file.Bytes, new PdfReaderOptions { Limits = limits, ThrowOnLimit = true });
+
+        var code = Stacks.Run(Stacks.Small, () => ReadPastGuard(document, 100)?.Code);
+
+        code.Should().StartWith("limit.nest");
+        document.WasRepaired.Should().BeTrue();
+    }
+
     [Theory]
     [InlineData("the thread's stack", Stacks.Small)]
     [InlineData("the loads' nesting", Stacks.Large)]
@@ -3763,6 +3947,78 @@ public class ReaderLimitsTests
         Read(throwOnLimit: true).Should().Be(Read(throwOnLimit: false));
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void An_object_whose_containers_nest_past_MaxNestingDepth_is_one_a_guard_cut(bool inObjectStream)
+    {
+        // Object 3 nests 129 arrays, written directly or held by object stream 10: the array past the bound reads as null, and
+        // the object is one a guard cut, as one cut at MaxObjectLength is: what it holds past the cut is the guard's, not the
+        // file's (#163).
+        var nested = new string('[', 129) + new string(']', 129);
+        byte[] bytes;
+
+        if (inObjectStream)
+        {
+            var file = new HandWrittenFile(version: "1.5");
+            var rows = new Dictionary<int, (int Type, long Field2, int Field3)>
+            {
+                [1] = (1, file.Object(1, Catalog), 0),
+                [2] = (1, file.Object(2, Pages), 0),
+                [10] = (1, file.ObjectStream(10, [(3, nested)]), 0),
+                [3] = (2, 10, 0),
+            };
+            file.CrossReferenceStream(20, 21, rows, "/Root 1 0 R");
+            bytes = file.Bytes;
+        }
+        else
+        {
+            bytes = new TestPdfBuilder().WithObject(1, Catalog).WithObject(2, Pages).WithObject(3, nested).BuildClassic(rootNumber: 1);
+        }
+
+        using var document = PdfDocument.Open(bytes);
+
+        Depth(document.GetObject(new PdfObjectId(3))).Should().Be(128);
+        document.Reader.IsCutAtLimit(3).Should().BeTrue();
+        document.Diagnostics.Select(entry => entry.Code).Should().Equal(PdfDiagnosticCodes.LimitNestingDepth);
+    }
+
+    [Fact]
+    public void A_nesting_cut_in_a_parse_that_reads_no_numbered_object_makes_no_object_one_a_guard_cut()
+    {
+        // The cross-reference stream's dictionary nests 129 arrays deep, in a parse that reads no numbered object: the cut is
+        // noted of none, not of 20, the stream's number, which a load of 20 would note (#175), nor of 0. Object stream 10
+        // takes its /N from object 0, the head of the free list, which reads as null: the stream is unreadable for the
+        // file's fault, and reported so, not taken for one a guard hid.
+        var file = new HandWrittenFile(version: "1.5");
+        var rows = new Dictionary<int, (int Type, long Field2, int Field3)>
+        {
+            [1] = (1, file.Object(1, Catalog), 0),
+            [2] = (1, file.Object(2, Pages), 0),
+            [10] = (1, file.Object(10, "<< /Type /ObjStm /N 0 0 R /First 4 /Length 10 >>\nstream\n4 0 (four)\nendstream"), 0),
+            [4] = (2, 10, 0),
+        };
+        file.CrossReferenceStream(20, 21, rows, "/Root 1 0 R /Deep " + new string('[', 129) + new string(']', 129));
+        using var document = PdfDocument.Open(file.Bytes);
+
+        document.Reader.IsCutAtLimit(20).Should().BeFalse();
+        document.GetObject(new PdfObjectId(4)).Should().Be(PdfNull.Instance);
+        document.Diagnostics.Select(entry => entry.Code).Should().Equal(PdfDiagnosticCodes.LimitNestingDepth, PdfDiagnosticCodes.ObjectStreamUnreadable);
+    }
+
+    [Fact]
+    public void A_decoding_the_loads_nesting_cut_that_gives_no_contents_weighs_an_entry_against_the_object_streams_budget()
+    {
+        // Object 3, in the first of 70 object streams each taking its /Filter from an object the next holds, is read past the
+        // loads' nesting: the 63 decodings that reach the cut give no contents, and each is kept for the depth it was made
+        // from, weighing 256 bytes against the 32 MB the reader keeps of object streams, which thus bounds how many are kept
+        // (#163).
+        using var document = PdfDocument.Open(HostileInputTests.ObjectStreamsTakingTheirFilterFromTheNext(70));
+
+        document.GetObject(new PdfObjectId(3)).Should().Be(PdfNull.Instance);
+        document.Reader.ObjectStreamBytes.Should().Be(63 * 256);
+    }
+
     [Fact]
     public void Under_ThrowOnLimit_every_load_an_exception_passes_through_keeps_it()
     {
@@ -3785,6 +4041,197 @@ public class ReaderLimitsTests
         again.Should().BeSameAs(first);
         ReadPastGuard(document, 5).Should().BeSameAs(first);
         source.BytesRead.Should().Be(read);
+    }
+
+    [Fact]
+    public void Under_ThrowOnLimit_an_exception_kept_from_a_shallow_read_is_not_thrown_again_where_the_loads_nesting_cuts_the_read_first()
+    {
+        // Stream 6 takes its /Length from object 5, written past MaxObjectLength; streams 100 onward, 63 of them, each take
+        // theirs from the next, the last from 6. Read first, 6 throws MaxObjectLength's exception, kept with how deep its read
+        // went. Read through the chain, 6 is the 64th load, from which its read meets 5 past the loads' nesting: the kept
+        // exception serves no read from there, and the read throws the nesting's (#163, #397).
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long> { [1] = file.Object(1, Catalog), [2] = file.Object(2, Pages) };
+        rows[5] = file.Object(5, "(" + new string('x', 2000) + ")");
+        rows[6] = file.Object(6, "<< /Length 5 0 R >>\nstream\nabc\nendstream");
+
+        for (var number = 100; number < 163; number++)
+        {
+            rows[number] = file.Object(number, string.Create(CultureInfo.InvariantCulture, $"<< /Length {(number == 162 ? 6 : number + 1)} 0 R >>\nstream\nx\nendstream"));
+        }
+
+        file.Table(163, rows, "/Size 163 /Root 1 0 R");
+        var options = new PdfReaderOptions { ThrowOnLimit = true, Limits = PdfReaderLimits.Default with { MaxObjectLength = 1024 } };
+        using var document = PdfDocument.Open(file.Bytes, options);
+
+        ReadPastGuard(document, 6)!.Code.Should().Be(PdfDiagnosticCodes.LimitObject);
+        ReadPastGuard(document, 100)!.Code.Should().Be(PdfDiagnosticCodes.LimitNestedLoads);
+    }
+
+    [Fact]
+    public void Under_ThrowOnLimit_the_loads_an_exception_kept_for_a_cut_read_is_thrown_through_keep_it_for_their_own_depths_alone()
+    {
+        // Two chains of 63 streams, 100 onward and 200 onward, each taking its /Length from the next, the last of each from
+        // stream 6, which takes its own from object 5: read through either chain, 6 is the 64th load and 5 the 65th, which the
+        // loads' nesting cuts. Read through the first, 6 keeps the nesting's exception for that depth; read through the
+        // second, 6 throws it again, and the loads it passes through keep it as one the nesting cut, for their own depths
+        // alone: read from the top, stream 262 reads whole (#163, #397).
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long> { [1] = file.Object(1, Catalog), [2] = file.Object(2, Pages) };
+        rows[5] = file.Object(5, "3");
+        rows[6] = file.Object(6, "<< /Length 5 0 R >>\nstream\nabc\nendstream");
+
+        foreach (var head in (int[])[100, 200])
+        {
+            for (var number = head; number < head + 63; number++)
+            {
+                rows[number] = file.Object(number, string.Create(CultureInfo.InvariantCulture, $"<< /Length {(number == head + 62 ? 6 : number + 1)} 0 R >>\nstream\nx\nendstream"));
+            }
+        }
+
+        file.Table(263, rows, "/Size 263 /Root 1 0 R");
+        using var document = PdfDocument.Open(file.Bytes, new PdfReaderOptions { ThrowOnLimit = true });
+
+        ReadPastGuard(document, 100)!.Code.Should().Be(PdfDiagnosticCodes.LimitNestedLoads);
+        ReadPastGuard(document, 200)!.Code.Should().Be(PdfDiagnosticCodes.LimitNestedLoads);
+        document.GetObject(new PdfObjectId(262)).Should().BeOfType<PdfStream>();
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Under_ThrowOnLimit_an_exception_is_kept_with_how_deep_every_load_before_it_went(bool chainReadBefore)
+    {
+        // Object 4's object stream, 30, takes its /Length from stream 10, which heads a chain of ten, and its /Filter from object
+        // 9, written past MaxObjectLength: read first, 4 reads the chain, ten levels deep — loaded, or served from the cache
+        // where it was read before —, then 9, which throws. The exception is kept with how deep the read went before it, the
+        // chain included, not only how deep the load that threw went: read through streams 100 onward, 53 of them, 4 is the
+        // 54th load, from which its read would take the chain past the loads' nesting, and the read throws the nesting's
+        // (#163, #397).
+        var file = new HandWrittenFile(version: "1.5");
+        var rows = new Dictionary<int, (int Type, long Field2, int Field3)>
+        {
+            [1] = (1, file.Object(1, Catalog), 0),
+            [2] = (1, file.Object(2, Pages), 0),
+            [9] = (1, file.Object(9, "(" + new string('x', 2000) + ")"), 0),
+            [19] = (1, file.Object(19, "<< /Length 1 >>\nstream\nx\nendstream"), 0),
+            [30] = (1, file.Object(30, "<< /Type /ObjStm /N 1 /First 4 /Length 10 0 R /Filter 9 0 R >>\nstream\n4 0 (four)\nendstream"), 0),
+            [4] = (2, 30, 0),
+        };
+
+        for (var number = 10; number < 19; number++)
+        {
+            rows[number] = (1, file.Object(number, string.Create(CultureInfo.InvariantCulture, $"<< /Length {number + 1} 0 R >>\nstream\nx\nendstream")), 0);
+        }
+
+        for (var number = 100; number < 153; number++)
+        {
+            rows[number] = (1, file.Object(number, string.Create(CultureInfo.InvariantCulture, $"<< /Length {(number == 152 ? 4 : number + 1)} 0 R >>\nstream\nx\nendstream")), 0);
+        }
+
+        file.CrossReferenceStream(200, 201, rows, "/Root 1 0 R");
+        var options = new PdfReaderOptions { ThrowOnLimit = true, Limits = PdfReaderLimits.Default with { MaxObjectLength = 1024 } };
+        using var document = PdfDocument.Open(file.Bytes, options);
+
+        if (chainReadBefore)
+        {
+            document.GetObject(new PdfObjectId(10)).Should().BeOfType<PdfStream>();
+        }
+
+        ReadPastGuard(document, 4)!.Code.Should().Be(PdfDiagnosticCodes.LimitObject);
+        ReadPastGuard(document, 100)!.Code.Should().Be(PdfDiagnosticCodes.LimitNestedLoads);
+    }
+
+    [Fact]
+    public void A_nesting_cut_in_a_definition_of_an_object_the_reader_no_longer_serves_makes_the_object_no_guard_s_cut()
+    {
+        // The chain's index places object stream 10, whose dictionary nests 129 arrays deep, and object 12 nowhere: reading 12
+        // rebuilds the index, which serves the definition of 10 written last, << /K 1 >>. The validation reads the chain's 10,
+        // whose nesting is cut; the cut is that definition's, not the object the reader serves, which no guard cut (#255).
+        var deep = new string('[', 129) + new string(']', 129);
+        var file = new HandWrittenFile(version: "1.5");
+        var rows = new Dictionary<int, (int Type, long Field2, int Field3)>
+        {
+            [1] = (1, file.Object(1, Catalog), 0),
+            [2] = (1, file.Object(2, Pages), 0),
+            [10] = (1, file.ObjectStream(10, [(11, "(eleven)")], "/Deep " + deep + " "), 0),
+            [11] = (2, 10, 0),
+        };
+        rows[12] = (1, file.Padding(9) + 600, 0);
+        file.CrossReferenceStream(20, 21, rows, "/Root 1 0 R");
+        file.Object(10, "<< /K 1 >>");
+        using var document = PdfDocument.Open(file.Bytes);
+
+        document.GetObject(new PdfObjectId(12)).Should().Be(PdfNull.Instance);
+        new PdfValidator().Validate(document);
+
+        document.WasRepaired.Should().BeTrue();
+        document.GetObject(new PdfObjectId(10)).Should().BeOfType<PdfDictionary>();
+        document.Reader.IsCutAtLimit(10).Should().BeFalse();
+    }
+
+    [Fact]
+    public void Under_ThrowOnLimit_an_object_stream_whose_own_load_threw_throws_again_for_another_of_its_objects_after_the_loads_let_go_of_it()
+    {
+        // Object stream 30 takes its /Length from object 5, written past MaxObjectLength: read first, its object 3 throws from
+        // the stream's own load, which its decoding keeps as it keeps its own exceptions (#397). Seventy objects past the
+        // bound read after it throw too, and the loads let go of what they kept of 5 and 30, a cache of 64 objects holding
+        // no more: object 4, which 30 holds, throws again from the decoding's, without reading the stream again.
+        var file = new HandWrittenFile(version: "1.5");
+        var rows = new Dictionary<int, (int Type, long Field2, int Field3)>
+        {
+            [1] = (1, file.Object(1, Catalog), 0),
+            [2] = (1, file.Object(2, Pages), 0),
+            [5] = (1, file.Object(5, "(" + new string('x', 2000) + ")"), 0),
+            [30] = (1, file.Object(30, "<< /Type /ObjStm /N 2 /First 8 /Length 5 0 R >>\nstream\n3 0 4 4 (3) (4)\nendstream"), 0),
+            [3] = (2, 30, 0),
+            [4] = (2, 30, 1),
+        };
+
+        for (var number = 100; number < 170; number++)
+        {
+            rows[number] = (1, file.Object(number, "(" + new string('x', 2000) + ")"), 0);
+        }
+
+        file.CrossReferenceStream(200, 201, rows, "/Root 1 0 R");
+        using var source = new OffsetCountingSource(file.Bytes);
+        var options = new PdfReaderOptions { ThrowOnLimit = true, ObjectCacheCapacity = 64, Limits = PdfReaderLimits.Default with { MaxObjectLength = 1024 } };
+        using var document = PdfDocument.Open(source, options, ownsSource: false);
+
+        ReadPastGuard(document, 3)!.Code.Should().Be(PdfDiagnosticCodes.LimitObject);
+
+        for (var number = 100; number < 170; number++)
+        {
+            ReadPastGuard(document, number).Should().NotBeNull();
+        }
+
+        var read = source.BytesRead;
+        ReadPastGuard(document, 4)!.Code.Should().Be(PdfDiagnosticCodes.LimitObject);
+        source.BytesRead.Should().Be(read, "the decoding's exception is thrown again without loading the stream");
+    }
+
+    [Fact]
+    public void An_object_stream_without_an_N_is_broken_whatever_guard_cut_its_First()
+    {
+        // Object stream 10 gives no /N, and takes its /First from object 5, written past MaxObjectLength: the stream cannot
+        // serve its objects for the file's fault, whatever the guard hid of /First, and the validator finds it broken (#395).
+        var file = new HandWrittenFile(version: "1.5");
+        var rows = new Dictionary<int, (int Type, long Field2, int Field3)>
+        {
+            [1] = (1, file.Object(1, Catalog), 0),
+            [2] = (1, file.Object(2, Pages), 0),
+            [5] = (1, file.Object(5, new string(' ', 2000) + "8"), 0),
+            [4] = (2, 10, 0),
+            [6] = (2, 10, 1),
+        };
+        const string Data = "4 0 6 6 (four) (six) ";
+        rows[10] = (1, file.Object(10, string.Create(CultureInfo.InvariantCulture, $"<< /Type /ObjStm /First 5 0 R /Length {Data.Length} >>\nstream\n{Data}\nendstream")), 0);
+        file.CompressedCrossReferenceStream(20, 21, number => rows.TryGetValue(number, out var row) ? row : (0, 0, 0), "/Root 1 0 R");
+        using var document = PdfDocument.Open(file.Bytes, new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxObjectLength = 1024 } });
+
+        var report = new PdfValidator().Validate(document);
+
+        report.Contains(PdfValidationRuleIds.XRefObjectStreamBroken).Should().BeTrue();
     }
 
     [Fact]
@@ -3831,6 +4278,41 @@ public class ReaderLimitsTests
         document.WasRepaired.Should().BeTrue();
         first.Should().NotBeNull().And.Match<PdfLimitExceededException>(thrown => thrown.Code == PdfDiagnosticCodes.LimitRebuildReads);
         again.Should().NotBeNull().And.NotBeSameAs(first);
+    }
+
+    [Fact]
+    public void Disposing_lets_go_of_what_reads_the_loads_nesting_cut_kept_though_a_reference_taken_from_the_document_is_held()
+    {
+        // Stream 100 heads a chain of 70 streams, each taking its /Length from the next: read past the loads' nesting, what the
+        // read gave of it is kept apart, for the depth it was read from (#163); the document disposed of, a reference taken
+        // from it still held, that is let go of with all the document kept.
+        var (held, cut) = ReadPastTheNestingAndDispose();
+
+        GC.Collect();
+        GC.WaitForPendingFinalizers();
+        GC.Collect();
+
+        cut.IsAlive.Should().BeFalse("what cut reads kept is let go of as the document is disposed");
+        GC.KeepAlive(held);
+    }
+
+    [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
+    private static (PdfObject Held, WeakReference Cut) ReadPastTheNestingAndDispose()
+    {
+        var builder = new TestPdfBuilder().WithObject(1, Catalog).WithObject(2, Pages);
+
+        for (var number = 100; number < 170; number++)
+        {
+            builder.WithObject(number, string.Create(CultureInfo.InvariantCulture, $"<< /Length {(number == 169 ? "1" : string.Create(CultureInfo.InvariantCulture, $"{number + 1} 0 R"))} >>\nstream\nx\nendstream"));
+        }
+
+        var document = PdfDocument.Open(builder.BuildClassic(rootNumber: 1));
+        var cut = document.GetObject(new PdfObjectId(100));
+        ReferenceEquals(document.GetObject(new PdfObjectId(100)), cut).Should().BeTrue("the read the nesting cut is kept for its depth");
+        var held = document.Trailer.GetRaw(PdfName.Root)!;
+
+        document.Dispose();
+        return (held, new WeakReference(cut));
     }
 
     [Fact]
