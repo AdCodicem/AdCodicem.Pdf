@@ -206,13 +206,13 @@ vouch for the header it takes — that one, the nearest of several definitions n
 alike, or a header the scan does not count so —, it serves the object all the same, and the validator reports the entry
 as `xref.entry-unconfirmed`.
 
-A section an offset names short of its first token, white space and comments between, is read where it is named — a
-cross-reference stream from its object's header, a classic table through a window that opens at the offset, so that the
-white space before its `xref` keyword counts toward `MaxXRefSectionLength` as well
-([#289](https://github.com/AdCodicem/AdCodicem.Pdf/issues/289)) —, as long as they run for no more than
-`MaxTrailerLength`: white space and comments that run on past it reach that guard, the section is not read from that
-offset, and it is looked for nearby as one that is not there, where a search may find it past them, the map rebuilt for
-the one `startxref` names ([Reader limits](reader-limits.md)). A section is never found where a section the chain
+A section an offset names short of its first token, white space and comments between, is read where it is named, from
+that token — a cross-reference stream from its object's header, a classic table from its `xref` keyword, its rows
+bounded by `MaxXRefSectionLength` alone ([#295](https://github.com/AdCodicem/AdCodicem.Pdf/issues/295)) —, as long as
+they run for no more than `MaxTrailerLength`: white space and comments that run on past it reach that guard, as an
+object's header it cuts there does, and the section is the guard's, not looked for nearby, the chain ending there, the
+map rebuilt for the one `startxref` names ([Reader limits](reader-limits.md),
+[#289](https://github.com/AdCodicem/AdCodicem.Pdf/issues/289)). A section is never found where a section the chain
 reached starts — one it read, or one there that it could not read though it declares itself a section, and a stream it
 reached from a `+` of the run of signs its number is written with, or from the digit past it, found at that digit too,
 wherever the run starts, or at the first sign of a run a `+` starts within the bytes searched, where the line its number
@@ -254,22 +254,17 @@ is anything said of any stream passed over in the document where `MaxTrailerLeng
 would have followed, or cut what would end it: wherever it cut the reading at an offset the chain names, whatever it
 cut, which the reading does not take for a section the guard cut — a dictionary whose `/Type`, written whole before the
 cut, names another type, the object then read as one of another type
-([#279](https://github.com/AdCodicem/AdCodicem.Pdf/issues/279)), or the object's header,
-its number, its generation or its `obj` keyword running on past the bound or white space or a comment between its
-tokens, no object then read ([#289](https://github.com/AdCodicem/AdCodicem.Pdf/issues/289)). Where a `/Prev` or
-`startxref` names the offset, any `/W` makes a stream of any `/Type` the section
+([#279](https://github.com/AdCodicem/AdCodicem.Pdf/issues/279)), or a token where no header starts, no object then
+read. Where a `/Prev` or `startxref` names the offset, any `/W` makes a stream of any `/Type` the section
 ([#263](https://github.com/AdCodicem/AdCodicem.Pdf/issues/263)), and the cut may have hidden one — a stream of another
-`/Type` that gives a `/W`, a `/Type` given twice, the whole dictionary past a header the cut parted —,
-its `/Prev` not followed, wherever it lies; where an `/XRefStm` names it, the cut is what would end the chain there, as
-a guard's cut of that stream does ([#264](https://github.com/AdCodicem/AdCodicem.Pdf/issues/264)). The reader cannot
-tell what the cut hid without reading past the guard, and says nothing even where it hid nothing, a dictionary of
-another type that gives no `/W`, or a token no header starts, among them. Nor is anything said of a stream passed over
-anywhere in the document where white space and comments at an offset the chain names run past that limit, which turns
-the reading of the section there into the search near the offset
-([#289](https://github.com/AdCodicem/AdCodicem.Pdf/issues/289)). That search may take a section other than the one past
-them, which the reader cannot tell without reading past the guard: once that guard is reached, nothing is said of a
-stream passed over even where the search finds the section whole past the white space, which only a `MaxTrailerLength`
-under the 512 bytes the search reaches allows. A cut that leaves nothing unread — data past a stream's last row, an
+`/Type` that gives a `/W`, or a `/Type` given twice —, its `/Prev` not followed, wherever it lies; where an `/XRefStm`
+names it, the cut is what would end the chain there, as a guard's cut of that stream does
+([#264](https://github.com/AdCodicem/AdCodicem.Pdf/issues/264)). The reader cannot tell what the cut hid without
+reading past the guard, and says nothing even where it hid nothing, a dictionary of another type that gives no `/W`, or
+a token no header starts, among them. White space and comments past that limit where the chain names a section, and an
+object's header it cuts there, make the section the guard's, the chain ending there, which says nothing of a stream
+passed over already ([#289](https://github.com/AdCodicem/AdCodicem.Pdf/issues/289)). A cut that leaves nothing
+unread — data past a stream's last row, an
 object past a whole reference it holds — leaves the report made, and so does the cut of the trailer of a classic table
 an `/XRefStm` names, whose links the chain never follows
 ([#263](https://github.com/AdCodicem/AdCodicem.Pdf/issues/263)): it hides no link the chain follows and ends nothing,
