@@ -252,13 +252,14 @@ rows, a trailer, an object a value the rows or a link are read with leads to, or
 link that names the stream, the limit's report stands for what it left unread, and nothing is said of the stream. Nor
 is anything said of any stream passed over in the document where `MaxTrailerLength` may have hidden a link the chain
 would have followed, or cut what would end it: wherever it cut the reading at an offset the chain names, whatever it
-cut, which the reading does not take for a section the guard cut — a dictionary, whatever its `/Type`, the object then
-read as one of another type ([#279](https://github.com/AdCodicem/AdCodicem.Pdf/issues/279)), or the object's header,
+cut, which the reading does not take for a section the guard cut — a dictionary whose `/Type`, written whole before the
+cut, names another type, the object then read as one of another type
+([#279](https://github.com/AdCodicem/AdCodicem.Pdf/issues/279)), or the object's header,
 its number, its generation or its `obj` keyword running on past the bound or white space or a comment between its
 tokens, no object then read ([#289](https://github.com/AdCodicem/AdCodicem.Pdf/issues/289)). Where a `/Prev` or
 `startxref` names the offset, any `/W` makes a stream of any `/Type` the section
-([#263](https://github.com/AdCodicem/AdCodicem.Pdf/issues/263)), and the cut may have hidden one — `/XRef` parted, a
-stream of another `/Type` that gives a `/W`, a `/Type` given twice, the whole dictionary past a header the cut parted —,
+([#263](https://github.com/AdCodicem/AdCodicem.Pdf/issues/263)), and the cut may have hidden one — a stream of another
+`/Type` that gives a `/W`, a `/Type` given twice, the whole dictionary past a header the cut parted —,
 its `/Prev` not followed, wherever it lies; where an `/XRefStm` names it, the cut is what would end the chain there, as
 a guard's cut of that stream does ([#264](https://github.com/AdCodicem/AdCodicem.Pdf/issues/264)). The reader cannot
 tell what the cut hid without reading past the guard, and says nothing even where it hid nothing, a dictionary of

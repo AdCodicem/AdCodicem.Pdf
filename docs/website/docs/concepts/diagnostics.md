@@ -96,8 +96,10 @@ where the stopping header starts, so that an `endobj` a comment between that hea
 wherever the reader's reads part the data. Both are reported as
 `stream.length-invalid`, but data that runs to the end of the file as `stream.truncated`.
 
-A `/Length` that names an object one of the reader's limits cut is no length the file gave: what the cut left of it —
-null, or `1` of a `15` it parted — is the guard's. An integer read before the cut is only a place to look for
+A `/Length` that names an object one of the reader's limits cut is the guard's: what the cut left of it — null, or an
+integer it left whole, the cut keeping none it parts
+([Tokens a bound parts](../reference/reader-limits.md#tokens-a-bound-parts)) — is no length the reader judges. An
+integer read before the cut is only a place to look for
 `endstream` at, and the data is otherwise found by its `endstream`, as for a stream with no length; nothing is said of
 the length — but where an `endstream` follows it: the length is then weighed as a declared one it confirms, and the data
 may end short of it, or read empty, where streams whose lengths were taken without reading where their data ends overlap
