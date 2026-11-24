@@ -3486,10 +3486,11 @@ public class ReaderLimitsTests
     {
         // Six hundred arrays, one inside the other, or six hundred dictionaries, each the /A of the one around it, under a
         // bound of a thousand; or object 3 in the first of 60 object streams, each taking its /Filter from an object the next
-        // holds, under a bound of a thousand loads. Read on a small stack, the stack cuts them, reported under the guard's
-        // code — the parser's, or the loads' —; read again on a large one, they read whole: what the stack cut was not kept.
-        // Arrays and dictionaries each ask the stack for room before a level: a parse of nested dictionaries alone passes
-        // through no array.
+        // holds, under a bound of a thousand loads. Read on a small stack, beneath a frame taking 160 KB of it so that the cut
+        // falls whatever the JIT made of the parser's frames, the stack cuts them, reported under the guard's code — the
+        // parser's, or the loads' —; read again on a large one, they read whole: what the stack cut was not kept. Arrays and
+        // dictionaries each ask the stack for room before a level: a parse of nested dictionaries alone passes through no
+        // array.
         var file = nesting switch
         {
             "containers" => new TestPdfBuilder().WithObject(1, Catalog).WithObject(2, Pages).WithObject(3, new string('[', 600) + new string(']', 600)).BuildClassic(rootNumber: 1),
@@ -3499,11 +3500,21 @@ public class ReaderLimitsTests
         var limits = PdfReaderLimits.Default with { MaxNestingDepth = 1000, MaxNestedLoads = 1000 };
         using var document = PdfDocument.Open(file, new PdfReaderOptions { Limits = limits });
 
-        var small = Stacks.Run(Stacks.Small, () => Read(document, nesting));
+        var small = Stacks.Run(Stacks.Small, () => Beneath(160 * 1024, () => Read(document, nesting)));
         var large = Stacks.Run(Stacks.Large, () => Read(document, nesting));
 
         small.Should().NotBe(large);
         large.Should().Be(nesting == "loads" ? "\"three\"" : "600");
+
+        // Runs work beneath a frame that takes bytes of the thread's stack.
+        static T Beneath<T>(int bytes, Func<T> work)
+        {
+            Span<byte> taken = stackalloc byte[bytes];
+            taken[^1] = 1;
+            var result = work();
+            taken[0] = taken[^1];
+            return result;
+        }
         document.Diagnostics.Should().ContainSingle(entry => entry.Code.StartsWith("limit.nest", StringComparison.Ordinal))
             .Which.Message.Should().EndWith("The thread's stack had no room for more; read the document from a thread with a larger stack.");
 
