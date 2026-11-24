@@ -41,7 +41,9 @@ Tracking workflow mirrors from `docs/roadmap.md` (*Debt and open points*, below)
   [#385], in [#398] on 2026-11-21, the second, [#315] and [#181]'s walk, with [#314] closed by its documentation, in
   [#400] on 2026-11-22; the twenty-sixth, in two pull requests by area as the maintainer chose that day, the first,
   decoding, [#162], [#250], [#283] and [#288], in [#404] on 2026-11-22, the second, [#326]'s counts and header faults
-  and [#349]'s reasons for a rebuild's losses, with [#406], its own regression, open in [#407]. Then the other batches,
+  and [#349]'s reasons for a rebuild's losses, with [#406], its own regression, open in [#407]; the twenty-seventh, in
+  four pull requests by area as the maintainer chose on 2026-11-23, the first, the nesting guards and what a read keeps
+  by its depth, [#163], [#313] and [#395] to [#397], open in [#409]. Then the other batches,
   slices 4 to 6 ([#60] to [#62]); then the milestone's adversarial review, slice 7 ([#137], ADR 46), once
   every other issue filed under M02 is closed. The debts come from the reader's own work, the threat model's first
   version ([#135], `docs/threat-model.md`), M01's review after the fact ([#136], `docs/reviews/M01.md`), the planning of
@@ -53,7 +55,7 @@ Tracking workflow mirrors from `docs/roadmap.md` (*Debt and open points*, below)
   [#336], [#342]), its twentieth ([#348] to [#351]), its twenty-first ([#353] to [#359], [#361] to [#363], [#365] to
   [#374]), its twenty-second ([#375] to [#379], [#381]), its twenty-fourth ([#385]), its thirty-third's two pull requests
   ([#387] to [#389], [#391] to [#393]), its twenty-fifth's first ([#395] to [#397]), its twenty-sixth's first ([#401]
-  to [#403]) and its second ([#405]); [#123] moved to M20.
+  to [#403]) and its second ([#405]), its twenty-seventh's first ([#410] to [#416]); [#123] moved to M20.
   The seventeenth filed [#305] and [#306] under M23, the eighteenth [#310] under
   M03 and [#311] under M23, the nineteenth [#331] under M03 and [#343] under M23, the thirty-third's first pull request
   [#390] under M23, the twenty-fifth's second [#399] under M23; [#367] and [#373], which the
@@ -698,7 +700,11 @@ One pull request per batch, each design question put to the maintainer after mea
        the messages and the probe, [#326] and [#349], in [#407], open, `Remote corpus` run 133 green on its branch,
        which filed [#405] under M02, and closes [#406], its own regression, which the maintainer chose to fix there.
    27. [#163], `MaxDepth` and `MaxNestedLoads` made guards, as the maintainer decided, with [#262], and [#395] to [#397],
-       which the maintainer placed here on 2026-11-22.
+       which the maintainer placed here on 2026-11-22 — nineteen issues, in four pull requests by area, as the
+       maintainer chose on 2026-11-23: the nesting guards and what a read keeps by its depth, [#163], [#395], [#396],
+       [#397] and [#313], in [#409], open, which filed [#410] to [#416] under M02 (journal of 2026-11-24); then the
+       parser at its guards, [#262], [#279], [#282] and [#294]; the chain at its guards, [#289], [#295], [#328], [#329],
+       [#292] and [#324]; stream ends and the rebuild, [#287], [#293], [#290] and [#351].
    28. [#185].
    29. [#173].
    30. [#192], with [#374].
@@ -1034,6 +1040,7 @@ Until 2026-09-27 this section was a table whose rows were numbered T01 to T40; t
 [#290]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/290
 [#291]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/291
 [#292]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/292
+[#293]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/293
 [#294]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/294
 [#295]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/295
 [#296]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/296
@@ -1129,3 +1136,11 @@ Until 2026-09-27 this section was a table whose rows were numbered T01 to T40; t
 [#405]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/405
 [#406]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/406
 [#407]: https://github.com/AdCodicem/AdCodicem.Pdf/pull/407
+[#409]: https://github.com/AdCodicem/AdCodicem.Pdf/pull/409
+[#410]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/410
+[#411]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/411
+[#412]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/412
+[#413]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/413
+[#414]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/414
+[#415]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/415
+[#416]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/416
