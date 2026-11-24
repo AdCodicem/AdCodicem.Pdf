@@ -956,7 +956,7 @@ internal sealed partial class PdfFileReader
         presence = value is PdfNull && reentries != _reentries ? ObjectPresence.Unproduced : GetPresence(id.Number);
 
         // What the object holds, or the one a chain of references from it leads to, is the guard's when a guard cut it or
-        // left it out of the index: a value the cut left, null or an integer it parted, is none the file gave (#224).
+        // left it out of the index: a value the cut left, null or an integer it left whole, is none the file gave (#224).
         if (presence != ObjectPresence.Unindexed)
         {
             // The object is not loaded again unless its value leads further: the chain is resolved first, as the parse

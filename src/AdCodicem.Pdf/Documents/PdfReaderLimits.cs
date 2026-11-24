@@ -100,6 +100,15 @@ public sealed record PdfReaderLimits
     /// <see cref="MaxStreamLength"/>'s. A value above <see cref="Array.MaxLength"/> is taken as that length. Reaching it reports
     /// <see cref="Diagnostics.PdfDiagnosticCodes.LimitObject"/>, once for each object, and for each object an object
     /// stream holds, once for each definition of that stream.
+    /// <para>
+    /// The object is kept as far as the bound, but for a token the bound parts, which the byte past it says goes on: a name,
+    /// a number or a keyword — <c>/Flate</c> of <c>/FlateDecode</c>, <c>1</c> of <c>15</c> — is dropped (#279), and so
+    /// are the one or two integers right before the bound that may start a reference past it, whole or not — <c>4 0</c>
+    /// of <c>4 0 R</c> (#262). An array leaves what is dropped out, a dictionary the key whose value it was, and a value
+    /// alone reads as null. A closed string, and a name, a real or a keyword the byte past it ends, are kept: an object
+    /// stream member that ends at the bound reads as under a larger one (#282). A <c>stream</c> a regular byte follows is
+    /// no stream keyword, and leaves the dictionary before it alone (#294).
+    /// </para>
     /// </remarks>
     /// <exception cref="ArgumentOutOfRangeException">The value is zero or less.</exception>
     public int MaxObjectLength { get; init => field = Length(value); } = 16 * 1024 * 1024;
@@ -158,7 +167,9 @@ public sealed record PdfReaderLimits
     /// <see cref="MaxXRefSectionLength"/> as well (#289). White space and comments that run on past the bound reach it too,
     /// reported under the same code: the section is not read from that offset, and is looked for as one that is not there —
     /// near the offset, where a search may find it past them, or, for the one <c>startxref</c> names, by rebuilding the
-    /// index.
+    /// index. What the bound cuts keeps no token it parts, as <see cref="MaxObjectLength"/> says: a cross-reference
+    /// stream's dictionary whose <c>/Type</c> the bound parts has not said what it is, and where the chain names it is a
+    /// section the guard cut (#279).
     /// </remarks>
     /// <exception cref="ArgumentOutOfRangeException">The value is zero or less.</exception>
     public int MaxTrailerLength { get; init => field = Length(value); } = 64 * 1024;

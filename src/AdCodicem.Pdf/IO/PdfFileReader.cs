@@ -1029,21 +1029,21 @@ internal sealed partial class PdfFileReader : IPdfObjectSource, IPdfStreamDataPr
     /// wherever the guard cut the reading at an offset the chain names, whatever it cut (<see cref="TryReadXRefStream"/>):
     /// a dictionary, whatever its <c>/Type</c>; the object's header — its number, its generation or its <c>obj</c> keyword
     /// running on past the guard, or white space or a comment between its tokens —; or a token where no header starts.
-    /// Where the reading takes what is there for the guard's section, the chain's own cut marks it already; where it does
-    /// not, what is there reads as an object of another type, which holds no section, the parser keeping a dictionary as
-    /// far as it read it (#279), or as no object at all, a header the cut parted (#289), and what lay past the cut is
-    /// unknown. Where a <c>/Prev</c> or <c>startxref</c> names the offset, any <c>/W</c> makes a stream of any <c>/Type</c>
-    /// the section there (#263), and the cut may have hidden one, the object's <c>/Prev</c> a link the chain would follow,
-    /// not followed wherever it lies, past the cut or before it: <c>/XRef</c> parted, inside the name or inside a
-    /// <c>#xx</c> escape, a stream of another <c>/Type</c> that gives a <c>/W</c>, a <c>/Type</c> given twice whose later
-    /// <c>/XRef</c> lies past the cut, or the whole dictionary past a header the cut parted. Where an <c>/XRefStm</c> names
-    /// it, the chain never follows that stream's <c>/Prev</c>, and the cut hides no link the chain follows, but it is what
-    /// would end the chain there, as the guard's cut of that stream does (#264), the reading #279's closing gives it.
-    /// Which, the reader cannot tell without reading past the guard: the flag is set even where the cut hid nothing, a
-    /// dictionary of another type that gives no <c>/W</c>, or a token no header starts, among them. Only
-    /// <see cref="ReportStreamsPassedOver"/> reads it, which then reports no stream passed over anywhere in the document
-    /// (ADR 34). Neither takes the chain for one a guard cut: what the reading finds there is reported as the file's — the
-    /// section found moved, or missing and the index rebuilt —, as #279 and #289 leave it.
+    /// Where the reading takes what is there for the guard's section — a dictionary that has not said what it is, its
+    /// <c>/Type</c> past the cut or parted by it (#279) —, the chain's own cut marks it already; where it does not, what is
+    /// there reads as an object of another type, which holds no section, the parser keeping a dictionary as far as it read
+    /// it, or as no object at all, a header the cut parted (#289), and what lay past the cut is unknown. Where a
+    /// <c>/Prev</c> or <c>startxref</c> names the offset, any <c>/W</c> makes a stream of any <c>/Type</c> the section there
+    /// (#263), and the cut may have hidden one, the object's <c>/Prev</c> a link the chain would follow, not followed
+    /// wherever it lies, past the cut or before it: a stream of another <c>/Type</c>, written whole before the cut, that
+    /// gives a <c>/W</c>, a <c>/Type</c> given twice whose later <c>/XRef</c> lies past the cut, or the whole dictionary
+    /// past a header the cut parted. Where an <c>/XRefStm</c> names it, the chain never follows that stream's
+    /// <c>/Prev</c>, and the cut hides no link the chain follows, but it is what would end the chain there, as the guard's
+    /// cut of that stream does (#264). Which, the reader cannot tell without reading past the guard: the flag is set even
+    /// where the cut hid nothing, a dictionary of another type that gives no <c>/W</c>, or a token no header starts, among
+    /// them. Only <see cref="ReportStreamsPassedOver"/> reads it, which then reports no stream passed over anywhere in the
+    /// document (ADR 34). Neither takes the chain for one a guard cut: what the reading finds there is reported as the
+    /// file's — the section found moved, or missing and the index rebuilt —, as #289 leaves it.
     /// </summary>
     private bool _guardMayHideLink;
 

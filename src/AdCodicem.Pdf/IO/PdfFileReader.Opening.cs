@@ -107,7 +107,7 @@ internal sealed partial class PdfFileReader
             var resolved = value.Resolve();
 
             // A /Length a guard cut or left out of the index — or the object a chain of references from it leads to — is
-            // unknown, not wrong: the guard's report says why, and what the cut left of it, null or a parted integer, is
+            // unknown, not wrong: the guard's report says why, and what the cut left of it, null or an integer it left whole, is
             // none the file gave (#224).
             if (LeftByGuard(new PdfReference(deferred.Length, this), PdfReference.MaxChainLength))
             {
