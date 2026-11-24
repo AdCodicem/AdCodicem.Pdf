@@ -456,15 +456,18 @@ internal static partial class ConvergenceShapes
     /// <c>100 0 R</c>; 9 holds 50, <c>5 0 R</c>; 7 holds 5 and 6, and takes its parameters from 50. When
     /// <paramref name="deeper"/> says so, 160 names 9 through 181, written in the file, and 9's <c>/Length</c> is stream 190,
     /// whose own is 180. When <paramref name="entering"/> says so as well, object stream 11 holds 12, <c>14 0 R</c>, and takes
-    /// its parameters from stream 102; 13 holds 14, and takes its parameters from 12.
+    /// its parameters from stream 102; 13 holds 14, and takes its parameters from 12. When <paramref name="flattened"/> says
+    /// so, 3 takes its parameters from 100 as well, Flate-compressed.
     /// </summary>
-    internal static byte[] NestBackToAHolder(bool deeper = false, bool entering = false)
+    internal static byte[] NestBackToAHolder(bool deeper = false, bool entering = false, bool flattened = false)
     {
         var (three, threeFirst) = ObjectStreamData((4, "<< >>"));
         var nine = HostileInputTests.Compress(Encoding.Latin1.GetBytes(ObjectStreamData((50, "5 0 R")).Data));
         var objects = new SortedDictionary<int, (string Entries, byte[]? Data)>
         {
-            [3] = (string.Create(CultureInfo.InvariantCulture, $"/Type /ObjStm /N 1 /First {threeFirst} /Length 100 0 R"), Encoding.Latin1.GetBytes(three)),
+            [3] = flattened
+                ? (string.Create(CultureInfo.InvariantCulture, $"/Type /ObjStm /N 1 /First {threeFirst} /Length 100 0 R /Filter /FlateDecode /DecodeParms 100 0 R"), HostileInputTests.Compress(Encoding.Latin1.GetBytes(three)))
+                : (string.Create(CultureInfo.InvariantCulture, $"/Type /ObjStm /N 1 /First {threeFirst} /Length 100 0 R"), Encoding.Latin1.GetBytes(three)),
             [7] = FlateObjectStream("/DecodeParms 50 0 R", (5, "<< /Predictor 1 >>"), (6, "<< /Title (six) >>")),
             [9] = (string.Create(CultureInfo.InvariantCulture, $"/Type /ObjStm /N 1 /First {ObjectStreamData((50, "5 0 R")).First} /Length {(deeper ? 190 : 180)} 0 R /Filter /FlateDecode"), nine),
             [180] = ("100 0 R", null),

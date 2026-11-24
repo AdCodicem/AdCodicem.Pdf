@@ -6181,6 +6181,29 @@ public class CrossReferenceChainTests
         new PdfValidator().Validate(document).Findings.Select(finding => finding.RuleId).Should().NotContain(PdfValidationRuleIds.XRefHybridStreamWrong);
     }
 
+    [Theory]
+    [InlineData(0)]
+    [InlineData(1)]
+    public void The_look_at_the_place_a_table_s_prev_names_reads_it_under_the_document_s_nesting_bound(int maxNestingDepth)
+    {
+        // The newest table names object 4 through /Prev, and through /XRefStm a place 30 bytes before it, whose search comes
+        // to object 4 before the stream. Object 4 is a stream of no type whose /W and rows read as a section: under the default
+        // limits the /Prev keeps its place there, and the /XRefStm's search stops at it. MaxNestingDepth lowered to 1 cuts
+        // every array, object 4's /W and the stream's among them: the look at the /Prev's place reads object 4 as the /Prev's
+        // own reading does, under that bound, and finds no /W; the /Prev keeps no place there, the /XRefStm's search goes on
+        // to the stream, which cannot be read, and the /Prev looks for its own section nearby (#156).
+        var rows = "\u0001\0\0\0\u0010\0\0";
+        var (file, oldest, at, stream, _) = HybridFiles.NamingAnObjectBesideTheStream(
+            Invariant($"<< /Size 1 /W [1 4 2] /Length {rows.Length} >>\nstream\n{rows}\nendstream"));
+        var limits = maxNestingDepth == 0 ? PdfReaderLimits.Default : PdfReaderLimits.Default with { MaxNestingDepth = maxNestingDepth };
+        using var document = PdfDocument.Open(file, new PdfReaderOptions { Limits = limits });
+
+        document.Reader.Structure.Sections.Select(section => (section.NamedBy, section.State, section.Offset)).Skip(1).Should().Equal(
+            maxNestingDepth == 0
+                ? [("/XRefStm", XRefSectionState.NamedAgain, at - 30), ("/Prev", XRefSectionState.Read, at)]
+                : [("/XRefStm", XRefSectionState.Malformed, stream), ("/Prev", XRefSectionState.Relocated, oldest)]);
+    }
+
     [Fact]
     public void An_xrefstm_goes_on_past_its_table_s_prev_to_the_stream_where_that_prev_names_a_dictionary_ending_the_file_that_gives_its_type_null_last()
     {
