@@ -388,8 +388,8 @@ Tracking workflow mirrors from `docs/roadmap.md` (*Debt and open points*, below)
 
 | Operation | Document | Time | Allocated |
 |---|---|---|---|
-| Indexing | synthetic, 1000 pages, ~4 MB | 200 to 222 µs | 83 KB |
-| Indexing, then reading every page | synthetic, 1000 pages, ~4 MB | 3.7 ms | 1.7 MB |
+| Indexing | synthetic, 1000 pages, ~4 MB | 193 to 222 µs | 84 KB |
+| Indexing, then reading every page | synthetic, 1000 pages, ~4 MB | 3.3 to 3.7 ms | 1.8 MB |
 | Indexing and walking the page tree | real ReportLab document, 1000 pages | — | 3.2 MB |
 | Indexing a classic table (xUnit, after a first reading) | generated, 300,000 objects | — | 12.0 MB |
 | Indexing a cross-reference stream whose rows Flate stores (xUnit, after a first reading) | generated, 300,000 objects | — | 22.5 MB |
