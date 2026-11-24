@@ -43,7 +43,8 @@ Tracking workflow mirrors from `docs/roadmap.md` (*Debt and open points*, below)
   decoding, [#162], [#250], [#283] and [#288], in [#404] on 2026-11-22, the second, [#326]'s counts and header faults
   and [#349]'s reasons for a rebuild's losses, with [#406], its own regression, open in [#407]; the twenty-seventh, in
   four pull requests by area as the maintainer chose on 2026-11-23, the first, the nesting guards and what a read keeps
-  by its depth, [#163], [#313] and [#395] to [#397], open in [#409]. Then the other batches,
+  by its depth, [#163], [#313] and [#395] to [#397], in [#409] on 2026-11-24, the second, the parser at its guards,
+  [#262], [#279], [#282] and [#294], with [#415], open in [#419]. Then the other batches,
   slices 4 to 6 ([#60] to [#62]); then the milestone's adversarial review, slice 7 ([#137], ADR 46), once
   every other issue filed under M02 is closed. The debts come from the reader's own work, the threat model's first
   version ([#135], `docs/threat-model.md`), M01's review after the fact ([#136], `docs/reviews/M01.md`), the planning of
@@ -55,8 +56,8 @@ Tracking workflow mirrors from `docs/roadmap.md` (*Debt and open points*, below)
   [#336], [#342]), its twentieth ([#348] to [#351]), its twenty-first ([#353] to [#359], [#361] to [#363], [#365] to
   [#374]), its twenty-second ([#375] to [#379], [#381]), its twenty-fourth ([#385]), its thirty-third's two pull requests
   ([#387] to [#389], [#391] to [#393]), its twenty-fifth's first ([#395] to [#397]), its twenty-sixth's first ([#401]
-  to [#403]) and its second ([#405]), its twenty-seventh's first ([#410] to [#416]); [#123] moved to M20.
-  The seventeenth filed [#305] and [#306] under M23, the eighteenth [#310] under
+  to [#403]) and its second ([#405]), its twenty-seventh's first ([#410] to [#416]) and its second ([#420] to
+  [#425]); [#123] moved to M20. The seventeenth filed [#305] and [#306] under M23, the eighteenth [#310] under
   M03 and [#311] under M23, the nineteenth [#331] under M03 and [#343] under M23, the thirty-third's first pull request
   [#390] under M23, the twenty-fifth's second [#399] under M23; [#367] and [#373], which the
   twenty-first filed under M02, moved to M03 and M23 on 2026-11-17.
@@ -702,9 +703,12 @@ One pull request per batch, each design question put to the maintainer after mea
    27. [#163], `MaxDepth` and `MaxNestedLoads` made guards, as the maintainer decided, with [#262], and [#395] to [#397],
        which the maintainer placed here on 2026-11-22 — nineteen issues, in four pull requests by area, as the
        maintainer chose on 2026-11-23: the nesting guards and what a read keeps by its depth, [#163], [#395], [#396],
-       [#397] and [#313], in [#409], open, which filed [#410] to [#416] under M02 (journal of 2026-11-24); then the
-       parser at its guards, [#262], [#279], [#282] and [#294]; the chain at its guards, [#289], [#295], [#328], [#329],
-       [#292] and [#324]; stream ends and the rebuild, [#287], [#293], [#290] and [#351].
+       [#397] and [#313], in [#409], merged on 2026-11-24, `Remote corpus` run 135 green on its branch, which filed
+       [#410] to [#416] under M02 (journal of 2026-11-24); then the parser at its guards, [#262], [#279], [#282] and
+       [#294], with [#415], which the maintainer chose to close there, in [#419], open, which filed [#420] to
+       [#425] under M02 (journal of 2026-11-24) and settled [#328]'s `/XRefStm` half; the chain at its guards,
+       [#289], [#295], [#328], [#329], [#292] and [#324]; stream ends and the rebuild, [#287], [#293], [#290] and
+       [#351].
    28. [#185].
    29. [#173].
    30. [#192], with [#374].
@@ -806,6 +810,12 @@ One pull request per batch, each design question put to the maintainer after mea
    deferred cross-reference stream's data without its carriage return; [#403], an object stream whose filters decode
    nothing reported as a header fault. Its second filed [#405] under M02, placed in no batch yet: a rebuild that takes
    an object stream's members in through a value of its dictionary that a stream it expands later replaces.
+   Batch 27's second pull request filed six under M02, placed in no batch yet: [#420], a string or a delimiter a
+   guard's edge leaves undecided, kept as far as it was read; [#421], a whole token at a guard's edge that loses its
+   syntax report, and a prefix of `stream` that still cuts a member; [#422], a signed generation cut after its sign;
+   [#423], a `/Root` a trailer's guard hides reported as recovered; [#424], a header value a cut object holds whole
+   but of the wrong kind taken for the guard's; [#425], whether a whole `/Length`, `/Filter` or `/DecodeParms` a cut
+   object holds is the file's, for the maintainer.
 5. Slice 4 ([#60]) in two pull requests, streams then fonts, after the decisions it waits on: the severity of a font
    that is not embedded, the standard 14's aliases, where text is "meant to be extractable", how the rules that need
    content are left out and shown so, and the tools that referee both families.
@@ -1144,3 +1154,10 @@ Until 2026-09-27 this section was a table whose rows were numbered T01 to T40; t
 [#414]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/414
 [#415]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/415
 [#416]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/416
+[#419]: https://github.com/AdCodicem/AdCodicem.Pdf/pull/419
+[#420]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/420
+[#421]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/421
+[#422]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/422
+[#423]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/423
+[#424]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/424
+[#425]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/425
