@@ -564,6 +564,34 @@ public class GuardCutValueTests
     }
 
     [Theory]
+    [InlineData(7, "where the chain has already reached a section it could not read")]
+    [InlineData(8, "which the chain has already read")]
+    public void The_prev_of_a_cross_reference_stream_a_value_s_cut_ends_the_chain_at_naming_offset_zero_where_it_starts_loops(
+        int size, string what)
+    {
+        // #329: a file with no header starts with cross-reference stream 7, whose /W is object 5, which the newer table places
+        // and MaxObjectLength cuts, and whose /Prev names offset 0, the stream itself: a loop, reported beside the guard. With
+        // /Size 7, its 7 bytes of data may hold every row it declares, and the cut keeps the stream from being read, which the
+        // loop says; with /Size 8, they hold at most 7 rows whatever the cut hid, and the stream is read, short of rows.
+        // Offset 0 is an offset like any other.
+        var head = string.Create(
+            CultureInfo.InvariantCulture, $"7 0 obj\n<< /Type /XRef /Size {size} /W 5 0 R /Prev 0 /Length 7 >>\nstream\n\u0001\0\0\0\0\0\0\nendstream\nendobj\n");
+        var one = head.Length;
+        var objects = head + "1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n";
+        var five = objects.Length;
+        objects += "5 0 obj\n[1 4 2]" + new string(' ', 3000) + "\nendobj\n";
+        var xref = objects.Length;
+        var file = Encoding.Latin1.GetBytes(objects + string.Create(
+            CultureInfo.InvariantCulture,
+            $"xref\n0 2\n0000000000 65535 f \n{one:D10} 00000 n \n5 1\n{five:D10} 00000 n \ntrailer\n<< /Size 8 /Root 1 0 R /Prev 0 >>\nstartxref\n{xref}\n%%EOF\n"));
+        using var document = PdfDocument.Open(file, ObjectGuard);
+
+        document.Diagnostics.Should().ContainSingle(entry => entry.Code == PdfDiagnosticCodes.XRefChainCycle).Which.Message.Should().Be(
+            $"The cross-reference chain loops back on itself: the /Prev of the section at offset 0 names offset 0, {what}.");
+        document.Diagnostics.Select(entry => entry.Code).Should().Contain(PdfDiagnosticCodes.LimitObject);
+    }
+
+    [Theory]
     [InlineData(false)]
     [InlineData(true)]
     public void The_prev_of_a_cross_reference_stream_a_value_s_cut_keeps_from_being_read_is_judged_once_and_only_where_the_chain_names_it_through_prev(
