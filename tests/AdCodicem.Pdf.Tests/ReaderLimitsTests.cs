@@ -4955,6 +4955,26 @@ public class ReaderLimitsTests
         document.Diagnostics.Select(diagnostic => diagnostic.Code).Should().Equal(PdfDiagnosticCodes.LimitObject);
     }
 
+    [Theory]
+    [InlineData("]")]
+    [InlineData(">>")]
+    [InlineData("}")]
+    [InlineData("{")]
+    [InlineData(")")]
+    [InlineData(">")]
+    public void A_member_whose_stray_delimiter_ends_where_MaxObjectLength_ends_its_window_reads_as_null_cut(string stray)
+    {
+        // Member 4 is a delimiter no value starts with, which MaxObjectLength's edge reaches: a delimiter that reaches a
+        // guard's edge counts as cut — a lone > may be the first half of >> —, so the guard's report stands for what lies
+        // past it, rather than the member reading as a value the file wrote (how such a delimiter should read is #420's).
+        using var document = PdfDocument.Open(
+            MemberReachingItsBound(stray), new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxObjectLength = 200 + stray.Length } });
+
+        document.GetObject(new PdfObjectId(4)).Should().BeSameAs(PdfNull.Instance);
+        document.Reader.IsCutAtLimit(4).Should().BeTrue();
+        document.Diagnostics.Select(diagnostic => diagnostic.Code).Should().Equal(PdfDiagnosticCodes.LimitObject);
+    }
+
     [Fact]
     public void A_member_whose_reference_ends_where_MaxObjectLength_ends_its_window_is_the_reference()
     {
@@ -5386,6 +5406,30 @@ public class ReaderLimitsTests
         var section = document.Reader.Structure.Sections.Should().ContainSingle().Which;
         section.TrailerCutByLimit.Should().BeTrue();
         section.Incomplete.Should().BeFalse();
+        document.Diagnostics.Select(entry => entry.Code).Should().Contain(PdfDiagnosticCodes.LimitTrailer)
+            .And.NotContain(PdfDiagnosticCodes.XRefSectionUnreadable);
+    }
+
+    [Theory]
+    [InlineData("]")]
+    [InlineData(">>")]
+    [InlineData("}")]
+    [InlineData(">")]
+    public void A_stray_delimiter_a_trailer_guard_s_edge_reaches_after_the_trailer_keyword_leaves_the_table_the_guard_s(string stray)
+    {
+        // The table's window, which MaxXRefSectionLength bounds, ends right after the trailer keyword, and MaxTrailerLength
+        // ends the trailer's own window right after a delimiter no value starts with: a delimiter that reaches a guard's edge
+        // counts as cut — a lone > may be the first half of >> —, so the guard's report stands for what lies past it, a
+        // dictionary among it, rather than the table's trailer being lost (how such a delimiter should read is #420's).
+        var file = PdfTemplate.Build(PdfTemplate.Sound.Replace("<< /Size 4 /Root 1 0 R >>", stray + " << /Size 4 /Root 1 0 R >>", StringComparison.Ordinal));
+        var text = Encoding.Latin1.GetString(file);
+        var table = text.IndexOf("\nxref\n", StringComparison.Ordinal) + 1;
+        var keywordEnd = text.IndexOf("trailer\n", StringComparison.Ordinal) + "trailer\n".Length;
+        var limits = PdfReaderLimits.Default with { MaxXRefSectionLength = keywordEnd - table, MaxTrailerLength = 1 + stray.Length };
+
+        using var document = PdfDocument.Open(file, new PdfReaderOptions { Limits = limits });
+
+        document.Reader.Structure.Sections.Should().ContainSingle().Which.TrailerCutByLimit.Should().BeTrue();
         document.Diagnostics.Select(entry => entry.Code).Should().Contain(PdfDiagnosticCodes.LimitTrailer)
             .And.NotContain(PdfDiagnosticCodes.XRefSectionUnreadable);
     }
