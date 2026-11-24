@@ -1430,7 +1430,7 @@ public class ReaderLimitsTests
     [InlineData("decoded stream", "The /ASCIIHexDecode data decodes to more than 1 byte; decoding stopped there.")]
     [InlineData("stream length", "A stream's data runs past 1 byte; only what lies within it was read.")]
     [InlineData("object", "Object 1 runs past 1 byte, its stream data aside; only what lies within it was read.")]
-    [InlineData("section length", "The cross-reference table runs past 1 byte; only the entries within it were read.")]
+    [InlineData("section length", "The cross-reference table runs past 1 byte before its first entry; none of its entries was read.")]
     [InlineData("section count", "The cross-reference chain has more than 1 section; the older ones were not read.")]
     [InlineData("cross-reference stream", "The dictionary of the object read as a cross-reference stream runs past 1 byte; only what lies within it was read.")]
     [InlineData("filter chain", "The /Filter entry names more than 1 filter; decoding stopped after the first.")]
@@ -1439,7 +1439,8 @@ public class ReaderLimitsTests
     public void A_guard_set_to_one_says_its_bound_in_the_singular(string guard, string reported)
     {
         // Each guard at one, the least it takes, reached on the file of its own case: the bound it names is said in the
-        // singular (#241). Object 3, a stream in the cases of the guards on streams, is decoded.
+        // singular (#241). Object 3, a stream in the cases of the guards on streams, is decoded. A table cut at one byte is
+        // cut inside its keyword, before its first entry, which its report says rather than claim entries read (#289).
         var @case = Case.For(guard);
         using var document = PdfDocument.Open(@case.File, new PdfReaderOptions { Limits = With(@case.Reached, @case.LimitName, 1) });
 

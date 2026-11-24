@@ -438,12 +438,13 @@ internal sealed partial class PdfFileReader
                 }
                 else if (left == KeptPlace.Guard)
                 {
-                    // The search stopped where a guard cut what the /Prev names before it said what it is, or cut a value
-                    // its rows are read with: whether the /Prev keeps its place there, and the /XRefStm's search would go on
-                    // past it to the table's stream, is the guard's to hide, and the /Prev's reading reports the guard there.
-                    // The naming is recorded, leading to what the /Prev reads, and is the guard's, not the file's: nothing is
-                    // reported of it, and the index is not left incomplete for it, as for an /XRefStm that names an offset
-                    // in the file past a guard that stopped the table (#156, #264, ADR 34).
+                    // The search stopped where a guard cut what the /Prev names before it said what it is — its header
+                    // or its dictionary —, or cut a value its rows are read with: whether the /Prev keeps its place
+                    // there, and the /XRefStm's search would go on past it to the table's stream, is the guard's to
+                    // hide, and the /Prev's reading reports the guard there. The naming is recorded, leading to what
+                    // the /Prev reads, and is the guard's, not the file's: nothing is reported of it, and the index is
+                    // not left incomplete for it, as for an /XRefStm that names an offset in the file past a guard that
+                    // stopped the table (#156, #264, ADR 34).
                     namedWithPrevious = NameAgain(hybrid, section, readAs: null, shortBy: 0);
                 }
                 else
@@ -561,16 +562,15 @@ internal sealed partial class PdfFileReader
     /// possibly that table's own, another section taken first, that declares itself one — its dictionary gives
     /// <c>/Type /XRef</c> — and that the chain has not reached, at its header or inside its object number
     /// (<see cref="_streamsPassedOver"/>): it may hold that table's rows, which the index then lacks (#156). None is
-    /// reported where one of the reader's limits left part of the chain unread,
-    /// nor anywhere in the document where <see cref="PdfReaderLimits.MaxTrailerLength"/> may have hidden a link the
-    /// chain would have followed, or cut what would end it (<see cref="_guardMayHideLink"/>): where white space and
-    /// comments at an offset the chain names run past it, which turned the reading of the section there into the search
-    /// near the offset, whatever section that search takes, the one past them read whole among them; or wherever it cut
-    /// the reading at such an offset, whatever it cut, that the reading does not take for a section the guard cut — a
-    /// dictionary whose <c>/Type</c> is a name written whole before the cut, which then reads as one of another type, its
-    /// <c>/Prev</c> not followed, or the object's header, which leaves no object read (ADR 34); where the reading takes it
-    /// for the guard's section, the chain's own cut withholds the reports already. Nor is it asked where the chain indexed nothing, the whole file then
-    /// rebuilt.
+    /// reported where one of the reader's limits left part of the chain unread — white space and comments that run on past
+    /// <see cref="PdfReaderLimits.MaxTrailerLength"/> where the chain names a section among them, which make that section
+    /// the guard's (#289) —, nor anywhere in the document where that guard may have hidden a link the chain would have
+    /// followed, or cut what would end it (<see cref="_guardMayHideLink"/>): wherever it cut the reading at an offset the
+    /// chain names, whatever it cut, that the reading does not take for a section the guard cut — a dictionary whose
+    /// <c>/Type</c> is a name written whole before the cut, which then reads as one of another type, its <c>/Prev</c> not
+    /// followed, or a token where no header starts, which leaves no object read (ADR 34); where the reading takes it for
+    /// the guard's section, the chain's own cut withholds the reports already. Nor is it asked where the chain indexed
+    /// nothing, the whole file then rebuilt.
     /// </summary>
     /// <remarks>
     /// Told here, once the chain is read, and nowhere sooner: a link of an older section that reaches the stream, where it
@@ -592,26 +592,18 @@ internal sealed partial class PdfFileReader
     /// than missing (#264). So may a trailer's window that cuts the reading at an offset a <c>/Prev</c> or <c>startxref</c>
     /// names, whatever it cuts: a dictionary whose <c>/Type</c> is a name written whole before the cut, which the parser
     /// keeps as far as it read it, the object read as one of another type, its <c>/Prev</c> not followed, wherever it lies,
-    /// past the cut or before it; or the object's header — its number, its generation or its <c>obj</c> keyword running on
-    /// past the window, or white space or a comment between its tokens —, or a token where no header starts, which leaves no
-    /// object read, the section looked for as one not there, as #289 leaves it. Any <c>/W</c> makes a stream of any
-    /// <c>/Type</c> the section there (#263), and the cut may have hidden one — a stream of another <c>/Type</c> that gives
-    /// a <c>/W</c>, a <c>/Type</c> given twice whose later <c>/XRef</c> lies past the cut, or the whole dictionary past a
-    /// header the cut parted. A <c>/Type</c> the cut parted, which the parser drops, leaves the dictionary the guard's
-    /// section (#279). Where an <c>/XRefStm</c> names
-    /// the offset, the chain never follows that stream's <c>/Prev</c>, and the cut hides no link the chain follows, but it
-    /// is what would end the chain there, as the guard's cut of that stream does (#264): the reports are withheld alike.
-    /// The reader cannot tell what the cut hid without reading past the guard, and
-    /// withholds them even where it hid nothing, a dictionary of another type that gives no <c>/W</c>, or a token no header
-    /// starts, among them; where the reading takes what is there for the guard's section, the chain's own cut withholds
-    /// them already. So may white space and comments past a trailer's window where the chain names a section, which is not
-    /// read from there: the search near the offset stands for that reading, and may take a section other than the one past
-    /// them, pass over a stream the reading would not have come to, or find nothing, what the section names left unread —
-    /// the guard's, though the section is looked for as one that is not there (#289). Which, the reader cannot tell without
-    /// reading past the guard: once that guard is reached, no stream passed over anywhere in the document is reported, even
-    /// where the search finds the section whole past the white space, which only a
-    /// <see cref="PdfReaderLimits.MaxTrailerLength"/> under the 512 bytes the search reaches past the offset allows. A cut
-    /// that leaves nothing unread — data past a stream's last row, an object past a whole reference it holds — hides no
+    /// past the cut or before it; or a token where no header starts, which leaves no object read, the section looked for as
+    /// one not there. Any <c>/W</c> makes a stream of any <c>/Type</c> the section there (#263), and the cut may have hidden
+    /// one — a stream of another <c>/Type</c> that gives a <c>/W</c>, or a <c>/Type</c> given twice whose later
+    /// <c>/XRef</c> lies past the cut. A <c>/Type</c> the cut parted, which the parser drops, leaves the dictionary the
+    /// guard's section (#279), and so does a cut of the object's header — its number, its generation or its <c>obj</c>
+    /// keyword running on past the window, or white space or a comment between its tokens — (#289), the chain's own cut
+    /// then withholding the reports. Where an <c>/XRefStm</c> names the offset, the chain never follows that stream's
+    /// <c>/Prev</c>, and the cut hides no link the chain follows, but it is what would end the chain there, as the guard's
+    /// cut of that stream does (#264): the reports are withheld alike. The reader cannot tell what the cut hid without
+    /// reading past the guard, and withholds them even where it hid nothing, a dictionary of another type that gives no
+    /// <c>/W</c>, or a token no header starts, among them. A cut that leaves nothing unread — data past a stream's last
+    /// row, an object past a whole reference it holds — hides no
     /// link, and leaves the report made, and so does the cut of the trailer of a classic table an <c>/XRefStm</c> names,
     /// whose links the chain never follows (#263): it hides no link the chain follows and ends nothing, the chain going on
     /// through the table that names it. What it costs is a look at the records of the sections the chain reached, and at
@@ -629,14 +621,13 @@ internal sealed partial class PdfFileReader
         }
 
         // A limit that left part of the chain unread may hide the link that names a stream passed over, and leaves what lies
-        // past it to its own report: each marks the chain cut by a guard, or filling the index. A trailer's window may hide it
-        // too where the chain is not taken for one a guard cut, which is marked apart: white space past it where the chain
-        // names a section, which turned the reading of that link into a search, whatever section the search takes — the one
-        // past the white space, or another, which the reader cannot tell apart without reading past the guard —, or its
-        // cut of the reading at an offset the chain names, whatever it cut, which may hide a /Prev the chain would
-        // follow, or, where an /XRefStm names it, is what would end the chain there (#264, #279, #289). Either withholds
-        // every report of the document. A cut that left nothing unread marks neither — data past a stream's last row, an
-        // object past a whole reference it holds —, and the report is made (ADR 34).
+        // past it to its own report: each marks the chain cut by a guard, or filling the index — white space past a
+        // trailer's window where the chain names a section among them (#289). A trailer's window may hide it too where the
+        // chain is not taken for one a guard cut, which is marked apart: its cut of the reading at an offset the chain names,
+        // whatever it cut, which may hide a /Prev the chain would follow, or, where an /XRefStm names it, is what would end
+        // the chain there (#264, #279). Either withholds every report of the document. A cut that left nothing unread marks
+        // neither — data past a stream's last row, an object past a whole reference it holds —, and the report is made
+        // (ADR 34).
         if (ChainStoppedByGuard || _guardMayHideLink)
         {
             return;
@@ -779,8 +770,7 @@ internal sealed partial class PdfFileReader
     /// comes to none — no offset, -1, whose position is -1 too; an offset outside the file; what the chain has reached
     /// (<see cref="ReachedBefore"/>), where the <c>/Prev</c> ends the chain in a loop, the reached only growing until then;
     /// or white space and comments that run on past a trailer's window, past which its reading from the offset comes to no
-    /// start (<see cref="PaddingAt"/>), the section not being read from there, though its search near the offset may find
-    /// the section past them.
+    /// start (<see cref="PaddingAt"/>), the section past them the guard's (<see cref="TryReadXRefSection"/>).
     /// </summary>
     /// <param name="offset">The offset the <c>/Prev</c> gives, as written, or -1.</param>
     /// <param name="named">The offsets the chain has named so far, as the file writes them.</param>
@@ -798,13 +788,14 @@ internal sealed partial class PdfFileReader
     /// declares itself a section there — a table's <c>xref</c> keyword (<paramref name="table"/>), or an object whose
     /// dictionary gives <c>/Type /XRef</c>, read or not —, or the object reads there as a section, whole or in part —
     /// whatever it is, so long as it gives a <c>/W</c> —: <see cref="KeptPlace.Section"/>. A guard cut it there — its
-    /// dictionary before it said what it is, a <c>/Type</c> that is no name saying nothing, or a value its rows are read
-    /// with —: <see cref="KeptPlace.Guard"/>, the guard's to hide. Anything else — an object that gives a <c>/W</c> and
-    /// does not read as a section, a font, cut or not, a string, no object — keeps no place: <see cref="KeptPlace.None"/>,
-    /// the <c>/Prev</c> looking for its section nearby. Asked only of a <c>/Prev</c> the chain reads next: one that names
-    /// what the chain has reached ends the chain in a loop, reading nothing, and keeps no place, nor does one that names
-    /// white space and comments running on past a trailer's window, whose reading from the offset comes to no start past
-    /// them, the section not being read from there, though its search near the offset may find the section past them.
+    /// object's header, which leaves no object read (#289), its dictionary before it said what it is, a <c>/Type</c> that
+    /// is no name saying nothing, or a value its rows are read with —: <see cref="KeptPlace.Guard"/>, the guard's to hide.
+    /// Anything else — an object that gives a <c>/W</c> and does not read as a section, a font whose header was read
+    /// whole, cut or not, a string, no object — keeps no place: <see cref="KeptPlace.None"/>, the <c>/Prev</c> looking for
+    /// its section nearby. Asked only of a <c>/Prev</c> the chain reads next: one that names what the chain has reached
+    /// ends the chain in a loop, reading nothing, and keeps no place, nor does one that names white space and comments
+    /// running on past a trailer's window, whose reading from the offset comes to no start past them, the section past them
+    /// the guard's.
     /// </summary>
     /// <remarks>
     /// Told without indexing anything, as a hybrid table's <c>/XRefStm</c>, whose search near the offset it names comes to
@@ -870,7 +861,8 @@ internal sealed partial class PdfFileReader
     /// (<see cref="PdfObjectParser.HeaderDigits"/>); <paramref name="headerAt"/> otherwise.
     /// </param>
     /// <param name="cut">
-    /// Whether the guard's window cut what was read, where <see cref="TryParseNumberedAt"/> reaches the guard.
+    /// Whether the guard's window cut what was read, where <see cref="TryParseNumberedAt"/> reaches the guard: the object, or
+    /// its header, which leaves none read.
     /// </param>
     /// <returns>Whether an object starts there, whole or cut.</returns>
     private bool TryParseUnrecordedAt(
@@ -911,12 +903,14 @@ internal sealed partial class PdfFileReader
                     continue;
                 }
 
+                // A header the guard cut leaves no object read, and is the guard's, as the reading of the section there takes
+                // it (TryReadXRefStream): the two meet one cut.
+                cut = parser.IsTruncated && edge;
+
                 if (!read)
                 {
                     return false;
                 }
-
-                cut = parser.IsTruncated && edge;
 
                 if (cut)
                 {

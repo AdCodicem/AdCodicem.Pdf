@@ -5793,10 +5793,13 @@ public class HostileInputTests
         // Where the chain reaches what an offset names, it crossed the run as far as a trailer's window reaches, then again
         // where it read the section there, and a hybrid table's /Prev a third time: two or three crossings of 84 KB for each
         // run — and, where the search tried two places, the places it tried pushed the /Prev's probe out, and the /Prev's run
-        // was crossed again. Each run is crossed once, its probe answering each time it is asked of, the /Prev's outlasting
-        // its /XRefStm's search, however many places that search tries (#188): beside the same file whose offsets name the
-        // keywords, a crossing a section at most, and a few bytes more.
+        // was crossed again. Each run is crossed once, by its probe alone, which answers each time it is asked of, the
+        // /Prev's outlasting its /XRefStm's search, however many places that search tries (#188), and a table's windows open
+        // at its keyword, past the run (#295): beside the same file whose offsets name the keywords, a crossing a section at
+        // most, and a few bytes more. The newest table's last probe reads the run and the few bytes past it to the end of the
+        // file, short of a whole crossing by what a probe past the others reads beyond the run.
         const int Tables = 100;
+        const int Run = 60_000;
         const long Crossing = PdfFileReader.XRefProbeLength + 256 + 2048 + 16384 + 65536;
         var padded = Chain(namesTheRun: true);
         var exact = Chain(namesTheRun: false);
@@ -5806,7 +5809,7 @@ public class HostileInputTests
         var exactRead = Read(exact);
 
         (paddedRead - exactRead).Should().BeInRange(
-            Tables * Crossing,
+            (Tables * Crossing) - (65536 - Run),
             Tables * (Crossing + 4096),
             "each run is crossed once ({0:N0} bytes against {1:N0})",
             paddedRead,
@@ -5839,7 +5842,7 @@ public class HostileInputTests
                 }
 
                 var named = text.Length;
-                text.Append(' ', 60_000);
+                text.Append(' ', Run);
                 var xref = text.Length;
                 text.Append("xref\n0 1\n0000000000 65535 f\r\ntrailer\n<< /Size 3 /Root 1 0 R")
                     .Append(previous < 0 ? string.Empty : string.Create(CultureInfo.InvariantCulture, $" /Prev {previous:D10}"))
@@ -5865,6 +5868,49 @@ public class HostileInputTests
                 section.State == (streamShortBy > 0 ? XRefSectionState.Relocated : XRefSectionState.Read) || section.State == XRefSectionState.NotFound);
             return source.BytesRead;
         }
+    }
+
+    [Theory]
+    [InlineData(65_530, 0)]
+    [InlineData(65_530, 1024 * 1024)]
+    [InlineData(60_000, 1024 * 1024)]
+    public void A_classic_table_named_past_a_long_run_of_white_space_reads_the_run_once_however_far_its_windows_grow(int run, int past)
+    {
+        // Startxref names the first of 60,000 or 65,530 spaces before a classic table of four rows and its trailer, the file
+        // ending past it or going on through a comment of 1 MB. The probe crosses the run once, as far as a trailer's window
+        // and 32 bytes past it. The table's windows opened at the offset named: past 65,530 spaces the first, of 64 KB, held
+        // the run and the keyword but not the rows' end, and grew fourfold, each reading the run again — 215,509 or 411,968
+        // bytes read at the offset, of which the probe read 84,288. They open at the keyword, as a stream's at its header:
+        // the reads that start at the offset are the probe's, and the table is read from its keyword in one window (#295).
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>"),
+            [3] = file.Object(3, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << >> >>"),
+        };
+        var named = file.Position;
+        file.Raw(new string(' ', run));
+        var table = file.Table(4, rows, "/Size 4 /Root 1 0 R");
+        var comment = past > 0 ? "%" + new string('-', past - 2) + "\n" : string.Empty;
+        var bytes = Encoding.Latin1.GetBytes(Encoding.Latin1.GetString(file.Bytes).Replace(
+            string.Create(CultureInfo.InvariantCulture, $"startxref\n{table}\n"),
+            string.Create(CultureInfo.InvariantCulture, $"{comment}startxref\n{named}\n"),
+            StringComparison.Ordinal));
+        var atNamed = 0L;
+        var atKeyword = 0L;
+        var source = new ShortCountSource(bytes, (offset, held) =>
+        {
+            atNamed += offset == named ? held : 0;
+            atKeyword += offset == table ? held : 0;
+            return held;
+        });
+        using var document = PdfDocument.Open(source, options: null, ownsSource: true);
+
+        document.Diagnostics.Should().BeEmpty();
+        document.Reader.Structure.Sections.Should().ContainSingle().Which.Padding.Should().Be(run);
+        atNamed.Should().Be(PdfFileReader.XRefProbeLength + 256 + 2048 + 16384 + 65536 + PdfFileReader.XRefProbeLength, "the probe alone reads at the offset");
+        atKeyword.Should().Be(Math.Min(65536, bytes.Length - table), "one window reads the table from its keyword");
     }
 
     [Theory]

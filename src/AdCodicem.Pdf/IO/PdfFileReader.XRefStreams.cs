@@ -9,6 +9,20 @@ namespace AdCodicem.Pdf.IO;
 internal sealed partial class PdfFileReader
 {
     /// <summary>
+    /// Determines whether an object's header may start at <paramref name="position"/>, where the first token of what a
+    /// reading there meets lies: its first byte is a digit, or the <c>+</c> that starts a run of signs an object number may be
+    /// written with. A token that starts otherwise — a <c>-</c>, which makes any number it starts negative, a letter, a
+    /// period — starts no header however it goes on past a window's edge (#327), and a guard's cut of it hides no section.
+    /// </summary>
+    /// <param name="position">Where the first token starts, in the file.</param>
+    private bool MayStartHeader(long position)
+    {
+        using var window = _source.GetWindow(position, 1);
+        var span = window.Memory.Span;
+        return span.Length > 0 && (PdfCharacters.IsDigit(span[0]) || span[0] == (byte)'+');
+    }
+
+    /// <summary>
     /// Reads the cross-reference stream at <paramref name="absolute"/>, if one is there, and records what became of
     /// it in <paramref name="section"/>.
     /// </summary>
@@ -154,24 +168,22 @@ internal sealed partial class PdfFileReader
 
             // A guard that cut the reading at an offset the chain names hid what lay past the cut, whatever it cut: a
             // dictionary, which the parser keeps as far as it read it, a token the cut parted dropped (#279); the object's
-            // header — its number, its
-            // generation or its obj keyword running on past the guard, or white space or a comment between its tokens —,
-            // which leaves no object read (#289); or a token where no header starts, such as dashes read from inside a
-            // comment. The guard is MaxTrailerLength, the only one this reading counts: its windows are a trailer's, a
-            // value it reads through a reference is read without loading, no guard counted (ReadWithoutLoading), and the
-            // stream's data is neither read nor decoded yet. Where a /Prev or startxref names the offset, any /W makes a
-            // stream of any /Type the section there (#263): the cut may have hidden a /Prev the chain would follow — a stream
-            // of another /Type, whole before the cut, that gives a /W, a /Type given twice whose later /XRef lies past the
-            // cut, or the whole dictionary past a header the cut parted —, which the reading, finding an object of another
-            // type there or none, does not follow, wherever it lies. Where an /XRefStm names the offset, the chain never
-            // follows that stream's /Prev, but the guard's cut is what would end the chain there (#264). Either way no
-            // stream passed over is reported anywhere in the document (ReportStreamsPassedOver), whatever the cut left: the
-            // reader cannot tell what it hid without reading past the guard (ADR 34), and a cut that hid nothing — a
-            // dictionary of another type that gives no /W, a token no header starts — withholds the reports too. What is
-            // there is read as written all the same — an object of another type, or none, the section then looked for as
-            // one not there —, until #289 settles what a header the guard cut is; where the reading takes it for the
-            // guard's section, the chain's own cut withholds them already. A place the search tries is a guess, and what
-            // the guard cut there, a dictionary or a header, hides no link the chain names.
+            // header — its number, its generation or its obj keyword running on past the guard, or white space or a comment
+            // between its tokens —, which leaves no object read and is the guard's section (#289); or a token where no header
+            // starts, such as dashes read from inside a comment. The guard is MaxTrailerLength, the only one this reading
+            // counts: its windows are a trailer's, a value it reads through a reference is read without loading, no guard
+            // counted (ReadWithoutLoading), and the stream's data is neither read nor decoded yet. Where a /Prev or startxref
+            // names the offset, any /W makes a stream of any /Type the section there (#263): the cut may have hidden a /Prev
+            // the chain would follow — a stream of another /Type, whole before the cut, that gives a /W, or a /Type given
+            // twice whose later /XRef lies past the cut —, which the reading, finding an object of another type there, does
+            // not follow, wherever it lies. Where an /XRefStm names the offset, the chain never follows that stream's /Prev,
+            // but the guard's cut is what would end the chain there (#264). Either way no stream passed over is reported
+            // anywhere in the document (ReportStreamsPassedOver), whatever the cut left: the reader cannot tell what it hid
+            // without reading past the guard (ADR 34), and a cut that hid nothing — a dictionary of another type that gives
+            // no /W, a token no header starts — withholds the reports too. What is there is read as written all the same —
+            // an object of another type, or none, the section then looked for as one not there —; where the reading takes it
+            // for the guard's section, the chain's own cut withholds the reports already. A place the search tries is a
+            // guess, and what the guard cut there, a dictionary or a header, hides no link the chain names.
             if (!candidate && cutByGuard)
             {
                 _guardMayHideLink = true;
@@ -180,6 +192,18 @@ internal sealed partial class PdfFileReader
 
         if (!objectRead || !(candidate ? DeclaresOnlyCrossReferenceStream(value) : DeclaresCrossReferenceStream(value)))
         {
+            if (!candidate && cutByGuard && !objectRead && MayStartHeader(at))
+            {
+                // A header MaxTrailerLength cut — its number, its generation or its obj keyword running on past the guard,
+                // or white space or a comment between its tokens, all of which ISO 32000-1 allows — leaves no object read,
+                // and may be the section's: the guard's, as a dictionary cut before it said what it is (ADR 34), and not
+                // looked for nearby, where a search would read past the guard to another section. A first token the cut
+                // parts that no header starts with is no section however it goes on, and the file's (MayStartHeader).
+                section.CutByLimit = true;
+                section.Fault = "holds an object header one of the reader's limits cut";
+                return XRefSectionState.Malformed;
+            }
+
             if (!candidate && cutByGuard && value is PdfDictionary { } cut && cut.GetRaw(PdfName.Type) is not PdfName)
             {
                 // A dictionary MaxTrailerLength cut before it said what it is may be the section's: unknown, and the
@@ -188,8 +212,7 @@ internal sealed partial class PdfFileReader
                 // the dictionary declares a section only through a /W, which the cut may have hidden
                 // (DeclaresOnlyCrossReferenceStream). Nor has one whose /Type the cut parted, which the parser drops, the
                 // dictionary then lacking it (#279). An array, a dictionary whose /Type names another type, written whole
-                // before the cut, or a stream whose dictionary was read whole is no cross-reference stream, cut or not,
-                // and a header the cut parted leaves no object to tell, the section looked for as one not there (#289):
+                // before the cut, or a stream whose dictionary was read whole is no cross-reference stream, cut or not:
                 // where a guard cut any of them, the cut withholds only the report of streams passed over, as set above.
                 section.CutByLimit = true;
                 section.Fault = string.Create(

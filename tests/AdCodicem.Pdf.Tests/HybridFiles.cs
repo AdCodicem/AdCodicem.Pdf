@@ -1987,6 +1987,42 @@ internal static class HybridFiles
     }
 
     /// <summary>
+    /// A one-page document saved twice, whose newest table indexes object 6, <c>(six)</c>, and names through <c>/XRefStm</c>
+    /// the first of <paramref name="run"/> line feeds, at <c>Run</c>, before cross-reference stream 9, of <c>/Type /XRef</c>,
+    /// at <c>Section</c> — or, with <paramref name="table"/>, before a classic table there —, which indexes object 5,
+    /// <c>(five)</c>, and object 7's new revision, <c>(new seven)</c>; and through <c>/Prev</c> the oldest table, at
+    /// <c>Oldest</c>, which indexes objects 1 to 3 and object 7, <c>(old seven)</c>.
+    /// </summary>
+    public static (byte[] File, long Oldest, long Run, long Section) XRefStmNamingARunBeforeItsSection(int run, bool table)
+    {
+        var file = new HandWrittenFile(version: "1.5");
+        var (catalog, pages, page) = Page(file);
+        var oldSeven = file.Object(7, "(old seven)");
+        var oldest = file.Position;
+        file.Raw(Invariant($"xref\n0 4\n0000000000 65535 f \n{Row(catalog)}{Row(pages)}{Row(page)}7 1\n{Row(oldSeven)}trailer\n<< /Size 10 /Root 1 0 R >>\n"));
+        var five = file.Object(5, "(five)");
+        var newSeven = file.Object(7, "(new seven)");
+        var runAt = file.Position;
+        file.Raw(new string('\n', run));
+        var section = file.Position;
+
+        if (table)
+        {
+            file.Raw(Invariant($"xref\n5 1\n{Row(five)}7 1\n{Row(newSeven)}trailer\n<< /Size 10 >>\n"));
+        }
+        else
+        {
+            var rows = StreamRows((1, five, 0), (1, newSeven, 0), (1, section, 0));
+            file.Object(9, Invariant($"<< /Type /XRef /Size 10 /W [1 4 2] /Index [5 1 7 1 9 1] /Length {rows.Length} >>\nstream\n{rows}\nendstream"));
+        }
+
+        var six = file.Object(6, "(six)");
+        var newest = file.Position;
+        file.Raw(Invariant($"xref\n0 1\n0000000000 65535 f \n6 1\n{Row(six)}trailer\n<< /Size 10 /Root 1 0 R /Prev {oldest} /XRefStm {runAt} >>\nstartxref\n{newest}\n%%EOF\n"));
+        return (file.Bytes, oldest, runAt, section);
+    }
+
+    /// <summary>
     /// A one-page document saved twice, whose newest table names through <c>/XRefStm</c>, at <c>Bracket</c>, the
     /// <c>]</c> that closes the array of object 8, which <paramref name="run"/> line feeds follow before its <c>endobj</c>,
     /// and through <c>/Prev</c> the first of them, at <c>Bracket + 1</c>: cross-reference stream 9, of <c>/Type /XRef</c>,
