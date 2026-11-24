@@ -3,6 +3,7 @@ using System.IO.Compression;
 using System.Text;
 using AdCodicem.Pdf.Diagnostics;
 using AdCodicem.Pdf.Documents;
+using AdCodicem.Pdf.IO;
 using AdCodicem.Pdf.IO.XRef;
 using AdCodicem.Pdf.Objects;
 using AdCodicem.Pdf.Validation;
@@ -426,6 +427,57 @@ public class CrossReferenceRuleTests
         finding.Severity.Should().Be(PdfValidationSeverity.Information);
         finding.Message.Should().Be(
             $"One of the reader's limits stopped it reading the cross-reference section at offset {PdfTemplate.OffsetOf(file, "xref\n")} whole: what lies past the limit was not checked.");
+    }
+
+    [Theory]
+    [InlineData(600, 650)]
+    [InlineData(600, 1024)]
+    [InlineData(300, 128)]
+    [InlineData(600, 40)]
+    [InlineData(600, 8)]
+    public void The_white_space_an_offset_falls_short_of_a_classic_table_by_counts_toward_no_section_length(int spaces, int maxLength)
+    {
+        // Startxref names 600 or 300 spaces before a classic table of four rows and its trailer, 123 bytes from its
+        // keyword, which MaxTrailerLength, at its default, lets the reader cross. The table's windows opened at the
+        // offset named, and the spaces counted toward MaxXRefSectionLength: a bound of 650 bytes or 1 KB cut the table,
+        // the rows past it reading as null, and one of 128 bytes held the spaces alone, the table cut before its first
+        // row and the index rebuilt, its report saying the entries within the bound were read. The windows open at the
+        // keyword, as a stream's at its header: under those bounds the table is read whole, startxref said to fall
+        // short of it. A bound shorter than the table still cuts it from its keyword, its report saying whether any
+        // entry was read: past the free row of object 0 alone, or before it (#289, #295).
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>"),
+            [3] = file.Object(3, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << >> >>"),
+        };
+        var named = file.Position;
+        file.Raw(new string(' ', spaces));
+        var table = file.Table(4, rows, "/Size 4 /Root 1 0 R");
+        var bytes = Encoding.Latin1.GetBytes(Encoding.Latin1.GetString(file.Bytes)
+            .Replace(Invariant($"startxref\n{table}\n"), Invariant($"startxref\n{named}\n"), StringComparison.Ordinal));
+        using var document = PdfDocument.Open(bytes, new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxXRefSectionLength = maxLength } });
+
+        var section = document.Reader.Structure.Sections.Should().ContainSingle().Which;
+        (section.State, section.Padding, section.CutByLimit).Should().Be((XRefSectionState.Read, spaces, maxLength < 123));
+
+        if (maxLength >= 123)
+        {
+            document.Diagnostics.Should().BeEmpty();
+            document.GetObject(new PdfObjectId(3)).AsDictionary().Required().IsOfType(PdfName.Page).Should().BeTrue();
+            new PdfValidator().Validate(document).Findings.Select(finding => finding.RuleId).Should().Equal(PdfValidationRuleIds.XRefOffsetImprecise);
+            return;
+        }
+
+        var rowsRead = maxLength > 9;
+        document.Diagnostics.Select(diagnostic => (diagnostic.Code, diagnostic.Position)).Should().Equal(
+            rowsRead ? [(PdfDiagnosticCodes.LimitXRefSectionLength, named)] : [(PdfDiagnosticCodes.LimitXRefSectionLength, named), (PdfDiagnosticCodes.XRefRebuilt, -1)]);
+        document.Diagnostics[0].Message.Should().Be(
+            rowsRead
+                ? Invariant($"The cross-reference table runs past {maxLength} bytes; only the entries within it were read. Raise PdfReaderLimits.MaxXRefSectionLength to read past it.")
+                : Invariant($"The cross-reference table runs past {maxLength} bytes before its first entry; none of its entries was read. Raise PdfReaderLimits.MaxXRefSectionLength to read past it."));
+        (section.HighestNumber >= 0).Should().Be(rowsRead);
     }
 
     [Fact]
@@ -2959,19 +3011,25 @@ public class CrossReferenceRuleTests
     }
 
     [Theory(Timeout = 60_000)]
-    [InlineData(300, false, "")]
-    [InlineData(70_000, false, "")]
-    [InlineData(300, true, "")]
-    [InlineData(257, false, "")]
-    [InlineData(270, false, "% a comment past the window's end\n")]
-    public async Task A_startxref_naming_more_white_space_than_a_trailer_s_window_before_a_classic_table_reaches_the_guard(
-        int padding, bool throwOnLimit, string comment)
+    [InlineData(300, false, "", false)]
+    [InlineData(70_000, false, "", false)]
+    [InlineData(300, true, "", false)]
+    [InlineData(257, false, "", false)]
+    [InlineData(270, false, "% a comment past the window's end\n", false)]
+    [InlineData(300, false, "", true)]
+    [InlineData(70_000, false, "", true)]
+    [InlineData(300, true, "", true)]
+    public async Task A_startxref_naming_more_white_space_than_a_trailer_s_window_before_a_section_names_the_guard_s_section(
+        int padding, bool throwOnLimit, string comment, bool stream)
     {
-        // The reader reads on past white space and comments for the xref keyword as far as MaxTrailerLength reaches, past
-        // which it would read the same window again and again: past a byte more than the window holds, or a comment that runs
-        // on past its end, the guard is reached, the index rebuilt, or the guard thrown, and the guard's report says what ran
-        // past it, the white space, where it said a dictionary did.
-        var file = new HandWrittenFile();
+        // The reader reads on past white space and comments for the first token of a classic table or a cross-reference
+        // stream as far as MaxTrailerLength reaches: past a byte more than the window holds, or a comment that runs on past
+        // its end, the guard is reached, in words that say the white space ran past it, or thrown. What lies past the guard
+        // is the guard's: the section is cut where startxref names it, rather than said to hold neither the xref keyword nor
+        // an object, the index is rebuilt as for any guard that leaves the chain no section, and the validator says it
+        // checked the chain in part, where it said startxref was wrong. The bound raised reads the section past the white
+        // space, which startxref falls short of (#289, ADR 34).
+        var file = new HandWrittenFile(version: "1.5");
         var rows = new Dictionary<int, long>
         {
             [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),
@@ -2979,15 +3037,17 @@ public class CrossReferenceRuleTests
             [3] = file.Object(3, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << >> >>"),
         };
         file.Raw(new string(' ', padding - comment.Length) + comment);
-        var table = file.Table(4, rows, "/Size 4 /Root 1 0 R");
+        var named = stream
+            ? file.CrossReferenceStream(4, 5, rows.ToDictionary(row => row.Key, row => (1, row.Value, 0)), "/Root 1 0 R")
+            : file.Table(4, rows, "/Size 4 /Root 1 0 R");
         var bytes = Encoding.Latin1.GetBytes(Encoding.Latin1.GetString(file.Bytes)
             .Replace(
-                string.Create(CultureInfo.InvariantCulture, $"startxref\n{table}\n"),
-                string.Create(CultureInfo.InvariantCulture, $"startxref\n{table - padding}\n"),
+                string.Create(CultureInfo.InvariantCulture, $"startxref\n{named}\n"),
+                string.Create(CultureInfo.InvariantCulture, $"startxref\n{named - padding}\n"),
                 StringComparison.Ordinal));
-        var limits = padding > PdfReaderLimits.Default.MaxTrailerLength
-            ? PdfReaderLimits.Default
-            : PdfReaderLimits.Default with { MaxTrailerLength = 256 };
+        var beyondDefault = padding > PdfReaderLimits.Default.MaxTrailerLength;
+        var limits = beyondDefault ? PdfReaderLimits.Default : PdfReaderLimits.Default with { MaxTrailerLength = 256 };
+        var raised = beyondDefault ? PdfReaderLimits.Default with { MaxTrailerLength = 128 * 1024 } : PdfReaderLimits.Default;
         var options = new PdfReaderOptions { Limits = limits, ThrowOnLimit = throwOnLimit };
 
         if (throwOnLimit)
@@ -2997,16 +3057,28 @@ public class CrossReferenceRuleTests
         }
 
         using var document = await Task.Run(() => PdfDocument.Open(bytes, options), TestContext.Current.CancellationToken);
+        using var whole = await Task.Run(() => PdfDocument.Open(bytes, new PdfReaderOptions { Limits = raised }), TestContext.Current.CancellationToken);
 
         document.Diagnostics.Select(entry => entry.Code).Should().Equal(PdfDiagnosticCodes.LimitTrailer, PdfDiagnosticCodes.XRefRebuilt);
         var section = document.Reader.Structure.Sections.Should().ContainSingle().Which;
-        section.State.Should().Be(XRefSectionState.NotFound);
-        section.Fault.Should().Be("holds neither the xref keyword nor an object");
-        document.Diagnostics[0].Position.Should().Be(table - padding);
+        (section.State, section.Kind, section.CutByLimit).Should().Be((XRefSectionState.Malformed, XRefSectionKind.Unknown, true));
+        section.Fault.Should().Be("lies past white space and comments one of the reader's limits cut");
+        document.Diagnostics[0].Position.Should().Be(named - padding);
         document.Diagnostics[0].Message.Should().Be(string.Create(
             CultureInfo.InvariantCulture,
-            $"White space and comments run past {(padding > PdfReaderLimits.Default.MaxTrailerLength ? "64 KB" : "256 bytes")} where a cross-reference section is named; the section was not read from there. Raise PdfReaderLimits.MaxTrailerLength to read past it."));
+            $"White space and comments run past {(beyondDefault ? "64 KB" : "256 bytes")} where a cross-reference section is named; the section was not read from there. Raise PdfReaderLimits.MaxTrailerLength to read past it."));
         document.GetObject(new PdfObjectId(3)).AsDictionary().Required().IsOfType(PdfName.Page).Should().BeTrue();
+        document.WasRepaired.Should().BeTrue();
+        var findings = new PdfValidator().Validate(document).Findings.Select(finding => finding.RuleId).ToList();
+        findings.Should().Contain(PdfValidationRuleIds.XRefCheckedInPart);
+        findings.Should().NotContain([PdfValidationRuleIds.FileStartXRefWrong, PdfValidationRuleIds.XRefOffsetImprecise]);
+
+        whole.Diagnostics.Should().BeEmpty();
+        whole.Reader.Structure.Sections.Should().ContainSingle().Which.Padding.Should().Be(padding);
+        Single(new PdfValidator().Validate(whole), PdfValidationRuleIds.XRefOffsetImprecise).Message.Should().EndWith(
+            string.Create(
+                CultureInfo.InvariantCulture,
+                $"startxref gives offset {named - padding}, {padding} bytes before the {(stream ? "header of the cross-reference stream" : "xref keyword")}."));
     }
 
     [Theory]
@@ -3040,6 +3112,109 @@ public class CrossReferenceRuleTests
         document.GetObject(new PdfObjectId(3)).AsDictionary().Required().IsOfType(PdfName.Page).Should().BeTrue();
         Single(new PdfValidator().Validate(document), PdfValidationRuleIds.XRefOffsetImprecise).Message.Should().EndWith(
             string.Create(CultureInfo.InvariantCulture, $"startxref gives offset {table - 256}, 256 bytes before the xref keyword."));
+    }
+
+    [Theory]
+    [InlineData(252, "xrefs", false)]
+    [InlineData(252, "xrefs", true)]
+    [InlineData(253, "xref", false)]
+    [InlineData(253, "xref", true)]
+    public void A_first_token_past_white_space_that_starts_within_a_trailer_s_window_is_judged_as_under_the_default_bound(
+        int spaces, string keyword, bool prev)
+    {
+        // Startxref, or the /Prev of a newer table more than 512 bytes past, names 252 spaces before xrefs, or 253 before
+        // xref, under a MaxTrailerLength of 256. The probe stopped at the bound: it took the xref of xrefs for the keyword,
+        // the table's own window refusing xrefs as a table that cannot be read, and stopped inside the keyword past 253
+        // spaces, the guard reached and the section looked for as one not there. A first token that starts within the bound
+        // is read whole: xrefs is no keyword, the section not there, and xref the table's, read past the spaces, as at the
+        // default bound, with no guard reported (#295).
+        var file = SectionPastSpaces(spaces, keyword, prev, out var named);
+        using var lowered = PdfDocument.Open(file, new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxTrailerLength = 256 } });
+        using var standard = PdfDocument.Open(file);
+        var section = lowered.Reader.Structure.Sections.Single(section => section.Offset == named);
+
+        if (keyword == "xref")
+        {
+            (section.State, section.Kind, section.Padding).Should().Be((XRefSectionState.Read, XRefSectionKind.Table, spaces));
+        }
+        else
+        {
+            (section.State, section.Kind, section.Padding, section.Fault).Should().Be(
+                (XRefSectionState.NotFound, XRefSectionKind.Unknown, spaces, "holds neither the xref keyword nor an object"));
+        }
+
+        lowered.Diagnostics.Select(diagnostic => diagnostic.Code).Should().NotContain(PdfDiagnosticCodes.LimitTrailer)
+            .And.Equal(standard.Diagnostics.Select(diagnostic => diagnostic.Code));
+        lowered.Reader.Structure.Sections.Select(section => (section.NamedBy, section.State, section.Kind, section.Padding, section.Fault))
+            .Should().Equal(standard.Reader.Structure.Sections.Select(section => (section.NamedBy, section.State, section.Kind, section.Padding, section.Fault)));
+        var findings = new PdfValidator().Validate(lowered).Findings.Select(finding => finding.RuleId).ToList();
+        findings.Should().Equal(new PdfValidator().Validate(standard).Findings.Select(finding => finding.RuleId));
+        findings.Should().Contain(
+            keyword == "xref" ? PdfValidationRuleIds.XRefOffsetImprecise
+            : prev ? PdfValidationRuleIds.XRefSectionNotFound
+            : PdfValidationRuleIds.FileStartXRefWrong);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void A_first_token_a_short_read_gave_the_probe_cut_is_judged_as_read_whole(bool prev)
+    {
+        // As above, startxref or a /Prev names 252 spaces before xrefs, under a MaxTrailerLength of 256. The source gives the
+        // probe's read of 288 bytes at the offset back with 256, as a caller's may, which the reader takes for the end of the
+        // data there (#52): the probe takes the xref it holds of xrefs for the keyword. The table's own window, opened at that
+        // token, reads xrefs whole and refuses it: no table, as the probe would have said reading it whole, and nothing there
+        // a section. The section was a table that cannot be read; it reads as through a source that gives every byte (#295).
+        var file = SectionPastSpaces(252, "xrefs", prev, out var named);
+        var limits = new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxTrailerLength = 256 } };
+        var source = new ShortCountSource(file, (offset, held) => offset == named && held == 256 + PdfFileReader.XRefProbeLength ? 256 : held);
+        using var shortened = PdfDocument.Open(source, limits, ownsSource: true);
+        using var whole = PdfDocument.Open(file, limits);
+
+        var section = shortened.Reader.Structure.Sections.Single(section => section.Offset == named);
+        (section.State, section.Kind, section.Fault).Should().Be(
+            (XRefSectionState.NotFound, XRefSectionKind.Unknown, "holds neither the xref keyword nor an object"));
+        source.ShortReads.Should().BeGreaterThan(0);
+        shortened.Diagnostics.Select(diagnostic => diagnostic.Code).Should().Equal(whole.Diagnostics.Select(diagnostic => diagnostic.Code));
+        shortened.Reader.Structure.Sections.Select(section => (section.NamedBy, section.State, section.Kind, section.Padding, section.Fault))
+            .Should().Equal(whole.Reader.Structure.Sections.Select(section => (section.NamedBy, section.State, section.Kind, section.Padding, section.Fault)));
+        new PdfValidator().Validate(shortened).Findings.Select(finding => finding.RuleId).Should()
+            .Contain(prev ? PdfValidationRuleIds.XRefSectionNotFound : PdfValidationRuleIds.FileStartXRefWrong)
+            .And.NotContain(PdfValidationRuleIds.XRefSectionMalformed);
+    }
+
+    /// <summary>
+    /// Writes the catalog, the page tree and the page, then <paramref name="spaces"/> spaces, at <paramref name="named"/>,
+    /// then a classic table of them whose keyword is written <paramref name="keyword"/>, named by <c>startxref</c> at the
+    /// first space — or, with <paramref name="prev"/>, by the <c>/Prev</c> of a newer table, which indexes object 4, past a
+    /// comment of 1,000 bytes, so that no search near the first space reaches it.
+    /// </summary>
+    private static byte[] SectionPastSpaces(int spaces, string keyword, bool prev, out long named)
+    {
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>"),
+            [3] = file.Object(3, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << >> >>"),
+        };
+        named = file.Position;
+        file.Raw(new string(' ', spaces));
+        file.Raw(keyword + Invariant($"\n0 4\n0000000000 65535 f \n{rows[1]:D10} 00000 n \n{rows[2]:D10} 00000 n \n{rows[3]:D10} 00000 n \ntrailer\n<< /Size 4 /Root 1 0 R >>\n"));
+
+        if (prev)
+        {
+            file.Raw("%" + new string('-', 998) + "\n");
+            var four = file.Object(4, "(four)");
+            var newer = file.Position;
+            file.Raw(Invariant($"xref\n4 1\n{four:D10} 00000 n \ntrailer\n<< /Size 5 /Root 1 0 R /Prev {named} >>\nstartxref\n{newer}\n%%EOF\n"));
+        }
+        else
+        {
+            file.Raw(Invariant($"startxref\n{named}\n%%EOF\n"));
+        }
+
+        return file.Bytes;
     }
 
     [Fact]

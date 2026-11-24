@@ -123,10 +123,10 @@ public sealed record PdfReaderLimits
     /// 3.3 million entries.
     /// </summary>
     /// <remarks>
-    /// A value above <see cref="Array.MaxLength"/> is taken as that length. Reaching it keeps the entries read
-    /// and reports <see cref="Diagnostics.PdfDiagnosticCodes.LimitXRefSectionLength"/>. A section read where an offset
-    /// names it is measured from that offset, so that white space and comments before its <c>xref</c> keyword count toward
-    /// the bound (#289).
+    /// A value above <see cref="Array.MaxLength"/> is taken as that length. Reaching it keeps the entries read, if any,
+    /// and reports <see cref="Diagnostics.PdfDiagnosticCodes.LimitXRefSectionLength"/>. A section is measured from its
+    /// <c>xref</c> keyword: white space and comments an offset that names it falls short by count toward
+    /// <see cref="MaxTrailerLength"/> instead, and are read once, however far the section's windows grow (#289, #295).
     /// </remarks>
     /// <exception cref="ArgumentOutOfRangeException">The value is zero or less.</exception>
     public int MaxXRefSectionLength { get; init => field = Length(value); } = 64 * 1024 * 1024;
@@ -167,14 +167,15 @@ public sealed record PdfReaderLimits
     /// is raised — but for the trailer of a classic table an <c>/XRefStm</c> names, whose links the chain never follows
     /// (#263), the chain going on through the table that names it. It bounds, apart, the white space and comments an offset
     /// that names a cross-reference section falls short by: a cross-reference stream is read from its object's header, so
-    /// that its dictionary is cut only where it alone runs past the bound, while a classic table's windows open at the
-    /// offset named, so that the white space before its <c>xref</c> keyword counts toward
-    /// <see cref="MaxXRefSectionLength"/> as well (#289). White space and comments that run on past the bound reach it too,
-    /// reported under the same code: the section is not read from that offset, and is looked for as one that is not there —
-    /// near the offset, where a search may find it past them, or, for the one <c>startxref</c> names, by rebuilding the
-    /// index. What the bound cuts keeps no token it parts, as <see cref="MaxObjectLength"/> says: a cross-reference
-    /// stream's dictionary whose <c>/Type</c> the bound parts has not said what it is, and where the chain names it is a
-    /// section the guard cut (#279).
+    /// that its dictionary is cut only where it alone runs past the bound, and a classic table from its <c>xref</c>
+    /// keyword, so that its rows are bounded by <see cref="MaxXRefSectionLength"/> alone. White space and comments that run
+    /// on past the bound reach it too, reported under the same code, and so does an object's header the bound cuts there —
+    /// its number or generation running on past it, or white space or a comment between its tokens: the section is the
+    /// guard's, cut where it is named and not looked for near there, the chain ending at it as at any section the guard
+    /// cuts; for the one <c>startxref</c> names, which leaves the chain no section, the index is rebuilt (#289). What the
+    /// bound cuts keeps no token it parts, as <see cref="MaxObjectLength"/> says: a cross-reference stream's dictionary
+    /// whose <c>/Type</c> the bound parts has not said what it is, and where the chain names it is a section the guard cut
+    /// (#279).
     /// </remarks>
     /// <exception cref="ArgumentOutOfRangeException">The value is zero or less.</exception>
     public int MaxTrailerLength { get; init => field = Length(value); } = 64 * 1024;

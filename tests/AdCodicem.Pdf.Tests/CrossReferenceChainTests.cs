@@ -6073,32 +6073,45 @@ public class CrossReferenceChainTests
     [InlineData(160)]
     [InlineData(400)]
     [InlineData(0)]
-    public void An_xrefstm_goes_on_past_its_table_s_prev_to_the_stream_where_that_prev_names_a_font_whose_header_a_comment_parts_whether_or_not_a_trailer_guard_cuts_it(
+    public void An_xrefstm_goes_on_past_its_table_s_prev_to_the_stream_where_that_prev_names_a_font_whose_header_a_comment_parts_unless_a_trailer_guard_cuts_the_header(
         int maxTrailerLength)
     {
         // As above, the newest table names object 4 through /Prev, a font, and through /XRefStm a place inside the string of
         // object 8, 30 bytes before it. A comment of 300 dashes parts object 4's header after its generation, obj beginning
         // the next line, a header a load reads (#261). The look at the /Prev's place reads object 4 through the windows the
-        // /Prev's own reading opens there: MaxTrailerLength lowered to 160 bytes cuts the header before obj, and no object
-        // starts there for the look; raised to 400 bytes, or left as it is, the header is read whole, and the object is a
-        // font. Either way the /Prev keeps no place there, and the /XRefStm's search goes on past object 4 to the stream; the
-        // /Prev looks for its own section nearby and finds the oldest table. The guard's cut of the header is reported at
-        // object 4, once (#156, #261).
+        // /Prev's own reading opens there. Raised to 400 bytes, or left as it is, MaxTrailerLength lets the header be read
+        // whole, and the object is a font: the /Prev keeps no place there, the /XRefStm's search goes on past object 4 to the
+        // stream, and the /Prev looks for its own section nearby and finds the oldest table. Lowered to 160 bytes, it cuts
+        // the header before obj, before the reading can tell a font from a section: the look and the /Prev's own reading meet
+        // one cut, the guard's, reported at object 4 once. The /Prev keeps its place there, the /XRefStm's search stopping
+        // at it, and the section the /Prev names is the guard's, the chain ending there, object 7 reading as null until the
+        // bound is raised (#156, #261, #289).
         var (file, oldest, four, stream, newest) = HybridFiles.NamingAnObjectBesideTheStream(
             "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>", partedBy: 300);
         var limits = maxTrailerLength == 0 ? PdfReaderLimits.Default : PdfReaderLimits.Default with { MaxTrailerLength = maxTrailerLength };
         using var document = PdfDocument.Open(file, new PdfReaderOptions { Limits = limits });
 
-        document.Reader.Structure.Sections.Select(section => (section.NamedBy, section.State, section.Offset)).Should().Equal(
-            ("startxref", XRefSectionState.Read, newest),
-            ("/XRefStm", XRefSectionState.Relocated, stream),
-            ("/Prev", XRefSectionState.Relocated, oldest));
-        document.Diagnostics.Select(diagnostic => (diagnostic.Code, diagnostic.Position)).Should().Equal(
-            maxTrailerLength == 160
-                ? [(PdfDiagnosticCodes.LimitTrailer, four), (PdfDiagnosticCodes.XRefOffsetAdjusted, stream), (PdfDiagnosticCodes.XRefOffsetAdjusted, oldest)]
-                : [(PdfDiagnosticCodes.XRefOffsetAdjusted, stream), (PdfDiagnosticCodes.XRefOffsetAdjusted, oldest)]);
-        Text(document, 7).Should().Be("new seven");
-        Text(document, 5).Should().Be("five");
+        if (maxTrailerLength == 160)
+        {
+            document.Reader.Structure.Sections.Select(section => (section.NamedBy, section.State, section.CutByLimit, section.Offset)).Should().Equal(
+                ("startxref", XRefSectionState.Read, false, newest),
+                ("/XRefStm", XRefSectionState.NamedAgain, false, four - 30),
+                ("/Prev", XRefSectionState.Malformed, true, four));
+            document.Diagnostics.Select(diagnostic => (diagnostic.Code, diagnostic.Position)).Should().Equal((PdfDiagnosticCodes.LimitTrailer, four));
+            document.GetObject(new PdfObjectId(7)).Should().BeSameAs(PdfNull.Instance);
+        }
+        else
+        {
+            document.Reader.Structure.Sections.Select(section => (section.NamedBy, section.State, section.CutByLimit, section.Offset)).Should().Equal(
+                ("startxref", XRefSectionState.Read, false, newest),
+                ("/XRefStm", XRefSectionState.Relocated, false, stream),
+                ("/Prev", XRefSectionState.Relocated, false, oldest));
+            document.Diagnostics.Select(diagnostic => (diagnostic.Code, diagnostic.Position)).Should().Equal(
+                (PdfDiagnosticCodes.XRefOffsetAdjusted, stream), (PdfDiagnosticCodes.XRefOffsetAdjusted, oldest));
+            Text(document, 7).Should().Be("new seven");
+            Text(document, 5).Should().Be("five");
+        }
+
         document.WasRepaired.Should().BeFalse();
     }
 
@@ -6347,66 +6360,96 @@ public class CrossReferenceChainTests
     }
 
     [Fact]
-    public void A_prev_naming_more_white_space_than_a_trailer_s_window_reaches_the_guard_where_it_starts_and_is_looked_for_nearby()
+    public void A_prev_naming_more_white_space_than_a_trailer_s_window_reaches_the_guard_where_it_starts_and_ends_the_chain_there()
     {
         // The newest table names stream 4 through /Prev at the first of 65,537 line feeds before it, a byte more than
         // MaxTrailerLength lets the white space before a section run, and its own stream through /XRefStm. The run reaches the
-        // guard where it starts, in words that say the white space ran past it, and nothing past it is read: the section is
-        // looked for near the offset, as one that is not there, and the oldest table, 147 bytes before it, is found (#188).
-        var (file, oldest, run, _, stream, _) = HybridFiles.PrevNamingARunBeforeAStream(65_537, 0, "the stream");
+        // guard where it starts, in words that say the white space ran past it, and what lies past it is the guard's: the
+        // section is cut there and not looked for nearby, where the oldest table, 147 bytes before it, served the older
+        // revision of object 7 that stream 4 replaces. The chain ends there, object 7 reading as null until the bound is
+        // raised, which reads stream 4 past the run (#188, #289, ADR 34).
+        var (file, _, run, _, stream, _) = HybridFiles.PrevNamingARunBeforeAStream(65_537, 0, "the stream");
         using var document = PdfDocument.Open(file);
+        using var whole = PdfDocument.Open(file, new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxTrailerLength = 1024 * 1024 } });
 
-        document.Reader.Structure.Sections.Select(section => (section.NamedBy, section.State, section.Offset, section.NamedOffset)).Skip(1).Should().Equal(
-            ("/XRefStm", XRefSectionState.Read, stream, stream),
-            ("/Prev", XRefSectionState.Relocated, oldest, run));
-        document.Diagnostics.Select(diagnostic => diagnostic.Code).Should().Equal(PdfDiagnosticCodes.LimitTrailer, PdfDiagnosticCodes.XRefOffsetAdjusted);
-        document.Diagnostics[0].Position.Should().Be(run);
+        document.Reader.Structure.Sections.Select(section => (section.NamedBy, section.State, section.CutByLimit, section.Offset)).Skip(1).Should().Equal(
+            ("/XRefStm", XRefSectionState.Read, false, stream),
+            ("/Prev", XRefSectionState.Malformed, true, run));
+        document.Diagnostics.Select(diagnostic => (diagnostic.Code, diagnostic.Position)).Should().Equal((PdfDiagnosticCodes.LimitTrailer, run));
         document.Diagnostics[0].Message.Should().StartWith("White space and comments run past 64 KB where a cross-reference section is named;");
+        document.GetObject(new PdfObjectId(7)).Should().BeSameAs(PdfNull.Instance);
+        Text(document, 5).Should().Be("five");
+        document.WasRepaired.Should().BeFalse();
+        new PdfValidator().Validate(document).Findings.Select(finding => finding.RuleId).Should().Contain(PdfValidationRuleIds.XRefCheckedInPart)
+            .And.NotContain([PdfValidationRuleIds.XRefSectionShifted, PdfValidationRuleIds.XRefSectionNotFound]);
+        Text(whole, 7).Should().Be("new seven");
     }
 
     [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public void A_prev_naming_more_white_space_than_a_lowered_trailer_bound_is_not_read_from_there_and_finds_its_section_past_it(bool stream)
+    [InlineData(257, 256, false)]
+    [InlineData(257, 256, true)]
+    [InlineData(600, 256, false)]
+    [InlineData(600, 256, true)]
+    [InlineData(70_000, 0, false)]
+    [InlineData(70_000, 0, true)]
+    public void A_prev_naming_more_white_space_than_a_trailer_s_window_names_the_guard_s_section_wherever_the_section_past_it_lies(
+        int run, int maxTrailerLength, bool stream)
     {
         // The update's table names its original, a classic table or a cross-reference stream, through /Prev at the first of
-        // the 257 spaces before it, under a MaxTrailerLength of 256: a byte more than the bound lets the white space before a
-        // section run. The run reaches the guard where it starts, and the section is not read from there, as the message
-        // says; the search near the offset, which reaches 512 bytes past it, finds the section past the run and reads it,
-        // so that object 5 reads as the original gives it and object 7 as the update does (#188, #289).
-        var (file, run, original, _) = NearbyFiles.UpdateNamingTheSpacesBeforeItsOriginal(257, stream);
-        using var document = PdfDocument.Open(file, new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxTrailerLength = 256 } });
+        // the spaces before it: 257 or 600 under a MaxTrailerLength of 256, or 70,000 under the default 64 KB, more than the
+        // bound lets the white space before a section run. The run reaches the guard where it starts, as the message says,
+        // and the section past it is the guard's: cut where the /Prev names it and not looked for nearby, the chain ending
+        // there, nothing rebuilt, and the validator saying it checked the chain in part. The search near the offset read up
+        // to 512 bytes past it, past the guard: it found the original past 257 spaces, the section moved, and past 600 none,
+        // the section missing and the index rebuilt, laid on the file. Object 5, which only the original indexes, reads as
+        // null until the bound is raised, which reads the original past the run, the /Prev said to fall short of it (#188,
+        // #289, ADR 34).
+        var (file, runAt, original, _) = NearbyFiles.UpdateNamingTheSpacesBeforeItsOriginal(run, stream);
+        var limits = maxTrailerLength > 0 ? PdfReaderLimits.Default with { MaxTrailerLength = maxTrailerLength } : PdfReaderLimits.Default;
+        var raised = maxTrailerLength > 0 ? PdfReaderLimits.Default : PdfReaderLimits.Default with { MaxTrailerLength = 128 * 1024 };
+        using var document = PdfDocument.Open(file, new PdfReaderOptions { Limits = limits });
+        using var whole = PdfDocument.Open(file, new PdfReaderOptions { Limits = raised });
 
-        document.Reader.Structure.Sections.Select(section => (section.NamedBy, section.State, section.Kind, section.Offset, section.NamedOffset)).Skip(1).Should().Equal(
-            ("/Prev", XRefSectionState.Relocated, stream ? XRefSectionKind.Stream : XRefSectionKind.Table, original, run));
-        document.Diagnostics.Select(diagnostic => (diagnostic.Code, diagnostic.Position)).Should().Equal(
-            (PdfDiagnosticCodes.LimitTrailer, run),
-            (PdfDiagnosticCodes.XRefOffsetAdjusted, original));
-        document.Diagnostics[0].Message.Should().Be(
-            "White space and comments run past 256 bytes where a cross-reference section is named; the section was not read from there. Raise PdfReaderLimits.MaxTrailerLength to read past it.");
-        Text(document, 5).Should().Be("five");
+        document.Reader.Structure.Sections.Select(section => (section.NamedBy, section.State, section.Kind, section.CutByLimit, section.Offset)).Skip(1).Should().Equal(
+            ("/Prev", XRefSectionState.Malformed, XRefSectionKind.Unknown, true, runAt));
+        document.Diagnostics.Select(diagnostic => (diagnostic.Code, diagnostic.Position)).Should().Equal((PdfDiagnosticCodes.LimitTrailer, runAt));
+        document.Diagnostics[0].Message.Should().Be(string.Create(
+            CultureInfo.InvariantCulture,
+            $"White space and comments run past {(maxTrailerLength > 0 ? "256 bytes" : "64 KB")} where a cross-reference section is named; the section was not read from there. Raise PdfReaderLimits.MaxTrailerLength to read past it."));
+        document.GetObject(new PdfObjectId(5)).Should().BeSameAs(PdfNull.Instance);
         Text(document, 7).Should().Be("new seven");
-        new PdfValidator().Validate(document).Findings.Select(finding => finding.RuleId).Should().Equal(PdfValidationRuleIds.XRefSectionShifted);
+        document.WasRepaired.Should().BeFalse();
+        document.Reader.ChainStoppedByGuard.Should().BeTrue();
+        new PdfValidator().Validate(document).Findings.Select(finding => finding.RuleId).Should().Equal(PdfValidationRuleIds.XRefCheckedInPart);
+
+        whole.Reader.Structure.Sections.Select(section => (section.NamedBy, section.State, section.Kind, section.Offset, section.Padding)).Skip(1).Should().Equal(
+            ("/Prev", XRefSectionState.Read, stream ? XRefSectionKind.Stream : XRefSectionKind.Table, runAt, run));
+        whole.Diagnostics.Should().BeEmpty();
+        Text(whole, 5).Should().Be("five");
+        new PdfValidator().Validate(whole).Findings.Select(finding => finding.RuleId).Should().Equal(PdfValidationRuleIds.XRefOffsetImprecise);
+        original.Should().Be(runAt + run);
     }
 
     [Fact]
     public void An_xrefstm_naming_the_token_before_white_space_its_table_s_prev_names_past_a_trailer_s_window_is_left_to_no_prev()
     {
         // The newest table names through /XRefStm the bracket that closes an array, and through /Prev the first of the 65,537
-        // line feeds after it, which run past a trailer's window. The /Prev's reading reads nothing past them, the guard's, and
-        // reaches no section through them: it keeps no place, and comes to no start the /XRefStm reaches, so that the
+        // line feeds after it, which run past a trailer's window. The /Prev's reading reads nothing past them, the guard's,
+        // and reaches no section through them: it keeps no place, and comes to no start the /XRefStm reaches, so that the
         // /XRefStm is read where it names, the table's stream found a hundred bytes or so before it, nothing left to the
-        // /Prev, which finds no section near the offset it names but the one the chain read (#156, #188).
+        // /Prev (#156, #188). The section the /Prev names is the guard's, cut where it is named and not looked for nearby,
+        // the chain ending there (#289).
         var (file, stream, bracket) = HybridFiles.NamingTheTokenBeforeARunOfWhiteSpace(65_537);
         using var document = PdfDocument.Open(file);
 
         var sections = document.Reader.Structure.Sections;
-        sections.Select(section => (section.NamedBy, section.State, section.Offset, section.NamedOffset)).Skip(1).Take(2).Should().Equal(
-            ("/XRefStm", XRefSectionState.Relocated, stream, bracket),
-            ("/Prev", XRefSectionState.NotFound, bracket + 1, bracket + 1));
-        document.Diagnostics.Select(diagnostic => diagnostic.Code).Should().NotContain(PdfDiagnosticCodes.XRefHybridStreamLost);
-        document.Diagnostics.Should().ContainSingle(diagnostic => diagnostic.Code == PdfDiagnosticCodes.LimitTrailer).Which.Position.Should().Be(bracket + 1);
+        sections.Select(section => (section.NamedBy, section.State, section.CutByLimit, section.Offset, section.NamedOffset)).Skip(1).Should().Equal(
+            ("/XRefStm", XRefSectionState.Relocated, false, stream, bracket),
+            ("/Prev", XRefSectionState.Malformed, true, bracket + 1, bracket + 1));
+        document.Diagnostics.Select(diagnostic => (diagnostic.Code, diagnostic.Position)).Should().Equal(
+            (PdfDiagnosticCodes.XRefOffsetAdjusted, stream), (PdfDiagnosticCodes.LimitTrailer, bracket + 1));
         Text(document, 7).Should().Be("seven");
+        document.WasRepaired.Should().BeFalse();
     }
 
     [Fact]
@@ -6414,22 +6457,64 @@ public class CrossReferenceChainTests
     {
         // The newest table names through /Prev the first of the 65,537 line feeds after the bracket that closes an array, and
         // through /XRefStm the second, from each of which they run past a trailer's window. Neither reading comes to a start
-        // past them, the guard's: the two reach no one section, and the /XRefStm is not left to the /Prev. It is read where
-        // it names, the guard reached there, and the table's stream found a hundred bytes or so before it; the /Prev reaches
-        // the guard where it names in turn, finds no section near the offset but the one the chain read, and is reported
-        // missing (#156, #188).
-        var (file, stream, run) = HybridFiles.NamingTwoPlacesInARunOfWhiteSpace(65_537);
+        // past them, the guard's: the two reach no one section, and the /XRefStm is not left to the /Prev (#156, #188). The
+        // section the /XRefStm names is the guard's, cut where it is named and not looked for nearby, where the table's
+        // stream lies a hundred bytes or so before it: the chain ends at the table, whose /Prev, an offset in the file the
+        // chain has not reached, is the guard's too, and object 7, which only that stream indexes, reads as null until the
+        // bound is raised (#264, #289).
+        var (file, _, run) = HybridFiles.NamingTwoPlacesInARunOfWhiteSpace(65_537);
         using var document = PdfDocument.Open(file);
 
-        document.Reader.Structure.Sections.Select(section => (section.NamedBy, section.State, section.Offset, section.NamedOffset)).Skip(1).Should().Equal(
-            ("/XRefStm", XRefSectionState.Relocated, stream, run + 1),
-            ("/Prev", XRefSectionState.NotFound, run, run));
-        document.Diagnostics.Select(diagnostic => (diagnostic.Code, diagnostic.Position)).Should().Equal(
-            (PdfDiagnosticCodes.LimitTrailer, run + 1),
-            (PdfDiagnosticCodes.XRefOffsetAdjusted, stream),
-            (PdfDiagnosticCodes.LimitTrailer, run),
-            (PdfDiagnosticCodes.XRefSectionMissing, run));
-        Text(document, 7).Should().Be("seven");
+        document.Reader.Structure.Sections.Select(section => (section.NamedBy, section.State, section.CutByLimit, section.Offset, section.NamedOffset)).Skip(1).Should().Equal(
+            ("/XRefStm", XRefSectionState.Malformed, true, run + 1, run + 1));
+        document.Diagnostics.Select(diagnostic => (diagnostic.Code, diagnostic.Position)).Should().Equal((PdfDiagnosticCodes.LimitTrailer, run + 1));
+        document.GetObject(new PdfObjectId(7)).Should().BeSameAs(PdfNull.Instance);
+        document.WasRepaired.Should().BeFalse();
+        document.Reader.ChainStoppedByGuard.Should().BeTrue();
+    }
+
+    [Theory]
+    [InlineData(257, 256, false)]
+    [InlineData(257, 256, true)]
+    [InlineData(600, 256, false)]
+    [InlineData(65_537, 0, false)]
+    [InlineData(65_537, 0, true)]
+    public void An_xrefstm_naming_more_white_space_than_a_trailer_s_window_names_the_guard_s_section_and_ends_the_chain_at_its_table(
+        int run, int maxTrailerLength, bool table)
+    {
+        // The newest table names through /XRefStm the first of a run of line feeds before its revision's cross-reference
+        // stream — or before a classic table —, and through /Prev the oldest table: 257 or 600 under a MaxTrailerLength of
+        // 256, or 65,537 under the default 64 KB, more than the bound lets the white space before a section run. The section
+        // past the run is the guard's, cut where the /XRefStm names it and not looked for nearby, where a search read past
+        // the guard: the chain ends at the table, as at a stream a guard cut, its /Prev, an offset in the file the chain has
+        // not reached, the guard's too, and nothing is reported of the naming. What only the sections past the guard index
+        // reads as null until the bound is raised, which reads the stream past the run — or the table, in the stream's place,
+        // whose naming is then reported (#156, #264, #289).
+        var (file, oldest, runAt, past) = HybridFiles.XRefStmNamingARunBeforeItsSection(run, table);
+        var limits = maxTrailerLength > 0 ? PdfReaderLimits.Default with { MaxTrailerLength = maxTrailerLength } : PdfReaderLimits.Default;
+        var raised = maxTrailerLength > 0 ? PdfReaderLimits.Default : PdfReaderLimits.Default with { MaxTrailerLength = 1024 * 1024 };
+        using var document = PdfDocument.Open(file, new PdfReaderOptions { Limits = limits });
+        using var whole = PdfDocument.Open(file, new PdfReaderOptions { Limits = raised });
+
+        document.Reader.Structure.Sections.Select(section => (section.NamedBy, section.State, section.Kind, section.CutByLimit, section.Offset)).Skip(1).Should().Equal(
+            ("/XRefStm", XRefSectionState.Malformed, XRefSectionKind.Unknown, true, runAt));
+        document.Diagnostics.Select(diagnostic => (diagnostic.Code, diagnostic.Position)).Should().Equal((PdfDiagnosticCodes.LimitTrailer, runAt));
+        Text(document, 6).Should().Be("six");
+        document.GetObject(new PdfObjectId(5)).Should().BeSameAs(PdfNull.Instance);
+        document.GetObject(new PdfObjectId(7)).Should().BeSameAs(PdfNull.Instance);
+        document.WasRepaired.Should().BeFalse();
+        document.Reader.ChainStoppedByGuard.Should().BeTrue();
+        var findings = new PdfValidator().Validate(document).Findings.Select(finding => finding.RuleId).ToList();
+        findings.Should().Contain(PdfValidationRuleIds.XRefCheckedInPart);
+        findings.Should().NotContain([PdfValidationRuleIds.XRefHybridStreamWrong, PdfValidationRuleIds.XRefSectionNotFound]);
+
+        whole.Reader.Structure.Sections.Select(section => (section.NamedBy, section.State, section.Kind, section.Offset, section.Padding)).Skip(1).Should().Equal(
+            ("/XRefStm", XRefSectionState.Read, table ? XRefSectionKind.Table : XRefSectionKind.Stream, runAt, run),
+            ("/Prev", XRefSectionState.Read, XRefSectionKind.Table, oldest, 0));
+        whole.Diagnostics.Select(diagnostic => diagnostic.Code).Should().Equal(table ? [PdfDiagnosticCodes.XRefHybridStreamLost] : []);
+        Text(whole, 5).Should().Be("five");
+        Text(whole, 7).Should().Be("new seven");
+        past.Should().Be(runAt + run);
     }
 
     [Theory]
@@ -8805,27 +8890,27 @@ public class CrossReferenceChainTests
     [InlineData(300, 0)]
     [InlineData(440, 0)]
     [InlineData(0, 256)]
-    public void A_stream_passed_over_near_a_hybrid_table_s_prev_is_left_to_the_trailer_guard_where_white_space_past_it_turned_the_prev_s_reading_into_the_search(
+    public void A_stream_that_may_be_a_hybrid_table_s_own_is_passed_over_by_no_search_where_white_space_past_the_trailer_guard_ends_the_chain_at_the_table_s_prev(
         int run, int maxTrailerLength)
     {
         // The newest table's /Prev names the first of 300 or 440 spaces before the oldest table, and its /XRefStm stream 11,
         // past which stream 12, of /Type /XRef and no /Prev, may be the table's own. Read whole, the /Prev crosses the spaces
         // and reads the oldest table where it is named: no search runs, and nothing is passed over. Where MaxTrailerLength,
-        // lowered to 256, cuts the white space, the section is not read from there, and the search near the offset passes
-        // stream 12 over and takes the oldest table past the run: stream 12 was reported as a stream the chain did not read,
-        // a report only the guard made, laid on the file. The limit's report stands for what the search passed over, and
-        // nothing is reported of the stream (#156, #289, ADR 34). With no run, the /Prev names the table itself.
-        var (file, runAt, oldest, stream, _, newest) = HybridFiles.PrevNamingWhiteSpaceBeforeTheOldestTable(run);
+        // lowered to 256, cuts the white space, the section past it is the guard's, cut where the /Prev names it and not
+        // looked for nearby: no search runs either, where one passed stream 12 over to take the oldest table, and the chain
+        // ends there, the limit's report standing for what lies past it (#156, #289, ADR 34). With no run, the /Prev names
+        // the table itself.
+        var (file, runAt, _, stream, _, newest) = HybridFiles.PrevNamingWhiteSpaceBeforeTheOldestTable(run);
         var limits = maxTrailerLength > 0 ? PdfReaderLimits.Default with { MaxTrailerLength = maxTrailerLength } : PdfReaderLimits.Default;
         using var document = PdfDocument.Open(file, new PdfReaderOptions { Limits = limits });
         var cut = maxTrailerLength > 0 && run > maxTrailerLength;
 
-        document.Reader.Structure.Sections.Select(section => (section.NamedBy, section.State, section.Kind, section.Offset)).Should().Equal(
-            ("startxref", XRefSectionState.Read, XRefSectionKind.Table, newest),
-            ("/XRefStm", XRefSectionState.Read, XRefSectionKind.Stream, stream),
-            ("/Prev", cut ? XRefSectionState.Relocated : XRefSectionState.Read, XRefSectionKind.Table, cut ? oldest : runAt));
-        document.Diagnostics.Select(diagnostic => diagnostic.Code).Should().Equal(
-            cut ? [PdfDiagnosticCodes.LimitTrailer, PdfDiagnosticCodes.XRefOffsetAdjusted] : []);
+        document.Reader.Structure.Sections.Select(section => (section.NamedBy, section.State, section.Kind, section.CutByLimit, section.Offset)).Should().Equal(
+            ("startxref", XRefSectionState.Read, XRefSectionKind.Table, false, newest),
+            ("/XRefStm", XRefSectionState.Read, XRefSectionKind.Stream, false, stream),
+            cut ? ("/Prev", XRefSectionState.Malformed, XRefSectionKind.Unknown, true, runAt) : ("/Prev", XRefSectionState.Read, XRefSectionKind.Table, false, runAt));
+        document.Diagnostics.Select(diagnostic => diagnostic.Code).Should().Equal(cut ? [PdfDiagnosticCodes.LimitTrailer] : []);
+        document.Reader.ChainStoppedByGuard.Should().Be(cut);
         document.WasRepaired.Should().BeFalse();
     }
 
@@ -8846,34 +8931,25 @@ public class CrossReferenceChainTests
         // table's own: the search near it passes stream 12 over and takes the table past the comment. That table's /Prev
         // names the first of a run of spaces before the oldest table, whose /XRefStm names stream 12 — or names the oldest
         // table, whose /XRefStm names the first of a run of spaces before stream 12. Read whole, the chain crosses the run,
-        // and reads stream 12 through that /XRefStm: nothing is reported of it. Where MaxTrailerLength cuts a run of 1,000
-        // or 700 spaces, the section is not read from there, and the search near the offset finds nothing within 512 bytes:
-        // the link that names stream 12 is the guard's to hide, and stream 12 was reported as a stream the chain did not
-        // read, the guard's cut laid on the file. The limit's report stands for it, beside the section reported missing
-        // (#289), and nothing is reported of the stream (#156, ADR 34) — even where the oldest table names nothing, which
-        // the chain read whole finds, and reports. A run the guard does not cut, or one of 400 spaces, within the search's
-        // reach, past which it finds stream 12 moved, leaves stream 12 read.
+        // and reads stream 12 through that /XRefStm: nothing is reported of it. Where MaxTrailerLength cuts a run of 1,000,
+        // 700 or 400 spaces, the section past it is the guard's, cut where it is named and not looked for nearby, and the
+        // chain ends there: the link that names stream 12 is the guard's to hide, and nothing is reported of the stream, the
+        // limit's report standing for it (#156, #289, ADR 34) — even where the oldest table names nothing, which the chain
+        // read whole finds, and reports. The search near the offset found nothing past 1,000 or 700 spaces, the section
+        // reported missing, and stream 12 moved past 400. A run the guard does not cut leaves stream 12 read.
         var (file, _, own, runAt, older, _, _, _) = HybridFiles.PassingOverAStreamAnOlderTableNamesPastWhiteSpace(runBefore, run, oldestNamesOwn);
         var limits = maxTrailerLength > 0 ? PdfReaderLimits.Default with { MaxTrailerLength = maxTrailerLength } : PdfReaderLimits.Default;
         using var document = PdfDocument.Open(file, new PdfReaderOptions { Limits = limits });
         var cut = maxTrailerLength > 0 && run > maxTrailerLength;
 
-        document.Diagnostics.Select(diagnostic => diagnostic.Code).Should().Equal(
-            !cut
-                ? oldestNamesOwn
-                    ? [PdfDiagnosticCodes.XRefOffsetAdjusted]
-                    : [PdfDiagnosticCodes.XRefOffsetAdjusted, PdfDiagnosticCodes.XRefStreamPassedOver]
-                : run < 512
-                    ? [PdfDiagnosticCodes.XRefOffsetAdjusted, PdfDiagnosticCodes.LimitTrailer, PdfDiagnosticCodes.XRefOffsetAdjusted]
-                    : [PdfDiagnosticCodes.XRefOffsetAdjusted, PdfDiagnosticCodes.LimitTrailer, PdfDiagnosticCodes.XRefSectionMissing]);
-        document.Diagnostics[0].Position.Should().Be(older);
-        document.Diagnostics[^1].Position.Should().Be(!cut ? (oldestNamesOwn ? older : own) : run < 512 ? own : runAt);
-
-        if (cut)
-        {
-            document.Diagnostics[1].Position.Should().Be(runAt);
-        }
-
+        document.Diagnostics.Select(diagnostic => (diagnostic.Code, diagnostic.Position)).Should().Equal(
+            cut
+                ? [(PdfDiagnosticCodes.XRefOffsetAdjusted, older), (PdfDiagnosticCodes.LimitTrailer, runAt)]
+                : oldestNamesOwn
+                    ? [(PdfDiagnosticCodes.XRefOffsetAdjusted, older)]
+                    : [(PdfDiagnosticCodes.XRefOffsetAdjusted, older), (PdfDiagnosticCodes.XRefStreamPassedOver, own)]);
+        document.Reader.Structure.Sections[^1].CutByLimit.Should().Be(cut);
+        document.Reader.ChainStoppedByGuard.Should().Be(cut);
         document.WasRepaired.Should().BeFalse();
     }
 
@@ -8884,57 +8960,45 @@ public class CrossReferenceChainTests
     [InlineData(false, false, 300, 0)]
     [InlineData(false, false, 400, 0)]
     [InlineData(true, true, 300, 0)]
-    public void A_stream_passed_over_near_a_hybrid_table_s_prev_is_reported_nowhere_once_white_space_past_the_trailer_guard_turned_a_reading_into_the_search_whatever_section_it_finds(
+    public void A_stream_passed_over_near_a_hybrid_table_s_prev_is_reported_nowhere_where_white_space_past_the_trailer_guard_ends_the_chain_whatever_section_lies_near_it(
         bool unnamedTable, bool oldestNamesOwn, int run, int maxTrailerLength)
     {
         // As above, the search near the newest table's /Prev passes stream 12 over and takes the table past the comment,
         // whose /Prev names the first of 300 or 400 spaces before the oldest table, which names nothing — or, past a table no
         // link names written right before the run, names stream 12 through /XRefStm. Read whole, the chain crosses the run
         // and reads the oldest table: stream 12, which no link reaches, is reported, or is read through that /XRefStm. Where
-        // MaxTrailerLength, lowered to 256, cuts the run, the section is not read from there, and the search near the offset,
-        // which reaches 512 bytes, takes a table: the oldest, past the run, read whole, which hides nothing, or the table no
-        // link names, before the run, which hides the link that names stream 12, object 5 reading as null. The reader cannot
-        // tell the two apart without reading past the guard: the search may take a section other than the one past the run,
-        // and the link that names the stream is then the guard's to hide. So once that guard is reached no stream passed
-        // over is reported anywhere in the document, even where the search takes the section past the run and reads it
-        // whole, and the report the file makes read whole is withheld with the rest (#156, #289, ADR 34).
-        var (file, _, own, runAt, older, unnamed, oldest, _) = HybridFiles.PassingOverAStreamAnOlderTableNamesPastWhiteSpace(
+        // MaxTrailerLength, lowered to 256, cuts the run, the section past it is the guard's, cut where it is named and not
+        // looked for nearby, where a search took a table, the oldest past the run or the one before it no link names, which
+        // the reader cannot tell apart without reading past the guard. The chain ends there, object 5 reading as null until
+        // the bound is raised, and the link that may name stream 12 is the guard's to hide: no stream passed over is
+        // reported, the report the file makes read whole withheld with the rest (#156, #289, ADR 34).
+        var (file, _, own, runAt, older, _, _, _) = HybridFiles.PassingOverAStreamAnOlderTableNamesPastWhiteSpace(
             "the oldest table", run, oldestNamesOwn, unnamedTable);
         var limits = maxTrailerLength > 0 ? PdfReaderLimits.Default with { MaxTrailerLength = maxTrailerLength } : PdfReaderLimits.Default;
         using var document = PdfDocument.Open(file, new PdfReaderOptions { Limits = limits });
 
         if (maxTrailerLength > 0)
         {
-            var taken = unnamedTable ? unnamed : oldest;
-            document.Reader.Structure.Sections.Select(section => (section.NamedBy, section.State, section.Offset)).Skip(3).Should().Equal(
-                ("/Prev", XRefSectionState.Relocated, taken));
+            document.Reader.Structure.Sections.Select(section => (section.NamedBy, section.State, section.CutByLimit, section.Offset)).Skip(3).Should().Equal(
+                ("/Prev", XRefSectionState.Malformed, true, runAt));
             document.Diagnostics.Select(diagnostic => (diagnostic.Code, diagnostic.Position)).Should().Equal(
-                (PdfDiagnosticCodes.XRefOffsetAdjusted, older), (PdfDiagnosticCodes.LimitTrailer, runAt), (PdfDiagnosticCodes.XRefOffsetAdjusted, taken));
-            document.Diagnostics[2].Message.Should().Be(unnamedTable
-                ? string.Create(CultureInfo.InvariantCulture, $"The cross-reference section /Prev names at offset {runAt} was found {runAt - unnamed} bytes before it.")
-                : string.Create(CultureInfo.InvariantCulture, $"The cross-reference section /Prev names at offset {runAt} was found {run} bytes after it."));
-        }
-        else
-        {
-            document.Reader.Structure.Sections.Select(section => (section.NamedBy, section.State, section.Offset)).Skip(3).Should().Equal(
-                unnamedTable
-                    ? [("/Prev", XRefSectionState.Read, runAt), ("/XRefStm", XRefSectionState.Read, own)]
-                    : [("/Prev", XRefSectionState.Read, runAt)]);
-            document.Diagnostics.Select(diagnostic => (diagnostic.Code, diagnostic.Position)).Should().Equal(
-                unnamedTable
-                    ? [(PdfDiagnosticCodes.XRefOffsetAdjusted, older)]
-                    : [(PdfDiagnosticCodes.XRefOffsetAdjusted, older), (PdfDiagnosticCodes.XRefStreamPassedOver, own)]);
-        }
-
-        if (unnamedTable && maxTrailerLength > 0)
-        {
+                (PdfDiagnosticCodes.XRefOffsetAdjusted, older), (PdfDiagnosticCodes.LimitTrailer, runAt));
             document.GetObject(new PdfObjectId(5)).Should().BeSameAs(PdfNull.Instance);
         }
         else
         {
+            document.Reader.Structure.Sections.Select(section => (section.NamedBy, section.State, section.CutByLimit, section.Offset)).Skip(3).Should().Equal(
+                unnamedTable
+                    ? [("/Prev", XRefSectionState.Read, false, runAt), ("/XRefStm", XRefSectionState.Read, false, own)]
+                    : [("/Prev", XRefSectionState.Read, false, runAt)]);
+            document.Diagnostics.Select(diagnostic => (diagnostic.Code, diagnostic.Position)).Should().Equal(
+                unnamedTable
+                    ? [(PdfDiagnosticCodes.XRefOffsetAdjusted, older)]
+                    : [(PdfDiagnosticCodes.XRefOffsetAdjusted, older), (PdfDiagnosticCodes.XRefStreamPassedOver, own)]);
             Text(document, 5).Should().Be("five");
         }
 
+        document.Reader.ChainStoppedByGuard.Should().Be(maxTrailerLength > 0);
         document.WasRepaired.Should().BeFalse();
     }
 
@@ -9314,12 +9378,15 @@ public class CrossReferenceChainTests
     [InlineData("/Prev", "stream 6", true, "a comment before obj", 160)]
     [InlineData("/Prev", "a table", false, "a comment before obj", 160)]
     [InlineData("/Prev", "stream 6", true, "a comment before the generation", 160)]
+    [InlineData("/Prev", "stream 6", true, "a long run of signs", 200)]
     [InlineData("/XRefStm", "", false, "leading zeros", 260)]
     [InlineData("/XRefStm", "", false, "a long generation", 260)]
     [InlineData("/XRefStm", "", false, "a comment before obj", 260)]
     [InlineData("startxref", "nothing", false, "leading zeros", 200)]
     [InlineData("startxref", "nothing", false, "a comment before obj", 160)]
+    [InlineData("startxref", "nothing", false, "a long run of signs", 200)]
     [InlineData("/Prev", "stream 6", true, "leading zeros", 0)]
+    [InlineData("/Prev", "stream 6", true, "a long run of signs", 0)]
     [InlineData("/Prev", "stream 6", false, "leading zeros", 0)]
     [InlineData("/Prev", "a table", false, "a comment before obj", 0)]
     [InlineData("/Prev", "stream 6", true, "leading zeros", JustPastTheHeader)]
@@ -9328,81 +9395,72 @@ public class CrossReferenceChainTests
     [InlineData("/XRefStm", "", false, "a comment before obj", JustPastTheHeader)]
     [InlineData("startxref", "nothing", false, "leading zeros", 0)]
     [InlineData("startxref", "nothing", false, "a comment before obj", JustPastTheHeader)]
-    public void A_stream_passed_over_near_a_hybrid_table_s_prev_is_reported_nowhere_where_a_trailer_guard_cut_the_header_of_an_object_at_an_offset_the_chain_names(
+    public void An_object_header_a_trailer_guard_cuts_at_an_offset_the_chain_names_is_the_guard_s_section_as_a_dictionary_it_cuts_is(
         string named, string near, bool namesOwn, string header, int maxTrailerLength)
     {
-        // What MaxTrailerLength, lowered, cuts where the chain names a section may be no dictionary: the header of the object
-        // there, whose number or generation runs on past the guard, written with 300 zeros, or whose tokens a comment of 300
-        // dashes parts, before obj or before the generation (#289). The reading reaches the guard before it knows what the
-        // object is, which it reads as none: the section is missing, looked for nearby and not found, as #279 and #289
-        // leave it. Where a /Prev names the place — stream 7's, as above, the oldest section, whose own /Prev names stream
-        // 11, or nothing —, what lay past the cut may be a /Prev the chain would follow: stream 11, passed over near the
-        // newest table's /Prev, was reported, the guard's cut laid on the file. Where an /XRefStm names it — stream 9's, as
-        // above, the chain never following its /Prev —, the cut is what would end the chain there (#264). Nothing is
-        // reported of any stream passed over now, whatever the guard cut, as where it cuts a dictionary there — even where
-        // stream 7 names nothing, and the report the chain read whole makes is the file's (ADR 34). Where startxref names
-        // the place, the index is rebuilt as the document opens, and no search runs that could pass a stream over; the
-        // rebuild merges the cross-reference streams' dictionaries as trailers, /Root among their keys (#154). A bound
-        // three bytes past the header reads it, and cuts the dictionary on the padding before its /Type: the guard's
-        // section, cut where it was named, the chain ending there.
+        // What MaxTrailerLength, lowered, cuts where the chain names a section may be no dictionary: the header of the
+        // object there, whose number or generation runs on past the guard, written with 300 zeros, or with a run of
+        // signs that starts with a + (#327), or whose tokens a comment of 300 dashes parts, before obj or before the
+        // generation, all of which a load reads (#261). The reading reaches the guard before it knows what the object
+        // is, and what lies past the cut may be the section: the guard's, cut where it is named and not looked for
+        // nearby, the chain ending there, as where a bound three bytes past the header cuts the dictionary on the
+        // padding before its /Type (#289, ADR 34). A search near the offset read past the guard: the section was
+        // reported missing, or found moved where it lay near another, the guard's cut laid on the file. Where a /Prev
+        // names the place — stream 7's, as above, the oldest section, whose own /Prev names stream 11, or nothing —,
+        // what lay past the cut may be a /Prev the chain would follow; where an /XRefStm names it — stream 9's, as
+        // above, the chain never following its /Prev —, the cut is what would end the chain there (#264). Either way
+        // the chain's cut withholds the report of stream 11, passed over near the newest table's /Prev, even where
+        // stream 7 names nothing and the chain read whole reports it. Where startxref names the place, the index is
+        // rebuilt as the document opens, and the validator says it checked the chain in part, where it said startxref
+        // was wrong; the rebuild merges the cross-reference streams' dictionaries as trailers, /Root among their keys
+        // (#154).
         var written = HeaderWrittenAs(header, named == "/XRefStm" ? 9 : 7);
         var limits = maxTrailerLength == 0
             ? PdfReaderLimits.Default
             : PdfReaderLimits.Default with { MaxTrailerLength = maxTrailerLength == JustPastTheHeader ? written.Length + 3 : maxTrailerLength };
-        var past = maxTrailerLength == JustPastTheHeader;
+        var cut = maxTrailerLength != 0;
+        byte[] read;
 
         if (named == "/XRefStm")
         {
             var (file, _, _, own, _, older, oldest, nine, _) = HybridFiles.PassingOverAStreamAnOlderTableNamesBesideAPaddedStreamItsXRefStmNames(header: written);
+            read = file;
             using var document = PdfDocument.Open(file, new PdfReaderOptions { Limits = limits });
             var sections = document.Reader.Structure.Sections.Skip(3).Select(section => (section.NamedBy, section.State, section.CutByLimit, section.Offset));
 
-            if (maxTrailerLength == 0)
-            {
-                sections.Should().Equal(("/XRefStm", XRefSectionState.Read, false, nine), ("/Prev", XRefSectionState.Read, false, oldest));
-                document.Diagnostics.Select(diagnostic => (diagnostic.Code, diagnostic.Position)).Should().Equal(
-                    (PdfDiagnosticCodes.XRefOffsetAdjusted, older), (PdfDiagnosticCodes.XRefStreamPassedOver, own));
-            }
-            else if (past)
+            if (cut)
             {
                 sections.Should().Equal(("/XRefStm", XRefSectionState.Malformed, true, nine));
                 document.Diagnostics.Select(diagnostic => (diagnostic.Code, diagnostic.Position)).Should().Equal(
                     (PdfDiagnosticCodes.XRefOffsetAdjusted, older), (PdfDiagnosticCodes.LimitTrailer, nine));
-            }
-            else
-            {
-                sections.Should().Equal(("/XRefStm", XRefSectionState.NotFound, false, nine), ("/Prev", XRefSectionState.Read, false, oldest));
-                document.Diagnostics.Select(diagnostic => (diagnostic.Code, diagnostic.Position)).Should().Equal(
-                    (PdfDiagnosticCodes.XRefOffsetAdjusted, older), (PdfDiagnosticCodes.LimitTrailer, nine), (PdfDiagnosticCodes.XRefSectionMissing, nine));
-            }
-
-            document.Reader.ChainStoppedByGuard.Should().Be(past);
-
-            if (past)
-            {
                 document.GetObject(new PdfObjectId(5)).Should().BeSameAs(PdfNull.Instance);
             }
             else
             {
+                sections.Should().Equal(("/XRefStm", XRefSectionState.Read, false, nine), ("/Prev", XRefSectionState.Read, false, oldest));
+                document.Diagnostics.Select(diagnostic => (diagnostic.Code, diagnostic.Position)).Should().Equal(
+                    (PdfDiagnosticCodes.XRefOffsetAdjusted, older), (PdfDiagnosticCodes.XRefStreamPassedOver, own));
                 Text(document, 5).Should().Be("five");
             }
+
+            document.Reader.ChainStoppedByGuard.Should().Be(cut);
         }
         else if (named == "startxref")
         {
             var (file, _, oldest, _, _, _, _) = HybridFiles.PassingOverAStreamAnOlderStreamWithAPaddedTypeNames(near, namesOwn, header: written);
+            read = file;
             using var document = PdfDocument.Open(file, new PdfReaderOptions { Limits = limits });
 
             document.Reader.Structure.Sections.Select(section => (section.NamedBy, section.State, section.CutByLimit, section.Offset)).Should().Equal(
-                ("startxref", maxTrailerLength == 0 ? XRefSectionState.Read : past ? XRefSectionState.Malformed : XRefSectionState.NotFound, past, oldest));
+                ("startxref", cut ? XRefSectionState.Malformed : XRefSectionState.Read, cut, oldest));
             document.Diagnostics.Select(diagnostic => (diagnostic.Code, diagnostic.Position)).Should().Equal(
-                maxTrailerLength == 0
-                    ? []
-                    : [(PdfDiagnosticCodes.LimitTrailer, oldest), (PdfDiagnosticCodes.XRefRebuilt, -1)]);
-            document.WasRepaired.Should().Be(maxTrailerLength != 0);
+                cut ? [(PdfDiagnosticCodes.LimitTrailer, oldest), (PdfDiagnosticCodes.XRefRebuilt, -1)] : []);
+            document.WasRepaired.Should().Be(cut);
         }
         else
         {
             var (file, _, oldest, _, own, taken, _) = HybridFiles.PassingOverAStreamAnOlderStreamWithAPaddedTypeNames(near, namesOwn, header: written);
+            read = file;
             using var document = PdfDocument.Open(file, new PdfReaderOptions { Limits = limits });
             var expected = new List<(string Code, long Position)> { (PdfDiagnosticCodes.XRefOffsetAdjusted, taken) };
 
@@ -9413,7 +9471,12 @@ public class CrossReferenceChainTests
 
             var last = document.Reader.Structure.Sections.Select(section => (section.NamedBy, section.State, section.CutByLimit, section.Offset)).Last();
 
-            if (maxTrailerLength == 0)
+            if (cut)
+            {
+                expected.Add((PdfDiagnosticCodes.LimitTrailer, oldest));
+                last.Should().Be(("/Prev", XRefSectionState.Malformed, true, oldest));
+            }
+            else
             {
                 if (!namesOwn)
                 {
@@ -9422,23 +9485,17 @@ public class CrossReferenceChainTests
 
                 last.Should().Be(namesOwn ? ("/Prev", XRefSectionState.Read, false, own) : ("/Prev", XRefSectionState.Read, false, oldest));
             }
-            else if (past)
-            {
-                expected.Add((PdfDiagnosticCodes.LimitTrailer, oldest));
-                last.Should().Be(("/Prev", XRefSectionState.Malformed, true, oldest));
-            }
-            else
-            {
-                expected.Add((PdfDiagnosticCodes.LimitTrailer, oldest));
-                expected.Add((PdfDiagnosticCodes.XRefSectionMissing, oldest));
-                last.Should().Be(("/Prev", XRefSectionState.NotFound, false, oldest));
-            }
 
             document.Diagnostics.Select(diagnostic => (diagnostic.Code, diagnostic.Position)).Should().Equal(expected);
-            document.Reader.ChainStoppedByGuard.Should().Be(past);
+            document.Reader.ChainStoppedByGuard.Should().Be(cut);
             Text(document, 5).Should().Be("five");
             document.WasRepaired.Should().BeFalse();
         }
+
+        using var validated = PdfDocument.Open(read, new PdfReaderOptions { Limits = limits });
+        var findings = new PdfValidator().Validate(validated).Findings.Select(finding => finding.RuleId).ToList();
+        findings.Contains(PdfValidationRuleIds.XRefCheckedInPart).Should().Be(cut);
+        findings.Should().NotContain([PdfValidationRuleIds.XRefSectionNotFound, PdfValidationRuleIds.FileStartXRefWrong]);
     }
 
     [Theory]
@@ -10792,6 +10849,7 @@ public class CrossReferenceChainTests
         "a long generation" => Invariant($"{number} ") + new string('0', 300) + " obj",
         "a comment before obj" => Invariant($"{number} 0 %") + new string('-', 300) + "\nobj",
         "a comment before the generation" => Invariant($"{number} %") + new string('-', 300) + "\n0 obj",
+        "a long run of signs" => "+" + new string('-', 300) + Invariant($"{number} 0 obj"),
         _ => throw new ArgumentOutOfRangeException(nameof(shape), shape, "No such header."),
     };
 

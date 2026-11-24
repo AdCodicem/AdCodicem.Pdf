@@ -56,21 +56,18 @@ internal sealed partial class PdfFileReader
         if (padding < 0)
         {
             // White space and comments fill a trailer's window there and run on past it: the first token past them is the
-            // guard's to hide, as whatever else it cuts at an offset the chain names is (ADR 34), and the section is not
-            // read from there. It is looked for as one not there is: near the offset, where the search may find it past
-            // them, or, for the one startxref names, by rebuilding the index. A place a search near an offset tries starts
-            // at a token, and never gets here: the offset is one the chain names. What that search passes over, or what the
-            // section names past the guard, is the guard's: the search may take a section other than the one past them,
-            // which the reader cannot tell without reading past the guard, and no stream passed over anywhere in the
-            // document is reported, even where the search takes the section past them and reads it whole
-            // (ReportStreamsPassedOver).
+            // guard's to hide, and so is the section, as whatever else the guard cuts at an offset the chain names is (ADR
+            // 34) — cut where it is named and not looked for nearby, where a search would read past the guard and may take
+            // a section other than the one past them, the chain ending there. For the one startxref names, the index is
+            // rebuilt, as for any guard that leaves the chain no section. A place a search near an offset tries starts at a
+            // token, and never gets here: the offset is one the chain names.
             ReachLimit(
                 PdfLimit.Trailer,
                 $"White space and comments run past {PdfLimitGuard.FormatLength(_guard.Bound(PdfLimit.Trailer))} where a cross-reference section is named; the section was not read from there.",
                 absolute);
-            _guardMayHideLink = true;
-            section.Fault = "holds neither the xref keyword nor an object";
-            section.State = XRefSectionState.NotFound;
+            section.CutByLimit = true;
+            section.Fault = "lies past white space and comments one of the reader's limits cut";
+            section.State = XRefSectionState.Malformed;
             return section.State;
         }
 
@@ -79,9 +76,7 @@ internal sealed partial class PdfFileReader
         if (table)
         {
             section.Kind = XRefSectionKind.Table;
-            section.State = TryReadClassicTable(absolute, section, out previous, out hybrid, candidate)
-                ? XRefSectionState.Read
-                : XRefSectionState.Malformed;
+            section.State = TryReadClassicTable(absolute, section, out previous, out hybrid, candidate);
             return section.State;
         }
 
@@ -96,20 +91,21 @@ internal sealed partial class PdfFileReader
     /// which bounds them, the first token past them the guard's.
     /// </summary>
     /// <remarks>
-    /// <see cref="PdfReaderLimits.MaxTrailerLength"/> bounds the white space and comments before a section, and a stream's
-    /// dictionary, read through windows that open at its object's header (<see cref="TryReadXRefStream"/>), apart; a classic
-    /// table's windows open at the position, so that the white space before its keyword counts toward
-    /// <see cref="PdfReaderLimits.MaxXRefSectionLength"/> as well (#289). The section starts where the first token does,
-    /// however much white space the offset falls short by, so that what the chain reads there is what it reached there, and
-    /// what a check of the place reads (<see cref="KeepsItsPlace"/>). A probe that holds white space and comments alone, or a
-    /// first token its edge may cut, is read on as far as a trailer's window reaches and <see cref="XRefProbeLength"/> bytes
-    /// past it: a first token that starts within that window, or where it ends, is read whole enough to tell the keyword
-    /// from an object's header. White space and comments that fill the window and run on past it are the guard's (ADR 34),
-    /// as whatever else it cuts there is: the section is not read from the position, and the reading reports the guard
-    /// (<see cref="TryReadXRefSection"/>), while a search near the position may find it past them. The windows grow
-    /// eightfold from <see cref="XRefProbeLength"/> bytes, and only where the first token, or the white space and comments
-    /// before it, reach the last one's edge, so that the bytes read come to one probe where that token ends within the
-    /// first, short of its edge, and otherwise to less than ten times those from the position to that token's end — white
+    /// <see cref="PdfReaderLimits.MaxTrailerLength"/> bounds the white space and comments before a section apart from
+    /// the section, whose windows open at its first token: a stream's at its object's header, its dictionary bounded by
+    /// the same property (<see cref="TryReadXRefStream"/>), a classic table's at its keyword, bounded by
+    /// <see cref="PdfReaderLimits.MaxXRefSectionLength"/> (<see cref="TryReadClassicTable"/>). The section starts where
+    /// the first token does, however much white space the offset falls short by, so that what the chain reads there is
+    /// what it reached there, and what a check of the place reads (<see cref="KeepsItsPlace"/>). A probe that holds
+    /// white space and comments alone, or a first token its edge may cut, is read on as far as a trailer's window
+    /// reaches and <see cref="XRefProbeLength"/> bytes past it: a first token that starts within that window, or where
+    /// it ends, is read whole enough to tell the keyword from an object's header. White space and comments that fill
+    /// the window and run on past it are the guard's (ADR 34), and so is the section past them, as whatever else the
+    /// guard cuts there is: it is not read from the position, nor looked for near it, the chain ending there, and the
+    /// reading reports the guard (<see cref="TryReadXRefSection"/>). The windows grow eightfold from
+    /// <see cref="XRefProbeLength"/> bytes, and only where the first token, or the white space and comments before it,
+    /// reach the last one's edge, so that the bytes read come to one probe where that token ends within the first,
+    /// short of its edge, and otherwise to less than ten times those from the position to that token's end — white
     /// space, comments and the token alike, a token the probe's edge cuts counted as far as the probe reaches.
     /// </remarks>
     /// <param name="absolute">The position, in the file.</param>
@@ -179,24 +175,38 @@ internal sealed partial class PdfFileReader
         public static PaddingProbe None => new(-1, 0, false);
     }
 
-    private bool TryReadClassicTable(long absolute, XRefSectionRecord section, out long previous, out long hybrid, bool candidate)
+    /// <summary>
+    /// Reads the classic table whose <c>xref</c> keyword the probe found at <paramref name="absolute"/>, past the
+    /// <see cref="XRefSectionRecord.Padding"/> bytes of white space and comments the position falls short by:
+    /// <see cref="XRefSectionState.Read"/>, whole or in part; <see cref="XRefSectionState.Malformed"/> where it cannot be
+    /// read; or <see cref="XRefSectionState.NotFound"/> where its own window reads a first token that is not the keyword.
+    /// </summary>
+    /// <remarks>
+    /// The windows open at the keyword, as a stream's open at its object's header: the white space before it, which a
+    /// trailer's window bounds apart (<see cref="PaddingAt"/>), counts toward no
+    /// <see cref="PdfReaderLimits.MaxXRefSectionLength"/>, and is crossed once, by the probe, however far the windows grow.
+    /// The guard's report, and the links the trailer gives, are placed at the position named, as the section is.
+    /// </remarks>
+    private XRefSectionState TryReadClassicTable(
+        long absolute, XRefSectionRecord section, out long previous, out long hybrid, bool candidate)
     {
         previous = -1;
         hybrid = -1;
         var maxWindow = _guard.Bound(PdfLimit.XRefSectionLength);
         var windowSize = Math.Min(XRefWindow, maxWindow);
         var reserved = false;
+        var at = absolute + section.Padding;
 
         while (true)
         {
-            using var window = _source.GetWindow(absolute, windowSize);
+            using var window = _source.GetWindow(at, windowSize);
             var span = window.Memory.Span;
             var lexer = new PdfLexer(span);
 
             // A window shorter than asked holds the end of the file: what it holds is all there is, as it is for a full one
             // that ends where the file does. Any other full one may have cut the table, and is grown until the guard allows
             // no more.
-            var windowFull = window.Length == windowSize && absolute + window.Length < _source.Length;
+            var windowFull = window.Length == windowSize && at + window.Length < _source.Length;
             var canGrow = windowFull && windowSize < maxWindow;
             var keyword = lexer.Read();
             var truncated = windowFull && keyword.End >= span.Length;
@@ -208,8 +218,12 @@ internal sealed partial class PdfFileReader
 
             if (!truncated && !keyword.IsKeyword("xref"u8))
             {
-                section.Fault = "does not start with the xref keyword";
-                return false;
+                // A first token the window reads whole that is not the keyword, where the probe took the start of it for the
+                // keyword — a source gave the probe's read back short, which the reader takes for the end of the data (#52) —,
+                // is no table, as the probe would have said reading it whole: nothing there is a section.
+                section.Kind = XRefSectionKind.Unknown;
+                section.Fault = "holds neither the xref keyword nor an object";
+                return XRefSectionState.NotFound;
             }
 
             if (!truncated && !reserved)
@@ -245,13 +259,13 @@ internal sealed partial class PdfFileReader
 
                 if (token.IsKeyword(TrailerKeyword))
                 {
-                    section.TrailerPosition = absolute + token.Start;
+                    section.TrailerPosition = at + token.Start;
 
                     // A trailer keyword that follows the xref keyword ends a table of no subsection, which indexes nothing,
                     // as one whose one subsection is 0 0 does: read as written, and reported (#222).
                     section.NoSubsection = subsections == 0;
 
-                    var trailer = ReadTrailer(window.Memory, absolute, lexer.Position, windowFull, section);
+                    var trailer = ReadTrailer(window.Memory, at, lexer.Position, windowFull, section);
 
                     if (trailer is not null)
                     {
@@ -268,7 +282,7 @@ internal sealed partial class PdfFileReader
                         section.Incomplete = true;
                     }
 
-                    return true;
+                    return XRefSectionState.Read;
                 }
 
                 if (token.Kind != PdfTokenKind.Integer)
@@ -289,9 +303,9 @@ internal sealed partial class PdfFileReader
                         // were lost before it with the keyword cannot be known — a damaged block may end where a subsection
                         // would start —: the table is read in part, as one whose rest is unknown, no older section's row
                         // standing for a number it does not give (#322).
-                        var found = ReadTrailer(window.Memory, absolute, token.Start, windowFull, section);
+                        var found = ReadTrailer(window.Memory, at, token.Start, windowFull, section);
                         section.TrailerFault = XRefTrailerFault.Missing;
-                        section.TrailerPosition = absolute + token.Start;
+                        section.TrailerPosition = at + token.Start;
                         section.Incomplete = true;
                         section.SubsectionsUnknown = true;
 
@@ -300,15 +314,15 @@ internal sealed partial class PdfFileReader
                             TakeTrailer(found, section, absolute, out previous, out hybrid);
                         }
 
-                        return true;
+                        return XRefSectionState.Read;
                     }
 
                     // What follows a token that starts no subsection cannot be known: rows misread from it on, or none.
                     section.SubsectionsUnknown = true;
                     section.Fault ??= string.Create(
                         CultureInfo.InvariantCulture,
-                        $"it holds {DescribeToken(token)} at offset {absolute + token.Start}, where a subsection or the trailer should start");
-                    return false;
+                        $"it holds {DescribeToken(token)} at offset {at + token.Start}, where a subsection or the trailer should start");
+                    return XRefSectionState.Malformed;
                 }
 
                 var first = token.Integer;
@@ -325,8 +339,8 @@ internal sealed partial class PdfFileReader
                     section.SubsectionsUnknown = true;
                     section.Fault ??= string.Create(
                         CultureInfo.InvariantCulture,
-                        $"the subsection header at offset {absolute + token.Start} does not give a first object number and a count of rows");
-                    return false;
+                        $"the subsection header at offset {at + token.Start} does not give a first object number and a count of rows");
+                    return XRefSectionState.Malformed;
                 }
 
                 // Compared by subtraction: a count as large as a long would carry first + count - 1 past what one holds.
@@ -335,14 +349,14 @@ internal sealed partial class PdfFileReader
                     section.SubsectionsUnknown = true;
                     section.Fault ??= string.Create(
                         CultureInfo.InvariantCulture,
-                        $"the subsection header at offset {absolute + token.Start} numbers its rows past object {PdfObjectId.MaxNumber}");
-                    return false;
+                        $"the subsection header at offset {at + token.Start} numbers its rows past object {PdfObjectId.MaxNumber}");
+                    return XRefSectionState.Malformed;
                 }
 
                 // A count is bounded by what it numbers, and its rows by the window, which MaxXRefSectionLength bounds: the
                 // most rows an int counts lie far past any window, and a count past them describes rows that are not read.
                 subsections++;
-                truncated = !ReadSubsection(ref lexer, (int)first, (int)Math.Min(countToken.Integer, int.MaxValue), section, absolute);
+                truncated = !ReadSubsection(ref lexer, (int)first, (int)Math.Min(countToken.Integer, int.MaxValue), section, at);
 
                 if (_indexFullAt >= 0)
                 {
@@ -350,10 +364,10 @@ internal sealed partial class PdfFileReader
                     // The trailer past them still names the catalog, the encryption and the identity of the document.
                     if (!candidate)
                     {
-                        ReadTrailerPastRows(absolute + lexer.Position, section);
+                        ReadTrailerPastRows(at + lexer.Position, section);
                     }
 
-                    return true;
+                    return XRefSectionState.Read;
                 }
             }
 
@@ -365,7 +379,9 @@ internal sealed partial class PdfFileReader
                     section.CutByLimit = true;
                     ReachLimit(
                         PdfLimit.XRefSectionLength,
-                        $"The cross-reference table runs past {PdfLimitGuard.FormatLength(maxWindow)}; only the entries within it were read.",
+                        section.HighestNumber < 0
+                            ? $"The cross-reference table runs past {PdfLimitGuard.FormatLength(maxWindow)} before its first entry; none of its entries was read."
+                            : $"The cross-reference table runs past {PdfLimitGuard.FormatLength(maxWindow)}; only the entries within it were read.",
                         absolute);
 
                     // The keyword may start within the window's last bytes, which it cut, though not before the table's
@@ -377,7 +393,7 @@ internal sealed partial class PdfFileReader
                         // comment or the trailer keyword, which the cut may have split. Not before the table's own keyword.
                         var line = span.LastIndexOfAny((byte)'\r', (byte)'\n');
                         ReadTrailerPastRows(
-                            Math.Max(absolute + (line >= 0 ? line + 1 : windowSize - TrailerKeyword.Length), absolute + section.Padding + "xref".Length),
+                            Math.Max(at + (line >= 0 ? line + 1 : windowSize - TrailerKeyword.Length), at + "xref".Length),
                             section);
                     }
                 }
@@ -395,18 +411,18 @@ internal sealed partial class PdfFileReader
                     // validator says it once (#325).
                     if (section.HighestNumber < 0)
                     {
-                        return false;
+                        return XRefSectionState.Malformed;
                     }
 
                     section.Incomplete = true;
-                    return true;
+                    return XRefSectionState.Read;
                 }
 
                 // A table the guard cut is kept, its rows read as far as the guard let them, the guard's, whatever the index
                 // holds (ADR 34), and what its trailer names is judged as a whole read judges it (#264). At the offset a link
                 // names, its keyword is the table's own; a place the search near an offset tries is read so too, and taken as
                 // any place that reads, whole or in part, is.
-                return true;
+                return XRefSectionState.Read;
             }
 
             windowSize = (int)Math.Min((long)windowSize * 4, maxWindow);
